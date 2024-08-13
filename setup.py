@@ -10,9 +10,14 @@ setup(
     python_requires=">=3.6",
     install_requires=[
         "policyengine_core",
+        "tables",
     ],
-    dev_requires=[
-        "black",
-        "pytest",
-    ],
+    extras_require={
+        "dev": [
+            "black",
+            "pytest",
+            "tqdm",
+            "requests",
+        ],
+    },
 )

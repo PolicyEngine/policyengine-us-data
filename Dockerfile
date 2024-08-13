@@ -1,6 +1,6 @@
 FROM python:latest
 COPY . .
 # Install
-RUN pip install -e .
+RUN make install
 # Run tests
 CMD ["make", "test"]

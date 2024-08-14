@@ -1,5 +1,4 @@
 import pytest
-import pandas as pd
 
 
 @pytest.mark.parametrize("year", [2022])
@@ -10,7 +9,7 @@ def test_census_cps_generates(year: int):
         2022: CensusCPS_2022,
     }
 
-    dataset = dataset_by_year[year](require=True)
+    dataset_by_year[year](require=True)
 
 
 @pytest.mark.parametrize("year", [2022])

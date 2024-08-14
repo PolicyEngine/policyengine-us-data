@@ -125,12 +125,14 @@ class CensusCPS_2022(CensusCPS):
     file_path = STORAGE_FOLDER / "census_cps_2022.h5"
     data_format = Dataset.TABLES
 
+
 class CensusCPS_2021(CensusCPS):
     time_period = 2021
     label = "Census CPS (2021)"
     name = "census_cps_2021"
     file_path = STORAGE_FOLDER / "census_cps_2021.h5"
     data_format = Dataset.TABLES
+
 
 class CensusCPS_2020(CensusCPS):
     time_period = 2020
@@ -139,12 +141,14 @@ class CensusCPS_2020(CensusCPS):
     file_path = STORAGE_FOLDER / "census_cps_2020.h5"
     data_format = Dataset.TABLES
 
+
 class CensusCPS_2019(CensusCPS):
     time_period = 2019
     label = "Census CPS (2019)"
     name = "census_cps_2019"
     file_path = STORAGE_FOLDER / "census_cps_2019.h5"
     data_format = Dataset.TABLES
+
 
 class CensusCPS_2018(CensusCPS):
     time_period = 2018

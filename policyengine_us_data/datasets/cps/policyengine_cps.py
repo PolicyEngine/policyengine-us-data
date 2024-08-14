@@ -51,7 +51,6 @@ class CPS(Dataset):
         cps.close()
 
 
-
 def add_silver_plan_cost(self, cps: h5py.File, year: int):
     """Adds the second-lowest silver plan cost for each tax unit, based on geography.
 

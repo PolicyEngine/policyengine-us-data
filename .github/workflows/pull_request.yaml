@@ -1,7 +1,7 @@
-name: Push
+name: Pull request
 
 on:
-  push:
+  pull_request:
     branches:
       - main
 
@@ -28,5 +28,5 @@ jobs:
       - name: Run evaluation
         run: make evaluate
 
-      - name: Upload evaluation
-        run: python .github/upload_evaluation.py
+      - name: Add review comment
+        run: python .github/review_pull_request.py

@@ -18,6 +18,7 @@ setup(
             "pytest",
             "tqdm",
             "requests",
+            "policyengine_us",
         ],
     },
 )

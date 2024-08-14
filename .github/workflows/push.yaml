@@ -26,5 +26,5 @@ jobs:
       - name: Run evaluation
         run: make evaluation
 
-      - name: Run evaluation
+      - name: Upload evaluation
         run: python .github/upload_evaluation

@@ -1,14 +1,7 @@
 from policyengine_core.data import Dataset
 from policyengine_us_data.data_storage import STORAGE_FOLDER
 import h5py
-from policyengine_us.data.datasets.cps.raw_cps import (
-    RawCPS_2018,
-    RawCPS_2019,
-    RawCPS_2020,
-    RawCPS_2021,
-    RawCPS_2022,
-    RawCPS,
-)
+from policyengine_us_data.datasets.cps.census_cps import *
 from pandas import DataFrame, Series
 import numpy as np
 import pandas as pd
@@ -20,8 +13,8 @@ from typing import Type
 class CPS(Dataset):
     name = "cps"
     label = "CPS"
-    raw_cps: Type[RawCPS] = None
-    previous_year_raw_cps: Type[RawCPS] = None
+    raw_cps: Type[CensusCPS] = None
+    previous_year_raw_cps: Type[CensusCPS] = None
     data_format = Dataset.ARRAYS
 
     def generate(self):
@@ -527,8 +520,8 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
 class CPS_2019(CPS):
     name = "cps_2019"
     label = "CPS 2019"
-    raw_cps = RawCPS_2019
-    previous_year_raw_cps = RawCPS_2018
+    raw_cps = CensusCPS_2019
+    previous_year_raw_cps = CensusCPS_2018
     file_path = STORAGE_FOLDER / "cps_2019.h5"
     time_period = 2019
 
@@ -536,8 +529,8 @@ class CPS_2019(CPS):
 class CPS_2020(CPS):
     name = "cps_2020"
     label = "CPS 2020"
-    raw_cps = RawCPS_2020
-    previous_year_raw_cps = RawCPS_2019
+    raw_cps = CensusCPS_2020
+    previous_year_raw_cps = CensusCPS_2019
     file_path = STORAGE_FOLDER / "cps_2020.h5"
     time_period = 2020
 
@@ -545,8 +538,8 @@ class CPS_2020(CPS):
 class CPS_2021(CPS):
     name = "cps_2021"
     label = "CPS 2021"
-    raw_cps = RawCPS_2021
-    previous_year_raw_cps = RawCPS_2020
+    raw_cps = CensusCPS_2021
+    previous_year_raw_cps = CensusCPS_2020
     file_path = STORAGE_FOLDER / "cps_2021.h5"
     time_period = 2021
 
@@ -554,7 +547,7 @@ class CPS_2021(CPS):
 class CPS_2022(CPS):
     name = "cps_2022"
     label = "CPS 2022"
-    raw_cps = RawCPS_2022
-    previous_year_raw_cps = RawCPS_2021
+    raw_cps = CensusCPS_2022
+    previous_year_raw_cps = CensusCPS_2021
     file_path = STORAGE_FOLDER / "cps_2022.h5"
     time_period = 2022

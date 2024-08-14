@@ -3,9 +3,10 @@ from policyengine_core.data import Dataset
 import pandas as pd
 from pathlib import Path
 from typing import Type
+from tqdm import tqdm
 
 
-def evaluate_dataset(dataset: Type[Dataset]):
+def evaluate_dataset(dataset: Type[Dataset]) -> pd.DataFrame:
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=dataset)
@@ -33,7 +34,7 @@ def evaluate_dataset(dataset: Type[Dataset]):
     time_periods = []
     totals = []
 
-    for time_period in KEY_TIME_PERIODS[:3]:
+    for time_period in tqdm(KEY_TIME_PERIODS[:3]):
         for variable in KEY_VARIABLES:
             total = round(sim.calculate(variable, time_period).sum() / 1e9, 1)
             variables.append(variable)
@@ -51,19 +52,35 @@ def evaluate_dataset(dataset: Type[Dataset]):
     df["Date"] = pd.Timestamp("now")
     df["Dataset"] = dataset.name
 
+    return df
+
+
+def main():
+    from policyengine_us_data.datasets import DATASETS
+    from policyengine_us_data.utils.github import download
+
+    try:
+        download(
+            "policyengine",
+            "policyengine-us-data",
+            "release",
+            "evaluation.csv",
+            STORAGE_FOLDER / "evaluation.csv",
+        )
+    except:
+        pass
+
+    df = pd.DataFrame()
+
+    for dataset in DATASETS:
+        df = pd.concat([df, evaluate_dataset(dataset)])
+
     file_path = Path(STORAGE_FOLDER / "evaluation.csv")
     if file_path.exists():
         existing_df = pd.read_csv(file_path)
         df = pd.concat([existing_df, df])
 
     df.to_csv(file_path, index=False)
-
-
-def main():
-    from policyengine_us_data.datasets import DATASETS
-
-    for dataset in DATASETS:
-        evaluate_dataset(dataset)
 
 
 if __name__ == "__main__":

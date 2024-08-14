@@ -5,8 +5,6 @@ auth_headers = {
     "Authorization": f"token {os.environ['GITHUB_TOKEN']}",
 }
 
-print(auth_headers)
-
 
 def get_asset_url(
     org: str, repo: str, release_tag: str, file_name: str

@@ -1,0 +1,30 @@
+name: Push Action
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Run tests
+        run: make test
+
+      - name: Run evaluation
+        run: make evaluation
+
+      - name: Run evaluation
+        run: python .github/upload_evaluation

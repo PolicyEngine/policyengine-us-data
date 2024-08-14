@@ -24,7 +24,7 @@ jobs:
         run: make test
 
       - name: Run evaluation
-        run: make evaluation
+        run: make evaluate
 
       - name: Upload evaluation
         run: python .github/upload_evaluation

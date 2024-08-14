@@ -1,5 +1,5 @@
 from policyengine_core.data import Dataset
-from policyengine_us.data.storage import STORAGE_FOLDER
+from policyengine_us_data.data_storage import STORAGE_FOLDER
 import h5py
 from policyengine_us.data.datasets.cps.raw_cps import (
     RawCPS_2018,
@@ -9,8 +9,6 @@ from policyengine_us.data.datasets.cps.raw_cps import (
     RawCPS_2022,
     RawCPS,
 )
-from policyengine_us.data.datasets.cps.uprated_cps import UpratedCPS
-from policyengine_us.data.storage import STORAGE_FOLDER
 from pandas import DataFrame, Series
 import numpy as np
 import pandas as pd

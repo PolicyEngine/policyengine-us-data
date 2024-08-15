@@ -204,7 +204,7 @@ def add_personal_income_variables(
     assert isinstance(p, dict)
 
     # Assign CPS variables.
-    cps["employment_income"] = person.WSAL_VAL
+    cps["employment_income"] = person.WSAL_VAL * 0.9
 
     cps["weekly_hours_worked"] = person.HRSWK * person.WKSWORK / 52
 

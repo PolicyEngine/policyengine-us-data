@@ -19,6 +19,7 @@ setup(
             "tqdm",
             "requests",
             "policyengine_us",
+            "tabulate",
         ],
     },
 )

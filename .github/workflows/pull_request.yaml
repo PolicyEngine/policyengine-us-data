@@ -12,6 +12,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITHUB_PR_NUMBER: ${{ github.event.number }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -21,6 +22,12 @@ jobs:
 
       - name: Install dependencies
         run: make install
+
+      - name: Run tests
+        run: make test
+
+      - name: Run evaluation
+        run: make evaluate
 
       - name: Add review comment
         run: python .github/review_pull_request.py

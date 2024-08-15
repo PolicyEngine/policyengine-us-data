@@ -19,7 +19,7 @@ def main():
 
     print(review_text)
 
-    #set_pr_auto_review_comment(review_text)
+    set_pr_auto_review_comment(review_text)
 
 if __name__ == "__main__":
     main()

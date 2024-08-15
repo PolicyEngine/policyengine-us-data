@@ -11,14 +11,15 @@ def main():
     diff = (most_recent_rows - second_most_recent_rows)
     # Convert to df
     diff = diff.reset_index()
-    diff = diff[diff.Variable == "household_net_income"].T
+    diff.Total = diff.Total.apply(lambda x: f"{x:+.1f}")
+    diff = diff[diff.Variable == "household_net_income"].set_index("Time period")[["Total"]].T
     table = diff.to_markdown(index=False)
 
-    review_text = f"""## National projection changes\n\nThis pull request makes the following changes to economic estimates.\n\n{table}"""
+    review_text = f"""## National projection changes\n\nThis pull request makes the following changes to economic estimates.\n\n### Household net income\n\n{table}"""
 
     print(review_text)
 
-    set_pr_auto_review_comment(review_text)
+    #set_pr_auto_review_comment(review_text)
 
 if __name__ == "__main__":
     main()

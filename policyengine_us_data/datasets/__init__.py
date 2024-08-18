@@ -1,3 +1,4 @@
-from .cps import CPS_2022
+from .cps import *
+from .puf import *
 
-DATASETS = [CPS_2022]
+DATASETS = [CPS_2022, PUF_2021]

@@ -39,6 +39,6 @@ class IRS_PUF_2015(IRS_PUF):
     name = "irs_puf_2015"
     label = "IRS PUF (2015)"
     time_period = 2015
-    puf_file_path = "~/Downloads/puf_2015.csv"
-    puf_demographics_file_path = "~/Downloads/demographics_2015.csv"
+    puf_file_path = STORAGE_FOLDER / "puf_2015.csv"
+    puf_demographics_file_path = STORAGE_FOLDER / "demographics_2015.csv"
     file_path = STORAGE_FOLDER / "irs_puf_2015.h5"

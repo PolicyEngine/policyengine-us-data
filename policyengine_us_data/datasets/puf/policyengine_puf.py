@@ -7,6 +7,7 @@ from policyengine_us_data.data_storage import STORAGE_FOLDER
 from .uprate_puf import uprate_puf
 from survey_enhance import Imputation
 from .irs_puf import IRS_PUF_2015
+from policyengine_us_data.utils.uprating import create_policyengine_uprating_factors_table
 
 rng = np.random.default_rng(seed=64)
 
@@ -290,6 +291,20 @@ class PUF(Dataset):
 
         if self.time_period == 2021:
             puf = uprate_puf(puf, 2015, self.time_period)
+        elif self.time_period >= 2021:
+            puf_2021 = PUF_2021(require=True)
+            print("Creating uprating factors table...")
+            uprating = create_policyengine_uprating_factors_table()
+            arrays = puf_2021.load_dataset()
+            for variable in uprating:
+                if variable in arrays:
+                    current_index = uprating[uprating.Variable == variable][self.time_period].values[0]
+                    start_index = uprating[uprating.Variable == variable][2021].values[0]
+                    growth = current_index / start_index
+                    print(f"Uprating {variable} by {growth-1:.1%}")
+                    arrays[variable] = arrays[variable] * growth
+            self.save_dataset(arrays)
+            return
 
         puf = puf[puf.MARS != 0] # Remove aggregate records
 
@@ -476,3 +491,9 @@ class PUF_2021(PUF):
     name = "puf_2021"
     time_period = 2021
     file_path = STORAGE_FOLDER / "pe_puf_2021.h5"
+
+class PUF_2024(PUF):
+    label = "PUF 2024"
+    name = "puf_2024"
+    time_period = 2024
+    file_path = STORAGE_FOLDER / "pe_puf_2024.h5"

@@ -8,6 +8,7 @@ import pandas as pd
 import os
 import yaml
 from typing import Type
+from policyengine_us_data.utils.uprating import create_policyengine_uprating_factors_table
 
 
 class CPS(Dataset):
@@ -21,6 +22,24 @@ class CPS(Dataset):
         """Generates the Current Population Survey dataset for PolicyEngine US microsimulations.
         Technical documentation and codebook here: https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar21.pdf
         """
+
+        if self.raw_cps is None:
+            # Extrapolate from CPS 2022
+
+            cps_2022 = CPS_2022(require=True)
+            print("Creating uprating factors table...")
+            uprating = create_policyengine_uprating_factors_table()
+            arrays = cps_2022.load_dataset()
+            for variable in uprating:
+                if variable in arrays:
+                    current_index = uprating[uprating.Variable == variable][self.time_period].values[0]
+                    start_index = uprating[uprating.Variable == variable][2021].values[0]
+                    growth = current_index / start_index
+                    print(f"Uprating {variable} by {growth-1:.1%}")
+                    arrays[variable] = arrays[variable] * growth
+            
+            self.save_dataset(arrays)
+            return
 
         raw_data = self.raw_cps(require=True).load()
         cps = h5py.File(self.file_path, mode="w")
@@ -536,3 +555,9 @@ class CPS_2022(CPS):
     previous_year_raw_cps = CensusCPS_2021
     file_path = STORAGE_FOLDER / "cps_2022.h5"
     time_period = 2022
+
+class CPS_2024(CPS):
+    name = "cps_2024"
+    label = "CPS 2024"
+    file_path = STORAGE_FOLDER / "cps_2024.h5"
+    time_period = 2024

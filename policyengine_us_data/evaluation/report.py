@@ -1,6 +1,7 @@
 from policyengine_us_data.data_storage import STORAGE_FOLDER
 import argparse
 
+
 def create_report():
     from policyengine_us import Microsimulation
     from policyengine_us_data import CPS_2024
@@ -14,18 +15,23 @@ def create_report():
     hnet_totals = []
     years = []
     for year in range(START_YEAR, START_YEAR + BUDGET_WINDOW):
-        hnet_totals.append(round(sim.calculate("household_net_income", year).sum()/1e9, 1))
+        hnet_totals.append(
+            round(sim.calculate("household_net_income", year).sum() / 1e9, 1)
+        )
         years.append(year)
-    
-    df = pd.DataFrame({"Year": years, "Household net income": hnet_totals}).set_index("Year", drop=True)
+
+    df = pd.DataFrame(
+        {"Year": years, "Household net income": hnet_totals}
+    ).set_index("Year", drop=True)
 
     report = f"""# Economy summary
 
 ## Household net income
 {df.T.to_markdown(index=False)}
 """
-    
+
     return report
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

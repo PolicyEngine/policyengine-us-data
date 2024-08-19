@@ -8,7 +8,9 @@ import pandas as pd
 import os
 import yaml
 from typing import Type
-from policyengine_us_data.utils.uprating import create_policyengine_uprating_factors_table
+from policyengine_us_data.utils.uprating import (
+    create_policyengine_uprating_factors_table,
+)
 
 
 class CPS(Dataset):
@@ -32,12 +34,16 @@ class CPS(Dataset):
             arrays = cps_2022.load_dataset()
             for variable in uprating:
                 if variable in arrays:
-                    current_index = uprating[uprating.Variable == variable][self.time_period].values[0]
-                    start_index = uprating[uprating.Variable == variable][2021].values[0]
+                    current_index = uprating[uprating.Variable == variable][
+                        self.time_period
+                    ].values[0]
+                    start_index = uprating[uprating.Variable == variable][
+                        2021
+                    ].values[0]
                     growth = current_index / start_index
                     print(f"Uprating {variable} by {growth-1:.1%}")
                     arrays[variable] = arrays[variable] * growth
-            
+
             self.save_dataset(arrays)
             return
 
@@ -555,6 +561,7 @@ class CPS_2022(CPS):
     previous_year_raw_cps = CensusCPS_2021
     file_path = STORAGE_FOLDER / "cps_2022.h5"
     time_period = 2022
+
 
 class CPS_2024(CPS):
     name = "cps_2024"

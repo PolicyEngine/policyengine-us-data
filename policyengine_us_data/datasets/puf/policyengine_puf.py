@@ -7,7 +7,9 @@ from policyengine_us_data.data_storage import STORAGE_FOLDER
 from .uprate_puf import uprate_puf
 from survey_enhance import Imputation
 from .irs_puf import IRS_PUF_2015
-from policyengine_us_data.utils.uprating import create_policyengine_uprating_factors_table
+from policyengine_us_data.utils.uprating import (
+    create_policyengine_uprating_factors_table,
+)
 
 rng = np.random.default_rng(seed=64)
 
@@ -15,6 +17,7 @@ rng = np.random.default_rng(seed=64)
 def impute_pension_contributions_to_puf(puf_df):
     from policyengine_us import Microsimulation
     from policyengine_us_data.datasets.cps import CPS_2021
+
     cps = Microsimulation(dataset=CPS_2021)
     cps_df = cps.calculate_dataframe(
         ["employment_income", "household_weight", "pre_tax_contributions"]
@@ -30,7 +33,6 @@ def impute_pension_contributions_to_puf(puf_df):
     return pension_contributions.predict(
         X=puf_df[["employment_income"]],
     )
-
 
 
 def impute_missing_demographics(
@@ -282,6 +284,7 @@ class PUF(Dataset):
 
     def generate(self):
         from policyengine_us.system import system
+
         print("Importing PolicyEngine US variable metadata...")
 
         irs_puf = IRS_PUF_2015()
@@ -298,15 +301,19 @@ class PUF(Dataset):
             arrays = puf_2021.load_dataset()
             for variable in uprating:
                 if variable in arrays:
-                    current_index = uprating[uprating.Variable == variable][self.time_period].values[0]
-                    start_index = uprating[uprating.Variable == variable][2021].values[0]
+                    current_index = uprating[uprating.Variable == variable][
+                        self.time_period
+                    ].values[0]
+                    start_index = uprating[uprating.Variable == variable][
+                        2021
+                    ].values[0]
                     growth = current_index / start_index
                     print(f"Uprating {variable} by {growth-1:.1%}")
                     arrays[variable] = arrays[variable] * growth
             self.save_dataset(arrays)
             return
 
-        puf = puf[puf.MARS != 0] # Remove aggregate records
+        puf = puf[puf.MARS != 0]  # Remove aggregate records
 
         print("Pre-processing PUF...")
         original_recid = puf.RECID.values.copy()
@@ -491,6 +498,7 @@ class PUF_2021(PUF):
     name = "puf_2021"
     time_period = 2021
     file_path = STORAGE_FOLDER / "pe_puf_2021.h5"
+
 
 class PUF_2024(PUF):
     label = "PUF 2024"

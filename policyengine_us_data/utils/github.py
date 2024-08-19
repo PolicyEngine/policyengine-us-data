@@ -80,6 +80,7 @@ def upload(
 
     return response.json()
 
+
 def set_pr_auto_review_comment(text: str):
     # On a pull request, set a review comment with the given text.
 

@@ -21,18 +21,6 @@ jobs:
 
       - name: Run tests
         run: make test
-  evaluate:
-    name: Evaluate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Set up Python
-        uses: actions/setup-python@v2
-
-      - name: Install dependencies
-        run: make install
 
       - name: Create report
         run: python policyengine_us_data/evaluation/report.py --output report.md

@@ -11,6 +11,7 @@ setup(
     install_requires=[
         "policyengine_core",
         "tables",
+        "survey_enhance",
     ],
     extras_require={
         "dev": [

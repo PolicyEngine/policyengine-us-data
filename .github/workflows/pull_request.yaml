@@ -7,12 +7,8 @@ on:
 
 jobs:
   build:
-    name: Build and test
+    name: Test
     runs-on: ubuntu-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      GITHUB_PR_NUMBER: ${{ github.event.number }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -25,9 +21,28 @@ jobs:
 
       - name: Run tests
         run: make test
+  evaluate:
+    name: Evaluate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-      - name: Run evaluation
-        run: make evaluate
+      - name: Set up Python
+        uses: actions/setup-python@v2
 
-      - name: Add review comment
-        run: python .github/review_pull_request.py
+      - name: Install dependencies
+        run: make install
+
+      - name: Create report
+        run: python policyengine_us/evaluation/report.py --output report.md
+      
+      - name: Install current repo version
+        run: pip install git+https://github.com/policyengine/policyengine-us-data
+      
+      - name: Create legacy report
+        run: python policyengine_us/evaluation/report.py --output legacy_report.md
+      
+      - name: Get diff
+        run: git diff --no-index -- report.md legacy_report.md > diff.md
+      

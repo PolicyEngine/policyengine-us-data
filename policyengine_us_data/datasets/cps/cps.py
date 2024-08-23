@@ -32,12 +32,12 @@ class CPS(Dataset):
             print("Creating uprating factors table...")
             uprating = create_policyengine_uprating_factors_table()
             arrays = cps_2022.load_dataset()
-            for variable in uprating:
+            for variable in uprating.index.unique():
                 if variable in arrays:
-                    current_index = uprating[uprating.Variable == variable][
+                    current_index = uprating[uprating.index == variable][
                         self.time_period
                     ].values[0]
-                    start_index = uprating[uprating.Variable == variable][
+                    start_index = uprating[uprating.index == variable][
                         2021
                     ].values[0]
                     growth = current_index / start_index
@@ -63,9 +63,6 @@ class CPS(Dataset):
         add_household_variables(cps, household)
 
         raw_data.close()
-        cps.close()
-
-        cps = h5py.File(self.file_path, mode="a")
         cps.close()
 
 

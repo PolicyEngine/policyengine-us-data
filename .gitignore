@@ -5,3 +5,5 @@
 *.ipynb
 **/*.csv
 !soi.csv
+!uprating_factors.csv
+!uprating_growth_factors.csv

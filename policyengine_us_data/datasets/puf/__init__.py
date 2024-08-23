@@ -1,1 +1,1 @@
-from .policyengine_puf import *
+from .puf import *

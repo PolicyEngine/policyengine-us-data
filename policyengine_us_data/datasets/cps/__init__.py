@@ -1,1 +1,2 @@
-from .policyengine_cps import *
+from .cps import *
+from .extended_cps import *

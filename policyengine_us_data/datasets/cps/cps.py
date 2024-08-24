@@ -562,6 +562,6 @@ class CPS_2022(CPS):
 
 class CPS_2024(CPS):
     name = "cps_2024"
-    label = "CPS 2024"
+    label = "CPS 2024 (2022-based)"
     file_path = STORAGE_FOLDER / "cps_2024.h5"
     time_period = 2024

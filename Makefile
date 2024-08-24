@@ -9,3 +9,6 @@ install:
 
 docker:
 	docker buildx build --platform linux/amd64 . -t policyengine-us-data:latest
+
+documentation:
+	streamlit run docs/Home.py

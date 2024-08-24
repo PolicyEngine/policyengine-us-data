@@ -35,6 +35,15 @@ def create_policyengine_uprating_factors_table():
                     per_capita_growth = growth
                 index_values.append(round(per_capita_growth, 3))
 
+    # Add population growth
+
+    for year in range(START_YEAR, END_YEAR + 1):
+        variable_names.append("population")
+        years.append(year)
+        index_values.append(
+            population_size(year) / population_size(START_YEAR)
+        )
+
     df["Variable"] = variable_names
     df["Year"] = years
     df["Value"] = index_values

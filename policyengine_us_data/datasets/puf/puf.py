@@ -501,7 +501,7 @@ class PUF_2021(PUF):
 
 
 class PUF_2024(PUF):
-    label = "PUF 2024"
+    label = "PUF 2024 (2015-based)"
     name = "puf_2024"
     time_period = 2024
     file_path = STORAGE_FOLDER / "pe_puf_2024.h5"

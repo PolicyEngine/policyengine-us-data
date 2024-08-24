@@ -65,8 +65,6 @@ IMPUTED_VARIABLES = [
     "w2_wages_from_qualified_business",
 ]
 
-IMPUTED_VARIABLES = ["employment_income"]
-
 
 class ExtendedCPS(Dataset):
     cps: Type[CPS]
@@ -95,21 +93,39 @@ class ExtendedCPS(Dataset):
 
         model = Imputation()
 
-        model.train(X_train, y_train, verbose=True)
+        model.train(X_train, y_train, verbose=True, num_trees=10)
 
         X = cps_sim.calculate_dataframe(INPUTS)
         y = model.predict(X, verbose=True)
 
         original_dataset = cps_sim.to_input_dataframe()
-        original_dataset["employment_income"] = (
-            original_dataset.employment_income_before_lsr
-        )
-        original_dataset["self_employment_income"] = (
-            original_dataset.self_employment_income_before_lsr
-        )
+        renames = {
+            f"employment_income_before_lsr__{self.time_period}": f"employment_income__{self.time_period}",
+            f"self_employment_income_before_lsr__{self.time_period}": f"self_employment_income__{self.time_period}",
+        }
+        for a, b in renames.items():
+            original_dataset[b] = original_dataset[a]
+            del original_dataset[a]
         imputed_dataset = original_dataset.copy().reset_index()
 
-        imputed_dataset[IMPUTED_VARIABLES] = y
+        for variable in IMPUTED_VARIABLES:
+            imputed_dataset[f"{variable}__{self.time_period}"] = y[variable]
+
+        ENTITIES = ("person", "tax_unit", "family", "spm_unit", "household")
+        for entity in ENTITIES:
+            for id_name in [
+                f"{entity}_id__{self.time_period}",
+                f"person_{entity}_id__{self.time_period}",
+            ]:
+                if "person_person" in id_name:
+                    continue
+                original_ids = original_dataset[id_name].values
+                new_ids = original_ids + original_ids.max()
+                imputed_dataset[id_name] = new_ids
+
+        for variable in imputed_dataset.columns:
+            if "_weight" in variable:
+                imputed_dataset[variable] = 0
         original_dataset["data_source"] = "cps"
         imputed_dataset["data_source"] = "puf_imputed"
         combined = pd.concat([original_dataset, imputed_dataset])
@@ -123,3 +139,4 @@ class ExtendedCPS_2024(ExtendedCPS):
     name = "extended_cps_2024"
     label = "Extended CPS (2024)"
     file_path = STORAGE_FOLDER / "extended_cps_2024.csv"
+    time_period = 2024

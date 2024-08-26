@@ -128,7 +128,9 @@ class ExtendedCPS(Dataset):
                 imputed_dataset[variable] = 0
         original_dataset["data_source"] = "cps"
         imputed_dataset["data_source"] = "puf_imputed"
-        combined = pd.concat([original_dataset, imputed_dataset])
+        combined = pd.concat([original_dataset, imputed_dataset]).fillna(0)
+        # Sort columns in alphabetical order
+        combined = combined.reindex(sorted(combined.columns), axis=1)
 
         self.save_dataset(combined)
 

@@ -1,6 +1,7 @@
 import pandas as pd
 from .soi import pe_to_soi, get_soi
 import numpy as np
+from policyengine_us_data.data_storage import STORAGE_FOLDER
 
 
 def fmt(x):
@@ -15,6 +16,8 @@ def fmt(x):
     if x < 1e9:
         return f"{x/1e6:.0f}m"
     return f"{x/1e9:.1f}bn"
+
+
 
 
 def build_loss_matrix(dataset: type, time_period):
@@ -105,17 +108,17 @@ def build_loss_matrix(dataset: type, time_period):
 
         if row["Count"] and not row["Variable"] == "count":
             label = (
-                f"{variable_label}/count/AGI in "
+                f"irs/{variable_label}/count/AGI in "
                 f"{agi_range_label}/{taxable_label}/{filing_status_label}"
             )
         elif row["Variable"] == "count":
             label = (
-                f"{variable_label}/count/AGI in "
+                f"irs/{variable_label}/count/AGI in "
                 f"{agi_range_label}/{taxable_label}/{filing_status_label}"
             )
         else:
             label = (
-                f"{variable_label}/total/AGI in "
+                f"irs/{variable_label}/total/AGI in "
                 f"{agi_range_label}/{taxable_label}/{filing_status_label}"
             )
 
@@ -134,5 +137,41 @@ def build_loss_matrix(dataset: type, time_period):
     )
 
     loss_matrix = loss_matrix.groupby(tax_unit_hh_id).sum()
+
+    # Census single-year age population projections
+
+    populations = pd.read_csv(STORAGE_FOLDER / "np2023_d5_mid.csv")
+    populations = populations[populations.SEX == 0][populations.RACE_HISP == 0]
+    populations = populations.groupby("YEAR").sum()[[f"POP_{i}" for i in range(0, 86)]].T[time_period].values # Array of [age_0_pop, age_1_pop, ...] for the given year
+    age = sim.calculate("age").values
+    for year in range(len(populations)):
+        label = f"census/population_by_age/{year}"
+        loss_matrix[label] = sim.map_result((age >= year) * (age < year + 1), "person", "household")
+        targets_array.append(populations[year])
+
+    # CBO projections
+
+    PROGRAMS = [
+        "income_tax",
+        "snap",
+        "social_security",
+        "ssi",
+        "unemployment_compensation",
+    ]
+
+    for variable_name in PROGRAMS:
+        label = f"cbo/{variable_name}"
+        loss_matrix[label] = sim.calculate(
+            variable_name, map_to="household"
+        ).values
+        if any(loss_matrix[label].isna()):
+            raise ValueError(f"Missing values for {label}")
+        targets_array.append(sim.tax_benefit_system.parameters(time_period).calibration.gov.cbo._children[variable_name])
+
+    if any(loss_matrix.isna().sum() > 0):
+        raise ValueError("Some targets are missing from the loss matrix")
+
+    if any(pd.isna(targets_array)):
+        raise ValueError("Some targets are missing from the targets array")
 
     return loss_matrix, np.array(targets_array)

@@ -1,7 +1,5 @@
 import streamlit as st
 
-st.set_page_config(layout="wide")
-
 st.title("Benchmarks")
 
 from policyengine_us_data.datasets import CPS_2024, PUF_2024, EnhancedCPS_2024
@@ -30,7 +28,7 @@ def compare_datasets():
         comparison["Error"] = comparison["Estimate"] - comparison["Actual"]
         comparison["Abs. Error"] = comparison["Error"].abs()
         comparison["Abs. Error %"] = (
-            comparison["Abs. Error"] / comparison["Actual"]
+            comparison["Abs. Error"] / comparison["Actual"].abs()
         )
         comparison["Dataset"] = dataset.label
         comparison_combined = pd.concat([comparison_combined, comparison])
@@ -41,10 +39,12 @@ def compare_datasets():
 df = compare_datasets()
 
 mean_relative_error_by_dataset = (
-    df.groupby("Dataset")["Abs. Error %"].mean().reset_index()
+    df.groupby("Dataset")["Abs. Error %"].mean().sort_values(ascending=False).apply(lambda x: round(x, 3))
 )
 
-st.write(mean_relative_error_by_dataset)
+st.write(f"PolicyEngine uses **{len(df.Target.unique())}** targets for calibration in the Enhanced CPS. This page compares the estimates and errors for these targets across the three datasets.")
+
+st.dataframe(mean_relative_error_by_dataset, use_container_width=True)
 
 metric = st.selectbox(
     "Metric", ["Estimate", "Error", "Abs. Error", "Abs. Error %"]
@@ -69,4 +69,14 @@ if metric == "Estimate":
         line=dict(dash="dash"),
     )
 
+st.subheader("Dataset comparisons")
+st.write("The chart below, for a selected target and metric, shows the estimates and errors for each dataset.")
+
 st.plotly_chart(fig, use_container_width=True)
+
+ecps_df = df[df["Dataset"] == "Enhanced CPS 2024"]
+
+st.subheader("Enhanced CPS 2024")
+st.write("The table below shows the error for each target in the Enhanced CPS 2024 dataset.")
+
+st.dataframe(ecps_df, use_container_width=True)

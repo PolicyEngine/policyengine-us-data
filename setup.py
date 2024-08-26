@@ -12,6 +12,7 @@ setup(
         "policyengine_core",
         "tables",
         "survey_enhance",
+        "torch",
     ],
     extras_require={
         "dev": [

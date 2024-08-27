@@ -19,18 +19,6 @@ jobs:
       - name: Install dependencies
         run: make install
 
-      - name: Run tests
-        run: make test
-
-      - name: Create report
-        run: python policyengine_us_data/evaluation/report.py --output report.md
-      
-      - name: Install current repo version
-        run: pip install git+https://github.com/policyengine/policyengine-us-data
-      
-      - name: Create legacy report
-        run: python policyengine_us_data/evaluation/report.py --output legacy_report.md
-      
-      - name: Get diff
-        run: git diff --no-index -- report.md legacy_report.md > diff.md
+      - name: Build docker image
+        run: make docker
       

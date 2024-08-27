@@ -3,4 +3,4 @@ COPY . .
 # Install
 RUN make install
 # Run tests
-CMD ["make", "data"]
+CMD ["make"]

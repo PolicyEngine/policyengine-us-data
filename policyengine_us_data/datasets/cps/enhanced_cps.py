@@ -23,8 +23,19 @@ def reweight(
 
     # TODO: replace this with a call to the python reweight.py package.
     def loss(weights):
+        # Check for Nans in either the weights or the loss matrix
+        if torch.isnan(weights).any():
+            raise ValueError("Weights contain NaNs")
+        if torch.isnan(loss_matrix).any():
+            raise ValueError("Loss matrix contains NaNs")
         estimate = weights @ loss_matrix
-        rel_error = (((estimate - targets_array) + 1) / (targets_array + 1)) ** 2
+        if torch.isnan(estimate).any():
+            raise ValueError("Estimate contains NaNs")
+        rel_error = (
+            ((estimate - targets_array) + 1) / (targets_array + 1)
+        ) ** 2
+        if torch.isnan(rel_error).any():
+            raise ValueError("Relative error contains NaNs")
         return rel_error.mean()
 
     weights = torch.tensor(
@@ -33,7 +44,7 @@ def reweight(
     optimizer = torch.optim.Adam([weights], lr=1e-2)
     from tqdm import trange
 
-    iterator = trange(1_000)
+    iterator = trange(5_000)
     for i in iterator:
         optimizer.zero_grad()
         l = loss(torch.exp(weights))

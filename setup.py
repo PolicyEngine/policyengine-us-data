@@ -21,7 +21,7 @@ setup(
         "dev": [
             "black",
             "pytest",
-            "policyengine_us==1.26.0",
+            "policyengine_us",
         ],
     },
 )

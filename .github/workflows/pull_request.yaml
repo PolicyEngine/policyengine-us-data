@@ -13,15 +13,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-
-      - name: Install dependencies
-        run: make install
-
       - name: Build docker image
         run: make docker
 
       - name: Run docker image
-        run: docker run
+        run: docker run policyengine-us-data:latest
       

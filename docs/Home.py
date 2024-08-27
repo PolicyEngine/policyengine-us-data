@@ -19,7 +19,9 @@ from policyengine_us_data.datasets import EnhancedCPS_2024
 
 df = pd.read_csv(EnhancedCPS_2024().file_path)
 
-household_id = df[df.filing_status__2024 == "JOINT"].person_household_id__2024.values[0]
+household_id = df[
+    df.filing_status__2024 == "JOINT"
+].person_household_id__2024.values[0]
 people_in_household = df[df.person_household_id__2024 == household_id]
 
 st.dataframe(people_in_household.T, use_container_width=True)

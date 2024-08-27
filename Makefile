@@ -1,4 +1,4 @@
-all: download data test
+all: data test
 
 format:
 	black . -l 79

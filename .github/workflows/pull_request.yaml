@@ -16,8 +16,11 @@ jobs:
       - name: Build docker image
         run: make docker
 
-      - name: Run docker image
-        env:
-          POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
-        run: docker run policyengine-us-data:latest
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          push: false
+          tags: policyengine-us-data:latest
+          secrets: |
+            POLICYENGINE_US_DATA_GITHUB_TOKEN=${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
       

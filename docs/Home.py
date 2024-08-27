@@ -14,6 +14,8 @@ st.write(
 
 st.subheader("What does this dataset look like?")
 
+st.write("The below table shows an extract of the person records in one household in the dataset.")
+
 import pandas as pd
 from policyengine_us_data.datasets import EnhancedCPS_2024
 

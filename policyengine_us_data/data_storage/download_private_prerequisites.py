@@ -6,14 +6,14 @@ FOLDER = Path(__file__).parent
 download(
     "PolicyEngine",
     "irs-soi-puf",
-    "data",
+    "release",
     "puf_2015.csv",
     FOLDER / "puf_2015.csv",
 )
 download(
     "PolicyEngine",
     "irs-soi-puf",
-    "data",
+    "release",
     "demographics_2015.csv",
     FOLDER / "demographics_2015.csv",
 )

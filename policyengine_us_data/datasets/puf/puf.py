@@ -287,7 +287,7 @@ class PUF(Dataset):
 
         print("Importing PolicyEngine US variable metadata...")
 
-        irs_puf = IRS_PUF_2015()
+        irs_puf = IRS_PUF_2015(require=True)
 
         puf = irs_puf.load("puf")
         demographics = irs_puf.load("puf_demographics")

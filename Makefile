@@ -1,3 +1,5 @@
+all: download data test
+
 format:
 	black . -l 79
 
@@ -19,5 +21,3 @@ documentation:
 
 data:
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
-
-all: download data test

@@ -9,6 +9,8 @@ jobs:
   build:
     name: Test
     runs-on: ubuntu-latest
+    env:
+      POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v2

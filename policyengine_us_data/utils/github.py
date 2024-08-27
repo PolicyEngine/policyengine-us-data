@@ -2,7 +2,7 @@ import os
 import requests
 
 auth_headers = {
-    "Authorization": f"token {os.environ['GITHUB_TOKEN']}",
+    "Authorization": f"token {os.environ.get('POLICYENGINE_US_DATA_GITHUB_TOKEN')}",
 }
 
 

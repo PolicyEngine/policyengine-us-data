@@ -2,5 +2,6 @@ FROM python:latest
 COPY . .
 # Install
 RUN make install
-# Run tests
-CMD ["make", "data"]
+RUN make download
+RUN make data
+RUN make test

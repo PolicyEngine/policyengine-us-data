@@ -13,15 +13,15 @@ setup(
         "tables",
         "survey_enhance",
         "torch",
+        "requests",
+        "tqdm",
+        "tabulate",
     ],
     extras_require={
         "dev": [
             "black",
             "pytest",
-            "tqdm",
-            "requests",
-            "policyengine_us",
-            "tabulate",
+            "policyengine_us==1.26.0",
         ],
     },
 )

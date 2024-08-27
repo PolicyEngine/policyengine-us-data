@@ -21,3 +21,7 @@ documentation:
 
 data:
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
+
+clean:
+	rm policyengine_us_data/data_storage/puf_2015.csv
+	rm policyengine_us_data/data_storage/demographics_2015.csv

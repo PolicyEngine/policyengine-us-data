@@ -16,14 +16,19 @@ st.subheader("What does this dataset look like?")
 
 st.write("The below table shows an extract of the person records in one household in the dataset.")
 
-import pandas as pd
-from policyengine_us_data.datasets import EnhancedCPS_2024
+@st.cache_data
+def sample_household():
+    import pandas as pd
+    from policyengine_us_data.datasets import EnhancedCPS_2024
 
-df = pd.read_csv(EnhancedCPS_2024().file_path)
+    df = pd.read_csv(EnhancedCPS_2024().file_path)
 
-household_id = df[
-    df.filing_status__2024 == "JOINT"
-].person_household_id__2024.values[0]
-people_in_household = df[df.person_household_id__2024 == household_id]
+    household_id = df[
+        df.filing_status__2024 == "JOINT"
+    ].person_household_id__2024.values[0]
+    people_in_household = df[df.person_household_id__2024 == household_id]
+    return people_in_household
+
+people_in_household = sample_household()
 
 st.dataframe(people_in_household.T, use_container_width=True)

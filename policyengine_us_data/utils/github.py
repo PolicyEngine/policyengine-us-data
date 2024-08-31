@@ -4,7 +4,6 @@ import requests
 auth_headers = {
     "Authorization": f"token {os.environ.get('POLICYENGINE_US_DATA_GITHUB_TOKEN')}",
 }
-print(auth_headers["Authorization"][:13] + "***")
 
 
 def get_asset_url(

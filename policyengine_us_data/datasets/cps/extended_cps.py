@@ -51,7 +51,7 @@ IMPUTED_VARIABLES = [
     "self_employment_income",
     "short_term_capital_gains",
     "social_security",
-    "state_and_local_sales_or_income_tax",
+    # "state_and_local_sales_or_income_tax", # Don't impute SALT, or it'll override the computed state taxes.
     "student_loan_interest",
     "tax_exempt_interest_income",
     "tax_exempt_pension_income",
@@ -65,11 +65,15 @@ IMPUTED_VARIABLES = [
     "w2_wages_from_qualified_business",
 ]
 
+IMPUTED_VARIABLES = [
+    "employment_income",
+]
+
 
 class ExtendedCPS(Dataset):
     cps: Type[CPS]
     puf: Type[PUF]
-    data_format = Dataset.ARRAYS
+    data_format = Dataset.TIME_PERIOD_ARRAYS
 
     def generate(self):
         from policyengine_us import Microsimulation
@@ -111,7 +115,7 @@ class ExtendedCPS(Dataset):
         for variable in IMPUTED_VARIABLES:
             imputed_dataset[f"{variable}__{self.time_period}"] = y[variable]
 
-        ENTITIES = ("person", "tax_unit", "family", "spm_unit", "household")
+        ENTITIES = ("person", "tax_unit", "marital_unit", "family", "spm_unit", "household")
         for entity in ENTITIES:
             for id_name in [
                 f"{entity}_id__{self.time_period}",
@@ -126,17 +130,20 @@ class ExtendedCPS(Dataset):
         for variable in imputed_dataset.columns:
             if "_weight" in variable:
                 imputed_dataset[variable] = 0
-        original_dataset["data_source"] = "cps"
-        imputed_dataset["data_source"] = "puf_imputed"
+        
+        original_dataset["data_source__2024"] = "cps"
+        imputed_dataset["data_source__2024"] = "puf_imputed"
         combined = pd.concat([original_dataset, imputed_dataset]).fillna(0)
         # Sort columns in alphabetical order
         combined = combined.reindex(sorted(combined.columns), axis=1)
 
         data = {}
 
-        for column in combined:
-            variable_name, time_period = column.split("__")
-            data[variable_name] = combined[column].values
+        for column in combined.columns:
+            variable_name = column.split("__")[0]
+            time_period = int(column.split("__")[1])
+            data[variable_name] = data.get(variable_name, {})
+            data[variable_name][time_period] = combined[column].values
 
         self.save_dataset(data)
 

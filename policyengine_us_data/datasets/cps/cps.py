@@ -97,23 +97,6 @@ def add_id_variables(
     cps["person_household_id"] = person.PH_SEQ
     cps["person_family_id"] = person.PH_SEQ * 10 + person.PF_SEQ
 
-    # Add weights
-    # Weights are multiplied by 100 to avoid decimals
-    cps["person_weight"] = person.A_FNLWGT / 1e2
-    cps["family_weight"] = family.FSUP_WGT / 1e2
-
-    # Tax unit weight is the weight of the containing family.
-    family_weight = Series(
-        cps["family_weight"][...], index=cps["family_id"][...]
-    )
-    person_family_id = cps["person_family_id"][...]
-    persons_family_weight = Series(family_weight[person_family_id])
-    cps["tax_unit_weight"] = persons_family_weight.groupby(
-        cps["person_tax_unit_id"][...]
-    ).first()
-
-    cps["spm_unit_weight"] = spm_unit.SPM_WEIGHT / 1e2
-
     cps["household_weight"] = household.HSUP_WGT / 1e2
 
     # Marital units

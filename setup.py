@@ -23,6 +23,7 @@ setup(
             "black",
             "pytest",
             "policyengine_us==1.65",
+            "streamlit",
         ],
     },
 )

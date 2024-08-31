@@ -130,7 +130,8 @@ class EnhancedCPS(Dataset):
         data = {}
 
         for column in df.columns:
-            variable_name, time_period = column.split("__")
+            variable_name = column.split("__")[0]
+            time_period = int(column.split("__")[1])
             data[variable_name] = data.get(variable_name, {})
             data[variable_name][time_period] = df[column].values
 
@@ -140,7 +141,7 @@ class EnhancedCPS(Dataset):
 class EnhancedCPS_2024(EnhancedCPS):
     input_dataset = ExtendedCPS_2024
     start_year = 2024
-    end_year = 2034
+    end_year = 2024
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
     file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"

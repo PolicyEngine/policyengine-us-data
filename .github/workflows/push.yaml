@@ -12,6 +12,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
       - name: Install package
         run: make install
       - name: Download data inputs
@@ -39,6 +43,12 @@ jobs:
     runs-on: ubuntu-latest
     name: Publish
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
       - name: Install package
         run: make install
       - name: Build package

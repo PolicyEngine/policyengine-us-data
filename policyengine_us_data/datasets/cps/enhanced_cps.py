@@ -9,7 +9,10 @@ from policyengine_us_data.utils import (
 import numpy as np
 from typing import Type
 from policyengine_us_data.data_storage import STORAGE_FOLDER
-from policyengine_us_data.datasets.cps import ExtendedCPS_2024
+from policyengine_us_data.datasets.cps.extended_cps import (
+    ExtendedCPS_2024,
+    CPS_2019,
+)
 import torch
 
 
@@ -55,8 +58,50 @@ def reweight(
     return torch.exp(weights).detach().numpy()
 
 
+def train_previous_year_income_model():
+    from policyengine_us import Microsimulation
+
+    sim = Microsimulation(dataset=CPS_2019)
+
+    VARIABLES = [
+        "previous_year_income_available",
+        "employment_income",
+        "self_employment_income",
+        "age",
+        "is_male",
+        "spm_unit_state_fips",
+        "dividend_income",
+        "interest_income",
+        "social_security",
+        "capital_gains",
+        "is_disabled",
+        "is_blind",
+        "is_married",
+        "tax_unit_children",
+        "pension_income",
+    ]
+
+    OUTPUTS = [
+        "employment_income_last_year",
+        "self_employment_income_last_year",
+    ]
+
+    df = sim.calculate_dataframe(VARIABLES + OUTPUTS, 2019, map_to="person")
+    df_train = df[df.previous_year_income_available]
+
+    from survey_enhance import Imputation
+
+    income_last_year = Imputation()
+    X = df_train[VARIABLES[1:]]
+    y = df_train[OUTPUTS]
+
+    income_last_year.train(X, y)
+
+    return income_last_year
+
+
 class EnhancedCPS(Dataset):
-    data_format = Dataset.FLAT_FILE
+    data_format = Dataset.TIME_PERIOD_ARRAYS
     input_dataset: Type[Dataset]
     start_year: int
     end_year: int
@@ -82,7 +127,14 @@ class EnhancedCPS(Dataset):
                 optimised_weights, "household", "person"
             )
 
-        self.save_dataset(df)
+        data = {}
+
+        for column in df.columns:
+            variable_name, time_period = column.split("__")
+            data[variable_name] = data.get(variable_name, {})
+            data[variable_name][time_period] = df[column].values
+
+        self.save_dataset(data)
 
 
 class EnhancedCPS_2024(EnhancedCPS):
@@ -91,7 +143,7 @@ class EnhancedCPS_2024(EnhancedCPS):
     end_year = 2024
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
-    file_path = STORAGE_FOLDER / "enhanced_cps_2024.csv"
+    file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"
 
 
 if __name__ == "__main__":

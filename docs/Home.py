@@ -14,7 +14,10 @@ st.write(
 
 st.subheader("What does this dataset look like?")
 
-st.write("The below table shows an extract of the person records in one household in the dataset.")
+st.write(
+    "The below table shows an extract of the person records in one household in the dataset."
+)
+
 
 @st.cache_data
 def sample_household():
@@ -28,6 +31,7 @@ def sample_household():
     ].person_household_id__2024.values[0]
     people_in_household = df[df.person_household_id__2024 == household_id]
     return people_in_household
+
 
 people_in_household = sample_household()
 

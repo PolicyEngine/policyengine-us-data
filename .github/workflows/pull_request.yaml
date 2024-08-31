@@ -18,11 +18,16 @@ jobs:
         run: make download
         env:
           POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
-      - name: Build docker image
-        uses: docker/build-push-action@v2
+      - name: Build datasets
+        run: make data
+      - name: Run tests
+        run: make test
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        uses: "lgeiger/black-action@master"
         with:
-          context: .
-          file: ./Dockerfile
-          push: false
-          tags: ${{ github.repository }}:latest
-      
+          args: ". -l 79 --check"

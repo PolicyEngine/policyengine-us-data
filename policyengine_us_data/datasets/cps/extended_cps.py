@@ -69,7 +69,7 @@ IMPUTED_VARIABLES = [
 class ExtendedCPS(Dataset):
     cps: Type[CPS]
     puf: Type[PUF]
-    data_format = Dataset.FLAT_FILE
+    data_format = Dataset.ARRAYS
 
     def generate(self):
         from policyengine_us import Microsimulation
@@ -132,7 +132,13 @@ class ExtendedCPS(Dataset):
         # Sort columns in alphabetical order
         combined = combined.reindex(sorted(combined.columns), axis=1)
 
-        self.save_dataset(combined)
+        data = {}
+
+        for column in combined:
+            variable_name, time_period = column.split("__")
+            data[variable_name] = combined[column].values
+
+        self.save_dataset(data)
 
 
 class ExtendedCPS_2024(ExtendedCPS):
@@ -140,5 +146,5 @@ class ExtendedCPS_2024(ExtendedCPS):
     puf = PUF_2024
     name = "extended_cps_2024"
     label = "Extended CPS (2024)"
-    file_path = STORAGE_FOLDER / "extended_cps_2024.csv"
+    file_path = STORAGE_FOLDER / "extended_cps_2024.h5"
     time_period = 2024

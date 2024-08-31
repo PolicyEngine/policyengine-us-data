@@ -140,7 +140,7 @@ class EnhancedCPS(Dataset):
 class EnhancedCPS_2024(EnhancedCPS):
     input_dataset = ExtendedCPS_2024
     start_year = 2024
-    end_year = 2024
+    end_year = 2034
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
     file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"

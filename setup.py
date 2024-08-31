@@ -16,6 +16,7 @@ setup(
         "requests",
         "tqdm",
         "tabulate",
+        "tables",
     ],
     extras_require={
         "dev": [

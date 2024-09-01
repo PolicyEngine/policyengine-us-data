@@ -23,12 +23,11 @@ st.write(
 def sample_household():
     import pandas as pd
     from policyengine_us_data.datasets import EnhancedCPS_2024
+    from policyengine_us import Microsimulation
 
-    df = pd.read_csv(EnhancedCPS_2024().file_path)
+    df = Microsimulation(dataset=EnhancedCPS_2024).to_input_dataframe()
 
-    household_id = df[
-        df.filing_status__2024 == "JOINT"
-    ].person_household_id__2024.values[0]
+    household_id = df.person_household_id__2024.values[10]
     people_in_household = df[df.person_household_id__2024 == household_id]
     return people_in_household
 

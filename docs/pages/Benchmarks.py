@@ -29,7 +29,7 @@ def compare_datasets():
         comparison["Abs. Error"] = comparison["Error"].abs()
         comparison["Abs. Error %"] = (
             comparison["Abs. Error"] / comparison["Actual"].abs()
-        )
+        ).fillna(1)
         comparison["Dataset"] = dataset.label
         comparison_combined = pd.concat([comparison_combined, comparison])
 

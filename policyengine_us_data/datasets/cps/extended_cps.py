@@ -51,7 +51,6 @@ IMPUTED_VARIABLES = [
     "self_employment_income",
     "short_term_capital_gains",
     "social_security",
-    # "state_and_local_sales_or_income_tax", # Don't impute SALT, or it'll override the computed state taxes.
     "student_loan_interest",
     "tax_exempt_interest_income",
     "tax_exempt_pension_income",
@@ -63,10 +62,6 @@ IMPUTED_VARIABLES = [
     "unrecaptured_section_1250_gain",
     "unreported_payroll_tax",
     "w2_wages_from_qualified_business",
-]
-
-IMPUTED_VARIABLES = [
-    "employment_income",
 ]
 
 
@@ -97,55 +92,40 @@ class ExtendedCPS(Dataset):
 
         model = Imputation()
 
-        model.train(X_train, y_train, verbose=True, num_trees=10)
+        model.train(X_train, y_train, verbose=True)
 
         X = cps_sim.calculate_dataframe(INPUTS)
         y = model.predict(X, verbose=True)
 
-        original_dataset = cps_sim.to_input_dataframe()
-        renames = {
-            f"employment_income_before_lsr__{self.time_period}": f"employment_income__{self.time_period}",
-            f"self_employment_income_before_lsr__{self.time_period}": f"self_employment_income__{self.time_period}",
-        }
-        for a, b in renames.items():
-            original_dataset[b] = original_dataset[a]
-            del original_dataset[a]
-        imputed_dataset = original_dataset.copy().reset_index()
+        data = cps_sim.dataset.load_dataset()
 
-        for variable in IMPUTED_VARIABLES:
-            imputed_dataset[f"{variable}__{self.time_period}"] = y[variable]
+        new_data = {}
 
-        ENTITIES = ("person", "tax_unit", "marital_unit", "family", "spm_unit", "household")
-        for entity in ENTITIES:
-            for id_name in [
-                f"{entity}_id__{self.time_period}",
-                f"person_{entity}_id__{self.time_period}",
-            ]:
-                if "person_person" in id_name:
-                    continue
-                original_ids = original_dataset[id_name].values
-                new_ids = original_ids + original_ids.max()
-                imputed_dataset[id_name] = new_ids
+        for variable in list(data) + IMPUTED_VARIABLES:
+            variable_metadata = cps_sim.tax_benefit_system.variables.get(variable)
+            if variable in data:
+                values = data[variable][...]
+            else:
+                values = cps_sim.calculate(variable).values
+            if variable in IMPUTED_VARIABLES:
+                pred_values = y[variable].values
+                entity = variable_metadata.entity.key
+                if entity != "person":
+                    pred_values = cps_sim.populations[entity].value_from_first_person(pred_values)
+                values = np.concatenate([values, pred_values])
+            elif variable == "person_id":
+                values = np.concatenate([values, values + values.max()])
+            elif "_id" in variable:
+                values = np.concatenate([values, values + values.max()])
+            elif "_weight" in variable:
+                values = np.concatenate([values, values * 0])
+            else:
+                values = np.concatenate([values, values])
+            new_data[variable] = {
+                self.time_period: values,
+            }
 
-        for variable in imputed_dataset.columns:
-            if "_weight" in variable:
-                imputed_dataset[variable] = 0
-        
-        original_dataset["data_source__2024"] = "cps"
-        imputed_dataset["data_source__2024"] = "puf_imputed"
-        combined = pd.concat([original_dataset, imputed_dataset]).fillna(0)
-        # Sort columns in alphabetical order
-        combined = combined.reindex(sorted(combined.columns), axis=1)
-
-        data = {}
-
-        for column in combined.columns:
-            variable_name = column.split("__")[0]
-            time_period = int(column.split("__")[1])
-            data[variable_name] = data.get(variable_name, {})
-            data[variable_name][time_period] = combined[column].values
-
-        self.save_dataset(data)
+        self.save_dataset(new_data)
 
 
 class ExtendedCPS_2024(ExtendedCPS):

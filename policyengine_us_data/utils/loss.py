@@ -23,6 +23,7 @@ def build_loss_matrix(dataset: type, time_period):
     df = pe_to_soi(dataset, time_period)
     agi = df["adjusted_gross_income"].values
     filer = df["is_tax_filer"].values
+    taxable = df["total_income_tax"].values > 0
     soi_subset = get_soi(time_period)
     targets_array = []
     agi_level_targeted_variables = [
@@ -71,8 +72,8 @@ def build_loss_matrix(dataset: type, time_period):
         )
     ]
     for _, row in soi_subset.iterrows():
-        if row["Taxable only"]:
-            continue  # exclude "taxable returns" statistics
+        if not row["Taxable only"]:
+            continue  # exclude non "taxable returns" statistics
 
         mask = (
             (agi >= row["AGI lower bound"])
@@ -90,6 +91,9 @@ def build_loss_matrix(dataset: type, time_period):
             mask *= df["filing_status"].values == "SEPARATE"
 
         values = df[row["Variable"]].values
+
+        if row["Taxable only"]:
+            mask *= taxable
 
         if row["Count"]:
             values = (values > 0).astype(float)

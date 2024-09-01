@@ -8,6 +8,7 @@ def pe_to_soi(pe_dataset, year):
     from policyengine_us import Microsimulation
 
     pe_sim = Microsimulation(dataset=pe_dataset)
+    pe_sim.default_calculation_period = year
     df = pd.DataFrame()
 
     pe = lambda variable: np.array(
@@ -77,7 +78,7 @@ def pe_to_soi(pe_dataset, year):
     df["count"] = 1
 
     df["filing_status"] = pe("filing_status")
-    df["weight"] = pe("household_weight")
+    df["weight"] = pe("tax_unit_weight")
     df["household_id"] = pe("household_id")
 
     return df
@@ -168,16 +169,98 @@ def get_soi(year: int) -> pd.DataFrame:
         "unemployment_compensation": "unemployment_compensation",
     }
     soi = pd.read_csv(STORAGE_FOLDER / "soi.csv")
-
-    uprating_factors = {
-        variable: uprating.loc[variable, year]
-        / uprating.loc[variable, soi.Year.max()]
-        for variable in uprating.index
-    }
-
     soi = soi[soi.Year == soi.Year.max()]
+
+    uprating_factors = {}
+    for variable in uprating_map:
+        pe_name = uprating_map.get(variable)
+        if pe_name in uprating.index:
+            uprating_factors[variable] = uprating.loc[pe_name, year] / uprating.loc[pe_name, soi.Year.max()]
+        else:
+            uprating_factors[variable] = uprating.loc["employment_income", year] / uprating.loc["employment_income", soi.Year.max()]
 
     for variable, uprating_factor in uprating_factors.items():
         soi.loc[soi.Variable == variable, "Value"] *= uprating_factor
 
     return soi
+
+
+def compare_soi_replication_to_soi(df, soi):
+    variables = []
+    filing_statuses = []
+    agi_lower_bounds = []
+    agi_upper_bounds = []
+    counts = []
+    taxables = []
+    full_pops = []
+    values = []
+    soi_values = []
+
+    for i, row in soi.iterrows():
+        if row.Variable not in df.columns:
+            continue
+
+        subset = df[df.adjusted_gross_income >= row["AGI lower bound"]][
+            df.adjusted_gross_income < row["AGI upper bound"]
+        ]
+
+        variable = row["Variable"]
+
+        fs = row["Filing status"]
+        if fs == "Single":
+            subset = subset[subset.filing_status == "SINGLE"]
+        elif fs == "Head of Household":
+            subset = subset[subset.filing_status == "HEAD_OF_HOUSEHOLD"]
+        elif fs == "Married Filing Jointly/Surviving Spouse":
+            subset = subset[subset.filing_status.isin(["JOINT", "WIDOW"])]
+        elif fs == "Married Filing Separately":
+            subset = subset[subset.filing_status == "SEPARATE"]
+
+        if row["Taxable only"]:
+            subset = subset[subset.total_income_tax > 0]
+        else:
+            subset = subset[subset.is_tax_filer.values > 0]
+
+        if row["Count"]:
+            value = subset[subset[variable] > 0].weight.sum()
+        else:
+            value = (subset[variable] * subset.weight).sum()
+
+        variables.append(row["Variable"])
+        filing_statuses.append(row["Filing status"])
+        agi_lower_bounds.append(row["AGI lower bound"])
+        agi_upper_bounds.append(row["AGI upper bound"])
+        counts.append(row["Count"] or (row["Variable"] == "count"))
+        taxables.append(row["Taxable only"])
+        full_pops.append(row["Full population"])
+        values.append(value)
+        soi_values.append(row["Value"])
+
+    soi_replication = pd.DataFrame(
+        {
+            "Variable": variables,
+            "Filing status": filing_statuses,
+            "AGI lower bound": agi_lower_bounds,
+            "AGI upper bound": agi_upper_bounds,
+            "Count": counts,
+            "Taxable only": taxables,
+            "Full population": full_pops,
+            "Value": values,
+            "SOI Value": soi_values,
+        }
+    )
+
+    soi_replication["Error"] = (
+        soi_replication["Value"] - soi_replication["SOI Value"]
+    )
+    soi_replication["Absolute error"] = soi_replication["Error"].abs()
+    soi_replication["Relative error"] = (
+        (soi_replication["Error"] / soi_replication["SOI Value"])
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0)
+    )
+    soi_replication["Absolute relative error"] = soi_replication[
+        "Relative error"
+    ].abs()
+
+    return soi_replication

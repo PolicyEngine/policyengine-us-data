@@ -41,7 +41,7 @@ def create_policyengine_uprating_factors_table():
         variable_names.append("population")
         years.append(year)
         index_values.append(
-            population_size(year) / population_size(START_YEAR)
+            round(population_size(year) / population_size(START_YEAR), 3)
         )
 
     df["Variable"] = variable_names
@@ -57,7 +57,7 @@ def create_policyengine_uprating_factors_table():
 
     df_growth = df.copy()
     for year in range(END_YEAR, START_YEAR, -1):
-        df_growth[year] = df_growth[year] / df_growth[year - 1] - 1
+        df_growth[year] = round(df_growth[year] / df_growth[year - 1] - 1, 3)
     df_growth[START_YEAR] = 0
 
     df_growth.to_csv(STORAGE_FOLDER / "uprating_growth_factors.csv")

@@ -21,8 +21,12 @@ def reweight(
     loss_matrix,
     targets_array,
 ):
+    target_names = np.array(loss_matrix.columns)
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
     targets_array = torch.tensor(targets_array, dtype=torch.float32)
+    weights = torch.tensor(
+        np.log(original_weights), requires_grad=True, dtype=torch.float32
+    )
 
     # TODO: replace this with a call to the python reweight.py package.
     def loss(weights):
@@ -34,25 +38,28 @@ def reweight(
         estimate = weights @ loss_matrix
         if torch.isnan(estimate).any():
             raise ValueError("Estimate contains NaNs")
-        rel_error = (
+        one_way_rel_error = (
             ((estimate - targets_array) + 1) / (targets_array + 1)
         ) ** 2
+        other_way_rel_error = (
+            ((targets_array - estimate) + 1) / (estimate + 1)
+        ) ** 2
+        rel_error = torch.min(one_way_rel_error, other_way_rel_error)
         if torch.isnan(rel_error).any():
             raise ValueError("Relative error contains NaNs")
-        return rel_error.mean()
+        worst_name = target_names[torch.argmax(rel_error)]
+        worst_val = rel_error[torch.argmax(rel_error)].item()
+        return rel_error.mean(), worst_name, worst_val
 
-    weights = torch.tensor(
-        np.log(original_weights), requires_grad=True, dtype=torch.float32
-    )
-    optimizer = torch.optim.Adam([weights], lr=1e-2)
+    optimizer = torch.optim.Adam([weights], lr=1)
     from tqdm import trange
 
-    iterator = trange(5_000)
+    iterator = trange(1_000)
     for i in iterator:
         optimizer.zero_grad()
-        l = loss(torch.exp(weights))
+        l, worst_name, worst_val = loss(torch.exp(weights))
         l.backward()
-        iterator.set_postfix({"loss": l.item()})
+        iterator.set_postfix({"loss": l.item(), "worst": worst_name, "val": worst_val})
         optimizer.step()
 
     return torch.exp(weights).detach().numpy()
@@ -111,29 +118,20 @@ class EnhancedCPS(Dataset):
         from policyengine_us import Microsimulation
 
         sim = Microsimulation(dataset=self.input_dataset)
+        data = sim.dataset.load_dataset()
+        data["household_weight"] = {}
         original_weights = sim.calculate("household_weight")
         original_weights = original_weights.values + np.random.normal(
-            10, 1, len(original_weights)
+            1, 0.1, len(original_weights)
         )
         for year in range(self.start_year, self.end_year + 1):
-            print(f"Enhancing CPS for {year}")
             loss_matrix, targets_array = build_loss_matrix(
                 self.input_dataset, year
             )
             optimised_weights = reweight(
                 original_weights, loss_matrix, targets_array
             )
-            df[f"household_weight__{year}"] = sim.map_result(
-                optimised_weights, "household", "person"
-            )
-
-        data = {}
-
-        for column in df.columns:
-            variable_name = column.split("__")[0]
-            time_period = int(column.split("__")[1])
-            data[variable_name] = data.get(variable_name, {})
-            data[variable_name][time_period] = df[column].values
+            data["household_weight"][year] = optimised_weights
 
         self.save_dataset(data)
 

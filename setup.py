@@ -22,7 +22,7 @@ setup(
         "dev": [
             "black",
             "pytest",
-            "policyengine_us==1.65",
+            "policyengine_us==1.69.0",
             "streamlit",
         ],
     },

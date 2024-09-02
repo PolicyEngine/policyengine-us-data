@@ -1,4 +1,7 @@
 import streamlit as st
+from .download import download_data
+
+download_data()
 
 st.title("PolicyEngine-US-Data")
 

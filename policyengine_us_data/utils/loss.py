@@ -184,6 +184,28 @@ def build_loss_matrix(dataset: type, time_period):
             ).calibration.gov.cbo._children[variable_name]
         )
 
+    # CPS-derived statistics
+    # Medical expenses, sum of spm thresholds
+    # Child support expenses
+
+    CPS_DERIVED_TOTALS_2024 = {
+        "medical_expense": 1_074e9,
+        "spm_unit_spm_threshold": 3_945e9,
+        "child_support_expense": 23e9,
+        "spm_unit_capped_work_childcare_expenses": 348e9,
+        "spm_unit_capped_housing_subsidy": 35e9,
+        "tanf": 9e9,
+    }
+
+    for variable_name, target in CPS_DERIVED_TOTALS_2024.items():
+        label = f"census/{variable_name}"
+        loss_matrix[label] = sim.calculate(
+            variable_name, map_to="household"
+        ).values
+        if any(loss_matrix[label].isna()):
+            raise ValueError(f"Missing values for {label}")
+        targets_array.append(target)
+
     if any(loss_matrix.isna().sum() > 0):
         raise ValueError("Some targets are missing from the loss matrix")
 

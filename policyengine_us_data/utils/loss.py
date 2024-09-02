@@ -191,10 +191,14 @@ def build_loss_matrix(dataset: type, time_period):
     CPS_DERIVED_TOTALS_2024 = {
         "medical_expense": 1_074e9,
         "spm_unit_spm_threshold": 3_945e9,
-        "child_support_expense": 23e9,
+        "child_support_expense": 33e9,
+        "child_support_received": 33e9,
         "spm_unit_capped_work_childcare_expenses": 348e9,
         "spm_unit_capped_housing_subsidy": 35e9,
         "tanf": 9e9,
+        # Alimony could be targeted via SOI
+        "alimony_income": 13e9,
+        "alimony_expense": 13e9,
     }
 
     for variable_name, target in CPS_DERIVED_TOTALS_2024.items():

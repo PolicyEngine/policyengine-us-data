@@ -1,0 +1,55 @@
+name: Push
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Publish docker images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout
+      - name: Log in to the Container registry
+        uses: docker/login-action
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.POLICYENGINE_DOCKER }}
+      - name: Build container
+        run: docker build -f docker/policyengine_us_data.Dockerfile -t ghcr.io/policyengine/policyengine-us-data
+      - name: Push container
+        run: docker push ghcr.io/policyengine/policyengine-us-data
+
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        uses: "lgeiger/black-action@master"
+        with:
+          args: ". -l 79 --check"
+  publish:
+    runs-on: ubuntu-latest
+    name: Publish
+    steps:
+      - name: Checkout code
+        uses: actions/checkout
+      - name: Set up Python
+        uses: actions/setup-python
+        with:
+          python-version: 3.12
+      - name: Install package
+        run: make install
+      - name: Build package
+        run: make build
+      - name: Publish a Python distribution to PyPI
+        uses: pypa/gh-action-pypi-publish
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI }}
+          skip-existing: true
+      

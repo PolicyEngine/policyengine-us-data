@@ -87,7 +87,8 @@ REMAINING_VARIABLES = [
     "E09800",
 ]
 
-soi = pd.read_csv(STORAGE_FOLDER / "soi.csv")
+if (STORAGE_FOLDER / "soi.csv").exists():
+    soi = pd.read_csv(STORAGE_FOLDER / "soi.csv")
 
 
 def get_soi_aggregate(variable, year, is_count):

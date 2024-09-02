@@ -2,7 +2,7 @@ import os
 import requests
 
 auth_headers = {
-    "Authorization": f"token {os.environ['GITHUB_TOKEN']}",
+    "Authorization": f"token {os.environ.get('POLICYENGINE_US_DATA_GITHUB_TOKEN')}",
 }
 
 
@@ -79,3 +79,25 @@ def upload(
         )
 
     return response.json()
+
+
+def set_pr_auto_review_comment(text: str):
+    # On a pull request, set a review comment with the given text.
+
+    pr_number = os.environ["GITHUB_PR_NUMBER"]
+
+    url = f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/pulls/{pr_number}/reviews"
+
+    response = requests.post(
+        url,
+        headers=auth_headers,
+        json={
+            "body": text,
+            "event": "COMMENT",
+        },
+    )
+
+    if response.status_code != 200:
+        raise ValueError(
+            f"Invalid response code {response.status_code} for url {url}. Received: {response.text}"
+        )

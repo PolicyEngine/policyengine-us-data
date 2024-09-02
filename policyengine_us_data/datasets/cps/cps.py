@@ -8,6 +8,9 @@ import pandas as pd
 import os
 import yaml
 from typing import Type
+from policyengine_us_data.utils.uprating import (
+    create_policyengine_uprating_factors_table,
+)
 
 
 class CPS(Dataset):
@@ -21,6 +24,28 @@ class CPS(Dataset):
         """Generates the Current Population Survey dataset for PolicyEngine US microsimulations.
         Technical documentation and codebook here: https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar21.pdf
         """
+
+        if self.raw_cps is None:
+            # Extrapolate from CPS 2022
+
+            cps_2022 = CPS_2022(require=True)
+            print("Creating uprating factors table...")
+            uprating = create_policyengine_uprating_factors_table()
+            arrays = cps_2022.load_dataset()
+            for variable in uprating.index.unique():
+                if variable in arrays:
+                    current_index = uprating[uprating.index == variable][
+                        self.time_period
+                    ].values[0]
+                    start_index = uprating[uprating.index == variable][
+                        2021
+                    ].values[0]
+                    growth = current_index / start_index
+                    print(f"Uprating {variable} by {growth-1:.1%}")
+                    arrays[variable] = arrays[variable] * growth
+
+            self.save_dataset(arrays)
+            return
 
         raw_data = self.raw_cps(require=True).load()
         cps = h5py.File(self.file_path, mode="w")
@@ -38,9 +63,6 @@ class CPS(Dataset):
         add_household_variables(cps, household)
 
         raw_data.close()
-        cps.close()
-
-        cps = h5py.File(self.file_path, mode="a")
         cps.close()
 
 
@@ -74,23 +96,6 @@ def add_id_variables(
     cps["spm_unit_id"] = spm_unit.SPM_ID
     cps["person_household_id"] = person.PH_SEQ
     cps["person_family_id"] = person.PH_SEQ * 10 + person.PF_SEQ
-
-    # Add weights
-    # Weights are multiplied by 100 to avoid decimals
-    cps["person_weight"] = person.A_FNLWGT / 1e2
-    cps["family_weight"] = family.FSUP_WGT / 1e2
-
-    # Tax unit weight is the weight of the containing family.
-    family_weight = Series(
-        cps["family_weight"][...], index=cps["family_id"][...]
-    )
-    person_family_id = cps["person_family_id"][...]
-    persons_family_weight = Series(family_weight[person_family_id])
-    cps["tax_unit_weight"] = persons_family_weight.groupby(
-        cps["person_tax_unit_id"][...]
-    ).first()
-
-    cps["spm_unit_weight"] = spm_unit.SPM_WEIGHT / 1e2
 
     cps["household_weight"] = household.HSUP_WGT / 1e2
 
@@ -536,3 +541,10 @@ class CPS_2022(CPS):
     previous_year_raw_cps = CensusCPS_2021
     file_path = STORAGE_FOLDER / "cps_2022.h5"
     time_period = 2022
+
+
+class CPS_2024(CPS):
+    name = "cps_2024"
+    label = "CPS 2024 (2022-based)"
+    file_path = STORAGE_FOLDER / "cps_2024.h5"
+    time_period = 2024

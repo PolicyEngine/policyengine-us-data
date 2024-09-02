@@ -11,14 +11,19 @@ setup(
     install_requires=[
         "policyengine_core",
         "tables",
+        "survey_enhance",
+        "torch",
+        "requests",
+        "tqdm",
+        "tabulate",
+        "tables",
     ],
     extras_require={
         "dev": [
             "black",
             "pytest",
-            "tqdm",
-            "requests",
-            "policyengine_us",
+            "policyengine_us==1.69.0",
+            "streamlit",
         ],
     },
 )

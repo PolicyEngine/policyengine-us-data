@@ -1,5 +1,6 @@
 import pytest
 
+
 @pytest.mark.skip(reason="This test requires private data.")
 @pytest.mark.parametrize("year", [2015])
 def test_irs_puf_generates(year: int):

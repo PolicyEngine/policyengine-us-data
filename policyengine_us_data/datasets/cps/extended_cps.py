@@ -64,8 +64,6 @@ IMPUTED_VARIABLES = [
     "w2_wages_from_qualified_business",
 ]
 
-IMPUTED_VARIABLES = IMPUTED_VARIABLES[:10]
-
 
 class ExtendedCPS(Dataset):
     cps: Type[CPS]
@@ -94,24 +92,9 @@ class ExtendedCPS(Dataset):
         X = cps_sim.calculate_dataframe(INPUTS)
         y = pd.DataFrame(columns=IMPUTED_VARIABLES, index=X.index)
 
-        # Train separate models for different parts of the PUF
-        PUF_MODEL_SPLITS = [0, 0.9, 1]
-        puf_agi = puf_sim.calculate("adjusted_gross_income", map_to="person")
-        unused_cps_indices = X.index
-
-        for lower, upper in zip(PUF_MODEL_SPLITS[:-1], PUF_MODEL_SPLITS[1:]):
-            print(f"Training model for AGI quantiles between {lower:.0%} and {upper:.0%}")
-            puf_mask = (puf_agi >= puf_agi.quantile(lower)) & (puf_agi < puf_agi.quantile(upper))
-            model = Imputation()
-            model.train(X_train[puf_mask], y_train[puf_mask], verbose=True)
-            share_of_unused_cps = (upper - lower) / (1 - lower)
-            cps_mask_indices = np.random.choice(unused_cps_indices, int(len(unused_cps_indices) * share_of_unused_cps), replace=False)
-            cps_mask = X.index.isin(cps_mask_indices)
-            if upper == 1:
-                cps_mask = np.ones(len(X), dtype=bool)
-            y[cps_mask] = model.predict(X[cps_mask], verbose=True)
-            if upper != 1:
-                unused_cps_indices = unused_cps_indices[~cps_mask]
+        model = Imputation()
+        model.train(X_train, y_train, verbose=True, sample_weight=puf_sim.calculate("household_weight", map_to="person").values)
+        y = model.predict(X, verbose=True)
 
         data = cps_sim.dataset.load_dataset()
         new_data = {}

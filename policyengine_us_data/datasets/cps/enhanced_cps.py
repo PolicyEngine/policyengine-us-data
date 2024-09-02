@@ -38,13 +38,9 @@ def reweight(
         estimate = weights @ loss_matrix
         if torch.isnan(estimate).any():
             raise ValueError("Estimate contains NaNs")
-        one_way_rel_error = (
+        rel_error = (
             ((estimate - targets_array) + 1) / (targets_array + 1)
         ) ** 2
-        other_way_rel_error = (
-            ((targets_array - estimate) + 1) / (estimate + 1)
-        ) ** 2
-        rel_error = torch.min(one_way_rel_error, other_way_rel_error)
         if torch.isnan(rel_error).any():
             raise ValueError("Relative error contains NaNs")
         worst_name = target_names[torch.argmax(rel_error)]

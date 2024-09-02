@@ -140,6 +140,9 @@ def build_loss_matrix(dataset: type, time_period):
 
     loss_matrix = loss_matrix.groupby(tax_unit_hh_id).sum()
 
+    hh_id = sim.calculate("household_id").values
+    loss_matrix = loss_matrix.loc[hh_id]
+
     # Census single-year age population projections
 
     populations = pd.read_csv(STORAGE_FOLDER / "np2023_d5_mid.csv")

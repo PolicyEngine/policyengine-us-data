@@ -55,7 +55,9 @@ def reweight(
         optimizer.zero_grad()
         l, worst_name, worst_val = loss(torch.exp(weights))
         l.backward()
-        iterator.set_postfix({"loss": l.item(), "worst": worst_name, "val": worst_val})
+        iterator.set_postfix(
+            {"loss": l.item(), "worst": worst_name, "val": worst_val}
+        )
         optimizer.step()
 
     return torch.exp(weights).detach().numpy()

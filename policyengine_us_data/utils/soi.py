@@ -175,9 +175,15 @@ def get_soi(year: int) -> pd.DataFrame:
     for variable in uprating_map:
         pe_name = uprating_map.get(variable)
         if pe_name in uprating.index:
-            uprating_factors[variable] = uprating.loc[pe_name, year] / uprating.loc[pe_name, soi.Year.max()]
+            uprating_factors[variable] = (
+                uprating.loc[pe_name, year]
+                / uprating.loc[pe_name, soi.Year.max()]
+            )
         else:
-            uprating_factors[variable] = uprating.loc["employment_income", year] / uprating.loc["employment_income", soi.Year.max()]
+            uprating_factors[variable] = (
+                uprating.loc["employment_income", year]
+                / uprating.loc["employment_income", soi.Year.max()]
+            )
 
     for variable, uprating_factor in uprating_factors.items():
         soi.loc[soi.Variable == variable, "Value"] *= uprating_factor

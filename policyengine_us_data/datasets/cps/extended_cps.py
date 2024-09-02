@@ -93,14 +93,23 @@ class ExtendedCPS(Dataset):
         y = pd.DataFrame(columns=IMPUTED_VARIABLES, index=X.index)
 
         model = Imputation()
-        model.train(X_train, y_train, verbose=True, sample_weight=puf_sim.calculate("household_weight", map_to="person").values)
+        model.train(
+            X_train,
+            y_train,
+            verbose=True,
+            sample_weight=puf_sim.calculate(
+                "household_weight", map_to="person"
+            ).values,
+        )
         y = model.predict(X, verbose=True)
 
         data = cps_sim.dataset.load_dataset()
         new_data = {}
 
         for variable in list(data) + IMPUTED_VARIABLES:
-            variable_metadata = cps_sim.tax_benefit_system.variables.get(variable)
+            variable_metadata = cps_sim.tax_benefit_system.variables.get(
+                variable
+            )
             if variable in data:
                 values = data[variable][...]
             else:
@@ -109,7 +118,9 @@ class ExtendedCPS(Dataset):
                 pred_values = y[variable].values
                 entity = variable_metadata.entity.key
                 if entity != "person":
-                    pred_values = cps_sim.populations[entity].value_from_first_person(pred_values)
+                    pred_values = cps_sim.populations[
+                        entity
+                    ].value_from_first_person(pred_values)
                 values = np.concatenate([values, pred_values])
             elif variable == "person_id":
                 values = np.concatenate([values, values + values.max()])

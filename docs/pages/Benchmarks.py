@@ -7,6 +7,7 @@ from policyengine_us_data.utils import build_loss_matrix
 from policyengine_us import Microsimulation
 import pandas as pd
 import plotly.express as px
+import numpy as np
 
 
 @st.cache_data
@@ -28,8 +29,10 @@ def compare_datasets():
         comparison["Error"] = comparison["Estimate"] - comparison["Actual"]
         comparison["Abs. Error"] = comparison["Error"].abs()
         comparison["Abs. Error %"] = (
-            comparison["Abs. Error"] / comparison["Actual"].abs()
-        ).fillna(1)
+            (comparison["Abs. Error"] / comparison["Actual"].abs())
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(1)
+        )
         comparison["Dataset"] = dataset.label
         comparison_combined = pd.concat([comparison_combined, comparison])
 

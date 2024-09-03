@@ -1,6 +1,7 @@
 from policyengine_us_data.utils.github import download
 from policyengine_us_data.data_storage import STORAGE_FOLDER
 
+
 def download_data():
     if not (STORAGE_FOLDER / "enhanced_cps_2024.h5").exists():
         download(

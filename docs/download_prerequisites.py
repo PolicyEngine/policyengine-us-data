@@ -26,3 +26,11 @@ def download_data():
             "puf_2024.h5",
             STORAGE_FOLDER / "puf_2024.h5",
         )
+
+        download(
+            "PolicyEngine",
+            "policyengine-us-data",
+            "release",
+            "soi.csv",
+            STORAGE_FOLDER / "soi.csv",
+        )

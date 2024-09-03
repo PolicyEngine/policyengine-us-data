@@ -25,6 +25,7 @@ def download_data():
     for prerequisite in PREREQUISITES:
         if not (STORAGE_FOLDER / prerequisite["file_name"]).exists():
             download(
+                "PolicyEngine",
                 prerequisite["repo"],
                 "release",
                 prerequisite["file_name"],

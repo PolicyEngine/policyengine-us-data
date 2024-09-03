@@ -16,8 +16,8 @@ jobs:
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.POLICYENGINE_DOCKER }}
+          username: ${{github.actor}}
+          password: ${{secrets.GITHUB_TOKEN}}
       - name: Build container
         run: docker build -f docker/policyengine_us_data.Dockerfile -t ghcr.io/policyengine/policyengine-us-data
       - name: Push container

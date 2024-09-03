@@ -1,5 +1,5 @@
 import streamlit as st
-from .download import download_data
+from download_prerequisites import download_data
 
 download_data()
 

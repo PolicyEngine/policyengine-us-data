@@ -5,7 +5,7 @@ setup(
     version="0.1.0",
     author="PolicyEngine",
     author_email="hello@policyengine.org",
-    description="A package to create representative microdata for the US",
+    description="A package to create representative microdata for the US.",
     long_description=open("README.md").read(),
     packages=find_packages(),
     python_requires=">=3.6",

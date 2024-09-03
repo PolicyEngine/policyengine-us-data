@@ -1,37 +1,32 @@
 from policyengine_us_data.utils.github import download
 from policyengine_us_data.data_storage import STORAGE_FOLDER
 
+PREREQUISITES = [
+    {
+        "repo": "policyengine-us-data",
+        "file_name": "enhanced_cps_2024.h5",
+    },
+    {
+        "repo": "policyengine-us-data",
+        "file_name": "cps_2024.h5",
+    },
+    {
+        "repo": "irs-soi-puf",
+        "file_name": "puf_2024.h5",
+    },
+    {
+        "repo": "policyengine-us-data",
+        "file_name": "soi.csv",
+    },
+]
+
 
 def download_data():
-    if not (STORAGE_FOLDER / "enhanced_cps_2024.h5").exists():
-        download(
-            "PolicyEngine",
-            "policyengine-us-data",
-            "release",
-            "enhanced_cps_2024.h5",
-            STORAGE_FOLDER / "enhanced_cps_2024.h5",
-        )
-
-        download(
-            "PolicyEngine",
-            "policyengine-us-data",
-            "release",
-            "cps_2024.h5",
-            STORAGE_FOLDER / "cps_2024.h5",
-        )
-
-        download(
-            "PolicyEngine",
-            "irs-soi-puf",
-            "release",
-            "puf_2024.h5",
-            STORAGE_FOLDER / "puf_2024.h5",
-        )
-
-        download(
-            "PolicyEngine",
-            "policyengine-us-data",
-            "release",
-            "soi.csv",
-            STORAGE_FOLDER / "soi.csv",
-        )
+    for prerequisite in PREREQUISITES:
+        if not (STORAGE_FOLDER / prerequisite["file_name"]).exists():
+            download(
+                prerequisite["repo"],
+                "release",
+                prerequisite["file_name"],
+                STORAGE_FOLDER / prerequisite["file_name"],
+            )

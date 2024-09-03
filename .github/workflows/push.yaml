@@ -19,7 +19,7 @@ jobs:
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
       - name: Build container
-        run: docker build -f docker/policyengine_us_data.Dockerfile -t ghcr.io/policyengine/policyengine-us-data:latest
+        run: docker build . -f docker/policyengine_us_data.Dockerfile -t ghcr.io/policyengine/policyengine-us-data:latest
       - name: Push container
         run: docker push ghcr.io/policyengine/policyengine-us-data:latest
 

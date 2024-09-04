@@ -133,6 +133,7 @@ def build_loss_matrix(dataset: type, time_period):
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=dataset)
+    sim.macro_cache_read = False
     hh_id = sim.calculate("household_id", map_to="person")
     tax_unit_hh_id = sim.map_result(
         hh_id, "person", "tax_unit", how="value_from_first_person"

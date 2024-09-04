@@ -150,12 +150,6 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["interest_deduction"] = puf.E19200
     puf["long_term_capital_gains"] = puf.P23250
     puf["long_term_capital_gains_on_collectibles"] = puf.E24518
-    # Split medical expenses using CPS fractions
-    for (
-        medical_category,
-        fraction,
-    ) in MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS.items():
-        puf[medical_category] = puf.E17500 * fraction
     puf["misc_deduction"] = puf.E20400
     puf["non_qualified_dividend_income"] = puf.E00600 - puf.E00650
     puf["partnership_s_corp_income"] = puf.E26270
@@ -240,10 +234,6 @@ FINANCIAL_SUBSET = [
     "interest_deduction",
     "long_term_capital_gains",
     "long_term_capital_gains_on_collectibles",
-    "health_insurance_premiums_without_medicare_part_b",
-    "other_medical_expenses",
-    "medicare_part_b_premiums",
-    "over_the_counter_health_expenses",
     "misc_deduction",
     "non_qualified_dividend_income",
     "non_sch_d_capital_gains",
@@ -513,11 +503,3 @@ class PUF_2024(PUF):
     name = "puf_2024"
     time_period = 2024
     file_path = STORAGE_FOLDER / "puf_2024.h5"
-
-
-MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
-    "health_insurance_premiums_without_medicare_part_b": 0.453,
-    "other_medical_expenses": 0.325,
-    "medicare_part_b_premiums": 0.137,
-    "over_the_counter_health_expenses": 0.085,
-}

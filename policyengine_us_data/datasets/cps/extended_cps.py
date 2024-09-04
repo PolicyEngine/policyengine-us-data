@@ -63,8 +63,6 @@ IMPUTED_VARIABLES = [
     "w2_wages_from_qualified_business",
 ]
 
-IMPUTED_VARIABLES = IMPUTED_VARIABLES[:1]
-
 
 class ExtendedCPS(Dataset):
     cps: Type[CPS]

@@ -44,6 +44,8 @@ jobs:
         run: make test
       - name: Upload data
         run: make upload
+        env:
+          POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
 
   lint:
     runs-on: ubuntu-latest

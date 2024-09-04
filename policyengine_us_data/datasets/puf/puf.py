@@ -151,7 +151,10 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["long_term_capital_gains"] = puf.P23250
     puf["long_term_capital_gains_on_collectibles"] = puf.E24518
     # Split medical expenses using CPS fractions
-    for medical_category, fraction in MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS.items():
+    for (
+        medical_category,
+        fraction,
+    ) in MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS.items():
         puf[medical_category] = puf.E17500 * fraction
     puf["misc_deduction"] = puf.E20400
     puf["non_qualified_dividend_income"] = puf.E00600 - puf.E00650

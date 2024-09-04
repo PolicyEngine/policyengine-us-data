@@ -30,7 +30,10 @@ IMPUTED_VARIABLES = [
     "investment_income_elected_form_4952",
     "long_term_capital_gains",
     "long_term_capital_gains_on_collectibles",
-    "medical_expense",
+    "health_insurance_premiums_without_medicare_part_b",
+    "other_medical_expenses",
+    "medicare_part_b_premiums",
+    "over_the_counter_health_expenses",
     "misc_deduction",
     "miscellaneous_income",
     "non_qualified_dividend_income",
@@ -63,6 +66,8 @@ IMPUTED_VARIABLES = [
     "unreported_payroll_tax",
     "w2_wages_from_qualified_business",
 ]
+
+IMPUTED_VARIABLES = IMPUTED_VARIABLES[:2]
 
 
 class ExtendedCPS(Dataset):
@@ -133,7 +138,6 @@ class ExtendedCPS(Dataset):
             new_data[variable] = {
                 self.time_period: values,
             }
-
         self.save_dataset(new_data)
 
 

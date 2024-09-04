@@ -112,7 +112,6 @@ class EnhancedCPS(Dataset):
     end_year: int
 
     def generate(self):
-        df = self.input_dataset(require=True).load()
         from policyengine_us import Microsimulation
 
         sim = Microsimulation(dataset=self.input_dataset)

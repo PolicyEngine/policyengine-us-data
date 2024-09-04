@@ -286,4 +286,8 @@ PERSON_COLUMNS = [
     "A_HSCOL",
     "HRSWK",
     "WKSWORK",
+    "PHIP_VAL",
+    "POTC_VAL",
+    "PMED_VAL",
+    "PEMCPREM",
 ]

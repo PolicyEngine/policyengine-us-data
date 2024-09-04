@@ -189,7 +189,10 @@ def build_loss_matrix(dataset: type, time_period):
     # Child support expenses
 
     CPS_DERIVED_TOTALS_2024 = {
-        "medical_expense": 1_074e9,
+        "health_insurance_premiums_without_medicare_part_b": 385e9,
+        "other_medical_expenses": 278e9,
+        "medicare_part_b_premiums": 112e9,
+        "over_the_counter_health_expenses": 72e9,
         "spm_unit_spm_threshold": 3_945e9,
         "child_support_expense": 33e9,
         "child_support_received": 33e9,

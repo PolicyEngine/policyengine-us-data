@@ -1,5 +1,6 @@
 import os
 import requests
+from tqdm import tqdm
 
 auth_headers = {
     "Authorization": f"token {os.environ.get('POLICYENGINE_US_DATA_GITHUB_TOKEN')}",
@@ -63,15 +64,26 @@ def upload(
 ) -> bytes:
     release_id = get_release_id(org, repo, release_tag)
     url = f"https://uploads.github.com/repos/{org}/{repo}/releases/{release_id}/assets?name={file_name}"
-    response = requests.post(
-        url,
-        headers={
-            "Accept": "application/vnd.github.v3+json",
-            "Content-Type": "application/octet-stream",
-            **auth_headers,
-        },
-        data=open(file_path, "rb").read(),
-    )
+    
+    file_size = os.path.getsize(file_path)
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "Content-Type": "application/octet-stream",
+        **auth_headers,
+    }
+
+    with open(file_path, "rb") as f, tqdm(
+        total=file_size, unit="B", unit_scale=True, desc=file_name
+    ) as pbar:
+        def progress_callback(monitor):
+            pbar.update(monitor.bytes_read - pbar.n)
+
+        response = requests.post(
+            url,
+            headers=headers,
+            data=f,
+            hooks={"response": progress_callback}
+        )
 
     if response.status_code != 201:
         raise ValueError(

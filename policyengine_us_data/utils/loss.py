@@ -133,7 +133,6 @@ def build_loss_matrix(dataset: type, time_period):
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=dataset)
-    sim.macro_cache_read = False
     hh_id = sim.calculate("household_id", map_to="person")
     tax_unit_hh_id = sim.map_result(
         hh_id, "person", "tax_unit", how="value_from_first_person"
@@ -213,6 +212,26 @@ def build_loss_matrix(dataset: type, time_period):
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
         targets_array.append(target)
+
+    # Healthcare spending by age
+
+    healthcare = pd.read_csv(STORAGE_FOLDER / "healthcare_spending.csv")
+
+    for _, row in healthcare.iterrows():
+        age_lower_bound = row["age_10_year_lower_bound"]
+        in_age_range = (age >= age_lower_bound) * (age < age_lower_bound + 10)
+        for expense_type in [
+            "health_insurance_premiums_without_medicare_part_b",
+            "over_the_counter_health_expenses",
+            "other_medical_expenses",
+            "medicare_part_b_premiums",
+        ]:
+            label = f"census/{expense_type}/{age_lower_bound}_to_{age_lower_bound+9}"
+            value = sim.calculate(expense_type).values
+            loss_matrix[label] = sim.map_result(
+                in_age_range * value, "person", "household"
+            )
+            targets_array.append(row[expense_type])
 
     if any(loss_matrix.isna().sum() > 0):
         raise ValueError("Some targets are missing from the loss matrix")

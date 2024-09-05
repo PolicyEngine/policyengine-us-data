@@ -137,7 +137,6 @@ def get_growth(variable, from_year, to_year):
 
 
 def uprate_puf(puf, from_year, to_year):
-    print(f"Uprating PUF from {from_year} to {to_year}...")
     puf = puf.copy()
     for variable in SOI_TO_PUF_STRAIGHT_RENAMES:
         growth = get_growth(variable, from_year, to_year)

@@ -29,7 +29,6 @@ class CPS(Dataset):
             # Extrapolate from CPS 2022
 
             cps_2022 = CPS_2022(require=True)
-            print("Creating uprating factors table...")
             uprating = create_policyengine_uprating_factors_table()
             arrays = cps_2022.load_dataset()
             for variable in uprating.index.unique():
@@ -41,7 +40,6 @@ class CPS(Dataset):
                         2021
                     ].values[0]
                     growth = current_index / start_index
-                    print(f"Uprating {variable} by {growth-1:.1%}")
                     arrays[variable] = arrays[variable] * growth
 
             self.save_dataset(arrays)
@@ -61,9 +59,20 @@ class CPS(Dataset):
         add_previous_year_income(self, cps)
         add_spm_variables(cps, spm_unit)
         add_household_variables(cps, household)
+        add_rent(cps, person, household)
 
         raw_data.close()
         cps.close()
+
+
+def add_rent(cps: h5py.File, person: DataFrame, household: DataFrame):
+    is_renting = household.H_TENURE == 2
+    AVERAGE_RENT = 1_700 * 12
+    # Project down to the first person in the household
+    person_is_renting = (
+        household.set_index("H_SEQ").loc[person.PH_SEQ].H_TENURE.values == 2
+    )
+    cps["pre_subsidy_rent"] = np.where(person_is_renting, AVERAGE_RENT, 0)
 
 
 def add_id_variables(

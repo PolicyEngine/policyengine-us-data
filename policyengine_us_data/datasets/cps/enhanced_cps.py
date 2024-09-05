@@ -38,9 +38,13 @@ def reweight(
         estimate = weights @ loss_matrix
         if torch.isnan(estimate).any():
             raise ValueError("Estimate contains NaNs")
-        rel_error = (
+        one_way_rel_error = (
             ((estimate - targets_array) + 1) / (targets_array + 1)
         ) ** 2
+        other_way_rel_error = (
+            ((targets_array - estimate) + 1) / (estimate + 1)
+        ) ** 2
+        rel_error = one_way_rel_error + other_way_rel_error
         if torch.isnan(rel_error).any():
             raise ValueError("Relative error contains NaNs")
         worst_name = target_names[torch.argmax(rel_error)]
@@ -50,7 +54,7 @@ def reweight(
     optimizer = torch.optim.Adam([weights], lr=1)
     from tqdm import trange
 
-    iterator = trange(1_000)
+    iterator = trange(10_000)
     for i in iterator:
         optimizer.zero_grad()
         l, worst_name, worst_val = loss(torch.exp(weights))

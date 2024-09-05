@@ -74,3 +74,9 @@ def get_bar_chart(variable, filing_status, taxable, count):
 
 
 st.plotly_chart(get_bar_chart(variable, filing_status, taxable, count))
+
+st.subheader("Household incomes")
+
+st.write(
+    "PolicyEngine's calibration process alters the distribution of household incomes. In the chart below, you can see the distribution of household incomes in both the Current Population Survey and the Enhanced CPS."
+)

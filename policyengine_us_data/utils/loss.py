@@ -218,7 +218,7 @@ def build_loss_matrix(dataset: type, time_period):
     healthcare = pd.read_csv(STORAGE_FOLDER / "healthcare_spending.csv")
 
     for _, row in healthcare.iterrows():
-        age_lower_bound = row["age_10_year_lower_bound"]
+        age_lower_bound = int(row["age_10_year_lower_bound"])
         in_age_range = (age >= age_lower_bound) * (age < age_lower_bound + 10)
         for expense_type in [
             "health_insurance_premiums_without_medicare_part_b",
@@ -226,7 +226,7 @@ def build_loss_matrix(dataset: type, time_period):
             "other_medical_expenses",
             "medicare_part_b_premiums",
         ]:
-            label = f"census/{expense_type}/{age_lower_bound}_to_{age_lower_bound+9}"
+            label = f"census/{expense_type}/age_{age_lower_bound}_to_{age_lower_bound+9}"
             value = sim.calculate(expense_type).values
             loss_matrix[label] = sim.map_result(
                 in_age_range * value, "person", "household"

@@ -1,6 +1,38 @@
 import streamlit as st
 from download_prerequisites import download_data
 
+STYLE = """
+<style>
+header {
+    display: none !important;
+}
+footer {
+    display: none !important;
+}
+section > div.block-container {
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
+}
+html, body, [class*="css"] {
+  font-family: "Roboto Serif", !important;
+  font-weight: 500;
+}
+[data-baseweb="slider"] {
+    padding-left: 10px !important;
+}
+#MainMenu {
+    visibility: hidden;
+}
+footer {
+    visibility: hidden;
+}
+.modebar{
+      display: none !important;
+}
+</style>
+"""
+st.write(STYLE, unsafe_allow_html=True)
+
 download_data()
 
 st.title("PolicyEngine-US-Data")

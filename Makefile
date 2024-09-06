@@ -1,13 +1,15 @@
+.PHONY: all format test install download upload docker documentation data clean build
+
 all: data test
 
 format:
 	black . -l 79
 
 test:
-	pytest policyengine_us_data/tests
+	pytest
 
 install:
-	pip install -e .[dev]
+	pip install -e ".[dev]"
 
 download:
 	python policyengine_us_data/data_storage/download_public_prerequisites.py
@@ -26,7 +28,11 @@ data:
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 
 clean:
-	rm policyengine_us_data/data_storage/puf_2015.csv
-	rm policyengine_us_data/data_storage/demographics_2015.csv
+	rm -f policyengine_us_data/data_storage/puf_2015.csv
+	rm -f policyengine_us_data/data_storage/demographics_2015.csv
+
 build:
-	python setup.py sdist bdist_wheel
+	python -m build
+
+publish:
+	twine upload dist/*

@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "policyengine_us_data"
+dynamic = ["version"]
+description = "A package to create representative microdata for the US."
+readme = "README.md"
+authors = [
+    {name = "PolicyEngine", email = "hello@policyengine.org"},
+]
+license = {file = "LICENSE"}
+requires-python = ">=3.6"
+dependencies = [
+    "policyengine_core",
+    "tables",
+    "survey_enhance",
+    "torch",
+    "requests",
+    "tqdm",
+    "tabulate",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "pytest",
+    "policyengine_us==1.71.1",
+    "streamlit",
+]
+
+[tool.setuptools]
+packages = ["policyengine_us_data"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"policyengine_us_data" = ["**/*"]
+
+[tool.setuptools_scm]
+write_to = "policyengine_us_data/_version.py"
+
+[tool.pytest.ini_options]
+addopts = "-v"
+testpaths = [
+    "tests",
+]
+
+[tool.black]
+line-length = 79
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''

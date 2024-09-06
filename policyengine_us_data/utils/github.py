@@ -64,9 +64,12 @@ def download(
 
 def create_session_with_retries():
     session = requests.Session()
-    retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
-    session.mount('https://', HTTPAdapter(max_retries=retries))
+    retries = Retry(
+        total=5, backoff_factor=1, status_forcelist=[502, 503, 504]
+    )
+    session.mount("https://", HTTPAdapter(max_retries=retries))
     return session
+
 
 def upload(
     org: str, repo: str, release_tag: str, file_name: str, file_path: str
@@ -98,19 +101,23 @@ def upload(
                                 len(r.content)
                             )
                         ),
-                        timeout=300  # 5 minutes timeout
+                        timeout=300,  # 5 minutes timeout
                     )
 
             if response.status_code == 201:
                 return response.json()
             else:
-                print(f"Attempt {attempt + 1} failed with status code {response.status_code}. Response: {response.text}")
-        
+                print(
+                    f"Attempt {attempt + 1} failed with status code {response.status_code}. Response: {response.text}"
+                )
+
         except requests.exceptions.RequestException as e:
             print(f"Attempt {attempt + 1} failed with error: {str(e)}")
-        
+
         if attempt < max_retries - 1:
-            wait_time = (attempt + 1) * 60  # Wait 1 minute, then 2 minutes, then 3 minutes
+            wait_time = (
+                attempt + 1
+            ) * 60  # Wait 1 minute, then 2 minutes, then 3 minutes
             print(f"Waiting {wait_time} seconds before retrying...")
             time.sleep(wait_time)
 

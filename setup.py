@@ -8,6 +8,7 @@ setup(
     description="A package to create representative microdata for the US.",
     long_description=open("README.md").read(),
     packages=find_packages(),
+    include_package_data=True,  # Will read MANIFEST.in
     python_requires=">=3.6",
     install_requires=[
         "policyengine_core",

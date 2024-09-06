@@ -12,6 +12,7 @@ from policyengine_us_data.data_storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS_2024,
     CPS_2019,
+    CPS_2024,
 )
 import torch
 
@@ -47,10 +48,10 @@ def reweight(
         worst_val = rel_error[torch.argmax(rel_error)].item()
         return rel_error.mean(), worst_name, worst_val
 
-    optimizer = torch.optim.Adam([weights], lr=1)
+    optimizer = torch.optim.Adam([weights], lr=1e-2)
     from tqdm import trange
 
-    iterator = trange(1_000)
+    iterator = trange(10_000)
     for i in iterator:
         optimizer.zero_grad()
         l, worst_name, worst_val = loss(torch.exp(weights))
@@ -129,6 +130,35 @@ class EnhancedCPS(Dataset):
                 original_weights, loss_matrix, targets_array
             )
             data["household_weight"][year] = optimised_weights
+
+        self.save_dataset(data)
+
+
+class ReweightedCPS_2024(Dataset):
+    data_format = Dataset.ARRAYS
+    file_path = STORAGE_FOLDER / "reweighted_cps_2024.h5"
+    name = "reweighted_cps_2024"
+    label = "Reweighted CPS 2024"
+    input_dataset = CPS_2024
+    time_period = 2024
+
+    def generate(self):
+        from policyengine_us import Microsimulation
+
+        sim = Microsimulation(dataset=self.input_dataset)
+        data = sim.dataset.load_dataset()
+        original_weights = sim.calculate("household_weight")
+        original_weights = original_weights.values + np.random.normal(
+            1, 0.1, len(original_weights)
+        )
+        for year in [2024]:
+            loss_matrix, targets_array = build_loss_matrix(
+                self.input_dataset, year
+            )
+            optimised_weights = reweight(
+                original_weights, loss_matrix, targets_array
+            )
+            data["household_weight"] = optimised_weights
 
         self.save_dataset(data)
 

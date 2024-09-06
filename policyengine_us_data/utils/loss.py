@@ -133,7 +133,6 @@ def build_loss_matrix(dataset: type, time_period):
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=dataset)
-    sim.macro_cache_read = False
     hh_id = sim.calculate("household_id", map_to="person")
     tax_unit_hh_id = sim.map_result(
         hh_id, "person", "tax_unit", how="value_from_first_person"
@@ -213,6 +212,50 @@ def build_loss_matrix(dataset: type, time_period):
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
         targets_array.append(target)
+
+    # Healthcare spending by age
+
+    healthcare = pd.read_csv(STORAGE_FOLDER / "healthcare_spending.csv")
+
+    for _, row in healthcare.iterrows():
+        age_lower_bound = int(row["age_10_year_lower_bound"])
+        in_age_range = (age >= age_lower_bound) * (age < age_lower_bound + 10)
+        for expense_type in [
+            "health_insurance_premiums_without_medicare_part_b",
+            "over_the_counter_health_expenses",
+            "other_medical_expenses",
+            "medicare_part_b_premiums",
+        ]:
+            label = f"census/{expense_type}/age_{age_lower_bound}_to_{age_lower_bound+9}"
+            value = sim.calculate(expense_type).values
+            loss_matrix[label] = sim.map_result(
+                in_age_range * value, "person", "household"
+            )
+            targets_array.append(row[expense_type])
+
+    # AGI by SPM threshold totals
+
+    spm_threshold_agi = pd.read_csv(STORAGE_FOLDER / "spm_threshold_agi.csv")
+
+    for _, row in spm_threshold_agi.iterrows():
+        spm_unit_agi = sim.calculate(
+            "adjusted_gross_income", map_to="spm_unit"
+        ).values
+        spm_threshold = sim.calculate("spm_unit_spm_threshold").values
+        in_threshold_range = (spm_threshold >= row["lower_spm_threshold"]) * (
+            spm_threshold < row["upper_spm_threshold"]
+        )
+        label = f"census/agi_in_spm_threshold_decile_{int(row['decile'])}"
+        loss_matrix[label] = sim.map_result(
+            in_threshold_range * spm_unit_agi, "spm_unit", "household"
+        )
+        targets_array.append(row["adjusted_gross_income"])
+
+        label = f"census/count_in_spm_threshold_decile_{int(row['decile'])}"
+        loss_matrix[label] = sim.map_result(
+            in_threshold_range, "spm_unit", "household"
+        )
+        targets_array.append(row["count"])
 
     if any(loss_matrix.isna().sum() > 0):
         raise ValueError("Some targets are missing from the loss matrix")

@@ -289,8 +289,6 @@ class PUF(Dataset):
     def generate(self):
         from policyengine_us.system import system
 
-        print("Importing PolicyEngine US variable metadata...")
-
         irs_puf = IRS_PUF_2015(require=True)
 
         puf = irs_puf.load("puf")
@@ -300,7 +298,6 @@ class PUF(Dataset):
             puf = uprate_puf(puf, 2015, self.time_period)
         elif self.time_period >= 2021:
             puf_2021 = PUF_2021(require=True)
-            print("Creating uprating factors table...")
             uprating = create_policyengine_uprating_factors_table()
             arrays = puf_2021.load_dataset()
             for variable in uprating:
@@ -312,19 +309,15 @@ class PUF(Dataset):
                         2021
                     ].values[0]
                     growth = current_index / start_index
-                    print(f"Uprating {variable} by {growth-1:.1%}")
                     arrays[variable] = arrays[variable] * growth
             self.save_dataset(arrays)
             return
 
         puf = puf[puf.MARS != 0]  # Remove aggregate records
 
-        print("Pre-processing PUF...")
         original_recid = puf.RECID.values.copy()
         puf = preprocess_puf(puf)
-        print("Imputing missing PUF demographics...")
         puf = impute_missing_demographics(puf, demographics)
-        print("Imputing PUF pension contributions...")
         puf["pre_tax_contributions"] = impute_pension_contributions_to_puf(
             puf[["employment_income"]]
         )

@@ -20,6 +20,7 @@ dependencies = [
     "requests",
     "tqdm",
     "tabulate",
+    "build"
 ]
 
 [project.optional-dependencies]

@@ -12,6 +12,7 @@ from policyengine_us_data.data_storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS_2024,
     CPS_2019,
+    CPS_2024,
 )
 import torch
 
@@ -54,7 +55,7 @@ def reweight(
     optimizer = torch.optim.Adam([weights], lr=1)
     from tqdm import trange
 
-    iterator = trange(10_000)
+    iterator = trange(1_000)
     for i in iterator:
         optimizer.zero_grad()
         l, worst_name, worst_val = loss(torch.exp(weights))

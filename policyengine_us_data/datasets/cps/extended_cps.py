@@ -68,8 +68,6 @@ IMPUTED_VARIABLES = [
     "recapture_of_investment_credit",
 ]
 
-IMPUTED_VARIABLES = IMPUTED_VARIABLES[:7]
-
 
 class ExtendedCPS(Dataset):
     cps: Type[CPS]

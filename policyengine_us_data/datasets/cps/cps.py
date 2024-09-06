@@ -67,7 +67,7 @@ class CPS(Dataset):
 
 def add_rent(cps: h5py.File, person: DataFrame, household: DataFrame):
     is_renting = household.H_TENURE == 2
-    AVERAGE_RENT = 1_700 * 12
+    AVERAGE_RENT = 1_300 * 12
     # Project down to the first person in the household
     person_is_renting = (
         household.set_index("H_SEQ").loc[person.PH_SEQ].H_TENURE.values == 2

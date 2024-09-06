@@ -238,17 +238,17 @@ def build_loss_matrix(dataset: type, time_period):
     spm_threshold_agi = pd.read_csv(STORAGE_FOLDER / "spm_threshold_agi.csv")
 
     for _, row in spm_threshold_agi.iterrows():
-        spm_unit_agi = sim.calculate("adjusted_gross_income", map_to="spm_unit").values
+        spm_unit_agi = sim.calculate(
+            "adjusted_gross_income", map_to="spm_unit"
+        ).values
         spm_threshold = sim.calculate("spm_unit_spm_threshold").values
-        in_threshold_range = (
-            (spm_threshold >= row["lower_spm_threshold"])
-            * (spm_threshold < row["upper_spm_threshold"])
+        in_threshold_range = (spm_threshold >= row["lower_spm_threshold"]) * (
+            spm_threshold < row["upper_spm_threshold"]
         )
         label = f"census/agi_in_spm_threshold_decile_{int(row['decile'])}"
         loss_matrix[label] = sim.map_result(
             in_threshold_range * spm_unit_agi, "spm_unit", "household"
         )
-        loss_matrix[[label]].to_csv("test.csv")
         targets_array.append(row["adjusted_gross_income"])
 
         label = f"census/count_in_spm_threshold_decile_{int(row['decile'])}"

@@ -72,16 +72,19 @@ def upload(
         **auth_headers,
     }
 
-    with open(file_path, "rb") as f, tqdm(
-        total=file_size, unit="B", unit_scale=True, desc=file_name
-    ) as pbar:
-
-        def progress_callback(monitor):
-            pbar.update(monitor.bytes_read - pbar.n)
-
-        response = requests.post(
-            url, headers=headers, data=f, hooks={"response": progress_callback}
-        )
+    with open(file_path, "rb") as f:
+        with tqdm(total=file_size, unit="B", unit_scale=True) as pbar:
+            response = requests.post(
+                url,
+                headers=headers,
+                data=f,
+                stream=True,
+                hooks=dict(
+                    response=lambda r, *args, **kwargs: pbar.update(
+                        len(r.content)
+                    )
+                ),
+            )
 
     if response.status_code != 201:
         raise ValueError(

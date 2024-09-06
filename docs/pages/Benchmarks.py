@@ -36,6 +36,8 @@ def compare_datasets():
         comparison["Dataset"] = dataset.label
         comparison_combined = pd.concat([comparison_combined, comparison])
 
+    comparison_combined.to_csv("comparisons.csv", index=False)
+
     return comparison_combined
 
 

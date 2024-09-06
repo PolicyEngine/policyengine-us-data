@@ -39,13 +39,9 @@ def reweight(
         estimate = weights @ loss_matrix
         if torch.isnan(estimate).any():
             raise ValueError("Estimate contains NaNs")
-        one_way_rel_error = (
+        rel_error = (
             ((estimate - targets_array) + 1) / (targets_array + 1)
         ) ** 2
-        other_way_rel_error = (
-            ((targets_array - estimate) + 1) / (estimate + 1)
-        ) ** 2
-        rel_error = one_way_rel_error + other_way_rel_error
         if torch.isnan(rel_error).any():
             raise ValueError("Relative error contains NaNs")
         worst_name = target_names[torch.argmax(rel_error)]
@@ -133,7 +129,10 @@ class EnhancedCPS(Dataset):
             optimised_weights = reweight(
                 original_weights, loss_matrix, targets_array
             )
-            data["household_weight"][year] = optimised_weights
+            if self.input_dataset.data_format == Dataset.TIME_PERIOD_ARRAYS:
+                data["household_weight"][year] = optimised_weights
+            else:
+                data["household_weight"] = optimised_weights
 
         self.save_dataset(data)
 

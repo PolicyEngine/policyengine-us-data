@@ -31,7 +31,7 @@ def compare_datasets():
         comparison["Abs. Error %"] = (
             (comparison["Abs. Error"] / comparison["Actual"].abs())
             .replace([np.inf, -np.inf], np.nan)
-            .fillna(1)
+            .fillna(0)
         )
         comparison["Dataset"] = dataset.label
         comparison_combined = pd.concat([comparison_combined, comparison])

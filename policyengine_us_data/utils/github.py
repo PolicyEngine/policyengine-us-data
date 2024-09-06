@@ -1,6 +1,9 @@
 import os
 import requests
 from tqdm import tqdm
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+import time
 
 auth_headers = {
     "Authorization": f"token {os.environ.get('POLICYENGINE_US_DATA_GITHUB_TOKEN')}",
@@ -59,6 +62,15 @@ def download(
         f.write(response.content)
 
 
+def create_session_with_retries():
+    session = requests.Session()
+    retries = Retry(
+        total=5, backoff_factor=1, status_forcelist=[502, 503, 504]
+    )
+    session.mount("https://", HTTPAdapter(max_retries=retries))
+    return session
+
+
 def upload(
     org: str, repo: str, release_tag: str, file_name: str, file_path: str
 ) -> bytes:
@@ -72,26 +84,44 @@ def upload(
         **auth_headers,
     }
 
-    with open(file_path, "rb") as f:
-        with tqdm(total=file_size, unit="B", unit_scale=True) as pbar:
-            response = requests.post(
-                url,
-                headers=headers,
-                data=f,
-                stream=True,
-                hooks=dict(
-                    response=lambda r, *args, **kwargs: pbar.update(
-                        len(r.content)
+    session = create_session_with_retries()
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with open(file_path, "rb") as f:
+                with tqdm(total=file_size, unit="B", unit_scale=True) as pbar:
+                    response = session.post(
+                        url,
+                        headers=headers,
+                        data=f,
+                        stream=True,
+                        hooks=dict(
+                            response=lambda r, *args, **kwargs: pbar.update(
+                                len(r.content)
+                            )
+                        ),
+                        timeout=300,  # 5 minutes timeout
                     )
-                ),
-            )
 
-    if response.status_code != 201:
-        raise ValueError(
-            f"Invalid response code {response.status_code} for url {url}. Received: {response.text}"
-        )
+            if response.status_code == 201:
+                return response.json()
+            else:
+                print(
+                    f"Attempt {attempt + 1} failed with status code {response.status_code}. Response: {response.text}"
+                )
 
-    return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Attempt {attempt + 1} failed with error: {str(e)}")
+
+        if attempt < max_retries - 1:
+            wait_time = (
+                attempt + 1
+            ) * 60  # Wait 1 minute, then 2 minutes, then 3 minutes
+            print(f"Waiting {wait_time} seconds before retrying...")
+            time.sleep(wait_time)
+
+    raise ValueError(f"Failed to upload file after {max_retries} attempts.")
 
 
 def set_pr_auto_review_comment(text: str):

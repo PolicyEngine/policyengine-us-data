@@ -18,6 +18,14 @@ PREREQUISITES = [
         "repo": "policyengine-us-data",
         "file_name": "soi.csv",
     },
+    {
+        "repo": "policyengine-us-data",
+        "file_name": "np2023_d5_mid.csv",
+    },
+    {
+        "repo": "policyengine-us-data",
+        "file_name": "soi.csv",
+    },
 ]
 
 

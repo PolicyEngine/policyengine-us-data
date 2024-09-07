@@ -25,7 +25,7 @@ PREREQUISITES = [
     {
         "repo": "policyengine-us-data",
         "file_name": "soi.csv",
-    }
+    },
 ]
 
 

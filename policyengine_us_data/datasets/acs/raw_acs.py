@@ -53,6 +53,7 @@ HOUSEHOLD_COLUMNS = [
     "GRNTP",  # Gross rent
 ]
 
+
 class RawACS(PublicDataset):
     name = "raw_acs"
     label = "Raw ACS"
@@ -107,7 +108,9 @@ class RawACS(PublicDataset):
             )
             raise e
 
+
 RawACS = RawACS()
+
 
 def concat_zipped_csvs(
     url: str, prefix: str, columns: List[str]
@@ -139,6 +142,7 @@ def concat_zipped_csvs(
     res = pd.concat([a, b]).fillna(0)
     res.columns = res.columns.str.upper()
     return res
+
 
 def create_spm_unit_table(storage: pd.HDFStore, person: pd.DataFrame) -> None:
     SPM_UNIT_COLUMNS = [

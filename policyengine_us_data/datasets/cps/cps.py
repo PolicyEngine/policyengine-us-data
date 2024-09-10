@@ -567,7 +567,7 @@ class CPS_2024(CPS):
     label = "CPS 2024 (2022-based)"
     file_path = STORAGE_FOLDER / "cps_2024.h5"
     time_period = 2024
-    # url = "release://policyengine/policyengine-us-data/release/cps_2024.h5"
+    url = "release://policyengine/policyengine-us-data/release/cps_2024.h5"
 
 
 if __name__ == "__main__":

@@ -1,4 +1,6 @@
-- bump: patch
+- bump: minor
   changes:
     changed:
-    - Improved changelogging
+    - Improved logging
+    - Updated required Python version
+    - Removed setuptools_scm

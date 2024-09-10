@@ -7,6 +7,28 @@ on:
     branches: [main]
 
 jobs:
+  check-version:
+    name: Check version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for all tags and branches
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install package
+        run: pip install -e ".[dev]"
+      - name: Build changelog
+        run: pip install yaml-changelog && make changelog
+      - name: Preview changelog update
+        run: ".github/get-changelog-diff.sh"
+      - name: Check version number has been properly updated
+        run: ".github/is-version-number-acceptable.sh"
   publish-to-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
@@ -24,6 +46,8 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Build package
         run: python -m build
+      - name: Publish a git tag
+        run: ".github/publish-git-tag.sh || true"
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:

@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "policyengine_us_data"
-dynamic = ["version"]
+version = "1.0.0"
 description = "A package to create representative microdata for the US."
 readme = "README.md"
 authors = [
     {name = "PolicyEngine", email = "hello@policyengine.org"},
 ]
 license = {file = "LICENSE"}
-requires-python = ">=3.6"
+requires-python = ">=3.10"
 dependencies = [
     "policyengine_core",
     "tables",
@@ -20,7 +20,8 @@ dependencies = [
     "requests",
     "tqdm",
     "tabulate",
-    "build"
+    "build",
+    "tomli"
 ]
 
 [project.optional-dependencies]
@@ -37,11 +38,6 @@ include-package-data = true
 
 [tool.setuptools.package-data]
 "policyengine_us_data" = ["**/*"]
-
-[tool.setuptools_scm]
-write_to = "policyengine_us_data/_version.py"
-version_scheme = "no-guess-dev"
-local_scheme = "no-local-version"
 
 [tool.pytest.ini_options]
 addopts = "-v"

@@ -554,8 +554,8 @@ class CPS_2022(CPS):
 
 
 class CPS_2023(CPS):
-    name = "cps_2022"
-    label = "CPS 2022"
+    name = "cps_2023"
+    label = "CPS 2023"
     raw_cps = CensusCPS_2023
     previous_year_raw_cps = CensusCPS_2022
     file_path = STORAGE_FOLDER / "cps_2023.h5"

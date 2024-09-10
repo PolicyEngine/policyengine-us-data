@@ -117,12 +117,14 @@ class CensusCPS(Dataset):
             ]
         return person[spm_unit_columns].groupby(person.SPM_ID).first()
 
+
 class CensusCPS_2023(CensusCPS):
     time_period = 2023
     label = "Census CPS (2023)"
     name = "census_cps_2023"
     file_path = STORAGE_FOLDER / "census_cps_2023.h5"
     data_format = Dataset.TABLES
+
 
 class CensusCPS_2022(CensusCPS):
     time_period = 2022

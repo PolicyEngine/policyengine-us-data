@@ -90,6 +90,11 @@ jobs:
           POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
       - name: Build datasets
         run: make data
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: cps_2024.h5
+          path: policyengine_us_data/data_storage/cps_2024.h5
       - name: Run tests
         run: pytest
 

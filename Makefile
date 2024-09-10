@@ -32,6 +32,7 @@ documentation:
 	streamlit run docs/Home.py
 
 data:
+	python policyengine_us_data/datasets/cps/cps.py
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 
 clean:

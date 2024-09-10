@@ -133,6 +133,16 @@ jobs:
           POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
       - name: Build datasets
         run: make data
+      - name: Upload CPS 2024
+        uses: actions/upload-artifact@v4
+        with:
+          name: cps_2024.h5
+          path: policyengine_us_data/data_storage/cps_2024.h5
+      - name: Upload ECPS 2024
+        uses: actions/upload-artifact@v4
+        with:
+          name: enhanced_cps_2024.h5
+          path: policyengine_us_data/data_storage/enhanced_cps_2024.h5
       - name: Upload data
         run: make upload
         env:

@@ -26,9 +26,9 @@ class CPS(Dataset):
         """
 
         if self.raw_cps is None:
-            # Extrapolate from CPS 2022
+            # Extrapolate from CPS 2023
 
-            cps_2022 = CPS_2022(require=True)
+            cps_2022 = CPS_2023(require=True)
             uprating = create_policyengine_uprating_factors_table()
             arrays = cps_2022.load_dataset()
             for variable in uprating.index.unique():
@@ -37,7 +37,7 @@ class CPS(Dataset):
                         self.time_period
                     ].values[0]
                     start_index = uprating[uprating.index == variable][
-                        2021
+                        2023
                     ].values[0]
                     growth = current_index / start_index
                     arrays[variable] = arrays[variable] * growth
@@ -553,8 +553,17 @@ class CPS_2022(CPS):
     time_period = 2022
 
 
+class CPS_2023(CPS):
+    name = "cps_2022"
+    label = "CPS 2022"
+    raw_cps = CensusCPS_2023
+    previous_year_raw_cps = CensusCPS_2022
+    file_path = STORAGE_FOLDER / "cps_2023.h5"
+    time_period = 2023
+
 class CPS_2024(CPS):
     name = "cps_2024"
     label = "CPS 2024 (2022-based)"
     file_path = STORAGE_FOLDER / "cps_2024.h5"
     time_period = 2024
+    #url = "release://policyengine/policyengine-us-data/release/cps_2024.h5"

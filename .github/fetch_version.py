@@ -1,4 +1,4 @@
-from __version__ import __version__
+from policyengine_us_data.__version__ import __version__
 
 
 def fetch_version():

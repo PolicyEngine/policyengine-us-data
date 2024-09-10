@@ -33,6 +33,7 @@ documentation:
 
 data:
 	python policyengine_us_data/datasets/cps/cps.py
+	python policyengine_us_data/datasets/cps/enhanced_cps.py
 
 clean:
 	rm -f policyengine_us_data/data_storage/puf_2015.csv

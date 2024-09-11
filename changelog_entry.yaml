@@ -1,0 +1,6 @@
+- bump: patch
+  changes:
+    fixed:
+    - Added GitHub Actions test job to PR and push
+    - Run publish to PyPI GitHub Actions job only on push
+    - Fix changelog GitHub Actions job

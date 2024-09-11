@@ -3,3 +3,14 @@
     - Initialized changelogging
   date: 2024-09-09 17:29:10
   version: 1.0.0
+- changes:
+    added:
+    - Improved changelog
+  date: 2024-09-09 17:29:10
+- bump: minor
+  changes:
+    changed:
+    - Improved logging
+    - Updated required Python version
+    - Removed setuptools_scm
+  date: 2024-09-11 13:48:15

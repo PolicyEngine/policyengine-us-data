@@ -21,14 +21,23 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - name: Install package
-        run: pip install -e ".[dev]"
+      # - name: Install package
+      #   run: pip install -e ".[dev]"
       - name: Build changelog
-        run: pip install yaml-changelog && make changelog
+        run: pip install "yaml-changelog>=0.1.7" && make changelog
       - name: Preview changelog update
         run: ".github/get-changelog-diff.sh"
       - name: Check version number has been properly updated
         run: ".github/is-version-number-acceptable.sh"
+      - name: Update changelog
+        # if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: EndBug/add-and-commit@v9
+        with:
+          add: "."
+          committer_name: Github Actions[bot]
+          author_name: Github Actions[bot]
+          message: Update PolicyEngine US data
+          github_token: ${{ secrets.POLICYENGINE_GITHUB }}
   publish-to-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
@@ -73,6 +82,7 @@ jobs:
   test:
     name: Build and Test
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

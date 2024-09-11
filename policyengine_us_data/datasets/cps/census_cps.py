@@ -118,6 +118,14 @@ class CensusCPS(Dataset):
         return person[spm_unit_columns].groupby(person.SPM_ID).first()
 
 
+class CensusCPS_2023(CensusCPS):
+    time_period = 2023
+    label = "Census CPS (2023)"
+    name = "census_cps_2023"
+    file_path = STORAGE_FOLDER / "census_cps_2023.h5"
+    data_format = Dataset.TABLES
+
+
 class CensusCPS_2022(CensusCPS):
     time_period = 2022
     label = "Census CPS (2022)"
@@ -164,6 +172,7 @@ CPS_URL_BY_YEAR = {
     2020: "https://www2.census.gov/programs-surveys/cps/datasets/2021/march/asecpub21csv.zip",
     2021: "https://www2.census.gov/programs-surveys/cps/datasets/2022/march/asecpub22csv.zip",
     2022: "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asecpub23csv.zip",
+    2023: "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asecpub24csv.zip",
 }
 
 

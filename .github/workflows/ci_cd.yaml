@@ -30,7 +30,7 @@ jobs:
       - name: Check version number has been properly updated
         run: ".github/is-version-number-acceptable.sh"
       - name: Update changelog
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        # if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: EndBug/add-and-commit@v9
         with:
           add: "."

@@ -81,6 +81,7 @@ def upload(
     headers = {
         "Accept": "application/vnd.github.v3+json",
         "Content-Type": "application/octet-stream",
+        "Content-Length": str(file_size),
         **auth_headers,
     }
 
@@ -95,14 +96,15 @@ def upload(
                         url,
                         headers=headers,
                         data=f,
-                        stream=True,
-                        hooks=dict(
-                            response=lambda r, *args, **kwargs: pbar.update(
-                                len(r.content)
-                            )
-                        ),
+                        # stream=True,
+                        # hooks=dict(
+                        #     response=lambda r, *args, **kwargs: pbar.update(
+                        #         len(r.content)
+                        #     )
+                        # ),
                         timeout=300,  # 5 minutes timeout
                     )
+                    pbar.update(file_size)
 
             if response.status_code == 201:
                 return response.json()

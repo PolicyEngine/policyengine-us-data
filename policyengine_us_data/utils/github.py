@@ -32,7 +32,9 @@ def get_asset_url(
 def get_release_id(org: str, repo: str, release_tag: str) -> int:
     url = f"https://api.github.com/repos/{org}/{repo}/releases/tags/{release_tag}"
     response = requests.get(url, headers=auth_headers)
-    if response.status_code != 200:
+    if response.status_code == 404:
+        raise ValueError(f"Release {release_tag} not found in {org}/{repo}.")
+    elif response.status_code != 200:
         raise ValueError(
             f"Invalid response code {response.status_code} for url {url}."
         )

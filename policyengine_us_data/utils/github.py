@@ -1,6 +1,7 @@
 import os
 import requests
 from tqdm import tqdm
+from tqdm.utils import CallbackIOWrapper
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import time
@@ -168,20 +169,14 @@ def create_asset(org: str, repo: str, release_id: int, file_name: str, file_path
     for attempt in range(max_retries):
         try:
             with open(file_path, "rb") as f:
-                with tqdm(total=file_size, unit="B", unit_scale=True) as pbar:
+                with tqdm(total=file_size, unit="B", unit_scale=True, unit_divisor=1024) as pbar:
+                    wrapped_file = CallbackIOWrapper(pbar.update, f, "read")
                     response = session.post(
                         url,
                         headers=headers,
-                        data=f,
-                        # stream=True,
-                        # hooks=dict(
-                        #     response=lambda r, *args, **kwargs: pbar.update(
-                        #         len(r.content)
-                        #     )
-                        # ),
+                        data=wrapped_file,
                         timeout=300,  # 5 minutes timeout
                     )
-                    pbar.update(file_size)
 
             if response.status_code == 201:
                 return response.json()

@@ -26,3 +26,11 @@ upload(
     "puf_2024.h5",
     FOLDER / "puf_2015.h5",
 )
+
+upload(
+    "PolicyEngine",
+    "policyengine-us-data",
+    "release",
+    "acs_2022.h5",
+    FOLDER / "acs_2022.h5",
+)

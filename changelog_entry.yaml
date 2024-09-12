@@ -1,0 +1,8 @@
+- bump: minor
+  changes:
+    changed:
+    - Fixed upload script's use of tqdm
+    added:
+    - Added conditional deletion of existing resource
+    - Added downloading of existing resources for backup purposes
+    - Added tqdm to download script

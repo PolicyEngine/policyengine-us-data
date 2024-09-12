@@ -11,34 +11,34 @@ class ACS(Dataset):
     name = "acs"
     label = "ACS"
     data_format = Dataset.ARRAYS
-    time_period = None  
+    time_period = None
 
     def __init__(self):
         super().__init__()
-        self.raw_acs = RawACS() 
+        self.raw_acs = RawACS()
 
     def generate(self) -> None:
         """Generates the ACS dataset."""
         if self.time_period is None:
             raise ValueError("time_period must be set in child classes")
-        
+
         if os.path.exists(self.file_path):
             os.remove(self.file_path)
-        
+
         if self.time_period not in self.raw_acs.years:
             self.raw_acs.generate(self.time_period)
-        
+
         raw_data = self.raw_acs.load(self.time_period)
         acs = h5py.File(self.file_path, mode="w")
         person, spm_unit, household = [
             raw_data[entity] for entity in ("person", "spm_unit", "household")
         ]
-        
+
         self.add_id_variables(acs, person, spm_unit, household)
         self.add_person_variables(acs, person)
         self.add_spm_variables(acs, spm_unit)
         self.add_household_variables(acs, household)
-        
+
         acs.close()
 
     @staticmethod
@@ -78,6 +78,7 @@ class ACS(Dataset):
     def add_household_variables(acs: h5py.File, household: DataFrame) -> None:
         acs["household_vehicles_owned"] = household.VEH
         acs["state_fips"] = acs["household_state_fips"] = household.ST
+
 
 class ACS_2022(ACS):
     name = "acs_2022"

@@ -92,7 +92,9 @@ class RawACS(Dataset):
                 spm_person.columns = spm_person.columns.str.upper()
                 self.create_spm_unit_table(storage, spm_person)
 
-            self.years.append(year)  # Add the year to the list of available years
+            self.years.append(
+                year
+            )  # Add the year to the list of available years
             logging.info(f"Successfully generated Raw ACS data for {year}")
         except Exception as e:
             self.remove(year)
@@ -124,7 +126,9 @@ class RawACS(Dataset):
         return res
 
     @staticmethod
-    def create_spm_unit_table(storage: pd.HDFStore, person: pd.DataFrame) -> None:
+    def create_spm_unit_table(
+        storage: pd.HDFStore, person: pd.DataFrame
+    ) -> None:
         SPM_UNIT_COLUMNS = [
             "CAPHOUSESUB",
             "CAPWKCCXPNS",
@@ -161,17 +165,19 @@ class RawACS(Dataset):
         )
 
         original_person_table = storage["person"]
-        
+
         # Convert SERIALNO to string in both DataFrames
         JOIN_COLUMNS = ["SERIALNO", "SPORDER"]
-        original_person_table[JOIN_COLUMNS] = original_person_table[JOIN_COLUMNS].astype(int)
+        original_person_table[JOIN_COLUMNS] = original_person_table[
+            JOIN_COLUMNS
+        ].astype(int)
         person[JOIN_COLUMNS] = person[JOIN_COLUMNS].astype(int)
-        
+
         # Add SPM_ID from the SPM person table to the original person table.
         combined_person_table = pd.merge(
             original_person_table,
             person[JOIN_COLUMNS + ["SPM_ID"]],
-            on=JOIN_COLUMNS
+            on=JOIN_COLUMNS,
         )
 
         storage["person"] = combined_person_table
@@ -179,8 +185,10 @@ class RawACS(Dataset):
 
     def load(self, year: int) -> dict:
         if not self.file(year).exists():
-            raise FileNotFoundError(f"Raw ACS data for {year} not found. Please generate it first.")
-        
+            raise FileNotFoundError(
+                f"Raw ACS data for {year} not found. Please generate it first."
+            )
+
         with pd.HDFStore(self.file(year), mode="r") as store:
             return {
                 "person": store["person"],

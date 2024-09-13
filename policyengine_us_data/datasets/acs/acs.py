@@ -4,8 +4,8 @@ import h5py
 from policyengine_us_data.datasets.acs.raw_acs import RawACS
 from policyengine_us_data.data_storage import STORAGE_FOLDER
 from pandas import DataFrame
+import numpy as np
 import os
-
 
 class ACS(Dataset):
     name = "acs"
@@ -48,17 +48,21 @@ class ACS(Dataset):
         spm_unit: DataFrame,
         household: DataFrame,
     ) -> None:
-        acs["person_id"] = person.SERIALNO * 1e2 + person.SPORDER
+        # Create numeric IDs based on SERIALNO
+        person['numeric_id'] = person['SERIALNO'].astype('category').cat.codes
+        household['numeric_id'] = household['SERIALNO'].astype('category').cat.codes
+
+        acs["person_id"] = person['numeric_id'] * 100 + person.SPORDER.astype(int)
         acs["person_spm_unit_id"] = person.SPM_ID
-        acs["spm_unit_id"] = spm_unit.SPM_ID
-        acs["tax_unit_id"] = spm_unit.SPM_ID
-        acs["family_id"] = spm_unit.SPM_ID
-        acs["person_household_id"] = person.SERIALNO
+        acs["spm_unit_id"] = spm_unit.index
+        acs["tax_unit_id"] = spm_unit.index  # Using SPM unit as proxy for tax unit
+        acs["family_id"] = spm_unit.index  # Using SPM unit as proxy for family
+        acs["person_household_id"] = person['numeric_id']
         acs["person_tax_unit_id"] = person.SPM_ID
         acs["person_family_id"] = person.SPM_ID
-        acs["household_id"] = household.SERIALNO
-        acs["person_marital_unit_id"] = person.SERIALNO
-        acs["marital_unit_id"] = person.SERIALNO.unique()
+        acs["household_id"] = household['numeric_id']
+        acs["person_marital_unit_id"] = person['numeric_id']
+        acs["marital_unit_id"] = np.unique(person['numeric_id'])
         acs["person_weight"] = person.PWGTP
         acs["household_weight"] = household.WGTP
 
@@ -77,7 +81,7 @@ class ACS(Dataset):
     @staticmethod
     def add_household_variables(acs: h5py.File, household: DataFrame) -> None:
         acs["household_vehicles_owned"] = household.VEH
-        acs["state_fips"] = acs["household_state_fips"] = household.ST
+        acs["state_fips"] = acs["household_state_fips"] = household.ST.astype(int)
 
 
 class ACS_2022(ACS):

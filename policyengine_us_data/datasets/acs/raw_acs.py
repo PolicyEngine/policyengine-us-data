@@ -52,7 +52,6 @@ HOUSEHOLD_COLUMNS = [
     "GRNTP",  # Gross rent
 ]
 
-
 class RawACS(Dataset):
     name = "raw_acs"
     label = "Raw ACS"
@@ -76,15 +75,11 @@ class RawACS(Dataset):
         try:
             with pd.HDFStore(self.file(year)) as storage:
                 logging.info(f"Downloading household file")
-                household = self.concat_zipped_csvs(
-                    household_url, "psam_hus", HOUSEHOLD_COLUMNS
-                )
+                household = self.process_household_data(household_url, "psam_hus", HOUSEHOLD_COLUMNS)
                 storage["household"] = household
 
                 logging.info(f"Downloading person file")
-                person = self.concat_zipped_csvs(
-                    person_url, "psam_pus", PERSON_COLUMNS
-                )
+                person = self.process_person_data(person_url, "psam_pus", PERSON_COLUMNS)
                 storage["person"] = person
 
                 logging.info(f"Downloading SPM unit file")
@@ -92,21 +87,15 @@ class RawACS(Dataset):
                 spm_person.columns = spm_person.columns.str.upper()
                 self.create_spm_unit_table(storage, spm_person)
 
-            self.years.append(
-                year
-            )  # Add the year to the list of available years
+            self.years.append(year)
             logging.info(f"Successfully generated Raw ACS data for {year}")
         except Exception as e:
             self.remove(year)
-            logging.error(
-                f"Attempted to extract and save the CSV files, but encountered an error: {e}"
-            )
+            logging.error(f"Error generating Raw ACS data for {year}: {e}")
             raise e
 
     @staticmethod
-    def concat_zipped_csvs(
-        url: str, prefix: str, columns: List[str]
-    ) -> pd.DataFrame:
+    def process_household_data(url: str, prefix: str, columns: List[str]) -> pd.DataFrame:
         req = requests.get(url, stream=True)
         with BytesIO() as f:
             pbar = tqdm()
@@ -116,13 +105,41 @@ class RawACS(Dataset):
                     f.write(chunk)
             f.seek(0)
             zf = ZipFile(f)
-            logging.info(f"Loading the first half of the dataset")
-            a = pd.read_csv(zf.open(prefix + "a.csv"), usecols=columns)
-            logging.info(f"Loading the second half of the dataset")
-            b = pd.read_csv(zf.open(prefix + "b.csv"), usecols=columns)
-        logging.info(f"Concatenating datasets")
+            logging.info(f"Loading the first half of the household dataset")
+            a = pd.read_csv(zf.open(prefix + "a.csv"), usecols=columns, dtype={'SERIALNO': str})
+            logging.info(f"Loading the second half of the household dataset")
+            b = pd.read_csv(zf.open(prefix + "b.csv"), usecols=columns, dtype={'SERIALNO': str})
+        logging.info(f"Concatenating household datasets")
         res = pd.concat([a, b]).fillna(0)
         res.columns = res.columns.str.upper()
+        
+        # Ensure correct data types
+        res['ST'] = res['ST'].astype(int)
+        
+        return res
+
+    @staticmethod
+    def process_person_data(url: str, prefix: str, columns: List[str]) -> pd.DataFrame:
+        req = requests.get(url, stream=True)
+        with BytesIO() as f:
+            pbar = tqdm()
+            for chunk in req.iter_content(chunk_size=1024):
+                if chunk:
+                    pbar.update(len(chunk))
+                    f.write(chunk)
+            f.seek(0)
+            zf = ZipFile(f)
+            logging.info(f"Loading the first half of the person dataset")
+            a = pd.read_csv(zf.open(prefix + "a.csv"), usecols=columns, dtype={'SERIALNO': str})
+            logging.info(f"Loading the second half of the person dataset")
+            b = pd.read_csv(zf.open(prefix + "b.csv"), usecols=columns, dtype={'SERIALNO': str})
+        logging.info(f"Concatenating person datasets")
+        res = pd.concat([a, b]).fillna(0)
+        res.columns = res.columns.str.upper()
+        
+        # Ensure correct data types
+        res['SPORDER'] = res['SPORDER'].astype(int)
+        
         return res
 
     @staticmethod
@@ -166,12 +183,12 @@ class RawACS(Dataset):
 
         original_person_table = storage["person"]
 
-        # Convert SERIALNO to string in both DataFrames
+        # Ensure SERIALNO is treated as string
         JOIN_COLUMNS = ["SERIALNO", "SPORDER"]
-        original_person_table[JOIN_COLUMNS] = original_person_table[
-            JOIN_COLUMNS
-        ].astype(int)
-        person[JOIN_COLUMNS] = person[JOIN_COLUMNS].astype(int)
+        original_person_table['SERIALNO'] = original_person_table['SERIALNO'].astype(str)
+        original_person_table['SPORDER'] = original_person_table['SPORDER'].astype(int)
+        person['SERIALNO'] = person['SERIALNO'].astype(str)
+        person['SPORDER'] = person['SPORDER'].astype(int)
 
         # Add SPM_ID from the SPM person table to the original person table.
         combined_person_table = pd.merge(

@@ -21,3 +21,8 @@
     - Run publish to PyPI GitHub Actions job only on push
     - Fix changelog GitHub Actions job
   date: 2024-09-11 16:40:10
+- bump: minor
+  changes:
+    added:
+    - Migrate the ACS Dataset to the repository.
+  date: 2024-09-14 17:22:50

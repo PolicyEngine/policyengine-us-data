@@ -30,3 +30,8 @@
     changed:
     - Fixed upload script's use of tqdm
   date: 2024-09-12 19:47:01
+- bump: patch
+  changes:
+    fixed:
+    - Bug in docs where prerequisites wouldn't load in GCP.
+  date: 2024-09-16 08:04:08

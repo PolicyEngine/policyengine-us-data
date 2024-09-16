@@ -1,5 +1,7 @@
 import streamlit as st
+from policyengine_us_data.utils.docs_prerequisites import download_data
 
+download_data()
 st.title("Distributions")
 
 st.write(

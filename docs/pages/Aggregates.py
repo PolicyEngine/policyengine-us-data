@@ -1,4 +1,7 @@
 import streamlit as st
+from policyengine_us_data.utils.docs_prerequisites_download import download_data
+
+download_data()
 
 st.title("Aggregates")
 

@@ -1,6 +1,7 @@
 import os
 import requests
 from tqdm import tqdm
+from tqdm.utils import CallbackIOWrapper
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import time
@@ -32,11 +33,54 @@ def get_asset_url(
 def get_release_id(org: str, repo: str, release_tag: str) -> int:
     url = f"https://api.github.com/repos/{org}/{repo}/releases/tags/{release_tag}"
     response = requests.get(url, headers=auth_headers)
-    if response.status_code != 200:
+    if response.status_code == 404:
+        raise ValueError(f"Release {release_tag} not found in {org}/{repo}.")
+    elif response.status_code != 200:
         raise ValueError(
             f"Invalid response code {response.status_code} for url {url}."
         )
     return response.json()["id"]
+
+
+def get_all_assets(org: str, repo: str, release_id: int) -> list:
+    url = f"https://api.github.com/repos/{org}/{repo}/releases/{release_id}/assets"
+    response = requests.get(url, headers=auth_headers)
+    if response.status_code != 200:
+        raise ValueError(
+            f"Invalid response code {response.status_code} for url {url}."
+        )
+    return response.json()
+
+
+def get_asset_id(
+    org: str, repo: str, release_id: int, file_name: str
+) -> int | None:
+
+    # Get all assets in the release (schema: array of JSON objects)
+    assets: dict = get_all_assets(org, repo, release_id)
+
+    # Iterate over to see if the file is already released
+    for asset in assets:
+        if asset["name"] == file_name:
+            return asset["id"]
+
+    return None
+
+
+def delete_asset(org: str, repo: str, asset_id: int):
+    url = (
+        f"https://api.github.com/repos/{org}/{repo}/releases/assets/{asset_id}"
+    )
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        **auth_headers,
+    }
+
+    response = requests.delete(url, headers=headers)
+    if response.status_code != 204:
+        raise ValueError(
+            f"Invalid response code {response.status_code} for url {url}."
+        )
 
 
 def download(
@@ -45,21 +89,29 @@ def download(
 
     url = get_asset_url(org, repo, release_tag, file_name)
 
-    response = requests.get(
-        url,
-        headers={
-            "Accept": "application/octet-stream",
-            **auth_headers,
-        },
-    )
+    try:
 
-    if response.status_code != 200:
-        raise ValueError(
-            f"Invalid response code {response.status_code} for url {url}."
+        response = requests.get(
+            url,
+            stream=True,
+            headers={
+                "Accept": "application/octet-stream",
+                **auth_headers,
+            },
         )
 
-    with open(file_path, "wb") as f:
-        f.write(response.content)
+        file_size = int(response.headers.get("Content-Length", 0))
+
+        with open(file_path, "wb") as f:
+            with tqdm(
+                total=file_size, unit="B", unit_scale=True, unit_divisor=1024
+            ) as pbar:
+                for chunk in response.iter_content(chunk_size=1024):
+                    f.write(chunk)
+                    pbar.update(len(chunk))
+
+    except Exception as e:
+        raise ValueError(f"Failed to download file: {str(e)}")
 
 
 def create_session_with_retries():
@@ -74,13 +126,61 @@ def create_session_with_retries():
 def upload(
     org: str, repo: str, release_tag: str, file_name: str, file_path: str
 ) -> bytes:
+
+    # Pull release ID
     release_id = get_release_id(org, repo, release_tag)
+
+    # Fetch asset ID if the file is already released, else None
+    asset_id = get_asset_id(org, repo, release_id, file_name)
+
+    try:
+
+        temp_file_path = "asset_fallback.tmp"
+
+        if asset_id is not None:
+            # If the asset already exists, download it. There's unfortunately
+            # no native transaction feature in GitHub releases, so we'll download
+            # in case our subsequent delete-upload fails
+
+            print(
+                f"Asset {file_name} already exists in release {release_tag}. Downloading a backup..."
+            )
+
+            download(org, repo, release_tag, file_name, temp_file_path)
+
+            # Now, delete the asset from the release
+            print(f"Deleting asset {file_name} from release {release_tag}...")
+            delete_asset(org, repo, asset_id)
+
+        # Now, upload the asset
+        print(f"Uploading {file_name} to release {release_tag}...")
+        create_asset(org, repo, release_id, file_name, file_path)
+
+        # If the upload was successful, delete the temporary file
+        if os.path.exists(temp_file_path):
+            print(f"Deleting backup file...")
+            os.remove(temp_file_path)
+
+    except Exception as e:
+        print(f"Error uploading {file_name}: {str(e)}")
+
+        if os.path.exists(temp_file_path):
+            print(f"Restoring backup file...")
+            create_asset(org, repo, release_id, file_name, temp_file_path)
+        raise e
+
+
+def create_asset(
+    org: str, repo: str, release_id: int, file_name: str, file_path: str
+):
+
     url = f"https://uploads.github.com/repos/{org}/{repo}/releases/{release_id}/assets?name={file_name}"
 
     file_size = os.path.getsize(file_path)
     headers = {
         "Accept": "application/vnd.github.v3+json",
         "Content-Type": "application/octet-stream",
+        "Content-Length": str(file_size),
         **auth_headers,
     }
 
@@ -90,17 +190,17 @@ def upload(
     for attempt in range(max_retries):
         try:
             with open(file_path, "rb") as f:
-                with tqdm(total=file_size, unit="B", unit_scale=True) as pbar:
+                with tqdm(
+                    total=file_size,
+                    unit="B",
+                    unit_scale=True,
+                    unit_divisor=1024,
+                ) as pbar:
+                    wrapped_file = CallbackIOWrapper(pbar.update, f, "read")
                     response = session.post(
                         url,
                         headers=headers,
-                        data=f,
-                        stream=True,
-                        hooks=dict(
-                            response=lambda r, *args, **kwargs: pbar.update(
-                                len(r.content)
-                            )
-                        ),
+                        data=wrapped_file,
                         timeout=300,  # 5 minutes timeout
                     )
 

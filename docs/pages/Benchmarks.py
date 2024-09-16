@@ -111,7 +111,7 @@ long_to_wide["CPS to ECPS change"] = (
     long_to_wide["Enhanced CPS 2024"] - long_to_wide["CPS 2024 (2022-based)"]
 )
 long_to_wide["PUF to ECPS change"] = (
-    long_to_wide["Enhanced CPS 2024"] - long_to_wide["PUF 2024 (2022-based)"]
+    long_to_wide["Enhanced CPS 2024"] - long_to_wide["PUF 2024 (2015-based)"]
 )
 long_to_wide.sort_values("cps_to_ecps_change", ascending=False)
 

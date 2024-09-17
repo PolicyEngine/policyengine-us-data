@@ -143,14 +143,10 @@ def upload(
             # in case our subsequent delete-upload fails
 
             print(
-                f"Asset {file_name} already exists in release {release_tag}. Downloading a backup..."
+                f"Asset {file_name} already exists in release {release_tag}. Skipping."
             )
 
-            download(org, repo, release_tag, file_name, temp_file_path)
-
-            # Now, delete the asset from the release
-            print(f"Deleting asset {file_name} from release {release_tag}...")
-            delete_asset(org, repo, asset_id)
+            return
 
         # Now, upload the asset
         print(f"Uploading {file_name} to release {release_tag}...")

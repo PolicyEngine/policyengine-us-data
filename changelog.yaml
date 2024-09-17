@@ -30,8 +30,8 @@
     changed:
     - Fixed upload script's use of tqdm
   date: 2024-09-12 19:47:01
-- bump: minor
+- bump: patch
   changes:
-    added:
-    - Migrate ACS Dataset.
-  date: 2024-09-17 09:24:23
+    fixed:
+    - Bug in docs where prerequisites wouldn't load in GCP.
+  date: 2024-09-16 08:04:08

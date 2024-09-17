@@ -8,7 +8,7 @@ from policyengine_us_data.utils import (
 )
 import numpy as np
 from typing import Type
-from policyengine_us_data.data_storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS_2024,
     CPS_2019,

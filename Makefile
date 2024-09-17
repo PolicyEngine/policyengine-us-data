@@ -27,9 +27,9 @@ upload:
 
 docker:
 	docker buildx build --platform linux/amd64 . -t policyengine-us-data:latest
-
+	
 documentation:
-	streamlit run docs/Home.py
+	jb clean docs && jb build docs
 
 data:
 	python policyengine_us_data/datasets/cps/cps.py

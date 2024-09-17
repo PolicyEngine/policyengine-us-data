@@ -1,4 +1,4 @@
-title: PolicyEngine UK data
+title: PolicyEngine US data
 author: PolicyEngine
 copyright: "2024"
 logo: logo.png
@@ -7,7 +7,7 @@ execute:
   execute_notebooks: off
 
 repository:
-  url: https://github.com/policyengine/policyengine-uk-data
+  url: https://github.com/policyengine/policyengine-us-data
   branch: master
   path_to_book: docs
 

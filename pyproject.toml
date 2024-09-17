@@ -16,8 +16,6 @@ dependencies = [
     "policyengine_core",
     "requests",
     "tqdm",
-    "build",
-    "tomli"
 ]
 
 [project.optional-dependencies]
@@ -30,7 +28,11 @@ dev = [
     "torch",
     "tables",
     "tabulate",
+    "furo",
+    "jupyter-book",
     "yaml-changelog>=0.1.7",
+    "build",
+    "tomli",
 ]
 
 [tool.setuptools]

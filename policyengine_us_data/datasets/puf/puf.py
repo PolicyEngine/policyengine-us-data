@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from microdf import MicroDataFrame
 from policyengine_core.data import Dataset
-from policyengine_us_data.data_storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 from .uprate_puf import uprate_puf
 from survey_enhance import Imputation
 from .irs_puf import IRS_PUF_2015

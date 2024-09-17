@@ -2,7 +2,6 @@
 **/__pycache__
 **/.DS_STORE
 **/*.h5
-*.ipynb
 **/*.csv
 !uprating_factors.csv
 !uprating_growth_factors.csv

@@ -1,7 +1,7 @@
 import pandas as pd
 from .soi import pe_to_soi, get_soi
 import numpy as np
-from policyengine_us_data.data_storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 
 
 def fmt(x):
@@ -61,10 +61,6 @@ def build_loss_matrix(dataset: type, time_period):
     ]
     soi_subset = soi_subset[
         soi_subset.Variable.isin(agi_level_targeted_variables)
-        & (
-            (soi_subset["AGI lower bound"] != -np.inf)
-            | (soi_subset["AGI upper bound"] != np.inf)
-        )
         | (
             soi_subset.Variable.isin(aggregate_level_targeted_variables)
             & (soi_subset["AGI lower bound"] == -np.inf)

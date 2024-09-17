@@ -50,7 +50,7 @@ HOUSEHOLD_COLUMNS = [
     "VEH",  # Number of vehicles
     "FINCP",  # Total income
     "GRNTP",  # Gross rent
-    "TAXAMT", # Property taxes
+    "TAXAMT",  # Property taxes
 ]
 
 

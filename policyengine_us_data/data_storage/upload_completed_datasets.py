@@ -24,5 +24,5 @@ upload(
     "irs-soi-puf",
     "release",
     "puf_2024.h5",
-    FOLDER / "puf_2015.h5",
+    FOLDER / "puf_2024.h5",
 )

@@ -22,37 +22,8 @@ jobs:
           pip install black
       - name: Check formatting
         run: black . -l 79 --check
-  check-version:
-    name: Check version
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Fetch all history for all tags and branches
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-      - name: Build changelog
-        run: pip install "yaml-changelog>=0.1.7" && make changelog
-      - name: Preview changelog update
-        run: ".github/get-changelog-diff.sh"
-      - name: Check version number has been properly updated
-        run: ".github/is-version-number-acceptable.sh"
-      - name: Update changelog
-        uses: EndBug/add-and-commit@v9
-        with:
-          add: "."
-          committer_name: Github Actions[bot]
-          author_name: Github Actions[bot]
-          message: Update PolicyEngine US data
-          github_token: ${{ secrets.POLICYENGINE_GITHUB }}
   test:
-    name: Build and Test
+    name: Build and test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

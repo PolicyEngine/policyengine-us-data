@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from policyengine_us_data.data_storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 
 ITMDED_GROW_RATE = 0.02  # annual growth rate in itemized deduction amounts
 

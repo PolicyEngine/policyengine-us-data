@@ -1,4 +1,4 @@
-from policyengine_us_data.data_storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 import pandas as pd
 
 START_YEAR = 2020

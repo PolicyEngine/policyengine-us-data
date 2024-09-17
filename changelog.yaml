@@ -40,3 +40,8 @@
     fixed:
     - Moved heavy dependencies to dev.
   date: 2024-09-17 10:27:10
+- bump: patch
+  changes:
+    added:
+    - Jupyter Book documentation.
+  date: 2024-09-17 19:37:44

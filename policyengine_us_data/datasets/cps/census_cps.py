@@ -4,7 +4,7 @@ import requests
 from io import BytesIO
 from zipfile import ZipFile
 import pandas as pd
-from policyengine_us_data.data_storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 
 
 class CensusCPS(Dataset):

@@ -1,5 +1,5 @@
 from policyengine_core.data import Dataset
-from policyengine_us_data.data_storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 import h5py
 from policyengine_us_data.datasets.cps.census_cps import *
 from pandas import DataFrame, Series

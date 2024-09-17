@@ -1,0 +1,22 @@
+title: PolicyEngine UK data
+author: PolicyEngine
+copyright: "2024"
+logo: logo.png
+
+execute:
+  execute_notebooks: off
+
+repository:
+  url: https://github.com/policyengine/policyengine-uk-data
+  branch: master
+  path_to_book: docs
+
+sphinx:
+  config:
+    html_js_files:
+    - https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.7/require.min.js
+    html_theme: furo
+    pygments_style: default
+    html_css_files:
+      - style.css
+    nb_remove_code_source: true

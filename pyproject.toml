@@ -14,12 +14,8 @@ license = {file = "LICENSE"}
 requires-python = ">=3.10"
 dependencies = [
     "policyengine_core",
-    "tables",
-    "survey_enhance",
-    "torch",
     "requests",
     "tqdm",
-    "tabulate",
     "build",
     "tomli"
 ]
@@ -30,6 +26,10 @@ dev = [
     "pytest",
     "policyengine_us==1.71.1",
     "streamlit",
+    "survey_enhance",
+    "torch",
+    "tables",
+    "tabulate",
 ]
 
 [tool.setuptools]

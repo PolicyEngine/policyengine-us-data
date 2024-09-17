@@ -4,6 +4,7 @@ from typing import Type
 from .cps import *
 from ..puf import *
 import pandas as pd
+import os
 
 # These are sorted by magnitude.
 # First 15 contain 90%.
@@ -109,6 +110,9 @@ class ExtendedCPS(Dataset):
 
         data = cps_sim.dataset.load_dataset()
         new_data = {}
+
+        if os.environ.get("TEST_LITE"):
+            IMPUTED_VARIABLES = IMPUTED_VARIABLES[:1]
 
         for variable in list(data) + IMPUTED_VARIABLES:
             variable_metadata = cps_sim.tax_benefit_system.variables.get(

@@ -42,6 +42,8 @@ jobs:
           POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
       - name: Build datasets
         run: make data
+        env:
+          TEST_LITE: true
       - name: Run tests
         run: pytest
       - name: Test documentation builds

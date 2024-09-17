@@ -24,5 +24,9 @@
 - bump: minor
   changes:
     added:
-    - Migrate the ACS Dataset to the repository.
-  date: 2024-09-14 17:22:50
+    - Added conditional deletion of existing resource
+    - Added downloading of existing resources for backup purposes
+    - Added tqdm to download script
+    changed:
+    - Fixed upload script's use of tqdm
+  date: 2024-09-12 19:47:01

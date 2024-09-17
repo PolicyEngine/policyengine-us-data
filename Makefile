@@ -19,11 +19,11 @@ changelog:
 	touch changelog_entry.yaml
 
 download:
-	python policyengine_us_data/data_storage/download_public_prerequisites.py
-	python policyengine_us_data/data_storage/download_private_prerequisites.py
+	python policyengine_us_data/storage/download_public_prerequisites.py
+	python policyengine_us_data/storage/download_private_prerequisites.py
 
 upload:
-	python policyengine_us_data/data_storage/upload_completed_datasets.py
+	python policyengine_us_data/storage/upload_completed_datasets.py
 
 docker:
 	docker buildx build --platform linux/amd64 . -t policyengine-us-data:latest
@@ -36,8 +36,8 @@ data:
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 
 clean:
-	rm -f policyengine_us_data/data_storage/puf_2015.csv
-	rm -f policyengine_us_data/data_storage/demographics_2015.csv
+	rm -f policyengine_us_data/storage/puf_2015.csv
+	rm -f policyengine_us_data/storage/demographics_2015.csv
 
 build:
 	python -m build

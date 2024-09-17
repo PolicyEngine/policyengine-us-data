@@ -137,12 +137,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cps_2024.h5
-          path: policyengine_us_data/data_storage/cps_2024.h5
+          path: policyengine_us_data/storage/cps_2024.h5
       - name: Upload ECPS 2024
         uses: actions/upload-artifact@v4
         with:
           name: enhanced_cps_2024.h5
-          path: policyengine_us_data/data_storage/enhanced_cps_2024.h5
+          path: policyengine_us_data/storage/enhanced_cps_2024.h5
       - name: Upload data
         run: make upload
         env:

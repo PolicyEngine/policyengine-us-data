@@ -177,7 +177,7 @@ jobs:
       - name: Deploy documentation
         uses: JamesIves/github-pages-deploy-action@releases/v4
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_CI_CD_TOKEN }}
           BRANCH: gh-pages
           FOLDER: docs/_build/html
   upload:

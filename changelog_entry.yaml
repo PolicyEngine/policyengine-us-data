@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    changed:
-    - Fixed CI/CD push script

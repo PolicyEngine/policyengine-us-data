@@ -62,3 +62,8 @@
     fixed:
     - Corrected versioning issues
   date: 2024-09-18 19:49:48
+- bump: patch
+  changes:
+    changed:
+    - Fixed CI/CD push script
+  date: 2024-09-18 20:57:03

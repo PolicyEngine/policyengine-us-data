@@ -52,6 +52,8 @@ jobs:
         run: pip install "yaml-changelog>=0.1.7" && make changelog
       - name: Preview changelog update
         run: ".github/get-changelog-diff.sh"
+      - name: Install package
+        run: make install
       - name: Check version number has been properly updated
         run: ".github/is-version-number-acceptable.sh"
       - name: Update changelog

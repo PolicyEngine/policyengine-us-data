@@ -57,3 +57,8 @@
     fixed:
     - Import errors in non-dev mode.
   date: 2024-09-18 16:30:37
+- bump: patch
+  changes:
+    fixed:
+    - Corrected versioning issues
+  date: 2024-09-18 19:49:48

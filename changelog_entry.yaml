@@ -1,5 +1,0 @@
-- bump: minor
-  added:
-  - Geography generation module (previously in US package)
-  changed:
-  - Fixed export structure within __init__ files

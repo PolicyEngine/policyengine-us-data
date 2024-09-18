@@ -45,3 +45,10 @@
     added:
     - Jupyter Book documentation.
   date: 2024-09-17 19:37:44
+- bump: minor
+  changes:
+    added:
+    - Geography generation module (previously in US package)
+    changed:
+    - Fixed export structure within __init__ files
+  date: 2024-09-18 03:05:11

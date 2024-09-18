@@ -79,10 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     if: >
           github.event_name == 'pull_request' ||
-          (
-            github.repository == 'PolicyEngine/policyengine-us-data'
-            && github.event.head_commit.message == 'Update PolicyEngine US data'
-          )
+          github.repository == 'PolicyEngine/policyengine-us-data'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -177,7 +174,7 @@ jobs:
       - name: Deploy documentation
         uses: JamesIves/github-pages-deploy-action@releases/v4
         with:
-          GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_CI_CD_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: gh-pages
           FOLDER: docs/_build/html
   upload:

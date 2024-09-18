@@ -23,7 +23,6 @@ dev = [
     "black",
     "pytest",
     "policyengine_us==1.71.1",
-    "streamlit",
     "survey_enhance",
     "torch",
     "tables",

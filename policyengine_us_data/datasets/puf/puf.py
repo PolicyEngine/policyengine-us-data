@@ -23,6 +23,7 @@ def impute_pension_contributions_to_puf(puf_df):
     )
 
     from survey_enhance import Imputation
+
     pension_contributions = Imputation()
 
     pension_contributions.train(

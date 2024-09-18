@@ -52,3 +52,8 @@
     changed:
     - Fixed export structure within __init__ files
   date: 2024-09-18 03:05:11
+- bump: patch
+  changes:
+    fixed:
+    - Import errors in non-dev mode.
+  date: 2024-09-18 16:30:37

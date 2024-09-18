@@ -24,7 +24,6 @@ jobs:
         run: black . -l 79 --check
   check-version:
     name: Check version
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -44,6 +43,7 @@ jobs:
       - name: Check version number has been properly updated
         run: ".github/is-version-number-acceptable.sh"
       - name: Update changelog
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: EndBug/add-and-commit@v9
         with:
           add: "."

@@ -7,9 +7,6 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    if: |
-      (github.repository == 'PolicyEngine/policyengine-us-data')
-      && (github.event.head_commit.message == 'Update PolicyEngine US data')
     name: Lint
     steps:
       - uses: actions/checkout@v4
@@ -26,9 +23,6 @@ jobs:
   check-version:
     name: Check version
     runs-on: ubuntu-latest
-    if: |
-      (github.repository == 'PolicyEngine/policyengine-us-data')
-      && !(github.event.head_commit.message == 'Update PolicyEngine US data')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -46,21 +40,9 @@ jobs:
         run: ".github/get-changelog-diff.sh"
       - name: Check version number has been properly updated
         run: ".github/is-version-number-acceptable.sh"
-      - name: Update changelog
-        # if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: EndBug/add-and-commit@v9
-        with:
-          add: "."
-          committer_name: Github Actions[bot]
-          author_name: Github Actions[bot]
-          message: Update PolicyEngine US data
-          github_token: ${{ secrets.POLICYENGINE_GITHUB }}
   test:
     name: Build and test
     runs-on: ubuntu-latest
-    if: |
-      (github.repository == 'PolicyEngine/policyengine-us-data')
-      && (github.event.head_commit.message == 'Update PolicyEngine US data')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

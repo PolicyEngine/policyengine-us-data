@@ -14,7 +14,11 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_2019,
     CPS_2024,
 )
-import torch
+
+try:
+    import torch
+except ImportError:
+    torch = None
 
 
 def reweight(

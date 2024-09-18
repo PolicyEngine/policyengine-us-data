@@ -5,7 +5,6 @@ from microdf import MicroDataFrame
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER
 from .uprate_puf import uprate_puf
-from survey_enhance import Imputation
 from .irs_puf import IRS_PUF_2015
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
@@ -23,6 +22,8 @@ def impute_pension_contributions_to_puf(puf_df):
         ["employment_income", "household_weight", "pre_tax_contributions"]
     )
 
+    from survey_enhance import Imputation
+
     pension_contributions = Imputation()
 
     pension_contributions.train(
@@ -38,6 +39,8 @@ def impute_pension_contributions_to_puf(puf_df):
 def impute_missing_demographics(
     puf: pd.DataFrame, demographics: pd.DataFrame
 ) -> pd.DataFrame:
+    from survey_enhance import Imputation
+
     puf_with_demographics = (
         puf[puf.RECID.isin(demographics.RECID)]
         .merge(demographics, on="RECID")

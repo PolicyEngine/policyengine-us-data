@@ -39,6 +39,7 @@ def impute_pension_contributions_to_puf(puf_df):
 def impute_missing_demographics(
     puf: pd.DataFrame, demographics: pd.DataFrame
 ) -> pd.DataFrame:
+    from survey_enhance import Imputation
     puf_with_demographics = (
         puf[puf.RECID.isin(demographics.RECID)]
         .merge(demographics, on="RECID")

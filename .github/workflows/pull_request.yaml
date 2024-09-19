@@ -1,3 +1,10 @@
+# This workflow is used to check various parts of the
+# run prior to merging:
+
+# - The code's formatting
+# - Versioning - note that this checks, but does not update
+# - That the code builds successfully
+# - That any automated tests pass
 name: Pull request
 
 on:

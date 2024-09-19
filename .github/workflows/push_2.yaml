@@ -3,7 +3,7 @@ name: Push 2
 
 on:
   workflow_run:
-    workflows: [Push 1]
+    workflows: ["Push 1"]
     types: [completed]
 
 jobs:

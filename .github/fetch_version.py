@@ -1,12 +1,11 @@
-from policyengine_us_data.__version__ import __version__
+# Note: Action must be run in Python 3.11 or later
+import tomllib
 
 
 def fetch_version():
-    try:
-        return __version__
-    except Exception as e:
-        print(f"Error fetching version: {e}")
-        return None
+    with open("pyproject.toml", "rb") as f:
+        pyproject = tomllib.load(f)
+    return pyproject["project"]["version"]
 
 
 if __name__ == "__main__":

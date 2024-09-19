@@ -1,9 +1,10 @@
 from policyengine_core.data import Dataset
-from policyengine_us_data.data_storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 from typing import Type
 from .cps import *
 from ..puf import *
 import pandas as pd
+import os
 
 # These are sorted by magnitude.
 # First 15 contain 90%.
@@ -67,6 +68,9 @@ IMPUTED_VARIABLES = [
     "unreported_payroll_tax",
     "recapture_of_investment_credit",
 ]
+
+if os.environ.get("TEST_LITE"):
+    IMPUTED_VARIABLES = IMPUTED_VARIABLES[:7]
 
 
 class ExtendedCPS(Dataset):

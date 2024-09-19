@@ -40,3 +40,30 @@
     fixed:
     - Moved heavy dependencies to dev.
   date: 2024-09-17 10:27:10
+- bump: patch
+  changes:
+    added:
+    - Jupyter Book documentation.
+  date: 2024-09-17 19:37:44
+- bump: minor
+  changes:
+    added:
+    - Geography generation module (previously in US package)
+    changed:
+    - Fixed export structure within __init__ files
+  date: 2024-09-18 03:05:11
+- bump: patch
+  changes:
+    fixed:
+    - Import errors in non-dev mode.
+  date: 2024-09-18 16:30:37
+- bump: patch
+  changes:
+    fixed:
+    - Corrected versioning issues
+  date: 2024-09-18 19:49:48
+- bump: patch
+  changes:
+    changed:
+    - Fixed CI/CD push script
+  date: 2024-09-18 20:57:03

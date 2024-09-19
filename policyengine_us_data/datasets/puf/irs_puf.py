@@ -1,5 +1,5 @@
 from policyengine_core.data import Dataset
-from policyengine_us_data.data_storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 from pathlib import Path
 
 

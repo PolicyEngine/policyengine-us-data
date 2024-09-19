@@ -5,6 +5,7 @@ on:
   workflow_run:
     workflows: ["Push 1"]
     types: [completed]
+  workflow_dispatch:
 
 jobs:
   lint:

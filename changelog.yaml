@@ -35,3 +35,8 @@
     fixed:
     - Bug in docs where prerequisites wouldn't load in GCP.
   date: 2024-09-16 08:04:08
+- bump: minor
+  changes:
+    fixed:
+    - Moved heavy dependencies to dev.
+  date: 2024-09-17 10:27:10

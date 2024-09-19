@@ -632,6 +632,7 @@ class Pooled_3_Year_CPS_2024(PooledCPS):
         CPS_2023,
     ]
     time_period = 2024
+    url = "release://PolicyEngine/policyengine-us-data/release/pooled_3_year_cps_2024.h5"
 
 
 if __name__ == "__main__":

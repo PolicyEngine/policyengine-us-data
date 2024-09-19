@@ -67,3 +67,8 @@
     changed:
     - Fixed CI/CD push script
   date: 2024-09-18 20:57:03
+- bump: minor
+  changes:
+    changed:
+    - Enhanced CPS now uses a 3-year pooled CPS.
+  date: 2024-09-19 13:19:37

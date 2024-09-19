@@ -577,7 +577,7 @@ class CPS_2024(CPS):
 
 
 class PooledCPS(Dataset):
-    data_format = Dataset.TIME_PERIOD_ARRAYS
+    data_format = Dataset.ARRAYS
     input_datasets: list
     time_period: int
 
@@ -596,31 +596,28 @@ class PooledCPS(Dataset):
 
         for i in range(len(data)):
             for variable in data[i]:
-                new_data[variable] = {}
-                for time_period in data[i][variable]:
-                    data_values = data[i][variable][time_period]
-                    if time_period not in new_data[variable]:
-                        new_data[self.time_period] = data_values
-                    elif "_id" in variable:
-                        previous_max = new_data[time_period].max()
-                        new_data[self.time_period] = np.concatenate(
-                            [
-                                new_data[variable][time_period],
-                                data_values + previous_max,
-                            ]
-                        )
-                    else:
-                        new_data[self.time_period] = np.concatenate(
-                            [
-                                new_data[variable][time_period],
-                                data_values,
-                            ]
-                        )
+                data_values = data[i][variable]
+                if variable not in new_data:
+                    new_data[variable] = data_values
+                elif "_id" in variable:
+                    previous_max = new_data[variable].max()
+                    new_data[variable] = np.concatenate(
+                        [
+                            new_data[variable],
+                            data_values + previous_max,
+                        ]
+                    )
+                else:
+                    new_data[variable] = np.concatenate(
+                        [
+                            new_data[variable],
+                            data_values,
+                        ]
+                    )
 
-        for time_period in new_data["household_weight"]:
-            new_data["household_weight"][time_period] = new_data[
-                "household_weight"
-            ][time_period] / len(self.input_datasets)
+        new_data["household_weight"] = new_data["household_weight"] / len(
+            self.input_datasets
+        )
 
         self.save_dataset(new_data)
 

@@ -67,3 +67,9 @@
     changed:
     - Fixed CI/CD push script
   date: 2024-09-18 20:57:03
+- bump: patch
+  changes:
+    changed:
+    - Split push actions into two separate files
+    - Made run of second portion of push conditional upon run of first
+  date: 2024-09-19 15:36:00

@@ -6,7 +6,7 @@ import pandas as pd
 from policyengine_core.data import Dataset
 import requests
 from tqdm import tqdm
-from policyengine_us_data.data_storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 
 logging.getLogger().setLevel(logging.INFO)
 

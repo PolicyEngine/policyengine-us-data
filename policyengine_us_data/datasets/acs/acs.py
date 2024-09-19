@@ -2,7 +2,7 @@ import logging
 from policyengine_core.data import Dataset
 import h5py
 from policyengine_us_data.datasets.acs.raw_acs import RawACS
-from policyengine_us_data.data_storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 from pandas import DataFrame
 import numpy as np
 import os

@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    changed:
+    - Enhanced CPS now uses a 3-year pooled CPS.

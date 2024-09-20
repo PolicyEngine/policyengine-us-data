@@ -98,3 +98,4 @@ class ACS_2022(ACS):
     label = "ACS 2022"
     time_period = 2022
     file_path = STORAGE_FOLDER / "acs_2022.h5"
+    url = "release://PolicyEngine/policyengine-us-data/release/acs_2022.h5"

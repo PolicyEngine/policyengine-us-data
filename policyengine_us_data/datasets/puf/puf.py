@@ -22,14 +22,13 @@ def impute_pension_contributions_to_puf(puf_df):
         ["employment_income", "household_weight", "pre_tax_contributions"]
     )
 
-    from survey_enhance import Imputation
+    from policyengine_us_data.utils import QRF
 
-    pension_contributions = Imputation()
+    pension_contributions = QRF()
 
-    pension_contributions.train(
+    pension_contributions.fit(
         X=cps_df[["employment_income"]],
         Y=cps_df[["pre_tax_contributions"]],
-        sample_weight=cps_df["household_weight"],
     )
     return pension_contributions.predict(
         X=puf_df[["employment_income"]],
@@ -39,7 +38,7 @@ def impute_pension_contributions_to_puf(puf_df):
 def impute_missing_demographics(
     puf: pd.DataFrame, demographics: pd.DataFrame
 ) -> pd.DataFrame:
-    from survey_enhance import Imputation
+    from policyengine_us_data.utils import QRF
 
     puf_with_demographics = (
         puf[puf.RECID.isin(demographics.RECID)]
@@ -63,9 +62,9 @@ def impute_missing_demographics(
         "XTOT",
     ]
 
-    demographics_from_puf = Imputation()
+    demographics_from_puf = QRF()
 
-    demographics_from_puf.train(
+    demographics_from_puf.fit(
         X=puf_with_demographics[NON_DEMOGRAPHIC_VARIABLES],
         Y=puf_with_demographics[DEMOGRAPHIC_VARIABLES],
     )

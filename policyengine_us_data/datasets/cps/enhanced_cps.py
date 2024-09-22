@@ -99,13 +99,13 @@ def train_previous_year_income_model():
     df = sim.calculate_dataframe(VARIABLES + OUTPUTS, 2019, map_to="person")
     df_train = df[df.previous_year_income_available]
 
-    from survey_enhance import Imputation
+    from policyengine_us_data.utils import QRF
 
-    income_last_year = Imputation()
+    income_last_year = QRF()
     X = df_train[VARIABLES[1:]]
     y = df_train[OUTPUTS]
 
-    income_last_year.train(X, y)
+    income_last_year.fit(X, y)
 
     return income_last_year
 

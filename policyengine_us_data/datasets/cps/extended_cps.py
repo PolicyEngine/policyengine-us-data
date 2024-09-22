@@ -101,7 +101,7 @@ class ExtendedCPS(Dataset):
         y = pd.DataFrame(columns=IMPUTED_VARIABLES, index=X.index)
 
         model = QRF()
-        model.train(
+        model.fit(
             X_train,
             y_train,
         )

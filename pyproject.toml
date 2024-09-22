@@ -22,8 +22,8 @@ dependencies = [
 dev = [
     "black",
     "pytest",
-    "policyengine_us==1.71.1",
-    "survey_enhance",
+    "policyengine_us @ git+https://github.com/policyengine/policyengine-us@us-rent-data",
+    "quantile-forest",
     "torch",
     "tables",
     "tabulate",

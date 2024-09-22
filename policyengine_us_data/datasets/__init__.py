@@ -5,7 +5,7 @@ from .cps import (
     CPS_2022,
     CPS_2023,
     CPS_2024,
-    Pooled_3_Year_CPS_2024,
+    Pooled_3_Year_CPS_2023,
     CensusCPS_2018,
     CensusCPS_2019,
     CensusCPS_2020,

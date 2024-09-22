@@ -104,6 +104,11 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     print("Imputation complete.")
     cps["rent"] = np.zeros_like(cps["age"])
     cps["rent"][mask] = imputed_values["rent"]
+    # Assume zero housing assistance since
+    cps["pre_subsidy_rent"] = cps["rent"]
+    cps["housing_assistance"] = np.zeros_like(
+        cps["spm_unit_capped_housing_subsidy_reported"]
+    )
     cps["real_estate_taxes"] = np.zeros_like(cps["age"])
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
@@ -665,17 +670,17 @@ class PooledCPS(Dataset):
         self.save_dataset(new_data)
 
 
-class Pooled_3_Year_CPS_2024(PooledCPS):
-    label = "CPS 2024 (3-year pooled)"
-    name = "pooled_3_year_cps_2024"
-    file_path = STORAGE_FOLDER / "pooled_3_year_cps_2024.h5"
+class Pooled_3_Year_CPS_2023(PooledCPS):
+    label = "CPS 2023 (3-year pooled)"
+    name = "pooled_3_year_cps_2023"
+    file_path = STORAGE_FOLDER / "pooled_3_year_cps_2023.h5"
     input_datasets = [
         CPS_2021,
         CPS_2022,
         CPS_2023,
     ]
-    time_period = 2024
-    url = "release://PolicyEngine/policyengine-us-data/release/pooled_3_year_cps_2024.h5"
+    time_period = 2023
+    url = "release://PolicyEngine/policyengine-us-data/release/pooled_3_year_cps_2023.h5"
 
 
 if __name__ == "__main__":
@@ -683,4 +688,4 @@ if __name__ == "__main__":
     CPS_2022().generate()
     CPS_2023().generate()
     CPS_2024().generate()
-    Pooled_3_Year_CPS_2024().generate()
+    Pooled_3_Year_CPS_2023().generate()

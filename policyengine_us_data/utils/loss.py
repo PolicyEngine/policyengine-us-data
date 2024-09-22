@@ -184,7 +184,7 @@ def build_loss_matrix(dataset: type, time_period):
     # Medical expenses, sum of spm thresholds
     # Child support expenses
 
-    CPS_DERIVED_TOTALS_2024 = {
+    HARD_CODED_TOTALS = {
         "health_insurance_premiums_without_medicare_part_b": 385e9,
         "other_medical_expenses": 278e9,
         "medicare_part_b_premiums": 112e9,
@@ -198,9 +198,12 @@ def build_loss_matrix(dataset: type, time_period):
         # Alimony could be targeted via SOI
         "alimony_income": 13e9,
         "alimony_expense": 13e9,
+        # Rough estimate, not CPS derived
+        "real_estate_taxes": 400e9,  # Rough estimate between 350bn and 600bn total property tax collections
+        "rent": 735e9,  # ACS total uprated by CPI
     }
 
-    for variable_name, target in CPS_DERIVED_TOTALS_2024.items():
+    for variable_name, target in HARD_CODED_TOTALS.items():
         label = f"census/{variable_name}"
         loss_matrix[label] = sim.calculate(
             variable_name, map_to="household"

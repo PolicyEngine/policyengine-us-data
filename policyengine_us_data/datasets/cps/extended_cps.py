@@ -1,8 +1,8 @@
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER
 from typing import Type
-from .cps import *
-from ..puf import *
+from policyengine_us_data.datasets.cps.cps import *
+from policyengine_us_data.datasets.puf import *
 import pandas as pd
 import os
 from policyengine_us_data.utils import QRF
@@ -147,3 +147,7 @@ class ExtendedCPS_2024(ExtendedCPS):
     label = "Extended CPS (2024)"
     file_path = STORAGE_FOLDER / "extended_cps_2024.h5"
     time_period = 2024
+
+
+if __name__ == "__main__":
+    ExtendedCPS_2024().generate()

@@ -115,7 +115,6 @@ class EnhancedCPS(Dataset):
     input_dataset: Type[Dataset]
     start_year: int
     end_year: int
-    url = "release://policyengine/policyengine-us-data/release/enhanced_cps_2024.h5"
 
     def generate(self):
         from policyengine_us import Microsimulation
@@ -175,6 +174,7 @@ class EnhancedCPS_2024(EnhancedCPS):
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
     file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"
+    url = "release://policyengine/policyengine-us-data/release/enhanced_cps_2024.h5"
 
 
 if __name__ == "__main__":

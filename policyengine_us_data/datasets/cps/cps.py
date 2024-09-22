@@ -30,18 +30,8 @@ class CPS(Dataset):
             # Extrapolate from CPS 2023
 
             cps_2022 = CPS_2023(require=True)
-            uprating = create_policyengine_uprating_factors_table()
             arrays = cps_2022.load_dataset()
-            for variable in uprating.index.unique():
-                if variable in arrays:
-                    current_index = uprating[uprating.index == variable][
-                        self.time_period
-                    ].values[0]
-                    start_index = uprating[uprating.index == variable][
-                        2023
-                    ].values[0]
-                    growth = current_index / start_index
-                    arrays[variable] = arrays[variable] * growth
+            arrays = uprate_cps_data(arrays, 2023, self.time_period)
 
             self.save_dataset(arrays)
             return
@@ -116,6 +106,22 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["rent"][mask] = imputed_values["rent"]
     cps["real_estate_taxes"] = np.zeros_like(cps["age"])
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
+
+
+def uprate_cps_data(data, from_period, to_period):
+    uprating = create_policyengine_uprating_factors_table()
+    for variable in uprating.index.unique():
+        if variable in data:
+            current_index = uprating[uprating.index == variable][
+                to_period
+            ].values[0]
+            start_index = uprating[uprating.index == variable][
+                from_period
+            ].values[0]
+            growth = current_index / start_index
+            data[variable] = data[variable] * growth
+
+    return data
 
 
 def add_id_variables(
@@ -613,5 +619,68 @@ class CPS_2024(CPS):
     url = "release://policyengine/policyengine-us-data/release/cps_2024.h5"
 
 
+class PooledCPS(Dataset):
+    data_format = Dataset.ARRAYS
+    input_datasets: list
+    time_period: int
+
+    def generate(self):
+        data = [
+            input_dataset(require=True).load_dataset()
+            for input_dataset in self.input_datasets
+        ]
+        time_periods = [dataset.time_period for dataset in self.input_datasets]
+        data = [
+            uprate_cps_data(data, time_period, self.time_period)
+            for data, time_period in zip(data, time_periods)
+        ]
+
+        new_data = {}
+
+        for i in range(len(data)):
+            for variable in data[i]:
+                data_values = data[i][variable]
+                if variable not in new_data:
+                    new_data[variable] = data_values
+                elif "_id" in variable:
+                    previous_max = new_data[variable].max()
+                    new_data[variable] = np.concatenate(
+                        [
+                            new_data[variable],
+                            data_values + previous_max,
+                        ]
+                    )
+                else:
+                    new_data[variable] = np.concatenate(
+                        [
+                            new_data[variable],
+                            data_values,
+                        ]
+                    )
+
+        new_data["household_weight"] = new_data["household_weight"] / len(
+            self.input_datasets
+        )
+
+        self.save_dataset(new_data)
+
+
+class Pooled_3_Year_CPS_2024(PooledCPS):
+    label = "CPS 2024 (3-year pooled)"
+    name = "pooled_3_year_cps_2024"
+    file_path = STORAGE_FOLDER / "pooled_3_year_cps_2024.h5"
+    input_datasets = [
+        CPS_2021,
+        CPS_2022,
+        CPS_2023,
+    ]
+    time_period = 2024
+    url = "release://PolicyEngine/policyengine-us-data/release/pooled_3_year_cps_2024.h5"
+
+
 if __name__ == "__main__":
+    CPS_2021().generate()
+    CPS_2022().generate()
+    CPS_2023().generate()
     CPS_2024().generate()
+    Pooled_3_Year_CPS_2024().generate()

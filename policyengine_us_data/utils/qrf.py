@@ -1,4 +1,7 @@
-from quantile_forest import RandomForestQuantileRegressor
+try:
+    from quantile_forest import RandomForestQuantileRegressor
+except ImportError:
+    pass
 import pandas as pd
 import numpy as np
 import pickle

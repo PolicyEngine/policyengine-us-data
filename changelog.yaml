@@ -73,3 +73,8 @@
     - Split push actions into two separate files
     - Made run of second portion of push conditional upon run of first
   date: 2024-09-19 15:36:00
+- bump: patch
+  changes:
+    removed:
+    - Unnecessary info in CONTRIBUTING.md
+  date: 2024-09-22 21:15:27

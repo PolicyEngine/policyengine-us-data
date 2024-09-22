@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    removed:
-    - Unnecessary info in CONTRIBUTING.md

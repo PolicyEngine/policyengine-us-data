@@ -5,6 +5,7 @@ from .cps import *
 from ..puf import *
 import pandas as pd
 import os
+from policyengine_us_data.utils import QRF
 
 # These are sorted by magnitude.
 # First 15 contain 90%.
@@ -80,7 +81,6 @@ class ExtendedCPS(Dataset):
 
     def generate(self):
         from policyengine_us import Microsimulation
-        from survey_enhance import Imputation
 
         cps_sim = Microsimulation(dataset=self.cps)
         puf_sim = Microsimulation(dataset=self.puf)
@@ -100,16 +100,12 @@ class ExtendedCPS(Dataset):
         X = cps_sim.calculate_dataframe(INPUTS)
         y = pd.DataFrame(columns=IMPUTED_VARIABLES, index=X.index)
 
-        model = Imputation()
+        model = QRF()
         model.train(
             X_train,
             y_train,
-            verbose=True,
-            sample_weight=puf_sim.calculate(
-                "household_weight", map_to="person"
-            ).values,
         )
-        y = model.predict(X, verbose=True)
+        y = model.predict(X)
 
         data = cps_sim.dataset.load_dataset()
         new_data = {}

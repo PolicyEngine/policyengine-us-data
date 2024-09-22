@@ -54,51 +54,25 @@ HOUSEHOLD_COLUMNS = [
 ]
 
 
-class RawACS(Dataset):
-    name = "raw_acs"
-    label = "Raw ACS"
+class CensusACS(Dataset):
     data_format = Dataset.TABLES
-    years = []  # This will be populated as datasets are generated
-    file_path = STORAGE_FOLDER / "raw_acs_{year}.h5"
 
-    @staticmethod
-    def file(year: int):
-        return STORAGE_FOLDER / f"raw_acs_{year}.h5"
+    def generate(self) -> None:
+        spm_url = f"https://www2.census.gov/programs-surveys/supplemental-poverty-measure/datasets/spm/spm_{self.time_period}_pu.dta"
+        person_url = f"https://www2.census.gov/programs-surveys/acs/data/pums/{self.time_period}/1-Year/csv_pus.zip"
+        household_url = f"https://www2.census.gov/programs-surveys/acs/data/pums/{self.time_period}/1-Year/csv_hus.zip"
 
-    def generate(self, year: int) -> None:
-        year = int(year)
-        if year in self.years:
-            self.remove(year)
-
-        spm_url = f"https://www2.census.gov/programs-surveys/supplemental-poverty-measure/datasets/spm/spm_{year}_pu.dta"
-        person_url = f"https://www2.census.gov/programs-surveys/acs/data/pums/{year}/1-Year/csv_pus.zip"
-        household_url = f"https://www2.census.gov/programs-surveys/acs/data/pums/{year}/1-Year/csv_hus.zip"
-
-        try:
-            with pd.HDFStore(self.file(year)) as storage:
-                logging.info(f"Downloading household file")
-                household = self.process_household_data(
-                    household_url, "psam_hus", HOUSEHOLD_COLUMNS
-                )
-                storage["household"] = household
-
-                logging.info(f"Downloading person file")
-                person = self.process_person_data(
-                    person_url, "psam_pus", PERSON_COLUMNS
-                )
-                storage["person"] = person
-
-                logging.info(f"Downloading SPM unit file")
-                spm_person = pd.read_stata(spm_url).fillna(0)
-                spm_person.columns = spm_person.columns.str.upper()
-                self.create_spm_unit_table(storage, spm_person)
-
-            self.years.append(year)
-            logging.info(f"Successfully generated Raw ACS data for {year}")
-        except Exception as e:
-            self.remove(year)
-            logging.error(f"Error generating Raw ACS data for {year}: {e}")
-            raise e
+        with pd.HDFStore(self.file_path, mode="w") as storage:
+            household = self.process_household_data(
+                household_url, "psam_hus", HOUSEHOLD_COLUMNS
+            )
+            person = self.process_person_data(
+                person_url, "psam_pus", PERSON_COLUMNS
+            )
+            person = person[person.SERIALNO.isin(household.SERIALNO)]
+            household = household[household.SERIALNO.isin(person.SERIALNO)]
+            storage["household"] = household
+            storage["person"] = person
 
     @staticmethod
     def process_household_data(
@@ -113,19 +87,16 @@ class RawACS(Dataset):
                     f.write(chunk)
             f.seek(0)
             zf = ZipFile(f)
-            logging.info(f"Loading the first half of the household dataset")
             a = pd.read_csv(
                 zf.open(prefix + "a.csv"),
                 usecols=columns,
                 dtype={"SERIALNO": str},
             )
-            logging.info(f"Loading the second half of the household dataset")
             b = pd.read_csv(
                 zf.open(prefix + "b.csv"),
                 usecols=columns,
                 dtype={"SERIALNO": str},
             )
-        logging.info(f"Concatenating household datasets")
         res = pd.concat([a, b]).fillna(0)
         res.columns = res.columns.str.upper()
 
@@ -147,19 +118,16 @@ class RawACS(Dataset):
                     f.write(chunk)
             f.seek(0)
             zf = ZipFile(f)
-            logging.info(f"Loading the first half of the person dataset")
             a = pd.read_csv(
                 zf.open(prefix + "a.csv"),
                 usecols=columns,
                 dtype={"SERIALNO": str},
             )
-            logging.info(f"Loading the second half of the person dataset")
             b = pd.read_csv(
                 zf.open(prefix + "b.csv"),
                 usecols=columns,
                 dtype={"SERIALNO": str},
             )
-        logging.info(f"Concatenating person datasets")
         res = pd.concat([a, b]).fillna(0)
         res.columns = res.columns.str.upper()
 
@@ -208,6 +176,8 @@ class RawACS(Dataset):
         )
 
         original_person_table = storage["person"]
+        original_person_table.to_csv("person.csv")
+        person.to_csv("spm_person.csv")
 
         # Ensure SERIALNO is treated as string
         JOIN_COLUMNS = ["SERIALNO", "SPORDER"]
@@ -227,24 +197,12 @@ class RawACS(Dataset):
             on=JOIN_COLUMNS,
         )
 
-        storage["person"] = combined_person_table
+        storage["person_matched"] = combined_person_table
         storage["spm_unit"] = spm_table
 
-    def load(self, year: int) -> dict:
-        if not self.file(year).exists():
-            raise FileNotFoundError(
-                f"Raw ACS data for {year} not found. Please generate it first."
-            )
 
-        with pd.HDFStore(self.file(year), mode="r") as store:
-            return {
-                "person": store["person"],
-                "household": store["household"],
-                "spm_unit": store["spm_unit"],
-            }
-
-    def remove(self, year: int) -> None:
-        if self.file(year).exists():
-            self.file(year).unlink()
-        if year in self.years:
-            self.years.remove(year)
+class CensusACS_2022(CensusACS):
+    label = "Census ACS (2022)"
+    name = "census_acs_2022.h5"
+    file_path = STORAGE_FOLDER / "census_acs_2022.h5"
+    time_period = 2022

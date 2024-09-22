@@ -112,3 +112,7 @@ class ACS_2022(ACS):
     file_path = STORAGE_FOLDER / "acs_2022.h5"
     census_acs = CensusACS_2022
     url = "release://PolicyEngine/policyengine-us-data/release/acs_2022.h5"
+
+
+if __name__ == "__main__":
+    ACS_2022().generate()

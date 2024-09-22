@@ -32,6 +32,7 @@ documentation:
 	jb clean docs && jb build docs
 
 data:
+	python policyengine_us_data/datasets/cps/acs.py
 	python policyengine_us_data/datasets/cps/cps.py
 	python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/datasets/cps/enhanced_cps.py

@@ -11,6 +11,7 @@ from typing import Type
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
+from policyengine_us_data.utils import QRF
 
 
 class CPS(Dataset):
@@ -28,25 +29,14 @@ class CPS(Dataset):
         if self.raw_cps is None:
             # Extrapolate from CPS 2023
 
-            cps_2022 = CPS_2023(require=True)
-            uprating = create_policyengine_uprating_factors_table()
-            arrays = cps_2022.load_dataset()
-            for variable in uprating.index.unique():
-                if variable in arrays:
-                    current_index = uprating[uprating.index == variable][
-                        self.time_period
-                    ].values[0]
-                    start_index = uprating[uprating.index == variable][
-                        2023
-                    ].values[0]
-                    growth = current_index / start_index
-                    arrays[variable] = arrays[variable] * growth
-
+            cps_2023 = CPS_2023(require=True)
+            arrays = cps_2023.load_dataset()
+            arrays = uprate_cps_data(arrays, 2023, self.time_period)
             self.save_dataset(arrays)
             return
 
         raw_data = self.raw_cps(require=True).load()
-        cps = h5py.File(self.file_path, mode="w")
+        cps = {}
 
         ENTITIES = ("person", "tax_unit", "family", "spm_unit", "household")
         person, tax_unit, family, spm_unit, household = [
@@ -59,20 +49,83 @@ class CPS(Dataset):
         add_previous_year_income(self, cps)
         add_spm_variables(cps, spm_unit)
         add_household_variables(cps, household)
-        add_rent(cps, person, household)
+        add_rent(self, cps, person, household)
 
         raw_data.close()
-        cps.close()
+        self.save_dataset(cps)
 
 
-def add_rent(cps: h5py.File, person: DataFrame, household: DataFrame):
-    is_renting = household.H_TENURE == 2
-    AVERAGE_RENT = 1_300 * 12
-    # Project down to the first person in the household
-    person_is_renting = (
-        household.set_index("H_SEQ").loc[person.PH_SEQ].H_TENURE.values == 2
+def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
+    cps["tenure_type"] = household.H_TENURE.map(
+        {
+            0: "NONE",
+            1: "OWNED_WITH_MORTGAGE",
+            2: "RENTED",
+            3: "NONE",
+        }
+    ).astype("S")
+    self.save_dataset(cps)
+
+    from policyengine_us_data.datasets.acs.acs import ACS_2022
+    from policyengine_us import Microsimulation
+
+    acs = Microsimulation(dataset=ACS_2022)
+    cps_sim = Microsimulation(dataset=self)
+
+    PREDICTORS = [
+        "is_household_head",
+        "age",
+        "is_male",
+        "tenure_type",
+        "employment_income",
+        "self_employment_income",
+        "social_security",
+        "pension_income",
+    ]
+    IMPUTATIONS = ["rent", "real_estate_taxes"]
+    train_df = acs.calculate_dataframe(PREDICTORS + IMPUTATIONS)
+    train_df.tenure_type = train_df.tenure_type.map(
+        {
+            "OWNED_OUTRIGHT": "OWNED_WITH_MORTGAGE",
+        },
+        na_action="ignore",
+    ).fillna(train_df.tenure_type)
+    train_df = train_df[train_df.is_household_head].sample(100_000)
+    inference_df = cps_sim.calculate_dataframe(PREDICTORS)
+    mask = inference_df.is_household_head.values
+    inference_df = inference_df[mask]
+
+    qrf = QRF()
+    print("Training imputation model for rent and real estate taxes.")
+    qrf.fit(train_df[PREDICTORS], train_df[IMPUTATIONS])
+    print("Imputing rent and real estate taxes.")
+    imputed_values = qrf.predict(inference_df[PREDICTORS])
+    print("Imputation complete.")
+    cps["rent"] = np.zeros_like(cps["age"])
+    cps["rent"][mask] = imputed_values["rent"]
+    # Assume zero housing assistance since
+    cps["pre_subsidy_rent"] = cps["rent"]
+    cps["housing_assistance"] = np.zeros_like(
+        cps["spm_unit_capped_housing_subsidy_reported"]
     )
-    cps["pre_subsidy_rent"] = np.where(person_is_renting, AVERAGE_RENT, 0)
+    cps["real_estate_taxes"] = np.zeros_like(cps["age"])
+    cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
+
+
+def uprate_cps_data(data, from_period, to_period):
+    uprating = create_policyengine_uprating_factors_table()
+    for variable in uprating.index.unique():
+        if variable in data:
+            current_index = uprating[uprating.index == variable][
+                to_period
+            ].values[0]
+            start_index = uprating[uprating.index == variable][
+                from_period
+            ].values[0]
+            growth = current_index / start_index
+            data[variable] = data[variable] * growth
+
+    return data
 
 
 def add_id_variables(
@@ -105,7 +158,7 @@ def add_id_variables(
     cps["spm_unit_id"] = spm_unit.SPM_ID
     cps["person_household_id"] = person.PH_SEQ
     cps["person_family_id"] = person.PH_SEQ * 10 + person.PF_SEQ
-
+    cps["is_household_head"] = person.P_SEQ == 1
     cps["household_weight"] = household.HSUP_WGT / 1e2
 
     # Marital units
@@ -283,14 +336,14 @@ def add_personal_income_variables(
     # Allocate retirement distributions by taxability.
     for source_with_taxable_fraction in ["401k", "403b", "sep"]:
         cps[f"taxable_{source_with_taxable_fraction}_distributions"] = (
-            cps[f"{source_with_taxable_fraction}_distributions"][...]
+            cps[f"{source_with_taxable_fraction}_distributions"]
             * p[
                 f"taxable_{source_with_taxable_fraction}_distribution_fraction"
             ]
         )
         cps[f"tax_exempt_{source_with_taxable_fraction}_distributions"] = cps[
             f"{source_with_taxable_fraction}_distributions"
-        ][...] * (
+        ] * (
             1
             - p[
                 f"taxable_{source_with_taxable_fraction}_distribution_fraction"
@@ -430,14 +483,14 @@ def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
             cps[openfisca_variable] = spm_unit[asec_variable]
 
     cps["reduced_price_school_meals_reported"] = (
-        cps["free_school_meals_reported"][...] * 0
+        cps["free_school_meals_reported"] * 0
     )
 
 
 def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
     cps["state_fips"] = household.GESTFIPS
     cps["county_fips"] = household.GTCO
-    state_county_fips = cps["state_fips"][...] * 1e3 + cps["county_fips"][...]
+    state_county_fips = cps["state_fips"] * 1e3 + cps["county_fips"]
     # Assign is_nyc here instead of as a variable formula so that it shows up
     # as toggleable in the webapp.
     # List county FIPS codes for each NYC county/borough.
@@ -570,5 +623,68 @@ class CPS_2024(CPS):
     url = "release://policyengine/policyengine-us-data/release/cps_2024.h5"
 
 
+class PooledCPS(Dataset):
+    data_format = Dataset.ARRAYS
+    input_datasets: list
+    time_period: int
+
+    def generate(self):
+        data = [
+            input_dataset(require=True).load_dataset()
+            for input_dataset in self.input_datasets
+        ]
+        time_periods = [dataset.time_period for dataset in self.input_datasets]
+        data = [
+            uprate_cps_data(data, time_period, self.time_period)
+            for data, time_period in zip(data, time_periods)
+        ]
+
+        new_data = {}
+
+        for i in range(len(data)):
+            for variable in data[i]:
+                data_values = data[i][variable]
+                if variable not in new_data:
+                    new_data[variable] = data_values
+                elif "_id" in variable:
+                    previous_max = new_data[variable].max()
+                    new_data[variable] = np.concatenate(
+                        [
+                            new_data[variable],
+                            data_values + previous_max,
+                        ]
+                    )
+                else:
+                    new_data[variable] = np.concatenate(
+                        [
+                            new_data[variable],
+                            data_values,
+                        ]
+                    )
+
+        new_data["household_weight"] = new_data["household_weight"] / len(
+            self.input_datasets
+        )
+
+        self.save_dataset(new_data)
+
+
+class Pooled_3_Year_CPS_2023(PooledCPS):
+    label = "CPS 2023 (3-year pooled)"
+    name = "pooled_3_year_cps_2023"
+    file_path = STORAGE_FOLDER / "pooled_3_year_cps_2023.h5"
+    input_datasets = [
+        CPS_2021,
+        CPS_2022,
+        CPS_2023,
+    ]
+    time_period = 2023
+    url = "release://PolicyEngine/policyengine-us-data/release/pooled_3_year_cps_2023.h5"
+
+
 if __name__ == "__main__":
+    CPS_2021().generate()
+    CPS_2022().generate()
+    CPS_2023().generate()
     CPS_2024().generate()
+    Pooled_3_Year_CPS_2023().generate()

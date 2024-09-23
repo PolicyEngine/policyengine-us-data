@@ -1,10 +1,12 @@
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER
 from typing import Type
-from .cps import *
-from ..puf import *
+from policyengine_us_data.datasets.cps.cps import *
+from policyengine_us_data.datasets.puf import *
 import pandas as pd
 import os
+from policyengine_us_data.utils import QRF
+import time
 
 # These are sorted by magnitude.
 # First 15 contain 90%.
@@ -28,7 +30,6 @@ IMPUTED_VARIABLES = [
     "qualified_dividend_income",
     "charitable_cash_donations",
     "self_employed_pension_contribution_ald",
-    "real_estate_taxes",
     "unrecaptured_section_1250_gain",
     "taxable_unemployment_compensation",
     "taxable_interest_income",
@@ -80,7 +81,6 @@ class ExtendedCPS(Dataset):
 
     def generate(self):
         from policyengine_us import Microsimulation
-        from survey_enhance import Imputation
 
         cps_sim = Microsimulation(dataset=self.cps)
         puf_sim = Microsimulation(dataset=self.puf)
@@ -100,16 +100,20 @@ class ExtendedCPS(Dataset):
         X = cps_sim.calculate_dataframe(INPUTS)
         y = pd.DataFrame(columns=IMPUTED_VARIABLES, index=X.index)
 
-        model = Imputation()
-        model.train(
+        model = QRF()
+        start = time.time()
+        model.fit(
             X_train,
             y_train,
-            verbose=True,
-            sample_weight=puf_sim.calculate(
-                "household_weight", map_to="person"
-            ).values,
         )
-        y = model.predict(X, verbose=True)
+        print(
+            f"Training imputation models from the PUF took {time.time() - start:.2f} seconds"
+        )
+        start = time.time()
+        y = model.predict(X)
+        print(
+            f"Predicting imputed values took {time.time() - start:.2f} seconds"
+        )
 
         data = cps_sim.dataset.load_dataset()
         new_data = {}
@@ -151,3 +155,7 @@ class ExtendedCPS_2024(ExtendedCPS):
     label = "Extended CPS (2024)"
     file_path = STORAGE_FOLDER / "extended_cps_2024.h5"
     time_period = 2024
+
+
+if __name__ == "__main__":
+    ExtendedCPS_2024().generate()

@@ -51,9 +51,9 @@ class QRF:
         )
         input_quantiles = input_quantiles.astype(int)
         if len(pred.shape) == 2:
-            predictions = pred[:, input_quantiles]
+            predictions = pred[np.arange(len(pred)), input_quantiles]
         else:
-            predictions = pred[:, :, input_quantiles]
+            predictions = pred[np.arange(len(pred)), :, input_quantiles]
         return pd.DataFrame(predictions, columns=self.output_columns)
 
     def save(self, path):

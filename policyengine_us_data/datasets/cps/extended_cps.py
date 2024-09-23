@@ -29,7 +29,6 @@ IMPUTED_VARIABLES = [
     "qualified_dividend_income",
     "charitable_cash_donations",
     "self_employed_pension_contribution_ald",
-    "real_estate_taxes",
     "unrecaptured_section_1250_gain",
     "taxable_unemployment_compensation",
     "taxable_interest_income",

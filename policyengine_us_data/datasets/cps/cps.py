@@ -29,10 +29,9 @@ class CPS(Dataset):
         if self.raw_cps is None:
             # Extrapolate from CPS 2023
 
-            cps_2022 = CPS_2023(require=True)
-            arrays = cps_2022.load_dataset()
+            cps_2023 = CPS_2023(require=True)
+            arrays = cps_2023.load_dataset()
             arrays = uprate_cps_data(arrays, 2023, self.time_period)
-
             self.save_dataset(arrays)
             return
 

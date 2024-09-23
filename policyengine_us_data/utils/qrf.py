@@ -50,7 +50,10 @@ class QRF:
             random_generator.beta(a, 1, size=len(X)) * count_samples
         )
         input_quantiles = input_quantiles.astype(int)
-        predictions = pred[np.arange(len(X)), :, input_quantiles]
+        if len(pred.shape) == 2:
+            predictions = pred[:, input_quantiles]
+        else:
+            predictions = pred[:, :, input_quantiles]
         return pd.DataFrame(predictions, columns=self.output_columns)
 
     def save(self, path):

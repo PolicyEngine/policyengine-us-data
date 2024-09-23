@@ -27,8 +27,8 @@ def impute_pension_contributions_to_puf(puf_df):
     pension_contributions = QRF()
 
     pension_contributions.fit(
-        X=cps_df[["employment_income"]],
-        Y=cps_df[["pre_tax_contributions"]],
+        cps_df[["employment_income"]],
+        cps_df[["pre_tax_contributions"]],
     )
     return pension_contributions.predict(
         X=puf_df[["employment_income"]],
@@ -65,8 +65,8 @@ def impute_missing_demographics(
     demographics_from_puf = QRF()
 
     demographics_from_puf.fit(
-        X=puf_with_demographics[NON_DEMOGRAPHIC_VARIABLES],
-        Y=puf_with_demographics[DEMOGRAPHIC_VARIABLES],
+        puf_with_demographics[NON_DEMOGRAPHIC_VARIABLES],
+        puf_with_demographics[DEMOGRAPHIC_VARIABLES],
     )
 
     puf_without_demographics = puf[

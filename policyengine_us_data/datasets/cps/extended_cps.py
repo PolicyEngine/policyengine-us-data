@@ -6,6 +6,7 @@ from policyengine_us_data.datasets.puf import *
 import pandas as pd
 import os
 from policyengine_us_data.utils import QRF
+import time
 
 # These are sorted by magnitude.
 # First 15 contain 90%.
@@ -100,11 +101,19 @@ class ExtendedCPS(Dataset):
         y = pd.DataFrame(columns=IMPUTED_VARIABLES, index=X.index)
 
         model = QRF()
+        start = time.time()
         model.fit(
             X_train,
             y_train,
         )
+        print(
+            f"Training imputation models from the PUF took {time.time() - start:.2f} seconds"
+        )
+        start = time.time()
         y = model.predict(X)
+        print(
+            f"Predicting imputed values took {time.time() - start:.2f} seconds"
+        )
 
         data = cps_sim.dataset.load_dataset()
         new_data = {}

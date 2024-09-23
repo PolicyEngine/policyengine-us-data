@@ -22,7 +22,7 @@ dependencies = [
 dev = [
     "black",
     "pytest",
-    "policyengine_us @ git+https://github.com/policyengine/policyengine-us@us-rent-data",
+    "policyengine_us==1.88.0",
     "quantile-forest",
     "torch",
     "tables",
@@ -32,6 +32,7 @@ dev = [
     "yaml-changelog>=0.1.7",
     "build",
     "tomli",
+    "itables",
 ]
 
 [tool.setuptools]

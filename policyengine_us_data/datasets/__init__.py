@@ -14,9 +14,16 @@ from .cps import (
     CensusCPS_2023,
     EnhancedCPS_2024,
     ReweightedCPS_2024,
-    Pooled_3_Year_CPS_2023
+    Pooled_3_Year_CPS_2023,
 )
 from .puf import PUF_2015, PUF_2021, PUF_2024, IRS_PUF_2015
 from .acs import ACS_2022
 
-DATASETS = [CPS_2022, PUF_2021, CPS_2024, EnhancedCPS_2024, ACS_2022, Pooled_3_Year_CPS_2023]
+DATASETS = [
+    CPS_2022,
+    PUF_2021,
+    CPS_2024,
+    EnhancedCPS_2024,
+    ACS_2022,
+    Pooled_3_Year_CPS_2023,
+]

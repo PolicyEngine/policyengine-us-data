@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    changed:
+    - Added pooled 3-year CPS to __init__.py

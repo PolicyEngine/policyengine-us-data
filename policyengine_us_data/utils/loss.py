@@ -71,6 +71,9 @@ def build_loss_matrix(dataset: type, time_period):
         if not row["Taxable only"]:
             continue  # exclude non "taxable returns" statistics
 
+        if row["AGI upper bound"] <= 10_000:
+            continue
+
         mask = (
             (agi >= row["AGI lower bound"])
             * (agi < row["AGI upper bound"])
@@ -179,6 +182,17 @@ def build_loss_matrix(dataset: type, time_period):
                 time_period
             ).calibration.gov.cbo._children[variable_name]
         )
+
+    # Treasury EITC
+
+    loss_matrix["treasury/eitc"] = sim.calculate(
+        "eitc", map_to="household"
+    ).values
+    targets_array.append(
+        sim.tax_benefit_system.parameters(
+            time_period
+        ).calibration.gov.treasury.tax_expenditures.eitc
+    )
 
     # CPS-derived statistics
     # Medical expenses, sum of spm thresholds

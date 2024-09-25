@@ -48,20 +48,23 @@ def reweight(
         ) ** 2
         if torch.isnan(rel_error).any():
             raise ValueError("Relative error contains NaNs")
-        worst_name = target_names[torch.argmax(rel_error)]
-        worst_val = rel_error[torch.argmax(rel_error)].item()
-        return rel_error.mean(), worst_name, worst_val
+        return rel_error.mean()
 
-    optimizer = torch.optim.Adam([weights], lr=1e-2)
+    optimizer = torch.optim.Adam([weights], lr=1e-1)
     from tqdm import trange
 
-    iterator = trange(10_000)
+    start_loss = None
+
+    iterator = trange(1_000)
     for i in iterator:
         optimizer.zero_grad()
-        l, worst_name, worst_val = loss(torch.exp(weights))
+        l = loss(torch.exp(weights))
+        if start_loss is None:
+            start_loss = l.item()
+        loss_rel_change = (l.item() - start_loss) / start_loss
         l.backward()
         iterator.set_postfix(
-            {"loss": l.item(), "worst": worst_name, "val": worst_val}
+            {"loss": l.item(), "loss_rel_change": loss_rel_change}
         )
         optimizer.step()
 
@@ -173,8 +176,8 @@ class EnhancedCPS_2024(EnhancedCPS):
     end_year = 2024
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
-    file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"
-    url = "release://policyengine/policyengine-us-data/release/enhanced_cps_2024.h5"
+    file_path = STORAGE_FOLDER / "enhanced_cps_2024_v1_6_1.h5"
+    url = "release://policyengine/policyengine-us-data/release/enhanced_cps_2024_v1_6_1.h5"
 
 
 if __name__ == "__main__":

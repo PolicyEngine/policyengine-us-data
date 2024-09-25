@@ -91,3 +91,8 @@
     - Documentation updated.
     - URLs for PUF data.
   date: 2024-09-23 11:22:32
+- bump: minor
+  changes:
+    added:
+    - State and household size as predictors for rent and property taxes.
+  date: 2024-09-25 10:40:39

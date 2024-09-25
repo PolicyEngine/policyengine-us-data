@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "policyengine_us_data"
-version = "1.5.1"
+version = "1.6.0"
 description = "A package to create representative microdata for the US."
 readme = "README.md"
 authors = [

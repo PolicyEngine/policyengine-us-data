@@ -55,7 +55,7 @@ def reweight(
 
     start_loss = None
 
-    iterator = trange(10_000)
+    iterator = trange(1_000)
     for i in iterator:
         optimizer.zero_grad()
         l = loss(torch.exp(weights))

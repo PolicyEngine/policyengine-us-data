@@ -50,7 +50,7 @@ def reweight(
             raise ValueError("Relative error contains NaNs")
         return rel_error.mean()
 
-    optimizer = torch.optim.Adam([weights], lr=1e-2)
+    optimizer = torch.optim.Adam([weights], lr=1e-1)
     from tqdm import trange
 
     start_loss = None

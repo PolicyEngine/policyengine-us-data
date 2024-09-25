@@ -81,6 +81,8 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         "self_employment_income",
         "social_security",
         "pension_income",
+        "state_code_str",
+        "household_size",
     ]
     IMPUTATIONS = ["rent", "real_estate_taxes"]
     train_df = acs.calculate_dataframe(PREDICTORS + IMPUTATIONS)

@@ -514,3 +514,6 @@ MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
     "medicare_part_b_premiums": 0.137,
     "over_the_counter_health_expenses": 0.085,
 }
+
+if __name__ == "__main__":
+    PUF_2015().generate()

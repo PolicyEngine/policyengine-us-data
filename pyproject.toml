@@ -22,7 +22,7 @@ dependencies = [
 dev = [
     "black",
     "pytest",
-    "policyengine_us==1.88.0",
+    "policyengine_us==1.100.0",
     "quantile-forest",
     "torch",
     "tables",

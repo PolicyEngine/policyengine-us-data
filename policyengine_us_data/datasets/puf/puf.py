@@ -4,8 +4,8 @@ import pandas as pd
 from microdf import MicroDataFrame
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER
-from .uprate_puf import uprate_puf
-from .irs_puf import IRS_PUF_2015
+from policyengine_us_data.datasets.puf.uprate_puf import uprate_puf
+from policyengine_us_data.datasets.puf.irs_puf import IRS_PUF_2015
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )

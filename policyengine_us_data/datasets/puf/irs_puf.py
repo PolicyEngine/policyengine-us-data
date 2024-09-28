@@ -43,5 +43,6 @@ class IRS_PUF_2015(IRS_PUF):
     puf_demographics_file_path = STORAGE_FOLDER / "demographics_2015.csv"
     file_path = STORAGE_FOLDER / "irs_puf_2015.h5"
 
+
 if __name__ == "__main__":
     IRS_PUF_2015().generate()

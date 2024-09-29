@@ -357,11 +357,7 @@ class PUF(Dataset):
 
         i = 0
         self.earn_splits = []
-        for _, row in tqdm(
-            puf.iterrows(),
-            total=len(puf),
-            desc="Constructing hierarchical PUF",
-        ):
+        for _, row in puf.iterrows():
             i += 1
             exemptions = row["exemptions_count"]
             tax_unit_id = row["household_id"]
@@ -517,3 +513,5 @@ MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
 
 if __name__ == "__main__":
     PUF_2015().generate()
+    PUF_2021().generate()
+    PUF_2024().generate()

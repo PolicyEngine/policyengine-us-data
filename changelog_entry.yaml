@@ -1,4 +1,0 @@
-- bump: minor
-  changes:
-    fixed:
-    - Moved PolicyEngine US out of setup.py dependencies.

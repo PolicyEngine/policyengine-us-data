@@ -101,3 +101,8 @@
     changed:
     - Bump to policyengine-us 1.100.0.
   date: 2024-09-29 15:03:05
+- bump: minor
+  changes:
+    fixed:
+    - Moved PolicyEngine US out of setup.py dependencies.
+  date: 2024-09-29 18:08:57

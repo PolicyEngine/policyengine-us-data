@@ -493,7 +493,7 @@ class PUF_2021(PUF):
     name = "puf_2021"
     time_period = 2021
     file_path = STORAGE_FOLDER / "puf_2021.h5"
-    url = "release://policyengine/irs-soi-puf/1.7.0/puf_2021.h5"
+    url = "release://policyengine/irs-soi-puf/1.8.0/puf_2021.h5"
 
 
 class PUF_2024(PUF):
@@ -501,7 +501,7 @@ class PUF_2024(PUF):
     name = "puf_2024"
     time_period = 2024
     file_path = STORAGE_FOLDER / "puf_2024.h5"
-    url = "release://policyengine/irs-soi-puf/1.7.0/puf_2024.h5"
+    url = "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5"
 
 
 MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {

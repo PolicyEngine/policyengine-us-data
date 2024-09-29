@@ -4,7 +4,7 @@ copyright: "2024"
 logo: logo.png
 
 execute:
-  execute_notebooks: off
+  execute_notebooks: force
 
 repository:
   url: https://github.com/policyengine/policyengine-us-data

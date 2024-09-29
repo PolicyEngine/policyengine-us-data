@@ -5,7 +5,7 @@
 # This script must run first and complete to allow for 
 # proper versioning.
 
-name: Push 1
+name: Update versioning
 
 on:
   push:

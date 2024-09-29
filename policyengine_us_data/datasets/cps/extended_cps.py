@@ -118,7 +118,7 @@ class ExtendedCPS(Dataset):
         print(
             f"Predicting imputed values took {time.time() - start:.2f} seconds"
         )
-
+        cps_sim = Microsimulation(dataset=self.cps)
         data = cps_sim.dataset.load_dataset()
         new_data = {}
 

@@ -38,7 +38,7 @@ jobs:
         with:
           python-version: 3.12
       - name: Install package
-        run: pip install -e ".[dev]"
+        run: make install
       - name: Download data inputs
         run: make download
         env:
@@ -73,7 +73,7 @@ jobs:
         with:
           python-version: 3.12
       - name: Install package
-        run: pip install -e ".[dev]"
+        run: make install
       - name: Build package
         run: python -m build
       - name: Publish a git tag

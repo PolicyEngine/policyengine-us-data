@@ -111,7 +111,7 @@ class ACS_2022(ACS):
     time_period = 2022
     file_path = STORAGE_FOLDER / "acs_2022.h5"
     census_acs = CensusACS_2022
-    url = "release://PolicyEngine/policyengine-us-data/1.7.0/acs_2022.h5"
+    url = "release://PolicyEngine/policyengine-us-data/1.8.0/acs_2022.h5"
 
 
 if __name__ == "__main__":

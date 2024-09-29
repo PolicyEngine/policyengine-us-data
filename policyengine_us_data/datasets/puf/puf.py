@@ -4,8 +4,8 @@ import pandas as pd
 from microdf import MicroDataFrame
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER
-from .uprate_puf import uprate_puf
-from .irs_puf import IRS_PUF_2015
+from policyengine_us_data.datasets.puf.uprate_puf import uprate_puf
+from policyengine_us_data.datasets.puf.irs_puf import IRS_PUF_2015
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
@@ -357,11 +357,7 @@ class PUF(Dataset):
 
         i = 0
         self.earn_splits = []
-        for _, row in tqdm(
-            puf.iterrows(),
-            total=len(puf),
-            desc="Constructing hierarchical PUF",
-        ):
+        for _, row in puf.iterrows():
             i += 1
             exemptions = row["exemptions_count"]
             tax_unit_id = row["household_id"]
@@ -497,7 +493,7 @@ class PUF_2021(PUF):
     name = "puf_2021"
     time_period = 2021
     file_path = STORAGE_FOLDER / "puf_2021.h5"
-    url = "release://policyengine/irs-soi-puf/release/puf_2021.h5"
+    url = "release://policyengine/irs-soi-puf/1.7.0/puf_2021.h5"
 
 
 class PUF_2024(PUF):
@@ -505,7 +501,7 @@ class PUF_2024(PUF):
     name = "puf_2024"
     time_period = 2024
     file_path = STORAGE_FOLDER / "puf_2024.h5"
-    url = "release://policyengine/irs-soi-puf/release/puf_2024.h5"
+    url = "release://policyengine/irs-soi-puf/1.7.0/puf_2024.h5"
 
 
 MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
@@ -514,3 +510,8 @@ MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
     "medicare_part_b_premiums": 0.137,
     "over_the_counter_health_expenses": 0.085,
 }
+
+if __name__ == "__main__":
+    PUF_2015().generate()
+    PUF_2021().generate()
+    PUF_2024().generate()

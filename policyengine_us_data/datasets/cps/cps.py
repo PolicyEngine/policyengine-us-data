@@ -620,9 +620,9 @@ class CPS_2023(CPS):
 class CPS_2024(CPS):
     name = "cps_2024"
     label = "CPS 2024 (2022-based)"
-    file_path = STORAGE_FOLDER / "cps_2024_v1_6_1.h5"
+    file_path = STORAGE_FOLDER / "cps_2024.h5"
     time_period = 2024
-    url = "release://policyengine/policyengine-us-data/release/cps_2024_v1_6_1.h5"
+    url = "release://policyengine/policyengine-us-data/1.7.0/cps_2024.h5"
 
 
 class PooledCPS(Dataset):
@@ -674,14 +674,14 @@ class PooledCPS(Dataset):
 class Pooled_3_Year_CPS_2023(PooledCPS):
     label = "CPS 2023 (3-year pooled)"
     name = "pooled_3_year_cps_2023"
-    file_path = STORAGE_FOLDER / "pooled_3_year_cps_2023_v1_6_1.h5"
+    file_path = STORAGE_FOLDER / "pooled_3_year_cps_2023.h5"
     input_datasets = [
         CPS_2021,
         CPS_2022,
         CPS_2023,
     ]
     time_period = 2023
-    url = "release://PolicyEngine/policyengine-us-data/release/pooled_3_year_cps_2023_v1_6_1.h5"
+    url = "release://PolicyEngine/policyengine-us-data/1.7.0/pooled_3_year_cps_2023.h5"
 
 
 if __name__ == "__main__":

@@ -226,6 +226,19 @@ def build_loss_matrix(dataset: type, time_period):
             raise ValueError(f"Missing values for {label}")
         targets_array.append(target)
 
+    # Negative household market income total rough estimate from the IRS SOI PUF
+
+    market_income = sim.calculate("household_market_income").values
+    loss_matrix["irs/negative_household_market_income_total"] = (
+        market_income * (market_income < 0)
+    )
+    targets_array.append(-138e9)
+
+    loss_matrix["irs/negative_household_market_income_count"] = (
+        market_income < 0
+    ).astype(float)
+    targets_array.append(3e6)
+
     # Healthcare spending by age
 
     healthcare = pd.read_csv(STORAGE_FOLDER / "healthcare_spending.csv")

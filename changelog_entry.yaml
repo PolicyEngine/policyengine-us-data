@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    changed:
+      - Bump to policyengine-us 1.100.0.

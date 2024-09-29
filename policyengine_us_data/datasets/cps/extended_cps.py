@@ -85,6 +85,9 @@ class ExtendedCPS(Dataset):
         cps_sim = Microsimulation(dataset=self.cps)
         puf_sim = Microsimulation(dataset=self.puf)
 
+        if os.environ.get("LITE_MODE"):
+            puf_sim.subsample(10_000)
+
         INPUTS = [
             "age",
             "is_male",
@@ -114,7 +117,7 @@ class ExtendedCPS(Dataset):
         print(
             f"Predicting imputed values took {time.time() - start:.2f} seconds"
         )
-
+        cps_sim = Microsimulation(dataset=self.cps)
         data = cps_sim.dataset.load_dataset()
         new_data = {}
 

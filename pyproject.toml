@@ -14,7 +14,6 @@ license = {file = "LICENSE"}
 requires-python = ">=3.10"
 dependencies = [
     "policyengine_core",
-    "microdf_python",
     "requests",
     "tqdm",
 ]

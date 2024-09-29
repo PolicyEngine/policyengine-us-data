@@ -87,7 +87,6 @@ class ExtendedCPS(Dataset):
 
         if os.environ.get("LITE_MODE"):
             puf_sim.subsample(10_000)
-            cps_sim.subsample(10_000)
 
         INPUTS = [
             "age",

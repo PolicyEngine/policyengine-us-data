@@ -96,3 +96,8 @@
     added:
     - State and household size as predictors for rent and property taxes.
   date: 2024-09-25 10:40:39
+- bump: minor
+  changes:
+    changed:
+    - Bump to policyengine-us 1.100.0.
+  date: 2024-09-29 15:03:05

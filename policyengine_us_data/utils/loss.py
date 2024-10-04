@@ -188,11 +188,32 @@ def build_loss_matrix(dataset: type, time_period):
     loss_matrix["treasury/eitc"] = sim.calculate(
         "eitc", map_to="household"
     ).values
+    eitc_spending = sim.tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc
     targets_array.append(
-        sim.tax_benefit_system.parameters(
-            time_period
-        ).calibration.gov.treasury.tax_expenditures.eitc
+        eitc_spending(time_period)
     )
+
+    # IRS EITC filers and totals by child counts
+    eitc_stats = pd.read_csv(STORAGE_FOLDER / "eitc.csv")
+
+    eitc_spending_uprating = eitc_spending(time_period) / eitc_spending(2021)
+    population = sim.tax_benefit_system.parameters.calibration.gov.census.populations.total
+    population_uprating = population(time_period) / population(2021)
+
+    for _, row in eitc_stats.iterrows():
+        returns_label = f"irs/eitc/returns/count_children_{row['count_children']}"
+        eitc_eligible_children = sim.calculate("eitc_child_count").values
+        eitc = sim.calculate("eitc").values
+        loss_matrix[returns_label] = sim.map_result(
+            (eitc > 0) * (eitc_eligible_children == row["count_children"]), "tax_unit", "household"
+        )
+        targets_array.append(row["eitc_returns"] * population_uprating)
+
+        spending_label = f"irs/eitc/spending/count_children_{row['count_children']}"
+        loss_matrix[spending_label] = sim.map_result(
+            eitc * (eitc_eligible_children == row["count_children"]), "tax_unit", "household"
+        )
+        targets_array.append(row["eitc_total"] * eitc_spending_uprating)
 
     # CPS-derived statistics
     # Medical expenses, sum of spm thresholds

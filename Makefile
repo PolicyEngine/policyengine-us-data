@@ -9,8 +9,8 @@ test:
 	pytest
 
 install:
-	pip install -e ".[dev]"
-	pip install policyengine-us==1.100.0
+	pip install policyengine-us==1.109.0
+	pip install -e ".[dev]"  --config-settings editable_mode=compat
 
 changelog:
 	build-changelog changelog.yaml --output changelog.yaml --update-last-date --start-from 1.0.0 --append-file changelog_entry.yaml

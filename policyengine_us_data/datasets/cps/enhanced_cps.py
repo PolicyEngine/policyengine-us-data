@@ -25,6 +25,7 @@ def reweight(
     original_weights,
     loss_matrix,
     targets_array,
+    dropout_rate=0.1,
 ):
     target_names = np.array(loss_matrix.columns)
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
@@ -50,15 +51,26 @@ def reweight(
             raise ValueError("Relative error contains NaNs")
         return rel_error.mean()
 
+    def dropout_weights(weights, p):
+        if p == 0:
+            return weights
+        # Replace p% of the weights with the mean value of the rest of them
+        mask = torch.rand_like(weights) < p
+        mean = weights[~mask].mean()
+        masked_weights = weights.clone()
+        masked_weights[mask] = mean
+        return masked_weights
+
     optimizer = torch.optim.Adam([weights], lr=1e-1)
     from tqdm import trange
 
     start_loss = None
 
-    iterator = trange(1_000)
+    iterator = trange(5_000)
     for i in iterator:
         optimizer.zero_grad()
-        l = loss(torch.exp(weights))
+        weights_ = dropout_weights(weights, dropout_rate)
+        l = loss(torch.exp(weights_))
         if start_loss is None:
             start_loss = l.item()
         loss_rel_change = (l.item() - start_loss) / start_loss
@@ -177,7 +189,7 @@ class EnhancedCPS_2024(EnhancedCPS):
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
     file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"
-    url = "release://policyengine/policyengine-us-data/1.8.0/enhanced_cps_2024.h5"
+    url = "release://policyengine/policyengine-us-data/1.9.0/enhanced_cps_2024.h5"
 
 
 if __name__ == "__main__":

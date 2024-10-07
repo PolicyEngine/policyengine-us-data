@@ -1,5 +1,0 @@
-- bump: minor
-  changes:
-    added:
-    - EITC calibration by child counts.
-    - 10% dropout during weight calibration.

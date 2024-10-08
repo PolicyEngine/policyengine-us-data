@@ -208,7 +208,7 @@ def build_loss_matrix(dataset: type, time_period):
         )
         eitc_eligible_children = sim.calculate("eitc_child_count").values
         eitc = sim.calculate("eitc").values
-        if row["count_children"] < 2:
+        if row["count_children"] < 3:
             meets_child_criteria = (
                 eitc_eligible_children == row["count_children"]
             )

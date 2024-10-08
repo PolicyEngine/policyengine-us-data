@@ -106,3 +106,9 @@
     fixed:
     - Moved PolicyEngine US out of setup.py dependencies.
   date: 2024-09-29 18:08:57
+- bump: minor
+  changes:
+    added:
+    - EITC calibration by child counts.
+    - 10% dropout during weight calibration.
+  date: 2024-10-07 11:45:52

@@ -112,3 +112,8 @@
     - EITC calibration by child counts.
     - 10% dropout during weight calibration.
   date: 2024-10-07 11:45:52
+- bump: minor
+  changes:
+    fixed:
+    - EITC calibration.
+  date: 2024-10-08 15:48:46

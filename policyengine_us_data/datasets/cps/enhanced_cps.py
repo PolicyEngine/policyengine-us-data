@@ -25,7 +25,7 @@ def reweight(
     original_weights,
     loss_matrix,
     targets_array,
-    dropout_rate=0.1,
+    dropout_rate=0.05,
 ):
     target_names = np.array(loss_matrix.columns)
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
@@ -189,7 +189,7 @@ class EnhancedCPS_2024(EnhancedCPS):
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
     file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"
-    url = "release://policyengine/policyengine-us-data/1.9.0/enhanced_cps_2024.h5"
+    url = "release://policyengine/policyengine-us-data/1.10.0/enhanced_cps_2024.h5"
 
 
 if __name__ == "__main__":

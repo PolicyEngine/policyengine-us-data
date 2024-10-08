@@ -25,7 +25,7 @@ def reweight(
     original_weights,
     loss_matrix,
     targets_array,
-    dropout_rate=0.1,
+    dropout_rate=0.05,
 ):
     target_names = np.array(loss_matrix.columns)
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)

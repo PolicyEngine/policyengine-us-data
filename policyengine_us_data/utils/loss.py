@@ -208,8 +208,16 @@ def build_loss_matrix(dataset: type, time_period):
         )
         eitc_eligible_children = sim.calculate("eitc_child_count").values
         eitc = sim.calculate("eitc").values
+        if row["count_children"] < 2:
+            meets_child_criteria = (
+                eitc_eligible_children == row["count_children"]
+            )
+        else:
+            meets_child_criteria = (
+                eitc_eligible_children >= row["count_children"]
+            )
         loss_matrix[returns_label] = sim.map_result(
-            (eitc > 0) * (eitc_eligible_children == row["count_children"]),
+            (eitc > 0) * meets_child_criteria,
             "tax_unit",
             "household",
         )
@@ -219,7 +227,7 @@ def build_loss_matrix(dataset: type, time_period):
             f"irs/eitc/spending/count_children_{row['count_children']}"
         )
         loss_matrix[spending_label] = sim.map_result(
-            eitc * (eitc_eligible_children == row["count_children"]),
+            eitc * meets_child_criteria,
             "tax_unit",
             "household",
         )

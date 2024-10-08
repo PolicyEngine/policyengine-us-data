@@ -54,6 +54,8 @@ class CPS(Dataset):
         raw_data.close()
         self.save_dataset(cps)
 
+        add_takeup(self)
+
 
 def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["tenure_type"] = household.H_TENURE.map(
@@ -112,6 +114,30 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     )
     cps["real_estate_taxes"] = np.zeros_like(cps["age"])
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
+
+
+def add_takeup(self):
+    data = self.load_dataset()
+
+    from policyengine_us import system, Microsimulation
+
+    baseline = Microsimulation(dataset=self)
+    parameters = baseline.tax_benefit_system.parameters(self.time_period)
+    generator = np.random.default_rng(seed=100)
+
+    snap_takeup_rate = parameters.gov.usda.snap.takeup_rate
+    data["takes_up_snap_if_eligible"] = (
+        generator.random(len(data["spm_unit_id"])) < snap_takeup_rate
+    )
+
+    eitc_takeup_rates = parameters.gov.irs.credits.eitc.takeup
+    eitc_child_count = baseline.calculate("eitc_child_count").values
+    eitc_takeup_rate = eitc_takeup_rates.calc(eitc_child_count)
+    data["takes_up_eitc"] = (
+        generator.random(len(data["tax_unit_id"])) < eitc_takeup_rate
+    )
+
+    self.save_dataset(data)
 
 
 def uprate_cps_data(data, from_period, to_period):

@@ -117,3 +117,8 @@
     fixed:
     - EITC calibration.
   date: 2024-10-08 15:48:46
+- bump: minor
+  changes:
+    changed:
+    - EITC targets improved by uprating 2020 rather than 2021 targets.
+  date: 2024-10-09 14:11:41

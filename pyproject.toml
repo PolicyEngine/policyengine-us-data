@@ -16,6 +16,7 @@ dependencies = [
     "policyengine_core",
     "requests",
     "tqdm",
+    "microdf_python>=0.4.3",
 ]
 
 [project.optional-dependencies]

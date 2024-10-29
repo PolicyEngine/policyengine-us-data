@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    changed:
-    - Reverted to using standard version of microdf

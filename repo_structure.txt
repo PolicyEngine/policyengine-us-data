@@ -28,6 +28,26 @@
 │   ├── logo.png
 │   ├── utils.py
 │   └── validation.ipynb
+├── paper
+│   ├── .gitignore
+│   ├── bibliography
+│   │   └── references.bib
+│   ├── figures
+│   ├── macros.tex
+│   ├── main.tex
+│   ├── sections
+│   │   ├── abstract.tex
+│   │   ├── background.tex
+│   │   ├── conclusion.tex
+│   │   ├── data.tex
+│   │   ├── discussion.tex
+│   │   ├── introduction.tex
+│   │   ├── methodology
+│   │   │   ├── overview.tex
+│   │   │   ├── quantile_forests.tex
+│   │   │   └── reweighting.tex
+│   │   └── results.tex
+│   └── tables
 ├── policyengine_us_data
 │   ├── __init__.py
 │   ├── __version__.py
@@ -83,6 +103,7 @@
 │       ├── soi.py
 │       └── uprating.py
 ├── pyproject.toml
-└── repo_structure.txt
+├── repo_structure.txt
+└── setup_paper.sh
 
-16 directories, 70 files
+22 directories, 85 files

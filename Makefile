@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data clean build
+.PHONY: all format test install download upload docker documentation data clean build paper clean-paper
 
 all: data test
 
@@ -49,3 +49,15 @@ build:
 
 publish:
 	twine upload dist/*
+
+paper: paper/main.pdf
+
+paper/main.pdf: $(wildcard paper/sections/**/*.tex) $(wildcard paper/bibliography/*.bib) paper/main.tex paper/macros.tex
+	cd paper && \
+	TEXINPUTS=".:sections/methodology/:" pdflatex main && \
+	BSTINPUTS=".:bibliography/:" BIBINPUTS=".:bibliography/:" bibtex main && \
+	pdflatex main && \
+	pdflatex main
+
+clean-paper:
+	rm -f paper/*.aux paper/*.bbl paper/*.blg paper/*.log paper/*.out paper/*.toc paper/main.pdf paper/sections/**/*.aux

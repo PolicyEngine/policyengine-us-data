@@ -1,4 +1,4 @@
-\section{Reweighting Procedure}
+\section{Reweighting Procedure}\label{sec:reweighting}
 
 Our reweighting process optimizes household weights to match administrative targets while determining the relative value of original CPS records versus PUF-derived synthetic records.
 
@@ -62,12 +62,12 @@ where:
 
 \subsection{Implementation Details}
 
-From `enhanced_cps.py`:
+From \texttt{enhanced_cps.py}:
 \begin{itemize}
-    \item Learning rate: 0.1
-    \item Dropout rate: 5\%
-    \item Optimizer: Adam
-    \item Maximum iterations: 5,000
+\item Learning rate: 0.1
+\item Dropout rate: 5%
+\item Optimizer: Adam
+\item Maximum iterations: 5,000
 \end{itemize}
 
 % TODO: Add specific convergence metrics and typical runtime statistics

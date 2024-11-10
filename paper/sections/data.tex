@@ -1,0 +1,91 @@
+\section{Data}
+
+\subsection{Current Population Survey}
+
+The Current Population Survey Annual Social and Economic Supplement (CPS ASEC) provides comprehensive demographic and economic information for a nationally representative sample of U.S. households. For tax year 2024, our base dataset contains approximately 150,000 households representing the U.S. civilian non-institutional population.
+
+The CPS's key strengths include:
+\begin{itemize}
+    \item Rich demographic detail including age, sex, race, ethnicity, and education
+    \item Complete household relationship matrices
+    \item Program participation indicators
+    \item State and sub-state geographic identifiers
+    \item Monthly employment and labor force status
+\end{itemize}
+
+However, the CPS has known limitations for tax modeling:
+\begin{itemize}
+    \item Underreporting of income, particularly at the top of the distribution
+    \item Limited tax-relevant information (e.g., itemized deductions)
+    \item No direct observation of tax units within households
+    \item Imprecise measurement of certain income types (e.g., capital gains)
+\end{itemize}
+
+\subsection{IRS Public Use File}
+
+The Internal Revenue Service Public Use File (PUF) is a national sample of individual income tax returns, containing approximately 200,000 records. The data are extensively transformed to protect taxpayer privacy while preserving statistical properties. Our analysis uses the 2015 PUF, the most recent available, aged to 2024.
+
+The PUF's key strengths include:
+\begin{itemize}
+    \item Precise income amounts derived from information returns
+    \item Complete tax return information including itemized deductions
+    \item Actual tax unit structure
+    \item Accurate income type classification
+\end{itemize}
+
+The PUF's limitations include:
+\begin{itemize}
+    \item Limited demographic information
+    \item No household structure beyond the tax unit
+    \item Geographic detail limited to state
+    \item No program participation information
+    \item Privacy protections that mask extreme values
+\end{itemize}
+
+\subsection{External Validation Sources}
+
+We validate our enhanced dataset against several external sources:
+
+\subsubsection{IRS Statistics of Income}
+
+The Statistics of Income (SOI) Division publishes detailed tabulations of tax return data, including:
+\begin{itemize}
+    \item Income amounts by source and adjusted gross income bracket
+    \item Number of returns by filing status
+    \item Itemized deduction amounts and counts
+    \item Tax credits and their distribution
+\end{itemize}
+
+These tabulations serve as key targets in our reweighting procedure and validation metrics.
+
+\subsubsection{CPS ASEC Public Tables}
+
+Census Bureau publications provide demographic and program participation benchmarks, including:
+\begin{itemize}
+    \item Age distribution by state
+    \item Household size distribution
+    \item Program participation rates
+    \item Employment status
+\end{itemize}
+
+\subsubsection{Administrative Program Totals}
+
+We incorporate official totals from various agencies:
+\begin{itemize}
+    \item Social Security Administration beneficiary counts and benefit amounts
+    \item SNAP participation and benefits from USDA
+    \item Earned Income Tax Credit statistics from IRS
+    \item Unemployment Insurance claims and benefits from Department of Labor
+\end{itemize}
+
+\subsection{Variable Harmonization}
+
+A crucial preparatory step is harmonizing variables across datasets. We develop a detailed crosswalk between CPS and PUF variables, accounting for definitional differences. Key considerations include:
+\begin{itemize}
+    \item Income timing (calendar year vs. tax year)
+    \item Income classification (e.g., business vs. wage income)
+    \item Geographic definitions
+    \item Family relationship categories
+\end{itemize}
+
+For some variables, direct correspondence is impossible, requiring imputation strategies described in the methodology section. The complete variable crosswalk is available in our open-source repository.

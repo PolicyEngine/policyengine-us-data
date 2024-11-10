@@ -1,0 +1,21 @@
+\section{Introduction}
+
+Microsimulation models are essential tools for analyzing the distributional impacts of tax and transfer policies. These models require microdata that accurately represent both the demographic composition of a population and their economic circumstances, particularly their tax situations. However, available data sources typically excel in one dimension while falling short in another.
+
+The Current Population Survey (CPS), conducted by the U.S. Census Bureau, provides rich demographic detail and household relationships but suffers from underreporting of income and lacks tax information. Conversely, the Internal Revenue Service's Public Use File (PUF) offers precise tax data but contains limited demographic information and obscures household structure. This tradeoff between demographic detail and tax precision poses a significant challenge for policy analysis.
+
+This paper presents a novel approach to combining these complementary data sources. We develop a methodology that preserves the demographic richness of the CPS while incorporating the tax precision of the PUF, creating an enhanced dataset that serves as the foundation for PolicyEngine's microsimulation capabilities. Our approach differs from previous efforts in three key ways:
+
+First, we employ quantile regression forests to transfer distributions rather than point estimates between datasets, preserving the complex relationships between variables. Second, we maintain household structure throughout the enhancement process, ensuring that family relationships crucial for benefit calculations remain intact. Third, we implement a sophisticated reweighting procedure that simultaneously matches dozens of demographic and economic targets while avoiding overfitting through a dropout-enhanced gradient descent approach.
+
+The resulting dataset demonstrates superior performance in both tax and transfer policy simulation. When compared to administrative totals, our enhanced dataset reduces discrepancies in key tax components by an average of 40\% relative to the baseline CPS, while maintaining or improving the accuracy of demographic and program participation variables.
+
+The remainder of this paper is organized as follows: Section 2 reviews related work in survey enhancement and microsimulation data construction. Section 3 describes our data sources and their characteristics. Section 4 presents our methodology in detail. Section 5 validates our results against external benchmarks. Section 6 discusses implications and limitations, and Section 7 concludes.
+
+Our contributions include:
+\begin{itemize}
+    \item A novel methodology for combining survey and administrative data while preserving distributional relationships
+    \item An open-source implementation that can be adapted for other jurisdictions and policy models
+    \item A validation framework comparing enhanced estimates against multiple external benchmarks
+    \item A new, publicly available microdata file suitable for US tax and benefit policy analysis
+\end{itemize}

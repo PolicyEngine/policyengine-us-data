@@ -1,46 +1,70 @@
 \section{Results}
 
-We validate our enhanced dataset against the administrative targets used in our loss matrix construction.
+We evaluate our enhanced dataset against administrative targets by constructing a loss matrix (defined in utils/loss.py) measuring relative deviations from:
 
-\subsection{Target Categories}
+\subsection{IRS Statistics of Income Targets}
 
-Our loss matrix tracks matches against:
-
-\subsubsection{IRS Statistics of Income}
-By AGI bracket and filing status:
+By AGI bracket and filing status, we track:
 \begin{itemize}
-    \item Adjusted gross income
-    \item Employment income
-    \item Business net profits/losses
-    \item Capital gains
+    \item Adjusted gross income totals
+    \item Return counts
+    \item Wages, salaries, and tips
+    \item Business net profits and losses (separately)
+    \item Capital gains (gross amounts and distributions)
     \item Ordinary dividends
-    \item Partnership and S-corporation income
+    \item Partnership and S-corporation income and losses
     \item Qualified dividends
     \item Taxable interest income
     \item Pension income
     \item Social Security benefits
-\end{itemize}
-
-\subsubsection{Census Population Projections}
-Single-year age populations from ages 0-85.
-
-\subsubsection{CBO Projections}
-Annual totals for:
-\begin{itemize}
-    \item Income tax
-    \item SNAP
-    \item Social Security
-    \item SSI
+    \item Estate income and losses
+    \item Tax-exempt interest
+    \item IRA distributions
+    \item Rent and royalty income and losses
+    \item Taxable pension income
+    \item Taxable Social Security
     \item Unemployment compensation
 \end{itemize}
 
-\subsubsection{Treasury EITC Statistics}
+\subsection{Census Population Targets}
+
+From Census projections:
 \begin{itemize}
-    \item EITC claims and amounts by number of qualifying children
+    \item Population counts for each single year of age from 0 to 85
 \end{itemize}
 
-% TODO: Add specific quantitative results from running the enhanced dataset against these targets
+\subsection{CBO Program Totals}
 
-\subsection{Computational Performance}
+From Congressional Budget Office projections:
+\begin{itemize}
+    \item Income tax revenue
+    \item SNAP benefit payments
+    \item Social Security benefit payments
+    \item SSI payments
+    \item Unemployment compensation
+\end{itemize}
 
-% TODO: Add measured runtime statistics from production enhancement runs
+\subsection{EITC Statistics}
+
+From Treasury data:
+\begin{itemize}
+    \item Number of returns claiming EITC by number of qualifying children
+    \item Total EITC amounts by number of qualifying children
+\end{itemize}
+
+\subsection{Other Targets}
+
+From various government sources:
+\begin{itemize}
+    \item Healthcare spending by age group and type
+    \item Child support payments
+    \item Housing costs and subsidies
+    \item Market income losses
+\end{itemize}
+
+The reweighting procedure minimizes the relative squared error between weighted sums of these variables and their administrative targets. 
+
+% TODO: Add specific quantitative results showing:
+% - Initial deviations from targets in base CPS
+% - Final deviations after enhancement
+% - Distribution of weights between original and synthetic records

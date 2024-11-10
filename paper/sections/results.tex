@@ -1,117 +1,46 @@
 \section{Results}
 
-We evaluate our enhanced dataset against external benchmarks and compare its performance to the baseline CPS. The results demonstrate improvements in both tax and benefit program accuracy while maintaining demographic representativeness.
+We validate our enhanced dataset against the administrative targets used in our loss matrix construction.
 
-\subsection{Income Distribution Accuracy}
+\subsection{Target Categories}
 
-\subsubsection{Aggregate Income Components}
+Our loss matrix tracks matches against:
 
-Table 1 compares aggregate income amounts between our enhanced dataset and IRS Statistics of Income (SOI) totals. The enhanced dataset shows substantial improvements over the baseline CPS, particularly for:
+\subsubsection{IRS Statistics of Income}
+By AGI bracket and filing status:
 \begin{itemize}
-    \item Capital gains (reducing discrepancy from 45\% to 12\%)
-    \item Business income (reducing discrepancy from 38\% to 8\%)
-    \item Dividend income (reducing discrepancy from 32\% to 7\%)
-    \item Pension and annuity income (reducing discrepancy from 25\% to 5\%)
-\end{itemize}
-
-\subsubsection{Distribution by Income Bracket}
-
-Figure 1 shows the distribution of tax units by adjusted gross income bracket. The enhanced dataset better captures:
-\begin{itemize}
-    \item The right tail of the income distribution
-    \item The proportion of non-filers
-    \item The distribution of itemizers vs. standard deduction claimants
-\end{itemize}
-
-\subsection{Program Participation}
-
-\subsubsection{Tax Credits}
-
-The enhanced dataset matches administrative totals for key tax credits:
-\begin{itemize}
-    \item EITC recipients by number of qualifying children
-    \item Child Tax Credit take-up and amounts
-    \item Education credits
-\end{itemize}
-
-\subsubsection{Benefit Programs}
-
-Take-up rates and benefit amounts closely track administrative data:
-\begin{itemize}
-    \item SNAP participation and benefits by state
-    \item SSI recipient demographics
-    \item WIC eligible and participating families
-    \item Free and reduced price school meal enrollment
-\end{itemize}
-
-\subsection{Geographic Distribution}
-
-\subsubsection{State-Level Estimates}
-
-Table 2 presents state-by-state comparisons of key variables:
-\begin{itemize}
-    \item Tax returns by filing status
     \item Adjusted gross income
-    \item EITC recipients and amounts
-    \item SNAP participants and benefits
+    \item Employment income
+    \item Business net profits/losses
+    \item Capital gains
+    \item Ordinary dividends
+    \item Partnership and S-corporation income
+    \item Qualified dividends
+    \item Taxable interest income
+    \item Pension income
+    \item Social Security benefits
 \end{itemize}
 
-The enhanced dataset reduces mean absolute percentage error in state-level estimates by 35\% compared to the baseline CPS.
+\subsubsection{Census Population Projections}
+Single-year age populations from ages 0-85.
 
-\subsection{Demographic Preservation}
-
-\subsubsection{Household Structure}
-
-The enhancement process preserves key demographic relationships:
+\subsubsection{CBO Projections}
+Annual totals for:
 \begin{itemize}
-    \item Household size distribution
-    \item Family type distribution
-    \item Age distribution within households
-    \item Geographic clustering of demographic groups
+    \item Income tax
+    \item SNAP
+    \item Social Security
+    \item SSI
+    \item Unemployment compensation
 \end{itemize}
 
-\subsubsection{Joint Distributions}
-
-Table 3 compares joint distributions of key characteristics between the enhanced dataset and CPS public tables:
+\subsubsection{Treasury EITC Statistics}
 \begin{itemize}
-    \item Age by income quintile
-    \item Family type by program participation
-    \item Geographic location by demographic characteristics
+    \item EITC claims and amounts by number of qualifying children
 \end{itemize}
 
-\subsection{Policy Analysis Applications}
+% TODO: Add specific quantitative results from running the enhanced dataset against these targets
 
-\subsubsection{Federal Tax Reform}
+\subsection{Computational Performance}
 
-We validate the enhanced dataset's performance in analyzing specific policy reforms:
-\begin{itemize}
-    \item EITC expansion scenarios
-    \item Child Tax Credit modifications
-    \item Tax bracket adjustments
-    \item Standard deduction changes
-\end{itemize}
-
-Results show improved accuracy in distributional analysis and revenue estimates compared to baseline data.
-
-\subsubsection{State Policy Analysis}
-
-The enhanced dataset enables accurate state-level analysis:
-\begin{itemize}
-    \item State EITC reforms
-    \item Property tax circuit breakers
-    \item State-specific means-tested benefits
-\end{itemize}
-
-State-level revenue and distributional estimates show strong agreement with administrative data and independent analyses.
-
-\subsection{Uncertainty Analysis}
-
-To assess the robustness of our results:
-\begin{itemize}
-    \item Bootstrap estimates of standard errors for key statistics
-    \item Sensitivity analysis of imputation model parameters
-    \item Impact of alternative reweighting targets
-    \item Comparison with independent microsimulation models
-\end{itemize}
-
-Results indicate stable estimates across reasonable parameter variations and bootstrap samples.
+% TODO: Add measured runtime statistics from production enhancement runs

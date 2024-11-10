@@ -1,0 +1,66 @@
+\section{Quantile Regression Forests}
+
+We use quantile regression forests (QRF) in two distinct ways: direct imputation of missing variables, and generation of synthetic records.
+
+\subsection{PUF Integration: Synthetic Record Generation}
+
+Unlike our other QRF applications, we use the PUF to generate an entire synthetic CPS-structured dataset:
+
+\begin{enumerate}
+    \item Train QRF models on PUF records with demographic variables
+    \item Generate a complete set of synthetic CPS-structured records using PUF tax information
+    \item Stack these synthetic records alongside the original CPS records
+    \item Allow the reweighting procedure to determine optimal mixing between CPS and PUF-based records
+\end{enumerate}
+
+This approach preserves CPS's person-level detail crucial for modeling:
+\begin{itemize}
+    \item State tax policies
+    \item Benefit program eligibility
+    \item Age-dependent federal provisions (e.g., Child Tax Credit variations by child age)
+    \item Family structure interactions
+\end{itemize}
+
+\subsection{Direct Variable Imputation}
+
+For other enhancement needs, we use QRF to directly impute missing variables:
+
+\subsubsection{Housing Costs from ACS}
+We impute rent payments and property taxes using ACS records, with predictors including:
+\begin{itemize}
+    \item Household head status
+    \item Age
+    \item Sex
+    \item Tenure type
+    \item Employment income
+    \item Self-employment income
+    \item Social Security income
+    \item Pension income
+    \item State
+    \item Household size
+\end{itemize}
+
+\subsubsection{Prior Year Income from CPS ASEC Panel}
+To support analysis of lookback provisions, we impute prior year earnings using consecutive-year ASEC records, using:
+\begin{itemize}
+    \item Employment income
+    \item Self-employment income
+    \item Household weight
+    \item Income imputation flags
+\end{itemize}
+
+\subsection{Implementation Details}
+
+Our QRF implementation in utils/qrf.py handles:
+\begin{itemize}
+    \item Categorical variable encoding
+    \item Consistent feature ordering
+    \item Distribution sampling
+    \item Model persistence
+\end{itemize}
+
+% TODO: Add specifics about:
+% - QRF hyperparameters
+% - Computational performance
+% - Validation metrics for both synthetic record generation and direct imputation
+% - Details on how the reweighting procedure balances CPS vs PUF records

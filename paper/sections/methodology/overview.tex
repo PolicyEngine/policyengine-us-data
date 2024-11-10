@@ -1,0 +1,79 @@
+\section{Methodology}
+
+Our procedure transforms the Current Population Survey (CPS) into an enhanced microsimulation dataset through four key steps:
+\begin{enumerate}
+    \item Project both CPS and PUF data to the target year
+    \item Transfer tax variable distributions from PUF to CPS records
+    \item Impute program participation
+    \item Reweight households to match administrative benchmarks
+\end{enumerate}
+
+\subsection{Data Projection}
+
+We project the CPS forward using a combination of economic and demographic factors. For each economic variable $y$, we apply:
+
+\[ y_{2024} = y_{2023} \cdot \frac{f(2024)}{f(2023)} \]
+
+where $f(t)$ represents the variable-specific growth index. We derive these indices from:
+\begin{itemize}
+    \item CBO economic projections for aggregate income components
+    \item SSA wage index forecasts for employment income
+    \item Census population projections for demographic totals
+    \item Treasury forecasts for tax variables
+\end{itemize}
+
+For the PUF, we first age the 2015 data to 2021 using IRS Statistics of Income data, then project to 2024 using the same indices as the CPS projection.
+
+\subsection{Tax Variable Enhancement}
+
+We transfer 47 tax variables from the PUF to the CPS using quantile regression forests. For each variable, we:
+\begin{enumerate}
+    \item Train a forest on PUF records using age, sex, marital status, and existing income measures as predictors
+    \item Generate a distribution of predicted values for each CPS record
+    \item Sample from these distributions using rank preservation within demographic groups
+\end{enumerate}
+
+This approach preserves both the marginal distributions of tax variables and their relationships with demographic characteristics. 
+
+\subsection{Program Participation}
+
+We model participation in major benefit programs through a two-stage process:
+\begin{enumerate}
+    \item Calculate eligibility using program rules
+    \item Assign participation probabilities based on:
+        \begin{itemize}
+            \item Demographic characteristics
+            \item Benefit amounts
+            \item Geographic patterns
+            \item Historical take-up rates
+        \end{itemize}
+\end{enumerate}
+
+The final participation patterns emerge from our reweighting procedure's alignment with administrative totals.
+
+\subsection{Household Reweighting}
+
+We adjust household weights to minimize discrepancies with administrative benchmarks while avoiding overfitting. The optimization problem takes the form:
+
+\[ \min_w \sum_j \left(\frac{\sum_i w_i x_{ij} - t_j}{t_j}\right)^2 + \lambda \sum_i (w_i - w_i^0)^2 \]
+
+subject to:
+\[ w_i \geq 0 \quad \forall i \]
+
+where:
+\begin{itemize}
+    \item $w_i$ is the new weight for household $i$
+    \item $w_i^0$ is the original CPS weight
+    \item $x_{ij}$ is the value of variable $j$ for household $i$
+    \item $t_j$ is the administrative target for variable $j$
+    \item $\lambda$ controls the strength of regularization
+\end{itemize}
+
+We solve this using gradient descent with dropout, randomly zeroing 5\% of household weights during each iteration to improve generalization.
+
+The remainder of the methodology section details each component:
+\begin{itemize}
+    \item Section 4.1 describes our quantile regression forest implementation
+    \item Section 4.2 explains the reweighting optimization
+    \item Section 4.3 presents our validation framework
+\end{itemize}

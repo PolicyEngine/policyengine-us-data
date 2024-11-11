@@ -54,8 +54,8 @@ paper: paper/main.pdf
 
 paper/main.pdf: $(wildcard paper/sections/**/*.tex) $(wildcard paper/bibliography/*.bib) paper/main.tex paper/macros.tex
 	cd paper && \
-	TEXINPUTS=".:sections/methodology/:" pdflatex main && \
-	BSTINPUTS=".:bibliography/:" BIBINPUTS=".:bibliography/:" bibtex main && \
+	BIBINPUTS=./bibliography pdflatex main && \
+	BIBINPUTS=./bibliography bibtex main && \
 	pdflatex main && \
 	pdflatex main
 

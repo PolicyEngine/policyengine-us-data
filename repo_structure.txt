@@ -34,6 +34,12 @@
 │   │   └── references.bib
 │   ├── figures
 │   ├── macros.tex
+│   ├── main.aux
+│   ├── main.bbl
+│   ├── main.blg
+│   ├── main.log
+│   ├── main.out
+│   ├── main.pdf
 │   ├── main.tex
 │   ├── sections
 │   │   ├── abstract.tex
@@ -46,6 +52,7 @@
 │   │   │   ├── overview.tex
 │   │   │   ├── quantile_forests.tex
 │   │   │   └── reweighting.tex
+│   │   ├── methodology.tex
 │   │   └── results.tex
 │   └── tables
 ├── policyengine_us_data
@@ -104,6 +111,8 @@
 │       └── uprating.py
 ├── pyproject.toml
 ├── repo_structure.txt
+├── sections
+│   └── methodology
 └── setup_paper.sh
 
-22 directories, 85 files
+24 directories, 92 files

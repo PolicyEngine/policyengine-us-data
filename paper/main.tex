@@ -21,9 +21,13 @@
 }
 
 \title{Enhancing Survey Microdata with Administrative Records: \\ A Novel Approach to Microsimulation Dataset Construction}
+% Define the \samethanks command
+\newcommand*\samethanks[1][\value{footnote}]{\footnotemark[#1]}
+
+% Define authors with the same affiliation
 \author{
-Nikhil Woodruff\thanks{PolicyEngine} \and
-Max Ghenis\thanks{PolicyEngine}
+    Nikhil Woodruff\thanks{PolicyEngine} \and
+    Max Ghenis\samethanks
 }
 \date{\today}
 
@@ -40,7 +44,7 @@ Max Ghenis\thanks{PolicyEngine}
 \input{sections/discussion}
 \input{sections/conclusion}
 
-\bibliography{bibliography/references}
 \bibliographystyle{plainnat}
+\bibliography{./bibliography/references}
 
 \end{document}

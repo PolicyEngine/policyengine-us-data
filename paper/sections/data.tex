@@ -2,20 +2,19 @@
 
 \subsection{Current Population Survey}
 
-The Current Population Survey Annual Social and Economic Supplement (CPS ASEC) provides comprehensive demographic and economic information for a nationally representative sample of U.S. households. For tax year 2024, our base dataset contains approximately 150,000 households representing the U.S. civilian non-institutional population.
+The Census Bureau administers the Current Population Survey Annual Social and Economic Supplement (CPS ASEC, or hereafter the CPS) each March. In March 2024, they surveyed 89,473 households representing the U.S. civilian non-institutional population about their activities in the 2023 calendar year.
 
 The CPS's key strengths include:
 \begin{itemize}
     \item Rich demographic detail including age, sex, race, ethnicity, and education
     \item Complete household relationship matrices
     \item Program participation indicators
-    \item State and sub-state geographic identifiers
-    \item Monthly employment and labor force status
+    \item State identifiers, and partial county identifiers
 \end{itemize}
 
 However, the CPS has known limitations for tax modeling:
 \begin{itemize}
-    \item Underreporting of income, particularly at the top of the distribution
+    \item Underreporting of income, particularly at the top of the distribution due to top-coding
     \item Limited tax-relevant information (e.g., itemized deductions)
     \item No direct observation of tax units within households
     \item Imprecise measurement of certain income types (e.g., capital gains)
@@ -23,7 +22,7 @@ However, the CPS has known limitations for tax modeling:
 
 \subsection{IRS Public Use File}
 
-The Internal Revenue Service Public Use File (PUF) is a national sample of individual income tax returns, representing the 151.2 million Form 1040, Form 1040A, and Form 1040EZ Federal Individual Income Tax Returns filed for Tax Year 2015. The file contains 119,675 records sampled at varying rates across strata, with 0.07 percent sampling for strata 7 through 13 \cite{bryant2022}. The data are extensively transformed to protect taxpayer privacy while preserving statistical properties.
+The Internal Revenue Service Public Use File (PUF) is a national sample of individual income tax returns, representing the 151.2 million Form 1040, Form 1040A, and Form 1040EZ Federal Individual Income Tax Returns filed for Tax Year 2015. The file contains 119,675 records sampled at varying rates across strata, with 0.07 percent sampling for strata 7 through 13 \cite{bryant2023b}. The data are extensively transformed to protect taxpayer privacy while preserving statistical properties.
 
 The Public Use Tax Demographic File supplements the PUF with:
 \begin{itemize}
@@ -53,14 +52,15 @@ The PUF's limitations include:
 \begin{itemize}
     \item Limited demographic information
     \item No household structure beyond the tax unit
-    \item Geographic detail limited to state
+    \item No geographic information such as state
     \item No program participation information
     \item Privacy protections that mask extreme values
+    \item Lag; the latest version as of November 2024 is for the 2015 tax year
 \end{itemize}
 
 \subsection{External Validation Sources}
 
-We validate our enhanced dataset against several external sources:
+We validate our enhanced dataset against 570 targets from several external sources:
 
 \subsubsection{IRS Statistics of Income}
 
@@ -81,12 +81,11 @@ Census Bureau publications provide demographic and program participation benchma
     \item Age distribution by state
     \item Household size distribution
     \item Program participation rates
-    \item Employment status
 \end{itemize}
 
 \subsubsection{Administrative Program Totals}
 
-We incorporate official totals from various agencies:
+We incorporate official totals from various agencies, including but not limited to:
 \begin{itemize}
     \item Social Security Administration beneficiary counts and benefit amounts
     \item SNAP participation and benefits from USDA
@@ -98,7 +97,6 @@ We incorporate official totals from various agencies:
 
 A crucial preparatory step is harmonizing variables across datasets. We develop a detailed crosswalk between CPS and PUF variables, accounting for definitional differences. Key considerations include:
 \begin{itemize}
-    \item Income timing (calendar year vs. tax year)
     \item Income classification (e.g., business vs. wage income)
     \item Geographic definitions
     \item Family relationship categories

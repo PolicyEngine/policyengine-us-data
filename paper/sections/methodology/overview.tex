@@ -1,6 +1,6 @@
 \subsection{Overview}
 
-Our approach enhances the Current Population Survey (CPS) with information from the IRS Public Use File (PUF) through a multi-stage process:
+Our approach enhances the Current Population Survey (CPS) with information from the IRS Public Use File (PUF) through a multi-stage process. This design is motivated by empirical evidence from \citet{woodruff2023survey} showing that combining synthetic data generation with weight optimization achieves substantially better results than either technique alone or traditional enhancement methods. Their comprehensive benchmarking demonstrated an 88\% reduction in survey error through this combined approach, with improvements that generalized across multiple validation metrics.
 
 \begin{enumerate}
     \item Train quantile regression forests on PUF tax records to learn distributions of tax-related variables

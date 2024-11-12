@@ -138,3 +138,7 @@ This review of existing models highlights several common methodological challeng
 \end{enumerate}
 
 Our methodology, detailed in Section~\ref{sec:methodology}, introduces novel approaches to these challenges while building on existing techniques that have proven successful. We particularly focus on quantifying and communicating uncertainty throughout the modeling process.
+
+\subsubsection{Empirical Evaluation of Enhancement Methods}
+
+Recent work has systematically compared different approaches to survey enhancement. \citet{woodruff2023survey} evaluated traditional techniques like percentile matching against machine learning methods including gradient descent reweighting and synthetic data generation. Their results showed ML-based approaches substantially outperforming conventional methods, with combined synthetic data and reweighting reducing error by 88\% compared to baseline surveys. Importantly, their cross-validation analysis demonstrated these improvements generalized to out-of-sample targets, suggesting the methods avoid overfitting to specific statistical measures. This empirical evidence informs our methodological choices, particularly around combining multiple enhancement techniques.

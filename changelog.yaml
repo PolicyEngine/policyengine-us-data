@@ -127,3 +127,8 @@
     changed:
     - Reverted to using standard version of microdf
   date: 2024-10-29 19:15:42
+- bump: minor
+  changes:
+    added:
+    - Paper on methodology.
+  date: 2024-11-12 07:03:52

@@ -1,0 +1,49 @@
+\subsection{Data Aging and Indexing}
+
+The process of projecting historical microdata involves both demographic aging and economic indexing based on US government forecasts. Our aging process occurs in two stages: first to reach our baseline year (2024), and then to project the calibrated dataset forward.
+
+\subsubsection{Growth Factor Construction}
+
+For each variable in the tax-benefit system with a specified growth parameter, we compute change factors from the base year through 2034:
+
+\[ \text{Index Factor}_{t} = \frac{\text{Index}_{t}}{\text{Index}_{\text{base}}} \]
+
+\subsubsection{Population Adjustment}
+
+Most economic variables are adjusted for changes in total population:
+
+\[ \text{Per Capita Factor}_{t} = \frac{\text{Index Factor}_{t}}{\text{Population Growth}_{t}} \]
+
+Exceptions include:
+\begin{itemize}
+    \item Weight variables maintain raw growth
+    \item Population itself uses Census projections directly
+\end{itemize}
+
+\subsubsection{Data Sources}
+
+Projection factors come from:
+\begin{itemize}
+    \item Congressional Budget Office economic projections
+    \item Census Bureau population estimates 
+    \item Social Security Administration wage index forecasts
+    \item Treasury tax parameter indexing
+\end{itemize}
+
+\subsubsection{Initial Aging Implementation}
+
+For any variable y, the projected value to reach our baseline year is computed as:
+
+\[ y_{2024} = y_{2023} \cdot \frac{f(2024)}{f(2023)} \]
+
+where f(t) represents the index factor for time t.
+
+\subsubsection{Forward Projection}
+
+After constructing and calibrating the enhanced 2024 dataset, we project it to future years using the same indexing framework. This maintains the dataset's enhanced distributional properties while reflecting:
+
+\begin{itemize}
+    \item Economic growth forecasts for monetary variables
+    \item Statutory adjustments to program parameters
+    \item Population projections applied to household weights
+\end{itemize}

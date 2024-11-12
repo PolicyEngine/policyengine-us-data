@@ -1,0 +1,13 @@
+\subsection{Overview}
+
+Our approach enhances the Current Population Survey (CPS) with information from the IRS Public Use File (PUF) through a multi-stage process. This design is motivated by empirical evidence from \citet{woodruff2023survey} showing that combining synthetic data generation with weight optimization achieves substantially better results than either technique alone or traditional enhancement methods. Their comprehensive benchmarking demonstrated an 88\% reduction in survey error through this combined approach, with improvements that generalized across multiple validation metrics.
+
+\begin{enumerate}
+    \item Train quantile regression forests on PUF tax records to learn distributions of tax-related variables
+    \item Generate a synthetic dataset that combines PUF tax precision with CPS-like demographic detail
+    \item Stack these synthetic records alongside the original CPS records
+    \item Run the PolicyEngine US tax-benefit model on the stacked dataset to generate tax and benefit amounts
+    \item Optimize household weights to match administrative benchmarks while determining the optimal mix of original and synthetic records
+\end{enumerate}
+
+This method preserves the CPS's demographic richness and household relationships while incorporating the PUF's precise tax information. Each component is detailed in the following sections.

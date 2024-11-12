@@ -1,0 +1,105 @@
+\section{Data}\label{sec:data}
+
+\subsection{Current Population Survey}
+
+The Census Bureau administers the Current Population Survey Annual Social and Economic Supplement (CPS ASEC, or hereafter the CPS) each March. In March 2024, they surveyed 89,473 households representing the U.S. civilian non-institutional population about their activities in the 2023 calendar year.
+
+The CPS's key strengths include:
+\begin{itemize}
+    \item Rich demographic detail including age, sex, race, ethnicity, and education
+    \item Complete household relationship matrices
+    \item Program participation indicators
+    \item State identifiers, and partial county identifiers
+\end{itemize}
+
+However, the CPS has known limitations for tax modeling:
+\begin{itemize}
+    \item Underreporting of income, particularly at the top of the distribution due to top-coding
+    \item Limited tax-relevant information (e.g., itemized deductions)
+    \item No direct observation of tax units within households
+    \item Imprecise measurement of certain income types (e.g., capital gains)
+\end{itemize}
+
+\subsection{IRS Public Use File}
+
+The Internal Revenue Service Public Use File (PUF) is a national sample of individual income tax returns, representing the 151.2 million Form 1040, Form 1040A, and Form 1040EZ Federal Individual Income Tax Returns filed for Tax Year 2015. The file contains 119,675 records sampled at varying rates across strata, with 0.07 percent sampling for strata 7 through 13 \citep{bryant2023b}. The data are extensively transformed to protect taxpayer privacy while preserving statistical properties.
+
+The Public Use Tax Demographic File supplements the PUF with:
+\begin{itemize}
+    \item Age ranges for primary taxpayers (different ranges for dependent vs non-dependent filers)
+    \item Dependent age information in six categories (under 5, 5-13, 13-17, 17-19, 19-24, 24+)
+    \item Gender of primary taxpayer
+    \item Earnings splits for joint filers (categorizing primary earner share)
+\end{itemize}
+
+Key disclosure protections include:
+\begin{itemize}
+    \item Demographic information limited to returns in strata 7-13
+    \item Suppression of dependent ages for returns with farm income or homebuyer credits
+    \item Minimum population thresholds for dependent age reporting
+    \item Sequential limits on dependent counts by filing status
+\end{itemize}
+
+The PUF's key strengths include:
+\begin{itemize}
+    \item Precise income amounts derived from information returns
+    \item Complete tax return information including itemized deductions
+    \item Actual tax unit structure
+    \item Accurate income type classification
+\end{itemize}
+
+The PUF's limitations include:
+\begin{itemize}
+    \item Limited demographic information
+    \item No household structure beyond the tax unit
+    \item No geographic information such as state
+    \item No program participation information
+    \item Privacy protections that mask extreme values
+    \item Lag; the latest version as of November 2024 is for the 2015 tax year
+\end{itemize}
+
+\subsection{External Validation Sources}
+
+We validate our enhanced dataset against 570 targets from several external sources:
+
+\subsubsection{IRS Statistics of Income}
+
+The Statistics of Income (SOI) Division publishes detailed tabulations of tax return data, including:
+\begin{itemize}
+    \item Income amounts by source and adjusted gross income bracket
+    \item Number of returns by filing status
+    \item Itemized deduction amounts and counts
+    \item Tax credits and their distribution
+\end{itemize}
+
+These tabulations serve as key targets in our reweighting procedure and validation metrics.
+
+\subsubsection{CPS ASEC Public Tables}
+
+Census Bureau publications provide demographic and program participation benchmarks, including:
+\begin{itemize}
+    \item Age distribution by state
+    \item Household size distribution
+    \item Program participation rates
+\end{itemize}
+
+\subsubsection{Administrative Program Totals}
+
+We incorporate official totals from various agencies, including but not limited to:
+\begin{itemize}
+    \item Social Security Administration beneficiary counts and benefit amounts
+    \item SNAP participation and benefits from USDA
+    \item Earned Income Tax Credit statistics from IRS
+    \item Unemployment Insurance claims and benefits from Department of Labor
+\end{itemize}
+
+\subsection{Variable Harmonization}
+
+A crucial preparatory step is harmonizing variables across datasets. We develop a detailed crosswalk between CPS and PUF variables, accounting for definitional differences. Key considerations include:
+\begin{itemize}
+    \item Income classification (e.g., business vs. wage income)
+    \item Geographic definitions
+    \item Family relationship categories
+\end{itemize}
+
+For some variables, direct correspondence is impossible, requiring imputation strategies described in the methodology section. The complete variable crosswalk is available in our open-source repository.

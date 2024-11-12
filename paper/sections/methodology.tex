@@ -1,0 +1,17 @@
+\section{Methodology}\label{sec:methodology}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{figures/data_flow.png}
+    \caption{Data flow diagram for integrating CPS and PUF microdata. The process ages both datasets to a common year, integrates demographic and income information through quantile regression forests, and optimizes household weights using gradient descent.}
+    \label{fig:data_flow}
+\end{figure}
+
+\input{sections/methodology/overview}
+\input{sections/methodology/demographic_variables}  
+\input{sections/methodology/puf_preprocessing}
+\input{sections/methodology/aging}
+\input{sections/methodology/quantile_forests}
+\input{sections/methodology/loss_matrix}
+\input{sections/methodology/reweighting}
+\input{sections/methodology/pipeline}

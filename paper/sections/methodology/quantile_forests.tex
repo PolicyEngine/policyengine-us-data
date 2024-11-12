@@ -1,0 +1,23 @@
+\subsection{Quantile Regression Forests}
+
+Our implementation uses quantile regression forests (QRF) \citep{meinshausen2006quantile}, which extend random forests to estimate conditional quantiles. Building on \citet{woodruff2023survey}, we use the quantile-forest package \citep{zillow2024quantile}, a scikit-learn compatible implementation that provides efficient, Cython-optimized estimation of arbitrary quantiles at prediction time without retraining.
+
+QRF works by generating an ensemble of regression trees, where each tree recursively partitions the feature space. Unlike standard random forests that only store mean values in leaf nodes, QRF maintains the full empirical distribution of training observations in each leaf. To estimate conditional quantiles, the model identifies relevant leaf nodes for new observations, aggregates the weighted empirical distributions across all trees, and computes the desired quantiles from the combined distribution.
+
+The key advantages over traditional quantile regression include QRF's ability to capture non-linear relationships without explicit specification, model heteroscedastic variance across the feature space, estimate any quantile without retraining, and maintain the computational efficiency of random forests.
+
+\subsubsection{PUF Integration: Synthetic Record Generation}
+
+Unlike our other QRF applications, we use the PUF to generate an entire synthetic CPS-structured dataset. This process begins by training QRF models on PUF records with demographic variables. We then generate a complete set of synthetic CPS-structured records using PUF tax information, which are stacked alongside the original CPS records. The reweighting procedure ultimately determines the optimal mixing between CPS and PUF-based records.
+
+This approach preserves CPS's person-level detail crucial for modeling various aspects of the tax system. These include state tax policies, benefit program eligibility, age-dependent federal provisions (such as Child Tax Credit variations by child age), and family structure interactions.
+
+\subsubsection{Direct Variable Imputation}
+
+For other enhancement needs, we use QRF to directly impute missing variables. When imputing housing costs from ACS records, we incorporate a comprehensive set of predictors including household head status, age, sex, tenure type, various income sources (employment, self-employment, Social Security, and pension), state, and household size.
+
+To support analysis of lookback provisions, we impute prior year earnings using consecutive-year ASEC records. This imputation relies on current employment and self-employment income, household weights, and income imputation flags from the CPS ASEC panel.
+
+\subsubsection{Implementation Details}
+
+Our QRF implementation, housed in utils/qrf.py, provides a robust framework for model development and deployment. The implementation handles categorical variable encoding and ensures consistent feature ordering across training and prediction. It also manages distribution sampling and model persistence, enabling efficient reuse of trained models.

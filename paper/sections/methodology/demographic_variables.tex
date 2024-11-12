@@ -1,0 +1,76 @@
+\subsection{Demographic Variable Construction}
+
+Following the IRS specifications for the Public Use File, we construct three key demographic variables: dependent ages, primary taxpayer age ranges, and earnings splits between spouses.
+
+\subsection{Dependent Ages}
+
+For each dependent, we construct age categories following IRS constraints:
+\begin{itemize}
+    \item Under 5
+    \item 5 under 13 
+    \item 13 under 17
+    \item 17 under 19
+    \item 19 under 24
+    \item 24 or older
+\end{itemize}
+
+The number of dependents is limited by filing status:
+\begin{itemize}
+    \item Up to 3 dependents for joint returns and head of household returns
+    \item Up to 2 dependents for single returns
+    \item Up to 1 dependent for married filing separately returns
+\end{itemize}
+
+Dependents are ordered sequentially by type:
+\begin{enumerate}
+    \item Children living at home
+    \item Children living away from home
+    \item Other dependents
+    \item Parents
+\end{enumerate}
+
+\subsubsection{Primary Taxpayer Age}
+
+Age ranges are constructed differently for dependent and non-dependent returns:
+
+For non-dependent returns:
+\begin{itemize}
+    \item Under 26
+    \item 26 under 35
+    \item 35 under 45
+    \item 45 under 55
+    \item 55 under 65
+    \item 65 or older
+\end{itemize}
+
+For dependent returns:
+\begin{itemize}
+    \item Under 18
+    \item 18 under 26
+    \item 26 or older
+\end{itemize}
+
+\subsubsection{Earnings Splits}
+
+For joint returns, we calculate the primary earner's share of total earnings:
+
+\[ \text{Primary Share} = \frac{\text{Primary Wages} + \text{Primary SE Income}}{\text{Total Wages} + \text{Total SE Income}} \]
+
+Where:
+\begin{itemize}
+    \item Primary wages and SE income = E30400 - E30500
+    \item Secondary wages and SE income = E30500
+\end{itemize}
+
+This share is categorized into:
+\begin{itemize}
+    \item 75 percent or more earned by primary
+    \item Less than 75 percent but more than 25 percent earned by primary
+    \item Less than 25 percent earned by primary
+\end{itemize}
+
+\subsubsection{Implementation Details}
+
+When decoding age ranges into specific ages, we use random assignment within the range to avoid unrealistic bunching. For example, when the PUF indicates age 80, we randomly assign an age between 80 and 84.
+
+The ordering of dependents is preserved when constructing synthetic tax units to maintain consistency with the original data structure.

@@ -1,0 +1,48 @@
+\subsection{Complete Enhancement Pipeline}
+
+The full dataset enhancement process proceeds through the following sequential steps, each documented in the preceding sections:
+
+\subsubsection{Initial Data Loading}
+
+\begin{enumerate}
+    \item Load CPS ASEC public use file
+    \item Load IRS public use file (if before 2021)
+    \item Load external validation sources (SOI, Census data)
+\end{enumerate}
+
+\subsubsection{PUF Processing (Pre-2021)}
+
+\begin{enumerate}
+    \item Apply variable renaming and recoding
+    \item Construct derived variables
+    \item Split income components 
+    \item Remove aggregate records
+    \item Generate synthetic demographic variables
+\end{enumerate}
+
+\subsubsection{CPS Enhancement}
+
+\begin{enumerate}
+    \item Project both datasets to target year using uprating factors
+    \item Train quantile regression forests on PUF records
+    \item Generate synthetic CPS-structured records
+    \item Stack synthetic records with original CPS
+\end{enumerate}
+
+\subsubsection{Final Calibration}
+
+\begin{enumerate}
+    \item Construct loss matrix from administrative targets
+    \item Initialize weights for original and synthetic records
+    \item Optimize weights using gradient descent with dropout
+    \item Validate results against external benchmarks
+\end{enumerate}
+
+Each step is implemented in separate modules:
+\begin{itemize}
+    \item PUF processing in datasets/puf/puf.py
+    \item Uprating in utils/uprating.py
+    \item QRF models in utils/qrf.py
+    \item Loss matrix in utils/loss.py
+    \item Weight optimization in datasets/cps/enhanced\_cps.py
+\end{itemize}

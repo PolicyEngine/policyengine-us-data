@@ -1,0 +1,66 @@
+\subsection{Reweighting Procedure}
+
+We optimize household weights using gradient descent through PyTorch \citep{pytorch2019}.
+
+\subsubsection{Problem Formulation}
+
+Given a loss matrix $M$ of household characteristics and a target vector $t$, we optimize the log-transformed weights $w$ to minimize:
+
+\[ L(w) = \text{mean}\left(\left(\frac{w^T M + 1}{t + 1} - 1\right)^2\right) \]
+
+where:
+\begin{itemize}
+    \item $w$ are the log-transformed weights (requires grad=True)
+    \item $M$ is the loss matrix in tensor form (float32)
+    \item $t$ are the targets in tensor form (float32)
+\end{itemize}
+
+\subsubsection{Optimization Implementation}
+
+The procedure follows these steps:
+
+\begin{enumerate}
+    \item Initialize with log-transformed original weights
+    \item Create a PyTorch session with retries for robustness
+    \item Use Adam optimizer with learning rate 0.1
+    \item Apply dropout (5\% rate) during optimization
+    \item Run for 5,000 iterations or until convergence
+\end{enumerate}
+
+\subsubsection{Dropout Application}
+
+We apply dropout regularization during optimization to prevent overfitting:
+\begin{itemize}
+    \item Randomly masks p\% of weights each iteration (p = 5)
+    \item Replaces masked weights with mean of unmasked weights
+    \item Returns original weights if dropout rate is 0
+\end{itemize}
+
+\subsubsection{Convergence Monitoring}
+
+For each iteration:
+\begin{itemize}
+    \item Track initial loss value as baseline
+    \item Compute relative change from starting loss
+    \item Display progress with current loss values
+\end{itemize}
+
+\subsubsection{Error Handling}
+
+The implementation includes checks for:
+\begin{itemize}
+    \item NaN values in weights
+    \item NaN values in loss matrix
+    \item NaN values in loss computation
+    \item NaN values in relative error calculation
+\end{itemize}
+
+If any check fails, the procedure raises a ValueError with diagnostic information.
+
+\subsubsection{Weight Recovery}
+
+The final weights are recovered by:
+\begin{itemize}
+    \item Taking exponential of optimized log weights
+    \item Converting from torch tensor to numpy array
+\end{itemize}

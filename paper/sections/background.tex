@@ -1,0 +1,144 @@
+\section{Background}
+
+Tax microsimulation models are essential tools for analyzing the distributional and revenue impacts of tax policy changes. By simulating individual tax units rather than relying on aggregate statistics, these models can capture the complex interactions between different provisions of the tax code and heterogeneous effects across the population. The core challenges these models face include:
+
+\begin{itemize}
+    \item Combining multiple data sources while preserving statistical validity
+    \item Aging historical data to represent current and future years
+    \item Imputing variables not observed in the source data
+    \item Modeling behavioral responses to policy changes
+    \item Calibrating results to match administrative totals
+\end{itemize}
+
+Each existing model approaches these challenges differently, making tradeoffs between precision, comprehensiveness, and transparency. We build on their methods while introducing new techniques for data synthesis and uncertainty quantification.
+
+\subsection{Government Agency Models}
+
+The U.S. federal government maintains several microsimulation capabilities through its policy analysis agencies, which form the foundation for official policy analysis and revenue estimation.
+
+The Congressional Budget Office's model emphasizes behavioral responses and their macroeconomic effects \citep{cbo2018}. Their approach uses a two-stage estimation process:
+
+\begin{enumerate}
+    \item Static scoring: calculating mechanical revenue effects assuming no behavioral change
+    \item Dynamic scoring: incorporating behavioral responses calibrated to empirical literature
+\end{enumerate}
+
+CBO's elasticity assumptions have evolved over time in response to new research, particularly regarding the elasticity of taxable income (ETI). Their current approach varies ETI by income level and type of tax change, broadly consistent with the academic consensus surveyed in \citep{saez2012}. The model also incorporates detailed projections of demographic change and economic growth from CBO's other forecasting models.
+
+The Joint Committee on Taxation employs a similar approach but with particular focus on conventional revenue estimates \citep{jct2023}. Their model maintains detailed imputations for:
+
+\begin{itemize}
+    \item Business income allocation between tax forms
+    \item Retirement account contributions and distributions
+    \item Asset basis and unrealized capital gains
+    \item International income and foreign tax credits
+\end{itemize}
+
+A distinguishing feature is their treatment of tax expenditure interactions - addressing both mechanical overlap (e.g., between itemized deductions) and behavioral responses (e.g., between savings incentives).
+
+The Treasury's Office of Tax Analysis model features additional detail on corporate tax incidence and international provisions \citep{ota2012}. Their approach emphasizes the relationship between different types of tax instruments through a series of linked models:
+
+\begin{itemize}
+    \item Individual income tax model using matched administrative data
+    \item Corporate microsimulation using tax returns and financial statements
+    \item International tax model incorporating country-by-country reporting
+    \item Estate tax model with SCF-based wealth imputations
+\end{itemize}
+
+This integration allows OTA to analyze proposals affecting multiple parts of the tax system consistently.
+
+\subsection{Research Institution Models}
+
+\subsubsection{Urban Institute Family of Models}
+
+The Urban Institute maintains several complementary microsimulation models, each emphasizing different aspects of tax and transfer policy analysis.
+
+The Urban-Brookings Tax Policy Center model \citep{tpc2022} combines the IRS Public Use File with Current Population Survey data through predictive mean matching, an approach similar to what we employ in Section~\ref{sec:methodology}. Their imputation strategy aims to preserve joint distributions across variables using regression-based techniques for:
+
+\begin{itemize}
+    \item Wealth holdings (18 asset and debt categories)
+    \item Education expenses (by level and institution type)
+    \item Consumption patterns (16 expenditure categories)
+    \item Health insurance status (plan type and premiums)
+    \item Retirement accounts (DB/DC split and contribution levels)
+\end{itemize}
+
+TRIM3 emphasizes the time dimension of policy analysis, with sophisticated procedures for converting annual survey data into monthly variables \citep{trim2024}. Key innovations include:
+
+\begin{itemize}
+    \item Allocation of employment spells to specific weeks using BLS benchmarks
+    \item Probabilistic monthly assignment of benefit receipt
+    \item State-specific program rules and eligibility determination
+    \item Integration of administrative data for validation
+\end{itemize}
+
+This monthly allocation approach informs our treatment of time variation in Section~\ref{sec:data}.
+
+The newer ATTIS model \citep{attis2024} focuses on interactions between tax and transfer programs. Building on the American Community Survey rather than the CPS provides better geographic detail at the cost of requiring additional tax variable imputations. Their approach to correcting for benefit underreporting in survey data parallels our methods in Section~\ref{sec:methodology}.
+
+\subsubsection{Other Research Institution Models}
+
+The Institute on Taxation and Economic Policy model \citep{itep2024} is unique in its comprehensive treatment of federal, state and local taxes. Key features include:
+
+\begin{itemize}
+    \item Integration of income, sales, and property tax microsimulation
+    \item Detailed state-specific tax calculators
+    \item Consumer expenditure imputations for indirect tax analysis
+    \item Race/ethnicity analysis through statistical matching
+\end{itemize}
+
+The Tax Foundation's Taxes and Growth model \citep{tf2024} emphasizes macroeconomic feedback effects through a neoclassical growth framework. Their approach includes:
+
+\begin{itemize}
+    \item Production function based on CES technology
+    \item Endogenous labor supply responses
+    \item Investment responses to cost of capital
+    \item International capital flow effects
+\end{itemize}
+
+\subsection{Open Source Initiatives}
+
+Recent years have seen growing interest in open source approaches that promote transparency and reproducibility in tax policy modeling.
+
+The Budget Lab at Yale \citep{budgetlab2024} maintains a fully open source federal tax model distinguished by:
+
+\begin{itemize}
+    \item Modular codebase with clear separation of concerns
+    \item Flexible behavioral response specification
+    \item Comprehensive test suite and documentation
+    \item Version control and continuous integration
+\end{itemize}
+
+Their approach to code organization and testing informs our own development practices.
+
+The Policy Simulation Library's Tax-Data project \citep{psl2024} provides building blocks for tax microsimulation including:
+
+\begin{itemize}
+    \item Data processing and cleaning routines
+    \item Statistical matching algorithms
+    \item Variable imputation methods
+    \item Growth factor calculation
+    \item Validation frameworks
+\end{itemize}
+
+We build directly on several Tax-Data components while introducing new methods for synthesis and uncertainty quantification described in Section~\ref{sec:methodology}.
+
+\subsection{Key Methodological Challenges}
+
+This review of existing models highlights several common methodological challenges that our approach aims to address:
+
+\begin{enumerate}
+    \item \textbf{Data Limitations}: Each primary data source (tax returns, surveys) has significant limitations. Tax returns lack demographic detail; surveys underreport income and benefits. While existing models use various matching techniques to combine sources, maintaining consistent joint distributions remains difficult.
+    
+    \item \textbf{Aging and Extrapolation}: Forward projection requires both technical adjustments (e.g., inflation indexing) and assumptions about behavioral and demographic change. Current approaches range from simple factor adjustment to complex forecasting models.
+    
+    \item \textbf{Behavioral Response}: Models must balance tractability with realism in specifying how taxpayers respond to policy changes. Key challenges include heterogeneous elasticities, extensive margin responses, and general equilibrium effects.
+    
+    \item \textbf{Uncertainty Quantification}: Most models provide point estimates without formal measures of uncertainty from parameter estimates, data quality, or specification choices.
+\end{enumerate}
+
+Our methodology, detailed in Section~\ref{sec:methodology}, introduces novel approaches to these challenges while building on existing techniques that have proven successful. We particularly focus on quantifying and communicating uncertainty throughout the modeling process.
+
+\subsubsection{Empirical Evaluation of Enhancement Methods}
+
+Recent work has systematically compared different approaches to survey enhancement. \citet{woodruff2023survey} evaluated traditional techniques like percentile matching against machine learning methods including gradient descent reweighting and synthetic data generation. Their results showed ML-based approaches substantially outperforming conventional methods, with combined synthetic data and reweighting reducing error by 88\% compared to baseline surveys. Importantly, their cross-validation analysis demonstrated these improvements generalized to out-of-sample targets, suggesting the methods avoid overfitting to specific statistical measures. This empirical evidence informs our methodological choices, particularly around combining multiple enhancement techniques.

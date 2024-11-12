@@ -1,0 +1,55 @@
+\documentclass[12pt]{article}
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage[round]{natbib}  % Keep round option
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{microtype}
+\usepackage{xcolor}
+
+% Set citation style in preamble
+\bibpunct{(}{)}{;}{a}{,}{,}  % Move here
+\setcitestyle{authoryear,round}  % Move here
+
+\input{macros}
+
+\geometry{margin=1in}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=blue,
+    citecolor=blue,
+}
+
+
+\title{Enhancing Survey Microdata with Administrative Records: \\ A Novel Approach to Microsimulation Dataset Construction}
+% Define the \samethanks command
+\newcommand*\samethanks[1][\value{footnote}]{\footnotemark[#1]}
+
+% Define authors with the same affiliation
+\author{
+    Nikhil Woodruff\thanks{PolicyEngine} \and
+    Max Ghenis\samethanks
+}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/background}
+\input{sections/data}
+\input{sections/methodology}
+\input{sections/results}
+\input{sections/discussion}
+\input{sections/conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{./bibliography/references}
+
+\end{document}

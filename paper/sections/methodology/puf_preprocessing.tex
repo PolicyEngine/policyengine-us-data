@@ -1,0 +1,95 @@
+\subsection{PUF Data Preprocessing}
+
+The preprocessing of the IRS Public Use File involves variable renaming, recoding, and construction of derived variables to align with PolicyEngine's analytical framework.
+
+\subsubsection{Medical Expense Categories}
+
+Total medical expenses are decomposed into specific categories using fixed ratios derived from external data:
+
+\begin{itemize}
+    \item Health insurance premiums without Medicare Part B: 45.3\%
+    \item Other medical expenses: 32.5\%
+    \item Medicare Part B premiums: 13.7\%
+    \item Over-the-counter health expenses: 8.5\%
+\end{itemize}
+
+\subsubsection{Variable Construction}
+
+Key derived variables include:
+
+\paragraph{Qualified Business Income (QBI)}
+Calculated as the maximum of zero and the sum of:
+\begin{itemize}
+    \item Schedule E income (E00900)
+    \item Partnership and S-corporation income (E26270)
+    \item Farm income (E02100)
+    \item Rental income (E27200)
+\end{itemize}
+
+W2 wages from qualified business are then computed as 16\% of QBI.
+
+\paragraph{Filing Status}
+Mapped from MARS codes:
+\begin{itemize}
+    \item 1 $\rightarrow$ SINGLE
+    \item 2 $\rightarrow$ JOINT
+    \item 3 $\rightarrow$ SEPARATE
+    \item 4 $\rightarrow$ HEAD\_OF\_HOUSEHOLD
+\end{itemize}
+
+Records with MARS = 0 (aggregate records) are excluded.
+
+\subsubsection{Income Component Separation}
+
+Several income sources are separated into positive and negative components:
+
+\begin{itemize}
+    \item Business income split into net profits (positive) and losses (negative)
+    \item Capital gains split into gross gains and losses
+    \item Partnership and S-corporation income split into income and losses
+    \item Rental income split into net income and losses
+\end{itemize}
+
+\subsubsection{Variable Renaming}
+
+The following PUF variables are renamed to align with PolicyEngine conventions:
+
+\paragraph{Direct Renames}
+\begin{itemize}
+    \item E03500 $\rightarrow$ alimony\_expense
+    \item E00800 $\rightarrow$ alimony\_income
+    \item E20500 $\rightarrow$ casualty\_loss
+    \item E32800 $\rightarrow$ cdcc\_relevant\_expenses
+    \item E19800 $\rightarrow$ charitable\_cash\_donations
+    \item E20100 $\rightarrow$ charitable\_non\_cash\_donations
+    \item E03240 $\rightarrow$ domestic\_production\_ald
+    \item E03400 $\rightarrow$ early\_withdrawal\_penalty
+    \item E03220 $\rightarrow$ educator\_expense
+    \item E00200 $\rightarrow$ employment\_income
+    \item E26390 - E26400 $\rightarrow$ estate\_income
+    \item T27800 $\rightarrow$ farm\_income
+    \item E27200 $\rightarrow$ farm\_rent\_income
+    \item E03290 $\rightarrow$ health\_savings\_account\_ald
+    \item E19200 $\rightarrow$ interest\_deduction
+    \item P23250 $\rightarrow$ long\_term\_capital\_gains
+    \item E24518 $\rightarrow$ long\_term\_capital\_gains\_on\_collectibles
+    \item E20400 $\rightarrow$ misc\_deduction
+    \item E00600 - E00650 $\rightarrow$ non\_qualified\_dividend\_income
+    \item E00650 $\rightarrow$ qualified\_dividend\_income
+    \item E03230 $\rightarrow$ qualified\_tuition\_expenses
+    \item E18500 $\rightarrow$ real\_estate\_taxes
+\end{itemize}
+
+\paragraph{Weight Adjustment}
+S006 weights are divided by 100 to convert to population units.
+
+\subsubsection{Data Cleaning}
+
+The preprocessing includes:
+\begin{itemize}
+    \item Removal of aggregate records (MARS = 0)
+    \item Missing value imputation with zeros
+    \item Construction of unique household identifiers from RECID
+    \item Assignment of household weights from S006
+    \item Extraction of exemption counts from XTOT
+\end{itemize}

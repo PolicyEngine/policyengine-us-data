@@ -2,12 +2,16 @@
 
 \usepackage{graphicx}
 \usepackage{amsmath}
-\usepackage{natbib}
+\usepackage[round]{natbib}  % Keep round option
 \usepackage{hyperref}
 \usepackage{booktabs}
 \usepackage{geometry}
 \usepackage{microtype}
 \usepackage{xcolor}
+
+% Set citation style in preamble
+\bibpunct{(}{)}{;}{a}{,}{,}  % Move here
+\setcitestyle{authoryear,round}  % Move here
 
 \input{macros}
 
@@ -19,6 +23,7 @@
     urlcolor=blue,
     citecolor=blue,
 }
+
 
 \title{Enhancing Survey Microdata with Administrative Records: \\ A Novel Approach to Microsimulation Dataset Construction}
 % Define the \samethanks command

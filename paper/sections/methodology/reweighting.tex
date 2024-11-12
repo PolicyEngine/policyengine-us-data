@@ -1,85 +1,66 @@
-\section{Reweighting Procedure}\label{sec:reweighting}
+\subsection{Reweighting Procedure}
 
-Our reweighting process optimizes household weights to match administrative targets while determining the relative value of original CPS records versus PUF-derived synthetic records.
+We optimize household weights using gradient descent through PyTorch \citep{pytorch2019}.
 
-\subsection{Loss Matrix Construction}
+\subsubsection{Problem Formulation}
 
-We construct a matrix of targets including:
+Given a loss matrix $M$ of household characteristics and a target vector $t$, we optimize the log-transformed weights $w$ to minimize:
 
-\subsubsection{IRS Statistics of Income Targets}
-For each AGI bracket and filing status combination:
-\begin{itemize}
-    \item Adjusted gross income totals
-    \item Employment income
-    \item Business income/losses
-    \item Capital gains totals and distributions
-    \item Dividend income (qualified and ordinary)
-    \item Partnership and S-corporation income/losses
-    \item Pension and IRA distributions
-    \item Social Security benefits
-    \item Interest income
-\end{itemize}
-
-\subsubsection{Census Population Targets}
-Single-year age population projections from age 0 to 85+, ensuring demographic representativeness.
-
-\subsubsection{Program Totals}
-Annual administrative totals from:
-\begin{itemize}
-    \item IRS: Income tax revenue, EITC claims and amounts by number of children
-    \item Social Security Administration: Benefit payments
-    \item USDA: SNAP participation and benefits
-    \item DOL: Unemployment compensation
-\end{itemize}
-
-\subsection{Optimization Approach}
-
-We minimize the relative error across all targets using gradient descent with dropout regularization:
-
-\begin{enumerate}
-    \item Initialize with original CPS weights
-    \item At each iteration:
-    \begin{itemize}
-        \item Randomly zero out 5\% of weights (dropout)
-        \item Compute relative errors between weighted sums and targets
-        \item Update weights using Adam optimizer
-    \end{itemize}
-    \item Continue until convergence or 5,000 iterations
-\end{enumerate}
-
-The core optimization uses PyTorch to minimize:
-
-\[
-L(w) = \text{mean}\left(\left(\frac{w^T M + 1}{t + 1} - 1\right)^2\right)
-\]
+\[ L(w) = \text{mean}\left(\left(\frac{w^T M + 1}{t + 1} - 1\right)^2\right) \]
 
 where:
 \begin{itemize}
-    \item $w$ are the log-transformed weights
-    \item $M$ is the loss matrix of household characteristics
-    \item $t$ are the administrative targets
+    \item $w$ are the log-transformed weights (requires grad=True)
+    \item $M$ is the loss matrix in tensor form (float32)
+    \item $t$ are the targets in tensor form (float32)
 \end{itemize}
 
-\subsection{Implementation Details}
+\subsubsection{Optimization Implementation}
 
-The Enhanced CPS implementation uses the following parameters:
+The procedure follows these steps:
+
+\begin{enumerate}
+    \item Initialize with log-transformed original weights
+    \item Create a PyTorch session with retries for robustness
+    \item Use Adam optimizer with learning rate 0.1
+    \item Apply dropout (5\% rate) during optimization
+    \item Run for 5,000 iterations or until convergence
+\end{enumerate}
+
+\subsubsection{Dropout Application}
+
+The dropout process:
 \begin{itemize}
-\item Learning rate: 0.1
-\item Dropout rate: 5%
-\item Optimizer: Adam
-\item Maximum iterations: 5,000
+    \item Randomly masks p\% of weights each iteration (p = 5)
+    \item Replaces masked weights with mean of unmasked weights
+    \item Returns original weights if dropout rate is 0
 \end{itemize}
 
-% TODO: Add specific convergence metrics and typical runtime statistics
+\subsubsection{Convergence Monitoring}
 
-\subsection{Balance Between CPS and PUF Records}
-
-The reweighting procedure naturally determines the mix of original CPS and PUF-derived records by:
+For each iteration:
 \begin{itemize}
-    \item Starting with equal initial weights
-    \item Allowing the optimization to up-weight records that better match targets
-    \item Implicitly favoring PUF-derived records for tax variables
-    \item Maintaining CPS records' strength in demographic representation
+    \item Track initial loss value as baseline
+    \item Compute relative change from starting loss
+    \item Display progress with current loss values
 \end{itemize}
 
-% TODO: Add statistics on typical final weight distributions between CPS and PUF records
+\subsubsection{Error Handling}
+
+The implementation includes checks for:
+\begin{itemize}
+    \item NaN values in weights
+    \item NaN values in loss matrix
+    \item NaN values in loss computation
+    \item NaN values in relative error calculation
+\end{itemize}
+
+If any check fails, the procedure raises a ValueError with diagnostic information.
+
+\subsubsection{Weight Recovery}
+
+The final weights are recovered by:
+\begin{itemize}
+    \item Taking exponential of optimized log weights
+    \item Converting from torch tensor to numpy array
+\end{itemize}

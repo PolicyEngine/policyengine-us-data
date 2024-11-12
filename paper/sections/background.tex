@@ -16,16 +16,16 @@ Each existing model approaches these challenges differently, making tradeoffs be
 
 The U.S. federal government maintains several microsimulation capabilities through its policy analysis agencies, which form the foundation for official policy analysis and revenue estimation.
 
-The Congressional Budget Office's model emphasizes behavioral responses and their macroeconomic effects \cite{cbo2018}. Their approach uses a two-stage estimation process:
+The Congressional Budget Office's model emphasizes behavioral responses and their macroeconomic effects \citep{cbo2018}. Their approach uses a two-stage estimation process:
 
 \begin{enumerate}
     \item Static scoring: calculating mechanical revenue effects assuming no behavioral change
     \item Dynamic scoring: incorporating behavioral responses calibrated to empirical literature
 \end{enumerate}
 
-CBO's elasticity assumptions have evolved over time in response to new research, particularly regarding the elasticity of taxable income (ETI). Their current approach varies ETI by income level and type of tax change, broadly consistent with the academic consensus surveyed in \cite{saez2012}. The model also incorporates detailed projections of demographic change and economic growth from CBO's other forecasting models.
+CBO's elasticity assumptions have evolved over time in response to new research, particularly regarding the elasticity of taxable income (ETI). Their current approach varies ETI by income level and type of tax change, broadly consistent with the academic consensus surveyed in \citep{saez2012}. The model also incorporates detailed projections of demographic change and economic growth from CBO's other forecasting models.
 
-The Joint Committee on Taxation employs a similar approach but with particular focus on conventional revenue estimates \cite{jct2023}. Their model maintains detailed imputations for:
+The Joint Committee on Taxation employs a similar approach but with particular focus on conventional revenue estimates \citep{jct2023}. Their model maintains detailed imputations for:
 
 \begin{itemize}
     \item Business income allocation between tax forms
@@ -36,7 +36,7 @@ The Joint Committee on Taxation employs a similar approach but with particular f
 
 A distinguishing feature is their treatment of tax expenditure interactions - addressing both mechanical overlap (e.g., between itemized deductions) and behavioral responses (e.g., between savings incentives).
 
-The Treasury's Office of Tax Analysis model features additional detail on corporate tax incidence and international provisions \cite{ota2012}. Their approach emphasizes the relationship between different types of tax instruments through a series of linked models:
+The Treasury's Office of Tax Analysis model features additional detail on corporate tax incidence and international provisions \citep{ota2012}. Their approach emphasizes the relationship between different types of tax instruments through a series of linked models:
 
 \begin{itemize}
     \item Individual income tax model using matched administrative data
@@ -53,7 +53,7 @@ This integration allows OTA to analyze proposals affecting multiple parts of the
 
 The Urban Institute maintains several complementary microsimulation models, each emphasizing different aspects of tax and transfer policy analysis.
 
-The Urban-Brookings Tax Policy Center model \cite{tpc2022} combines the IRS Public Use File with Current Population Survey data through predictive mean matching, an approach similar to what we employ in Section~\ref{sec:methodology}. Their imputation strategy aims to preserve joint distributions across variables using regression-based techniques for:
+The Urban-Brookings Tax Policy Center model \citep{tpc2022} combines the IRS Public Use File with Current Population Survey data through predictive mean matching, an approach similar to what we employ in Section~\ref{sec:methodology}. Their imputation strategy aims to preserve joint distributions across variables using regression-based techniques for:
 
 \begin{itemize}
     \item Wealth holdings (18 asset and debt categories)
@@ -63,7 +63,7 @@ The Urban-Brookings Tax Policy Center model \cite{tpc2022} combines the IRS Publ
     \item Retirement accounts (DB/DC split and contribution levels)
 \end{itemize}
 
-TRIM3 emphasizes the time dimension of policy analysis, with sophisticated procedures for converting annual survey data into monthly variables \cite{trim2024}. Key innovations include:
+TRIM3 emphasizes the time dimension of policy analysis, with sophisticated procedures for converting annual survey data into monthly variables \citep{trim2024}. Key innovations include:
 
 \begin{itemize}
     \item Allocation of employment spells to specific weeks using BLS benchmarks
@@ -74,11 +74,11 @@ TRIM3 emphasizes the time dimension of policy analysis, with sophisticated proce
 
 This monthly allocation approach informs our treatment of time variation in Section~\ref{sec:data}.
 
-The newer ATTIS model \cite{attis2024} focuses on interactions between tax and transfer programs. Building on the American Community Survey rather than the CPS provides better geographic detail at the cost of requiring additional tax variable imputations. Their approach to correcting for benefit underreporting in survey data parallels our methods in Section~\ref{sec:methodology}.
+The newer ATTIS model \citep{attis2024} focuses on interactions between tax and transfer programs. Building on the American Community Survey rather than the CPS provides better geographic detail at the cost of requiring additional tax variable imputations. Their approach to correcting for benefit underreporting in survey data parallels our methods in Section~\ref{sec:methodology}.
 
 \subsubsection{Other Research Institution Models}
 
-The Institute on Taxation and Economic Policy model \cite{itep2024} is unique in its comprehensive treatment of federal, state and local taxes. Key features include:
+The Institute on Taxation and Economic Policy model \citep{itep2024} is unique in its comprehensive treatment of federal, state and local taxes. Key features include:
 
 \begin{itemize}
     \item Integration of income, sales, and property tax microsimulation
@@ -87,7 +87,7 @@ The Institute on Taxation and Economic Policy model \cite{itep2024} is unique in
     \item Race/ethnicity analysis through statistical matching
 \end{itemize}
 
-The Tax Foundation's Taxes and Growth model \cite{tf2024} emphasizes macroeconomic feedback effects through a neoclassical growth framework. Their approach includes:
+The Tax Foundation's Taxes and Growth model \citep{tf2024} emphasizes macroeconomic feedback effects through a neoclassical growth framework. Their approach includes:
 
 \begin{itemize}
     \item Production function based on CES technology
@@ -100,7 +100,7 @@ The Tax Foundation's Taxes and Growth model \cite{tf2024} emphasizes macroeconom
 
 Recent years have seen growing interest in open source approaches that promote transparency and reproducibility in tax policy modeling.
 
-The Budget Lab at Yale \cite{budgetlab2024} maintains a fully open source federal tax model distinguished by:
+The Budget Lab at Yale \citep{budgetlab2024} maintains a fully open source federal tax model distinguished by:
 
 \begin{itemize}
     \item Modular codebase with clear separation of concerns
@@ -111,7 +111,7 @@ The Budget Lab at Yale \cite{budgetlab2024} maintains a fully open source federa
 
 Their approach to code organization and testing informs our own development practices.
 
-The Policy Simulation Library's Tax-Data project \cite{psl2024} provides building blocks for tax microsimulation including:
+The Policy Simulation Library's Tax-Data project \citep{psl2024} provides building blocks for tax microsimulation including:
 
 \begin{itemize}
     \item Data processing and cleaning routines

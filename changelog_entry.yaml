@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    added:
+    - Metric comparisons by dataset to the documentation.

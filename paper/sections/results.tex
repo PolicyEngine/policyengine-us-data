@@ -12,21 +12,45 @@ The enhanced CPS (ECPS) shows substantial improvements over both of its source d
 
 These improvements are particularly notable because they demonstrate that our enhancement methodology successfully combines the strengths of both source datasets while mitigating their individual weaknesses. The CPS excels at demographic representation but struggles with income reporting, particularly at the top of the distribution. Conversely, the PUF captures tax-related variables well but lacks demographic detail. Our enhanced dataset achieves better accuracy than either source across most metrics.
 
-\subsection{Distribution of Improvements}
+\subsection{Income Distribution}
 
-To assess the magnitude and consistency of these improvements, we calculate the relative error change under the ECPS compared to the better performing of the CPS or PUF for each target. The distribution of these improvements shows that:
+Table \ref{tab:tax_unit_metrics} compares distributional statistics across all three datasets, measuring net income after taxes and transfers at the tax unit level without equivalization:
 
-\begin{itemize}
-    \item Most improvements cluster between 5-15\% reduction in relative error
-    \item Some targets see improvements exceeding 50\% reduction in error
-    \item Very few targets show degraded performance compared to the source datasets
-\end{itemize}
+\input{tables/tax_unit_metrics}
 
-A detailed, interactive validation dashboard showing performance across all targets is maintained at \url{https://policyengine.github.io/policyengine-us-data/validation.html} and updates automatically with each dataset revision. This transparency allows users to assess the dataset's strengths and limitations for their specific use cases. See Figure \ref{fig:ecps_vs_cps_puf} for a visualization of the distribution of improvements.
+The enhanced CPS achieves very similar distributional statistics to the PUF, with a Gini coefficient of 0.572 compared to 0.570 in the PUF, and nearly identical top income shares. This suggests our enhancement procedure successfully incorporates the PUF's more accurate representation of the income distribution. 
 
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=\textwidth]{figures/ecps_vs_cps_puf.png}
-    \caption{Relative error change under the ECPS compared to the better performing of the CPS or PUF for each target.}
-    \label{fig:ecps_vs_cps_puf}
-\end{figure}
+For applications requiring household-level analysis, Table \ref{tab:household_metrics} shows these same metrics calculated over households rather than tax units:
+
+\input{tables/household_metrics}
+
+The household-level metrics show similar patterns of increased inequality capture compared to the baseline CPS, though the magnitudes differ due to the different unit of analysis.
+
+\subsection{Poverty Measurement}
+
+The poverty metrics in Table \ref{tab:poverty_metrics} warrant particular attention:
+
+\input{tables/poverty_metrics}
+
+While we calibrate to income, demographic, tax, and benefit totals that should capture the overall income distribution, the substantial increase in measured poverty from 12.7\% to 24.9\% suggests our current approach may need refinement. The enhancement procedure might overstate poverty by not fully capturing geographic correlations between incomes and poverty thresholds. We currently calibrate AGI totals by SPM thresholds from the CPS and intend to enhance this calibration in future iterations.
+
+\subsection{Weight Distribution Analysis}
+
+The weight distribution statistics shown in Table \ref{tab:weight_stats} reveal notable differences in how the datasets represent the population. Note that CPS and enhanced CPS values reflect household weights, while PUF values reflect tax unit weights:
+
+\input{tables/weight_stats}
+
+The original CPS has relatively uniform weights centered around 2,400, reflecting its design as a representative sample. The PUF shows less variation in weights, with a standard deviation of 720 compared to 1,423 for the CPS. The enhanced CPS exhibits greater weight variation and lower mean weights by design - each original record is cloned to potentially incorporate a matching PUF record, effectively doubling the initial sample size. About 54\% of these expanded records receive non-zero weights in the final dataset, as the reweighting procedure selects optimal combinations of records to match administrative targets.
+
+A detailed, interactive validation dashboard showing performance across all targets is maintained at \url{https://policyengine.github.io/policyengine-us-data/validation.html} and updates automatically with each dataset revision. This transparency allows users to assess the dataset's strengths and limitations for their specific use cases.
+
+\subsection{Example Policy Reform: Top Tax Rate Increase}
+
+To demonstrate the enhanced dataset's value for policy analysis, we examine President Biden's 2025 budget proposal to raise the top marginal income tax rate from 37\% to 39.6\%. This would restore the pre-Tax Cuts and Jobs Act rate for high-income taxpayers, applying to income above \$400,000 for single filers, \$425,000 for head of household filers, \$450,000 for married joint filers, and \$225,000 for married separate filers, with thresholds indexed to inflation from 2025.
+
+\input{tables/top_rate_reform}
+
+Table \ref{tab:top_rate_reform} compares revenue projections across datasets:
+
+
+The enhanced CPS projects \$75.7 billion in additional revenue for 2025, closely matching the Treasury Department's estimate of \$75.4 billion. In contrast, the baseline CPS projects only \$28.7 billion, substantially understating the reform's impact. This disparity illustrates how the enhanced dataset's improved capture of high incomes enables more accurate modeling of tax policies targeting high-income households.

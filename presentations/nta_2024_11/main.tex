@@ -1,0 +1,159 @@
+\documentclass{beamer}
+\usetheme{Madrid}
+\usepackage{policyengine}
+\usepackage{graphicx}
+\usepackage{booktabs}
+
+\title{Enhancing the CPS with Administrative Tax Data}
+\subtitle{Machine Learning Meets Microsimulation}
+\author[Woodruff \& Ghenis]{Nikhil Woodruff \& Max Ghenis}
+\institute{PolicyEngine}
+\date{National Tax Association Annual Conference\\November 14, 2024}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+\begin{frame}{The Challenge}
+    \begin{itemize}
+        \item Current Population Survey (CPS)
+        \begin{itemize}
+            \item Rich demographics, state ID, household structure
+            \item But underreports income, especially at top
+            \item Limited tax information
+        \end{itemize}
+        \pause
+        \item IRS Public Use File (PUF)
+        \begin{itemize}
+            \item Accurate tax records from administrative data
+            \item But no demographics beyond age/sex
+            \item No state ID
+            \item No household structure
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Our Solution}
+    \begin{itemize}
+        \item Use quantile regression forests to:
+        \begin{itemize}
+            \item Learn full distributions of tax variables from PUF
+            \item Generate synthetic records matching CPS demographics
+        \end{itemize}
+        \pause
+        \item Stack synthetic records with original CPS
+        \pause
+        \item Use gradient descent to optimize weights against:
+        \begin{itemize}
+            \item IRS Statistics of Income
+            \item Census population projections
+            \item CBO program totals
+            \item State administrative data
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Validation: Inequality Measures}
+    \begin{itemize}
+        \item Tax unit income inequality in enhanced CPS matches IRS data
+        \begin{table}
+            \centering
+            \input{../../paper/tables/tax_unit_metrics.tex}
+        \end{table}
+        \pause
+        \item Also matches state-level income inequality
+        \item And program participation by demographics
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Validation: Top Rate Reform}
+    \begin{itemize}
+        \item Biden's 2025 budget: raise top rate to 39.6\% above \$400k
+    \end{itemize}
+    \begin{table}
+        \centering
+        \begin{tabular}{lr}
+            \toprule
+            Source & Revenue (billions) \\
+            \midrule
+            Treasury & \$75.4 \\
+            Enhanced CPS & \$75.7 \\
+            Baseline CPS & \$28.7 \\
+            \bottomrule
+        \end{tabular}
+        \caption{Projected revenue, 2025}
+    \end{table}
+\end{frame}
+
+\begin{frame}{Key Innovation: Demographics "For Free"}
+    \begin{itemize}
+        \item Other models must impute race/ethnicity:
+        \begin{itemize}
+            \item CBO: Statistical matching with survey data
+            \item TPC: Multiple record copies with reweighting
+            \item ITEP: Probabilistic assignment by characteristics
+        \end{itemize}
+        \pause
+        \item Our approach:
+        \begin{itemize}
+            \item Race/ethnicity direct from CPS
+            \item Individual-level rather than tax unit only
+            \item Same applies to disability status, education, etc.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Open Access}
+    \begin{itemize}
+        \item All code open source
+        \begin{itemize}
+            \item github.com/PolicyEngine/policyengine-us-data
+            \item Reproducible enhancement pipeline
+            \item Automatic validation dashboard
+        \end{itemize}
+        \pause
+        \item Use through Python package\\[0.5em]
+\begin{verbatim}
+from policyengine_us import Microsimulation
+sim = Microsimulation(dataset="enhanced_cps_2024")
+\end{verbatim}
+        \pause
+        \item Or web interface at policyengine.org
+        \begin{itemize}
+            \item Model tax reforms
+            \item Analyze household impacts
+            \item Distributional analysis by demographics
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Next Steps}
+    \begin{itemize}
+        \item Enhancing UK Family Resources Survey
+        \begin{itemize}
+            \item Add tax returns from Survey of Personal Incomes
+            \item Integrate wealth from Wealth \& Assets Survey
+            \item Consumption from Living Costs \& Food Survey
+        \end{itemize}
+        \pause
+        \item Expanding US validation
+        \begin{itemize}
+            \item State-level tax statistics
+            \item Program participation by demographics
+            \item Historical policy changes
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Thank You}
+    \begin{itemize}
+        \item Paper: github.com/PolicyEngine/policyengine-us-data/paper
+        \item Code: github.com/PolicyEngine/policyengine-us-data
+        \item Web app: policyengine.org
+        \item Contact: max@policyengine.org
+    \end{itemize}
+\end{frame}
+
+\end{document}

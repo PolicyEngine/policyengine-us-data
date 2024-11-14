@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data clean build paper clean-paper
+.PHONY: all format test install download upload docker documentation data clean build paper clean-paper presentations
 
 all: data test
 
@@ -61,3 +61,10 @@ paper/main.pdf: $(wildcard paper/sections/**/*.tex) $(wildcard paper/bibliograph
 
 clean-paper:
 	rm -f paper/*.aux paper/*.bbl paper/*.blg paper/*.log paper/*.out paper/*.toc paper/main.pdf paper/sections/**/*.aux
+
+presentations: presentations/nta_2024_11/main.pdf
+
+presentations/nta_2024_11/main.pdf: presentations/nta_2024_11/main.tex
+	cd presentations/nta_2024_11 && \
+		pdflatex main && \
+		pdflatex main

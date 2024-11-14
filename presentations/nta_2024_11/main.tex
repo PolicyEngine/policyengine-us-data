@@ -30,41 +30,66 @@
             \item Accurate tax records from administrative data
             \item But no demographics beyond age/sex
             \item No state ID
-            \item No household structure
+            \item Protected by strict confidentiality rules
         \end{itemize}
     \end{itemize}
 \end{frame}
 
-\begin{frame}{Our Solution}
+\begin{frame}{Key Innovation: Open Dataset with PUF Quality}
     \begin{itemize}
-        \item Use quantile regression forests to:
+        \item First openly available dataset integrating CPS and PUF
+        \item No confidentiality restrictions
+        \item Enables:
         \begin{itemize}
-            \item Learn full distributions of tax variables from PUF
-            \item Generate synthetic records matching CPS demographics
+            \item Transparent policy analysis
+            \item Integration with other tools
+            \item Community contributions and validation
+        \end{itemize}
+        \item Powers PolicyEngine's microsimulation platform
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Our Approach}
+    \begin{itemize}
+        \item Generate synthetic tax variables from PUF using:
+        \begin{itemize}
+            \item Quantile regression forests to learn distributions
+            \item Match to CPS demographic variables
         \end{itemize}
         \pause
         \item Stack synthetic records with original CPS
         \pause
-        \item Use gradient descent to optimize weights against:
+        \item Calculate taxes and benefits via microsimulation
+        \pause
+        \item Optimize weights against 570 targets:
         \begin{itemize}
-            \item IRS Statistics of Income
-            \item Census population projections
-            \item CBO program totals
-            \item State administrative data
+            \item IRS Statistics of Income income bins
+            \item Program participation totals
+            \item Single-year age population counts
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Validation: Administrative Targets}
+    \begin{itemize}
+        \item Enhanced CPS outperforms source datasets:
+        \begin{itemize}
+            \item 63\% of targets vs original CPS
+            \item 71\% of targets vs PUF
         \end{itemize}
     \end{itemize}
 \end{frame}
 
 \begin{frame}{Validation: Inequality Measures}
     \begin{itemize}
-        \item Tax unit income inequality in enhanced CPS matches IRS data
+        \item Tax unit income inequality matches IRS data
         \begin{table}
             \centering
-            \input{../../paper/tables/tax_unit_metrics.tex}
+            \begin{table}
+                \centering
+                \input{../../paper/tables/tax_unit_metrics.tex}
+            \end{table}
         \end{table}
-        \pause
-        \item Also matches state-level income inequality
-        \item And program participation by demographics
     \end{itemize}
 \end{frame}
 
@@ -74,38 +99,42 @@
     \end{itemize}
     \begin{table}
         \centering
-        \begin{tabular}{lr}
-            \toprule
-            Source & Revenue (billions) \\
-            \midrule
-            Treasury & \$75.4 \\
-            Enhanced CPS & \$75.7 \\
-            Baseline CPS & \$28.7 \\
-            \bottomrule
-        \end{tabular}
-        \caption{Projected revenue, 2025}
+        \input{../../paper/tables/top_rate_reform.tex}
     \end{table}
 \end{frame}
 
-\begin{frame}{Key Innovation: Demographics "For Free"}
+\begin{frame}{Advanced ML Methods}
     \begin{itemize}
-        \item Other models must impute race/ethnicity:
+        \item Quantile regression forests (QRF) for:
         \begin{itemize}
-            \item CBO: Statistical matching with survey data
-            \item TPC: Multiple record copies with reweighting
-            \item ITEP: Probabilistic assignment by characteristics
+            \item Tax variable imputation from PUF
+            \item Housing costs from ACS
+            \item Prior year earnings from ASEC panel
         \end{itemize}
         \pause
-        \item Our approach:
+        \item Dropout-regularized gradient descent for:
         \begin{itemize}
-            \item Race/ethnicity direct from CPS
-            \item Individual-level rather than tax unit only
-            \item Same applies to disability status, education, etc.
+            \item Weight optimization
+            \item Preventing overfitting
+            \item Handling sparse subgroups
         \end{itemize}
     \end{itemize}
 \end{frame}
 
-\begin{frame}[fragile]{Open Access}
+\begin{frame}{The PolicyEngine Platform}
+    \begin{figure}
+        \centering
+        \includegraphics[width=0.8\textwidth]{../../paper/figures/policyengine_results.png}
+        \caption{Screenshot of PolicyEngine's US tax and benefit calculator}
+    \end{figure}
+    \begin{itemize}
+        \item Web interface for policy analysis
+        \item Powered by enhanced CPS
+        \item Instant distributional impacts
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Open Access}
     \begin{itemize}
         \item All code open source
         \begin{itemize}
@@ -114,35 +143,31 @@
             \item Automatic validation dashboard
         \end{itemize}
         \pause
-        \item Use through Python package\\[0.5em]
-\begin{verbatim}
-from policyengine_us import Microsimulation
-sim = Microsimulation(dataset="enhanced_cps_2024")
-\end{verbatim}
+        \item Use through Python package or web interface
         \pause
-        \item Or web interface at policyengine.org
+        \item Growing community of users:
         \begin{itemize}
-            \item Model tax reforms
-            \item Analyze household impacts
-            \item Distributional analysis by demographics
+            \item Academic researchers
+            \item Think tanks
+            \item Government agencies
         \end{itemize}
     \end{itemize}
 \end{frame}
 
 \begin{frame}{Next Steps}
     \begin{itemize}
-        \item Enhancing UK Family Resources Survey
+        \item Geographic extensions:
         \begin{itemize}
-            \item Add tax returns from Survey of Personal Incomes
-            \item Integrate wealth from Wealth \& Assets Survey
-            \item Consumption from Living Costs \& Food Survey
+            \item Congressional district weights
+            \item State-specific calibration
+            \item County-level synthetic data
         \end{itemize}
         \pause
-        \item Expanding US validation
+        \item Methodological improvements:
         \begin{itemize}
-            \item State-level tax statistics
-            \item Program participation by demographics
-            \item Historical policy changes
+            \item Time series validation
+            \item Uncertainty quantification
+            \item Alternative ML architectures
         \end{itemize}
     \end{itemize}
 \end{frame}

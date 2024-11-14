@@ -21,17 +21,18 @@
         \item Current Population Survey (CPS)
         \begin{itemize}
             \item Rich demographics, state ID, household structure
-            \item But underreports income, especially at top
+            \item Underreports income, especially at top
             \item Limited tax information
+            \item Self-reported program participation
         \end{itemize}
-        \pause
         \item IRS Public Use File (PUF)
         \begin{itemize}
             \item Accurate tax records from administrative data
-            \item But no demographics beyond age/sex
+            \item No demographics beyond age/sex
             \item No state ID
-            \item Protected by strict confidentiality rules
+            \item Strict confidentiality rules
         \end{itemize}
+        \item Need both for comprehensive policy analysis
     \end{itemize}
 \end{frame}
 
@@ -39,13 +40,14 @@
     \begin{itemize}
         \item First openly available dataset integrating CPS and PUF
         \item No confidentiality restrictions
+        \item Preserves demographic detail while matching tax data
+        \item Powers PolicyEngine microsimulation platform
         \item Enables:
         \begin{itemize}
-            \item Transparent policy analysis
-            \item Integration with other tools
-            \item Community contributions and validation
+            \item Analysis by race, education, disability status
+            \item Program interactions
+            \item Transparent, reproducible research
         \end{itemize}
-        \item Powers PolicyEngine's microsimulation platform
     \end{itemize}
 \end{frame}
 
@@ -70,32 +72,119 @@
     \end{itemize}
 \end{frame}
 
-\begin{frame}{Validation: Administrative Targets}
+\begin{frame}{Enhanced CPS Pipeline}
+    \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth]{../../paper/figures/data_flow.png}
+        \caption{Overview of dataset enhancement process}
+    \end{figure}
+\end{frame}
+
+\begin{frame}{Machine Learning Methods}
     \begin{itemize}
-        \item Enhanced CPS outperforms source datasets:
+        \item Quantile Regression Forests (QRF) for:
         \begin{itemize}
-            \item 63\% of targets vs original CPS
-            \item 71\% of targets vs PUF
+            \item Imputing tax variables from PUF
+            \item Predicting housing costs from ACS
+            \item Estimating prior year earnings
+        \end{itemize}
+        \item Benefits of QRF approach:
+        \begin{itemize}
+            \item Captures full conditional distributions
+            \item Handles non-linear relationships
+            \item Preserves correlations between variables
+            \item Outperforms traditional statistical matching
         \end{itemize}
     \end{itemize}
 \end{frame}
 
-\begin{frame}{Validation: Inequality Measures}
+\begin{frame}{Machine Learning Methods}
+    \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth]{../../paper/figures/quantile_loss.png}
+        \caption{Average quantile loss by method, predicting net worth from covariates in SCF}
+    \end{figure}
+\end{frame}
+
+\begin{frame}{Weight Optimization}
     \begin{itemize}
-        \item Tax unit income inequality matches IRS data
-        \begin{table}
-            \centering
-            \begin{table}
-                \centering
-                \input{../../paper/tables/tax_unit_metrics.tex}
-            \end{table}
-        \end{table}
+        \item Novel dropout-regularized gradient descent
+        \item Optimizes against 570 targets including:
+        \begin{itemize}
+            \item IRS Statistics of Income by income bins
+            \item Program participation totals
+            \item Single-year age population counts
+            \item State-level aggregates
+        \end{itemize}
+        \item Prevents overfitting to any single target
+        \item Handles sparse subgroups effectively
     \end{itemize}
 \end{frame}
 
-\begin{frame}{Validation: Top Rate Reform}
+\begin{frame}{Weight Optimization Mathematics}
     \begin{itemize}
-        \item Biden's 2025 budget: raise top rate to 39.6\% above \$400k
+        \item Minimize relative squared error:
+        \vspace{0.5cm}
+        \[ L(w) = \text{mean}\left(\left(\frac{w^T M + 1}{t + 1} - 1\right)^2\right) \]
+        \vspace{0.5cm}
+        where:
+        \begin{itemize}
+            \item $w$ are log-transformed household weights
+            \item $M$ is matrix of household characteristics
+            \item $t$ are target values from administrative data
+        \end{itemize}
+    \end{itemize}
+    \begin{itemize}
+        \item Implementation:
+        \begin{itemize}
+            \item PyTorch gradient descent with Adam optimizer
+            \item 5\% dropout rate for regularization
+            \item 5,000 iterations or convergence
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Validation: Example Targets}
+    \begin{table}
+        \small
+        \centering
+        \input{../../paper/tables/target_examples.tex}
+    \end{table}
+    \begin{itemize}
+        \item ECPS is best on qualified dividends and infant population
+        \item PUF better on returns AGI 100-200k
+        \item 567 other targets!
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Validation: Target Calibration}
+    \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth]{../../paper/figures/ecps_vs_cps_puf.png}
+        \caption{Error change from ECPS to better of CPS and PUF}
+    \end{figure}
+    \begin{itemize}
+        \item ECPS outperforms CPS on 63\% of targets
+        \item ECPS outperforms PUF on 71\% of targets
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Validation: Income Distribution}
+    \begin{table}
+        \centering
+        \input{../../paper/tables/tax_unit_metrics.tex}
+    \end{table}
+    \begin{itemize}
+        \item CPS inequality measures 12-45\% lower than PUF
+        \item ECPS inequality within 4\% of PUF
+        \item Inequality measured as income after taxes and transfers
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Validation: Policy Analysis}
+    \begin{itemize}
+        \item Test case: Biden's proposed top rate increase
+        \item Would raise rate from 37\% to 39.6\% above \$400k
     \end{itemize}
     \begin{table}
         \centering
@@ -103,53 +192,52 @@
     \end{table}
 \end{frame}
 
-\begin{frame}{Advanced ML Methods}
-    \begin{itemize}
-        \item Quantile regression forests (QRF) for:
-        \begin{itemize}
-            \item Tax variable imputation from PUF
-            \item Housing costs from ACS
-            \item Prior year earnings from ASEC panel
-        \end{itemize}
-        \pause
-        \item Dropout-regularized gradient descent for:
-        \begin{itemize}
-            \item Weight optimization
-            \item Preventing overfitting
-            \item Handling sparse subgroups
-        \end{itemize}
-    \end{itemize}
-\end{frame}
-
 \begin{frame}{The PolicyEngine Platform}
     \begin{figure}
         \centering
-        \includegraphics[width=0.8\textwidth]{../../paper/figures/policyengine_results.png}
-        \caption{Screenshot of PolicyEngine's US tax and benefit calculator}
+        \includegraphics[width=\textwidth]{../../paper/figures/policyengine_policy.png}
+        \caption{PolicyEngine's policy editor interface}
     \end{figure}
+\end{frame}
+
+\begin{frame}{Interactive Results}
+    \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth]{../../paper/figures/policyengine_results.png}
+        \caption{Example distributional analysis from PolicyEngine}
+    \end{figure}
+\end{frame}
+
+\begin{frame}{Unique Demographic Analysis}
     \begin{itemize}
-        \item Web interface for policy analysis
-        \item Powered by enhanced CPS
-        \item Instant distributional impacts
+        \item Direct race/ethnicity analysis without imputation
+        \item Other models must use complex methods:
+        \begin{itemize}
+            \item CBO: Statistical matching with Census data
+            \item Tax Policy Center: Multiple copies with reweighting
+            \item ITEP: Probability assignment based on characteristics
+        \end{itemize}
+        \item Our approach:
+        \begin{itemize}
+            \item Uses observed demographics from CPS
+            \item Individual-level rather than tax unit only
+            \item Enables analysis of intersectional effects
+            \item Extends to disability, education, etc.
+        \end{itemize}
     \end{itemize}
 \end{frame}
 
-\begin{frame}{Open Access}
+\begin{frame}{Open Science}
     \begin{itemize}
-        \item All code open source
+        \item Full codebase on GitHub
+        \item Automatic validation dashboard
+        \item Python package for programmatic access
+        \item Web interface at policyengine.org
+        \item Growing research applications:
         \begin{itemize}
-            \item github.com/PolicyEngine/policyengine-us-data
-            \item Reproducible enhancement pipeline
-            \item Automatic validation dashboard
-        \end{itemize}
-        \pause
-        \item Use through Python package or web interface
-        \pause
-        \item Growing community of users:
-        \begin{itemize}
-            \item Academic researchers
-            \item Think tanks
-            \item Government agencies
+            \item Academic studies
+            \item Think tank analysis
+            \item Government agency use
         \end{itemize}
     \end{itemize}
 \end{frame}
@@ -162,13 +250,13 @@
             \item State-specific calibration
             \item County-level synthetic data
         \end{itemize}
-        \pause
         \item Methodological improvements:
         \begin{itemize}
             \item Time series validation
             \item Uncertainty quantification
             \item Alternative ML architectures
         \end{itemize}
+        \item International applications (UK version live)
     \end{itemize}
 \end{frame}
 

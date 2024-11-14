@@ -50,21 +50,21 @@ build:
 publish:
 	twine upload dist/*
 
-paper: paper/main.pdf
+paper: paper/woodruff_ghenis_2024_enhanced_cps.pdf
 
-paper/main.pdf: $(wildcard paper/sections/**/*.tex) $(wildcard paper/bibliography/*.bib) paper/main.tex paper/macros.tex
+paper/woodruff_ghenis_2024_enhanced_cps.pdf: $(wildcard paper/sections/**/*.tex) $(wildcard paper/bibliography/*.bib) paper/main.tex paper/macros.tex
 	cd paper && \
 	BIBINPUTS=./bibliography pdflatex main && \
 	BIBINPUTS=./bibliography bibtex main && \
-	pdflatex main && \
-	pdflatex main
+	pdflatex -jobname=woodruff_ghenis_2024_enhanced_cps main && \
+	pdflatex -jobname=woodruff_ghenis_2024_enhanced_cps main
 
 clean-paper:
-	rm -f paper/*.aux paper/*.bbl paper/*.blg paper/*.log paper/*.out paper/*.toc paper/main.pdf paper/sections/**/*.aux
+	rm -f paper/*.aux paper/*.bbl paper/*.blg paper/*.log paper/*.out paper/*.toc paper/*.pdf paper/sections/**/*.aux
 
-presentations: presentations/nta_2024_11/main.pdf
+presentations: presentations/nta_2024_11/nta_2024_slides.pdf
 
-presentations/nta_2024_11/main.pdf: presentations/nta_2024_11/main.tex
+presentations/nta_2024_11/nta_2024_slides.pdf: presentations/nta_2024_11/main.tex
 	cd presentations/nta_2024_11 && \
-		pdflatex main && \
-		pdflatex main
+		pdflatex -jobname=nta_2024_slides main && \
+		pdflatex -jobname=nta_2024_slides main

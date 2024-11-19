@@ -322,6 +322,24 @@ def build_loss_matrix(dataset: type, time_period):
         )
         targets_array.append(row["count"])
 
+    # Population by state and population under 5 by state
+
+    state_population = pd.read_csv(STORAGE_FOLDER / "population_by_state.csv")
+
+    for _, row in state_population.iterrows():
+        in_state = sim.calculate("state_code", map_to="person") == row["state"]
+        label = f"census/population_by_state/{row['state']}"
+        loss_matrix[label] = sim.map_result(in_state, "person", "household")
+        targets_array.append(row["population"])
+
+        under_5 = sim.calculate("age").values < 5
+        in_state_under_5 = in_state * under_5
+        label = f"census/population_under_5_by_state/{row['state']}"
+        loss_matrix[label] = sim.map_result(
+            in_state_under_5, "person", "household"
+        )
+        targets_array.append(row["population_under_5"])
+
     if any(loss_matrix.isna().sum() > 0):
         raise ValueError("Some targets are missing from the loss matrix")
 

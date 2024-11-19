@@ -1,4 +1,5 @@
-- bump: patch
+- bump: minor
   changes:
     added:
     - Metric comparisons by dataset to the documentation.
+    - Calibration of state populations.

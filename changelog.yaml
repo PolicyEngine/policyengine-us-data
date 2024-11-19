@@ -132,3 +132,8 @@
     added:
     - Paper on methodology.
   date: 2024-11-12 07:03:52
+- bump: patch
+  changes:
+    added:
+    - Metric comparisons by dataset to the documentation.
+  date: 2024-11-12 15:03:39

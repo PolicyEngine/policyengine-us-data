@@ -31,6 +31,8 @@ docker:
 	
 documentation:
 	jb clean docs && jb build docs
+	python docs/add_plotly_to_book.py docs
+
 
 data:
 	python policyengine_us_data/datasets/acs/acs.py

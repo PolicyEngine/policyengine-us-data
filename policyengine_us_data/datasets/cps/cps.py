@@ -648,7 +648,7 @@ class CPS_2024(CPS):
     label = "CPS 2024 (2022-based)"
     file_path = STORAGE_FOLDER / "cps_2024.h5"
     time_period = 2024
-    url = "release://policyengine/policyengine-us-data/1.11.0/cps_2024.h5"
+    url = "release://policyengine/policyengine-us-data/1.13.0/cps_2024.h5"
 
 
 class PooledCPS(Dataset):
@@ -707,7 +707,7 @@ class Pooled_3_Year_CPS_2023(PooledCPS):
         CPS_2023,
     ]
     time_period = 2023
-    url = "release://PolicyEngine/policyengine-us-data/1.11.0/pooled_3_year_cps_2023.h5"
+    url = "release://PolicyEngine/policyengine-us-data/1.13.0/pooled_3_year_cps_2023.h5"
 
 
 if __name__ == "__main__":

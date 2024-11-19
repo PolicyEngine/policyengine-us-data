@@ -137,3 +137,9 @@
     added:
     - Metric comparisons by dataset to the documentation.
   date: 2024-11-12 15:03:39
+- bump: minor
+  changes:
+    added:
+    - Metric comparisons by dataset to the documentation.
+    - Calibration of state populations.
+  date: 2024-11-19 12:29:11

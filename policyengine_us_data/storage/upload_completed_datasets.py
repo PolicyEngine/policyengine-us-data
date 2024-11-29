@@ -1,36 +1,26 @@
-from policyengine_us_data.utils.github import upload
-from pathlib import Path
-
-FOLDER = Path(__file__).parent
-
-upload(
-    "PolicyEngine",
-    "policyengine-us-data",
-    "release",
-    "enhanced_cps_2024.h5",
-    FOLDER / "enhanced_cps_2024.h5",
+from policyengine_us_data.datasets import (
+    EnhancedCPS_2024,
+    Pooled_3_Year_CPS_2023,
+    CPS_2023,
 )
+from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.huggingface import upload
 
-upload(
-    "PolicyEngine",
-    "policyengine-us-data",
-    "release",
-    "cps_2024.h5",
-    FOLDER / "cps_2024.h5",
-)
 
-upload(
-    "PolicyEngine",
-    "irs-soi-puf",
-    "release",
-    "puf_2024.h5",
-    FOLDER / "puf_2024.h5",
-)
+def upload_datasets():
+    for dataset in [EnhancedCPS_2024, Pooled_3_Year_CPS_2023, CPS_2023]:
+        dataset = dataset()
+        if not dataset.exists:
+            raise ValueError(
+                f"Dataset {dataset.name} does not exist at {dataset.file_path}."
+            )
 
-upload(
-    "PolicyEngine",
-    "policyengine-us-data",
-    "release",
-    "acs_2022.h5",
-    FOLDER / "acs_2022.h5",
-)
+        upload(
+            dataset.file_path,
+            "policyengine/policyengine-us-data",
+            dataset.file_path.name,
+        )
+
+
+if __name__ == "__main__":
+    upload_datasets()

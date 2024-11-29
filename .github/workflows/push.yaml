@@ -45,10 +45,10 @@ jobs:
           POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
       - name: Build datasets
         run: make data
-        env:
-          LITE_MODE: true
       - name: Run tests
         run: pytest
+      - name: Upload data
+        run: make upload
       - name: Test documentation builds
         run: make documentation
       - name: Build Jupyter Book
@@ -56,9 +56,8 @@ jobs:
       - name: Deploy documentation
         uses: JamesIves/github-pages-deploy-action@releases/v4
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: gh-pages
-          FOLDER: docs/_build/html
+          branch: gh-pages
+          folder: docs/_build/html
   publish-to-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest

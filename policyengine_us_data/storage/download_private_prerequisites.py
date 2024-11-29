@@ -1,19 +1,17 @@
-from policyengine_us_data.utils.github import download
+from policyengine_us_data.utils.huggingface import download
 from pathlib import Path
 
 FOLDER = Path(__file__).parent
 
 download(
-    "PolicyEngine",
-    "irs-soi-puf",
-    "release",
-    "puf_2015.csv",
-    FOLDER / "puf_2015.csv",
+    repo="policyengine/irs-soi-puf",
+    repo_filename="puf_2015.csv",
+    local_folder=FOLDER,
+    version=None,
 )
 download(
-    "PolicyEngine",
-    "irs-soi-puf",
-    "release",
-    "demographics_2015.csv",
-    FOLDER / "demographics_2015.csv",
+    repo="policyengine/irs-soi-puf",
+    repo_filename="demographics_2015.csv",
+    local_folder=FOLDER,
+    version=None,
 )

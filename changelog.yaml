@@ -143,3 +143,8 @@
     - Metric comparisons by dataset to the documentation.
     - Calibration of state populations.
   date: 2024-11-19 12:29:11
+- bump: minor
+  changes:
+    added:
+    - Automatic upload behavior.
+  date: 2024-11-29 20:23:10

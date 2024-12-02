@@ -189,7 +189,7 @@ class EnhancedCPS_2024(EnhancedCPS):
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
     file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"
-    url = "release://policyengine/policyengine-us-data/1.13.0/enhanced_cps_2024.h5"
+    url = "hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5"
 
 
 if __name__ == "__main__":

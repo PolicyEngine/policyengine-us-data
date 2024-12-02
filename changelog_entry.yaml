@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    changed:
+    - Changed GitHub release URLs to Hugging Face URLs for Enhanced CPS 2024 and Pooled 3-Year CPS 2023.

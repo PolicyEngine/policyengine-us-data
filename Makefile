@@ -9,7 +9,6 @@ test:
 	pytest
 
 install:
-	pip install policyengine-us
 	pip install -e ".[dev]"  --config-settings editable_mode=compat
 
 changelog:

@@ -10,7 +10,6 @@ test:
 
 install:
 	pip install policyengine-us
-	pip install --upgrade policyengine-core>=3.14.1
 	pip install -e ".[dev]"  --config-settings editable_mode=compat
 
 changelog:

@@ -66,12 +66,12 @@ jobs:
         env:
           HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
           POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
-      - name: Build datasets (except enhanced CPS)
-        run: make data-non-enhanced-cps
+      - name: Build non-CPS datasets
+        run: make data-non-cps
         # env:
         #   LITE_MODE: true
-      - name: Build enhanced CPS dataset
-        run: make data-enhanced-cps
+      - name: Build CPS-derived datasets
+        run: make data-cps
       - name: Run tests
         run: pytest
       - name: Test documentation builds

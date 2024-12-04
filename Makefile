@@ -63,3 +63,5 @@ paper/main.pdf: $(wildcard paper/sections/**/*.tex) $(wildcard paper/bibliograph
 
 clean-paper:
 	rm -f paper/*.aux paper/*.bbl paper/*.blg paper/*.log paper/*.out paper/*.toc paper/main.pdf paper/sections/**/*.aux
+
+generate-and-upload:	download	data	upload

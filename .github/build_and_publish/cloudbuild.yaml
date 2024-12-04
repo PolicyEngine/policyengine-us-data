@@ -69,7 +69,7 @@ steps:
 
 substitutions:
   _REGION: 'us-central1'  # Default region
-  _REPOSITORY_NAME: 'policyengine/policyengine-us-data'  # Your Artifact Registry repository name
+  _REPOSITORY_NAME: 'policyengine-research'  # Your Artifact Registry repository name
   _IMAGE_NAME: 'build-and-publish'  # Your image name
   _TAG: 'latest'  # Image tag
   _JOB_NAME: 'build-and-publish-us-data'  # Cloud Run job name

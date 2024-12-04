@@ -49,11 +49,11 @@ jobs:
           python-version: 3.12
       
       - name: Log in to the Container registry
-        uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
+        uses: docker/login-action@v1
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.POLICYENGINE_DOCKER }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Build and push deployment image
         uses: docker/build-push-action@v2

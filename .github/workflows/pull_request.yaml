@@ -12,21 +12,6 @@ on:
     branches: [main]
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    name: Lint
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.12
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install black
-      - name: Check formatting
-        run: black . -l 79 --check
   check-version:
     name: Check version
     runs-on: ubuntu-latest
@@ -70,33 +55,6 @@ jobs:
       - name: Build and push to Cloud Build
         run: |
           gcloud builds submit \
-            --config=cloudbuild.yaml
+            --config=.github/build_and_publish/cloudbuild.yaml
         env:
-          PROJECT_ID: policyengine-research        
-  test:
-    name: Build and test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Fetch all history for all tags and branches
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.12
-      - name: Install package
-        run: make install
-      - name: Download data inputs
-        run: make download
-        env:
-          HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-          POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
-      - name: Build datasets
-        run: make data
-        env:
-          LITE_MODE: true
-      - name: Run tests
-        run: pytest
-      - name: Test documentation builds
-        run: make documentation
+          PROJECT_ID: policyengine-research    

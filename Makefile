@@ -34,13 +34,19 @@ documentation:
 	python docs/add_plotly_to_book.py docs
 
 
-data:
+data-non-enhanced-cps:
 	python policyengine_us_data/datasets/acs/acs.py
 	python policyengine_us_data/datasets/cps/cps.py
 	python policyengine_us_data/datasets/puf/irs_puf.py
 	python policyengine_us_data/datasets/puf/puf.py
 	python policyengine_us_data/datasets/cps/extended_cps.py
+
+data-enhanced-cps:
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
+
+data:
+	data-non-enhanced-cps
+	data-enhanced-cps
 
 clean:
 	rm -f policyengine_us_data/storage/puf_2015.csv

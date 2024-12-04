@@ -1,4 +1,4 @@
 FROM python:latest
 COPY . .
 RUN make install
-CMD make upload
+CMD make generate-and-upload

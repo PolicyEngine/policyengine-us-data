@@ -48,11 +48,10 @@ jobs:
         with:
           python-version: 3.12
       
-      # Build dockerfile in .github/build_and_publish.Dockerfile and publish to ghcr
       - name: Build and push deployment image
         uses: docker/build-push-action@v2
         with:
-          context: .github
+          context: .
           file: .github/build_and_publish.Dockerfile
           push: true
           tags: ghcr.io/policyengine/policyengine-us-data/build-and-publish:latest

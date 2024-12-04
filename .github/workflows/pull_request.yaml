@@ -43,6 +43,11 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
       
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+      
       # Build dockerfile in .github/build_and_publish.Dockerfile and publish to ghcr
       - name: Build and push deployment image
         uses: docker/build-push-action@v2

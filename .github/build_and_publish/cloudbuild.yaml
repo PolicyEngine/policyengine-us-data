@@ -64,7 +64,7 @@ substitutions:
   _JOB_NAME: 'build-and-publish-us-data'  # Cloud Run job name
   _CPU: '1'  # Number of CPUs
   _MEMORY: '2Gi'  # Memory allocation
-  _SERVICE_ACCOUNT: 'my-service-account@${PROJECT_ID}.iam.gserviceaccount.com'
+  _SERVICE_ACCOUNT: 'policyengine-api@appspot.gserviceaccount.com'
 
 options:
   logging: CLOUD_LOGGING_ONLY

@@ -47,6 +47,35 @@ jobs:
         run: ".github/get-changelog-diff.sh"
       - name: Check version number has been properly updated
         run: ".github/is-version-number-acceptable.sh"
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for all tags and branches
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+      # Build docker image in docker/build_and_publish.Dockerfile and push to github container registry
+      - name: Build and push docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: docker/build_and_publish.Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository }}/build_and_publish:${{ github.sha }}
+      - name: GCP authentication
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
+      # Deploy to GCP Cloud Run
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@main
+        with:
+          service: build-and-publish
+          image: ghcr.io/${{ github.repository }}/build_and_publish:${{ github.sha }}
+          region: us-central1
   test:
     name: Build and test
     runs-on: ubuntu-latest

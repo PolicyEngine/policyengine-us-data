@@ -46,8 +46,8 @@ jobs:
       - name: GCP authentication
         uses: "google-github-actions/auth@v2"
         with:
-          credentials_json: "${{ secrets.GCP_SA_KEY }}"
-          project_id: policyengine-api
+          credentials_json: "${{ secrets.GCP_POLICYENGINE_RESEARCH_SA_TOKEN }}"
+          project_id: policyengine-research
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -57,4 +57,4 @@ jobs:
           gcloud builds submit \
             --config=.github/build_and_publish/cloudbuild.yaml
         env:
-          PROJECT_ID: policyengine-api    
+          PROJECT_ID: policyengine-research    

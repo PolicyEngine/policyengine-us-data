@@ -57,4 +57,4 @@ jobs:
           gcloud builds submit \
             --config=.github/build_and_publish/cloudbuild.yaml
         env:
-          PROJECT_ID: policyengine-research    
+          PROJECT_ID: policyengine-api    

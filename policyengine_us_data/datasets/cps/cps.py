@@ -137,6 +137,14 @@ def add_takeup(self):
         generator.random(len(data["tax_unit_id"])) < eitc_takeup_rate
     )
 
+    itemized_medical_deduction_takeup_rate = (
+        parameters.gov.irs.deductions.itemized.medical.takeup
+    )
+    data["takes_up_itemized_medical_deduction"] = (
+        generator.random(len(data["tax_unit_id"]))
+        < itemized_medical_deduction_takeup_rate
+    )
+
     self.save_dataset(data)
 
 

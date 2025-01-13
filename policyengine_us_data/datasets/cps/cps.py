@@ -136,6 +136,10 @@ def add_takeup(self):
     data["takes_up_eitc"] = (
         generator.random(len(data["tax_unit_id"])) < eitc_takeup_rate
     )
+    dc_ptc_takeup_rate = parameters.gov.states.dc.tax.income.credits.ptc.takeup
+    data["takes_up_dc_ptc"] = (
+        generator.random(len(data["tax_unit_id"])) < dc_ptc_takeup_rate
+    )
 
     self.save_dataset(data)
 

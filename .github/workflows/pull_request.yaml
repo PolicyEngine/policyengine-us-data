@@ -49,7 +49,7 @@ jobs:
         run: ".github/is-version-number-acceptable.sh"
   test:
     name: Build and test
-    runs-on: ubuntu-latest
+    runs-on: larger-runner
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

@@ -165,3 +165,8 @@
     added:
     - DC PTC takeup.
   date: 2025-01-13 16:36:45
+- bump: patch
+  changes:
+    fixed:
+    - Minor bug with memory breaches.
+  date: 2025-01-22 04:02:27

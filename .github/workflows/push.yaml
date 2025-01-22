@@ -26,7 +26,7 @@ jobs:
         run: black . -l 79 --check
   test:
     name: Build and test
-    runs-on: ubuntu-latest
+    runs-on: larger-runner
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout code

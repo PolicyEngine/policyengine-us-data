@@ -151,9 +151,9 @@ class ExtendedCPS(Dataset):
 
         # Assume interest expenses is all deductible mortgage interest.
 
-        new_data["deductible_mortgage_interest"][self.time_period] = new_data[
-            "interest_deduction"
-        ][self.time_period]
+        new_data["deductible_mortgage_interest"] = {
+            self.time_period: new_data["interest_deduction"][self.time_period]
+        }
 
         self.save_dataset(new_data)
 

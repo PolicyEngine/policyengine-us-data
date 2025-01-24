@@ -281,6 +281,7 @@ FINANCIAL_SUBSET = [
     "unreported_payroll_tax",
     "pre_tax_contributions",
     "w2_wages_from_qualified_business",
+    "deductible_mortgage_interest",
 ]
 
 
@@ -430,6 +431,12 @@ class PUF(Dataset):
 
         self.holder["household_weight"].append(row["household_weight"])
         self.holder["is_male"].append(row["GENDER"] == 1)
+
+        # Assume all of the interest deduction is the filer's deductible mortgage interest
+
+        self.holder["deductible_mortgage_interest"].append(
+            row["interest_deduction"]
+        )
 
         for key in FINANCIAL_SUBSET:
             if self.variable_to_entity[key] == "person":

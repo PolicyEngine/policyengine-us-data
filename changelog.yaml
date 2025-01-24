@@ -170,3 +170,8 @@
     fixed:
     - Minor bug with memory breaches.
   date: 2025-01-22 04:02:27
+- bump: minor
+  changes:
+    added:
+    - Interest expenses.
+  date: 2025-01-24 11:18:33

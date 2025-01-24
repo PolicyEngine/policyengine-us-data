@@ -7,7 +7,7 @@ on:
       - main
 
     paths:
-      - policyengine/**
+      - policyengine_us_data/**
       - tests/**
 
 jobs:

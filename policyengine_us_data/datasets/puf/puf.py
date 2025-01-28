@@ -439,6 +439,9 @@ class PUF(Dataset):
         )
 
         for key in FINANCIAL_SUBSET:
+            if key == "deductible_mortgage_interest":
+                # Skip this one- we are adding it artificially at the filer level.
+                continue
             if self.variable_to_entity[key] == "person":
                 self.holder[key].append(row[key] * self.earn_splits[-1])
 

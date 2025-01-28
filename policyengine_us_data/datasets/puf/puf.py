@@ -467,7 +467,14 @@ class PUF(Dataset):
             opposite_gender_code if is_opposite_gender else same_gender_code
         )
 
+        # Assume all of the interest deduction is the filer's deductible mortgage interest
+
+        self.holder["deductible_mortgage_interest"].append(0)
+
         for key in FINANCIAL_SUBSET:
+            if key == "deductible_mortgage_interest":
+                # Skip this one- we are adding it artificially at the filer level.
+                continue
             if self.variable_to_entity[key] == "person":
                 self.holder[key].append(row[key] * (1 - self.earn_splits[-1]))
 
@@ -483,6 +490,10 @@ class PUF(Dataset):
 
         age = decode_age_dependent(round(row[f"AGEDP{dependent_id + 1}"]))
         self.holder["age"].append(age)
+
+        # Assume all of the interest deduction is the filer's deductible mortgage interest
+
+        self.holder["deductible_mortgage_interest"].append(0)
 
         for key in FINANCIAL_SUBSET:
             if self.variable_to_entity[key] == "person":

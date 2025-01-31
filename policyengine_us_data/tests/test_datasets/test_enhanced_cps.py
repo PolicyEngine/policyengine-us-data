@@ -28,6 +28,7 @@ def test_policyengine_cps_loads(year: int):
 
     assert not sim.calculate("household_net_income").isna().any()
 
+
 def test_ecps_has_mortgage_interest():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation

@@ -68,6 +68,7 @@ IMPUTED_VARIABLES = [
     "casualty_loss",
     "unreported_payroll_tax",
     "recapture_of_investment_credit",
+    "deductible_mortgage_interest",
 ]
 
 if os.environ.get("TEST_LITE"):

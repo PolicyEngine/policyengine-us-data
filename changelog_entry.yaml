@@ -1,4 +1,0 @@
-- bump: minor
-  changes:
-    fixed:
-    - Larger GH runner for data generation.

@@ -175,3 +175,8 @@
     added:
     - Interest expenses.
   date: 2025-01-24 11:18:33
+- bump: minor
+  changes:
+    fixed:
+    - Larger GH runner for data generation.
+  date: 2025-02-01 02:21:19

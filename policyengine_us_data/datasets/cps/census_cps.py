@@ -124,6 +124,7 @@ class CensusCPS_2023(CensusCPS):
     name = "census_cps_2023"
     file_path = STORAGE_FOLDER / "census_cps_2023.h5"
     data_format = Dataset.TABLES
+    url = "hf://policyengine/policyengine-us-data/census_cps_2023.h5"
 
 
 class CensusCPS_2022(CensusCPS):
@@ -132,6 +133,7 @@ class CensusCPS_2022(CensusCPS):
     name = "census_cps_2022"
     file_path = STORAGE_FOLDER / "census_cps_2022.h5"
     data_format = Dataset.TABLES
+    url = "hf://policyengine/policyengine-us-data/census_cps_2022.h5"
 
 
 class CensusCPS_2021(CensusCPS):
@@ -140,6 +142,7 @@ class CensusCPS_2021(CensusCPS):
     name = "census_cps_2021"
     file_path = STORAGE_FOLDER / "census_cps_2021.h5"
     data_format = Dataset.TABLES
+    url = "hf://policyengine/policyengine-us-data/census_cps_2021.h5"
 
 
 class CensusCPS_2020(CensusCPS):
@@ -148,6 +151,7 @@ class CensusCPS_2020(CensusCPS):
     name = "census_cps_2020"
     file_path = STORAGE_FOLDER / "census_cps_2020.h5"
     data_format = Dataset.TABLES
+    url = "hf://policyengine/policyengine-us-data/census_cps_2020.h5"
 
 
 class CensusCPS_2019(CensusCPS):

@@ -1,6 +1,6 @@
 # Workflow that runs on code changes to a pull request.
 
-name: Code changes
+name: PR code changes
 on:
   pull_request:
     branches:

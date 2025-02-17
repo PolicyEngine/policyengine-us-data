@@ -229,7 +229,24 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
         person.A_AGE == 80,
         # NB: randint is inclusive of first argument, exclusive of second.
         np.random.randint(80, 85, len(person)),
-        np.where(
+        person.A_AGE,
+    )
+
+
+    # A_SEX is 1 -> male, 2 -> female.
+    cps["is_female"] = person.A_SEX == 2
+    # "Is...blind or does...have serious difficulty seeing even when Wearing
+    #  glasses?" 1 -> Yes
+    cps["is_blind"] = person.PEDISEYE == 1
+    DISABILITY_FLAGS = [
+        "PEDIS" + i for i in ["DRS", "EAR", "EYE", "OUT", "PHY", "REM"]
+    ]
+    cps["is_disabled"] = (person[DISABILITY_FLAGS] == 1).any(axis=1)
+
+
+    def _assign_some_newborns_to_pregnancy(age: pd.Series, person: pd.DataFrame) -> pd.Series:
+        """ Takes an array of ages, returns the new age array with the given percentage of newborns assigned a negative age (in pregnancy)."""
+        age = np.where(
             person.A_AGE == 0,
             np.where(
                 np.random.randint(0, 2, len(person)), # Random number of 0 or 1
@@ -242,19 +259,11 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
             ),
             person.A_AGE,
         )
-    )
-    cps["is_pregnant"] = (cps["age"] >= -0.75) & (cps["age"] < 0)
-    cps["is_newborn"] = (cps["age"] >= 0) & (cps["age"] < 1)
+        return age
 
-    # A_SEX is 1 -> male, 2 -> female.
-    cps["is_female"] = person.A_SEX == 2
-    # "Is...blind or does...have serious difficulty seeing even when Wearing
-    #  glasses?" 1 -> Yes
-    cps["is_blind"] = person.PEDISEYE == 1
-    DISABILITY_FLAGS = [
-        "PEDIS" + i for i in ["DRS", "EAR", "EYE", "OUT", "PHY", "REM"]
-    ]
-    cps["is_disabled"] = (person[DISABILITY_FLAGS] == 1).any(axis=1)
+
+    cps["age"] = _assign_some_newborns_to_pregnancy(cps["age"])
+
 
     def children_per_parent(col: str) -> pd.DataFrame:
         """Calculate number of children in the household using parental
@@ -296,6 +305,7 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     cps["is_separated"] = person.A_MARITL == 6
     # High school or college/university enrollment status.
     cps["is_full_time_college_student"] = person.A_HSCOL == 2
+
 
 
 def add_personal_income_variables(

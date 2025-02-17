@@ -340,6 +340,19 @@ def build_loss_matrix(dataset: type, time_period):
         )
         targets_array.append(row["population_under_5"])
 
+    # Population by number of newborns and pregancies
+
+    age = sim.calculate("age").values
+    infants = (age >= 0) & (age < 1)
+    label = "census/infants"
+    loss_matrix[label] = sim.map_result(infants, "person", "household")
+    targets_array.append(3_491_679)
+
+    pregnancies = (age >= -0.75) & (age < 0)
+    label = "census/pregnancies"
+    loss_matrix[label] = sim.map_result(pregnancies, "person", "household")
+    targets_array.append(2_618_759)
+
     if any(loss_matrix.isna().sum() > 0):
         raise ValueError("Some targets are missing from the loss matrix")
 

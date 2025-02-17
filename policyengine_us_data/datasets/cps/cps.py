@@ -263,7 +263,7 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
         )
         return age
 
-    cps["age"] = _assign_some_newborns_to_pregnancy(cps["age"])
+    cps["age"] = _assign_some_newborns_to_pregnancy(cps["age"], person)
 
     def children_per_parent(col: str) -> pd.DataFrame:
         """Calculate number of children in the household using parental

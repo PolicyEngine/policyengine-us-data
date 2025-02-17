@@ -36,7 +36,6 @@ def test_ecps_has_mortgage_interest():
     sim = Microsimulation(dataset=EnhancedCPS_2024)
 
     assert sim.calculate("deductible_mortgage_interest").sum() > 1
-    assert sim.calculate("interest_expense").sum() > 1
 
 
 def test_ecps_replicates_jct_salt_te():
@@ -79,3 +78,4 @@ def test_ecps_replicates_jct_salt_te():
     federal_tax_expenditure = tax_change.sum() / 1e9
 
     assert abs(federal_tax_expenditure - 20) < 5
+    assert sim.calculate("deductible_interest_expense").sum() > 1

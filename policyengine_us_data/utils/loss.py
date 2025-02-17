@@ -342,7 +342,6 @@ def build_loss_matrix(dataset: type, time_period):
         )
         targets_array.append(row["population_under_5"])
 
-
     age = sim.calculate("age").values
     infants = (age >= 0) & (age < 1)
     label = "census/infants"

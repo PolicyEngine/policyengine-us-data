@@ -342,6 +342,18 @@ def build_loss_matrix(dataset: type, time_period):
         )
         targets_array.append(row["population_under_5"])
 
+
+    age = sim.calculate("age").values
+    infants = (age >= 0) & (age < 1)
+    label = "census/infants"
+    loss_matrix[label] = sim.map_result(infants, "person", "household")
+    # Total number of infants in the 1 Year ACS
+    INFANTS_2023 = 3_491_679
+    INFANTS_2022 = 3_437_933
+    # Assume infant population grows at the same rate from 2023.
+    infants_2024 = INFANTS_2023 * (INFANTS_2023 / INFANTS_2022)
+    targets_array.append(infants_2024)
+
     # SALT tax expenditure targeting
 
     _add_tax_expenditure_targets(

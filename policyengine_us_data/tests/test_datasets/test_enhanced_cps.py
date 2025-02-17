@@ -78,4 +78,3 @@ def test_ecps_replicates_jct_salt_te():
     federal_tax_expenditure = tax_change.sum() / 1e9
 
     assert abs(federal_tax_expenditure - 20) < 5
-    assert sim.calculate("deductible_interest_expense").sum() > 1

@@ -27,7 +27,6 @@ def build_loss_matrix(dataset: type, time_period):
     taxable = df["total_income_tax"].values > 0
     soi_subset = get_soi(time_period)
     targets_array = []
-    """
     agi_level_targeted_variables = [
         "adjusted_gross_income",
         "count",
@@ -128,7 +127,6 @@ def build_loss_matrix(dataset: type, time_period):
         if label not in loss_matrix.columns:
             loss_matrix[label] = mask * values
             targets_array.append(row["Value"])
-    """
 
     # Convert tax-unit level df to household-level df
 
@@ -136,7 +134,6 @@ def build_loss_matrix(dataset: type, time_period):
 
     sim = Microsimulation(dataset=dataset)
     sim.default_calculation_period = time_period
-    """
     hh_id = sim.calculate("household_id", map_to="person")
     tax_unit_hh_id = sim.map_result(
         hh_id, "person", "tax_unit", how="value_from_first_person"
@@ -344,8 +341,6 @@ def build_loss_matrix(dataset: type, time_period):
             in_state_under_5, "person", "household"
         )
         targets_array.append(row["population_under_5"])
-    
-    """
 
     # SALT tax expenditure targeting
 

@@ -254,7 +254,7 @@ def build_loss_matrix(dataset: type, time_period):
         "alimony_income": 13e9,
         "alimony_expense": 13e9,
         # Rough estimate, not CPS derived
-        "real_estate_taxes": 400e9,  # Rough estimate between 350bn and 600bn total property tax collections
+        "real_estate_taxes": 500e9,  # Rough estimate between 350bn and 600bn total property tax collections
         "rent": 735e9,  # ACS total uprated by CPI
     }
 
@@ -366,42 +366,39 @@ def _add_tax_expenditure_targets(
 ):
     from policyengine_us import Microsimulation
 
-    # SALT deduction first
+    income_tax_b = baseline_simulation.calculate("income_tax", map_to="household").values
 
-    repeal_salt = Reform.from_dict(
-        {
-            "gov.irs.deductions.itemized.salt_and_real_estate.cap.JOINT": {
-                "2024-01-01.2100-12-31": 0
-            },
-            "gov.irs.deductions.itemized.salt_and_real_estate.cap.SINGLE": {
-                "2024-01-01.2100-12-31": 0
-            },
-            "gov.irs.deductions.itemized.salt_and_real_estate.cap.SEPARATE": {
-                "2024-01-01.2100-12-31": 0
-            },
-            "gov.irs.deductions.itemized.salt_and_real_estate.cap.SURVIVING_SPOUSE": {
-                "2024-01-01.2100-12-31": 0
-            },
-            "gov.irs.deductions.itemized.salt_and_real_estate.cap.HEAD_OF_HOUSEHOLD": {
-                "2024-01-01.2100-12-31": 0
-            },
-        },
-        country_id="us",
-    )
+    # Dictionary of itemized deductions and their target values 
+    # (in billions for 2024, per the 2024 JCT Tax Expenditures report)
+    # https://www.jct.gov/publications/2024/jcx-48-24/
+    ITEMIZED_DEDUCTIONS = {
+        "salt_deduction": 21.247e9,
+        "medical_expense_deduction": 11.4e9,
+        "charitable_deduction": 65.301e9,
+        "interest_deduction": 24.8e9,
+    }
 
-    reform_simulation = Microsimulation(dataset=dataset, reform=repeal_salt)
-    reform_simulation.default_calculation_period = time_period
+    def make_repeal_class(deduction_var):
+        # Create a custom Reform subclass that neutralizes the given deduction.
+        class RepealDeduction(Reform):
+            def apply(self):
+                self.neutralize_variable(deduction_var)
+        return RepealDeduction
 
-    income_tax_b = baseline_simulation.calculate(
-        "income_tax", map_to="household"
-    ).values
-    income_tax_r = reform_simulation.calculate(
-        "income_tax", map_to="household"
-    ).values
-    salt_te_values = income_tax_r - income_tax_b
+    for deduction, target in ITEMIZED_DEDUCTIONS.items():
+        # Generate the custom repeal class for the current deduction.
+        RepealDeduction = make_repeal_class(deduction)
+        
+        # Run the microsimulation using the repeal reform.
+        simulation = Microsimulation(dataset=dataset, reform=RepealDeduction)
+        simulation.default_calculation_period = time_period
 
-    # https://www.jct.gov/publications/2024/jcx-48-24/ page 33 (2024)
-    salt_target = 21.7e9
+        # Calculate the baseline and reform income tax values.
+        income_tax_r = simulation.calculate("income_tax", map_to="household").values
 
-    loss_matrix["jct/salt_tax_expenditure"] = salt_te_values
-    targets_array.append(salt_target)
+        # Compute the tax expenditure (TE) values.
+        te_values = income_tax_r - income_tax_b
+
+        # Record the TE difference and the corresponding target value.
+        loss_matrix[f"jct/{deduction}_expenditure"] = te_values
+        targets_array.append(target)

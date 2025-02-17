@@ -254,8 +254,6 @@ def build_loss_matrix(dataset: type, time_period):
         # Rough estimate, not CPS derived
         "real_estate_taxes": 400e9,  # Rough estimate between 350bn and 600bn total property tax collections
         "rent": 735e9,  # ACS total uprated by CPI
-        "is_newborn": 3_491_679,  # ACS total of people aged 0
-        "is_pregnant": 2_618_759,  # 75% of the ACS total of people aged 0
     }
 
     for variable_name, target in HARD_CODED_TOTALS.items():
@@ -348,12 +346,12 @@ def build_loss_matrix(dataset: type, time_period):
     newborns = (age >= 0) & (age < 1)
     label = "census/newborns"
     loss_matrix[label] = sim.map_result(newborns, "person", "household")
-    targets_array.append(HARD_CODED_TOTALS["is_newborn"])
+    targets_array.append(3_491_679)
 
     pregnancies = (age >= -0.75) & (age < 0)
     label = "census/pregnancies"
     loss_matrix[label] = sim.map_result(pregnancies, "person", "household")
-    targets_array.append(HARD_CODED_TOTALS["is_pregnant"])
+    targets_array.append(2_618_759)
 
     if any(loss_matrix.isna().sum() > 0):
         raise ValueError("Some targets are missing from the loss matrix")

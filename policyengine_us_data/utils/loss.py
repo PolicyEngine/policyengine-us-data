@@ -343,9 +343,9 @@ def build_loss_matrix(dataset: type, time_period):
     # Population by number of newborns and pregancies
 
     age = sim.calculate("age").values
-    newborns = (age >= 0) & (age < 1)
-    label = "census/newborns"
-    loss_matrix[label] = sim.map_result(newborns, "person", "household")
+    infants = (age >= 0) & (age < 1)
+    label = "census/infants"
+    loss_matrix[label] = sim.map_result(infants, "person", "household")
     targets_array.append(3_491_679)
 
     pregnancies = (age >= -0.75) & (age < 0)

@@ -254,8 +254,8 @@ def build_loss_matrix(dataset: type, time_period):
         # Rough estimate, not CPS derived
         "real_estate_taxes": 400e9,  # Rough estimate between 350bn and 600bn total property tax collections
         "rent": 735e9,  # ACS total uprated by CPI
-        "is_newborn": 3_491_679, # ACS total of people aged 0
-        "is_pregnant": 2_618_759, # 75% of the ACS total of people aged 0
+        "is_newborn": 3_491_679,  # ACS total of people aged 0
+        "is_pregnant": 2_618_759,  # 75% of the ACS total of people aged 0
     }
 
     for variable_name, target in HARD_CODED_TOTALS.items():

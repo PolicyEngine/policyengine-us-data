@@ -38,6 +38,7 @@ def test_ecps_has_mortgage_interest():
     assert sim.calculate("deductible_mortgage_interest").sum() > 1
     assert sim.calculate("interest_expense").sum() > 1
 
+
 def test_newborns_and_pregnancies():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation

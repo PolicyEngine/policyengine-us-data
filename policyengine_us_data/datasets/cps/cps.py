@@ -232,7 +232,6 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
         person.A_AGE,
     )
 
-
     # A_SEX is 1 -> male, 2 -> female.
     cps["is_female"] = person.A_SEX == 2
     # "Is...blind or does...have serious difficulty seeing even when Wearing
@@ -243,27 +242,28 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     ]
     cps["is_disabled"] = (person[DISABILITY_FLAGS] == 1).any(axis=1)
 
-
-    def _assign_some_newborns_to_pregnancy(age: pd.Series, person: pd.DataFrame) -> pd.Series:
-        """ Takes an array of ages, returns the new age array with the given percentage of newborns assigned a negative age (in pregnancy)."""
+    def _assign_some_newborns_to_pregnancy(
+        age: pd.Series, person: pd.DataFrame
+    ) -> pd.Series:
+        """Takes an array of ages, returns the new age array with the given percentage of newborns assigned a negative age (in pregnancy)."""
         age = np.where(
             person.A_AGE == 0,
             np.where(
-                np.random.randint(0, 2, len(person)), # Random number of 0 or 1
+                np.random.randint(
+                    0, 2, len(person)
+                ),  # Random number of 0 or 1
                 # If 1 is flipped, select a random number between -0.75 and 0
-                # This will represent the pregnany month 
+                # This will represent the pregnany month
                 # At -0.75 the pregnancy month is 0 and at -0.0001 the pregnancy month is 9
-                np.random.uniform(-0.75, 0, len(person)), 
-                # If 0 is flipped, the child is a newborn at the age of 0 to 1 
+                np.random.uniform(-0.75, 0, len(person)),
+                # If 0 is flipped, the child is a newborn at the age of 0 to 1
                 np.random.uniform(0, 1, len(person)),
             ),
             person.A_AGE,
         )
         return age
 
-
     cps["age"] = _assign_some_newborns_to_pregnancy(cps["age"])
-
 
     def children_per_parent(col: str) -> pd.DataFrame:
         """Calculate number of children in the household using parental
@@ -305,7 +305,6 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     cps["is_separated"] = person.A_MARITL == 6
     # High school or college/university enrollment status.
     cps["is_full_time_college_student"] = person.A_HSCOL == 2
-
 
 
 def add_personal_income_variables(

@@ -78,4 +78,4 @@ def test_ecps_replicates_jct_salt_te():
     tax_change = income_tax_r - income_tax_b
     federal_tax_expenditure = tax_change.sum() / 1e9
 
-    assert abs(federal_tax_expenditure - 20e9) < 5e9
+    assert abs(federal_tax_expenditure - 20) < 5

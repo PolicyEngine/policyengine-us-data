@@ -2,6 +2,7 @@ import pandas as pd
 from .soi import pe_to_soi, get_soi
 import numpy as np
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_core.reforms import Reform
 
 
 def fmt(x):
@@ -26,6 +27,7 @@ def build_loss_matrix(dataset: type, time_period):
     taxable = df["total_income_tax"].values > 0
     soi_subset = get_soi(time_period)
     targets_array = []
+    """
     agi_level_targeted_variables = [
         "adjusted_gross_income",
         "count",
@@ -126,12 +128,15 @@ def build_loss_matrix(dataset: type, time_period):
         if label not in loss_matrix.columns:
             loss_matrix[label] = mask * values
             targets_array.append(row["Value"])
+    """
 
     # Convert tax-unit level df to household-level df
 
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=dataset)
+    sim.default_calculation_period = time_period
+    """
     hh_id = sim.calculate("household_id", map_to="person")
     tax_unit_hh_id = sim.map_result(
         hh_id, "person", "tax_unit", how="value_from_first_person"
@@ -339,6 +344,14 @@ def build_loss_matrix(dataset: type, time_period):
             in_state_under_5, "person", "household"
         )
         targets_array.append(row["population_under_5"])
+    
+    """
+
+    # SALT tax expenditure targeting
+
+    _add_tax_expenditure_targets(
+        dataset, time_period, sim, loss_matrix, targets_array
+    )
 
     if any(loss_matrix.isna().sum() > 0):
         raise ValueError("Some targets are missing from the loss matrix")
@@ -347,3 +360,52 @@ def build_loss_matrix(dataset: type, time_period):
         raise ValueError("Some targets are missing from the targets array")
 
     return loss_matrix, np.array(targets_array)
+
+
+def _add_tax_expenditure_targets(
+    dataset,
+    time_period,
+    baseline_simulation,
+    loss_matrix: pd.DataFrame,
+    targets_array: list,
+):
+    from policyengine_us import Microsimulation
+
+    # SALT deduction first
+
+    repeal_salt = Reform.from_dict(
+        {
+            "gov.irs.deductions.itemized.salt_and_real_estate.cap.JOINT": {
+                "2024-01-01.2100-12-31": 0
+            },
+            "gov.irs.deductions.itemized.salt_and_real_estate.cap.SINGLE": {
+                "2024-01-01.2100-12-31": 0
+            },
+            "gov.irs.deductions.itemized.salt_and_real_estate.cap.SEPARATE": {
+                "2024-01-01.2100-12-31": 0
+            },
+            "gov.irs.deductions.itemized.salt_and_real_estate.cap.SURVIVING_SPOUSE": {
+                "2024-01-01.2100-12-31": 0
+            },
+            "gov.irs.deductions.itemized.salt_and_real_estate.cap.HEAD_OF_HOUSEHOLD": {
+                "2024-01-01.2100-12-31": 0
+            },
+        },
+        country_id="us",
+    )
+
+    reform_simulation = Microsimulation(dataset=dataset, reform=repeal_salt)
+    reform_simulation.default_calculation_period = time_period
+
+    income_tax_b = baseline_simulation.calculate(
+        "income_tax", map_to="household"
+    ).values
+    income_tax_r = reform_simulation.calculate(
+        "income_tax", map_to="household"
+    ).values
+    salt_te_values = income_tax_r - income_tax_b
+
+    salt_target = 20e9
+
+    loss_matrix["jct/salt_tax_expenditure"] = salt_te_values
+    targets_array.append(salt_target)

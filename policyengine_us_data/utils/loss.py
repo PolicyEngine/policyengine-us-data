@@ -400,7 +400,8 @@ def _add_tax_expenditure_targets(
     ).values
     salt_te_values = income_tax_r - income_tax_b
 
-    salt_target = 20e9
+    # https://www.jct.gov/publications/2024/jcx-48-24/ page 33 (2024)
+    salt_target = 21.7e9
 
     loss_matrix["jct/salt_tax_expenditure"] = salt_te_values
     targets_array.append(salt_target)

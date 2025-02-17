@@ -366,9 +366,11 @@ def _add_tax_expenditure_targets(
 ):
     from policyengine_us import Microsimulation
 
-    income_tax_b = baseline_simulation.calculate("income_tax", map_to="household").values
+    income_tax_b = baseline_simulation.calculate(
+        "income_tax", map_to="household"
+    ).values
 
-    # Dictionary of itemized deductions and their target values 
+    # Dictionary of itemized deductions and their target values
     # (in billions for 2024, per the 2024 JCT Tax Expenditures report)
     # https://www.jct.gov/publications/2024/jcx-48-24/
     ITEMIZED_DEDUCTIONS = {
@@ -383,18 +385,21 @@ def _add_tax_expenditure_targets(
         class RepealDeduction(Reform):
             def apply(self):
                 self.neutralize_variable(deduction_var)
+
         return RepealDeduction
 
     for deduction, target in ITEMIZED_DEDUCTIONS.items():
         # Generate the custom repeal class for the current deduction.
         RepealDeduction = make_repeal_class(deduction)
-        
+
         # Run the microsimulation using the repeal reform.
         simulation = Microsimulation(dataset=dataset, reform=RepealDeduction)
         simulation.default_calculation_period = time_period
 
         # Calculate the baseline and reform income tax values.
-        income_tax_r = simulation.calculate("income_tax", map_to="household").values
+        income_tax_r = simulation.calculate(
+            "income_tax", map_to="household"
+        ).values
 
         # Compute the tax expenditure (TE) values.
         te_values = income_tax_r - income_tax_b

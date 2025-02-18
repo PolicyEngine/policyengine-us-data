@@ -75,6 +75,7 @@ def test_ecps_replicates_jct_tax_expenditures():
         pct_error = abs((tax_expenditure - target) / target)
         TOLERANCE = 0.15
 
-        assert (
-            pct_error < TOLERANCE
-        ), f"{deduction} tax expenditure {tax_expenditure/1e9:.1f}bn differs from target {target/1e9:.1f}bn by {pct_error:.2%}"
+        print(
+            f"{deduction} tax expenditure {tax_expenditure/1e9:.1f}bn differs from target {target/1e9:.1f}bn by {pct_error:.2%}"
+        )
+        assert pct_error < TOLERANCE, deduction

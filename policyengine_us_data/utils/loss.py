@@ -2,6 +2,7 @@ import pandas as pd
 from .soi import pe_to_soi, get_soi
 import numpy as np
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_core.reforms import Reform
 
 
 def fmt(x):
@@ -132,6 +133,7 @@ def build_loss_matrix(dataset: type, time_period):
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=dataset)
+    sim.default_calculation_period = time_period
     hh_id = sim.calculate("household_id", map_to="person")
     tax_unit_hh_id = sim.map_result(
         hh_id, "person", "tax_unit", how="value_from_first_person"
@@ -252,7 +254,7 @@ def build_loss_matrix(dataset: type, time_period):
         "alimony_income": 13e9,
         "alimony_expense": 13e9,
         # Rough estimate, not CPS derived
-        "real_estate_taxes": 400e9,  # Rough estimate between 350bn and 600bn total property tax collections
+        "real_estate_taxes": 500e9,  # Rough estimate between 350bn and 600bn total property tax collections
         "rent": 735e9,  # ACS total uprated by CPI
     }
 
@@ -340,18 +342,22 @@ def build_loss_matrix(dataset: type, time_period):
         )
         targets_array.append(row["population_under_5"])
 
-    # Population by number of newborns and pregancies
-
     age = sim.calculate("age").values
     infants = (age >= 0) & (age < 1)
     label = "census/infants"
     loss_matrix[label] = sim.map_result(infants, "person", "household")
-    targets_array.append(3_491_679)
+    # Total number of infants in the 1 Year ACS
+    INFANTS_2023 = 3_491_679
+    INFANTS_2022 = 3_437_933
+    # Assume infant population grows at the same rate from 2023.
+    infants_2024 = INFANTS_2023 * (INFANTS_2023 / INFANTS_2022)
+    targets_array.append(infants_2024)
 
-    pregnancies = (age >= -0.75) & (age < 0)
-    label = "census/pregnancies"
-    loss_matrix[label] = sim.map_result(pregnancies, "person", "household")
-    targets_array.append(2_618_759)
+    # SALT tax expenditure targeting
+
+    _add_tax_expenditure_targets(
+        dataset, time_period, sim, loss_matrix, targets_array
+    )
 
     if any(loss_matrix.isna().sum() > 0):
         raise ValueError("Some targets are missing from the loss matrix")
@@ -360,3 +366,55 @@ def build_loss_matrix(dataset: type, time_period):
         raise ValueError("Some targets are missing from the targets array")
 
     return loss_matrix, np.array(targets_array)
+
+
+def _add_tax_expenditure_targets(
+    dataset,
+    time_period,
+    baseline_simulation,
+    loss_matrix: pd.DataFrame,
+    targets_array: list,
+):
+    from policyengine_us import Microsimulation
+
+    income_tax_b = baseline_simulation.calculate(
+        "income_tax", map_to="household"
+    ).values
+
+    # Dictionary of itemized deductions and their target values
+    # (in billions for 2024, per the 2024 JCT Tax Expenditures report)
+    # https://www.jct.gov/publications/2024/jcx-48-24/
+    ITEMIZED_DEDUCTIONS = {
+        "salt_deduction": 21.247e9,
+        "medical_expense_deduction": 11.4e9,
+        "charitable_deduction": 65.301e9,
+        "interest_deduction": 24.8e9,
+    }
+
+    def make_repeal_class(deduction_var):
+        # Create a custom Reform subclass that neutralizes the given deduction.
+        class RepealDeduction(Reform):
+            def apply(self):
+                self.neutralize_variable(deduction_var)
+
+        return RepealDeduction
+
+    for deduction, target in ITEMIZED_DEDUCTIONS.items():
+        # Generate the custom repeal class for the current deduction.
+        RepealDeduction = make_repeal_class(deduction)
+
+        # Run the microsimulation using the repeal reform.
+        simulation = Microsimulation(dataset=dataset, reform=RepealDeduction)
+        simulation.default_calculation_period = time_period
+
+        # Calculate the baseline and reform income tax values.
+        income_tax_r = simulation.calculate(
+            "income_tax", map_to="household"
+        ).values
+
+        # Compute the tax expenditure (TE) values.
+        te_values = income_tax_r - income_tax_b
+
+        # Record the TE difference and the corresponding target value.
+        loss_matrix[f"jct/{deduction}_expenditure"] = te_values
+        targets_array.append(target)

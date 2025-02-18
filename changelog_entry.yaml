@@ -1,5 +1,4 @@
 - bump: minor
   changes:
     changed:
-    - Worked on SCF imputation. 
-    - Tried setting my environment and fix dependencies.
+    - Worked on SCF imputation.

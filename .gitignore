@@ -10,5 +10,5 @@
 !spm_threshold_agi.csv
 **/_build
 !population_by_state.csv
-venv/
 requirements.txt
+.ipynb_checkpoints

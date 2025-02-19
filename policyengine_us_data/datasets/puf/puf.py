@@ -158,7 +158,9 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
         fraction,
     ) in MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS.items():
         puf[medical_category] = puf.E17500 * fraction
-    puf["total_misc_deductions"] = puf.E20400
+    # Use unreimbursed business employee expenses as a proxy for all miscellaneous expenses
+    # that can be deducted under the miscellaneous deduction.
+    puf["unreimbursed_business_employee_expenses"] = puf.E20400
     puf["non_qualified_dividend_income"] = puf.E00600 - puf.E00650
     puf["partnership_s_corp_income"] = puf.E26270
     puf["qualified_dividend_income"] = puf.E00650
@@ -242,7 +244,7 @@ FINANCIAL_SUBSET = [
     "interest_deduction",
     "long_term_capital_gains",
     "long_term_capital_gains_on_collectibles",
-    "total_misc_deductions",
+    "unreimbursed_business_employee_expenses",
     "non_qualified_dividend_income",
     "non_sch_d_capital_gains",
     "partnership_s_corp_income",

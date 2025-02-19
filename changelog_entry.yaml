@@ -1,4 +1,4 @@
 - bump: patch
   changes:
     fixed:
-    - Apply the miscellaneous deduction imputation to the total_misc_deductions instead of the misc_deduction variable.
+    - Apply the miscellaneous deduction imputation to the unreimbursed_business_employee_expenses instead of the misc_deduction variable.

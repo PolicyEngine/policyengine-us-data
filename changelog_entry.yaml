@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    fixed:
+    - Apply the miscellaneous deduction imputation to the total_misc_deductions instead of the misc_deduction variable.

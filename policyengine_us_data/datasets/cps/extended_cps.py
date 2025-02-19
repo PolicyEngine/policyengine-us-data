@@ -21,7 +21,7 @@ IMPUTED_VARIABLES = [
     "interest_deduction",
     "tax_exempt_pension_income",
     "long_term_capital_gains",
-    "misc_deduction",
+    "total_misc_deductions",
     "pre_tax_contributions",
     "taxable_ira_distributions",
     "self_employment_income",

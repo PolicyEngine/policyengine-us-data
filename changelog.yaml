@@ -180,3 +180,9 @@
     fixed:
     - Larger GH runner for data generation.
   date: 2025-02-01 02:21:19
+- bump: patch
+  changes:
+    fixed:
+    - Apply the miscellaneous deduction imputation to the unreimbursed_business_employee_expenses
+      instead of the misc_deduction variable.
+  date: 2025-02-20 12:34:31

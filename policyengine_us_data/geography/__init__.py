@@ -10,4 +10,6 @@ COUNTY_FIPS_DATASET_PATH = (
 )
 
 ZIP_CODE_DATASET = pd.read_csv(ZIP_CODE_DATASET_PATH, compression="gzip")
-COUNTY_FIPS_DATASET = pd.read_csv(COUNTY_FIPS_DATASET_PATH, compression="gzip")
+COUNTY_FIPS_DATASET = pd.read_csv(
+    COUNTY_FIPS_DATASET_PATH, compression="gzip", dtype={"county_fips": str}
+)

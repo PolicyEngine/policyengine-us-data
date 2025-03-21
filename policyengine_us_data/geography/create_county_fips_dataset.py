@@ -38,7 +38,6 @@ def create_county_fips_dataset():
     county_fips.drop(
         columns=["state_fips_segment", "county_fips_segment"], inplace=True
     )
-    print(county_fips.head(8))
 
     county_fips.to_csv("county_fips.csv.gz", compression="gzip")
 

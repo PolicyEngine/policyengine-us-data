@@ -76,8 +76,6 @@ def generate_county_fips_2020_dataset():
         repo_file_path="county_fips_2020.csv.gz",
     )
 
-    county_fips.to_csv(LOCAL_FOLDER / "county_fips.csv.gz", compression="gzip")
-
 
 if __name__ == "__main__":
     generate_county_fips_2020_dataset()

@@ -1,7 +1,8 @@
 import pandas as pd
 import requests
-from io import StringIO
+from io import StringIO, BytesIO
 from pathlib import Path
+from policyengine_us_data.utils.huggingface import upload as upload_to_hf
 
 LOCAL_FOLDER = Path(__file__).parent
 
@@ -59,6 +60,20 @@ def generate_county_fips_2020_dataset():
     )
     county_fips.drop(
         columns=["state_fips_segment", "county_fips_segment"], inplace=True
+    )
+
+    # Create buffer to save CSV
+    csv_buffer = BytesIO()
+
+    # Save CSV into buffer object and reset pointer
+    county_fips.to_csv(csv_buffer, index=False, compression="gzip")
+    csv_buffer.seek(0)
+
+    # Upload to Hugging Face
+    upload_to_hf(
+        local_file_path=csv_buffer,
+        repo="policyengine/policyengine-us-data",
+        repo_file_path="county_fips_2020.csv.gz",
     )
 
     county_fips.to_csv(LOCAL_FOLDER / "county_fips.csv.gz", compression="gzip")

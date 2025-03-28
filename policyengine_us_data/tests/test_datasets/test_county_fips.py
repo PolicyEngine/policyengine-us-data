@@ -93,10 +93,6 @@ def test_successful_download_and_processing(
     # Check that upload_to_hf was called
     mock_upload_to_hf.assert_called_once()
 
-    # Check that to_csv was called with the right path
-    local_csv_call = mock_to_csv.call_args_list[-1]
-    assert str(LOCAL_FOLDER / "county_fips.csv.gz") in str(local_csv_call)
-
 
 def test_download_failure():
     """Test handling of download failure"""

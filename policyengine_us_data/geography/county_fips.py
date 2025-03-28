@@ -29,6 +29,7 @@ def generate_county_fips_2020_dataset():
         raise ValueError(
             f"Failed to download county FIPS codes: {response.status_code}"
         )
+    response.encoding = "utf-8"
 
     county_fips_raw = StringIO(response.text)
 
@@ -42,6 +43,7 @@ def generate_county_fips_2020_dataset():
             "COUNTYFP": str,
             "COUNTYNAME": str,
         },
+        encoding="utf-8",
     )
 
     county_fips = county_fips.rename(
@@ -66,7 +68,7 @@ def generate_county_fips_2020_dataset():
     csv_buffer = BytesIO()
 
     # Save CSV into buffer object and reset pointer
-    county_fips.to_csv(csv_buffer, index=False, compression="gzip")
+    county_fips.to_csv(csv_buffer, index=False, compression="gzip", encoding="utf-8")
     csv_buffer.seek(0)
 
     # Upload to Hugging Face

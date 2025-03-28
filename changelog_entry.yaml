@@ -1,6 +1,0 @@
-- bump: patch
-  changes:
-    changed:
-    - Explicitly specified encoding while building county FIPS dataset
-    removed:
-    - Unneeded build of county FIPS dataset to local folder

@@ -191,3 +191,10 @@
     added:
     - County FIPS dataset
   date: 2025-03-27 22:58:46
+- bump: patch
+  changes:
+    changed:
+    - Explicitly specified encoding while building county FIPS dataset
+    removed:
+    - Unneeded build of county FIPS dataset to local folder
+  date: 2025-03-28 18:07:01

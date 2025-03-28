@@ -68,7 +68,9 @@ def generate_county_fips_2020_dataset():
     csv_buffer = BytesIO()
 
     # Save CSV into buffer object and reset pointer
-    county_fips.to_csv(csv_buffer, index=False, compression="gzip", encoding="utf-8")
+    county_fips.to_csv(
+        csv_buffer, index=False, compression="gzip", encoding="utf-8"
+    )
     csv_buffer.seek(0)
 
     # Upload to Hugging Face

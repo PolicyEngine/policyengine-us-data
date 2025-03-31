@@ -134,24 +134,71 @@ class EnhancedCPS(Dataset):
     def generate(self):
         from policyengine_us import Microsimulation
 
+        # Initialize the simulation with the input dataset
         sim = Microsimulation(dataset=self.input_dataset)
         data = sim.dataset.load_dataset()
         data["household_weight"] = {}
+
+        # Get original weights
         original_weights = sim.calculate("household_weight")
-        original_weights = original_weights.values + np.random.normal(
-            1, 0.1, len(original_weights)
+        original_weights_values = original_weights.values
+
+        # Downsample the dataset by half
+        n_samples = len(original_weights_values)
+        downsample_indices = np.random.choice(
+            np.arange(n_samples), 
+            size=n_samples // 2, 
+            replace=False
         )
+
+        # Create a downsampled version of the dataset
+        downsampled_data = {}
+        for key, value in data.items():
+            if isinstance(value, dict):
+                downsampled_data[key] = {}
+                for subkey, array in value.items():
+                    if hasattr(array, "__len__") and len(array) == n_samples:
+                        downsampled_data[key][subkey] = array[downsample_indices]
+                    else:
+                        downsampled_data[key][subkey] = array
+            elif hasattr(value, "__len__") and len(value) == n_samples:
+                downsampled_data[key] = value[downsample_indices]
+            else:
+                downsampled_data[key] = value
+
+        # Create a custom dataset class that will serve our downsampled data
+        class DownsampledDataset(self.input_dataset.__class__):
+            def load_dataset(self):
+                return downsampled_data
+        
+        # Create an instance of our downsampled dataset
+        downsampled_dataset_instance = DownsampledDataset()
+
+        # Add noise to the downsampled weights
+        downsampled_weights = original_weights_values[downsample_indices] + np.random.normal(
+            1, 0.1, len(downsample_indices)
+        )
+
+        # Double the weights to compensate for downsampling
+        downsampled_weights *= 2
+
+        # Process each year in the specified range
         for year in range(self.start_year, self.end_year + 1):
+            # Get loss matrix and targets using our downsampled dataset
             loss_matrix, targets_array = build_loss_matrix(
-                self.input_dataset, year
+                downsampled_dataset_instance, year
             )
+            
+            # Use the reweight function with our downsampled weights
             optimised_weights = reweight(
-                original_weights, loss_matrix, targets_array
+                downsampled_weights, loss_matrix, targets_array
             )
-            data["household_weight"][year] = optimised_weights
-
-        self.save_dataset(data)
-
+            
+            # Store the optimized weights in the downsampled data
+            downsampled_data["household_weight"][year] = optimised_weights
+        
+        # Save the downsampled dataset with optimized weights
+        self.save_dataset(downsampled_data)
 
 class ReweightedCPS_2024(Dataset):
     data_format = Dataset.ARRAYS

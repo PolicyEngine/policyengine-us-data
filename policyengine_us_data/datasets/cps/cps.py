@@ -49,12 +49,30 @@ class CPS(Dataset):
         add_previous_year_income(self, cps)
         add_spm_variables(cps, spm_unit)
         add_household_variables(cps, household)
-        add_rent(self, cps, person, household)
+        #add_rent(self, cps, person, household)
 
         raw_data.close()
         self.save_dataset(cps)
 
         add_takeup(self)
+
+        # Downsample
+
+        print("Downsampling")
+
+        self.downsample(fraction=0.5)
+
+    def downsample(self, fraction: float = 0.5):
+        from policyengine_us import Microsimulation
+        sim = Microsimulation(dataset=self)
+        sim.subsample(frac=fraction)
+        original_data: dict = self.load_dataset()
+        for key in original_data:
+            if key not in sim.tax_benefit_system.variables:
+                continue
+            original_data[key] = sim.calculate(key).values
+        
+        self.save_dataset(original_data)
 
 
 def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):

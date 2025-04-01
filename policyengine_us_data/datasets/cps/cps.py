@@ -58,8 +58,6 @@ class CPS(Dataset):
 
         # Downsample
 
-        print("Downsampling")
-
         self.downsample(fraction=0.5)
 
     def downsample(self, fraction: float = 0.5):

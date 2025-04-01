@@ -56,6 +56,23 @@ class CPS(Dataset):
 
         add_takeup(self)
 
+        # Downsample
+
+        self.downsample(fraction=0.5)
+
+    def downsample(self, fraction: float = 0.5):
+        from policyengine_us import Microsimulation
+
+        sim = Microsimulation(dataset=self)
+        sim.subsample(frac=fraction)
+        original_data: dict = self.load_dataset()
+        for key in original_data:
+            if key not in sim.tax_benefit_system.variables:
+                continue
+            original_data[key] = sim.calculate(key).values
+
+        self.save_dataset(original_data)
+
 
 def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["tenure_type"] = household.H_TENURE.map(

@@ -1,5 +1,10 @@
 import pandas as pd
 
+# Note: This method of dataset creation (downloading a government file,
+# processing it, and saving the processed data as an exported file) is
+# deprecated in this package in favor of uploading datasets to HuggingFace,
+# then having country packages download as needed.
+
 # Per-ZCTA population dataset
 # ACS 5-year estimates, download URL: https://data.census.gov/cedsci/table?q=DP05%3A%20ACS%20DEMOGRAPHIC%20AND%20HOUSING%20ESTIMATES&g=0100000US%248600000&tid=ACSDP5Y2020.DP05
 

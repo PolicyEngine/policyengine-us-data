@@ -158,7 +158,9 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
         fraction,
     ) in MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS.items():
         puf[medical_category] = puf.E17500 * fraction
-    puf["misc_deduction"] = puf.E20400
+    # Use unreimbursed business employee expenses as a proxy for all miscellaneous expenses
+    # that can be deducted under the miscellaneous deduction.
+    puf["unreimbursed_business_employee_expenses"] = puf.E20400
     puf["non_qualified_dividend_income"] = puf.E00600 - puf.E00650
     puf["partnership_s_corp_income"] = puf.E26270
     puf["qualified_dividend_income"] = puf.E00650
@@ -242,7 +244,7 @@ FINANCIAL_SUBSET = [
     "interest_deduction",
     "long_term_capital_gains",
     "long_term_capital_gains_on_collectibles",
-    "misc_deduction",
+    "unreimbursed_business_employee_expenses",
     "non_qualified_dividend_income",
     "non_sch_d_capital_gains",
     "partnership_s_corp_income",
@@ -281,6 +283,7 @@ FINANCIAL_SUBSET = [
     "unreported_payroll_tax",
     "pre_tax_contributions",
     "w2_wages_from_qualified_business",
+    "deductible_mortgage_interest",
 ]
 
 
@@ -431,7 +434,16 @@ class PUF(Dataset):
         self.holder["household_weight"].append(row["household_weight"])
         self.holder["is_male"].append(row["GENDER"] == 1)
 
+        # Assume all of the interest deduction is the filer's deductible mortgage interest
+
+        self.holder["deductible_mortgage_interest"].append(
+            row["interest_deduction"]
+        )
+
         for key in FINANCIAL_SUBSET:
+            if key == "deductible_mortgage_interest":
+                # Skip this one- we are adding it artificially at the filer level.
+                continue
             if self.variable_to_entity[key] == "person":
                 self.holder[key].append(row[key] * self.earn_splits[-1])
 
@@ -457,7 +469,14 @@ class PUF(Dataset):
             opposite_gender_code if is_opposite_gender else same_gender_code
         )
 
+        # Assume all of the interest deduction is the filer's deductible mortgage interest
+
+        self.holder["deductible_mortgage_interest"].append(0)
+
         for key in FINANCIAL_SUBSET:
+            if key == "deductible_mortgage_interest":
+                # Skip this one- we are adding it artificially at the filer level.
+                continue
             if self.variable_to_entity[key] == "person":
                 self.holder[key].append(row[key] * (1 - self.earn_splits[-1]))
 
@@ -474,7 +493,14 @@ class PUF(Dataset):
         age = decode_age_dependent(round(row[f"AGEDP{dependent_id + 1}"]))
         self.holder["age"].append(age)
 
+        # Assume all of the interest deduction is the filer's deductible mortgage interest
+
+        self.holder["deductible_mortgage_interest"].append(0)
+
         for key in FINANCIAL_SUBSET:
+            if key == "deductible_mortgage_interest":
+                # Skip this one- we are adding it artificially at the filer level.
+                continue
             if self.variable_to_entity[key] == "person":
                 self.holder[key].append(0)
 

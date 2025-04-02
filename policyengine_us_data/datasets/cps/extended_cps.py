@@ -21,7 +21,7 @@ IMPUTED_VARIABLES = [
     "interest_deduction",
     "tax_exempt_pension_income",
     "long_term_capital_gains",
-    "misc_deduction",
+    "unreimbursed_business_employee_expenses",
     "pre_tax_contributions",
     "taxable_ira_distributions",
     "self_employment_income",
@@ -68,6 +68,7 @@ IMPUTED_VARIABLES = [
     "casualty_loss",
     "unreported_payroll_tax",
     "recapture_of_investment_credit",
+    "deductible_mortgage_interest",
 ]
 
 if os.environ.get("TEST_LITE"):
@@ -148,6 +149,7 @@ class ExtendedCPS(Dataset):
             new_data[variable] = {
                 self.time_period: values,
             }
+
         self.save_dataset(new_data)
 
 

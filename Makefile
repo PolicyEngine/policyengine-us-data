@@ -9,7 +9,7 @@ test:
 	pytest
 
 install:
-	pip install policyengine-us==1.109.0
+	pip install policyengine-us
 	pip install -e ".[dev]"  --config-settings editable_mode=compat
 
 changelog:
@@ -31,6 +31,8 @@ docker:
 	
 documentation:
 	jb clean docs && jb build docs
+	python docs/add_plotly_to_book.py docs
+
 
 data:
 	python policyengine_us_data/datasets/acs/acs.py

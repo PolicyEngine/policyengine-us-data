@@ -137,3 +137,64 @@
     added:
     - Metric comparisons by dataset to the documentation.
   date: 2024-11-12 15:03:39
+- bump: minor
+  changes:
+    added:
+    - Metric comparisons by dataset to the documentation.
+    - Calibration of state populations.
+  date: 2024-11-19 12:29:11
+- bump: minor
+  changes:
+    added:
+    - Automatic upload behavior.
+  date: 2024-11-29 20:23:10
+- bump: minor
+  changes:
+    changed:
+    - Changed GitHub release URLs to Hugging Face URLs for Enhanced CPS 2024 and Pooled
+      3-Year CPS 2023.
+    - Set minimum version for policyengine-core.
+  date: 2024-12-02 20:40:26
+- bump: patch
+  changes:
+    changed:
+    - Install order and requirements for policyengine-us
+  date: 2024-12-03 23:21:24
+- bump: minor
+  changes:
+    added:
+    - DC PTC takeup.
+  date: 2025-01-13 16:36:45
+- bump: patch
+  changes:
+    fixed:
+    - Minor bug with memory breaches.
+  date: 2025-01-22 04:02:27
+- bump: minor
+  changes:
+    added:
+    - Interest expenses.
+  date: 2025-01-24 11:18:33
+- bump: minor
+  changes:
+    fixed:
+    - Larger GH runner for data generation.
+  date: 2025-02-01 02:21:19
+- bump: patch
+  changes:
+    fixed:
+    - Apply the miscellaneous deduction imputation to the unreimbursed_business_employee_expenses
+      instead of the misc_deduction variable.
+  date: 2025-02-20 12:34:31
+- bump: minor
+  changes:
+    added:
+    - County FIPS dataset
+  date: 2025-03-27 22:58:46
+- bump: patch
+  changes:
+    changed:
+    - Explicitly specified encoding while building county FIPS dataset
+    removed:
+    - Unneeded build of county FIPS dataset to local folder
+  date: 2025-03-28 18:07:01

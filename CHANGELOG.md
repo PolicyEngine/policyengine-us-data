@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.1] - 2025-03-28 18:07:01
+
+### Changed
+
+- Explicitly specified encoding while building county FIPS dataset
+
+## [1.19.0] - 2025-03-27 22:58:46
+
+### Added
+
+- County FIPS dataset
+
+## [1.18.1] - 2025-02-20 12:34:31
+
+### Fixed
+
+- Apply the miscellaneous deduction imputation to the unreimbursed_business_employee_expenses instead of the misc_deduction variable.
+
+## [1.18.0] - 2025-02-01 02:21:19
+
+### Fixed
+
+- Larger GH runner for data generation.
+
+## [1.17.0] - 2025-01-24 11:18:33
+
+### Added
+
+- Interest expenses.
+
+## [1.16.1] - 2025-01-22 04:02:27
+
+### Fixed
+
+- Minor bug with memory breaches.
+
+## [1.16.0] - 2025-01-13 16:36:45
+
+### Added
+
+- DC PTC takeup.
+
+## [1.15.1] - 2024-12-03 23:21:24
+
+### Changed
+
+- Install order and requirements for policyengine-us
+
+## [1.15.0] - 2024-12-02 20:40:26
+
+### Changed
+
+- Changed GitHub release URLs to Hugging Face URLs for Enhanced CPS 2024 and Pooled 3-Year CPS 2023.
+- Set minimum version for policyengine-core.
+
+## [1.14.0] - 2024-11-29 20:23:10
+
+### Added
+
+- Automatic upload behavior.
+
+## [1.13.0] - 2024-11-19 12:29:11
+
+### Added
+
+- Metric comparisons by dataset to the documentation.
+- Calibration of state populations.
+
 ## [1.12.1] - 2024-11-12 15:03:39
 
 ### Added
@@ -174,6 +242,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.19.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.19.0...1.19.1
+[1.19.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.18.1...1.19.0
+[1.18.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.18.0...1.18.1
+[1.18.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.17.0...1.18.0
+[1.17.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.16.1...1.17.0
+[1.16.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.16.0...1.16.1
+[1.16.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.15.1...1.16.0
+[1.15.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.15.0...1.15.1
+[1.15.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.14.0...1.15.0
+[1.14.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.13.0...1.14.0
+[1.13.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.12.1...1.13.0
 [1.12.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.12.0...1.12.1
 [1.12.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.11.1...1.12.0
 [1.11.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.11.0...1.11.1

@@ -56,6 +56,23 @@ class CPS(Dataset):
 
         add_takeup(self)
 
+        # Downsample
+
+        self.downsample(fraction=0.5)
+
+    def downsample(self, fraction: float = 0.5):
+        from policyengine_us import Microsimulation
+
+        sim = Microsimulation(dataset=self)
+        sim.subsample(frac=fraction)
+        original_data: dict = self.load_dataset()
+        for key in original_data:
+            if key not in sim.tax_benefit_system.variables:
+                continue
+            original_data[key] = sim.calculate(key).values
+
+        self.save_dataset(original_data)
+
 
 def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["tenure_type"] = household.H_TENURE.map(
@@ -135,6 +152,10 @@ def add_takeup(self):
     eitc_takeup_rate = eitc_takeup_rates.calc(eitc_child_count)
     data["takes_up_eitc"] = (
         generator.random(len(data["tax_unit_id"])) < eitc_takeup_rate
+    )
+    dc_ptc_takeup_rate = parameters.gov.states.dc.tax.income.credits.ptc.takeup
+    data["takes_up_dc_ptc"] = (
+        generator.random(len(data["tax_unit_id"])) < dc_ptc_takeup_rate
     )
 
     self.save_dataset(data)
@@ -227,6 +248,7 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
         np.random.randint(80, 85, len(person)),
         person.A_AGE,
     )
+
     # A_SEX is 1 -> male, 2 -> female.
     cps["is_female"] = person.A_SEX == 2
     # "Is...blind or does...have serious difficulty seeing even when Wearing
@@ -648,7 +670,7 @@ class CPS_2024(CPS):
     label = "CPS 2024 (2022-based)"
     file_path = STORAGE_FOLDER / "cps_2024.h5"
     time_period = 2024
-    url = "release://policyengine/policyengine-us-data/1.11.0/cps_2024.h5"
+    url = "release://policyengine/policyengine-us-data/1.13.0/cps_2024.h5"
 
 
 class PooledCPS(Dataset):
@@ -707,7 +729,7 @@ class Pooled_3_Year_CPS_2023(PooledCPS):
         CPS_2023,
     ]
     time_period = 2023
-    url = "release://PolicyEngine/policyengine-us-data/1.11.0/pooled_3_year_cps_2023.h5"
+    url = "hf://policyengine/policyengine-us-data/pooled_3_year_cps_2023.h5"
 
 
 if __name__ == "__main__":

@@ -1,0 +1,32 @@
+\ProvidesPackage{policyengine}
+
+% Define PolicyEngine colors
+\definecolor{peblue}{HTML}{2C6496}
+\definecolor{peteal}{HTML}{39C6C0}
+\definecolor{pegray}{HTML}{616161}
+\definecolor{pebluelight}{HTML}{D8E6F3}
+
+% Customize theme colors
+\setbeamercolor{background canvas}{bg=white}
+\setbeamercolor{frametitle}{bg=peblue,fg=white}
+\setbeamercolor{title}{bg=peblue,fg=white}
+\setbeamercolor{normal text}{fg=pegray}
+\setbeamercolor{alerted text}{fg=peteal}
+\setbeamercolor{item}{fg=peblue}
+\setbeamercolor{section in head/foot}{bg=peblue,fg=white}
+\setbeamercolor{subsection in head/foot}{bg=peteal,fg=white}
+
+% Add blue logo to title page only
+\titlegraphic{\includegraphics[width=2cm]{figures/logos/blue.png}}
+
+% Add smaller white logo to frame title and move it up
+\addtobeamertemplate{frametitle}{}{%
+  \vspace*{-1.5em}\hfill% Adjust this to move logo up
+  \includegraphics[height=0.3cm]{figures/logos/white.png}%
+  \vspace*{0.2em}% Adjust or remove to refine spacing
+}
+
+% Customize other elements
+\setbeamertemplate{itemize items}[circle]
+\setbeamercolor{itemize item}{fg=peblue}
+\setbeamercolor{itemize subitem}{fg=peteal}

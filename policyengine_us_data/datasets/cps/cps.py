@@ -20,6 +20,7 @@ class CPS(Dataset):
     raw_cps: Type[CensusCPS] = None
     previous_year_raw_cps: Type[CensusCPS] = None
     data_format = Dataset.ARRAYS
+    downsample_by_half: bool = True
 
     def generate(self):
         """Generates the Current Population Survey dataset for PolicyEngine US microsimulations.
@@ -58,7 +59,8 @@ class CPS(Dataset):
 
         # Downsample
 
-        self.downsample(fraction=0.5)
+        if self.downsample_by_half:
+            self.downsample(fraction=0.5)
 
     def downsample(self, fraction: float = 0.5):
         from policyengine_us import Microsimulation
@@ -673,6 +675,36 @@ class CPS_2024(CPS):
     url = "release://policyengine/policyengine-us-data/1.13.0/cps_2024.h5"
 
 
+class CPS_2021_Not_Downsampled(CPS):
+    name = "cps_2021_not_downsampled"
+    label = "CPS 2021 (not downsampled)"
+    raw_cps = CensusCPS_2021
+    previous_year_raw_cps = CensusCPS_2020
+    file_path = STORAGE_FOLDER / "cps_2021_not_downsampled.h5"
+    time_period = 2021
+    downsample_by_half = False
+
+
+class CPS_2022_Not_Downsampled(CPS):
+    name = "cps_2022_not_downsampled"
+    label = "CPS 2022 (not downsampled)"
+    raw_cps = CensusCPS_2022
+    previous_year_raw_cps = CensusCPS_2021
+    file_path = STORAGE_FOLDER / "cps_2022_not_downsampled.h5"
+    time_period = 2022
+    downsample_by_half = False
+
+
+class CPS_2023_Not_Downsampled(CPS):
+    name = "cps_2023_not_downsampled"
+    label = "CPS 2023 (not downsampled)"
+    raw_cps = CensusCPS_2023
+    previous_year_raw_cps = CensusCPS_2022
+    file_path = STORAGE_FOLDER / "cps_2023_not_downsampled.h5"
+    time_period = 2023
+    downsample_by_half = False
+
+
 class PooledCPS(Dataset):
     data_format = Dataset.ARRAYS
     input_datasets: list
@@ -724,9 +756,9 @@ class Pooled_3_Year_CPS_2023(PooledCPS):
     name = "pooled_3_year_cps_2023"
     file_path = STORAGE_FOLDER / "pooled_3_year_cps_2023.h5"
     input_datasets = [
-        CPS_2021,
-        CPS_2022,
-        CPS_2023,
+        CPS_2021_Not_Downsampled,
+        CPS_2022_Not_Downsampled,
+        CPS_2023_Not_Downsampled,
     ]
     time_period = 2023
     url = "hf://policyengine/policyengine-us-data/pooled_3_year_cps_2023.h5"
@@ -737,4 +769,7 @@ if __name__ == "__main__":
     CPS_2022().generate()
     CPS_2023().generate()
     CPS_2024().generate()
+    CPS_2021_Not_Downsampled().generate()
+    CPS_2022_Not_Downsampled().generate()
+    CPS_2023_Not_Downsampled().generate()
     Pooled_3_Year_CPS_2023().generate()

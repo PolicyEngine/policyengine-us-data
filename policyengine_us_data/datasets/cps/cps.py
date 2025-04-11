@@ -675,6 +675,9 @@ class CPS_2024(CPS):
     url = "release://policyengine/policyengine-us-data/1.13.0/cps_2024.h5"
 
 
+# The below datasets are a very naïve way of preventing downsampling in the
+# Pooled 3-Year CPS. They should be replaced by a more sustainable approach.
+# If these are still here on July 1, 2025, please open an issue and raise at standup.
 class CPS_2021_Not_Downsampled(CPS):
     name = "cps_2021_not_downsampled"
     label = "CPS 2021 (not downsampled)"

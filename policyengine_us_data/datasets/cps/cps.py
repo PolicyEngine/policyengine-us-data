@@ -62,16 +62,52 @@ class CPS(Dataset):
         if self.downsample_by_half:
             self.downsample(fraction=0.5)
 
+    # def downsample(self, fraction: float = 0.5):
+    #     from policyengine_us import Microsimulation
+
+    #     sim = Microsimulation(dataset=self)
+    #     sim.subsample(frac=fraction)
+    #     original_data: dict = self.load_dataset()
+    #     for key in original_data:
+    #         if key not in sim.tax_benefit_system.variables:
+    #             continue
+    #         original_data[key] = sim.calculate(key).values
+
+    #     self.save_dataset(original_data)
+
     def downsample(self, fraction: float = 0.5):
         from policyengine_us import Microsimulation
 
+        # Store original dtypes before modifying
+        original_data: dict = self.load_dataset()
+        original_dtypes = {
+            key: original_data[key].dtype for key in original_data
+        }
+
         sim = Microsimulation(dataset=self)
         sim.subsample(frac=fraction)
-        original_data: dict = self.load_dataset()
+
         for key in original_data:
             if key not in sim.tax_benefit_system.variables:
                 continue
-            original_data[key] = sim.calculate(key).values
+            values = sim.calculate(key).values
+
+            # Preserve the original dtype if possible
+            if (
+                key in original_dtypes
+                and hasattr(values, "dtype")
+                and values.dtype != original_dtypes[key]
+            ):
+                try:
+                    original_data[key] = values.astype(original_dtypes[key])
+                except:
+                    # If conversion fails, log it but continue
+                    print(
+                        f"Warning: Could not convert {key} back to {original_dtypes[key]}"
+                    )
+                    original_data[key] = values
+            else:
+                original_data[key] = values
 
         self.save_dataset(original_data)
 

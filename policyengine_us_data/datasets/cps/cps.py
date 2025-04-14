@@ -20,7 +20,7 @@ class CPS(Dataset):
     raw_cps: Type[CensusCPS] = None
     previous_year_raw_cps: Type[CensusCPS] = None
     data_format = Dataset.ARRAYS
-    downsample_by_half: bool = True
+    downsample_frac: float | None = 0.5
 
     def generate(self):
         """Generates the Current Population Survey dataset for PolicyEngine US microsimulations.
@@ -58,22 +58,8 @@ class CPS(Dataset):
         add_takeup(self)
 
         # Downsample
-
-        if self.downsample_by_half:
-            self.downsample(fraction=0.5)
-
-    # def downsample(self, fraction: float = 0.5):
-    #     from policyengine_us import Microsimulation
-
-    #     sim = Microsimulation(dataset=self)
-    #     sim.subsample(frac=fraction)
-    #     original_data: dict = self.load_dataset()
-    #     for key in original_data:
-    #         if key not in sim.tax_benefit_system.variables:
-    #             continue
-    #         original_data[key] = sim.calculate(key).values
-
-    #     self.save_dataset(original_data)
+        if self.downsample_frac is not None and self.downsample_frac < 1.0:
+            self.downsample(fraction=self.downsample_frac)
 
     def downsample(self, fraction: float = 0.5):
         from policyengine_us import Microsimulation
@@ -714,34 +700,34 @@ class CPS_2024(CPS):
 # The below datasets are a very naïve way of preventing downsampling in the
 # Pooled 3-Year CPS. They should be replaced by a more sustainable approach.
 # If these are still here on July 1, 2025, please open an issue and raise at standup.
-class CPS_2021_Not_Downsampled(CPS):
-    name = "cps_2021_not_downsampled"
-    label = "CPS 2021 (not downsampled)"
+class CPS_2021_Full(CPS):
+    name = "cps_2021_full"
+    label = "CPS 2021 (full)"
     raw_cps = CensusCPS_2021
     previous_year_raw_cps = CensusCPS_2020
-    file_path = STORAGE_FOLDER / "cps_2021_not_downsampled.h5"
+    file_path = STORAGE_FOLDER / "cps_2021_full.h5"
     time_period = 2021
-    downsample_by_half = False
+    downsample_frac = None
 
 
-class CPS_2022_Not_Downsampled(CPS):
-    name = "cps_2022_not_downsampled"
-    label = "CPS 2022 (not downsampled)"
+class CPS_2022_Full(CPS):
+    name = "cps_2022_full"
+    label = "CPS 2022 (full)"
     raw_cps = CensusCPS_2022
     previous_year_raw_cps = CensusCPS_2021
-    file_path = STORAGE_FOLDER / "cps_2022_not_downsampled.h5"
+    file_path = STORAGE_FOLDER / "cps_2022_full.h5"
     time_period = 2022
-    downsample_by_half = False
+    downsample_frac = None
 
 
-class CPS_2023_Not_Downsampled(CPS):
-    name = "cps_2023_not_downsampled"
-    label = "CPS 2023 (not downsampled)"
+class CPS_2023_Full(CPS):
+    name = "cps_2023_full"
+    label = "CPS 2023 (full)"
     raw_cps = CensusCPS_2023
     previous_year_raw_cps = CensusCPS_2022
-    file_path = STORAGE_FOLDER / "cps_2023_not_downsampled.h5"
+    file_path = STORAGE_FOLDER / "cps_2023_full.h5"
     time_period = 2023
-    downsample_by_half = False
+    downsample_frac = None
 
 
 class PooledCPS(Dataset):
@@ -795,9 +781,9 @@ class Pooled_3_Year_CPS_2023(PooledCPS):
     name = "pooled_3_year_cps_2023"
     file_path = STORAGE_FOLDER / "pooled_3_year_cps_2023.h5"
     input_datasets = [
-        CPS_2021_Not_Downsampled,
-        CPS_2022_Not_Downsampled,
-        CPS_2023_Not_Downsampled,
+        CPS_2021_Full,
+        CPS_2022_Full,
+        CPS_2023_Full,
     ]
     time_period = 2023
     url = "hf://policyengine/policyengine-us-data/pooled_3_year_cps_2023.h5"
@@ -808,7 +794,7 @@ if __name__ == "__main__":
     CPS_2022().generate()
     CPS_2023().generate()
     CPS_2024().generate()
-    CPS_2021_Not_Downsampled().generate()
-    CPS_2022_Not_Downsampled().generate()
-    CPS_2023_Not_Downsampled().generate()
+    CPS_2021_Full().generate()
+    CPS_2022_Full().generate()
+    CPS_2023_Full().generate()
     Pooled_3_Year_CPS_2023().generate()

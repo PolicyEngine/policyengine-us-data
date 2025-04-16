@@ -20,11 +20,15 @@ class CPS(Dataset):
     raw_cps: Type[CensusCPS] = None
     previous_year_raw_cps: Type[CensusCPS] = None
     data_format = Dataset.ARRAYS
-    downsample_frac: float | None = 0.5
+    frac: float | None = 1
 
     def generate(self):
         """Generates the Current Population Survey dataset for PolicyEngine US microsimulations.
         Technical documentation and codebook here: https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar21.pdf
+
+        Args:
+            frac (float, optional): Fraction of the dataset to keep. Defaults to 1. Example: To downsample to 25% of dataset,
+                set frac=0.25.
         """
 
         if self.raw_cps is None:
@@ -58,10 +62,10 @@ class CPS(Dataset):
         add_takeup(self)
 
         # Downsample
-        if self.downsample_frac is not None and self.downsample_frac < 1.0:
-            self.downsample(fraction=self.downsample_frac)
+        if self.frac is not None and self.frac < 1.0:
+            self.downsample(frac=self.frac)
 
-    def downsample(self, fraction: float = 0.5):
+    def downsample(self, frac: float):
         from policyengine_us import Microsimulation
 
         # Store original dtypes before modifying
@@ -71,7 +75,7 @@ class CPS(Dataset):
         }
 
         sim = Microsimulation(dataset=self)
-        sim.subsample(frac=fraction)
+        sim.subsample(frac=frac)
 
         for key in original_data:
             if key not in sim.tax_benefit_system.variables:
@@ -651,6 +655,7 @@ class CPS_2019(CPS):
     previous_year_raw_cps = CensusCPS_2018
     file_path = STORAGE_FOLDER / "cps_2019.h5"
     time_period = 2019
+    frac = 0.5
 
 
 class CPS_2020(CPS):
@@ -660,6 +665,7 @@ class CPS_2020(CPS):
     previous_year_raw_cps = CensusCPS_2019
     file_path = STORAGE_FOLDER / "cps_2020.h5"
     time_period = 2020
+    frac = 0.5
 
 
 class CPS_2021(CPS):
@@ -669,6 +675,7 @@ class CPS_2021(CPS):
     previous_year_raw_cps = CensusCPS_2020
     file_path = STORAGE_FOLDER / "cps_2021_v1_6_1.h5"
     time_period = 2021
+    frac = 0.5
 
 
 class CPS_2022(CPS):
@@ -678,6 +685,7 @@ class CPS_2022(CPS):
     previous_year_raw_cps = CensusCPS_2021
     file_path = STORAGE_FOLDER / "cps_2022_v1_6_1.h5"
     time_period = 2022
+    frac = 0.5
 
 
 class CPS_2023(CPS):
@@ -687,6 +695,7 @@ class CPS_2023(CPS):
     previous_year_raw_cps = CensusCPS_2022
     file_path = STORAGE_FOLDER / "cps_2023.h5"
     time_period = 2023
+    frac = 0.5
 
 
 class CPS_2024(CPS):
@@ -695,6 +704,7 @@ class CPS_2024(CPS):
     file_path = STORAGE_FOLDER / "cps_2024.h5"
     time_period = 2024
     url = "release://policyengine/policyengine-us-data/1.13.0/cps_2024.h5"
+    frac = 0.5
 
 
 # The below datasets are a very naïve way of preventing downsampling in the
@@ -707,7 +717,6 @@ class CPS_2021_Full(CPS):
     previous_year_raw_cps = CensusCPS_2020
     file_path = STORAGE_FOLDER / "cps_2021_full.h5"
     time_period = 2021
-    downsample_frac = None
 
 
 class CPS_2022_Full(CPS):
@@ -717,7 +726,6 @@ class CPS_2022_Full(CPS):
     previous_year_raw_cps = CensusCPS_2021
     file_path = STORAGE_FOLDER / "cps_2022_full.h5"
     time_period = 2022
-    downsample_frac = None
 
 
 class CPS_2023_Full(CPS):
@@ -727,7 +735,6 @@ class CPS_2023_Full(CPS):
     previous_year_raw_cps = CensusCPS_2022
     file_path = STORAGE_FOLDER / "cps_2023_full.h5"
     time_period = 2023
-    downsample_frac = None
 
 
 class PooledCPS(Dataset):

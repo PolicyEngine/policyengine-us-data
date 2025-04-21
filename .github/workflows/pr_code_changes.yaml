@@ -21,6 +21,26 @@ jobs:
           uses: "lgeiger/black-action@master"
           with:
               args: ". -l 79 --check"
+
+  MinimalInstallCheck:
+    name: Test Minimal Install & Import (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package ONLY (no dev deps)
+        run: pip install .
+      - name: Test basic import
+        run: python -c "import policyengine_us_data; print('Minimal import OK')"
+      - name: Test specific failing import
+        run: python -c "from policyengine_core.data import Dataset; print('Core import OK')"
+
   Test:
       runs-on: ubuntu-latest
       steps:

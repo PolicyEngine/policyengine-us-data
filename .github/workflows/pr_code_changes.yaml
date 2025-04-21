@@ -9,6 +9,7 @@ on:
     paths:
       - policyengine_us_data/**
       - tests/**
+      - .github/workflows/pr_code_changes.yaml  # TEMPORARY
   workflow_dispatch:
 
 jobs:

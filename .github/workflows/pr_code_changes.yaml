@@ -9,6 +9,7 @@ on:
     paths:
       - policyengine_us_data/**
       - tests/**
+  workflow_dispatch:
 
 jobs:
   Lint:

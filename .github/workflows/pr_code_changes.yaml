@@ -9,6 +9,7 @@ on:
     paths:
       - policyengine_us_data/**
       - tests/**
+      - .github/workflows/**
   workflow_dispatch:
 
 jobs:

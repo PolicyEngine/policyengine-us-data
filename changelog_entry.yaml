@@ -1,0 +1,8 @@
+- bump: patch
+  changes:
+    added:
+    - Non-downsampled versions of the 2021, 2022, and 2023 CPS datasets
+    changed:
+    - Modified downsampling method within CPS base dataset class
+    - Pooled 3-Year CPS generation uses the non-downsampled versions of the 2021, 2022, and 2023 CPS datasets
+    - Downsampling method attempts to preserve original dtype values

@@ -1,3 +1,4 @@
+from importlib.resources import files
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER
 import h5py
@@ -12,10 +13,6 @@ from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
 from policyengine_us_data.utils import QRF
-
-
-# TODO: figure out how to get this to work interactively. You should be able to run this in ipython
-#__file__ = '/mnt/c/devl/policyengine-us-data/policyengine_us_data/datasets/cps/imputation_parameters.yaml'
 
 
 class CPS(Dataset):
@@ -344,10 +341,8 @@ def add_personal_income_variables(
         year (int): The CPS year
     """
     # Get income imputation parameters.
-    yamlfilename = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)),
-        "imputation_parameters.yaml",
-    )
+    yamlfilename = files('policyengine_us_data') / 'datasets' / 'cps' / 'imputation_parameters.yaml'
+
     with open(yamlfilename, "r", encoding="utf-8") as yamlfile:
         p = yaml.safe_load(yamlfile)
     assert isinstance(p, dict)

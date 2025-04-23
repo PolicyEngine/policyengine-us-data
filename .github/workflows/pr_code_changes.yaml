@@ -10,7 +10,6 @@ on:
       - policyengine_us_data/**
       - tests/**
       - .github/workflows/**
-  workflow_dispatch:
 
 jobs:
   Lint:
@@ -21,25 +20,6 @@ jobs:
           uses: "lgeiger/black-action@master"
           with:
               args: ". -l 79 --check"
-
-  #SmokeTestForMultipleVersions:
-  #  name: Test Minimal Install & Import (${{ matrix.python-version }})
-  #  runs-on: ubuntu-latest
-  #  strategy:
-  #    matrix:
-  #      python-version: ['3.10', '3.11', '3.12']
-  #  steps:
-  #    - uses: actions/checkout@v4
-  #    - name: Set up Python ${{ matrix.python-version }}
-  #      uses: actions/setup-python@v5
-  #      with:
-  #        python-version: ${{ matrix.python-version }}
-  #    - name: Install package ONLY (no dev deps)
-  #      run: pip install .
-  #    - name: Test basic import
-  #      run: python -c "import policyengine_us_data; print('Minimal import OK')"
-  #    - name: Test specific failing import
-  #      run: python -c "from policyengine_core.data import Dataset; print('Core import OK')"
 
   SmokeTestForMultipleVersions:
     # Updated name to include OS
@@ -77,7 +57,7 @@ jobs:
         run: python -c "from policyengine_core.data import Dataset; print('Core import OK')"
         # Default shell also works fine here
 
-  Test:
+  Test-Ubuntu:
       runs-on: ubuntu-latest
       steps:
           - name: Checkout repo

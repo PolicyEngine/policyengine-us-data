@@ -1,0 +1,24 @@
+\subsection{Demographic Analysis}
+
+A key advantage of building from CPS microdata is the ability to analyze policies by demographics not available in tax returns. While organizations using tax return data as their base must develop complex methods to impute race and ethnicity, our approach provides these characteristics directly from the survey data.
+
+The Internal Revenue Service does not collect information on race or ethnicity from tax filers. Other microsimulation models have addressed this limitation through various imputation approaches:
+
+\begin{itemize}
+    \item The Congressional Budget Office statistically matches tax returns to survey records using income and limited demographic characteristics, then validates against linked Census-IRS data \citep{cbo2024race}
+    \item The Tax Policy Center creates multiple copies of each tax unit record, then uses an algorithm to reweight these copies to match aggregate race and ethnicity statistics from survey data \citep{khitatrakun2023race}
+    \item The Institute on Taxation and Economic Policy assigns each tax record probabilities of different racial and ethnic identities based on characteristics like income, marital status, state, and homeownership \citep{itep2024race}
+\end{itemize}
+
+These approaches require complex statistical methods and face inherent limitations in accuracy, particularly when analyzing subgroups or policy impacts that may vary by demographic characteristics not used in the imputation process.
+
+In contrast, our approach provides race and ethnicity variables directly from the CPS without requiring complex imputation. This offers several advantages:
+
+\begin{itemize}
+    \item Race and ethnicity are observed rather than imputed, avoiding potential biases from statistical matching
+    \item Demographic information is available at the individual level, not just for tax unit heads
+    \item The same enhancement methodology can be applied to analyze other demographic characteristics like disability status and educational attainment
+    \item Interactions between demographics can be analyzed naturally (e.g., poverty impacts by both race and age)
+\end{itemize}
+
+This capability enables more reliable analysis of how tax and benefit policies affect different demographic groups. For example, using the enhanced CPS we can directly examine how the Earned Income Tax Credit's benefits vary by race and ethnicity, or analyze the distributional effects of Child Tax Credit reforms across both income levels and demographic categories.

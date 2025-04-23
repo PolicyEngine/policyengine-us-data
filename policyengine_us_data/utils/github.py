@@ -6,16 +6,17 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import time
 
+
+# NOTE: it's unclear whether this header is needed 
 auth_headers = {
     "Authorization": f"token {os.environ.get('POLICYENGINE_US_DATA_GITHUB_TOKEN')}",
 }
-
 
 def get_asset_url(
     org: str, repo: str, release_tag: str, file_name: str
 ) -> str:
     url = f"https://api.github.com/repos/{org}/{repo}/releases/tags/{release_tag}"
-    response = requests.get(url, headers=auth_headers)
+    response = requests.get(url)
     if response.status_code != 200:
         raise ValueError(
             f"Invalid response code {response.status_code} for url {url}."
@@ -32,7 +33,7 @@ def get_asset_url(
 
 def get_release_id(org: str, repo: str, release_tag: str) -> int:
     url = f"https://api.github.com/repos/{org}/{repo}/releases/tags/{release_tag}"
-    response = requests.get(url, headers=auth_headers)
+    response = requests.get(url)
     if response.status_code == 404:
         raise ValueError(f"Release {release_tag} not found in {org}/{repo}.")
     elif response.status_code != 200:
@@ -44,7 +45,7 @@ def get_release_id(org: str, repo: str, release_tag: str) -> int:
 
 def get_all_assets(org: str, repo: str, release_id: int) -> list:
     url = f"https://api.github.com/repos/{org}/{repo}/releases/{release_id}/assets"
-    response = requests.get(url, headers=auth_headers)
+    response = requests.get(url)
     if response.status_code != 200:
         raise ValueError(
             f"Invalid response code {response.status_code} for url {url}."

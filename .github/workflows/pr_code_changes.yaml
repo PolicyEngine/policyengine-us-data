@@ -22,20 +22,14 @@ jobs:
               args: ". -l 79 --check"
 
   SmokeTestForMultipleVersions:
-    # Updated name to include OS
     name: Test Minimal Install & Import (${{ matrix.os }}, py${{ matrix.python-version }})
-    # Runs on the OS defined in the matrix strategy
     runs-on: ${{ matrix.os }}
     needs: Lint
     strategy:
-      # Optional: Prevent one failure from cancelling all other matrix jobs
       fail-fast: false
       matrix:
-        # Add os to the matrix
         os: [ubuntu-latest, windows-latest]
         python-version: ['3.10', '3.11', '3.12']
-        # You could add include/exclude rules here if specific combinations
-        # are not needed or expected to fail.
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -46,24 +40,24 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package ONLY (no dev deps)
-        # Using python -m pip is slightly more robust
         run: python -m pip install .
 
       - name: Test basic import
         run: python -c "import policyengine_us_data; print('Minimal import OK')"
-        # Default shell works fine for this on both Ubuntu (bash) and Windows (pwsh)
 
       - name: Test specific core import
-        # Corrected indentation from your example
         run: python -c "from policyengine_core.data import Dataset; print('Core import OK')"
-        # Default shell also works fine here
 
-  Test-Ubuntu:
-      runs-on: ubuntu-latest
+  Test:
+      runs-on: ${{ matrix.os }}
       needs: Lint
+      strategy:
+        matrix:
+          os: [ubuntu-latest, windows-latest]
       steps:
           - name: Checkout repo
             uses: actions/checkout@v2
+
           - name: Install uv
             uses: astral-sh/setup-uv@v5
 
@@ -74,62 +68,65 @@ jobs:
               
           - name: Install package
             run: uv pip install -e .[dev] --system
+
           - name: Download data inputs
             run: make download
             env:
               HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-              POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
+
           - name: Build datasets
             run: make data
             env:
               LITE_MODE: true
+
           - name: Run tests
             run: pytest
+
           - name: Test documentation builds
             run: make documentation
 
-  Test-Windows: # New parallel job for Windows
-    runs-on: windows-latest
-    needs: Lint
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+#Test-Windows: # New parallel job for Windows
+#  runs-on: windows-latest
+#  needs: Lint
+#  steps:
+#    - name: Checkout repo
+#      uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v1
+#    - name: Install uv
+#      uses: astral-sh/setup-uv@v1
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+#    - name: Set up Python
+#      uses: actions/setup-python@v5
+#      with:
+#        python-version: '3.12'
 
-      - name: Install package and dev dependencies
-        # Use default shell (PowerShell) for Windows runner
-        run: uv pip install -e .[dev] --system
-        shell: pwsh # Explicitly state shell if needed, though usually default
+#    - name: Install package and dev dependencies
+#      # Use default shell (PowerShell) for Windows runner
+#      run: uv pip install -e .[dev] --system
+#      shell: pwsh # Explicitly state shell if needed, though usually default
 
-      - name: Download data inputs
-        # Replaced 'make download' using Python scripts
-        run: |
-          python policyengine_us_data/storage/download_public_prerequisites.py
-          python policyengine_us_data/storage/download_private_prerequisites.py
-        env:
-          HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-          POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
-        shell: pwsh # Or cmd if python paths work better there, test needed
+#    - name: Download data inputs
+#      # Replaced 'make download' using Python scripts
+#      run: |
+#        python policyengine_us_data/storage/download_public_prerequisites.py
+#        python policyengine_us_data/storage/download_private_prerequisites.py
+#      env:
+#        HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+#        POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
+#      shell: pwsh # Or cmd if python paths work better there, test needed
 
-      - name: Build datasets
-        run: |
-          python policyengine_us_data/datasets/acs/acs.py
-          python policyengine_us_data/datasets/cps/cps.py
-          python policyengine_us_data/datasets/puf/irs_puf.py
-          python policyengine_us_data/datasets/puf/puf.py
-          python policyengine_us_data/datasets/cps/extended_cps.py
-          python policyengine_us_data/datasets/cps/enhanced_cps.py
-        env:
-          LITE_MODE: "true"
-        shell: pwsh
+#    - name: Build datasets
+#      run: |
+#        python policyengine_us_data/datasets/acs/acs.py
+#        python policyengine_us_data/datasets/cps/cps.py
+#        python policyengine_us_data/datasets/puf/irs_puf.py
+#        python policyengine_us_data/datasets/puf/puf.py
+#        python policyengine_us_data/datasets/cps/extended_cps.py
+#        python policyengine_us_data/datasets/cps/enhanced_cps.py
+#      env:
+#        LITE_MODE: "true"
+#      shell: pwsh
 
-      - name: Run tests
-        run: pytest
-        shell: pwsh
+#    - name: Run tests
+#      run: pytest
+#      shell: pwsh

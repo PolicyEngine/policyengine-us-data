@@ -24,10 +24,15 @@ class CPS(Dataset):
     raw_cps: Type[CensusCPS] = None
     previous_year_raw_cps: Type[CensusCPS] = None
     data_format = Dataset.ARRAYS
+    frac: float | None = 1
 
     def generate(self):
         """Generates the Current Population Survey dataset for PolicyEngine US microsimulations.
         Technical documentation and codebook here: https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar21.pdf
+
+        Args:
+            frac (float, optional): Fraction of the dataset to keep. Defaults to 1. Example: To downsample to 25% of dataset,
+                set frac=0.25.
         """
 
         if self.raw_cps is None:
@@ -61,18 +66,42 @@ class CPS(Dataset):
         add_takeup(self)
 
         # Downsample
-        self.downsample(fraction=0.5)
+        if self.frac is not None and self.frac < 1.0:
+            self.downsample(frac=self.frac)
 
-    def downsample(self, fraction: float = 0.5):
+    def downsample(self, frac: float):
         from policyengine_us import Microsimulation
 
-        sim = Microsimulation(dataset=self)
-        sim.subsample(frac=fraction)
+        # Store original dtypes before modifying
         original_data: dict = self.load_dataset()
+        original_dtypes = {
+            key: original_data[key].dtype for key in original_data
+        }
+
+        sim = Microsimulation(dataset=self)
+        sim.subsample(frac=frac)
+
         for key in original_data:
             if key not in sim.tax_benefit_system.variables:
                 continue
-            original_data[key] = sim.calculate(key).values
+            values = sim.calculate(key).values
+
+            # Preserve the original dtype if possible
+            if (
+                key in original_dtypes
+                and hasattr(values, "dtype")
+                and values.dtype != original_dtypes[key]
+            ):
+                try:
+                    original_data[key] = values.astype(original_dtypes[key])
+                except:
+                    # If conversion fails, log it but continue
+                    print(
+                        f"Warning: Could not convert {key} back to {original_dtypes[key]}"
+                    )
+                    original_data[key] = values
+            else:
+                original_data[key] = values
 
         self.save_dataset(original_data)
 
@@ -630,6 +659,7 @@ class CPS_2019(CPS):
     previous_year_raw_cps = CensusCPS_2018
     file_path = STORAGE_FOLDER / "cps_2019.h5"
     time_period = 2019
+    frac = 0.5
 
 
 class CPS_2020(CPS):
@@ -639,6 +669,7 @@ class CPS_2020(CPS):
     previous_year_raw_cps = CensusCPS_2019
     file_path = STORAGE_FOLDER / "cps_2020.h5"
     time_period = 2020
+    frac = 0.5
 
 
 class CPS_2021(CPS):
@@ -648,6 +679,7 @@ class CPS_2021(CPS):
     previous_year_raw_cps = CensusCPS_2020
     file_path = STORAGE_FOLDER / "cps_2021_v1_6_1.h5"
     time_period = 2021
+    frac = 0.5
 
 
 class CPS_2022(CPS):
@@ -657,6 +689,7 @@ class CPS_2022(CPS):
     previous_year_raw_cps = CensusCPS_2021
     file_path = STORAGE_FOLDER / "cps_2022_v1_6_1.h5"
     time_period = 2022
+    frac = 0.5
 
 
 class CPS_2023(CPS):
@@ -666,6 +699,7 @@ class CPS_2023(CPS):
     previous_year_raw_cps = CensusCPS_2022
     file_path = STORAGE_FOLDER / "cps_2023.h5"
     time_period = 2023
+    frac = 0.5
 
 
 class CPS_2024(CPS):
@@ -674,6 +708,37 @@ class CPS_2024(CPS):
     file_path = STORAGE_FOLDER / "cps_2024.h5"
     time_period = 2024
     url = "release://policyengine/policyengine-us-data/1.13.0/cps_2024.h5"
+    frac = 0.5
+
+
+# The below datasets are a very naïve way of preventing downsampling in the
+# Pooled 3-Year CPS. They should be replaced by a more sustainable approach.
+# If these are still here on July 1, 2025, please open an issue and raise at standup.
+class CPS_2021_Full(CPS):
+    name = "cps_2021_full"
+    label = "CPS 2021 (full)"
+    raw_cps = CensusCPS_2021
+    previous_year_raw_cps = CensusCPS_2020
+    file_path = STORAGE_FOLDER / "cps_2021_full.h5"
+    time_period = 2021
+
+
+class CPS_2022_Full(CPS):
+    name = "cps_2022_full"
+    label = "CPS 2022 (full)"
+    raw_cps = CensusCPS_2022
+    previous_year_raw_cps = CensusCPS_2021
+    file_path = STORAGE_FOLDER / "cps_2022_full.h5"
+    time_period = 2022
+
+
+class CPS_2023_Full(CPS):
+    name = "cps_2023_full"
+    label = "CPS 2023 (full)"
+    raw_cps = CensusCPS_2023
+    previous_year_raw_cps = CensusCPS_2022
+    file_path = STORAGE_FOLDER / "cps_2023_full.h5"
+    time_period = 2023
 
 
 class PooledCPS(Dataset):
@@ -727,9 +792,9 @@ class Pooled_3_Year_CPS_2023(PooledCPS):
     name = "pooled_3_year_cps_2023"
     file_path = STORAGE_FOLDER / "pooled_3_year_cps_2023.h5"
     input_datasets = [
-        CPS_2021,
-        CPS_2022,
-        CPS_2023,
+        CPS_2021_Full,
+        CPS_2022_Full,
+        CPS_2023_Full,
     ]
     time_period = 2023
     url = "hf://policyengine/policyengine-us-data/pooled_3_year_cps_2023.h5"
@@ -740,4 +805,7 @@ if __name__ == "__main__":
     CPS_2022().generate()
     CPS_2023().generate()
     CPS_2024().generate()
+    CPS_2021_Full().generate()
+    CPS_2022_Full().generate()
+    CPS_2023_Full().generate()
     Pooled_3_Year_CPS_2023().generate()

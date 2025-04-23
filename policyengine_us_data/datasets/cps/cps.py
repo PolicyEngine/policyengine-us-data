@@ -341,7 +341,12 @@ def add_personal_income_variables(
         year (int): The CPS year
     """
     # Get income imputation parameters.
-    yamlfilename = files('policyengine_us_data') / 'datasets' / 'cps' / 'imputation_parameters.yaml'
+    yamlfilename = (
+        files("policyengine_us_data")
+        / "datasets"
+        / "cps"
+        / "imputation_parameters.yaml"
+    )
 
     with open(yamlfilename, "r", encoding="utf-8") as yamlfile:
         p = yaml.safe_load(yamlfile)

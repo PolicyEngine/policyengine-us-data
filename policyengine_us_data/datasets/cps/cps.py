@@ -14,6 +14,10 @@ from policyengine_us_data.utils.uprating import (
 from policyengine_us_data.utils import QRF
 
 
+# TODO: figure out how to get this to work interactively. You should be able to run this in ipython
+#__file__ = '/mnt/c/devl/policyengine-us-data/policyengine_us_data/datasets/cps/imputation_parameters.yaml'
+
+
 class CPS(Dataset):
     name = "cps"
     label = "CPS"
@@ -57,7 +61,6 @@ class CPS(Dataset):
         add_takeup(self)
 
         # Downsample
-
         self.downsample(fraction=0.5)
 
     def downsample(self, fraction: float = 0.5):

@@ -7,10 +7,11 @@ from requests.packages.urllib3.util.retry import Retry
 import time
 
 
-# NOTE: it's unclear whether this header is needed 
+# NOTE: it's unclear whether this header is needed
 auth_headers = {
     "Authorization": f"token {os.environ.get('POLICYENGINE_US_DATA_GITHUB_TOKEN')}",
 }
+
 
 def get_asset_url(
     org: str, repo: str, release_tag: str, file_name: str

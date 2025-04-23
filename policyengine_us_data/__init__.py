@@ -2,7 +2,7 @@ import os
 import sys
 
 # --- Check for Hugging Face Token ---
-hf_token = os.getenv('HUGGING_FACE_TOKEN')
+hf_token = os.getenv("HUGGING_FACE_TOKEN")
 
 if not hf_token:
     warning_message = (

@@ -10,9 +10,7 @@ import time
 TOKEN = os.environ.get("POLICYENGINE_US_DATA_GITHUB_TOKEN")
 
 if TOKEN:
-    AUTH_HEADERS = {
-        "Authorization": f"token {TOKEN}"
-    }
+    AUTH_HEADERS = {"Authorization": f"token {TOKEN}"}
 else:
     print(
         "NOTE: POLICYENGINE_US_DATA_GITHUB_TOKEN is not set.\n"

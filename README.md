@@ -2,9 +2,17 @@
 
 ## Installation
 
+While it is possible to install via PyPi:
 ```bash
 pip install policyengine-us-data
 ```
+the recommended installion is 
+```
+pip install -e .[dev]
+```
+which installs the development dependencies in a reference-only manner (so that changes
+to the package code will be reflected immediately); `policyengine-us-data` is a dev package
+and not intended for direct access.
 
 ## Building the Paper
 

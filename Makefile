@@ -44,7 +44,7 @@ data:
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5
-	rm -f policyengine_us_data/storage/*.csv
+	git clean -fX -- '*.csv'
 	rm -rf policyengine_us_data/docs/_build
 
 build:

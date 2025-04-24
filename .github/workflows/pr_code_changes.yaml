@@ -54,6 +54,9 @@ jobs:
       strategy:
         matrix:
           os: [ubuntu-latest, windows-latest]
+      env:
+        HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+        POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
       steps:
           - name: Checkout repo
             uses: actions/checkout@v2

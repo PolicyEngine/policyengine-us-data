@@ -43,8 +43,9 @@ data:
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 
 clean:
-	rm -f policyengine_us_data/storage/puf_2015.csv
-	rm -f policyengine_us_data/storage/demographics_2015.csv
+	rm -f policyengine_us_data/storage/*.h5
+	rm -f policyengine_us_data/storage/*.csv
+	rm -rf policyengine_us_data/docs/_build
 
 build:
 	python -m build

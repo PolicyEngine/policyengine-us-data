@@ -1,6 +1,6 @@
 # Introduction
 
-PolicyEngine-US-Data is a package that creates representative microdata for the US, 
+PolicyEngine's policyengine-us-data is a Python package that facilitates access to representative microdata for the US, 
 designed for input in the PolicyEngine tax-benefit microsimulation model. This tool 
 allows users to explore the data sources, validation processes, and enhancements 
 made to ensure accurate and reliable microsimulation results.

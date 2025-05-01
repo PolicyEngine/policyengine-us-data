@@ -1,5 +1,6 @@
 format: jb-book
 root: intro
 chapters:
+- file: setup.ipynb
 - file: validation.ipynb
 - file: results.ipynb

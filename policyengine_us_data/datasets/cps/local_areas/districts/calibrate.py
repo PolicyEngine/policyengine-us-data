@@ -14,6 +14,7 @@ from pathlib import Path
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data import DATASETS, CPS_2022
 
+
 FOLDER = Path(__file__).parent
 
 if False:  # Interactive use
@@ -21,12 +22,8 @@ if False:  # Interactive use
     FOLDER = Path('.')
 
 
-# TODO: why can't I just call on the string dataset name in my functions?
-from policyengine_us_data.datasets.cps.cps import CPS_2022
-
-
 def create_district_target_matrix(
-    dataset: str = "CPS_2022",
+    dataset: str = "cps_2022",
     time_period: int = 2025,
     reform=None,
 ):
@@ -35,7 +32,7 @@ def create_district_target_matrix(
     ages_count_matrix = ages.iloc[:, 4:]
     age_ranges = list(ages_count_matrix.columns)
 
-    sim = Microsimulation(dataset=CPS_2022)  # TODO: took back up to argument, and why isn't a string working?
+    sim = Microsimulation(dataset=dataset)
     sim.default_calculation_period = time_period
 
     matrix = pd.DataFrame()
@@ -70,13 +67,13 @@ def calibrate(
     epochs: int = 128,
     excluded_training_targets=[],
     log_csv="training_log.csv",
-    overwrite_efrs=True,
+    overwrite_ecps=True,
 ):
     matrix_, y_ = create_district_target_matrix(
-        CPS_2022, 2025
+        "cps_2022", 2025
     )
 
-    sim = Microsimulation(dataset = CPS_2022)
+    sim = Microsimulation(dataset = "cps_2022")
 
     COUNT_DISTRICTS = 435 
 
@@ -94,9 +91,24 @@ def calibrate(
     y = torch.tensor(y_.values, dtype=torch.float32)
     # r = torch.tensor(country_mask, dtype=torch.float32)
 
-    def loss(w): #, validation: bool = False):
+    # --- UNDERSTANDING THE LOSS FUNCTION ---- (Ben's personal documentation for now)
+    # All targets must share the same weights.
+    #
+    # The w_unsqueezed tensor (shape (d, h, 1)) behaves as if its last dimension (size 1)
+    # is tiled or copied k times to match the k dimension of metrics_unsqueezed, 
+    # , effectively becoming a (d, h, k) tensor where w[i, j] is repeated across the last dimension, the targets.
+    #
+    # All districs share the same metrics.
+    # The metrics_unsqueezed tensor (shape (1, h, k)) behaves as if its first dimension (size 1) is tiled or copied d times
+    # to match the d dimension of w_unsqueezed, effectively becoming a (d, h, k) tensor
+
+    # The modified Mean Squared Relative Error:
+    # This second step calculates the Mean Squared Relative Error, but specifically relative to 1 + y. Instead of measuring the average squared difference (pred - y)**2, it measures the average squared relative difference with respect to the modified target: ((pred / (1 + y)) - 1) ** 2.
+
+    def loss(w):
         pred = (w.unsqueeze(-1) * metrics.unsqueeze(0)).sum(dim=1)
-        mse = torch.mean((pred / (1 + y) - 1) ** 2)
+        # mse = torch.mean((pred / (1 + y) - 1) ** 2)
+        mse = torch.mean(((pred - y) / y) ** 2)
         return mse
 
     optimizer = torch.optim.Adam([weights], lr=0.15)

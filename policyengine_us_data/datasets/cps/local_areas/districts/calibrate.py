@@ -24,38 +24,6 @@ if False:  # Interactive use
 # TODO: why can't I just call on the string dataset name in my functions?
 from policyengine_us_data.datasets.cps.cps import CPS_2022
 
-# TODO: split these up later 
-#from policyengine_us_data.datasets.frs.local_areas.constituencies.loss import (
-#    create_constituency_target_matrix,
-#    create_national_target_matrix,
-#)
-#from policyengine_uk_data.datasets.frs.local_areas.constituencies.boundary_changes.mapping_matrix import (
-#    mapping_matrix,
-#)
-
-# TODO: find out if the 
-#def create_district_mask(
-#    household_districts: np.ndarray, codes: pd.Series
-#) -> np.ndarray:
-#    # Create a matrix R to accompany the loss matrix M s.t. (W x M) x R = Y_
-#    # where Y_ is the target matrix for the district where no target is constructed from weights from a different district.
-#
-#    constituency_countries = codes.apply(lambda code: code[0]).map(
-#        {
-#            "E": "ENGLAND",
-#            "W": "WALES",
-#            "S": "SCOTLAND",
-#            "N": "NORTHERN_IRELAND",
-#        }
-#    )
-#
-#    r = np.zeros((len(codes), len(household_countries)))
-#
-#    for i in range(len(codes)):
-#        r[i] = household_countries == constituency_countries[i]
-#
-#    return r
-
 
 def create_district_target_matrix(
     dataset: str = "CPS_2022",

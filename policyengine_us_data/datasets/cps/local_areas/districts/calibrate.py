@@ -27,13 +27,13 @@ def create_district_target_matrix(
     time_period: int = 2025,
     reform=None,
 ):
-    ages = pd.read_csv(FOLDER / "targets" / "age.csv")
+    ages = pd.read_csv(FOLDER / "targets" / "age-districts.csv")
 
-    ages_count_matrix = ages.iloc[:, 4:]
+    ages_count_matrix = ages.iloc[:, 2:]
     age_ranges = list(ages_count_matrix.columns)
 
     sim = Microsimulation(dataset=dataset)
-    sim.default_calculation_period = time_period
+    sim.default_calculation_period = time_period  # why isn't the time period 2022?
 
     matrix = pd.DataFrame()
     y = pd.DataFrame()
@@ -53,7 +53,7 @@ def create_district_target_matrix(
 
         y[f"age/{age_range}"] = ages[age_range]
 
-    # TODO: What type of Masks will I need?
+    # TODO: Create a mask so that weights cannot be shared among HHs of different states
     #district_mask = create_district_mask(
     #    household_districts= ?? sim.calculate("??").values,
     #    codes=ages.iloc[:, 1]
@@ -74,6 +74,7 @@ def calibrate(
     )
 
     sim = Microsimulation(dataset = "cps_2022")
+    sim.default_calculation_period = 2025
 
     COUNT_DISTRICTS = 435 
 
@@ -103,7 +104,9 @@ def calibrate(
     # to match the d dimension of w_unsqueezed, effectively becoming a (d, h, k) tensor
 
     # The modified Mean Squared Relative Error:
-    # This second step calculates the Mean Squared Relative Error, but specifically relative to 1 + y. Instead of measuring the average squared difference (pred - y)**2, it measures the average squared relative difference with respect to the modified target: ((pred / (1 + y)) - 1) ** 2.
+    # This second step calculates the Mean Squared Relative Error, but specifically relative to 1 + y.
+    # Instead of measuring the average squared difference (pred - y) ** 2, it measures the average squared
+    # relative difference with respect to the modified target: ((pred / (1 + y)) - 1) ** 2.
 
     def loss(w):
         pred = (w.unsqueeze(-1) * metrics.unsqueeze(0)).sum(dim=1)
@@ -137,15 +140,6 @@ def calibrate(
                 f.create_dataset("2025", data=final_weights)
 
             #if overwrite_ecps:
-            #    with h5py.File(
-            #        STORAGE_FOLDER / "enhanced_ecps_2022_23.h5", "r+"
-            #    ) as f:
-            #        if "household_weight/2025" in f:
-            #            del f["household_weight/2025"]
-            #        f.create_dataset(
-            #            "household_weight/2025", data=final_weights.sum(axis=0)
-            #        )
-
     return final_weights
 
 

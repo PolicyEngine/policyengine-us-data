@@ -95,7 +95,7 @@ print(f"Ommitted {GEO} geographies:\n\n{omitted_rows[['GEO_ID', 'NAME']]}")
 
 if GEO == 'District':
     assert(df_geos.shape[0] == 435)
-    df_geos.to_csv("./districts/targets/age-districts.csv", index=False)
+    df_geos.to_csv("./districts/targets/age-district.csv", index=False)
 elif GEO == 'State':
     assert(df_geos.shape[0] == 50)
     df_geos.to_csv("./states/targets/age-state.csv", index=False)

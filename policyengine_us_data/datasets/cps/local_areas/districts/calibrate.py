@@ -27,7 +27,7 @@ def create_district_target_matrix(
     time_period: int = 2025,
     reform=None,
 ):
-    ages = pd.read_csv(FOLDER / "targets" / "age-districts.csv")
+    ages = pd.read_csv(FOLDER / "targets" / "age-district.csv")
 
     ages_count_matrix = ages.iloc[:, 2:]
     age_ranges = list(ages_count_matrix.columns)

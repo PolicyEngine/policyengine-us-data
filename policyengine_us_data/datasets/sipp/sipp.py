@@ -5,60 +5,85 @@ from policyengine_us import Microsimulation
 from microimpute.models import QRF
 from policyengine_us_data.storage import STORAGE_FOLDER
 import pickle
+from huggingface_hub import hf_hub_download
 
 
 def train_tip_model():
-    cols = [
-        "SSUID",
-        "PNUM",
-        "MONTHCODE",
-        "ERESIDENCEID",
-        "ERELRPE",
-        "SPANEL",
-        "SWAVE",
-        "WPFINWGT",
-        "ESEX",
-        "TAGE",
-        "TAGE_EHC",
-        "ERACE",
-        "EORIGIN",
-        "EEDUC",
-        "EDEPCLM",
-        "EMS",
-        "EFSTATUS",
-        "TJB1_TXAMT",
-        "TJB1_MSUM",
-        "TJB1_OCC",
-        "TJB1_IND",
-        "AJB1_TXAMT",
-        "EJB1_TYPPAY3",
-        "TJB2_TXAMT",
-        "TJB2_MSUM",
-        "TJB2_OCC",
-        "TJB2_IND",
-        "AJB2_TXAMT",
-        "EJB2_TYPPAY3",
-        "TJB3_TXAMT",
-        "TJB3_MSUM",
-        "TJB3_OCC",
-        "TJB3_IND",
-        "AJB3_TXAMT",
-        "EJB3_TYPPAY3",
-        "TJB4_TXAMT",
-        "TJB4_MSUM",
-        "TJB4_OCC",
-        "TJB4_IND",
-        "AJB4_TXAMT",
-        "EJB4_TYPPAY3",
-        "TPTOTINC",
-    ]
+    DOWNLOAD_FULL_SIPP = False
 
-    for col in cols:
-        if "JB1" in col:
-            for i in range(2, 8):
-                cols.append(col.replace("JB1", f"JB{i}"))
+    if DOWNLOAD_FULL_SIPP:
+        hf_hub_download(
+            repo_id="PolicyEngine/policyengine-us-data",
+            filename="pu2023.csv",
+            repo_type="model",
+            local_dir=STORAGE_FOLDER,
+        )
+        cols = [
+            "SSUID",
+            "PNUM",
+            "MONTHCODE",
+            "ERESIDENCEID",
+            "ERELRPE",
+            "SPANEL",
+            "SWAVE",
+            "WPFINWGT",
+            "ESEX",
+            "TAGE",
+            "TAGE_EHC",
+            "ERACE",
+            "EORIGIN",
+            "EEDUC",
+            "EDEPCLM",
+            "EMS",
+            "EFSTATUS",
+            "TJB1_TXAMT",
+            "TJB1_MSUM",
+            "TJB1_OCC",
+            "TJB1_IND",
+            "AJB1_TXAMT",
+            "EJB1_TYPPAY3",
+            "TJB2_TXAMT",
+            "TJB2_MSUM",
+            "TJB2_OCC",
+            "TJB2_IND",
+            "AJB2_TXAMT",
+            "EJB2_TYPPAY3",
+            "TJB3_TXAMT",
+            "TJB3_MSUM",
+            "TJB3_OCC",
+            "TJB3_IND",
+            "AJB3_TXAMT",
+            "EJB3_TYPPAY3",
+            "TJB4_TXAMT",
+            "TJB4_MSUM",
+            "TJB4_OCC",
+            "TJB4_IND",
+            "AJB4_TXAMT",
+            "EJB4_TYPPAY3",
+            "TPTOTINC",
+        ]
 
-    df = pd.read_csv(STORAGE_FOLDER / "pu2023.csv", delimiter="|", usecols=cols)
+        for col in cols:
+            if "JB1" in col:
+                for i in range(2, 8):
+                    cols.append(col.replace("JB1", f"JB{i}"))
+
+        df = pd.read_csv(
+            "/Users/nikhilwoodruff/Downloads/pu2023.csv",
+            delimiter="|",
+            usecols=cols,
+        )
+
+    else:
+        hf_hub_download(
+            repo_id="PolicyEngine/policyengine-us-data",
+            filename="pu2023_slim.csv",
+            repo_type="model",
+            local_dir=STORAGE_FOLDER,
+        )
+        df = pd.read_csv(
+            STORAGE_FOLDER / "pu2023_slim.csv",
+        )
 
     df["tip_income"] = (
         df[df.columns[df.columns.str.contains("TXAMT")]].fillna(0).sum(axis=1)

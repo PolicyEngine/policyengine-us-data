@@ -6,19 +6,52 @@ from microimpute.models import QRF
 from policyengine_us_data.storage import STORAGE_FOLDER
 import pickle
 
+
 def train_tip_model():
-    cols = ['SSUID','PNUM','MONTHCODE','ERESIDENCEID','ERELRPE','SPANEL','SWAVE',
-        
-        'WPFINWGT',
-        
-        'ESEX','TAGE','TAGE_EHC','ERACE','EORIGIN','EEDUC', 'EDEPCLM', 'EMS', 'EFSTATUS',
-        
-        'TJB1_TXAMT', 'TJB1_MSUM', 'TJB1_OCC', 'TJB1_IND', 'AJB1_TXAMT', 'EJB1_TYPPAY3',
-        'TJB2_TXAMT', 'TJB2_MSUM', 'TJB2_OCC', 'TJB2_IND', 'AJB2_TXAMT', 'EJB2_TYPPAY3',
-        'TJB3_TXAMT', 'TJB3_MSUM', 'TJB3_OCC', 'TJB3_IND', 'AJB3_TXAMT', 'EJB3_TYPPAY3',
-        'TJB4_TXAMT', 'TJB4_MSUM', 'TJB4_OCC', 'TJB4_IND', 'AJB4_TXAMT', 'EJB4_TYPPAY3',
-        
-        'TPTOTINC']
+    cols = [
+        "SSUID",
+        "PNUM",
+        "MONTHCODE",
+        "ERESIDENCEID",
+        "ERELRPE",
+        "SPANEL",
+        "SWAVE",
+        "WPFINWGT",
+        "ESEX",
+        "TAGE",
+        "TAGE_EHC",
+        "ERACE",
+        "EORIGIN",
+        "EEDUC",
+        "EDEPCLM",
+        "EMS",
+        "EFSTATUS",
+        "TJB1_TXAMT",
+        "TJB1_MSUM",
+        "TJB1_OCC",
+        "TJB1_IND",
+        "AJB1_TXAMT",
+        "EJB1_TYPPAY3",
+        "TJB2_TXAMT",
+        "TJB2_MSUM",
+        "TJB2_OCC",
+        "TJB2_IND",
+        "AJB2_TXAMT",
+        "EJB2_TYPPAY3",
+        "TJB3_TXAMT",
+        "TJB3_MSUM",
+        "TJB3_OCC",
+        "TJB3_IND",
+        "AJB3_TXAMT",
+        "EJB3_TYPPAY3",
+        "TJB4_TXAMT",
+        "TJB4_MSUM",
+        "TJB4_OCC",
+        "TJB4_IND",
+        "AJB4_TXAMT",
+        "EJB4_TYPPAY3",
+        "TPTOTINC",
+    ]
 
     for col in cols:
         if "JB1" in col:
@@ -27,34 +60,68 @@ def train_tip_model():
 
     df = pd.read_csv("~/Downloads/pu2022.csv", delimiter="|", usecols=cols)
 
-    df["tip_income"] = df[df.columns[df.columns.str.contains("TXAMT")]].fillna(0).sum(axis=1) * 12
+    df["tip_income"] = (
+        df[df.columns[df.columns.str.contains("TXAMT")]].fillna(0).sum(axis=1)
+        * 12
+    )
     df["employment_income"] = df.TPTOTINC * 12
     df["is_under_18"] = (df.TAGE < 18) & (df.MONTHCODE == 12)
     df["is_under_6"] = (df.TAGE < 6) & (df.MONTHCODE == 12)
-    df["count_under_18"] = df.groupby("SSUID")["is_under_18"].sum().loc[df.SSUID.values].values
-    df["count_under_6"] = df.groupby("SSUID")["is_under_6"].sum().loc[df.SSUID.values].values
+    df["count_under_18"] = (
+        df.groupby("SSUID")["is_under_18"].sum().loc[df.SSUID.values].values
+    )
+    df["count_under_6"] = (
+        df.groupby("SSUID")["is_under_6"].sum().loc[df.SSUID.values].values
+    )
     df["household_weight"] = df.WPFINWGT / 12
     df["household_id"] = df.SSUID
     df["age"] = df.TAGE
 
-    sipp = df[["household_id", "employment_income", "tip_income", "count_under_18", "count_under_6", "age", "household_weight"]]
+    sipp = df[
+        [
+            "household_id",
+            "employment_income",
+            "tip_income",
+            "count_under_18",
+            "count_under_6",
+            "age",
+            "household_weight",
+        ]
+    ]
 
     sipp = sipp[~sipp.isna().any(axis=1)]
 
-    sipp = sipp.loc[np.random.choice(sipp.index, size=len(sipp), replace=True, p=sipp.household_weight/sipp.household_weight.sum())]
+    sipp = sipp.loc[
+        np.random.choice(
+            sipp.index,
+            size=100_000,
+            replace=True,
+            p=sipp.household_weight / sipp.household_weight.sum(),
+        )
+    ]
 
     model = QRF()
 
-    model = model.fit(X_train=sipp, predictors=["employment_income", "age", "count_under_18", "count_under_6"], imputed_variables=["tip_income"])
+    model = model.fit(
+        X_train=sipp,
+        predictors=[
+            "employment_income",
+            "age",
+            "count_under_18",
+            "count_under_6",
+        ],
+        imputed_variables=["tip_income"],
+    )
 
     return model
 
-def get_tip_model() -> QRFResults:
+
+def get_tip_model() -> QRF:
     model_path = STORAGE_FOLDER / "tips.pkl"
 
     if not model_path.exists():
         model = train_tip_model()
-        
+
         with open(model_path, "wb") as f:
             pickle.dump(model, f)
     else:

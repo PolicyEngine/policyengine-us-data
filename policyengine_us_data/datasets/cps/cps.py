@@ -52,9 +52,10 @@ class CPS(Dataset):
         add_personal_variables(cps, person)
         add_personal_income_variables(cps, person, self.raw_cps.time_period)
         add_previous_year_income(self, cps)
+        add_ssn_card_type(cps, person)
         add_spm_variables(cps, spm_unit)
         add_household_variables(cps, household)
-        add_rent(self, cps, person, household)
+        # add_rent(self, cps, person, household)
 
         raw_data.close()
         self.save_dataset(cps)

@@ -683,11 +683,9 @@ def add_tips(self, cps: h5py.File):
 
     # Impute tips
 
-    from policyengine_us_data.datasets.sipp import train_tip_model
+    from policyengine_us_data.datasets.sipp import get_tip_model
 
-    print("Training")
-    model = train_tip_model()
-    print("Predicting")
+    model = get_tip_model()
 
     cps["tip_income"] = model.predict(
         X_test=cps,

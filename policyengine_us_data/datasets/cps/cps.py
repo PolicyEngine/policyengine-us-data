@@ -665,11 +665,22 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
 
     # Code 2: Noncitizens (PRCITSHP == 5) who are working or studying
     noncitizen_mask = person.PRCITSHP == 5
-    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0) # worker
+    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)  # worker
     is_student = person.A_HSCOL == 2  # student
     ead_like_mask = noncitizen_mask & (is_worker | is_student)
 
     ssn_card_type[ead_like_mask] = 2
+
+    # Step 3: Refine remaining 0s into 0 or 3
+    share_code_3 = 0.3  # IRS/SSA target share of SSA-benefit-only cards
+    rng = np.random.default_rng(seed=42)
+    to_refine = (ssn_card_type == 0) & noncitizen_mask
+    refine_indices = np.where(to_refine)[0]
+
+    if len(refine_indices) > 0:
+        draw = rng.random(len(refine_indices))
+        assign_code_3 = draw < share_code_3
+        ssn_card_type[refine_indices[assign_code_3]] = 3
 
     # Save to CPS
     cps["ssn_card_type"] = ssn_card_type

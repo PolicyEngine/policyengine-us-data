@@ -6,7 +6,7 @@ from huggingface_hub import hf_hub_download
 hf_hub_download(
     repo_id="PolicyEngine/policyengine-us-data",
     filename="pu2023.csv",
-    repo_type="dataset",
+    repo_type="model",
     local_dir=STORAGE_FOLDER,
 )
 

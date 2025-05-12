@@ -650,18 +650,25 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
 
 def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     """
-    Deterministically assign SSA card type based on PRCITSHP (citizenship status).
+    Deterministically assign SSA card type based on PRCITSHP and student/employment status.
 
-    Mapping:
-    - PRCITSHP 1–4: Citizens or naturalized → code 1 (unrestricted SSN)
-    - PRCITSHP 5: Non-citizens → code 0 (default, ITIN or restricted)
+    Code:
+    - 1: Citizen (PRCITSHP 1–4)
+    - 2: Foreign-born, noncitizen but likely on valid EAD (student or worker)
+    - 0: Other noncitizens (to refine or default)
     """
-    # Default to 0 (no SSN / ITIN only)
     ssn_card_type = np.full(len(person), 0)
 
-    # Assign code 1 for citizens (native/naturalized)
-    citizen_mask = person.PRCITSHP.isin([1, 2, 3, 4])
-    ssn_card_type[citizen_mask] = 1
+    # Code 1: Citizens
+    ssn_card_type[np.isin(person.PRCITSHP, [1, 2, 3, 4])] = 1
+
+    # Code 2: Noncitizens (PRCITSHP == 5) who are working or studying
+    noncitizen_mask = person.PRCITSHP == 5
+    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0) # worker
+    is_student = person.A_HSCOL == 2  # student
+    ead_like_mask = noncitizen_mask & (is_worker | is_student)
+
+    ssn_card_type[ead_like_mask] = 2
 
     # Save to CPS
     cps["ssn_card_type"] = ssn_card_type

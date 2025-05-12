@@ -58,7 +58,7 @@ def train_tip_model():
             for i in range(2, 8):
                 cols.append(col.replace("JB1", f"JB{i}"))
 
-    df = pd.read_csv("~/Downloads/pu2022.csv", delimiter="|", usecols=cols)
+    df = pd.read_csv(STORAGE_FOLDER / "pu2023.csv", delimiter="|", usecols=cols)
 
     df["tip_income"] = (
         df[df.columns[df.columns.str.contains("TXAMT")]].fillna(0).sum(axis=1)

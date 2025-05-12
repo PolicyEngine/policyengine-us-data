@@ -1,6 +1,14 @@
 from policyengine_us_data.utils.github import download
 from pathlib import Path
 from policyengine_us_data.storage import STORAGE_FOLDER
+from huggingface_hub import hf_hub_download
+
+hf_hub_download(
+    repo_id="PolicyEngine/policyengine-us-data",
+    filename="pu2023.csv",
+    repo_type="dataset",
+    local_dir=STORAGE_FOLDER,
+)
 
 download(
     "PolicyEngine",

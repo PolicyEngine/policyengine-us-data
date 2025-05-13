@@ -394,6 +394,7 @@ def _add_tax_expenditure_targets(
         "medical_expense_deduction": 11.4e9,
         "charitable_deduction": 65.301e9,
         "interest_deduction": 24.8e9,
+        "qualified_business_income_deduction": 63.1e9,
     }
 
     def make_repeal_class(deduction_var):

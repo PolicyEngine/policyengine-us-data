@@ -303,4 +303,5 @@ PERSON_COLUMNS = [
     "POTC_VAL",
     "PMED_VAL",
     "PEMCPREM",
+    "NOW_GRP",
 ]

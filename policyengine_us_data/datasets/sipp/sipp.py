@@ -41,25 +41,6 @@ def train_tip_model():
             "TJB1_OCC",
             "TJB1_IND",
             "AJB1_TXAMT",
-            "EJB1_TYPPAY3",
-            "TJB2_TXAMT",
-            "TJB2_MSUM",
-            "TJB2_OCC",
-            "TJB2_IND",
-            "AJB2_TXAMT",
-            "EJB2_TYPPAY3",
-            "TJB3_TXAMT",
-            "TJB3_MSUM",
-            "TJB3_OCC",
-            "TJB3_IND",
-            "AJB3_TXAMT",
-            "EJB3_TYPPAY3",
-            "TJB4_TXAMT",
-            "TJB4_MSUM",
-            "TJB4_OCC",
-            "TJB4_IND",
-            "AJB4_TXAMT",
-            "EJB4_TYPPAY3",
             "TPTOTINC",
         ]
 
@@ -69,7 +50,7 @@ def train_tip_model():
                     cols.append(col.replace("JB1", f"JB{i}"))
 
         df = pd.read_csv(
-            "/Users/nikhilwoodruff/Downloads/pu2023.csv",
+            STORAGE_FOLDER / "pu2023.csv",
             delimiter="|",
             usecols=cols,
         )
@@ -84,7 +65,7 @@ def train_tip_model():
         df = pd.read_csv(
             STORAGE_FOLDER / "pu2023_slim.csv",
         )
-
+    # Sum tip columns (AJB*_TXAMT + TJB*_TXAMT) across all jobs.
     df["tip_income"] = (
         df[df.columns[df.columns.str.contains("TXAMT")]].fillna(0).sum(axis=1)
         * 12
@@ -98,7 +79,7 @@ def train_tip_model():
     df["count_under_6"] = (
         df.groupby("SSUID")["is_under_6"].sum().loc[df.SSUID.values].values
     )
-    df["household_weight"] = df.WPFINWGT / 12
+    df["household_weight"] = df.WPFINWGT
     df["household_id"] = df.SSUID
     df["age"] = df.TAGE
 

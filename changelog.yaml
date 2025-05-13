@@ -208,3 +208,8 @@
       2022, and 2023 CPS datasets
     - Downsampling method attempts to preserve original dtype values
   date: 2025-04-22 18:24:44
+- bump: minor
+  changes:
+    added:
+    - Tip income.
+  date: 2025-05-13 12:48:06

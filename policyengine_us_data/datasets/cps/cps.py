@@ -682,8 +682,15 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
         assign_code_3 = draw < share_code_3
         ssn_card_type[refine_indices[assign_code_3]] = 3
 
-    # Save to CPS
-    cps["ssn_card_type"] = ssn_card_type
+    # cps["ssn_card_type"] = ssn_card_type
+    code_to_str = {
+        0: "NONE",
+        1: "CITIZEN",
+        2: "NON_CITIZEN_VALID_EAD",
+        3: "OTHER_NON_CITIZEN",
+    }
+    ssn_card_type_str = pd.Series(ssn_card_type).map(code_to_str).astype("S").values
+    cps["ssn_card_type"] = ssn_card_type_str
 
 
 class CPS_2019(CPS):

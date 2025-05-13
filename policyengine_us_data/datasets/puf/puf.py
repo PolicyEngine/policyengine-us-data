@@ -204,7 +204,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Ignore cmbtp (estimate of AMT income not in AGI)
     # Ignore k1bx14s and k1bx14p (partner self-employment income included in partnership and S-corp income)
     qbi = np.maximum(0, puf.E00900 + puf.E26270 + puf.E02100 + puf.E27200)
-    W2_WAGES_SCALE = 0.16
+    W2_WAGES_SCALE = 0.101
     puf["w2_wages_from_qualified_business"] = qbi * W2_WAGES_SCALE
 
     # Remove aggregate records

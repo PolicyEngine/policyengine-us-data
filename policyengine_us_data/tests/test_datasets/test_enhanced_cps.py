@@ -38,6 +38,15 @@ def test_ecps_has_mortgage_interest():
     assert sim.calculate("deductible_mortgage_interest").sum() > 1
 
 
+def test_ecps_has_tips():
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us import Microsimulation
+
+    sim = Microsimulation(dataset=EnhancedCPS_2024)
+
+    assert sim.calculate("tip_income").sum() > 50e9
+
+
 def test_ecps_replicates_jct_tax_expenditures():
     from policyengine_us import Microsimulation
     from policyengine_core.reforms import Reform

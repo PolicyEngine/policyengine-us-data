@@ -203,11 +203,35 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Ignore f2441 (AMT form attached)
     # Ignore cmbtp (estimate of AMT income not in AGI)
     # Ignore k1bx14s and k1bx14p (partner self-employment income included in partnership and S-corp income)
-    qbi = np.maximum(0, puf.E00900 + puf.E26270 + puf.E02100 + puf.E27200)
+    P_FARM_INCOME_NOT_INCLUDED_IN_SCHEDULE_C = .85
+    qbi = np.maximum(0,
+        puf.E00900  # Business or profession (Schedule C) net profit/loss (+/-)
+        + puf.E26270  #  Combined partnership and S corporation net income/loss (Schedule K-1)
+        + puf.E02100  #  Schedule F net profit/loss 
+        + puf.E27200 * P_FARM_INCOME_NOT_INCLUDED_IN_SCHEDULE_C #  Farm rent net income or loss
+        + puf.E02000  #  Schedule E net profit/loss (rent, royalty, trust, pass-through investment / business income)
+    )
     # 10.1% passthrough rate for W2 wages hits the JCT tax expenditure target for QBID
     # https://gist.github.com/nikhilwoodruff/262c80b8b17935d6fb8544647143b854
-    W2_WAGES_SCALE = 0.101
-    puf["w2_wages_from_qualified_business"] = qbi * W2_WAGES_SCALE
+
+    # wages simulation
+    MIN_MARGIN = .03  # Minimum profit margin
+    MAX_MARGIN = .15  # Maximum profit margin
+
+    MIN_LABOR_RATIO = 0.15  # 15% of revenue goes to W2 wages at minimum
+    MAX_LABOR_RATIO = 0.35  # 35% of revenue goes to W2 wages at maximum
+
+    margins = MIN_MARGIN + (MAX_MARGIN - MIN_MARGIN) * np.random.beta(2, 2, size=qbi.shape[0])
+    revenues = qbi / margins
+    #noise_factor = np.random.normal(1, 0.1, size=qbi.shape[0])
+    #revenues = revenues * noise_factor
+    labor_ratios = MIN_LABOR_RATIO + (MAX_LABOR_RATIO - MIN_LABOR_RATIO) * np.random.beta(2, 2, size=revenues.shape[0])
+    w2_gross_income = revenues * labor_ratios
+
+    puf["w2_wages_from_qualified_business"] = w2_gross_income
+
+    #W2_WAGES_SCALE = 0.101
+    #puf["w2_wages_from_qualified_business"] = qbi * W2_WAGES_SCALE
 
     # Remove aggregate records
     puf = puf[puf.MARS != 0]

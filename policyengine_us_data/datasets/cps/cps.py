@@ -54,6 +54,7 @@ class CPS(Dataset):
         add_previous_year_income(self, cps)
         add_spm_variables(cps, spm_unit)
         add_household_variables(cps, household)
+        add_tips(self, cps)
         add_rent(self, cps, person, household)
 
         raw_data.close()
@@ -646,6 +647,52 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
     cps["previous_year_income_available"] = joined_data[
         "previous_year_income_available"
     ].values
+
+
+def add_tips(self, cps: h5py.File):
+    self.save_dataset(cps)
+    from policyengine_us import Microsimulation
+
+    sim = Microsimulation(dataset=self)
+    cps = sim.calculate_dataframe(
+        [
+            "person_id",
+            "household_id",
+            "employment_income",
+            "age",
+            "household_weight",
+        ],
+        2025,
+    )
+
+    cps["is_under_18"] = cps.age < 18
+    cps["is_under_6"] = cps.age < 6
+    cps["count_under_18"] = (
+        cps.groupby("household_id")["is_under_18"]
+        .sum()
+        .loc[cps.household_id.values]
+        .values
+    )
+    cps["count_under_6"] = (
+        cps.groupby("household_id")["is_under_6"]
+        .sum()
+        .loc[cps.household_id.values]
+        .values
+    )
+    cps = pd.DataFrame(cps)
+
+    # Impute tips
+
+    from policyengine_us_data.datasets.sipp import get_tip_model
+
+    model = get_tip_model()
+
+    cps["tip_income"] = model.predict(
+        X_test=cps,
+        mean_quantile=0.5,
+    )[0.5].tip_income.values
+
+    self.save_dataset(cps)
 
 
 class CPS_2019(CPS):

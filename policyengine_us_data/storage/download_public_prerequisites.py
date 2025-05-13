@@ -1,6 +1,8 @@
 from policyengine_us_data.utils.github import download
 from pathlib import Path
 from policyengine_us_data.storage import STORAGE_FOLDER
+from huggingface_hub import hf_hub_download
+
 
 download(
     "PolicyEngine",

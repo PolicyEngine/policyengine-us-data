@@ -320,6 +320,7 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     cps["own_children_in_household"] = tmp.children.fillna(0)
 
     cps["has_marketplace_health_coverage"] = person.MRK == 1
+    cps["has_esi"] = person.NOW_GRP == 1
 
     cps["cps_race"] = person.PRDTRACE
     cps["is_hispanic"] = person.PRDTHSP != 0

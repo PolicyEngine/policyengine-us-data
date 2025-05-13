@@ -1,0 +1,5 @@
+- bump: minor
+  changes:
+    added:
+    - scf package loading module
+    - auto loan balance imputation notebook

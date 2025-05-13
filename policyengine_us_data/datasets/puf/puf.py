@@ -233,6 +233,52 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     #W2_WAGES_SCALE = 0.101
     #puf["w2_wages_from_qualified_business"] = qbi * W2_WAGES_SCALE
 
+
+    def estimate_ubia_from_depreciation(depreciation_amount, business_type=None):
+        """
+        Estimate the Unadjusted Basis Immediately After Acquisition (UBIA)
+        from annual depreciation expense.
+        
+        Parameters:
+        -----------
+        depreciation_amount : float
+            The total depreciation amount (E25550)
+        business_type : str, optional
+            Type of business if known (affects avg property life assumption)
+            
+        Returns:
+        --------
+        float : Estimated UBIA value
+        """
+        # Default assumptions if no business type is provided
+        avg_property_life = 7  # Average property life in years (typical for business equipment)
+        qualified_property_ratio = 0.8  # Assume 80% of depreciable property qualifies for UBIA
+        
+        # Adjust assumptions based on business type
+        if business_type == 'real_estate':
+            avg_property_life = 27.5  # Residential real estate
+            qualified_property_ratio = 0.95  # Higher qualification ratio
+        elif business_type == 'manufacturing':
+            avg_property_life = 10  # Manufacturing equipment
+            qualified_property_ratio = 0.85
+        elif business_type == 'service':
+            avg_property_life = 5  # Service businesses 
+            qualified_property_ratio = 0.7  # Lower equipment ratio
+        
+        # Simple straight-line depreciation formula reversal
+        # Annual Depreciation = Original Cost / Useful Life
+        # Therefore: Original Cost = Annual Depreciation * Useful Life
+        estimated_total_property_basis = depreciation_amount * avg_property_life
+        
+        # Apply ratio to get qualified property only
+        estimated_ubia = estimated_total_property_basis * qualified_property_ratio
+        
+        return estimated_ubia
+
+    # Apply the function to your data
+    # Example usage:
+    puf['unadjusted_basis_qualified_property'] = puf.E25550.apply(estimate_ubia_from_depreciation)
+
     # Remove aggregate records
     puf = puf[puf.MARS != 0]
 

@@ -256,6 +256,7 @@ def build_loss_matrix(dataset: type, time_period):
         # Rough estimate, not CPS derived
         "real_estate_taxes": 500e9,  # Rough estimate between 350bn and 600bn total property tax collections
         "rent": 735e9,  # ACS total uprated by CPI
+        "tip_income": 38e9 * 1.35 # Table 5A from https://www.irs.gov/statistics/soi-tax-stats-individual-information-return-form-w2-statistics, uprated by 35% employment income growth 2018-2024.
     }
 
     for variable_name, target in HARD_CODED_TOTALS.items():

@@ -15,6 +15,21 @@ class FedSCF(Dataset):
     time_period: int
     """Year of the dataset."""
 
+    def load(self):
+        """Loads the raw SCF dataset.
+
+        Returns:
+            pd.DataFrame: The raw SCF data.
+        """
+        # Check if file exists
+        if not os.path.exists(self.file_path):
+            print(f"Raw SCF dataset file not found. Generating it.")
+            self.generate()
+
+        # Open the HDF store and return the DataFrame
+        with pd.HDFStore(self.file_path, mode="r") as storage:
+            return storage["data"]
+
     def generate(self):
         if self._scf_download_url is None:
             raise ValueError(

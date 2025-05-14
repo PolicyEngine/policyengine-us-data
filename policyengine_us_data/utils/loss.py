@@ -383,7 +383,7 @@ def build_loss_matrix(dataset: type, time_period):
         # Target value - replace with actual target values from SSA/IRS data
         if card_type == 0:  # Default/ITIN
             # https://www.pewresearch.org/race-and-ethnicity/2018/11/27/u-s-unauthorized-immigrant-total-dips-to-lowest-level-in-a-decade/
-            target_count = 10.1e6
+            target_count = 11e6
 
         targets_array.append(target_count)
 

@@ -55,9 +55,8 @@ class CPS(Dataset):
         add_ssn_card_type(cps, person)
         add_spm_variables(cps, spm_unit)
         add_household_variables(cps, household)
-        add_rent(self, cps, person, household)
+        # add_rent(self, cps, person, household)
         add_tips(self, cps)
-        add_rent(self, cps, person, household)
 
         raw_data.close()
         self.save_dataset(cps)

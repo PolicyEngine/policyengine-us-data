@@ -104,7 +104,7 @@ def test_ssn_card_type_none_target():
 
     # Calculate the number of individuals with ssn_card_type == "NONE"
     ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"
-    count = sim.map_result(ssn_type_none_mask, "person", "household").sum()
+    count = ssn_type_none_mask.sum()
 
     pct_error = abs((count - TARGET_COUNT) / TARGET_COUNT)
 

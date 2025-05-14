@@ -12,6 +12,7 @@ from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
 from policyengine_us_data.utils import QRF
+import logging
 
 
 class CPS(Dataset):
@@ -81,6 +82,9 @@ class CPS(Dataset):
 
         for key in original_data:
             if key not in sim.tax_benefit_system.variables:
+                logging.warning(
+                    f"Attempting to downsample the variable {key} but failing because it is not in the given country package."
+                )
                 continue
             values = sim.calculate(key).values
 
@@ -321,6 +325,8 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     cps["own_children_in_household"] = tmp.children.fillna(0)
 
     cps["has_marketplace_health_coverage"] = person.MRK == 1
+
+    cps["has_esi"] = person.NOW_GRP == 1
 
     cps["cps_race"] = person.PRDTRACE
     cps["is_hispanic"] = person.PRDTHSP != 0

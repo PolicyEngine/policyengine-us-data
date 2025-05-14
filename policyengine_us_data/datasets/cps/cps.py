@@ -12,6 +12,7 @@ from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
 from policyengine_us_data.utils import QRF
+import logging
 
 
 class CPS(Dataset):
@@ -80,6 +81,9 @@ class CPS(Dataset):
 
         for key in original_data:
             if key not in sim.tax_benefit_system.variables:
+                logging.warning(
+                    f"Attempting to downsample the variable {key} but failing because it is not in the given country package."
+                )
                 continue
             values = sim.calculate(key).values
 

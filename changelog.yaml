@@ -231,3 +231,9 @@
     - Calibration of undocumented population to 10.1 million based on Pew Research
       data.
   date: 2025-05-14 14:15:06
+- bump: minor
+  changes:
+    added:
+    - scf package loading module
+    - auto loan balance imputation notebook
+  date: 2025-05-14 14:29:32

@@ -197,7 +197,7 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
         for var, data in cps_data.items()
     }
 
-    cps_race_mapping = {
+    CPS_RACE_MAPPING = {
         1: 1,  # White only -> WHITE
         2: 2,  # Black only -> BLACK/AFRICAN-AMERICAN
         3: 5,  # American Indian, Alaskan Native only -> AMERICAN INDIAN/ALASKA NATIVE
@@ -227,7 +227,7 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
     }
 
     # Apply the mapping to recode the race values
-    cps_data["cps_race"] = np.vectorize(cps_race_mapping.get)(
+    cps_data["cps_race"] = np.vectorize(CPS_RACE_MAPPING.get)(
         cps_data["cps_race"]
     )
 
@@ -305,6 +305,10 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
 
     for var in IMPUTED_VARIABLES:
         cps[var] = imputations[0.5][var]
+
+    cps["auto_loan_interest"] = (
+        cps["auto_loan_balance"] * scf_data["auto_loan_interest"].mean() / 100
+    ) * 12
 
     self.save_dataset(cps)
 

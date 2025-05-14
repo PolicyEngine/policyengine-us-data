@@ -363,7 +363,7 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
                     interest_values[i] = id_to_interest[household_id]
 
             # Add to SCF dictionary
-            scf["auto_loan_interest"] = interest_values
+            scf["auto_loan_interest"] = interest_values / 100
             logger.info(
                 f"Added auto loan interest data for year {year} with household matching"
             )

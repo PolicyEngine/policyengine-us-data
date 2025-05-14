@@ -691,8 +691,11 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
         2: "NON_CITIZEN_VALID_EAD",
         3: "OTHER_NON_CITIZEN",
     }
-    ssn_card_type_str = pd.Series(ssn_card_type).map(code_to_str).astype("S").values
+    ssn_card_type_str = (
+        pd.Series(ssn_card_type).map(code_to_str).astype("S").values
+    )
     cps["ssn_card_type"] = ssn_card_type_str
+
 
 def add_tips(self, cps: h5py.File):
     self.save_dataset(cps)
@@ -738,6 +741,7 @@ def add_tips(self, cps: h5py.File):
     )[0.5].tip_income.values
 
     self.save_dataset(cps)
+
 
 class CPS_2019(CPS):
     name = "cps_2019"

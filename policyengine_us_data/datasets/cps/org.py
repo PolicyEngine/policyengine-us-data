@@ -8,6 +8,7 @@ import h5py
 from tqdm import tqdm
 import huggingface_hub
 
+
 class CensusCPSOrg(Dataset):
     file_path = STORAGE_FOLDER / "census_cps_org_2024.h5"
     name = "census_cps_org_2024"
@@ -23,17 +24,24 @@ class CensusCPSOrg(Dataset):
         if DOWNLOAD_FROM_CENSUS:
             url = "https://microdata.epi.org/epi_cpsorg_1979_2025.zip"
             response = requests.get(url, stream=True)
-            total_size = int(response.headers.get('content-length', 0))
+            total_size = int(response.headers.get("content-length", 0))
             block_size = 8192
-            progress_bar = tqdm(total=total_size, unit='iB', unit_scale=True, desc="Downloading CPS Org data")
-            content = b''
+            progress_bar = tqdm(
+                total=total_size,
+                unit="iB",
+                unit_scale=True,
+                desc="Downloading CPS Org data",
+            )
+            content = b""
             for data in response.iter_content(block_size):
                 progress_bar.update(len(data))
                 content += data
             progress_bar.close()
             response.content = content
             if response.status_code != 200:
-                raise Exception(f"Failed to download file: {response.status_code}")
+                raise Exception(
+                    f"Failed to download file: {response.status_code}"
+                )
             with zipfile.ZipFile(io.BytesIO(response.content)) as z:
                 with z.open("epi_cpsorg_2024.dta") as f:
                     df = pd.read_stata(f)
@@ -51,4 +59,4 @@ class CensusCPSOrg(Dataset):
             except:
                 df[col] = df[col].astype(str)
         with pd.HDFStore(self.file_path, "a") as f:
-                f.put("main", df)
+            f.put("main", df)

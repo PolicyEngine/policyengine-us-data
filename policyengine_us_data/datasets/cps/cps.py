@@ -57,6 +57,7 @@ class CPS(Dataset):
         add_spm_variables(cps, spm_unit)
         add_household_variables(cps, household)
         add_rent(self, cps, person, household)
+        add_auto_loan_balance(self, cps)
         add_tips(self, cps)
 
         raw_data.close()
@@ -165,6 +166,156 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     )
     cps["real_estate_taxes"] = np.zeros_like(cps["age"])
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
+
+
+def add_auto_loan_balance(self, cps: h5py.File) -> None:
+    """ "Add auto loan balance variable."""
+    self.save_dataset(cps)
+    cps_data = self.load_dataset()
+
+    # Preprocess the CPS for imputation
+    lengths = {k: len(v) for k, v in cps_data.items()}
+    var_len = cps_data["person_household_id"].shape[0]
+    vars_of_interest = [name for name, ln in lengths.items() if ln == var_len]
+    agg_data = pd.DataFrame({n: cps_data[n] for n in vars_of_interest})
+
+    agg = (
+        agg_data.groupby("person_household_id")[
+            ["employment_income", "self_employment_income", "farm_income"]
+        ]
+        .sum()
+        .rename(
+            columns={
+                "employment_income": "household_employment_income",
+                "self_employment_income": "household_self_employment_income",
+                "farm_income": "household_farm_income",
+            }
+        )
+        .reset_index()
+    )
+
+    mask = cps_data["is_household_head"]
+    mask_len = mask.shape[0]
+
+    cps_data = {
+        var: data[mask] if data.shape[0] == mask_len else data
+        for var, data in cps_data.items()
+    }
+
+    CPS_RACE_MAPPING = {
+        1: 1,  # White only -> WHITE
+        2: 2,  # Black only -> BLACK/AFRICAN-AMERICAN
+        3: 5,  # American Indian, Alaskan Native only -> AMERICAN INDIAN/ALASKA NATIVE
+        4: 4,  # Asian only -> ASIAN
+        5: 6,  # Hawaiian/Pacific Islander only -> NATIVE HAWAIIAN/PACIFIC ISLANDER
+        6: 7,  # White-Black -> OTHER
+        7: 7,  # White-AI -> OTHER
+        8: 7,  # White-Asian -> OTHER
+        9: 7,  # White-HP -> OTHER
+        10: 7,  # Black-AI -> OTHER
+        11: 7,  # Black-Asian -> OTHER
+        12: 7,  # Black-HP -> OTHER
+        13: 7,  # AI-Asian -> OTHER
+        14: 7,  # AI-HP -> OTHER
+        15: 7,  # Asian-HP -> OTHER
+        16: 7,  # White-Black-AI -> OTHER
+        17: 7,  # White-Black-Asian -> OTHER
+        18: 7,  # White-Black-HP -> OTHER
+        19: 7,  # White-AI-Asian -> OTHER
+        20: 7,  # White-AI-HP -> OTHER
+        21: 7,  # White-Asian-HP -> OTHER
+        22: 7,  # Black-AI-Asian -> OTHER
+        23: 7,  # White-Black-AI-Asian -> OTHER
+        24: 7,  # White-AI-Asian-HP -> OTHER
+        25: 7,  # Other 3 race comb. -> OTHER
+        26: 7,  # Other 4 or 5 race comb. -> OTHER
+    }
+
+    # Apply the mapping to recode the race values
+    cps_data["cps_race"] = np.vectorize(CPS_RACE_MAPPING.get)(
+        cps_data["cps_race"]
+    )
+
+    lengths = {k: len(v) for k, v in cps_data.items()}
+    var_len = cps_data["household_id"].shape[0]
+    vars_of_interest = [name for name, ln in lengths.items() if ln == var_len]
+    receiver_data = pd.DataFrame({n: cps_data[n] for n in vars_of_interest})
+
+    receiver_data = receiver_data.merge(
+        agg[
+            [
+                "person_household_id",
+                "household_employment_income",
+                "household_self_employment_income",
+                "household_farm_income",
+            ]
+        ],
+        on="person_household_id",
+        how="left",
+    )
+    receiver_data.drop("employment_income", axis=1, inplace=True)
+    receiver_data.drop("self_employment_income", axis=1, inplace=True)
+    receiver_data.drop("farm_income", axis=1, inplace=True)
+
+    receiver_data.rename(
+        columns={
+            "household_employment_income": "employment_income",
+            "household_self_employment_income": "self_employment_income",
+            "household_farm_income": "farm_income",
+        },
+        inplace=True,
+    )
+
+    # Impute auto loan balance from the SCF
+    from policyengine_us_data.datasets.scf.scf import SCF_2022
+
+    scf_dataset = SCF_2022()
+    scf_data = scf_dataset.load_dataset()
+    scf_data = pd.DataFrame({key: scf_data[key] for key in scf_data.keys()})
+
+    PREDICTORS = [
+        "age",
+        "is_female",
+        "cps_race",
+        "own_children_in_household",
+        "employment_income",
+        "self_employment_income",
+        "farm_income",
+    ]
+    IMPUTED_VARIABLES = ["auto_loan_balance"]
+    weights = ["household_weight"]
+
+    donor_data = scf_data[PREDICTORS + IMPUTED_VARIABLES + weights].copy()
+
+    donor_data = donor_data.loc[
+        np.random.choice(
+            donor_data.index,
+            size=100_000,
+            replace=True,
+            p=donor_data.household_weight / donor_data.household_weight.sum(),
+        )
+    ]
+
+    from microimpute.models.qrf import QRF
+
+    qrf_model = QRF()
+    fitted_model = qrf_model.fit(
+        X_train=donor_data,
+        predictors=PREDICTORS,
+        imputed_variables=IMPUTED_VARIABLES,
+        tune_hyperparameters=True,
+    )
+
+    imputations = fitted_model.predict(X_test=receiver_data)
+
+    for var in IMPUTED_VARIABLES:
+        cps[var] = imputations[0.5][var]
+
+    cps["auto_loan_interest"] = (
+        cps["auto_loan_balance"] * scf_data["auto_loan_interest"].mean() / 100
+    ) * 12
+
+    self.save_dataset(cps)
 
 
 def add_takeup(self):

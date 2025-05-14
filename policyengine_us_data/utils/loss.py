@@ -371,8 +371,7 @@ def build_loss_matrix(dataset: type, time_period):
         raise ValueError("Some targets are missing from the targets array")
 
     # SSN Card Type calibration
-    print("Adding SSN card type targets to loss matrix...")
-    for card_type in [0, 1, 2, 3]:  # All valid SSN card types
+    for card_type in [0]:  # All valid SSN card types
         ssn_type_mask = sim.calculate("ssn_card_type").values == card_type
 
         # Overall count by SSN card type
@@ -383,31 +382,10 @@ def build_loss_matrix(dataset: type, time_period):
 
         # Target value - replace with actual target values from SSA/IRS data
         if card_type == 0:  # Default/ITIN
-            target_count = 5e6  # Example target: 5 million
-        elif card_type == 1:  # Citizens
-            target_count = 240e6  # Example target: 240 million
-        elif card_type == 2:  # Work EAD
-            target_count = 15e6  # Example target: 15 million
-        elif card_type == 3:  # Benefit-only
-            target_count = 2e6  # Example target: 2 million
+            # https://www.pewresearch.org/race-and-ethnicity/2018/11/27/u-s-unauthorized-immigrant-total-dips-to-lowest-level-in-a-decade/
+            target_count = 10.1e6
 
         targets_array.append(target_count)
-
-        # SSN card type by employment status for work-authorized noncitizens
-        if card_type in [2]:
-            employed_mask = (sim.calculate("employment_income").values > 0) | (
-                sim.calculate("self_employment_income").values > 0
-            )
-            employed_with_type_mask = ssn_type_mask & employed_mask
-
-            label = f"ssa/ssn_card_type_{card_type}_employed_count"
-            loss_matrix[label] = sim.map_result(
-                employed_with_type_mask, "person", "household"
-            )
-
-            # Target for employed people of this card type
-            employed_target = 12e6  # Example: 12 million employed with type 2
-            targets_array.append(employed_target)
 
     return loss_matrix, np.array(targets_array)
 

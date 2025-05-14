@@ -23,6 +23,7 @@ dependencies = [
     "tqdm",
     "microdf_python>=0.4.3",
     "microimpute",
+    "pip-system-certs",
 ]
 
 [project.optional-dependencies]

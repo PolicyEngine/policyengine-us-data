@@ -1,0 +1,5 @@
+- bump: minor
+  changes:
+    added:
+      - SSN card type implementation for CPS dataset.
+      - Calibration of undocumented population to 10.1 million based on Pew Research data.

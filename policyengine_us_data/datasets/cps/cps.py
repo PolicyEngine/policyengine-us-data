@@ -55,7 +55,7 @@ class CPS(Dataset):
         add_ssn_card_type(cps, person)
         add_spm_variables(cps, spm_unit)
         add_household_variables(cps, household)
-        # add_rent(self, cps, person, household)
+        add_rent(self, cps, person, household)
         add_tips(self, cps)
         add_rent(self, cps, person, household)
 
@@ -654,7 +654,6 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
 def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     """
     Deterministically assign SSA card type based on PRCITSHP and student/employment status.
-
     Code:
     - 1: Citizen (PRCITSHP 1–4)
     - 2: Foreign-born, noncitizen but likely on valid EAD (student or worker)
@@ -670,7 +669,6 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)  # worker
     is_student = person.A_HSCOL == 2  # student
     ead_like_mask = noncitizen_mask & (is_worker | is_student)
-
     ssn_card_type[ead_like_mask] = 2
 
     # Step 3: Refine remaining 0s into 0 or 3
@@ -684,7 +682,6 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
         assign_code_3 = draw < share_code_3
         ssn_card_type[refine_indices[assign_code_3]] = 3
 
-    # cps["ssn_card_type"] = ssn_card_type
     code_to_str = {
         0: "NONE",
         1: "CITIZEN",

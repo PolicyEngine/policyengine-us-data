@@ -12,6 +12,7 @@ from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
 from policyengine_us_data.utils import QRF
+import logging
 
 
 class CPS(Dataset):
@@ -52,11 +53,12 @@ class CPS(Dataset):
         add_personal_variables(cps, person)
         add_personal_income_variables(cps, person, self.raw_cps.time_period)
         add_previous_year_income(self, cps)
+        add_ssn_card_type(cps, person)
         add_spm_variables(cps, spm_unit)
         add_household_variables(cps, household)
-        add_tips(self, cps)
         add_rent(self, cps, person, household)
         add_auto_loan_balance(self, cps)
+        add_tips(self, cps)
 
         raw_data.close()
         self.save_dataset(cps)
@@ -81,6 +83,9 @@ class CPS(Dataset):
 
         for key in original_data:
             if key not in sim.tax_benefit_system.variables:
+                logging.warning(
+                    f"Attempting to downsample the variable {key} but failing because it is not in the given country package."
+                )
                 continue
             values = sim.calculate(key).values
 
@@ -472,6 +477,8 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
 
     cps["has_marketplace_health_coverage"] = person.MRK == 1
 
+    cps["has_esi"] = person.NOW_GRP == 1
+
     cps["cps_race"] = person.PRDTRACE
     cps["is_hispanic"] = person.PRDTHSP != 0
 
@@ -798,6 +805,49 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
     cps["previous_year_income_available"] = joined_data[
         "previous_year_income_available"
     ].values
+
+
+def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
+    """
+    Deterministically assign SSA card type based on PRCITSHP and student/employment status.
+    Code:
+    - 1: Citizen (PRCITSHP 1–4)
+    - 2: Foreign-born, noncitizen but likely on valid EAD (student or worker)
+    - 0: Other noncitizens (to refine or default)
+    """
+    ssn_card_type = np.full(len(person), 0)
+
+    # Code 1: Citizens
+    ssn_card_type[np.isin(person.PRCITSHP, [1, 2, 3, 4])] = 1
+
+    # Code 2: Noncitizens (PRCITSHP == 5) who are working or studying
+    noncitizen_mask = person.PRCITSHP == 5
+    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)  # worker
+    is_student = person.A_HSCOL == 2  # student
+    ead_like_mask = noncitizen_mask & (is_worker | is_student)
+    ssn_card_type[ead_like_mask] = 2
+
+    # Step 3: Refine remaining 0s into 0 or 3
+    share_code_3 = 0.3  # IRS/SSA target share of SSA-benefit-only cards
+    rng = np.random.default_rng(seed=42)
+    to_refine = (ssn_card_type == 0) & noncitizen_mask
+    refine_indices = np.where(to_refine)[0]
+
+    if len(refine_indices) > 0:
+        draw = rng.random(len(refine_indices))
+        assign_code_3 = draw < share_code_3
+        ssn_card_type[refine_indices[assign_code_3]] = 3
+
+    code_to_str = {
+        0: "NONE",
+        1: "CITIZEN",
+        2: "NON_CITIZEN_VALID_EAD",
+        3: "OTHER_NON_CITIZEN",
+    }
+    ssn_card_type_str = (
+        pd.Series(ssn_card_type).map(code_to_str).astype("S").values
+    )
+    cps["ssn_card_type"] = ssn_card_type_str
 
 
 def add_tips(self, cps: h5py.File):

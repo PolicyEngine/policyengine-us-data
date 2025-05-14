@@ -203,12 +203,11 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Ignore f2441 (AMT form attached)
     # Ignore cmbtp (estimate of AMT income not in AGI)
     # Ignore k1bx14s and k1bx14p (partner self-employment income included in partnership and S-corp income)
-    P_FARM_INCOME_NOT_INCLUDED_IN_SCHEDULE_C = .85
     qbi = np.maximum(0,
         puf.E00900  # Business or profession (Schedule C) net profit/loss (+/-)
         + puf.E26270  #  Combined partnership and S corporation net income/loss (Schedule K-1)
         + puf.E02100  #  Schedule F net profit/loss 
-        + puf.E27200 * P_FARM_INCOME_NOT_INCLUDED_IN_SCHEDULE_C #  Farm rent net income or loss
+        + puf.E27200  #  Farm rent net income or loss
         + puf.E02000  #  Schedule E net profit/loss (rent, royalty, trust, pass-through investment / business income)
     )
     # 10.1% passthrough rate for W2 wages hits the JCT tax expenditure target for QBID
@@ -226,12 +225,37 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     #noise_factor = np.random.normal(1, 0.1, size=qbi.shape[0])
     #revenues = revenues * noise_factor
     labor_ratios = MIN_LABOR_RATIO + (MAX_LABOR_RATIO - MIN_LABOR_RATIO) * np.random.beta(2, 2, size=revenues.shape[0])
-    w2_gross_income = revenues * labor_ratios
+    hypothetical_w2_gross_income = revenues * labor_ratios
+    
+    pr_has_w2_employees = 1 / (1 + np.exp(-0.5E-5 * (revenues - 4E5)))
+    # p_df = pd.DataFrame({'r': revenues, 'p': pr_has_w2_employees})
+    # p_df.loc[(p_df.r > 8E5) & (p_df.r < 9E5)]
+    has_w2_employees = np.random.binomial(n=1, p=pr_has_w2_employees)
 
-    puf["w2_wages_from_qualified_business"] = w2_gross_income
+    puf["w2_wages_from_qualified_business"] = hypothetical_w2_gross_income * has_w2_employees
 
     #W2_WAGES_SCALE = 0.101
     #puf["w2_wages_from_qualified_business"] = qbi * W2_WAGES_SCALE
+
+    # Unadjusted Basis Qualified Property (UBIA - IA stands for "Immediately after acquisition")
+    hypothetical_ubia = np.maximum(0, -2.2E4 + 3.0E-1 * revenues + 4E4 * np.random.normal(size=len(pr_has_w2_employees)))
+
+    pr_has_qualified_property = np.repeat(.75, len(has_w2_employees))
+    has_qualified_property = np.random.binomial(n=1, p=pr_has_qualified_property)
+
+    puf["unadjusted_basis_qualified_property"] = hypothetical_ubia * has_qualified_property
+
+    largest_qbi_source = np.argmax(puf[["E00900", "E02000", "E02100", "E26270"]], axis=1)
+    largest_qbi_source = np.where(qbi <= 0, -1, largest_qbi_source) 
+   
+    pr_sstb = np.where(largest_qbi_source == -1, 0,
+          np.where(largest_qbi_source == 0, 0.40, # Schedule C
+          np.where(largest_qbi_source == 1, 0.03, # Schedule E
+          np.where(largest_qbi_source == 2, 0.30, # Schedule F 
+          np.where(largest_qbi_source == 3, 0.005, # Schedule K-1
+                  largest_qbi_source)))))
+
+    puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
 
 
     def estimate_ubia_from_depreciation(depreciation_amount, business_type=None):
@@ -355,6 +379,8 @@ FINANCIAL_SUBSET = [
     "unreported_payroll_tax",
     "pre_tax_contributions",
     "w2_wages_from_qualified_business",
+    "unadjusted_basis_qualified_property",
+    "business_is_sstb",
     "deductible_mortgage_interest",
 ]
 

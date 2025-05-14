@@ -299,5 +299,6 @@ PERSON_COLUMNS = [
     "POTC_VAL",
     "PMED_VAL",
     "PEMCPREM",
+    "PRCITSHP",
     "NOW_GRP",
 ]

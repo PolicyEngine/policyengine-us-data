@@ -90,3 +90,25 @@ def test_ecps_replicates_jct_tax_expenditures():
             f"{deduction} tax expenditure {tax_expenditure/1e9:.1f}bn differs from target {target/1e9:.1f}bn by {pct_error:.2%}"
         )
         assert pct_error < TOLERANCE, deduction
+
+
+def test_ssn_card_type_none_target():
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us import Microsimulation
+    import numpy as np
+
+    TARGET_COUNT = 11e6
+    TOLERANCE = 0.2  # Allow ±20% error
+
+    sim = Microsimulation(dataset=EnhancedCPS_2024)
+
+    # Calculate the number of individuals with ssn_card_type == "NONE"
+    ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"
+    count = ssn_type_none_mask.sum()
+
+    pct_error = abs((count - TARGET_COUNT) / TARGET_COUNT)
+
+    print(
+        f'SSN card type "NONE" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
+    )
+    assert pct_error < TOLERANCE

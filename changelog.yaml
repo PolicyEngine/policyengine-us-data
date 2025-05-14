@@ -224,3 +224,10 @@
     - Data downloads for Census datasets disabled.
     - Warning added for downsampling non-existent policyengine-[country] variables.
   date: 2025-05-14 13:31:21
+- bump: minor
+  changes:
+    added:
+    - SSN card type implementation for CPS dataset.
+    - Calibration of undocumented population to 10.1 million based on Pew Research
+      data.
+  date: 2025-05-14 14:15:06

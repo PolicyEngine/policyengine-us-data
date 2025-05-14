@@ -92,7 +92,7 @@ def test_ecps_replicates_jct_tax_expenditures():
         assert pct_error < TOLERANCE, deduction
 
 
-def test_ssn_card_type_0_target():
+def test_ssn_card_type_none_target():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation
     import numpy as np
@@ -102,13 +102,13 @@ def test_ssn_card_type_0_target():
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
 
-    # Calculate the number of individuals with ssn_card_type == 0
-    ssn_type_0_mask = sim.calculate("ssn_card_type") == 0
-    count = sim.map_result(ssn_type_0_mask, "person", "household").sum()
+    # Calculate the number of individuals with ssn_card_type == "NONE"
+    ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"
+    count = sim.map_result(ssn_type_none_mask, "person", "household").sum()
 
     pct_error = abs((count - TARGET_COUNT) / TARGET_COUNT)
 
     print(
-        f"SSN card type 0 count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}"
+        f'SSN card type "NONE" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
     )
     assert pct_error < TOLERANCE

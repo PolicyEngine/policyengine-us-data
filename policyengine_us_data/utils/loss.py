@@ -371,17 +371,17 @@ def build_loss_matrix(dataset: type, time_period):
         raise ValueError("Some targets are missing from the targets array")
 
     # SSN Card Type calibration
-    for card_type in [0]:  # All valid SSN card types
-        ssn_type_mask = sim.calculate("ssn_card_type").values == card_type
+    for card_type_str in ["NONE"]:  # SSN card types as strings
+        ssn_type_mask = sim.calculate("ssn_card_type").values == card_type_str
 
         # Overall count by SSN card type
-        label = f"ssa/ssn_card_type_{card_type}_count"
+        label = f"ssa/ssn_card_type_{card_type_str.lower()}_count"
         loss_matrix[label] = sim.map_result(
             ssn_type_mask, "person", "household"
         )
 
         # Target value - replace with actual target values from SSA/IRS data
-        if card_type == 0:  # Default/ITIN
+        if card_type_str == "NONE":
             # https://www.pewresearch.org/race-and-ethnicity/2018/11/27/u-s-unauthorized-immigrant-total-dips-to-lowest-level-in-a-decade/
             target_count = 11e6
 

@@ -218,3 +218,9 @@
     added:
     - Calibration of the QBID tax expenditure.
   date: 2025-05-13 13:29:57
+- bump: patch
+  changes:
+    fixed:
+    - Data downloads for Census datasets disabled.
+    - Warning added for downsampling non-existent policyengine-[country] variables.
+  date: 2025-05-14 13:31:21

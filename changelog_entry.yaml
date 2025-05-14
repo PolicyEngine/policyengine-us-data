@@ -1,0 +1,5 @@
+- bump: patch
+  changes:
+    fixed:
+    - Data downloads for Census datasets disabled.
+    - Warning added for downsampling non-existent policyengine-[country] variables.

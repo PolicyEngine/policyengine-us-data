@@ -213,6 +213,71 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # 10.1% passthrough rate for W2 wages hits the JCT tax expenditure target for QBID
     # https://gist.github.com/nikhilwoodruff/262c80b8b17935d6fb8544647143b854
 
+    regr_df = pd.DataFrame({
+    'y_sched_c_00900': puf.E00900,
+    'y_sched_e_02000': puf.E02000,
+    'y_sched_f_02100': puf.E02100,
+    'y_sched_k1_26270': puf.E26270,
+    'x_farm_rent_27200': puf.E27200,
+    'x_rent_royalty_inc_loss_25700': puf.P25700,
+    'x_rent_royalty_inc_25850': puf.E25850,  # Strictly positive
+    'x_rent_royalty_loss_25860': puf.E25860,  # Strictly positive 
+    'x_estate_income_26390': puf.E26390,
+    'x_estate_loss_26400': puf.E26400,
+    # End of the variables Max mentioned
+    'z_health_insurance_deduction_03270': puf.E03270,  # aparently this is relevant to QBI
+    'x_total_partnership_passive_income_25940': puf.E25940,  # Should not count
+    'x_total_partnership_nonpassive_income_25980': puf.E25980,  # Counts towards QBI
+    'x_total_partnership_passive_loss_25920': puf.E25920,  # Should not count towards QBI
+    'x_total_partnership_nonpassive_loss_25960': puf.E25960, # Counts towards QBI
+    'z_partnership_sec179_deduction_26110': puf.E26110,  # Some of it will count
+    'x_smallbiz_total_passive_income_26170': puf.E26170, # Should not count
+    'x_smallbiz_total_nonpassive_income_26190': puf.E26190, # Should count
+    'x_smallbiz_total_passive_loss_26160': puf.E26160, # Should not count
+    'x_smallbiz_total_nonpassive_loss_26180': puf.E26180, # Should count
+    'z_smallbiz_sec179_deduction_26100': puf.E26100  # Some of it will count 
+    })
+
+
+        regr_df.x_rent_royalty_inc_25850
+        regr_df.x_rent_royalty_loss_25860
+        regr_df.x_rent_royalty_inc_loss_25700
+        np.corrcoef(regr_df.x_rent_royalty_inc_loss_25700,
+                    regr_df.x_rent_royalty_inc_25850 - regr_df.x_rent_royalty_loss_25860)
+
+        #'y_sched_c_00900'
+        #'y_sched_e_02000'
+        #'y_sched_f_02100'
+        #'y_sched_k1_26270'
+
+        y_variable_to_regress = 'y_sched_e_02000'
+        x_predictor_variables = [
+            'x_farm_rent_27200',
+            'x_rent_royalty_inc_loss_25700',
+            'x_rent_royalty_inc_25850',
+            'x_rent_royalty_loss_25860',
+            'x_estate_income_26390',
+            'x_estate_loss_26400',
+            'x_total_partnership_passive_income_25940',
+            'x_total_partnership_nonpassive_income_25980',
+            'x_total_partnership_passive_loss_25920',
+            'x_total_partnership_nonpassive_loss_25960',
+            'x_smallbiz_total_passive_income_26170',
+            'x_smallbiz_total_nonpassive_income_26190',
+            'x_smallbiz_total_passive_loss_26160',
+            'x_smallbiz_total_nonpassive_loss_26180'
+        ]
+        Y_target = regr_df[y_variable_to_regress]
+        
+        import statsmodels.api as sm
+        X_data = regr_df[x_predictor_variables].copy()
+        X_data_with_const = sm.add_constant(X_data, has_constant='add')
+
+        model = sm.OLS(Y_target, X_data_with_const, missing='drop')
+        results = model.fit()
+        print(f"--------Y: {y_variable_to_regress} ----------")
+        results.summary()
+
     # wages simulation
     MIN_MARGIN = .03  # Minimum profit margin
     MAX_MARGIN = .15  # Maximum profit margin
@@ -233,6 +298,9 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     has_w2_employees = np.random.binomial(n=1, p=pr_has_w2_employees)
 
     puf["w2_wages_from_qualified_business"] = hypothetical_w2_gross_income * has_w2_employees
+
+    # TODO: remove eventually (I think)
+    puf["qbi"] = qbi
 
     #W2_WAGES_SCALE = 0.101
     #puf["w2_wages_from_qualified_business"] = qbi * W2_WAGES_SCALE
@@ -379,6 +447,7 @@ FINANCIAL_SUBSET = [
     "unreported_payroll_tax",
     "pre_tax_contributions",
     "w2_wages_from_qualified_business",
+    "qbi",   # TODO: temporary
     "unadjusted_basis_qualified_property",
     "business_is_sstb",
     "deductible_mortgage_interest",

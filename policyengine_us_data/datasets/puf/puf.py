@@ -239,44 +239,44 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     })
 
 
-        regr_df.x_rent_royalty_inc_25850
-        regr_df.x_rent_royalty_loss_25860
-        regr_df.x_rent_royalty_inc_loss_25700
-        np.corrcoef(regr_df.x_rent_royalty_inc_loss_25700,
-                    regr_df.x_rent_royalty_inc_25850 - regr_df.x_rent_royalty_loss_25860)
+    regr_df.x_rent_royalty_inc_25850
+    regr_df.x_rent_royalty_loss_25860
+    regr_df.x_rent_royalty_inc_loss_25700
+    np.corrcoef(regr_df.x_rent_royalty_inc_loss_25700,
+                regr_df.x_rent_royalty_inc_25850 - regr_df.x_rent_royalty_loss_25860)
 
-        #'y_sched_c_00900'
-        #'y_sched_e_02000'
-        #'y_sched_f_02100'
-        #'y_sched_k1_26270'
+    #'y_sched_c_00900'
+    #'y_sched_e_02000'
+    #'y_sched_f_02100'
+    #'y_sched_k1_26270'
 
-        y_variable_to_regress = 'y_sched_e_02000'
-        x_predictor_variables = [
-            'x_farm_rent_27200',
-            'x_rent_royalty_inc_loss_25700',
-            'x_rent_royalty_inc_25850',
-            'x_rent_royalty_loss_25860',
-            'x_estate_income_26390',
-            'x_estate_loss_26400',
-            'x_total_partnership_passive_income_25940',
-            'x_total_partnership_nonpassive_income_25980',
-            'x_total_partnership_passive_loss_25920',
-            'x_total_partnership_nonpassive_loss_25960',
-            'x_smallbiz_total_passive_income_26170',
-            'x_smallbiz_total_nonpassive_income_26190',
-            'x_smallbiz_total_passive_loss_26160',
-            'x_smallbiz_total_nonpassive_loss_26180'
-        ]
-        Y_target = regr_df[y_variable_to_regress]
-        
-        import statsmodels.api as sm
-        X_data = regr_df[x_predictor_variables].copy()
-        X_data_with_const = sm.add_constant(X_data, has_constant='add')
+    y_variable_to_regress = 'y_sched_e_02000'
+    x_predictor_variables = [
+        'x_farm_rent_27200',
+        'x_rent_royalty_inc_loss_25700',
+        'x_rent_royalty_inc_25850',
+        'x_rent_royalty_loss_25860',
+        'x_estate_income_26390',
+        'x_estate_loss_26400',
+        'x_total_partnership_passive_income_25940',
+        'x_total_partnership_nonpassive_income_25980',
+        'x_total_partnership_passive_loss_25920',
+        'x_total_partnership_nonpassive_loss_25960',
+        'x_smallbiz_total_passive_income_26170',
+        'x_smallbiz_total_nonpassive_income_26190',
+        'x_smallbiz_total_passive_loss_26160',
+        'x_smallbiz_total_nonpassive_loss_26180'
+    ]
+    Y_target = regr_df[y_variable_to_regress]
+    
+    import statsmodels.api as sm
+    X_data = regr_df[x_predictor_variables].copy()
+    X_data_with_const = sm.add_constant(X_data, has_constant='add')
 
-        model = sm.OLS(Y_target, X_data_with_const, missing='drop')
-        results = model.fit()
-        print(f"--------Y: {y_variable_to_regress} ----------")
-        results.summary()
+    model = sm.OLS(Y_target, X_data_with_const, missing='drop')
+    results = model.fit()
+    print(f"--------Y: {y_variable_to_regress} ----------")
+    results.summary()
 
     # wages simulation
     MIN_MARGIN = .03  # Minimum profit margin

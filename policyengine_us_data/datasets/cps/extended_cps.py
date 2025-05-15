@@ -26,6 +26,8 @@ IMPUTED_VARIABLES = [
     "taxable_ira_distributions",
     "self_employment_income",
     "w2_wages_from_qualified_business",
+    "unadjusted_basis_qualified_property",
+    "business_is_sstb",
     "short_term_capital_gains",
     "qualified_dividend_income",
     "charitable_cash_donations",

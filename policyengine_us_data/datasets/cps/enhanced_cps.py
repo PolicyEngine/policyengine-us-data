@@ -138,9 +138,9 @@ class EnhancedCPS(Dataset):
         data = sim.dataset.load_dataset()
         data["household_weight"] = {}
         original_weights = sim.calculate("household_weight")
-        original_weights = original_weights.values + np.random.normal(
-            1, 0.1, len(original_weights)
-        )
+        #original_weights = original_weights.values + np.random.normal(
+        #    1, 0.1, len(original_weights)
+        #)
         for year in range(self.start_year, self.end_year + 1):
             loss_matrix, targets_array = build_loss_matrix(
                 self.input_dataset, year

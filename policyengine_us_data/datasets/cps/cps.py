@@ -319,7 +319,7 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
         X_train=donor_data,
         predictors=PREDICTORS,
         imputed_variables=IMPUTED_VARIABLES,
-        tune_hyperparameters=True,
+        tune_hyperparameters=not test_lite,
     )
 
     imputations = fitted_model.predict(X_test=receiver_data)

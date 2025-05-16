@@ -24,6 +24,7 @@ dependencies = [
     "microdf_python>=0.4.3",
     "microimpute",
     "pip-system-certs",
+    "google-cloud-storage",
 ]
 
 [project.optional-dependencies]

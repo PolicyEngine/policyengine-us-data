@@ -20,6 +20,10 @@ jobs:
           with:
               args: ". -l 79 --check"
   Test:
+      permissions:
+        contents: "read"
+        # Required to auth against gcp
+        id-token: "write"
       runs-on: ubuntu-latest
       steps:
           - name: Checkout repo

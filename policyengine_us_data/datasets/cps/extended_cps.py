@@ -87,7 +87,7 @@ class ExtendedCPS(Dataset):
         puf_sim = Microsimulation(dataset=self.puf)
 
         if os.environ.get("LITE_MODE"):
-            puf_sim.subsample(10_000)
+            puf_sim.subsample(1_000)
 
         INPUTS = [
             "age",

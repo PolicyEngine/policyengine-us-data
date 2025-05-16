@@ -14,6 +14,8 @@ from policyengine_us_data.utils.uprating import (
 from policyengine_us_data.utils import QRF
 import logging
 
+test_lite = os.environ.get("TEST_LITE")
+
 
 class CPS(Dataset):
     name = "cps"
@@ -146,7 +148,9 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         },
         na_action="ignore",
     ).fillna(train_df.tenure_type)
-    train_df = train_df[train_df.is_household_head].sample(100_000)
+    train_df = train_df[train_df.is_household_head].sample(
+        100_000 if not test_lite else 1_000
+    )
     inference_df = cps_sim.calculate_dataframe(PREDICTORS)
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]

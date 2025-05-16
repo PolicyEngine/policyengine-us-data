@@ -51,21 +51,33 @@ class CPS(Dataset):
             raw_data[entity] for entity in ENTITIES
         ]
 
+        logging.info("Adding ID variables")
         add_id_variables(cps, person, tax_unit, family, spm_unit, household)
+        logging.info("Adding personal variables")
         add_personal_variables(cps, person)
+        logging.info("Adding personal income variables")
         add_personal_income_variables(cps, person, self.raw_cps.time_period)
+        logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
+        logging.info("Adding SSN card type")
         add_ssn_card_type(cps, person)
+        logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
+        logging.info("Adding household variables")
         add_household_variables(cps, household)
+        logging.info("Adding rent")
         add_rent(self, cps, person, household)
+        logging.info("Adding auto loan balance")
         add_auto_loan_balance(self, cps)
+        logging.info("Adding tips")
         add_tips(self, cps)
+        logging.info("Added all variables")
 
         raw_data.close()
         self.save_dataset(cps)
-
+        logging.info("Adding takeup")
         add_takeup(self)
+        logging.info("Downsampling")
 
         # Downsample
         if self.frac is not None and self.frac < 1.0:

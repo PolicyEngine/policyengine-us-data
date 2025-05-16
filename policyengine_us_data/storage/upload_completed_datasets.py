@@ -25,7 +25,7 @@ def upload_datasets():
             dataset.file_path.name,
         )
 
-        blob = dataset.file_path.name.replace(".h5", "-test.h5")
+        blob = dataset.file_path.name
         blob = bucket.blob(blob)
         blob.upload_from_filename(dataset.file_path)
         print(

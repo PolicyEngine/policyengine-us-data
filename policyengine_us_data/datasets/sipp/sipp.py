@@ -6,6 +6,9 @@ from microimpute.models import QRF
 from policyengine_us_data.storage import STORAGE_FOLDER
 import pickle
 from huggingface_hub import hf_hub_download
+import os
+
+test_lite = os.environ.get("TEST_LITE")
 
 
 def train_tip_model():
@@ -100,7 +103,7 @@ def train_tip_model():
     sipp = sipp.loc[
         np.random.choice(
             sipp.index,
-            size=100_000,
+            size=100_000 if not test_lite else 1_000,
             replace=True,
             p=sipp.household_weight / sipp.household_weight.sum(),
         )

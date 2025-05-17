@@ -14,6 +14,8 @@ from policyengine_us_data.utils.uprating import (
 from policyengine_us_data.utils import QRF
 import logging
 
+test_lite = os.environ.get("TEST_LITE")
+
 
 class CPS(Dataset):
     name = "cps"
@@ -49,21 +51,33 @@ class CPS(Dataset):
             raw_data[entity] for entity in ENTITIES
         ]
 
+        logging.info("Adding ID variables")
         add_id_variables(cps, person, tax_unit, family, spm_unit, household)
+        logging.info("Adding personal variables")
         add_personal_variables(cps, person)
+        logging.info("Adding personal income variables")
         add_personal_income_variables(cps, person, self.raw_cps.time_period)
+        logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
+        logging.info("Adding SSN card type")
         add_ssn_card_type(cps, person)
+        logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
+        logging.info("Adding household variables")
         add_household_variables(cps, household)
+        logging.info("Adding rent")
         add_rent(self, cps, person, household)
+        logging.info("Adding auto loan balance")
         add_auto_loan_balance(self, cps)
+        logging.info("Adding tips")
         add_tips(self, cps)
+        logging.info("Added all variables")
 
         raw_data.close()
         self.save_dataset(cps)
-
+        logging.info("Adding takeup")
         add_takeup(self)
+        logging.info("Downsampling")
 
         # Downsample
         if self.frac is not None and self.frac < 1.0:
@@ -146,7 +160,9 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         },
         na_action="ignore",
     ).fillna(train_df.tenure_type)
-    train_df = train_df[train_df.is_household_head].sample(100_000)
+    train_df = train_df[train_df.is_household_head].sample(
+        100_000 if not test_lite else 1_000
+    )
     inference_df = cps_sim.calculate_dataframe(PREDICTORS)
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]
@@ -290,7 +306,7 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
     donor_data = donor_data.loc[
         np.random.choice(
             donor_data.index,
-            size=100_000,
+            size=100_000 if not test_lite else 1_000,
             replace=True,
             p=donor_data.household_weight / donor_data.household_weight.sum(),
         )
@@ -303,7 +319,7 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
         X_train=donor_data,
         predictors=PREDICTORS,
         imputed_variables=IMPUTED_VARIABLES,
-        tune_hyperparameters=True,
+        tune_hyperparameters=not test_lite,
     )
 
     imputations = fitted_model.predict(X_test=receiver_data)

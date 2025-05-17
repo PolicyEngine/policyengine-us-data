@@ -71,9 +71,6 @@ IMPUTED_VARIABLES = [
     "deductible_mortgage_interest",
 ]
 
-if os.environ.get("TEST_LITE"):
-    IMPUTED_VARIABLES = IMPUTED_VARIABLES[:7]
-
 
 class ExtendedCPS(Dataset):
     cps: Type[CPS]

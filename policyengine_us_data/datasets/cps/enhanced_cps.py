@@ -138,6 +138,7 @@ class EnhancedCPS(Dataset):
         data = sim.dataset.load_dataset()
         data["household_weight"] = {}
         original_weights = sim.calculate("household_weight")
+        # TODO: make the call
         #original_weights = original_weights.values + np.random.normal(
         #    1, 0.1, len(original_weights)
         #)

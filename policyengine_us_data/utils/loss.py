@@ -1,5 +1,5 @@
 import pandas as pd
-from .soi import pe_to_soi, get_soi
+from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 import numpy as np
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_core.reforms import Reform

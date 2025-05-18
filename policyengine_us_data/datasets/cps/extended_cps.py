@@ -26,6 +26,7 @@ IMPUTED_VARIABLES = [
     "taxable_ira_distributions",
     "self_employment_income",
     "w2_wages_from_qualified_business",
+    "qbi", # TODO: temporary
     "unadjusted_basis_qualified_property",
     "business_is_sstb",
     "short_term_capital_gains",
@@ -123,33 +124,35 @@ class ExtendedCPS(Dataset):
         cps_sim = Microsimulation(dataset=self.cps)
         data = cps_sim.dataset.load_dataset()
         new_data = {}
-
-        for variable in list(data) + IMPUTED_VARIABLES:
+        
+        # My simplification of the process  - only using the CPS with imputed PUF variables
+        for variable in list(data) + IMPUTED_VARIABLES:  # data is cps variables, IMPUTED variables are from PUF
+            # 0. Say variable is from the PUF, so it's in IMPUTED_VARIABLES and not data (which is CPS)
             variable_metadata = cps_sim.tax_benefit_system.variables.get(
                 variable
             )
             if variable in data:
                 values = data[variable][...]
-            else:
-                values = cps_sim.calculate(variable).values
+            #else:
+            #    values = cps_sim.calculate(variable).values   # 1. since puf imputed var is not in cps_sim, these are all zeros
             if variable in IMPUTED_VARIABLES:
                 pred_values = y[variable].values
                 entity = variable_metadata.entity.key
                 if entity != "person":
                     pred_values = cps_sim.populations[
                         entity
-                    ].value_from_first_person(pred_values)
-                values = np.concatenate([values, pred_values])
-            elif variable == "person_id":
-                values = np.concatenate([values, values + values.max()])
-            elif "_id" in variable:
-                values = np.concatenate([values, values + values.max()])
-            elif "_weight" in variable:
-                values = np.concatenate([values, values * 0])
-            else:
-                values = np.concatenate([values, values])
+                    ].value_from_first_person(pred_values)  # should this ever be a sum, depending on the variable?
+                values = pred_values #np.concatenate([values, pred_values])  # 2. But pred values won't be zero, so you'll have 0s an non-zeros
+            #elif variable == "person_id":
+            #    values = np.concatenate([values, values + values.max()])
+            #elif "_id" in variable:
+            #    values = np.concatenate([values, values + values.max()])
+            #elif "_weight" in variable:
+            #    values = np.concatenate([values, values * 0])  # 3. weights are zero when any imputed var is non-zero
+            #else:
+            #    values = np.concatenate([values, values])
             new_data[variable] = {
-                self.time_period: values,
+                    self.time_period: values,  # e.g., {2024: array([...])}
             }
 
         self.save_dataset(new_data)

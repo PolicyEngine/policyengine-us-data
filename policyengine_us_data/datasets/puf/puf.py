@@ -133,7 +133,7 @@ def decode_age_dependent(age_range: int) -> int:
 
 def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Add variable renames
-    puf.S006 = puf.S006 / 100
+    puf.S006 = puf.S006 / 100  # "The decimal place is implied." Docs say to divide by 100
     # puf["adjusted_gross_income"] = puf.E00100
     puf["alimony_expense"] = puf.E03500
     puf["alimony_income"] = puf.E00800
@@ -297,10 +297,10 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # p_df.loc[(p_df.r > 8E5) & (p_df.r < 9E5)]
     has_w2_employees = np.random.binomial(n=1, p=pr_has_w2_employees)
 
-    puf["w2_wages_from_qualified_business"] = hypothetical_w2_gross_income * has_w2_employees
+    puf["w2_wages_from_qualified_business"] = 200000 #hypothetical_w2_gross_income * has_w2_employees
 
     # TODO: remove eventually (I think)
-    puf["qbi"] = qbi
+    puf["qbi"] = 100000 #qbi
 
     #W2_WAGES_SCALE = 0.101
     #puf["w2_wages_from_qualified_business"] = qbi * W2_WAGES_SCALE
@@ -311,7 +311,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     pr_has_qualified_property = np.repeat(.75, len(has_w2_employees))
     has_qualified_property = np.random.binomial(n=1, p=pr_has_qualified_property)
 
-    puf["unadjusted_basis_qualified_property"] = hypothetical_ubia * has_qualified_property
+    puf["unadjusted_basis_qualified_property"] = 2E6 #hypothetical_ubia * has_qualified_property
 
     largest_qbi_source = np.argmax(puf[["E00900", "E02000", "E02100", "E26270"]], axis=1)
     largest_qbi_source = np.where(qbi <= 0, -1, largest_qbi_source) 

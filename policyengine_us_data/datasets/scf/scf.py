@@ -348,11 +348,11 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
 
         # Calculate total auto loan interest (sum of the amounts of each balance variable multiplied by its respective interest rate variable)
         auto_df["auto_loan_interest"] = (
-            auto_df["x2209"] * auto_df["x2219"] / 100
-            + auto_df["x2309"] * auto_df["x2319"] / 100
-            + auto_df["x2409"] * auto_df["x2419"] / 100
-            + auto_df["x7158"] * auto_df["x7170"] / 100
-        )
+            auto_df["x2209"] * auto_df["x2219"]
+            + auto_df["x2309"] * auto_df["x2319"]
+            + auto_df["x2409"] * auto_df["x2419"]
+            + auto_df["x7158"] * auto_df["x7170"]
+        ) / 100
 
         # Check if we have household identifiers (y1, yy1) in both datasets
         if (

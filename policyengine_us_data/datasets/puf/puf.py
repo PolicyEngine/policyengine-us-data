@@ -203,15 +203,113 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Ignore f2441 (AMT form attached)
     # Ignore cmbtp (estimate of AMT income not in AGI)
     # Ignore k1bx14s and k1bx14p (partner self-employment income included in partnership and S-corp income)
-    qbi = np.maximum(0, puf.E00900 + puf.E26270 + puf.E02100 + puf.E27200)
-    # 10.1% passthrough rate for W2 wages hits the JCT tax expenditure target for QBID
-    # https://gist.github.com/nikhilwoodruff/262c80b8b17935d6fb8544647143b854
-    W2_WAGES_SCALE = 0.101
-    puf["w2_wages_from_qualified_business"] = qbi * W2_WAGES_SCALE
+    # --- Qualified Business Income Deduction related variables ---
+    # Income sources
+    puf["sole_proprietorship_net_income"] = puf.E00900  # Schedule C
+    puf["schedule_F_farm_net_income"] = puf.E02100  # Schedule F active farming operations 
+    puf["farm_rental_net_income"] = puf.E27200  # Schedule E farm rental income
+    puf["rent_royalty_net_income"] = puf.E25850 - puf.E25860  # Schedule E rent and royalty
+    puf["estate_trust_net_income"] = puf.E26390 - puf.E26400  # Schedule E estate or trust 
+    puf["s_corp_net_income"] = puf.E26190 - puf.E26180  # Schedule E Active S Corp Income
+    puf["partnership_net_income"] = puf.E25980 - puf.E25960  # Schedule E Active Partnership Income
 
-    # Remove aggregate records
-    puf = puf[puf.MARS != 0]
+    puf["reit_dividends"] = 100 
+    puf["bdc_dividends"] = 100
+    puf["ptp_income"] = 100  # Publically traded partnership income
 
+    qbi = (
+        puf["sole_proprietorship_net_income"]
+        + puf["schedule_F_farm_net_income"]
+        + puf["farm_rental_net_income"]
+        + puf["rent_royalty_net_income"]
+        + puf["estate_trust_net_income"]
+        + puf["s_corp_net_income"]
+        + puf["partnership_net_income"]
+    )
+    # TODO: We should let it be negative, right?
+    qbi_prior = np.maximum(0, puf.E00900 + puf.E26270 + puf.E02100 + puf.E27200)
+    # NOTE that the current rule engine variables for income are:
+    # - self_employment_income
+    # - partnership_s_corp_income
+    # - farm_income
+    # - farm_rent_income
+    # So there's a question as to whether any improvement in naming is worth the hassle.
+    # But, for instance, there really is Schedule F farm operations and Schedule E farm rent
+
+    print(f"total QBI in Billion USD, New: {np.dot(qbi, puf.S006) / 1E9:.1f} and Old: {np.dot(qbi_prior, puf.S006) / 1E9:.1f}")
+
+
+    def simulate_w2_wages_from_qualified_business(qbi, diagnostics=False):
+        MIN_MARGIN = .03
+        MAX_MARGIN = .15
+
+        MIN_LABOR_RATIO = 0.05
+        MAX_LABOR_RATIO = 0.15
+
+        margins = MIN_MARGIN + (MAX_MARGIN - MIN_MARGIN) * np.random.beta(2, 2, size=qbi.shape[0])
+        revenues = np.maximum(qbi, 0) / margins
+        labor_ratios = (
+            MIN_LABOR_RATIO
+            + (MAX_LABOR_RATIO - MIN_LABOR_RATIO) * np.random.beta(2, 2, size=revenues.shape[0])
+        )
+        hypothetical_w2_gross_income = revenues * labor_ratios
+        
+        pr_has_w2_employees = 1 / (1 + np.exp(-0.5E-5 * (revenues - 4E5)))
+        has_w2_employees = np.random.binomial(n=1, p=pr_has_w2_employees)
+        w2_wages = hypothetical_w2_gross_income * has_w2_employees
+
+        hypothetical_ubia = (
+            np.maximum(0,
+            -2.2E4 + 3.0E-1 * revenues
+            + 4E4 * np.random.normal(size=qbi.shape[0])
+            )
+        )
+
+        pr_has_qualified_property = 1 / (1 + np.exp(3 + -(1 / 100000.0) * (w2_wages - 100000.0)))
+        pr_has_qualified_property 
+        np.median(pr_has_qualified_property[w2_wages>0])
+
+        has_qualified_property = np.random.binomial(n=1, p=pr_has_qualified_property)
+        ubia_property = hypothetical_ubia * has_qualified_property
+       
+        if diagnostics:
+            print(f"Proportion of records with positive QBI: {np.mean(qbi >0):.2f}")
+            print(f"Within positive QBI, proportion with W2 wages: {np.mean(w2_wages[qbi>0]>0):.2f}")
+            print(f"Within positive wages, mean in Millions is {np.mean(w2_wages[w2_wages>0])/1E6:.1f}")
+            print(f"Within positive wages, median in Millions is {np.median(w2_wages[w2_wages>0])/1E6:.1f}")
+            print(f"Within positive wages, 75th percentile in Millions is {np.percentile(w2_wages[w2_wages>0], 75)/1E6:.1f}")
+            print(f"Within positive wages, max in Millions is {np.max(w2_wages[w2_wages>0])/1E6:.1f}")
+            print(f"Within positive wages, median ubia property probability is {np.median(pr_has_qualified_property[w2_wages>0]):.3f}")
+            print(f"Within positive wages, median ubia property in millions is {np.median(ubia_property[w2_wages>0])/1E6:.1f}")
+        return w2_wages, ubia_property
+
+    w2_wages, ubia_property = simulate_w2_wages_from_qualified_business(qbi)
+    puf["w2_wages_from_qualified_business"] = w2_wages
+    puf["unadjusted_basis_qualified_property"] = ubia_property 
+
+    # Business is SSTB 
+    largest_qbi_source = np.argmax(puf[[
+        # 0: 20%    1: 0%     2: 15%    3: 0%    4: 0%     5: 0%     6: 10%     7: 10%    0%
+        "E00900", "E02100", "E26270", "P25700", "E25850", "E27200", "E26390", "E26400", "E02000"]], axis=1)
+    largest_qbi_source = np.where(qbi <= 0, -1, largest_qbi_source) 
+   
+    pr_sstb = np.where(largest_qbi_source == -1, 0,
+          np.where(largest_qbi_source == 0, 0.20,
+          np.where(largest_qbi_source == 1, 0.00,
+          np.where(largest_qbi_source == 2, 0.15,
+          np.where(largest_qbi_source == 3, 0.00,
+          np.where(largest_qbi_source == 4, 0.00,
+          np.where(largest_qbi_source == 5, 0.00,
+          np.where(largest_qbi_source == 6, 0.10,
+          np.where(largest_qbi_source == 7, 0.10,
+          np.where(largest_qbi_source == 8, 0.00,
+                  largest_qbi_source))))))))))
+
+    pr_sstb = np.where(qbi < 1E-3, 0, pr_sstb)
+    puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
+    print(f"{100 * np.mean(puf.loc[qbi > 0]["business_is_sstb"]):.1f}% of pos businesses")
+
+    # -------- End QBID work -------
     puf["filing_status"] = puf.MARS.map(
         {
             1: "SINGLE",

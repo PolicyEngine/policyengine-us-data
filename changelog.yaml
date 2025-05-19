@@ -242,3 +242,8 @@
     fixed:
     - Runtime for tests reduced.
   date: 2025-05-19 07:52:35
+- bump: patch
+  changes:
+    fixed:
+    - Upload to GCP on dataset build.
+  date: 2025-05-19 15:34:43

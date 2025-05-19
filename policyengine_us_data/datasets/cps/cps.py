@@ -298,7 +298,7 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
         "self_employment_income",
         "farm_income",
     ]
-    IMPUTED_VARIABLES = ["auto_loan_balance"]
+    IMPUTED_VARIABLES = ["auto_loan_interest"]
     weights = ["household_weight"]
 
     donor_data = scf_data[PREDICTORS + IMPUTED_VARIABLES + weights].copy()
@@ -326,10 +326,6 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
 
     for var in IMPUTED_VARIABLES:
         cps[var] = imputations[0.5][var]
-
-    cps["auto_loan_interest"] = (
-        cps["auto_loan_balance"] * scf_data["auto_loan_interest"].mean() / 100
-    ) * 12
 
     self.save_dataset(cps)
 

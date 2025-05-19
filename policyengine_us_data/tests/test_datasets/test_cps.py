@@ -34,9 +34,9 @@ def test_cps_has_auto_loan_interest():
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=CPS_2024)
-    # Ensure we impute at least $65 billion in auto loan interest.
-    # We currently target $256 billion.
-    AUTO_LOAN_INTEREST_MINIMUM = 65e9
+    # Ensure we impute at least $85 billion in auto loan interest.
+    # We currently target $270 billion.
+    AUTO_LOAN_INTEREST_MINIMUM = 85e9
     assert (
         sim.calculate("auto_loan_interest").sum() > AUTO_LOAN_INTEREST_MINIMUM
     )

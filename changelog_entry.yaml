@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    changed:
+    - Methodology to directly impute auto loan interest instead of assuming a 2% interest rate on auto loan balance.

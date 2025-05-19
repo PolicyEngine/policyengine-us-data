@@ -1,10 +1,10 @@
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.scf.fed_scf import (
-    FedSCF,
-    FedSCF_2016,
-    FedSCF_2019,
-    FedSCF_2022,
+    SummarizedFedSCF,
+    SummarizedFedSCF_2016,
+    SummarizedFedSCF_2019,
+    SummarizedFedSCF_2022,
 )
 import pandas as pd
 import numpy as np
@@ -18,7 +18,7 @@ class SCF(Dataset):
 
     name = "scf"
     label = "SCF"
-    raw_scf: Type[FedSCF] = None
+    raw_scf: Type[SummarizedFedSCF] = None
     time_period: int = None
     data_format = Dataset.ARRAYS
     frac: float | None = 1
@@ -217,7 +217,9 @@ def rename_columns_to_match_cps(scf: dict, raw_data: pd.DataFrame) -> None:
 
     # Vehicle loan (auto loan)
     if "veh_inst" in raw_data.columns:
-        scf["auto_loan_balance"] = raw_data["veh_inst"].fillna(0).values
+        scf["total_vehicle_installments"] = (
+            raw_data["veh_inst"].fillna(0).values
+        )
 
     # Household weights
     if "wgt" in raw_data.columns:
@@ -248,7 +250,7 @@ def rename_columns_to_match_cps(scf: dict, raw_data: pd.DataFrame) -> None:
 
 
 def add_auto_loan_interest(scf: dict, year: int) -> None:
-    """Adds auto loan interest to the summarized SCF dataset from the full SCF."""
+    """Adds auto loan balance and interest to the summarized SCF dataset from the full SCF."""
     import requests
     import zipfile
     import io
@@ -260,7 +262,18 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
     url = f"https://www.federalreserve.gov/econres/files/scf{year}s.zip"
 
     # Define columns of interest
-    columns = ["yy1", "y1", "x2219", "x2319", "x2419", "x7170"]
+    columns = [
+        "yy1",
+        "y1",
+        "x2209",
+        "x2309",
+        "x2409",
+        "x7158",
+        "x2219",
+        "x2319",
+        "x2419",
+        "x7170",
+    ]
 
     try:
         # Download zip file
@@ -312,22 +325,41 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
             ) from e
 
         # Process the interest data and add to final SCF dictionary
-        auto_int = df[columns].copy()
-        auto_int["x2219"] = auto_int["x2219"].replace(-1, 0)
-        auto_int["x2319"] = auto_int["x2319"].replace(-1, 0)
-        auto_int["x2419"] = auto_int["x2419"].replace(-1, 0)
-        auto_int["x7170"] = auto_int["x7170"].replace(-1, 0)
-        # Calculate total auto loan interest (sum of all auto loan interest variables)
-        auto_int["auto_loan_interest"] = auto_int[
-            ["x2219", "x2319", "x2419", "x7170"]
+        auto_df = df[columns].copy()
+        auto_df["x2219"] = auto_df["x2219"].replace(-1, 0)
+        auto_df["x2319"] = auto_df["x2319"].replace(-1, 0)
+        auto_df["x2419"] = auto_df["x2419"].replace(-1, 0)
+        auto_df["x7170"] = auto_df["x7170"].replace(-1, 0)
+        auto_df["x2209"] = auto_df["x2209"].replace(-1, 0)
+        auto_df["x2309"] = auto_df["x2309"].replace(-1, 0)
+        auto_df["x2409"] = auto_df["x2409"].replace(-1, 0)
+        auto_df["x7158"] = auto_df["x7158"].replace(-1, 0)
+
+        # Remove the *100 multiplication from interest rates
+        auto_df["x2219"] = auto_df["x2219"] / 100
+        auto_df["x2319"] = auto_df["x2319"] / 100
+        auto_df["x2419"] = auto_df["x2419"] / 100
+        auto_df["x7170"] = auto_df["x7170"] / 100
+
+        # Calculate total auto loan balance (sum of all auto loan balance variables)
+        auto_df["auto_loan_balance"] = auto_df[
+            ["x2209", "x2309", "x2409", "x7158"]
         ].sum(axis=1)
+
+        # Calculate total auto loan interest (sum of the amounts of each balance variable multiplied by its respective interest rate variable)
+        auto_df["auto_loan_interest"] = (
+            auto_df["x2209"] * auto_df["x2219"] / 100
+            + auto_df["x2309"] * auto_df["x2319"] / 100
+            + auto_df["x2409"] * auto_df["x2419"] / 100
+            + auto_df["x7158"] * auto_df["x7170"] / 100
+        )
 
         # Check if we have household identifiers (y1, yy1) in both datasets
         if (
             "y1" in scf
             and "yy1" in scf
-            and "y1" in auto_int.columns
-            and "yy1" in auto_int.columns
+            and "y1" in auto_df.columns
+            and "yy1" in auto_df.columns
         ):
             logger.info(
                 "Using household identifiers (y1, yy1) to ensure correct matching"
@@ -335,8 +367,8 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
 
             # Create unique identifier from y1 and yy1 for each dataset
             # In the original data
-            auto_int["household_id"] = (
-                auto_int["y1"].astype(str) + "_" + auto_int["yy1"].astype(str)
+            auto_df["household_id"] = (
+                auto_df["y1"].astype(str) + "_" + auto_df["yy1"].astype(str)
             )
 
             # In the SCF dictionary
@@ -346,35 +378,44 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
                 temp_scf["y1"].astype(str) + "_" + temp_scf["yy1"].astype(str)
             )
 
-            # Create a mapping from household ID to auto loan interest
+            # Create a mapping from household ID to auto loan balance and interest
             id_to_interest = dict(
                 zip(
-                    auto_int["household_id"].values,
-                    auto_int["auto_loan_interest"].values,
+                    auto_df["household_id"].values,
+                    auto_df["auto_loan_interest"].values,
+                )
+            )
+            id_to_balance = dict(
+                zip(
+                    auto_df["household_id"].values,
+                    auto_df["auto_loan_balance"].values,
                 )
             )
 
             # Create array for auto loan interest that matches SCF order
             interest_values = np.zeros(len(temp_scf), dtype=float)
+            balance_values = np.zeros(len(temp_scf), dtype=float)
 
             # Fill in interest values based on household ID
             for i, household_id in enumerate(temp_scf["household_id"]):
                 if household_id in id_to_interest:
                     interest_values[i] = id_to_interest[household_id]
+            for i, household_id in enumerate(temp_scf["household_id"]):
+                if household_id in id_to_balance:
+                    balance_values[i] = id_to_balance[household_id]
 
             # Add to SCF dictionary
-            scf["auto_loan_interest"] = interest_values / 100
+            scf["auto_loan_interest"] = (
+                interest_values * 12
+            )  # Monthly interest
+            scf["auto_loan_balance"] = balance_values
+
             logger.info(
                 f"Added auto loan interest data for year {year} with household matching"
             )
         else:
-            # Fallback to simple assignment if identifiers aren't present
-            logger.warning(
-                "Household identifiers not found. Using direct array assignment (may not match households correctly)"
-            )
-            scf["auto_loan_interest"] = auto_int["auto_loan_interest"].values
-            logger.info(
-                f"Added auto loan interest data for year {year} without household matching"
+            raise ValueError(
+                "Household identifiers (y1, yy1) not found in both datasets."
             )
 
     except Exception as e:
@@ -387,7 +428,7 @@ class SCF_2022(SCF):
 
     name = "scf_2022"
     label = "SCF 2022"
-    raw_scf = FedSCF_2022
+    raw_scf = SummarizedFedSCF_2022
     file_path = STORAGE_FOLDER / "scf_2022.h5"
     time_period = 2022
     frac = 1
@@ -398,7 +439,7 @@ class SCF_2019(SCF):
 
     name = "scf_2019"
     label = "SCF 2019"
-    raw_scf = FedSCF_2019
+    raw_scf = SummarizedFedSCF_2019
     file_path = STORAGE_FOLDER / "scf_2019.h5"
     time_period = 2019
     frac = 1
@@ -409,7 +450,7 @@ class SCF_2016(SCF):
 
     name = "scf_2016"
     label = "SCF 2016"
-    raw_scf = FedSCF_2016
+    raw_scf = SummarizedFedSCF_2016
     file_path = STORAGE_FOLDER / "scf_2016.h5"
     time_period = 2016
     frac = 1

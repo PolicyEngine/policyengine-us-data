@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-    - Runtime for tests reduced.

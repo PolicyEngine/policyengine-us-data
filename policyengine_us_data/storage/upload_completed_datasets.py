@@ -12,7 +12,13 @@ def upload_datasets():
     storage_client = storage.Client()
     bucket = storage_client.bucket("policyengine-us-data")
 
-    for dataset in [EnhancedCPS_2024, Pooled_3_Year_CPS_2023, CPS_2023]:
+    datasets_to_upload = [
+        EnhancedCPS_2024,
+        Pooled_3_Year_CPS_2023,
+        CPS_2023,
+    ]
+
+    for dataset in datasets_to_upload:
         dataset = dataset()
         if not dataset.exists:
             raise ValueError(

@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    fixed:
+    - Upload to GCP on dataset build.

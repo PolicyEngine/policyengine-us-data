@@ -1,7 +1,10 @@
 
 from google.cloud import storage
+import google.auth
 
-storage_client = storage.Client()
+credentials, project_id = google.auth.default()
+
+storage_client = storage.Client(credentials=credentials, project=project_id)
 bucket = storage_client.bucket("policyengine-us-data")
 blob = "README.md"
 blob = bucket.blob(blob)

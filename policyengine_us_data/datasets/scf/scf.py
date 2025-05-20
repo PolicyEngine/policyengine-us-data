@@ -398,9 +398,7 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
                     balance_values[i] = id_to_balance[household_id]
 
             # Add to SCF dictionary
-            scf["auto_loan_interest"] = (
-                interest_values * 12
-            )  # Monthly interest
+            scf["auto_loan_interest"] = interest_values
             scf["auto_loan_balance"] = balance_values
 
             logger.info(

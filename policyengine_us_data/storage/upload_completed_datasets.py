@@ -9,10 +9,11 @@ from google.cloud import storage
 import google.auth
 
 
-
 def upload_datasets():
     credentials, project_id = google.auth.default()
-    storage_client = storage.Client(credentials=credentials, project=project_id)
+    storage_client = storage.Client(
+        credentials=credentials, project=project_id
+    )
     bucket = storage_client.bucket("policyengine-us-data")
 
     datasets_to_upload = [

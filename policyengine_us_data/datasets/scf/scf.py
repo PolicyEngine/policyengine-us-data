@@ -330,9 +330,9 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
         auto_df = df[IDENTIFYER_COLUMNS + AUTO_LOAN_COLUMNS].copy()
         auto_df[AUTO_LOAN_COLUMNS].replace(-1, 0, inplace=True)
 
-        # Interest rate columns are in percent * 100 format, we need to divide by 100 to leave them in percentage format
+        # Interest rate columns are in percent * 10,000 format, we need to divide by 10,000 to leave them in percentage format
         RATE_COLUMNS = ["x2219", "x2319", "x2419", "x7170"]
-        auto_df[RATE_COLUMNS] /= 100
+        auto_df[RATE_COLUMNS] /= 10_000
 
         # Calculate total auto loan balance (sum of all auto loan balance variables)
         auto_df["auto_loan_balance"] = auto_df[
@@ -340,13 +340,12 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
         ].sum(axis=1)
 
         # Calculate total auto loan interest (sum of the amounts of each balance variable multiplied by its respective interest rate variable)
-        # Divide by 100 to convert from percentage to fraction of loan amount
         auto_df["auto_loan_interest"] = (
             auto_df["x2209"] * auto_df["x2219"]
             + auto_df["x2309"] * auto_df["x2319"]
             + auto_df["x2409"] * auto_df["x2419"]
             + auto_df["x7158"] * auto_df["x7170"]
-        ) / 100
+        )
 
         # Check if we have household identifiers (y1, yy1) in both datasets
         if (

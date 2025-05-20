@@ -262,17 +262,16 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
     url = f"https://www.federalreserve.gov/econres/files/scf{year}s.zip"
 
     # Define columns of interest
-    columns = [
-        "yy1",
-        "y1",
-        "x2209",
-        "x2309",
-        "x2409",
-        "x7158",
-        "x2219",
-        "x2319",
-        "x2419",
-        "x7170",
+    IDENTIFYER_COLUMNS = ["yy1", "y1"]
+    AUTO_LOAN_COLUMNS = [
+        "x2209",  # loan amount on car 1
+        "x2309",  # loan amount on car 2
+        "x2409",  # loan amount on car 3
+        "x7158",  # loan amount on car 4
+        "x2219",  # loan interest rate on car 1
+        "x2319",  # loan interest rate on car 2
+        "x2419",  # loan interest rate on car 3
+        "x7170",  # loan interest rate on car 4
     ]
 
     try:
@@ -308,7 +307,10 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
             try:
                 logger.info(f"Reading Stata file: {dta_files[0]}")
                 with z.open(dta_files[0]) as f:
-                    df = pd.read_stata(io.BytesIO(f.read()), columns=columns)
+                    df = pd.read_stata(
+                        io.BytesIO(f.read()),
+                        columns=(IDENTIFYER_COLUMNS + AUTO_LOAN_COLUMNS),
+                    )
                     logger.info(f"Read DataFrame with shape {df.shape}")
             except Exception as e:
                 logger.error(
@@ -325,21 +327,12 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
             ) from e
 
         # Process the interest data and add to final SCF dictionary
-        auto_df = df[columns].copy()
-        auto_df["x2219"] = auto_df["x2219"].replace(-1, 0)
-        auto_df["x2319"] = auto_df["x2319"].replace(-1, 0)
-        auto_df["x2419"] = auto_df["x2419"].replace(-1, 0)
-        auto_df["x7170"] = auto_df["x7170"].replace(-1, 0)
-        auto_df["x2209"] = auto_df["x2209"].replace(-1, 0)
-        auto_df["x2309"] = auto_df["x2309"].replace(-1, 0)
-        auto_df["x2409"] = auto_df["x2409"].replace(-1, 0)
-        auto_df["x7158"] = auto_df["x7158"].replace(-1, 0)
+        auto_df = df[IDENTIFYER_COLUMNS + AUTO_LOAN_COLUMNS].copy()
+        auto_df[AUTO_LOAN_COLUMNS].replace(-1, 0, inplace=True)
 
         # Remove the *100 multiplication from interest rates
-        auto_df["x2219"] = auto_df["x2219"] / 100
-        auto_df["x2319"] = auto_df["x2319"] / 100
-        auto_df["x2419"] = auto_df["x2419"] / 100
-        auto_df["x7170"] = auto_df["x7170"] / 100
+        RATE_COLUMNS = ["x2219", "x2319", "x2419", "x7170"]
+        auto_df[RATE_COLUMNS] /= 100
 
         # Calculate total auto loan balance (sum of all auto loan balance variables)
         auto_df["auto_loan_balance"] = auto_df[

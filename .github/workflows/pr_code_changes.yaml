@@ -43,6 +43,7 @@ jobs:
             run: make data
             env:
               TEST_LITE: true
+              PYTHON_LOG_LEVEL: INFO  
           - name: Run tests
             run: pytest
           - name: Test documentation builds

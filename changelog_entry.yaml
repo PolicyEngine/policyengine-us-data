@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-    - GCP uploads use permissions correctly

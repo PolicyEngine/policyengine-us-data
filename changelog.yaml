@@ -247,3 +247,8 @@
     fixed:
     - Upload to GCP on dataset build.
   date: 2025-05-19 15:34:43
+- bump: patch
+  changes:
+    fixed:
+    - GCP uploads use permissions correctly
+  date: 2025-05-20 10:37:41

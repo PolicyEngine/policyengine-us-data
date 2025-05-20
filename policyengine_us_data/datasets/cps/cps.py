@@ -503,6 +503,9 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     # High school or college/university enrollment status.
     cps["is_full_time_college_student"] = person.A_HSCOL == 2
 
+    cps["detailed_occupation_recode"] = person.POCCU2
+    add_overtime_occupation(cps, person)
+
 
 def add_personal_income_variables(
     cps: h5py.File, person: DataFrame, year: int
@@ -910,6 +913,50 @@ def add_tips(self, cps: h5py.File):
     )[0.5].tip_income.values
 
     self.save_dataset(cps)
+
+
+def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
+    """Add occupation categories relevant to overtime eligibility calculations.
+    Based on:
+    https://www.law.cornell.edu/uscode/text/29/213
+    https://www.congress.gov/crs-product/IF12480
+    """
+    cps["has_never_worked"] = person.POCCU2 == 53
+    cps["is_military"] = person.POCCU2 == 52
+    cps["is_computer_scientist"] = person.POCCU2 == 8
+    cps["is_farmer_fisher"] = person.POCCU2 == 41
+    cps["is_executive_administrative_professional"] = person.POCCU2.isin(
+        [
+            1,  # Chief executives, and managers
+            2,  # Compensation, human resources, and infrastructure managers
+            3,  # All other managers
+            5,  # Business operations specialists
+            6,  # Accountants and auditors
+            7,  # Financial specialists
+            9,  # Mathematical science occupations
+            10,  # Architects, except naval
+            11,  # Surveyors, cartographers, & photogrammetrists
+            12,  # Engineering technologists and technicians
+            13,  # Earth scientists
+            14,  # Economists
+            15,  # Psychologists, and other social scientists
+            16,  # Health and safety specialists
+            18,  # Lawyers, judges, magistrates, and other judicial workers
+            19,  # Paralegals and all other legal support workers
+            25,  # Registered nurses, therapists, and specific pathologists
+            26,  # Veterinarians
+            27,  # Health technicians and other healthcare practitioners
+            28,  # Healthcare support occupations
+            29,  # First-line supervisors of protective service workers
+            34,  # First-line supervisors of housekeeping and janitorial workers
+            36,  # Supervisors of personal care and service workers
+            38,  # First-line supervisors of retail/non-retail sales workers
+            39,  # Sales and related occupations
+            40,  # Office & administrative support occupations
+            42,  # First-line supervisors of construction trades workers
+            50,  # Supervisors of transportation and flight related workers
+        ]
+    )
 
 
 class CPS_2019(CPS):

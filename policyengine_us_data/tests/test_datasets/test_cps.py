@@ -40,3 +40,19 @@ def test_cps_has_auto_loan_interest():
     assert (
         sim.calculate("auto_loan_interest").sum() > AUTO_LOAN_INTEREST_MINIMUM
     )
+
+
+def test_cps_has_fsla_overtime_premium():
+    from policyengine_us_data.datasets.cps import CPS_2024
+    from policyengine_us import Microsimulation
+
+    sim = Microsimulation(dataset=CPS_2024)
+    # Ensure we impute at least 70 billion in overtime premium.
+    OVERTIME_PREMIUM_TARGET = 70e9
+    assert (
+        abs(
+            sim.calculate("fsla_overtime_premium") / OVERTIME_PREMIUM_TARGET
+            - 1
+        )
+        < 0.2
+    )

@@ -10,7 +10,7 @@ auth_headers = {
     "Authorization": f"token {os.environ.get('POLICYENGINE_US_DATA_GITHUB_TOKEN')}",
 }
 
-
+ 
 def get_asset_url(
     org: str, repo: str, release_tag: str, file_name: str
 ) -> str:

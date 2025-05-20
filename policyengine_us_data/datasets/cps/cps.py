@@ -306,7 +306,7 @@ def add_auto_loan_interest(self, cps: h5py.File) -> None:
     donor_data = donor_data.loc[
         np.random.choice(
             donor_data.index,
-            size=100_000 if not test_lite else 10_000,
+            size=100_000 if not test_lite else 100_000,
             replace=True,
             p=donor_data.household_weight / donor_data.household_weight.sum(),
         )

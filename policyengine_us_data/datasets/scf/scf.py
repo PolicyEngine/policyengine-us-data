@@ -330,7 +330,7 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
         auto_df = df[IDENTIFYER_COLUMNS + AUTO_LOAN_COLUMNS].copy()
         auto_df[AUTO_LOAN_COLUMNS].replace(-1, 0, inplace=True)
 
-        # Remove the *100 multiplication from interest rates
+        # Interest rate columns are in percent * 100 format, we need to divide by 100 to leave them in percentage format
         RATE_COLUMNS = ["x2219", "x2319", "x2419", "x7170"]
         auto_df[RATE_COLUMNS] /= 100
 
@@ -340,6 +340,7 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
         ].sum(axis=1)
 
         # Calculate total auto loan interest (sum of the amounts of each balance variable multiplied by its respective interest rate variable)
+        # Divide by 100 to convert from percentage to fraction of loan amount
         auto_df["auto_loan_interest"] = (
             auto_df["x2209"] * auto_df["x2219"]
             + auto_df["x2309"] * auto_df["x2319"]

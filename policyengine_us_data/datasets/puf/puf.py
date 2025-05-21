@@ -147,7 +147,6 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["employment_income"] = puf.E00200
     puf["estate_income"] = puf.E26390 - puf.E26400
     puf["farm_income"] = puf.T27800
-    puf["farm_rent_income"] = puf.E27200
     puf["health_savings_account_ald"] = puf.E03290
     puf["interest_deduction"] = puf.E19200
     puf["long_term_capital_gains"] = puf.P23250
@@ -162,12 +161,10 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # that can be deducted under the miscellaneous deduction.
     puf["unreimbursed_business_employee_expenses"] = puf.E20400
     puf["non_qualified_dividend_income"] = puf.E00600 - puf.E00650
-    puf["partnership_s_corp_income"] = puf.E26270
     puf["qualified_dividend_income"] = puf.E00650
     puf["qualified_tuition_expenses"] = puf.E03230
     puf["real_estate_taxes"] = puf.E18500
     puf["rental_income"] = puf.E25850 - puf.E25860
-    puf["self_employment_income"] = puf.E00900
     puf["self_employed_health_insurance_ald"] = puf.E03270
     puf["self_employed_pension_contribution_ald"] = puf.E03300
     puf["short_term_capital_gains"] = puf.P22250
@@ -205,17 +202,17 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Ignore k1bx14s and k1bx14p (partner self-employment income included in partnership and S-corp income)
     # --- Qualified Business Income Deduction related variables ---
     # Income sources
-    puf["sole_proprietorship_net_income"] = puf.E00900  # Schedule C
-    puf["schedule_F_farm_net_income"] = puf.E02100  # Schedule F active farming operations 
+    puf["sole_proprietorship_net_income"] = puf.E00900  # Schedule C Sole proprietorship income
+    puf["farm_operations_net_income"] = puf.E02100  # Schedule F active farming operations 
     puf["farm_rental_net_income"] = puf.E27200  # Schedule E farm rental income
     puf["rent_royalty_net_income"] = puf.E25850 - puf.E25860  # Schedule E rent and royalty
     puf["estate_trust_net_income"] = puf.E26390 - puf.E26400  # Schedule E estate or trust 
-    puf["s_corp_net_income"] = puf.E26190 - puf.E26180  # Schedule E Active S Corp Income
-    puf["partnership_net_income"] = puf.E25980 - puf.E25960  # Schedule E Active Partnership Income
+    puf["s_corp_net_income"] = puf.E26190 - puf.E26180  # Schedule E active S-Corp income
+    puf["partnership_net_income"] = puf.E25980 - puf.E25960  # Schedule E active partnership income
 
-    puf["reit_dividends"] = 100 
-    puf["bdc_dividends"] = 100
+    puf["reit_dividends"] = 100
     puf["ptp_income"] = 100  # Publically traded partnership income
+    puf["bdc_dividends"] = 100  # business development company income
 
     qbi = (
         puf["sole_proprietorship_net_income"]
@@ -226,17 +223,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
         + puf["s_corp_net_income"]
         + puf["partnership_net_income"]
     )
-    # TODO: We should let it be negative, right?
-    qbi_prior = np.maximum(0, puf.E00900 + puf.E26270 + puf.E02100 + puf.E27200)
-    # NOTE that the current rule engine variables for income are:
-    # - self_employment_income
-    # - partnership_s_corp_income
-    # - farm_income
-    # - farm_rent_income
-    # So there's a question as to whether any improvement in naming is worth the hassle.
-    # But, for instance, there really is Schedule F farm operations and Schedule E farm rent
-
-    print(f"total QBI in Billion USD, New: {np.dot(qbi, puf.S006) / 1E9:.1f} and Old: {np.dot(qbi_prior, puf.S006) / 1E9:.1f}")
+    print(f"QBI Est (Millions) New: {np.dot(qbi, puf.S006) / 1E6:,.0f}")
 
 
     def simulate_w2_wages_from_qualified_business(qbi, diagnostics=False):
@@ -307,7 +294,8 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
 
     pr_sstb = np.where(qbi < 1E-3, 0, pr_sstb)
     puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
-    print(f"{100 * np.mean(puf.loc[qbi > 0]["business_is_sstb"]):.1f}% of pos businesses")
+    # TODO: Fix the syntax:
+    #print(f"{100 * np.mean(puf.loc[qbi > 0]["business_is_sstb"]):.1f}% of pos businesses")
 
     # -------- End QBID work -------
     puf["filing_status"] = puf.MARS.map(

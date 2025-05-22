@@ -9,7 +9,7 @@ import os
 from policyengine_us_data.storage import STORAGE_FOLDER
 
 
-class FedSCF(Dataset):
+class SummarizedFedSCF(Dataset):
     """Dataset containing Survey of Consumer Finances data from the Federal Reserve."""
 
     time_period: int
@@ -84,10 +84,10 @@ class FedSCF(Dataset):
 
     @property
     def _scf_download_url(self) -> str:
-        return SCF_URL_BY_YEAR.get(self.time_period)
+        return SummarizedSCF_URL_BY_YEAR.get(self.time_period)
 
 
-class FedSCF_2022(FedSCF):
+class SummarizedFedSCF_2022(SummarizedFedSCF):
     time_period = 2022
     label = "Federal Reserve SCF (2022)"
     name = "fed_scf_2022"
@@ -95,7 +95,7 @@ class FedSCF_2022(FedSCF):
     data_format = Dataset.TABLES
 
 
-class FedSCF_2019(FedSCF):
+class SummarizedFedSCF_2019(SummarizedFedSCF):
     time_period = 2019
     label = "Federal Reserve SCF (2019)"
     name = "fed_scf_2019"
@@ -103,7 +103,7 @@ class FedSCF_2019(FedSCF):
     data_format = Dataset.TABLES
 
 
-class FedSCF_2016(FedSCF):
+class SummarizedFedSCF_2016(SummarizedFedSCF):
     time_period = 2016
     label = "Federal Reserve SCF (2016)"
     name = "fed_scf_2016"
@@ -112,7 +112,7 @@ class FedSCF_2016(FedSCF):
 
 
 # URLs for the SCF data by year
-SCF_URL_BY_YEAR = {
+SummarizedSCF_URL_BY_YEAR = {
     2016: "https://www.federalreserve.gov/econres/files/scfp2016s.zip",
     2019: "https://www.federalreserve.gov/econres/files/scfp2019s.zip",
     2022: "https://www.federalreserve.gov/econres/files/scfp2022s.zip",

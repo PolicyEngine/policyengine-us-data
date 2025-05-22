@@ -68,7 +68,7 @@ class CPS(Dataset):
         logging.info("Adding rent")
         add_rent(self, cps, person, household)
         logging.info("Adding auto loan balance")
-        add_auto_loan_balance(self, cps)
+        add_auto_loan_interest(self, cps)
         logging.info("Adding tips")
         add_tips(self, cps)
         logging.info("Added all variables")
@@ -184,8 +184,8 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
 
-def add_auto_loan_balance(self, cps: h5py.File) -> None:
-    """ "Add auto loan balance variable."""
+def add_auto_loan_interest(self, cps: h5py.File) -> None:
+    """ "Add auto loan interest variable."""
     self.save_dataset(cps)
     cps_data = self.load_dataset()
 
@@ -298,7 +298,7 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
         "self_employment_income",
         "farm_income",
     ]
-    IMPUTED_VARIABLES = ["auto_loan_balance"]
+    IMPUTED_VARIABLES = ["auto_loan_interest"]
     weights = ["household_weight"]
 
     donor_data = scf_data[PREDICTORS + IMPUTED_VARIABLES + weights].copy()
@@ -306,13 +306,21 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
     donor_data = donor_data.loc[
         np.random.choice(
             donor_data.index,
-            size=100_000 if not test_lite else 1_000,
+            size=100_000 if not test_lite else 100_000,
             replace=True,
             p=donor_data.household_weight / donor_data.household_weight.sum(),
         )
     ]
 
     from microimpute.models.qrf import QRF
+    import logging
+    import os
+
+    # Set root logger level
+    log_level = os.getenv("PYTHON_LOG_LEVEL", "WARNING")
+
+    # Specifically target the microimpute logger
+    logging.getLogger("microimpute").setLevel(getattr(logging, log_level))
 
     qrf_model = QRF()
     fitted_model = qrf_model.fit(
@@ -326,10 +334,6 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
 
     for var in IMPUTED_VARIABLES:
         cps[var] = imputations[0.5][var]
-
-    cps["auto_loan_interest"] = (
-        cps["auto_loan_balance"] * scf_data["auto_loan_interest"].mean() / 100
-    ) * 12
 
     self.save_dataset(cps)
 

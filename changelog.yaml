@@ -252,3 +252,9 @@
     fixed:
     - GCP uploads use permissions correctly
   date: 2025-05-20 10:37:41
+- bump: patch
+  changes:
+    changed:
+    - Methodology to directly impute auto loan interest instead of assuming a 2% interest
+      rate on auto loan balance.
+  date: 2025-05-22 10:56:32

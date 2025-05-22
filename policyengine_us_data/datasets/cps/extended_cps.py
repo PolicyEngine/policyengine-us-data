@@ -62,7 +62,7 @@ IMPUTED_VARIABLES = [
     "investment_income_elected_form_4952",
     "early_withdrawal_penalty",
     "prior_year_minimum_tax_credit",
-    "farm_rent_income",
+    "farm_rental_income",
     "qualified_tuition_expenses",
     "educator_expense",
     "long_term_capital_gains_on_collectibles",
@@ -71,6 +71,12 @@ IMPUTED_VARIABLES = [
     "unreported_payroll_tax",
     "recapture_of_investment_credit",
     "deductible_mortgage_interest",
+    "reit_dividend_income",
+    "ptp_income",
+    "bdc_dividend_income",
+    "s_corp_income",
+    "partnership_income",
+    "farm_operations_income"
 ]
 
 if os.environ.get("TEST_LITE"):

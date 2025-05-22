@@ -165,10 +165,11 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["qualified_tuition_expenses"] = puf.E03230
     puf["real_estate_taxes"] = puf.E18500
     puf["rental_income"] = puf.E25850 - puf.E25860  # Schedule E rent and royalty
-    puf["s_corp_income"] = puf.E26190 - puf.E26180  # Schedule E active S-Corp income
-    puf["partnership_income"] = puf.E25980 - puf.E25960  # Schedule E active partnership income
+    s_corp_income = puf.E26190 - puf.E26180  # Schedule E active S-Corp income
+    partnership_income = puf.E25980 - puf.E25960  # Schedule E active partnership income
+    puf["partnership_s_corp_income"] = s_corp_income + partnership_income
     puf["farm_operations_income"] = puf.E02100  # Schedule F active farming operations 
-    puf["farm_rental_income"] = puf.E27200  # Schedule E farm rental income
+    puf["farm_rent_income"] = puf.E27200  # Schedule E farm rental income
     puf["self_employment_income"] = puf.E00900  # Schedule C Sole Proprietorship
     puf["self_employed_health_insurance_ald"] = puf.E03270
     puf["self_employed_pension_contribution_ald"] = puf.E03300
@@ -209,12 +210,11 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # --- Qualified Business Income Deduction computation and simulation ---
     qbi = (
         puf["self_employment_income"]   # Schedule C sole prop
-        + puf["farm_operations_income"]  # NEW: schedule F active farming ops
-        + puf["farm_rental_income"]  # Schedule E farm rent: TODO: accidentally renamed farm_rent_income 
+        + puf["farm_operations_income"]  # Schedule F active farming operations
+        + puf["farm_rent_income"]  # Schedule E farm rent
         + puf["rental_income"]  # Schedule E rent and royalty
         + puf["estate_income"]  # Schedule E estate and trust
-        + puf["s_corp_income"]  # NEW: Schedule E S Corp  # TODO: remake partnership_s_corp_income?
-        + puf["partnership_income"]  # NEW: Schedule E active partnership
+        + puf["partnership_s_corp_income"]  # Schedule E Active S-Corp or partnership
     )
     print(f"QBI Est (Millions) New: {np.dot(qbi, puf.S006) / 1E6:,.0f}")
 
@@ -262,38 +262,27 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
             print(f"For positive wages, med ubia prop (mil): {np.median(ubia_property[w2_wages>0])/1E6:.1f}")
         return w2_wages, ubia_property
 
-    w2_wages, ubia_property = simulate_w2_wages_from_qualified_business(qbi)
+    w2_wages, ubia_property = simulate_w2_wages_from_qualified_business(qbi, True)
     puf["w2_wages_from_qualified_business"] = w2_wages
     puf["unadjusted_basis_qualified_property"] = ubia_property 
 
-    # Simulate whether business is SSTB 
-    largest_qbi_source = np.argmax(puf[[
-        # 0: 20%    1: 0%     2: 15%    3: 0%    4: 0%
-        "E00900", "E02100", "E26270", "P25700", "E25850",
-        # 5: 0%     6: 10%     7: 10%    0%
-        "E27200", "E26390", "E26400", "E02000"]], axis=1)
-    largest_qbi_source = np.where(qbi <= 0, -1, largest_qbi_source) 
-   
-    pr_sstb = np.where(largest_qbi_source == -1, 0,
-          np.where(largest_qbi_source == 0, 0.20,
-          np.where(largest_qbi_source == 1, 0.00,
-          np.where(largest_qbi_source == 2, 0.15,
-          np.where(largest_qbi_source == 3, 0.00,
-          np.where(largest_qbi_source == 4, 0.00,
-          np.where(largest_qbi_source == 5, 0.00,
-          np.where(largest_qbi_source == 6, 0.10,
-          np.where(largest_qbi_source == 7, 0.10,
-          np.where(largest_qbi_source == 8, 0.00,
-                  largest_qbi_source))))))))))
+    sstb_prob_map_by_name = {
+        "E00900": 0.20,
+        "E26270": 0.15,
+        "E26390": 0.10,
+        "E26400": 0.10
+    }
 
-    pr_sstb = np.where(qbi < 1E-3, 0, pr_sstb)
+    puf_qbi_sources_for_sstb = puf[sstb_prob_map_by_name.keys()]
+    largest_qbi_source_name = puf_qbi_sources_for_sstb.idxmax(axis=1)
+
+    pr_sstb = largest_qbi_source_name.map(sstb_prob_map_by_name).fillna(0.0)
     puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
-    print(f"SSTB %: {100 * np.mean(puf.loc[qbi > 0]['business_is_sstb']):.1f}% of qbi pos biz")
+    print(f"SSTB % of >0qbi biz: {100 * np.mean(puf.loc[qbi > 0]['business_is_sstb']):.1f}")
 
     # TODO: improve
-    puf["reit_dividend_income"] = 100
-    puf["ptp_income"] = 100  # Publically traded partnership income
-    puf["bdc_dividend_income"] = 100  # business development company income
+    puf["qualified_reit_and_ptp_income"] = 100
+    puf["qualified_bdc_income"] = 100  # business development company income
 
     # -------- End QBID work -------
     puf["filing_status"] = puf.MARS.map(
@@ -326,7 +315,7 @@ FINANCIAL_SUBSET = [
     "estate_income",
     "farm_operations_income",
     "farm_income",
-    "farm_rental_income",
+    "farm_rent_income",
     "health_savings_account_ald",
     "interest_deduction",
     "long_term_capital_gains",
@@ -339,8 +328,6 @@ FINANCIAL_SUBSET = [
     "real_estate_taxes",
     "rental_income",
     "self_employment_income",
-    "s_corp_income",
-    "partnership_income",
     "self_employed_health_insurance_ald",
     "self_employed_pension_contribution_ald",
     "short_term_capital_gains",
@@ -374,9 +361,9 @@ FINANCIAL_SUBSET = [
     "unadjusted_basis_qualified_property",
     "business_is_sstb",
     "deductible_mortgage_interest",
-    "reit_dividend_income",
-    "ptp_income",
-    "bdc_dividend_income"
+    "partnership_s_corp_income",
+    "qualified_reit_and_ptp_income",
+    "qualified_bdc_income"
 ]
 
 

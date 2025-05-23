@@ -832,94 +832,108 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
 
 def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     """
-    Deterministically assign SSA card type based on PRCITSHP and student/employment status.
-    Code:
-    - 1: Citizen (PRCITSHP 1–4)
-    - 2: Foreign-born, noncitizen but likely on valid EAD (student or worker)
-    - 0: Other noncitizens (to refine or default) - EXCLUDES pre-1982 arrivals and eligible naturalized citizens
+    Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.
+
+    Codes:
+    - 0: "NONE" - Likely undocumented immigrants (post-1982 non-citizen arrivals)
+    - 1: "CITIZEN" - US citizens (born or naturalized)
+    - 2: "NON_CITIZEN_VALID_EAD" - Non-citizens with work/study authorization
+    - 3: "OTHER_NON_CITIZEN" - Non-citizens with indicators of legal status
+
+    Implements ASEC Undocumented Algorithm conditions to remove false positives
+    from the likely undocumented pool (code 0).
     """
+    # Initialize all persons as code 0
     ssn_card_type = np.full(len(person), 0)
 
-    # Code 1: Citizens
+    # ============================================================================
+    # PRIMARY CLASSIFICATIONS
+    # ============================================================================
+
+    # Code 1: All US Citizens (naturalized and born)
     ssn_card_type[np.isin(person.PRCITSHP, [1, 2, 3, 4])] = 1
 
-    # Code 2: Noncitizens (PRCITSHP == 5) who are working or studying
+    # Code 2: Non-citizens with work/study authorization (likely valid EAD)
     noncitizen_mask = person.PRCITSHP == 5
-    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)  # worker
-    is_student = person.A_HSCOL == 2  # student
-    ead_like_mask = noncitizen_mask & (is_worker | is_student)
-    ssn_card_type[ead_like_mask] = 2
+    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)
+    is_student = person.A_HSCOL == 2  # Currently enrolled in school
+    has_work_study_auth = noncitizen_mask & (is_worker | is_student)
+    ssn_card_type[has_work_study_auth] = 2
 
-    # CONDITION 1: For those who are NOT code 1 or 2, if they arrived before 1982, assign code 3
-    not_citizen_or_ead = ~np.isin(ssn_card_type, [1, 2])
+    # ============================================================================
+    # ASEC UNDOCUMENTED ALGORITHM CONDITIONS
+    # Remove individuals with indicators of legal status from code 0 pool
+    # ============================================================================
+
+    # Helper mask: Only apply conditions to non-citizens without clear authorization
+    potentially_undocumented = ~np.isin(ssn_card_type, [1, 2])
+
+    # CONDITION 1: Pre-1982 Arrivals (IRCA Amnesty Eligible)
+    # Remove those who arrived before 1982 - eligible for amnesty under IRCA
     arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
-    pre_1982_others = not_citizen_or_ead & arrived_before_1982
-    ssn_card_type[pre_1982_others] = 3
+    pre_1982_condition = potentially_undocumented & arrived_before_1982
+    ssn_card_type[pre_1982_condition] = 3
 
-    # CONDITION 2: Remove naturalized citizens who meet eligibility criteria
-    # For those who are NOT code 1 or 2, if they are naturalized citizens who meet requirements, assign code 3
+    # CONDITION 2: Eligible Naturalized Citizens
+    # Remove naturalized citizens who meet time/age requirements for naturalization
     is_naturalized_citizen = person.PRCITSHP == 4
     is_adult = person.A_AGE >= 18
 
-    # Calculate approximate years in US based on PEINUSYR codes
-    current_year = 2024  # Adjust based on your data year
-    years_in_us = np.full(len(person), 0)
-
-    # Map PEINUSYR codes to approximate arrival years (simplified mapping)
-    arrival_year_map = {
-        8: 1983,
-        9: 1987,
-        10: 1990,
-        11: 1992,
-        12: 1997,  # 1982-1989, 1985-1989, 1990-1994, 1995-1999
-        13: 2002,
-        14: 2007,
-        15: 2012,
-        16: 2017,
-        17: 2020,  # 2000-2004, 2005-2009, 2010-2014, 2015-2019, 2020-2021
-    }
-
-    for code, year in arrival_year_map.items():
-        mask = person.PEINUSYR == code
-        years_in_us[mask] = current_year - year
-
-    # Path 1: 5+ years in US AND age 18+
-    has_five_plus_years = years_in_us >= 5
+    # Path 1: 5+ years in US and adult (codes 8-26: 1982-2019 arrivals)
+    has_five_plus_years = np.isin(person.PEINUSYR, list(range(8, 27)))
     eligible_via_time = has_five_plus_years & is_adult
 
-    # Path 2: 3+ years in US AND married to US citizen AND age 18+
-    has_three_plus_years = years_in_us >= 3
+    # Path 2: 3+ years in US, married, and adult (codes 8-27: 1982-2021 arrivals)
+    has_three_plus_years = np.isin(person.PEINUSYR, list(range(8, 28)))
     is_married = person.A_MARITL.isin([1, 2])  # Married spouse present/absent
     has_spouse = person.A_SPOUSE > 0
     eligible_via_spouse = (
         has_three_plus_years & is_adult & is_married & has_spouse
     )
 
-    # Remove naturalized citizens who meet either eligibility path
-    naturalized_and_eligible = (
-        not_citizen_or_ead
+    # Apply condition: naturalized citizens meeting either eligibility path
+    naturalized_eligible = (
+        potentially_undocumented
         & is_naturalized_citizen
         & (eligible_via_time | eligible_via_spouse)
     )
-    ssn_card_type[naturalized_and_eligible] = 3
+    ssn_card_type[naturalized_eligible] = 3
 
-    # Step 3: Refine remaining 0s into 0 or 3
-    share_code_3 = 0.3  # IRS/SSA target share of SSA-benefit-only cards
+    # CONDITION 3: Medicare Recipients
+    # Remove those with Medicare coverage - typically requires legal status
+    has_medicare = person.MCARE == 1
+    medicare_condition = potentially_undocumented & has_medicare
+    ssn_card_type[medicare_condition] = 3
+
+    # ============================================================================
+    # RANDOM REFINEMENT OF REMAINING CODE 0s
+    # ============================================================================
+
+    # Apply random assignment to remaining code 0 non-citizens
+    # 30% assigned to code 3 (documented but no clear work authorization)
+    # 70% remain as code 0 (likely undocumented)
+    share_code_3 = 0.3
     rng = np.random.default_rng(seed=42)
-    to_refine = (ssn_card_type == 0) & noncitizen_mask
-    refine_indices = np.where(to_refine)[0]
+
+    remaining_zeros = (ssn_card_type == 0) & noncitizen_mask
+    refine_indices = np.where(remaining_zeros)[0]
 
     if len(refine_indices) > 0:
-        draw = rng.random(len(refine_indices))
-        assign_code_3 = draw < share_code_3
-        ssn_card_type[refine_indices[assign_code_3]] = 3
+        random_draw = rng.random(len(refine_indices))
+        assign_to_code_3 = random_draw < share_code_3
+        ssn_card_type[refine_indices[assign_to_code_3]] = 3
+
+    # ============================================================================
+    # CONVERT TO STRING LABELS AND STORE
+    # ============================================================================
 
     code_to_str = {
-        0: "NONE",  # Undocumented (post-1982 arrivals only, excluding eligible naturalized citizens)
-        1: "CITIZEN",
-        2: "NON_CITIZEN_VALID_EAD",
-        3: "OTHER_NON_CITIZEN",
+        0: "NONE",  # Likely undocumented immigrants
+        1: "CITIZEN",  # US citizens
+        2: "NON_CITIZEN_VALID_EAD",  # Non-citizens with work/study authorization
+        3: "OTHER_NON_CITIZEN",  # Non-citizens with indicators of legal status
     }
+
     ssn_card_type_str = (
         pd.Series(ssn_card_type).map(code_to_str).astype("S").values
     )

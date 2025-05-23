@@ -840,8 +840,6 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     - 2: "NON_CITIZEN_VALID_EAD" - Non-citizens with work/study authorization
     - 3: "OTHER_NON_CITIZEN" - Non-citizens with indicators of legal status
 
-    Implements 13 of 14 ASEC Undocumented Algorithm conditions to remove false positives
-    from the likely undocumented pool (excludes Condition 12: Housing Assistance).
     """
     # Initialize all persons as code 0
     ssn_card_type = np.full(len(person), 0)

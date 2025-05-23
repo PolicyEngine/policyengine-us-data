@@ -54,15 +54,13 @@ class CPS(Dataset):
         logging.info("Adding ID variables")
         add_id_variables(cps, person, tax_unit, family, spm_unit, household)
         logging.info("Adding personal variables")
-        add_personal_variables(cps, person)
-        logging.info("Adding personal income variables")
+        # add_personal_variables(cps, person)
+        # logging.info("Adding personal income variables")
         add_personal_income_variables(cps, person, self.raw_cps.time_period)
         logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
         logging.info("Adding SSN card type")
         add_ssn_card_type(cps, person)
-        logging.info("Adding likely undocumented status")
-        add_likely_undocumented_status(cps, person)
         logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
         logging.info("Adding household variables")
@@ -509,7 +507,7 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     # High school or college/university enrollment status.
     cps["is_full_time_college_student"] = person.A_HSCOL == 2
 
-    cps["detailed_occupation_recode"] = person.POCCU2
+    # cps["detailed_occupation_recode"] = person.POCCU2
     add_overtime_occupation(cps, person)
 
 
@@ -852,6 +850,12 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     ead_like_mask = noncitizen_mask & (is_worker | is_student)
     ssn_card_type[ead_like_mask] = 2
 
+    # CONDITION: For those who are NOT code 1 or 2, if they arrived before 1982, assign code 3
+    not_citizen_or_ead = ~np.isin(ssn_card_type, [1, 2])
+    arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
+    pre_1982_others = not_citizen_or_ead & arrived_before_1982
+    ssn_card_type[pre_1982_others] = 3
+
     # Step 3: Refine remaining 0s into 0 or 3
     share_code_3 = 0.3  # IRS/SSA target share of SSA-benefit-only cards
     rng = np.random.default_rng(seed=42)
@@ -873,23 +877,6 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
         pd.Series(ssn_card_type).map(code_to_str).astype("S").values
     )
     cps["ssn_card_type"] = ssn_card_type_str
-
-
-def add_likely_undocumented_status(cps: h5py.File, person: DataFrame) -> None:
-    """
-    Identify likely undocumented immigrants using the ASEC Undocumented Algorithm (ASEC-UA).
-    """
-    # Step 1: Start with people who MIGHT be undocumented
-    # (exclude those who are clearly documented: citizens and valid EAD holders)
-    likely_undocumented = ~np.isin(
-        cps["ssn_card_type"], [b"CITIZEN", b"NON_CITIZEN_VALID_EAD"]
-    )
-
-    # Step 2: Remove people who show indicators of legal status
-    # Condition 1: Remove those who arrived before 1982 (IRCA amnesty eligibility)
-    arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
-    likely_undocumented = likely_undocumented & ~arrived_before_1982
-    cps["likely_undocumented"] = likely_undocumented
 
 
 def add_tips(self, cps: h5py.File):

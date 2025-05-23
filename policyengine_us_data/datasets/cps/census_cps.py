@@ -28,6 +28,7 @@ class CensusCPS(Dataset):
             ]
 
         import urllib3
+
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         response = requests.get(url, stream=True, verify=False)
         # response = requests.get(url, stream=True)

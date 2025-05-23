@@ -298,7 +298,7 @@ def add_auto_loan_interest(self, cps: h5py.File) -> None:
         "self_employment_income",
         "farm_income",
     ]
-    IMPUTED_VARIABLES = ["auto_loan_interest"]
+    IMPUTED_VARIABLES = ["auto_loan_interest", "auto_loan_balance"]
     weights = ["household_weight"]
 
     donor_data = scf_data[PREDICTORS + IMPUTED_VARIABLES + weights].copy()
@@ -323,13 +323,20 @@ def add_auto_loan_interest(self, cps: h5py.File) -> None:
     logging.getLogger("microimpute").setLevel(getattr(logging, log_level))
 
     qrf_model = QRF()
-    fitted_model = qrf_model.fit(
-        X_train=donor_data,
-        predictors=PREDICTORS,
-        imputed_variables=IMPUTED_VARIABLES,
-        tune_hyperparameters=not test_lite,
-    )
-
+    if test_lite:
+        fitted_model = qrf_model.fit(
+            X_train=donor_data,
+            predictors=PREDICTORS,
+            imputed_variables=IMPUTED_VARIABLES,
+            tune_hyperparameters=not test_lite,
+        )
+    else:
+        fitted_model, best_params = qrf_model.fit(
+            X_train=donor_data,
+            predictors=PREDICTORS,
+            imputed_variables=IMPUTED_VARIABLES,
+            tune_hyperparameters=not test_lite,
+        )
     imputations = fitted_model.predict(X_test=receiver_data)
 
     for var in IMPUTED_VARIABLES:

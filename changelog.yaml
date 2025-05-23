@@ -258,3 +258,8 @@
     - Methodology to directly impute auto loan interest instead of assuming a 2% interest
       rate on auto loan balance.
   date: 2025-05-22 10:56:32
+- bump: minor
+  changes:
+    added:
+    - Auto loan balance variable to cps.
+  date: 2025-05-23 15:00:34

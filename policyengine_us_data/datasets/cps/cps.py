@@ -836,7 +836,7 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     Code:
     - 1: Citizen (PRCITSHP 1–4)
     - 2: Foreign-born, noncitizen but likely on valid EAD (student or worker)
-    - 0: Other noncitizens (to refine or default)
+    - 0: Other noncitizens (to refine or default) - EXCLUDES pre-1982 arrivals and eligible naturalized citizens
     """
     ssn_card_type = np.full(len(person), 0)
 
@@ -850,11 +850,58 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     ead_like_mask = noncitizen_mask & (is_worker | is_student)
     ssn_card_type[ead_like_mask] = 2
 
-    # CONDITION: For those who are NOT code 1 or 2, if they arrived before 1982, assign code 3
+    # CONDITION 1: For those who are NOT code 1 or 2, if they arrived before 1982, assign code 3
     not_citizen_or_ead = ~np.isin(ssn_card_type, [1, 2])
     arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
     pre_1982_others = not_citizen_or_ead & arrived_before_1982
     ssn_card_type[pre_1982_others] = 3
+
+    # CONDITION 2: Remove naturalized citizens who meet eligibility criteria
+    # For those who are NOT code 1 or 2, if they are naturalized citizens who meet requirements, assign code 3
+    is_naturalized_citizen = person.PRCITSHP == 4
+    is_adult = person.A_AGE >= 18
+
+    # Calculate approximate years in US based on PEINUSYR codes
+    current_year = 2024  # Adjust based on your data year
+    years_in_us = np.full(len(person), 0)
+
+    # Map PEINUSYR codes to approximate arrival years (simplified mapping)
+    arrival_year_map = {
+        8: 1983,
+        9: 1987,
+        10: 1990,
+        11: 1992,
+        12: 1997,  # 1982-1989, 1985-1989, 1990-1994, 1995-1999
+        13: 2002,
+        14: 2007,
+        15: 2012,
+        16: 2017,
+        17: 2020,  # 2000-2004, 2005-2009, 2010-2014, 2015-2019, 2020-2021
+    }
+
+    for code, year in arrival_year_map.items():
+        mask = person.PEINUSYR == code
+        years_in_us[mask] = current_year - year
+
+    # Path 1: 5+ years in US AND age 18+
+    has_five_plus_years = years_in_us >= 5
+    eligible_via_time = has_five_plus_years & is_adult
+
+    # Path 2: 3+ years in US AND married to US citizen AND age 18+
+    has_three_plus_years = years_in_us >= 3
+    is_married = person.A_MARITL.isin([1, 2])  # Married spouse present/absent
+    has_spouse = person.A_SPOUSE > 0
+    eligible_via_spouse = (
+        has_three_plus_years & is_adult & is_married & has_spouse
+    )
+
+    # Remove naturalized citizens who meet either eligibility path
+    naturalized_and_eligible = (
+        not_citizen_or_ead
+        & is_naturalized_citizen
+        & (eligible_via_time | eligible_via_spouse)
+    )
+    ssn_card_type[naturalized_and_eligible] = 3
 
     # Step 3: Refine remaining 0s into 0 or 3
     share_code_3 = 0.3  # IRS/SSA target share of SSA-benefit-only cards
@@ -868,7 +915,7 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
         ssn_card_type[refine_indices[assign_code_3]] = 3
 
     code_to_str = {
-        0: "NONE",
+        0: "NONE",  # Undocumented (post-1982 arrivals only, excluding eligible naturalized citizens)
         1: "CITIZEN",
         2: "NON_CITIZEN_VALID_EAD",
         3: "OTHER_NON_CITIZEN",

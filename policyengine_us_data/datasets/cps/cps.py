@@ -900,7 +900,7 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     condition_2_count = (potentially_undocumented & eligible_naturalized).sum()
     ssn_card_type[potentially_undocumented & eligible_naturalized] = 3
     print(
-        f"Condition 2 (Eligible naturalized citizens): {condition_2_count:,} people moved to code 3"
+        f"Condition 2 (Eligible naturalized citizens): {condition_2_count:,} people moved to code3"
     )
 
     # CONDITION 3: Medicare Recipients

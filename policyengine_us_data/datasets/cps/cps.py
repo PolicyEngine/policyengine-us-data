@@ -844,7 +844,7 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     # Initialize all persons as code 0
     ssn_card_type = np.full(len(person), 0)
 
-    print(f"Total population: {len(person):,}")
+    print(f"Total pop: {len(person):,}")
 
     # ============================================================================
     # PRIMARY CLASSIFICATIONS

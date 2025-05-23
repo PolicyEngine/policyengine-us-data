@@ -22,7 +22,7 @@ dependencies = [
     "requests",
     "tqdm",
     "microdf_python>=0.4.3",
-    "microimpute",
+    "microimpute>=0.1.2",
     "pip-system-certs",
     "google-cloud-storage",
     "google-auth",

@@ -875,6 +875,7 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     # Remove individuals with indicators of legal status from code 0 pool
     # ============================================================================
 
+    # paper source: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4662801
     # Helper mask: Only apply conditions to non-citizens without clear authorization
     potentially_undocumented = ~np.isin(ssn_card_type, [1, 2])
     print(

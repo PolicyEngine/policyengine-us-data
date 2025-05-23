@@ -27,11 +27,7 @@ class CensusCPS(Dataset):
                 col for col in spm_unit_columns if col != "SPM_BBSUBVAL"
             ]
 
-        import urllib3
-
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        response = requests.get(url, stream=True, verify=False)
-        # response = requests.get(url, stream=True)
+        response = requests.get(url, stream=True)
         total_size_in_bytes = int(
             response.headers.get("content-length", 200e6)
         )

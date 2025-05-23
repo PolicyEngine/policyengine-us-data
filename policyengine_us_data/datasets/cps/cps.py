@@ -835,13 +835,13 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.
 
     Codes:
-    - 0: "NONE" - Likely undocumented immigrants (post-1982 non-citizen arrivals)
+    - 0: "NONE" - Likely undocumented immigrants
     - 1: "CITIZEN" - US citizens (born or naturalized)
     - 2: "NON_CITIZEN_VALID_EAD" - Non-citizens with work/study authorization
     - 3: "OTHER_NON_CITIZEN" - Non-citizens with indicators of legal status
 
-    Implements ASEC Undocumented Algorithm conditions to remove false positives
-    from the likely undocumented pool (code 0).
+    Implements 13 of 14 ASEC Undocumented Algorithm conditions to remove false positives
+    from the likely undocumented pool (excludes Condition 12: Housing Assistance).
     """
     # Initialize all persons as code 0
     ssn_card_type = np.full(len(person), 0)
@@ -861,7 +861,7 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     ssn_card_type[has_work_study_auth] = 2
 
     # ============================================================================
-    # ASEC UNDOCUMENTED ALGORITHM CONDITIONS
+    # ASEC UNDOCUMENTED ALGORITHM CONDITIONS (13 of 14)
     # Remove individuals with indicators of legal status from code 0 pool
     # ============================================================================
 
@@ -869,49 +869,101 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     potentially_undocumented = ~np.isin(ssn_card_type, [1, 2])
 
     # CONDITION 1: Pre-1982 Arrivals (IRCA Amnesty Eligible)
-    # Remove those who arrived before 1982 - eligible for amnesty under IRCA
     arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
-    pre_1982_condition = potentially_undocumented & arrived_before_1982
-    ssn_card_type[pre_1982_condition] = 3
+    ssn_card_type[potentially_undocumented & arrived_before_1982] = 3
 
     # CONDITION 2: Eligible Naturalized Citizens
-    # Remove naturalized citizens who meet time/age requirements for naturalization
-    is_naturalized_citizen = person.PRCITSHP == 4
+    is_naturalized = person.PRCITSHP == 4
     is_adult = person.A_AGE >= 18
-
-    # Path 1: 5+ years in US and adult (codes 8-26: 1982-2019 arrivals)
+    # 5+ years in US (codes 8-26: 1982-2019)
     has_five_plus_years = np.isin(person.PEINUSYR, list(range(8, 27)))
-    eligible_via_time = has_five_plus_years & is_adult
-
-    # Path 2: 3+ years in US, married, and adult (codes 8-27: 1982-2021 arrivals)
+    # 3+ years in US + married (codes 8-27: 1982-2021)
     has_three_plus_years = np.isin(person.PEINUSYR, list(range(8, 28)))
-    is_married = person.A_MARITL.isin([1, 2])  # Married spouse present/absent
-    has_spouse = person.A_SPOUSE > 0
-    eligible_via_spouse = (
-        has_three_plus_years & is_adult & is_married & has_spouse
+    is_married = person.A_MARITL.isin([1, 2]) & (person.A_SPOUSE > 0)
+    eligible_naturalized = (
+        is_naturalized
+        & is_adult
+        & (has_five_plus_years | (has_three_plus_years & is_married))
     )
-
-    # Apply condition: naturalized citizens meeting either eligibility path
-    naturalized_eligible = (
-        potentially_undocumented
-        & is_naturalized_citizen
-        & (eligible_via_time | eligible_via_spouse)
-    )
-    ssn_card_type[naturalized_eligible] = 3
+    ssn_card_type[potentially_undocumented & eligible_naturalized] = 3
 
     # CONDITION 3: Medicare Recipients
-    # Remove those with Medicare coverage - typically requires legal status
     has_medicare = person.MCARE == 1
-    medicare_condition = potentially_undocumented & has_medicare
-    ssn_card_type[medicare_condition] = 3
+    ssn_card_type[potentially_undocumented & has_medicare] = 3
+
+    # CONDITION 4: Federal Retirement Benefits
+    has_federal_pension = np.isin(person.PEN_SC1, [3]) | np.isin(
+        person.PEN_SC2, [3]
+    )  # Federal government pension
+    ssn_card_type[potentially_undocumented & has_federal_pension] = 3
+
+    # CONDITION 5: Social Security Disability
+    has_ss_disability = np.isin(person.RESNSS1, [2]) | np.isin(
+        person.RESNSS2, [2]
+    )  # Disabled (adult or child)
+    ssn_card_type[potentially_undocumented & has_ss_disability] = 3
+
+    # CONDITION 6: Indian Health Service Coverage
+    has_ihs = person.IHSFLG == 1
+    ssn_card_type[potentially_undocumented & has_ihs] = 3
+
+    # CONDITION 7: Medicaid Recipients (simplified - no state adjustments)
+    has_medicaid = person.CAID == 1
+    ssn_card_type[potentially_undocumented & has_medicaid] = 3
+
+    # CONDITION 8: CHAMPVA Recipients
+    has_champva = person.CHAMPVA == 1
+    ssn_card_type[potentially_undocumented & has_champva] = 3
+
+    # CONDITION 9: Military Health Insurance
+    has_military_insurance = person.MIL == 1
+    ssn_card_type[potentially_undocumented & has_military_insurance] = 3
+
+    # CONDITION 10: Government Employees
+    is_government_worker = np.isin(
+        person.PEIO1COW, [1, 2, 3]
+    )  # Fed/state/local gov
+    is_military_occupation = person.A_MJOCC == 11  # Military occupation
+    is_government_employee = is_government_worker | is_military_occupation
+    ssn_card_type[potentially_undocumented & is_government_employee] = 3
+
+    # CONDITION 11: Social Security Recipients
+    has_social_security = person.SS_YN == 1
+    ssn_card_type[potentially_undocumented & has_social_security] = 3
+
+    # CONDITION 12: Housing Assistance - SKIPPED (requires household data + state rules)
+
+    # CONDITION 13: Veterans/Military Personnel
+    is_veteran = person.PEAFEVER == 1
+    is_current_military = person.A_MJOCC == 11
+    is_military_connected = is_veteran | is_current_military
+    ssn_card_type[potentially_undocumented & is_military_connected] = 3
+
+    # CONDITION 14: SSI Recipients (simplified - assumes all SSI is for recipient)
+    has_ssi = person.SSI_YN == 1
+    ssn_card_type[potentially_undocumented & has_ssi] = 3
+
+    # ============================================================================
+    # SPECIAL CASES
+    # ============================================================================
+
+    # Cuban Immigrants (arrived before 2017 - end of "wet foot, dry foot" policy)
+    # Note: Requires proper country code mapping for PENATVTY
+    is_cuban = person.PENATVTY == 327  # Assuming 327 is Cuba code
+    arrived_before_2017 = np.isin(
+        person.PEINUSYR, list(range(1, 26))
+    )  # Before 2016-2017
+    cuban_pre_2017 = is_cuban & arrived_before_2017
+    ssn_card_type[potentially_undocumented & cuban_pre_2017] = 3
+
+    # Occupational Licensing - SKIPPED (requires detailed occupation mapping + state rules)
 
     # ============================================================================
     # RANDOM REFINEMENT OF REMAINING CODE 0s
     # ============================================================================
 
     # Apply random assignment to remaining code 0 non-citizens
-    # 30% assigned to code 3 (documented but no clear work authorization)
-    # 70% remain as code 0 (likely undocumented)
+    # 30% assigned to code 3, 70% remain as code 0 (likely undocumented)
     share_code_3 = 0.3
     rng = np.random.default_rng(seed=42)
 

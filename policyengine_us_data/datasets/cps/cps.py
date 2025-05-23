@@ -881,7 +881,7 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     condition_1_count = (potentially_undocumented & arrived_before_1982).sum()
     ssn_card_type[potentially_undocumented & arrived_before_1982] = 3
     print(
-        f"Condition 1 (Pre-1982 arrivals): {condition_1_count:,} people moved to code 3"
+        f"Condition 1 (Pre-1982 arrivals): {condition_1_count:,} people moved to code3"
     )
 
     # CONDITION 2: Eligible Naturalized Citizens

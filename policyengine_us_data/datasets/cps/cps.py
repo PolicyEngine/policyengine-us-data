@@ -1013,6 +1013,137 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     )
 
     # ============================================================================
+    # DISTRIBUTION AFTER ASEC CONDITIONS
+    # ============================================================================
+
+    final_counts = pd.Series(ssn_card_type).value_counts().sort_index()
+    print(f"\nDistribution after ASEC conditions:")
+    print(f"Code 0 (NONE - likely undocumented): {final_counts.get(0, 0):,}")
+    print(f"Code 1 (CITIZEN): {final_counts.get(1, 0):,}")
+    print(f"Code 2 (NON_CITIZEN_VALID_EAD): {final_counts.get(2, 0):,}")
+    print(f"Code 3 (OTHER_NON_CITIZEN): {final_counts.get(3, 0):,}")
+
+    # ============================================================================
+    # FAMILY CORRELATION ADJUSTMENT
+    # ============================================================================
+
+    print(f"\n--- Family Correlation Adjustment ---")
+
+    # Identify parent-child relationships using household and family data
+    correlation_probability = 0.8
+    rng_family = np.random.default_rng(seed=123)
+
+    # Create a DataFrame for easier family processing
+    family_df = pd.DataFrame(
+        {
+            "person_id": person.PH_SEQ * 100 + person.P_SEQ,
+            "household_id": person.PH_SEQ,
+            "family_id": person.PH_SEQ * 10 + person.PF_SEQ,
+            "age": person.A_AGE,
+            "parent1_line": person.PEPAR1,  # Line number of first parent
+            "parent2_line": person.PEPAR2,  # Line number of second parent
+            "line_number": person.A_LINENO,
+            "ssn_code": ssn_card_type,
+        }
+    )
+
+    # Identify children (those with parent pointers)
+    children = family_df[
+        (family_df.parent1_line > 0) | (family_df.parent2_line > 0)
+    ]
+
+    families_adjusted = 0
+
+    for _, child in children.iterrows():
+        # Only process if child is eligible (codes 0 or 3)
+        if child.ssn_code not in [0, 3]:
+            continue
+
+        # Find parents in the same household
+        household_members = family_df[
+            family_df.household_id == child.household_id
+        ]
+
+        parents = household_members[
+            (household_members.line_number == child.parent1_line)
+            | (household_members.line_number == child.parent2_line)
+        ]
+
+        if len(parents) > 0:
+            # Only consider parents who are eligible (codes 0 or 3)
+            eligible_parents = parents[parents.ssn_code.isin([0, 3])]
+
+            # Skip if no eligible parents
+            if len(eligible_parents) == 0:
+                continue
+
+            child_has_code_0 = child.ssn_code == 0
+            parents_have_code_0 = (eligible_parents.ssn_code == 0).any()
+
+            # Check if alignment is needed (80% probability)
+            if child_has_code_0 != parents_have_code_0:
+                if rng_family.random() < correlation_probability:
+                    child_idx = np.where(
+                        family_df.person_id == child.person_id
+                    )[0][0]
+
+                    if parents_have_code_0 and not child_has_code_0:
+                        # Change child to code 0 if parent has code 0
+                        if (
+                            ssn_card_type[child_idx] == 3
+                        ):  # Only change if currently code 3
+                            ssn_card_type[child_idx] = 0
+                            families_adjusted += 1
+                    elif child_has_code_0 and not parents_have_code_0:
+                        # Change child to code 3 if parent doesn't have code 0
+                        ssn_card_type[child_idx] = 3
+                        families_adjusted += 1
+
+    print(
+        f"Family correlation adjustments: {families_adjusted:,} people affected"
+    )
+
+    # Calculate actual correlation (only among eligible families)
+    children_with_parents = []
+    for _, child in children.iterrows():
+        # Only consider eligible children
+        if child.ssn_code not in [0, 3]:
+            continue
+
+        household_members = family_df[
+            family_df.household_id == child.household_id
+        ]
+        parents = household_members[
+            (household_members.line_number == child.parent1_line)
+            | (household_members.line_number == child.parent2_line)
+        ]
+
+        if len(parents) > 0:
+            # Only consider eligible parents
+            eligible_parents = parents[parents.ssn_code.isin([0, 3])]
+
+            if len(eligible_parents) > 0:
+                child_code_0 = child.ssn_code == 0
+                parent_code_0 = (eligible_parents.ssn_code == 0).any()
+                children_with_parents.append((child_code_0, parent_code_0))
+
+    if children_with_parents:
+        matches = sum(
+            1
+            for child_code, parent_code in children_with_parents
+            if child_code == parent_code
+        )
+        correlation = matches / len(children_with_parents)
+        print(f"Achieved parent-child code 0 correlation: {correlation:.1%}")
+        print(
+            f"Eligible parent-child pairs analyzed: {len(children_with_parents):,}"
+        )
+    else:
+        print(
+            f"No eligible parent-child relationships found for correlation calculation"
+        )
+
+    # ============================================================================
     # RANDOM REFINEMENT OF REMAINING CODE 0s
     # ============================================================================
 

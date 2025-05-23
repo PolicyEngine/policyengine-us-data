@@ -839,40 +839,356 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
 
 def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     """
-    Deterministically assign SSA card type based on PRCITSHP and student/employment status.
-    Code:
-    - 1: Citizen (PRCITSHP 1–4)
-    - 2: Foreign-born, noncitizen but likely on valid EAD (student or worker)
-    - 0: Other noncitizens (to refine or default)
+    Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.
+    Codes:
+    - 0: "NONE" - Likely undocumented immigrants
+    - 1: "CITIZEN" - US citizens (born or naturalized)
+    - 2: "NON_CITIZEN_VALID_EAD" - Non-citizens with work/study authorization
+    - 3: "OTHER_NON_CITIZEN" - Non-citizens with indicators of legal status
     """
+    # Initialize all persons as code 0
     ssn_card_type = np.full(len(person), 0)
 
-    # Code 1: Citizens
-    ssn_card_type[np.isin(person.PRCITSHP, [1, 2, 3, 4])] = 1
+    print(f"Total pop: {len(person):,}")
 
-    # Code 2: Noncitizens (PRCITSHP == 5) who are working or studying
+    # ============================================================================
+    # PRIMARY CLASSIFICATIONS
+    # ============================================================================
+
+    # Code 1: All US Citizens (naturalized and born)
+    citizens_mask = np.isin(person.PRCITSHP, [1, 2, 3, 4])
+    ssn_card_type[citizens_mask] = 1
+    print(f"Citizens (code 1): {citizens_mask.sum():,}")
+
+    # Code 2: Non-citizens with work/study authorization (likely valid EAD)
     noncitizen_mask = person.PRCITSHP == 5
-    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)  # worker
-    is_student = person.A_HSCOL == 2  # student
-    ead_like_mask = noncitizen_mask & (is_worker | is_student)
-    ssn_card_type[ead_like_mask] = 2
+    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)
+    is_student = person.A_HSCOL == 2  # Currently enrolled in school
+    has_work_study_auth = noncitizen_mask & (is_worker | is_student)
+    ssn_card_type[has_work_study_auth] = 2
+    print(
+        f"Non-citizens with work/study auth (code 2): {has_work_study_auth.sum():,}"
+    )
 
-    # Step 3: Refine remaining 0s into 0 or 3
-    share_code_3 = 0.3  # IRS/SSA target share of SSA-benefit-only cards
+    # ============================================================================
+    # ASEC UNDOCUMENTED ALGORITHM CONDITIONS (13 of 14)
+    # Remove individuals with indicators of legal status from code 0 pool
+    # ============================================================================
+
+    # Helper mask: Only apply conditions to non-citizens without clear authorization
+    potentially_undocumented = ~np.isin(ssn_card_type, [1, 2])
+    print(
+        f"Potentially undocumented (before conditions): {potentially_undocumented.sum():,}"
+    )
+
+    # CONDITION 1: Pre-1982 Arrivals (IRCA Amnesty Eligible)
+    arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
+    condition_1_count = (potentially_undocumented & arrived_before_1982).sum()
+    ssn_card_type[potentially_undocumented & arrived_before_1982] = 3
+    print(
+        f"Condition 1 (Pre-1982 arrivals): {condition_1_count:,} people moved to code3"
+    )
+
+    # CONDITION 2: Eligible Naturalized Citizens
+    is_naturalized = person.PRCITSHP == 4
+    is_adult = person.A_AGE >= 18
+    # 5+ years in US (codes 8-26: 1982-2019)
+    has_five_plus_years = np.isin(person.PEINUSYR, list(range(8, 27)))
+    # 3+ years in US + married (codes 8-27: 1982-2021)
+    has_three_plus_years = np.isin(person.PEINUSYR, list(range(8, 28)))
+    is_married = person.A_MARITL.isin([1, 2]) & (person.A_SPOUSE > 0)
+    eligible_naturalized = (
+        is_naturalized
+        & is_adult
+        & (has_five_plus_years | (has_three_plus_years & is_married))
+    )
+    condition_2_count = (potentially_undocumented & eligible_naturalized).sum()
+    ssn_card_type[potentially_undocumented & eligible_naturalized] = 3
+    print(
+        f"Condition 2 (Eligible naturalized citizens): {condition_2_count:,} people moved to code3"
+    )
+
+    # CONDITION 3: Medicare Recipients
+    has_medicare = person.MCARE == 1
+    condition_3_count = (potentially_undocumented & has_medicare).sum()
+    ssn_card_type[potentially_undocumented & has_medicare] = 3
+    print(
+        f"Condition 3 (Medicare recipients): {condition_3_count:,} people moved to code 3"
+    )
+
+    # CONDITION 4: Federal Retirement Benefits
+    has_federal_pension = np.isin(person.PEN_SC1, [3]) | np.isin(
+        person.PEN_SC2, [3]
+    )  # Federal government pension
+    condition_4_count = (potentially_undocumented & has_federal_pension).sum()
+    ssn_card_type[potentially_undocumented & has_federal_pension] = 3
+    print(
+        f"Condition 4 (Federal retirement benefits): {condition_4_count:,} people moved to code 3"
+    )
+
+    # CONDITION 5: Social Security Disability
+    has_ss_disability = np.isin(person.RESNSS1, [2]) | np.isin(
+        person.RESNSS2, [2]
+    )  # Disabled (adult or child)
+    condition_5_count = (potentially_undocumented & has_ss_disability).sum()
+    ssn_card_type[potentially_undocumented & has_ss_disability] = 3
+    print(
+        f"Condition 5 (Social Security disability): {condition_5_count:,} people moved to code 3"
+    )
+
+    # CONDITION 6: Indian Health Service Coverage
+    has_ihs = person.IHSFLG == 1
+    condition_6_count = (potentially_undocumented & has_ihs).sum()
+    ssn_card_type[potentially_undocumented & has_ihs] = 3
+    print(
+        f"Condition 6 (Indian Health Service): {condition_6_count:,} people moved to code 3"
+    )
+
+    # CONDITION 7: Medicaid Recipients (simplified - no state adjustments)
+    has_medicaid = person.CAID == 1
+    condition_7_count = (potentially_undocumented & has_medicaid).sum()
+    ssn_card_type[potentially_undocumented & has_medicaid] = 3
+    print(
+        f"Condition 7 (Medicaid recipients): {condition_7_count:,} people moved to code 3"
+    )
+
+    # CONDITION 8: CHAMPVA Recipients
+    has_champva = person.CHAMPVA == 1
+    condition_8_count = (potentially_undocumented & has_champva).sum()
+    ssn_card_type[potentially_undocumented & has_champva] = 3
+    print(
+        f"Condition 8 (CHAMPVA recipients): {condition_8_count:,} people moved to code 3"
+    )
+
+    # CONDITION 9: Military Health Insurance
+    has_military_insurance = person.MIL == 1
+    condition_9_count = (
+        potentially_undocumented & has_military_insurance
+    ).sum()
+    ssn_card_type[potentially_undocumented & has_military_insurance] = 3
+    print(
+        f"Condition 9 (Military health insurance): {condition_9_count:,} people moved to code 3"
+    )
+
+    # CONDITION 10: Government Employees
+    is_government_worker = np.isin(
+        person.PEIO1COW, [1, 2, 3]
+    )  # Fed/state/local gov
+    is_military_occupation = person.A_MJOCC == 11  # Military occupation
+    is_government_employee = is_government_worker | is_military_occupation
+    condition_10_count = (
+        potentially_undocumented & is_government_employee
+    ).sum()
+    ssn_card_type[potentially_undocumented & is_government_employee] = 3
+    print(
+        f"Condition 10 (Government employees): {condition_10_count:,} people moved to code 3"
+    )
+
+    # CONDITION 11: Social Security Recipients
+    has_social_security = person.SS_YN == 1
+    condition_11_count = (potentially_undocumented & has_social_security).sum()
+    ssn_card_type[potentially_undocumented & has_social_security] = 3
+    print(
+        f"Condition 11 (Social Security recipients): {condition_11_count:,} people moved to code 3"
+    )
+
+    # CONDITION 12: Housing Assistance - SKIPPED (requires household data + state rules)
+    print(f"Condition 12 (Housing assistance): SKIPPED")
+
+    # CONDITION 13: Veterans/Military Personnel
+    is_veteran = person.PEAFEVER == 1
+    is_current_military = person.A_MJOCC == 11
+    is_military_connected = is_veteran | is_current_military
+    condition_13_count = (
+        potentially_undocumented & is_military_connected
+    ).sum()
+    ssn_card_type[potentially_undocumented & is_military_connected] = 3
+    print(
+        f"Condition 13 (Veterans/Military personnel): {condition_13_count:,} people moved to code 3"
+    )
+
+    # CONDITION 14: SSI Recipients (simplified - assumes all SSI is for recipient)
+    has_ssi = person.SSI_YN == 1
+    condition_14_count = (potentially_undocumented & has_ssi).sum()
+    ssn_card_type[potentially_undocumented & has_ssi] = 3
+    print(
+        f"Condition 14 (SSI recipients): {condition_14_count:,} people moved to code 3"
+    )
+
+    # ============================================================================
+    # DISTRIBUTION AFTER ASEC CONDITIONS
+    # ============================================================================
+
+    final_counts = pd.Series(ssn_card_type).value_counts().sort_index()
+    print(f"\nDistribution after ASEC conditions:")
+    print(f"Code 0 (NONE - likely undocumented): {final_counts.get(0, 0):,}")
+    print(f"Code 1 (CITIZEN): {final_counts.get(1, 0):,}")
+    print(f"Code 2 (NON_CITIZEN_VALID_EAD): {final_counts.get(2, 0):,}")
+    print(f"Code 3 (OTHER_NON_CITIZEN): {final_counts.get(3, 0):,}")
+
+    # ============================================================================
+    # FAMILY CORRELATION ADJUSTMENT
+    # ============================================================================
+
+    print(f"\n--- Family Correlation Adjustment ---")
+
+    # Identify parent-child relationships using household and family data
+    correlation_probability = 0.8
+    rng_family = np.random.default_rng(seed=123)
+
+    # Create a DataFrame for easier family processing
+    family_df = pd.DataFrame(
+        {
+            "person_id": person.PH_SEQ * 100 + person.P_SEQ,
+            "household_id": person.PH_SEQ,
+            "family_id": person.PH_SEQ * 10 + person.PF_SEQ,
+            "age": person.A_AGE,
+            "parent1_line": person.PEPAR1,  # Line number of first parent
+            "parent2_line": person.PEPAR2,  # Line number of second parent
+            "line_number": person.A_LINENO,
+            "ssn_code": ssn_card_type,
+        }
+    )
+
+    # Identify children (those with parent pointers)
+    children = family_df[
+        (family_df.parent1_line > 0) | (family_df.parent2_line > 0)
+    ]
+
+    families_adjusted = 0
+
+    for _, child in children.iterrows():
+        # Only process if child is eligible (codes 0 or 3)
+        if child.ssn_code not in [0, 3]:
+            continue
+
+        # Find parents in the same household
+        household_members = family_df[
+            family_df.household_id == child.household_id
+        ]
+
+        parents = household_members[
+            (household_members.line_number == child.parent1_line)
+            | (household_members.line_number == child.parent2_line)
+        ]
+
+        if len(parents) > 0:
+            # Only consider parents who are eligible (codes 0 or 3)
+            eligible_parents = parents[parents.ssn_code.isin([0, 3])]
+
+            # Skip if no eligible parents
+            if len(eligible_parents) == 0:
+                continue
+
+            child_has_code_0 = child.ssn_code == 0
+            parents_have_code_0 = (eligible_parents.ssn_code == 0).any()
+
+            # Check if alignment is needed (80% probability)
+            if child_has_code_0 != parents_have_code_0:
+                if rng_family.random() < correlation_probability:
+                    child_idx = np.where(
+                        family_df.person_id == child.person_id
+                    )[0][0]
+
+                    if parents_have_code_0 and not child_has_code_0:
+                        # Change child to code 0 if parent has code 0
+                        if (
+                            ssn_card_type[child_idx] == 3
+                        ):  # Only change if currently code 3
+                            ssn_card_type[child_idx] = 0
+                            families_adjusted += 1
+                    elif child_has_code_0 and not parents_have_code_0:
+                        # Change child to code 3 if parent doesn't have code 0
+                        ssn_card_type[child_idx] = 3
+                        families_adjusted += 1
+
+    print(
+        f"Family correlation adjustments: {families_adjusted:,} people affected"
+    )
+
+    # Calculate actual correlation (only among eligible families)
+    children_with_parents = []
+    for _, child in children.iterrows():
+        # Only consider eligible children
+        if child.ssn_code not in [0, 3]:
+            continue
+
+        household_members = family_df[
+            family_df.household_id == child.household_id
+        ]
+        parents = household_members[
+            (household_members.line_number == child.parent1_line)
+            | (household_members.line_number == child.parent2_line)
+        ]
+
+        if len(parents) > 0:
+            # Only consider eligible parents
+            eligible_parents = parents[parents.ssn_code.isin([0, 3])]
+
+            if len(eligible_parents) > 0:
+                child_code_0 = child.ssn_code == 0
+                parent_code_0 = (eligible_parents.ssn_code == 0).any()
+                children_with_parents.append((child_code_0, parent_code_0))
+
+    if children_with_parents:
+        matches = sum(
+            1
+            for child_code, parent_code in children_with_parents
+            if child_code == parent_code
+        )
+        correlation = matches / len(children_with_parents)
+        print(f"Achieved parent-child code 0 correlation: {correlation:.1%}")
+        print(
+            f"Eligible parent-child pairs analyzed: {len(children_with_parents):,}"
+        )
+    else:
+        print(
+            f"No eligible parent-child relationships found for correlation calculation"
+        )
+
+    # ============================================================================
+    # RANDOM REFINEMENT OF REMAINING CODE 0s
+    # ============================================================================
+
+    # Apply random assignment to remaining code 0 non-citizens
+    # 30% assigned to code 3, 70% remain as code 0 (likely undocumented)
+    share_code_3 = 0.3
     rng = np.random.default_rng(seed=42)
-    to_refine = (ssn_card_type == 0) & noncitizen_mask
-    refine_indices = np.where(to_refine)[0]
+
+    remaining_zeros = (ssn_card_type == 0) & noncitizen_mask
+    refine_indices = np.where(remaining_zeros)[0]
+
+    print(
+        f"Remaining code 0s before random refinement: {len(refine_indices):,}"
+    )
 
     if len(refine_indices) > 0:
-        draw = rng.random(len(refine_indices))
-        assign_code_3 = draw < share_code_3
-        ssn_card_type[refine_indices[assign_code_3]] = 3
+        random_draw = rng.random(len(refine_indices))
+        assign_to_code_3 = random_draw < share_code_3
+        random_count = assign_to_code_3.sum()
+        ssn_card_type[refine_indices[assign_to_code_3]] = 3
+        print(f"Random refinement: {random_count:,} people moved to code 3")
+
+    # ============================================================================
+    # FINAL SUMMARY
+    # ============================================================================
+
+    final_counts = pd.Series(ssn_card_type).value_counts().sort_index()
+    print(f"\nFinal distribution:")
+    print(f"Code 0 (NONE - likely undocumented): {final_counts.get(0, 0):,}")
+    print(f"Code 1 (CITIZEN): {final_counts.get(1, 0):,}")
+    print(f"Code 2 (NON_CITIZEN_VALID_EAD): {final_counts.get(2, 0):,}")
+    print(f"Code 3 (OTHER_NON_CITIZEN): {final_counts.get(3, 0):,}")
+
+    # ============================================================================
+    # CONVERT TO STRING LABELS AND STORE
+    # ============================================================================
 
     code_to_str = {
-        0: "NONE",
-        1: "CITIZEN",
-        2: "NON_CITIZEN_VALID_EAD",
-        3: "OTHER_NON_CITIZEN",
+        0: "NONE",  # Likely undocumented immigrants
+        1: "CITIZEN",  # US citizens
+        2: "NON_CITIZEN_VALID_EAD",  # Non-citizens with work/study authorization
+        3: "OTHER_NON_CITIZEN",  # Non-citizens with indicators of legal status
     }
     ssn_card_type_str = (
         pd.Series(ssn_card_type).map(code_to_str).astype("S").values

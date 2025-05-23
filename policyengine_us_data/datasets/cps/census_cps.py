@@ -27,7 +27,11 @@ class CensusCPS(Dataset):
                 col for col in spm_unit_columns if col != "SPM_BBSUBVAL"
             ]
 
-        response = requests.get(url, stream=True)
+        import urllib3
+
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        response = requests.get(url, stream=True, verify=False)
+        # response = requests.get(url, stream=True)
         total_size_in_bytes = int(
             response.headers.get("content-length", 200e6)
         )
@@ -302,4 +306,23 @@ PERSON_COLUMNS = [
     "PRCITSHP",
     "NOW_GRP",
     "POCCU2",
+    "PEINUSYR",
+    "MCARE",
+    "PEN_SC1",
+    "PEN_SC2",
+    "RESNSS1",
+    "RESNSS2",
+    "IHSFLG",
+    "CAID",
+    "CHAMPVA",
+    "PEIO1COW",
+    "A_MJOCC",
+    "SS_YN",
+    "PEAFEVER",
+    "SSI_YN",
+    "RESNSSI1",
+    "RESNSSI2",
+    "PENATVTY",
+    "PEIOOCC",
+    "MIL",
 ]

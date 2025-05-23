@@ -61,17 +61,19 @@ class CPS(Dataset):
         add_previous_year_income(self, cps)
         logging.info("Adding SSN card type")
         add_ssn_card_type(cps, person)
+        logging.info("Adding likely undocumented status")
+        add_likely_undocumented_status(cps, person)
         logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
         logging.info("Adding household variables")
         add_household_variables(cps, household)
-        logging.info("Adding rent")
-        add_rent(self, cps, person, household)
-        logging.info("Adding auto loan balance")
-        add_auto_loan_interest(self, cps)
-        logging.info("Adding tips")
-        add_tips(self, cps)
-        logging.info("Added all variables")
+        # logging.info("Adding rent")
+        # add_rent(self, cps, person, household)
+        # logging.info("Adding auto loan balance")
+        # add_auto_loan_interest(self, cps)
+        # logging.info("Adding tips")
+        # add_tips(self, cps)
+        # logging.info("Added all variables")
 
         raw_data.close()
         self.save_dataset(cps)
@@ -872,6 +874,19 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     )
     cps["ssn_card_type"] = ssn_card_type_str
 
+def add_likely_undocumented_status(cps: h5py.File, person: DataFrame) -> None:
+    """
+    Identify likely undocumented immigrants using the ASEC Undocumented Algorithm (ASEC-UA).
+    """
+    # Step 1: Start with people who MIGHT be undocumented 
+    # (exclude those who are clearly documented: citizens and valid EAD holders)
+    likely_undocumented = ~np.isin(cps["ssn_card_type"], [b"CITIZEN", b"NON_CITIZEN_VALID_EAD"])
+    
+    # Step 2: Remove people who show indicators of legal status
+    # Condition 1: Remove those who arrived before 1982 (IRCA amnesty eligibility)
+    arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
+    likely_undocumented = likely_undocumented & ~arrived_before_1982
+    cps["likely_undocumented"] = likely_undocumented
 
 def add_tips(self, cps: h5py.File):
     self.save_dataset(cps)

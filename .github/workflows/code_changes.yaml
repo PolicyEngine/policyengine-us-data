@@ -7,9 +7,7 @@ on:
       - main
 
     paths:
-      - policyengine_us_data/**
-      - tests/**
-      - .github/workflows/code_changes.yaml
+      - pyproject.toml
 
 jobs:
   Lint:

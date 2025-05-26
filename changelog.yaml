@@ -278,3 +278,8 @@
     fixed:
     - Tests run after versioning.
   date: 2025-05-26 22:01:07
+- bump: patch
+  changes:
+    fixed:
+    - Missing HF token.
+  date: 2025-05-26 22:11:20

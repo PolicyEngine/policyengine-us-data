@@ -22,7 +22,7 @@ def upload_datasets():
 
     upload_data_files(
         files=dataset_files,
-        hf_repo_name="policyengine-uk-data/policyengine-us-data",
+        hf_repo_name="policyengine/policyengine-us-data",
         hf_repo_type="model",
         gcs_bucket_name="policyengine-us-data",
     )

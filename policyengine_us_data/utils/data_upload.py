@@ -44,7 +44,7 @@ def upload_files_to_hf(
     """
     api = HfApi()
     hf_operations = []
-    
+
     token = os.environ.get(
         "HUGGING_FACE_TOKEN",
     )

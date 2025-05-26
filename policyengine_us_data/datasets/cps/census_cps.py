@@ -321,4 +321,5 @@ PERSON_COLUMNS = [
     "PENATVTY",
     "PEIOOCC",
     "MIL",
+    "A_HRS1",
 ]

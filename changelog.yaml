@@ -263,3 +263,8 @@
     added:
     - Auto loan balance variable to cps.
   date: 2025-05-23 15:00:34
+- bump: minor
+  changes:
+    added:
+    - Hours worked last week variable.
+  date: 2025-05-26 10:43:04

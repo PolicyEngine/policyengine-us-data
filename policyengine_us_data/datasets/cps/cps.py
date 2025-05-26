@@ -306,7 +306,7 @@ def add_auto_loan_interest(self, cps: h5py.File) -> None:
     donor_data = donor_data.loc[
         np.random.choice(
             donor_data.index,
-            size=100_000 if not test_lite else 100_000,
+            size=100_000 if not test_lite else 10_000,
             replace=True,
             p=donor_data.household_weight / donor_data.household_weight.sum(),
         )
@@ -541,6 +541,7 @@ def add_personal_income_variables(
     cps["employment_income"] = person.WSAL_VAL
 
     cps["weekly_hours_worked"] = person.HRSWK * person.WKSWORK / 52
+    cps["hours_worked_last_week"] = person.A_HRS1 * person.WKSWORK / 52
 
     cps["taxable_interest_income"] = person.INT_VAL * (
         p["taxable_interest_fraction"]

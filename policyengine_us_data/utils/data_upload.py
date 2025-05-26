@@ -6,6 +6,7 @@ from pathlib import Path
 from importlib import metadata
 import google.auth
 import logging
+import os
 
 
 def upload_data_files(
@@ -43,7 +44,10 @@ def upload_files_to_hf(
     """
     api = HfApi()
     hf_operations = []
-
+    
+    token = os.environ.get(
+        "HUGGING_FACE_TOKEN",
+    )
     for file_path in files:
         file_path = Path(file_path)
         if not file_path.exists():
@@ -55,6 +59,7 @@ def upload_files_to_hf(
             )
         )
     commit_info = api.create_commit(
+        token=token,
         repo_id=hf_repo_name,
         operations=hf_operations,
         repo_type=hf_repo_type,
@@ -64,6 +69,7 @@ def upload_files_to_hf(
 
     # Tag commit with version
     api.create_tag(
+        token=token,
         repo_id=hf_repo_name,
         tag=version,
         revision=commit_info.oid,

@@ -21,11 +21,11 @@ import logging
 # if better estimates are available.
 QBI_QUALIFICATION_PROBABILITIES = {
     "self_employment_income": 0.8,
-    "farm_operations_income": 0.8,
-    "farm_rent_income": 0.8,
-    "rental_income": 0.8,
-    "estate_income": 0.8,
-    "partnership_s_corp_income": 0.8,
+    "farm_operations_income": 0.95,
+    "farm_rent_income": 0.5,
+    "rental_income": 0.4,
+    "estate_income": 0.5,
+    "partnership_s_corp_income": 0.85,
 }
 
 

@@ -14,6 +14,20 @@ from policyengine_us_data.utils.uprating import (
 from policyengine_us_data.utils import QRF
 import logging
 
+# Probabilities that a given stream of business income would qualify for the
+# Qualified Business Income deduction.  The keys correspond to the income
+# component names and the values specify the probability that a positive amount
+# of that income would be treated as qualified.  These can be calibrated later
+# if better estimates are available.
+QBI_QUALIFICATION_PROBABILITIES = {
+    "self_employment_income": 0.8,
+    "farm_operations_income": 0.8,
+    "farm_rent_income": 0.8,
+    "rental_income": 0.8,
+    "estate_income": 0.8,
+    "partnership_s_corp_income": 0.8,
+}
+
 
 class CPS(Dataset):
     name = "cps"
@@ -694,6 +708,15 @@ def add_personal_income_variables(
     cps["over_the_counter_health_expenses"] = person.POTC_VAL
     cps["other_medical_expenses"] = person.PMED_VAL
     cps["medicare_part_b_premiums"] = person.PEMCPREM
+
+    # ------------------------------------------------------------------
+    # Qualified Business Income deduction flags. These indicate whether
+    # the corresponding stream of income would qualify for the 199A
+    # deduction if it were present.  Each component uses its own probability
+    # drawn from QBI_QUALIFICATION_PROBABILITIES.
+    rng = np.random.default_rng(seed=43)
+    for var, prob in QBI_QUALIFICATION_PROBABILITIES.items():
+        cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
 
 
 def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:

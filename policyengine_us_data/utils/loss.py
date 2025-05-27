@@ -422,13 +422,13 @@ def build_loss_matrix(dataset: type, time_period):
     # Create person-level difference array for mapping to household
     baseline_child_recipients_array = (
         baseline_is_child
-        & (baseline_ctc_individual_maximum > 0)
-        & (baseline_ctc_value > 0)
+        * (baseline_ctc_individual_maximum > 0)
+        * (baseline_ctc_value > 0)
     ).astype(float)
     reform_child_recipients_array = (
         reform_is_child
-        & (reform_ctc_individual_maximum > 0)
-        & (reform_ctc_value > 0)
+        * (reform_ctc_individual_maximum > 0)
+        * (reform_ctc_value > 0)
     ).astype(float)
     ctc_recipient_difference_array = (
         baseline_child_recipients_array - reform_child_recipients_array

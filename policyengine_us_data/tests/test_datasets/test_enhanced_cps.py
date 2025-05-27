@@ -144,8 +144,8 @@ def test_ctc_reform_child_recipient_difference():
     baseline_ctc_value = baseline_sim.calculate("ctc_value", map_to="person")
     baseline_child_ctc_recipients = (
         baseline_is_child
-        & (baseline_ctc_individual_maximum > 0)
-        & (baseline_ctc_value > 0)
+        * (baseline_ctc_individual_maximum > 0)
+        * (baseline_ctc_value > 0)
     ).sum()
 
     # Calculate reform CTC recipients (children with ctc_individual_maximum > 0 and ctc_value > 0)
@@ -156,8 +156,8 @@ def test_ctc_reform_child_recipient_difference():
     reform_ctc_value = reform_sim.calculate("ctc_value", map_to="person")
     reform_child_ctc_recipients = (
         reform_is_child
-        & (reform_ctc_individual_maximum > 0)
-        & (reform_ctc_value > 0)
+        * (reform_ctc_individual_maximum > 0)
+        * (reform_ctc_value > 0)
     ).sum()
 
     # Calculate the difference (baseline - reform child CTC recipients)

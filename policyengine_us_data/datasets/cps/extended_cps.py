@@ -71,9 +71,6 @@ IMPUTED_VARIABLES = [
     "deductible_mortgage_interest",
 ]
 
-if os.environ.get("TEST_LITE"):
-    IMPUTED_VARIABLES = IMPUTED_VARIABLES[:7]
-
 
 class ExtendedCPS(Dataset):
     cps: Type[CPS]
@@ -86,8 +83,8 @@ class ExtendedCPS(Dataset):
         cps_sim = Microsimulation(dataset=self.cps)
         puf_sim = Microsimulation(dataset=self.puf)
 
-        if os.environ.get("LITE_MODE"):
-            puf_sim.subsample(10_000)
+        if os.environ.get("TEST_LITE"):
+            puf_sim.subsample(1_000)
 
         INPUTS = [
             "age",

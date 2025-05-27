@@ -13,6 +13,9 @@ from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
 from policyengine_us_data.utils import QRF
+import logging
+
+test_lite = os.environ.get("TEST_LITE")
 
 
 class CPS(Dataset):
@@ -49,18 +52,33 @@ class CPS(Dataset):
             raw_data[entity] for entity in ENTITIES
         ]
 
+        logging.info("Adding ID variables")
         add_id_variables(cps, person, tax_unit, family, spm_unit, household)
+        logging.info("Adding personal variables")
         add_personal_variables(cps, person)
+        logging.info("Adding personal income variables")
         add_personal_income_variables(cps, person, self.raw_cps.time_period)
+        logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
+        logging.info("Adding SSN card type")
+        add_ssn_card_type(cps, person)
+        logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
+        logging.info("Adding household variables")
         add_household_variables(cps, household)
+        logging.info("Adding rent")
         add_rent(self, cps, person, household)
+        logging.info("Adding auto loan balance")
+        add_auto_loan_interest(self, cps)
+        logging.info("Adding tips")
+        add_tips(self, cps)
+        logging.info("Added all variables")
 
         raw_data.close()
         self.save_dataset(cps)
-
+        logging.info("Adding takeup")
         add_takeup(self)
+        logging.info("Downsampling")
 
         # Downsample
         if self.frac is not None and self.frac < 1.0:
@@ -80,6 +98,9 @@ class CPS(Dataset):
 
         for key in original_data:
             if key not in sim.tax_benefit_system.variables:
+                logging.warning(
+                    f"Attempting to downsample the variable {key} but failing because it is not in the given country package."
+                )
                 continue
             values = sim.calculate(key).values
 
@@ -140,7 +161,9 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         },
         na_action="ignore",
     ).fillna(train_df.tenure_type)
-    train_df = train_df[train_df.is_household_head].sample(100_000)
+    train_df = train_df[train_df.is_household_head].sample(
+        100_000 if not test_lite else 1_000
+    )
     inference_df = cps_sim.calculate_dataframe(PREDICTORS)
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]
@@ -160,6 +183,167 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     )
     cps["real_estate_taxes"] = np.zeros_like(cps["age"])
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
+
+
+def add_auto_loan_interest(self, cps: h5py.File) -> None:
+    """ "Add auto loan interest variable."""
+    self.save_dataset(cps)
+    cps_data = self.load_dataset()
+
+    # Preprocess the CPS for imputation
+    lengths = {k: len(v) for k, v in cps_data.items()}
+    var_len = cps_data["person_household_id"].shape[0]
+    vars_of_interest = [name for name, ln in lengths.items() if ln == var_len]
+    agg_data = pd.DataFrame({n: cps_data[n] for n in vars_of_interest})
+
+    agg = (
+        agg_data.groupby("person_household_id")[
+            ["employment_income", "self_employment_income", "farm_income"]
+        ]
+        .sum()
+        .rename(
+            columns={
+                "employment_income": "household_employment_income",
+                "self_employment_income": "household_self_employment_income",
+                "farm_income": "household_farm_income",
+            }
+        )
+        .reset_index()
+    )
+
+    mask = cps_data["is_household_head"]
+    mask_len = mask.shape[0]
+
+    cps_data = {
+        var: data[mask] if data.shape[0] == mask_len else data
+        for var, data in cps_data.items()
+    }
+
+    CPS_RACE_MAPPING = {
+        1: 1,  # White only -> WHITE
+        2: 2,  # Black only -> BLACK/AFRICAN-AMERICAN
+        3: 5,  # American Indian, Alaskan Native only -> AMERICAN INDIAN/ALASKA NATIVE
+        4: 4,  # Asian only -> ASIAN
+        5: 6,  # Hawaiian/Pacific Islander only -> NATIVE HAWAIIAN/PACIFIC ISLANDER
+        6: 7,  # White-Black -> OTHER
+        7: 7,  # White-AI -> OTHER
+        8: 7,  # White-Asian -> OTHER
+        9: 7,  # White-HP -> OTHER
+        10: 7,  # Black-AI -> OTHER
+        11: 7,  # Black-Asian -> OTHER
+        12: 7,  # Black-HP -> OTHER
+        13: 7,  # AI-Asian -> OTHER
+        14: 7,  # AI-HP -> OTHER
+        15: 7,  # Asian-HP -> OTHER
+        16: 7,  # White-Black-AI -> OTHER
+        17: 7,  # White-Black-Asian -> OTHER
+        18: 7,  # White-Black-HP -> OTHER
+        19: 7,  # White-AI-Asian -> OTHER
+        20: 7,  # White-AI-HP -> OTHER
+        21: 7,  # White-Asian-HP -> OTHER
+        22: 7,  # Black-AI-Asian -> OTHER
+        23: 7,  # White-Black-AI-Asian -> OTHER
+        24: 7,  # White-AI-Asian-HP -> OTHER
+        25: 7,  # Other 3 race comb. -> OTHER
+        26: 7,  # Other 4 or 5 race comb. -> OTHER
+    }
+
+    # Apply the mapping to recode the race values
+    cps_data["cps_race"] = np.vectorize(CPS_RACE_MAPPING.get)(
+        cps_data["cps_race"]
+    )
+
+    lengths = {k: len(v) for k, v in cps_data.items()}
+    var_len = cps_data["household_id"].shape[0]
+    vars_of_interest = [name for name, ln in lengths.items() if ln == var_len]
+    receiver_data = pd.DataFrame({n: cps_data[n] for n in vars_of_interest})
+
+    receiver_data = receiver_data.merge(
+        agg[
+            [
+                "person_household_id",
+                "household_employment_income",
+                "household_self_employment_income",
+                "household_farm_income",
+            ]
+        ],
+        on="person_household_id",
+        how="left",
+    )
+    receiver_data.drop("employment_income", axis=1, inplace=True)
+    receiver_data.drop("self_employment_income", axis=1, inplace=True)
+    receiver_data.drop("farm_income", axis=1, inplace=True)
+
+    receiver_data.rename(
+        columns={
+            "household_employment_income": "employment_income",
+            "household_self_employment_income": "self_employment_income",
+            "household_farm_income": "farm_income",
+        },
+        inplace=True,
+    )
+
+    # Impute auto loan balance from the SCF
+    from policyengine_us_data.datasets.scf.scf import SCF_2022
+
+    scf_dataset = SCF_2022()
+    scf_data = scf_dataset.load_dataset()
+    scf_data = pd.DataFrame({key: scf_data[key] for key in scf_data.keys()})
+
+    PREDICTORS = [
+        "age",
+        "is_female",
+        "cps_race",
+        "own_children_in_household",
+        "employment_income",
+        "self_employment_income",
+        "farm_income",
+    ]
+    IMPUTED_VARIABLES = ["auto_loan_interest", "auto_loan_balance"]
+    weights = ["household_weight"]
+
+    donor_data = scf_data[PREDICTORS + IMPUTED_VARIABLES + weights].copy()
+
+    donor_data = donor_data.loc[
+        np.random.choice(
+            donor_data.index,
+            size=100_000 if not test_lite else 10_000,
+            replace=True,
+            p=donor_data.household_weight / donor_data.household_weight.sum(),
+        )
+    ]
+
+    from microimpute.models.qrf import QRF
+    import logging
+    import os
+
+    # Set root logger level
+    log_level = os.getenv("PYTHON_LOG_LEVEL", "WARNING")
+
+    # Specifically target the microimpute logger
+    logging.getLogger("microimpute").setLevel(getattr(logging, log_level))
+
+    qrf_model = QRF()
+    if test_lite:
+        fitted_model = qrf_model.fit(
+            X_train=donor_data,
+            predictors=PREDICTORS,
+            imputed_variables=IMPUTED_VARIABLES,
+            tune_hyperparameters=not test_lite,
+        )
+    else:
+        fitted_model, best_params = qrf_model.fit(
+            X_train=donor_data,
+            predictors=PREDICTORS,
+            imputed_variables=IMPUTED_VARIABLES,
+            tune_hyperparameters=not test_lite,
+        )
+    imputations = fitted_model.predict(X_test=receiver_data)
+
+    for var in IMPUTED_VARIABLES:
+        cps[var] = imputations[0.5][var]
+
+    self.save_dataset(cps)
 
 
 def add_takeup(self):
@@ -321,6 +505,8 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
 
     cps["has_marketplace_health_coverage"] = person.MRK == 1
 
+    cps["has_esi"] = person.NOW_GRP == 1
+
     cps["cps_race"] = person.PRDTRACE
     cps["is_hispanic"] = person.PRDTHSP != 0
 
@@ -328,6 +514,9 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     cps["is_separated"] = person.A_MARITL == 6
     # High school or college/university enrollment status.
     cps["is_full_time_college_student"] = person.A_HSCOL == 2
+
+    cps["detailed_occupation_recode"] = person.POCCU2
+    add_overtime_occupation(cps, person)
 
 
 def add_personal_income_variables(
@@ -356,6 +545,7 @@ def add_personal_income_variables(
     cps["employment_income"] = person.WSAL_VAL
 
     cps["weekly_hours_worked"] = person.HRSWK * person.WKSWORK / 52
+    cps["hours_worked_last_week"] = person.A_HRS1 * person.WKSWORK / 52
 
     cps["taxable_interest_income"] = person.INT_VAL * (
         p["taxable_interest_fraction"]
@@ -650,6 +840,139 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
     cps["previous_year_income_available"] = joined_data[
         "previous_year_income_available"
     ].values
+
+
+def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
+    """
+    Deterministically assign SSA card type based on PRCITSHP and student/employment status.
+    Code:
+    - 1: Citizen (PRCITSHP 1–4)
+    - 2: Foreign-born, noncitizen but likely on valid EAD (student or worker)
+    - 0: Other noncitizens (to refine or default)
+    """
+    ssn_card_type = np.full(len(person), 0)
+
+    # Code 1: Citizens
+    ssn_card_type[np.isin(person.PRCITSHP, [1, 2, 3, 4])] = 1
+
+    # Code 2: Noncitizens (PRCITSHP == 5) who are working or studying
+    noncitizen_mask = person.PRCITSHP == 5
+    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)  # worker
+    is_student = person.A_HSCOL == 2  # student
+    ead_like_mask = noncitizen_mask & (is_worker | is_student)
+    ssn_card_type[ead_like_mask] = 2
+
+    # Step 3: Refine remaining 0s into 0 or 3
+    share_code_3 = 0.3  # IRS/SSA target share of SSA-benefit-only cards
+    rng = np.random.default_rng(seed=42)
+    to_refine = (ssn_card_type == 0) & noncitizen_mask
+    refine_indices = np.where(to_refine)[0]
+
+    if len(refine_indices) > 0:
+        draw = rng.random(len(refine_indices))
+        assign_code_3 = draw < share_code_3
+        ssn_card_type[refine_indices[assign_code_3]] = 3
+
+    code_to_str = {
+        0: "NONE",
+        1: "CITIZEN",
+        2: "NON_CITIZEN_VALID_EAD",
+        3: "OTHER_NON_CITIZEN",
+    }
+    ssn_card_type_str = (
+        pd.Series(ssn_card_type).map(code_to_str).astype("S").values
+    )
+    cps["ssn_card_type"] = ssn_card_type_str
+
+
+def add_tips(self, cps: h5py.File):
+    self.save_dataset(cps)
+    from policyengine_us import Microsimulation
+
+    sim = Microsimulation(dataset=self)
+    cps = sim.calculate_dataframe(
+        [
+            "person_id",
+            "household_id",
+            "employment_income",
+            "age",
+            "household_weight",
+        ],
+        2025,
+    )
+
+    cps["is_under_18"] = cps.age < 18
+    cps["is_under_6"] = cps.age < 6
+    cps["count_under_18"] = (
+        cps.groupby("household_id")["is_under_18"]
+        .sum()
+        .loc[cps.household_id.values]
+        .values
+    )
+    cps["count_under_6"] = (
+        cps.groupby("household_id")["is_under_6"]
+        .sum()
+        .loc[cps.household_id.values]
+        .values
+    )
+    cps = pd.DataFrame(cps)
+
+    # Impute tips
+
+    from policyengine_us_data.datasets.sipp import get_tip_model
+
+    model = get_tip_model()
+
+    cps["tip_income"] = model.predict(
+        X_test=cps,
+        mean_quantile=0.5,
+    )[0.5].tip_income.values
+
+    self.save_dataset(cps)
+
+
+def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
+    """Add occupation categories relevant to overtime eligibility calculations.
+    Based on:
+    https://www.law.cornell.edu/uscode/text/29/213
+    https://www.congress.gov/crs-product/IF12480
+    """
+    cps["has_never_worked"] = person.POCCU2 == 53
+    cps["is_military"] = person.POCCU2 == 52
+    cps["is_computer_scientist"] = person.POCCU2 == 8
+    cps["is_farmer_fisher"] = person.POCCU2 == 41
+    cps["is_executive_administrative_professional"] = person.POCCU2.isin(
+        [
+            1,  # Chief executives, and managers
+            2,  # Compensation, human resources, and infrastructure managers
+            3,  # All other managers
+            5,  # Business operations specialists
+            6,  # Accountants and auditors
+            7,  # Financial specialists
+            9,  # Mathematical science occupations
+            10,  # Architects, except naval
+            11,  # Surveyors, cartographers, & photogrammetrists
+            12,  # Engineering technologists and technicians
+            13,  # Earth scientists
+            14,  # Economists
+            15,  # Psychologists, and other social scientists
+            16,  # Health and safety specialists
+            18,  # Lawyers, judges, magistrates, and other judicial workers
+            19,  # Paralegals and all other legal support workers
+            25,  # Registered nurses, therapists, and specific pathologists
+            26,  # Veterinarians
+            27,  # Health technicians and other healthcare practitioners
+            28,  # Healthcare support occupations
+            29,  # First-line supervisors of protective service workers
+            34,  # First-line supervisors of housekeeping and janitorial workers
+            36,  # Supervisors of personal care and service workers
+            38,  # First-line supervisors of retail/non-retail sales workers
+            39,  # Sales and related occupations
+            40,  # Office & administrative support occupations
+            42,  # First-line supervisors of construction trades workers
+            50,  # Supervisors of transportation and flight related workers
+        ]
+    )
 
 
 class CPS_2019(CPS):

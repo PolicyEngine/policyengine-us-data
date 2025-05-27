@@ -208,3 +208,78 @@
       2022, and 2023 CPS datasets
     - Downsampling method attempts to preserve original dtype values
   date: 2025-04-22 18:24:44
+- bump: minor
+  changes:
+    added:
+    - Tip income.
+  date: 2025-05-13 12:48:06
+- bump: minor
+  changes:
+    added:
+    - Calibration of the QBID tax expenditure.
+  date: 2025-05-13 13:29:57
+- bump: patch
+  changes:
+    fixed:
+    - Data downloads for Census datasets disabled.
+    - Warning added for downsampling non-existent policyengine-[country] variables.
+  date: 2025-05-14 13:31:21
+- bump: minor
+  changes:
+    added:
+    - SSN card type implementation for CPS dataset.
+    - Calibration of undocumented population to 10.1 million based on Pew Research
+      data.
+  date: 2025-05-14 14:15:06
+- bump: minor
+  changes:
+    added:
+    - scf package loading module
+    - auto loan balance imputation notebook
+  date: 2025-05-14 14:29:32
+- bump: patch
+  changes:
+    fixed:
+    - Runtime for tests reduced.
+  date: 2025-05-19 07:52:35
+- bump: patch
+  changes:
+    fixed:
+    - Upload to GCP on dataset build.
+  date: 2025-05-19 15:34:43
+- bump: patch
+  changes:
+    fixed:
+    - GCP uploads use permissions correctly
+  date: 2025-05-20 10:37:41
+- bump: patch
+  changes:
+    changed:
+    - Methodology to directly impute auto loan interest instead of assuming a 2% interest
+      rate on auto loan balance.
+  date: 2025-05-22 10:56:32
+- bump: minor
+  changes:
+    added:
+    - Auto loan balance variable to cps.
+  date: 2025-05-23 15:00:34
+- bump: minor
+  changes:
+    added:
+    - Hours worked last week variable.
+  date: 2025-05-26 10:43:04
+- bump: patch
+  changes:
+    added:
+    - Versioning to dataset uploads.
+  date: 2025-05-26 21:57:26
+- bump: patch
+  changes:
+    fixed:
+    - Tests run after versioning.
+  date: 2025-05-26 22:01:07
+- bump: patch
+  changes:
+    fixed:
+    - Missing HF token.
+  date: 2025-05-26 22:11:20

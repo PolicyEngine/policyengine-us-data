@@ -206,4 +206,3 @@ class CensusACS_2022(CensusACS):
     name = "census_acs_2022.h5"
     file_path = STORAGE_FOLDER / "census_acs_2022.h5"
     time_period = 2022
-    url = "hf://policyengine/policyengine-us-data/census_acs_2022.h5"

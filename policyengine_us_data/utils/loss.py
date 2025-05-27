@@ -256,6 +256,11 @@ def build_loss_matrix(dataset: type, time_period):
         # Rough estimate, not CPS derived
         "real_estate_taxes": 500e9,  # Rough estimate between 350bn and 600bn total property tax collections
         "rent": 735e9,  # ACS total uprated by CPI
+        # Table 5A from https://www.irs.gov/statistics/soi-tax-stats-individual-information-return-form-w2-statistics
+        # shows $38,316,190,000 in Box 7: Social security tips (2018)
+        # Wages and salaries grew 32% from 2018 to 2023: https://fred.stlouisfed.org/graph/?g=1J0CC
+        # Assume 40% through 2024
+        "tip_income": 38e9 * 1.4,
     }
 
     for variable_name, target in HARD_CODED_TOTALS.items():
@@ -365,6 +370,23 @@ def build_loss_matrix(dataset: type, time_period):
     if any(pd.isna(targets_array)):
         raise ValueError("Some targets are missing from the targets array")
 
+    # SSN Card Type calibration
+    for card_type_str in ["NONE"]:  # SSN card types as strings
+        ssn_type_mask = sim.calculate("ssn_card_type").values == card_type_str
+
+        # Overall count by SSN card type
+        label = f"ssa/ssn_card_type_{card_type_str.lower()}_count"
+        loss_matrix[label] = sim.map_result(
+            ssn_type_mask, "person", "household"
+        )
+
+        # Target value - replace with actual target values from SSA/IRS data
+        if card_type_str == "NONE":
+            # https://www.pewresearch.org/race-and-ethnicity/2018/11/27/u-s-unauthorized-immigrant-total-dips-to-lowest-level-in-a-decade/
+            target_count = 11e6
+
+        targets_array.append(target_count)
+
     return loss_matrix, np.array(targets_array)
 
 
@@ -389,6 +411,7 @@ def _add_tax_expenditure_targets(
         "medical_expense_deduction": 11.4e9,
         "charitable_deduction": 65.301e9,
         "interest_deduction": 24.8e9,
+        "qualified_business_income_deduction": 63.1e9,
     }
 
     def make_repeal_class(deduction_var):

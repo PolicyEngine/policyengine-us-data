@@ -7,9 +7,7 @@ on:
       - main
 
     paths:
-      - policyengine_us_data/**
-      - tests/**
-      - .github/workflows/code_changes.yaml
+      - pyproject.toml
 
 jobs:
   Lint:
@@ -21,6 +19,10 @@ jobs:
           with:
               args: ". -l 79 --check"
   Test:
+      permissions:
+        contents: "read"
+        # Required to auth against gcp
+        id-token: "write"
       runs-on: larger-runner
       steps:
           - name: Checkout repo
@@ -31,8 +33,11 @@ jobs:
           - name: Set up Python
             uses: actions/setup-python@v2
             with:
-                python-version: '3.12'
-              
+                python-version: '3.11'
+          - uses: "google-github-actions/auth@v2"
+            with:
+              workload_identity_provider: "projects/322898545428/locations/global/workloadIdentityPools/policyengine-research-id-pool/providers/prod-github-provider"
+              service_account: "policyengine-research@policyengine-research.iam.gserviceaccount.com"
           - name: Install package
             run: uv pip install -e .[dev] --system
           - name: Download data inputs
@@ -41,7 +46,9 @@ jobs:
               HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
               POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
           - name: Build datasets
-            run: make data       
+            run: make data   
+            env:
+              PYTHON_LOG_LEVEL: INFO    
           - name: Run tests
             run: pytest
           - name: Upload data

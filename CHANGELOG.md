@@ -5,6 +5,93 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.3] - 2025-05-26 22:11:20
+
+### Fixed
+
+- Missing HF token.
+
+## [1.25.2] - 2025-05-26 22:01:07
+
+### Fixed
+
+- Tests run after versioning.
+
+## [1.25.1] - 2025-05-26 21:57:26
+
+### Added
+
+- Versioning to dataset uploads.
+
+## [1.25.0] - 2025-05-26 10:43:04
+
+### Added
+
+- Hours worked last week variable.
+
+## [1.24.0] - 2025-05-23 15:00:34
+
+### Added
+
+- Auto loan balance variable to cps.
+
+## [1.23.4] - 2025-05-22 10:56:32
+
+### Changed
+
+- Methodology to directly impute auto loan interest instead of assuming a 2% interest rate on auto loan balance.
+
+## [1.23.3] - 2025-05-20 10:37:41
+
+### Fixed
+
+- GCP uploads use permissions correctly
+
+## [1.23.2] - 2025-05-19 15:34:43
+
+### Fixed
+
+- Upload to GCP on dataset build.
+
+## [1.23.1] - 2025-05-19 07:52:35
+
+### Fixed
+
+- Runtime for tests reduced.
+
+## [1.23.0] - 2025-05-14 14:29:32
+
+### Added
+
+- scf package loading module
+- auto loan balance imputation notebook
+
+## [1.22.0] - 2025-05-14 14:15:06
+
+### Added
+
+- SSN card type implementation for CPS dataset.
+- Calibration of undocumented population to 10.1 million based on Pew Research data.
+
+## [1.21.1] - 2025-05-14 13:31:21
+
+### Fixed
+
+- Data downloads for Census datasets disabled.
+- Warning added for downsampling non-existent policyengine-[country] variables.
+
+## [1.21.0] - 2025-05-13 13:29:57
+
+### Added
+
+- Calibration of the QBID tax expenditure.
+
+## [1.20.0] - 2025-05-13 12:48:06
+
+### Added
+
+- Tip income.
+
 ## [1.19.2] - 2025-04-22 18:24:44
 
 ### Added
@@ -254,6 +341,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.25.3]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.25.2...1.25.3
+[1.25.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.25.1...1.25.2
+[1.25.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.25.0...1.25.1
+[1.25.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.24.0...1.25.0
+[1.24.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.23.4...1.24.0
+[1.23.4]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.23.3...1.23.4
+[1.23.3]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.23.2...1.23.3
+[1.23.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.23.1...1.23.2
+[1.23.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.23.0...1.23.1
+[1.23.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.22.0...1.23.0
+[1.22.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.21.1...1.22.0
+[1.21.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.21.0...1.21.1
+[1.21.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.20.0...1.21.0
+[1.20.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.19.2...1.20.0
 [1.19.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.19.1...1.19.2
 [1.19.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.19.0...1.19.1
 [1.19.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.18.1...1.19.0

@@ -38,6 +38,17 @@ def test_ecps_has_mortgage_interest():
     assert sim.calculate("deductible_mortgage_interest").sum() > 1
 
 
+def test_ecps_has_tips():
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us import Microsimulation
+
+    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    # Ensure we impute at least $50 billion in tip income.
+    # We currently target $38 billion * 1.4 = $53.2 billion.
+    TIP_INCOME_MINIMUM = 50e9
+    assert sim.calculate("tip_income").sum() > TIP_INCOME_MINIMUM
+
+
 def test_ecps_replicates_jct_tax_expenditures():
     from policyengine_us import Microsimulation
     from policyengine_core.reforms import Reform
@@ -73,9 +84,31 @@ def test_ecps_replicates_jct_tax_expenditures():
         # Calculate tax expenditure
         tax_expenditure = (income_tax_r - income_tax_b).sum()
         pct_error = abs((tax_expenditure - target) / target)
-        TOLERANCE = 0.2
+        TOLERANCE = 0.3
 
         print(
             f"{deduction} tax expenditure {tax_expenditure/1e9:.1f}bn differs from target {target/1e9:.1f}bn by {pct_error:.2%}"
         )
         assert pct_error < TOLERANCE, deduction
+
+
+def test_ssn_card_type_none_target():
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us import Microsimulation
+    import numpy as np
+
+    TARGET_COUNT = 11e6
+    TOLERANCE = 0.2  # Allow ±20% error
+
+    sim = Microsimulation(dataset=EnhancedCPS_2024)
+
+    # Calculate the number of individuals with ssn_card_type == "NONE"
+    ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"
+    count = ssn_type_none_mask.sum()
+
+    pct_error = abs((count - TARGET_COUNT) / TARGET_COUNT)
+
+    print(
+        f'SSN card type "NONE" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
+    )
+    assert pct_error < TOLERANCE

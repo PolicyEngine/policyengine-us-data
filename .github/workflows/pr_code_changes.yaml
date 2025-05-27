@@ -66,8 +66,7 @@ jobs:
           - name: Set up Python
             uses: actions/setup-python@v2
             with:
-                python-version: '3.12'
-              
+                python-version: '3.11'
           - name: Install package
             run: uv pip install -e .[dev] --system
 
@@ -79,8 +78,8 @@ jobs:
           - name: Build datasets
             run: make data
             env:
-              LITE_MODE: true
-
+              TEST_LITE: true
+              PYTHON_LOG_LEVEL: INFO  
           - name: Run tests
             run: pytest
 

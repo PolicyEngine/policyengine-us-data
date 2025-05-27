@@ -442,6 +442,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     # Target: 2 million difference in child CTC recipients
     target_count_ctc_reform = 2e6
+    # https://x.com/MaxGhenis/status/1922992214050783507
     targets_array.append(target_count_ctc_reform)
 
     return loss_matrix, np.array(targets_array)

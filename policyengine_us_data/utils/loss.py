@@ -416,14 +416,13 @@ def build_loss_matrix(dataset: type, time_period):
         & (baseline_ctc_value > 0)
     ).astype(float)
 
-    # Calculate reform CTC recipients (children with ctc_individual_maximum > 0 and ctc_value > 0)
-    reform_is_child = reform_sim.calculate("is_child").values
+    # Calculate reform CTC recipients using baseline simulation entity structure
     reform_ctc_individual_maximum = reform_sim.calculate(
         "ctc_individual_maximum"
     ).values
     reform_ctc_value = reform_sim.calculate("ctc_value").values
     reform_child_ctc_recipients = (
-        reform_is_child
+        baseline_is_child
         & (reform_ctc_individual_maximum > 0)
         & (reform_ctc_value > 0)
     ).astype(float)

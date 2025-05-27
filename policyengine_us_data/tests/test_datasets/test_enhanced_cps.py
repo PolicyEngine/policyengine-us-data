@@ -118,7 +118,6 @@ def test_ctc_reform_child_recipient_difference():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation
     from policyengine_core.reforms import Reform
-    import numpy as np
 
     TARGET_COUNT = 2e6
     TOLERANCE = 0.2  # Allow ±20% error

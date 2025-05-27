@@ -124,11 +124,14 @@ def test_ctc_reform_child_recipient_difference():
     TOLERANCE = 0.2  # Allow ±20% error
 
     # Define the CTC reform
-    ctc_reform = Reform.from_dict({
-        "gov.contrib.reconciliation.ctc.in_effect": {
-            "2025-01-01.2100-12-31": True
-        }
-    }, country_id="us")
+    ctc_reform = Reform.from_dict(
+        {
+            "gov.contrib.reconciliation.ctc.in_effect": {
+                "2025-01-01.2100-12-31": True
+            }
+        },
+        country_id="us",
+    )
 
     # Create baseline and reform simulations
     baseline_sim = Microsimulation(dataset=EnhancedCPS_2024)
@@ -136,22 +139,36 @@ def test_ctc_reform_child_recipient_difference():
 
     # Calculate baseline CTC recipients (children with ctc_individual_maximum > 0 and ctc_value > 0)
     baseline_is_child = baseline_sim.calculate("is_child")
-    baseline_ctc_individual_maximum = baseline_sim.calculate("ctc_individual_maximum")
+    baseline_ctc_individual_maximum = baseline_sim.calculate(
+        "ctc_individual_maximum"
+    )
     baseline_ctc_value = baseline_sim.calculate("ctc_value")
-    baseline_child_ctc_recipients = (baseline_is_child & (baseline_ctc_individual_maximum > 0) & (baseline_ctc_value > 0)).sum()
+    baseline_child_ctc_recipients = (
+        baseline_is_child
+        & (baseline_ctc_individual_maximum > 0)
+        & (baseline_ctc_value > 0)
+    ).sum()
 
     # Calculate reform CTC recipients (children with ctc_individual_maximum > 0 and ctc_value > 0)
     reform_is_child = reform_sim.calculate("is_child")
-    reform_ctc_individual_maximum = reform_sim.calculate("ctc_individual_maximum")
+    reform_ctc_individual_maximum = reform_sim.calculate(
+        "ctc_individual_maximum"
+    )
     reform_ctc_value = reform_sim.calculate("ctc_value")
-    reform_child_ctc_recipients = (reform_is_child & (reform_ctc_individual_maximum > 0) & (reform_ctc_value > 0)).sum()
+    reform_child_ctc_recipients = (
+        reform_is_child
+        & (reform_ctc_individual_maximum > 0)
+        & (reform_ctc_value > 0)
+    ).sum()
 
     # Calculate the difference (baseline - reform child CTC recipients)
-    ctc_recipient_difference = baseline_child_ctc_recipients - reform_child_ctc_recipients
+    ctc_recipient_difference = (
+        baseline_child_ctc_recipients - reform_child_ctc_recipients
+    )
 
     pct_error = abs((ctc_recipient_difference - TARGET_COUNT) / TARGET_COUNT)
 
     print(
-        f'CTC reform child recipient difference: {ctc_recipient_difference:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
+        f"CTC reform child recipient difference: {ctc_recipient_difference:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}"
     )
     assert pct_error < TOLERANCE

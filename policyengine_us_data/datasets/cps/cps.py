@@ -1035,7 +1035,8 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     print(f"\n--- Family Correlation Adjustment ---")
 
     # Identify parent-child relationships using household and family data
-    correlation_probability = 0.8
+    correlation_probability = 0.8  
+    # Only applies to families with codes 0 or 3 (not citizens or valid EAD holders)
     rng_family = np.random.default_rng(seed=123)
 
     # Create a DataFrame for easier family processing

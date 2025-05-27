@@ -73,7 +73,13 @@ IMPUTED_VARIABLES = [
     "deductible_mortgage_interest",
     "qualified_reit_and_ptp_income",
     "qualified_bdc_income",
-    "farm_operations_income"
+    "farm_operations_income",
+    "estate_income_would_be_qualified",
+    "farm_operations_income_would_be_qualified",
+    "farm_rent_income_would_be_qualified",
+    "partnership_s_corp_income_would_be_qualified",
+    "rental_income_would_be_qualified",
+    "self_employment_income_would_be_qualified"
 ]
 
 

@@ -35,6 +35,7 @@ documentation:
 
 
 data:
+	python policyengine_us_data/utils/uprating.py
 	python policyengine_us_data/datasets/acs/acs.py
 	python policyengine_us_data/datasets/cps/cps.py
 	python policyengine_us_data/datasets/puf/irs_puf.py

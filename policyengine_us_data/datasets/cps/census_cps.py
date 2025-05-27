@@ -301,4 +301,6 @@ PERSON_COLUMNS = [
     "PEMCPREM",
     "PRCITSHP",
     "NOW_GRP",
+    "POCCU2",
+    "A_HRS1",
 ]

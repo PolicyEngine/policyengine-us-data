@@ -14,6 +14,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_2019,
     CPS_2024,
 )
+import os
 
 try:
     import torch
@@ -66,7 +67,7 @@ def reweight(
 
     start_loss = None
 
-    iterator = trange(5_000)
+    iterator = trange(5_000 if not os.environ.get("TEST_LITE") else 1_000)
     for i in iterator:
         optimizer.zero_grad()
         weights_ = dropout_weights(weights, dropout_rate)
@@ -87,6 +88,9 @@ def train_previous_year_income_model():
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=CPS_2019)
+
+    if os.environ.get("TEST_LITE"):
+        sim.subsample(1_000)
 
     VARIABLES = [
         "previous_year_income_available",

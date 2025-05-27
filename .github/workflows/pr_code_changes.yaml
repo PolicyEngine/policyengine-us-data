@@ -42,7 +42,8 @@ jobs:
           - name: Build datasets
             run: make data
             env:
-              LITE_MODE: true
+              TEST_LITE: true
+              PYTHON_LOG_LEVEL: INFO  
           - name: Run tests
             run: pytest
           - name: Test documentation builds

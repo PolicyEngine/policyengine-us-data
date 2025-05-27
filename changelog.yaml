@@ -237,3 +237,49 @@
     - scf package loading module
     - auto loan balance imputation notebook
   date: 2025-05-14 14:29:32
+- bump: patch
+  changes:
+    fixed:
+    - Runtime for tests reduced.
+  date: 2025-05-19 07:52:35
+- bump: patch
+  changes:
+    fixed:
+    - Upload to GCP on dataset build.
+  date: 2025-05-19 15:34:43
+- bump: patch
+  changes:
+    fixed:
+    - GCP uploads use permissions correctly
+  date: 2025-05-20 10:37:41
+- bump: patch
+  changes:
+    changed:
+    - Methodology to directly impute auto loan interest instead of assuming a 2% interest
+      rate on auto loan balance.
+  date: 2025-05-22 10:56:32
+- bump: minor
+  changes:
+    added:
+    - Auto loan balance variable to cps.
+  date: 2025-05-23 15:00:34
+- bump: minor
+  changes:
+    added:
+    - Hours worked last week variable.
+  date: 2025-05-26 10:43:04
+- bump: patch
+  changes:
+    added:
+    - Versioning to dataset uploads.
+  date: 2025-05-26 21:57:26
+- bump: patch
+  changes:
+    fixed:
+    - Tests run after versioning.
+  date: 2025-05-26 22:01:07
+- bump: patch
+  changes:
+    fixed:
+    - Missing HF token.
+  date: 2025-05-26 22:11:20

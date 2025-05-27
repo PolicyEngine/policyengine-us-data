@@ -14,19 +14,8 @@ from policyengine_us_data.utils.uprating import (
 from policyengine_us_data.utils import QRF
 import logging
 
-# Probabilities that a given stream of business income would qualify for the
-# Qualified Business Income deduction.  The keys correspond to the income
-# component names and the values specify the probability that a positive amount
-# of that income would be treated as qualified.  These can be calibrated later
-# if better estimates are available.
-QBI_QUALIFICATION_PROBABILITIES = {
-    "self_employment_income": 0.8,
-    "farm_operations_income": 0.95,
-    "farm_rent_income": 0.5,
-    "rental_income": 0.4,
-    "estate_income": 0.5,
-    "partnership_s_corp_income": 0.85,
-}
+
+test_lite = os.environ.get("TEST_LITE")
 
 
 class CPS(Dataset):
@@ -63,21 +52,33 @@ class CPS(Dataset):
             raw_data[entity] for entity in ENTITIES
         ]
 
+        logging.info("Adding ID variables")
         add_id_variables(cps, person, tax_unit, family, spm_unit, household)
+        logging.info("Adding personal variables")
         add_personal_variables(cps, person)
+        logging.info("Adding personal income variables")
         add_personal_income_variables(cps, person, self.raw_cps.time_period)
+        logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
+        logging.info("Adding SSN card type")
         add_ssn_card_type(cps, person)
+        logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
+        logging.info("Adding household variables")
         add_household_variables(cps, household)
+        logging.info("Adding rent")
         add_rent(self, cps, person, household)
-        add_auto_loan_balance(self, cps)
+        logging.info("Adding auto loan balance")
+        add_auto_loan_interest(self, cps)
+        logging.info("Adding tips")
         add_tips(self, cps)
+        logging.info("Added all variables")
 
         raw_data.close()
         self.save_dataset(cps)
-
+        logging.info("Adding takeup")
         add_takeup(self)
+        logging.info("Downsampling")
 
         # Downsample
         if self.frac is not None and self.frac < 1.0:
@@ -160,7 +161,9 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         },
         na_action="ignore",
     ).fillna(train_df.tenure_type)
-    train_df = train_df[train_df.is_household_head].sample(100_000)
+    train_df = train_df[train_df.is_household_head].sample(
+        100_000 if not test_lite else 1_000
+    )
     inference_df = cps_sim.calculate_dataframe(PREDICTORS)
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]
@@ -182,8 +185,8 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
 
-def add_auto_loan_balance(self, cps: h5py.File) -> None:
-    """ "Add auto loan balance variable."""
+def add_auto_loan_interest(self, cps: h5py.File) -> None:
+    """ "Add auto loan interest variable."""
     self.save_dataset(cps)
     cps_data = self.load_dataset()
 
@@ -296,7 +299,7 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
         "self_employment_income",
         "farm_income",
     ]
-    IMPUTED_VARIABLES = ["auto_loan_balance"]
+    IMPUTED_VARIABLES = ["auto_loan_interest", "auto_loan_balance"]
     weights = ["household_weight"]
 
     donor_data = scf_data[PREDICTORS + IMPUTED_VARIABLES + weights].copy()
@@ -304,30 +307,41 @@ def add_auto_loan_balance(self, cps: h5py.File) -> None:
     donor_data = donor_data.loc[
         np.random.choice(
             donor_data.index,
-            size=100_000,
+            size=100_000 if not test_lite else 10_000,
             replace=True,
             p=donor_data.household_weight / donor_data.household_weight.sum(),
         )
     ]
 
     from microimpute.models.qrf import QRF
+    import logging
+    import os
+
+    # Set root logger level
+    log_level = os.getenv("PYTHON_LOG_LEVEL", "WARNING")
+
+    # Specifically target the microimpute logger
+    logging.getLogger("microimpute").setLevel(getattr(logging, log_level))
 
     qrf_model = QRF()
-    fitted_model = qrf_model.fit(
-        X_train=donor_data,
-        predictors=PREDICTORS,
-        imputed_variables=IMPUTED_VARIABLES,
-        tune_hyperparameters=True,
-    )
-
+    if test_lite:
+        fitted_model = qrf_model.fit(
+            X_train=donor_data,
+            predictors=PREDICTORS,
+            imputed_variables=IMPUTED_VARIABLES,
+            tune_hyperparameters=not test_lite,
+        )
+    else:
+        fitted_model, best_params = qrf_model.fit(
+            X_train=donor_data,
+            predictors=PREDICTORS,
+            imputed_variables=IMPUTED_VARIABLES,
+            tune_hyperparameters=not test_lite,
+        )
     imputations = fitted_model.predict(X_test=receiver_data)
 
     for var in IMPUTED_VARIABLES:
         cps[var] = imputations[0.5][var]
-
-    cps["auto_loan_interest"] = (
-        cps["auto_loan_balance"] * scf_data["auto_loan_interest"].mean() / 100
-    ) * 12
 
     self.save_dataset(cps)
 
@@ -501,6 +515,9 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     # High school or college/university enrollment status.
     cps["is_full_time_college_student"] = person.A_HSCOL == 2
 
+    cps["detailed_occupation_recode"] = person.POCCU2
+    add_overtime_occupation(cps, person)
+
 
 def add_personal_income_variables(
     cps: h5py.File, person: DataFrame, year: int
@@ -525,6 +542,7 @@ def add_personal_income_variables(
     cps["employment_income"] = person.WSAL_VAL
 
     cps["weekly_hours_worked"] = person.HRSWK * person.WKSWORK / 52
+    cps["hours_worked_last_week"] = person.A_HRS1 * person.WKSWORK / 52
 
     cps["taxable_interest_income"] = person.INT_VAL * (
         p["taxable_interest_fraction"]
@@ -712,8 +730,16 @@ def add_personal_income_variables(
     # ------------------------------------------------------------------
     # Qualified Business Income deduction flags. These indicate whether
     # the corresponding stream of income would qualify for the 199A
-    # deduction if it were present.  Each component uses its own probability
-    # drawn from QBI_QUALIFICATION_PROBABILITIES.
+    # deduction if it were present.
+    QBI_QUALIFICATION_PROBABILITIES = {
+        "self_employment_income": 0.8,
+        "farm_operations_income": 0.95,
+        "farm_rent_income": 0.5,
+        "rental_income": 0.4,
+        "estate_income": 0.5,
+        "partnership_s_corp_income": 0.85,
+    }
+
     rng = np.random.default_rng(seed=43)
     for var, prob in QBI_QUALIFICATION_PROBABILITIES.items():
         cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
@@ -917,6 +943,50 @@ def add_tips(self, cps: h5py.File):
     )[0.5].tip_income.values
 
     self.save_dataset(cps)
+
+
+def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
+    """Add occupation categories relevant to overtime eligibility calculations.
+    Based on:
+    https://www.law.cornell.edu/uscode/text/29/213
+    https://www.congress.gov/crs-product/IF12480
+    """
+    cps["has_never_worked"] = person.POCCU2 == 53
+    cps["is_military"] = person.POCCU2 == 52
+    cps["is_computer_scientist"] = person.POCCU2 == 8
+    cps["is_farmer_fisher"] = person.POCCU2 == 41
+    cps["is_executive_administrative_professional"] = person.POCCU2.isin(
+        [
+            1,  # Chief executives, and managers
+            2,  # Compensation, human resources, and infrastructure managers
+            3,  # All other managers
+            5,  # Business operations specialists
+            6,  # Accountants and auditors
+            7,  # Financial specialists
+            9,  # Mathematical science occupations
+            10,  # Architects, except naval
+            11,  # Surveyors, cartographers, & photogrammetrists
+            12,  # Engineering technologists and technicians
+            13,  # Earth scientists
+            14,  # Economists
+            15,  # Psychologists, and other social scientists
+            16,  # Health and safety specialists
+            18,  # Lawyers, judges, magistrates, and other judicial workers
+            19,  # Paralegals and all other legal support workers
+            25,  # Registered nurses, therapists, and specific pathologists
+            26,  # Veterinarians
+            27,  # Health technicians and other healthcare practitioners
+            28,  # Healthcare support occupations
+            29,  # First-line supervisors of protective service workers
+            34,  # First-line supervisors of housekeeping and janitorial workers
+            36,  # Supervisors of personal care and service workers
+            38,  # First-line supervisors of retail/non-retail sales workers
+            39,  # Sales and related occupations
+            40,  # Office & administrative support occupations
+            42,  # First-line supervisors of construction trades workers
+            50,  # Supervisors of transportation and flight related workers
+        ]
+    )
 
 
 class CPS_2019(CPS):

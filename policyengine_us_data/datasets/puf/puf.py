@@ -14,6 +14,112 @@ import os
 rng = np.random.default_rng(seed=64)
 
 
+def lognormal_sample(n, prob, mu, sigma):
+    """Generate a Bernoulli-lognormal mixture."""
+    positive = np.random.binomial(1, prob, size=n)
+    amounts  = np.where(
+        positive == 1,
+        np.random.lognormal(mean=mu, sigma=sigma, size=n),
+        0.0,
+    )
+    return amounts
+
+
+def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
+    """
+    Simulate two Section 199A guard-rail quantities for every record
+      • W-2 wages paid by the business
+      • Unadjusted basis immediately after acquisition (UBIA) of property
+
+    Simulation help from https://chatgpt.com/c/6835f838-a2b0-8006-ba95-c9187f2477ad
+
+
+    Parameters
+    ----------
+    puf : pandas.DataFrame
+        Must contain the income columns created in your preprocessing block.
+    seed : int, optional
+        For reproducible random draws.
+    diagnostics : bool, default True
+        Print high-level checks after the simulation runs.
+
+    Returns
+    -------
+    w2_wages : 1-D NumPy array
+    ubia     : 1-D NumPy array
+    """
+
+    # ––––––––––––––––– 0.  Setup –––––––––––––––––––––––––––––––––––––––––––
+    rng = np.random.default_rng(seed)
+
+    # 1. Qualified business income ----------------------------------------------------------------
+    qbi = (
+          puf["self_employment_income"]
+        + puf["farm_operations_income"]
+        + puf["farm_rent_income"]
+        + puf["rental_income"]
+        + puf["estate_income"]
+        + puf["partnership_s_corp_income"]
+    ).to_numpy()
+
+    # Replace NANs with 0 so later math does not propagate missing values
+    qbi = np.nan_to_num(qbi, copy=False)
+
+    # 2. Simulate gross receipts by drawing a profit margin ---------------------------------------
+    margins  = rng.beta(2, 3, qbi.size) * (0.25 - 0.05) + 0.05     # 5 – 25 %, μ≈12 %
+    revenues = np.maximum(qbi, 0) / margins                        # force non-negative QBI
+
+    # 3. Probability the filer has employees (Census NES: ~14 % of pass-throughs) -----------------
+    logit                = -2.2 + 1.2e-6 * revenues
+    pr_has_employees     = 1 / (1 + np.exp(-logit))
+    has_employees        = rng.binomial(1, pr_has_employees)
+
+    # 4. Draw a labor share; lower for rental/real-estate, higher for operating businesses --------
+    is_rental = puf["rental_income"].to_numpy() > 0
+
+    labor_ratios = np.where(
+        is_rental,
+        rng.beta(1.5,  8, qbi.size) * 0.08,     # peak 4–6 % of receipts
+        rng.beta(2.0,  2, qbi.size) * 0.25,     # peak 12–18 %
+    )
+
+    w2_wages = revenues * labor_ratios * has_employees
+
+    # 5. A simple depreciation proxy (only needed to flag capital-intensive firms) ----------------
+    #    You do not have a depreciation column; create a rough stand-in that scales with rents.
+    depreciation_proxy = np.where(
+        is_rental,
+        rng.lognormal(mean=np.log(np.abs(puf["rental_income"].to_numpy()) + 1.0),
+                      sigma=0.8),
+        0.0,
+    )
+
+    # 6. UBIA simulation – log-normal, but only for capital-heavy records -------------------------
+    is_capital_intensive = is_rental | (depreciation_proxy > 0)
+
+    ubia = np.where(
+        is_capital_intensive,
+        rng.lognormal(mean=np.log(4 * np.maximum(qbi, 0) + 1.0), sigma=1.0),
+        0.0,
+    )
+
+    # Trim crazy outliers so UBIA does not dominate QBI limits
+    ubia = np.minimum(ubia, 20 * np.abs(qbi))
+
+    # 7. Quick plausibility checks ----------------------------------------------------------------
+    if diagnostics:
+        share_qbi_pos = np.mean(qbi > 0)
+        share_wages   = np.mean((w2_wages > 0) & (qbi > 0))
+        print(f"• Share with QBI > 0                : {share_qbi_pos:6.2%}")
+        print(f"• Among those, share with W-2 wages : {share_wages:6.2%}")
+        if np.any(w2_wages > 0):
+            print(f"• Mean W-2 (if >0)                 : ${np.mean(w2_wages[w2_wages>0]):,.0f}")
+        if np.any(ubia > 0):
+            print(f"• Median UBIA (if >0)              : ${np.median(ubia[ubia>0]):,.0f}")
+
+    return w2_wages, ubia
+
+ 
 def impute_pension_contributions_to_puf(puf_df):
     from policyengine_us import Microsimulation
     from policyengine_us_data.datasets.cps import CPS_2021
@@ -215,64 +321,10 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Ignore cmbtp (estimate of AMT income not in AGI)
     # Ignore k1bx14s and k1bx14p (partner self-employment income included in partnership and S-corp income)
 
-    # --- Qualified Business Income Deduction computation and simulation ---
-    qbi = (
-        puf["self_employment_income"]   # Schedule C sole prop
-        + puf["farm_operations_income"]  # Schedule F active farming operations
-        + puf["farm_rent_income"]  # Schedule E farm rent
-        + puf["rental_income"]  # Schedule E rent and royalty
-        + puf["estate_income"]  # Schedule E estate and trust
-        + puf["partnership_s_corp_income"]  # Schedule E Active S-Corp or partnership
-    )
-    print(f"QBI Est (Millions) New: {np.dot(qbi, puf.S006) / 1E6:,.0f}")
-
-    def simulate_w2_wages_from_qualified_business(qbi, diagnostics=False):
-        MIN_MARGIN = .03
-        MAX_MARGIN = .15
-
-        MIN_LABOR_RATIO = 0.05
-        MAX_LABOR_RATIO = 0.15
-
-        margins = MIN_MARGIN + (MAX_MARGIN - MIN_MARGIN) * np.random.beta(2, 2, size=qbi.shape[0])
-        revenues = np.maximum(qbi, 0) / margins
-        labor_ratios = (
-            MIN_LABOR_RATIO
-            + (MAX_LABOR_RATIO - MIN_LABOR_RATIO) * np.random.beta(2, 2, size=revenues.shape[0])
-        )
-        hypothetical_w2_gross_income = revenues * labor_ratios
-        
-        pr_has_w2_employees = 1 / (1 + np.exp(-0.5E-5 * (revenues - 4E5)))
-        has_w2_employees = np.random.binomial(n=1, p=pr_has_w2_employees)
-        w2_wages = hypothetical_w2_gross_income * has_w2_employees
-
-        hypothetical_ubia = (
-            np.maximum(0,
-            -2.2E4 + 3.0E-1 * revenues
-            + 4E4 * np.random.normal(size=qbi.shape[0])
-            )
-        )
-
-        pr_has_qualified_property = 1 / (1 + np.exp(3 + -(1 / 100000.0) * (w2_wages - 100000.0)))
-        pr_has_qualified_property 
-        np.median(pr_has_qualified_property[w2_wages>0])
-
-        has_qualified_property = np.random.binomial(n=1, p=pr_has_qualified_property)
-        ubia_property = hypothetical_ubia * has_qualified_property
-       
-        if diagnostics:
-            print(f"Proportion of records with positive QBI: {np.mean(qbi >0):.2f}")
-            print(f"Within positive QBI, proportion with W2 wages: {np.mean(w2_wages[qbi>0]>0):.2f}")
-            print(f"Within positive wages, mean in Millions is {np.mean(w2_wages[w2_wages>0])/1E6:.1f}")
-            print(f"Within positive wages, median in Millions is {np.median(w2_wages[w2_wages>0])/1E6:.1f}")
-            print(f"Within pos wages, 75th perc (mil) is {np.percentile(w2_wages[w2_wages>0], 75)/1E6:.1f}")
-            print(f"For pos wages, max (mil) is {np.max(w2_wages[w2_wages>0])/1E6:.1f}")
-            print(f"For pos wages, med ubia >0 prob: {np.median(pr_has_qualified_property[w2_wages>0]):.3f}")
-            print(f"For positive wages, med ubia prop (mil): {np.median(ubia_property[w2_wages>0])/1E6:.1f}")
-        return w2_wages, ubia_property
-
-    w2_wages, ubia_property = simulate_w2_wages_from_qualified_business(qbi, True)
-    puf["w2_wages_from_qualified_business"] = w2_wages
-    puf["unadjusted_basis_qualified_property"] = ubia_property 
+    # --- Qualified Business Income Deduction (QBID) simulation ---
+    w2, ubia = simulate_w2_and_ubia_from_puf(puf, seed=42)
+    puf["w2_wages_from_qualified_business"]     = w2
+    puf["unadjusted_basis_qualified_property"]  = ubia
 
     sstb_prob_map_by_name = {
         "E00900": 0.20,
@@ -286,13 +338,21 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
 
     pr_sstb = largest_qbi_source_name.map(sstb_prob_map_by_name).fillna(0.0)
     puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
-    print(f"SSTB % of >0qbi biz: {100 * np.mean(puf.loc[qbi > 0]['business_is_sstb']):.1f}")
 
-    # TODO: improve
-    puf["qualified_reit_and_ptp_income"] = 100
-    puf["qualified_bdc_income"] = 100  # business development company income
-
-    # -------- End QBID work -------
+    # REIT and BCD income: chatgpt.com/c/6835f502-5b48-8006-833a-76170a0acd40
+    p_reit_ptp = 0.07          # 7 % with income > 0
+    mu_reit_ptp, sigma_reit_ptp = 8.04, 1.20
+    puf["qualified_reit_and_ptp_income"] = lognormal_sample(
+        len(puf), p_reit_ptp, mu_reit_ptp, sigma_reit_ptp
+    )
+    
+    # Business-development-company dividends
+    p_bdc = 0.003              # 0.3 % with income > 0
+    mu_bdc, sigma_bdc = 8.71, 1.00
+    puf["qualified_bdc_income"] = lognormal_sample(
+        len(puf), p_bdc, mu_bdc, sigma_bdc
+    )
+    # -------- End of QBID -------
     puf["filing_status"] = puf.MARS.map(
         {
             1: "SINGLE",

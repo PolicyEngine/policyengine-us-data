@@ -859,37 +859,7 @@ def add_ssn_card_type(
     # Code 1: All US Citizens (naturalized and born)
     citizens_mask = np.isin(person.PRCITSHP, [1, 2, 3, 4])
     ssn_card_type[citizens_mask] = 1
-
-    # Code 2: Non-citizens with work/study authorization (likely valid EAD)
     noncitizens = person.PRCITSHP == 5
-    worker_mask = noncitizens & ((person.WSAL_VAL > 0) | (person.SEMP_VAL > 0))
-    student_mask = noncitizens & (person.A_HSCOL == 2)
-
-    np.random.seed(0)
-    # In 2024, the foreign born accounted for 19.2 percent of the U.S. civilian labor force
-    # https://www.bls.gov/news.release/forbrn.nr0.htm
-    # In Jan 2024, the total U.S. civilian labor forceis reported as 167.1 million people
-    # https://fred.stlouisfed.org/series/CLF16OV
-    # Unauthorized immigrant workers is 8.3 million
-    # https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/
-    # share of undocumented immigrant workers who are unauthorized to work is: 8.3 / (0.192 * 167.1)
-    worker_ids = person[worker_mask].index
-    n_worker_ead = int(0.74 * len(worker_ids))
-    selected_workers = np.random.choice(
-        worker_ids, size=n_worker_ead, replace=False
-    )
-
-    # undocumented immigrant students who account for approximately 21 percent of the total 1.9 million immigrant students
-    # https://www.higheredimmigrationportal.org/research/immigrant-origin-students-in-u-s-higher-education-updated-august-2024/
-    student_ids = person[student_mask].index
-    n_student_ead = int(0.79 * len(student_ids))
-    selected_students = np.random.choice(
-        student_ids, size=n_student_ead, replace=False
-    )
-
-    # Assign code 2
-    ssn_card_type[selected_workers] = 2
-    ssn_card_type[selected_students] = 2
 
     # ============================================================================
     # ASEC UNDOCUMENTED ALGORITHM CONDITIONS (13 of 14)
@@ -998,8 +968,42 @@ def add_ssn_card_type(
     ssn_card_type[potentially_undocumented & assumed_documented] = 3
 
     # ============================================================================
-    # DISTRIBUTION AFTER ASEC CONDITIONS
+    # CODE 2 NON-CITIZEN WITH WORK/STUDY AUTHORIZATION
     # ============================================================================
+
+    # Code 2: Non-citizens with work/study authorization (likely valid EAD)
+    worker_mask = (
+        (ssn_card_type != 3)
+        & noncitizens
+        & ((person.WSAL_VAL > 0) | (person.SEMP_VAL > 0))
+    )
+    student_mask = (ssn_card_type != 3) & noncitizens & (person.A_HSCOL == 2)
+
+    np.random.seed(0)
+    # In 2024, the foreign born accounted for 19.2 percent of the U.S. civilian labor force.
+    # https://www.bls.gov/news.release/forbrn.nr0.htm
+    # In Jan 2024, the total U.S. civilian labor forceis reported as 167.1 million people.
+    # https://fred.stlouisfed.org/series/CLF16OV
+    # Unauthorized immigrant workers is 8.3 million.
+    # https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/
+    # share of undocumented immigrant workers who are unauthorized to work is: 8.3 / (0.192 * 167.1)
+    worker_ids = person[worker_mask].index
+    n_worker_ead = int(0.74 * len(worker_ids))
+    selected_workers = np.random.choice(
+        worker_ids, size=n_worker_ead, replace=False
+    )
+
+    # undocumented immigrant students who account for approximately 21 percent of the total 1.9 million immigrant students
+    # https://www.higheredimmigrationportal.org/research/immigrant-origin-students-in-u-s-higher-education-updated-august-2024/
+    student_ids = person[student_mask].index
+    n_student_ead = int(0.79 * len(student_ids))
+    selected_students = np.random.choice(
+        student_ids, size=n_student_ead, replace=False
+    )
+
+    # Assign code 2
+    ssn_card_type[selected_workers] = 2
+    ssn_card_type[selected_students] = 2
 
     final_counts = pd.Series(ssn_card_type).value_counts().sort_index()
 
@@ -1129,12 +1133,6 @@ def add_ssn_card_type(
         assign_to_code_3 = random_draw < share_code_3
         random_count = assign_to_code_3.sum()
         ssn_card_type[refine_indices[assign_to_code_3]] = 3
-
-    # ============================================================================
-    # FINAL SUMMARY
-    # ============================================================================
-
-    final_counts = pd.Series(ssn_card_type).value_counts().sort_index()
 
     # ============================================================================
     # CONVERT TO STRING LABELS AND STORE

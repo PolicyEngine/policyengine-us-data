@@ -872,7 +872,7 @@ def add_ssn_card_type(
     # https://fred.stlouisfed.org/series/CLF16OV
     # Unauthorized immigrant workers is 8.3 million
     # https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/
-    # share of undocumented immigrant workers who are authorized to work is: 8.3 / (0.192 * 167.1)
+    # share of undocumented immigrant workers who are unauthorized to work is: 8.3 / (0.192 * 167.1)
     worker_ids = person[worker_mask].index
     n_worker_ead = int(0.74 * len(worker_ids))
     selected_workers = np.random.choice(
@@ -961,10 +961,8 @@ def add_ssn_card_type(
     has_social_security = person.SS_YN == 1
 
     # CONDITION 12: Housing Assistance
-    person_spm_housing = person.merge(
-        spm_unit[["SPM_ID", "SPM_CAPHOUSESUB"]], on="SPM_ID", how="left"
-    )
-    has_housing_assistance = person_spm_housing.SPM_CAPHOUSESUB > 0
+    spm_housing_map = dict(zip(spm_unit.SPM_ID, spm_unit.SPM_CAPHOUSESUB))
+    has_housing_assistance = person.SPM_ID.map(spm_housing_map).fillna(0) > 0
 
     # CONDITION 13: Veterans/Military Personnel
     is_veteran = person.PEAFEVER == 1

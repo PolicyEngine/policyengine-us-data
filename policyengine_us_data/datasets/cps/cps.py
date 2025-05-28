@@ -1,3 +1,4 @@
+from importlib.resources import files
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER
 import h5py
@@ -530,10 +531,13 @@ def add_personal_income_variables(
         year (int): The CPS year
     """
     # Get income imputation parameters.
-    yamlfilename = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)),
-        "imputation_parameters.yaml",
+    yamlfilename = (
+        files("policyengine_us_data")
+        / "datasets"
+        / "cps"
+        / "imputation_parameters.yaml"
     )
+
     with open(yamlfilename, "r", encoding="utf-8") as yamlfile:
         p = yaml.safe_load(yamlfile)
     assert isinstance(p, dict)

@@ -60,7 +60,7 @@ class CPS(Dataset):
         logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
         logging.info("Adding SSN card type")
-        add_ssn_card_type(cps, person)
+        add_ssn_card_type(cps, person, spm_unit)
         logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
         logging.info("Adding household variables")
@@ -838,7 +838,9 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
     ].values
 
 
-def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
+def add_ssn_card_type(
+    cps: h5py.File, person: pd.DataFrame, spm_unit: pd.DataFrame
+) -> None:
     """
     Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.
     Codes:
@@ -908,7 +910,6 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     # 06 = 1975–1979
     # 07 = 1980–1981
     arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
-    condition_1_count = (potentially_undocumented & arrived_before_1982).sum()
 
     # CONDITION 2: Eligible Naturalized Citizens
     is_naturalized = person.PRCITSHP == 4
@@ -923,41 +924,31 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
         & is_adult
         & (has_five_plus_years | (has_three_plus_years & is_married))
     )
-    condition_2_count = (potentially_undocumented & eligible_naturalized).sum()
 
     # CONDITION 3: Medicare Recipients
     has_medicare = person.MCARE == 1
-    condition_3_count = (potentially_undocumented & has_medicare).sum()
 
     # CONDITION 4: Federal Retirement Benefits
     has_federal_pension = np.isin(person.PEN_SC1, [3]) | np.isin(
         person.PEN_SC2, [3]
     )  # Federal government pension
-    condition_4_count = (potentially_undocumented & has_federal_pension).sum()
 
     # CONDITION 5: Social Security Disability
     has_ss_disability = np.isin(person.RESNSS1, [2]) | np.isin(
         person.RESNSS2, [2]
     )  # Disabled (adult or child)
-    condition_5_count = (potentially_undocumented & has_ss_disability).sum()
 
     # CONDITION 6: Indian Health Service Coverage
     has_ihs = person.IHSFLG == 1
-    condition_6_count = (potentially_undocumented & has_ihs).sum()
 
     # CONDITION 7: Medicaid Recipients (simplified - no state adjustments)
     has_medicaid = person.CAID == 1
-    condition_7_count = (potentially_undocumented & has_medicaid).sum()
 
     # CONDITION 8: CHAMPVA Recipients
     has_champva = person.CHAMPVA == 1
-    condition_8_count = (potentially_undocumented & has_champva).sum()
 
     # CONDITION 9: Military Health Insurance
     has_military_insurance = person.MIL == 1
-    condition_9_count = (
-        potentially_undocumented & has_military_insurance
-    ).sum()
 
     # CONDITION 10: Government Employees
     is_government_worker = np.isin(
@@ -965,27 +956,23 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     )  # Fed/state/local gov
     is_military_occupation = person.A_MJOCC == 11  # Military occupation
     is_government_employee = is_government_worker | is_military_occupation
-    condition_10_count = (
-        potentially_undocumented & is_government_employee
-    ).sum()
 
     # CONDITION 11: Social Security Recipients
     has_social_security = person.SS_YN == 1
-    condition_11_count = (potentially_undocumented & has_social_security).sum()
 
-    # CONDITION 12: Housing Assistance - SKIPPED (requires household data + state rules)
+    # CONDITION 12: Housing Assistance
+    person_spm_housing = person.merge(
+        spm_unit[["SPM_ID", "SPM_CAPHOUSESUB"]], on="SPM_ID", how="left"
+    )
+    has_housing_assistance = person_spm_housing.SPM_CAPHOUSESUB > 0
 
     # CONDITION 13: Veterans/Military Personnel
     is_veteran = person.PEAFEVER == 1
     is_current_military = person.A_MJOCC == 11
     is_military_connected = is_veteran | is_current_military
-    condition_13_count = (
-        potentially_undocumented & is_military_connected
-    ).sum()
 
     # CONDITION 14: SSI Recipients (simplified - assumes all SSI is for recipient)
     has_ssi = person.SSI_YN == 1
-    condition_14_count = (potentially_undocumented & has_ssi).sum()
 
     # ============================================================================
     # CONSOLIDATED ASSIGNMENT OF ASSUMED DOCUMENTED STATUS
@@ -1004,6 +991,7 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
         | has_military_insurance
         | is_government_employee
         | has_social_security
+        | has_housing_assistance
         | is_military_connected
         | has_ssi
     )

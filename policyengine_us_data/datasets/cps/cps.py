@@ -859,11 +859,35 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     ssn_card_type[citizens_mask] = 1
 
     # Code 2: Non-citizens with work/study authorization (likely valid EAD)
-    noncitizen_mask = person.PRCITSHP == 5
-    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)
-    is_student = person.A_HSCOL == 2  # Currently enrolled in school
-    has_work_study_auth = noncitizen_mask & (is_worker | is_student)
-    ssn_card_type[has_work_study_auth] = 2
+    noncitizens = person.PRCITSHP == 5
+    worker_mask = noncitizens & ((person.WSAL_VAL > 0) | (person.SEMP_VAL > 0))
+    student_mask = noncitizens & (person.A_HSCOL == 2)
+
+    np.random.seed(0)
+    # In 2024, the foreign born accounted for 19.2 percent of the U.S. civilian labor force
+    # https://www.bls.gov/news.release/forbrn.nr0.htm
+    # In Jan 2024, the total U.S. civilian labor forceis reported as 167.1 million people
+    # https://fred.stlouisfed.org/series/CLF16OV
+    # Unauthorized immigrant workers is 8.3 million
+    # https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/
+    # share of undocumented immigrant workers who are authorized to work is: 8.3 / (0.192 * 167.1)
+    worker_ids = person[worker_mask].index
+    n_worker_ead = int(0.74 * len(worker_ids))
+    selected_workers = np.random.choice(
+        worker_ids, size=n_worker_ead, replace=False
+    )
+
+    # undocumented immigrant students who account for approximately 21 percent of the total 1.9 million immigrant students
+    # https://www.higheredimmigrationportal.org/research/immigrant-origin-students-in-u-s-higher-education-updated-august-2024/
+    student_ids = person[student_mask].index
+    n_student_ead = int(0.79 * len(student_ids))
+    selected_students = np.random.choice(
+        student_ids, size=n_student_ead, replace=False
+    )
+
+    # Assign code 2
+    ssn_card_type[selected_workers] = 2
+    ssn_card_type[selected_students] = 2
 
     # ============================================================================
     # ASEC UNDOCUMENTED ALGORITHM CONDITIONS (13 of 14)
@@ -875,6 +899,14 @@ def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
     potentially_undocumented = ~np.isin(ssn_card_type, [1, 2])
 
     # CONDITION 1: Pre-1982 Arrivals (IRCA Amnesty Eligible)
+    # PEINUSYR values indicating arrival before 1982:
+    # 01 = Before 1950
+    # 02 = 1950–1959
+    # 03 = 1960–1964
+    # 04 = 1965–1969
+    # 05 = 1970–1974
+    # 06 = 1975–1979
+    # 07 = 1980–1981
     arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
     condition_1_count = (potentially_undocumented & arrived_before_1982).sum()
     ssn_card_type[potentially_undocumented & arrived_before_1982] = 3

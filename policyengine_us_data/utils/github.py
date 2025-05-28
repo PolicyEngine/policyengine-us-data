@@ -6,16 +6,20 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import time
 
-auth_headers = {
-    "Authorization": f"token {os.environ.get('POLICYENGINE_US_DATA_GITHUB_TOKEN')}",
-}
+
+TOKEN = os.environ.get("POLICYENGINE_US_DATA_GITHUB_TOKEN")
+
+if TOKEN:
+    AUTH_HEADERS = {"Authorization": f"token {TOKEN}"}
+else:
+    AUTH_HEADERS = {}
 
 
 def get_asset_url(
     org: str, repo: str, release_tag: str, file_name: str
 ) -> str:
     url = f"https://api.github.com/repos/{org}/{repo}/releases/tags/{release_tag}"
-    response = requests.get(url, headers=auth_headers)
+    response = requests.get(url, headers=AUTH_HEADERS)
     if response.status_code != 200:
         raise ValueError(
             f"Invalid response code {response.status_code} for url {url}."
@@ -32,7 +36,7 @@ def get_asset_url(
 
 def get_release_id(org: str, repo: str, release_tag: str) -> int:
     url = f"https://api.github.com/repos/{org}/{repo}/releases/tags/{release_tag}"
-    response = requests.get(url, headers=auth_headers)
+    response = requests.get(url, headers=AUTH_HEADERS)
     if response.status_code == 404:
         raise ValueError(f"Release {release_tag} not found in {org}/{repo}.")
     elif response.status_code != 200:
@@ -44,7 +48,7 @@ def get_release_id(org: str, repo: str, release_tag: str) -> int:
 
 def get_all_assets(org: str, repo: str, release_id: int) -> list:
     url = f"https://api.github.com/repos/{org}/{repo}/releases/{release_id}/assets"
-    response = requests.get(url, headers=auth_headers)
+    response = requests.get(url, headers=AUTH_HEADERS)
     if response.status_code != 200:
         raise ValueError(
             f"Invalid response code {response.status_code} for url {url}."
@@ -73,7 +77,7 @@ def delete_asset(org: str, repo: str, asset_id: int):
     )
     headers = {
         "Accept": "application/vnd.github.v3+json",
-        **auth_headers,
+        **AUTH_HEADERS,
     }
 
     response = requests.delete(url, headers=headers)
@@ -96,7 +100,7 @@ def download(
             stream=True,
             headers={
                 "Accept": "application/octet-stream",
-                **auth_headers,
+                **AUTH_HEADERS,
             },
         )
 
@@ -177,7 +181,7 @@ def create_asset(
         "Accept": "application/vnd.github.v3+json",
         "Content-Type": "application/octet-stream",
         "Content-Length": str(file_size),
-        **auth_headers,
+        **AUTH_HEADERS,
     }
 
     session = create_session_with_retries()
@@ -229,7 +233,7 @@ def set_pr_auto_review_comment(text: str):
 
     response = requests.post(
         url,
-        headers=auth_headers,
+        headers=AUTH_HEADERS,
         json={
             "body": text,
             "event": "COMMENT",

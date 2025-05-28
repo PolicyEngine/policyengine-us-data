@@ -79,7 +79,7 @@ IMPUTED_VARIABLES = [
     "farm_rent_income_would_be_qualified",
     "partnership_s_corp_income_would_be_qualified",
     "rental_income_would_be_qualified",
-    "self_employment_income_would_be_qualified"
+    "self_employment_income_would_be_qualified",
 ]
 
 

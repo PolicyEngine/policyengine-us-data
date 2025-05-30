@@ -731,10 +731,7 @@ def add_personal_income_variables(
     cps["other_medical_expenses"] = person.PMED_VAL
     cps["medicare_part_b_premiums"] = person.PEMCPREM
 
-    # ------------------------------------------------------------------
-    # Qualified Business Income deduction flags. These indicate whether
-    # the corresponding stream of income would qualify for the 199A
-    # deduction if it were present.
+    # Discussion #237, O3 chat: https://chatgpt.com/share/6823cb37-7a28-8001-b2bb-0c0a7f47401c
     QBI_QUALIFICATION_PROBABILITIES = {
         "self_employment_income": 0.8,
         "farm_operations_income": 0.95,

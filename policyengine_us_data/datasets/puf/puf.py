@@ -342,6 +342,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["w2_wages_from_qualified_business"] = w2
     puf["unadjusted_basis_qualified_property"] = ubia
 
+    # Discussion #237, O3 chat: https://chatgpt.com/share/6823cb37-7a28-8001-b2bb-0c0a7f47401c
     sstb_prob_map_by_name = {
         "E00900": 0.20,
         "E26270": 0.15,

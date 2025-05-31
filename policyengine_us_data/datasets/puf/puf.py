@@ -1,3 +1,4 @@
+import os
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -9,7 +10,8 @@ from policyengine_us_data.datasets.puf.irs_puf import IRS_PUF_2015
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
-import os
+from policyengine_us_data.utils import QBI_QUALIFICATION_PROBABILITIES
+
 
 rng = np.random.default_rng(seed=64)
 
@@ -53,13 +55,9 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     rng = np.random.default_rng(seed)
 
     # 1. Qualified business income ----------------------------------------------------------------
-    qbi = (
-        puf["self_employment_income"]
-        + puf["farm_operations_income"]
-        + puf["farm_rent_income"]
-        + puf["rental_income"]
-        + puf["estate_income"]
-        + puf["partnership_s_corp_income"]
+    qbi = sum(
+        puf[income_type] * prob
+        for income_type, prob in QBI_QUALIFICATION_PROBABILITIES.items()
     ).to_numpy()
 
     # Replace NANs with 0 so later math does not propagate missing values
@@ -68,7 +66,7 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     # 2. Simulate gross receipts by drawing a profit margin ---------------------------------------
     margins = (
         rng.beta(2, 3, qbi.size) * (0.25 - 0.05) + 0.05
-    )  # 5 – 25 %, μ≈12 %
+    )  # spans 5% to 25%, mean is 13%
     revenues = np.maximum(qbi, 0) / margins  # force non-negative QBI
 
     # 3. Probability the filer has employees (Census NES: ~14 % of pass-throughs) -----------------
@@ -357,7 +355,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
 
     # REIT and BCD income: chatgpt.com/c/6835f502-5b48-8006-833a-76170a0acd40
-    p_reit_ptp = 0.07  # 7 % with income > 0
+    p_reit_ptp = 0.07  # 7% with income > 0
     mu_reit_ptp, sigma_reit_ptp = 8.04, 1.20
     puf["qualified_reit_and_ptp_income"] = lognormal_sample(
         len(puf), p_reit_ptp, mu_reit_ptp, sigma_reit_ptp

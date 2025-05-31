@@ -50,43 +50,42 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     w2_wages : 1-D NumPy array
     ubia     : 1-D NumPy array
     """
-
-    # ––––––––––––––––– 0.  Setup –––––––––––––––––––––––––––––––––––––––––––
     rng = np.random.default_rng(seed)
 
-    # 1. Qualified business income ----------------------------------------------------------------
+    # 1. Qualified business income
     qbi = sum(
         puf[income_type] * prob
         for income_type, prob in QBI_QUALIFICATION_PROBABILITIES.items()
     ).to_numpy()
 
-    # Replace NANs with 0 so later math does not propagate missing values
-    qbi = np.nan_to_num(qbi, copy=False)
-
-    # 2. Simulate gross receipts by drawing a profit margin ---------------------------------------
+    # 2. Simulate gross receipts by drawing a profit margin
     margins = (
         rng.beta(2, 3, qbi.size) * (0.25 - 0.05) + 0.05
     )  # spans 5% to 25%, mean is 13%
-    revenues = np.maximum(qbi, 0) / margins  # force non-negative QBI
+    revenues = np.maximum(qbi, 0) / margins
 
-    # 3. Probability the filer has employees (Census NES: ~14 % of pass-throughs) -----------------
-    logit = -2.2 + 1.2e-6 * revenues
-    pr_has_employees = 1 / (1 + np.exp(-logit))
+    # 3. Probability the filer has employees -----------------
+    # Logistic model:  p = 1 / (1 + exp(-(b0 + b1 * receipts)))
+    # * b1 = 1.2e-6: odds roughly triple for each +$1 M; pr 50% near $1M
+    # * b0 = –3.1    → tuned so mean pr is roughly 14% in this PUF (matches SOI share)
+    # * Set p = 0 when simulated receipts == 0 (no revenue means no payroll)
+    logit = -3.1 + 1.2e-6 * revenues
+    pr_has_employees = np.where(revenues == 0.0, 0.0, 1 / (1 + np.exp(-logit)))
     has_employees = rng.binomial(1, pr_has_employees)
 
-    # 4. Draw a labor share; lower for rental/real-estate, higher for operating businesses --------
+    # 4. Draw a labor share; lower for rental/real-estate, higher for operating businesses
     is_rental = puf["rental_income"].to_numpy() > 0
 
     labor_ratios = np.where(
         is_rental,
-        rng.beta(1.5, 8, qbi.size) * 0.08,  # peak 4–6 % of receipts
-        rng.beta(2.0, 2, qbi.size) * 0.25,  # peak 12–18 %
+        rng.beta(1.5, 8, qbi.size) * 0.08,  # Rental: labor ratio between 4-6%
+        rng.beta(2.0, 2, qbi.size)
+        * 0.25,  # Non-rental: labor ratio between 12-18%
     )
 
     w2_wages = revenues * labor_ratios * has_employees
 
-    # 5. A simple depreciation proxy (only needed to flag capital-intensive firms) ----------------
-    #    You do not have a depreciation column; create a rough stand-in that scales with rents.
+    # 5. Create a depreciation stand-in that scales with rents.
     depreciation_proxy = np.where(
         is_rental,
         rng.lognormal(
@@ -96,7 +95,7 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
         0.0,
     )
 
-    # 6. UBIA simulation – log-normal, but only for capital-heavy records -------------------------
+    # 6. UBIA simulation: lognormal, but only for capital-heavy records
     is_capital_intensive = is_rental | (depreciation_proxy > 0)
 
     ubia = np.where(
@@ -108,20 +107,16 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     # Trim crazy outliers so UBIA does not dominate QBI limits
     ubia = np.minimum(ubia, 20 * np.abs(qbi))
 
-    # 7. Quick plausibility checks ----------------------------------------------------------------
+    # 7. Quick plausibility checks
     if diagnostics:
         share_qbi_pos = np.mean(qbi > 0)
         share_wages = np.mean((w2_wages > 0) & (qbi > 0))
-        print(f"• Share with QBI > 0                : {share_qbi_pos:6.2%}")
-        print(f"• Among those, share with W-2 wages : {share_wages:6.2%}")
+        print(f"Share with QBI > 0: {share_qbi_pos:6.2%}")
+        print(f"Among those, share with W-2 wages: {share_wages:6.2%}")
         if np.any(w2_wages > 0):
-            print(
-                f"• Mean W-2 (if >0)                 : ${np.mean(w2_wages[w2_wages>0]):,.0f}"
-            )
+            print(f"Mean W-2 (if >0): ${np.mean(w2_wages[w2_wages>0]):,.0f}")
         if np.any(ubia > 0):
-            print(
-                f"• Median UBIA (if >0)              : ${np.median(ubia[ubia>0]):,.0f}"
-            )
+            print(f"Median UBIA (if >0): ${np.median(ubia[ubia>0]):,.0f}")
 
     return w2_wages, ubia
 

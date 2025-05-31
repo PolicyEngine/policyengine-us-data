@@ -33,8 +33,7 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
       • W-2 wages paid by the business
       • Unadjusted basis immediately after acquisition (UBIA) of property
 
-    Simulation help from https://chatgpt.com/c/6835f838-a2b0-8006-ba95-c9187f2477ad
-
+    Simulation O3 chat: chatgpt.com/share/683b12a5-78dc-8006-81c9-479858312b30
 
     Parameters
     ----------

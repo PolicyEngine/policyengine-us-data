@@ -60,7 +60,7 @@ class CPS(Dataset):
         logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
         logging.info("Adding SSN card type")
-        add_ssn_card_type(cps, person, spm_unit)
+        add_ssn_card_type(cps, person, spm_unit, undocumented_target=11e6)
         logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
         logging.info("Adding household variables")
@@ -839,7 +839,10 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
 
 
 def add_ssn_card_type(
-    cps: h5py.File, person: pd.DataFrame, spm_unit: pd.DataFrame
+    cps: h5py.File,
+    person: pd.DataFrame,
+    spm_unit: pd.DataFrame,
+    undocumented_target: float = 11e6,
 ) -> None:
     """
     Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.
@@ -1117,22 +1120,65 @@ def add_ssn_card_type(
         pass
 
     # ============================================================================
-    # RANDOM REFINEMENT OF REMAINING CODE 0s
+    # TARGETED REFINEMENT OF REMAINING CODE 0s TO HIT WEIGHTED TARGET
     # ============================================================================
 
-    # Apply random assignment to remaining code 0 non-citizens
-    # 30% assigned to code 3, 70% remain as code 0 (likely undocumented)
-    share_code_3 = 0.3
-    rng = np.random.default_rng(seed=42)
+    # Target: 11 million undocumented immigrants (weighted population)
+    # This matches the target used in loss.py calibration
 
+    # Get household weights - map from household level to person level
+    household_ids = cps["household_id"]
+    household_weights = cps["household_weight"]
+    person_household_ids = cps["person_household_id"]
+
+    # Create mapping from household_id to weight
+    household_to_weight = dict(zip(household_ids, household_weights))
+    person_weights = np.array(
+        [household_to_weight.get(hh_id, 0) for hh_id in person_household_ids]
+    )
+
+    # Calculate current weighted undocumented population
+    current_weighted_undocumented = np.sum(person_weights[ssn_card_type == 0])
+
+    # Identify remaining code 0 non-citizens that can be reassigned
     remaining_zeros = (ssn_card_type == 0) & (~citizens_mask)
     refine_indices = np.where(remaining_zeros)[0]
 
     if len(refine_indices) > 0:
-        random_draw = rng.random(len(refine_indices))
-        assign_to_code_3 = random_draw < share_code_3
-        random_count = assign_to_code_3.sum()
-        ssn_card_type[refine_indices[assign_to_code_3]] = 3
+        if current_weighted_undocumented > undocumented_target:
+            # Calculate how much weighted population needs to be moved from code 0 to code 3
+            excess_weighted = (
+                current_weighted_undocumented - undocumented_target
+            )
+
+            # Get weights of people who can be reassigned
+            reassignable_weights = person_weights[refine_indices]
+
+            # Sort indices by weight (heaviest first) to minimize number of reassignments needed
+            weight_order = np.argsort(-reassignable_weights)
+            sorted_weights = reassignable_weights[weight_order]
+
+            # Find minimum number of people to reassign to hit target
+            cumulative_weights = np.cumsum(sorted_weights)
+            reassign_count = (
+                np.searchsorted(
+                    cumulative_weights, excess_weighted, side="right"
+                )
+                + 1
+            )
+            reassign_count = min(reassign_count, len(refine_indices))
+
+            # Calculate the exact share needed
+            share_code_3 = reassign_count / len(refine_indices)
+        else:
+            # If we're already at or below target, don't reassign any
+            share_code_3 = 0.0
+
+        if share_code_3 > 0:
+            rng = np.random.default_rng(seed=42)
+            random_draw = rng.random(len(refine_indices))
+            assign_to_code_3 = random_draw < share_code_3
+            ssn_card_type[refine_indices[assign_to_code_3]] = 3
 
     # ============================================================================
     # CONVERT TO STRING LABELS AND STORE

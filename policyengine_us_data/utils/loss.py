@@ -387,64 +387,6 @@ def build_loss_matrix(dataset: type, time_period):
 
         targets_array.append(target_count)
 
-    # CTC Reform Impact Calibration
-    from policyengine_core.reforms import Reform
-
-    # Define the CTC reform
-    ctc_reform = Reform.from_dict(
-        {
-            "gov.contrib.reconciliation.ctc.in_effect": {
-                "2025-01-01.2100-12-31": True
-            }
-        },
-        country_id="us",
-    )
-
-    # Create baseline and reform simulations
-    baseline_sim = Microsimulation(dataset=dataset)
-    baseline_sim.default_calculation_period = time_period
-    reform_sim = Microsimulation(dataset=dataset, reform=ctc_reform)
-    reform_sim.default_calculation_period = time_period
-
-    # Calculate baseline CTC recipients (children with ctc_individual_maximum > 0 and ctc_value > 0)
-    baseline_is_child = baseline_sim.calculate("is_child")
-    baseline_ctc_individual_maximum = baseline_sim.calculate(
-        "ctc_individual_maximum"
-    )
-    baseline_ctc_value = baseline_sim.calculate("ctc_value", map_to="person")
-    # Calculate reform CTC recipients (children with ctc_individual_maximum > 0 and ctc_value > 0)
-    reform_is_child = reform_sim.calculate("is_child")
-    reform_ctc_individual_maximum = reform_sim.calculate(
-        "ctc_individual_maximum"
-    )
-    reform_ctc_value = reform_sim.calculate("ctc_value", map_to="person")
-
-    # Create person-level difference array for mapping to household
-    baseline_child_recipients_array = (
-        baseline_is_child
-        * (baseline_ctc_individual_maximum > 0)
-        * (baseline_ctc_value > 0)
-    ).astype(float)
-    reform_child_recipients_array = (
-        reform_is_child
-        * (reform_ctc_individual_maximum > 0)
-        * (reform_ctc_value > 0)
-    ).astype(float)
-    ctc_recipient_difference_array = (
-        baseline_child_recipients_array - reform_child_recipients_array
-    )
-
-    # Map to household level
-    label = "policy/ctc_reform_child_recipient_difference"
-    loss_matrix[label] = baseline_sim.map_result(
-        ctc_recipient_difference_array, "person", "household"
-    )
-
-    # Target: 2 million difference in child CTC recipients
-    target_count_ctc_reform = 2e6
-    # https://x.com/MaxGhenis/status/1922992214050783507
-    targets_array.append(target_count_ctc_reform)
-
     return loss_matrix, np.array(targets_array)
 
 

@@ -115,12 +115,17 @@ def test_ssn_card_type_none_target():
 
 
 def test_ctc_reform_child_recipient_difference():
+    """
+    Test CTC reform impact for validation purposes only.
+    Note: This is no longer actively targeted in loss matrix calibration
+    due to uncertainty around assumptions from hearing comments.
+    """
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation
     from policyengine_core.reforms import Reform
 
     TARGET_COUNT = 2e6
-    TOLERANCE = 0.2  # Allow ±20% error
+    TOLERANCE = 0.5  # Allow ±50% error
 
     # Define the CTC reform
     ctc_reform = Reform.from_dict(
@@ -170,4 +175,5 @@ def test_ctc_reform_child_recipient_difference():
     print(
         f"CTC reform child recipient difference: {ctc_recipient_difference:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}"
     )
+    print("Note: CTC targeting removed from calibration - this is validation only")
     assert pct_error < TOLERANCE

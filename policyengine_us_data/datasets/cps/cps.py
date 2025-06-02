@@ -61,7 +61,14 @@ class CPS(Dataset):
         logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
         logging.info("Adding SSN card type")
-        add_ssn_card_type(cps, person)
+        add_ssn_card_type(
+            cps,
+            person,
+            spm_unit,
+            undocumented_target=11e6,
+            undocumented_workers_target=8.3e6,
+            undocumented_students_target=0.21 * 1.9e6,
+        )
         logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
         logging.info("Adding household variables")
@@ -842,42 +849,427 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
     ].values
 
 
-def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
+def add_ssn_card_type(
+    cps: h5py.File,
+    person: pd.DataFrame,
+    spm_unit: pd.DataFrame,
+    undocumented_target: float = 11e6,
+    undocumented_workers_target: float = 8.3e6,
+    undocumented_students_target: float = 0.21 * 1.9e6,
+) -> None:
     """
-    Deterministically assign SSA card type based on PRCITSHP and student/employment status.
-    Code:
-    - 1: Citizen (PRCITSHP 1–4)
-    - 2: Foreign-born, noncitizen but likely on valid EAD (student or worker)
-    - 0: Other noncitizens (to refine or default)
+    Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.
+    Codes:
+    - 0: "NONE" - Likely undocumented immigrants
+    - 1: "CITIZEN" - US citizens (born or naturalized)
+    - 2: "NON_CITIZEN_VALID_EAD" - Non-citizens with work/study authorization
+    - 3: "OTHER_NON_CITIZEN" - Non-citizens with indicators of legal status
     """
+    # Initialize all persons as code 0
     ssn_card_type = np.full(len(person), 0)
 
-    # Code 1: Citizens
-    ssn_card_type[np.isin(person.PRCITSHP, [1, 2, 3, 4])] = 1
+    # ============================================================================
+    # PRIMARY CLASSIFICATIONS
+    # ============================================================================
 
-    # Code 2: Noncitizens (PRCITSHP == 5) who are working or studying
-    noncitizen_mask = person.PRCITSHP == 5
-    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)  # worker
-    is_student = person.A_HSCOL == 2  # student
-    ead_like_mask = noncitizen_mask & (is_worker | is_student)
-    ssn_card_type[ead_like_mask] = 2
+    # Code 1: All US Citizens (naturalized and born)
+    citizens_mask = np.isin(person.PRCITSHP, [1, 2, 3, 4])
+    ssn_card_type[citizens_mask] = 1
+    noncitizens = person.PRCITSHP == 5
 
-    # Step 3: Refine remaining 0s into 0 or 3
-    share_code_3 = 0.3  # IRS/SSA target share of SSA-benefit-only cards
-    rng = np.random.default_rng(seed=42)
-    to_refine = (ssn_card_type == 0) & noncitizen_mask
-    refine_indices = np.where(to_refine)[0]
+    # ============================================================================
+    # ASEC UNDOCUMENTED ALGORITHM CONDITIONS (13 of 14)
+    # Remove individuals with indicators of legal status from code 0 pool
+    # ============================================================================
+
+    # paper source: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4662801
+    # Helper mask: Only apply conditions to non-citizens without clear authorization
+    potentially_undocumented = ~np.isin(ssn_card_type, [1, 2])
+
+    # CONDITION 1: Pre-1982 Arrivals (IRCA Amnesty Eligible)
+    # PEINUSYR values indicating arrival before 1982:
+    # 01 = Before 1950
+    # 02 = 1950–1959
+    # 03 = 1960–1964
+    # 04 = 1965–1969
+    # 05 = 1970–1974
+    # 06 = 1975–1979
+    # 07 = 1980–1981
+    arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
+
+    # CONDITION 2: Eligible Naturalized Citizens
+    is_naturalized = person.PRCITSHP == 4
+    is_adult = person.A_AGE >= 18
+    # 5+ years in US (codes 8-26: 1982-2019)
+    has_five_plus_years = np.isin(person.PEINUSYR, list(range(8, 27)))
+    # 3+ years in US + married (codes 8-27: 1982-2021)
+    has_three_plus_years = np.isin(person.PEINUSYR, list(range(8, 28)))
+    is_married = person.A_MARITL.isin([1, 2]) & (person.A_SPOUSE > 0)
+    eligible_naturalized = (
+        is_naturalized
+        & is_adult
+        & (has_five_plus_years | (has_three_plus_years & is_married))
+    )
+
+    # CONDITION 3: Medicare Recipients
+    has_medicare = person.MCARE == 1
+
+    # CONDITION 4: Federal Retirement Benefits
+    has_federal_pension = np.isin(person.PEN_SC1, [3]) | np.isin(
+        person.PEN_SC2, [3]
+    )  # Federal government pension
+
+    # CONDITION 5: Social Security Disability
+    has_ss_disability = np.isin(person.RESNSS1, [2]) | np.isin(
+        person.RESNSS2, [2]
+    )  # Disabled (adult or child)
+
+    # CONDITION 6: Indian Health Service Coverage
+    has_ihs = person.IHSFLG == 1
+
+    # CONDITION 7: Medicaid Recipients (simplified - no state adjustments)
+    has_medicaid = person.CAID == 1
+
+    # CONDITION 8: CHAMPVA Recipients
+    has_champva = person.CHAMPVA == 1
+
+    # CONDITION 9: Military Health Insurance
+    has_military_insurance = person.MIL == 1
+
+    # CONDITION 10: Government Employees
+    is_government_worker = np.isin(
+        person.PEIO1COW, [1, 2, 3]
+    )  # Fed/state/local gov
+    is_military_occupation = person.A_MJOCC == 11  # Military occupation
+    is_government_employee = is_government_worker | is_military_occupation
+
+    # CONDITION 11: Social Security Recipients
+    has_social_security = person.SS_YN == 1
+
+    # CONDITION 12: Housing Assistance
+    spm_housing_map = dict(zip(spm_unit.SPM_ID, spm_unit.SPM_CAPHOUSESUB))
+    has_housing_assistance = person.SPM_ID.map(spm_housing_map).fillna(0) > 0
+
+    # CONDITION 13: Veterans/Military Personnel
+    is_veteran = person.PEAFEVER == 1
+    is_current_military = person.A_MJOCC == 11
+    is_military_connected = is_veteran | is_current_military
+
+    # CONDITION 14: SSI Recipients (simplified - assumes all SSI is for recipient)
+    has_ssi = person.SSI_YN == 1
+
+    # ============================================================================
+    # CONSOLIDATED ASSIGNMENT OF ASSUMED DOCUMENTED STATUS
+    # ============================================================================
+
+    # Combine all conditions that indicate legal status
+    assumed_documented = (
+        arrived_before_1982
+        | eligible_naturalized
+        | has_medicare
+        | has_federal_pension
+        | has_ss_disability
+        | has_ihs
+        | has_medicaid
+        | has_champva
+        | has_military_insurance
+        | is_government_employee
+        | has_social_security
+        | has_housing_assistance
+        | is_military_connected
+        | has_ssi
+    )
+
+    # Apply single assignment for all conditions
+    ssn_card_type[potentially_undocumented & assumed_documented] = 3
+
+    # ============================================================================
+    # CODE 2 NON-CITIZEN WITH WORK/STUDY AUTHORIZATION
+    # ============================================================================
+
+    # Code 2: Non-citizens with work/study authorization (likely valid EAD)
+    worker_mask = (
+        (ssn_card_type != 3)
+        & noncitizens
+        & ((person.WSAL_VAL > 0) | (person.SEMP_VAL > 0))
+    )
+    student_mask = (ssn_card_type != 3) & noncitizens & (person.A_HSCOL == 2)
+
+    # Calculate target-driven worker assignment
+    # Target: 8.3 million undocumented workers (from Pew Research)
+    # https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/
+
+    # Get household weights for workers
+    worker_ids = person[worker_mask].index
+    household_ids = cps["household_id"]
+    household_weights = cps["household_weight"]
+    person_household_ids = cps["person_household_id"]
+    household_to_weight = dict(zip(household_ids, household_weights))
+    person_weights = np.array(
+        [household_to_weight.get(hh_id, 0) for hh_id in person_household_ids]
+    )
+
+    # Calculate how many workers need EAD to leave target undocumented workers
+    total_weighted_workers = np.sum(person_weights[worker_ids])
+    target_weighted_ead_workers = (
+        total_weighted_workers - undocumented_workers_target
+    )
+
+    if target_weighted_ead_workers > 0 and len(worker_ids) > 0:
+        # Sort workers by weight (heaviest first) to minimize assignments needed
+        worker_weights = person_weights[worker_ids]
+        weight_order = np.argsort(-worker_weights)
+        sorted_weights = worker_weights[weight_order]
+
+        # Find minimum number of workers to assign EAD
+        cumulative_weights = np.cumsum(sorted_weights)
+        n_worker_ead = (
+            np.searchsorted(
+                cumulative_weights, target_weighted_ead_workers, side="right"
+            )
+            + 1
+        )
+        n_worker_ead = min(n_worker_ead, len(worker_ids))
+    else:
+        # If target is already met or no workers available, assign no EAD
+        n_worker_ead = 0
+
+    if n_worker_ead > 0:
+        np.random.seed(0)
+        selected_workers = np.random.choice(
+            worker_ids, size=n_worker_ead, replace=False
+        )
+    else:
+        selected_workers = np.array([], dtype=int)
+
+    # Calculate target-driven student assignment
+    # Target: 21% of 1.9 million = ~399k undocumented students (from Higher Ed Immigration Portal)
+    # https://www.higheredimmigrationportal.org/research/immigrant-origin-students-in-u-s-higher-education-updated-august-2024/
+
+    student_ids = person[student_mask].index
+
+    if len(student_ids) > 0:
+        # Calculate how many students need EAD to leave target undocumented students
+        total_weighted_students = np.sum(person_weights[student_ids])
+        target_weighted_ead_students = (
+            total_weighted_students - undocumented_students_target
+        )
+
+        if target_weighted_ead_students > 0:
+            # Sort students by weight (heaviest first) to minimize assignments needed
+            student_weights = person_weights[student_ids]
+            weight_order = np.argsort(-student_weights)
+            sorted_weights = student_weights[weight_order]
+
+            # Find minimum number of students to assign EAD
+            cumulative_weights = np.cumsum(sorted_weights)
+            n_student_ead = (
+                np.searchsorted(
+                    cumulative_weights,
+                    target_weighted_ead_students,
+                    side="right",
+                )
+                + 1
+            )
+            n_student_ead = min(n_student_ead, len(student_ids))
+        else:
+            # If target is already met, assign no EAD
+            n_student_ead = 0
+
+        if n_student_ead > 0:
+            selected_students = np.random.choice(
+                student_ids, size=n_student_ead, replace=False
+            )
+        else:
+            selected_students = np.array([], dtype=int)
+    else:
+        selected_students = np.array([], dtype=int)
+
+    # Assign code 2
+    ssn_card_type[selected_workers] = 2
+    ssn_card_type[selected_students] = 2
+
+    final_counts = pd.Series(ssn_card_type).value_counts().sort_index()
+
+    # ============================================================================
+    # FAMILY CORRELATION ADJUSTMENT
+    # ============================================================================
+
+    # Identify parent-child relationships using household and family data
+    correlation_probability = 0.8
+    # Only applies to families with codes 0 or 3 (not citizens or valid EAD holders)
+    rng_family = np.random.default_rng(seed=123)
+
+    # Create a DataFrame for easier family processing
+    family_df = pd.DataFrame(
+        {
+            "person_id": person.PH_SEQ * 100 + person.P_SEQ,
+            "household_id": person.PH_SEQ,
+            "family_id": person.PH_SEQ * 10 + person.PF_SEQ,
+            "age": person.A_AGE,
+            "parent1_line": person.PEPAR1,  # Line number of first parent
+            "parent2_line": person.PEPAR2,  # Line number of second parent
+            "line_number": person.A_LINENO,
+            "ssn_code": ssn_card_type,
+        }
+    )
+
+    # Identify children (those with parent pointers)
+    children = family_df[
+        (family_df.parent1_line > 0) | (family_df.parent2_line > 0)
+    ]
+
+    families_adjusted = 0
+
+    for _, child in children.iterrows():
+        # Only process if child is eligible (codes 0 or 3)
+        if child.ssn_code not in [0, 3]:
+            continue
+
+        # Find parents in the same household
+        household_members = family_df[
+            family_df.household_id == child.household_id
+        ]
+
+        parents = household_members[
+            (household_members.line_number == child.parent1_line)
+            | (household_members.line_number == child.parent2_line)
+        ]
+
+        if len(parents) > 0:
+            # Only consider parents who are eligible (codes 0 or 3)
+            eligible_parents = parents[parents.ssn_code.isin([0, 3])]
+
+            # Skip if no eligible parents
+            if len(eligible_parents) == 0:
+                continue
+
+            child_has_code_0 = child.ssn_code == 0
+            parents_have_code_0 = (eligible_parents.ssn_code == 0).any()
+
+            # Check if alignment is needed (80% probability)
+            if child_has_code_0 != parents_have_code_0:
+                if rng_family.random() < correlation_probability:
+                    child_idx = np.where(
+                        family_df.person_id == child.person_id
+                    )[0][0]
+
+                    if parents_have_code_0 and not child_has_code_0:
+                        # Change child to code 0 if parent has code 0
+                        if (
+                            ssn_card_type[child_idx] == 3
+                        ):  # Only change if currently code 3
+                            ssn_card_type[child_idx] = 0
+                            families_adjusted += 1
+                    elif child_has_code_0 and not parents_have_code_0:
+                        # Change child to code 3 if parent doesn't have code 0
+                        ssn_card_type[child_idx] = 3
+                        families_adjusted += 1
+
+    # Calculate actual correlation (only among eligible families)
+    children_with_parents = []
+    for _, child in children.iterrows():
+        # Only consider eligible children
+        if child.ssn_code not in [0, 3]:
+            continue
+
+        household_members = family_df[
+            family_df.household_id == child.household_id
+        ]
+        parents = household_members[
+            (household_members.line_number == child.parent1_line)
+            | (household_members.line_number == child.parent2_line)
+        ]
+
+        if len(parents) > 0:
+            # Only consider eligible parents
+            eligible_parents = parents[parents.ssn_code.isin([0, 3])]
+
+            if len(eligible_parents) > 0:
+                child_code_0 = child.ssn_code == 0
+                parent_code_0 = (eligible_parents.ssn_code == 0).any()
+                children_with_parents.append((child_code_0, parent_code_0))
+
+    if children_with_parents:
+        matches = sum(
+            1
+            for child_code, parent_code in children_with_parents
+            if child_code == parent_code
+        )
+        correlation = matches / len(children_with_parents)
+    else:
+        pass
+
+    # ============================================================================
+    # TARGETED REFINEMENT OF REMAINING CODE 0s TO HIT WEIGHTED TARGET
+    # ============================================================================
+
+    # Target: 11 million undocumented immigrants (weighted population)
+    # This matches the target used in loss.py calibration
+
+    # Get household weights - map from household level to person level
+    household_ids = cps["household_id"]
+    household_weights = cps["household_weight"]
+    person_household_ids = cps["person_household_id"]
+
+    # Create mapping from household_id to weight
+    household_to_weight = dict(zip(household_ids, household_weights))
+    person_weights = np.array(
+        [household_to_weight.get(hh_id, 0) for hh_id in person_household_ids]
+    )
+
+    # Calculate current weighted undocumented population
+    current_weighted_undocumented = np.sum(person_weights[ssn_card_type == 0])
+
+    # Identify remaining code 0 non-citizens that can be reassigned
+    remaining_zeros = (ssn_card_type == 0) & (~citizens_mask)
+    refine_indices = np.where(remaining_zeros)[0]
 
     if len(refine_indices) > 0:
-        draw = rng.random(len(refine_indices))
-        assign_code_3 = draw < share_code_3
-        ssn_card_type[refine_indices[assign_code_3]] = 3
+        if current_weighted_undocumented > undocumented_target:
+            # Calculate how much weighted population needs to be moved from code 0 to code 3
+            excess_weighted = (
+                current_weighted_undocumented - undocumented_target
+            )
+
+            # Get weights of people who can be reassigned
+            reassignable_weights = person_weights[refine_indices]
+
+            # Sort indices by weight (heaviest first) to minimize number of reassignments needed
+            weight_order = np.argsort(-reassignable_weights)
+            sorted_weights = reassignable_weights[weight_order]
+
+            # Find minimum number of people to reassign to hit target
+            cumulative_weights = np.cumsum(sorted_weights)
+            reassign_count = (
+                np.searchsorted(
+                    cumulative_weights, excess_weighted, side="right"
+                )
+                + 1
+            )
+            reassign_count = min(reassign_count, len(refine_indices))
+
+            # Calculate the exact share needed
+            share_code_3 = reassign_count / len(refine_indices)
+        else:
+            # If we're already at or below target, don't reassign any
+            share_code_3 = 0.0
+
+        if share_code_3 > 0:
+            rng = np.random.default_rng(seed=42)
+            random_draw = rng.random(len(refine_indices))
+            assign_to_code_3 = random_draw < share_code_3
+            ssn_card_type[refine_indices[assign_to_code_3]] = 3
+
+    # ============================================================================
+    # CONVERT TO STRING LABELS AND STORE
+    # ============================================================================
 
     code_to_str = {
-        0: "NONE",
-        1: "CITIZEN",
-        2: "NON_CITIZEN_VALID_EAD",
-        3: "OTHER_NON_CITIZEN",
+        0: "NONE",  # Likely undocumented immigrants
+        1: "CITIZEN",  # US citizens
+        2: "NON_CITIZEN_VALID_EAD",  # Non-citizens with work/study authorization
+        3: "OTHER_NON_CITIZEN",  # Non-citizens with indicators of legal status
     }
     ssn_card_type_str = (
         pd.Series(ssn_card_type).map(code_to_str).astype("S").values

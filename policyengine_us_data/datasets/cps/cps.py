@@ -60,7 +60,14 @@ class CPS(Dataset):
         logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
         logging.info("Adding SSN card type")
-        add_ssn_card_type(cps, person, spm_unit, undocumented_target=11e6)
+        add_ssn_card_type(
+            cps,
+            person,
+            spm_unit,
+            undocumented_target=11e6,
+            undocumented_workers_target=8.3e6,
+            undocumented_students_target=0.21 * 1.9e6,
+        )
         logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
         logging.info("Adding household variables")
@@ -843,6 +850,8 @@ def add_ssn_card_type(
     person: pd.DataFrame,
     spm_unit: pd.DataFrame,
     undocumented_target: float = 11e6,
+    undocumented_workers_target: float = 8.3e6,
+    undocumented_students_target: float = 0.21 * 1.9e6,
 ) -> None:
     """
     Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.
@@ -982,27 +991,95 @@ def add_ssn_card_type(
     )
     student_mask = (ssn_card_type != 3) & noncitizens & (person.A_HSCOL == 2)
 
-    np.random.seed(0)
-    # In 2024, the foreign born accounted for 19.2 percent of the U.S. civilian labor force.
-    # https://www.bls.gov/news.release/forbrn.nr0.htm
-    # In Jan 2024, the total U.S. civilian labor forceis reported as 167.1 million people.
-    # https://fred.stlouisfed.org/series/CLF16OV
-    # Unauthorized immigrant workers is 8.3 million.
+    # Calculate target-driven worker assignment
+    # Target: 8.3 million undocumented workers (from Pew Research)
     # https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/
-    # share of undocumented immigrant workers who are unauthorized to work is: 8.3 / (0.192 * 167.1)
+
+    # Get household weights for workers
     worker_ids = person[worker_mask].index
-    n_worker_ead = int(0.74 * len(worker_ids))
-    selected_workers = np.random.choice(
-        worker_ids, size=n_worker_ead, replace=False
+    household_ids = cps["household_id"]
+    household_weights = cps["household_weight"]
+    person_household_ids = cps["person_household_id"]
+    household_to_weight = dict(zip(household_ids, household_weights))
+    person_weights = np.array(
+        [household_to_weight.get(hh_id, 0) for hh_id in person_household_ids]
     )
 
-    # undocumented immigrant students who account for approximately 21 percent of the total 1.9 million immigrant students
-    # https://www.higheredimmigrationportal.org/research/immigrant-origin-students-in-u-s-higher-education-updated-august-2024/
-    student_ids = person[student_mask].index
-    n_student_ead = int(0.79 * len(student_ids))
-    selected_students = np.random.choice(
-        student_ids, size=n_student_ead, replace=False
+    # Calculate how many workers need EAD to leave target undocumented workers
+    total_weighted_workers = np.sum(person_weights[worker_ids])
+    target_weighted_ead_workers = (
+        total_weighted_workers - undocumented_workers_target
     )
+
+    if target_weighted_ead_workers > 0 and len(worker_ids) > 0:
+        # Sort workers by weight (heaviest first) to minimize assignments needed
+        worker_weights = person_weights[worker_ids]
+        weight_order = np.argsort(-worker_weights)
+        sorted_weights = worker_weights[weight_order]
+
+        # Find minimum number of workers to assign EAD
+        cumulative_weights = np.cumsum(sorted_weights)
+        n_worker_ead = (
+            np.searchsorted(
+                cumulative_weights, target_weighted_ead_workers, side="right"
+            )
+            + 1
+        )
+        n_worker_ead = min(n_worker_ead, len(worker_ids))
+    else:
+        # If target is already met or no workers available, assign no EAD
+        n_worker_ead = 0
+
+    if n_worker_ead > 0:
+        np.random.seed(0)
+        selected_workers = np.random.choice(
+            worker_ids, size=n_worker_ead, replace=False
+        )
+    else:
+        selected_workers = np.array([], dtype=int)
+
+    # Calculate target-driven student assignment
+    # Target: 21% of 1.9 million = ~399k undocumented students (from Higher Ed Immigration Portal)
+    # https://www.higheredimmigrationportal.org/research/immigrant-origin-students-in-u-s-higher-education-updated-august-2024/
+
+    student_ids = person[student_mask].index
+
+    if len(student_ids) > 0:
+        # Calculate how many students need EAD to leave target undocumented students
+        total_weighted_students = np.sum(person_weights[student_ids])
+        target_weighted_ead_students = (
+            total_weighted_students - undocumented_students_target
+        )
+
+        if target_weighted_ead_students > 0:
+            # Sort students by weight (heaviest first) to minimize assignments needed
+            student_weights = person_weights[student_ids]
+            weight_order = np.argsort(-student_weights)
+            sorted_weights = student_weights[weight_order]
+
+            # Find minimum number of students to assign EAD
+            cumulative_weights = np.cumsum(sorted_weights)
+            n_student_ead = (
+                np.searchsorted(
+                    cumulative_weights,
+                    target_weighted_ead_students,
+                    side="right",
+                )
+                + 1
+            )
+            n_student_ead = min(n_student_ead, len(student_ids))
+        else:
+            # If target is already met, assign no EAD
+            n_student_ead = 0
+
+        if n_student_ead > 0:
+            selected_students = np.random.choice(
+                student_ids, size=n_student_ead, replace=False
+            )
+        else:
+            selected_students = np.array([], dtype=int)
+    else:
+        selected_students = np.array([], dtype=int)
 
     # Assign code 2
     ssn_card_type[selected_workers] = 2

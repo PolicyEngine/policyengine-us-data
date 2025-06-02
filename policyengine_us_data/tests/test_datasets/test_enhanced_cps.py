@@ -175,5 +175,7 @@ def test_ctc_reform_child_recipient_difference():
     print(
         f"CTC reform child recipient difference: {ctc_recipient_difference:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}"
     )
-    print("Note: CTC targeting removed from calibration - this is validation only")
+    print(
+        "Note: CTC targeting removed from calibration - this is validation only"
+    )
     assert pct_error < TOLERANCE

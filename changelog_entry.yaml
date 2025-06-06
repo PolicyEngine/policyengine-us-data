@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+    - Net worth variable to cps.

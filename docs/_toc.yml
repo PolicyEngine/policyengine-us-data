@@ -3,3 +3,4 @@ root: intro
 chapters:
 - file: validation.ipynb
 - file: results.ipynb
+- file: imputation.ipynb

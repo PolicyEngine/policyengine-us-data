@@ -230,30 +230,30 @@ def add_auto_loan_interest(self, cps: h5py.File) -> None:
     CPS_RACE_MAPPING = {
         1: 1,  # White only -> WHITE
         2: 2,  # Black only -> BLACK/AFRICAN-AMERICAN
-        3: 5,  # American Indian, Alaskan Native only -> AMERICAN INDIAN/ALASKA NATIVE
+        3: 5,  # American Indian, Alaskan Native only -> OTHER
         4: 4,  # Asian only -> ASIAN
-        5: 6,  # Hawaiian/Pacific Islander only -> NATIVE HAWAIIAN/PACIFIC ISLANDER
-        6: 7,  # White-Black -> OTHER
-        7: 7,  # White-AI -> OTHER
-        8: 7,  # White-Asian -> OTHER
-        9: 7,  # White-HP -> OTHER
-        10: 7,  # Black-AI -> OTHER
-        11: 7,  # Black-Asian -> OTHER
-        12: 7,  # Black-HP -> OTHER
-        13: 7,  # AI-Asian -> OTHER
-        14: 7,  # AI-HP -> OTHER
-        15: 7,  # Asian-HP -> OTHER
-        16: 7,  # White-Black-AI -> OTHER
-        17: 7,  # White-Black-Asian -> OTHER
-        18: 7,  # White-Black-HP -> OTHER
-        19: 7,  # White-AI-Asian -> OTHER
-        20: 7,  # White-AI-HP -> OTHER
-        21: 7,  # White-Asian-HP -> OTHER
-        22: 7,  # Black-AI-Asian -> OTHER
-        23: 7,  # White-Black-AI-Asian -> OTHER
-        24: 7,  # White-AI-Asian-HP -> OTHER
-        25: 7,  # Other 3 race comb. -> OTHER
-        26: 7,  # Other 4 or 5 race comb. -> OTHER
+        5: 5,  # Hawaiian/Pacific Islander only -> OTHER
+        6: 5,  # White-Black -> OTHER
+        7: 5,  # White-AI -> OTHER
+        8: 5,  # White-Asian -> OTHER
+        9: 3,  # White-HP -> HISPANIC
+        10: 5,  # Black-AI -> OTHER
+        11: 5,  # Black-Asian -> OTHER
+        12: 3,  # Black-HP -> HISPANIC
+        13: 5,  # AI-Asian -> OTHER
+        14: 5,  # AI-HP -> OTHER
+        15: 3,  # Asian-HP -> HISPANIC
+        16: 5,  # White-Black-AI -> OTHER
+        17: 5,  # White-Black-Asian -> OTHER
+        18: 5,  # White-Black-HP -> OTHER
+        19: 5,  # White-AI-Asian -> OTHER
+        20: 5,  # White-AI-HP -> OTHER
+        21: 5,  # White-Asian-HP -> OTHER
+        22: 5,  # Black-AI-Asian -> OTHER
+        23: 5,  # White-Black-AI-Asian -> OTHER
+        24: 5,  # White-AI-Asian-HP -> OTHER
+        25: 5,  # Other 3 race comb. -> OTHER
+        26: 5,  # Other 4 or 5 race comb. -> OTHER
     }
 
     # Apply the mapping to recode the race values
@@ -1028,30 +1028,30 @@ def add_net_worth(self, cps: h5py.File) -> None:
     CPS_RACE_MAPPING = {
         1: 1,  # White only -> WHITE
         2: 2,  # Black only -> BLACK/AFRICAN-AMERICAN
-        3: 5,  # American Indian, Alaskan Native only -> AMERICAN INDIAN/ALASKA NATIVE
+        3: 5,  # American Indian, Alaskan Native only -> OTHER
         4: 4,  # Asian only -> ASIAN
-        5: 6,  # Hawaiian/Pacific Islander only -> NATIVE HAWAIIAN/PACIFIC ISLANDER
-        6: 7,  # White-Black -> OTHER
-        7: 7,  # White-AI -> OTHER
-        8: 7,  # White-Asian -> OTHER
-        9: 7,  # White-HP -> OTHER
-        10: 7,  # Black-AI -> OTHER
-        11: 7,  # Black-Asian -> OTHER
-        12: 7,  # Black-HP -> OTHER
-        13: 7,  # AI-Asian -> OTHER
-        14: 7,  # AI-HP -> OTHER
-        15: 7,  # Asian-HP -> OTHER
-        16: 7,  # White-Black-AI -> OTHER
-        17: 7,  # White-Black-Asian -> OTHER
-        18: 7,  # White-Black-HP -> OTHER
-        19: 7,  # White-AI-Asian -> OTHER
-        20: 7,  # White-AI-HP -> OTHER
-        21: 7,  # White-Asian-HP -> OTHER
-        22: 7,  # Black-AI-Asian -> OTHER
-        23: 7,  # White-Black-AI-Asian -> OTHER
-        24: 7,  # White-AI-Asian-HP -> OTHER
-        25: 7,  # Other 3 race comb. -> OTHER
-        26: 7,  # Other 4 or 5 race comb. -> OTHER
+        5: 5,  # Hawaiian/Pacific Islander only -> OTHER
+        6: 5,  # White-Black -> OTHER
+        7: 5,  # White-AI -> OTHER
+        8: 5,  # White-Asian -> OTHER
+        9: 3,  # White-HP -> HISPANIC
+        10: 5,  # Black-AI -> OTHER
+        11: 5,  # Black-Asian -> OTHER
+        12: 3,  # Black-HP -> HISPANIC
+        13: 5,  # AI-Asian -> OTHER
+        14: 5,  # AI-HP -> OTHER
+        15: 3,  # Asian-HP -> HISPANIC
+        16: 5,  # White-Black-AI -> OTHER
+        17: 5,  # White-Black-Asian -> OTHER
+        18: 5,  # White-Black-HP -> OTHER
+        19: 5,  # White-AI-Asian -> OTHER
+        20: 5,  # White-AI-HP -> OTHER
+        21: 5,  # White-Asian-HP -> OTHER
+        22: 5,  # Black-AI-Asian -> OTHER
+        23: 5,  # White-Black-AI-Asian -> OTHER
+        24: 5,  # White-AI-Asian-HP -> OTHER
+        25: 5,  # Other 3 race comb. -> OTHER
+        26: 5,  # Other 4 or 5 race comb. -> OTHER
     }
 
     # Apply the mapping to recode the race values
@@ -1087,6 +1087,15 @@ def add_net_worth(self, cps: h5py.File) -> None:
         inplace=True,
     )
 
+    # Add is_married variable for household heads based on raw person data
+    raw_data_instance = self.raw_cps(require=True)
+    raw_data = raw_data_instance.load()
+    person_data = raw_data.person
+
+    # Filter to household heads and add marital status
+    household_heads = person_data[person_data.P_SEQ == 1]
+    receiver_data["is_married"] = household_heads.A_MARITL.isin([1, 2]).values
+
     # Impute auto loan balance from the SCF
     from policyengine_us_data.datasets.scf.scf import SCF_2022
 
@@ -1098,6 +1107,7 @@ def add_net_worth(self, cps: h5py.File) -> None:
         "age",
         "is_female",
         "cps_race",
+        "is_married",
         "own_children_in_household",
         "employment_income",
         "interest_dividend_income",

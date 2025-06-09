@@ -215,9 +215,6 @@ def rename_columns_to_match_cps(scf: dict, raw_data: pd.DataFrame) -> None:
     if "married" in raw_data.columns:
         # In SCF, married is a binary flag
         scf["is_married"] = (raw_data["married"] == 1).values
-        # Create placeholders for other marital statuses
-        scf["is_widowed"] = np.zeros(len(raw_data), dtype=bool)
-        scf["is_separated"] = np.zeros(len(raw_data), dtype=bool)
 
     # Additional variables
     variable_mappings = {

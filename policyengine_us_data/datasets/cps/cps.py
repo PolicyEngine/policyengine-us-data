@@ -861,6 +861,63 @@ def add_ssn_card_type(
     - 2: "NON_CITIZEN_VALID_EAD" - Non-citizens with work/study authorization
     - 3: "OTHER_NON_CITIZEN" - Non-citizens with indicators of legal status
     """
+
+    def select_random_subset_to_target(
+        eligible_ids, current_weighted, target_weighted, random_seed=None
+    ):
+        """
+        Randomly select subset to move current weighted population to target.
+
+        Args:
+            eligible_ids: Array of person indices eligible for selection
+            current_weighted: Current weighted total
+            target_weighted: Target weighted total
+            random_seed: Random seed for reproducibility
+
+        Returns:
+            Array of selected person indices
+        """
+        if len(eligible_ids) == 0:
+            return np.array([], dtype=int)
+
+        # Calculate how much weighted population needs to be moved
+        if current_weighted > target_weighted:
+            excess_weighted = current_weighted - target_weighted
+            # Calculate fraction to move randomly
+            total_reassignable_weight = np.sum(person_weights[eligible_ids])
+            share_to_move = excess_weighted / total_reassignable_weight
+            share_to_move = min(share_to_move, 1.0)  # Cap at 100%
+        else:
+            # Calculate how much to move to reach target (for EAD case)
+            needed_weighted = (
+                current_weighted - target_weighted
+            )  # Will be negative
+            total_weight = np.sum(person_weights[eligible_ids])
+            share_to_move = abs(needed_weighted) / total_weight
+            share_to_move = min(share_to_move, 1.0)  # Cap at 100%
+
+        if share_to_move > 0:
+            if random_seed is not None:
+                if current_weighted > target_weighted:
+                    # Use new rng for refinement
+                    rng = np.random.default_rng(seed=random_seed)
+                    random_draw = rng.random(len(eligible_ids))
+                    assign_mask = random_draw < share_to_move
+                    selected = eligible_ids[assign_mask]
+                else:
+                    # Use old np.random for EAD to maintain compatibility
+                    np.random.seed(random_seed)
+                    n_to_move = int(len(eligible_ids) * share_to_move)
+                    selected = np.random.choice(
+                        eligible_ids, size=n_to_move, replace=False
+                    )
+            else:
+                selected = np.array([], dtype=int)
+        else:
+            selected = np.array([], dtype=int)
+
+        return selected
+
     # Get household weights for population calculations
     household_ids = cps["household_id"]
     household_weights = cps["household_weight"]
@@ -1101,29 +1158,14 @@ def add_ssn_card_type(
     # Get worker IDs
     worker_ids = person[worker_mask].index
 
-    # Calculate how many workers need EAD to leave target undocumented workers
+    # Use function to select workers for EAD
     total_weighted_workers = np.sum(person_weights[worker_ids])
-    target_weighted_ead_workers = (
-        total_weighted_workers - undocumented_workers_target
+    selected_workers = select_random_subset_to_target(
+        worker_ids,
+        total_weighted_workers,
+        undocumented_workers_target,
+        random_seed=0,
     )
-
-    if target_weighted_ead_workers > 0 and len(worker_ids) > 0:
-        # Calculate fraction of workers to assign EAD randomly
-        total_worker_weight = np.sum(person_weights[worker_ids])
-        share_ead_workers = target_weighted_ead_workers / total_worker_weight
-        share_ead_workers = min(share_ead_workers, 1.0)  # Cap at 100%
-        n_worker_ead = int(len(worker_ids) * share_ead_workers)
-    else:
-        # If target is already met or no workers available, assign no EAD
-        n_worker_ead = 0
-
-    if n_worker_ead > 0:
-        np.random.seed(0)
-        selected_workers = np.random.choice(
-            worker_ids, size=n_worker_ead, replace=False
-        )
-    else:
-        selected_workers = np.array([], dtype=int)
 
     # Calculate target-driven student assignment
     # Target: 21% of 1.9 million = ~399k undocumented students (from Higher Ed Immigration Portal)
@@ -1131,33 +1173,14 @@ def add_ssn_card_type(
 
     student_ids = person[student_mask].index
 
-    if len(student_ids) > 0:
-        # Calculate how many students need EAD to leave target undocumented students
-        total_weighted_students = np.sum(person_weights[student_ids])
-        target_weighted_ead_students = (
-            total_weighted_students - undocumented_students_target
-        )
-
-        if target_weighted_ead_students > 0:
-            # Calculate fraction of students to assign EAD randomly
-            total_student_weight = np.sum(person_weights[student_ids])
-            share_ead_students = (
-                target_weighted_ead_students / total_student_weight
-            )
-            share_ead_students = min(share_ead_students, 1.0)  # Cap at 100%
-            n_student_ead = int(len(student_ids) * share_ead_students)
-        else:
-            # If target is already met, assign no EAD
-            n_student_ead = 0
-
-        if n_student_ead > 0:
-            selected_students = np.random.choice(
-                student_ids, size=n_student_ead, replace=False
-            )
-        else:
-            selected_students = np.array([], dtype=int)
-    else:
-        selected_students = np.array([], dtype=int)
+    # Use function to select students for EAD
+    total_weighted_students = np.sum(person_weights[student_ids])
+    selected_students = select_random_subset_to_target(
+        student_ids,
+        total_weighted_students,
+        undocumented_students_target,
+        random_seed=1,
+    )
 
     # Assign code 2
     ssn_card_type[selected_workers] = 2
@@ -1234,34 +1257,23 @@ def add_ssn_card_type(
     remaining_zeros = (ssn_card_type == 0) & (~citizens_mask)
     refine_indices = np.where(remaining_zeros)[0]
 
-    if len(refine_indices) > 0:
-        if current_weighted_undocumented > undocumented_target:
-            # Calculate how much weighted population needs to be moved from code 0 to code 3
-            excess_weighted = (
-                current_weighted_undocumented - undocumented_target
-            )
+    # Use function to select people to move from Code 0 to Code 3
+    moved_to_code_3 = select_random_subset_to_target(
+        refine_indices,
+        current_weighted_undocumented,
+        undocumented_target,
+        random_seed=42,
+    )
 
-            # Calculate fraction to reassign randomly
-            total_reassignable_weight = np.sum(person_weights[refine_indices])
-            share_code_3 = excess_weighted / total_reassignable_weight
-            share_code_3 = min(share_code_3, 1.0)  # Cap at 100%
-        else:
-            # If we're already at or below target, don't reassign any
-            share_code_3 = 0.0
-
-        if share_code_3 > 0:
-            rng = np.random.default_rng(seed=42)
-            random_draw = rng.random(len(refine_indices))
-            assign_to_code_3 = random_draw < share_code_3
-            moved_to_code_3 = refine_indices[assign_to_code_3]
-            ssn_card_type[moved_to_code_3] = 3
-            print(
-                f"Step 6 - Target refinement: Moved {np.sum(person_weights[moved_to_code_3]):,.0f} people from Code 0 to Code 3"
-            )
-        else:
-            print(
-                f"Step 6 - Target refinement: No people moved (already at target)"
-            )
+    if len(moved_to_code_3) > 0:
+        ssn_card_type[moved_to_code_3] = 3
+        print(
+            f"Step 6 - Target refinement: Moved {np.sum(person_weights[moved_to_code_3]):,.0f} people from Code 0 to Code 3"
+        )
+    else:
+        print(
+            f"Step 6 - Target refinement: No people moved (already at target)"
+        )
 
     print(
         f"After target refinement - Code 0 people: {np.sum(person_weights[ssn_card_type == 0]):,.0f}"

@@ -12,8 +12,9 @@ from typing import Type
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
-from policyengine_us_data.utils import QRF
+from policyengine_us_data.utils import QRF, QBI_QUALIFICATION_PROBABILITIES
 import logging
+
 
 test_lite = os.environ.get("TEST_LITE")
 
@@ -724,6 +725,10 @@ def add_personal_income_variables(
     cps["over_the_counter_health_expenses"] = person.POTC_VAL
     cps["other_medical_expenses"] = person.PMED_VAL
     cps["medicare_part_b_premiums"] = person.PEMCPREM
+
+    rng = np.random.default_rng(seed=43)
+    for var, prob in QBI_QUALIFICATION_PROBABILITIES.items():
+        cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
 
 
 def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:

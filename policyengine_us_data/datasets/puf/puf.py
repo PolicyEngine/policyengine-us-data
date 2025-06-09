@@ -1,3 +1,4 @@
+import os
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -9,9 +10,114 @@ from policyengine_us_data.datasets.puf.irs_puf import IRS_PUF_2015
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
-import os
+from policyengine_us_data.utils import QBI_QUALIFICATION_PROBABILITIES
+
 
 rng = np.random.default_rng(seed=64)
+
+
+def lognormal_sample(n, prob, mu, sigma):
+    """Generate a Bernoulli-lognormal mixture."""
+    positive = np.random.binomial(1, prob, size=n)
+    amounts = np.where(
+        positive == 1,
+        np.random.lognormal(mean=mu, sigma=sigma, size=n),
+        0.0,
+    )
+    return amounts
+
+
+def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
+    """
+    Simulate two Section 199A guard-rail quantities for every record
+      • W-2 wages paid by the business
+      • Unadjusted basis immediately after acquisition (UBIA) of property
+
+    Simulation O3 chat: chatgpt.com/share/683b12a5-78dc-8006-81c9-479858312b30
+
+    Parameters
+    ----------
+    puf : pandas.DataFrame
+        Must contain the income columns created in your preprocessing block.
+    seed : int, optional
+        For reproducible random draws.
+    diagnostics : bool, default True
+        Print high-level checks after the simulation runs.
+
+    Returns
+    -------
+    w2_wages : 1-D NumPy array
+    ubia     : 1-D NumPy array
+    """
+    rng = np.random.default_rng(seed)
+
+    # 1. Qualified business income
+    qbi = sum(
+        puf[income_type] * prob
+        for income_type, prob in QBI_QUALIFICATION_PROBABILITIES.items()
+    ).to_numpy()
+
+    # 2. Simulate gross receipts by drawing a profit margin
+    margins = (
+        rng.beta(2, 3, qbi.size) * (0.25 - 0.05) + 0.05
+    )  # spans 5% to 25%, mean is 13%
+    revenues = np.maximum(qbi, 0) / margins
+
+    # 3. Probability the filer has employees -----------------
+    # Logistic model:  p = 1 / (1 + exp(-(b0 + b1 * receipts)))
+    # * b1 = 1.2e-6: odds roughly triple for each +$1 M; pr 50% near $1M
+    # * b0 = –3.1    → tuned so mean pr is roughly 14% in this PUF (matches SOI share)
+    # * Set p = 0 when simulated receipts == 0 (no revenue means no payroll)
+    logit = -3.1 + 1.2e-6 * revenues
+    pr_has_employees = np.where(revenues == 0.0, 0.0, 1 / (1 + np.exp(-logit)))
+    has_employees = rng.binomial(1, pr_has_employees)
+
+    # 4. Draw a labor share; lower for rental/real-estate, higher for operating businesses
+    is_rental = puf["rental_income"].to_numpy() > 0
+
+    labor_ratios = np.where(
+        is_rental,
+        rng.beta(1.5, 8, qbi.size) * 0.08,  # Rental: labor ratio between 4-6%
+        rng.beta(2.0, 2, qbi.size)
+        * 0.25,  # Non-rental: labor ratio between 12-18%
+    )
+
+    w2_wages = revenues * labor_ratios * has_employees
+
+    # 5. Create a depreciation stand-in that scales with rents.
+    depreciation_proxy = np.where(
+        is_rental,
+        rng.lognormal(
+            mean=np.log(np.abs(puf["rental_income"].to_numpy()) + 1.0),
+            sigma=0.8,
+        ),
+        0.0,
+    )
+
+    # 6. UBIA simulation: lognormal, but only for capital-heavy records
+    is_capital_intensive = is_rental | (depreciation_proxy > 0)
+
+    ubia = np.where(
+        is_capital_intensive,
+        rng.lognormal(mean=np.log(4 * np.maximum(qbi, 0) + 1.0), sigma=1.0),
+        0.0,
+    )
+
+    # Trim crazy outliers so UBIA does not dominate QBI limits
+    ubia = np.minimum(ubia, 20 * np.abs(qbi))
+
+    # 7. Quick plausibility checks
+    if diagnostics:
+        share_qbi_pos = np.mean(qbi > 0)
+        share_wages = np.mean((w2_wages > 0) & (qbi > 0))
+        print(f"Share with QBI > 0: {share_qbi_pos:6.2%}")
+        print(f"Among those, share with W-2 wages: {share_wages:6.2%}")
+        if np.any(w2_wages > 0):
+            print(f"Mean W-2 (if >0): ${np.mean(w2_wages[w2_wages>0]):,.0f}")
+        if np.any(ubia > 0):
+            print(f"Median UBIA (if >0): ${np.median(ubia[ubia>0]):,.0f}")
+
+    return w2_wages, ubia
 
 
 def impute_pension_contributions_to_puf(puf_df):
@@ -154,8 +260,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["educator_expense"] = puf.E03220
     puf["employment_income"] = puf.E00200
     puf["estate_income"] = puf.E26390 - puf.E26400
-    puf["farm_income"] = puf.T27800
-    puf["farm_rent_income"] = puf.E27200
+    puf["farm_income"] = puf.T27800  # Schedule J, separate from QBI
     puf["health_savings_account_ald"] = puf.E03290
     puf["interest_deduction"] = puf.E19200
     puf["long_term_capital_gains"] = puf.P23250
@@ -170,12 +275,24 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # that can be deducted under the miscellaneous deduction.
     puf["unreimbursed_business_employee_expenses"] = puf.E20400
     puf["non_qualified_dividend_income"] = puf.E00600 - puf.E00650
-    puf["partnership_s_corp_income"] = puf.E26270
     puf["qualified_dividend_income"] = puf.E00650
     puf["qualified_tuition_expenses"] = puf.E03230
     puf["real_estate_taxes"] = puf.E18500
-    puf["rental_income"] = puf.E25850 - puf.E25860
-    puf["self_employment_income"] = puf.E00900
+    puf["rental_income"] = (
+        puf.E25850 - puf.E25860
+    )  # Schedule E rent and royalty
+    s_corp_income = puf.E26190 - puf.E26180  # Schedule E active S-Corp income
+    partnership_income = (
+        puf.E25980 - puf.E25960
+    )  # Schedule E active partnership income
+    puf["partnership_s_corp_income"] = s_corp_income + partnership_income
+    puf["farm_operations_income"] = (
+        puf.E02100
+    )  # Schedule F active farming operations
+    puf["farm_rent_income"] = puf.E27200  # Schedule E farm rental income
+    puf["self_employment_income"] = (
+        puf.E00900
+    )  # Schedule C Sole Proprietorship
     puf["self_employed_health_insurance_ald"] = puf.E03270
     puf["self_employed_pension_contribution_ald"] = puf.E03300
     puf["short_term_capital_gains"] = puf.P22250
@@ -211,15 +328,40 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Ignore f2441 (AMT form attached)
     # Ignore cmbtp (estimate of AMT income not in AGI)
     # Ignore k1bx14s and k1bx14p (partner self-employment income included in partnership and S-corp income)
-    qbi = np.maximum(0, puf.E00900 + puf.E26270 + puf.E02100 + puf.E27200)
-    # 10.1% passthrough rate for W2 wages hits the JCT tax expenditure target for QBID
-    # https://gist.github.com/nikhilwoodruff/262c80b8b17935d6fb8544647143b854
-    W2_WAGES_SCALE = 0.101
-    puf["w2_wages_from_qualified_business"] = qbi * W2_WAGES_SCALE
 
-    # Remove aggregate records
-    puf = puf[puf.MARS != 0]
+    # --- Qualified Business Income Deduction (QBID) simulation ---
+    w2, ubia = simulate_w2_and_ubia_from_puf(puf, seed=42)
+    puf["w2_wages_from_qualified_business"] = w2
+    puf["unadjusted_basis_qualified_property"] = ubia
 
+    # Discussion #237, O3 chat: https://chatgpt.com/share/6823cb37-7a28-8001-b2bb-0c0a7f47401c
+    sstb_prob_map_by_name = {
+        "E00900": 0.20,
+        "E26270": 0.15,
+        "E26390": 0.10,
+        "E26400": 0.10,
+    }
+
+    puf_qbi_sources_for_sstb = puf[sstb_prob_map_by_name.keys()]
+    largest_qbi_source_name = puf_qbi_sources_for_sstb.idxmax(axis=1)
+
+    pr_sstb = largest_qbi_source_name.map(sstb_prob_map_by_name).fillna(0.0)
+    puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
+
+    # REIT and BCD income: chatgpt.com/c/6835f502-5b48-8006-833a-76170a0acd40
+    p_reit_ptp = 0.07  # 7% with income > 0
+    mu_reit_ptp, sigma_reit_ptp = 8.04, 1.20
+    puf["qualified_reit_and_ptp_income"] = lognormal_sample(
+        len(puf), p_reit_ptp, mu_reit_ptp, sigma_reit_ptp
+    )
+
+    # Business-development-company dividends
+    p_bdc = 0.003  # 0.3 % with income > 0
+    mu_bdc, sigma_bdc = 8.71, 1.00
+    puf["qualified_bdc_income"] = lognormal_sample(
+        len(puf), p_bdc, mu_bdc, sigma_bdc
+    )
+    # -------- End of QBID -------
     puf["filing_status"] = puf.MARS.map(
         {
             1: "SINGLE",
@@ -248,6 +390,7 @@ FINANCIAL_SUBSET = [
     "educator_expense",
     "employment_income",
     "estate_income",
+    "farm_operations_income",
     "farm_income",
     "farm_rent_income",
     "health_savings_account_ald",
@@ -257,7 +400,6 @@ FINANCIAL_SUBSET = [
     "unreimbursed_business_employee_expenses",
     "non_qualified_dividend_income",
     "non_sch_d_capital_gains",
-    "partnership_s_corp_income",
     "qualified_dividend_income",
     "qualified_tuition_expenses",
     "real_estate_taxes",
@@ -293,7 +435,12 @@ FINANCIAL_SUBSET = [
     "unreported_payroll_tax",
     "pre_tax_contributions",
     "w2_wages_from_qualified_business",
+    "unadjusted_basis_qualified_property",
+    "business_is_sstb",
     "deductible_mortgage_interest",
+    "partnership_s_corp_income",
+    "qualified_reit_and_ptp_income",
+    "qualified_bdc_income",
 ]
 
 

@@ -3,8 +3,6 @@
 **/.DS_STORE
 **/*.h5
 **/*.csv
-!uprating_factors.csv
-!uprating_growth_factors.csv
 !healthcare_spending.csv
 !eitc.csv
 !spm_threshold_agi.csv

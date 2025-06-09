@@ -4,6 +4,17 @@ from .uprating import create_policyengine_uprating_factors_table
 from policyengine_us_data.storage import STORAGE_FOLDER
 
 
+# Discussion #237, O3 chat: https://chatgpt.com/share/6823cb37-7a28-8001-b2bb-0c0a7f47401c
+QBI_QUALIFICATION_PROBABILITIES = {
+    "self_employment_income": 0.8,
+    "farm_operations_income": 0.95,
+    "farm_rent_income": 0.5,
+    "rental_income": 0.4,
+    "estate_income": 0.5,
+    "partnership_s_corp_income": 0.85,
+}
+
+
 def pe_to_soi(pe_dataset, year):
     from policyengine_us import Microsimulation
 

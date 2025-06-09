@@ -26,6 +26,8 @@ IMPUTED_VARIABLES = [
     "taxable_ira_distributions",
     "self_employment_income",
     "w2_wages_from_qualified_business",
+    "unadjusted_basis_qualified_property",
+    "business_is_sstb",
     "short_term_capital_gains",
     "qualified_dividend_income",
     "charitable_cash_donations",
@@ -69,6 +71,15 @@ IMPUTED_VARIABLES = [
     "unreported_payroll_tax",
     "recapture_of_investment_credit",
     "deductible_mortgage_interest",
+    "qualified_reit_and_ptp_income",
+    "qualified_bdc_income",
+    "farm_operations_income",
+    "estate_income_would_be_qualified",
+    "farm_operations_income_would_be_qualified",
+    "farm_rent_income_would_be_qualified",
+    "partnership_s_corp_income_would_be_qualified",
+    "rental_income_would_be_qualified",
+    "self_employment_income_would_be_qualified",
 ]
 
 

@@ -358,6 +358,13 @@ def build_loss_matrix(dataset: type, time_period):
     infants_2024 = INFANTS_2023 * (INFANTS_2023 / INFANTS_2022)
     targets_array.append(infants_2024)
 
+    networth = sim.calculate("net_worth").values
+    label = "net_worth/total"
+    loss_matrix[label] = sim.map_result(networth, "household")
+    # Total net worth in 2024
+    NET_WORTH_2024 = 220e12
+    targets_array.append(NET_WORTH_2024)
+
     # SALT tax expenditure targeting
 
     _add_tax_expenditure_targets(

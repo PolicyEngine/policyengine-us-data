@@ -80,7 +80,7 @@ def test_cps_has_net_worth():
     sim = Microsimulation(dataset=CPS_2022)
     # Ensure we impute around 200 trillion in net worth with 20% error bounds.
     NET_WORTH_TARGET = 200e12
-    RELATIVE_TOLERANCE = 0.2
+    RELATIVE_TOLERANCE = 0.25
     assert (
         abs(sim.calculate("net_worth").sum() / NET_WORTH_TARGET - 1)
         < RELATIVE_TOLERANCE

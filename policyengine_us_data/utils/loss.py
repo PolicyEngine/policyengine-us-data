@@ -360,7 +360,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     networth = sim.calculate("net_worth").values
     label = "net_worth/total"
-    loss_matrix[label] = sim.map_result(networth, "household")
+    loss_matrix[label] = networth
     # Total net worth in 2024
     NET_WORTH_2024 = 220e12
     targets_array.append(NET_WORTH_2024)

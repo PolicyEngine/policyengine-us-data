@@ -288,3 +288,8 @@
     added:
     - Net worth variable to cps.
   date: 2025-06-09 10:44:59
+- bump: minor
+  changes:
+    added:
+    - Source for net worth calibration.
+  date: 2025-06-09 11:46:29

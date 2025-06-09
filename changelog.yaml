@@ -283,3 +283,8 @@
     fixed:
     - Missing HF token.
   date: 2025-05-26 22:11:20
+- bump: minor
+  changes:
+    added:
+    - Net worth variable to cps.
+  date: 2025-06-09 10:44:59

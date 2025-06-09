@@ -79,6 +79,7 @@ def test_cps_has_net_worth():
 
     sim = Microsimulation(dataset=CPS_2022)
     # Ensure we impute around 200 trillion in net worth with 20% error bounds.
+    # https://www.cbo.gov/publication/60807
     NET_WORTH_TARGET = 200e12
     RELATIVE_TOLERANCE = 0.25
     assert (

@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 
 
 @pytest.mark.parametrize("year", [2022])
@@ -82,6 +83,7 @@ def test_cps_has_net_worth():
     # https://fred.stlouisfed.org/series/BOGZ1FL192090005Q
     NET_WORTH_TARGET = 160e12
     RELATIVE_TOLERANCE = 0.25
+    np.random.seed(42)
     assert (
         abs(sim.calculate("net_worth").sum() / NET_WORTH_TARGET - 1)
         < RELATIVE_TOLERANCE

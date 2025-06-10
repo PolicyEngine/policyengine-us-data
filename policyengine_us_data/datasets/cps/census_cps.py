@@ -243,7 +243,7 @@ PERSON_COLUMNS = [
     "A_AGE",
     "A_SEX",
     "PEDISEYE",
-    "MRK",
+    "NOW_MRK",
     "WSAL_VAL",
     "INT_VAL",
     "SEMP_VAL",

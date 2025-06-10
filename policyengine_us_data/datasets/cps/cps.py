@@ -975,6 +975,11 @@ def add_net_worth(self, cps: h5py.File) -> None:
     self.save_dataset(cps)
     cps_data = self.load_dataset()
 
+    # Access raw CPS for additional variables
+    raw_data_instance = self.raw_cps(require=True)
+    raw_data = raw_data_instance.load()
+    person_data = raw_data.person
+
     # Preprocess the CPS for imputation
     lengths = {k: len(v) for k, v in cps_data.items()}
     var_len = cps_data["person_household_id"].shape[0]
@@ -1017,7 +1022,123 @@ def add_net_worth(self, cps: h5py.File) -> None:
         .reset_index()
     )
 
-    mask = cps_data["is_household_head"]
+    def create_scf_reference_person_mask(cps_data, raw_person_data):
+        """
+        Create a boolean mask identifying SCF-style reference persons.
+
+        SCF Reference Person Definition:
+        - Single adult in household without a couple
+        - In households with couples: male in mixed-sex couple OR older person in same-sex couple
+        """
+        all_persons_data = pd.DataFrame(
+            {
+                "person_household_id": cps_data["person_household_id"],
+                "age": cps_data["age"],
+            }
+        )
+
+        # Add sex variable (PESEX=2 means female in CPS)
+        all_persons_data["is_female"] = (raw_person_data.A_SEX == 2).values
+
+        # Add marital status (A_MARITL codes: 1,2 = married with spouse present/absent)
+        all_persons_data["is_married"] = raw_person_data.A_MARITL.isin(
+            [1, 2]
+        ).values
+
+        # Define adults as age 18+
+        all_persons_data["is_adult"] = all_persons_data["age"] >= 18
+
+        # Count adults per household
+        adults_per_household = (
+            all_persons_data[all_persons_data["is_adult"]]
+            .groupby("person_household_id")
+            .size()
+            .reset_index(name="n_adults")
+        )
+        all_persons_data = all_persons_data.merge(
+            adults_per_household, on="person_household_id", how="left"
+        )
+
+        # Identify couple households (households with exactly 2 married adults)
+        married_adults_per_household = (
+            all_persons_data[
+                (all_persons_data["is_adult"])
+                & (all_persons_data["is_married"])
+            ]
+            .groupby("person_household_id")
+            .size()
+        )
+
+        couple_households = married_adults_per_household[
+            (married_adults_per_household == 2)
+            & (
+                all_persons_data.groupby("person_household_id")[
+                    "n_adults"
+                ].first()
+                == 2
+            )
+        ].index
+
+        all_persons_data["is_couple_household"] = all_persons_data[
+            "person_household_id"
+        ].isin(couple_households)
+
+        def determine_reference_person(group):
+            """Determine reference person for a household group."""
+            adults = group[group["is_adult"]]
+
+            if len(adults) == 0:
+                # No adults - select the oldest person regardless of age
+                reference_idx = group["age"].idxmax()
+                result = pd.Series([False] * len(group), index=group.index)
+                result[reference_idx] = True
+                return result
+
+            elif len(adults) == 1:
+                # Only one adult - they are the reference person
+                result = pd.Series([False] * len(group), index=group.index)
+                result[adults.index[0]] = True
+                return result
+
+            elif group["is_couple_household"].iloc[0] and len(adults) == 2:
+                # Couple household with 2 adults
+                couple_adults = adults.copy()
+
+                # Check if same-sex couple
+                if couple_adults["is_female"].nunique() == 1:
+                    # Same-sex couple - choose older person
+                    reference_idx = couple_adults["age"].idxmax()
+                else:
+                    # Mixed-sex couple - choose male (is_female = False)
+                    male_adults = couple_adults[~couple_adults["is_female"]]
+                    if len(male_adults) > 0:
+                        reference_idx = male_adults.index[0]
+                    else:
+                        # Fallback to older person
+                        reference_idx = couple_adults["age"].idxmax()
+
+                result = pd.Series([False] * len(group), index=group.index)
+                result[reference_idx] = True
+                return result
+
+            else:
+                # Multiple adults but not a couple household
+                # Use the oldest adult as reference person
+                reference_idx = adults["age"].idxmax()
+                result = pd.Series([False] * len(group), index=group.index)
+                result[reference_idx] = True
+                return result
+
+        # Apply the reference person logic to each household
+        all_persons_data["is_scf_reference_person"] = (
+            all_persons_data.groupby("person_household_id")
+            .apply(determine_reference_person)
+            .reset_index(level=0, drop=True)
+        )
+
+        return all_persons_data["is_scf_reference_person"].values
+
+    mask = create_scf_reference_person_mask(cps_data, person_data)
     mask_len = mask.shape[0]
 
     cps_data = {
@@ -1060,7 +1181,7 @@ def add_net_worth(self, cps: h5py.File) -> None:
     )
 
     lengths = {k: len(v) for k, v in cps_data.items()}
-    var_len = cps_data["household_id"].shape[0]
+    var_len = cps_data["person_household_id"].shape[0]
     vars_of_interest = [name for name, ln in lengths.items() if ln == var_len]
     receiver_data = pd.DataFrame({n: cps_data[n] for n in vars_of_interest})
 
@@ -1088,13 +1209,10 @@ def add_net_worth(self, cps: h5py.File) -> None:
     )
 
     # Add is_married variable for household heads based on raw person data
-    raw_data_instance = self.raw_cps(require=True)
-    raw_data = raw_data_instance.load()
-    person_data = raw_data.person
-
-    # Filter to household heads and add marital status
-    household_heads = person_data[person_data.P_SEQ == 1]
-    receiver_data["is_married"] = household_heads.A_MARITL.isin([1, 2]).values
+    reference_persons = person_data[mask]
+    receiver_data["is_married"] = reference_persons.A_MARITL.isin(
+        [1, 2]
+    ).values
 
     # Impute auto loan balance from the SCF
     from policyengine_us_data.datasets.scf.scf import SCF_2022

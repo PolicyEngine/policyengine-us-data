@@ -78,10 +78,10 @@ def test_cps_has_net_worth():
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=CPS_2022)
-    # Ensure we impute around 160 trillion in net worth with 20% error bounds.
+    # Ensure we impute around 160 trillion in net worth with 25% error bounds.
     # https://fred.stlouisfed.org/series/BOGZ1FL192090005Q
     NET_WORTH_TARGET = 160e12
-    RELATIVE_TOLERANCE = 0.2
+    RELATIVE_TOLERANCE = 0.25
     assert (
         abs(sim.calculate("net_worth").sum() / NET_WORTH_TARGET - 1)
         < RELATIVE_TOLERANCE

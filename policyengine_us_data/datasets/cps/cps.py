@@ -351,8 +351,6 @@ def add_takeup(self):
 
     generator = np.random.default_rng(seed=100)
 
-    
-
     eitc_takeup_rates = parameters.gov.irs.credits.eitc.takeup
     eitc_child_count = baseline.calculate("eitc_child_count").values
     eitc_takeup_rate = eitc_takeup_rates.calc(eitc_child_count)
@@ -369,7 +367,6 @@ def add_takeup(self):
     data["aca_takeup_seed"] = generator.random(len(data))
     data["medicaid_takeup_seed"] = generator.random(len(data))
 
-    
     self.save_dataset(data)
 
 

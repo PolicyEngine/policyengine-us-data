@@ -123,13 +123,13 @@ def test_aca_calibration():
     TOLERANCE = 0.2  # Allow ±20% error
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
-    state = sim.calculate("state_code")
-    value = sim.calculate("aca_ptc", period=2024, map_to="household")
+    state = sim.calculate("state_code").values
+    value = sim.calculate("aca_ptc", period=2024, map_to="household").values
     total = (value[state == "AL"]).sum()
 
     pct_error = abs((total - TARGET_AL_SPENDING) / TARGET_AL_SPENDING)
 
     print(
-        f'SSN card type "NONE" count: {total/1e9:.0f}bn, target: {TARGET_AL_SPENDING/1e9:.0f}bn, error: {pct_error:.2%}'
+        f"ACA spending in AL: {total/1e9:.0f}bn, target: {TARGET_AL_SPENDING/1e9:.0f}bn, error: {pct_error:.2%}"
     )
     assert pct_error < TOLERANCE

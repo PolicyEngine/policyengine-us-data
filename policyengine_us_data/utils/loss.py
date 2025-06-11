@@ -395,6 +395,25 @@ def build_loss_matrix(dataset: type, time_period):
 
         targets_array.append(target_count)
 
+    state_code = sim.calculate("state_code")
+
+    for state in state_code.unique():
+        target = 2_890_336_678
+
+        # Load from dataframe
+
+        if state == "AL":
+            label = "irs/aca_spending/al"
+            targets_array.append(target)
+
+            aca_value = sim.calculate("aca_ptc", map_to="household").values
+            loss_matrix[label] = aca_value * (state_code == state)
+
+            print(f"Targeting ACA spending for {state} with target ${target/1e9:.1f}bn")
+
+        else:
+            continue
+
     return loss_matrix, np.array(targets_array)
 
 

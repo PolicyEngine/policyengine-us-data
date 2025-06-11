@@ -38,7 +38,7 @@ def test_cps_has_auto_loan_interest():
     # Ensure we impute around $85 billion in overtime premium with 25% error bounds.
     AUTO_LOAN_INTEREST_TARGET = 85e9
     AUTO_LOAN_BALANCE_TARGET = 1550e9
-    RELATIVE_TOLERANCE = 0.4
+    RELATIVE_TOLERANCE = 0.25
     assert (
         abs(
             sim.calculate("auto_loan_interest").sum()

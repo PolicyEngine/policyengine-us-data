@@ -348,12 +348,10 @@ def add_takeup(self):
 
     baseline = Microsimulation(dataset=self)
     parameters = baseline.tax_benefit_system.parameters(self.time_period)
+
     generator = np.random.default_rng(seed=100)
 
-    snap_takeup_rate = parameters.gov.usda.snap.takeup_rate
-    data["takes_up_snap_if_eligible"] = (
-        generator.random(len(data["spm_unit_id"])) < snap_takeup_rate
-    )
+    
 
     eitc_takeup_rates = parameters.gov.irs.credits.eitc.takeup
     eitc_child_count = baseline.calculate("eitc_child_count").values
@@ -365,7 +363,13 @@ def add_takeup(self):
     data["takes_up_dc_ptc"] = (
         generator.random(len(data["tax_unit_id"])) < dc_ptc_takeup_rate
     )
+    generator = np.random.default_rng(seed=100)
 
+    data["snap_takeup_seed"] = generator.random(len(data))
+    data["aca_takeup_seed"] = generator.random(len(data))
+    data["medicaid_takeup_seed"] = generator.random(len(data))
+
+    
     self.save_dataset(data)
 
 

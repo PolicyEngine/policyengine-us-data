@@ -409,7 +409,9 @@ def build_loss_matrix(dataset: type, time_period):
             aca_value = sim.calculate("aca_ptc", map_to="household").values
             loss_matrix[label] = aca_value * (state_code == state)
 
-            print(f"Targeting ACA spending for {state} with target ${target/1e9:.1f}bn")
+            print(
+                f"Targeting ACA spending for {state} with target ${target/1e9:.1f}bn"
+            )
 
         else:
             continue

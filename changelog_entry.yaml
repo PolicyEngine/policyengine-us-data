@@ -1,5 +1,4 @@
-- bump: minor
+- bump: patch
   changes:
     added:
-    - Add ACA and Medicaid take-up rates.
-    
+    - Join wealth and auto loan interest imputations.

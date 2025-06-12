@@ -124,7 +124,7 @@ def test_aca_calibration():
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
     state = sim.calculate("state_code").values
-    value = sim.calculate("aca_ptc", period=2024, map_to="household").values
+    value = sim.calculate("aca_ptc", period=2025, map_to="household").values
     total = (value[state == "AL"]).sum()
 
     pct_error = abs((total - TARGET_AL_SPENDING) / TARGET_AL_SPENDING)

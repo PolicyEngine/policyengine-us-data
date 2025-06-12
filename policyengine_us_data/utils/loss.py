@@ -406,7 +406,7 @@ def build_loss_matrix(dataset: type, time_period):
             label = "irs/aca_spending/al"
             targets_array.append(target)
 
-            aca_value = sim.calculate("aca_ptc", map_to="household").values
+            aca_value = sim.calculate("aca_ptc", map_to="household", period=2025).values
             loss_matrix[label] = aca_value * (state_code.values == state)
 
             print(

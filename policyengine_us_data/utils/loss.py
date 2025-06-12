@@ -185,21 +185,21 @@ def build_loss_matrix(dataset: type, time_period):
             ).calibration.gov.cbo._children[variable_name]
         )
 
-    # 1. Medicaid Spending 
+    # 1. Medicaid Spending
     label = "cms/medicaid_spending"
     loss_matrix[label] = sim.calculate("medicaid", map_to="household").values
-    MEDICAID_SPENDING_2024 = 9e11          
+    MEDICAID_SPENDING_2024 = 9e11
     targets_array.append(MEDICAID_SPENDING_2024)
 
-    # 2. Medicaid Enrollment 
+    # 2. Medicaid Enrollment
     label = "cms/medicaid_enrollment"
     on_medicaid = sim.calculate(
         "has_medicaid_health_coverage",  # or your enrollee flag
         map_to="person",
-        period=time_period
+        period=time_period,
     ).values
     loss_matrix[label] = sim.map_result(on_medicaid, "person", "household")
-    MEDICAID_ENROLLMENT_2024 = 72_429_055     # target lives (not thousands)
+    MEDICAID_ENROLLMENT_2024 = 72_429_055  # target lives (not thousands)
     targets_array.append(MEDICAID_ENROLLMENT_2024)
 
     # Treasury EITC

@@ -395,28 +395,54 @@ def build_loss_matrix(dataset: type, time_period):
 
         targets_array.append(target_count)
 
-    state_code = sim.calculate("state_code")
+    # ACA spending by state
+    spending_by_state = pd.read_csv(
+        STORAGE_FOLDER / "aca_spending_and_enrollment_2024.csv"
+    )
 
-    for state in state_code.unique():
-        target = 2_890_336_678
+    for _, row in spending_by_state.iterrows():
+        # Households located in this state
+        in_state = sim.calculate("state_code", map_to="household") == row["state"]
 
-        # Load from dataframe
+        # ACA PTC amounts for every household (2025)
+        aca_value = sim.calculate("aca_ptc", map_to="household", period=2025).values
 
-        if state == "AL":
-            label = "irs/aca_spending/al"
-            targets_array.append(target)
+        # Add a loss-matrix entry and matching target
+        label = f"irs/aca_spending/{row['state'].lower()}"
+        loss_matrix[label] = aca_value * in_state
+        targets_array.append(row["spending"])
 
-            aca_value = sim.calculate(
-                "aca_ptc", map_to="household", period=2025
-            ).values
-            loss_matrix[label] = aca_value * (state_code.values == state)
+        print(
+            f"Targeting ACA spending for {row['state']} with target "
+            f"${row['spending']/1e9:.1f} bn"
+        )
 
-            print(
-                f"Targeting ACA spending for {state} with target ${target/1e9:.1f}bn"
-            )
+    # Marketplace enrollment by state (targets in thousands)
+    enrollment_by_state = pd.read_csv(
+        STORAGE_FOLDER / "aca_spending_and_enrollment_2024.csv"
+    )
 
-        else:
-            continue
+    # One-time pulls so we don’t re-compute inside the loop
+    state_person = sim.calculate("state_code", map_to="person")
+    is_enrolled = sim.calculate(
+        "has_marketplace_health_coverage", map_to="person", period=2025
+    ).values
+
+    for _, row in enrollment_by_state.iterrows():
+        # People who both live in the state and have marketplace coverage
+        in_state = state_person == row["state"]
+        in_state_enrolled = in_state & is_enrolled
+
+        label = f"irs/aca_enrollment/{row['state'].lower()}"
+        loss_matrix[label] = sim.map_result(in_state_enrolled, "person", "household")
+
+        # Convert to thousands for the target
+        targets_array.append(row["enrollment"] / 1_000)
+
+        print(
+            f"Targeting ACA enrollment for {row['state']} "
+            f"with target {row['enrollment']/1_000:.0f}k"
+        )
 
     return loss_matrix, np.array(targets_array)
 

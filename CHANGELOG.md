@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.1] - 2025-06-12 16:59:41
+
+### Fixed
+
+- Increase tolerance for auto loan interest and balance test.
+
+## [1.28.0] - 2025-06-11 22:28:55
+
+### Added
+
+- Add ACA and Medicaid take-up rates.
+
 ## [1.27.0] - 2025-06-09 11:46:29
 
 ### Added
@@ -353,6 +365,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.28.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.28.0...1.28.1
+[1.28.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.27.0...1.28.0
 [1.27.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.26.0...1.27.0
 [1.26.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.25.3...1.26.0
 [1.25.3]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.25.2...1.25.3

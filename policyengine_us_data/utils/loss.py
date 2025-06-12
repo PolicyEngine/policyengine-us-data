@@ -402,10 +402,14 @@ def build_loss_matrix(dataset: type, time_period):
 
     for _, row in spending_by_state.iterrows():
         # Households located in this state
-        in_state = sim.calculate("state_code", map_to="household") == row["state"]
+        in_state = (
+            sim.calculate("state_code", map_to="household") == row["state"]
+        )
 
         # ACA PTC amounts for every household (2025)
-        aca_value = sim.calculate("aca_ptc", map_to="household", period=2025).values
+        aca_value = sim.calculate(
+            "aca_ptc", map_to="household", period=2025
+        ).values
 
         # Add a loss-matrix entry and matching target
         label = f"irs/aca_spending/{row['state'].lower()}"
@@ -434,7 +438,9 @@ def build_loss_matrix(dataset: type, time_period):
         in_state_enrolled = in_state & is_enrolled
 
         label = f"irs/aca_enrollment/{row['state'].lower()}"
-        loss_matrix[label] = sim.map_result(in_state_enrolled, "person", "household")
+        loss_matrix[label] = sim.map_result(
+            in_state_enrolled, "person", "household"
+        )
 
         # Convert to thousands for the target
         targets_array.append(row["enrollment"] / 1_000)

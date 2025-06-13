@@ -186,13 +186,13 @@ def build_loss_matrix(dataset: type, time_period):
         )
 
     # 1. Medicaid Spending
-    label = "cms/medicaid_spending"
+    label = "hhs/medicaid_spending"
     loss_matrix[label] = sim.calculate("medicaid", map_to="household").values
     MEDICAID_SPENDING_2024 = 9e11
     targets_array.append(MEDICAID_SPENDING_2024)
 
     # 2. Medicaid Enrollment
-    label = "cms/medicaid_enrollment"
+    label = "hhs/medicaid_enrollment"
     on_medicaid = sim.calculate(
         "medicaid",  # or your enrollee flag
         map_to="person",
@@ -201,6 +201,22 @@ def build_loss_matrix(dataset: type, time_period):
     loss_matrix[label] = sim.map_result(on_medicaid, "person", "household")
     MEDICAID_ENROLLMENT_2024 = 72_429_055  # target lives (not thousands)
     targets_array.append(MEDICAID_ENROLLMENT_2024)
+
+    # National ACA Spending
+    label = "gov/aca_spending"
+    loss_matrix[label] = sim.calculate("aca_ptc", map_to="household").values
+    ACA_SPENDING_2024 = 9.8e10 # 2024 outlays on PTC
+    targets_array.append(ACA_SPENDING_2024)
+
+    # National ACA Enrollment (people receiving a PTC)
+    label = "gov/aca_enrollment"
+    on_ptc = (
+        sim.calculate("aca_ptc", map_to="person", period=time_period).values > 0
+    ).astype(int)
+
+    loss_matrix[label] = on_ptc          
+    ACA_PTC_ENROLLMENT_2024 = 19_743_689 # people enrolled
+    targets_array.append(ACA_PTC_ENROLLMENT_2024)
 
     # Treasury EITC
 
@@ -432,13 +448,14 @@ def build_loss_matrix(dataset: type, time_period):
         # Add a loss-matrix entry and matching target
         label = f"irs/aca_spending/{row['state'].lower()}"
         loss_matrix[label] = aca_value * in_state
+        annual_target = row["spending"] * 12
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
         targets_array.append(row["spending"])
 
         print(
             f"Targeting ACA spending for {row['state']} with target "
-            f"${row['spending']/1e9:.1f} bn"
+            f"${row['annual_target']/1e9:.1f} bn"
         )
 
     # Marketplace enrollment by state (targets in thousands)
@@ -448,9 +465,11 @@ def build_loss_matrix(dataset: type, time_period):
 
     # One-time pulls so we don’t re-compute inside the loop
     state_person = sim.calculate("state_code", map_to="person").values
-    is_enrolled = sim.calculate(
-        "has_marketplace_health_coverage", map_to="person", period=2025
-    ).values
+
+    # Flag people in households that actually receive any PTC (> 0)
+    is_enrolled = (
+        sim.calculate("aca_ptc", map_to="person", period=2025).values > 0
+    )
 
     for _, row in enrollment_by_state.iterrows():
         # People who both live in the state and have marketplace coverage

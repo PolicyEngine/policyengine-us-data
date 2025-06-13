@@ -213,8 +213,7 @@ def build_loss_matrix(dataset: type, time_period):
     # National ACA Enrollment (people receiving a PTC)
     label = "gov/aca_enrollment"
     on_ptc = (
-        sim.calculate("aca_ptc", map_to="person", period=time_period).values
-        > 0
+        sim.calculate("aca_ptc", map_to="person", period=2025).values > 0
     ).astype(int)
 
     loss_matrix[label] = on_ptc

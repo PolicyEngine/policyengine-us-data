@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    added:
-    - Join wealth and auto loan interest imputations.

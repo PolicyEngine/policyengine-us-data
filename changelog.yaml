@@ -303,3 +303,8 @@
     fixed:
     - Increase tolerance for auto loan interest and balance test.
   date: 2025-06-12 16:59:41
+- bump: patch
+  changes:
+    added:
+    - Join wealth and auto loan interest imputations.
+  date: 2025-06-13 11:06:01

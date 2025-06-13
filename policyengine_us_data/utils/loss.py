@@ -468,9 +468,13 @@ def build_loss_matrix(dataset: type, time_period):
     state_person = sim.calculate("state_code", map_to="person").values
 
     # Flag people in households that actually receive any PTC (> 0)
-    is_enrolled = (
+    in_tax_unit_with_aca = (
         sim.calculate("aca_ptc", map_to="person", period=2025).values > 0
     )
+    is_aca_eligible = sim.calculate(
+        "is_aca_ptc_eligible", map_to="person", period=2025
+    ).values
+    is_enrolled = in_tax_unit_with_aca & is_aca_eligible
 
     for _, row in enrollment_by_state.iterrows():
         # People who both live in the state and have marketplace coverage

@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-    - Data length in the take-up variables.

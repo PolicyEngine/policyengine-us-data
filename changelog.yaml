@@ -313,3 +313,8 @@
     fixed:
     - Adjust take-up seed variables.
   date: 2025-06-13 14:46:04
+- bump: patch
+  changes:
+    fixed:
+    - Data length in the take-up variables.
+  date: 2025-06-13 16:30:39

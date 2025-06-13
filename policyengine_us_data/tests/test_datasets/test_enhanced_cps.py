@@ -43,7 +43,7 @@ def test_ecps_has_tips():
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
-    # Ensure we impute at least $50 billion in tip income.
+    # Ensure we impute at least $45 billion in tip income.
     # We currently target $38 billion * 1.4 = $53.2 billion.
     TIP_INCOME_MINIMUM = 45e9
     assert sim.calculate("tip_income").sum() > TIP_INCOME_MINIMUM

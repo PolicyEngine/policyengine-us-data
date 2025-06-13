@@ -420,7 +420,8 @@ def build_loss_matrix(dataset: type, time_period):
     for _, row in spending_by_state.iterrows():
         # Households located in this state
         in_state = (
-            sim.calculate("state_code", map_to="household") == row["state"]
+            sim.calculate("state_code", map_to="household").values
+            == row["state"]
         )
 
         # ACA PTC amounts for every household (2025)
@@ -446,7 +447,7 @@ def build_loss_matrix(dataset: type, time_period):
     )
 
     # One-time pulls so we don’t re-compute inside the loop
-    state_person = sim.calculate("state_code", map_to="person")
+    state_person = sim.calculate("state_code", map_to="person").values
     is_enrolled = sim.calculate(
         "has_marketplace_health_coverage", map_to="person", period=2025
     ).values

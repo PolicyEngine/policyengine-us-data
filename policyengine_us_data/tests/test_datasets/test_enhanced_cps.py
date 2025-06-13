@@ -112,3 +112,40 @@ def test_ssn_card_type_none_target():
         f'SSN card type "NONE" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
     )
     assert pct_error < TOLERANCE
+
+
+def test_aca_calibration():
+
+    import pandas as pd
+    from pathlib import Path
+    from policyengine_us import Microsimulation
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+
+    TARGETS_PATH = Path(
+        "policyengine_us_data/storage/aca_spending_and_enrollment_2024.csv"
+    )
+    targets = pd.read_csv(TARGETS_PATH)
+    targets["spending"] = (
+        targets["spending"].astype(str).str.replace("_", "").astype(int)
+    )
+
+    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    state_code_hh = sim.calculate("state_code", map_to="household").values
+    aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025).values
+
+    TOLERANCE = 0.20
+    for _, row in targets.iterrows():
+        state = row["state"]
+        target_spending = row["spending"]
+        simulated = aca_ptc[state_code_hh == state].sum()
+
+        pct_error = abs(simulated - target_spending) / target_spending
+        print(
+            f"{state}: simulated ${simulated/1e9:.2f} bn  "
+            f"target ${target_spending/1e9:.2f} bn  "
+            f"error {pct_error:.2%}"
+        )
+
+        assert (
+            pct_error < TOLERANCE
+        ), f"{state} spending off by {pct_error:.1%}"

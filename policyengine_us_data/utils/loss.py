@@ -431,6 +431,8 @@ def build_loss_matrix(dataset: type, time_period):
         # Add a loss-matrix entry and matching target
         label = f"irs/aca_spending/{row['state'].lower()}"
         loss_matrix[label] = aca_value * in_state
+        if any(loss_matrix[label].isna()):
+            raise ValueError(f"Missing values for {label}")
         targets_array.append(row["spending"])
 
         print(
@@ -458,6 +460,8 @@ def build_loss_matrix(dataset: type, time_period):
         loss_matrix[label] = sim.map_result(
             in_state_enrolled, "person", "household"
         )
+        if any(loss_matrix[label].isna()):
+            raise ValueError(f"Missing values for {label}")
 
         # Convert to thousands for the target
         targets_array.append(row["enrollment"] / 1_000)

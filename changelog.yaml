@@ -293,3 +293,28 @@
     added:
     - Source for net worth calibration.
   date: 2025-06-09 11:46:29
+- bump: minor
+  changes:
+    added:
+    - Add ACA and Medicaid take-up rates.
+  date: 2025-06-11 22:28:55
+- bump: patch
+  changes:
+    fixed:
+    - Increase tolerance for auto loan interest and balance test.
+  date: 2025-06-12 16:59:41
+- bump: patch
+  changes:
+    added:
+    - Join wealth and auto loan interest imputations.
+  date: 2025-06-13 11:06:01
+- bump: patch
+  changes:
+    fixed:
+    - Adjust take-up seed variables.
+  date: 2025-06-13 14:46:04
+- bump: patch
+  changes:
+    fixed:
+    - Data length in the take-up variables.
+  date: 2025-06-13 16:30:39

@@ -1,4 +1,4 @@
 - bump: patch
   changes:
     added:
-    - ACA calibration targets.
+    - ACA and Medicaid calibration targets.

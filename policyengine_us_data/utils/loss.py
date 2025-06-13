@@ -194,7 +194,7 @@ def build_loss_matrix(dataset: type, time_period):
     # 2. Medicaid Enrollment
     label = "cms/medicaid_enrollment"
     on_medicaid = sim.calculate(
-        "has_medicaid_health_coverage",  # or your enrollee flag
+        "medicaid",  # or your enrollee flag
         map_to="person",
         period=time_period,
     ).values

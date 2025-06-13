@@ -209,9 +209,9 @@ def add_takeup(self):
 
     n = len(data)
 
-    data["snap_take_up_seed"] = generator.random(n)
-    data["aca_take_up_seed"] = generator.random(n)
-    data["medicaid_take_up_seed"] = generator.random(n)
+    data["snap_take_up_seed"] = generator.random(len(data["spm_unit_id"]))
+    data["aca_take_up_seed"] = generator.random(len(data["tax_unit_id"]))
+    data["medicaid_take_up_seed"] = generator.random(len(data["person_id"]))
 
     self.save_dataset(data)
 

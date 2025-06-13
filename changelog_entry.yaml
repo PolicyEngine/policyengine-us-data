@@ -1,0 +1,5 @@
+- bump: minor
+  changes:
+    added:
+    - Change ACA Marketplace variable to use current coverage instead of any coverage within
+      the last year. 

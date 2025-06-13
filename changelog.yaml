@@ -308,3 +308,8 @@
     added:
     - Join wealth and auto loan interest imputations.
   date: 2025-06-13 11:06:01
+- bump: patch
+  changes:
+    fixed:
+    - Adjust take-up seed variables.
+  date: 2025-06-13 14:46:04

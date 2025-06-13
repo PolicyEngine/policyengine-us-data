@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-    - Adjust take-up seed variables.

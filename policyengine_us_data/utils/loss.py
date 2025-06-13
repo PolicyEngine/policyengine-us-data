@@ -205,17 +205,18 @@ def build_loss_matrix(dataset: type, time_period):
     # National ACA Spending
     label = "gov/aca_spending"
     loss_matrix[label] = sim.calculate("aca_ptc", map_to="household").values
-    ACA_SPENDING_2024 = 9.8e10 # 2024 outlays on PTC
+    ACA_SPENDING_2024 = 9.8e10  # 2024 outlays on PTC
     targets_array.append(ACA_SPENDING_2024)
 
     # National ACA Enrollment (people receiving a PTC)
     label = "gov/aca_enrollment"
     on_ptc = (
-        sim.calculate("aca_ptc", map_to="person", period=time_period).values > 0
+        sim.calculate("aca_ptc", map_to="person", period=time_period).values
+        > 0
     ).astype(int)
 
-    loss_matrix[label] = on_ptc          
-    ACA_PTC_ENROLLMENT_2024 = 19_743_689 # people enrolled
+    loss_matrix[label] = on_ptc
+    ACA_PTC_ENROLLMENT_2024 = 19_743_689  # people enrolled
     targets_array.append(ACA_PTC_ENROLLMENT_2024)
 
     # Treasury EITC

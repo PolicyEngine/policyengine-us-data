@@ -204,7 +204,9 @@ def build_loss_matrix(dataset: type, time_period):
 
     # National ACA Spending
     label = "gov/aca_spending"
-    loss_matrix[label] = sim.calculate("aca_ptc", map_to="household", period=2025).values
+    loss_matrix[label] = sim.calculate(
+        "aca_ptc", map_to="household", period=2025
+    ).values
     ACA_SPENDING_2024 = 9.8e10  # 2024 outlays on PTC
     targets_array.append(ACA_SPENDING_2024)
 

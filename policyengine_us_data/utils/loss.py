@@ -217,7 +217,6 @@ def build_loss_matrix(dataset: type, time_period):
     ).astype(int)
     loss_matrix[label] = sim.map_result(on_ptc, "person", "household")
 
-    
     ACA_PTC_ENROLLMENT_2024 = 19_743_689  # people enrolled
     targets_array.append(ACA_PTC_ENROLLMENT_2024)
 

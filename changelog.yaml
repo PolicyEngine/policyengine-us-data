@@ -318,3 +318,9 @@
     fixed:
     - Data length in the take-up variables.
   date: 2025-06-13 16:30:39
+- bump: minor
+  changes:
+    added:
+    - Change ACA Marketplace variable to use current coverage instead of any coverage
+      within the last year.
+  date: 2025-06-14 20:36:59

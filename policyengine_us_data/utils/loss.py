@@ -453,11 +453,11 @@ def build_loss_matrix(dataset: type, time_period):
         annual_target = row["spending"] * 12
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
-        targets_array.append(row["spending"])
+        targets_array.append(annual_target)
 
         print(
             f"Targeting ACA spending for {row['state']} with target "
-            f"${row['annual_target']/1e9:.1f} bn"
+            f"${annual_target/1e9:.1f} bn"
         )
 
     # Marketplace enrollment by state (targets in thousands)

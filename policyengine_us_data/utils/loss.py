@@ -493,11 +493,11 @@ def build_loss_matrix(dataset: type, time_period):
             raise ValueError(f"Missing values for {label}")
 
         # Convert to thousands for the target
-        targets_array.append(row["enrollment"] / 1_000)
+        targets_array.append(row["enrollment"])
 
         print(
             f"Targeting ACA enrollment for {row['state']} "
-            f"with target {row['enrollment']/1_000:.0f}k"
+            f"with target {row['enrollment']:.0f}k"
         )
 
     return loss_matrix, np.array(targets_array)

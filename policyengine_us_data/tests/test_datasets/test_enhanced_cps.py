@@ -131,7 +131,7 @@ def test_aca_calibration():
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
     state_code_hh = sim.calculate("state_code", map_to="household").values
-    aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025).values
+    aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
 
     TOLERANCE = 0.20
     for _, row in targets.iterrows():

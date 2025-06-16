@@ -193,11 +193,14 @@ def build_loss_matrix(dataset: type, time_period):
 
     # 2. Medicaid Enrollment
     label = "hhs/medicaid_enrollment"
-    on_medicaid = sim.calculate(
-        "medicaid",  # or your enrollee flag
-        map_to="person",
-        period=time_period,
-    ).values
+    on_medicaid = (
+        sim.calculate(
+            "medicaid",  # or your enrollee flag
+            map_to="person",
+            period=time_period,
+        ).values
+        > 0
+    ).astype(int)
     loss_matrix[label] = sim.map_result(on_medicaid, "person", "household")
     MEDICAID_ENROLLMENT_2024 = 72_429_055  # target lives (not thousands)
     targets_array.append(MEDICAID_ENROLLMENT_2024)

@@ -134,6 +134,7 @@ def test_aca_calibration():
     aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
 
     TOLERANCE = 0.20
+    failed = False
     for _, row in targets.iterrows():
         state = row["state"]
         target_spending = row["spending"]
@@ -146,6 +147,7 @@ def test_aca_calibration():
             f"error {pct_error:.2%}"
         )
 
-        assert (
-            pct_error < TOLERANCE
-        ), f"{state} spending off by {pct_error:.1%}"
+        if pct_error > TOLERANCE:
+            failed = True
+
+    assert not failed, f"{state} spending off by {pct_error:.1%}"

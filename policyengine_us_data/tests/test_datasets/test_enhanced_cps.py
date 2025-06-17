@@ -125,12 +125,11 @@ def test_aca_calibration():
         "policyengine_us_data/storage/aca_spending_and_enrollment_2024.csv"
     )
     targets = pd.read_csv(TARGETS_PATH)
-    targets["spending"] = (
-        targets["spending"].astype(str).str.replace("_", "").astype(int)
-    ) * 12
-    # Make consistent with national spending
-    targets["spending"] = 9.8e10 * (
-        targets["spending"] / targets["spending"].sum()
+    # Monthly to yearly
+    targets["spending"] = targets["spending"] * 12
+    # Adjust to match national target
+    targets["spending"] = targets["spending"] * (
+        98e10 / targets["spending"].sum()
     )
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)

@@ -128,6 +128,10 @@ def test_aca_calibration():
     targets["spending"] = (
         targets["spending"].astype(str).str.replace("_", "").astype(int)
     ) * 12
+    # Make consistent with national spending
+    targets["spending"] = 9.8e10 * (
+        targets["spending"] / targets["spending"].sum()
+    )
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
     state_code_hh = sim.calculate("state_code", map_to="household").values

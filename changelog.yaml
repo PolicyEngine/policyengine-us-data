@@ -283,3 +283,44 @@
     fixed:
     - Missing HF token.
   date: 2025-05-26 22:11:20
+- bump: minor
+  changes:
+    added:
+    - Net worth variable to cps.
+  date: 2025-06-09 10:44:59
+- bump: minor
+  changes:
+    added:
+    - Source for net worth calibration.
+  date: 2025-06-09 11:46:29
+- bump: minor
+  changes:
+    added:
+    - Add ACA and Medicaid take-up rates.
+  date: 2025-06-11 22:28:55
+- bump: patch
+  changes:
+    fixed:
+    - Increase tolerance for auto loan interest and balance test.
+  date: 2025-06-12 16:59:41
+- bump: patch
+  changes:
+    added:
+    - Join wealth and auto loan interest imputations.
+  date: 2025-06-13 11:06:01
+- bump: patch
+  changes:
+    fixed:
+    - Adjust take-up seed variables.
+  date: 2025-06-13 14:46:04
+- bump: patch
+  changes:
+    fixed:
+    - Data length in the take-up variables.
+  date: 2025-06-13 16:30:39
+- bump: minor
+  changes:
+    added:
+    - Change ACA Marketplace variable to use current coverage instead of any coverage
+      within the last year.
+  date: 2025-06-14 20:36:59

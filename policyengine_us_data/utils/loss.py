@@ -358,6 +358,14 @@ def build_loss_matrix(dataset: type, time_period):
     infants_2024 = INFANTS_2023 * (INFANTS_2023 / INFANTS_2022)
     targets_array.append(infants_2024)
 
+    networth = sim.calculate("net_worth").values
+    label = "net_worth/total"
+    loss_matrix[label] = networth
+    # Federal Reserve estimate of $160 trillion in 2024Q4
+    # https://fred.stlouisfed.org/series/BOGZ1FL192090005Q
+    NET_WORTH_2024 = 160e12
+    targets_array.append(NET_WORTH_2024)
+
     # SALT tax expenditure targeting
 
     _add_tax_expenditure_targets(

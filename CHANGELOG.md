@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] - 2025-06-14 20:36:59
+
+### Added
+
+- Change ACA Marketplace variable to use current coverage instead of any coverage within the last year.
+
+## [1.28.4] - 2025-06-13 16:30:39
+
+### Fixed
+
+- Data length in the take-up variables.
+
+## [1.28.3] - 2025-06-13 14:46:04
+
+### Fixed
+
+- Adjust take-up seed variables.
+
+## [1.28.2] - 2025-06-13 11:06:01
+
+### Added
+
+- Join wealth and auto loan interest imputations.
+
+## [1.28.1] - 2025-06-12 16:59:41
+
+### Fixed
+
+- Increase tolerance for auto loan interest and balance test.
+
+## [1.28.0] - 2025-06-11 22:28:55
+
+### Added
+
+- Add ACA and Medicaid take-up rates.
+
+## [1.27.0] - 2025-06-09 11:46:29
+
+### Added
+
+- Source for net worth calibration.
+
+## [1.26.0] - 2025-06-09 10:44:59
+
+### Added
+
+- Net worth variable to cps.
+
 ## [1.25.3] - 2025-05-26 22:11:20
 
 ### Fixed
@@ -341,6 +389,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.29.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.28.4...1.29.0
+[1.28.4]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.28.3...1.28.4
+[1.28.3]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.28.2...1.28.3
+[1.28.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.28.1...1.28.2
+[1.28.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.28.0...1.28.1
+[1.28.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.27.0...1.28.0
+[1.27.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.26.0...1.27.0
+[1.26.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.25.3...1.26.0
 [1.25.3]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.25.2...1.25.3
 [1.25.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.25.1...1.25.2
 [1.25.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.25.0...1.25.1

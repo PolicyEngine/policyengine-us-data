@@ -345,7 +345,10 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
 
     # --- Qualified Business Income Deduction (QBID) simulation ---
     w2, ubia = simulate_w2_and_ubia_from_puf(puf, seed=42)
-    puf["w2_wages_from_qualified_business"] = w2
+    # That is, we assume that 7% of filers have nonzero REIT/PTP income,
+    # and of those 7%, their REIT/PTP income is lognormal distributed with
+    # mean of exp(8.04) = $3,103, and standard deviation 1.20 of the lognormal.
+    mu_reit_ptp, sigma_reit_ptp = 8.04, 1.20
     puf["unadjusted_basis_qualified_property"] = ubia
 
     puf_qbi_sources_for_sstb = puf[SSTB_PROB_MAP_BY_NAME.keys()]

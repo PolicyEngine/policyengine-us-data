@@ -18,16 +18,13 @@ from policyengine_us_data.utils.uprating import (
 
 rng = np.random.default_rng(seed=64)
 
-# Get QBI simulation parameters ---
+# Get Qualified Business Income simulation parameters ---
 yamlfilename = (
     files("policyengine_us_data") / "datasets" / "puf" / "qbi_assumptions.yaml"
 )
 with open(yamlfilename, "r", encoding="utf-8") as yamlfile:
-    p = yaml.safe_load(yamlfile)
-assert isinstance(p, dict)
-
-QBI_QUALIFICATION_PROBABILITIES = p["qbi_qualification_probabilities"]
-SSTB_PROB_MAP_BY_NAME = p["sstb_prob_map_by_name"]
+    QBI_PARAMS = yaml.safe_load(yamlfile)
+assert isinstance(QBI_PARAMS, dict)
 
 
 # Helper functions ---
@@ -66,62 +63,85 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     """
     rng = np.random.default_rng(seed)
 
-    # 1. Qualified business income
+    # Extract Qualified Business Income simulation parameters
+    qbi_probs = QBI_PARAMS["qbi_qualification_probabilities"]
+    margin_params = QBI_PARAMS["profit_margin_distribution"]
+    logit_params = QBI_PARAMS["has_employees_logit"]
+
+    labor_params = QBI_PARAMS["labor_ratio_distribution"]
+    rental_labor = labor_params["rental"]
+    non_rental_labor = labor_params["non_rental"]
+
+    rental_beta_a = rental_labor["beta_a"]
+    rental_beta_b = rental_labor["beta_b"]
+    rental_scale = rental_labor["scale"]
+
+    non_rental_beta_a = non_rental_labor["beta_a"]
+    non_rental_beta_b = non_rental_labor["beta_b"]
+    non_rental_scale = non_rental_labor["scale"]
+
+    depr_sigma = QBI_PARAMS["depreciation_proxy_sigma"]
+
+    ubia_params = QBI_PARAMS["ubia_simulation"]
+    ubia_sigma = ubia_params["sigma"]
+    ubia_cap_multiple = ubia_params["cap_multiple_of_qbi"]
+
+    # Estimate qualified business income
     qbi = sum(
-        puf[income_type] * prob
-        for income_type, prob in QBI_QUALIFICATION_PROBABILITIES.items()
+        puf[income_type] * prob for income_type, prob in qbi_probs.items()
     ).to_numpy()
 
-    # 2. Simulate gross receipts by drawing a profit margin
+    # Simulate gross receipts by drawing a profit margin
     margins = (
-        rng.beta(2, 3, qbi.size) * (0.25 - 0.05) + 0.05
-    )  # spans 5% to 25%, mean is 13%
+        rng.beta(margin_params["beta_a"], margin_params["beta_b"], qbi.size)
+        * margin_params["scale"]
+        + margin_params["shift"]
+    )
     revenues = np.maximum(qbi, 0) / margins
 
-    # 3. Probability the filer has employees -----------------
-    # Logistic model:  p = 1 / (1 + exp(-(b0 + b1 * receipts)))
-    # * b1 = 1.2e-6: odds roughly triple for each +$1 M; pr 50% near $1M
-    # * b0 = –3.1    → tuned so mean pr is roughly 14% in this PUF (matches SOI share)
-    # * Set p = 0 when simulated receipts == 0 (no revenue means no payroll)
-    logit = -3.1 + 1.2e-6 * revenues
+    logit = (
+        logit_params["intercept"] + logit_params["slope_per_dollar"] * revenues
+    )
+
+    # Set p = 0 when simulated receipts == 0 (no revenue means no payroll)
     pr_has_employees = np.where(revenues == 0.0, 0.0, 1 / (1 + np.exp(-logit)))
     has_employees = rng.binomial(1, pr_has_employees)
 
-    # 4. Draw a labor share; lower for rental/real-estate, higher for operating businesses
+    # Labor share simulation
     is_rental = puf["rental_income"].to_numpy() > 0
 
     labor_ratios = np.where(
         is_rental,
-        rng.beta(1.5, 8, qbi.size) * 0.08,  # Rental: labor ratio between 4-6%
-        rng.beta(2.0, 2, qbi.size)
-        * 0.25,  # Non-rental: labor ratio between 12-18%
+        rng.beta(rental_beta_a, rental_beta_b, qbi.size) * rental_scale,
+        rng.beta(non_rental_beta_a, non_rental_beta_b, qbi.size)
+        * non_rental_scale,
     )
 
     w2_wages = revenues * labor_ratios * has_employees
 
-    # 5. Create a depreciation stand-in that scales with rents.
+    # Create a depreciation stand-in that scales with rents.
     depreciation_proxy = np.where(
         is_rental,
         rng.lognormal(
             mean=np.log(np.abs(puf["rental_income"].to_numpy()) + 1.0),
-            sigma=0.8,
+            sigma=depr_sigma,
         ),
         0.0,
     )
 
-    # 6. UBIA simulation: lognormal, but only for capital-heavy records
+    # UBIA simulation: lognormal, but only for capital heavy records
     is_capital_intensive = is_rental | (depreciation_proxy > 0)
 
     ubia = np.where(
         is_capital_intensive,
-        rng.lognormal(mean=np.log(4 * np.maximum(qbi, 0) + 1.0), sigma=1.0),
+        rng.lognormal(
+            mean=np.log(4 * np.maximum(qbi, 0) + 1.0), sigma=ubia_sigma
+        ),
         0.0,
     )
+    ubia = np.minimum(ubia, ubia_cap_multiple * np.abs(qbi))
 
-    # Trim crazy outliers so UBIA does not dominate QBI limits
-    ubia = np.minimum(ubia, 20 * np.abs(qbi))
-
-    # 7. Quick plausibility checks
+    # Diagnostics
     if diagnostics:
         share_qbi_pos = np.mean(qbi > 0)
         share_wages = np.mean((w2_wages > 0) & (qbi > 0))
@@ -348,22 +368,28 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["w2_wages_from_qualified_business"] = w2
     puf["unadjusted_basis_qualified_property"] = ubia
 
-    puf_qbi_sources_for_sstb = puf[SSTB_PROB_MAP_BY_NAME.keys()]
+    puf_qbi_sources_for_sstb = puf[QBI_PARAMS["sstb_prob_map_by_name"].keys()]
     largest_qbi_source_name = puf_qbi_sources_for_sstb.idxmax(axis=1)
 
-    pr_sstb = largest_qbi_source_name.map(SSTB_PROB_MAP_BY_NAME).fillna(0.0)
+    pr_sstb = largest_qbi_source_name.map(
+        QBI_PARAMS["sstb_prob_map_by_name"]
+    ).fillna(0.0)
     puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
 
-    # REIT and BCD income: chatgpt.com/c/6835f502-5b48-8006-833a-76170a0acd40
-    p_reit_ptp = 0.07  # 7% with income > 0
-    mu_reit_ptp, sigma_reit_ptp = 8.04, 1.20
+    reit_params = QBI_PARAMS["reit_ptp_income_distribution"]
+    p_reit_ptp = reit_params["probability_of_receiving"]
+    mu_reit_ptp = reit_params["log_normal_mu"]
+    sigma_reit_ptp = reit_params["log_normal_sigma"]
+
     puf["qualified_reit_and_ptp_income"] = lognormal_sample(
         len(puf), p_reit_ptp, mu_reit_ptp, sigma_reit_ptp
     )
 
-    # Business-development-company dividends
-    p_bdc = 0.003  # 0.3 % with income > 0
-    mu_bdc, sigma_bdc = 8.71, 1.00
+    bdc_params = QBI_PARAMS["bdc_income_distribution"]
+    p_bdc = bdc_params["probability_of_receiving"]
+    mu_bdc = bdc_params["log_normal_mu"]
+    sigma_bdc = bdc_params["log_normal_sigma"]
+
     puf["qualified_bdc_income"] = lognormal_sample(
         len(puf), p_bdc, mu_bdc, sigma_bdc
     )

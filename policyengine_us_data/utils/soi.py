@@ -15,6 +15,15 @@ QBI_QUALIFICATION_PROBABILITIES = {
 }
 
 
+# Discussion #237, O3 chat: https://chatgpt.com/share/6823cb37-7a28-8001-b2bb-0c0a7f47401c
+SSTB_PROB_MAP_BY_NAME = {
+    "E00900": 0.20,
+    "E26270": 0.15,
+    "E26390": 0.10,
+    "E26400": 0.10,
+}
+
+
 def pe_to_soi(pe_dataset, year):
     from policyengine_us import Microsimulation
 

@@ -10,7 +10,10 @@ from policyengine_us_data.datasets.puf.irs_puf import IRS_PUF_2015
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
-from policyengine_us_data.utils import QBI_QUALIFICATION_PROBABILITIES
+from policyengine_us_data.utils import (
+    QBI_QUALIFICATION_PROBABILITIES,
+    SSTB_PROB_MAP_BY_NAME
+)
 
 
 rng = np.random.default_rng(seed=64)
@@ -334,18 +337,10 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["w2_wages_from_qualified_business"] = w2
     puf["unadjusted_basis_qualified_property"] = ubia
 
-    # Discussion #237, O3 chat: https://chatgpt.com/share/6823cb37-7a28-8001-b2bb-0c0a7f47401c
-    sstb_prob_map_by_name = {
-        "E00900": 0.20,
-        "E26270": 0.15,
-        "E26390": 0.10,
-        "E26400": 0.10,
-    }
-
-    puf_qbi_sources_for_sstb = puf[sstb_prob_map_by_name.keys()]
+    puf_qbi_sources_for_sstb = puf[SSTB_PROB_MAP_BY_NAME.keys()]
     largest_qbi_source_name = puf_qbi_sources_for_sstb.idxmax(axis=1)
 
-    pr_sstb = largest_qbi_source_name.map(sstb_prob_map_by_name).fillna(0.0)
+    pr_sstb = largest_qbi_source_name.map(SSTB_PROB_MAP_BY_NAME).fillna(0.0)
     puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
 
     # REIT and BCD income: chatgpt.com/c/6835f502-5b48-8006-833a-76170a0acd40

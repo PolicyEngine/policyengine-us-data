@@ -437,6 +437,12 @@ def build_loss_matrix(dataset: type, time_period):
     spending_by_state = pd.read_csv(
         STORAGE_FOLDER / "aca_spending_and_enrollment_2024.csv"
     )
+    # Monthly to yearly
+    spending_by_state["spending"] = spending_by_state["spending"] * 12
+    # Adjust to match national target
+    spending_by_state["spending"] = spending_by_state["spending"] * (
+        ACA_SPENDING_2024 / spending_by_state["spending"].sum()
+    )
 
     for _, row in spending_by_state.iterrows():
         # Households located in this state
@@ -453,15 +459,10 @@ def build_loss_matrix(dataset: type, time_period):
         # Add a loss-matrix entry and matching target
         label = f"irs/aca_spending/{row['state'].lower()}"
         loss_matrix[label] = aca_value * in_state
-        annual_target = row["spending"] * 12
+        annual_target = row["spending"]
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
         targets_array.append(annual_target)
-
-        print(
-            f"Targeting ACA spending for {row['state']} with target "
-            f"${annual_target/1e9:.1f} bn"
-        )
 
     # Marketplace enrollment by state (targets in thousands)
     enrollment_by_state = pd.read_csv(

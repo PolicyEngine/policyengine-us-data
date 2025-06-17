@@ -150,4 +150,6 @@ def test_aca_calibration():
         if pct_error > TOLERANCE:
             failed = True
 
-    assert not failed, f"{state} spending off by {pct_error:.1%}"
+    assert (
+        not failed
+    ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."

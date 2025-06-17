@@ -127,7 +127,7 @@ def test_aca_calibration():
     targets = pd.read_csv(TARGETS_PATH)
     targets["spending"] = (
         targets["spending"].astype(str).str.replace("_", "").astype(int)
-    )
+    ) * 12
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
     state_code_hh = sim.calculate("state_code", map_to="household").values

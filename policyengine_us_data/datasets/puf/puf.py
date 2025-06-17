@@ -1,8 +1,12 @@
 import os
+import yaml
+from importlib.resources import files
+
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
 from microdf import MicroDataFrame
+
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.puf.uprate_puf import uprate_puf
@@ -10,15 +14,23 @@ from policyengine_us_data.datasets.puf.irs_puf import IRS_PUF_2015
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
-from policyengine_us_data.utils import (
-    QBI_QUALIFICATION_PROBABILITIES,
-    SSTB_PROB_MAP_BY_NAME
-)
 
 
 rng = np.random.default_rng(seed=64)
 
+# Get QBI simulation parameters ---
+yamlfilename = (
+    files("policyengine_us_data") / "datasets" / "puf" / "qbi_assumptions.yaml"
+)
+with open(yamlfilename, "r", encoding="utf-8") as yamlfile:
+    p = yaml.safe_load(yamlfile)
+assert isinstance(p, dict)
 
+QBI_QUALIFICATION_PROBABILITIES = p["qbi_qualification_probabilities"]
+SSTB_PROB_MAP_BY_NAME = p["sstb_prob_map_by_name"]
+
+
+# Helper functions ---
 def lognormal_sample(n, prob, mu, sigma):
     """Generate a Bernoulli-lognormal mixture."""
     positive = np.random.binomial(1, prob, size=n)
@@ -263,7 +275,8 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["educator_expense"] = puf.E03220
     puf["employment_income"] = puf.E00200
     puf["estate_income"] = puf.E26390 - puf.E26400
-    puf["farm_income"] = puf.T27800  # Schedule J, separate from QBI
+    # Schedule J, separate from QBI
+    puf["farm_income"] = puf.T27800
     puf["health_savings_account_ald"] = puf.E03290
     puf["interest_deduction"] = puf.E19200
     puf["long_term_capital_gains"] = puf.P23250
@@ -281,21 +294,19 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["qualified_dividend_income"] = puf.E00650
     puf["qualified_tuition_expenses"] = puf.E03230
     puf["real_estate_taxes"] = puf.E18500
-    puf["rental_income"] = (
-        puf.E25850 - puf.E25860
-    )  # Schedule E rent and royalty
-    s_corp_income = puf.E26190 - puf.E26180  # Schedule E active S-Corp income
-    partnership_income = (
-        puf.E25980 - puf.E25960
-    )  # Schedule E active partnership income
+    # Schedule E rent and royalty
+    puf["rental_income"] = puf.E25850 - puf.E25860
+    # Schedule E active S-Corp income
+    s_corp_income = puf.E26190 - puf.E26180
+    # Schedule E active partnership income
+    partnership_income = puf.E25980 - puf.E25960
     puf["partnership_s_corp_income"] = s_corp_income + partnership_income
-    puf["farm_operations_income"] = (
-        puf.E02100
-    )  # Schedule F active farming operations
-    puf["farm_rent_income"] = puf.E27200  # Schedule E farm rental income
-    puf["self_employment_income"] = (
-        puf.E00900
-    )  # Schedule C Sole Proprietorship
+    # Schedule F active farming operations
+    puf["farm_operations_income"] = puf.E02100
+    # Schedule E farm rental income
+    puf["farm_rent_income"] = puf.E27200
+    # Schedule C Sole Proprietorship
+    puf["self_employment_income"] = puf.E00900
     puf["self_employed_health_insurance_ald"] = puf.E03270
     puf["self_employed_pension_contribution_ald"] = puf.E03300
     puf["short_term_capital_gains"] = puf.P22250

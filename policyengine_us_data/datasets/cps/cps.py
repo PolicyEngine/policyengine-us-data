@@ -12,7 +12,7 @@ from typing import Type
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
-from policyengine_us_data.utils import QRF, QBI_QUALIFICATION_PROBABILITIES
+from policyengine_us_data.utils import QRF
 import logging
 
 
@@ -571,8 +571,19 @@ def add_personal_income_variables(
     cps["other_medical_expenses"] = person.PMED_VAL
     cps["medicare_part_b_premiums"] = person.PEMCPREM
 
+    # Get QBI simulation parameters ---
+    yamlfilename = (
+        files("policyengine_us_data")
+        / "datasets"
+        / "puf"
+        / "qbi_assumptions.yaml"
+    )
+    with open(yamlfilename, "r", encoding="utf-8") as yamlfile:
+        p = yaml.safe_load(yamlfile)
+    assert isinstance(p, dict)
+
     rng = np.random.default_rng(seed=43)
-    for var, prob in QBI_QUALIFICATION_PROBABILITIES.items():
+    for var, prob in p["qbi_qualification_probabilities"].items():
         cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
 
 

@@ -862,6 +862,9 @@ def add_ssn_card_type(
     - 3: "OTHER_NON_CITIZEN" - Non-citizens with indicators of legal status
     """
 
+    # Initialize CSV logging for population tracking
+    population_log = []
+
     def select_random_subset_to_target(
         eligible_ids, current_weighted, target_weighted, random_seed=None
     ):
@@ -929,8 +932,14 @@ def add_ssn_card_type(
 
     # Initialize all persons as code 0
     ssn_card_type = np.full(len(person), 0)
-    print(
-        f"Step 0 - Initial: Code 0 people: {np.sum(person_weights[ssn_card_type == 0]):,.0f}"
+    initial_population = np.sum(person_weights[ssn_card_type == 0])
+    print(f"Step 0 - Initial: Code 0 people: {initial_population:,.0f}")
+    population_log.append(
+        {
+            "step": "Step 0 - Initial",
+            "description": "Code 0 people",
+            "population": initial_population,
+        }
     )
 
     # ============================================================================
@@ -941,8 +950,14 @@ def add_ssn_card_type(
     citizens_mask = np.isin(person.PRCITSHP, [1, 2, 3, 4])
     ssn_card_type[citizens_mask] = 1
     noncitizens = person.PRCITSHP == 5
-    print(
-        f"Step 1 - Citizens: Moved {np.sum(person_weights[citizens_mask]):,.0f} people to Code 1"
+    citizens_moved = np.sum(person_weights[citizens_mask])
+    print(f"Step 1 - Citizens: Moved {citizens_moved:,.0f} people to Code 1")
+    population_log.append(
+        {
+            "step": "Step 1 - Citizens",
+            "description": "Moved to Code 1",
+            "population": citizens_moved,
+        }
     )
 
     # ============================================================================
@@ -954,8 +969,14 @@ def add_ssn_card_type(
     # Helper mask: Only apply conditions to non-citizens without clear authorization
     potentially_undocumented = ~np.isin(ssn_card_type, [1, 2])
 
-    print(
-        f"\nASEC Conditions - Current Code 0 people: {np.sum(person_weights[ssn_card_type == 0]):,.0f}"
+    current_code_0 = np.sum(person_weights[ssn_card_type == 0])
+    print(f"\nASEC Conditions - Current Code 0 people: {current_code_0:,.0f}")
+    population_log.append(
+        {
+            "step": "ASEC Conditions",
+            "description": "Current Code 0 people",
+            "population": current_code_0,
+        }
     )
 
     # CONDITION 1: Pre-1982 Arrivals (IRCA Amnesty Eligible)
@@ -969,8 +990,16 @@ def add_ssn_card_type(
     # 07 = 1980–1981
     arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
     condition_1_mask = potentially_undocumented & arrived_before_1982
+    condition_1_count = np.sum(person_weights[condition_1_mask])
     print(
-        f"Condition 1 - Pre-1982 arrivals: {np.sum(person_weights[condition_1_mask]):,.0f} people qualify for Code 3"
+        f"Condition 1 - Pre-1982 arrivals: {condition_1_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 1",
+            "description": "Pre-1982 arrivals qualify for Code 3",
+            "population": condition_1_count,
+        }
     )
 
     # CONDITION 2: Eligible Naturalized Citizens
@@ -1128,14 +1157,49 @@ def add_ssn_card_type(
         person_weights[undocumented_students_mask]
     )
 
-    print(
-        f"After conditions - Code 0 people: {np.sum(person_weights[ssn_card_type == 0]):,.0f}"
-    )
+    after_conditions_code_0 = np.sum(person_weights[ssn_card_type == 0])
+    print(f"After conditions - Code 0 people: {after_conditions_code_0:,.0f}")
     print(
         f"  - Undocumented workers before adjustment: {undocumented_workers_count:,.0f} (target: {undocumented_workers_target:,.0f})"
     )
     print(
         f"  - Undocumented students before adjustment: {undocumented_students_count:,.0f} (target: {undocumented_students_target:,.0f})"
+    )
+
+    population_log.append(
+        {
+            "step": "After conditions",
+            "description": "Code 0 people",
+            "population": after_conditions_code_0,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Before adjustment",
+            "description": "Undocumented workers",
+            "population": undocumented_workers_count,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Target",
+            "description": "Undocumented workers target",
+            "population": undocumented_workers_target,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Before adjustment",
+            "description": "Undocumented students",
+            "population": undocumented_students_count,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Target",
+            "description": "Undocumented students target",
+            "population": undocumented_students_target,
+        }
     )
 
     # ============================================================================
@@ -1185,14 +1249,38 @@ def add_ssn_card_type(
     # Assign code 2
     ssn_card_type[selected_workers] = 2
     ssn_card_type[selected_students] = 2
+    ead_workers_moved = np.sum(person_weights[selected_workers])
+    ead_students_moved = np.sum(person_weights[selected_students])
+    after_ead_code_0 = np.sum(person_weights[ssn_card_type == 0])
+
     print(
-        f"Step 3 - EAD workers: Moved {np.sum(person_weights[selected_workers]):,.0f} people from Code 0 to Code 2"
+        f"Step 3 - EAD workers: Moved {ead_workers_moved:,.0f} people from Code 0 to Code 2"
     )
     print(
-        f"Step 4 - EAD students: Moved {np.sum(person_weights[selected_students]):,.0f} people from Code 0 to Code 2"
+        f"Step 4 - EAD students: Moved {ead_students_moved:,.0f} people from Code 0 to Code 2"
     )
-    print(
-        f"After EAD assignment - Code 0 people: {np.sum(person_weights[ssn_card_type == 0]):,.0f}"
+    print(f"After EAD assignment - Code 0 people: {after_ead_code_0:,.0f}")
+
+    population_log.append(
+        {
+            "step": "Step 3 - EAD workers",
+            "description": "Moved from Code 0 to Code 2",
+            "population": ead_workers_moved,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Step 4 - EAD students",
+            "description": "Moved from Code 0 to Code 2",
+            "population": ead_students_moved,
+        }
+    )
+    population_log.append(
+        {
+            "step": "After EAD assignment",
+            "description": "Code 0 people",
+            "population": after_ead_code_0,
+        }
     )
 
     final_counts = pd.Series(ssn_card_type).value_counts().sort_index()
@@ -1241,6 +1329,21 @@ def add_ssn_card_type(
     )
     print(f"After family correlation - Code 0 people: {code_0_after:,.0f}")
 
+    population_log.append(
+        {
+            "step": "Step 5 - Family correlation",
+            "description": "Changed from Code 3 to Code 0",
+            "population": weighted_change,
+        }
+    )
+    population_log.append(
+        {
+            "step": "After family correlation",
+            "description": "Code 0 people",
+            "population": code_0_after,
+        }
+    )
+
     # ============================================================================
     # TARGETED REFINEMENT OF REMAINING CODE 0s TO HIT WEIGHTED TARGET
     # ============================================================================
@@ -1267,16 +1370,39 @@ def add_ssn_card_type(
 
     if len(moved_to_code_3) > 0:
         ssn_card_type[moved_to_code_3] = 3
+        target_refinement_moved = np.sum(person_weights[moved_to_code_3])
         print(
-            f"Step 6 - Target refinement: Moved {np.sum(person_weights[moved_to_code_3]):,.0f} people from Code 0 to Code 3"
+            f"Step 6 - Target refinement: Moved {target_refinement_moved:,.0f} people from Code 0 to Code 3"
+        )
+        population_log.append(
+            {
+                "step": "Step 6 - Target refinement",
+                "description": "Moved from Code 0 to Code 3",
+                "population": target_refinement_moved,
+            }
         )
     else:
         print(
             f"Step 6 - Target refinement: No people moved (already at target)"
         )
+        population_log.append(
+            {
+                "step": "Step 6 - Target refinement",
+                "description": "No people moved (already at target)",
+                "population": 0,
+            }
+        )
 
+    after_target_refinement = np.sum(person_weights[ssn_card_type == 0])
     print(
-        f"After target refinement - Code 0 people: {np.sum(person_weights[ssn_card_type == 0]):,.0f}"
+        f"After target refinement - Code 0 people: {after_target_refinement:,.0f}"
+    )
+    population_log.append(
+        {
+            "step": "After target refinement",
+            "description": "Code 0 people",
+            "population": after_target_refinement,
+        }
     )
 
     # ============================================================================
@@ -1299,9 +1425,107 @@ def add_ssn_card_type(
     for code, label in code_to_str.items():
         pop = np.sum(person_weights[ssn_card_type == code])
         print(f"  Code {code} ({label}): {pop:,.0f}")
+        population_log.append(
+            {
+                "step": "Final",
+                "description": f"Code {code} ({label})",
+                "population": pop,
+            }
+        )
+
+    final_undocumented = np.sum(person_weights[ssn_card_type == 0])
     print(
-        f"Total undocumented (Code 0): {np.sum(person_weights[ssn_card_type == 0]):,.0f} (target: {undocumented_target:,.0f})"
+        f"Total undocumented (Code 0): {final_undocumented:,.0f} (target: {undocumented_target:,.0f})"
     )
+    population_log.append(
+        {
+            "step": "Final",
+            "description": "Total undocumented (Code 0)",
+            "population": final_undocumented,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Final",
+            "description": "Undocumented target",
+            "population": undocumented_target,
+        }
+    )
+
+    # Save population log to CSV
+    import os
+
+    log_df = pd.DataFrame(population_log)
+    csv_path = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "..",
+        "docs",
+        "asec_population_log.csv",
+    )
+    log_df.to_csv(csv_path, index=False)
+    print(f"Population log saved to: {csv_path}")
+
+    # Update documentation with actual numbers
+    _update_documentation_with_numbers(log_df, os.path.dirname(csv_path))
+
+
+def _update_documentation_with_numbers(log_df, docs_dir):
+    """Update the documentation file with actual population numbers from CSV"""
+    import os
+
+    doc_path = os.path.join(docs_dir, "asec_undocumented_algorithm.ipynb")
+
+    if not os.path.exists(doc_path):
+        print(f"Documentation file not found at: {doc_path}")
+        return
+
+    # Create mapping of step/description to population for easy lookup
+    data_map = {}
+    for _, row in log_df.iterrows():
+        key = (row["step"], row["description"])
+        data_map[key] = row["population"]
+
+    # Read the documentation file
+    with open(doc_path, "r") as f:
+        content = f.read()
+
+    # Define replacements based on our logging structure
+    replacements = {
+        "- **Step 0 - Initial**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **Step 0 - Initial**: Code 0 people = {data_map.get(('Step 0 - Initial', 'Code 0 people'), 0):,.0f}",
+        "- **Step 1 - Citizens**: Moved to Code 1 = *[Run cps.py to populate]*": lambda: f"- **Step 1 - Citizens**: Moved to Code 1 = {data_map.get(('Step 1 - Citizens', 'Moved to Code 1'), 0):,.0f}",
+        "- **ASEC Conditions**: Current Code 0 people = *[Run cps.py to populate]*": lambda: f"- **ASEC Conditions**: Current Code 0 people = {data_map.get(('ASEC Conditions', 'Current Code 0 people'), 0):,.0f}",
+        "- **After conditions**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After conditions**: Code 0 people = {data_map.get(('After conditions', 'Code 0 people'), 0):,.0f}",
+        "- **Before adjustment**: Undocumented workers = *[Run cps.py to populate]*": lambda: f"- **Before adjustment**: Undocumented workers = {data_map.get(('Before adjustment', 'Undocumented workers'), 0):,.0f}",
+        "- **Target**: Undocumented workers target = *[Run cps.py to populate]*": lambda: f"- **Target**: Undocumented workers target = {data_map.get(('Target', 'Undocumented workers target'), 0):,.0f}",
+        "- **Before adjustment**: Undocumented students = *[Run cps.py to populate]*": lambda: f"- **Before adjustment**: Undocumented students = {data_map.get(('Before adjustment', 'Undocumented students'), 0):,.0f}",
+        "- **Target**: Undocumented students target = *[Run cps.py to populate]*": lambda: f"- **Target**: Undocumented students target = {data_map.get(('Target', 'Undocumented students target'), 0):,.0f}",
+        "- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: f"- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = {data_map.get(('Step 3 - EAD workers', 'Moved from Code 0 to Code 2'), 0):,.0f}",
+        "- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: f"- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = {data_map.get(('Step 4 - EAD students', 'Moved from Code 0 to Code 2'), 0):,.0f}",
+        "- **After EAD assignment**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After EAD assignment**: Code 0 people = {data_map.get(('After EAD assignment', 'Code 0 people'), 0):,.0f}",
+        "- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = *[Run cps.py to populate]*": lambda: f"- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = {data_map.get(('Step 5 - Family correlation', 'Changed from Code 3 to Code 0'), 0):,.0f}",
+        "- **After family correlation**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After family correlation**: Code 0 people = {data_map.get(('After family correlation', 'Code 0 people'), 0):,.0f}",
+        "- **Step 6 - Target refinement**: Moved from Code 0 to Code 3 = *[Run cps.py to populate]*": lambda: f"- **Step 6 - Target refinement**: Moved from Code 0 to Code 3 = {data_map.get(('Step 6 - Target refinement', 'Moved from Code 0 to Code 3'), 0):,.0f}",
+        "- **After target refinement**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After target refinement**: Code 0 people = {data_map.get(('After target refinement', 'Code 0 people'), 0):,.0f}",
+        "- **Final**: Code 0 (NONE) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 0 (NONE) = {data_map.get(('Final', 'Code 0 (NONE)'), 0):,.0f}",
+        "- **Final**: Code 1 (CITIZEN) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 1 (CITIZEN) = {data_map.get(('Final', 'Code 1 (CITIZEN)'), 0):,.0f}",
+        "- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = {data_map.get(('Final', 'Code 2 (NON_CITIZEN_VALID_EAD)'), 0):,.0f}",
+        "- **Final**: Code 3 (OTHER_NON_CITIZEN) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 3 (OTHER_NON_CITIZEN) = {data_map.get(('Final', 'Code 3 (OTHER_NON_CITIZEN)'), 0):,.0f}",
+        "- **Final**: Total undocumented (Code 0) = *[Run cps.py to populate]*": lambda: f"- **Final**: Total undocumented (Code 0) = {data_map.get(('Final', 'Total undocumented (Code 0)'), 0):,.0f}",
+        "- **Final**: Undocumented target = *[Run cps.py to populate]*": lambda: f"- **Final**: Undocumented target = {data_map.get(('Final', 'Undocumented target'), 0):,.0f}",
+    }
+
+    # Apply replacements
+    for old_text, replacement_func in replacements.items():
+        if old_text in content:
+            content = content.replace(old_text, replacement_func())
+
+    # Write updated content back to file
+    with open(doc_path, "w") as f:
+        f.write(content)
+
+    print(f"Documentation updated with population numbers: {doc_path}")
 
 
 def add_tips(self, cps: h5py.File):

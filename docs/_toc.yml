@@ -1,6 +1,6 @@
 format: jb-book
 root: intro
 chapters:
-- file: asec_undocumented_algorithm.md
+- file: asec_undocumented_algorithm.ipynb
 - file: validation.ipynb
 - file: results.ipynb

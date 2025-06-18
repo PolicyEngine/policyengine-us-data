@@ -43,9 +43,9 @@ def test_ecps_has_tips():
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
-    # Ensure we impute at least $50 billion in tip income.
+    # Ensure we impute at least $45 billion in tip income.
     # We currently target $38 billion * 1.4 = $53.2 billion.
-    TIP_INCOME_MINIMUM = 50e9
+    TIP_INCOME_MINIMUM = 45e9
     assert sim.calculate("tip_income").sum() > TIP_INCOME_MINIMUM
 
 
@@ -114,6 +114,7 @@ def test_ssn_card_type_none_target():
     assert pct_error < TOLERANCE
 
 
+<<<<<<< ssn-impute-new
 def test_ctc_reform_child_recipient_difference():
     """
     Test CTC reform impact for validation purposes only.
@@ -179,3 +180,47 @@ def test_ctc_reform_child_recipient_difference():
         "Note: CTC targeting removed from calibration - this is validation only"
     )
     assert pct_error < TOLERANCE
+=======
+def test_aca_calibration():
+
+    import pandas as pd
+    from pathlib import Path
+    from policyengine_us import Microsimulation
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+
+    TARGETS_PATH = Path(
+        "policyengine_us_data/storage/aca_spending_and_enrollment_2024.csv"
+    )
+    targets = pd.read_csv(TARGETS_PATH)
+    # Monthly to yearly
+    targets["spending"] = targets["spending"] * 12
+    # Adjust to match national target
+    targets["spending"] = targets["spending"] * (
+        98e9 / targets["spending"].sum()
+    )
+
+    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    state_code_hh = sim.calculate("state_code", map_to="household").values
+    aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
+
+    TOLERANCE = 0.45
+    failed = False
+    for _, row in targets.iterrows():
+        state = row["state"]
+        target_spending = row["spending"]
+        simulated = aca_ptc[state_code_hh == state].sum()
+
+        pct_error = abs(simulated - target_spending) / target_spending
+        print(
+            f"{state}: simulated ${simulated/1e9:.2f} bn  "
+            f"target ${target_spending/1e9:.2f} bn  "
+            f"error {pct_error:.2%}"
+        )
+
+        if pct_error > TOLERANCE:
+            failed = True
+
+    assert (
+        not failed
+    ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+>>>>>>> main

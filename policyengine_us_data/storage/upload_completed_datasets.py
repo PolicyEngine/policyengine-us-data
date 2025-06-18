@@ -4,43 +4,29 @@ from policyengine_us_data.datasets import (
     CPS_2023,
 )
 from policyengine_us_data.storage import STORAGE_FOLDER
-from policyengine_us_data.utils.huggingface import upload
+from policyengine_us_data.utils.data_upload import upload_data_files
 from google.cloud import storage
 import google.auth
 
 
 def upload_datasets():
-    credentials, project_id = google.auth.default()
-    storage_client = storage.Client(
-        credentials=credentials, project=project_id
-    )
-    bucket = storage_client.bucket("policyengine-us-data")
-
-    datasets_to_upload = [
-        EnhancedCPS_2024,
-        Pooled_3_Year_CPS_2023,
-        CPS_2023,
+    dataset_files = [
+        EnhancedCPS_2024.file_path,
+        Pooled_3_Year_CPS_2023.file_path,
+        CPS_2023.file_path,
+        STORAGE_FOLDER / "small_cps_2024.h5",
     ]
 
-    for dataset in datasets_to_upload:
-        dataset = dataset()
-        if not dataset.exists:
-            raise ValueError(
-                f"Dataset {dataset.name} does not exist at {dataset.file_path}."
-            )
+    for file_path in dataset_files:
+        if not file_path.exists():
+            raise ValueError(f"File {file_path} does not exist.")
 
-        upload(
-            dataset.file_path,
-            "policyengine/policyengine-us-data",
-            dataset.file_path.name,
-        )
-
-        blob = dataset.file_path.name
-        blob = bucket.blob(blob)
-        blob.upload_from_filename(dataset.file_path)
-        print(
-            f"Uploaded {dataset.file_path.name} to GCS bucket policyengine-us-data."
-        )
+    upload_data_files(
+        files=dataset_files,
+        hf_repo_name="policyengine/policyengine-us-data",
+        hf_repo_type="model",
+        gcs_bucket_name="policyengine-us-data",
+    )
 
 
 if __name__ == "__main__":

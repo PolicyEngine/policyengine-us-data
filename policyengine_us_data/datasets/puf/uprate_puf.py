@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from policyengine_us_data.storage import STORAGE_FOLDER
 
+
 ITMDED_GROW_RATE = 0.02  # annual growth rate in itemized deduction amounts
 
 USE_VARIABLE_SPECIFIC_POPULATION_GROWTH_DIVISORS = False
@@ -95,7 +96,6 @@ def get_soi_aggregate(variable, year, is_count):
     if variable == "adjusted_gross_income" and is_count:
         # AGI isn't treated like the other variables
         return get_soi_aggregate("count", year, True)
-
     is_variable = soi.Variable == variable
     is_year = soi.Year == year
     filing_status = soi["Filing status"] == "All"

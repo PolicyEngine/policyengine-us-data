@@ -201,16 +201,6 @@ def rename_columns_to_match_cps(scf: dict, raw_data: pd.DataFrame) -> None:
             raw_data["kids"].fillna(0).astype(int).values
         )
 
-    # Employment & self-employment income
-    if "wageinc" in raw_data.columns:
-        scf["employment_income"] = raw_data["wageinc"].fillna(0).values
-    if "bussefarminc" in raw_data.columns:
-        scf["self_employment_income"] = (
-            raw_data["bussefarminc"].fillna(0).values
-        )
-        # Farm income - SCF bundles with business income
-        scf["farm_income"] = np.zeros_like(scf["self_employment_income"])
-
     # Rent
     if "rent" in raw_data.columns:
         scf["rent"] = raw_data["rent"].fillna(0).values
@@ -221,27 +211,22 @@ def rename_columns_to_match_cps(scf: dict, raw_data: pd.DataFrame) -> None:
             raw_data["veh_inst"].fillna(0).values
         )
 
-    # Household weights
-    if "wgt" in raw_data.columns:
-        scf["household_weight"] = raw_data["wgt"].fillna(0).values
-
     # Marital status
     if "married" in raw_data.columns:
         # In SCF, married is a binary flag
         scf["is_married"] = (raw_data["married"] == 1).values
-        # Create placeholders for other marital statuses
-        scf["is_widowed"] = np.zeros(len(raw_data), dtype=bool)
-        scf["is_separated"] = np.zeros(len(raw_data), dtype=bool)
 
-    # Additional variables if available in raw_data
-    # Financial variables
+    # Additional variables
     variable_mappings = {
-        "intdivinc": "interest_income",
-        "ssretinc": "social_security_retirement",
+        "wageinc": "employment_income",
+        "bussefarminc": "farm_self_employment_income",
+        "intdivinc": "interest_dividend_income",
+        "ssretinc": "social_security_pension_income",
         "houses": "real_estate_value",
         "mrthel": "mortgage_debt",
         "edn_inst": "student_loan_debt",
         "ccbal": "credit_card_debt",
+        "household_weight": "wgt",
     }
 
     for scf_var, pe_var in variable_mappings.items():

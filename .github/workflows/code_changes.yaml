@@ -1,4 +1,4 @@
-# Workflow that runs on code changes to a pull request.
+# Workflow that runs on code changes after merge to main.
 
 name: Code changes
 on:
@@ -7,9 +7,11 @@ on:
       - main
 
     paths:
-      - policyengine_us_data/**
-      - tests/**
-      - .github/workflows/code_changes.yaml
+      - pyproject.toml
+
+env:
+  HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+  POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
 
 jobs:
   Lint:
@@ -40,14 +42,10 @@ jobs:
             with:
               workload_identity_provider: "projects/322898545428/locations/global/workloadIdentityPools/policyengine-research-id-pool/providers/prod-github-provider"
               service_account: "policyengine-research@policyengine-research.iam.gserviceaccount.com"
-              
           - name: Install package
             run: uv pip install -e .[dev] --system
           - name: Download data inputs
             run: make download
-            env:
-              HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-              POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
           - name: Build datasets
             run: make data   
             env:
@@ -56,7 +54,12 @@ jobs:
             run: pytest
           - name: Upload data
             run: make upload
-            env:
-              HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
           - name: Test documentation builds
             run: make documentation
+          - name: Deploy documentation
+            uses: JamesIves/github-pages-deploy-action@releases/v3
+            with:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              BRANCH: gh-pages  # The branch the action should deploy to.
+              FOLDER: docs/_build/html  # The folder the action should deploy.
+              CLEAN: true  # Optionally delete the contents of the release branch before deploying.

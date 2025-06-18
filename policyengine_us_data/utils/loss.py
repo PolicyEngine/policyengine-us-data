@@ -185,6 +185,44 @@ def build_loss_matrix(dataset: type, time_period):
             ).calibration.gov.cbo._children[variable_name]
         )
 
+    # 1. Medicaid Spending
+    label = "hhs/medicaid_spending"
+    loss_matrix[label] = sim.calculate("medicaid", map_to="household").values
+    MEDICAID_SPENDING_2024 = 9e11
+    targets_array.append(MEDICAID_SPENDING_2024)
+
+    # 2. Medicaid Enrollment
+    label = "hhs/medicaid_enrollment"
+    on_medicaid = (
+        sim.calculate(
+            "medicaid",  # or your enrollee flag
+            map_to="person",
+            period=time_period,
+        ).values
+        > 0
+    ).astype(int)
+    loss_matrix[label] = sim.map_result(on_medicaid, "person", "household")
+    MEDICAID_ENROLLMENT_2024 = 72_429_055  # target lives (not thousands)
+    targets_array.append(MEDICAID_ENROLLMENT_2024)
+
+    # National ACA Spending
+    label = "gov/aca_spending"
+    loss_matrix[label] = sim.calculate(
+        "aca_ptc", map_to="household", period=2025
+    ).values
+    ACA_SPENDING_2024 = 9.8e10  # 2024 outlays on PTC
+    targets_array.append(ACA_SPENDING_2024)
+
+    # National ACA Enrollment (people receiving a PTC)
+    label = "gov/aca_enrollment"
+    on_ptc = (
+        sim.calculate("aca_ptc", map_to="person", period=2025).values > 0
+    ).astype(int)
+    loss_matrix[label] = sim.map_result(on_ptc, "person", "household")
+
+    ACA_PTC_ENROLLMENT_2024 = 19_743_689  # people enrolled
+    targets_array.append(ACA_PTC_ENROLLMENT_2024)
+
     # Treasury EITC
 
     loss_matrix["treasury/eitc"] = sim.calculate(
@@ -358,6 +396,14 @@ def build_loss_matrix(dataset: type, time_period):
     infants_2024 = INFANTS_2023 * (INFANTS_2023 / INFANTS_2022)
     targets_array.append(infants_2024)
 
+    networth = sim.calculate("net_worth").values
+    label = "net_worth/total"
+    loss_matrix[label] = networth
+    # Federal Reserve estimate of $160 trillion in 2024Q4
+    # https://fred.stlouisfed.org/series/BOGZ1FL192090005Q
+    NET_WORTH_2024 = 160e12
+    targets_array.append(NET_WORTH_2024)
+
     # SALT tax expenditure targeting
 
     _add_tax_expenditure_targets(
@@ -399,6 +445,74 @@ def build_loss_matrix(dataset: type, time_period):
                 target_count = undocumented_targets[time_period]
 
         targets_array.append(target_count)
+
+    # ACA spending by state
+    spending_by_state = pd.read_csv(
+        STORAGE_FOLDER / "aca_spending_and_enrollment_2024.csv"
+    )
+    # Monthly to yearly
+    spending_by_state["spending"] = spending_by_state["spending"] * 12
+    # Adjust to match national target
+    spending_by_state["spending"] = spending_by_state["spending"] * (
+        ACA_SPENDING_2024 / spending_by_state["spending"].sum()
+    )
+
+    for _, row in spending_by_state.iterrows():
+        # Households located in this state
+        in_state = (
+            sim.calculate("state_code", map_to="household").values
+            == row["state"]
+        )
+
+        # ACA PTC amounts for every household (2025)
+        aca_value = sim.calculate(
+            "aca_ptc", map_to="household", period=2025
+        ).values
+
+        # Add a loss-matrix entry and matching target
+        label = f"irs/aca_spending/{row['state'].lower()}"
+        loss_matrix[label] = aca_value * in_state
+        annual_target = row["spending"]
+        if any(loss_matrix[label].isna()):
+            raise ValueError(f"Missing values for {label}")
+        targets_array.append(annual_target)
+
+    # Marketplace enrollment by state (targets in thousands)
+    enrollment_by_state = pd.read_csv(
+        STORAGE_FOLDER / "aca_spending_and_enrollment_2024.csv"
+    )
+
+    # One-time pulls so we don’t re-compute inside the loop
+    state_person = sim.calculate("state_code", map_to="person").values
+
+    # Flag people in households that actually receive any PTC (> 0)
+    in_tax_unit_with_aca = (
+        sim.calculate("aca_ptc", map_to="person", period=2025).values > 0
+    )
+    is_aca_eligible = sim.calculate(
+        "is_aca_ptc_eligible", map_to="person", period=2025
+    ).values
+    is_enrolled = in_tax_unit_with_aca & is_aca_eligible
+
+    for _, row in enrollment_by_state.iterrows():
+        # People who both live in the state and have marketplace coverage
+        in_state = state_person == row["state"]
+        in_state_enrolled = in_state & is_enrolled
+
+        label = f"irs/aca_enrollment/{row['state'].lower()}"
+        loss_matrix[label] = sim.map_result(
+            in_state_enrolled, "person", "household"
+        )
+        if any(loss_matrix[label].isna()):
+            raise ValueError(f"Missing values for {label}")
+
+        # Convert to thousands for the target
+        targets_array.append(row["enrollment"])
+
+        print(
+            f"Targeting ACA enrollment for {row['state']} "
+            f"with target {row['enrollment']:.0f}k"
+        )
 
     return loss_matrix, np.array(targets_array)
 

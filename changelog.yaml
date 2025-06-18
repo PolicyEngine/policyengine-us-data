@@ -329,3 +329,8 @@
     added:
     - ACA and Medicaid calibration targets.
   date: 2025-06-18 10:07:41
+- bump: minor
+  changes:
+    added:
+    - Synthetic, small ECPS data file.
+  date: 2025-06-18 12:31:13

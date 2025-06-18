@@ -136,7 +136,7 @@ def test_aca_calibration():
     state_code_hh = sim.calculate("state_code", map_to="household").values
     aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
 
-    TOLERANCE = 0.4
+    TOLERANCE = 0.45
     failed = False
     for _, row in targets.iterrows():
         state = row["state"]

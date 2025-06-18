@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def create_synth_cps():
+def create_small_cps():
     from policyengine_us import Microsimulation
     from policyengine_us_data.datasets import EnhancedCPS_2024
     from policyengine_us_data.storage import STORAGE_FOLDER
@@ -23,7 +23,7 @@ def create_synth_cps():
 
     import h5py
 
-    with h5py.File(STORAGE_FOLDER / "synthetic_cps_2024.h5", "w") as f:
+    with h5py.File(STORAGE_FOLDER / "small_cps_2024.h5", "w") as f:
         for variable, periods in data.items():
             grp = f.create_group(variable)
             for period, values in periods.items():

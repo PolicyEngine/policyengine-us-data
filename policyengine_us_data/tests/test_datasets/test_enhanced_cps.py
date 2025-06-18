@@ -129,7 +129,7 @@ def test_aca_calibration():
     targets["spending"] = targets["spending"] * 12
     # Adjust to match national target
     targets["spending"] = targets["spending"] * (
-        98e10 / targets["spending"].sum()
+        98e9 / targets["spending"].sum()
     )
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)

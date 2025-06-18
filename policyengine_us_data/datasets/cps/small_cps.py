@@ -28,3 +28,8 @@ def create_small_cps():
             grp = f.create_group(variable)
             for period, values in periods.items():
                 grp.create_dataset(str(period), data=values)
+
+
+if __name__ == "__main__":
+    create_small_cps()
+    print("Small CPS dataset created successfully.")

@@ -324,3 +324,8 @@
     - Change ACA Marketplace variable to use current coverage instead of any coverage
       within the last year.
   date: 2025-06-14 20:36:59
+- bump: patch
+  changes:
+    added:
+    - ACA and Medicaid calibration targets.
+  date: 2025-06-18 10:07:41

@@ -339,3 +339,8 @@
     added:
     - Add test for small ECPS.
   date: 2025-06-19 10:09:37
+- bump: patch
+  changes:
+    fixed:
+    - Small CPS is now 1000 households.
+  date: 2025-06-19 13:59:12

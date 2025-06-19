@@ -134,7 +134,10 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
 
     # A depreciation stand-in that scales with rents
     depreciation_proxy = conditionally_sample_lognormal(
-        is_rental, puf["rental_income"], depr_sigma, rng
+        is_rental,
+        puf["rental_income"],
+        depr_sigma,
+        rng,
     )
 
     # UBIA simulation: lognormal, but only for capital-heavy records
@@ -396,9 +399,9 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     sigma_bdc = bdc_params["log_normal_sigma"]
 
     puf["qualified_bdc_income"] = sample_bernoulli_lognormal(
-        len(puf), p_bdc, mu_bdc, sigma_bdc
+        len(puf), p_bdc, mu_bdc, sigma_bdc, rng
     )
-    # -------- End of QBID -------
+    # -------- End of Qualified Business Income Deduction (QBID) -------
     puf["filing_status"] = puf.MARS.map(
         {
             1: "SINGLE",

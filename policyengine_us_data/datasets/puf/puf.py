@@ -390,7 +390,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     sigma_reit_ptp = reit_params["log_normal_sigma"]
 
     puf["qualified_reit_and_ptp_income"] = sample_bernoulli_lognormal(
-        len(puf), p_reit_ptp, mu_reit_ptp, sigma_reit_ptp
+        len(puf), p_reit_ptp, mu_reit_ptp, sigma_reit_ptp, rng
     )
 
     bdc_params = QBI_PARAMS["bdc_income_distribution"]

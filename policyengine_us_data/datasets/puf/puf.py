@@ -28,24 +28,35 @@ assert isinstance(QBI_PARAMS, dict)
 
 
 # Helper functions ---
-def lognormal_sample(n, prob, mu, sigma):
+def sample_bernoulli_lognormal(n, prob, log_mean, log_sigma, rng):
     """Generate a Bernoulli-lognormal mixture."""
     positive = np.random.binomial(1, prob, size=n)
     amounts = np.where(
-        positive == 1,
-        np.random.lognormal(mean=mu, sigma=sigma, size=n),
+        positive,
+        rng.lognormal(mean=log_mean, sigma=log_sigma, size=n),
         0.0,
     )
     return amounts
 
 
+def conditionally_sample_lognormal(flag, target_mean, log_sigma, rng):
+    """Generate a lognormal conditional on a binary flag."""
+    mu = np.log(target_mean) - (log_sigma**2 / 2)
+    return np.where(
+        flag,
+        rng.lognormal(
+            mean=mu,
+            sigma=log_sigma,
+        ),
+        0.0,
+    )
+
+
 def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     """
     Simulate two Section 199A guard-rail quantities for every record
-      • W-2 wages paid by the business
-      • Unadjusted basis immediately after acquisition (UBIA) of property
-
-    Simulation O3 chat: chatgpt.com/share/683b12a5-78dc-8006-81c9-479858312b30
+      - W-2 wages paid by the business
+      - Unadjusted basis immediately after acquisition (UBIA) of property
 
     Parameters
     ----------
@@ -83,8 +94,8 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     depr_sigma = QBI_PARAMS["depreciation_proxy_sigma"]
 
     ubia_params = QBI_PARAMS["ubia_simulation"]
+    ubia_multiple_of_qbi = ubia_params["multiple_of_qbi"]
     ubia_sigma = ubia_params["sigma"]
-    ubia_cap_multiple = ubia_params["cap_multiple_of_qbi"]
 
     # Estimate qualified business income
     qbi = sum(
@@ -104,7 +115,9 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     )
 
     # Set p = 0 when simulated receipts == 0 (no revenue means no payroll)
-    pr_has_employees = np.where(revenues == 0.0, 0.0, 1 / (1 + np.exp(-logit)))
+    pr_has_employees = np.where(
+        revenues == 0.0, 0.0, 1.0 / (1.0 + np.exp(-logit))
+    )
     has_employees = rng.binomial(1, pr_has_employees)
 
     # Labor share simulation
@@ -119,29 +132,21 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
 
     w2_wages = revenues * labor_ratios * has_employees
 
-    # Create a depreciation stand-in that scales with rents.
-    depreciation_proxy = np.where(
-        is_rental,
-        rng.lognormal(
-            mean=np.log(np.abs(puf["rental_income"].to_numpy()) + 1.0),
-            sigma=depr_sigma,
-        ),
-        0.0,
+    # A depreciation stand-in that scales with rents
+    depreciation_proxy = conditionally_sample_lognormal(
+        is_rental, puf["rental_income"], depr_sigma, rng
     )
 
-    # UBIA simulation: lognormal, but only for capital heavy records
+    # UBIA simulation: lognormal, but only for capital-heavy records
     is_capital_intensive = is_rental | (depreciation_proxy > 0)
 
-    ubia = np.where(
+    ubia = conditionally_sample_lognormal(
         is_capital_intensive,
-        rng.lognormal(
-            mean=np.log(4 * np.maximum(qbi, 0) + 1.0), sigma=ubia_sigma
-        ),
-        0.0,
+        ubia_multiple_of_qbi * np.maximum(qbi, 0),
+        ubia_sigma,
+        rng,
     )
-    ubia = np.minimum(ubia, ubia_cap_multiple * np.abs(qbi))
 
-    # Diagnostics
     if diagnostics:
         share_qbi_pos = np.mean(qbi > 0)
         share_wages = np.mean((w2_wages > 0) & (qbi > 0))
@@ -381,7 +386,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     mu_reit_ptp = reit_params["log_normal_mu"]
     sigma_reit_ptp = reit_params["log_normal_sigma"]
 
-    puf["qualified_reit_and_ptp_income"] = lognormal_sample(
+    puf["qualified_reit_and_ptp_income"] = sample_bernoulli_lognormal(
         len(puf), p_reit_ptp, mu_reit_ptp, sigma_reit_ptp
     )
 
@@ -390,7 +395,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     mu_bdc = bdc_params["log_normal_mu"]
     sigma_bdc = bdc_params["log_normal_sigma"]
 
-    puf["qualified_bdc_income"] = lognormal_sample(
+    puf["qualified_bdc_income"] = sample_bernoulli_lognormal(
         len(puf), p_bdc, mu_bdc, sigma_bdc
     )
     # -------- End of QBID -------

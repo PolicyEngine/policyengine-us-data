@@ -15,6 +15,7 @@ from policyengine_us_data.utils.uprating import (
 from policyengine_us_data.utils import QRF
 import logging
 
+
 test_lite = os.environ.get("TEST_LITE")
 
 
@@ -569,6 +570,21 @@ def add_personal_income_variables(
     cps["over_the_counter_health_expenses"] = person.POTC_VAL
     cps["other_medical_expenses"] = person.PMED_VAL
     cps["medicare_part_b_premiums"] = person.PEMCPREM
+
+    # Get QBI simulation parameters ---
+    yamlfilename = (
+        files("policyengine_us_data")
+        / "datasets"
+        / "puf"
+        / "qbi_assumptions.yaml"
+    )
+    with open(yamlfilename, "r", encoding="utf-8") as yamlfile:
+        p = yaml.safe_load(yamlfile)
+    assert isinstance(p, dict)
+
+    rng = np.random.default_rng(seed=43)
+    for var, prob in p["qbi_qualification_probabilities"].items():
+        cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
 
 
 def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:

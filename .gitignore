@@ -8,5 +8,6 @@
 !spm_threshold_agi.csv
 **/_build
 !population_by_state.csv
+!aca_spending_and_enrollment_2024.csv
 **/*.pkl
 venv

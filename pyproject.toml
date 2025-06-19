@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "policyengine_us_data"
-version = "1.29.0"
+version = "1.30.2"
 description = "A package to create representative microdata for the US."
 readme = "README.md"
 authors = [
@@ -23,7 +23,7 @@ dependencies = [
     "tqdm",
     "microdf_python>=0.4.3",
     "setuptools>=60",
-    "microimpute>=0.1.4",
+    "microimpute==0.1.4",
     "pip-system-certs",
     "google-cloud-storage",
     "google-auth",

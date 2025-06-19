@@ -756,6 +756,7 @@ def add_tips(self, cps: h5py.File):
         ],
         2025,
     )
+    cps = pd.DataFrame(cps)
 
     cps["is_under_18"] = cps.age < 18
     cps["is_under_6"] = cps.age < 6

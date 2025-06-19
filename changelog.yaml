@@ -324,3 +324,23 @@
     - Change ACA Marketplace variable to use current coverage instead of any coverage
       within the last year.
   date: 2025-06-14 20:36:59
+- bump: patch
+  changes:
+    added:
+    - ACA and Medicaid calibration targets.
+  date: 2025-06-18 10:07:41
+- bump: minor
+  changes:
+    added:
+    - Synthetic, small ECPS data file.
+  date: 2025-06-18 12:31:13
+- bump: patch
+  changes:
+    added:
+    - Add test for small ECPS.
+  date: 2025-06-19 10:09:37
+- bump: patch
+  changes:
+    fixed:
+    - Small CPS is now 1000 households.
+  date: 2025-06-19 13:59:12

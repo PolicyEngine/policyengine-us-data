@@ -56,8 +56,8 @@ labor_ratio_distribution:
 
 depreciation_proxy_sigma: 0.8
 
-# lognormal(mean = log(4 x QBI),  σ = 1)
-# produce a right-skewed spread whose median is roughly 4 × QBI,
+# lognormal(mean = 4 * QBI, sigma = 1)
+# produce a right-skewed spread whose mean is roughly 4 * QBI,
 # matching aggregate SOI ratios.
 ubia_simulation:
     multiple_of_qbi: 4.0

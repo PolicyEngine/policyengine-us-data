@@ -1332,7 +1332,7 @@ def _update_documentation_with_numbers(log_df, docs_dir):
         data_map[key] = row["population"]
 
     # Read the documentation file
-    with open(doc_path, "r") as f:
+    with open(doc_path, "r", encoding="utf-8") as f:
         content = f.read()
 
     # Define replacements based on our logging structure
@@ -1366,7 +1366,7 @@ def _update_documentation_with_numbers(log_df, docs_dir):
             content = content.replace(old_text, replacement_func())
 
     # Write updated content back to file
-    with open(doc_path, "w") as f:
+    with open(doc_path, "w", encoding="utf-8") as f:
         f.write(content)
 
     print(f"Documentation updated with population numbers: {doc_path}")

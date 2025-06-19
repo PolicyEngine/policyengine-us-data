@@ -42,7 +42,7 @@ data:
 	python policyengine_us_data/datasets/puf/puf.py
 	python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
-	python policyengine_us_data/datasets/cps/small_cps.py
+	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

@@ -114,7 +114,6 @@ def test_ssn_card_type_none_target():
     assert pct_error < TOLERANCE
 
 
-<<<<<<< ssn-impute-new
 def test_ctc_reform_child_recipient_difference():
     """
     Test CTC reform impact for validation purposes only.
@@ -180,7 +179,8 @@ def test_ctc_reform_child_recipient_difference():
         "Note: CTC targeting removed from calibration - this is validation only"
     )
     assert pct_error < TOLERANCE
-=======
+
+
 def test_aca_calibration():
 
     import pandas as pd
@@ -223,4 +223,3 @@ def test_aca_calibration():
     assert (
         not failed
     ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
->>>>>>> main

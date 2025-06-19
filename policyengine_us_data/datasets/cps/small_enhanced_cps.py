@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def create_small_cps():
+def create_small_ecps():
     from policyengine_us import Microsimulation
     from policyengine_us_data.datasets import EnhancedCPS_2024
     from policyengine_us_data.storage import STORAGE_FOLDER
@@ -10,6 +10,7 @@ def create_small_cps():
     simulation = Microsimulation(
         dataset=EnhancedCPS_2024,
     )
+    simulation.subsample(1_000)
 
     data = {}
     for variable in simulation.tax_benefit_system.variables:
@@ -29,7 +30,7 @@ def create_small_cps():
 
     import h5py
 
-    with h5py.File(STORAGE_FOLDER / "small_cps_2024.h5", "w") as f:
+    with h5py.File(STORAGE_FOLDER / "small_enhanced_cps_2024.h5", "w") as f:
         for variable, periods in data.items():
             grp = f.create_group(variable)
             for period, values in periods.items():
@@ -37,5 +38,5 @@ def create_small_cps():
 
 
 if __name__ == "__main__":
-    create_small_cps()
+    create_small_ecps()
     print("Small CPS dataset created successfully.")

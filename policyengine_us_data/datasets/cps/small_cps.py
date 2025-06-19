@@ -10,6 +10,7 @@ def create_small_cps():
     simulation = Microsimulation(
         dataset=EnhancedCPS_2024,
     )
+    simulation.subsample(1_000)
 
     data = {}
     for variable in simulation.tax_benefit_system.variables:

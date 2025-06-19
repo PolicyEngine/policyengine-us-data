@@ -344,3 +344,15 @@
     fixed:
     - Small CPS is now 1000 households.
   date: 2025-06-19 13:59:12
+- bump: minor
+  changes:
+    added:
+    - Added automated checks for changelog entry
+    - New "would be qualified income" variables simulated
+    - REIT, PTP, and BDC dividend income variables simulated
+    - UBIA property is being simulated
+    - Farm Operations Income added
+    changed:
+    - W2 Wages from Qualified business is now being simulated with random variables
+    - qualified business income sources have been redefined based on IRS PUF inputs
+  date: 2025-06-19 21:34:31

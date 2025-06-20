@@ -860,15 +860,31 @@ def add_ssn_card_type(
         & (has_five_plus_years | (has_three_plus_years & is_married))
     )
     condition_2_mask = potentially_undocumented & eligible_naturalized
+    condition_2_count = np.sum(person_weights[condition_2_mask])
     print(
-        f"Condition 2 - Eligible naturalized citizens: {np.sum(person_weights[condition_2_mask]):,.0f} people qualify for Code 3"
+        f"Condition 2 - Eligible naturalized citizens: {condition_2_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 2",
+            "description": "Eligible naturalized citizens qualify for Code 3",
+            "population": condition_2_count,
+        }
     )
 
     # CONDITION 3: Medicare Recipients
     has_medicare = person.MCARE == 1
     condition_3_mask = potentially_undocumented & has_medicare
+    condition_3_count = np.sum(person_weights[condition_3_mask])
     print(
-        f"Condition 3 - Medicare recipients: {np.sum(person_weights[condition_3_mask]):,.0f} people qualify for Code 3"
+        f"Condition 3 - Medicare recipients: {condition_3_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 3",
+            "description": "Medicare recipients qualify for Code 3",
+            "population": condition_3_count,
+        }
     )
 
     # CONDITION 4: Federal Retirement Benefits
@@ -876,8 +892,16 @@ def add_ssn_card_type(
         person.PEN_SC2, [3]
     )  # Federal government pension
     condition_4_mask = potentially_undocumented & has_federal_pension
+    condition_4_count = np.sum(person_weights[condition_4_mask])
     print(
-        f"Condition 4 - Federal retirement benefits: {np.sum(person_weights[condition_4_mask]):,.0f} people qualify for Code 3"
+        f"Condition 4 - Federal retirement benefits: {condition_4_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 4",
+            "description": "Federal retirement benefits qualify for Code 3",
+            "population": condition_4_count,
+        }
     )
 
     # CONDITION 5: Social Security Disability
@@ -885,36 +909,76 @@ def add_ssn_card_type(
         person.RESNSS2, [2]
     )  # Disabled (adult or child)
     condition_5_mask = potentially_undocumented & has_ss_disability
+    condition_5_count = np.sum(person_weights[condition_5_mask])
     print(
-        f"Condition 5 - Social Security disability: {np.sum(person_weights[condition_5_mask]):,.0f} people qualify for Code 3"
+        f"Condition 5 - Social Security disability: {condition_5_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 5",
+            "description": "Social Security disability qualify for Code 3",
+            "population": condition_5_count,
+        }
     )
 
     # CONDITION 6: Indian Health Service Coverage
     has_ihs = person.IHSFLG == 1
     condition_6_mask = potentially_undocumented & has_ihs
+    condition_6_count = np.sum(person_weights[condition_6_mask])
     print(
-        f"Condition 6 - Indian Health Service coverage: {np.sum(person_weights[condition_6_mask]):,.0f} people qualify for Code 3"
+        f"Condition 6 - Indian Health Service coverage: {condition_6_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 6",
+            "description": "Indian Health Service coverage qualify for Code 3",
+            "population": condition_6_count,
+        }
     )
 
     # CONDITION 7: Medicaid Recipients (simplified - no state adjustments)
     has_medicaid = person.CAID == 1
     condition_7_mask = potentially_undocumented & has_medicaid
+    condition_7_count = np.sum(person_weights[condition_7_mask])
     print(
-        f"Condition 7 - Medicaid recipients: {np.sum(person_weights[condition_7_mask]):,.0f} people qualify for Code 3"
+        f"Condition 7 - Medicaid recipients: {condition_7_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 7",
+            "description": "Medicaid recipients qualify for Code 3",
+            "population": condition_7_count,
+        }
     )
 
     # CONDITION 8: CHAMPVA Recipients
     has_champva = person.CHAMPVA == 1
     condition_8_mask = potentially_undocumented & has_champva
+    condition_8_count = np.sum(person_weights[condition_8_mask])
     print(
-        f"Condition 8 - CHAMPVA recipients: {np.sum(person_weights[condition_8_mask]):,.0f} people qualify for Code 3"
+        f"Condition 8 - CHAMPVA recipients: {condition_8_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 8",
+            "description": "CHAMPVA recipients qualify for Code 3",
+            "population": condition_8_count,
+        }
     )
 
     # CONDITION 9: Military Health Insurance
     has_military_insurance = person.MIL == 1
     condition_9_mask = potentially_undocumented & has_military_insurance
+    condition_9_count = np.sum(person_weights[condition_9_mask])
     print(
-        f"Condition 9 - Military health insurance: {np.sum(person_weights[condition_9_mask]):,.0f} people qualify for Code 3"
+        f"Condition 9 - Military health insurance: {condition_9_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 9",
+            "description": "Military health insurance qualify for Code 3",
+            "population": condition_9_count,
+        }
     )
 
     # CONDITION 10: Government Employees
@@ -924,23 +988,47 @@ def add_ssn_card_type(
     is_military_occupation = person.A_MJOCC == 11  # Military occupation
     is_government_employee = is_government_worker | is_military_occupation
     condition_10_mask = potentially_undocumented & is_government_employee
+    condition_10_count = np.sum(person_weights[condition_10_mask])
     print(
-        f"Condition 10 - Government employees: {np.sum(person_weights[condition_10_mask]):,.0f} people qualify for Code 3"
+        f"Condition 10 - Government employees: {condition_10_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 10",
+            "description": "Government employees qualify for Code 3",
+            "population": condition_10_count,
+        }
     )
 
     # CONDITION 11: Social Security Recipients
     has_social_security = person.SS_YN == 1
     condition_11_mask = potentially_undocumented & has_social_security
+    condition_11_count = np.sum(person_weights[condition_11_mask])
     print(
-        f"Condition 11 - Social Security recipients: {np.sum(person_weights[condition_11_mask]):,.0f} people qualify for Code 3"
+        f"Condition 11 - Social Security recipients: {condition_11_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 11",
+            "description": "Social Security recipients qualify for Code 3",
+            "population": condition_11_count,
+        }
     )
 
     # CONDITION 12: Housing Assistance
     spm_housing_map = dict(zip(spm_unit.SPM_ID, spm_unit.SPM_CAPHOUSESUB))
     has_housing_assistance = person.SPM_ID.map(spm_housing_map).fillna(0) > 0
     condition_12_mask = potentially_undocumented & has_housing_assistance
+    condition_12_count = np.sum(person_weights[condition_12_mask])
     print(
-        f"Condition 12 - Housing assistance: {np.sum(person_weights[condition_12_mask]):,.0f} people qualify for Code 3"
+        f"Condition 12 - Housing assistance: {condition_12_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 12",
+            "description": "Housing assistance qualify for Code 3",
+            "population": condition_12_count,
+        }
     )
 
     # CONDITION 13: Veterans/Military Personnel
@@ -948,15 +1036,31 @@ def add_ssn_card_type(
     is_current_military = person.A_MJOCC == 11
     is_military_connected = is_veteran | is_current_military
     condition_13_mask = potentially_undocumented & is_military_connected
+    condition_13_count = np.sum(person_weights[condition_13_mask])
     print(
-        f"Condition 13 - Veterans/Military personnel: {np.sum(person_weights[condition_13_mask]):,.0f} people qualify for Code 3"
+        f"Condition 13 - Veterans/Military personnel: {condition_13_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 13",
+            "description": "Veterans/Military personnel qualify for Code 3",
+            "population": condition_13_count,
+        }
     )
 
     # CONDITION 14: SSI Recipients (simplified - assumes all SSI is for recipient)
     has_ssi = person.SSI_YN == 1
     condition_14_mask = potentially_undocumented & has_ssi
+    condition_14_count = np.sum(person_weights[condition_14_mask])
     print(
-        f"Condition 14 - SSI recipients: {np.sum(person_weights[condition_14_mask]):,.0f} people qualify for Code 3"
+        f"Condition 14 - SSI recipients: {condition_14_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 14",
+            "description": "SSI recipients qualify for Code 3",
+            "population": condition_14_count,
+        }
     )
 
     # ============================================================================

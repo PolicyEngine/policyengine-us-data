@@ -426,10 +426,23 @@ def build_loss_matrix(dataset: type, time_period):
             ssn_type_mask, "person", "household"
         )
 
-        # Target value - replace with actual target values from SSA/IRS data
+        # Target undocumented population by year based on various sources
         if card_type_str == "NONE":
-            # https://www.pewresearch.org/race-and-ethnicity/2018/11/27/u-s-unauthorized-immigrant-total-dips-to-lowest-level-in-a-decade/
-            target_count = 11e6
+            undocumented_targets = {
+                2022: 11.0e6,  # Official DHS Office of Homeland Security Statistics estimate for 1 Jan 2022
+                # https://ohss.dhs.gov/sites/default/files/2024-06/2024_0418_ohss_estimates-of-the-unauthorized-immigrant-population-residing-in-the-united-states-january-2018%25E2%2580%2593january-2022.pdf
+                2023: 12.2e6,  # Center for Migration Studies ACS-based residual estimate (published May 2025)
+                # https://cmsny.org/publications/the-undocumented-population-in-the-united-states-increased-to-12-million-in-2023/
+                2024: 13.0e6,  # Reuters synthesis of experts ahead of 2025 change ("~13-14 million") - central value
+                # https://www.reuters.com/data/who-are-immigrants-who-could-be-targeted-trumps-mass-deportation-plans-2024-12-18/
+                2025: 13.0e6,  # Same midpoint carried forward - CBP data show 95% drop in border apprehensions
+            }
+            if time_period <= 2022:
+                target_count = 11.0e6  # Use 2022 value for earlier years
+            elif time_period >= 2025:
+                target_count = 13.0e6  # Use 2025 value for later years
+            else:
+                target_count = undocumented_targets[time_period]
 
         targets_array.append(target_count)
 

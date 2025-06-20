@@ -1130,46 +1130,86 @@ def add_ssn_card_type(
     final_counts = pd.Series(ssn_card_type).value_counts().sort_index()
 
     # ============================================================================
-    # FAMILY CORRELATION ADJUSTMENT
+    # PROBABILISTIC FAMILY CORRELATION ADJUSTMENT
     # ============================================================================
 
-    # New logic: If anyone in household has Code 0, assign Code 0 to all other eligible household members
-    # Only applies to people with codes 0 or 3 (not citizens or valid EAD holders)
+    # Probabilistic family correlation: Only move code 3 household members to code 0
+    # if needed to hit the undocumented target. This preserves mixed-status families
+    # (citizens living with undocumented) while still achieving target-driven correlation.
 
     # Use existing household data
     person_household_ids = cps["person_household_id"]
 
     # Track before state
     code_0_before = np.sum(person_weights[ssn_card_type == 0])
+
+    # Calculate how many more undocumented people we need to hit target
+    current_undocumented = code_0_before
+    undocumented_needed = max(0, undocumented_target - current_undocumented)
+
+    print(
+        f"Current undocumented: {current_undocumented:,.0f}, Target: {undocumented_target:,.0f}"
+    )
+    print(f"Additional undocumented needed: {undocumented_needed:,.0f}")
+
     families_adjusted = 0
 
-    # Group by household and process each household
-    unique_households = np.unique(person_household_ids)
+    if undocumented_needed > 0:
+        # Identify households with mixed status (code 0 + code 3 members)
+        mixed_household_candidates = []
 
-    for household_id in unique_households:
-        # Find all people in this household
-        household_mask = person_household_ids == household_id
-        household_ssn_codes = ssn_card_type[household_mask]
+        unique_households = np.unique(person_household_ids)
 
-        # Check if anyone in this household has Code 0
-        has_code_0_member = (household_ssn_codes == 0).any()
+        for household_id in unique_households:
+            household_mask = person_household_ids == household_id
+            household_ssn_codes = ssn_card_type[household_mask]
 
-        if has_code_0_member:
-            # Find all people in this household with Code 3 (eligible to be changed to Code 0)
-            household_indices = np.where(household_mask)[0]
-            code_3_indices = household_indices[household_ssn_codes == 3]
+            # Check if household has both undocumented (code 0) AND code 3 members
+            has_undocumented = (household_ssn_codes == 0).any()
+            has_code3 = (household_ssn_codes == 3).any()
 
-            if len(code_3_indices) > 0:
-                # Change all Code 3 members to Code 0
-                ssn_card_type[code_3_indices] = 0
-                families_adjusted += len(code_3_indices)
+            if has_undocumented and has_code3:
+                # Find code 3 indices in this household
+                household_indices = np.where(household_mask)[0]
+                code_3_indices = household_indices[household_ssn_codes == 3]
+                mixed_household_candidates.extend(code_3_indices)
+
+        # Randomly select from eligible code 3 members in mixed households to hit target
+        if len(mixed_household_candidates) > 0:
+            mixed_household_candidates = np.array(mixed_household_candidates)
+            candidate_weights = person_weights[mixed_household_candidates]
+
+            # Use probabilistic selection to hit target
+            selected_indices = select_random_subset_to_target(
+                mixed_household_candidates,
+                current_undocumented,
+                undocumented_target,
+                random_seed=100,  # Different seed for family correlation
+            )
+
+            if len(selected_indices) > 0:
+                ssn_card_type[selected_indices] = 0
+                families_adjusted = len(selected_indices)
+                print(
+                    f"Selected {len(selected_indices)} people from {len(mixed_household_candidates)} candidates in mixed households"
+                )
+            else:
+                print(
+                    "No additional family members selected (target already reached)"
+                )
+        else:
+            print("No mixed-status households found for family correlation")
+    else:
+        print(
+            "No additional undocumented people needed - target already reached"
+        )
 
     # Calculate the weighted impact
     code_0_after = np.sum(person_weights[ssn_card_type == 0])
     weighted_change = code_0_after - code_0_before
 
     print(
-        f"Step 5 - Family correlation: Changed {weighted_change:,.0f} people from Code 3 to Code 0 in households with Code 0 members"
+        f"Step 5 - Probabilistic family correlation: Changed {weighted_change:,.0f} people from Code 3 to Code 0"
     )
     print(f"After family correlation - Code 0 people: {code_0_after:,.0f}")
 
@@ -1185,67 +1225,6 @@ def add_ssn_card_type(
             "step": "After family correlation",
             "description": "Code 0 people",
             "population": code_0_after,
-        }
-    )
-
-    # ============================================================================
-    # TARGETED REFINEMENT OF REMAINING CODE 0s TO HIT WEIGHTED TARGET
-    # ============================================================================
-
-    # Target: 13 million undocumented immigrants (weighted population)
-    # This matches the target used in loss.py calibration
-
-    # Use person weights already calculated at the beginning of the function
-
-    # Calculate current weighted undocumented population
-    current_weighted_undocumented = np.sum(person_weights[ssn_card_type == 0])
-
-    # Identify remaining code 0 non-citizens that can be reassigned
-    remaining_zeros = (ssn_card_type == 0) & (~citizens_mask)
-    refine_indices = np.where(remaining_zeros)[0]
-
-    # Use function to select people to move from Code 0 to Code 3
-    moved_to_code_3 = select_random_subset_to_target(
-        refine_indices,
-        current_weighted_undocumented,
-        undocumented_target,
-        random_seed=42,
-    )
-
-    if len(moved_to_code_3) > 0:
-        ssn_card_type[moved_to_code_3] = 3
-        target_refinement_moved = np.sum(person_weights[moved_to_code_3])
-        print(
-            f"Step 6 - Target refinement: Moved {target_refinement_moved:,.0f} people from Code 0 to Code 3"
-        )
-        population_log.append(
-            {
-                "step": "Step 6 - Target refinement",
-                "description": "Moved from Code 0 to Code 3",
-                "population": target_refinement_moved,
-            }
-        )
-    else:
-        print(
-            f"Step 6 - Target refinement: No people moved (already at target)"
-        )
-        population_log.append(
-            {
-                "step": "Step 6 - Target refinement",
-                "description": "No people moved (already at target)",
-                "population": 0,
-            }
-        )
-
-    after_target_refinement = np.sum(person_weights[ssn_card_type == 0])
-    print(
-        f"After target refinement - Code 0 people: {after_target_refinement:,.0f}"
-    )
-    population_log.append(
-        {
-            "step": "After target refinement",
-            "description": "Code 0 people",
-            "population": after_target_refinement,
         }
     )
 
@@ -1350,8 +1329,6 @@ def _update_documentation_with_numbers(log_df, docs_dir):
         "- **After EAD assignment**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After EAD assignment**: Code 0 people = {data_map.get(('After EAD assignment', 'Code 0 people'), 0):,.0f}",
         "- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = *[Run cps.py to populate]*": lambda: f"- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = {data_map.get(('Step 5 - Family correlation', 'Changed from Code 3 to Code 0'), 0):,.0f}",
         "- **After family correlation**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After family correlation**: Code 0 people = {data_map.get(('After family correlation', 'Code 0 people'), 0):,.0f}",
-        "- **Step 6 - Target refinement**: Moved from Code 0 to Code 3 = *[Run cps.py to populate]*": lambda: f"- **Step 6 - Target refinement**: Moved from Code 0 to Code 3 = {data_map.get(('Step 6 - Target refinement', 'Moved from Code 0 to Code 3'), 0):,.0f}",
-        "- **After target refinement**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After target refinement**: Code 0 people = {data_map.get(('After target refinement', 'Code 0 people'), 0):,.0f}",
         "- **Final**: Code 0 (NONE) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 0 (NONE) = {data_map.get(('Final', 'Code 0 (NONE)'), 0):,.0f}",
         "- **Final**: Code 1 (CITIZEN) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 1 (CITIZEN) = {data_map.get(('Final', 'Code 1 (CITIZEN)'), 0):,.0f}",
         "- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = {data_map.get(('Final', 'Code 2 (NON_CITIZEN_VALID_EAD)'), 0):,.0f}",

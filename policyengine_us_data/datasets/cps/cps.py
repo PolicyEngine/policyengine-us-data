@@ -1402,7 +1402,7 @@ def _update_documentation_with_numbers(log_df, docs_dir):
     """Update the documentation file with actual population numbers from CSV"""
     import os
 
-    doc_path = os.path.join(docs_dir, "asec_undocumented_algorithm.ipynb")
+    doc_path = os.path.join(docs_dir, "SSN_statuses_imputation.ipynb")
 
     if not os.path.exists(doc_path):
         print(f"Documentation file not found at: {doc_path}")

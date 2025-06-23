@@ -1,7 +1,7 @@
 format: jb-book
 root: intro
 chapters:
-- file: asec_undocumented_algorithm.ipynb
+- file: SSN_statuses_imputation.ipynb
 - file: validation.ipynb
 - file: results.ipynb
 - file: imputation.ipynb

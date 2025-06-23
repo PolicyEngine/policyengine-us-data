@@ -27,6 +27,8 @@ dependencies = [
     "pip-system-certs",
     "google-cloud-storage",
     "google-auth",
+    "scipy<1.13",
+    "statsmodels>=0.14.0",
 ]
 
 [project.optional-dependencies]

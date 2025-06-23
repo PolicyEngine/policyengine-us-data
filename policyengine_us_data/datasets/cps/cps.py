@@ -62,7 +62,14 @@ class CPS(Dataset):
         logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
         logging.info("Adding SSN card type")
-        add_ssn_card_type(cps, person)
+        add_ssn_card_type(
+            cps,
+            person,
+            spm_unit,
+            undocumented_target=13e6,
+            undocumented_workers_target=8.3e6,
+            undocumented_students_target=0.21 * 1.9e6,
+        )
         logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
         logging.info("Adding household variables")
@@ -698,47 +705,768 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
     ].values
 
 
-def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame) -> None:
+def add_ssn_card_type(
+    cps: h5py.File,
+    person: pd.DataFrame,
+    spm_unit: pd.DataFrame,
+    undocumented_target: float = 13e6,
+    undocumented_workers_target: float = 8.3e6,
+    undocumented_students_target: float = 0.21 * 1.9e6,
+) -> None:
     """
-    Deterministically assign SSA card type based on PRCITSHP and student/employment status.
-    Code:
-    - 1: Citizen (PRCITSHP 1–4)
-    - 2: Foreign-born, noncitizen but likely on valid EAD (student or worker)
-    - 0: Other noncitizens (to refine or default)
+    Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.
+    Codes:
+    - 0: "NONE" - Likely undocumented immigrants
+    - 1: "CITIZEN" - US citizens (born or naturalized)
+    - 2: "NON_CITIZEN_VALID_EAD" - Non-citizens with work/study authorization
+    - 3: "OTHER_NON_CITIZEN" - Non-citizens with indicators of legal status
     """
+
+    # Initialize CSV logging for population tracking
+    population_log = []
+
+    def select_random_subset_to_target(
+        eligible_ids, current_weighted, target_weighted, random_seed=None
+    ):
+        """
+        Randomly select subset to move current weighted population to target.
+
+        Args:
+            eligible_ids: Array of person indices eligible for selection
+            current_weighted: Current weighted total
+            target_weighted: Target weighted total
+            random_seed: Random seed for reproducibility
+
+        Returns:
+            Array of selected person indices
+        """
+        if len(eligible_ids) == 0:
+            return np.array([], dtype=int)
+
+        # Calculate how much weighted population needs to be moved
+        if current_weighted > target_weighted:
+            excess_weighted = current_weighted - target_weighted
+            # Calculate fraction to move randomly
+            total_reassignable_weight = np.sum(person_weights[eligible_ids])
+            share_to_move = excess_weighted / total_reassignable_weight
+            share_to_move = min(share_to_move, 1.0)  # Cap at 100%
+        else:
+            # Calculate how much to move to reach target (for EAD case)
+            needed_weighted = (
+                current_weighted - target_weighted
+            )  # Will be negative
+            total_weight = np.sum(person_weights[eligible_ids])
+            share_to_move = abs(needed_weighted) / total_weight
+            share_to_move = min(share_to_move, 1.0)  # Cap at 100%
+
+        if share_to_move > 0:
+            if random_seed is not None:
+                if current_weighted > target_weighted:
+                    # Use new rng for refinement
+                    rng = np.random.default_rng(seed=random_seed)
+                    random_draw = rng.random(len(eligible_ids))
+                    assign_mask = random_draw < share_to_move
+                    selected = eligible_ids[assign_mask]
+                else:
+                    # Use old np.random for EAD to maintain compatibility
+                    np.random.seed(random_seed)
+                    n_to_move = int(len(eligible_ids) * share_to_move)
+                    selected = np.random.choice(
+                        eligible_ids, size=n_to_move, replace=False
+                    )
+            else:
+                selected = np.array([], dtype=int)
+        else:
+            selected = np.array([], dtype=int)
+
+        return selected
+
+    # Get household weights for population calculations
+    household_ids = cps["household_id"]
+    household_weights = cps["household_weight"]
+    person_household_ids = cps["person_household_id"]
+    household_to_weight = dict(zip(household_ids, household_weights))
+    person_weights = np.array(
+        [household_to_weight.get(hh_id, 0) for hh_id in person_household_ids]
+    )
+
+    # Initialize all persons as code 0
     ssn_card_type = np.full(len(person), 0)
+    initial_population = np.sum(person_weights[ssn_card_type == 0])
+    print(f"Step 0 - Initial: Code 0 people: {initial_population:,.0f}")
+    population_log.append(
+        {
+            "step": "Step 0 - Initial",
+            "description": "Code 0 people",
+            "population": initial_population,
+        }
+    )
 
-    # Code 1: Citizens
-    ssn_card_type[np.isin(person.PRCITSHP, [1, 2, 3, 4])] = 1
+    # ============================================================================
+    # PRIMARY CLASSIFICATIONS
+    # ============================================================================
 
-    # Code 2: Noncitizens (PRCITSHP == 5) who are working or studying
-    noncitizen_mask = person.PRCITSHP == 5
-    is_worker = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)  # worker
-    is_student = person.A_HSCOL == 2  # student
-    ead_like_mask = noncitizen_mask & (is_worker | is_student)
-    ssn_card_type[ead_like_mask] = 2
+    # Code 1: All US Citizens (naturalized and born)
+    citizens_mask = np.isin(person.PRCITSHP, [1, 2, 3, 4])
+    ssn_card_type[citizens_mask] = 1
+    noncitizens = person.PRCITSHP == 5
+    citizens_moved = np.sum(person_weights[citizens_mask])
+    print(f"Step 1 - Citizens: Moved {citizens_moved:,.0f} people to Code 1")
+    population_log.append(
+        {
+            "step": "Step 1 - Citizens",
+            "description": "Moved to Code 1",
+            "population": citizens_moved,
+        }
+    )
 
-    # Step 3: Refine remaining 0s into 0 or 3
-    share_code_3 = 0.3  # IRS/SSA target share of SSA-benefit-only cards
-    rng = np.random.default_rng(seed=42)
-    to_refine = (ssn_card_type == 0) & noncitizen_mask
-    refine_indices = np.where(to_refine)[0]
+    # ============================================================================
+    # ASEC UNDOCUMENTED ALGORITHM CONDITIONS
+    # Remove individuals with indicators of legal status from code 0 pool
+    # ============================================================================
 
-    if len(refine_indices) > 0:
-        draw = rng.random(len(refine_indices))
-        assign_code_3 = draw < share_code_3
-        ssn_card_type[refine_indices[assign_code_3]] = 3
+    # paper source: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4662801
+    # Helper mask: Only apply conditions to non-citizens without clear authorization
+    potentially_undocumented = ~np.isin(ssn_card_type, [1, 2])
+
+    current_code_0 = np.sum(person_weights[ssn_card_type == 0])
+    print(f"\nASEC Conditions - Current Code 0 people: {current_code_0:,.0f}")
+    population_log.append(
+        {
+            "step": "ASEC Conditions",
+            "description": "Current Code 0 people",
+            "population": current_code_0,
+        }
+    )
+
+    # CONDITION 1: Pre-1982 Arrivals (IRCA Amnesty Eligible)
+    # PEINUSYR values indicating arrival before 1982:
+    # 01 = Before 1950
+    # 02 = 1950–1959
+    # 03 = 1960–1964
+    # 04 = 1965–1969
+    # 05 = 1970–1974
+    # 06 = 1975–1979
+    # 07 = 1980–1981
+    arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
+    condition_1_mask = potentially_undocumented & arrived_before_1982
+    condition_1_count = np.sum(person_weights[condition_1_mask])
+    print(
+        f"Condition 1 - Pre-1982 arrivals: {condition_1_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 1",
+            "description": "Pre-1982 arrivals qualify for Code 3",
+            "population": condition_1_count,
+        }
+    )
+
+    # CONDITION 2: Eligible Naturalized Citizens
+    is_naturalized = person.PRCITSHP == 4
+    is_adult = person.A_AGE >= 18
+    # 5+ years in US (codes 8-26: 1982-2019)
+    has_five_plus_years = np.isin(person.PEINUSYR, list(range(8, 27)))
+    # 3+ years in US + married (codes 8-27: 1982-2021)
+    has_three_plus_years = np.isin(person.PEINUSYR, list(range(8, 28)))
+    is_married = person.A_MARITL.isin([1, 2]) & (person.A_SPOUSE > 0)
+    eligible_naturalized = (
+        is_naturalized
+        & is_adult
+        & (has_five_plus_years | (has_three_plus_years & is_married))
+    )
+    condition_2_mask = potentially_undocumented & eligible_naturalized
+    condition_2_count = np.sum(person_weights[condition_2_mask])
+    print(
+        f"Condition 2 - Eligible naturalized citizens: {condition_2_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 2",
+            "description": "Eligible naturalized citizens qualify for Code 3",
+            "population": condition_2_count,
+        }
+    )
+
+    # CONDITION 3: Medicare Recipients
+    has_medicare = person.MCARE == 1
+    condition_3_mask = potentially_undocumented & has_medicare
+    condition_3_count = np.sum(person_weights[condition_3_mask])
+    print(
+        f"Condition 3 - Medicare recipients: {condition_3_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 3",
+            "description": "Medicare recipients qualify for Code 3",
+            "population": condition_3_count,
+        }
+    )
+
+    # CONDITION 4: Federal Retirement Benefits
+    has_federal_pension = np.isin(person.PEN_SC1, [3]) | np.isin(
+        person.PEN_SC2, [3]
+    )  # Federal government pension
+    condition_4_mask = potentially_undocumented & has_federal_pension
+    condition_4_count = np.sum(person_weights[condition_4_mask])
+    print(
+        f"Condition 4 - Federal retirement benefits: {condition_4_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 4",
+            "description": "Federal retirement benefits qualify for Code 3",
+            "population": condition_4_count,
+        }
+    )
+
+    # CONDITION 5: Social Security Disability
+    has_ss_disability = np.isin(person.RESNSS1, [2]) | np.isin(
+        person.RESNSS2, [2]
+    )  # Disabled (adult or child)
+    condition_5_mask = potentially_undocumented & has_ss_disability
+    condition_5_count = np.sum(person_weights[condition_5_mask])
+    print(
+        f"Condition 5 - Social Security disability: {condition_5_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 5",
+            "description": "Social Security disability qualify for Code 3",
+            "population": condition_5_count,
+        }
+    )
+
+    # CONDITION 6: Indian Health Service Coverage
+    has_ihs = person.IHSFLG == 1
+    condition_6_mask = potentially_undocumented & has_ihs
+    condition_6_count = np.sum(person_weights[condition_6_mask])
+    print(
+        f"Condition 6 - Indian Health Service coverage: {condition_6_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 6",
+            "description": "Indian Health Service coverage qualify for Code 3",
+            "population": condition_6_count,
+        }
+    )
+
+    # CONDITION 7: Medicaid Recipients (simplified - no state adjustments)
+    has_medicaid = person.CAID == 1
+    condition_7_mask = potentially_undocumented & has_medicaid
+    condition_7_count = np.sum(person_weights[condition_7_mask])
+    print(
+        f"Condition 7 - Medicaid recipients: {condition_7_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 7",
+            "description": "Medicaid recipients qualify for Code 3",
+            "population": condition_7_count,
+        }
+    )
+
+    # CONDITION 8: CHAMPVA Recipients
+    has_champva = person.CHAMPVA == 1
+    condition_8_mask = potentially_undocumented & has_champva
+    condition_8_count = np.sum(person_weights[condition_8_mask])
+    print(
+        f"Condition 8 - CHAMPVA recipients: {condition_8_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 8",
+            "description": "CHAMPVA recipients qualify for Code 3",
+            "population": condition_8_count,
+        }
+    )
+
+    # CONDITION 9: Military Health Insurance
+    has_military_insurance = person.MIL == 1
+    condition_9_mask = potentially_undocumented & has_military_insurance
+    condition_9_count = np.sum(person_weights[condition_9_mask])
+    print(
+        f"Condition 9 - Military health insurance: {condition_9_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 9",
+            "description": "Military health insurance qualify for Code 3",
+            "population": condition_9_count,
+        }
+    )
+
+    # CONDITION 10: Government Employees
+    is_government_worker = np.isin(
+        person.PEIO1COW, [1, 2, 3]
+    )  # Fed/state/local gov
+    is_military_occupation = person.A_MJOCC == 11  # Military occupation
+    is_government_employee = is_government_worker | is_military_occupation
+    condition_10_mask = potentially_undocumented & is_government_employee
+    condition_10_count = np.sum(person_weights[condition_10_mask])
+    print(
+        f"Condition 10 - Government employees: {condition_10_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 10",
+            "description": "Government employees qualify for Code 3",
+            "population": condition_10_count,
+        }
+    )
+
+    # CONDITION 11: Social Security Recipients
+    has_social_security = person.SS_YN == 1
+    condition_11_mask = potentially_undocumented & has_social_security
+    condition_11_count = np.sum(person_weights[condition_11_mask])
+    print(
+        f"Condition 11 - Social Security recipients: {condition_11_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 11",
+            "description": "Social Security recipients qualify for Code 3",
+            "population": condition_11_count,
+        }
+    )
+
+    # CONDITION 12: Housing Assistance
+    spm_housing_map = dict(zip(spm_unit.SPM_ID, spm_unit.SPM_CAPHOUSESUB))
+    has_housing_assistance = person.SPM_ID.map(spm_housing_map).fillna(0) > 0
+    condition_12_mask = potentially_undocumented & has_housing_assistance
+    condition_12_count = np.sum(person_weights[condition_12_mask])
+    print(
+        f"Condition 12 - Housing assistance: {condition_12_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 12",
+            "description": "Housing assistance qualify for Code 3",
+            "population": condition_12_count,
+        }
+    )
+
+    # CONDITION 13: Veterans/Military Personnel
+    is_veteran = person.PEAFEVER == 1
+    is_current_military = person.A_MJOCC == 11
+    is_military_connected = is_veteran | is_current_military
+    condition_13_mask = potentially_undocumented & is_military_connected
+    condition_13_count = np.sum(person_weights[condition_13_mask])
+    print(
+        f"Condition 13 - Veterans/Military personnel: {condition_13_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 13",
+            "description": "Veterans/Military personnel qualify for Code 3",
+            "population": condition_13_count,
+        }
+    )
+
+    # CONDITION 14: SSI Recipients (simplified - assumes all SSI is for recipient)
+    has_ssi = person.SSI_YN == 1
+    condition_14_mask = potentially_undocumented & has_ssi
+    condition_14_count = np.sum(person_weights[condition_14_mask])
+    print(
+        f"Condition 14 - SSI recipients: {condition_14_count:,.0f} people qualify for Code 3"
+    )
+    population_log.append(
+        {
+            "step": "Condition 14",
+            "description": "SSI recipients qualify for Code 3",
+            "population": condition_14_count,
+        }
+    )
+
+    # ============================================================================
+    # CONSOLIDATED ASSIGNMENT OF ASSUMED DOCUMENTED STATUS
+    # ============================================================================
+
+    # Combine all conditions that indicate legal status
+    assumed_documented = (
+        arrived_before_1982
+        | eligible_naturalized
+        | has_medicare
+        | has_federal_pension
+        | has_ss_disability
+        | has_ihs
+        | has_medicaid
+        | has_champva
+        | has_military_insurance
+        | is_government_employee
+        | has_social_security
+        | has_housing_assistance
+        | is_military_connected
+        | has_ssi
+    )
+
+    # Apply single assignment for all conditions
+    ssn_card_type[potentially_undocumented & assumed_documented] = 3
+    # print(f"Step 2 - Documented indicators: Moved {np.sum(person_weights[potentially_undocumented & assumed_documented]):,.0f} people from Code 0 to Code 3")
+
+    # Calculate undocumented workers and students after ASEC conditions
+    undocumented_workers_mask = (
+        (ssn_card_type == 0)
+        & noncitizens
+        & ((person.WSAL_VAL > 0) | (person.SEMP_VAL > 0))
+    )
+    undocumented_students_mask = (
+        (ssn_card_type == 0) & noncitizens & (person.A_HSCOL == 2)
+    )
+    undocumented_workers_count = np.sum(
+        person_weights[undocumented_workers_mask]
+    )
+    undocumented_students_count = np.sum(
+        person_weights[undocumented_students_mask]
+    )
+
+    after_conditions_code_0 = np.sum(person_weights[ssn_card_type == 0])
+    print(f"After conditions - Code 0 people: {after_conditions_code_0:,.0f}")
+    print(
+        f"  - Undocumented workers before adjustment: {undocumented_workers_count:,.0f} (target: {undocumented_workers_target:,.0f})"
+    )
+    print(
+        f"  - Undocumented students before adjustment: {undocumented_students_count:,.0f} (target: {undocumented_students_target:,.0f})"
+    )
+
+    population_log.append(
+        {
+            "step": "After conditions",
+            "description": "Code 0 people",
+            "population": after_conditions_code_0,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Before adjustment",
+            "description": "Undocumented workers",
+            "population": undocumented_workers_count,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Target",
+            "description": "Undocumented workers target",
+            "population": undocumented_workers_target,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Before adjustment",
+            "description": "Undocumented students",
+            "population": undocumented_students_count,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Target",
+            "description": "Undocumented students target",
+            "population": undocumented_students_target,
+        }
+    )
+
+    # ============================================================================
+    # CODE 2 NON-CITIZEN WITH WORK/STUDY AUTHORIZATION
+    # ============================================================================
+
+    # Code 2: Non-citizens with work/study authorization (likely valid EAD)
+    # Only consider people still in Code 0 (undocumented) after ASEC conditions
+    worker_mask = (
+        (ssn_card_type != 3)
+        & noncitizens
+        & ((person.WSAL_VAL > 0) | (person.SEMP_VAL > 0))
+    )
+    student_mask = (ssn_card_type != 3) & noncitizens & (person.A_HSCOL == 2)
+
+    # Calculate target-driven worker assignment
+    # Target: 8.3 million undocumented workers (from Pew Research)
+    # https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/
+
+    # Get worker IDs
+    worker_ids = person[worker_mask].index
+
+    # Use function to select workers for EAD
+    total_weighted_workers = np.sum(person_weights[worker_ids])
+    selected_workers = select_random_subset_to_target(
+        worker_ids,
+        total_weighted_workers,
+        undocumented_workers_target,
+        random_seed=0,
+    )
+
+    # Calculate target-driven student assignment
+    # Target: 21% of 1.9 million = ~399k undocumented students (from Higher Ed Immigration Portal)
+    # https://www.higheredimmigrationportal.org/research/immigrant-origin-students-in-u-s-higher-education-updated-august-2024/
+
+    student_ids = person[student_mask].index
+
+    # Use function to select students for EAD
+    total_weighted_students = np.sum(person_weights[student_ids])
+    selected_students = select_random_subset_to_target(
+        student_ids,
+        total_weighted_students,
+        undocumented_students_target,
+        random_seed=1,
+    )
+
+    # Assign code 2
+    ssn_card_type[selected_workers] = 2
+    ssn_card_type[selected_students] = 2
+    ead_workers_moved = np.sum(person_weights[selected_workers])
+    ead_students_moved = np.sum(person_weights[selected_students])
+    after_ead_code_0 = np.sum(person_weights[ssn_card_type == 0])
+
+    print(
+        f"Step 3 - EAD workers: Moved {ead_workers_moved:,.0f} people from Code 0 to Code 2"
+    )
+    print(
+        f"Step 4 - EAD students: Moved {ead_students_moved:,.0f} people from Code 0 to Code 2"
+    )
+    print(f"After EAD assignment - Code 0 people: {after_ead_code_0:,.0f}")
+
+    population_log.append(
+        {
+            "step": "Step 3 - EAD workers",
+            "description": "Moved from Code 0 to Code 2",
+            "population": ead_workers_moved,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Step 4 - EAD students",
+            "description": "Moved from Code 0 to Code 2",
+            "population": ead_students_moved,
+        }
+    )
+    population_log.append(
+        {
+            "step": "After EAD assignment",
+            "description": "Code 0 people",
+            "population": after_ead_code_0,
+        }
+    )
+
+    final_counts = pd.Series(ssn_card_type).value_counts().sort_index()
+
+    # ============================================================================
+    # PROBABILISTIC FAMILY CORRELATION ADJUSTMENT
+    # ============================================================================
+
+    # Probabilistic family correlation: Only move code 3 household members to code 0
+    # if needed to hit the undocumented target. This preserves mixed-status families
+    # (citizens living with undocumented) while still achieving target-driven correlation.
+
+    # Use existing household data
+    person_household_ids = cps["person_household_id"]
+
+    # Track before state
+    code_0_before = np.sum(person_weights[ssn_card_type == 0])
+
+    # Calculate how many more undocumented people we need to hit target
+    current_undocumented = code_0_before
+    undocumented_needed = max(0, undocumented_target - current_undocumented)
+
+    print(
+        f"Current undocumented: {current_undocumented:,.0f}, Target: {undocumented_target:,.0f}"
+    )
+    print(f"Additional undocumented needed: {undocumented_needed:,.0f}")
+
+    families_adjusted = 0
+
+    if undocumented_needed > 0:
+        # Identify households with mixed status (code 0 + code 3 members)
+        mixed_household_candidates = []
+
+        unique_households = np.unique(person_household_ids)
+
+        for household_id in unique_households:
+            household_mask = person_household_ids == household_id
+            household_ssn_codes = ssn_card_type[household_mask]
+
+            # Check if household has both undocumented (code 0) AND code 3 members
+            has_undocumented = (household_ssn_codes == 0).any()
+            has_code3 = (household_ssn_codes == 3).any()
+
+            if has_undocumented and has_code3:
+                # Find code 3 indices in this household
+                household_indices = np.where(household_mask)[0]
+                code_3_indices = household_indices[household_ssn_codes == 3]
+                mixed_household_candidates.extend(code_3_indices)
+
+        # Randomly select from eligible code 3 members in mixed households to hit target
+        if len(mixed_household_candidates) > 0:
+            mixed_household_candidates = np.array(mixed_household_candidates)
+            candidate_weights = person_weights[mixed_household_candidates]
+
+            # Use probabilistic selection to hit target
+            selected_indices = select_random_subset_to_target(
+                mixed_household_candidates,
+                current_undocumented,
+                undocumented_target,
+                random_seed=100,  # Different seed for family correlation
+            )
+
+            if len(selected_indices) > 0:
+                ssn_card_type[selected_indices] = 0
+                families_adjusted = len(selected_indices)
+                print(
+                    f"Selected {len(selected_indices)} people from {len(mixed_household_candidates)} candidates in mixed households"
+                )
+            else:
+                print(
+                    "No additional family members selected (target already reached)"
+                )
+        else:
+            print("No mixed-status households found for family correlation")
+    else:
+        print(
+            "No additional undocumented people needed - target already reached"
+        )
+
+    # Calculate the weighted impact
+    code_0_after = np.sum(person_weights[ssn_card_type == 0])
+    weighted_change = code_0_after - code_0_before
+
+    print(
+        f"Step 5 - Probabilistic family correlation: Changed {weighted_change:,.0f} people from Code 3 to Code 0"
+    )
+    print(f"After family correlation - Code 0 people: {code_0_after:,.0f}")
+
+    population_log.append(
+        {
+            "step": "Step 5 - Family correlation",
+            "description": "Changed from Code 3 to Code 0",
+            "population": weighted_change,
+        }
+    )
+    population_log.append(
+        {
+            "step": "After family correlation",
+            "description": "Code 0 people",
+            "population": code_0_after,
+        }
+    )
+
+    # ============================================================================
+    # CONVERT TO STRING LABELS AND STORE
+    # ============================================================================
 
     code_to_str = {
-        0: "NONE",
-        1: "CITIZEN",
-        2: "NON_CITIZEN_VALID_EAD",
-        3: "OTHER_NON_CITIZEN",
+        0: "NONE",  # Likely undocumented immigrants
+        1: "CITIZEN",  # US citizens
+        2: "NON_CITIZEN_VALID_EAD",  # Non-citizens with work/study authorization
+        3: "OTHER_NON_CITIZEN",  # Non-citizens with indicators of legal status
     }
     ssn_card_type_str = (
         pd.Series(ssn_card_type).map(code_to_str).astype("S").values
     )
     cps["ssn_card_type"] = ssn_card_type_str
+
+    # Final population summary
+    print(f"\nFinal populations:")
+    for code, label in code_to_str.items():
+        pop = np.sum(person_weights[ssn_card_type == code])
+        print(f"  Code {code} ({label}): {pop:,.0f}")
+        population_log.append(
+            {
+                "step": "Final",
+                "description": f"Code {code} ({label})",
+                "population": pop,
+            }
+        )
+
+    final_undocumented = np.sum(person_weights[ssn_card_type == 0])
+    print(
+        f"Total undocumented (Code 0): {final_undocumented:,.0f} (target: {undocumented_target:,.0f})"
+    )
+    population_log.append(
+        {
+            "step": "Final",
+            "description": "Total undocumented (Code 0)",
+            "population": final_undocumented,
+        }
+    )
+    population_log.append(
+        {
+            "step": "Final",
+            "description": "Undocumented target",
+            "population": undocumented_target,
+        }
+    )
+
+    # Save population log to CSV
+    import os
+
+    log_df = pd.DataFrame(population_log)
+    csv_path = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "..",
+        "docs",
+        "asec_population_log.csv",
+    )
+    log_df.to_csv(csv_path, index=False)
+    print(f"Population log saved to: {csv_path}")
+
+    # Update documentation with actual numbers
+    _update_documentation_with_numbers(log_df, os.path.dirname(csv_path))
+
+
+def _update_documentation_with_numbers(log_df, docs_dir):
+    """Update the documentation file with actual population numbers from CSV"""
+    import os
+
+    doc_path = os.path.join(docs_dir, "SSN_statuses_imputation.ipynb")
+
+    if not os.path.exists(doc_path):
+        print(f"Documentation file not found at: {doc_path}")
+        return
+
+    # Create mapping of step/description to population for easy lookup
+    data_map = {}
+    for _, row in log_df.iterrows():
+        key = (row["step"], row["description"])
+        data_map[key] = row["population"]
+
+    # Read the documentation file
+    with open(doc_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Define replacements based on our logging structure
+    replacements = {
+        "- **Step 0 - Initial**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **Step 0 - Initial**: Code 0 people = {data_map.get(('Step 0 - Initial', 'Code 0 people'), 0):,.0f}",
+        "- **Step 1 - Citizens**: Moved to Code 1 = *[Run cps.py to populate]*": lambda: f"- **Step 1 - Citizens**: Moved to Code 1 = {data_map.get(('Step 1 - Citizens', 'Moved to Code 1'), 0):,.0f}",
+        "- **ASEC Conditions**: Current Code 0 people = *[Run cps.py to populate]*": lambda: f"- **ASEC Conditions**: Current Code 0 people = {data_map.get(('ASEC Conditions', 'Current Code 0 people'), 0):,.0f}",
+        "- **After conditions**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After conditions**: Code 0 people = {data_map.get(('After conditions', 'Code 0 people'), 0):,.0f}",
+        "- **Before adjustment**: Undocumented workers = *[Run cps.py to populate]*": lambda: f"- **Before adjustment**: Undocumented workers = {data_map.get(('Before adjustment', 'Undocumented workers'), 0):,.0f}",
+        "- **Target**: Undocumented workers target = *[Run cps.py to populate]*": lambda: f"- **Target**: Undocumented workers target = {data_map.get(('Target', 'Undocumented workers target'), 0):,.0f}",
+        "- **Before adjustment**: Undocumented students = *[Run cps.py to populate]*": lambda: f"- **Before adjustment**: Undocumented students = {data_map.get(('Before adjustment', 'Undocumented students'), 0):,.0f}",
+        "- **Target**: Undocumented students target = *[Run cps.py to populate]*": lambda: f"- **Target**: Undocumented students target = {data_map.get(('Target', 'Undocumented students target'), 0):,.0f}",
+        "- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: f"- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = {data_map.get(('Step 3 - EAD workers', 'Moved from Code 0 to Code 2'), 0):,.0f}",
+        "- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: f"- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = {data_map.get(('Step 4 - EAD students', 'Moved from Code 0 to Code 2'), 0):,.0f}",
+        "- **After EAD assignment**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After EAD assignment**: Code 0 people = {data_map.get(('After EAD assignment', 'Code 0 people'), 0):,.0f}",
+        "- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = *[Run cps.py to populate]*": lambda: f"- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = {data_map.get(('Step 5 - Family correlation', 'Changed from Code 3 to Code 0'), 0):,.0f}",
+        "- **After family correlation**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After family correlation**: Code 0 people = {data_map.get(('After family correlation', 'Code 0 people'), 0):,.0f}",
+        "- **Final**: Code 0 (NONE) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 0 (NONE) = {data_map.get(('Final', 'Code 0 (NONE)'), 0):,.0f}",
+        "- **Final**: Code 1 (CITIZEN) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 1 (CITIZEN) = {data_map.get(('Final', 'Code 1 (CITIZEN)'), 0):,.0f}",
+        "- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = {data_map.get(('Final', 'Code 2 (NON_CITIZEN_VALID_EAD)'), 0):,.0f}",
+        "- **Final**: Code 3 (OTHER_NON_CITIZEN) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 3 (OTHER_NON_CITIZEN) = {data_map.get(('Final', 'Code 3 (OTHER_NON_CITIZEN)'), 0):,.0f}",
+        "- **Final**: Total undocumented (Code 0) = *[Run cps.py to populate]*": lambda: f"- **Final**: Total undocumented (Code 0) = {data_map.get(('Final', 'Total undocumented (Code 0)'), 0):,.0f}",
+        "- **Final**: Undocumented target = *[Run cps.py to populate]*": lambda: f"- **Final**: Undocumented target = {data_map.get(('Final', 'Undocumented target'), 0):,.0f}",
+    }
+
+    # Apply replacements
+    for old_text, replacement_func in replacements.items():
+        if old_text in content:
+            content = content.replace(old_text, replacement_func())
+
+    # Write updated content back to file
+    with open(doc_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    print(f"Documentation updated with population numbers: {doc_path}")
 
 
 def add_tips(self, cps: h5py.File):

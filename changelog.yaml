@@ -356,3 +356,9 @@
     - W2 Wages from Qualified business is now being simulated with random variables
     - qualified business income sources have been redefined based on IRS PUF inputs
   date: 2025-06-19 21:34:31
+- bump: minor
+  changes:
+    added:
+    - SSN card type imputation algorithm.
+    - Family correlation adjustment to align parent-child SSN status.
+  date: 2025-06-23 14:48:18

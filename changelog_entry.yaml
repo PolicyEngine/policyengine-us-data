@@ -1,5 +1,0 @@
-- bump: minor
-  changes:
-    added:
-    - SSN card type imputation algorithm.
-    - Family correlation adjustment to align parent-child SSN status.

@@ -90,7 +90,7 @@ def reweight(
             df["rel_error"] = df.error / df.target
             df["abs_error"] = df.error.abs()
             df["rel_abs_error"] = df.rel_error.abs()
-            df["loss"] = df.abs_rel_error**2
+            df["loss"] = df.rel_abs_error**2
             performance = pd.concat([performance, df], ignore_index=True)
 
         if i % 1000 == 0:

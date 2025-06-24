@@ -88,7 +88,8 @@ def reweight(
             df["epoch"] = i
             df["error"] = df.estimate - df.target
             df["rel_error"] = df.error / df.target
-            df["abs_rel_error"] = df.rel_error.abs()
+            df["abs_error"] = df.error.abs()
+            df["rel_abs_error"] = df.rel_error.abs()
             df["loss"] = df.abs_rel_error**2
             performance = pd.concat([performance, df], ignore_index=True)
 

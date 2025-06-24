@@ -80,6 +80,11 @@ jobs:
             env:
               TEST_LITE: true
               PYTHON_LOG_LEVEL: INFO  
+          - name: Save calibration log
+            uses: actions/upload-artifact@v4
+            with:
+              name: calibration_log.csv
+              path: calibration_log.csv
           - name: Run tests
             run: pytest
 

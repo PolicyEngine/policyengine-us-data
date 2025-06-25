@@ -75,7 +75,7 @@ def reweight(
         weights_ = dropout_weights(weights, dropout_rate)
         l = loss(torch.exp(weights_))
 
-        if i % 10 == 0:
+        if (log_path is not None) and (i % 10 == 0):
             estimates = torch.exp(weights) @ loss_matrix
             estimates = estimates.detach().numpy()
             df = pd.DataFrame(
@@ -93,7 +93,7 @@ def reweight(
             df["loss"] = df.rel_abs_error**2
             performance = pd.concat([performance, df], ignore_index=True)
 
-        if i % 1000 == 0:
+        if (log_path is not None) and (i % 1000 == 0):
             performance.to_csv(log_path, index=False)
 
         if start_loss is None:
@@ -105,7 +105,8 @@ def reweight(
         )
         optimizer.step()
 
-    performance.to_csv(log_path, index=False)
+    if log_path is not None:
+        performance.to_csv(log_path, index=False)
 
     return torch.exp(weights).detach().numpy()
 
@@ -176,7 +177,14 @@ class EnhancedCPS(Dataset):
                 self.input_dataset, year
             )
             optimised_weights = reweight(
-                original_weights, loss_matrix, targets_array
+                original_weights,
+                loss_matrix,
+                targets_array,
+                log_path=(
+                    "calibration_log.csv"
+                    if os.environ.get("SAVE_CALIBRATION_LOG")
+                    else None
+                ),
             )
             data["household_weight"][year] = optimised_weights
 

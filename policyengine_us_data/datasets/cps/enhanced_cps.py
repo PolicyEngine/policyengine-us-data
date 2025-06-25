@@ -68,14 +68,14 @@ def reweight(
 
     start_loss = None
 
-    iterator = trange(5_000 if not os.environ.get("TEST_LITE") else 1_000)
+    iterator = trange(128)
     performance = pd.DataFrame()
     for i in iterator:
         optimizer.zero_grad()
         weights_ = dropout_weights(weights, dropout_rate)
         l = loss(torch.exp(weights_))
 
-        if i % 100 == 0:
+        if i % 10 == 0:
             estimates = torch.exp(weights) @ loss_matrix
             estimates = estimates.detach().numpy()
             df = pd.DataFrame(
@@ -104,6 +104,8 @@ def reweight(
             {"loss": l.item(), "loss_rel_change": loss_rel_change}
         )
         optimizer.step()
+
+    performance.to_csv(log_path, index=False)
 
     return torch.exp(weights).detach().numpy()
 

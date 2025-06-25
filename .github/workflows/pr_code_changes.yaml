@@ -21,8 +21,8 @@ jobs:
           with:
               args: ". -l 79 --check"
 
-  SmokeTestForMultipleVersions:
-    name: Test Minimal Install & Import (${{ matrix.os }}, py${{ matrix.python-version }})
+  SmokeTest:
+    name: Smoke test (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     needs: Lint
     strategy:
@@ -60,6 +60,11 @@ jobs:
           - name: Checkout repo
             uses: actions/checkout@v2
 
+          # If ubuntu-latest, set SAVE_CALIBRATION_LOG to true
+          - name: Set environment variable for calibration log
+            if: matrix.os == 'ubuntu-latest'
+            run: echo "SAVE_CALIBRATION_LOG=true" >> $GITHUB_ENV
+
           - name: Install uv
             uses: astral-sh/setup-uv@v5
 
@@ -80,6 +85,11 @@ jobs:
             env:
               TEST_LITE: true
               PYTHON_LOG_LEVEL: INFO  
+          - name: Save calibration log
+            uses: actions/upload-artifact@v4
+            with:
+              name: calibration_log.csv
+              path: calibration_log.csv
           - name: Run tests
             run: pytest
 

@@ -21,8 +21,8 @@ jobs:
           with:
               args: ". -l 79 --check"
 
-  SmokeTestForMultipleVersions:
-    name: Test Minimal Install & Import (${{ matrix.os }}, py${{ matrix.python-version }})
+  SmokeTest:
+    name: Smoke test (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     needs: Lint
     strategy:

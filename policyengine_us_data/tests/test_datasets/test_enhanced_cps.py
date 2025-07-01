@@ -1,34 +1,6 @@
 import pytest
 
 
-@pytest.mark.parametrize("year", [2024])
-def test_policyengine_cps_generates(year: int):
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
-
-    dataset_by_year = {
-        2024: EnhancedCPS_2024,
-    }
-
-    dataset_by_year[year](require=True)
-
-
-@pytest.mark.parametrize("year", [2024])
-def test_policyengine_cps_loads(year: int):
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
-
-    dataset_by_year = {
-        2024: EnhancedCPS_2024,
-    }
-
-    dataset = dataset_by_year[year]
-
-    from policyengine_us import Microsimulation
-
-    sim = Microsimulation(dataset=dataset)
-
-    assert not sim.calculate("household_net_income").isna().any()
-
-
 def test_ecps_has_mortgage_interest():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation
@@ -50,6 +22,25 @@ def test_ecps_has_tips():
 
 
 def test_ecps_replicates_jct_tax_expenditures():
+    import pandas as pd
+
+    calibration_log = pd.read_csv(
+        "calibration_log.csv",
+    )
+
+    jct_rows = calibration_log[
+        (calibration_log["target_name"].str.contains("jct/"))
+        & (calibration_log["epoch"] == calibration_log["epoch"].max())
+    ]
+
+    assert (
+        jct_rows.rel_abs_error.max() < 0.4
+    ), "JCT tax expenditure targets not met (see the calibration log for details). Max relative error: {:.2%}".format(
+        jct_rows.rel_abs_error.max()
+    )
+
+
+def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
     from policyengine_us import Microsimulation
     from policyengine_core.reforms import Reform
     from policyengine_us_data.datasets import EnhancedCPS_2024

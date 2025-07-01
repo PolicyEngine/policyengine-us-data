@@ -37,6 +37,9 @@ def reweight(
     normalisation_factor = np.where(
         is_national, nation_normalisation_factor, state_normalisation_factor
     )
+    normalisation_factor = torch.tensor(
+        normalisation_factor, dtype=torch.float32
+    )
     targets_array = torch.tensor(targets_array, dtype=torch.float32)
     weights = torch.tensor(
         np.log(original_weights), requires_grad=True, dtype=torch.float32

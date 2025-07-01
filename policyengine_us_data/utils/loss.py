@@ -515,6 +515,43 @@ def build_loss_matrix(dataset: type, time_period):
         # Convert to thousands for the target
         targets_array.append(row["enrollment"])
 
+    #Medicaid enrollment by state
+
+    enrollment_by_state = pd.read_csv(
+        STORAGE_FOLDER / "medicaid_spending_2024.csv"
+    )
+
+    # One-time pulls so we don’t re-compute inside the loop
+    state_person = sim.calculate("state_code", map_to="person").values
+
+    # Flag people in households that actually receive medicaid
+    has_medicaid = (
+        sim.calculate("medicaid_enrolled", map_to="person", period=2025)
+    )
+    is_medicaid_eligible = sim.calculate(
+        "is_medicaid_eligible", map_to="person", period=2025
+    ).values
+    is_enrolled = has_medicaid & is_medicaid_eligible
+
+    for _, row in enrollment_by_state.iterrows():
+        # People who both live in the state and have marketplace coverage
+        in_state = state_person == row["state"]
+        in_state_enrolled = in_state & is_enrolled
+
+        label = f"irs/medicaid_enrollment/{row['state'].lower()}"
+        loss_matrix[label] = sim.map_result(
+            in_state_enrolled, "person", "household"
+        )
+        if any(loss_matrix[label].isna()):
+            raise ValueError(f"Missing values for {label}")
+
+        # Convert to thousands for the target
+        targets_array.append(row["enrollment"])
+
+        print(
+            f"Targeting Medicaid enrollment for {row['state']} "
+            f"with target {row['enrollment']:.0f}k"
+        )
     # State 10-year age targets
 
     age_targets = pd.read_csv(STORAGE_FOLDER / "age_state.csv")

@@ -28,7 +28,6 @@ def reweight(
     targets_array,
     dropout_rate=0.05,
     log_path="calibration_log.csv",
-    log_path="calibration_log.csv",
 ):
     target_names = np.array(loss_matrix.columns)
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
@@ -200,7 +199,6 @@ class EnhancedCPS(Dataset):
                 original_weights,
                 loss_matrix,
                 targets_array,
-                log_path="calibration_log.csv",
                 original_weights,
                 loss_matrix,
                 targets_array,

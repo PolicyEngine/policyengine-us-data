@@ -178,7 +178,7 @@ def create_targets(
 def main() -> None:
     out_dir = STORAGE_FOLDER
     state_df = create_targets(GEOGRAPHY_VARIABLES, pull_state_soi_variable)
-    state_df.to_csv(out_dir / "agi_state.csv", index=False)
+    state_df.to_csv(out_dir / "soi_state.csv", index=False)
 
 
 if __name__ == "__main__":

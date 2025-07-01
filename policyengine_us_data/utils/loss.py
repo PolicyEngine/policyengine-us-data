@@ -535,13 +535,13 @@ def build_loss_matrix(dataset: type, time_period):
             ].values[0]
             targets_array.append(target_value)
 
-    print(len(targets_array), "targets in total")
+    soi_state_target_names, soi_state_targets = _add_soi_state_targets()
+    targets_array.extend(soi_state_targets)
+    loss_matrix = _add_soi_metric_columns(loss_matrix, sim)
 
-    agi_state_target_names, agi_state_targets = _add_agi_state_targets()
-    targets_array.extend(agi_state_targets)
-    loss_matrix = _add_agi_metric_columns(loss_matrix, sim)
-
-    print(len(targets_array), "targets in total after AGI state targets")
+    targets_array, loss_matrix = _add_state_real_estate_taxes(
+        loss_matrix, targets_array, sim
+    )
 
     return loss_matrix, np.array(targets_array)
 
@@ -609,12 +609,12 @@ def get_agi_band_label(lower: float, upper: float) -> str:
         return f"{int(lower)}_{int(upper)}"
 
 
-def _add_agi_state_targets():
+def _add_soi_state_targets():
     """
     Create an aggregate target matrix for the appropriate geographic area
     """
 
-    soi_targets = pd.read_csv(STORAGE_FOLDER / "agi_state.csv")
+    soi_targets = pd.read_csv(STORAGE_FOLDER / "soi_state.csv")
 
     soi_targets["target_name"] = (
         soi_targets["GEO_NAME"]
@@ -634,14 +634,14 @@ def _add_agi_state_targets():
     return target_names, target_values
 
 
-def _add_agi_metric_columns(
+def _add_soi_metric_columns(
     loss_matrix: pd.DataFrame,
     sim,
 ):
     """
     Add AGI metric columns to the loss_matrix.
     """
-    soi_targets = pd.read_csv(STORAGE_FOLDER / "agi_state.csv")
+    soi_targets = pd.read_csv(STORAGE_FOLDER / "soi_state.csv")
 
     agi = sim.calculate("adjusted_gross_income").values
     state = sim.calculate("state_code", map_to="person").values
@@ -667,3 +667,39 @@ def _add_agi_metric_columns(
         loss_matrix[col_name] = metric
 
     return loss_matrix
+
+
+def _add_state_real_estate_taxes(loss_matrix, targets_list, sim):
+    """
+    Add state real estate taxes to the loss matrix and targets list.
+    """
+    # Read the real estate taxes data
+    real_estate_taxes_targets = pd.read_csv(
+        STORAGE_FOLDER / "real_estate_taxes_by_state_acs.csv"
+    )
+    national_total = 500e9
+    state_sum = real_estate_taxes_targets["real_estate_taxes_bn"].sum() * 1e9
+    national_to_state_diff = national_total / state_sum
+    real_estate_taxes_targets["real_estate_taxes_bn"] *= national_to_state_diff
+
+    assert np.isclose(
+        real_estate_taxes_targets["real_estate_taxes_bn"].sum() * 1e9,
+        national_total,
+        rtol=1e-8,
+    ), "Real estate tax totals do not sum to national target"
+
+    targets_list.extend(
+        real_estate_taxes_targets["real_estate_taxes_bn"].tolist()
+    )
+
+    real_estate_taxes = sim.calculate(
+        "real_estate_taxes", map_to="household"
+    ).values
+    state = sim.calculate("state_code", map_to="household").values
+
+    for _, r in real_estate_taxes_targets.iterrows():
+        in_state = (state == r["state_code"]).astype(float)
+        label = f"real_estate_taxes/{r['state_code'].lower()}"
+        loss_matrix[label] = real_estate_taxes * in_state
+
+    return targets_list, loss_matrix

@@ -677,7 +677,6 @@ def _add_snap_state_targets(sim):
     """
     Add snap targets at the state level, adjusted in aggregate to the sim
     """
-
     snap_targets = pd.read_csv(STORAGE_FOLDER / "snap_state.csv")
     time_period = sim.default_calculation_period
 
@@ -685,8 +684,6 @@ def _add_snap_state_targets(sim):
         time_period
     ).calibration.gov.cbo._children["snap"]
     ratio = snap_targets[["Cost"]].sum().values[0] / national_cost_target
-    print(f"Sum of USDA State costs to National target is {ratio:.4f}")
-
     snap_targets[["CostAdj"]] = snap_targets[["Cost"]] / ratio
     assert (
         np.round(snap_targets[["CostAdj"]].sum().values[0])

@@ -30,8 +30,8 @@ def reweight(
     log_path="calibration_log.csv",
 ):
     target_names = np.array(loss_matrix.columns)
-    loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
     is_national = loss_matrix.columns.str.startswith("nation/")
+    loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
     nation_normalisation_factor = is_national * (1 / is_national.sum())
     state_normalisation_factor = ~is_national * (1 / (~is_national).sum())
     normalisation_factor = np.where(

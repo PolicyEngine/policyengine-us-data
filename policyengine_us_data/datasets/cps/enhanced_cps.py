@@ -199,9 +199,6 @@ class EnhancedCPS(Dataset):
                 original_weights,
                 loss_matrix,
                 targets_array,
-                original_weights,
-                loss_matrix,
-                targets_array,
                 log_path="calibration_log.csv",
             )
             data["household_weight"][year] = optimised_weights

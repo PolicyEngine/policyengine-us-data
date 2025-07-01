@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    changed:
-    - Calibration epochs reduced to 500.

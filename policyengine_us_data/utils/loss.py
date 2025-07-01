@@ -681,9 +681,12 @@ def _add_state_real_estate_taxes(loss_matrix, targets_list, sim):
     state_sum = real_estate_taxes_targets["real_estate_taxes_bn"].sum() * 1e9
     national_to_state_diff = national_total / state_sum
     real_estate_taxes_targets["real_estate_taxes_bn"] *= national_to_state_diff
+    real_estate_taxes_targets["real_estate_taxes_bn"] = (
+        real_estate_taxes_targets["real_estate_taxes_bn"] * 1e9
+    )
 
     assert np.isclose(
-        real_estate_taxes_targets["real_estate_taxes_bn"].sum() * 1e9,
+        real_estate_taxes_targets["real_estate_taxes_bn"].sum(),
         national_total,
         rtol=1e-8,
     ), "Real estate tax totals do not sum to national target"
@@ -699,7 +702,7 @@ def _add_state_real_estate_taxes(loss_matrix, targets_list, sim):
 
     for _, r in real_estate_taxes_targets.iterrows():
         in_state = (state == r["state_code"]).astype(float)
-        label = f"real_estate_taxes/{r['state_code'].lower()}"
+        label = f"real_estate_taxes/{r['state_code']}"
         loss_matrix[label] = real_estate_taxes * in_state
 
     return targets_list, loss_matrix

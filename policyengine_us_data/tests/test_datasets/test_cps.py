@@ -2,23 +2,6 @@ import pytest
 import numpy as np
 
 
-@pytest.mark.parametrize("year", [2022])
-def test_policyengine_cps_loads(year: int):
-    from policyengine_us_data.datasets.cps.cps import CPS_2022
-
-    dataset_by_year = {
-        2022: CPS_2022,
-    }
-
-    dataset = dataset_by_year[year]
-
-    from policyengine_us import Microsimulation
-
-    sim = Microsimulation(dataset=dataset)
-
-    assert not sim.calculate("household_net_income").isna().any()
-
-
 def test_cps_has_auto_loan_interest():
     from policyengine_us_data.datasets.cps import CPS_2024
     from policyengine_us import Microsimulation

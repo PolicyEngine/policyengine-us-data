@@ -51,9 +51,6 @@ jobs:
   Test:
       runs-on: ${{ matrix.os }}
       needs: Lint
-      strategy:
-        matrix:
-          os: [ubuntu-latest, windows-latest]
       env:
         HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
       steps:

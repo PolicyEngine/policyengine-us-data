@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 2025-07-01 20:10:32
+
+### Added
+
+- State real estate taxes calibration targets.
+
+## [1.33.3] - 2025-07-01 19:15:43
+
+### Fixed
+
+- Bug in hyperparameter tuning.
+
+## [1.33.2] - 2025-07-01 19:02:50
+
+### Fixed
+
+- Increased epochs back to 5k.
+- Disabled hyperparameter tuning for imputation models.
+
 ## [1.33.1] - 2025-07-01 16:54:09
 
 ### Fixed
@@ -453,6 +472,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.34.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.33.3...1.34.0
+[1.33.3]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.33.2...1.33.3
+[1.33.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.33.1...1.33.2
 [1.33.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.33.0...1.33.1
 [1.33.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.32.1...1.33.0
 [1.32.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.32.0...1.32.1

@@ -514,6 +514,32 @@ def build_loss_matrix(dataset: type, time_period):
             f"with target {row['enrollment']:.0f}k"
         )
 
+    # State 10-year age targets
+
+    age_targets = pd.read_csv(STORAGE_FOLDER / "age_state.csv")
+
+    for state in age_targets.GEO_NAME.unique():
+        state_mask = state_person == state
+        for age_range in age_targets.columns[2:]:
+            if "+" in age_range:
+                # Handle the "85+" case
+                age_lower_bound = int(age_range.replace("+", ""))
+                age_upper_bound = np.inf
+            else:
+                age_lower_bound, age_upper_bound = map(
+                    int, age_range.split("-")
+                )
+
+            age_mask = (age >= age_lower_bound) & (age <= age_upper_bound)
+            label = f"census/age/{state}/{age_range}"
+            loss_matrix[label] = sim.map_result(
+                state_mask * age_mask, "person", "household"
+            )
+            target_value = age_targets.loc[
+                age_targets.GEO_NAME == state, age_range
+            ].values[0]
+            targets_array.append(target_value)
+
     return loss_matrix, np.array(targets_array)
 
 

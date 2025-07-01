@@ -1,4 +1,5 @@
-- bump: minor
+- bump: patch
   changes:
-    added:
-    - State real estate taxes calibration targets.
+    fixed:
+    - Increased epochs back to 5k.
+    - Disabled hyperparameter tuning for imputation models.

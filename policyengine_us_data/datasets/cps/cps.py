@@ -1846,7 +1846,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
             predictors=PREDICTORS,
             imputed_variables=IMPUTED_VARIABLES,
             weight_col=weights[0],
-            tune_hyperparameters=not test_lite,
+            tune_hyperparameters=False,
         )
     else:
         fitted_model, best_params = qrf_model.fit(
@@ -1854,7 +1854,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
             predictors=PREDICTORS,
             imputed_variables=IMPUTED_VARIABLES,
             weight_col=weights[0],
-            tune_hyperparameters=not test_lite,
+            tune_hyperparameters=False,
         )
     imputations = fitted_model.predict(X_test=receiver_data)
 

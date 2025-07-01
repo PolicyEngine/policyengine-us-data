@@ -1,3 +1,4 @@
 - bump: patch
-  fixed:
-  - Bug in hyperparameter tuning.
+  changes:
+    fixed:
+    - Bug in hyperparameter tuning.

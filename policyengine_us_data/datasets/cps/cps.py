@@ -1923,7 +1923,7 @@ class CPS_2024(CPS):
     file_path = STORAGE_FOLDER / "cps_2024.h5"
     time_period = 2024
     url = "release://policyengine/policyengine-us-data/1.13.0/cps_2024.h5"
-    frac = 0.5
+    frac = 1
 
 
 # The below datasets are a very naïve way of preventing downsampling in the

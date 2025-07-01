@@ -63,12 +63,12 @@ def reweight(
         masked_weights[mask] = mean
         return masked_weights
 
-    optimizer = torch.optim.Adam([weights], lr=1e-1)
+    optimizer = torch.optim.Adam([weights], lr=3e-1)
     from tqdm import trange
 
     start_loss = None
 
-    iterator = trange(5_000 if not os.environ.get("TEST_LITE") else 1000)
+    iterator = trange(500 if not os.environ.get("TEST_LITE") else 500)
     performance = pd.DataFrame()
     for i in iterator:
         optimizer.zero_grad()

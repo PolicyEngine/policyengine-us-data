@@ -539,6 +539,14 @@ def build_loss_matrix(dataset: type, time_period):
     targets_array.extend(agi_state_targets)
     loss_matrix = _add_agi_metric_columns(loss_matrix, sim)
 
+    print(len(targets_array), "targets in total")
+
+    agi_state_target_names, agi_state_targets = _add_agi_state_targets()
+    targets_array.extend(agi_state_targets)
+    loss_matrix = _add_agi_metric_columns(loss_matrix, sim)
+
+    print(len(targets_array), "targets in total after AGI state targets")
+
     return loss_matrix, np.array(targets_array)
 
 

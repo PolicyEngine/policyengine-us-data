@@ -367,3 +367,8 @@
     added:
     - State age targets.
   date: 2025-07-01 13:28:38
+- bump: minor
+  changes:
+    added:
+    - State agi calibration targets.
+  date: 2025-07-01 14:51:09

@@ -3,7 +3,6 @@
 **/.DS_STORE
 **/*.h5
 **/*.csv
-!agi_state.csv
 !healthcare_spending.csv
 !eitc.csv
 !spm_threshold_agi.csv

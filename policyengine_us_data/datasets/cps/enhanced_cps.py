@@ -30,10 +30,10 @@ def reweight(
     log_path="calibration_log.csv",
 ):
     target_names = np.array(loss_matrix.columns)
-    loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
-    targets_array = torch.tensor(targets_array, dtype=torch.float32)
+    loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32, device="mps:0")
+    targets_array = torch.tensor(targets_array, dtype=torch.float32, device="mps:0")
     weights = torch.tensor(
-        np.log(original_weights), requires_grad=True, dtype=torch.float32
+        np.log(original_weights), requires_grad=True, dtype=torch.float32, device="mps:0"
     )
 
     # TODO: replace this with a call to the python reweight.py package.
@@ -68,7 +68,7 @@ def reweight(
 
     start_loss = None
 
-    iterator = trange(5_000 if not os.environ.get("TEST_LITE") else 500)
+    iterator = trange(500 if not os.environ.get("TEST_LITE") else 500)
     performance = pd.DataFrame()
     for i in iterator:
         optimizer.zero_grad()

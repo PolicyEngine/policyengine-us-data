@@ -28,6 +28,7 @@ def reweight(
     targets_array,
     dropout_rate=0.05,
     log_path="calibration_log.csv",
+    log_path="calibration_log.csv",
 ):
     target_names = np.array(loss_matrix.columns)
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
@@ -68,12 +69,32 @@ def reweight(
 
     start_loss = None
 
-    iterator = trange(5_000 if not os.environ.get("TEST_LITE") else 1000)
+    iterator = trange(5_000 if not os.environ.get("TEST_LITE") else 1_000)
     performance = pd.DataFrame()
     for i in iterator:
         optimizer.zero_grad()
         weights_ = dropout_weights(weights, dropout_rate)
         l = loss(torch.exp(weights_))
+        if (log_path is not None) and (i % 10 == 0):
+            estimates = torch.exp(weights) @ loss_matrix
+            estimates = estimates.detach().numpy()
+            df = pd.DataFrame(
+                {
+                    "target_name": target_names,
+                    "estimate": estimates,
+                    "target": targets_array.detach().numpy(),
+                }
+            )
+            df["epoch"] = i
+            df["error"] = df.estimate - df.target
+            df["rel_error"] = df.error / df.target
+            df["abs_error"] = df.error.abs()
+            df["rel_abs_error"] = df.rel_error.abs()
+            df["loss"] = df.rel_abs_error**2
+            performance = pd.concat([performance, df], ignore_index=True)
+
+        if (log_path is not None) and (i % 1000 == 0):
+            performance.to_csv(log_path, index=False)
         if (log_path is not None) and (i % 10 == 0):
             estimates = torch.exp(weights) @ loss_matrix
             estimates = estimates.detach().numpy()
@@ -102,6 +123,8 @@ def reweight(
             {"loss": l.item(), "loss_rel_change": loss_rel_change}
         )
         optimizer.step()
+        if log_path is not None:
+            performance.to_csv(log_path, index=False)
         if log_path is not None:
             performance.to_csv(log_path, index=False)
 
@@ -174,6 +197,10 @@ class EnhancedCPS(Dataset):
                 self.input_dataset, year
             )
             optimised_weights = reweight(
+                original_weights,
+                loss_matrix,
+                targets_array,
+                log_path="calibration_log.csv",
                 original_weights,
                 loss_matrix,
                 targets_array,

@@ -22,7 +22,6 @@ changelog:
 download:
 	python policyengine_us_data/storage/download_public_prerequisites.py
 	python policyengine_us_data/storage/pull_age_targets.py
-	python policyengine_us_data/storage/pull_soi_state_targets.py
 	python policyengine_us_data/storage/download_private_prerequisites.py
 
 upload:

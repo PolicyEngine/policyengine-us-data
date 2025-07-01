@@ -1838,9 +1838,9 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
     qrf_model = QRF()
     if test_lite:
-        donor_data = donor_data.sample(
-            frac=0.1, random_state=42
-        ).reset_index(drop=True)
+        donor_data = donor_data.sample(frac=0.1, random_state=42).reset_index(
+            drop=True
+        )
         fitted_model = qrf_model.fit(
             X_train=donor_data,
             predictors=PREDICTORS,

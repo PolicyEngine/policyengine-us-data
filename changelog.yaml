@@ -388,3 +388,8 @@
     fixed:
     - Bug in hyperparameter tuning.
   date: 2025-07-01 19:15:43
+- bump: minor
+  changes:
+    added:
+    - State real estate taxes calibration targets.
+  date: 2025-07-01 20:10:32

@@ -372,3 +372,8 @@
     added:
     - State agi calibration targets.
   date: 2025-07-01 14:51:09
+- bump: patch
+  changes:
+    fixed:
+    - Use full CPS by default.
+  date: 2025-07-01 16:54:09

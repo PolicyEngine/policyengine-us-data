@@ -535,6 +535,10 @@ def build_loss_matrix(dataset: type, time_period):
             ].values[0]
             targets_array.append(target_value)
 
+    agi_state_target_names, agi_state_targets = _add_agi_state_targets()
+    targets_array.extend(agi_state_targets)
+    loss_matrix = _add_agi_metric_columns(loss_matrix, sim)
+
     return loss_matrix, np.array(targets_array)
 
 
@@ -589,3 +593,73 @@ def _add_tax_expenditure_targets(
         # Record the TE difference and the corresponding target value.
         loss_matrix[f"jct/{deduction}_expenditure"] = te_values
         targets_array.append(target)
+
+
+def get_agi_band_label(lower: float, upper: float) -> str:
+    """Get the label for the AGI band based on lower and upper bounds."""
+    if lower <= 0:
+        return f"-inf_{int(upper)}"
+    elif np.isposinf(upper):
+        return f"{int(lower)}_inf"
+    else:
+        return f"{int(lower)}_{int(upper)}"
+
+
+def _add_agi_state_targets():
+    """
+    Create an aggregate target matrix for the appropriate geographic area
+    """
+
+    soi_targets = pd.read_csv(STORAGE_FOLDER / "agi_state.csv")
+
+    soi_targets["target_name"] = (
+        soi_targets["GEO_NAME"]
+        + "/"
+        + soi_targets["VARIABLE"]
+        + "/"
+        + soi_targets.apply(
+            lambda r: get_agi_band_label(
+                r["AGI_LOWER_BOUND"], r["AGI_UPPER_BOUND"]
+            ),
+            axis=1,
+        )
+    )
+
+    target_names = soi_targets["target_name"].tolist()
+    target_values = soi_targets["VALUE"].astype(float).tolist()
+    return target_names, target_values
+
+
+def _add_agi_metric_columns(
+    loss_matrix: pd.DataFrame,
+    sim,
+):
+    """
+    Add AGI metric columns to the loss_matrix.
+    """
+    soi_targets = pd.read_csv(STORAGE_FOLDER / "agi_state.csv")
+
+    agi = sim.calculate("adjusted_gross_income").values
+    state = sim.calculate("state_code", map_to="person").values
+    state = sim.map_result(
+        state, "person", "tax_unit", how="value_from_first_person"
+    )
+
+    for _, r in soi_targets.iterrows():
+        lower, upper = r.AGI_LOWER_BOUND, r.AGI_UPPER_BOUND
+        band = get_agi_band_label(lower, upper)
+
+        in_state = state == r.GEO_NAME
+        in_band = (agi > lower) & (agi <= upper)
+
+        if r.IS_COUNT:
+            metric = (in_state & in_band & (agi > 0)).astype(float)
+        else:
+            metric = np.where(in_state & in_band, agi, 0.0)
+
+        metric = sim.map_result(metric, "tax_unit", "household")
+
+        col_name = f"{r.GEO_NAME}/{r.VARIABLE}/{band}"
+        loss_matrix[col_name] = metric
+
+    return loss_matrix

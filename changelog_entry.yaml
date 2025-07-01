@@ -1,4 +1,4 @@
-- bump: minor
+- bump: patch
   changes:
     added:
-    - State agi calibration targets.
+    - State age targets.

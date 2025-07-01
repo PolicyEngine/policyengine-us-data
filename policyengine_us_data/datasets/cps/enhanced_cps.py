@@ -217,7 +217,7 @@ class ReweightedCPS_2024(Dataset):
 
 
 class EnhancedCPS_2024(EnhancedCPS):
-    input_dataset = CPS_2024
+    input_dataset = ExtendedCPS_2024
     start_year = 2024
     end_year = 2024
     name = "enhanced_cps_2024"

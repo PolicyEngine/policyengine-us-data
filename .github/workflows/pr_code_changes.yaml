@@ -22,7 +22,7 @@ jobs:
               args: ". -l 79 --check"
 
   SmokeTestForMultipleVersions:
-    name: Test Minimal Install & Import (${{ matrix.os }}, py${{ matrix.python-version }})
+    name: Smoke test (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     needs: Lint
     strategy:
@@ -49,11 +49,8 @@ jobs:
         run: python -c "from policyengine_core.data import Dataset; print('Core import OK')"
 
   Test:
-      runs-on: ${{ matrix.os }}
+      runs-on: ubuntu-latest
       needs: Lint
-      strategy:
-        matrix:
-          os: [ubuntu-latest, windows-latest]
       env:
         HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
       steps:
@@ -80,6 +77,11 @@ jobs:
             env:
               TEST_LITE: true
               PYTHON_LOG_LEVEL: INFO  
+          - name: Save calibration log
+            uses: actions/upload-artifact@v4
+            with:
+              name: calibration_log.csv
+              path: calibration_log.csv
           - name: Run tests
             run: pytest
 

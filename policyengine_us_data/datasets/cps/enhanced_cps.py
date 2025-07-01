@@ -68,7 +68,7 @@ def reweight(
 
     start_loss = None
 
-    iterator = trange(5_000 if not os.environ.get("TEST_LITE") else 1_000)
+    iterator = trange(1_000 if not os.environ.get("TEST_LITE") else 1_000)
     performance = pd.DataFrame()
     for i in iterator:
         optimizer.zero_grad()

@@ -19,6 +19,35 @@ def fmt(x):
     return f"{x/1e9:.1f}bn"
 
 
+# CPS-derived statistics
+# Medical expenses, sum of spm thresholds
+# Child support expenses
+
+HARD_CODED_TOTALS = {
+    "health_insurance_premiums_without_medicare_part_b": 385e9,
+    "other_medical_expenses": 278e9,
+    "medicare_part_b_premiums": 112e9,
+    "over_the_counter_health_expenses": 72e9,
+    "spm_unit_spm_threshold": 3_945e9,
+    "child_support_expense": 33e9,
+    "child_support_received": 33e9,
+    "spm_unit_capped_work_childcare_expenses": 348e9,
+    "spm_unit_capped_housing_subsidy": 35e9,
+    "tanf": 9e9,
+    # Alimony could be targeted via SOI
+    "alimony_income": 13e9,
+    "alimony_expense": 13e9,
+    # Rough estimate, not CPS derived
+    "real_estate_taxes": 500e9,  # Rough estimate between 350bn and 600bn total property tax collections
+    "rent": 735e9,  # ACS total uprated by CPI
+    # Table 5A from https://www.irs.gov/statistics/soi-tax-stats-individual-information-return-form-w2-statistics
+    # shows $38,316,190,000 in Box 7: Social security tips (2018)
+    # Wages and salaries grew 32% from 2018 to 2023: https://fred.stlouisfed.org/graph/?g=1J0CC
+    # Assume 40% through 2024
+    "tip_income": 38e9 * 1.4,
+}
+
+
 def build_loss_matrix(dataset: type, time_period):
     loss_matrix = pd.DataFrame()
     df = pe_to_soi(dataset, time_period)
@@ -273,34 +302,7 @@ def build_loss_matrix(dataset: type, time_period):
         )
         targets_array.append(row["eitc_total"] * eitc_spending_uprating)
 
-    # CPS-derived statistics
-    # Medical expenses, sum of spm thresholds
-    # Child support expenses
-
-    HARD_CODED_TOTALS = {
-        "health_insurance_premiums_without_medicare_part_b": 385e9,
-        "other_medical_expenses": 278e9,
-        "medicare_part_b_premiums": 112e9,
-        "over_the_counter_health_expenses": 72e9,
-        "spm_unit_spm_threshold": 3_945e9,
-        "child_support_expense": 33e9,
-        "child_support_received": 33e9,
-        "spm_unit_capped_work_childcare_expenses": 348e9,
-        "spm_unit_capped_housing_subsidy": 35e9,
-        "tanf": 9e9,
-        # Alimony could be targeted via SOI
-        "alimony_income": 13e9,
-        "alimony_expense": 13e9,
-        # Rough estimate, not CPS derived
-        "real_estate_taxes": 500e9,  # Rough estimate between 350bn and 600bn total property tax collections
-        "rent": 735e9,  # ACS total uprated by CPI
-        # Table 5A from https://www.irs.gov/statistics/soi-tax-stats-individual-information-return-form-w2-statistics
-        # shows $38,316,190,000 in Box 7: Social security tips (2018)
-        # Wages and salaries grew 32% from 2018 to 2023: https://fred.stlouisfed.org/graph/?g=1J0CC
-        # Assume 40% through 2024
-        "tip_income": 38e9 * 1.4,
-    }
-
+    # Hard-coded totals
     for variable_name, target in HARD_CODED_TOTALS.items():
         label = f"census/{variable_name}"
         loss_matrix[label] = sim.calculate(
@@ -539,6 +541,10 @@ def build_loss_matrix(dataset: type, time_period):
     targets_array.extend(agi_state_targets)
     loss_matrix = _add_agi_metric_columns(loss_matrix, sim)
 
+    targets_array, loss_matrix = _add_state_real_estate_taxes(
+        loss_matrix, targets_array, sim
+    )
+
     return loss_matrix, np.array(targets_array)
 
 
@@ -663,3 +669,42 @@ def _add_agi_metric_columns(
         loss_matrix[col_name] = metric
 
     return loss_matrix
+
+
+def _add_state_real_estate_taxes(loss_matrix, targets_list, sim):
+    """
+    Add state real estate taxes to the loss matrix and targets list.
+    """
+    # Read the real estate taxes data
+    real_estate_taxes_targets = pd.read_csv(
+        STORAGE_FOLDER / "real_estate_taxes_by_state_acs.csv"
+    )
+    national_total = HARD_CODED_TOTALS["real_estate_taxes"]
+    state_sum = real_estate_taxes_targets["real_estate_taxes_bn"].sum() * 1e9
+    national_to_state_diff = national_total / state_sum
+    real_estate_taxes_targets["real_estate_taxes_bn"] *= national_to_state_diff
+    real_estate_taxes_targets["real_estate_taxes_bn"] = (
+        real_estate_taxes_targets["real_estate_taxes_bn"] * 1e9
+    )
+
+    assert np.isclose(
+        real_estate_taxes_targets["real_estate_taxes_bn"].sum(),
+        national_total,
+        rtol=1e-8,
+    ), "Real estate tax totals do not sum to national target"
+
+    targets_list.extend(
+        real_estate_taxes_targets["real_estate_taxes_bn"].tolist()
+    )
+
+    real_estate_taxes = sim.calculate(
+        "real_estate_taxes", map_to="household"
+    ).values
+    state = sim.calculate("state_code", map_to="household").values
+
+    for _, r in real_estate_taxes_targets.iterrows():
+        in_state = (state == r["state_code"]).astype(float)
+        label = f"real_estate_taxes/{r['state_code']}"
+        loss_matrix[label] = real_estate_taxes * in_state
+
+    return targets_list, loss_matrix

@@ -23,7 +23,6 @@ jobs:
 
   SmokeTestForMultipleVersions:
     name: Smoke test (${{ matrix.os }}, Python ${{ matrix.python-version }})
-    name: Smoke test (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     needs: Lint
     strategy:

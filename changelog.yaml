@@ -398,3 +398,8 @@
     changed:
     - Calibration epochs reduced to 500.
   date: 2025-07-01 22:12:13
+- bump: minor
+  changes:
+    added:
+    - Normalisation of national and state targets.
+  date: 2025-07-01 23:42:47

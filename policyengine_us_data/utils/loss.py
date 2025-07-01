@@ -2,7 +2,9 @@ import pandas as pd
 import numpy as np
 
 from policyengine_us_data.storage import STORAGE_FOLDER
-from policyengine_us_data.storage.pull_soi_state_targets import STATE_ABBR_TO_FIPS 
+from policyengine_us_data.storage.pull_soi_state_targets import (
+    STATE_ABBR_TO_FIPS,
+)
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
@@ -679,24 +681,29 @@ def _add_snap_state_targets(sim):
     snap_targets = pd.read_csv(STORAGE_FOLDER / "snap_state.csv")
     time_period = sim.default_calculation_period
 
-    national_cost_target = (
-        sim.tax_benefit_system
-           .parameters(time_period).calibration.gov.cbo._children["snap"]
-    )
-    ratio = snap_targets[['Cost']].sum().values[0] / national_cost_target
+    national_cost_target = sim.tax_benefit_system.parameters(
+        time_period
+    ).calibration.gov.cbo._children["snap"]
+    ratio = snap_targets[["Cost"]].sum().values[0] / national_cost_target
     print(f"Sum of USDA State costs to National target is {ratio:.4f}")
-  
-    snap_targets[["CostAdj"]] = snap_targets[["Cost"]] / ratio 
-    assert np.round(snap_targets[['CostAdj']].sum().values[0]) == national_cost_target
 
-    cost_targets = snap_targets.copy()[["GEO_ID", "CostAdj"]] 
-    cost_targets["target_name"] = cost_targets["GEO_ID"].str[-4:] + "/snap-cost"
+    snap_targets[["CostAdj"]] = snap_targets[["Cost"]] / ratio
+    assert (
+        np.round(snap_targets[["CostAdj"]].sum().values[0])
+        == national_cost_target
+    )
 
-    hh_targets = snap_targets.copy()[["GEO_ID", "Households"]] 
+    cost_targets = snap_targets.copy()[["GEO_ID", "CostAdj"]]
+    cost_targets["target_name"] = (
+        cost_targets["GEO_ID"].str[-4:] + "/snap-cost"
+    )
+
+    hh_targets = snap_targets.copy()[["GEO_ID", "Households"]]
     hh_targets["target_name"] = snap_targets["GEO_ID"].str[-4:] + "/snap-hhs"
 
     target_names = (
-        cost_targets["target_name"].tolist() + hh_targets["target_name"].tolist()
+        cost_targets["target_name"].tolist()
+        + hh_targets["target_name"].tolist()
     )
     target_values = (
         cost_targets["CostAdj"].astype(float).tolist()
@@ -715,24 +722,26 @@ def _add_snap_metric_columns(
     snap_targets = pd.read_csv(STORAGE_FOLDER / "snap_state.csv")
 
     snap_cost = sim.calculate("snap_reported", map_to="household").values
-    snap_hhs = (sim.calculate("snap_reported", map_to="household").values > 0).astype(int)
+    snap_hhs = (
+        sim.calculate("snap_reported", map_to="household").values > 0
+    ).astype(int)
 
     state = sim.calculate("state_code", map_to="person").values
     state = sim.map_result(
         state, "person", "household", how="value_from_first_person"
     )
-    STATE_ABBR_TO_FIPS['DC'] = 11
+    STATE_ABBR_TO_FIPS["DC"] = 11
     state_fips = pd.Series(state).apply(lambda s: STATE_ABBR_TO_FIPS[s])
 
     for _, r in snap_targets.iterrows():
         in_state = state_fips == r.GEO_ID[-2:]
-        metric = np.where(in_state, snap_cost , 0.0)
+        metric = np.where(in_state, snap_cost, 0.0)
         col_name = f"{r.GEO_ID[-4:]}/snap-cost"
         loss_matrix[col_name] = metric
 
     for _, r in snap_targets.iterrows():
         in_state = state_fips == r.GEO_ID[-2:]
-        metric = np.where(in_state, snap_hhs , 0.0)
+        metric = np.where(in_state, snap_hhs, 0.0)
         col_name = f"{r.GEO_ID[-4:]}/snap-hhs"
         loss_matrix[col_name] = metric
 

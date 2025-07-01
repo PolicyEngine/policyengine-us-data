@@ -31,6 +31,12 @@ def reweight(
 ):
     target_names = np.array(loss_matrix.columns)
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
+    is_national = loss_matrix.columns.str.startswith("nation/")
+    nation_normalisation_factor = is_national * (1 / is_national.sum())
+    state_normalisation_factor = ~is_national * (1 / (~is_national).sum())
+    normalisation_factor = np.where(
+        is_national, nation_normalisation_factor, state_normalisation_factor
+    )
     targets_array = torch.tensor(targets_array, dtype=torch.float32)
     weights = torch.tensor(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
@@ -49,9 +55,10 @@ def reweight(
         rel_error = (
             ((estimate - targets_array) + 1) / (targets_array + 1)
         ) ** 2
-        if torch.isnan(rel_error).any():
+        rel_error_normalized = rel_error * normalisation_factor
+        if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
-        return rel_error.mean()
+        return rel_error_normalized.mean()
 
     def dropout_weights(weights, p):
         if p == 0:

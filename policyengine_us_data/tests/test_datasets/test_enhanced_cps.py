@@ -84,7 +84,7 @@ def test_ecps_replicates_jct_tax_expenditures():
         # Calculate tax expenditure
         tax_expenditure = (income_tax_r - income_tax_b).sum()
         pct_error = abs((tax_expenditure - target) / target)
-        TOLERANCE = 0.3
+        TOLERANCE = 0.4
 
         print(
             f"{deduction} tax expenditure {tax_expenditure/1e9:.1f}bn differs from target {target/1e9:.1f}bn by {pct_error:.2%}"

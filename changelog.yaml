@@ -362,3 +362,8 @@
     - SSN card type imputation algorithm.
     - Family correlation adjustment to align parent-child SSN status.
   date: 2025-06-23 14:48:18
+- bump: patch
+  changes:
+    added:
+    - State age targets.
+  date: 2025-07-01 13:28:38

@@ -162,7 +162,7 @@ class ExtendedCPS(Dataset):
 
 
 class ExtendedCPS_2024(ExtendedCPS):
-    cps = CPS_2024
+    cps = Pooled_3_Year_CPS_2023
     puf = PUF_2024
     name = "extended_cps_2024"
     label = "Extended CPS (2024)"

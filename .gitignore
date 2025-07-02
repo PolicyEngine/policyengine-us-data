@@ -9,7 +9,7 @@
 **/_build
 !population_by_state.csv
 !aca_spending_and_enrollment_2024.csv
-!medicaid_spending_2024.csv
+!medicaid_enrollment_2024.csv
 **/*.pkl
 venv
 !real_estate_taxes_by_state_acs.csv

@@ -103,7 +103,7 @@ def train_tip_model():
     sipp = sipp.loc[
         np.random.choice(
             sipp.index,
-            size=100_000 if not test_lite else 1_000,
+            size=10_000,
             replace=True,
             p=sipp.household_weight / sipp.household_weight.sum(),
         )

@@ -509,7 +509,7 @@ def build_loss_matrix(dataset: type, time_period):
         # Convert to thousands for the target
         targets_array.append(row["enrollment"])
 
-    #Medicaid enrollment by state
+    # Medicaid enrollment by state
 
     enrollment_by_state = pd.read_csv(
         STORAGE_FOLDER / "medicaid_spending_2024.csv"
@@ -519,8 +519,8 @@ def build_loss_matrix(dataset: type, time_period):
     state_person = sim.calculate("state_code", map_to="person").values
 
     # Flag people in households that actually receive medicaid
-    has_medicaid = (
-        sim.calculate("medicaid_enrolled", map_to="person", period=2025)
+    has_medicaid = sim.calculate(
+        "medicaid_enrolled", map_to="person", period=2025
     )
     is_medicaid_eligible = sim.calculate(
         "is_medicaid_eligible", map_to="person", period=2025

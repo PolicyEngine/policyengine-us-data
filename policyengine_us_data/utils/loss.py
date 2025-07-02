@@ -518,7 +518,7 @@ def build_loss_matrix(dataset: type, time_period):
     # Medicaid enrollment by state
 
     enrollment_by_state = pd.read_csv(
-        STORAGE_FOLDER / "medicaid_spending_2024.csv"
+        STORAGE_FOLDER / "medicaid_enrollment_2024.csv"
     )
 
     # One-time pulls so we don’t re-compute inside the loop

@@ -30,7 +30,16 @@ def reweight(
     log_path="calibration_log.csv",
 ):
     target_names = np.array(loss_matrix.columns)
+    is_national = loss_matrix.columns.str.startswith("nation/")
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
+    nation_normalisation_factor = is_national * (1 / is_national.sum())
+    state_normalisation_factor = ~is_national * (1 / (~is_national).sum())
+    normalisation_factor = np.where(
+        is_national, nation_normalisation_factor, state_normalisation_factor
+    )
+    normalisation_factor = torch.tensor(
+        normalisation_factor, dtype=torch.float32
+    )
     targets_array = torch.tensor(targets_array, dtype=torch.float32)
     weights = torch.tensor(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
@@ -49,9 +58,10 @@ def reweight(
         rel_error = (
             ((estimate - targets_array) + 1) / (targets_array + 1)
         ) ** 2
-        if torch.isnan(rel_error).any():
+        rel_error_normalized = rel_error * normalisation_factor
+        if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
-        return rel_error.mean()
+        return rel_error_normalized.mean()
 
     def dropout_weights(weights, p):
         if p == 0:
@@ -68,7 +78,7 @@ def reweight(
 
     start_loss = None
 
-    iterator = trange(5_000 if not os.environ.get("TEST_LITE") else 500)
+    iterator = trange(500 if not os.environ.get("TEST_LITE") else 500)
     performance = pd.DataFrame()
     for i in iterator:
         optimizer.zero_grad()

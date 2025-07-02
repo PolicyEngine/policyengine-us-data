@@ -29,7 +29,9 @@ dependencies = [
     "google-auth",
     "scipy<1.13",
     "statsmodels>=0.14.0",
-    "openpyxl>=3.1.5"
+    "openpyxl>=3.1.5",
+    "tables>=3.10.2",
+    "torch>=2.7.1",
 ]
 
 [project.optional-dependencies]
@@ -37,8 +39,6 @@ dev = [
     "black",
     "pytest",
     "quantile-forest",
-    "torch",
-    "tables",
     "tabulate",
     "furo",
     "jupyter-book",

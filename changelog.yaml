@@ -408,3 +408,8 @@
     fixed:
     - Imputed non-CPS income variables from the PUF.
   date: 2025-07-02 15:00:11
+- bump: patch
+  changes:
+    changed:
+    - Epochs increased to 1k.
+  date: 2025-07-02 15:31:46

@@ -656,7 +656,7 @@ def _add_agi_state_targets():
         assert np.isclose(
             soi_targets.loc[fed_tax_mask, "VALUE"].sum(), 
             national_total, 
-            rtol=1e-6
+            rtol=1e-8
         ), f"Federal income tax totals do not sum to national target: {soi_targets.loc[fed_tax_mask, 'VALUE'].sum()} vs {national_total}"
     
     # Create target names

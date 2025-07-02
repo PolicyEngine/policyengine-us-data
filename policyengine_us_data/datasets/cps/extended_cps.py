@@ -149,8 +149,6 @@ class ExtendedCPS(Dataset):
         if os.environ.get("TEST_LITE"):
             puf_sim.subsample(1_000)
 
-        puf_sim.subsample(10_000)
-
         INPUTS = [
             "age",
             "is_male",

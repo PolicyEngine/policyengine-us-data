@@ -215,6 +215,7 @@ def test_aca_calibration():
         not failed
     ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
 
+
 def test_medicaid_calibration():
 
     import pandas as pd
@@ -226,11 +227,12 @@ def test_medicaid_calibration():
         "policyengine_us_data/storage/medicaid_enrollment_2024.csv"
     )
     targets = pd.read_csv(TARGETS_PATH)
-   
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
     state_code_hh = sim.calculate("state_code", map_to="household").values
-    medicaid_enrolled = sim.calculate("medicaid_enrolled", map_to="household", period=2025)
+    medicaid_enrolled = sim.calculate(
+        "medicaid_enrolled", map_to="household", period=2025
+    )
 
     TOLERANCE = 0.45
     failed = False

@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    fixed:
+    - Imputed non-CPS income variables from the PUF.

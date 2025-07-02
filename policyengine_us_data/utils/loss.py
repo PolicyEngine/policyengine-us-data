@@ -293,7 +293,7 @@ def build_loss_matrix(dataset: type, time_period):
         targets_array.append(row["eitc_returns"] * population_uprating)
 
         spending_label = (
-            f"irs/eitc/spending/count_children_{row['count_children']}"
+            f"nation/irs/eitc/spending/count_children_{row['count_children']}"
         )
         loss_matrix[spending_label] = sim.map_result(
             eitc * meets_child_criteria,
@@ -365,7 +365,9 @@ def build_loss_matrix(dataset: type, time_period):
         )
         targets_array.append(row["adjusted_gross_income"])
 
-        label = f"census/count_in_spm_threshold_decile_{int(row['decile'])}"
+        label = (
+            f"nation/census/count_in_spm_threshold_decile_{int(row['decile'])}"
+        )
         loss_matrix[label] = sim.map_result(
             in_threshold_range, "spm_unit", "household"
         )
@@ -599,7 +601,7 @@ def _add_tax_expenditure_targets(
         te_values = income_tax_r - income_tax_b
 
         # Record the TE difference and the corresponding target value.
-        loss_matrix[f"jct/{deduction}_expenditure"] = te_values
+        loss_matrix[f"nation/jct/{deduction}_expenditure"] = te_values
         targets_array.append(target)
 
 
@@ -621,7 +623,8 @@ def _add_agi_state_targets():
     soi_targets = pd.read_csv(STORAGE_FOLDER / "agi_state.csv")
 
     soi_targets["target_name"] = (
-        soi_targets["GEO_NAME"]
+        "state/"
+        + soi_targets["GEO_NAME"]
         + "/"
         + soi_targets["VARIABLE"]
         + "/"
@@ -667,7 +670,7 @@ def _add_agi_metric_columns(
 
         metric = sim.map_result(metric, "tax_unit", "household")
 
-        col_name = f"{r.GEO_NAME}/{r.VARIABLE}/{band}"
+        col_name = f"state/{r.GEO_NAME}/{r.VARIABLE}/{band}"
         loss_matrix[col_name] = metric
 
     return loss_matrix
@@ -706,7 +709,7 @@ def _add_state_real_estate_taxes(loss_matrix, targets_list, sim):
 
     for _, r in real_estate_taxes_targets.iterrows():
         in_state = (state == r["state_code"]).astype(float)
-        label = f"real_estate_taxes/{r['state_code']}"
+        label = f"state/real_estate_taxes/{r['state_code']}"
         loss_matrix[label] = real_estate_taxes * in_state
 
     return targets_list, loss_matrix

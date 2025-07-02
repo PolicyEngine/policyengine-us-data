@@ -139,17 +139,17 @@ def build_loss_matrix(dataset: type, time_period):
 
         if row["Count"] and not row["Variable"] == "count":
             label = (
-                f"irs/{variable_label}/count/AGI in "
+                f"nation/irs/{variable_label}/count/AGI in "
                 f"{agi_range_label}/{taxable_label}/{filing_status_label}"
             )
         elif row["Variable"] == "count":
             label = (
-                f"irs/{variable_label}/count/AGI in "
+                f"nation/irs/{variable_label}/count/AGI in "
                 f"{agi_range_label}/{taxable_label}/{filing_status_label}"
             )
         else:
             label = (
-                f"irs/{variable_label}/total/AGI in "
+                f"nation/irs/{variable_label}/total/AGI in "
                 f"{agi_range_label}/{taxable_label}/{filing_status_label}"
             )
 
@@ -185,7 +185,7 @@ def build_loss_matrix(dataset: type, time_period):
     )  # Array of [age_0_pop, age_1_pop, ...] for the given year
     age = sim.calculate("age").values
     for year in range(len(populations)):
-        label = f"census/population_by_age/{year}"
+        label = f"nation/census/population_by_age/{year}"
         loss_matrix[label] = sim.map_result(
             (age >= year) * (age < year + 1), "person", "household"
         )
@@ -202,7 +202,7 @@ def build_loss_matrix(dataset: type, time_period):
     ]
 
     for variable_name in PROGRAMS:
-        label = f"cbo/{variable_name}"
+        label = f"nation/cbo/{variable_name}"
         loss_matrix[label] = sim.calculate(
             variable_name, map_to="household"
         ).values
@@ -215,13 +215,13 @@ def build_loss_matrix(dataset: type, time_period):
         )
 
     # 1. Medicaid Spending
-    label = "hhs/medicaid_spending"
+    label = "nation/hhs/medicaid_spending"
     loss_matrix[label] = sim.calculate("medicaid", map_to="household").values
     MEDICAID_SPENDING_2024 = 9e11
     targets_array.append(MEDICAID_SPENDING_2024)
 
     # 2. Medicaid Enrollment
-    label = "hhs/medicaid_enrollment"
+    label = "nation/hhs/medicaid_enrollment"
     on_medicaid = (
         sim.calculate(
             "medicaid",  # or your enrollee flag
@@ -235,7 +235,7 @@ def build_loss_matrix(dataset: type, time_period):
     targets_array.append(MEDICAID_ENROLLMENT_2024)
 
     # National ACA Spending
-    label = "gov/aca_spending"
+    label = "nation/gov/aca_spending"
     loss_matrix[label] = sim.calculate(
         "aca_ptc", map_to="household", period=2025
     ).values
@@ -243,7 +243,7 @@ def build_loss_matrix(dataset: type, time_period):
     targets_array.append(ACA_SPENDING_2024)
 
     # National ACA Enrollment (people receiving a PTC)
-    label = "gov/aca_enrollment"
+    label = "nation/gov/aca_enrollment"
     on_ptc = (
         sim.calculate("aca_ptc", map_to="person", period=2025).values > 0
     ).astype(int)
@@ -254,7 +254,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     # Treasury EITC
 
-    loss_matrix["treasury/eitc"] = sim.calculate(
+    loss_matrix["nation/treasury/eitc"] = sim.calculate(
         "eitc", map_to="household"
     ).values
     eitc_spending = (
@@ -273,7 +273,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     for _, row in eitc_stats.iterrows():
         returns_label = (
-            f"irs/eitc/returns/count_children_{row['count_children']}"
+            f"nation/irs/eitc/returns/count_children_{row['count_children']}"
         )
         eitc_eligible_children = sim.calculate("eitc_child_count").values
         eitc = sim.calculate("eitc").values
@@ -293,7 +293,7 @@ def build_loss_matrix(dataset: type, time_period):
         targets_array.append(row["eitc_returns"] * population_uprating)
 
         spending_label = (
-            f"irs/eitc/spending/count_children_{row['count_children']}"
+            f"nation/irs/eitc/spending/count_children_{row['count_children']}"
         )
         loss_matrix[spending_label] = sim.map_result(
             eitc * meets_child_criteria,
@@ -304,7 +304,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     # Hard-coded totals
     for variable_name, target in HARD_CODED_TOTALS.items():
-        label = f"census/{variable_name}"
+        label = f"nation/census/{variable_name}"
         loss_matrix[label] = sim.calculate(
             variable_name, map_to="household"
         ).values
@@ -315,12 +315,12 @@ def build_loss_matrix(dataset: type, time_period):
     # Negative household market income total rough estimate from the IRS SOI PUF
 
     market_income = sim.calculate("household_market_income").values
-    loss_matrix["irs/negative_household_market_income_total"] = (
+    loss_matrix["nation/irs/negative_household_market_income_total"] = (
         market_income * (market_income < 0)
     )
     targets_array.append(-138e9)
 
-    loss_matrix["irs/negative_household_market_income_count"] = (
+    loss_matrix["nation/irs/negative_household_market_income_count"] = (
         market_income < 0
     ).astype(float)
     targets_array.append(3e6)
@@ -338,7 +338,7 @@ def build_loss_matrix(dataset: type, time_period):
             "other_medical_expenses",
             "medicare_part_b_premiums",
         ]:
-            label = f"census/{expense_type}/age_{age_lower_bound}_to_{age_lower_bound+9}"
+            label = f"nation/census/{expense_type}/age_{age_lower_bound}_to_{age_lower_bound+9}"
             value = sim.calculate(expense_type).values
             loss_matrix[label] = sim.map_result(
                 in_age_range * value, "person", "household"
@@ -357,13 +357,17 @@ def build_loss_matrix(dataset: type, time_period):
         in_threshold_range = (spm_threshold >= row["lower_spm_threshold"]) * (
             spm_threshold < row["upper_spm_threshold"]
         )
-        label = f"census/agi_in_spm_threshold_decile_{int(row['decile'])}"
+        label = (
+            f"nation/census/agi_in_spm_threshold_decile_{int(row['decile'])}"
+        )
         loss_matrix[label] = sim.map_result(
             in_threshold_range * spm_unit_agi, "spm_unit", "household"
         )
         targets_array.append(row["adjusted_gross_income"])
 
-        label = f"census/count_in_spm_threshold_decile_{int(row['decile'])}"
+        label = (
+            f"nation/census/count_in_spm_threshold_decile_{int(row['decile'])}"
+        )
         loss_matrix[label] = sim.map_result(
             in_threshold_range, "spm_unit", "household"
         )
@@ -375,13 +379,13 @@ def build_loss_matrix(dataset: type, time_period):
 
     for _, row in state_population.iterrows():
         in_state = sim.calculate("state_code", map_to="person") == row["state"]
-        label = f"census/population_by_state/{row['state']}"
+        label = f"state/census/population_by_state/{row['state']}"
         loss_matrix[label] = sim.map_result(in_state, "person", "household")
         targets_array.append(row["population"])
 
         under_5 = sim.calculate("age").values < 5
         in_state_under_5 = in_state * under_5
-        label = f"census/population_under_5_by_state/{row['state']}"
+        label = f"state/census/population_under_5_by_state/{row['state']}"
         loss_matrix[label] = sim.map_result(
             in_state_under_5, "person", "household"
         )
@@ -389,7 +393,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     age = sim.calculate("age").values
     infants = (age >= 0) & (age < 1)
-    label = "census/infants"
+    label = "nation/census/infants"
     loss_matrix[label] = sim.map_result(infants, "person", "household")
     # Total number of infants in the 1 Year ACS
     INFANTS_2023 = 3_491_679
@@ -399,7 +403,7 @@ def build_loss_matrix(dataset: type, time_period):
     targets_array.append(infants_2024)
 
     networth = sim.calculate("net_worth").values
-    label = "net_worth/total"
+    label = "nation/net_worth/total"
     loss_matrix[label] = networth
     # Federal Reserve estimate of $160 trillion in 2024Q4
     # https://fred.stlouisfed.org/series/BOGZ1FL192090005Q
@@ -423,7 +427,7 @@ def build_loss_matrix(dataset: type, time_period):
         ssn_type_mask = sim.calculate("ssn_card_type").values == card_type_str
 
         # Overall count by SSN card type
-        label = f"ssa/ssn_card_type_{card_type_str.lower()}_count"
+        label = f"nation/ssa/ssn_card_type_{card_type_str.lower()}_count"
         loss_matrix[label] = sim.map_result(
             ssn_type_mask, "person", "household"
         )
@@ -472,7 +476,7 @@ def build_loss_matrix(dataset: type, time_period):
         ).values
 
         # Add a loss-matrix entry and matching target
-        label = f"irs/aca_spending/{row['state'].lower()}"
+        label = f"nation/irs/aca_spending/{row['state'].lower()}"
         loss_matrix[label] = aca_value * in_state
         annual_target = row["spending"]
         if any(loss_matrix[label].isna()):
@@ -501,7 +505,7 @@ def build_loss_matrix(dataset: type, time_period):
         in_state = state_person == row["state"]
         in_state_enrolled = in_state & is_enrolled
 
-        label = f"irs/aca_enrollment/{row['state'].lower()}"
+        label = f"state/irs/aca_enrollment/{row['state'].lower()}"
         loss_matrix[label] = sim.map_result(
             in_state_enrolled, "person", "household"
         )
@@ -528,7 +532,7 @@ def build_loss_matrix(dataset: type, time_period):
                 )
 
             age_mask = (age >= age_lower_bound) & (age <= age_upper_bound)
-            label = f"census/age/{state}/{age_range}"
+            label = f"state/census/age/{state}/{age_range}"
             loss_matrix[label] = sim.map_result(
                 state_mask * age_mask, "person", "household"
             )
@@ -597,7 +601,7 @@ def _add_tax_expenditure_targets(
         te_values = income_tax_r - income_tax_b
 
         # Record the TE difference and the corresponding target value.
-        loss_matrix[f"jct/{deduction}_expenditure"] = te_values
+        loss_matrix[f"nation/jct/{deduction}_expenditure"] = te_values
         targets_array.append(target)
 
 def get_agi_band_label(lower: float, upper: float) -> str:
@@ -661,7 +665,8 @@ def _add_agi_state_targets():
     
     # Create target names
     soi_targets["target_name"] = (
-        soi_targets["GEO_NAME"]
+        "state/"
+        + soi_targets["GEO_NAME"]
         + "/"
         + soi_targets["VARIABLE"]
         + "/"
@@ -691,8 +696,8 @@ def add_agi_metric_columns(
     agi = sim.calculate("adjusted_gross_income").values
     
     # Federal income tax is at household level - need to map to tax unit from household
-    federal_income_tax_household = sim.calculate("federal_income_tax").values
-    federal_income_tax = sim.map_result(
+    federal_income_tax_household = sim.calculate("income_tax").values
+    income_tax = sim.map_result(
         federal_income_tax_household, "household", "tax_unit", how="divide_by_num_of_tax_units"
     )
     
@@ -712,8 +717,8 @@ def add_agi_metric_columns(
         # Determine which variable to use based on the target
         if "adjusted_gross_income" in r.VARIABLE:
             base_value = agi
-        elif "federal_income_tax" in r.VARIABLE:
-            base_value = federal_income_tax
+        elif "income_tax" in r.VARIABLE:
+            base_value = income_tax
         else:
             continue
             
@@ -724,8 +729,8 @@ def add_agi_metric_columns(
             
         # Map back to household level for the loss matrix
         metric = sim.map_result(metric, "tax_unit", "household")
-        
-        col_name = f"{r.GEO_NAME}/{r.VARIABLE}/{band}"
+
+        col_name = f"state/{r.GEO_NAME}/{r.VARIABLE}/{band}"
         loss_matrix[col_name] = metric
         
     return loss_matrix
@@ -764,7 +769,7 @@ def _add_state_real_estate_taxes(loss_matrix, targets_list, sim):
 
     for _, r in real_estate_taxes_targets.iterrows():
         in_state = (state == r["state_code"]).astype(float)
-        label = f"real_estate_taxes/{r['state_code']}"
+        label = f"state/real_estate_taxes/{r['state_code']}"
         loss_matrix[label] = real_estate_taxes * in_state
 
     return targets_list, loss_matrix

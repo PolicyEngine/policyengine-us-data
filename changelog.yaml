@@ -393,3 +393,23 @@
     added:
     - State real estate taxes calibration targets.
   date: 2025-07-01 20:10:32
+- bump: patch
+  changes:
+    changed:
+    - Calibration epochs reduced to 500.
+  date: 2025-07-01 22:12:13
+- bump: minor
+  changes:
+    added:
+    - Normalisation of national and state targets.
+  date: 2025-07-01 23:42:47
+- bump: patch
+  changes:
+    fixed:
+    - Imputed non-CPS income variables from the PUF.
+  date: 2025-07-02 15:00:11
+- bump: patch
+  changes:
+    changed:
+    - Epochs increased to 1k.
+  date: 2025-07-02 15:31:46

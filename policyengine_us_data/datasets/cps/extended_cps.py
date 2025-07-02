@@ -82,6 +82,58 @@ IMPUTED_VARIABLES = [
     "self_employment_income_would_be_qualified",
 ]
 
+OVERRIDDEN_IMPUTED_VARIABLES = [
+    "partnership_s_corp_income",
+    "interest_deduction",
+    "unreimbursed_business_employee_expenses",
+    "pre_tax_contributions",
+    "w2_wages_from_qualified_business",
+    "unadjusted_basis_qualified_property",
+    "business_is_sstb",
+    "charitable_cash_donations",
+    "self_employed_pension_contribution_ald",
+    "unrecaptured_section_1250_gain",
+    "taxable_unemployment_compensation",
+    "domestic_production_ald",
+    "self_employed_health_insurance_ald",
+    "cdcc_relevant_expenses",
+    "salt_refund_income",
+    "foreign_tax_credit",
+    "estate_income",
+    "charitable_non_cash_donations",
+    "american_opportunity_credit",
+    "miscellaneous_income",
+    "alimony_expense",
+    "health_savings_account_ald",
+    "non_sch_d_capital_gains",
+    "general_business_credit",
+    "energy_efficient_home_improvement_credit",
+    "amt_foreign_tax_credit",
+    "excess_withheld_payroll_tax",
+    "savers_credit",
+    "student_loan_interest",
+    "investment_income_elected_form_4952",
+    "early_withdrawal_penalty",
+    "prior_year_minimum_tax_credit",
+    "farm_rent_income",
+    "qualified_tuition_expenses",
+    "educator_expense",
+    "long_term_capital_gains_on_collectibles",
+    "other_credits",
+    "casualty_loss",
+    "unreported_payroll_tax",
+    "recapture_of_investment_credit",
+    "deductible_mortgage_interest",
+    "qualified_reit_and_ptp_income",
+    "qualified_bdc_income",
+    "farm_operations_income",
+    "estate_income_would_be_qualified",
+    "farm_operations_income_would_be_qualified",
+    "farm_rent_income_would_be_qualified",
+    "partnership_s_corp_income_would_be_qualified",
+    "rental_income_would_be_qualified",
+]
+
 
 class ExtendedCPS(Dataset):
     cps: Type[CPS]
@@ -107,24 +159,17 @@ class ExtendedCPS(Dataset):
             "is_tax_unit_dependent",
         ]
 
-        X_train = puf_sim.calculate_dataframe(INPUTS)
-        y_train = puf_sim.calculate_dataframe(IMPUTED_VARIABLES)
-        X = cps_sim.calculate_dataframe(INPUTS)
-        y = pd.DataFrame(columns=IMPUTED_VARIABLES, index=X.index)
-
-        model = QRF()
-        start = time.time()
-        model.fit(
-            X_train,
-            y_train,
+        y_full_imputations = impute_income_variables(
+            cps_sim,
+            puf_sim,
+            predictors=INPUTS,
+            outputs=IMPUTED_VARIABLES,
         )
-        print(
-            f"Training imputation models from the PUF took {time.time() - start:.2f} seconds"
-        )
-        start = time.time()
-        y = model.predict(X)
-        print(
-            f"Predicting imputed values took {time.time() - start:.2f} seconds"
+        y_cps_imputations = impute_income_variables(
+            cps_sim,
+            puf_sim,
+            predictors=INPUTS,
+            outputs=OVERRIDDEN_IMPUTED_VARIABLES,
         )
         cps_sim = Microsimulation(dataset=self.cps)
         data = cps_sim.dataset.load_dataset()
@@ -138,8 +183,16 @@ class ExtendedCPS(Dataset):
                 values = data[variable][...]
             else:
                 values = cps_sim.calculate(variable).values
-            if variable in IMPUTED_VARIABLES:
-                pred_values = y[variable].values
+            if variable in OVERRIDDEN_IMPUTED_VARIABLES:
+                pred_values = y_cps_imputations[variable].values
+                entity = variable_metadata.entity.key
+                if entity != "person":
+                    pred_values = cps_sim.populations[
+                        entity
+                    ].value_from_first_person(pred_values)
+                values = np.concatenate([pred_values, pred_values])
+            elif variable in IMPUTED_VARIABLES:
+                pred_values = y_full_imputations[variable].values
                 entity = variable_metadata.entity.key
                 if entity != "person":
                     pred_values = cps_sim.populations[
@@ -159,6 +212,31 @@ class ExtendedCPS(Dataset):
             }
 
         self.save_dataset(new_data)
+
+
+def impute_income_variables(
+    cps_sim,
+    puf_sim,
+    predictors: list[str] = None,
+    outputs: list[str] = None,
+):
+    X_train = puf_sim.calculate_dataframe(predictors)
+    y_train = puf_sim.calculate_dataframe(outputs)
+    X = cps_sim.calculate_dataframe(predictors)
+    y = pd.DataFrame(columns=outputs, index=X.index)
+    model = QRF()
+    start = time.time()
+    model.fit(
+        X_train,
+        y_train,
+    )
+    print(
+        f"Training imputation models from the PUF took {time.time() - start:.2f} seconds"
+    )
+    start = time.time()
+    y = model.predict(X)
+    print(f"Predicting imputed values took {time.time() - start:.2f} seconds")
+    return y
 
 
 class ExtendedCPS_2024(ExtendedCPS):

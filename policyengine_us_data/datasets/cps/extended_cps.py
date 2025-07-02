@@ -82,6 +82,10 @@ IMPUTED_VARIABLES = [
     "self_employment_income_would_be_qualified",
 ]
 
+OVERRIDDEN_IMPUTED_VARIABLES = [
+    "deductible_mortgage_interest",
+]
+
 
 class ExtendedCPS(Dataset):
     cps: Type[CPS]
@@ -146,6 +150,14 @@ class ExtendedCPS(Dataset):
                         entity
                     ].value_from_first_person(pred_values)
                 values = np.concatenate([values, pred_values])
+            elif variable in OVERRIDDEN_IMPUTED_VARIABLES:
+                pred_values = y[variable].values
+                entity = variable_metadata.entity.key
+                if entity != "person":
+                    pred_values = cps_sim.populations[
+                        entity
+                    ].value_from_first_person(pred_values)
+                values = np.concatenate([pred_values, pred_values])
             elif variable == "person_id":
                 values = np.concatenate([values, values + values.max()])
             elif "_id" in variable:

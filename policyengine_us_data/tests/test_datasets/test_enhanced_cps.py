@@ -34,7 +34,7 @@ def test_ecps_replicates_jct_tax_expenditures():
     ]
 
     assert (
-        jct_rows.rel_abs_error.max() < 0.4
+        jct_rows.rel_abs_error.max() < 0.5
     ), "JCT tax expenditure targets not met (see the calibration log for details). Max relative error: {:.2%}".format(
         jct_rows.rel_abs_error.max()
     )

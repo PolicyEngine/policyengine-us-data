@@ -78,7 +78,7 @@ def reweight(
 
     start_loss = None
 
-    iterator = trange(1_000 if not os.environ.get("TEST_LITE") else 500)
+    iterator = trange(500)
     performance = pd.DataFrame()
     for i in iterator:
         optimizer.zero_grad()
@@ -123,8 +123,7 @@ def train_previous_year_income_model():
 
     sim = Microsimulation(dataset=CPS_2019)
 
-    if os.environ.get("TEST_LITE"):
-        sim.subsample(1_000)
+    sim.subsample(10_000)
 
     VARIABLES = [
         "previous_year_income_available",

@@ -1835,25 +1835,16 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     logging.getLogger("microimpute").setLevel(getattr(logging, log_level))
 
     qrf_model = QRF()
-    if test_lite:
-        donor_data = donor_data.sample(frac=0.1, random_state=42).reset_index(
-            drop=True
-        )
-        fitted_model = qrf_model.fit(
-            X_train=donor_data,
-            predictors=PREDICTORS,
-            imputed_variables=IMPUTED_VARIABLES,
-            weight_col=weights[0],
-            tune_hyperparameters=False,
-        )
-    else:
-        fitted_model = qrf_model.fit(
-            X_train=donor_data,
-            predictors=PREDICTORS,
-            imputed_variables=IMPUTED_VARIABLES,
-            weight_col=weights[0],
-            tune_hyperparameters=False,
-        )
+    donor_data = donor_data.sample(frac=0.5, random_state=42).reset_index(
+        drop=True
+    )
+    fitted_model = qrf_model.fit(
+        X_train=donor_data,
+        predictors=PREDICTORS,
+        imputed_variables=IMPUTED_VARIABLES,
+        weight_col=weights[0],
+        tune_hyperparameters=False,
+    )
     imputations = fitted_model.predict(X_test=receiver_data)
 
     for var in IMPUTED_VARIABLES:

@@ -8,8 +8,6 @@ import pickle
 from huggingface_hub import hf_hub_download
 import os
 
-test_lite = os.environ.get("TEST_LITE")
-
 
 def train_tip_model():
     DOWNLOAD_FULL_SIPP = False

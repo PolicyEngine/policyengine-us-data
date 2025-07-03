@@ -45,6 +45,8 @@ GEOGRAPHY_VARIABLES = {
     "adjusted_gross_income/amount": "A00100",
     # "real_estate_taxes/count": "N18500",
     # "real_estate_taxes/amount": "A18500",
+    "federal_income_tax/count": "N06500",
+    "federal_income_tax/amount": "A06500",
 }
 
 STATE_ABBR_TO_FIPS = {

@@ -4,6 +4,7 @@
 **/*.h5
 **/*.csv
 !healthcare_spending.csv
+!medicaid_enrollment_2024.csv
 !eitc.csv
 !spm_threshold_agi.csv
 **/_build

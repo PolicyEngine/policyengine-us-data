@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.36.1] - 2025-07-03 09:21:06
+
+### Changed
+
+- PR tests to be more similar to production builds.
+
 ## [1.36.0] - 2025-07-03 03:03:06
 
 ### Added
@@ -502,6 +508,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.36.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.36.0...1.36.1
 [1.36.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.35.2...1.36.0
 [1.35.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.35.1...1.35.2
 [1.35.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.35.0...1.35.1

@@ -266,13 +266,13 @@ def test_medicaid_calibration():
     failed = False
     for _, row in targets.iterrows():
         state = row["state"]
-        target_spending = row["spending"]
+        target_enrollment = row["enrollment"]
         simulated = medicaid_enrolled[state_code_hh == state].sum()
 
-        pct_error = abs(simulated - target_spending) / target_spending
+        pct_error = abs(simulated - target_enrollment) / target_enrollment
         print(
             f"{state}: simulated ${simulated/1e9:.2f} bn  "
-            f"target ${target_spending/1e9:.2f} bn  "
+            f"target ${target_enrollment/1e9:.2f} bn  "
             f"error {pct_error:.2%}"
         )
 

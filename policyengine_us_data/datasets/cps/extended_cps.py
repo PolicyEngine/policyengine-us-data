@@ -83,55 +83,15 @@ IMPUTED_VARIABLES = [
 ]
 
 OVERRIDDEN_IMPUTED_VARIABLES = [
-    "partnership_s_corp_income",
     "interest_deduction",
-    "unreimbursed_business_employee_expenses",
-    "pre_tax_contributions",
     "w2_wages_from_qualified_business",
     "unadjusted_basis_qualified_property",
     "business_is_sstb",
     "charitable_cash_donations",
-    "self_employed_pension_contribution_ald",
-    "unrecaptured_section_1250_gain",
-    "taxable_unemployment_compensation",
-    "domestic_production_ald",
-    "self_employed_health_insurance_ald",
-    "cdcc_relevant_expenses",
-    "salt_refund_income",
-    "foreign_tax_credit",
-    "estate_income",
     "charitable_non_cash_donations",
-    "american_opportunity_credit",
-    "miscellaneous_income",
-    "alimony_expense",
-    "health_savings_account_ald",
-    "non_sch_d_capital_gains",
-    "general_business_credit",
-    "energy_efficient_home_improvement_credit",
-    "amt_foreign_tax_credit",
-    "excess_withheld_payroll_tax",
-    "savers_credit",
-    "student_loan_interest",
-    "investment_income_elected_form_4952",
-    "early_withdrawal_penalty",
-    "prior_year_minimum_tax_credit",
-    "farm_rent_income",
-    "qualified_tuition_expenses",
-    "educator_expense",
-    "long_term_capital_gains_on_collectibles",
     "other_credits",
     "casualty_loss",
-    "unreported_payroll_tax",
-    "recapture_of_investment_credit",
     "deductible_mortgage_interest",
-    "qualified_reit_and_ptp_income",
-    "qualified_bdc_income",
-    "farm_operations_income",
-    "estate_income_would_be_qualified",
-    "farm_operations_income_would_be_qualified",
-    "farm_rent_income_would_be_qualified",
-    "partnership_s_corp_income_would_be_qualified",
-    "rental_income_would_be_qualified",
 ]
 
 
@@ -146,8 +106,7 @@ class ExtendedCPS(Dataset):
         cps_sim = Microsimulation(dataset=self.cps)
         puf_sim = Microsimulation(dataset=self.puf)
 
-        if os.environ.get("TEST_LITE"):
-            puf_sim.subsample(1_000)
+        puf_sim.subsample(100_000)
 
         INPUTS = [
             "age",

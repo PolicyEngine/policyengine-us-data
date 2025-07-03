@@ -168,8 +168,7 @@ def impute_pension_contributions_to_puf(puf_df):
     from policyengine_us_data.datasets.cps import CPS_2021
 
     cps = Microsimulation(dataset=CPS_2021)
-    if os.environ.get("TEST_LITE"):
-        cps.subsample(1_000)
+    cps.subsample(1_000)
     cps_df = cps.calculate_dataframe(
         ["employment_income", "household_weight", "pre_tax_contributions"]
     )
@@ -198,10 +197,9 @@ def impute_missing_demographics(
         .fillna(0)
     )
 
-    if os.environ.get("TEST_LITE"):
-        puf_with_demographics = puf_with_demographics.sample(
-            n=1_000, random_state=0
-        )
+    puf_with_demographics = puf_with_demographics.sample(
+        n=1_000, random_state=0
+    )
 
     DEMOGRAPHIC_VARIABLES = [
         "AGEDP1",

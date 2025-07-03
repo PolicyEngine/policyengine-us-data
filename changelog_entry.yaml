@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    changed:
+    - PR tests to be more similar to production builds.

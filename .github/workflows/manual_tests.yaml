@@ -6,7 +6,7 @@ on:
       test_lite:
         description: 'Run in lite mode'
         required: true
-        default: 'true'
+        default: true
         type: boolean
 
 jobs:

@@ -1345,7 +1345,7 @@ def add_ssn_card_type(
             "population": code_0_after,
         }
     )
-     # NEW IMMIGRANT-CLASS TAGS FOR OBFBA
+    # NEW IMMIGRANT-CLASS TAGS FOR OBFBA
     # ----------------------------------
     years_in_us = 2024 - (1981 + person.PEINUSYR)
     birth = person.BPL
@@ -1358,7 +1358,9 @@ def add_ssn_card_type(
     mask = (ssn_card_type != 0) & np.isin(birth, list(cofa))
     imm_class[mask] = b"COFA"
 
-    mask = (ssn_card_type != 0) & np.isin(birth, [241, 250]) & (years_in_us <= 10)
+    mask = (
+        (ssn_card_type != 0) & np.isin(birth, [241, 250]) & (years_in_us <= 10)
+    )
     imm_class[mask] = b"CUBAN_HAITIAN_ENTRANT"
 
     mask = (
@@ -1379,7 +1381,6 @@ def add_ssn_card_type(
     imm_class[mask] = b"LPR_OR_QUALIFIED"
 
     cps["imm_class"] = imm_class
-
 
     # ============================================================================
     # CONVERT TO STRING LABELS AND STORE

@@ -423,3 +423,8 @@
     changed:
     - PR tests to be more similar to production builds.
   date: 2025-07-03 09:21:06
+- bump: minor
+  changes:
+    added:
+    - National income tax by state calibration targets from SOI.
+  date: 2025-07-07 14:26:50

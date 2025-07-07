@@ -612,6 +612,7 @@ def _add_tax_expenditure_targets(
         loss_matrix[f"nation/jct/{deduction}_expenditure"] = te_values
         targets_array.append(target)
 
+
 def get_agi_band_label(lower: float, upper: float) -> str:
     """Get the label for the AGI band based on lower and upper bounds."""
     if lower <= 0:
@@ -620,19 +621,18 @@ def get_agi_band_label(lower: float, upper: float) -> str:
         return f"{int(lower)}_inf"
     else:
         return f"{int(lower)}_{int(upper)}"
-    
 
 
-def get_national_income_tax_from_puf(puf, year = 2025):
+def get_national_tax_from_puf(tax_column: str, puf, year=2025):
     """
     Calculate the national total for income tax after credits from PUF data.
     """
     # Convert PUF to SOI format
     df = puf_to_soi(puf, year)
-    
+
     # Calculate weighted national total
-    national_total = (df["income_tax_after_credits"] * df["weight"]).sum()
-    
+    national_total = (df[tax_column] * df["weight"]).sum()
+
     return national_total
 
 
@@ -642,35 +642,36 @@ def _add_agi_state_targets():
     with federal income tax calibrated to national total.
     """
     soi_targets = pd.read_csv(STORAGE_FOLDER / "agi_state.csv")
-    
+
     # Calibrate federal income tax amounts to national PUF total
-    fed_tax_mask = (
-        (soi_targets["VARIABLE"] == "federal_income_tax/amount") & 
-        (soi_targets["IS_COUNT"] == 0)
+    fed_tax_mask = (soi_targets["VARIABLE"] == "federal_income_tax/amount") & (
+        soi_targets["IS_COUNT"] == 0
     )
-    
+
     if fed_tax_mask.any():
         # Get national total from PUF
-        
+
         # You'll need to have access to the puf data and year
-        national_total = get_national_income_tax_from_puf(puf)  
-      
+        national_total = get_national_tax_from_puf(
+            "income_tax_after_credits", puf
+        )
+
         # Calculate current state sum for federal income tax
         state_sum = soi_targets.loc[fed_tax_mask, "VALUE"].sum()
-        
+
         # Calculate scaling factor
         scaling_factor = national_total / state_sum
-        
+
         # Scale federal income tax values
         soi_targets.loc[fed_tax_mask, "VALUE"] *= scaling_factor
-        
+
         # Verify the scaling worked
         assert np.isclose(
-            soi_targets.loc[fed_tax_mask, "VALUE"].sum(), 
-            national_total, 
-            rtol=1e-8
+            soi_targets.loc[fed_tax_mask, "VALUE"].sum(),
+            national_total,
+            rtol=1e-8,
         ), f"Federal income tax totals do not sum to national target: {soi_targets.loc[fed_tax_mask, 'VALUE'].sum()} vs {national_total}"
-    
+
     # Create target names
     soi_targets["target_name"] = (
         "state/"
@@ -685,43 +686,46 @@ def _add_agi_state_targets():
             axis=1,
         )
     )
-    
+
     target_names = soi_targets["target_name"].tolist()
     target_values = soi_targets["VALUE"].astype(float).tolist()
     return target_names, target_values
 
 
 def add_agi_metric_columns(
-    loss_matrix: pd.DataFrame, 
+    loss_matrix: pd.DataFrame,
     sim,
 ):
     """
     Add AGI & National Income tax metric columns by state to the loss_matrix from the SOI.
     """
     soi_targets = pd.read_csv(STORAGE_FOLDER / "agi_state.csv")
-    
+
     # AGI is at tax unit level
     agi = sim.calculate("adjusted_gross_income").values
-    
+
     # Federal income tax is at household level - need to map to tax unit from household
     federal_income_tax_household = sim.calculate("income_tax").values
     income_tax = sim.map_result(
-        federal_income_tax_household, "household", "tax_unit", how="divide_by_num_of_tax_units"
+        federal_income_tax_household,
+        "household",
+        "tax_unit",
+        how="divide_by_num_of_tax_units",
     )
-    
+
     # State is at person level - map to tax unit
     state = sim.calculate("state_code", map_to="person").values
     state = sim.map_result(
         state, "person", "tax_unit", how="value_from_first_person"
     )
-    
+
     for _, r in soi_targets.iterrows():
         lower, upper = r.AGI_LOWER_BOUND, r.AGI_UPPER_BOUND
         band = get_agi_band_label(lower, upper)
-        
+
         in_state = state == r.GEO_NAME
         in_band = (agi > lower) & (agi <= upper)
-        
+
         # Determine which variable to use based on the target
         if "adjusted_gross_income" in r.VARIABLE:
             base_value = agi
@@ -729,18 +733,18 @@ def add_agi_metric_columns(
             base_value = income_tax
         else:
             continue
-            
+
         if r.IS_COUNT:
             metric = (in_state & in_band & (base_value > 0)).astype(float)
         else:
             metric = np.where(in_state & in_band, base_value, 0.0)
-            
+
         # Map back to household level for the loss matrix
         metric = sim.map_result(metric, "tax_unit", "household")
 
         col_name = f"state/{r.GEO_NAME}/{r.VARIABLE}/{band}"
         loss_matrix[col_name] = metric
-        
+
     return loss_matrix
 
 

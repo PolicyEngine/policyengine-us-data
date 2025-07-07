@@ -413,3 +413,13 @@
     changed:
     - Epochs increased to 1k.
   date: 2025-07-02 15:31:46
+- bump: minor
+  changes:
+    added:
+    - State SNAP calibration targets.
+  date: 2025-07-03 03:03:06
+- bump: patch
+  changes:
+    changed:
+    - PR tests to be more similar to production builds.
+  date: 2025-07-03 09:21:06

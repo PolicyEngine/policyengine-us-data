@@ -1,8 +1,12 @@
 import pandas as pd
-from .soi import pe_to_soi, get_soi
 import numpy as np
+
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage.pull_soi_state_targets import (
+    STATE_ABBR_TO_FIPS,
+)
 from policyengine_core.reforms import Reform
+from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
 
 def fmt(x):
@@ -549,6 +553,10 @@ def build_loss_matrix(dataset: type, time_period):
         loss_matrix, targets_array, sim
     )
 
+    snap_state_target_names, snap_state_targets = _add_snap_state_targets(sim)
+    targets_array.extend(snap_state_targets)
+    loss_matrix = _add_snap_metric_columns(loss_matrix, sim)
+
     return loss_matrix, np.array(targets_array)
 
 
@@ -773,3 +781,75 @@ def _add_state_real_estate_taxes(loss_matrix, targets_list, sim):
         loss_matrix[label] = real_estate_taxes * in_state
 
     return targets_list, loss_matrix
+
+
+def _add_snap_state_targets(sim):
+    """
+    Add snap targets at the state level, adjusted in aggregate to the sim
+    """
+    snap_targets = pd.read_csv(STORAGE_FOLDER / "snap_state.csv")
+    time_period = sim.default_calculation_period
+
+    national_cost_target = sim.tax_benefit_system.parameters(
+        time_period
+    ).calibration.gov.cbo._children["snap"]
+    ratio = snap_targets[["Cost"]].sum().values[0] / national_cost_target
+    snap_targets[["CostAdj"]] = snap_targets[["Cost"]] / ratio
+    assert (
+        np.round(snap_targets[["CostAdj"]].sum().values[0])
+        == national_cost_target
+    )
+
+    cost_targets = snap_targets.copy()[["GEO_ID", "CostAdj"]]
+    cost_targets["target_name"] = (
+        cost_targets["GEO_ID"].str[-4:] + "/snap-cost"
+    )
+
+    hh_targets = snap_targets.copy()[["GEO_ID", "Households"]]
+    hh_targets["target_name"] = snap_targets["GEO_ID"].str[-4:] + "/snap-hhs"
+
+    target_names = (
+        cost_targets["target_name"].tolist()
+        + hh_targets["target_name"].tolist()
+    )
+    target_values = (
+        cost_targets["CostAdj"].astype(float).tolist()
+        + hh_targets["Households"].astype(float).tolist()
+    )
+    return target_names, target_values
+
+
+def _add_snap_metric_columns(
+    loss_matrix: pd.DataFrame,
+    sim,
+):
+    """
+    Add SNAP metric columns to the loss_matrix.
+    """
+    snap_targets = pd.read_csv(STORAGE_FOLDER / "snap_state.csv")
+
+    snap_cost = sim.calculate("snap_reported", map_to="household").values
+    snap_hhs = (
+        sim.calculate("snap_reported", map_to="household").values > 0
+    ).astype(int)
+
+    state = sim.calculate("state_code", map_to="person").values
+    state = sim.map_result(
+        state, "person", "household", how="value_from_first_person"
+    )
+    STATE_ABBR_TO_FIPS["DC"] = 11
+    state_fips = pd.Series(state).apply(lambda s: STATE_ABBR_TO_FIPS[s])
+
+    for _, r in snap_targets.iterrows():
+        in_state = state_fips == r.GEO_ID[-2:]
+        metric = np.where(in_state, snap_cost, 0.0)
+        col_name = f"{r.GEO_ID[-4:]}/snap-cost"
+        loss_matrix[col_name] = metric
+
+    for _, r in snap_targets.iterrows():
+        in_state = state_fips == r.GEO_ID[-2:]
+        metric = np.where(in_state, snap_hhs, 0.0)
+        col_name = f"{r.GEO_ID[-4:]}/snap-hhs"
+        loss_matrix[col_name] = metric
+
+    return loss_matrix

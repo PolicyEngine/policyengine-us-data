@@ -1345,7 +1345,42 @@ def add_ssn_card_type(
             "population": code_0_after,
         }
     )
+    # NEW IMMIGRANT-CLASS TAGS FOR OBFBA
+    # ----------------------------------
+    years_in_us = 2024 - (1981 + person.PEINUSYR)
+    birth = person.BPL
+    age_at_entry = person.A_AGE - years_in_us
+    imm_class = np.full(len(person), b"UNSET", dtype="S20")
 
+    imm_class[ssn_card_type == 0] = b"UNDOCUMENTED"
+
+    cofa = {316, 317, 329}
+    mask = (ssn_card_type != 0) & np.isin(birth, list(cofa))
+    imm_class[mask] = b"COFA"
+
+    mask = (
+        (ssn_card_type != 0) & np.isin(birth, [241, 250]) & (years_in_us <= 10)
+    )
+    imm_class[mask] = b"CUBAN_HAITIAN_ENTRANT"
+
+    mask = (
+        (ssn_card_type == 2)
+        & (age_at_entry < 16)
+        & (years_in_us >= 8)
+        & (person.A_AGE >= 18)
+    )
+    imm_class[mask] = b"DACA"
+
+    mask = (ssn_card_type == 3) & (years_in_us <= 5) & (imm_class == b"UNSET")
+    imm_class[mask] = b"HUMANITARIAN_RECENT"
+
+    mask = (ssn_card_type == 2) & (imm_class == b"UNSET")
+    imm_class[mask] = b"TEMP_NONQUALIFIED"
+
+    mask = (ssn_card_type == 3) & (imm_class == b"UNSET")
+    imm_class[mask] = b"LPR_OR_QUALIFIED"
+
+    cps["imm_class"] = imm_class
     # ============================================================================
     # CONVERT TO STRING LABELS AND STORE
     # ============================================================================

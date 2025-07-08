@@ -1,9 +1,3 @@
-# Sources for datasets
-
-# title: Medicaid enrollment 2024
-reference: 
-
-
 # storage/ datasets 
 
 - **aca_spending_and_enrollment_2024.csv**  
@@ -14,4 +8,4 @@ reference:
 - **medicaid_enrollment_2024.csv**  
   • Source: MACPAC Enrollment Tables, FFY 2024  
   • Date: 2024  
-  • Location: `https://www.medicaid.gov/resources-for-states/downloads/eligib-oper-and-enrol-snap-december2024.pdf#page=26
+  • Location: https://www.medicaid.gov/resources-for-states/downloads/eligib-oper-and-enrol-snap-december2024.pdf#page=26

@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    fixed:
+    - Use SURVIVING_SPOUSE and is_surviving_spouse instead of WIDOW and is_widowed.

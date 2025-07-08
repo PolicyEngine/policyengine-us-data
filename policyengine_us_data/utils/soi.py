@@ -218,7 +218,9 @@ def compare_soi_replication_to_soi(df, soi):
         elif fs == "Head of Household":
             subset = subset[subset.filing_status == "HEAD_OF_HOUSEHOLD"]
         elif fs == "Married Filing Jointly/Surviving Spouse":
-            subset = subset[subset.filing_status.isin(["JOINT", "WIDOW"])]
+            subset = subset[
+                subset.filing_status.isin(["JOINT", "SURVIVING_SPOUSE"])
+            ]
         elif fs == "Married Filing Separately":
             subset = subset[subset.filing_status == "SEPARATE"]
 

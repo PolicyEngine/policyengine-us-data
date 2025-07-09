@@ -428,3 +428,8 @@
     fixed:
     - Use SURVIVING_SPOUSE and is_surviving_spouse instead of WIDOW and is_widowed.
   date: 2025-07-08 21:53:02
+- bump: minor
+  changes:
+    added:
+    - Medicaid state level calibration targets.
+  date: 2025-07-09 14:58:33

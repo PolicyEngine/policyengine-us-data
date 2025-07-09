@@ -1382,42 +1382,7 @@ def add_ssn_card_type(
 
     cps["imm_class"] = imm_class
 
-    # ── stock-target calibration for imm_class ────────────────────
-    IMM_CLASS_TARGET = {
-        b"UNDOCUMENTED":            13.7e6,
-        b"LPR_OR_QUALIFIED":        12.8e6,
-        b"COFA":                      94e3,
-        b"CUBAN_HAITIAN_ENTRANT":    150e3,
-        b"HUMANITARIAN_RECENT":     2.7e6,
-        b"TEMP_NONQUALIFIED":       2.4e6,
-        b"DACA":                    579e3,
-    }
-
-    for label, target in IMM_CLASS_TARGET.items():
-        current = np.sum(person_weights[imm_class == label])
-        if abs(current - target) / target < 0.01:
-            continue  # already close enough
-
-        if current > target:  # too many → move some out
-            eligible = np.where(imm_class == label)[0]
-            to_move = select_random_subset_to_target(
-                eligible, current, target, random_seed=42
-            )
-            imm_class[to_move] = b"LPR_OR_QUALIFIED"
-        else:                  # too few → pull similar people in
-            donor_mask = (
-                (imm_class == b"LPR_OR_QUALIFIED")
-                if label in {b"COFA", b"CUBAN_HAITIAN_ENTRANT", b"DACA"}
-                else (imm_class == b"TEMP_NONQUALIFIED")
-            )
-            eligible = np.where(donor_mask)[0]
-            to_move = select_random_subset_to_target(
-                eligible, current, target, random_seed=43 + hash(label) % 10
-            )
-            imm_class[to_move] = label
-
-    # (optionally log totals here)
-    cps["imm_class"] = imm_class  # overwrite with calibrated labels
+    
 
 
 

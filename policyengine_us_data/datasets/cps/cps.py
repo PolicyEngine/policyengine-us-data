@@ -1356,7 +1356,7 @@ def add_ssn_card_type(
 
     cofa = {316, 317, 329}
     mask = (ssn_card_type != 0) & np.isin(birth, list(cofa))
-    imm_class[mask] = b"COFA"
+    imm_class[mask] = b"LEGAL_PERMANENT_RESIDENT"
 
     mask = (
         (ssn_card_type != 0) & np.isin(birth, [241, 250]) & (years_in_us <= 10)

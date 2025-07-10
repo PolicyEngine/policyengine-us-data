@@ -59,9 +59,25 @@ def reweight(
             ((estimate - targets_array) + 1) / (targets_array + 1)
         ) ** 2
         rel_error_normalized = rel_error * normalisation_factor
+
+        # L0 penalty (approximated with smooth function)
+        # Since L0 is non-differentiable, we use a smooth approximation
+        # Common approaches:
+        
+        # Option 1: Sigmoid approximation
+        epsilon = 1e-3  # Threshold for "near zero"
+        l0_penalty_weight = 1e-1  # Adjust this hyperparameter
+        smoothed_l0 = torch.sigmoid((weights - epsilon) / (epsilon * 0.1)).mean()
+        
+        # Option 2: Log-sum penalty (smoother)
+        # smoothed_l0 = torch.log(1 + actual_weights / epsilon).sum() / len(actual_weights)
+        
+        # Option 3: Exponential penalty
+        # smoothed_l0 = (1 - torch.exp(-actual_weights / epsilon)).mean()
+
         if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
-        return rel_error_normalized.mean()
+        return rel_error_normalized.mean() + l0_penalty_weight * smoothed_l0
 
     def dropout_weights(weights, p):
         if p == 0:

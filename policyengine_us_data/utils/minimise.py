@@ -32,7 +32,9 @@ def create_calibration_log_file(file_path):
     df["rel_abs_error"] = df["abs_error"] / df["target"].abs()
     df["loss"] = (df["rel_error"] ** 2).mean()
 
-    df.to_csv(str(file_path).replace(".h5", "_calibration_log.csv"), index=False)
+    df.to_csv(
+        str(file_path).replace(".h5", "_calibration_log.csv"), index=False
+    )
 
 
 def minimise_dataset(

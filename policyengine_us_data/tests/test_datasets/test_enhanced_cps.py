@@ -115,7 +115,7 @@ def test_imm_class_none_target():
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
 
-    # Calculate the number of individuals with ssn_card_type == "NONE"
+    # Calculate the number of individuals with imm_classe == "UNDOCUMENTED"
     imm_class_none_mask = sim.calculate("imm_class") == "UNDOCUMENTED"
     count = imm_class_none_mask.sum()
 

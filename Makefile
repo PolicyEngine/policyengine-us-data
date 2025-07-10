@@ -46,6 +46,7 @@ data:
 	python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
+	python policyengine_us_data/utils/minimise.py
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

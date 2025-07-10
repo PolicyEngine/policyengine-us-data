@@ -1378,7 +1378,7 @@ def add_ssn_card_type(
     imm_class[mask] = b"TEMP_NONQUALIFIED"
 
     mask = (ssn_card_type == 3) & (imm_class == b"UNSET")
-    imm_class[mask] = b"LPR_OR_QUALIFIED"
+    imm_class[mask] = b"LEGAL_PERMANENT_RESIDENT"
 
     cps["imm_class"] = imm_class
 

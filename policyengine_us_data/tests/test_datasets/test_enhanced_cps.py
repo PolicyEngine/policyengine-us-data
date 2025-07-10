@@ -104,6 +104,7 @@ def test_ssn_card_type_none_target():
     )
     assert pct_error < TOLERANCE
 
+
 def test_imm_class_none_target():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation
@@ -124,6 +125,7 @@ def test_imm_class_none_target():
         f'Immigrant class type "UNDOCUMENTED" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
     )
     assert pct_error < TOLERANCE
+
 
 def test_ctc_reform_child_recipient_difference():
     """

@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+    - Updated the `policyengine-us` dependency to version 1.338.0.

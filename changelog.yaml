@@ -433,8 +433,3 @@
     added:
     - Medicaid state level calibration targets.
   date: 2025-07-09 14:58:33
-- bump: minor
-  changes:
-    added:
-    - Updated `policyengine-us` dependency to version 1.338.
-  date: 2025-07-10 12:18:33

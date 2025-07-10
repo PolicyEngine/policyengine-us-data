@@ -1348,7 +1348,7 @@ def add_ssn_card_type(
     # NEW IMMIGRANT-CLASS TAGS FOR OBFBA
     # ----------------------------------
     years_in_us = 2024 - (1981 + person.PEINUSYR)
-    birth = person.BPL
+    birth = person.PENATVTY
     age_at_entry = person.A_AGE - years_in_us
     imm_class = np.full(len(person), b"UNSET", dtype="S20")
 

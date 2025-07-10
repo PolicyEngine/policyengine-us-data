@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "policyengine_us_data"
-version = "1.37.0"
+version = "1.38.0"
 description = "A package to create representative microdata for the US."
 readme = "README.md"
 authors = [
@@ -17,7 +17,7 @@ authors = [
 license = {file = "LICENSE"}
 requires-python = ">=3.11, <3.13.0"
 dependencies = [
-    "policyengine-us>=1.197.0",
+    "policyengine-us>=1.338",
     "policyengine-core>=3.14.1",
     "requests",
     "tqdm",

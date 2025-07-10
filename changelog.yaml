@@ -428,3 +428,8 @@
     added:
     - National income tax by state calibration targets from SOI.
   date: 2025-07-07 14:26:50
+- bump: minor
+  changes:
+    added:
+    - Increased policyengine-us version to >=1.338
+  date: 2025-07-07 14:26:50

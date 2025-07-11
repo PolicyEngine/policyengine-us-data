@@ -100,13 +100,7 @@ class CPS(Dataset):
         original_dtypes = {
             key: original_data[key].dtype for key in original_data
         }
-        print("\n\nHERE IS THE PROBLEM-----")
-        print(f"frac is {frac}")
-        print(self)
-        print(Microsimulation)
         sim = Microsimulation(dataset=self)
-        print(sim)
-        print(sim.subsample)
         sim.subsample(frac=frac)
 
         for key in original_data:
@@ -2013,7 +2007,6 @@ if __name__ == "__main__":
     if test_lite:
         CPS_2023().generate()
         CPS_2024().generate()
-        print(3 + 9)
     else:
         CPS_2021().generate()
         CPS_2022().generate()

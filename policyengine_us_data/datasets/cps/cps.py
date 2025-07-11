@@ -107,7 +107,7 @@ class CPS(Dataset):
         sim = Microsimulation(dataset=self)
         print(sim)
         print(sim.subsample)
-        #sim.subsample(frac=frac)
+        # sim.subsample(frac=frac)
 
         for key in original_data:
             if key not in sim.tax_benefit_system.variables:

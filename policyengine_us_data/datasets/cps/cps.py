@@ -2072,7 +2072,7 @@ if __name__ == "__main__":
     if test_lite:
         CPS_2023().generate()
         CPS_2024().generate()
-        print(2 + 8)
+        print(2 + 0)
     else:
         CPS_2021().generate()
         CPS_2022().generate()

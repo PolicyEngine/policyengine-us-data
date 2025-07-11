@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import h5py
 from policyengine_us_data.storage import STORAGE_FOLDER
+from typing import Optional
 
 
 def create_calibration_log_file(file_path):
@@ -35,6 +36,57 @@ def create_calibration_log_file(file_path):
     df.to_csv(
         str(file_path).replace(".h5", "_calibration_log.csv"), index=False
     )
+
+
+def losses_for_candidates(
+    base_weights: np.ndarray,
+    idxs: np.ndarray,
+    est_mat: np.ndarray,
+    targets: np.ndarray,
+    norm: np.ndarray,
+    chunk_size: Optional[int] = 25_000,
+) -> np.ndarray:
+    """
+    Return the loss value *for each* candidate deletion in `idxs`
+    in one matrix multiplication.
+
+    Parameters
+    ----------
+    base_weights : (n,) original weight vector
+    idxs         : (k,) candidate row indices to zero-out
+    est_mat      : (n, m) estimate matrix
+    targets      : (m,) calibration targets
+    norm         : (m,) normalisation factors
+    chunk_size   : max number of candidates to process at once
+
+    Returns
+    -------
+    losses       : (k,) loss if row i were removed (and weights rescaled)
+    """
+    W = base_weights
+    total = W.sum()
+    k = len(idxs)
+    losses = np.empty(k, dtype=float)
+
+    # Work through the candidate list in blocks
+    for start in range(0, k, chunk_size):
+        stop = min(start + chunk_size, k)
+        part = idxs[start:stop]  # (p,) where p ≤ chunk_size
+        p = len(part)
+
+        # Build the delta matrix only for this chunk
+        delta = np.zeros((p, len(W)))
+        delta[np.arange(p), part] = -W[part]
+
+        keep_total = total + delta.sum(axis=1)  # (p,)
+        delta *= (total / keep_total)[:, None]
+
+        # Matrix–matrix multiply → one matrix multiplication per chunk
+        ests = (W + delta) @ est_mat  # (p, m)
+        rel_err = ((ests - targets) + 1) / (targets + 1)
+        losses[start:stop] = ((rel_err * norm) ** 2).mean(axis=1)
+
+    return losses
 
 
 def minimise_dataset(
@@ -95,19 +147,24 @@ def minimise_dataset(
             size=int(len(weights) * VIEW_FRACTION_PER_ITERATION),
             replace=False,
         )
-        for household_index in tqdm(indices):
-            # Skip if this household is already excluded
-            if not inclusion_mask[household_index]:
-                household_loss_rel_changes.append(np.inf)
-                continue
-            # Calculate loss if this household is removed
-            inclusion_mask = inclusion_mask.copy()
-            inclusion_mask[household_index] = False
-            loss = get_loss_from_mask(
-                inclusion_mask, estimate_matrix, targets, normalisation_factor
-            )
-            rel_change = (loss - baseline_loss) / baseline_loss
-            household_loss_rel_changes.append(rel_change)
+
+        # more efficient approach to compute losses for candidate households to be removed
+
+        # 1. sample only households that are currently *included*
+        indices = np.random.choice(
+            np.where(full_mask)[0],
+            size=int(full_mask.sum() * VIEW_FRACTION_PER_ITERATION),
+            replace=False,
+        )
+        # 2. compute losses for the batch in one shot
+        candidate_losses = losses_for_candidates(
+            weights, indices, estimate_matrix, targets, normalisation_factor
+        )
+        # 3. convert to relative change vs. baseline
+        household_loss_rel_changes = (
+            candidate_losses - baseline_loss
+        ) / baseline_loss
+
         inclusion_mask = full_mask.copy()
         household_loss_rel_changes = np.array(household_loss_rel_changes)
         # Sort by the relative change in loss

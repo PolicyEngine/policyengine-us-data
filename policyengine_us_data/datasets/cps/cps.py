@@ -2065,6 +2065,7 @@ class Pooled_3_Year_CPS_2023(PooledCPS):
 
 if __name__ == "__main__":
     if test_lite:
+        CPS_2023().generate()
         CPS_2024().generate()
     else:
         CPS_2021().generate()

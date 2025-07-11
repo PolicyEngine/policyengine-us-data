@@ -1,4 +1,4 @@
-- bump: minor
+- bump: patch
   changes:
-    added:
-    - Enhanced CPS minimizing tests. 
+    changed:
+    - lite mode now builds CPS_2023 in addition to CPS_2024

@@ -5,21 +5,10 @@ import numpy as np
 import pandas as pd
 import h5py
 from policyengine_us_data.storage import STORAGE_FOLDER
-from typing import Optional, Callable
-
-bad_targets = [
-    "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
-    "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
-    "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-    "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-    "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
-    "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
-    "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-    "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-]
+from typing import Optional
 
 
-def create_calibration_log_file(file_path, epoch=0):
+def create_calibration_log_file(file_path):
     dataset = Dataset.from_file(file_path)
 
     loss_matrix, targets = build_loss_matrix(dataset, 2024)
@@ -112,6 +101,27 @@ def losses_for_candidates(
     return losses
 
 
+def minimise_dataset(
+    dataset, output_path: str, loss_rel_change_max: float
+) -> None:
+    dataset = str(dataset)
+    create_calibration_log_file(dataset)
+
+    dataset = Dataset.from_file(dataset)
+    loss_matrix = build_loss_matrix(dataset, 2024)
+
+    sim = Microsimulation(dataset=dataset)
+
+    weights = sim.calculate("household_weight", 2024).values
+    estimate_matrix, targets = loss_matrix
+    is_national = estimate_matrix.columns.str.startswith("nation/")
+    nation_normalisation_factor = is_national * (1 / is_national.sum())
+    state_normalisation_factor = ~is_national * (1 / (~is_national).sum())
+    normalisation_factor = np.where(
+        is_national, nation_normalisation_factor, state_normalisation_factor
+    )
+    weights @ estimate_matrix
+
 def get_loss_from_mask(
     weights, inclusion_mask, estimate_matrix, targets, normalisation_factor
 ):
@@ -185,16 +195,25 @@ def candidate_loss_contribution(
             replace=False,
         )
 
-        # Compute losses for the batch in one shot
+        # more efficient approach to compute losses for candidate households to be removed
+
+        # 1. sample only households that are currently *included*
+        indices = np.random.choice(
+            np.where(full_mask)[0],
+            size=int(full_mask.sum() * VIEW_FRACTION_PER_ITERATION),
+            replace=False,
+        )
+        # 2. compute losses for the batch in one shot
         candidate_losses = losses_for_candidates(
             weights, indices, estimate_matrix, targets, normalisation_factor
         )
-
-        # Convert to relative change vs. baseline
+        # 3. convert to relative change vs. baseline
         household_loss_rel_changes = (
             candidate_losses - baseline_loss
         ) / baseline_loss
 
+        inclusion_mask = full_mask.copy()
+        household_loss_rel_changes = np.array(household_loss_rel_changes)
         # Sort by the relative change in loss
         sorted_indices = np.argsort(household_loss_rel_changes)
 

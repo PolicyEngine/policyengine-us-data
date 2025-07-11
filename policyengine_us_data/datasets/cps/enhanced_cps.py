@@ -40,7 +40,7 @@ def reweight(
     targets_array,
     dropout_rate=0.05,
     log_path="calibration_log.csv",
-    epochs=150,
+    penalty_approach="l0_sigmoid",
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -59,7 +59,7 @@ def reweight(
     )
 
     # TO DO: replace this with a call to the python reweight.py package.
-    def loss(weights, penalty_approach="l0_sigmoid"):
+    def loss(weights, penalty_approach=penalty_approach):
         # Check for Nans in either the weights or the loss matrix
         if torch.isnan(weights).any():
             raise ValueError("Weights contain NaNs")
@@ -98,6 +98,11 @@ def reweight(
             smoothed_l0 = (1 - torch.exp(-weights / epsilon)).mean()
 
         # L1 penalty
+        l1_penalty_weight = 1e-2  # Adjust this hyperparameterxs
+
+        if penalty_approach == "l1":
+            l1 = torch.mean(weights)
+            return rel_error_normalized.mean() + l1_penalty_weight * l1
 
         return rel_error_normalized.mean() + l0_penalty_weight * smoothed_l0
 

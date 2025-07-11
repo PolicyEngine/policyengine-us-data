@@ -2,6 +2,7 @@
 
 name: Code changes
 on:
+  workflow_call:
   push:
     branches:
       - main

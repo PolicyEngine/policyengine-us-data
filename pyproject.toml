@@ -17,7 +17,7 @@ authors = [
 license = {file = "LICENSE"}
 requires-python = ">=3.11, <3.13.0"
 dependencies = [
-    "policyengine-us>=1.197.0",
+    "policyengine-us>=1.333.0",
     "policyengine-core>=3.14.1",
     "requests",
     "tqdm",

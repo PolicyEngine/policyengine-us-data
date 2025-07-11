@@ -107,7 +107,7 @@ class CPS(Dataset):
         sim = Microsimulation(dataset=self)
         print(sim)
         print(sim.subsample)
-        # sim.subsample(frac=frac)
+        sim.subsample(frac=frac)
 
         for key in original_data:
             if key not in sim.tax_benefit_system.variables:
@@ -2013,7 +2013,7 @@ if __name__ == "__main__":
     if test_lite:
         CPS_2023().generate()
         CPS_2024().generate()
-        print(2 + 3)
+        print(2 + 5)
     else:
         CPS_2021().generate()
         CPS_2022().generate()

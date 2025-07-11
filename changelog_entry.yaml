@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    changed:
+    - lite mode now builds CPS_2023 in addition to CPS_2024

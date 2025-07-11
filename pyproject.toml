@@ -15,11 +15,11 @@ authors = [
     {name = "PolicyEngine", email = "hello@policyengine.org"},
 ]
 license = {file = "LICENSE"}
-requires-python = ">=3.11, <3.13.0"
+requires-python = ">=3.11, <3.11.13"
 dependencies = [
     "policyengine-us==1.333.0",
     "policyengine-core>=3.14.1",
-    "pandas==2.3.1",
+    "pandas==2.3.0",
     "requests",
     "tqdm",
     "microdf_python>=0.4.3",

@@ -49,7 +49,7 @@ jobs:
         run: python -c "from policyengine_core.data import Dataset; print('Core import OK')"
 
   Test:
-      runs-on: ubuntu-latest 
+      runs-on: ubuntu-latest
       needs: Lint
       env:
         HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}

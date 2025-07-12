@@ -28,6 +28,7 @@ def reweight(
     targets_array,
     dropout_rate=0.05,
     log_path="calibration_log.csv",
+    penalty_approach="l0_sigmoid",
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -45,8 +46,8 @@ def reweight(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
 
-    # TODO: replace this with a call to the python reweight.py package.
-    def loss(weights):
+    # TO DO: replace this with a call to the python reweight.py package.
+    def loss(weights, penalty_approach=penalty_approach):
         # Check for Nans in either the weights or the loss matrix
         if torch.isnan(weights).any():
             raise ValueError("Weights contain NaNs")
@@ -59,9 +60,39 @@ def reweight(
             ((estimate - targets_array) + 1) / (targets_array + 1)
         ) ** 2
         rel_error_normalized = rel_error * normalisation_factor
+
         if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
-        return rel_error_normalized.mean()
+
+        # L0 penalty (approximated with smooth function)
+        # Since L0 is non-differentiable, we use a smooth approximation
+        # Common approaches:
+
+        epsilon = 1e-3  # Threshold for "near zero"
+        l0_penalty_weight = 1e-1  # Adjust this hyperparameter
+
+        # Option 1: Sigmoid approximation
+        if penalty_approach == "l0_sigmoid":
+            smoothed_l0 = torch.sigmoid(
+                (weights - epsilon) / (epsilon * 0.1)
+            ).mean()
+
+        # Option 2: Log-sum penalty (smoother)
+        if penalty_approach == "l0_log":
+            smoothed_l0 = torch.log(1 + weights / epsilon).sum() / len(weights)
+
+        # Option 3: Exponential penalty
+        if penalty_approach == "l0_exp":
+            smoothed_l0 = (1 - torch.exp(-weights / epsilon)).mean()
+
+        # L1 penalty
+        l1_penalty_weight = 1e-2  # Adjust this hyperparameterxs
+
+        if penalty_approach == "l1":
+            l1 = torch.mean(weights)
+            return rel_error_normalized.mean() + l1_penalty_weight * l1
+
+        return rel_error_normalized.mean() + l0_penalty_weight * smoothed_l0
 
     def dropout_weights(weights, p):
         if p == 0:

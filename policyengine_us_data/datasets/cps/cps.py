@@ -100,7 +100,6 @@ class CPS(Dataset):
         original_dtypes = {
             key: original_data[key].dtype for key in original_data
         }
-
         sim = Microsimulation(dataset=self)
         sim.subsample(frac=frac)
 
@@ -2006,6 +2005,7 @@ class Pooled_3_Year_CPS_2023(PooledCPS):
 
 if __name__ == "__main__":
     if test_lite:
+        CPS_2023().generate()
         CPS_2024().generate()
     else:
         CPS_2021().generate()

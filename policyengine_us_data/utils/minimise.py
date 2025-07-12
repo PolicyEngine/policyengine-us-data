@@ -250,10 +250,11 @@ def random_sampling_minimization(
 def minimise_dataset(
     dataset,
     output_path: str,
-    loss_rel_change_max: float,
     minimization_function: Callable = candidate_loss_contribution,
     **kwargs,
 ) -> None:
+    #loss_rel_change_max = kwargs.pop('loss_rel_change_max', 10.0)
+
     """
     Main function to minimize a dataset using a specified minimization approach.
 
@@ -288,8 +289,7 @@ def minimise_dataset(
         estimate_matrix=estimate_matrix,
         targets=targets,
         normalisation_factor=normalisation_factor,
-        loss_rel_change_max=loss_rel_change_max,
-        **kwargs,
+        **kwargs, # Allows for passing either loss_rel_change_max OR target_fractions, depending on normalisation_factor choice.
     )
 
     # Extract household IDs for remaining households
@@ -344,6 +344,4 @@ if __name__ == "__main__":
         minimise_dataset(
             file,
             output_path,
-            loss_rel_change_max=10,
-            minimization_function=candidate_loss_contribution,
         )

@@ -209,9 +209,10 @@ def repair_inconsistencies(targets: np.ndarray,
     # ---- 1. nation -> states -------------------------------------------------
     df = idx.copy()
     df["value"] = values[df["i"]]
+    df["metric_norm"] = df["metric"].map(ALIASES).fillna(df["metric"])
 
     # Work metric by metric
-    for metric, grp in df.groupby("metric_value"):
+    for metric, grp in df.groupby("metric_norm"):
         nat_val = grp.loc[grp.level == "nation", "value"]
         if nat_val.empty:
             continue                    # no national comparator

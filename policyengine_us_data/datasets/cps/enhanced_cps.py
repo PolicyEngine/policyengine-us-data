@@ -190,6 +190,23 @@ class EnhancedCPS(Dataset):
             )
             data["household_weight"][year] = optimised_weights
 
+        print("\n\n---reweighting quick diagnostics----\n")
+        estimate = optimised_weights @ loss_matrix
+        rel_error = (
+            ((estimate - targets_array) + 1) / (targets_array + 1)
+        ) ** 2
+        print(
+            f"rel_error: min: {np.min(rel_error):.2f}, max: {np.max(rel_error):.2f}",
+            f"mean: {np.mean(rel_error):.2f}, median: {np.median(rel_error):.2f}"
+        )
+        print("Relative error over 100% for:")
+        for i in np.where(rel_error > 1)[0]:
+            print(f"target_name: {loss_matrix.columns[i]}")
+            print(f"target_value: {targets_array[i]}")
+            print(f"estimate_value: {estimate[i]}")
+            print(f"has rel_error: {rel_error.values[i]:.2f}\n")
+        print("---End of reweighting quick diagnostics------")
+
         self.save_dataset(data)
 
 

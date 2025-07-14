@@ -11,6 +11,14 @@ on:
       - tests/**
       - .github/workflows/**
 
+  workflow_call:
+    inputs:
+      TEST_LITE:
+        description: 'Run in lite mode'
+        type: boolean
+        required: false
+        default: false
+
 jobs:
   Lint:
     runs-on: ubuntu-latest
@@ -53,6 +61,7 @@ jobs:
       needs: Lint
       env:
         HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+        TEST_LITE: ${{ inputs.TEST_LITE }}
       steps:
           - name: Checkout repo
             uses: actions/checkout@v2
@@ -75,8 +84,9 @@ jobs:
           - name: Build datasets
             run: make data
             env:
-              TEST_LITE: true
-              PYTHON_LOG_LEVEL: INFO  
+              TEST_LITE: ${{ env.TEST_LITE }}
+              PYTHON_LOG_LEVEL: INFO
+
           - name: Save calibration log
             uses: actions/upload-artifact@v4
             with:

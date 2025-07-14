@@ -71,7 +71,7 @@ class CPS(Dataset):
             undocumented_students_target=0.21 * 1.9e6,
         )
         logging.info("Adding immigration class variables")
-        add_imm_class(cps, person)
+        add_immigration_status(cps, person)
         logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
         logging.info("Adding household variables")
@@ -1352,18 +1352,18 @@ def add_ssn_card_type(
     years_in_us = 2024 - (1981 + person.PEINUSYR)
     birth = person.PENATVTY
     age_at_entry = person.A_AGE - years_in_us
-    imm_class = np.full(len(person), "UNSET", dtype="U20")
+    immigration_status = np.full(len(person), "UNSET", dtype="U20")
 
-    imm_class[ssn_card_type == 0] = "UNDOCUMENTED"
+    immigration_status[ssn_card_type == 0] = "UNDOCUMENTED"
 
     cofa = {316, 317, 329}
     mask = (ssn_card_type != 0) & np.isin(birth, list(cofa))
-    imm_class[mask] = b"LEGAL_PERMANENT_RESIDENT"
+    immigration_status[mask] = b"LEGAL_PERMANENT_RESIDENT"
 
     mask = (
         (ssn_card_type != 0) & np.isin(birth, [241, 250]) & (years_in_us <= 10)
     )
-    imm_class[mask] = b"CUBAN_HAITIAN_ENTRANT"
+    immigration_status[mask] = b"CUBAN_HAITIAN_ENTRANT"
 
     mask = (
         (ssn_card_type == 2)
@@ -1371,18 +1371,18 @@ def add_ssn_card_type(
         & (years_in_us >= 8)
         & (person.A_AGE >= 18)
     )
-    imm_class[mask] = b"DACA"
+    immigration_status[mask] = b"DACA"
 
-    mask = (ssn_card_type == 3) & (years_in_us <= 5) & (imm_class == b"UNSET")
-    imm_class[mask] = b"HUMANITARIAN_RECENT"
+    mask = (ssn_card_type == 3) & (years_in_us <= 5) & (immigration_status == b"UNSET")
+    immigration_status[mask] = b"HUMANITARIAN_RECENT"
 
-    mask = (ssn_card_type == 2) & (imm_class == b"UNSET")
-    imm_class[mask] = b"TEMP_NONQUALIFIED"
+    mask = (ssn_card_type == 2) & (immigration_status == b"UNSET")
+    immigration_status[mask] = b"TEMP_NONQUALIFIED"
 
-    mask = (ssn_card_type == 3) & (imm_class == b"UNSET")
-    imm_class[mask] = b"LEGAL_PERMANENT_RESIDENT"
+    mask = (ssn_card_type == 3) & (immigration_status == b"UNSET")
+    immigration_status[mask] = b"LEGAL_PERMANENT_RESIDENT"
 
-    cps["imm_class"] = imm_class
+    cps["immigration_status"] = immigration_status
 
     # ============================================================================
     # CONVERT TO STRING LABELS AND STORE

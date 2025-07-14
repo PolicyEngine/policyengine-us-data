@@ -34,6 +34,7 @@ def reweight(
     dropout_rate=0.05,
     log_path="calibration_log.csv",
     epochs=150,
+    epochs=150,
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -51,6 +52,7 @@ def reweight(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
 
+    # TODO: replace this functionality from the microcalibrate package.
     # TODO: replace this functionality from the microcalibrate package.
     def loss(weights):
         # Check for Nans in either the weights or the loss matrix
@@ -300,6 +302,14 @@ class EnhancedCPS(Dataset):
             targets_array_clean = targets_array[keep_idx]
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
 
+            zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
+            bad_mask = loss_matrix.columns.isin(bad_targets)
+            keep_mask_bool = ~(zero_mask | bad_mask)
+            keep_idx = np.where(keep_mask_bool)[0]
+            loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
+            targets_array_clean = targets_array[keep_idx]
+            assert loss_matrix_clean.shape[1] == targets_array_clean.size
+
             optimised_weights = reweight(
                 original_weights,
                 loss_matrix_clean,
@@ -307,6 +317,7 @@ class EnhancedCPS(Dataset):
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
+                epochs=150,
                 epochs=150,
             )
             data["household_weight"][year] = optimised_weights

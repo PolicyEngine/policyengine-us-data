@@ -5,6 +5,7 @@ from policyengine_us_data.utils import (
     get_soi,
     build_loss_matrix,
     fmt,
+    HardConcrete,
 )
 import numpy as np
 from typing import Type
@@ -29,6 +30,7 @@ def reweight(
     dropout_rate=0.05,
     log_path="calibration_log.csv",
     epochs=150,
+    l0_lambda=1e-4,
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -45,6 +47,7 @@ def reweight(
     weights = torch.tensor(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
+    gates = HardConcrete(len(original_weights))
 
     # TODO: replace this functionality from the microcalibrate package.
     def loss(weights):
@@ -74,7 +77,7 @@ def reweight(
         masked_weights[mask] = mean
         return masked_weights
 
-    optimizer = torch.optim.Adam([weights], lr=3e-1)
+    optimizer = torch.optim.Adam([weights] + list(gates.parameters()), lr=3e-1)
     from tqdm import trange
 
     start_loss = None
@@ -84,9 +87,13 @@ def reweight(
     for i in iterator:
         optimizer.zero_grad()
         weights_ = dropout_weights(weights, dropout_rate)
-        l = loss(torch.exp(weights_))
+        masked = torch.exp(weights_) * gates()
+        l_main = loss(masked)
+        l = l_main + l0_lambda * gates.get_penalty()
         if (log_path is not None) and (i % 10 == 0):
-            estimates = torch.exp(weights) @ loss_matrix
+            gates.eval()
+            estimates = (torch.exp(weights) * gates()) @ loss_matrix
+            gates.train()
             estimates = estimates.detach().numpy()
             df = pd.DataFrame(
                 {
@@ -116,7 +123,10 @@ def reweight(
         if log_path is not None:
             performance.to_csv(log_path, index=False)
 
-    return torch.exp(weights).detach().numpy()
+    gates.eval()
+    final_weights = (torch.exp(weights) * gates()).detach().numpy()
+    gates.train()
+    return final_weights
 
 
 def train_previous_year_income_model():

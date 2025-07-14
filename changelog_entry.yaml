@@ -1,8 +1,0 @@
-- bump: patch
-  changes:
-    changed:
-    - bad targets (causing problems with estimation) removed
-    - lite mode now builds CPS_2023 in addition to CPS_2024
-    - gave reweight an epochs argument and set it at 150 for optimization
-    - updating minimum versions on policyengine-us and pandas dependencies
-    - getting rid of non-working manual workflow code

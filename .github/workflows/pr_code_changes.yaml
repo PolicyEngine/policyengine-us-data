@@ -66,6 +66,9 @@ jobs:
                 python-version: '3.11'
           - name: Install package
             run: uv pip install -e .[dev] --system
+          # UV sync
+          - name: Sync uv
+            run: uv sync
 
           - name: Download data inputs
             run: make download

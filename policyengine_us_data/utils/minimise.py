@@ -5,12 +5,31 @@ import numpy as np
 import pandas as pd
 import h5py
 from policyengine_us_data.storage import STORAGE_FOLDER
-from typing import Optional
+from typing import Optional, Callable
+
+bad_targets = [
+    "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
+    "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
+    "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
+    "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
+    "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
+    "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
+    "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
+    "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
+]
 
 
-def create_calibration_log_file(file_path):
+def create_calibration_log_file(file_path, epoch=0):
     dataset = Dataset.from_file(file_path)
 
+    loss_matrix, targets = build_loss_matrix(dataset, 2024)
+
+    bad_mask = loss_matrix.columns.isin(bad_targets)
+    keep_mask_bool = ~bad_mask
+    keep_idx = np.where(keep_mask_bool)[0]
+    loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
+    targets_clean = targets[keep_idx]
+    assert loss_matrix_clean.shape[1] == targets_clean.size
     loss_matrix, targets = build_loss_matrix(dataset, 2024)
 
     bad_mask = loss_matrix.columns.isin(bad_targets)
@@ -26,18 +45,29 @@ def create_calibration_log_file(file_path):
         sim.calculate("household_weight", 2024).values @ loss_matrix_clean
     )
     target_names = loss_matrix_clean.columns
+    estimates = (
+        sim.calculate("household_weight", 2024).values @ loss_matrix_clean
+    )
+    target_names = loss_matrix_clean.columns
 
     df = pd.DataFrame(
         {
             "target_name": target_names,
             "estimate": estimates,
             "target": targets_clean,
+            "target": targets_clean,
         }
     )
+    df["epoch"] = epoch
     df["epoch"] = epoch
     df["error"] = df["estimate"] - df["target"]
     df["rel_error"] = df["error"] / df["target"]
     df["abs_error"] = df["error"].abs()
+    df["rel_abs_error"] = (
+        df["abs_error"] / df["target"].abs()
+        if df["target"].abs().sum() > 0
+        else np.nan
+    )
     df["rel_abs_error"] = (
         df["abs_error"] / df["target"].abs()
         if df["target"].abs().sum() > 0
@@ -258,10 +288,13 @@ def random_sampling_minimization(
     targets,
     normalisation_factor,
     random=True,
+    random=True,
     target_fractions=[0.1, 0.2, 0.3, 0.4, 0.5],
 ):
     """A simple random sampling approach"""
     n = len(weights)
+
+    household_weights_normalized = weights / weights.sum()
 
     household_weights_normalized = weights / weights.sum()
 
@@ -275,6 +308,14 @@ def random_sampling_minimization(
 
         for _ in range(5):  # Try 5 random samples
             mask = np.zeros(n, dtype=bool)
+            mask[
+                np.random.choice(
+                    n,
+                    target_size,
+                    p=household_weights_normalized if random else None,
+                    replace=False,
+                )
+            ] = True
             mask[
                 np.random.choice(
                     n,
@@ -328,10 +369,19 @@ def minimise_dataset(
     loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
     targets_clean = targets[keep_idx]
     assert loss_matrix_clean.shape[1] == targets_clean.size
+    loss_matrix, targets = build_loss_matrix(dataset, 2024)
+
+    bad_mask = loss_matrix.columns.isin(bad_targets)
+    keep_mask_bool = ~bad_mask
+    keep_idx = np.where(keep_mask_bool)[0]
+    loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
+    targets_clean = targets[keep_idx]
+    assert loss_matrix_clean.shape[1] == targets_clean.size
 
     sim = Microsimulation(dataset=dataset)
 
     weights = sim.calculate("household_weight", 2024).values
+    is_national = loss_matrix_clean.columns.str.startswith("nation/")
     is_national = loss_matrix_clean.columns.str.startswith("nation/")
     nation_normalisation_factor = is_national * (1 / is_national.sum())
     state_normalisation_factor = ~is_national * (1 / (~is_national).sum())
@@ -344,7 +394,10 @@ def minimise_dataset(
         weights=weights,
         estimate_matrix=loss_matrix_clean,
         targets=targets_clean,
+        estimate_matrix=loss_matrix_clean,
+        targets=targets_clean,
         normalisation_factor=normalisation_factor,
+        **kwargs,  # Allows for passing either loss_rel_change_max OR target_fractions, depending on normalisation_factor choice.
         **kwargs,  # Allows for passing either loss_rel_change_max OR target_fractions, depending on normalisation_factor choice.
     )
 
@@ -386,7 +439,7 @@ def minimise_dataset(
                 f.create_dataset(f"{variable}/{year}", data=value)
 
     print(f"Saved minimised dataset to {output_path}")
-    create_calibration_log_file(output_path)    
+    create_calibration_log_file(output_path, epoch=500)
 
 
 if __name__ == "__main__":

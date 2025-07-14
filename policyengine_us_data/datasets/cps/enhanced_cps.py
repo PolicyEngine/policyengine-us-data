@@ -40,7 +40,7 @@ def reweight(
     targets_array,
     dropout_rate=0.05,
     log_path="calibration_log.csv",
-    penalty_approach="l0_sigmoid",
+    penalty_approach=None,
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -76,35 +76,43 @@ def reweight(
         if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
 
-        # L0 penalty (approximated with smooth function)
-        # Since L0 is non-differentiable, we use a smooth approximation
-        # Common approaches:
+        if penalty_approach is not None:
+            # L0 penalty (approximated with smooth function)
+            # Since L0 is non-differentiable, we use a smooth approximation
+            # Common approaches:
 
-        epsilon = 1e-3  # Threshold for "near zero"
-        l0_penalty_weight = 1e-1  # Adjust this hyperparameter
+            epsilon = 1e-3  # Threshold for "near zero"
+            l0_penalty_weight = 1e-1  # Adjust this hyperparameter
 
-        # Option 1: Sigmoid approximation
-        if penalty_approach == "l0_sigmoid":
-            smoothed_l0 = torch.sigmoid(
-                (weights - epsilon) / (epsilon * 0.1)
-            ).mean()
+            # Option 1: Sigmoid approximation
+            if penalty_approach == "l0_sigmoid":
+                smoothed_l0 = torch.sigmoid(
+                    (weights - epsilon) / (epsilon * 0.1)
+                ).mean()
 
-        # Option 2: Log-sum penalty (smoother)
-        if penalty_approach == "l0_log":
-            smoothed_l0 = torch.log(1 + weights / epsilon).sum() / len(weights)
+            # Option 2: Log-sum penalty (smoother)
+            if penalty_approach == "l0_log":
+                smoothed_l0 = torch.log(1 + weights / epsilon).sum() / len(
+                    weights
+                )
 
-        # Option 3: Exponential penalty
-        if penalty_approach == "l0_exp":
-            smoothed_l0 = (1 - torch.exp(-weights / epsilon)).mean()
+            # Option 3: Exponential penalty
+            if penalty_approach == "l0_exp":
+                smoothed_l0 = (1 - torch.exp(-weights / epsilon)).mean()
 
-        # L1 penalty
-        l1_penalty_weight = 1e-2  # Adjust this hyperparameterxs
+            # L1 penalty
+            l1_penalty_weight = 1e-2  # Adjust this hyperparameterxs
 
-        if penalty_approach == "l1":
-            l1 = torch.mean(weights)
-            return rel_error_normalized.mean() + l1_penalty_weight * l1
+            if penalty_approach == "l1":
+                l1 = torch.mean(weights)
+                return rel_error_normalized.mean() + l1_penalty_weight * l1
 
-        return rel_error_normalized.mean() + l0_penalty_weight * smoothed_l0
+            return (
+                rel_error_normalized.mean() + l0_penalty_weight * smoothed_l0
+            )
+
+        else:
+            return rel_error_normalized.mean()
 
     def dropout_weights(weights, p):
         if p == 0:
@@ -249,9 +257,9 @@ class EnhancedCPS(Dataset):
             loss_matrix, targets_array = build_loss_matrix(
                 self.input_dataset, year
             )
-            zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
+
             bad_mask = loss_matrix.columns.isin(bad_targets)
-            keep_mask_bool = ~(zero_mask | bad_mask)
+            keep_mask_bool = ~bad_mask
             keep_idx = np.where(keep_mask_bool)[0]
             loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
             targets_array_clean = targets_array[keep_idx]

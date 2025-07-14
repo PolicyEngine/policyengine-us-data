@@ -1373,7 +1373,11 @@ def add_ssn_card_type(
     )
     immigration_status[mask] = b"DACA"
 
-    mask = (ssn_card_type == 3) & (years_in_us <= 5) & (immigration_status == b"UNSET")
+    mask = (
+        (ssn_card_type == 3)
+        & (years_in_us <= 5)
+        & (immigration_status == b"UNSET")
+    )
     immigration_status[mask] = b"HUMANITARIAN_RECENT"
 
     mask = (ssn_card_type == 2) & (immigration_status == b"UNSET")

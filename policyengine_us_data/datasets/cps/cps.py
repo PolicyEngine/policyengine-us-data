@@ -70,6 +70,8 @@ class CPS(Dataset):
             undocumented_workers_target=8.3e6,
             undocumented_students_target=0.21 * 1.9e6,
         )
+        logging.info("Adding immigration class variables")
+        add_imm_class(cps, person)
         logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
         logging.info("Adding household variables")
@@ -1348,7 +1350,7 @@ def add_ssn_card_type(
     # NEW IMMIGRANT-CLASS TAGS FOR OBFBA
     # ----------------------------------
     years_in_us = 2024 - (1981 + person.PEINUSYR)
-    birth = person.BPL
+    birth = person.PENATVTY
     age_at_entry = person.A_AGE - years_in_us
     imm_class = np.full(len(person), "UNSET", dtype="U20")
 

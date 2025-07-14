@@ -105,7 +105,7 @@ def test_ssn_card_type_none_target():
     assert pct_error < TOLERANCE
 
 
-def test_imm_class_none_target():
+def test_immigration_status_none_target():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation
     import numpy as np
@@ -115,9 +115,9 @@ def test_imm_class_none_target():
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
 
-    # Calculate the number of individuals with imm_classe == "UNDOCUMENTED"
-    imm_class_none_mask = sim.calculate("imm_class") == "UNDOCUMENTED"
-    count = imm_class_none_mask.sum()
+    # Calculate the number of individuals with immigration_statuse == "UNDOCUMENTED"
+    immigration_status_none_mask = sim.calculate("immigration_status") == "UNDOCUMENTED"
+    count = immigration_status_none_mask.sum()
 
     pct_error = abs((count - TARGET_COUNT) / TARGET_COUNT)
 

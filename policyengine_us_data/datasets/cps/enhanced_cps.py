@@ -29,6 +29,7 @@ def reweight(
     dropout_rate=0.05,
     log_path="calibration_log.csv",
     epochs=150,
+    epochs=150,
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -46,6 +47,7 @@ def reweight(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
 
+    # TODO: replace this functionality from the microcalibrate package.
     # TODO: replace this functionality from the microcalibrate package.
     def loss(weights):
         # Check for Nans in either the weights or the loss matrix
@@ -79,6 +81,7 @@ def reweight(
 
     start_loss = None
 
+    iterator = trange(epochs)
     iterator = trange(epochs)
     performance = pd.DataFrame()
     for i in iterator:
@@ -199,7 +202,7 @@ class EnhancedCPS(Dataset):
             "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
             "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
             "state/RI/adjusted_gross_income/amount/-inf_1",
-            "nation/irs/exempt interest/count/AGI in -inf-inf/taxable/All",
+            "target_name: nation/irs/exempt interest/count/AGI in -inf-inf/taxable/All",
         ]
 
         # Run the optimization procedure to get (close to) minimum loss weights
@@ -215,14 +218,45 @@ class EnhancedCPS(Dataset):
             targets_array_clean = targets_array[keep_idx]
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
 
+            zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
+            bad_mask = loss_matrix.columns.isin(bad_targets)
+            keep_mask_bool = ~(zero_mask | bad_mask)
+            keep_idx = np.where(keep_mask_bool)[0]
+            loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
+            targets_array_clean = targets_array[keep_idx]
+            assert loss_matrix_clean.shape[1] == targets_array_clean.size
+
             optimised_weights = reweight(
                 original_weights,
                 loss_matrix_clean,
                 targets_array_clean,
+                loss_matrix_clean,
+                targets_array_clean,
                 log_path="calibration_log.csv",
+                epochs=150,
                 epochs=150,
             )
             data["household_weight"][year] = optimised_weights
+
+            print("\n\n---reweighting quick diagnostics----\n")
+            estimate = optimised_weights @ loss_matrix_clean
+            rel_error = (
+                ((estimate - targets_array_clean) + 1)
+                / (targets_array_clean + 1)
+            ) ** 2
+            print(
+                f"rel_error: min: {np.min(rel_error):.2f}, "
+                f"max: {np.max(rel_error):.2f} "
+                f"mean: {np.mean(rel_error):.2f}, "
+                f"median: {np.median(rel_error):.2f}"
+            )
+            print("Relative error over 100% for:")
+            for i in np.where(rel_error > 1)[0]:
+                print(f"target_name: {loss_matrix_clean.columns[i]}")
+                print(f"target_value: {targets_array_clean[i]}")
+                print(f"estimate_value: {estimate[i]}")
+                print(f"has rel_error: {rel_error[i]:.2f}\n")
+            print("---End of reweighting quick diagnostics------")
 
         print("\n\n---reweighting quick diagnostics----\n")
         estimate = optimised_weights @ loss_matrix

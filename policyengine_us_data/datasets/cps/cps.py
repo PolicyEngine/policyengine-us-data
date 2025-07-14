@@ -1348,11 +1348,11 @@ def add_ssn_card_type(
     # NEW IMMIGRANT-CLASS TAGS FOR OBFBA
     # ----------------------------------
     years_in_us = 2024 - (1981 + person.PEINUSYR)
-    birth = person.PENATVTY
+    birth = person.BPL
     age_at_entry = person.A_AGE - years_in_us
-    imm_class = np.full(len(person), b"UNSET", dtype="S20")
+    imm_class = np.full(len(person), "UNSET", dtype="U20")
 
-    imm_class[ssn_card_type == 0] = b"UNDOCUMENTED"
+    imm_class[ssn_card_type == 0] = "UNDOCUMENTED"
 
     cofa = {316, 317, 329}
     mask = (ssn_card_type != 0) & np.isin(birth, list(cofa))
@@ -1393,7 +1393,7 @@ def add_ssn_card_type(
         3: "OTHER_NON_CITIZEN",  # Non-citizens with indicators of legal status
     }
     ssn_card_type_str = (
-        pd.Series(ssn_card_type).map(code_to_str).astype("S").values
+        pd.Series(ssn_card_type).map(code_to_str).astype("U").values
     )
     cps["ssn_card_type"] = ssn_card_type_str
 

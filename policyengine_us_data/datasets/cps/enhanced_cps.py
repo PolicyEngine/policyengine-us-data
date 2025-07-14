@@ -39,6 +39,7 @@ def reweight(
     loss_matrix,
     targets_array,
     dropout_rate=0.05,
+    epochs=500,
     log_path="calibration_log.csv",
     penalty_approach=None,
 ):
@@ -129,7 +130,7 @@ def reweight(
 
     start_loss = None
 
-    iterator = trange(500)
+    iterator = trange(epochs)
     performance = pd.DataFrame()
     for i in iterator:
         optimizer.zero_grad()
@@ -229,6 +230,30 @@ class EnhancedCPS(Dataset):
         original_weights = original_weights.values + np.random.normal(
             1, 0.1, len(original_weights)
         )
+
+        bad_targets = [
+            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
+            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
+            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
+            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
+            "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
+            "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
+            "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
+            "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
+            "state/RI/adjusted_gross_income/amount/-inf_1",
+            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
+            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
+            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
+            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
+            "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
+            "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
+            "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
+            "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
+            "state/RI/adjusted_gross_income/amount/-inf_1",
+            "nation/irs/exempt interest/count/AGI in -inf-inf/taxable/All",
+        ]
+
+        # Run the optimization procedure to get (close to) minimum loss weights
         for year in range(self.start_year, self.end_year + 1):
             loss_matrix, targets_array = build_loss_matrix(
                 self.input_dataset, year
@@ -246,8 +271,29 @@ class EnhancedCPS(Dataset):
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
+                epochs=150,
             )
             data["household_weight"][year] = optimised_weights
+
+            print("\n\n---reweighting quick diagnostics----\n")
+            estimate = optimised_weights @ loss_matrix_clean
+            rel_error = (
+                ((estimate - targets_array_clean) + 1)
+                / (targets_array_clean + 1)
+            ) ** 2
+            print(
+                f"rel_error: min: {np.min(rel_error):.2f}, "
+                f"max: {np.max(rel_error):.2f} "
+                f"mean: {np.mean(rel_error):.2f}, "
+                f"median: {np.median(rel_error):.2f}"
+            )
+            print("Relative error over 100% for:")
+            for i in np.where(rel_error > 1)[0]:
+                print(f"target_name: {loss_matrix_clean.columns[i]}")
+                print(f"target_value: {targets_array_clean[i]}")
+                print(f"estimate_value: {estimate[i]}")
+                print(f"has rel_error: {rel_error[i]:.2f}\n")
+            print("---End of reweighting quick diagnostics------")
 
         self.save_dataset(data)
 

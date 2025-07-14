@@ -552,11 +552,6 @@ def build_loss_matrix(dataset: type, time_period):
         # Convert to thousands for the target
         targets_array.append(row["enrollment"])
 
-        print(
-            f"Targeting Medicaid enrollment for {row['state']} "
-            f"with target {row['enrollment']:.0f}k"
-        )
-
     # State 10-year age targets
 
     age_targets = pd.read_csv(STORAGE_FOLDER / "age_state.csv")

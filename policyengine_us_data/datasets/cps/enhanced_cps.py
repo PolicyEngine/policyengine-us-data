@@ -197,7 +197,7 @@ class EnhancedCPS(Dataset):
         ) ** 2
         print(
             f"rel_error: min: {np.min(rel_error):.2f}, max: {np.max(rel_error):.2f}",
-            f"mean: {np.mean(rel_error):.2f}, median: {np.median(rel_error):.2f}"
+            f"mean: {np.mean(rel_error):.2f}, median: {np.median(rel_error):.2f}",
         )
         print("Relative error over 100% for:")
         for i in np.where(rel_error > 1)[0]:

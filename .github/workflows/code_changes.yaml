@@ -2,6 +2,7 @@
 
 name: Code changes
 on:
+  workflow_call:
   push:
     branches:
       - main
@@ -27,7 +28,7 @@ jobs:
         contents: "read"
         # Required to auth against gcp
         id-token: "write"
-      runs-on: larger-runner
+      runs-on: ubuntu-latest
       steps:
           - name: Checkout repo
             uses: actions/checkout@v2

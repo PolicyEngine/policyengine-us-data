@@ -270,8 +270,6 @@ class EnhancedCPS(Dataset):
                 original_weights,
                 loss_matrix_clean,
                 targets_array_clean,
-                loss_matrix_clean,
-                targets_array_clean,
                 log_path="calibration_log.csv",
                 epochs=150,
             )

@@ -75,19 +75,12 @@ def create_calibration_log_file(file_path, epoch=0):
             "target_name": target_names,
             "estimate": estimates,
             "target": targets_clean,
-            "target": targets_clean,
         }
     )
-    df["epoch"] = epoch
     df["epoch"] = epoch
     df["error"] = df["estimate"] - df["target"]
     df["rel_error"] = df["error"] / df["target"]
     df["abs_error"] = df["error"].abs()
-    df["rel_abs_error"] = (
-        df["abs_error"] / df["target"].abs()
-        if df["target"].abs().sum() > 0
-        else np.nan
-    )
     df["rel_abs_error"] = (
         df["abs_error"] / df["target"].abs()
         if df["target"].abs().sum() > 0
@@ -171,6 +164,7 @@ def minimise_dataset(
         is_national, nation_normalisation_factor, state_normalisation_factor
     )
     weights @ estimate_matrix
+
 
 def get_loss_from_mask(
     weights, inclusion_mask, estimate_matrix, targets, normalisation_factor
@@ -264,15 +258,6 @@ def candidate_loss_contribution(
             size=int(full_mask.sum() * view_fraction_per_iteration),
             replace=False,
         )
-
-        # more efficient approach to compute losses for candidate households to be removed
-
-        # 1. sample only households that are currently *included*
-        indices = np.random.choice(
-            np.where(full_mask)[0],
-            size=int(full_mask.sum() * VIEW_FRACTION_PER_ITERATION),
-            replace=False,
-        )
         # 2. compute losses for the batch in one shot
         candidate_losses = losses_for_candidates(
             weights, indices, estimate_matrix, targets, normalisation_factor
@@ -335,8 +320,6 @@ def random_sampling_minimization(
 
     household_weights_normalized = weights / weights.sum()
 
-    household_weights_normalized = weights / weights.sum()
-
     final_mask = None
     lowest_loss = float("inf")
     for fraction in target_fractions:
@@ -347,14 +330,6 @@ def random_sampling_minimization(
 
         for _ in range(3):  # Try 3 random samples
             mask = np.zeros(n, dtype=bool)
-            mask[
-                np.random.choice(
-                    n,
-                    target_size,
-                    p=household_weights_normalized if random else None,
-                    replace=False,
-                )
-            ] = True
             mask[
                 np.random.choice(
                     n,
@@ -408,19 +383,10 @@ def minimise_dataset(
     loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
     targets_clean = targets[keep_idx]
     assert loss_matrix_clean.shape[1] == targets_clean.size
-    loss_matrix, targets = build_loss_matrix(dataset, 2024)
-
-    bad_mask = loss_matrix.columns.isin(bad_targets)
-    keep_mask_bool = ~bad_mask
-    keep_idx = np.where(keep_mask_bool)[0]
-    loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
-    targets_clean = targets[keep_idx]
-    assert loss_matrix_clean.shape[1] == targets_clean.size
 
     sim = Microsimulation(dataset=dataset)
 
     weights = sim.calculate("household_weight", 2024).values
-    is_national = loss_matrix_clean.columns.str.startswith("nation/")
     is_national = loss_matrix_clean.columns.str.startswith("nation/")
     nation_normalisation_factor = is_national * (1 / is_national.sum())
     state_normalisation_factor = ~is_national * (1 / (~is_national).sum())
@@ -433,10 +399,7 @@ def minimise_dataset(
         weights=weights,
         estimate_matrix=loss_matrix_clean,
         targets=targets_clean,
-        estimate_matrix=loss_matrix_clean,
-        targets=targets_clean,
         normalisation_factor=normalisation_factor,
-        **kwargs,  # Allows for passing either loss_rel_change_max OR target_fractions, depending on normalisation_factor choice.
         **kwargs,  # Allows for passing either loss_rel_change_max OR target_fractions, depending on normalisation_factor choice.
     )
 

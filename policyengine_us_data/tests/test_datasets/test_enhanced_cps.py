@@ -116,7 +116,9 @@ def test_immigration_status_none_target():
     sim = Microsimulation(dataset=EnhancedCPS_2024)
 
     # Calculate the number of individuals with immigration_statuse == "UNDOCUMENTED"
-    immigration_status_none_mask = sim.calculate("immigration_status") == "UNDOCUMENTED"
+    immigration_status_none_mask = (
+        sim.calculate("immigration_status") == "UNDOCUMENTED"
+    )
     count = immigration_status_none_mask.sum()
 
     pct_error = abs((count - TARGET_COUNT) / TARGET_COUNT)

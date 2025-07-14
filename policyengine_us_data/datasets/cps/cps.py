@@ -70,8 +70,6 @@ class CPS(Dataset):
             undocumented_workers_target=8.3e6,
             undocumented_students_target=0.21 * 1.9e6,
         )
-        logging.info("Adding immigration class variables")
-        add_immigration_status(cps, person)
         logging.info("Adding family variables")
         add_spm_variables(cps, spm_unit)
         logging.info("Adding household variables")

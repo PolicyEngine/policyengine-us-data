@@ -18,7 +18,7 @@ license = {file = "LICENSE"}
 requires-python = ">=3.11, <3.13.0"
 dependencies = [
     "policyengine-us>=1.340.1",
-    "policyengine-core>=3.14.1",
+    "policyengine-core>=3.17.1",
     "pandas>=2.3.0",
     "requests",
     "tqdm",

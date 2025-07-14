@@ -39,6 +39,7 @@ def reweight(
     loss_matrix,
     targets_array,
     dropout_rate=0.05,
+    epochs=500,
     log_path="calibration_log.csv",
     penalty_approach=None,
 ):

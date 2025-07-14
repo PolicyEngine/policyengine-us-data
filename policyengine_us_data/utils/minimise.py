@@ -6,6 +6,7 @@ import pandas as pd
 import h5py
 from policyengine_us_data.storage import STORAGE_FOLDER
 from typing import Optional, Callable
+from policyengine_us_data.datasets.cps.enhanced_cps import reweight
 
 bad_targets = [
     "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
@@ -20,35 +21,54 @@ bad_targets = [
 
 
 def create_calibration_log_file(file_path, epoch=0):
+    print(f"=== CALIBRATION LOG DEBUG ===")
+    print(f"File path: {file_path}")
+    print(f"Epoch: {epoch}")
+
     dataset = Dataset.from_file(file_path)
-
-    loss_matrix, targets = build_loss_matrix(dataset, 2024)
-
-    bad_mask = loss_matrix.columns.isin(bad_targets)
-    keep_mask_bool = ~bad_mask
-    keep_idx = np.where(keep_mask_bool)[0]
-    loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
-    targets_clean = targets[keep_idx]
-    assert loss_matrix_clean.shape[1] == targets_clean.size
-    loss_matrix, targets = build_loss_matrix(dataset, 2024)
-
-    bad_mask = loss_matrix.columns.isin(bad_targets)
-    keep_mask_bool = ~bad_mask
-    keep_idx = np.where(keep_mask_bool)[0]
-    loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
-    targets_clean = targets[keep_idx]
-    assert loss_matrix_clean.shape[1] == targets_clean.size
-
     sim = Microsimulation(dataset=dataset)
 
+    # Debug: Print dataset info
+    household_weights = sim.calculate("household_weight", 2024)
+    print(f"Number of households: {len(household_weights)}")
+    print(f"Total weight: {household_weights.sum():.2f}")
+    print(
+        f"Weight range: {household_weights.min():.2f} to {household_weights.max():.2f}"
+    )
+
+    loss_matrix, targets = build_loss_matrix(dataset, 2024)
+    print(f"Loss matrix shape: {loss_matrix.shape}")
+    print(f"Number of targets: {len(targets)}")
+
+    bad_mask = loss_matrix.columns.isin(bad_targets)
+    keep_mask_bool = ~bad_mask
+    keep_idx = np.where(keep_mask_bool)[0]
+    loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
+    targets_clean = targets[keep_idx]
+
+    print(f"After filtering bad targets:")
+    print(f"Loss matrix clean shape: {loss_matrix_clean.shape}")
+    print(f"Number of clean targets: {len(targets_clean)}")
+
+    assert loss_matrix_clean.shape[1] == targets_clean.size
+
     estimates = (
         sim.calculate("household_weight", 2024).values @ loss_matrix_clean
     )
     target_names = loss_matrix_clean.columns
-    estimates = (
-        sim.calculate("household_weight", 2024).values @ loss_matrix_clean
-    )
-    target_names = loss_matrix_clean.columns
+
+    # Debug: Print estimate statistics
+    print(f"Estimates shape: {estimates.shape}")
+    print(f"Estimates sum: {estimates.sum():.2f}")
+    print(f"First 3 estimates: {estimates[:3]}")
+    print(f"First 3 targets: {targets_clean[:3]}")
+
+    # Calculate and print some key metrics
+    errors = estimates - targets_clean
+    rel_errors = errors / targets_clean
+    print(f"Mean absolute error: {np.abs(errors).mean():.2f}")
+    print(f"Mean relative error: {np.abs(rel_errors).mean():.4f}")
+    print(f"=== END DEBUG ===\n")
 
     df = pd.DataFrame(
         {
@@ -158,6 +178,7 @@ def get_loss_from_mask(
     """
     Calculate the loss based on the inclusion mask and the estimate matrix.
     """
+    # Step 1: Apply mask and rescale weights
     masked_weights = weights.copy()
     original_weight_total = masked_weights.sum()
     if (~inclusion_mask).sum() > 0:
@@ -166,7 +187,26 @@ def get_loss_from_mask(
     masked_weights[inclusion_mask] *= (
         original_weight_total / masked_weight_total
     )
-    estimates = masked_weights @ estimate_matrix
+
+    # Step 2: Re-calibrate the masked weights to hit targets
+    # Only calibrate the included households
+    included_weights = masked_weights[inclusion_mask]
+    included_estimate_matrix = estimate_matrix[inclusion_mask]
+
+    # Call reweight function to calibrate the selected households
+    calibrated_weights_included = reweight(
+        included_weights,
+        included_estimate_matrix,
+        targets,
+        epochs=250,
+    )
+
+    # Put calibrated weights back into full array
+    calibrated_weights = np.zeros_like(masked_weights)
+    calibrated_weights[inclusion_mask] = calibrated_weights_included
+
+    # Calculate estimates and loss from calibrated weights
+    estimates = calibrated_weights @ estimate_matrix
     rel_error = ((estimates - targets) + 1) / (targets + 1)
     loss = ((rel_error * normalisation_factor) ** 2).mean()
 
@@ -288,8 +328,7 @@ def random_sampling_minimization(
     targets,
     normalisation_factor,
     random=True,
-    random=True,
-    target_fractions=[0.1, 0.2, 0.3, 0.4, 0.5],
+    target_fractions=[0.5, 0.6, 0.7, 0.8, 0.9],
 ):
     """A simple random sampling approach"""
     n = len(weights)
@@ -306,7 +345,7 @@ def random_sampling_minimization(
         best_mask = None
         best_loss = float("inf")
 
-        for _ in range(5):  # Try 5 random samples
+        for _ in range(3):  # Try 3 random samples
             mask = np.zeros(n, dtype=bool)
             mask[
                 np.random.choice(
@@ -419,12 +458,20 @@ def minimise_dataset(
     sim = Microsimulation(dataset=smaller_df)
 
     # Rescale weights to maintain total
-    sim.set_input(
-        "household_weight",
-        2024,
-        sim.calculate("household_weight", 2024).values / weight_rel_change,
+    initial_weights = (
+        sim.calculate("household_weight", 2024).values / weight_rel_change
     )
 
+    # Re-calibrate the final selected households to hit targets
+    print("Re-calibrating final selected households...")
+    calibrated_weights = reweight(
+        initial_weights,
+        loss_matrix_clean.values,  # Convert to numpy array
+        targets_clean,
+        epochs=250,  # Reduced epochs for faster processing
+    )
+    sim.set_input("household_weight", 2024, calibrated_weights)
+    print("Final calibration completed successfully")
     # Prepare data for saving
     data = {}
     for variable in sim.input_variables:

@@ -33,10 +33,7 @@ def reweight(
     targets_array,
     dropout_rate=0.05,
     log_path="calibration_log.csv",
-    epochs=500,
-    l0_lambda=5e-6,  # the action happens between 1e-6 and 1e-5
-    init_mean=0.999,  # initial proportion with non-zero weights, set near 0
-    temperature=0.5,  # Usual values .5 to 3, .5 was working better
+    epochs=150,
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -54,8 +51,7 @@ def reweight(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
 
-    inv_mean_normalisation = 1 / np.mean(normalisation_factor.numpy())
-
+    # TODO: replace this functionality from the microcalibrate package.
     def loss(weights):
         # Check for Nans in either the weights or the loss matrix
         if torch.isnan(weights).any():
@@ -89,6 +85,7 @@ def reweight(
     optimizer = torch.optim.Adam([weights], lr=3e-1)
     start_loss = None
 
+    iterator = trange(epochs)
     iterator = trange(epochs)
     performance = pd.DataFrame()
     for i in iterator:
@@ -303,17 +300,36 @@ class EnhancedCPS(Dataset):
             targets_array_clean = targets_array[keep_idx]
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
 
-            optimised_weights_dense, optimised_weights_sparse = reweight(
+            optimised_weights = reweight(
                 original_weights,
                 loss_matrix_clean,
                 targets_array_clean,
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
-                epochs=200,
+                epochs=150,
             )
-            data["household_weight"][year] = optimised_weights_dense
-            data["household_sparse_weight"][year] = optimised_weights_sparse
+            data["household_weight"][year] = optimised_weights
+
+            print("\n\n---reweighting quick diagnostics----\n")
+            estimate = optimised_weights @ loss_matrix_clean
+            rel_error = (
+                ((estimate - targets_array_clean) + 1)
+                / (targets_array_clean + 1)
+            ) ** 2
+            print(
+                f"rel_error: min: {np.min(rel_error):.2f}, "
+                f"max: {np.max(rel_error):.2f} "
+                f"mean: {np.mean(rel_error):.2f}, "
+                f"median: {np.median(rel_error):.2f}"
+            )
+            print("Relative error over 100% for:")
+            for i in np.where(rel_error > 1)[0]:
+                print(f"target_name: {loss_matrix_clean.columns[i]}")
+                print(f"target_value: {targets_array_clean[i]}")
+                print(f"estimate_value: {estimate[i]}")
+                print(f"has rel_error: {rel_error[i]:.2f}\n")
+            print("---End of reweighting quick diagnostics------")
 
         print("\n\n---reweighting quick diagnostics----\n")
         estimate = optimised_weights @ loss_matrix

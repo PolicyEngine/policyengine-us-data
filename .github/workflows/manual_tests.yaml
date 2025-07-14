@@ -11,7 +11,7 @@ on:
 
 jobs:
   test:
-    uses: ./.github/workflows/code_changes.yaml
+    uses: ./.github/workflows/pr_code_changes.yaml
     with:
       TEST_LITE: ${{ github.event.inputs.test_lite }}
     secrets: inherit

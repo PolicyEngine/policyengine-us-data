@@ -71,6 +71,7 @@ jobs:
             run: make download
             env:
               HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
           - name: Build datasets
             run: make data

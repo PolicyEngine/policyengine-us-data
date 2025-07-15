@@ -305,9 +305,10 @@ class ReweightedCPS_2024(Dataset):
         self.save_dataset(data)
 
 
-class MinimizedEnhancedCPS_2024(Dataset):
+class MinimizedEnhancedCPS_2024(EnhancedCPS):
     input_dataset = ExtendedCPS_2024
     start_year = 2024
+    end_year = 2024
     name = "minimized_enhanced_cps_2024"
     label = "Minimized Enhanced CPS 2024"
     file_path = STORAGE_FOLDER / "minimized_enhanced_cps_2024.h5"

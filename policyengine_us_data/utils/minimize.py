@@ -419,7 +419,7 @@ def minimize_dataset(
                 f.create_dataset(f"{variable}/{year}", data=value)
 
     print(f"Saved minimised dataset to {output_path}")
-    create_calibration_log_file(output_path, epoch=500)
+    create_calibration_log_file(output_path, epoch=250)
 
 
 if __name__ == "__main__":

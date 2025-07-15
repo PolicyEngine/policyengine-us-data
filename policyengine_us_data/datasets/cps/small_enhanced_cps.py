@@ -49,9 +49,20 @@ def create_sparse_ecps():
     time_period = 2024
 
     ecps = SparseEnhancedCPS_2024()
-    h5 = ecps.load()
-    sparse_weights = h5["household_sparse_weight"]["2024"][:]
-    hh_ids = h5["household_id"]["2024"][:]
+
+    # Check if sparse weights exist, if not generate them
+    try:
+        h5 = ecps.load()
+        sparse_weights = h5["household_sparse_weight"]["2024"][:]
+        hh_ids = h5["household_id"]["2024"][:]
+    except KeyError:
+        print(
+            "Sparse weights not found. Generating SparseEnhancedCPS_2024 dataset..."
+        )
+        ecps.generate()
+        h5 = ecps.load()
+        sparse_weights = h5["household_sparse_weight"]["2024"][:]
+        hh_ids = h5["household_id"]["2024"][:]
 
     template_sim = Microsimulation(
         dataset=EnhancedCPS_2024,

@@ -491,6 +491,10 @@ class SparseEnhancedCPS_2024(EnhancedCPS):
                 sparse=True,
             )
             data["household_weight"][year] = optimised_weights
+            # Also save as sparse weights for small_enhanced_cps.py
+            if "household_sparse_weight" not in data:
+                data["household_sparse_weight"] = {}
+            data["household_sparse_weight"][year] = optimised_weights
 
         self.save_dataset(data)
 

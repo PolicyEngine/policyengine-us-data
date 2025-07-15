@@ -460,6 +460,9 @@ class SparseEnhancedCPS_2024(EnhancedCPS):
 
     def generate(self):
         from policyengine_us import Microsimulation
+        from policyengine_us_data.utils.minimize import (
+            create_calibration_log_file,
+        )
 
         sim = Microsimulation(dataset=self.input_dataset)
         data = sim.dataset.load_dataset()
@@ -498,6 +501,8 @@ class SparseEnhancedCPS_2024(EnhancedCPS):
 
         self.save_dataset(data)
 
+        create_calibration_log_file(self.file_path)
+
 
 class EnhancedCPS_2024(EnhancedCPS):
     input_dataset = ExtendedCPS_2024
@@ -510,6 +515,6 @@ class EnhancedCPS_2024(EnhancedCPS):
 
 
 if __name__ == "__main__":
-    # EnhancedCPS_2024().generate()
+    EnhancedCPS_2024().generate()
     # MinimizedEnhancedCPS_2024().generate()
     SparseEnhancedCPS_2024().generate()

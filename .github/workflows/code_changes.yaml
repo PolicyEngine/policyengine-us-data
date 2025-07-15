@@ -61,6 +61,7 @@ jobs:
             with:
               name: minimized_enhanced_cps_2024_calibration_log.csv
               path: minimized_enhanced_cps_2024_calibration_log.csv
+              if-no-files-found: ignore
           - name: Run tests
             run: pytest
           - name: Upload data

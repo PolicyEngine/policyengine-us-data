@@ -56,6 +56,11 @@ jobs:
             with:
               name: calibration_log.csv
               path: calibration_log.csv
+          - name: Save minimized ECPS calibration log
+            uses: actions/upload-artifact@v4
+            with:
+              name: minimized_enhanced_cps_2024_calibration_log.csv
+              path: minimized_enhanced_cps_2024_calibration_log.csv
           - name: Run tests
             run: pytest
           - name: Upload data

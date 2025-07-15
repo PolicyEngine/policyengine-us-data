@@ -192,7 +192,7 @@ def get_loss_from_mask(
         included_weights,
         included_estimate_matrix,
         targets,
-        epochs=250,
+        epochs=10,
     )
 
     # Put calibrated weights back into full array
@@ -431,7 +431,7 @@ def minimise_dataset(
         initial_weights,
         loss_matrix_clean.values,  # Convert to numpy array
         targets_clean,
-        epochs=250,  # Reduced epochs for faster processing
+        epochs=10,  # Reduced epochs for faster processing
     )
     sim.set_input("household_weight", 2024, calibrated_weights)
     print("Final calibration completed successfully")

@@ -17,6 +17,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
 )
 import os
 
+
 try:
     import torch
 except ImportError:
@@ -30,7 +31,9 @@ def reweight(
     dropout_rate=0.05,
     log_path="calibration_log.csv",
     epochs=150,
-    l0_lambda=1e-4,
+    l0_lambda=1e-5,
+    init_mean=0.999,
+    temperature=0.5,
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -47,9 +50,9 @@ def reweight(
     weights = torch.tensor(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
-    gates = HardConcrete(len(original_weights))
 
     # TODO: replace this functionality from the microcalibrate package.
+    inv_mean_normalisation = 1 / np.mean(normalisation_factor.numpy())
     def loss(weights):
         # Check for Nans in either the weights or the loss matrix
         if torch.isnan(weights).any():
@@ -62,7 +65,7 @@ def reweight(
         rel_error = (
             ((estimate - targets_array) + 1) / (targets_array + 1)
         ) ** 2
-        rel_error_normalized = rel_error * normalisation_factor
+        rel_error_normalized = inv_mean_normalisation * rel_error * normalisation_factor
         if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
         return rel_error_normalized.mean()
@@ -76,6 +79,87 @@ def reweight(
         masked_weights = weights.clone()
         masked_weights[mask] = mean
         return masked_weights
+
+    # Original (Dense) path ---
+    optimizer = torch.optim.Adam([weights], lr=3e-1)
+    from tqdm import trange
+
+    start_loss = None
+
+    iterator = trange(epochs)
+    performance = pd.DataFrame()
+    for i in iterator:
+        optimizer.zero_grad()
+        weights_ = dropout_weights(weights, dropout_rate)
+        l = loss(torch.exp(weights_))
+        if (log_path is not None) and (i % 10 == 0):
+            estimates = torch.exp(weights) @ loss_matrix
+            estimates = estimates.detach().numpy()
+            df = pd.DataFrame(
+                {
+                    "target_name": target_names,
+                    "estimate": estimates,
+                    "target": targets_array.detach().numpy(),
+                }
+            )
+            df["epoch"] = i
+            df["error"] = df.estimate - df.target
+            df["rel_error"] = df.error / df.target
+            df["abs_error"] = df.error.abs()
+            df["rel_abs_error"] = df.rel_error.abs()
+            df["loss"] = df.rel_abs_error**2
+            performance = pd.concat([performance, df], ignore_index=True)
+
+        if (log_path is not None) and (i % 1000 == 0):
+            performance.to_csv(log_path, index=False)
+        if start_loss is None:
+            start_loss = l.item()
+        loss_rel_change = (l.item() - start_loss) / start_loss
+        l.backward()
+        iterator.set_postfix(
+            {"loss": l.item(), "loss_rel_change": loss_rel_change}
+        )
+        optimizer.step()
+        if log_path is not None:
+            performance.to_csv(log_path, index=False)
+
+    final_weights_dense = torch.exp(weights).detach().numpy()
+
+    optimised_weights = final_weights_dense
+    print("\n\n---Dense Solutions: reweighting quick diagnostics----\n")
+    print(f"{np.sum(optimised_weights == 0)} are zero, {np.sum(optimised_weights != 0)} weights are nonzero")
+    estimate = optimised_weights @ loss_matrix_clean
+    rel_error = (
+        ((estimate - targets_array_clean) + 1)
+        / (targets_array_clean + 1)
+    ) ** 2
+    within_10_percent_mask = np.abs(estimate - targets_array_clean) <= (0.10 * np.abs(targets_array_clean))
+    percent_within_10 = np.mean(within_10_percent_mask) * 100
+    print(
+        f"rel_error: min: {np.min(rel_error):.2f}\n"
+        f"max: {np.max(rel_error):.2f}\n"
+        f"mean: {np.mean(rel_error):.2f}\n"
+        f"median: {np.median(rel_error):.2f}\n"
+        f"Wthin 10% of target: {percent_within_10:.2f}%"
+    )
+    print("Relative error over 100% for:")
+    for i in np.where(rel_error > 1)[0]:
+        print(f"target_name: {loss_matrix_clean.columns[i]}")
+        print(f"target_value: {targets_array_clean[i]}")
+        print(f"estimate_value: {estimate[i]}")
+        print(f"has rel_error: {rel_error[i]:.2f}\n")
+    print("---End of reweighting quick diagnostics------")
+
+    # New (Sparse) path -----
+
+    #temperature = 0.5
+    #init_mean = 0.999
+    #l0_lambda = 1e-5
+
+    weights = torch.tensor(
+        np.log(original_weights), requires_grad=True, dtype=torch.float32
+    )
+    gates = HardConcrete(len(original_weights), init_mean=init_mean, temperature=temperature)
 
     optimizer = torch.optim.Adam([weights] + list(gates.parameters()), lr=3e-1)
     from tqdm import trange
@@ -124,9 +208,34 @@ def reweight(
             performance.to_csv(log_path, index=False)
 
     gates.eval()
-    final_weights = (torch.exp(weights) * gates()).detach().numpy()
-    gates.train()
-    return final_weights
+    final_weights_sparse = (torch.exp(weights) * gates()).detach().numpy()
+
+    optimised_weights = final_weights_sparse
+    print("\n\n---Sparse Solutions: reweighting quick diagnostics----\n")
+    print(f"{np.sum(optimised_weights == 0)} are zero, {np.sum(optimised_weights != 0)} weights are nonzero")
+    estimate = optimised_weights @ loss_matrix_clean
+    rel_error = (
+        ((estimate - targets_array_clean) + 1)
+        / (targets_array_clean + 1)
+    ) ** 2
+    within_10_percent_mask = np.abs(estimate - targets_array_clean) <= (0.10 * np.abs(targets_array_clean))
+    percent_within_10 = np.mean(within_10_percent_mask) * 100
+    print(
+        f"rel_error: min: {np.min(rel_error):.2f}\n"
+        f"max: {np.max(rel_error):.2f}\n"
+        f"mean: {np.mean(rel_error):.2f}\n"
+        f"median: {np.median(rel_error):.2f}\n"
+        f"Wthin 10% of target: {percent_within_10:.2f}%"
+    )
+    print("Relative error over 100% for:")
+    for i in np.where(rel_error > 1)[0]:
+        print(f"target_name: {loss_matrix_clean.columns[i]}")
+        print(f"target_value: {targets_array_clean[i]}")
+        print(f"estimate_value: {estimate[i]}")
+        print(f"has rel_error: {rel_error[i]:.2f}\n")
+    print("---End of reweighting quick diagnostics------")
+
+    return final_weights_dense, final_weights_sparse
 
 
 def train_previous_year_income_model():
@@ -185,6 +294,7 @@ class EnhancedCPS(Dataset):
         sim = Microsimulation(dataset=self.input_dataset)
         data = sim.dataset.load_dataset()
         data["household_weight"] = {}
+        data["household_sparse_weight"] = {}
         original_weights = sim.calculate("household_weight")
         original_weights = original_weights.values + np.random.normal(
             1, 0.1, len(original_weights)
@@ -225,34 +335,15 @@ class EnhancedCPS(Dataset):
             targets_array_clean = targets_array[keep_idx]
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
 
-            optimised_weights = reweight(
+            optimised_weights_dense, optimised_weights_sparse = reweight(
                 original_weights,
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
                 epochs=150,
             )
-            data["household_weight"][year] = optimised_weights
-
-            print("\n\n---reweighting quick diagnostics----\n")
-            estimate = optimised_weights @ loss_matrix_clean
-            rel_error = (
-                ((estimate - targets_array_clean) + 1)
-                / (targets_array_clean + 1)
-            ) ** 2
-            print(
-                f"rel_error: min: {np.min(rel_error):.2f}, "
-                f"max: {np.max(rel_error):.2f} "
-                f"mean: {np.mean(rel_error):.2f}, "
-                f"median: {np.median(rel_error):.2f}"
-            )
-            print("Relative error over 100% for:")
-            for i in np.where(rel_error > 1)[0]:
-                print(f"target_name: {loss_matrix_clean.columns[i]}")
-                print(f"target_value: {targets_array_clean[i]}")
-                print(f"estimate_value: {estimate[i]}")
-                print(f"has rel_error: {rel_error[i]:.2f}\n")
-            print("---End of reweighting quick diagnostics------")
+            data["household_weight"][year] = optimised_weights_dense
+            data["household_sparse_weight"][year] = optimised_weights_sparse
 
         self.save_dataset(data)
 

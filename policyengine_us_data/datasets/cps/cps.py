@@ -1383,6 +1383,9 @@ def add_ssn_card_type(
 
     mask = (ssn_card_type == 3) & (immigration_status == b"UNSET")
     immigration_status[mask] = b"LEGAL_PERMANENT_RESIDENT"
+    immigration_status[immigration_status == "UNSET"] = (
+        "LEGAL_PERMANENT_RESIDENT"
+    )
 
     cps["immigration_status"] = immigration_status
 

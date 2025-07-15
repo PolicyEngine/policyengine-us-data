@@ -268,7 +268,7 @@ def test_minimized_enhanced_cps_calibration_quality():
     - Poor (≥ 20% error): 0 points each
     """
     from policyengine_us_data.datasets.cps import MinimizedEnhancedCPS_2024
-    from policyengine_us_data.utils.minimise import create_calibration_log_file
+    from policyengine_us_data.utils.minimize import create_calibration_log_file
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=MinimizedEnhancedCPS_2024)

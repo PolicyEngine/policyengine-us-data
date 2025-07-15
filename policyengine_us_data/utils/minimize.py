@@ -167,7 +167,7 @@ def candidate_loss_contribution(
     targets: np.ndarray,
     normalisation_factor: np.ndarray,
     loss_rel_change_max: float,
-    count_iterations: int = 10,
+    count_iterations: int = 5,
     view_fraction_per_iteration: float = 0.5,
     fraction_remove_per_iteration: float = 0.05,
 ) -> np.ndarray:

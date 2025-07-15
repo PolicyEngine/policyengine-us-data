@@ -327,10 +327,15 @@ def minimize_dataset(
     minimization_function : function that implements the minimization logic
     **kwargs : additional arguments to pass to the minimization function
     """
-    dataset = str(dataset)
-    create_calibration_log_file(dataset)
+    # Handle both dataset class and file path
+    if hasattr(dataset, "file_path"):
+        dataset_path = str(dataset.file_path)
+    else:
+        dataset_path = str(dataset)
 
-    dataset = Dataset.from_file(dataset)
+    create_calibration_log_file(dataset_path)
+
+    dataset = Dataset.from_file(dataset_path)
     if loss_matrix is None or targets is None:
         loss_matrix, targets = build_loss_matrix(dataset, 2024)
 

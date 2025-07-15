@@ -345,6 +345,9 @@ def minimize_dataset(
         loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
         targets_clean = targets[keep_idx]
         assert loss_matrix_clean.shape[1] == targets_clean.size
+    else:
+        loss_matrix_clean = loss_matrix
+        targets_clean = targets
 
     sim = Microsimulation(dataset=dataset)
 

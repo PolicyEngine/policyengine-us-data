@@ -1346,8 +1346,11 @@ def add_ssn_card_type(
         }
     )
     # NEW IMMIGRATION-STATUS TAGS FOR OBFBA
+    
+    CURRENT_YEAR =2024
+    AMNESTY_YEAR = 1981  # Immigrants who entered before 1982 are eligible for amnesty
     # ------------------------------------
-    years_in_us = 2024 - (1981 + person.PEINUSYR)
+    years_in_us = CURRENT_YEAR - (1981 + person.PEINUSYR)
     birth = person.PENATVTY  # two-digit nativity flag
     age_at_entry = person.A_AGE - years_in_us
 

@@ -340,7 +340,7 @@ class MinimizedEnhancedCPS_2024(EnhancedCPS):
             targets_array_clean = targets_array[keep_idx]
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
 
-        from policyengine_us_data.utils.minimise import (
+        from policyengine_us_data.utils.minimize import (
             candidate_loss_contribution,
             minimize_dataset,
         )

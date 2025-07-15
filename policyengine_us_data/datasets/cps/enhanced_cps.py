@@ -369,5 +369,5 @@ class EnhancedCPS_2024(EnhancedCPS):
 
 
 if __name__ == "__main__":
-    # EnhancedCPS_2024().generate()
+    EnhancedCPS_2024().generate()
     MinimizedEnhancedCPS_2024().generate()

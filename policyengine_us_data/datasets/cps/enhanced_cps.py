@@ -39,7 +39,7 @@ def reweight(
     loss_matrix,
     targets_array,
     dropout_rate=0.05,
-    epochs=500,
+    epochs=250,
     log_path="calibration_log.csv",
     penalty_approach=None,
     penalty_weight=None,
@@ -270,7 +270,7 @@ class EnhancedCPS(Dataset):
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
-                epochs=150,
+                epochs=250,
             )
             data["household_weight"][year] = optimised_weights
 

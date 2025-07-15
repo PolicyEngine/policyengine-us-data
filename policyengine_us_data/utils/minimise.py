@@ -6,7 +6,6 @@ import pandas as pd
 import h5py
 from policyengine_us_data.storage import STORAGE_FOLDER
 from typing import Optional, Callable
-from policyengine_us_data.datasets.cps.enhanced_cps import reweight
 
 bad_targets = [
     "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
@@ -141,6 +140,8 @@ def get_loss_from_mask(
     ]  # Keep as DataFrame
 
     # Call reweight function to calibrate the selected households
+    from policyengine_us_data.datasets.cps.enhanced_cps import reweight
+
     calibrated_weights_included = reweight(
         included_weights,
         included_estimate_matrix,
@@ -393,6 +394,8 @@ def minimize_dataset(
     keep_idx = np.where(keep_mask_bool)[0]
     smaller_loss_matrix_clean = smaller_loss_matrix.iloc[:, keep_idx]
     smaller_targets_clean = smaller_targets[keep_idx]
+
+    from policyengine_us_data.datasets.cps.enhanced_cps import reweight
 
     calibrated_weights = reweight(
         initial_weights,

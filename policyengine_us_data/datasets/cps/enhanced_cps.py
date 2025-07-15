@@ -9,10 +9,6 @@ from policyengine_us_data.utils import (
 import numpy as np
 from typing import Type
 from policyengine_us_data.storage import STORAGE_FOLDER
-from policyengine_us_data.utils.minimise import (
-    candidate_loss_contribution,
-    minimize_dataset,
-)
 from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS_2024,
     CPS_2019,
@@ -342,6 +338,11 @@ class MinimizedEnhancedCPS_2024(Dataset):
             loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
             targets_array_clean = targets_array[keep_idx]
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
+
+        from policyengine_us_data.utils.minimise import (
+            candidate_loss_contribution,
+            minimize_dataset,
+        )
 
         minimize_dataset(
             self.input_dataset,

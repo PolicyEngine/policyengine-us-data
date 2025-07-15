@@ -167,9 +167,9 @@ def candidate_loss_contribution(
     targets: np.ndarray,
     normalisation_factor: np.ndarray,
     loss_rel_change_max: float,
-    count_iterations: int = 5,
-    view_fraction_per_iteration: float = 0.3,
-    fraction_remove_per_iteration: float = 0.1,
+    count_iterations: int = 10,
+    view_fraction_per_iteration: float = 0.5,
+    fraction_remove_per_iteration: float = 0.05,
 ) -> np.ndarray:
     """
     Minimization approach based on candidate loss contribution.

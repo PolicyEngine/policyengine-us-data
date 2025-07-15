@@ -351,9 +351,9 @@ class MinimizedEnhancedCPS_2024(EnhancedCPS):
             minimization_function=candidate_loss_contribution,
             loss_matrix=loss_matrix_clean,
             targets=targets_array_clean,
-            target_fractions=[0.1],  # maximum relative change in loss
-            count_iterations=5,
-            view_fraction_per_iteration=0.5,
+            loss_rel_change_max=[0.1],  # maximum relative change in loss
+            count_iterations=6,
+            view_fraction_per_iteration=0.4,
             fraction_remove_per_iteration=0.1,
         )
 
@@ -369,5 +369,5 @@ class EnhancedCPS_2024(EnhancedCPS):
 
 
 if __name__ == "__main__":
-    EnhancedCPS_2024().generate()
+    # EnhancedCPS_2024().generate()
     MinimizedEnhancedCPS_2024().generate()

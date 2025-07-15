@@ -21,34 +21,16 @@ bad_targets = [
 
 
 def create_calibration_log_file(file_path, epoch=0):
-    print(f"=== CALIBRATION LOG DEBUG ===")
-    print(f"File path: {file_path}")
-    print(f"Epoch: {epoch}")
-
     dataset = Dataset.from_file(file_path)
     sim = Microsimulation(dataset=dataset)
 
-    # Debug: Print dataset info
-    household_weights = sim.calculate("household_weight", 2024)
-    print(f"Number of households: {len(household_weights)}")
-    print(f"Total weight: {household_weights.sum():.2f}")
-    print(
-        f"Weight range: {household_weights.min():.2f} to {household_weights.max():.2f}"
-    )
-
     loss_matrix, targets = build_loss_matrix(dataset, 2024)
-    print(f"Loss matrix shape: {loss_matrix.shape}")
-    print(f"Number of targets: {len(targets)}")
 
     bad_mask = loss_matrix.columns.isin(bad_targets)
     keep_mask_bool = ~bad_mask
     keep_idx = np.where(keep_mask_bool)[0]
     loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
     targets_clean = targets[keep_idx]
-
-    print(f"After filtering bad targets:")
-    print(f"Loss matrix clean shape: {loss_matrix_clean.shape}")
-    print(f"Number of clean targets: {len(targets_clean)}")
 
     assert loss_matrix_clean.shape[1] == targets_clean.size
 
@@ -57,18 +39,9 @@ def create_calibration_log_file(file_path, epoch=0):
     )
     target_names = loss_matrix_clean.columns
 
-    # Debug: Print estimate statistics
-    print(f"Estimates shape: {estimates.shape}")
-    print(f"Estimates sum: {estimates.sum():.2f}")
-    print(f"First 3 estimates: {estimates[:3]}")
-    print(f"First 3 targets: {targets_clean[:3]}")
-
     # Calculate and print some key metrics
     errors = estimates - targets_clean
     rel_errors = errors / targets_clean
-    print(f"Mean absolute error: {np.abs(errors).mean():.2f}")
-    print(f"Mean relative error: {np.abs(rel_errors).mean():.4f}")
-    print(f"=== END DEBUG ===\n")
 
     df = pd.DataFrame(
         {
@@ -144,28 +117,6 @@ def losses_for_candidates(
     return losses
 
 
-def minimise_dataset(
-    dataset, output_path: str, loss_rel_change_max: float
-) -> None:
-    dataset = str(dataset)
-    create_calibration_log_file(dataset)
-
-    dataset = Dataset.from_file(dataset)
-    loss_matrix = build_loss_matrix(dataset, 2024)
-
-    sim = Microsimulation(dataset=dataset)
-
-    weights = sim.calculate("household_weight", 2024).values
-    estimate_matrix, targets = loss_matrix
-    is_national = estimate_matrix.columns.str.startswith("nation/")
-    nation_normalisation_factor = is_national * (1 / is_national.sum())
-    state_normalisation_factor = ~is_national * (1 / (~is_national).sum())
-    normalisation_factor = np.where(
-        is_national, nation_normalisation_factor, state_normalisation_factor
-    )
-    weights @ estimate_matrix
-
-
 def get_loss_from_mask(
     weights, inclusion_mask, estimate_matrix, targets, normalisation_factor
 ):
@@ -185,7 +136,9 @@ def get_loss_from_mask(
     # Step 2: Re-calibrate the masked weights to hit targets
     # Only calibrate the included households
     included_weights = masked_weights[inclusion_mask]
-    included_estimate_matrix = estimate_matrix[inclusion_mask]
+    included_estimate_matrix = estimate_matrix.iloc[
+        inclusion_mask
+    ]  # Keep as DataFrame
 
     # Call reweight function to calibrate the selected households
     calibrated_weights_included = reweight(
@@ -354,10 +307,12 @@ def random_sampling_minimization(
     return final_mask
 
 
-def minimise_dataset(
+def minimize_dataset(
     dataset,
     output_path: str,
     minimization_function: Callable = candidate_loss_contribution,
+    loss_matrix: Optional[pd.DataFrame] = None,
+    targets: Optional[np.ndarray] = None,
     **kwargs,
 ) -> None:
     """
@@ -375,14 +330,15 @@ def minimise_dataset(
     create_calibration_log_file(dataset)
 
     dataset = Dataset.from_file(dataset)
-    loss_matrix, targets = build_loss_matrix(dataset, 2024)
+    if loss_matrix is None or targets is None:
+        loss_matrix, targets = build_loss_matrix(dataset, 2024)
 
-    bad_mask = loss_matrix.columns.isin(bad_targets)
-    keep_mask_bool = ~bad_mask
-    keep_idx = np.where(keep_mask_bool)[0]
-    loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
-    targets_clean = targets[keep_idx]
-    assert loss_matrix_clean.shape[1] == targets_clean.size
+        bad_mask = loss_matrix.columns.isin(bad_targets)
+        keep_mask_bool = ~bad_mask
+        keep_idx = np.where(keep_mask_bool)[0]
+        loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
+        targets_clean = targets[keep_idx]
+        assert loss_matrix_clean.shape[1] == targets_clean.size
 
     sim = Microsimulation(dataset=dataset)
 
@@ -427,10 +383,21 @@ def minimise_dataset(
 
     # Re-calibrate the final selected households to hit targets
     print("Re-calibrating final selected households...")
+
+    # Build loss matrix for the smaller dataset
+    smaller_loss_matrix, smaller_targets = build_loss_matrix(sim.dataset, 2024)
+
+    # Apply same filtering as before
+    bad_mask = smaller_loss_matrix.columns.isin(bad_targets)
+    keep_mask_bool = ~bad_mask
+    keep_idx = np.where(keep_mask_bool)[0]
+    smaller_loss_matrix_clean = smaller_loss_matrix.iloc[:, keep_idx]
+    smaller_targets_clean = smaller_targets[keep_idx]
+
     calibrated_weights = reweight(
         initial_weights,
-        loss_matrix_clean.values,  # Convert to numpy array
-        targets_clean,
+        smaller_loss_matrix_clean,  # Now matches the smaller dataset size
+        smaller_targets_clean,
         epochs=250,  # Reduced epochs for faster processing
     )
     sim.set_input("household_weight", 2024, calibrated_weights)
@@ -460,7 +427,7 @@ if __name__ == "__main__":
 
     for file in files:
         output_path = file.with_name(file.stem + "_minimised.h5")
-        minimise_dataset(
+        minimize_dataset(
             file,
             output_path,
         )

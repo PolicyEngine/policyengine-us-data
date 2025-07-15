@@ -9,6 +9,10 @@ from policyengine_us_data.utils import (
 import numpy as np
 from typing import Type
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.minimise import (
+    candidate_loss_contribution,
+    minimize_dataset,
+)
 from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS_2024,
     CPS_2019,
@@ -231,28 +235,6 @@ class EnhancedCPS(Dataset):
             1, 0.1, len(original_weights)
         )
 
-        bad_targets = [
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "state/RI/adjusted_gross_income/amount/-inf_1",
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "state/RI/adjusted_gross_income/amount/-inf_1",
-            "nation/irs/exempt interest/count/AGI in -inf-inf/taxable/All",
-        ]
-
         # Run the optimization procedure to get (close to) minimum loss weights
         for year in range(self.start_year, self.end_year + 1):
             loss_matrix, targets_array = build_loss_matrix(
@@ -327,6 +309,53 @@ class ReweightedCPS_2024(Dataset):
         self.save_dataset(data)
 
 
+class MinimizedEnhancedCPS_2024(Dataset):
+    input_dataset = ExtendedCPS_2024
+    start_year = 2024
+    name = "minimized_enhanced_cps_2024"
+    label = "Minimized Enhanced CPS 2024"
+    file_path = STORAGE_FOLDER / "minimized_enhanced_cps_2024.h5"
+    url = (
+        "hf://policyengine/policyengine-us-data/minimized_enhanced_cps_2024.h5"
+    )
+
+    def generate(self):
+        from policyengine_us import Microsimulation
+
+        sim = Microsimulation(dataset=self.input_dataset)
+        data = sim.dataset.load_dataset()
+        data["household_weight"] = {}
+        original_weights = sim.calculate("household_weight")
+        original_weights = original_weights.values + np.random.normal(
+            1, 0.1, len(original_weights)
+        )
+
+        # Run the optimization procedure to get (close to) minimum loss weights
+        for year in range(self.start_year, self.end_year + 1):
+            loss_matrix, targets_array = build_loss_matrix(
+                self.input_dataset, year
+            )
+
+            bad_mask = loss_matrix.columns.isin(bad_targets)
+            keep_mask_bool = ~bad_mask
+            keep_idx = np.where(keep_mask_bool)[0]
+            loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
+            targets_array_clean = targets_array[keep_idx]
+            assert loss_matrix_clean.shape[1] == targets_array_clean.size
+
+        minimize_dataset(
+            self.input_dataset,
+            self.file_path,
+            minimization_function=candidate_loss_contribution,
+            loss_matrix=loss_matrix_clean,
+            targets=targets_array_clean,
+            target_fractions=[0.1],  # maximum relative change in loss
+            count_iterations=5,
+            view_fraction_per_iteration=0.5,
+            fraction_remove_per_iteration=0.1,
+        )
+
+
 class EnhancedCPS_2024(EnhancedCPS):
     input_dataset = ExtendedCPS_2024
     start_year = 2024
@@ -339,3 +368,4 @@ class EnhancedCPS_2024(EnhancedCPS):
 
 if __name__ == "__main__":
     EnhancedCPS_2024().generate()
+    MinimizedEnhancedCPS_2024().generate()

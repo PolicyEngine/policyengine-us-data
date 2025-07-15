@@ -14,6 +14,8 @@ from .cps import (
     CensusCPS_2023,
     EnhancedCPS_2024,
     ReweightedCPS_2024,
+    MinimizedEnhancedCPS_2024,
+    SparseEnhancedCPS_2024,
 )
 from .puf import PUF_2015, PUF_2021, PUF_2024, IRS_PUF_2015
 from .acs import ACS_2022

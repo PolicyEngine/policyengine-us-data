@@ -3,10 +3,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
+
 class HardConcrete(nn.Module):
     """HardConcrete distribution for L0 regularization."""
 
-    def __init__(self, input_dim, output_dim=None, temperature=0.5, stretch=0.1, init_mean=0.5):
+    def __init__(
+        self,
+        input_dim,
+        output_dim=None,
+        temperature=0.5,
+        stretch=0.1,
+        init_mean=0.5,
+    ):
         super().__init__()
         if output_dim is None:
             self.gate_size = (input_dim,)
@@ -48,19 +56,30 @@ class HardConcrete(nn.Module):
         return torch.clamp(gates, 0, 1)
 
     def get_penalty(self):
-        logits_shifted = self.qz_logits - self.temperature * math.log(-self.gamma / self.zeta)
+        logits_shifted = self.qz_logits - self.temperature * math.log(
+            -self.gamma / self.zeta
+        )
         prob_active = torch.sigmoid(logits_shifted)
         return prob_active.sum()
 
     def get_active_prob(self):
-        logits_shifted = self.qz_logits - self.temperature * math.log(-self.gamma / self.zeta)
+        logits_shifted = self.qz_logits - self.temperature * math.log(
+            -self.gamma / self.zeta
+        )
         return torch.sigmoid(logits_shifted)
 
 
 class L0Linear(nn.Module):
     """Linear layer with L0 regularization using HardConcrete gates."""
 
-    def __init__(self, in_features, out_features, bias=True, temperature=0.5, init_sparsity=0.5):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        bias=True,
+        temperature=0.5,
+        init_sparsity=0.5,
+    ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -68,12 +87,17 @@ class L0Linear(nn.Module):
         if bias:
             self.bias = nn.Parameter(torch.Tensor(out_features))
         else:
-            self.register_parameter('bias', None)
-        self.weight_gates = HardConcrete(out_features, in_features, temperature=temperature, init_mean=init_sparsity)
+            self.register_parameter("bias", None)
+        self.weight_gates = HardConcrete(
+            out_features,
+            in_features,
+            temperature=temperature,
+            init_mean=init_sparsity,
+        )
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.kaiming_normal_(self.weight, mode='fan_out')
+        nn.init.kaiming_normal_(self.weight, mode="fan_out")
         if self.bias is not None:
             nn.init.zeros_(self.bias)
 
@@ -94,11 +118,33 @@ class L0Linear(nn.Module):
 class SparseMLP(nn.Module):
     """Example MLP with L0 regularization on all layers"""
 
-    def __init__(self, input_dim=784, hidden_dim=256, output_dim=10, init_sparsity=0.5, temperature=0.5):
+    def __init__(
+        self,
+        input_dim=784,
+        hidden_dim=256,
+        output_dim=10,
+        init_sparsity=0.5,
+        temperature=0.5,
+    ):
         super().__init__()
-        self.fc1 = L0Linear(input_dim, hidden_dim, init_sparsity=init_sparsity, temperature=temperature)
-        self.fc2 = L0Linear(hidden_dim, hidden_dim, init_sparsity=init_sparsity, temperature=temperature)
-        self.fc3 = L0Linear(hidden_dim, output_dim, init_sparsity=init_sparsity, temperature=temperature)
+        self.fc1 = L0Linear(
+            input_dim,
+            hidden_dim,
+            init_sparsity=init_sparsity,
+            temperature=temperature,
+        )
+        self.fc2 = L0Linear(
+            hidden_dim,
+            hidden_dim,
+            init_sparsity=init_sparsity,
+            temperature=temperature,
+        )
+        self.fc3 = L0Linear(
+            hidden_dim,
+            output_dim,
+            init_sparsity=init_sparsity,
+            temperature=temperature,
+        )
 
     def forward(self, x):
         x = x.view(x.size(0), -1)
@@ -119,8 +165,8 @@ class SparseMLP(nn.Module):
         for name, module in self.named_modules():
             if isinstance(module, L0Linear):
                 stats[name] = {
-                    'sparsity': module.get_sparsity(),
-                    'active_params': module.get_l0_penalty().item()
+                    "sparsity": module.get_sparsity(),
+                    "active_params": module.get_l0_penalty().item(),
                 }
         return stats
 
@@ -143,9 +189,13 @@ def train_with_l0(model, train_loader, epochs=10, l0_lambda=1e-3):
             total_l0 += l0_loss.item()
         if epoch % 1 == 0:
             sparsity_stats = model.get_sparsity_stats()
-            print(f"Epoch {epoch}: Loss={total_loss/len(train_loader):.4f}, L0={total_l0/len(train_loader):.4f}")
+            print(
+                f"Epoch {epoch}: Loss={total_loss/len(train_loader):.4f}, L0={total_l0/len(train_loader):.4f}"
+            )
             for layer, stats in sparsity_stats.items():
-                print(f"  {layer}: {stats['sparsity']*100:.1f}% sparse, {stats['active_params']:.1f} active params")
+                print(
+                    f"  {layer}: {stats['sparsity']*100:.1f}% sparse, {stats['active_params']:.1f} active params"
+                )
 
 
 def prune_model(model, threshold=0.05):

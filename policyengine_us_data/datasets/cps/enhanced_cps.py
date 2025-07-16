@@ -53,6 +53,7 @@ def reweight(
     )
 
     inv_mean_normalisation = 1 / np.mean(normalisation_factor.numpy())
+
     def loss(weights):
         # Check for Nans in either the weights or the loss matrix
         if torch.isnan(weights).any():
@@ -65,7 +66,9 @@ def reweight(
         rel_error = (
             ((estimate - targets_array) + 1) / (targets_array + 1)
         ) ** 2
-        rel_error_normalized = inv_mean_normalisation * rel_error * normalisation_factor
+        rel_error_normalized = (
+            inv_mean_normalisation * rel_error * normalisation_factor
+        )
         if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
         return rel_error_normalized.mean()
@@ -125,13 +128,16 @@ def reweight(
 
     optimised_weights = final_weights_dense
     print("\n\n---Dense Solutions: reweighting quick diagnostics----\n")
-    print(f"{np.sum(optimised_weights == 0)} are zero, {np.sum(optimised_weights != 0)} weights are nonzero")
+    print(
+        f"{np.sum(optimised_weights == 0)} are zero, {np.sum(optimised_weights != 0)} weights are nonzero"
+    )
     estimate = optimised_weights @ loss_matrix_clean
     rel_error = (
-        ((estimate - targets_array_clean) + 1)
-        / (targets_array_clean + 1)
+        ((estimate - targets_array_clean) + 1) / (targets_array_clean + 1)
     ) ** 2
-    within_10_percent_mask = np.abs(estimate - targets_array_clean) <= (0.10 * np.abs(targets_array_clean))
+    within_10_percent_mask = np.abs(estimate - targets_array_clean) <= (
+        0.10 * np.abs(targets_array_clean)
+    )
     percent_within_10 = np.mean(within_10_percent_mask) * 100
     print(
         f"rel_error: min: {np.min(rel_error):.2f}\n"
@@ -152,7 +158,9 @@ def reweight(
     weights = torch.tensor(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
-    gates = HardConcrete(len(original_weights), init_mean=init_mean, temperature=temperature)
+    gates = HardConcrete(
+        len(original_weights), init_mean=init_mean, temperature=temperature
+    )
     optimizer = torch.optim.Adam([weights] + list(gates.parameters()), lr=3e-1)
     start_loss = None
 
@@ -202,13 +210,16 @@ def reweight(
 
     optimised_weights = final_weights_sparse
     print("\n\n---Sparse Solutions: reweighting quick diagnostics----\n")
-    print(f"{np.sum(optimised_weights == 0)} are zero, {np.sum(optimised_weights != 0)} weights are nonzero")
+    print(
+        f"{np.sum(optimised_weights == 0)} are zero, {np.sum(optimised_weights != 0)} weights are nonzero"
+    )
     estimate = optimised_weights @ loss_matrix_clean
     rel_error = (
-        ((estimate - targets_array_clean) + 1)
-        / (targets_array_clean + 1)
+        ((estimate - targets_array_clean) + 1) / (targets_array_clean + 1)
     ) ** 2
-    within_10_percent_mask = np.abs(estimate - targets_array_clean) <= (0.10 * np.abs(targets_array_clean))
+    within_10_percent_mask = np.abs(estimate - targets_array_clean) <= (
+        0.10 * np.abs(targets_array_clean)
+    )
     percent_within_10 = np.mean(within_10_percent_mask) * 100
     print(
         f"rel_error: min: {np.min(rel_error):.2f}\n"

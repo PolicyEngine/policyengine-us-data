@@ -46,8 +46,8 @@ def create_sparse_ecps():
 
     ecps = EnhancedCPS_2024()
     h5 = ecps.load()
-    sparse_weights = h5["household_sparse_weight"]['2024'][:]
-    hh_ids = h5["household_id"]['2024'][:]
+    sparse_weights = h5["household_sparse_weight"]["2024"][:]
+    hh_ids = h5["household_id"]["2024"][:]
 
     template_sim = Microsimulation(
         dataset=EnhancedCPS_2024,
@@ -70,9 +70,7 @@ def create_sparse_ecps():
     h_ids = h_ids[h_weights > 0]
     h_weights = h_weights[h_weights > 0]
 
-    subset_df = df[
-        df[df_household_id_column].isin(h_ids)
-    ].copy()
+    subset_df = df[df[df_household_id_column].isin(h_ids)].copy()
 
     household_id_to_count = {}
     for household_id in h_ids:
@@ -100,7 +98,7 @@ def create_sparse_ecps():
         sim.branches["tax_benefit_system"] = baseline_tax_benefit_system
 
     sim.default_calculation_period = time_period
-    
+
     # Get ready to write it out
     simulation = sim
     data = {}
@@ -118,7 +116,6 @@ def create_sparse_ecps():
 
         if len(data[variable]) == 0:
             del data[variable]
-
 
     with h5py.File(STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5", "w") as f:
         for variable, periods in data.items():

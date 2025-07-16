@@ -9,7 +9,7 @@ def test_sparse_ecps():
     from policyengine_core.data import Dataset
     from policyengine_us_data.storage import STORAGE_FOLDER
     from policyengine_us import Microsimulation
- 
+
     # NOTE: replace with "small_enhanced_cps_2024.h5 to see the difference!
     sim = Microsimulation(
         dataset=Dataset.from_file(
@@ -41,9 +41,7 @@ def test_sparse_ecps():
     ]
 
     year = 2024
-    loss_matrix, targets_array = build_loss_matrix(
-        sim.dataset, year
-    )
+    loss_matrix, targets_array = build_loss_matrix(sim.dataset, year)
     zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
     bad_mask = loss_matrix.columns.isin(bad_targets)
     keep_mask_bool = ~(zero_mask | bad_mask)
@@ -52,15 +50,18 @@ def test_sparse_ecps():
     targets_array_clean = targets_array[keep_idx]
     assert loss_matrix_clean.shape[1] == targets_array_clean.size
 
-    optimised_weights = data['household_weight']['2024'] 
+    optimised_weights = data["household_weight"]["2024"]
     print("\n\n---Sparse Solutions: reweighting quick diagnostics----\n")
-    print(f"{np.sum(optimised_weights == 0)} are zero, {np.sum(optimised_weights != 0)} weights are nonzero")
+    print(
+        f"{np.sum(optimised_weights == 0)} are zero, {np.sum(optimised_weights != 0)} weights are nonzero"
+    )
     estimate = optimised_weights @ loss_matrix_clean
     rel_error = (
-        ((estimate - targets_array_clean) + 1)
-        / (targets_array_clean + 1)
+        ((estimate - targets_array_clean) + 1) / (targets_array_clean + 1)
     ) ** 2
-    within_10_percent_mask = np.abs(estimate - targets_array_clean) <= (0.10 * np.abs(targets_array_clean))
+    within_10_percent_mask = np.abs(estimate - targets_array_clean) <= (
+        0.10 * np.abs(targets_array_clean)
+    )
     percent_within_10 = np.mean(within_10_percent_mask) * 100
     print(
         f"rel_error: min: {np.min(rel_error):.2f}\n"

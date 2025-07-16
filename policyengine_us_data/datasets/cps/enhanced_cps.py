@@ -39,7 +39,7 @@ def reweight(
     loss_matrix,
     targets_array,
     dropout_rate=0.05,
-    epochs=250,
+    epochs=150,
     log_path="calibration_log.csv",
     penalty_approach=None,
     penalty_weight=None,
@@ -108,11 +108,21 @@ def reweight(
             if penalty_approach == "l1":
                 l1 = torch.mean(weights)
                 return rel_error_normalized.mean() + penalty_weight * l1
-
+            
             return rel_error_normalized.mean() + penalty_weight * smoothed_l0
 
         else:
             return rel_error_normalized.mean()
+        
+    def prune_dataset(weights, epsilon=1e-3):
+        """
+        Prune dataset samples based on learned weights.
+        Returns indices of samples to keep.
+        """
+        importance_scores = weights.detach().cpu().numpy()
+        keep_indices = np.where(importance_scores > epsilon)[0]
+
+        return keep_indices
 
     def dropout_weights(weights, p):
         if p == 0:
@@ -270,7 +280,7 @@ class EnhancedCPS(Dataset):
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
-                epochs=250,
+                epochs= 150,
             )
             data["household_weight"][year] = optimised_weights
 

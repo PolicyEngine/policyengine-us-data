@@ -6,6 +6,7 @@ from policyengine_us_data.utils import (
     build_loss_matrix,
     fmt,
     HardConcrete,
+    print_reweighting_diagnostics,
 )
 import numpy as np
 from tqdm import trange
@@ -127,32 +128,12 @@ def reweight(
     final_weights_dense = torch.exp(weights).detach().numpy()
 
     optimised_weights = final_weights_dense
-    print("\n\n---Dense Solutions: reweighting quick diagnostics----\n")
-    print(
-        f"{np.sum(optimised_weights == 0)} are zero, {np.sum(optimised_weights != 0)} weights are nonzero"
+    print_reweighting_diagnostics(
+        optimised_weights,
+        loss_matrix_clean,
+        targets_array_clean,
+        "Dense Solutions",
     )
-    estimate = optimised_weights @ loss_matrix_clean
-    rel_error = (
-        ((estimate - targets_array_clean) + 1) / (targets_array_clean + 1)
-    ) ** 2
-    within_10_percent_mask = np.abs(estimate - targets_array_clean) <= (
-        0.10 * np.abs(targets_array_clean)
-    )
-    percent_within_10 = np.mean(within_10_percent_mask) * 100
-    print(
-        f"rel_error: min: {np.min(rel_error):.2f}\n"
-        f"max: {np.max(rel_error):.2f}\n"
-        f"mean: {np.mean(rel_error):.2f}\n"
-        f"median: {np.median(rel_error):.2f}\n"
-        f"Wthin 10% of target: {percent_within_10:.2f}%"
-    )
-    print("Relative error over 100% for:")
-    for i in np.where(rel_error > 1)[0]:
-        print(f"target_name: {loss_matrix_clean.columns[i]}")
-        print(f"target_value: {targets_array_clean[i]}")
-        print(f"estimate_value: {estimate[i]}")
-        print(f"has rel_error: {rel_error[i]:.2f}\n")
-    print("---End of reweighting quick diagnostics------")
 
     # New (Sparse) path depending on temperature, init_mean, l0_lambda -----
     weights = torch.tensor(
@@ -209,32 +190,12 @@ def reweight(
     final_weights_sparse = (torch.exp(weights) * gates()).detach().numpy()
 
     optimised_weights = final_weights_sparse
-    print("\n\n---Sparse Solutions: reweighting quick diagnostics----\n")
-    print(
-        f"{np.sum(optimised_weights == 0)} are zero, {np.sum(optimised_weights != 0)} weights are nonzero"
+    print_reweighting_diagnostics(
+        optimised_weights,
+        loss_matrix_clean,
+        targets_array_clean,
+        "Sparse Solutions",
     )
-    estimate = optimised_weights @ loss_matrix_clean
-    rel_error = (
-        ((estimate - targets_array_clean) + 1) / (targets_array_clean + 1)
-    ) ** 2
-    within_10_percent_mask = np.abs(estimate - targets_array_clean) <= (
-        0.10 * np.abs(targets_array_clean)
-    )
-    percent_within_10 = np.mean(within_10_percent_mask) * 100
-    print(
-        f"rel_error: min: {np.min(rel_error):.2f}\n"
-        f"max: {np.max(rel_error):.2f}\n"
-        f"mean: {np.mean(rel_error):.2f}\n"
-        f"median: {np.median(rel_error):.2f}\n"
-        f"Wthin 10% of target: {percent_within_10:.2f}%"
-    )
-    print("Relative error over 100% for:")
-    for i in np.where(rel_error > 1)[0]:
-        print(f"target_name: {loss_matrix_clean.columns[i]}")
-        print(f"target_value: {targets_array_clean[i]}")
-        print(f"estimate_value: {estimate[i]}")
-        print(f"has rel_error: {rel_error[i]:.2f}\n")
-    print("---End of reweighting quick diagnostics------")
 
     return final_weights_dense, final_weights_sparse
 

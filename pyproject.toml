@@ -33,6 +33,7 @@ dependencies = [
     "openpyxl>=3.1.5",
     "tables>=3.10.2",
     "torch>=2.7.1",
+    "us",
 ]
 
 [project.optional-dependencies]

@@ -15,6 +15,7 @@ def upload_datasets():
         Pooled_3_Year_CPS_2023.file_path,
         CPS_2023.file_path,
         STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
+        STORAGE_FOLDER / "enhanced_cps_2024_minified.h5",
     ]
 
     for file_path in dataset_files:

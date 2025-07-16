@@ -7,6 +7,7 @@ import pandas as pd
 import os
 from policyengine_us_data.utils import QRF
 import time
+import logging
 
 # These are sorted by magnitude.
 # First 15 contain 90%.
@@ -229,12 +230,14 @@ def impute_income_variables(
         X_train,
         y_train,
     )
-    print(
+    logging.info(
         f"Training imputation models from the PUF took {time.time() - start:.2f} seconds"
     )
     start = time.time()
     y = model.predict(X)
-    print(f"Predicting imputed values took {time.time() - start:.2f} seconds")
+    logging.info(
+        f"Predicting imputed values took {time.time() - start:.2f} seconds"
+    )
     return y
 
 

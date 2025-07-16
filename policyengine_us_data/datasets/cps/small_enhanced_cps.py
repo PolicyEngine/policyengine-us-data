@@ -7,6 +7,7 @@ from policyengine_us_data.datasets import EnhancedCPS_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_core.enums import Enum
 from policyengine_core.data.dataset import Dataset
+import logging
 
 
 def create_small_ecps():
@@ -125,6 +126,6 @@ def create_sparse_ecps():
 
 if __name__ == "__main__":
     create_small_ecps()
-    print("Small CPS dataset created successfully.")
+    logging.info("Small CPS dataset created successfully.")
     create_sparse_ecps()
-    print("Sparse CPS dataset created successfully.")
+    logging.info("Sparse CPS dataset created successfully.")

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+import logging
 
 
 class HardConcrete(nn.Module):
@@ -189,11 +190,11 @@ def train_with_l0(model, train_loader, epochs=10, l0_lambda=1e-3):
             total_l0 += l0_loss.item()
         if epoch % 1 == 0:
             sparsity_stats = model.get_sparsity_stats()
-            print(
+            logging.info(
                 f"Epoch {epoch}: Loss={total_loss/len(train_loader):.4f}, L0={total_l0/len(train_loader):.4f}"
             )
             for layer, stats in sparsity_stats.items():
-                print(
+                logging.info(
                     f"  {layer}: {stats['sparsity']*100:.1f}% sparse, {stats['active_params']:.1f} active params"
                 )
 

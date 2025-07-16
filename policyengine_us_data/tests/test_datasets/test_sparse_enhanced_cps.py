@@ -150,7 +150,7 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
 def test_sparse_ssn_card_type_none_target(sim):
 
     TARGET_COUNT = 13e6
-    TOLERANCE = 1E9 # TODO: remedy 0.2  # Allow 20% error
+    TOLERANCE = 1e9  # TODO: remedy 0.2  # Allow 20% error
 
     # Calculate the number of individuals with ssn_card_type == "NONE"
     ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"

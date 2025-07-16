@@ -834,19 +834,39 @@ def _add_snap_metric_columns(
 
 
 def print_reweighting_diagnostics(
-    optimised_weights, loss_matrix_clean, targets_array_clean, label
+    optimised_weights, loss_matrix, targets_array, label
 ):
+    # Convert all inputs to NumPy arrays right at the start
+    optimised_weights_np = (
+        optimised_weights.numpy()
+        if hasattr(optimised_weights, "numpy")
+        else np.asarray(optimised_weights)
+    )
+    loss_matrix_np = (
+        loss_matrix.numpy()
+        if hasattr(loss_matrix, "numpy")
+        else np.asarray(loss_matrix)
+    )
+    targets_array_np = (
+        targets_array.numpy()
+        if hasattr(targets_array, "numpy")
+        else np.asarray(targets_array)
+    )
+
     print(f"\n\n---{label}: reweighting quick diagnostics----\n")
     print(
-        f"{np.sum(optimised_weights == 0)} are zero, "
-        f"{np.sum(optimised_weights != 0)} weights are nonzero"
+        f"{np.sum(optimised_weights_np == 0)} are zero, "
+        f"{np.sum(optimised_weights_np != 0)} weights are nonzero"
     )
-    estimate = optimised_weights @ loss_matrix_clean
+
+    # All subsequent calculations use the guaranteed NumPy versions
+    estimate = optimised_weights_np @ loss_matrix_np
+
     rel_error = (
-        ((estimate - targets_array_clean) + 1) / (targets_array_clean + 1)
+        ((estimate - targets_array_np) + 1) / (targets_array_np + 1)
     ) ** 2
-    within_10_percent_mask = np.abs(estimate - targets_array_clean) <= (
-        0.10 * np.abs(targets_array_clean)
+    within_10_percent_mask = np.abs(estimate - targets_array_np) <= (
+        0.10 * np.abs(targets_array_np)
     )
     percent_within_10 = np.mean(within_10_percent_mask) * 100
     print(
@@ -854,12 +874,17 @@ def print_reweighting_diagnostics(
         f"max: {np.max(rel_error):.2f}\n"
         f"mean: {np.mean(rel_error):.2f}\n"
         f"median: {np.median(rel_error):.2f}\n"
-        f"Wthin 10% of target: {percent_within_10:.2f}%"
+        f"Within 10% of target: {percent_within_10:.2f}%"
     )
     print("Relative error over 100% for:")
     for i in np.where(rel_error > 1)[0]:
-        print(f"target_name: {loss_matrix_clean.columns[i]}")
-        print(f"target_value: {targets_array_clean[i]}")
+        # Keep this check, as Tensors won't have a .columns attribute
+        if hasattr(loss_matrix, "columns"):
+            print(f"target_name: {loss_matrix.columns[i]}")
+        else:
+            print(f"target_index: {i}")
+
+        print(f"target_value: {targets_array_np[i]}")
         print(f"estimate_value: {estimate[i]}")
         print(f"has rel_error: {rel_error[i]:.2f}\n")
     print("---End of reweighting quick diagnostics------")

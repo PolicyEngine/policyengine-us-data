@@ -8,6 +8,7 @@ from policyengine_us_data.utils import (
     HardConcrete,
 )
 import numpy as np
+from tqdm import trange
 from typing import Type
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.cps.extended_cps import (
@@ -51,7 +52,6 @@ def reweight(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
 
-    # TODO: replace this functionality from the microcalibrate package.
     inv_mean_normalisation = 1 / np.mean(normalisation_factor.numpy())
     def loss(weights):
         # Check for Nans in either the weights or the loss matrix
@@ -82,8 +82,6 @@ def reweight(
 
     # Original (Dense) path ---
     optimizer = torch.optim.Adam([weights], lr=3e-1)
-    from tqdm import trange
-
     start_loss = None
 
     iterator = trange(epochs)
@@ -150,20 +148,12 @@ def reweight(
         print(f"has rel_error: {rel_error[i]:.2f}\n")
     print("---End of reweighting quick diagnostics------")
 
-    # New (Sparse) path -----
-
-    #temperature = 0.5
-    #init_mean = 0.999
-    #l0_lambda = 1e-5
-
+    # New (Sparse) path depending on temperature, init_mean, l0_lambda -----
     weights = torch.tensor(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
     gates = HardConcrete(len(original_weights), init_mean=init_mean, temperature=temperature)
-
     optimizer = torch.optim.Adam([weights] + list(gates.parameters()), lr=3e-1)
-    from tqdm import trange
-
     start_loss = None
 
     iterator = trange(epochs)

@@ -1,15 +1,16 @@
 import pandas as pd
 import numpy as np
+import h5py
 
+from policyengine_us import Microsimulation
+from policyengine_us_data.datasets import EnhancedCPS_2024
+from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_core.enums import Enum
 from policyengine_core.data.dataset import Dataset
 
 
 def create_small_ecps():
-    from policyengine_us import Microsimulation
-    from policyengine_us_data.datasets import EnhancedCPS_2024
-    from policyengine_us_data.storage import STORAGE_FOLDER
-    from policyengine_core.enums import Enum
-
+    """Create a small version of the ECPS by random sampling"""
     simulation = Microsimulation(
         dataset=EnhancedCPS_2024,
     )
@@ -31,8 +32,6 @@ def create_small_ecps():
         if len(data[variable]) == 0:
             del data[variable]
 
-    import h5py
-
     with h5py.File(STORAGE_FOLDER / "small_enhanced_cps_2024.h5", "w") as f:
         for variable, periods in data.items():
             grp = f.create_group(variable)
@@ -41,11 +40,7 @@ def create_small_ecps():
 
 
 def create_sparse_ecps():
-    from policyengine_us import Microsimulation
-    from policyengine_us_data.datasets import EnhancedCPS_2024
-    from policyengine_us_data.storage import STORAGE_FOLDER
-    from policyengine_core.enums import Enum
-
+    """create a small version of the ECPS by L0 regularization"""
     quantize_weights = True
     time_period = 2024
 
@@ -89,19 +84,6 @@ def create_sparse_ecps():
         lambda x: household_id_to_count.get(x, 0)
     )
 
-    # NOTE: from subsample. I don't think I want to do this!
-    ## Adjust household weights to maintain the total weight
-    #for col in subset_df.columns:
-    #    if "weight__" in col:
-    #        target_total_weight = df[col].values.sum()
-    #        if not quantize_weights:
-    #            subset_df[col] *= household_counts.values
-    #        else:
-    #            subset_df[col] = household_counts.values
-    #        subset_df[col] *= (
-    #            target_total_weight / subset_df[col].values.sum()
-    #        )
-
     df = subset_df
 
     # Update the dataset and rebuild the simulation
@@ -137,7 +119,6 @@ def create_sparse_ecps():
         if len(data[variable]) == 0:
             del data[variable]
 
-    import h5py
 
     with h5py.File(STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5", "w") as f:
         for variable, periods in data.items():

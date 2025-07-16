@@ -1,5 +1,0 @@
-- bump: minor
-  changes:
-    changed:
-    - Removed github download capability 
-    - Changed download option for soi.csv and np2023_d5_mid.csv to Hugging Face 

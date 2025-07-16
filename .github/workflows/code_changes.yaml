@@ -12,7 +12,6 @@ on:
 
 env:
   HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-  POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
 
 jobs:
   Lint:
@@ -65,7 +64,6 @@ jobs:
           - name: Deploy documentation
             uses: JamesIves/github-pages-deploy-action@releases/v3
             with:
-              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               BRANCH: gh-pages  # The branch the action should deploy to.
               FOLDER: docs/_build/html  # The folder the action should deploy.
               CLEAN: true  # Optionally delete the contents of the release branch before deploying.

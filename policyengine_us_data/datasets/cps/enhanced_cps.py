@@ -18,6 +18,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_2024,
 )
 import os
+from pathlib import Path
 
 
 try:
@@ -136,6 +137,10 @@ def reweight(
     )
 
     # New (Sparse) path depending on temperature, init_mean, l0_lambda -----
+    # make a calibration_log_sparse.csv path
+    p = Path(log_path)
+    log_path_sparse = p.with_name(f"{p.stem}_sparse{p.suffix}")
+
     weights = torch.tensor(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
@@ -153,7 +158,7 @@ def reweight(
         masked = torch.exp(weights_) * gates()
         l_main = loss(masked)
         l = l_main + l0_lambda * gates.get_penalty()
-        if (log_path is not None) and (i % 10 == 0):
+        if (log_path_sparse is not None) and (i % 10 == 0):
             gates.eval()
             estimates = (torch.exp(weights) * gates()) @ loss_matrix
             gates.train()
@@ -173,8 +178,8 @@ def reweight(
             df["loss"] = df.rel_abs_error**2
             performance = pd.concat([performance, df], ignore_index=True)
 
-        if (log_path is not None) and (i % 1000 == 0):
-            performance.to_csv(log_path, index=False)
+        if (log_path_sparse is not None) and (i % 1000 == 0):
+            performance.to_csv(log_path_sparse, index=False)
         if start_loss is None:
             start_loss = l.item()
         loss_rel_change = (l.item() - start_loss) / start_loss
@@ -183,8 +188,8 @@ def reweight(
             {"loss": l.item(), "loss_rel_change": loss_rel_change}
         )
         optimizer.step()
-        if log_path is not None:
-            performance.to_csv(log_path, index=False)
+        if log_path_sparse is not None:
+            performance.to_csv(log_path_sparse, index=False)
 
     gates.eval()
     final_weights_sparse = (torch.exp(weights) * gates()).detach().numpy()

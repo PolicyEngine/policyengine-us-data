@@ -118,14 +118,17 @@ def test_undocumented_matches_ssn_none():
     ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"
     undocumented_mask = sim.calculate("immigration_status") == "UNDOCUMENTED"
 
-    # 1. Exact match between the two classifications
+    # 1. Per-person equivalence
     mismatches = np.where(ssn_type_none_mask != undocumented_mask)[0]
     assert (
         mismatches.size == 0
     ), f"{mismatches.size} mismatches between 'NONE' SSN and 'UNDOCUMENTED' status"
 
+    # 2. Optional aggregate sanity-check
+    count = undocumented_mask.sum()
+    pct_error = abs((count - TARGET_COUNT) / TARGET_COUNT)
     print(
-        f'Immigrant class type "UNDOCUMENTED" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
+        f'Immigrant class "UNDOCUMENTED" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
     )
     assert pct_error < TOLERANCE
 

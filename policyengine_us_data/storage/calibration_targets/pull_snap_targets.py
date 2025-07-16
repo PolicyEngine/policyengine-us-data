@@ -2,8 +2,12 @@ import requests
 import zipfile
 import io
 import pandas as pd
+import numpy as np
 
-from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER
+from policyengine_us_data.storage.calibration_targets.pull_age_targets import (
+    STATE_NAME_TO_ABBREV,
+)
 
 
 STATE_NAME_TO_FIPS = {
@@ -14,8 +18,8 @@ STATE_NAME_TO_FIPS = {
     "California": "06",
     "Colorado": "08",
     "Connecticut": "09",
-    "District of Columbia": "11",
     "Delaware": "10",
+    "District of Columbia": "11",
     "Florida": "12",
     "Georgia": "13",
     "Hawaii": "15",
@@ -67,12 +71,38 @@ def extract_usda_snap_data(year=2023):
     """
     url = "https://www.fns.usda.gov/sites/default/files/resource-files/snap-zip-fy69tocurrent-6.zip"
 
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    }
+
     try:
-        response = requests.get(url, timeout=30)
+        session = requests.Session()
+        session.headers.update(headers)
+
+        # Try to visit the main page first to get any necessary cookies
+        main_page = "https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap"
+        try:
+            session.get(main_page, timeout=30)
+        except:
+            pass  # Ignore errors on the main page
+
+        response = session.get(url, timeout=30, allow_redirects=True)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         print(f"Error downloading file: {e}")
-        return None
+        # Try alternative URL or method
+        try:
+            alt_url = "https://www.fns.usda.gov/sites/default/files/resource-files/snap-zip-fy69tocurrent-6.zip"
+            response = session.get(alt_url, timeout=30, allow_redirects=True)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e2:
+            print(f"Alternative URL also failed: {e2}")
+            return None
 
     zip_file = zipfile.ZipFile(io.BytesIO(response.content))
 
@@ -138,14 +168,46 @@ def extract_usda_snap_data(year=2023):
         .reset_index(drop=True)
     )
     df_states["GEO_ID"] = "0400000US" + df_states["STATE_FIPS"]
+    df_states["GEO_NAME"] = df_states["State"].map(STATE_NAME_TO_ABBREV)
 
-    return df_states[["GEO_ID", "Households", "Cost"]]
+    count_df = df_states[["GEO_ID", "GEO_NAME"]].copy()
+    count_df["VALUE"] = df_states["Households"]
+    count_df["IS_COUNT"] = 1.0
+    count_df["DATA_SOURCE"] = "usda_fns"
+    count_df["BREAKDOWN_VARIABLE"] = np.nan
+    count_df["LOWER_BOUND"] = np.nan
+    count_df["UPPER_BOUND"] = np.nan
+
+    amount_df = df_states[["GEO_ID", "GEO_NAME"]].copy()
+    amount_df["VALUE"] = df_states["Cost"]
+    amount_df["IS_COUNT"] = 0.0
+    amount_df["DATA_SOURCE"] = "usda_fns"
+    amount_df["BREAKDOWN_VARIABLE"] = np.nan
+    amount_df["LOWER_BOUND"] = np.nan
+    amount_df["UPPER_BOUND"] = np.nan
+
+    final_df = pd.concat([count_df, amount_df], ignore_index=True)
+    final_df["VARIABLE"] = "snap"
+
+    return final_df[
+        [
+            "DATA_SOURCE",
+            "GEO_ID",
+            "GEO_NAME",
+            "VARIABLE",
+            "VALUE",
+            "IS_COUNT",
+            "BREAKDOWN_VARIABLE",
+            "LOWER_BOUND",
+            "UPPER_BOUND",
+        ]
+    ]
 
 
 def main() -> None:
-    out_dir = STORAGE_FOLDER
+    out_dir = CALIBRATION_FOLDER
     state_df = extract_usda_snap_data(2024)
-    state_df.to_csv(out_dir / "snap_state.csv", index=False)
+    state_df.to_csv(out_dir / "snap.csv", index=False)
 
 
 if __name__ == "__main__":

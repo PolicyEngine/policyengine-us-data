@@ -1,26 +1,12 @@
 import pandas as pd
 import numpy as np
 
-from policyengine_us_data.storage import STORAGE_FOLDER
-from policyengine_us_data.storage.pull_soi_state_targets import (
+from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
+from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
     STATE_ABBR_TO_FIPS,
 )
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
-
-
-def fmt(x):
-    if x == -np.inf:
-        return "-inf"
-    if x == np.inf:
-        return "inf"
-    if x < 1e3:
-        return f"{x:.0f}"
-    if x < 1e6:
-        return f"{x/1e3:.0f}k"
-    if x < 1e9:
-        return f"{x/1e6:.0f}m"
-    return f"{x/1e9:.1f}bn"
 
 
 # CPS-derived statistics
@@ -50,6 +36,20 @@ HARD_CODED_TOTALS = {
     # Assume 40% through 2024
     "tip_income": 38e9 * 1.4,
 }
+
+
+def fmt(x):
+    if x == -np.inf:
+        return "-inf"
+    if x == np.inf:
+        return "inf"
+    if x < 1e3:
+        return f"{x:.0f}"
+    if x < 1e6:
+        return f"{x/1e3:.0f}k"
+    if x < 1e9:
+        return f"{x/1e6:.0f}m"
+    return f"{x/1e9:.1f}bn"
 
 
 def build_loss_matrix(dataset: type, time_period):
@@ -179,7 +179,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     # Census single-year age population projections
 
-    populations = pd.read_csv(STORAGE_FOLDER / "np2023_d5_mid.csv")
+    populations = pd.read_csv(CALIBRATION_FOLDER / "np2023_d5_mid.csv")
     populations = populations[populations.SEX == 0][populations.RACE_HISP == 0]
     populations = (
         populations.groupby("YEAR")
@@ -267,7 +267,7 @@ def build_loss_matrix(dataset: type, time_period):
     targets_array.append(eitc_spending(time_period))
 
     # IRS EITC filers and totals by child counts
-    eitc_stats = pd.read_csv(STORAGE_FOLDER / "eitc.csv")
+    eitc_stats = pd.read_csv(CALIBRATION_FOLDER / "eitc.csv")
 
     eitc_spending_uprating = eitc_spending(time_period) / eitc_spending(2021)
     population = (
@@ -331,7 +331,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     # Healthcare spending by age
 
-    healthcare = pd.read_csv(STORAGE_FOLDER / "healthcare_spending.csv")
+    healthcare = pd.read_csv(CALIBRATION_FOLDER / "healthcare_spending.csv")
 
     for _, row in healthcare.iterrows():
         age_lower_bound = int(row["age_10_year_lower_bound"])
@@ -351,7 +351,9 @@ def build_loss_matrix(dataset: type, time_period):
 
     # AGI by SPM threshold totals
 
-    spm_threshold_agi = pd.read_csv(STORAGE_FOLDER / "spm_threshold_agi.csv")
+    spm_threshold_agi = pd.read_csv(
+        CALIBRATION_FOLDER / "spm_threshold_agi.csv"
+    )
 
     for _, row in spm_threshold_agi.iterrows():
         spm_unit_agi = sim.calculate(
@@ -379,7 +381,9 @@ def build_loss_matrix(dataset: type, time_period):
 
     # Population by state and population under 5 by state
 
-    state_population = pd.read_csv(STORAGE_FOLDER / "population_by_state.csv")
+    state_population = pd.read_csv(
+        CALIBRATION_FOLDER / "population_by_state.csv"
+    )
 
     for _, row in state_population.iterrows():
         in_state = sim.calculate("state_code", map_to="person") == row["state"]
@@ -458,7 +462,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     # ACA spending by state
     spending_by_state = pd.read_csv(
-        STORAGE_FOLDER / "aca_spending_and_enrollment_2024.csv"
+        CALIBRATION_FOLDER / "aca_spending_and_enrollment_2024.csv"
     )
     # Monthly to yearly
     spending_by_state["spending"] = spending_by_state["spending"] * 12
@@ -489,7 +493,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     # Marketplace enrollment by state (targets in thousands)
     enrollment_by_state = pd.read_csv(
-        STORAGE_FOLDER / "aca_spending_and_enrollment_2024.csv"
+        CALIBRATION_FOLDER / "aca_spending_and_enrollment_2024.csv"
     )
 
     # One-time pulls so we don’t re-compute inside the loop
@@ -522,7 +526,7 @@ def build_loss_matrix(dataset: type, time_period):
     # Medicaid enrollment by state
 
     enrollment_by_state = pd.read_csv(
-        STORAGE_FOLDER / "medicaid_enrollment_2024.csv"
+        CALIBRATION_FOLDER / "medicaid_enrollment_2024.csv"
     )
 
     # One-time pulls so we don’t re-compute inside the loop
@@ -559,7 +563,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     # State 10-year age targets
 
-    age_targets = pd.read_csv(STORAGE_FOLDER / "age_state.csv")
+    age_targets = pd.read_csv(CALIBRATION_FOLDER / "age_state.csv")
 
     for state in age_targets.GEO_NAME.unique():
         state_mask = state_person == state
@@ -666,7 +670,7 @@ def _add_agi_state_targets():
     Create an aggregate target matrix for the appropriate geographic area
     """
 
-    soi_targets = pd.read_csv(STORAGE_FOLDER / "agi_state.csv")
+    soi_targets = pd.read_csv(CALIBRATION_FOLDER / "agi_state.csv")
 
     soi_targets["target_name"] = (
         "state/"
@@ -694,7 +698,7 @@ def _add_agi_metric_columns(
     """
     Add AGI metric columns to the loss_matrix.
     """
-    soi_targets = pd.read_csv(STORAGE_FOLDER / "agi_state.csv")
+    soi_targets = pd.read_csv(CALIBRATION_FOLDER / "agi_state.csv")
 
     agi = sim.calculate("adjusted_gross_income").values
     state = sim.calculate("state_code", map_to="person").values
@@ -728,7 +732,7 @@ def _add_state_real_estate_taxes(loss_matrix, targets_list, sim):
     """
     # Read the real estate taxes data
     real_estate_taxes_targets = pd.read_csv(
-        STORAGE_FOLDER / "real_estate_taxes_by_state_acs.csv"
+        CALIBRATION_FOLDER / "real_estate_taxes_by_state_acs.csv"
     )
     national_total = HARD_CODED_TOTALS["real_estate_taxes"]
     state_sum = real_estate_taxes_targets["real_estate_taxes_bn"].sum() * 1e9
@@ -765,7 +769,7 @@ def _add_snap_state_targets(sim):
     """
     Add snap targets at the state level, adjusted in aggregate to the sim
     """
-    snap_targets = pd.read_csv(STORAGE_FOLDER / "snap_state.csv")
+    snap_targets = pd.read_csv(CALIBRATION_FOLDER / "snap_state.csv")
     time_period = sim.default_calculation_period
 
     national_cost_target = sim.tax_benefit_system.parameters(
@@ -804,7 +808,7 @@ def _add_snap_metric_columns(
     """
     Add SNAP metric columns to the loss_matrix.
     """
-    snap_targets = pd.read_csv(STORAGE_FOLDER / "snap_state.csv")
+    snap_targets = pd.read_csv(CALIBRATION_FOLDER / "snap_state.csv")
 
     snap_cost = sim.calculate("snap_reported", map_to="household").values
     snap_hhs = (

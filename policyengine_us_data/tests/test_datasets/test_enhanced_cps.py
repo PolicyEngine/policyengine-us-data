@@ -105,23 +105,24 @@ def test_ssn_card_type_none_target():
     assert pct_error < TOLERANCE
 
 
-def test_immigration_status_none_target():
+def test_undocumented_matches_ssn_none():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation
     import numpy as np
 
     TARGET_COUNT = 13e6
-    TOLERANCE = 0.2  # Allow ±20% error
+    TOLERANCE = 0.2  # ±20 %
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
 
-    # Calculate the number of individuals with immigration_statuse == "UNDOCUMENTED"
-    immigration_status_none_mask = (
-        sim.calculate("immigration_status") == "UNDOCUMENTED"
-    )
-    count = immigration_status_none_mask.sum()
+    ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"
+    undocumented_mask = sim.calculate("immigration_status") == "UNDOCUMENTED"
 
-    pct_error = abs((count - TARGET_COUNT) / TARGET_COUNT)
+    # 1. Exact match between the two classifications
+    mismatches = np.where(ssn_type_none_mask != undocumented_mask)[0]
+    assert (
+        mismatches.size == 0
+    ), f"{mismatches.size} mismatches between 'NONE' SSN and 'UNDOCUMENTED' status"
 
     print(
         f'Immigrant class type "UNDOCUMENTED" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'

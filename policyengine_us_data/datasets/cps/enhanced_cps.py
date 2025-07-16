@@ -130,8 +130,8 @@ def reweight(
     optimised_weights = final_weights_dense
     print_reweighting_diagnostics(
         optimised_weights,
-        loss_matrix_clean,
-        targets_array_clean,
+        loss_matrix,
+        targets_array,
         "Dense Solutions",
     )
 
@@ -192,8 +192,8 @@ def reweight(
     optimised_weights = final_weights_sparse
     print_reweighting_diagnostics(
         optimised_weights,
-        loss_matrix_clean,
-        targets_array_clean,
+        loss_matrix,
+        targets_array,
         "Sparse Solutions",
     )
 

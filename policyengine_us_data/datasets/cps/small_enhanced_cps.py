@@ -41,7 +41,6 @@ def create_small_ecps():
 
 def create_sparse_ecps():
     """create a small version of the ECPS by L0 regularization"""
-    quantize_weights = True
     time_period = 2024
 
     ecps = EnhancedCPS_2024()

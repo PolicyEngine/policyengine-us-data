@@ -4,4 +4,4 @@ This directory contains all data sources of the targets that will be calibrated 
 
 DATA_SOURCE,GEO_ID,GEO_NAME,VARIABLE,VALUE,IS_COUNT,BREAKDOWN_VARIABLE,LOWER_BOUND,UPPER_BOUND
 
-To see the newly formatted target files run `make targets`. These will be produced and saved in this same folder. Once all targets have a clean script that pulls them, the raw versions will be removed. 
+To see the newly formatted target files run `make targets`.

@@ -442,3 +442,9 @@
     - updating minimum versions on policyengine-us and pandas dependencies
     - getting rid of non-working manual workflow code
   date: 2025-07-14 15:33:11
+- bump: minor
+  changes:
+    changed:
+    - Removed github download capability
+    - Changed download option for soi.csv and np2023_d5_mid.csv to Hugging Face
+  date: 2025-07-16 01:01:25

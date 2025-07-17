@@ -2,7 +2,9 @@
 
 name: Manual Testing 
 on:
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - main 
 
 env:
   HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}

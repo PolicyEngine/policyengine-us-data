@@ -46,22 +46,21 @@ def create_sparse_ecps():
 
     ecps = EnhancedCPS_2024()
     h5 = ecps.load()
-    sparse_weights = h5["household_sparse_weight"]["2024"][:]
-    hh_ids = h5["household_id"]["2024"][:]
+    sparse_weights = h5["household_sparse_weight"][str(time_period)][:]
+    hh_ids = h5["household_id"][str(time_period)][:]
 
     template_sim = Microsimulation(
         dataset=EnhancedCPS_2024,
     )
-    template_sim.set_input("household_weight", 2024, sparse_weights)
+    template_sim.set_input("household_weight", time_period, sparse_weights)
 
-    template_df = template_sim.to_input_dataframe()
+    df = template_sim.to_input_dataframe()  # Not at household level
 
     household_weight_column = f"household_weight__{time_period}"
     df_household_id_column = f"household_id__{time_period}"
     df_person_id_column = f"person_id__{time_period}"
 
     # Group by household ID and get the first entry for each group
-    df = template_df
     h_df = df.groupby(df_household_id_column).first()
     h_ids = pd.Series(h_df.index)
     h_weights = pd.Series(h_df[household_weight_column].values)
@@ -72,50 +71,32 @@ def create_sparse_ecps():
 
     subset_df = df[df[df_household_id_column].isin(h_ids)].copy()
 
-    household_id_to_count = {}
-    for household_id in h_ids:
-        if household_id not in household_id_to_count:
-            household_id_to_count[household_id] = 0
-        household_id_to_count[household_id] += 1
-
-    household_counts = subset_df[df_household_id_column].map(
-        lambda x: household_id_to_count.get(x, 0)
-    )
-
-    df = subset_df
-
     # Update the dataset and rebuild the simulation
     sim = Microsimulation()
-    sim.dataset = Dataset.from_dataframe(df, sim.dataset.time_period)
+    sim.dataset = Dataset.from_dataframe(subset_df, time_period)
     sim.build_from_dataset()
 
-    # Ensure the baseline branch has the new data.
-    if "baseline" in sim.branches:
-        baseline_tax_benefit_system = sim.branches[
-            "baseline"
-        ].tax_benefit_system
-        sim.branches["baseline"] = sim.clone()
-        sim.branches["tax_benefit_system"] = baseline_tax_benefit_system
-
-    sim.default_calculation_period = time_period
-
-    # Get ready to write it out
-    simulation = sim
+    # Write the data to an h5
     data = {}
-    for variable in simulation.tax_benefit_system.variables:
+    for variable in sim.tax_benefit_system.variables:
         data[variable] = {}
-        for time_period in simulation.get_holder(variable).get_known_periods():
-            values = simulation.get_holder(variable).get_array(time_period)
-            values = np.array(values)
-            if simulation.tax_benefit_system.variables.get(
-                variable
-            ).value_type in (Enum, str):
-                values = values.astype("S")
+        for time_period in sim.get_holder(variable).get_known_periods():
+            values = sim.get_holder(variable).get_array(time_period)
+            if (
+                sim.tax_benefit_system.variables.get(variable).value_type
+                in (Enum, str)
+                and variable != "county_fips"
+            ):
+                values = values.decode_to_str().astype("S")
+            elif variable == "county_fips":
+                values = values.astype("int32")
+            else:
+                values = np.array(values)
             if values is not None:
                 data[variable][time_period] = values
 
-        if len(data[variable]) == 0:
-            del data[variable]
+            if len(data[variable]) == 0:
+                del data[variable]
 
     with h5py.File(STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5", "w") as f:
         for variable, periods in data.items():

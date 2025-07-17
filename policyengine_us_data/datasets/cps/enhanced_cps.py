@@ -33,10 +33,10 @@ def reweight(
     targets_array,
     dropout_rate=0.05,
     log_path="calibration_log.csv",
-    epochs=150,
-    l0_lambda=1e-5,
-    init_mean=0.999,
-    temperature=0.5,
+    epochs=500,
+    l0_lambda=5e-6,  # the action happens between 1e-6 and 1e-5
+    init_mean=0.999,  # initial proportion with non-zero weights, set near 0
+    temperature=0.5,  # Usual values .5 to 3, .5 was working better
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -130,7 +130,7 @@ def reweight(
 
     optimised_weights = final_weights_dense
     print_reweighting_diagnostics(
-        optimised_weights,
+        final_weights_dense,
         loss_matrix,
         targets_array,
         "Dense Solutions",
@@ -147,7 +147,9 @@ def reweight(
     gates = HardConcrete(
         len(original_weights), init_mean=init_mean, temperature=temperature
     )
-    optimizer = torch.optim.Adam([weights] + list(gates.parameters()), lr=3e-1)
+    # NOTE: Results are pretty sensitve to learning rates
+    # optimizer breaks down somewhere near .005, does better at above .1
+    optimizer = torch.optim.Adam([weights] + list(gates.parameters()), lr=0.2)
     start_loss = None
 
     iterator = trange(epochs)
@@ -194,12 +196,11 @@ def reweight(
     gates.eval()
     final_weights_sparse = (torch.exp(weights) * gates()).detach().numpy()
 
-    optimised_weights = final_weights_sparse
     print_reweighting_diagnostics(
-        optimised_weights,
+        final_weights_sparse,
         loss_matrix,
         targets_array,
-        "Sparse Solutions",
+        "L0 Sparse Solution",
     )
 
     return final_weights_dense, final_weights_sparse
@@ -307,7 +308,7 @@ class EnhancedCPS(Dataset):
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
-                epochs=150,
+                epochs=200,
             )
             data["household_weight"][year] = optimised_weights_dense
             data["household_sparse_weight"][year] = optimised_weights_sparse

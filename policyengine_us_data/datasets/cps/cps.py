@@ -1373,24 +1373,23 @@ def add_ssn_card_type(
     immigration_status[mask] = "CUBAN_HAITIAN_ENTRANT"
 
     # 4. DACA (came <16, now ≥18, ≥8 yrs in US, valid EAD)
-    def classify_daca_eligible(ssn_card_type, age_at_entry, years_in_us, current_age):
-        return (
-            (ssn_card_type == 2)
-            & (age_at_entry < 16)
-            & (years_in_us >= 8)
-            & (current_age >= 18)
-        )
-
-    daca_mask = classify_daca_eligible(ssn_card_type, age_at_entry, years_in_us, person.A_AGE)
-    immigration_status[daca_mask] = "DACA"
+    mask = (
+        (ssn_card_type == 2)
+        & (age_at_entry < 16)
+        & (years_in_us >= 8)
+        & (person.A_AGE >= 18)
+    )
+    immigration_status[mask] = "DACA"
 
     # 5. Recent humanitarian parole/asylee/refugee (Code 3, ≤ 5 yrs)
     mask = (ssn_card_type == 3) & (years_in_us <= 5)
-    immigration_status[mask] = "REFUGEE"    
+    immigration_status[mask] = "HUMANITARIAN_RECENT"  # custom label
 
     # 6. Temp non-qualified (Code 2 not caught by DACA rule)
-    mask = (ssn_card_type == 2) & (immigration_status == "LEGAL_PERMANENT_RESIDENT")
-    immigration_status[mask] = "TPS" 
+    mask = (ssn_card_type == 2) & (
+        immigration_status == "LEGAL_PERMANENT_RESIDENT"
+    )
+    immigration_status[mask] = "TEMP_NONQUALIFIED"
 
     # ---------------------------------------------------------------
     # Map custom labels into Enum-approved buckets
@@ -1417,7 +1416,7 @@ def add_ssn_card_type(
         3: "OTHER_NON_CITIZEN",  # Non-citizens with indicators of legal status
     }
     ssn_card_type_str = (
-        pd.Series(ssn_card_type).map(code_to_str).astype("S").values
+        pd.Series(ssn_card_type).map(code_to_str).astype("U").values
     )
     cps["ssn_card_type"] = ssn_card_type_str
 

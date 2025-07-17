@@ -1,5 +1,4 @@
 - bump: patch
   changes:
-    changed:
-    - Started cleaning targets (acs age, soi agi, snap, hardcoded) in storage/calibration_targets
-    - Tracked all target csv currently used by the ECPS for backward compatibility
+    fixed:
+    - Github pages deploy 

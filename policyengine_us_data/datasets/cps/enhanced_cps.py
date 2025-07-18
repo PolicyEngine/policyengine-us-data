@@ -37,10 +37,6 @@ def reweight(
     l0_lambda=5e-6,  # the action happens between 1e-6 and 1e-5
     init_mean=0.999,  # initial proportion with non-zero weights, set near 0
     temperature=0.5,  # Usual values .5 to 3, .5 was working better
-    epochs=500,
-    l0_lambda=5e-6,  # the action happens between 1e-6 and 1e-5
-    init_mean=0.999,  # initial proportion with non-zero weights, set near 0
-    temperature=0.5,  # Usual values .5 to 3, .5 was working better
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -57,8 +53,6 @@ def reweight(
     weights = torch.tensor(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
-
-    inv_mean_normalisation = 1 / np.mean(normalisation_factor.numpy())
 
     inv_mean_normalisation = 1 / np.mean(normalisation_factor.numpy())
 
@@ -310,12 +304,10 @@ class EnhancedCPS(Dataset):
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
 
             optimised_weights_dense, optimised_weights_sparse = reweight(
-            optimised_weights_dense, optimised_weights_sparse = reweight(
                 original_weights,
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
-                epochs=200,
                 epochs=200,
             )
             data["household_weight"][year] = optimised_weights_dense

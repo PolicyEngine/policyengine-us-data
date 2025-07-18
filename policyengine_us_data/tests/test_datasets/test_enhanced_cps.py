@@ -105,6 +105,46 @@ def test_ssn_card_type_none_target():
     assert pct_error < TOLERANCE
 
 
+def test_undocumented_matches_ssn_none():
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us import Microsimulation
+    import numpy as np
+
+    TARGET_COUNT = 13e6
+    TOLERANCE = 0.2  # ±20 %
+
+    sim = Microsimulation(dataset=EnhancedCPS_2024)
+
+    ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"
+    undocumented_mask = sim.calculate("immigration_status") == "UNDOCUMENTED"
+
+    # 1. Per-person equivalence
+    mismatches = np.where(ssn_type_none_mask != undocumented_mask)[0]
+    assert (
+        mismatches.size == 0
+    ), f"{mismatches.size} mismatches between 'NONE' SSN and 'UNDOCUMENTED' status"
+
+    # 2. Optional aggregate sanity-check
+    count = undocumented_mask.sum()
+    pct_error = abs((count - TARGET_COUNT) / TARGET_COUNT)
+    print(
+        f'Immigrant class "UNDOCUMENTED" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
+    )
+    assert pct_error < TOLERANCE
+
+
+def make_person(age, years_in_us, ssn_code, birth_country):
+    from types import SimpleNamespace
+    from policyengine_us import Microsimulation
+    from policyengine_core.reforms import Reform
+
+    return SimpleNamespace(
+        A_AGE=np.array([age]),
+        PEINUSYR=np.array([CURRENT_YEAR - 1981 - years_in_us]),
+        PENATVTY=np.array([birth_country]),
+    ), np.array([ssn_code])
+
+
 def test_ctc_reform_child_recipient_difference():
     """
     Test CTC reform impact for validation purposes only.

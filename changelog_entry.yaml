@@ -1,0 +1,5 @@
+- bump: minor
+  changes:
+    changed:
+    - Formatted scripts that pull SOI agi, ACS age, SNAP and hardcoded targets to follow new csv formatting schema.
+    - Tracked all target csv currently used by the ECPS for backward compatibility.

@@ -1345,6 +1345,72 @@ def add_ssn_card_type(
         }
     )
 
+    # NEW IMMIGRATION-STATUS TAGS FOR OBFBA
+    CURRENT_YEAR = 2024
+    years_in_us = CURRENT_YEAR - (1981 + person.PEINUSYR)
+    birth = person.PENATVTY  # two-digit nativity flag
+    age_at_entry = person.A_AGE - years_in_us
+
+    # start every non-citizen as LPR so no UNSET survives
+    immigration_status = np.full(
+        len(person), "LEGAL_PERMANENT_RESIDENT", dtype="U32"
+    )
+
+    # 1. Undocumented: SSN card type 0 who arrived 1982 or later
+    undoc_mask = (ssn_card_type == 0) & (~arrived_before_1982)
+    immigration_status[undoc_mask] = "UNDOCUMENTED"
+    # ------------------------------------------------------------------
+
+    # 2. COFA migrants – treat as LPR (kept from your logic)
+    CODA_CODES = {316, 317, 329}
+    mask = (ssn_card_type != 0) & np.isin(birth, list(CODA_CODES))
+    immigration_status[mask] = "LEGAL_PERMANENT_RESIDENT"
+
+    # 3. Cuban / Haitian entrants (≤ 10 yrs in US)
+    mask = (
+        (ssn_card_type != 0) & np.isin(birth, [241, 250]) & (years_in_us <= 10)
+    )
+    immigration_status[mask] = "CUBAN_HAITIAN_ENTRANT"
+
+    # 4. DACA (came <16, now ≥18, ≥8 yrs in US, valid EAD)
+    def classify_daca_eligible(
+        ssn_card_type, age_at_entry, years_in_us, current_age
+    ):
+        return (
+            (ssn_card_type == 2)
+            & (age_at_entry < 16)
+            & (years_in_us >= 8)
+            & (current_age >= 18)
+        )
+
+    daca_mask = classify_daca_eligible(
+        ssn_card_type, age_at_entry, years_in_us, person.A_AGE
+    )
+    immigration_status[daca_mask] = "DACA"
+
+    # 5. Recent humanitarian parole/asylee/refugee (Code 3, ≤ 5 yrs)
+    mask = (ssn_card_type == 3) & (years_in_us <= 5)
+    immigration_status[mask] = "REFUGEE"
+    # 6. Temp non-qualified (Code 2 not caught by DACA rule)
+    mask = (ssn_card_type == 2) & (
+        immigration_status == "LEGAL_PERMANENT_RESIDENT"
+    )
+    immigration_status[mask] = "TPS"
+
+    # ---------------------------------------------------------------
+    # Map custom labels into Enum-approved buckets
+    to_enum = {
+        "HUMANITARIAN_RECENT": "REFUGEE",  # or ASYLEE
+        "TEMP_NONQUALIFIED": "TPS",
+    }
+    custom = np.isin(immigration_status, list(to_enum.keys()))
+    immigration_status[custom] = (
+        pd.Series(immigration_status[custom]).map(to_enum).values
+    )
+
+    # Final write (all values now in ImmigrationStatus Enum)
+    cps["immigration_status"] = immigration_status.astype("S")
+
     # ============================================================================
     # CONVERT TO STRING LABELS AND STORE
     # ============================================================================

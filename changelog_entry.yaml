@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+    - Added Immigration status from SSN algorithm. 

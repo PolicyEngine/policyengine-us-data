@@ -29,7 +29,6 @@ def reweight(
     dropout_rate=0.05,
     log_path="calibration_log.csv",
     epochs=150,
-    epochs=150,
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -81,7 +80,6 @@ def reweight(
 
     start_loss = None
 
-    iterator = trange(epochs)
     iterator = trange(epochs)
     performance = pd.DataFrame()
     for i in iterator:
@@ -233,7 +231,6 @@ class EnhancedCPS(Dataset):
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
-                epochs=150,
                 epochs=150,
             )
             data["household_weight"][year] = optimised_weights

@@ -1344,6 +1344,7 @@ def add_ssn_card_type(
             "population": code_0_after,
         }
     )
+    
     # NEW IMMIGRATION-STATUS TAGS FOR OBFBA
     CURRENT_YEAR = 2024
     years_in_us = CURRENT_YEAR - (1981 + person.PEINUSYR)
@@ -1361,8 +1362,8 @@ def add_ssn_card_type(
     # ------------------------------------------------------------------
 
     # 2. COFA migrants – treat as LPR (kept from your logic)
-    cofa_codes = {316, 317, 329}
-    mask = (ssn_card_type != 0) & np.isin(birth, list(cofa_codes))
+    CODA_CODES = {316, 317, 329}
+    mask = (ssn_card_type != 0) & np.isin(birth, list(CODA_CODES))
     immigration_status[mask] = "LEGAL_PERMANENT_RESIDENT"
 
     # 3. Cuban / Haitian entrants (≤ 10 yrs in US)
@@ -1372,23 +1373,23 @@ def add_ssn_card_type(
     immigration_status[mask] = "CUBAN_HAITIAN_ENTRANT"
 
     # 4. DACA (came <16, now ≥18, ≥8 yrs in US, valid EAD)
-    mask = (
-        (ssn_card_type == 2)
-        & (age_at_entry < 16)
-        & (years_in_us >= 8)
-        & (person.A_AGE >= 18)
-    )
-    immigration_status[mask] = "DACA"
+    def classify_daca_eligible(ssn_card_type, age_at_entry, years_in_us, current_age):
+        return (
+            (ssn_card_type == 2)
+            & (age_at_entry < 16)
+            & (years_in_us >= 8)
+            & (current_age >= 18)
+        )
+
+    daca_mask = classify_daca_eligible(ssn_card_type, age_at_entry, years_in_us, person.A_AGE)
+    immigration_status[daca_mask] = "DACA"
 
     # 5. Recent humanitarian parole/asylee/refugee (Code 3, ≤ 5 yrs)
     mask = (ssn_card_type == 3) & (years_in_us <= 5)
-    immigration_status[mask] = "HUMANITARIAN_RECENT"  # custom label
-
+    immigration_status[mask] = "REFUGEE"
     # 6. Temp non-qualified (Code 2 not caught by DACA rule)
-    mask = (ssn_card_type == 2) & (
-        immigration_status == "LEGAL_PERMANENT_RESIDENT"
-    )
-    immigration_status[mask] = "TEMP_NONQUALIFIED"
+    mask = (ssn_card_type == 2) & (immigration_status == "LEGAL_PERMANENT_RESIDENT")
+    immigration_status[mask] = "TPS" 
 
     # ---------------------------------------------------------------
     # Map custom labels into Enum-approved buckets
@@ -1403,6 +1404,7 @@ def add_ssn_card_type(
 
     # Final write (all values now in ImmigrationStatus Enum)
     cps["immigration_status"] = immigration_status.astype("S")
+
 
     # ============================================================================
     # CONVERT TO STRING LABELS AND STORE

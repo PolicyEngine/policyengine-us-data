@@ -168,13 +168,9 @@ def extract_usda_snap_data(year=2023):
         .reset_index(drop=True)
     )
     df_states["GEO_ID"] = "0400000US" + df_states["STATE_FIPS"]
-<<<<<<< HEAD
     df_states["GEO_NAME"] = "state_" + df_states["State"].map(
         STATE_NAME_TO_ABBREV
     )
-=======
-    df_states["GEO_NAME"] = df_states["State"].map(STATE_NAME_TO_ABBREV)
->>>>>>> 2b1e40a (start cleaning calibration targets)
 
     count_df = df_states[["GEO_ID", "GEO_NAME"]].copy()
     count_df["VALUE"] = df_states["Households"]

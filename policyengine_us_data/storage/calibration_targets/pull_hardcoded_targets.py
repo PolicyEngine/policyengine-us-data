@@ -38,11 +38,7 @@ def pull_hardcoded_targets():
     data = {
         "DATA_SOURCE": ["hardcoded"] * len(HARD_CODED_TOTALS),
         "GEO_ID": ["0000000US"] * len(HARD_CODED_TOTALS),
-<<<<<<< HEAD
         "GEO_NAME": ["national"] * len(HARD_CODED_TOTALS),
-=======
-        "GEO_NAME": ["US"] * len(HARD_CODED_TOTALS),
->>>>>>> 2b1e40a (start cleaning calibration targets)
         "VARIABLE": list(HARD_CODED_TOTALS.keys()),
         "VALUE": list(HARD_CODED_TOTALS.values()),
         "IS_COUNT": [0.0]

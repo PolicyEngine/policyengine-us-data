@@ -37,6 +37,10 @@ def reweight(
     l0_lambda=5e-6,  # the action happens between 1e-6 and 1e-5
     init_mean=0.999,  # initial proportion with non-zero weights, set near 0
     temperature=0.5,  # Usual values .5 to 3, .5 was working better
+    epochs=500,
+    l0_lambda=5e-6,  # the action happens between 1e-6 and 1e-5
+    init_mean=0.999,  # initial proportion with non-zero weights, set near 0
+    temperature=0.5,  # Usual values .5 to 3, .5 was working better
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -53,6 +57,8 @@ def reweight(
     weights = torch.tensor(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
+
+    inv_mean_normalisation = 1 / np.mean(normalisation_factor.numpy())
 
     inv_mean_normalisation = 1 / np.mean(normalisation_factor.numpy())
 
@@ -89,7 +95,6 @@ def reweight(
     optimizer = torch.optim.Adam([weights], lr=3e-1)
     start_loss = None
 
-    iterator = trange(epochs)
     iterator = trange(epochs)
     performance = pd.DataFrame()
     for i in iterator:
@@ -288,7 +293,7 @@ class EnhancedCPS(Dataset):
             "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
             "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
             "state/RI/adjusted_gross_income/amount/-inf_1",
-            "target_name: nation/irs/exempt interest/count/AGI in -inf-inf/taxable/All",
+            "nation/irs/exempt interest/count/AGI in -inf-inf/taxable/All",
         ]
 
         # Run the optimization procedure to get (close to) minimum loss weights
@@ -305,33 +310,16 @@ class EnhancedCPS(Dataset):
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
 
             optimised_weights_dense, optimised_weights_sparse = reweight(
+            optimised_weights_dense, optimised_weights_sparse = reweight(
                 original_weights,
-                loss_matrix_clean,
-                targets_array_clean,
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
                 epochs=200,
+                epochs=200,
             )
             data["household_weight"][year] = optimised_weights_dense
             data["household_sparse_weight"][year] = optimised_weights_sparse
-
-        print("\n\n---reweighting quick diagnostics----\n")
-        estimate = optimised_weights @ loss_matrix
-        rel_error = (
-            ((estimate - targets_array) + 1) / (targets_array + 1)
-        ) ** 2
-        print(
-            f"rel_error: min: {np.min(rel_error):.2f}, max: {np.max(rel_error):.2f}",
-            f"mean: {np.mean(rel_error):.2f}, median: {np.median(rel_error):.2f}"
-        )
-        print("Relative error over 100% for:")
-        for i in np.where(rel_error > 1)[0]:
-            print(f"target_name: {loss_matrix.columns[i]}")
-            print(f"target_value: {targets_array[i]}")
-            print(f"estimate_value: {estimate[i]}")
-            print(f"has rel_error: {rel_error.values[i]:.2f}\n")
-        print("---End of reweighting quick diagnostics------")
 
         self.save_dataset(data)
 

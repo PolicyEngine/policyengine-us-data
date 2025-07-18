@@ -180,7 +180,7 @@ def test_aca_calibration():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
 
     TARGETS_PATH = Path(
-        "policyengine_us_data/storage/aca_spending_and_enrollment_2024.csv"
+        "policyengine_us_data/storage/calibration_targets/aca_spending_and_enrollment_2024.csv"
     )
     targets = pd.read_csv(TARGETS_PATH)
     # Monthly to yearly
@@ -224,7 +224,7 @@ def test_medicaid_calibration():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
 
     TARGETS_PATH = Path(
-        "policyengine_us_data/storage/medicaid_enrollment_2024.csv"
+        "policyengine_us_data/storage/calibration_targets/medicaid_enrollment_2024.csv"
     )
     targets = pd.read_csv(TARGETS_PATH)
 

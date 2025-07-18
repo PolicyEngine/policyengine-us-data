@@ -12,12 +12,12 @@ from policyengine_us_data.utils import (
     build_loss_matrix,
     print_reweighting_diagnostics,
 )
-from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
 
 
 @pytest.fixture(scope="session")
 def data():
-    return Dataset.from_file(STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5")
+    return Dataset.from_file(CALIBRATION_FOLDER / "sparse_enhanced_cps_2024.h5")
 
 
 @pytest.fixture(scope="session")
@@ -230,7 +230,7 @@ def test_sparse_ctc_reform_child_recipient_difference(sim):
 def test_sparse_aca_calibration(sim):
 
     TARGETS_PATH = Path(
-        "policyengine_us_data/storage/aca_spending_and_enrollment_2024.csv"
+        "policyengine_us_data/storage/calibration_targets/aca_spending_and_enrollment_2024.csv"
     )
     targets = pd.read_csv(TARGETS_PATH)
     # Monthly to yearly
@@ -268,7 +268,7 @@ def test_sparse_aca_calibration(sim):
 def test_sparse_medicaid_calibration(sim):
 
     TARGETS_PATH = Path(
-        "policyengine_us_data/storage/medicaid_enrollment_2024.csv"
+        "policyengine_us_data/storage/calibration_targets/medicaid_enrollment_2024.csv"
     )
     targets = pd.read_csv(TARGETS_PATH)
 

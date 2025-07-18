@@ -1,5 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-    - Edit and create files that pull SOI agi, ACS age, hardcoded and SNAP targets to follow the same clean csv format.
-    - Track all csv files used by loss.py for backwards compatibility.

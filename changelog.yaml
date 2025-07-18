@@ -458,3 +458,10 @@
     added:
     - l0 regularization as described in https://arxiv.org/abs/1712.01312
   date: 2025-07-18 12:46:15
+- bump: patch
+  changes:
+    fixed:
+    - Edit and create files that pull SOI agi, ACS age, hardcoded and SNAP targets
+      to follow the same clean csv format.
+    - Track all csv files used by loss.py for backwards compatibility.
+  date: 2025-07-18 17:01:51

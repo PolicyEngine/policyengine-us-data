@@ -64,7 +64,6 @@ jobs:
           - name: Deploy Github Pages documentation
             uses: JamesIves/github-pages-deploy-action@v4 
             with:
-              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              BRANCH: gh-pages  # The branch the action should deploy to.
-              FOLDER: docs/_build/html  # The folder the action should deploy.
-              CLEAN: true  # Optionally delete the contents of the release branch before deploying.
+              branch: gh-pages
+              folder: docs/_build/html
+              clean: true

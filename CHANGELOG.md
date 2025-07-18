@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.39.0] - 2025-07-18 12:46:15
+
+### Added
+
+- l0 regularization as described in https://arxiv.org/abs/1712.01312
+
+## [1.38.1] - 2025-07-17 20:07:31
+
+### Fixed
+
+- Github pages deploy
+
+## [1.38.0] - 2025-07-16 01:01:25
+
+### Changed
+
+- Removed github download capability
+- Changed download option for soi.csv and np2023_d5_mid.csv to Hugging Face
+
 ## [1.37.1] - 2025-07-14 15:33:11
 
 ### Changed
@@ -530,6 +550,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.39.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.38.1...1.39.0
+[1.38.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.38.0...1.38.1
+[1.38.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.37.1...1.38.0
 [1.37.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.37.0...1.37.1
 [1.37.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.36.2...1.37.0
 [1.36.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.36.1...1.36.2

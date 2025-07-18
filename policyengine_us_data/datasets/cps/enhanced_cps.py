@@ -152,7 +152,7 @@ def reweight(
     optimizer = torch.optim.Adam([weights] + list(gates.parameters()), lr=0.2)
     start_loss = None
 
-    iterator = trange(epochs)
+    iterator = trange(epochs * 2)  # lower learning rate, harder optimization
     performance = pd.DataFrame()
     for i in iterator:
         optimizer.zero_grad()

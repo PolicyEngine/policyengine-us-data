@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    changed:
+    -  Added Immigration status from SSN numbers. 

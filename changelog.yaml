@@ -453,3 +453,9 @@
     fixed:
     - Github pages deploy
   date: 2025-07-17 20:07:31
+
+- bump: minor
+  changes:
+    added:
+    - l0 regularization as described in https://arxiv.org/abs/1712.01312
+  date: 2025-07-18 12:46:15

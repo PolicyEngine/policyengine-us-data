@@ -5,8 +5,11 @@ from policyengine_us_data.utils import (
     get_soi,
     build_loss_matrix,
     fmt,
+    HardConcrete,
+    print_reweighting_diagnostics,
 )
 import numpy as np
+from tqdm import trange
 from typing import Type
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.cps.extended_cps import (
@@ -15,6 +18,8 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_2024,
 )
 import os
+from pathlib import Path
+
 
 try:
     import torch
@@ -28,7 +33,10 @@ def reweight(
     targets_array,
     dropout_rate=0.05,
     log_path="calibration_log.csv",
-    epochs=150,
+    epochs=500,
+    l0_lambda=5e-6,  # the action happens between 1e-6 and 1e-5
+    init_mean=0.999,  # initial proportion with non-zero weights, set near 0
+    temperature=0.5,  # Usual values .5 to 3, .5 was working better
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
@@ -46,7 +54,6 @@ def reweight(
         np.log(original_weights), requires_grad=True, dtype=torch.float32
     )
 
-    # TODO: replace this functionality from the microcalibrate package.
     def loss(weights):
         # Check for Nans in either the weights or the loss matrix
         if torch.isnan(weights).any():
@@ -59,7 +66,9 @@ def reweight(
         rel_error = (
             ((estimate - targets_array) + 1) / (targets_array + 1)
         ) ** 2
-        rel_error_normalized = rel_error * normalisation_factor
+        rel_error_normalized = (
+            inv_mean_normalisation * rel_error * normalisation_factor
+        )
         if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
         return rel_error_normalized.mean()
@@ -74,9 +83,8 @@ def reweight(
         masked_weights[mask] = mean
         return masked_weights
 
+    # Original (Dense) path ---
     optimizer = torch.optim.Adam([weights], lr=3e-1)
-    from tqdm import trange
-
     start_loss = None
 
     iterator = trange(epochs)
@@ -116,7 +124,84 @@ def reweight(
         if log_path is not None:
             performance.to_csv(log_path, index=False)
 
-    return torch.exp(weights).detach().numpy()
+    final_weights_dense = torch.exp(weights).detach().numpy()
+
+    optimised_weights = final_weights_dense
+    print_reweighting_diagnostics(
+        final_weights_dense,
+        loss_matrix,
+        targets_array,
+        "Dense Solutions",
+    )
+
+    # New (Sparse) path depending on temperature, init_mean, l0_lambda -----
+    # make a calibration_log_sparse.csv path
+    p = Path(log_path)
+    log_path_sparse = p.with_name(f"{p.stem}_sparse{p.suffix}")
+
+    weights = torch.tensor(
+        np.log(original_weights), requires_grad=True, dtype=torch.float32
+    )
+    gates = HardConcrete(
+        len(original_weights), init_mean=init_mean, temperature=temperature
+    )
+    # NOTE: Results are pretty sensitve to learning rates
+    # optimizer breaks down somewhere near .005, does better at above .1
+    optimizer = torch.optim.Adam([weights] + list(gates.parameters()), lr=0.2)
+    start_loss = None
+
+    iterator = trange(epochs * 2)  # lower learning rate, harder optimization
+    performance = pd.DataFrame()
+    for i in iterator:
+        optimizer.zero_grad()
+        weights_ = dropout_weights(weights, dropout_rate)
+        masked = torch.exp(weights_) * gates()
+        l_main = loss(masked)
+        l = l_main + l0_lambda * gates.get_penalty()
+        if (log_path_sparse is not None) and (i % 10 == 0):
+            gates.eval()
+            estimates = (torch.exp(weights) * gates()) @ loss_matrix
+            gates.train()
+            estimates = estimates.detach().numpy()
+            df = pd.DataFrame(
+                {
+                    "target_name": target_names,
+                    "estimate": estimates,
+                    "target": targets_array.detach().numpy(),
+                }
+            )
+            df["epoch"] = i
+            df["error"] = df.estimate - df.target
+            df["rel_error"] = df.error / df.target
+            df["abs_error"] = df.error.abs()
+            df["rel_abs_error"] = df.rel_error.abs()
+            df["loss"] = df.rel_abs_error**2
+            performance = pd.concat([performance, df], ignore_index=True)
+
+        if (log_path_sparse is not None) and (i % 1000 == 0):
+            performance.to_csv(log_path_sparse, index=False)
+        if start_loss is None:
+            start_loss = l.item()
+        loss_rel_change = (l.item() - start_loss) / start_loss
+        l.backward()
+        iterator.set_postfix(
+            {"loss": l.item(), "loss_rel_change": loss_rel_change}
+        )
+        optimizer.step()
+        if log_path_sparse is not None:
+            performance.to_csv(log_path_sparse, index=False)
+
+    gates.eval()
+    final_weights_sparse = (torch.exp(weights) * gates()).detach().numpy()
+
+    print_reweighting_diagnostics(
+        final_weights_sparse,
+        loss_matrix,
+        targets_array,
+        "L0 Sparse Solution",
+    )
+
+    return final_weights_dense, final_weights_sparse
 
 
 def train_previous_year_income_model():
@@ -175,6 +260,7 @@ class EnhancedCPS(Dataset):
         sim = Microsimulation(dataset=self.input_dataset)
         data = sim.dataset.load_dataset()
         data["household_weight"] = {}
+        data["household_sparse_weight"] = {}
         original_weights = sim.calculate("household_weight")
         original_weights = original_weights.values + np.random.normal(
             1, 0.1, len(original_weights)
@@ -216,13 +302,17 @@ class EnhancedCPS(Dataset):
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
 
             optimised_weights = reweight(
+
                 original_weights,
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
-                epochs=150,
+
+
+                epochs=200,
             )
-            data["household_weight"][year] = optimised_weights
+            data["household_weight"][year] = optimised_weights_dense
+            data["household_sparse_weight"][year] = optimised_weights_sparse
 
             print("\n\n---reweighting quick diagnostics----\n")
             estimate = optimised_weights @ loss_matrix_clean

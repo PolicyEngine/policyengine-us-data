@@ -553,7 +553,6 @@ def build_loss_matrix(dataset: type, time_period):
         # Convert to thousands for the target
         targets_array.append(row["enrollment"])
 
-
         logging.info(
             f"Targeting Medicaid enrollment for {row['state']} "
             f"with target {row['enrollment']:.0f}k"

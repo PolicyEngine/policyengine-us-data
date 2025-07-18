@@ -302,13 +302,10 @@ class EnhancedCPS(Dataset):
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
 
             optimised_weights = reweight(
-
                 original_weights,
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
-
-
                 epochs=200,
             )
             data["household_weight"][year] = optimised_weights_dense

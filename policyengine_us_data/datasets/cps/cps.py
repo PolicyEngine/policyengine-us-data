@@ -1344,7 +1344,7 @@ def add_ssn_card_type(
             "population": code_0_after,
         }
     )
-    
+
     # NEW IMMIGRATION-STATUS TAGS FOR OBFBA
     CURRENT_YEAR = 2024
     years_in_us = CURRENT_YEAR - (1981 + person.PEINUSYR)
@@ -1373,7 +1373,9 @@ def add_ssn_card_type(
     immigration_status[mask] = "CUBAN_HAITIAN_ENTRANT"
 
     # 4. DACA (came <16, now ≥18, ≥8 yrs in US, valid EAD)
-    def classify_daca_eligible(ssn_card_type, age_at_entry, years_in_us, current_age):
+    def classify_daca_eligible(
+        ssn_card_type, age_at_entry, years_in_us, current_age
+    ):
         return (
             (ssn_card_type == 2)
             & (age_at_entry < 16)
@@ -1381,15 +1383,19 @@ def add_ssn_card_type(
             & (current_age >= 18)
         )
 
-    daca_mask = classify_daca_eligible(ssn_card_type, age_at_entry, years_in_us, person.A_AGE)
+    daca_mask = classify_daca_eligible(
+        ssn_card_type, age_at_entry, years_in_us, person.A_AGE
+    )
     immigration_status[daca_mask] = "DACA"
 
     # 5. Recent humanitarian parole/asylee/refugee (Code 3, ≤ 5 yrs)
     mask = (ssn_card_type == 3) & (years_in_us <= 5)
     immigration_status[mask] = "REFUGEE"
     # 6. Temp non-qualified (Code 2 not caught by DACA rule)
-    mask = (ssn_card_type == 2) & (immigration_status == "LEGAL_PERMANENT_RESIDENT")
-    immigration_status[mask] = "TPS" 
+    mask = (ssn_card_type == 2) & (
+        immigration_status == "LEGAL_PERMANENT_RESIDENT"
+    )
+    immigration_status[mask] = "TPS"
 
     # ---------------------------------------------------------------
     # Map custom labels into Enum-approved buckets
@@ -1404,7 +1410,6 @@ def add_ssn_card_type(
 
     # Final write (all values now in ImmigrationStatus Enum)
     cps["immigration_status"] = immigration_status.astype("S")
-
 
     # ============================================================================
     # CONVERT TO STRING LABELS AND STORE

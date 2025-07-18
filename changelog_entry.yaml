@@ -1,0 +1,4 @@
+- bump: minor 
+  changes:
+    added:
+      - l0 regularization as described in https://arxiv.org/abs/1712.01312 

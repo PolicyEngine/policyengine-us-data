@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import logging
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.storage.pull_soi_state_targets import (
@@ -552,7 +553,7 @@ def build_loss_matrix(dataset: type, time_period):
         # Convert to thousands for the target
         targets_array.append(row["enrollment"])
 
-        print(
+        logging.info(
             f"Targeting Medicaid enrollment for {row['state']} "
             f"with target {row['enrollment']:.0f}k"
         )
@@ -831,3 +832,61 @@ def _add_snap_metric_columns(
         loss_matrix[col_name] = metric
 
     return loss_matrix
+
+
+def print_reweighting_diagnostics(
+    optimised_weights, loss_matrix, targets_array, label
+):
+    # Convert all inputs to NumPy arrays right at the start
+    optimised_weights_np = (
+        optimised_weights.numpy()
+        if hasattr(optimised_weights, "numpy")
+        else np.asarray(optimised_weights)
+    )
+    loss_matrix_np = (
+        loss_matrix.numpy()
+        if hasattr(loss_matrix, "numpy")
+        else np.asarray(loss_matrix)
+    )
+    targets_array_np = (
+        targets_array.numpy()
+        if hasattr(targets_array, "numpy")
+        else np.asarray(targets_array)
+    )
+
+    logging.info(f"\n\n---{label}: reweighting quick diagnostics----\n")
+    logging.info(
+        f"{np.sum(optimised_weights_np == 0)} are zero, "
+        f"{np.sum(optimised_weights_np != 0)} weights are nonzero"
+    )
+
+    # All subsequent calculations use the guaranteed NumPy versions
+    estimate = optimised_weights_np @ loss_matrix_np
+
+    rel_error = (
+        ((estimate - targets_array_np) + 1) / (targets_array_np + 1)
+    ) ** 2
+    within_10_percent_mask = np.abs(estimate - targets_array_np) <= (
+        0.10 * np.abs(targets_array_np)
+    )
+    percent_within_10 = np.mean(within_10_percent_mask) * 100
+    logging.info(
+        f"rel_error: min: {np.min(rel_error):.2f}\n"
+        f"max: {np.max(rel_error):.2f}\n"
+        f"mean: {np.mean(rel_error):.2f}\n"
+        f"median: {np.median(rel_error):.2f}\n"
+        f"Within 10% of target: {percent_within_10:.2f}%"
+    )
+    logging.info("Relative error over 100% for:")
+    for i in np.where(rel_error > 1)[0]:
+        # Keep this check, as Tensors won't have a .columns attribute
+        if hasattr(loss_matrix, "columns"):
+            logging.info(f"target_name: {loss_matrix.columns[i]}")
+        else:
+            logging.info(f"target_index: {i}")
+
+        logging.info(f"target_value: {targets_array_np[i]}")
+        logging.info(f"estimate_value: {estimate[i]}")
+        logging.info(f"has rel_error: {rel_error[i]:.2f}\n")
+    logging.info("---End of reweighting quick diagnostics------")
+    return percent_within_10

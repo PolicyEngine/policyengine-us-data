@@ -17,9 +17,7 @@ from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
 
 @pytest.fixture(scope="session")
 def data():
-    return Dataset.from_file(
-        CALIBRATION_FOLDER / "sparse_enhanced_cps_2024.h5"
-    )
+    return Dataset.from_file(STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5")
 
 
 @pytest.fixture(scope="session")

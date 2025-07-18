@@ -161,13 +161,15 @@ def _pull_age_data(geo, year=2023):
     SAVE_DIR = Path(CALIBRATION_FOLDER)
     if geo == "District":
         assert df_geos.shape[0] == 436
-        df_geos["GEO_NAME"] = df_geos["NAME"].apply(abbrev_name)
+        df_geos["GEO_NAME"] = "district_" + df_geos["NAME"].apply(abbrev_name)
     elif geo == "State":
         assert df_geos.shape[0] == 51
-        df_geos["GEO_NAME"] = df_geos["NAME"].map(STATE_NAME_TO_ABBREV)
+        df_geos["GEO_NAME"] = "state_" + df_geos["NAME"].map(
+            STATE_NAME_TO_ABBREV
+        )
     elif geo == "National":
         assert df_geos.shape[0] == 1
-        df_geos["GEO_NAME"] = df_geos["NAME"].map({"United States": "US"})
+        df_geos["GEO_NAME"] = "national"
 
     out = df_geos[["GEO_ID", "GEO_NAME"] + AGE_COLS]
 

@@ -1345,11 +1345,53 @@ def add_ssn_card_type(
         }
     )
 
+    def get_arrival_year_midpoint(peinusyr):
+        """
+        Map PEINUSYR codes to arrival year midpoints.
+        Returns a numpy array of estimated arrival years.
+        """
+        arrival_year_map = {
+            1: 1945,  # Before 1950
+            2: 1955,  # 1950-1959
+            3: 1962,  # 1960-1964
+            4: 1967,  # 1965-1969
+            5: 1972,  # 1970-1974
+            6: 1977,  # 1975-1979
+            7: 1981,  # 1980-1981
+            8: 1983,  # 1982-1983
+            9: 1985,  # 1984-1985
+            10: 1987,  # 1986-1987
+            11: 1989,  # 1988-1989
+            12: 1991,  # 1990-1991
+            13: 1993,  # 1992-1993
+            14: 1995,  # 1994-1995
+            15: 1997,  # 1996-1997
+            16: 1999,  # 1998-1999
+            17: 2001,  # 2000-2001
+            18: 2003,  # 2002-2003
+            19: 2005,  # 2004-2005
+            20: 2007,  # 2006-2007
+            21: 2009,  # 2008-2009
+            22: 2011,  # 2010-2011
+            23: 2013,  # 2012-2013
+            24: 2015,  # 2014-2015
+            25: 2017,  # 2016-2017
+            26: 2019,  # 2018-2019
+            27: 2021,  # 2020-2021
+            28: 2023,  # 2022-2023
+            29: 2024,  # 2024-2025
+        }
+
+        # Vectorized mapping with default value of 2024
+        return np.vectorize(arrival_year_map.get)(peinusyr, 2024)
+
     # NEW IMMIGRATION-STATUS TAGS FOR OBFBA
-    CURRENT_YEAR = 2024
-    years_in_us = CURRENT_YEAR - (1981 + person.PEINUSYR)
     birth = person.PENATVTY  # two-digit nativity flag
-    age_at_entry = person.A_AGE - years_in_us
+
+    # Calculate arrival years once for all logic
+    arrival_years = get_arrival_year_midpoint(person.PEINUSYR)
+    years_in_us = 2024 - arrival_years
+    age_at_entry = np.maximum(0, person.A_AGE - years_in_us)
 
     # start every non-citizen as LPR so no UNSET survives
     immigration_status = np.full(
@@ -1357,40 +1399,37 @@ def add_ssn_card_type(
     )
 
     # 1. Undocumented: SSN card type 0 who arrived 1982 or later
+    arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
     undoc_mask = (ssn_card_type == 0) & (~arrived_before_1982)
     immigration_status[undoc_mask] = "UNDOCUMENTED"
-    # ------------------------------------------------------------------
 
     # 2. COFA migrants – treat as LPR (kept from your logic)
     CODA_CODES = {316, 317, 329}
     mask = (ssn_card_type != 0) & np.isin(birth, list(CODA_CODES))
     immigration_status[mask] = "LEGAL_PERMANENT_RESIDENT"
 
-    # 3. Cuban / Haitian entrants (≤ 10 yrs in US)
-    mask = (
-        (ssn_card_type != 0) & np.isin(birth, [241, 250]) & (years_in_us <= 10)
+    # 3. Cuban / Haitian entrants (created by Congress in 1980)
+    # Only those who arrived after 1980
+    cuban_haitian_mask = (
+        (ssn_card_type != 0)
+        & np.isin(birth, [241, 250])
+        & (arrival_years >= 1980)
     )
-    immigration_status[mask] = "CUBAN_HAITIAN_ENTRANT"
+    immigration_status[cuban_haitian_mask] = "CUBAN_HAITIAN_ENTRANT"
 
-    # 4. DACA (came <16, now ≥18, ≥8 yrs in US, valid EAD)
-    def classify_daca_eligible(
-        ssn_card_type, age_at_entry, years_in_us, current_age
-    ):
-        return (
-            (ssn_card_type == 2)
-            & (age_at_entry < 16)
-            & (years_in_us >= 8)
-            & (current_age >= 18)
-        )
-
-    daca_mask = classify_daca_eligible(
-        ssn_card_type, age_at_entry, years_in_us, person.A_AGE
+    # 4. DACA
+    daca_mask = (
+        (ssn_card_type == 2)  # Temporary/unauthorized status
+        & (arrival_years <= 2007)  # Arrived before June 15, 2007
+        & (age_at_entry < 16)  # Arrived as child
+        & (person.A_AGE >= 15)  # Current age requirement
     )
     immigration_status[daca_mask] = "DACA"
 
     # 5. Recent humanitarian parole/asylee/refugee (Code 3, ≤ 5 yrs)
-    mask = (ssn_card_type == 3) & (years_in_us <= 5)
-    immigration_status[mask] = "REFUGEE"
+    recent_refugee_mask = (ssn_card_type == 3) & (years_in_us <= 5)
+    immigration_status[recent_refugee_mask] = "REFUGEE"
+
     # 6. Temp non-qualified (Code 2 not caught by DACA rule)
     mask = (ssn_card_type == 2) & (
         immigration_status == "LEGAL_PERMANENT_RESIDENT"
@@ -1405,12 +1444,11 @@ def add_ssn_card_type(
     }
     custom = np.isin(immigration_status, list(to_enum.keys()))
     immigration_status[custom] = (
-        pd.Series(immigration_status[custom]).map(to_enum).values
+        pd.Series(immigration_status[custom]).replace(to_enum).values
     )
 
     # Final write (all values now in ImmigrationStatus Enum)
     cps["immigration_status"] = immigration_status.astype("S")
-
     # ============================================================================
     # CONVERT TO STRING LABELS AND STORE
     # ============================================================================

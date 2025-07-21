@@ -81,7 +81,7 @@ LABEL_TO_SHORT = {
     "Estimate!!Total!!Total population!!AGE!!70 to 74 years": "70-74",
     "Estimate!!Total!!Total population!!AGE!!75 to 79 years": "75-79",
     "Estimate!!Total!!Total population!!AGE!!80 to 84 years": "80-84",
-    "Estimate!!Total!!Total population!!AGE!!85 years and over": "85+",
+    "Estimate!!Total!!Total population!!AGE!!85 years and over": "85-inf",
 }
 AGE_COLS = list(LABEL_TO_SHORT.values())
 
@@ -146,38 +146,55 @@ def _pull_age_data(geo, year=2023):
         ]
     )
 
-    df_data = df.rename(columns=rename_mapping)[
-        ["GEO_ID", "NAME"] + list(AGE_COLS)
-    ]
+    df = df.drop(columns='NAME')
+    df = df.rename({'GEO_ID': 'ucgid'}, axis=1)
+    df_data = df.rename(columns=rename_mapping)[["ucgid"] + list(AGE_COLS)]
 
-    # Filter out non-voting districts, e.g., Puerto Rico
+    # Filter out Puerto Rico's district and state records, if needed
     df_geos = df_data[
-        ~df_data["GEO_ID"].isin(["5001800US7298", "0400000US72"])
+        ~df_data["ucgid"].isin(["5001800US7298", "0400000US72"])
     ].copy()
-
-    omitted_rows = df_data[~df_data["GEO_ID"].isin(df_geos["GEO_ID"])]
-    print(f"Ommitted {geo} geographies:\n\n{omitted_rows[['GEO_ID', 'NAME']]}")
 
     SAVE_DIR = Path(CALIBRATION_FOLDER)
     if geo == "District":
         assert df_geos.shape[0] == 436
-        df_geos["GEO_NAME"] = "district_" + df_geos["NAME"].apply(abbrev_name)
     elif geo == "State":
         assert df_geos.shape[0] == 51
-        df_geos["GEO_NAME"] = "state_" + df_geos["NAME"].map(
-            STATE_NAME_TO_ABBREV
-        )
     elif geo == "National":
         assert df_geos.shape[0] == 1
-        df_geos["GEO_NAME"] = "national"
 
-    out = df_geos[["GEO_ID", "GEO_NAME"] + AGE_COLS]
+    df = df_geos[["ucgid"] + AGE_COLS]
+
+    # So this is really the target table, and the rows are different strata
+    # And you can fill that in and then define your strata table
+    # I have a clean slate and I can make stratum_ids at will, but how will
+    # we avoid collisions in practice?
+    df_long = df.melt(
+        id_vars='ucgid',
+        value_vars=AGE_COLS,
+        var_name='age_range',
+        value_name='value'
+    )
+    age_bounds = df_long['age_range'].str.split('-', expand=True)
+    df_long['age_greater_than_or_equal_to'] = age_bounds[0].str.replace('+', '').astype(int)
+    df_long['age_less_than_or_equal_to'] = pd.to_numeric(age_bounds[1])
+
+    final_df = df_long[[
+        'usgid',
+        'age_greater_than_or_equal_to',
+        'age_less_than_or_equal_to',
+        'target'
+    ]]
+
+
 
     return out
 
 
 def combine_age_geography_levels() -> None:
     national = _pull_age_data("National")
+
+    # Rethinking national ----
     logger.info(f"National age data: {national.shape[0]} rows")
     state = _pull_age_data("State")
     logger.info(f"State age data: {state.shape[0]} rows")

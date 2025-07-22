@@ -1390,7 +1390,7 @@ def add_ssn_card_type(
 
     # Calculate arrival years once for all logic
     arrival_years = get_arrival_year_midpoint(person.PEINUSYR)
-    CURRENT_YEAR = 2024 
+    CURRENT_YEAR = 2024
     years_in_us = CURRENT_YEAR - arrival_years
     age_at_entry = np.maximum(0, person.A_AGE - years_in_us)
 
@@ -1403,15 +1403,16 @@ def add_ssn_card_type(
     arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
     undoc_mask = (ssn_card_type == 0) & (~arrived_before_1982)
     immigration_status[undoc_mask] = "UNDOCUMENTED"
-COUNTRY_CODES = {
-    "COFA": {316, 317, 329},
-    "CUBAN_HAITIAN": {241, 250},
-}
 
-# Replace later:
-np.isin(birth, COUNTRY_CODES["CUBAN_HAITIAN"])
+    COUNTRY_CODES = {
+        "COFA": {316, 317, 329},
+        "CUBAN_HAITIAN": {241, 250},
+    }
+
+    # Replace later:
+    np.isin(birth, COUNTRY_CODES["CUBAN_HAITIAN"])
     # 2. COFA migrants – treat as LPR (kept from your logic)
-    CODA_CODES = {316, 317, 329}
+    COFA = {316, 317, 329}
     mask = (ssn_card_type != 0) & np.isin(birth, list(CODA_CODES))
     immigration_status[mask] = "LEGAL_PERMANENT_RESIDENT"
 

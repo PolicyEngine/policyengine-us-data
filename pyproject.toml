@@ -22,18 +22,7 @@ dependencies = [
     "pandas>=2.3.0",
     "requests",
     "tqdm",
-    "microdf_python>=0.4.3,<0.4.6",
-    "setuptools>=60",
-    "microimpute==0.1.4",
-    "pip-system-certs",
-    "google-cloud-storage",
-    "google-auth",
-    "scipy<1.13",
-    "statsmodels>=0.14.0",
-    "openpyxl>=3.1.5",
-    "tables>=3.10.2",
-    "torch>=2.7.1",
-    "us",
+    "microdf_python>=1.0.0",
 ]
 
 [project.optional-dependencies]

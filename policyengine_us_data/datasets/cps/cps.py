@@ -1409,28 +1409,30 @@ def add_ssn_card_type(
         "CUBAN_HAITIAN": {327, 332},
     }
 
-    # Replace later:
-    np.isin(birth, COUNTRY_CODES["CUBAN_HAITIAN"])
-    # 2. COFA migrants – treat as LPR (kept from your logic)
-    COFA = {511, 512}
-    mask = (ssn_card_type != 0) & np.isin(birth, list(COFA))
+    mask = (ssn_card_type != 0) & np.isin(birth, list(COUNTRY_CODES["COFA"]))
     immigration_status[mask] = "LEGAL_PERMANENT_RESIDENT"
 
     # 3. Cuban / Haitian entrants (created by Congress in 1980)
     # Only those who arrived after 1980
     cuban_haitian_mask = (
         (ssn_card_type != 0)
-        & np.isin(birth, [327, 332])
+        & np.isin(birth, list(COUNTRY_CODES["CUBAN_HAITIAN"]))
         & (arrival_years >= 1980)
     )
     immigration_status[cuban_haitian_mask] = "CUBAN_HAITIAN_ENTRANT"
 
+    # DACA eligibility constants
+    # Source: https://www.uscis.gov/humanitarian/consideration-of-deferred-action-for-childhood-arrivals-daca
+    DACA_LATEST_ARRIVAL_YEAR = 2007  # Must have arrived before June 15, 2007
+    DACA_MAX_AGE_AT_ENTRY = 16  # Must have arrived before 16th birthday
+    DACA_MIN_CURRENT_AGE = 15  # Must be at least 15 years old to apply
+
     # 4. DACA
     daca_mask = (
         (ssn_card_type == 2)  # Temporary/unauthorized status
-        & (arrival_years <= 2007)  # Arrived before June 15, 2007
-        & (age_at_entry < 16)  # Arrived as child
-        & (person.A_AGE >= 15)  # Current age requirement
+        & (arrival_years <= DACA_LATEST_ARRIVAL_YEAR)
+        & (age_at_entry < DACA_MAX_AGE_AT_ENTRY)
+        & (person.A_AGE >= DACA_MIN_CURRENT_AGE)
     )
     immigration_status[daca_mask] = "DACA"
 
@@ -1446,15 +1448,18 @@ def add_ssn_card_type(
 
     # ---------------------------------------------------------------
     # Map custom labels into Enum-approved buckets
-    to_enum = {
+    placeholder_to_specific_status = {
         "HUMANITARIAN_RECENT": "REFUGEE",  # or ASYLEE
         "TEMP_NONQUALIFIED": "TPS",
     }
-    custom = np.isin(immigration_status, list(to_enum.keys()))
-    immigration_status[custom] = (
-        pd.Series(immigration_status[custom]).replace(to_enum).values
+    needs_translation = np.isin(
+        immigration_status, list(placeholder_to_specific_status.keys())
     )
-
+    immigration_status[needs_translation] = (
+        pd.Series(immigration_status[needs_translation])
+        .replace(placeholder_to_specific_status)
+        .values
+    )
     # Final write (all values now in ImmigrationStatus Enum)
     cps["immigration_status"] = immigration_status.astype("S")
     # ============================================================================

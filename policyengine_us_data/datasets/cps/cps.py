@@ -1405,14 +1405,14 @@ def add_ssn_card_type(
     immigration_status[undoc_mask] = "UNDOCUMENTED"
 
     COUNTRY_CODES = {
-        "COFA": {316, 317, 329},
-        "CUBAN_HAITIAN": {241, 250},
+        "COFA": {511, 512}, # Micronesia, Marshall Islands. Palau not listed
+        "CUBAN_HAITIAN": {327, 332},
     }
 
     # Replace later:
     np.isin(birth, COUNTRY_CODES["CUBAN_HAITIAN"])
     # 2. COFA migrants – treat as LPR (kept from your logic)
-    COFA = {316, 317, 329}
+    COFA = {511, 512}
     mask = (ssn_card_type != 0) & np.isin(birth, list(COFA))
     immigration_status[mask] = "LEGAL_PERMANENT_RESIDENT"
 
@@ -1420,7 +1420,7 @@ def add_ssn_card_type(
     # Only those who arrived after 1980
     cuban_haitian_mask = (
         (ssn_card_type != 0)
-        & np.isin(birth, [241, 250])
+        & np.isin(birth, [327, 332])
         & (arrival_years >= 1980)
     )
     immigration_status[cuban_haitian_mask] = "CUBAN_HAITIAN_ENTRANT"

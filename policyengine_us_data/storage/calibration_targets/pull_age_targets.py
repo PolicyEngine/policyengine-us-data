@@ -179,13 +179,57 @@ def _pull_age_data(geo, year=2023):
     df_long['age_greater_than_or_equal_to'] = age_bounds[0].str.replace('+', '').astype(int)
     df_long['age_less_than_or_equal_to'] = pd.to_numeric(age_bounds[1])
 
-    final_df = df_long[[
-        'usgid',
-        'age_greater_than_or_equal_to',
-        'age_less_than_or_equal_to',
-        'target'
+    df_long['target_id'] = range(18)
+    df_long['variable'] = 'person_count'
+    df_long['stratum_id'] = range(18)
+    df_long['period'] = year
+    df_long['reform_id'] = 0
+    df_long['source_id'] = 1
+    df_long['active'] = True
+
+    target_df = df_long[[
+        'target_id',
+        'variable',
+        'period',
+        'stratum_id',
+        'reform_id',
+        'value',
+        'source_id',
+        'active'
     ]]
 
+    bounds = df_long['age_range'].str.extract(
+        r'(?P<low>\d+)-(?P<high>\d+|inf)',  # captures 0‑4, 5‑9 … 85‑inf
+        expand=True
+    )
+    
+    lo_rows = (
+        df_long[['stratum_id']]
+          .join(bounds['low'].rename('value'))
+          .assign(operation='greater_than_or_equal')
+    )
+    
+    hi_rows = (
+        df_long[['stratum_id']]
+          .join(bounds['high'].rename('value'))
+          .assign(operation='less_than_or_equal')
+    )
+    
+    out = (
+        pd.concat([lo_rows, hi_rows], ignore_index=True)
+          .replace({'value': {'inf': 'Inf'}})      # keep ∞ as the string “Inf”
+    )
+    
+    out['value'] = pd.to_numeric(out['value'], errors='ignore')
+    out.insert(loc=1, column='breakdown_variable', value='age')
+
+    ucgid_df = df_long[['stratum_id', 'ucgid']].copy()
+    ucgid_df['operation'] = 'equals'
+    ucgid_df.insert(loc=1, column='contraint_variable', value='ucgid')
+    ucgid_df = ucgid_df.rename(columns={'ucgid': 'value'})
+
+    both = pd.concat([ucgid_df, out])
+    both = both.sort_values(['stratum_id', 'operation'])
 
 
     return out

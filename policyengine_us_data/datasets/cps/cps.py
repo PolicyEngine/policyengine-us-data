@@ -1402,7 +1402,13 @@ def add_ssn_card_type(
     arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
     undoc_mask = (ssn_card_type == 0) & (~arrived_before_1982)
     immigration_status[undoc_mask] = "UNDOCUMENTED"
+COUNTRY_CODES = {
+    "COFA": {316, 317, 329},
+    "CUBAN_HAITIAN": {241, 250},
+}
 
+# Replace later:
+np.isin(birth, COUNTRY_CODES["CUBAN_HAITIAN"])
     # 2. COFA migrants – treat as LPR (kept from your logic)
     CODA_CODES = {316, 317, 329}
     mask = (ssn_card_type != 0) & np.isin(birth, list(CODA_CODES))

@@ -5,6 +5,7 @@
 **/*.csv
 **/_build
 **/*.pkl
+**/*.db
 venv
 
 ## old (not clean) targets

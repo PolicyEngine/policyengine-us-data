@@ -465,3 +465,8 @@
       to follow the same clean csv format.
     - Track all csv files used by loss.py for backwards compatibility.
   date: 2025-07-18 17:01:51
+- bump: patch
+  changes:
+    changed:
+    - Update microdf_python dependency to >=1.0.0.
+  date: 2025-07-22 21:03:38

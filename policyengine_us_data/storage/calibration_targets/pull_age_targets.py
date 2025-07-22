@@ -5,6 +5,16 @@ import numpy as np
 from pathlib import Path
 from policyengine_us_data.storage import CALIBRATION_FOLDER
 
+import io
+
+import pandas as pd
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from policyengine_us_data.db.data_models import Base, Stratum, StratumConstraint, Target
+
+
+
 logger = logging.getLogger(__name__)
 
 STATE_NAME_TO_ABBREV = {
@@ -178,14 +188,74 @@ def _pull_age_data(geo, year=2023):
     age_bounds = df_long['age_range'].str.split('-', expand=True)
     df_long['age_greater_than_or_equal_to'] = age_bounds[0].str.replace('+', '').astype(int)
     df_long['age_less_than_or_equal_to'] = pd.to_numeric(age_bounds[1])
-
-    df_long['target_id'] = range(18)
+    #df_long['target_id'] = range(18)
     df_long['variable'] = 'person_count'
-    df_long['stratum_id'] = range(18)
+    #df_long['stratum_id'] = range(18)
     df_long['period'] = year
     df_long['reform_id'] = 0
     df_long['source_id'] = 1
     df_long['active'] = True
+
+    DATABASE_URL = "sqlite:///policy_data.db"
+    engine = create_engine(DATABASE_URL)
+    
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    for _, row in df_long.iterrows():
+        # 1. Create a new Stratum for each row. We will make it unique
+        # by creating a descriptive note.
+        note = f"Age: {row['age_range']}, Geo: {row['ucgid']}"
+        new_stratum = Stratum(notes=note)
+        session.add(new_stratum)
+        session.flush() # Flush to assign stratum_id
+
+        # 2. Create StratumConstraint records based on the DataFrame
+        # The 'ucgid' constraint
+        ucgid_constraint = StratumConstraint(
+            stratum_id=new_stratum.stratum_id,
+            constraint_variable='ucgid',
+            operation='equals',
+            value=row['ucgid']
+        )
+
+        # The age constraints
+        age_gte_constraint = StratumConstraint(
+            stratum_id=new_stratum.stratum_id,
+            constraint_variable='age',
+            operation='greater_than_or_equal',
+            value=str(row['age_greater_than_or_equal_to'])
+        )
+        
+        # Handle the 'inf' case for the upper age bound
+        age_lt_value = row['age_less_than_or_equal_to']
+        if not np.isinf(age_lt_value):
+            age_lt_constraint = StratumConstraint(
+                stratum_id=new_stratum.stratum_id,
+                constraint_variable='age',
+                operation='less_than',
+                value=str(age_lt_value + 1) # less_than, so add 1
+            )
+            session.add(age_lt_constraint)
+
+        session.add(ucgid_constraint)
+        session.add(age_gte_constraint)
+
+        # 3. Create the Target record
+        new_target = Target(
+            stratum_id=new_stratum.stratum_id,
+            variable=row['variable'],
+            period=row['period'],
+            value=row['value'],
+            source_id=row['source_id'],
+            active=row['active'],
+        )
+        session.add(new_target)
+    
+    session.commit()
+    print("✅ Data loaded successfully.")
+
+    # HERE
 
     target_df = df_long[[
         'target_id',

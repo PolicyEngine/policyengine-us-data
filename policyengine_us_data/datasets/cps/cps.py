@@ -1413,7 +1413,7 @@ def add_ssn_card_type(
     np.isin(birth, COUNTRY_CODES["CUBAN_HAITIAN"])
     # 2. COFA migrants – treat as LPR (kept from your logic)
     COFA = {316, 317, 329}
-    mask = (ssn_card_type != 0) & np.isin(birth, list(CODA_CODES))
+    mask = (ssn_card_type != 0) & np.isin(birth, list(COFA))
     immigration_status[mask] = "LEGAL_PERMANENT_RESIDENT"
 
     # 3. Cuban / Haitian entrants (created by Congress in 1980)

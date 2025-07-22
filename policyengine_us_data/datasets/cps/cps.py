@@ -1405,7 +1405,7 @@ def add_ssn_card_type(
     immigration_status[undoc_mask] = "UNDOCUMENTED"
 
     COUNTRY_CODES = {
-        "COFA": {511, 512}, # Micronesia, Marshall Islands. Palau not listed
+        "COFA": {511, 512},  # Micronesia, Marshall Islands. Palau not listed
         "CUBAN_HAITIAN": {327, 332},
     }
 

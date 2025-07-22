@@ -1,0 +1,64 @@
+# Probabilistic assumptions for Section 199A qualification and SSTB classification
+# QBI assumptions: https://chatgpt.com/share/6823cb37-7a28-8001-b2bb-0c0a7f47401c
+# UBIA assumptions: https://chatgpt.com/share/683b12a5-78dc-8006-81c9-479858312b30
+# REIT/PTP and BDC assumptions: https://chatgpt.com/c/6835f502-5b48-8006-833a-76170a0acd40
+
+
+qbi_qualification_probabilities:
+  self_employment_income: 0.8
+  farm_operations_income: 0.95
+  farm_rent_income: 0.5
+  rental_income: 0.4
+  estate_income: 0.5
+  partnership_s_corp_income: 0.85
+
+sstb_prob_map_by_name:
+  E00900: 0.20
+  E26270: 0.15
+  E26390: 0.10
+  E26400: 0.10
+
+# Below, we assume that 7% of filers have nonzero REIT/PTP income,
+# and of those 7%, their REIT/PTP income is lognormal distributed with
+# mean of exp(8.04) = $3,103, and standard deviation 1.20 of the lognormal.
+reit_ptp_income_distribution:
+  probability_of_receiving: 0.07
+  log_normal_mu: 8.04
+  log_normal_sigma: 1.20
+
+bdc_income_distribution:
+  probability_of_receiving: 0.003
+  log_normal_mu: 8.71
+  log_normal_sigma: 1.00
+
+profit_margin_distribution:
+  beta_a: 2.0
+  beta_b: 3.0
+  scale: 0.20
+  shift: 0.05
+
+# Logistic model:  p = 1 / (1 + exp(-(b0 + b1 * receipts)))
+# * b1 = 1.2e-6: odds roughly triple for each +$1 M; pr 50% near $1M
+# * b0 = -3.1: tuned so mean pr is roughly 14% in this PUF (matches SOI share)
+has_employees_logit:
+  intercept: -3.1
+  slope_per_dollar: 1.2e-6
+
+labor_ratio_distribution:
+  rental:
+    beta_a: 1.5
+    beta_b: 8.0
+    scale: 0.08
+  non_rental:
+    beta_a: 2.0
+    beta_b: 2.0
+    scale: 0.25
+
+depreciation_proxy_sigma: 0.8
+
+# lognormal(mean = 4 * QBI, sigma = 1)
+# produce a right-skewed spread whose mean is roughly 4 * QBI,
+# matching aggregate SOI ratios.
+ubia_simulation:
+    multiple_of_qbi: 4.0
+    sigma: 1.0

@@ -9,7 +9,7 @@ test:
 	pytest
 
 install:
-	pip install policyengine-us==1.109.0
+	pip install policyengine-us
 	pip install -e ".[dev]"  --config-settings editable_mode=compat
 
 changelog:
@@ -20,8 +20,13 @@ changelog:
 	touch changelog_entry.yaml
 
 download:
-	python policyengine_us_data/storage/download_public_prerequisites.py
 	python policyengine_us_data/storage/download_private_prerequisites.py
+
+targets:
+	python policyengine_us_data/storage/calibration_targets/pull_hardcoded_targets.py
+	python policyengine_us_data/storage/calibration_targets/pull_age_targets.py
+	python policyengine_us_data/storage/calibration_targets/pull_soi_targets.py
+	python policyengine_us_data/storage/calibration_targets/pull_snap_targets.py
 
 upload:
 	python policyengine_us_data/storage/upload_completed_datasets.py
@@ -31,18 +36,23 @@ docker:
 	
 documentation:
 	jb clean docs && jb build docs
+	python docs/add_plotly_to_book.py docs
+
 
 data:
+	python policyengine_us_data/utils/uprating.py
 	python policyengine_us_data/datasets/acs/acs.py
 	python policyengine_us_data/datasets/cps/cps.py
 	python policyengine_us_data/datasets/puf/irs_puf.py
 	python policyengine_us_data/datasets/puf/puf.py
 	python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
+	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
 
 clean:
-	rm -f policyengine_us_data/storage/puf_2015.csv
-	rm -f policyengine_us_data/storage/demographics_2015.csv
+	rm -f policyengine_us_data/storage/*.h5
+	git clean -fX -- '*.csv'
+	rm -rf policyengine_us_data/docs/_build
 
 build:
 	python -m build

@@ -1,22 +1,39 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = [
+  "setuptools>=45", 
+  "wheel", 
+  "setuptools_scm[toml]>=6.2",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "policyengine_us_data"
-version = "1.12.1"
+version = "1.39.1"
 description = "A package to create representative microdata for the US."
 readme = "README.md"
 authors = [
     {name = "PolicyEngine", email = "hello@policyengine.org"},
 ]
 license = {file = "LICENSE"}
-requires-python = ">=3.10"
+requires-python = ">=3.11, <3.13.0"
 dependencies = [
-    "policyengine_core",
+    "policyengine-us>=1.340.1",
+    "policyengine-core>=3.14.1",
+    "pandas>=2.3.0",
     "requests",
     "tqdm",
     "microdf_python>=1.0.0",
+    "setuptools>=60",
+    "microimpute==0.1.4",
+    "pip-system-certs",
+    "google-cloud-storage",
+    "google-auth",
+    "scipy<1.13",
+    "statsmodels>=0.14.0",
+    "openpyxl>=3.1.5",
+    "tables>=3.10.2",
+    "torch>=2.7.1",
+    "us",
 ]
 
 [project.optional-dependencies]
@@ -24,8 +41,6 @@ dev = [
     "black",
     "pytest",
     "quantile-forest",
-    "torch",
-    "tables",
     "tabulate",
     "furo",
     "jupyter-book",

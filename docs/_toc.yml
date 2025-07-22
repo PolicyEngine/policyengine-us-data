@@ -1,5 +1,7 @@
 format: jb-book
 root: intro
 chapters:
+- file: SSN_statuses_imputation.ipynb
 - file: validation.ipynb
 - file: results.ipynb
+- file: imputation.ipynb

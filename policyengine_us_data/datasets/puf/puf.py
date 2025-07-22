@@ -1,7 +1,12 @@
+import os
+import yaml
+from importlib.resources import files
+
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
 from microdf import MicroDataFrame
+
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.puf.uprate_puf import uprate_puf
@@ -10,7 +15,152 @@ from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
 
+
 rng = np.random.default_rng(seed=64)
+
+# Get Qualified Business Income simulation parameters ---
+yamlfilename = (
+    files("policyengine_us_data") / "datasets" / "puf" / "qbi_assumptions.yaml"
+)
+with open(yamlfilename, "r", encoding="utf-8") as yamlfile:
+    QBI_PARAMS = yaml.safe_load(yamlfile)
+assert isinstance(QBI_PARAMS, dict)
+
+
+# Helper functions ---
+def sample_bernoulli_lognormal(n, prob, log_mean, log_sigma, rng):
+    """Generate a Bernoulli-lognormal mixture."""
+    positive = np.random.binomial(1, prob, size=n)
+    amounts = np.where(
+        positive,
+        rng.lognormal(mean=log_mean, sigma=log_sigma, size=n),
+        0.0,
+    )
+    return amounts
+
+
+def conditionally_sample_lognormal(flag, target_mean, log_sigma, rng):
+    """Generate a lognormal conditional on a binary flag."""
+    mu = np.log(target_mean) - (log_sigma**2 / 2)
+    return np.where(
+        flag,
+        rng.lognormal(
+            mean=mu,
+            sigma=log_sigma,
+        ),
+        0.0,
+    )
+
+
+def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
+    """
+    Simulate two Section 199A guard-rail quantities for every record
+      - W-2 wages paid by the business
+      - Unadjusted basis immediately after acquisition (UBIA) of property
+
+    Parameters
+    ----------
+    puf : pandas.DataFrame
+        Must contain the income columns created in your preprocessing block.
+    seed : int, optional
+        For reproducible random draws.
+    diagnostics : bool, default True
+        Print high-level checks after the simulation runs.
+
+    Returns
+    -------
+    w2_wages : 1-D NumPy array
+    ubia     : 1-D NumPy array
+    """
+    rng = np.random.default_rng(seed)
+
+    # Extract Qualified Business Income simulation parameters
+    qbi_probs = QBI_PARAMS["qbi_qualification_probabilities"]
+    margin_params = QBI_PARAMS["profit_margin_distribution"]
+    logit_params = QBI_PARAMS["has_employees_logit"]
+
+    labor_params = QBI_PARAMS["labor_ratio_distribution"]
+    rental_labor = labor_params["rental"]
+    non_rental_labor = labor_params["non_rental"]
+
+    rental_beta_a = rental_labor["beta_a"]
+    rental_beta_b = rental_labor["beta_b"]
+    rental_scale = rental_labor["scale"]
+
+    non_rental_beta_a = non_rental_labor["beta_a"]
+    non_rental_beta_b = non_rental_labor["beta_b"]
+    non_rental_scale = non_rental_labor["scale"]
+
+    depr_sigma = QBI_PARAMS["depreciation_proxy_sigma"]
+
+    ubia_params = QBI_PARAMS["ubia_simulation"]
+    ubia_multiple_of_qbi = ubia_params["multiple_of_qbi"]
+    ubia_sigma = ubia_params["sigma"]
+
+    # Estimate qualified business income
+    qbi = sum(
+        puf[income_type] * prob for income_type, prob in qbi_probs.items()
+    ).to_numpy()
+
+    # Simulate gross receipts by drawing a profit margin
+    margins = (
+        rng.beta(margin_params["beta_a"], margin_params["beta_b"], qbi.size)
+        * margin_params["scale"]
+        + margin_params["shift"]
+    )
+    revenues = np.maximum(qbi, 0) / margins
+
+    logit = (
+        logit_params["intercept"] + logit_params["slope_per_dollar"] * revenues
+    )
+
+    # Set p = 0 when simulated receipts == 0 (no revenue means no payroll)
+    pr_has_employees = np.where(
+        revenues == 0.0, 0.0, 1.0 / (1.0 + np.exp(-logit))
+    )
+    has_employees = rng.binomial(1, pr_has_employees)
+
+    # Labor share simulation
+    is_rental = puf["rental_income"].to_numpy() > 0
+
+    labor_ratios = np.where(
+        is_rental,
+        rng.beta(rental_beta_a, rental_beta_b, qbi.size) * rental_scale,
+        rng.beta(non_rental_beta_a, non_rental_beta_b, qbi.size)
+        * non_rental_scale,
+    )
+
+    w2_wages = revenues * labor_ratios * has_employees
+
+    # A depreciation stand-in that scales with rents
+    depreciation_proxy = conditionally_sample_lognormal(
+        is_rental,
+        puf["rental_income"],
+        depr_sigma,
+        rng,
+    )
+
+    # UBIA simulation: lognormal, but only for capital-heavy records
+    is_capital_intensive = is_rental | (depreciation_proxy > 0)
+
+    ubia = conditionally_sample_lognormal(
+        is_capital_intensive,
+        ubia_multiple_of_qbi * np.maximum(qbi, 0),
+        ubia_sigma,
+        rng,
+    )
+
+    if diagnostics:
+        share_qbi_pos = np.mean(qbi > 0)
+        share_wages = np.mean((w2_wages > 0) & (qbi > 0))
+        print(f"Share with QBI > 0: {share_qbi_pos:6.2%}")
+        print(f"Among those, share with W-2 wages: {share_wages:6.2%}")
+        if np.any(w2_wages > 0):
+            print(f"Mean W-2 (if >0): ${np.mean(w2_wages[w2_wages>0]):,.0f}")
+        if np.any(ubia > 0):
+            print(f"Median UBIA (if >0): ${np.median(ubia[ubia>0]):,.0f}")
+
+    return w2_wages, ubia
 
 
 def impute_pension_contributions_to_puf(puf_df):
@@ -18,6 +168,7 @@ def impute_pension_contributions_to_puf(puf_df):
     from policyengine_us_data.datasets.cps import CPS_2021
 
     cps = Microsimulation(dataset=CPS_2021)
+    cps.subsample(10_000)
     cps_df = cps.calculate_dataframe(
         ["employment_income", "household_weight", "pre_tax_contributions"]
     )
@@ -44,6 +195,10 @@ def impute_missing_demographics(
         puf[puf.RECID.isin(demographics.RECID)]
         .merge(demographics, on="RECID")
         .fillna(0)
+    )
+
+    puf_with_demographics = puf_with_demographics.sample(
+        n=10_000, random_state=0
     )
 
     DEMOGRAPHIC_VARIABLES = [
@@ -146,8 +301,8 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["educator_expense"] = puf.E03220
     puf["employment_income"] = puf.E00200
     puf["estate_income"] = puf.E26390 - puf.E26400
+    # Schedule J, separate from QBI
     puf["farm_income"] = puf.T27800
-    puf["farm_rent_income"] = puf.E27200
     puf["health_savings_account_ald"] = puf.E03290
     puf["interest_deduction"] = puf.E19200
     puf["long_term_capital_gains"] = puf.P23250
@@ -158,13 +313,25 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
         fraction,
     ) in MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS.items():
         puf[medical_category] = puf.E17500 * fraction
-    puf["misc_deduction"] = puf.E20400
+    # Use unreimbursed business employee expenses as a proxy for all miscellaneous expenses
+    # that can be deducted under the miscellaneous deduction.
+    puf["unreimbursed_business_employee_expenses"] = puf.E20400
     puf["non_qualified_dividend_income"] = puf.E00600 - puf.E00650
-    puf["partnership_s_corp_income"] = puf.E26270
     puf["qualified_dividend_income"] = puf.E00650
     puf["qualified_tuition_expenses"] = puf.E03230
     puf["real_estate_taxes"] = puf.E18500
+    # Schedule E rent and royalty
     puf["rental_income"] = puf.E25850 - puf.E25860
+    # Schedule E active S-Corp income
+    s_corp_income = puf.E26190 - puf.E26180
+    # Schedule E active partnership income
+    partnership_income = puf.E25980 - puf.E25960
+    puf["partnership_s_corp_income"] = s_corp_income + partnership_income
+    # Schedule F active farming operations
+    puf["farm_operations_income"] = puf.E02100
+    # Schedule E farm rental income
+    puf["farm_rent_income"] = puf.E27200
+    # Schedule C Sole Proprietorship
     puf["self_employment_income"] = puf.E00900
     puf["self_employed_health_insurance_ald"] = puf.E03270
     puf["self_employed_pension_contribution_ald"] = puf.E03300
@@ -201,13 +368,38 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Ignore f2441 (AMT form attached)
     # Ignore cmbtp (estimate of AMT income not in AGI)
     # Ignore k1bx14s and k1bx14p (partner self-employment income included in partnership and S-corp income)
-    qbi = np.maximum(0, puf.E00900 + puf.E26270 + puf.E02100 + puf.E27200)
-    W2_WAGES_SCALE = 0.16
-    puf["w2_wages_from_qualified_business"] = qbi * W2_WAGES_SCALE
 
-    # Remove aggregate records
-    puf = puf[puf.MARS != 0]
+    # --- Qualified Business Income Deduction (QBID) simulation ---
+    w2, ubia = simulate_w2_and_ubia_from_puf(puf, seed=42)
+    puf["w2_wages_from_qualified_business"] = w2
+    puf["unadjusted_basis_qualified_property"] = ubia
 
+    puf_qbi_sources_for_sstb = puf[QBI_PARAMS["sstb_prob_map_by_name"].keys()]
+    largest_qbi_source_name = puf_qbi_sources_for_sstb.idxmax(axis=1)
+
+    pr_sstb = largest_qbi_source_name.map(
+        QBI_PARAMS["sstb_prob_map_by_name"]
+    ).fillna(0.0)
+    puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
+
+    reit_params = QBI_PARAMS["reit_ptp_income_distribution"]
+    p_reit_ptp = reit_params["probability_of_receiving"]
+    mu_reit_ptp = reit_params["log_normal_mu"]
+    sigma_reit_ptp = reit_params["log_normal_sigma"]
+
+    puf["qualified_reit_and_ptp_income"] = sample_bernoulli_lognormal(
+        len(puf), p_reit_ptp, mu_reit_ptp, sigma_reit_ptp, rng
+    )
+
+    bdc_params = QBI_PARAMS["bdc_income_distribution"]
+    p_bdc = bdc_params["probability_of_receiving"]
+    mu_bdc = bdc_params["log_normal_mu"]
+    sigma_bdc = bdc_params["log_normal_sigma"]
+
+    puf["qualified_bdc_income"] = sample_bernoulli_lognormal(
+        len(puf), p_bdc, mu_bdc, sigma_bdc, rng
+    )
+    # -------- End of Qualified Business Income Deduction (QBID) -------
     puf["filing_status"] = puf.MARS.map(
         {
             1: "SINGLE",
@@ -236,16 +428,16 @@ FINANCIAL_SUBSET = [
     "educator_expense",
     "employment_income",
     "estate_income",
+    "farm_operations_income",
     "farm_income",
     "farm_rent_income",
     "health_savings_account_ald",
     "interest_deduction",
     "long_term_capital_gains",
     "long_term_capital_gains_on_collectibles",
-    "misc_deduction",
+    "unreimbursed_business_employee_expenses",
     "non_qualified_dividend_income",
     "non_sch_d_capital_gains",
-    "partnership_s_corp_income",
     "qualified_dividend_income",
     "qualified_tuition_expenses",
     "real_estate_taxes",
@@ -281,6 +473,12 @@ FINANCIAL_SUBSET = [
     "unreported_payroll_tax",
     "pre_tax_contributions",
     "w2_wages_from_qualified_business",
+    "unadjusted_basis_qualified_property",
+    "business_is_sstb",
+    "deductible_mortgage_interest",
+    "partnership_s_corp_income",
+    "qualified_reit_and_ptp_income",
+    "qualified_bdc_income",
 ]
 
 
@@ -431,7 +629,16 @@ class PUF(Dataset):
         self.holder["household_weight"].append(row["household_weight"])
         self.holder["is_male"].append(row["GENDER"] == 1)
 
+        # Assume all of the interest deduction is the filer's deductible mortgage interest
+
+        self.holder["deductible_mortgage_interest"].append(
+            row["interest_deduction"]
+        )
+
         for key in FINANCIAL_SUBSET:
+            if key == "deductible_mortgage_interest":
+                # Skip this one- we are adding it artificially at the filer level.
+                continue
             if self.variable_to_entity[key] == "person":
                 self.holder[key].append(row[key] * self.earn_splits[-1])
 
@@ -457,7 +664,14 @@ class PUF(Dataset):
             opposite_gender_code if is_opposite_gender else same_gender_code
         )
 
+        # Assume all of the interest deduction is the filer's deductible mortgage interest
+
+        self.holder["deductible_mortgage_interest"].append(0)
+
         for key in FINANCIAL_SUBSET:
+            if key == "deductible_mortgage_interest":
+                # Skip this one- we are adding it artificially at the filer level.
+                continue
             if self.variable_to_entity[key] == "person":
                 self.holder[key].append(row[key] * (1 - self.earn_splits[-1]))
 
@@ -474,7 +688,14 @@ class PUF(Dataset):
         age = decode_age_dependent(round(row[f"AGEDP{dependent_id + 1}"]))
         self.holder["age"].append(age)
 
+        # Assume all of the interest deduction is the filer's deductible mortgage interest
+
+        self.holder["deductible_mortgage_interest"].append(0)
+
         for key in FINANCIAL_SUBSET:
+            if key == "deductible_mortgage_interest":
+                # Skip this one- we are adding it artificially at the filer level.
+                continue
             if self.variable_to_entity[key] == "person":
                 self.holder[key].append(0)
 

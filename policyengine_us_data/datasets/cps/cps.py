@@ -1449,7 +1449,6 @@ def add_ssn_card_type(
     # ---------------------------------------------------------------
     # Map custom labels into Enum-approved buckets
     placeholder_to_specific_status = {
-        "HUMANITARIAN_RECENT": "REFUGEE",  # or ASYLEE
         "TEMP_NONQUALIFIED": "TPS",
     }
     needs_translation = np.isin(

@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from .uprating import create_policyengine_uprating_factors_table
-from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
 
 
 def pe_to_soi(pe_dataset, year):
@@ -168,7 +168,7 @@ def get_soi(year: int) -> pd.DataFrame:
         "taxable_social_security": "taxable_social_security",
         "unemployment_compensation": "unemployment_compensation",
     }
-    soi = pd.read_csv(STORAGE_FOLDER / "soi.csv")
+    soi = pd.read_csv(CALIBRATION_FOLDER / "soi_targets.csv")
     soi = soi[soi.Year == soi.Year.max()]
 
     uprating_factors = {}

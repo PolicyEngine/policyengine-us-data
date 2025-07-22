@@ -1390,7 +1390,8 @@ def add_ssn_card_type(
 
     # Calculate arrival years once for all logic
     arrival_years = get_arrival_year_midpoint(person.PEINUSYR)
-    years_in_us = 2024 - arrival_years
+    CURRENT_YEAR = 2024 
+    years_in_us = CURRENT_YEAR - arrival_years
     age_at_entry = np.maximum(0, person.A_AGE - years_in_us)
 
     # start every non-citizen as LPR so no UNSET survives

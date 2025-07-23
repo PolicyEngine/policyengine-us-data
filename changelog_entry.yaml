@@ -1,0 +1,5 @@
+- bump: minor
+  changes:
+    added:
+    - Added creation script to build relational database for targets
+    - Refactored age targets load script to load the database 

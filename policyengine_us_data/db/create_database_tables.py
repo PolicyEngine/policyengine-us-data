@@ -2,14 +2,7 @@ import io
 
 import pandas as pd
 from sqlalchemy import create_engine
-
-# The Base class is a standard component of SQLAlchemy's declarative system.
-# All data models will inherit from this class.
 from sqlalchemy.ext.declarative import declarative_base
-Base = declarative_base()
-
-
-# Additional imports for defining columns, types, and relationships
 from sqlalchemy import (
     Column,
     Integer,
@@ -20,6 +13,9 @@ from sqlalchemy import (
     PrimaryKeyConstraint,
 )
 from sqlalchemy.orm import relationship
+
+
+Base = declarative_base()
 
 ## Data Models
 
@@ -116,21 +112,5 @@ def create_database(db_uri='sqlite:///policy_data.db'):
     print(f"✅ Database and tables created successfully at {db_uri}")
     return engine
 
-# This block allows you to run this file directly to create your database.
 if __name__ == '__main__':
     engine = create_database()
-
-    # You can now use this 'engine' object to connect with your database.
-    # For example, using pandas to insert data into the 'target' table:
-    #
-    # data = {
-    #     'variable': ['adjusted_gross_income'],
-    #     'period': [2024],
-    #     'stratum_id': [1],
-    #     'value': [55000.0],
-    #     'source_id': [5]
-    # }
-    # df = pd.DataFrame(data)
-    # df.to_sql('target', engine, if_exists='append', index=False)
-    #
-    # Note: You do not provide 'target_id' or 'reform_id'/'active' if using the defaults.

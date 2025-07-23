@@ -1,18 +1,14 @@
 import logging
 import requests
-import pandas as pd
-import numpy as np
 from pathlib import Path
-from policyengine_us_data.storage import CALIBRATION_FOLDER
-
 import io
 
 import pandas as pd
+import numpy as np
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from policyengine_us_data.db.data_models import Base, Stratum, StratumConstraint, Target
-
+from policyengine_us_data.db.create_database_tables import Stratum, StratumConstraint, Target
 
 
 logger = logging.getLogger(__name__)
@@ -96,12 +92,30 @@ LABEL_TO_SHORT = {
 AGE_COLS = list(LABEL_TO_SHORT.values())
 
 
+def extract_docs(year=2023):
+    docs_url = (
+        f"https://api.census.gov/data/{year}/acs/acs1/subject/variables.json"
+    )
+
+    try:
+        docs_response = requests.get(docs_url)
+        docs_response.raise_for_status()
+
+        docs = docs_response.json()
+        docs['year'] = year
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error during API request: {e}")
+        raise
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        raise
+    return docs
+
+
 def extract_age_data(geo, year=2023):
     base_url = (
         f"https://api.census.gov/data/{year}/acs/acs1/subject?get=group(S0101)"
-    )
-    docs_url = (
-        f"https://api.census.gov/data/{year}/acs/acs1/subject/variables.json"
     )
 
     if geo == "State":
@@ -121,11 +135,6 @@ def extract_age_data(geo, year=2023):
 
         data = response.json()
 
-        docs_response = requests.get(docs_url)
-        docs_response.raise_for_status()
-
-        docs = docs_response.json()
-
         headers = data[0]
         data_rows = data[1:]
         df = pd.DataFrame(data_rows, columns=headers)
@@ -136,9 +145,11 @@ def extract_age_data(geo, year=2023):
     except Exception as e:
         print(f"An error occurred: {e}")
         raise
-    return df, docs
+    return df
+
 
 def transform_age_data(age_data, docs):
+    df = age_data.copy()
 
     label_to_variable_mapping = dict(
         [
@@ -167,20 +178,16 @@ def transform_age_data(age_data, docs):
         ~df_data["ucgid"].isin(["5001800US7298", "0400000US72"])
     ].copy()
 
-    SAVE_DIR = Path(CALIBRATION_FOLDER)
-    if geo == "District":
-        assert df_geos.shape[0] == 436
-    elif geo == "State":
-        assert df_geos.shape[0] == 51
-    elif geo == "National":
-        assert df_geos.shape[0] == 1
+    # TODO: find somewhere else to do these checks
+    #if geo == "District":
+    #    assert df_geos.shape[0] == 436
+    #elif geo == "State":
+    #    assert df_geos.shape[0] == 51
+    #elif geo == "National":
+    #    assert df_geos.shape[0] == 1
 
     df = df_geos[["ucgid"] + AGE_COLS]
 
-    # So this is really the target table, and the rows are different strata
-    # And you can fill that in and then define your strata table
-    # I have a clean slate and I can make stratum_ids at will, but how will
-    # we avoid collisions in practice?
     df_long = df.melt(
         id_vars='ucgid',
         value_vars=AGE_COLS,
@@ -190,14 +197,16 @@ def transform_age_data(age_data, docs):
     age_bounds = df_long['age_range'].str.split('-', expand=True)
     df_long['age_greater_than_or_equal_to'] = age_bounds[0].str.replace('+', '').astype(int)
     df_long['age_less_than_or_equal_to'] = pd.to_numeric(age_bounds[1])
-    #df_long['target_id'] = range(18)
     df_long['variable'] = 'person_count'
-    #df_long['stratum_id'] = range(18)
-    df_long['period'] = year
+    df_long['period'] = docs['year']
     df_long['reform_id'] = 0
     df_long['source_id'] = 1
     df_long['active'] = True
 
+    return df_long
+
+
+def load_age_data(df_long):
     DATABASE_URL = "sqlite:///policy_data.db"
     engine = create_engine(DATABASE_URL)
     
@@ -305,4 +314,18 @@ def transform_age_data(age_data, docs):
 
 
 if __name__ == "__main__":
-    combine_age_geography_levels()
+
+    # --- ETL is Extract, Transform, Load ----
+
+    # ---- Extract ----------
+    docs = extract_docs(2023)
+    national_df = extract_age_data("National", 2023)
+    state_df = extract_age_data("State", 2023)
+
+    # --- Transform ----------
+    long_national_df = transform_age_data(national_df, docs)
+    long_state_df = transform_age_data(state_df, docs)
+
+    # --- Load --------
+    load_age_data(long_national_df)
+    load_age_data(long_state_df)

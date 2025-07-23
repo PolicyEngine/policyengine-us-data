@@ -39,8 +39,8 @@ documentation:
 	python docs/add_plotly_to_book.py docs
 
 database:
-	python policyengine_us_data/db/generate_database.py
-	python policyengine_us_data/db/populate_age_data.py
+	python policyengine_us_data/db/create_database_tables.py
+	python policyengine_us_data/db/load_age_targets.py
 
 clean-database:
 	rm *.db

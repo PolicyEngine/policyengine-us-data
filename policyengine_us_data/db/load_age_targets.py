@@ -8,7 +8,11 @@ import numpy as np
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from policyengine_us_data.db.create_database_tables import Stratum, StratumConstraint, Target
+from policyengine_us_data.db.create_database_tables import (
+    Stratum,
+    StratumConstraint,
+    Target,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -102,7 +106,7 @@ def extract_docs(year=2023):
         docs_response.raise_for_status()
 
         docs = docs_response.json()
-        docs['year'] = year
+        docs["year"] = year
 
     except requests.exceptions.RequestException as e:
         print(f"Error during API request: {e}")
@@ -169,8 +173,8 @@ def transform_age_data(age_data, docs):
         ]
     )
 
-    df = df.drop(columns='NAME')
-    df = df.rename({'GEO_ID': 'ucgid'}, axis=1)
+    df = df.drop(columns="NAME")
+    df = df.rename({"GEO_ID": "ucgid"}, axis=1)
     df_data = df.rename(columns=rename_mapping)[["ucgid"] + list(AGE_COLS)]
 
     # Filter out Puerto Rico's district and state records, if needed
@@ -178,30 +182,24 @@ def transform_age_data(age_data, docs):
         ~df_data["ucgid"].isin(["5001800US7298", "0400000US72"])
     ].copy()
 
-    # TODO: find somewhere else to do these checks
-    #if geo == "District":
-    #    assert df_geos.shape[0] == 436
-    #elif geo == "State":
-    #    assert df_geos.shape[0] == 51
-    #elif geo == "National":
-    #    assert df_geos.shape[0] == 1
-
     df = df_geos[["ucgid"] + AGE_COLS]
 
     df_long = df.melt(
-        id_vars='ucgid',
+        id_vars="ucgid",
         value_vars=AGE_COLS,
-        var_name='age_range',
-        value_name='value'
+        var_name="age_range",
+        value_name="value",
     )
-    age_bounds = df_long['age_range'].str.split('-', expand=True)
-    df_long['age_greater_than_or_equal_to'] = age_bounds[0].str.replace('+', '').astype(int)
-    df_long['age_less_than_or_equal_to'] = pd.to_numeric(age_bounds[1])
-    df_long['variable'] = 'person_count'
-    df_long['period'] = docs['year']
-    df_long['reform_id'] = 0
-    df_long['source_id'] = 1
-    df_long['active'] = True
+    age_bounds = df_long["age_range"].str.split("-", expand=True)
+    df_long["age_greater_than_or_equal_to"] = (
+        age_bounds[0].str.replace("+", "").astype(int)
+    )
+    df_long["age_less_than_or_equal_to"] = pd.to_numeric(age_bounds[1])
+    df_long["variable"] = "person_count"
+    df_long["period"] = docs["year"]
+    df_long["reform_id"] = 0
+    df_long["source_id"] = 1
+    df_long["active"] = True
 
     return df_long
 
@@ -209,7 +207,7 @@ def transform_age_data(age_data, docs):
 def load_age_data(df_long):
     DATABASE_URL = "sqlite:///policy_data.db"
     engine = create_engine(DATABASE_URL)
-    
+
     Session = sessionmaker(bind=engine)
     session = Session()
 
@@ -219,33 +217,32 @@ def load_age_data(df_long):
         note = f"Age: {row['age_range']}, Geo: {row['ucgid']}"
         new_stratum = Stratum(notes=note)
         session.add(new_stratum)
-        session.flush() # Flush to assign stratum_id
+        session.flush()  # Flush to assign stratum_id
 
-        # 2. Create StratumConstraint records based on the DataFrame
-        # The 'ucgid' constraint
+        # 2. Create StratumConstraint records based on
+        # 2.a. The 'ucgid' constraint
         ucgid_constraint = StratumConstraint(
             stratum_id=new_stratum.stratum_id,
-            constraint_variable='ucgid',
-            operation='equals',
-            value=row['ucgid']
+            constraint_variable="ucgid",
+            operation="equals",
+            value=row["ucgid"],
         )
 
-        # The age constraints
+        # 2.b. The age constraints
         age_gte_constraint = StratumConstraint(
             stratum_id=new_stratum.stratum_id,
-            constraint_variable='age',
-            operation='greater_than_or_equal',
-            value=str(row['age_greater_than_or_equal_to'])
+            constraint_variable="age",
+            operation="greater_than_or_equal",
+            value=str(row["age_greater_than_or_equal_to"]),
         )
-        
-        # Handle the 'inf' case for the upper age bound
-        age_lt_value = row['age_less_than_or_equal_to']
+
+        age_lt_value = row["age_less_than_or_equal_to"]
         if not np.isinf(age_lt_value):
             age_lt_constraint = StratumConstraint(
                 stratum_id=new_stratum.stratum_id,
-                constraint_variable='age',
-                operation='less_than',
-                value=str(age_lt_value + 1) # less_than, so add 1
+                constraint_variable="age",
+                operation="less_than",
+                value=str(age_lt_value + 1),
             )
             session.add(age_lt_constraint)
 
@@ -255,20 +252,20 @@ def load_age_data(df_long):
         # 3. Create the Target record
         new_target = Target(
             stratum_id=new_stratum.stratum_id,
-            variable=row['variable'],
-            period=row['period'],
-            value=row['value'],
-            source_id=row['source_id'],
-            active=row['active'],
+            variable=row["variable"],
+            period=row["period"],
+            value=row["value"],
+            source_id=row["source_id"],
+            active=row["active"],
         )
         session.add(new_target)
-    
+
     session.commit()
 
 
 if __name__ == "__main__":
 
-    # --- ETL is Extract, Transform, Load ----
+    # --- ETL: Extract, Transform, Load ----
 
     # ---- Extract ----------
     docs = extract_docs(2023)

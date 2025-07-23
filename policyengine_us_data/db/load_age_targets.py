@@ -266,53 +266,6 @@ def load_age_data(df_long):
     session.commit()
 
 
-    #target_df = df_long[[
-    #    'target_id',
-    #    'variable',
-    #    'period',
-    #    'stratum_id',
-    #    'reform_id',
-    #    'value',
-    #    'source_id',
-    #    'active'
-    #]]
-
-    #bounds = df_long['age_range'].str.extract(
-    #    r'(?P<low>\d+)-(?P<high>\d+|inf)',  # captures 0‑4, 5‑9 … 85‑inf
-    #    expand=True
-    #)
-    #
-    #lo_rows = (
-    #    df_long[['stratum_id']]
-    #      .join(bounds['low'].rename('value'))
-    #      .assign(operation='greater_than_or_equal')
-    #)
-    #
-    #hi_rows = (
-    #    df_long[['stratum_id']]
-    #      .join(bounds['high'].rename('value'))
-    #      .assign(operation='less_than_or_equal')
-    #)
-    #
-    #out = (
-    #    pd.concat([lo_rows, hi_rows], ignore_index=True)
-    #      .replace({'value': {'inf': 'Inf'}})      # keep ∞ as the string “Inf”
-    #)
-    #
-    #out['value'] = pd.to_numeric(out['value'], errors='ignore')
-    #out.insert(loc=1, column='breakdown_variable', value='age')
-
-    #ucgid_df = df_long[['stratum_id', 'ucgid']].copy()
-    #ucgid_df['operation'] = 'equals'
-    #ucgid_df.insert(loc=1, column='contraint_variable', value='ucgid')
-    #ucgid_df = ucgid_df.rename(columns={'ucgid': 'value'})
-
-    #both = pd.concat([ucgid_df, out])
-    #both = both.sort_values(['stratum_id', 'operation'])
-    
-    #return out
-
-
 if __name__ == "__main__":
 
     # --- ETL is Extract, Transform, Load ----

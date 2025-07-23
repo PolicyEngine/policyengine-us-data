@@ -96,7 +96,7 @@ LABEL_TO_SHORT = {
 AGE_COLS = list(LABEL_TO_SHORT.values())
 
 
-def _pull_age_data(geo, year=2023):
+def extract_age_data(geo, year=2023):
     base_url = (
         f"https://api.census.gov/data/{year}/acs/acs1/subject?get=group(S0101)"
     )
@@ -136,8 +136,10 @@ def _pull_age_data(geo, year=2023):
     except Exception as e:
         print(f"An error occurred: {e}")
         raise
+    return df, docs
 
-    # map the documentation labels to the actual data set variables
+def transform_age_data(age_data, docs):
+
     label_to_variable_mapping = dict(
         [
             (value["label"], key)
@@ -253,165 +255,53 @@ def _pull_age_data(geo, year=2023):
         session.add(new_target)
     
     session.commit()
-    print("✅ Data loaded successfully.")
 
-    # HERE
 
-    target_df = df_long[[
-        'target_id',
-        'variable',
-        'period',
-        'stratum_id',
-        'reform_id',
-        'value',
-        'source_id',
-        'active'
-    ]]
+    #target_df = df_long[[
+    #    'target_id',
+    #    'variable',
+    #    'period',
+    #    'stratum_id',
+    #    'reform_id',
+    #    'value',
+    #    'source_id',
+    #    'active'
+    #]]
 
-    bounds = df_long['age_range'].str.extract(
-        r'(?P<low>\d+)-(?P<high>\d+|inf)',  # captures 0‑4, 5‑9 … 85‑inf
-        expand=True
-    )
+    #bounds = df_long['age_range'].str.extract(
+    #    r'(?P<low>\d+)-(?P<high>\d+|inf)',  # captures 0‑4, 5‑9 … 85‑inf
+    #    expand=True
+    #)
+    #
+    #lo_rows = (
+    #    df_long[['stratum_id']]
+    #      .join(bounds['low'].rename('value'))
+    #      .assign(operation='greater_than_or_equal')
+    #)
+    #
+    #hi_rows = (
+    #    df_long[['stratum_id']]
+    #      .join(bounds['high'].rename('value'))
+    #      .assign(operation='less_than_or_equal')
+    #)
+    #
+    #out = (
+    #    pd.concat([lo_rows, hi_rows], ignore_index=True)
+    #      .replace({'value': {'inf': 'Inf'}})      # keep ∞ as the string “Inf”
+    #)
+    #
+    #out['value'] = pd.to_numeric(out['value'], errors='ignore')
+    #out.insert(loc=1, column='breakdown_variable', value='age')
+
+    #ucgid_df = df_long[['stratum_id', 'ucgid']].copy()
+    #ucgid_df['operation'] = 'equals'
+    #ucgid_df.insert(loc=1, column='contraint_variable', value='ucgid')
+    #ucgid_df = ucgid_df.rename(columns={'ucgid': 'value'})
+
+    #both = pd.concat([ucgid_df, out])
+    #both = both.sort_values(['stratum_id', 'operation'])
     
-    lo_rows = (
-        df_long[['stratum_id']]
-          .join(bounds['low'].rename('value'))
-          .assign(operation='greater_than_or_equal')
-    )
-    
-    hi_rows = (
-        df_long[['stratum_id']]
-          .join(bounds['high'].rename('value'))
-          .assign(operation='less_than_or_equal')
-    )
-    
-    out = (
-        pd.concat([lo_rows, hi_rows], ignore_index=True)
-          .replace({'value': {'inf': 'Inf'}})      # keep ∞ as the string “Inf”
-    )
-    
-    out['value'] = pd.to_numeric(out['value'], errors='ignore')
-    out.insert(loc=1, column='breakdown_variable', value='age')
-
-    ucgid_df = df_long[['stratum_id', 'ucgid']].copy()
-    ucgid_df['operation'] = 'equals'
-    ucgid_df.insert(loc=1, column='contraint_variable', value='ucgid')
-    ucgid_df = ucgid_df.rename(columns={'ucgid': 'value'})
-
-    both = pd.concat([ucgid_df, out])
-    both = both.sort_values(['stratum_id', 'operation'])
-
-
-    return out
-
-
-def combine_age_geography_levels() -> None:
-    national = _pull_age_data("National")
-
-    # Rethinking national ----
-    logger.info(f"National age data: {national.shape[0]} rows")
-    state = _pull_age_data("State")
-    logger.info(f"State age data: {state.shape[0]} rows")
-    district = _pull_age_data("District")
-    logger.info(f"District age data: {district.shape[0]} rows")
-
-    state["STATEFIPS"] = state["GEO_ID"].str[-2:]
-    district["STATEFIPS"] = district["GEO_ID"].str[-4:-2]
-
-    for col in AGE_COLS:
-        national[col] = pd.to_numeric(national[col], errors="coerce")
-        state[col] = pd.to_numeric(state[col], errors="coerce")
-        district[col] = pd.to_numeric(district[col], errors="coerce")
-
-    for col in AGE_COLS:
-        us_total = national[col].iloc[0]  # scalar
-        state_total = state[col].sum()
-        if not np.isclose(state_total, us_total):
-            logger.warning(
-                f"States' sum population does not match national total for age band: {col}. Reescaling state targets."
-            )
-            state[col] *= us_total / state_total
-
-    for col in AGE_COLS:
-        state_totals = state.set_index("STATEFIPS")[col]
-        district_totals = district.groupby("STATEFIPS")[col].sum()
-
-        for fips, d_total in district_totals.items():
-            s_total = state_totals.get(fips)
-
-            if not np.isclose(d_total, s_total):
-                logger.warning(
-                    f"Districts' sum population does not match {fips} state total for age band: {col}. Reescaling district targets."
-                )
-                mask = district["STATEFIPS"] == fips
-                district.loc[mask, col] *= s_total / d_total
-
-    combined = pd.concat(
-        [
-            national,
-            state.drop(columns="STATEFIPS"),
-            district.drop(columns="STATEFIPS"),
-        ],
-        ignore_index=True,
-    ).sort_values("GEO_ID")
-
-    # Ensure all age columns are numeric before saving
-    for col in AGE_COLS:
-        combined[col] = combined[col].round().astype(int)
-
-    # Transform from wide to long format
-    long_format = pd.melt(
-        combined,
-        id_vars=["GEO_ID", "GEO_NAME"],
-        value_vars=AGE_COLS,
-        var_name="AGE_GROUP",
-        value_name="VALUE",
-    )
-
-    # Parse age bounds from age group labels
-    def parse_age_bounds(age_group):
-        if age_group == "85+":
-            return 85, np.inf  # No upper bound for 85+
-        else:
-            parts = age_group.split("-")
-            return int(parts[0]), int(parts[1])
-
-    # Extract lower and upper bounds
-    bounds = long_format["AGE_GROUP"].apply(parse_age_bounds)
-    long_format["LOWER_BOUND"] = bounds.apply(lambda x: x[0])
-    long_format["UPPER_BOUND"] = bounds.apply(lambda x: x[1])
-    long_format["DATA_SOURCE"] = "acs"
-    long_format["VARIABLE"] = "age"
-    long_format["IS_COUNT"] = True
-    long_format["BREAKDOWN_VARIABLE"] = "age"
-
-    # Reorder columns
-    final_columns = [
-        "DATA_SOURCE",
-        "GEO_ID",
-        "GEO_NAME",
-        "VARIABLE",
-        "VALUE",
-        "IS_COUNT",
-        "BREAKDOWN_VARIABLE",
-        "LOWER_BOUND",
-        "UPPER_BOUND",
-    ]
-
-    final_df = long_format[final_columns]
-
-    # Sort by GEO_ID and age group for better organization
-    final_df = final_df.sort_values(["GEO_ID", "BREAKDOWN_VARIABLE"])
-
-    out_path = CALIBRATION_FOLDER / "age.csv"
-    final_df.to_csv(out_path, index=False)
-
-
-def abbrev_name(name):
-    # 'Congressional District 1 (118th Congress), Alabama' -> AL-01
-    district_number = name.split("District ")[1].split(" ")[0]
-    state = STATE_NAME_TO_ABBREV[name.split(", ")[-1].strip()]
-    return f"{state}-{district_number.zfill(2)}".replace("(at", "01")
+    #return out
 
 
 if __name__ == "__main__":

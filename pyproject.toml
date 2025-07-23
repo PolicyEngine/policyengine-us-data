@@ -22,7 +22,7 @@ dependencies = [
     "pandas>=2.3.0",
     "requests",
     "tqdm",
-    "microdf_python>=0.4.4",
+    "microdf_python<=0.4.4",
     "setuptools>=60",
     "microimpute==0.1.4",
     "pip-system-certs",

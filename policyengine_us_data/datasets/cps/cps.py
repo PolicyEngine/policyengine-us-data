@@ -17,7 +17,7 @@ import logging
 
 
 test_lite = os.environ.get("TEST_LITE")
-
+print(3 + 3)
 
 class CPS(Dataset):
     name = "cps"

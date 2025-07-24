@@ -17,7 +17,7 @@ import logging
 
 
 test_lite = os.environ.get("TEST_LITE")
-print(3 + 3)
+
 
 class CPS(Dataset):
     name = "cps"
@@ -66,7 +66,6 @@ class CPS(Dataset):
             cps,
             person,
             spm_unit,
-            self.time_period,
             undocumented_target=13e6,
             undocumented_workers_target=8.3e6,
             undocumented_students_target=0.21 * 1.9e6,
@@ -707,7 +706,6 @@ def add_ssn_card_type(
     cps: h5py.File,
     person: pd.DataFrame,
     spm_unit: pd.DataFrame,
-    time_period: int,
     undocumented_target: float = 13e6,
     undocumented_workers_target: float = 8.3e6,
     undocumented_students_target: float = 0.21 * 1.9e6,
@@ -1392,7 +1390,7 @@ def add_ssn_card_type(
 
     # Calculate arrival years once for all logic
     arrival_years = get_arrival_year_midpoint(person.PEINUSYR)
-    CURRENT_YEAR = time_period
+    CURRENT_YEAR = 2024
     years_in_us = CURRENT_YEAR - arrival_years
     age_at_entry = np.maximum(0, person.A_AGE - years_in_us)
 
@@ -1416,11 +1414,10 @@ def add_ssn_card_type(
 
     # 3. Cuban / Haitian entrants (created by Congress in 1980)
     # Only those who arrived after 1980
-    CUBAN_HAITIAN_ARRIVAL_CUTOFF = 1980
     cuban_haitian_mask = (
         (ssn_card_type != 0)
         & np.isin(birth, list(COUNTRY_CODES["CUBAN_HAITIAN"]))
-        & (arrival_years >= CUBAN_HAITIAN_ARRIVAL_CUTOFF)
+        & (arrival_years >= 1980)
     )
     immigration_status[cuban_haitian_mask] = "CUBAN_HAITIAN_ENTRANT"
 
@@ -1449,6 +1446,19 @@ def add_ssn_card_type(
     )
     immigration_status[mask] = "TPS"
 
+    # ---------------------------------------------------------------
+    # Map custom labels into Enum-approved buckets
+    placeholder_to_specific_status = {
+        "TEMP_NONQUALIFIED": "TPS",
+    }
+    needs_translation = np.isin(
+        immigration_status, list(placeholder_to_specific_status.keys())
+    )
+    immigration_status[needs_translation] = (
+        pd.Series(immigration_status[needs_translation])
+        .replace(placeholder_to_specific_status)
+        .values
+    )
     # Final write (all values now in ImmigrationStatus Enum)
     cps["immigration_status"] = immigration_status.astype("S")
     # ============================================================================

@@ -475,8 +475,3 @@
     added:
     - Added Immigration status from SSN algorithm.
   date: 2025-07-24 13:44:42
-- bump: patch
-  changes:
-    fixed:
-    - Clean up immigration status PR.
-  date: 2025-07-24 14:16:14

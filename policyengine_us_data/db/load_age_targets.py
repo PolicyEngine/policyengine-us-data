@@ -9,9 +9,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from policyengine_us_data.db.create_database_tables import (
-    Stratum,
-    StratumConstraint,
-    Target,
+    Strata,
+    StratumConstraints,
+    Targets,
 )
 
 
@@ -204,24 +204,43 @@ def transform_age_data(age_data, docs):
     return df_long
 
 
-def load_age_data(df_long):
+def load_age_data(df_long, geo):
+
+    # Quick data quality check before loading ----
+    if geo == "National":
+        assert len(set(df_long.ucgid)) == 1
+    elif geo == "State":
+        assert len(set(df_long.ucgid)) == 51
+    elif geo == "District":
+        assert len(set(df_long.ucgid)) == 436
+    else:
+        raise ValueError('geo must be one of "National", "State", "District"')
+
+    # Prepare to load data -----------
     DATABASE_URL = "sqlite:///policy_data.db"
     engine = create_engine(DATABASE_URL)
 
     Session = sessionmaker(bind=engine)
     session = Session()
 
+    strata_lookup = {}  # To know the ids for parent / child relationships
+
+    # Load the data --------
     for _, row in df_long.iterrows():
-        # 1. Create a new Stratum for each row. We will make it unique
+
+        # 1. Create a new Strata record for each row, unique because of a
         # by creating a descriptive note.
         note = f"Age: {row['age_range']}, Geo: {row['ucgid']}"
-        new_stratum = Stratum(notes=note)
+        # Do not specify stratum_id; it will be auto-incremented
+        # TODO: need a strategy for parent_stratum_id
+        new_stratum = Strata(parent_stratum_id=None, stratum_group_id=0, notes=note)
         session.add(new_stratum)
         session.flush()  # Flush to assign stratum_id
+        strata_lookup[row['age_range']] = new_stratum.stratum_id
 
         # 2. Create StratumConstraint records based on
         # 2.a. The 'ucgid' constraint
-        ucgid_constraint = StratumConstraint(
+        ucgid_constraint = StratumConstraints(
             stratum_id=new_stratum.stratum_id,
             constraint_variable="ucgid",
             operation="equals",
@@ -229,7 +248,7 @@ def load_age_data(df_long):
         )
 
         # 2.b. The age constraints
-        age_gte_constraint = StratumConstraint(
+        age_gte_constraint = StratumConstraints(
             stratum_id=new_stratum.stratum_id,
             constraint_variable="age",
             operation="greater_than_or_equal",
@@ -238,7 +257,7 @@ def load_age_data(df_long):
 
         age_lt_value = row["age_less_than_or_equal_to"]
         if not np.isinf(age_lt_value):
-            age_lt_constraint = StratumConstraint(
+            age_lt_constraint = StratumConstraints(
                 stratum_id=new_stratum.stratum_id,
                 constraint_variable="age",
                 operation="less_than",
@@ -250,7 +269,7 @@ def load_age_data(df_long):
         session.add(age_gte_constraint)
 
         # 3. Create the Target record
-        new_target = Target(
+        new_target = Targets(
             stratum_id=new_stratum.stratum_id,
             variable=row["variable"],
             period=row["period"],
@@ -277,5 +296,5 @@ if __name__ == "__main__":
     long_state_df = transform_age_data(state_df, docs)
 
     # --- Load --------
-    load_age_data(long_national_df)
-    load_age_data(long_state_df)
+    national_strata_lku = load_age_data(long_national_df, "National")
+    load_age_data(long_state_df, "State")

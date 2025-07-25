@@ -204,7 +204,11 @@ def transform_age_data(age_data, docs):
     return df_long
 
 
-def load_age_data(df_long, geo):
+def get_parent_geo(geo):
+    return {"National": None, "State": "National", "District": "State"}[geo]
+
+
+def load_age_data(df_long, geo, stratum_lookup={}):
 
     # Quick data quality check before loading ----
     if geo == "National":
@@ -223,63 +227,76 @@ def load_age_data(df_long, geo):
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    strata_lookup = {}  # To know the ids for parent / child relationships
+    if not stratum_lookup:
+        if geo != "National":
+            raise ValueError("Include stratum_lookup unless National geo")
+        stratum_lookup = {"National": {}}
+    else:
+        stratum_lookup[geo] = {}
 
-    # Load the data --------
     for _, row in df_long.iterrows():
 
-        # 1. Create a new Strata record for each row, unique because of a
-        # by creating a descriptive note.
+        # Create the parent Strata object.
+        # We will attach children to it before adding it to the session.
         note = f"Age: {row['age_range']}, Geo: {row['ucgid']}"
-        # Do not specify stratum_id; it will be auto-incremented
-        # TODO: need a strategy for parent_stratum_id
-        new_stratum = Strata(parent_stratum_id=None, stratum_group_id=0, notes=note)
-        session.add(new_stratum)
-        session.flush()  # Flush to assign stratum_id
-        strata_lookup[row['age_range']] = new_stratum.stratum_id
-
-        # 2. Create StratumConstraint records based on
-        # 2.a. The 'ucgid' constraint
-        ucgid_constraint = StratumConstraints(
-            stratum_id=new_stratum.stratum_id,
-            constraint_variable="ucgid",
-            operation="equals",
-            value=row["ucgid"],
+        parent_geo = get_parent_geo(geo)
+        parent_stratum_id = (
+            stratum_lookup[parent_geo][row["age_range"]]
+            if parent_geo
+            else None
         )
 
-        # 2.b. The age constraints
-        age_gte_constraint = StratumConstraints(
-            stratum_id=new_stratum.stratum_id,
-            constraint_variable="age",
-            operation="greater_than_or_equal",
-            value=str(row["age_greater_than_or_equal_to"]),
+        new_stratum = Strata(
+            parent_stratum_id=parent_stratum_id, stratum_group_id=0, notes=note
         )
+
+        # Create constraints and link them to the parent's relationship attribute.
+        new_stratum.constraints_rel = [
+            StratumConstraints(
+                constraint_variable="ucgid",
+                operation="equals",
+                value=row["ucgid"],
+            ),
+            StratumConstraints(
+                constraint_variable="age",
+                operation="greater_than_or_equal",
+                value=str(row["age_greater_than_or_equal_to"]),
+            ),
+        ]
 
         age_lt_value = row["age_less_than_or_equal_to"]
         if not np.isinf(age_lt_value):
-            age_lt_constraint = StratumConstraints(
-                stratum_id=new_stratum.stratum_id,
-                constraint_variable="age",
-                operation="less_than",
-                value=str(age_lt_value + 1),
+            new_stratum.constraints_rel.append(
+                StratumConstraints(
+                    constraint_variable="age",
+                    operation="less_than",
+                    value=str(age_lt_value + 1),
+                )
             )
-            session.add(age_lt_constraint)
 
-        session.add(ucgid_constraint)
-        session.add(age_gte_constraint)
-
-        # 3. Create the Target record
-        new_target = Targets(
-            stratum_id=new_stratum.stratum_id,
-            variable=row["variable"],
-            period=row["period"],
-            value=row["value"],
-            source_id=row["source_id"],
-            active=row["active"],
+        # Create the Target and link it to the parent.
+        new_stratum.targets_rel.append(
+            Targets(
+                variable=row["variable"],
+                period=row["period"],
+                value=row["value"],
+                source_id=row["source_id"],
+                active=row["active"],
+            )
         )
-        session.add(new_target)
 
+        # Add ONLY the parent object to the session.
+        # The 'cascade' setting will handle the children automatically.
+        session.add(new_stratum)
+
+        # Flush to get the id
+        session.flush()
+        stratum_lookup[geo][row["age_range"]] = new_stratum.stratum_id
+
+    # Commit all the new objects at once.
     session.commit()
+
+    return stratum_lookup
 
 
 if __name__ == "__main__":
@@ -297,4 +314,6 @@ if __name__ == "__main__":
 
     # --- Load --------
     national_strata_lku = load_age_data(long_national_df, "National")
-    load_age_data(long_state_df, "State")
+    state_strata_lku = load_age_data(
+        long_state_df, "State", national_strata_lku
+    )

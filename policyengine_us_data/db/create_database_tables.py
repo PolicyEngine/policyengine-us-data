@@ -1,8 +1,8 @@
-import io
 import logging
+import hashlib
 
-import pandas as pd
 from sqlalchemy import (
+    event,
     create_engine,
     Column,
     Integer,
@@ -11,11 +11,11 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     UniqueConstraint,
-    PrimaryKeyConstraint,
 )
 
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm.attributes import get_history
+from sqlalchemy.ext.declarative import declarative_base
 
 
 logging.basicConfig(
@@ -42,9 +42,15 @@ class Strata(Base):
 
     __tablename__ = "strata"
 
-    # Columns --- 
+    # Columns ---
     stratum_id = Column(
         Integer, primary_key=True, comment="Unique identifier for the stratum."
+    )
+
+    definition_hash = Column(
+        String(64),
+        nullable=False,
+        comment="SHA-256 hash of the stratum's constraints, used to enforce uniqueness.",
     )
 
     parent_stratum_id = Column(
@@ -60,23 +66,29 @@ class Strata(Base):
 
     notes = Column(String, comment="Descriptive notes about the stratum.")
 
-    # Relationships --- 
-    children_rel = relationship("Strata", 
-                               back_populates="parent_rel",
-                               remote_side=[parent_stratum_id])
+    # Relationships ---
+    children_rel = relationship(
+        "Strata", back_populates="parent_rel", remote_side=[parent_stratum_id]
+    )
 
-    parent_rel = relationship("Strata", 
-                             back_populates="children_rel",
-                             remote_side=[stratum_id])
+    parent_rel = relationship(
+        "Strata", back_populates="children_rel", remote_side=[stratum_id]
+    )
 
     constraints_rel = relationship(
         "StratumConstraints",
         back_populates="strata_rel",
         cascade="all, delete-orphan",
+        # Use eager loading to ensure constraints are loaded for hashing
+        lazy="joined",
     )
 
     targets_rel = relationship(
         "Targets", back_populates="strata_rel", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("definition_hash", name="uq_strata_definition_hash"),
     )
 
     def __repr__(self):
@@ -93,7 +105,7 @@ class StratumConstraints(Base):
 
     __tablename__ = "stratum_constraints"
 
-    # Columns ---- 
+    # Columns ----
     stratum_id = Column(
         Integer, ForeignKey("strata.stratum_id"), primary_key=True
     )
@@ -120,7 +132,7 @@ class StratumConstraints(Base):
         String, nullable=True, comment="Optional notes about the constraint."
     )
 
-    # Relationships ----- 
+    # Relationships -----
     strata_rel = relationship("Strata", back_populates="constraints_rel")
 
     def __repr__(self):
@@ -135,11 +147,16 @@ class Targets(Base):
 
     __tablename__ = "targets"
     __table_args__ = (
-        UniqueConstraint('variable', 'period', 'stratum_id', 'reform_id',
-                         name='_target_unique'),
+        UniqueConstraint(
+            "variable",
+            "period",
+            "stratum_id",
+            "reform_id",
+            name="_target_unique",
+        ),
     )
 
-    # Columns ----------- 
+    # Columns -----------
     target_id = Column(Integer, primary_key=True)  # Auto-incrementing
 
     variable = Column(
@@ -182,17 +199,58 @@ class Targets(Base):
     tolerance = Column(
         Float,
         nullable=True,
-        comment="Allowed relative error as a percent (e.g., 25 for 25%)."
+        comment="Allowed relative error as a percent (e.g., 25 for 25%).",
     )
 
-    notes = Column(String, nullable=True,
-                   comment="Optional descriptive notes about the target row.")
+    notes = Column(
+        String,
+        nullable=True,
+        comment="Optional descriptive notes about the target row.",
+    )
 
-    # Relationships ------------ 
+    # Relationships ------------
     strata_rel = relationship("Strata", back_populates="targets_rel")
 
     def __repr__(self):
         return f"<Targets(target_id={self.target_id}, variable='{self.variable}', value={self.value})>"
+
+
+@event.listens_for(Strata, "before_insert")
+@event.listens_for(Strata, "before_update")
+def calculate_definition_hash(mapper, connection, target: Strata):
+    """
+    Calculate and set the definition_hash before saving a Strata instance.
+    """
+    # Only recalculate if the constraints have changed.
+    constraints_history = get_history(target, "constraints_rel")
+    if not (
+        constraints_history.has_changes() or target.definition_hash is None
+    ):
+        return
+
+    if not target.constraints_rel:
+        # Handle cases with no constraints, you could hash an empty string or raise an error.
+        target.definition_hash = hashlib.sha256(b"").hexdigest()
+        return
+
+    # 1. Create a canonical string for each constraint.
+    constraint_strings = [
+        f"{c.constraint_variable}|{c.operation}|{c.value}"
+        for c in target.constraints_rel
+    ]
+
+    # 2. Sort the strings to ensure order doesn't matter.
+    constraint_strings.sort()
+
+    # 3. Join them into a single block of text.
+    fingerprint_text = "\n".join(constraint_strings)
+
+    # 4. Hash the result and set it on the target object.
+    h = hashlib.sha256(fingerprint_text.encode("utf-8"))
+    target.definition_hash = h.hexdigest()
+    logger.info(
+        f"Set definition_hash for Strata to '{target.definition_hash}'"
+    )
 
 
 def create_database(db_uri="sqlite:///policy_data.db"):

@@ -1,0 +1,6 @@
+- bump: patch
+  changes:
+    added:
+    - PyPI auto-publish workflow in GitHub Actions
+    fixed:
+    - README typo (installion -> installation)

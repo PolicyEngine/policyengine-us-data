@@ -122,8 +122,8 @@ class CPS(Dataset):
                     original_data[key] = values.astype(original_dtypes[key])
                 except:
                     # If conversion fails, log it but continue
-                    print(
-                        f"Warning: Could not convert {key} back to {original_dtypes[key]}"
+                    logging.warning(
+                        f"Could not convert {key} back to {original_dtypes[key]}"
                     )
                     original_data[key] = values
             else:
@@ -175,11 +175,11 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     inference_df = inference_df[mask]
 
     qrf = QRF()
-    print("Training imputation model for rent and real estate taxes.")
+    logging.info("Training imputation model for rent and real estate taxes.")
     qrf.fit(train_df[PREDICTORS], train_df[IMPUTATIONS])
-    print("Imputing rent and real estate taxes.")
+    logging.info("Imputing rent and real estate taxes.")
     imputed_values = qrf.predict(inference_df[PREDICTORS])
-    print("Imputation complete.")
+    logging.info("Imputation complete.")
     cps["rent"] = np.zeros_like(cps["age"])
     cps["rent"][mask] = imputed_values["rent"]
     # Assume zero housing assistance since
@@ -645,7 +645,7 @@ def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
 
 def add_previous_year_income(self, cps: h5py.File) -> None:
     if self.previous_year_raw_cps is None:
-        print(
+        logging.info(
             "No previous year data available for this dataset, skipping previous year income imputation."
         )
         return

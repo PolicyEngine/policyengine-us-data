@@ -65,7 +65,7 @@ include-package-data = true
 [tool.pytest.ini_options]
 addopts = "-v"
 testpaths = [
-    "tests",
+    "policyengine_us_data/tests",
 ]
 
 [tool.black]

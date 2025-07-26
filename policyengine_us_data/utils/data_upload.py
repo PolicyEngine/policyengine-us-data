@@ -68,16 +68,24 @@ def upload_files_to_hf(
     logging.info(f"Uploaded files to Hugging Face repository {hf_repo_name}.")
 
     # Tag commit with version
-    api.create_tag(
-        token=token,
-        repo_id=hf_repo_name,
-        tag=version,
-        revision=commit_info.oid,
-        repo_type=hf_repo_type,
-    )
-    logging.info(
-        f"Tagged commit with {version} in Hugging Face repository {hf_repo_name}."
-    )
+    try:
+        api.create_tag(
+            token=token,
+            repo_id=hf_repo_name,
+            tag=version,
+            revision=commit_info.oid,
+            repo_type=hf_repo_type,
+        )
+        logging.info(
+            f"Tagged commit with {version} in Hugging Face repository {hf_repo_name}."
+        )
+    except Exception as e:
+        if "Tag reference exists already" in str(e) or "409" in str(e):
+            logging.warning(
+                f"Tag {version} already exists in {hf_repo_name}. Skipping tag creation."
+            )
+        else:
+            raise
 
 
 def upload_files_to_gcs(

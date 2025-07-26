@@ -15,14 +15,15 @@ authors = [
     {name = "PolicyEngine", email = "hello@policyengine.org"},
 ]
 license = {file = "LICENSE"}
-requires-python = ">=3.11, <3.13.0"
+requires-python = ">=3.11, <3.14.0"
 classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "policyengine-us==1.340.1",
-    "policyengine-core==3.16.5",
+    "policyengine-us>=1.350.0",
+    "policyengine-core>=3.19.0",
     "pandas>=2.3.1",
     "requests>=2.25.0",
     "tqdm>=4.60.0",
@@ -69,7 +70,7 @@ testpaths = [
 
 [tool.black]
 line-length = 79
-target-version = ['py311', 'py312']
+target-version = ['py311', 'py312', 'py313']
 include = '\.pyi?$'
 extend-exclude = '''
 /(

@@ -6,7 +6,7 @@ While it is possible to install via PyPi:
 ```bash
 pip install policyengine-us-data
 ```
-the recommended installion is 
+the recommended installation is 
 ```
 pip install -e .[dev]
 ```

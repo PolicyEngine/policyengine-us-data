@@ -470,3 +470,39 @@
     changed:
     - Update microdf_python dependency to >=1.0.0.
   date: 2025-07-22 21:03:38
+- bump: minor
+  changes:
+    added:
+    - Added Immigration status from SSN algorithm.
+  date: 2025-07-24 13:44:42
+- bump: patch
+  changes:
+    fixed:
+    - Clean up immigration status PR.
+  date: 2025-07-26 13:35:10
+- bump: minor
+  changes:
+    added:
+    - Python 3.13 support
+    changed:
+    - Simplified CI test matrix to only test on Python 3.13 and Ubuntu
+    - Updated policyengine-us to >=1.350.0 for Python 3.13 support
+    - Updated policyengine-core to >=3.19.0 for Python 3.13 support
+    - Updated microimpute from 0.1.4 to 1.0.1 for numpy 2.x compatibility
+    - Updated scipy dependency from <1.13 to >=1.15.3
+    - Updated pandas dependency from >=2.3.0 to >=2.3.1
+    - Updated statsmodels dependency from >=0.14.0 to >=0.14.5
+    - Added lower bounds to dependencies that were missing them
+  date: 2025-07-26 17:22:33
+- bump: patch
+  changes:
+    fixed:
+    - Increased Medicaid calibration tolerance to 100% to handle state-level noise
+  date: 2025-07-26 19:06:45
+- bump: patch
+  changes:
+    added:
+    - PyPI auto-publish workflow in GitHub Actions
+    fixed:
+    - README typo (installion -> installation)
+  date: 2025-07-26 20:53:26

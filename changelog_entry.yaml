@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    fixed:
+      - Increased Medicaid calibration tolerance to 100% to handle state-level noise

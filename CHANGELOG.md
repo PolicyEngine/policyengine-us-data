@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.0] - 2025-07-26 17:22:33
+
+### Added
+
+- Python 3.13 support
+
+### Changed
+
+- Simplified CI test matrix to only test on Python 3.13 and Ubuntu
+- Updated policyengine-us to >=1.350.0 for Python 3.13 support
+- Updated policyengine-core to >=3.19.0 for Python 3.13 support
+- Updated microimpute from 0.1.4 to 1.0.1 for numpy 2.x compatibility
+- Updated scipy dependency from <1.13 to >=1.15.3
+- Updated pandas dependency from >=2.3.0 to >=2.3.1
+- Updated statsmodels dependency from >=0.14.0 to >=0.14.5
+- Added lower bounds to dependencies that were missing them
+
 ## [1.40.1] - 2025-07-26 13:35:10
 
 ### Fixed
@@ -574,6 +591,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.41.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.40.1...1.41.0
 [1.40.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.40.0...1.40.1
 [1.40.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.39.2...1.40.0
 [1.39.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.39.1...1.39.2

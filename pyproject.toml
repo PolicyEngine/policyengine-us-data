@@ -22,8 +22,8 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "policyengine-us==1.340.1",
-    "policyengine-core==3.14.1",
+    "policyengine-us>=1.350.0",
+    "policyengine-core>=3.19.0",
     "pandas>=2.3.1",
     "requests>=2.25.0",
     "tqdm>=4.60.0",

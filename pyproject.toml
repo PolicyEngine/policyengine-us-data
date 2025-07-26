@@ -22,23 +22,23 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "policyengine-us>=1.340.1",
-    "policyengine-core>=3.14.1",
+    "policyengine-us==1.340.1",
+    "policyengine-core==3.14.1",
     "pandas>=2.3.1",
-    "requests",
-    "tqdm",
-    "microdf_python",
+    "requests>=2.25.0",
+    "tqdm>=4.60.0",
+    "microdf_python>=1.0.0",
     "setuptools>=60",
     "microimpute==0.1.4",
-    "pip-system-certs",
-    "google-cloud-storage",
-    "google-auth",
+    "pip-system-certs>=20.0",
+    "google-cloud-storage>=2.0.0",
+    "google-auth>=2.0.0",
     "scipy>=1.15.3",
     "statsmodels>=0.14.5",
     "openpyxl>=3.1.5",
     "tables>=3.10.2",
     "torch>=2.7.1",
-    "us",
+    "us>=2.0.0",
 ]
 
 [project.optional-dependencies]

@@ -1824,7 +1824,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         # Apply the reference person logic to each household
         all_persons_data["is_scf_reference_person"] = (
             all_persons_data.groupby("person_household_id")
-            .apply(determine_reference_person)
+            .apply(determine_reference_person, include_groups=False)
             .reset_index(level=0, drop=True)
         )
 

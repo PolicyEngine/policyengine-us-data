@@ -20,7 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class Strata(SQLModel, table=True):
+class Stratum(SQLModel, table=True):
     """Represents a unique population subgroup (stratum)."""
 
     __tablename__ = "strata"
@@ -52,28 +52,28 @@ class Strata(SQLModel, table=True):
         default=None, description="Descriptive notes about the stratum."
     )
 
-    children_rel: List["Strata"] = Relationship(
+    children_rel: List["Stratum"] = Relationship(
         back_populates="parent_rel",
-        sa_relationship_kwargs={"remote_side": "Strata.parent_stratum_id"},
+        sa_relationship_kwargs={"remote_side": "Stratum.parent_stratum_id"},
     )
-    parent_rel: Optional["Strata"] = Relationship(
+    parent_rel: Optional["Stratum"] = Relationship(
         back_populates="children_rel",
-        sa_relationship_kwargs={"remote_side": "Strata.stratum_id"},
+        sa_relationship_kwargs={"remote_side": "Stratum.stratum_id"},
     )
-    constraints_rel: List["StratumConstraints"] = Relationship(
+    constraints_rel: List["StratumConstraint"] = Relationship(
         back_populates="strata_rel",
         sa_relationship_kwargs={
             "cascade": "all, delete-orphan",
             "lazy": "joined",
         },
     )
-    targets_rel: List["Targets"] = Relationship(
+    targets_rel: List["Target"] = Relationship(
         back_populates="strata_rel",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
 
 
-class StratumConstraints(SQLModel, table=True):
+class StratumConstraint(SQLModel, table=True):
     """Defines the rules that make up a stratum."""
 
     __tablename__ = "stratum_constraints"
@@ -94,10 +94,10 @@ class StratumConstraints(SQLModel, table=True):
         default=None, description="Optional notes about the constraint."
     )
 
-    strata_rel: Strata = Relationship(back_populates="constraints_rel")
+    strata_rel: Stratum = Relationship(back_populates="constraints_rel")
 
 
-class Targets(SQLModel, table=True):
+class Target(SQLModel, table=True):
     """Stores the data values for a specific stratum."""
 
     __tablename__ = "targets"
@@ -142,15 +142,15 @@ class Targets(SQLModel, table=True):
         description="Optional descriptive notes about the target row.",
     )
 
-    strata_rel: Strata = Relationship(back_populates="targets_rel")
+    strata_rel: Stratum = Relationship(back_populates="targets_rel")
 
 
 # This SQLAlchemy event listener works directly with the SQLModel class
-@event.listens_for(Strata, "before_insert")
-@event.listens_for(Strata, "before_update")
-def calculate_definition_hash(mapper, connection, target: Strata):
+@event.listens_for(Stratum, "before_insert")
+@event.listens_for(Stratum, "before_update")
+def calculate_definition_hash(mapper, connection, target: Stratum):
     """
-    Calculate and set the definition_hash before saving a Strata instance.
+    Calculate and set the definition_hash before saving a Stratum instance.
     """
     constraints_history = get_history(target, "constraints_rel")
     if not (
@@ -172,7 +172,7 @@ def calculate_definition_hash(mapper, connection, target: Strata):
     h = hashlib.sha256(fingerprint_text.encode("utf-8"))
     target.definition_hash = h.hexdigest()
     logger.info(
-        f"Set definition_hash for Strata to '{target.definition_hash}'"
+        f"Set definition_hash for Stratum to '{target.definition_hash}'"
     )
 
 

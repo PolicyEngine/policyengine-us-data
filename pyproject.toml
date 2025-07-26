@@ -35,6 +35,7 @@ dependencies = [
     "torch>=2.7.1",
     "us",
     "sqlalchemy>=2.0.41",
+    "sqlmodel>=0.0.24",
 ]
 
 [project.optional-dependencies]

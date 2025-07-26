@@ -1,21 +1,16 @@
 import logging
 import hashlib
+from typing import List, Optional
 
-from sqlalchemy import (
-    event,
-    create_engine,
-    Column,
-    Integer,
-    String,
-    Float,
-    Boolean,
-    ForeignKey,
-    UniqueConstraint,
-)
-
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy import event, UniqueConstraint
 from sqlalchemy.orm.attributes import get_history
 
+from sqlmodel import (
+    Field,
+    Relationship,
+    SQLModel,
+    create_engine,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,12 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Create a single, shared Base that all models can inherit from
-class Base(DeclarativeBase):
-    pass
-
-
-class Strata(Base):
+class Strata(SQLModel, table=True):
     """Represents a unique population subgroup (stratum)."""
 
     __tablename__ = "strata"
@@ -38,79 +28,76 @@ class Strata(Base):
         UniqueConstraint("definition_hash", name="uq_strata_definition_hash"),
     )
 
-    stratum_id = Column(
-        Integer, primary_key=True, comment="Unique identifier for the stratum."
+    stratum_id: Optional[int] = Field(
+        default=None,
+        primary_key=True,
+        description="Unique identifier for the stratum.",
     )
-    definition_hash = Column(
-        String(64),
-        nullable=False,
-        comment="SHA-256 hash of the stratum's constraints.",
+    definition_hash: str = Field(
+        sa_column_kwargs={
+            "comment": "SHA-256 hash of the stratum's constraints."
+        },
+        max_length=64,
     )
-    parent_stratum_id = Column(
-        Integer,
-        ForeignKey("strata.stratum_id"),
+    parent_stratum_id: Optional[int] = Field(
+        default=None,
+        foreign_key="strata.stratum_id",
         index=True,
-        comment="Identifier for a parent stratum, creating a hierarchy.",
+        description="Identifier for a parent stratum, creating a hierarchy.",
     )
-    stratum_group_id = Column(
-        Integer, comment="Identifier for a group of related strata."
+    stratum_group_id: Optional[int] = Field(
+        default=None, description="Identifier for a group of related strata."
     )
-    notes = Column(String, comment="Descriptive notes about the stratum.")
+    notes: Optional[str] = Field(
+        default=None, description="Descriptive notes about the stratum."
+    )
 
-    children_rel = relationship(
-        "Strata", back_populates="parent_rel", remote_side=[parent_stratum_id]
+    children_rel: List["Strata"] = Relationship(
+        back_populates="parent_rel",
+        sa_relationship_kwargs={"remote_side": "Strata.parent_stratum_id"},
     )
-    parent_rel = relationship(
-        "Strata", back_populates="children_rel", remote_side=[stratum_id]
+    parent_rel: Optional["Strata"] = Relationship(
+        back_populates="children_rel",
+        sa_relationship_kwargs={"remote_side": "Strata.stratum_id"},
     )
-    constraints_rel = relationship(
-        "StratumConstraints",
+    constraints_rel: List["StratumConstraints"] = Relationship(
         back_populates="strata_rel",
-        cascade="all, delete-orphan",
-        lazy="joined",  # Eager load for hashing
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "lazy": "joined",
+        },
     )
-    targets_rel = relationship(
-        "Targets", back_populates="strata_rel", cascade="all, delete-orphan"
+    targets_rel: List["Targets"] = Relationship(
+        back_populates="strata_rel",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
 
-    def __repr__(self):
-        return f"<Strata(stratum_id={self.stratum_id}, notes='{self.notes}')>"
 
-
-class StratumConstraints(Base):
+class StratumConstraints(SQLModel, table=True):
     """Defines the rules that make up a stratum."""
 
     __tablename__ = "stratum_constraints"
 
-    stratum_id = Column(
-        Integer, ForeignKey("strata.stratum_id"), primary_key=True
-    )
-    constraint_variable = Column(
-        String,
+    stratum_id: int = Field(foreign_key="strata.stratum_id", primary_key=True)
+    constraint_variable: str = Field(
         primary_key=True,
-        comment="The variable the constraint applies to (e.g., 'age').",
+        description="The variable the constraint applies to (e.g., 'age').",
     )
-    operation = Column(
-        String,
+    operation: str = Field(
         primary_key=True,
-        comment="The comparison operator (e.g., 'greater_than_or_equal').",
+        description="The comparison operator (e.g., 'greater_than_or_equal').",
     )
-    value = Column(
-        String,
-        nullable=False,
-        comment="The value for the constraint rule (e.g., '25').",
+    value: str = Field(
+        description="The value for the constraint rule (e.g., '25')."
     )
-    notes = Column(
-        String, nullable=True, comment="Optional notes about the constraint."
+    notes: Optional[str] = Field(
+        default=None, description="Optional notes about the constraint."
     )
 
-    strata_rel = relationship("Strata", back_populates="constraints_rel")
-
-    def __repr__(self):
-        return f"<StratumConstraints(stratum_id={self.stratum_id}, variable='{self.constraint_variable}', operation='{self.operation}')>"
+    strata_rel: Strata = Relationship(back_populates="constraints_rel")
 
 
-class Targets(Base):
+class Targets(SQLModel, table=True):
     """Stores the data values for a specific stratum."""
 
     __tablename__ = "targets"
@@ -124,53 +111,41 @@ class Targets(Base):
         ),
     )
 
-    target_id = Column(Integer, primary_key=True)  # Auto-incrementing
-    variable = Column(
-        String,
-        nullable=False,
-        comment="A variable defined in policyengine-us (e.g., 'income_tax').",
+    target_id: Optional[int] = Field(default=None, primary_key=True)
+    variable: str = Field(
+        description="A variable defined in policyengine-us (e.g., 'income_tax')."
     )
-    period = Column(
-        Integer,
-        nullable=False,
-        comment="The time period for the data, typically a year.",
+    period: int = Field(
+        description="The time period for the data, typically a year."
     )
-    stratum_id = Column(
-        Integer, ForeignKey("strata.stratum_id"), nullable=False, index=True
-    )
-    reform_id = Column(
-        Integer,
+    stratum_id: int = Field(foreign_key="strata.stratum_id", index=True)
+    reform_id: int = Field(
         default=0,
-        nullable=False,
-        comment="Identifier for a policy reform scenario (0 for baseline).",
+        description="Identifier for a policy reform scenario (0 for baseline).",
     )
-    value = Column(
-        Float, comment="The numerical value of the target variable."
+    value: Optional[float] = Field(
+        default=None, description="The numerical value of the target variable."
     )
-    source_id = Column(Integer, comment="Identifier for the data source.")
-    active = Column(
-        Boolean,
+    source_id: Optional[int] = Field(
+        default=None, description="Identifier for the data source."
+    )
+    active: bool = Field(
         default=True,
-        nullable=False,
-        comment="Flag to indicate if the record is currently active.",
+        description="Flag to indicate if the record is currently active.",
     )
-    tolerance = Column(
-        Float,
-        nullable=True,
-        comment="Allowed relative error as a percent (e.g., 25 for 25%).",
+    tolerance: Optional[float] = Field(
+        default=None,
+        description="Allowed relative error as a percent (e.g., 25 for 25%).",
     )
-    notes = Column(
-        String,
-        nullable=True,
-        comment="Optional descriptive notes about the target row.",
+    notes: Optional[str] = Field(
+        default=None,
+        description="Optional descriptive notes about the target row.",
     )
 
-    strata_rel = relationship("Strata", back_populates="targets_rel")
-
-    def __repr__(self):
-        return f"<Targets(target_id={self.target_id}, variable='{self.variable}', value={self.value})>"
+    strata_rel: Strata = Relationship(back_populates="targets_rel")
 
 
+# This SQLAlchemy event listener works directly with the SQLModel class
 @event.listens_for(Strata, "before_insert")
 @event.listens_for(Strata, "before_update")
 def calculate_definition_hash(mapper, connection, target: Strata):
@@ -212,7 +187,7 @@ def create_database(db_uri="sqlite:///policy_data.db"):
         An SQLAlchemy Engine instance connected to the database.
     """
     engine = create_engine(db_uri)
-    Base.metadata.create_all(engine)
+    SQLModel.metadata.create_all(engine)
     logger.info(f"Database and tables created successfully at {db_uri}")
     return engine
 

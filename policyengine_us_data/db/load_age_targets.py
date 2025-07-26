@@ -9,9 +9,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from policyengine_us_data.db.create_database_tables import (
-    Strata,
-    StratumConstraints,
-    Targets,
+    Stratum,
+    StratumConstraint,
+    Target,
 )
 
 
@@ -236,7 +236,7 @@ def load_age_data(df_long, geo, stratum_lookup={}):
 
     for _, row in df_long.iterrows():
 
-        # Create the parent Strata object.
+        # Create the parent Stratum object.
         # We will attach children to it before adding it to the session.
         note = f"Age: {row['age_range']}, Geo: {row['ucgid']}"
         parent_geo = get_parent_geo(geo)
@@ -246,18 +246,18 @@ def load_age_data(df_long, geo, stratum_lookup={}):
             else None
         )
 
-        new_stratum = Strata(
+        new_stratum = Stratum(
             parent_stratum_id=parent_stratum_id, stratum_group_id=0, notes=note
         )
 
         # Create constraints and link them to the parent's relationship attribute.
         new_stratum.constraints_rel = [
-            StratumConstraints(
+            StratumConstraint(
                 constraint_variable="ucgid",
                 operation="equals",
                 value=row["ucgid"],
             ),
-            StratumConstraints(
+            StratumConstraint(
                 constraint_variable="age",
                 operation="greater_than_or_equal",
                 value=str(row["age_greater_than_or_equal_to"]),
@@ -267,7 +267,7 @@ def load_age_data(df_long, geo, stratum_lookup={}):
         age_lt_value = row["age_less_than_or_equal_to"]
         if not np.isinf(age_lt_value):
             new_stratum.constraints_rel.append(
-                StratumConstraints(
+                StratumConstraint(
                     constraint_variable="age",
                     operation="less_than",
                     value=str(age_lt_value + 1),
@@ -276,7 +276,7 @@ def load_age_data(df_long, geo, stratum_lookup={}):
 
         # Create the Target and link it to the parent.
         new_stratum.targets_rel.append(
-            Targets(
+            Target(
                 variable=row["variable"],
                 period=row["period"],
                 value=row["value"],

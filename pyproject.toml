@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "policyengine-us==1.340.1",
-    "policyengine-core==3.14.1",
+    "policyengine-core==3.16.5",
     "pandas>=2.3.1",
     "requests>=2.25.0",
     "tqdm>=4.60.0",

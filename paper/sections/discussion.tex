@@ -4,7 +4,7 @@ This paper introduces a novel approach to constructing an enhanced microsimulati
 
 \subsection{Strengths of the Enhanced Dataset}
 
-The enhanced dataset achieves a unique balance between demographic detail and tax precision, addressing a long-standing gap in microsimulation modeling. The use of QRF allows for more accurate transfer of income and tax distributions from the IRS Public Use File (PUF) to the Current Population Survey (CPS), preserving complex variable relationships that are critical for policy analysis. Additionally, the dropout-regularized gradient descent reweighting effectively calibrates household weights to align with administrative benchmarks, reducing error rates across a broad range of demographic and economic metrics.
+The enhanced dataset achieves a unique balance between demographic detail and tax precision, addressing a long-standing gap in microsimulation modeling. The use of QRF allows for more accurate transfer of 72 detailed tax variables from the IRS Public Use File (PUF) to the Current Population Survey (CPS), preserving complex variable relationships that are critical for policy analysis. Additionally, the dropout-regularized gradient descent reweighting effectively calibrates household weights to align with over 7,000 administrative benchmarks, reducing error rates across a broad range of demographic and economic metrics. The scale of this calibration—spanning IRS income distributions, Census demographics, CBO program totals, JCT tax expenditures, and state-level statistics—ensures unprecedented consistency with official data sources.
 
 Our validation results show that the enhanced CPS (ECPS) improves on both source datasets, particularly in tax-related variables that are essential for analyzing income distributions and program participation. By providing a publicly available, open-source dataset with extensive validation against external benchmarks, we support more transparent and reliable policy analysis.
 
@@ -21,6 +21,19 @@ Further, our approach may introduce biases when aligning household records with 
 The enhanced CPS dataset expands the scope and accuracy of microsimulation analyses in several policy domains. By combining the CPS's household structure with the PUF's tax precision, this dataset is well-suited for both federal and state-level tax analysis, particularly in modeling income-based benefits and tax credits. Researchers and policymakers could leverage this dataset to evaluate the distributional impacts of various tax reforms, analyze the implications of benefit programs across income levels, and assess policy proposals that rely on a precise understanding of income and demographic characteristics.
 
 Additional applications extend to labor market studies, health policy analysis, and state-specific program evaluations. With further adaptation, the methodology could also support microsimulation in international contexts, providing a flexible tool for policy modeling across diverse regions and socioeconomic conditions.
+
+\subsection{State and Local Tax Modeling Capabilities}
+
+A key strength of our approach is preserving state identifiers from the CPS while incorporating federal tax precision from the PUF. This enables comprehensive state tax modeling:
+
+\begin{itemize}
+    \item \textbf{State income taxes}: The enhanced dataset can be used with state tax calculators, leveraging the imputed federal tax variables (AGI, deductions) that often form the starting point for state calculations
+    \item \textbf{SALT deductions}: We specifically calibrate to JCT's SALT deduction estimates, ensuring accurate representation of state and local tax burdens
+    \item \textbf{Geographic variation}: Our calibration includes state-level targets for demographics, income, and program participation
+    \item \textbf{Property taxes}: Real estate taxes are calibrated at the state level using ACS data
+\end{itemize}
+
+While the PUF lacks state identifiers, our approach maintains the CPS's geographic information while enhancing income and deduction detail. This makes the enhanced dataset particularly valuable for analyzing federal tax reforms' differential state impacts or modeling state-specific policy proposals.
 
 \subsection{Future Directions}
 

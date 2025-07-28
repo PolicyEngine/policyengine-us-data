@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    changed:
+    - Added test to ensure microsimulation runs with only us-data direct dependencies.

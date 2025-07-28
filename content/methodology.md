@@ -34,7 +34,7 @@ Rather than using point estimates, we sample from the conditional distribution t
 
 ### Problem Formulation
 
-The reweighting stage adjusts household weights to ensure the enhanced dataset matches known administrative totals. Given a loss matrix M ∈ ℝⁿˣᵐ containing n households' contributions to m targets, and a target vector t ∈ ℝᵐ of official statistics, we optimize log-transformed weights w to minimize mean squared relative error. The objective function is L(w) = (1/m) Σᵢ ((exp(w)ᵀMᵢ - tᵢ) / tᵢ)², where exp(w) represents the exponentiated weights applied to households. The log transformation ensures positive final weights while allowing unconstrained optimization.
+The reweighting stage adjusts household weights to ensure the enhanced dataset matches known administrative totals. Given a loss matrix M ∈ R^{n×m} containing n households' contributions to m targets, and a target vector t ∈ R^m of official statistics, we optimize log-transformed weights w to minimize mean squared relative error. The objective function is L(w) = (1/m) Σ_i ((exp(w)^T M_i - t_i) / t_i)^2, where exp(w) represents the exponentiated weights applied to households. The log transformation ensures positive final weights while allowing unconstrained optimization.
 
 ### Optimization
 

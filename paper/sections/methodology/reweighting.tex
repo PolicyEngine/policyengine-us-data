@@ -74,24 +74,8 @@ The final weights are recovered by:
 
 To ensure robustness of our results, we conduct several validation exercises:
 
-\textbf{Cross-validation}: We perform 5-fold cross-validation by:
-\begin{itemize}
-    \item Holding out 20\% of calibration targets
-    \item Optimizing weights on the remaining 80\%
-    \item Evaluating performance on held-out targets
-    \item Results show mean absolute percentage error of 12.3\% on held-out targets, compared to 8.7\% on training targets
-\end{itemize}
+\textbf{Cross-validation}: We perform cross-validation by holding out subsets of calibration targets and evaluating performance on held-out targets.
 
-\textbf{Stability across random seeds}: The optimization is run with 10 different random seeds:
-\begin{itemize}
-    \item Weight correlations across runs exceed 0.95
-    \item Target achievement varies by less than 5\% across seeds
-    \item Effective sample size (Kish 1965) remains stable: 42,000-45,000 households
-\end{itemize}
+\textbf{Stability across random seeds}: The optimization is run with multiple random seeds to ensure stability of results.
 
-\textbf{Sensitivity to hyperparameters}:
-\begin{itemize}
-    \item Dropout rate: Tested 0\%, 2.5\%, 5\%, 10\% - 5\% provides best validation performance
-    \item Learning rate: Grid search over [0.01, 0.1, 0.3, 1.0] - 0.1 selected
-    \item Number of iterations: Convergence typically achieved by iteration 3,000
-\end{itemize}
+\textbf{Sensitivity to hyperparameters}: We test various dropout rates, learning rates, and iteration counts to select optimal values.

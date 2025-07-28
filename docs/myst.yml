@@ -13,6 +13,14 @@ project:
       provider: github
       url: https://mybinder.org
       ref: master
+  jupyter:
+    myst:
+      enable_extensions:
+        - colon_fence
+        - deflist
+        - dollarmath
+        - linkify
+        - substitution
   bibliography:
     - references.bib
   toc:

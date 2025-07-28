@@ -506,3 +506,9 @@
     fixed:
     - README typo (installion -> installation)
   date: 2025-07-26 20:53:26
+- bump: minor
+  changes:
+    added:
+    - Added creation script to build relational database for targets
+    - Refactored age targets load script to load the database
+  date: 2025-07-28 16:34:40

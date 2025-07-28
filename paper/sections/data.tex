@@ -58,9 +58,21 @@ The PUF's limitations include:
     \item Lag; the latest version as of November 2024 is for the 2015 tax year
 \end{itemize}
 
+\subsubsection{Addressing the Temporal Gap}
+
+The nine-year gap between the PUF (2015) and our target year (2024) presents challenges, particularly given the major structural tax reform (Tax Cuts and Jobs Act of 2017). We address this through:
+\begin{itemize}
+    \item Uprating monetary amounts using variable-specific growth factors derived from SOI aggregates
+    \item Calibrating to 2024 targets that reflect post-TCJA tax behavior patterns
+    \item Validating against intermediate years where possible
+    \item Using the PolicyEngine US tax-benefit model to apply current-law tax rules
+\end{itemize}
+
+While the predictive relationships learned from 2015 data may not perfectly capture 2024 behavior, our extensive calibration to contemporary targets helps mitigate these concerns. Future work will incorporate more recent administrative data as it becomes available.
+
 \subsection{External Validation Sources}
 
-We validate our enhanced dataset against 570 targets from several external sources:
+We validate our enhanced dataset against over 7,000 targets from six primary external sources:
 
 \subsubsection{IRS Statistics of Income}
 

@@ -1,0 +1,107 @@
+title: PolicyEngine US Data
+author: PolicyEngine
+copyright: "2024"
+logo: logo.png
+
+# MyST settings for Jupyter Book 2
+parse:
+  myst_enable_extensions:
+    - amsmath
+    - colon_fence
+    - deflist
+    - dollarmath
+    - fieldlist
+    - html_admonition
+    - html_image
+    - linkify
+    - replacements
+    - smartquotes
+    - strikethrough
+    - substitution
+    - tasklist
+    - attrs_inline
+    - attrs_block
+
+execute:
+  execute_notebooks: off
+
+# Repository settings
+repository:
+  url: https://github.com/policyengine/policyengine-us-data
+  branch: master
+  path_to_book: docs
+
+# Launch buttons
+launch_buttons:
+  notebook_interface: "jupyterlab"
+  binderhub_url: ""
+  jupyterhub_url: ""
+  thebe: false
+  colab_url: ""
+
+# Bibliography
+bibtex_bibfiles:
+  - references.bib
+
+# HTML theme and appearance
+html:
+  favicon: ""
+  use_edit_page_button: true
+  use_repository_button: true
+  use_issues_button: true
+  use_multitoc_numbering: true
+  extra_navbar: |
+    <div class="navbar-nav">
+      <a class="navbar-brand" href="https://policyengine.org">
+        PolicyEngine
+      </a>
+    </div>
+  extra_footer: |
+    <p>
+      Built with <a href="https://jupyterbook.org">Jupyter Book 2.0</a>
+    </p>
+  home_page_in_navbar: true
+  baseurl: ""
+  analytics:
+    google_analytics_id: ""
+  comments:
+    hypothesis: false
+    utterances: false
+  announcement: ""
+
+# Sphinx configuration
+sphinx:
+  extra_extensions:
+    - sphinx_design
+    - sphinx_copybutton
+    - sphinx_inline_tabs
+  config:
+    html_theme: pydata_sphinx_theme
+    html_theme_options:
+      logo:
+        text: PolicyEngine US Data
+      search_bar_text: "Search..."
+      navbar_end: ["navbar-icon-links", "theme-switcher"]
+      footer_items: ["copyright", "sphinx-version"]
+      primary_sidebar_end: ["indices.html", "sidebar-ethical-ads.html"]
+      secondary_sidebar_items: ["page-toc", "edit-this-page", "sourcelink"]
+      pygment_light_style: "default"
+      pygment_dark_style: "monokai"
+      show_nav_level: 2
+      navigation_depth: 4
+      show_toc_level: 2
+      navbar_align: "content"
+      header_links_before_dropdown: 6
+      icon_links:
+        - name: GitHub
+          url: https://github.com/policyengine/policyengine-us-data
+          icon: fa-brands fa-github
+        - name: PolicyEngine
+          url: https://policyengine.org
+          icon: fa-solid fa-globe
+    html_context:
+      default_mode: auto
+    bibtex_reference_style: author_year
+    copybutton_prompt_text: "$ "
+    copybutton_prompt_is_regexp: true
+    nb_remove_code_source: true

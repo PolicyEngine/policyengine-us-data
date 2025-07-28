@@ -1,14 +1,28 @@
-title: PolicyEngine US data
-author: PolicyEngine
+# Jupyter Book 2.0 configuration
+
+title: PolicyEngine US Data
+author: PolicyEngine Team
 copyright: "2024"
 logo: logo.png
 
-# MyST settings for Jupyter Book 2
+repository:
+  url: https://github.com/policyengine/policyengine-us-data
+  branch: main
+
+launch_buttons:
+  binderhub_url: "https://mybinder.org"
+  notebook_interface: "jupyterlab"
+
+execute:
+  execute_notebooks: "off"
+
 parse:
   myst_enable_extensions:
+    - amsmath
     - colon_fence
     - deflist
     - dollarmath
+    - html_admonition
     - html_image
     - linkify
     - replacements
@@ -16,25 +30,33 @@ parse:
     - substitution
     - tasklist
 
-execute:
-  execute_notebooks: off
-
-repository:
-  url: https://github.com/policyengine/policyengine-us-data
-  branch: master
-  path_to_book: docs
-
-# Bibliography
-bibtex_bibfiles:
-  - references.bib
+html:
+  favicon: ""
+  use_repository_button: true
+  use_issues_button: true
+  use_edit_page_button: true
 
 sphinx:
+  extra_extensions:
+    - sphinx_design
+    - sphinx_copybutton
+    - sphinx_inline_tabs
   config:
-    html_js_files:
-    - https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.7/require.min.js
-    html_theme: furo
-    pygments_style: default
+    html_theme: pydata_sphinx_theme
+    html_theme_options:
+      logo:
+        text: PolicyEngine US Data
+      navbar_end: ["navbar-icon-links", "theme-switcher"]
+      footer_items: ["copyright", "sphinx-version"]
+      icon_links:
+        - name: GitHub
+          url: https://github.com/policyengine/policyengine-us-data
+          icon: "fab fa-github"
     html_css_files:
-      - style.css
-    nb_remove_code_source: true
-    bibtex_reference_style: author_year
+      - _static/style.css
+    suppress_warnings:
+      - "myst.header"
+      - "myst.domains"
+
+bibtex_bibfiles:
+  - references.bib

@@ -21,6 +21,16 @@ class ContentConverter:
         """Convert markdown to LaTeX format."""
         latex = content
         
+        # Remove MyST admonitions and directives
+        # Remove admonition blocks
+        latex = re.sub(r'```{admonition}[^`]*```', '', latex, flags=re.DOTALL)
+        # Remove card blocks
+        latex = re.sub(r':::{card}[^:]*:::', '', latex, flags=re.DOTALL)
+        # Remove mermaid diagrams
+        latex = re.sub(r'```{mermaid}[^`]*```', '[Diagram omitted - see online version]', latex, flags=re.DOTALL)
+        # Remove tab-set blocks
+        latex = re.sub(r'::::{tab-set}.*?::::', '', latex, flags=re.DOTALL)
+        
         # Convert headers based on section type
         if section_type == "abstract":
             # Abstract doesn't need section header, already wrapped
@@ -87,6 +97,11 @@ class ContentConverter:
         # Fix dollar amounts
         latex = re.sub(r'\\\$(\d+(?:\.\d+)?[BMK]?)', r'\\$\1', latex)
         
+        # Handle Unicode characters
+        latex = latex.replace('∈', ' \\in ')
+        latex = latex.replace('×', ' \\times ')
+        latex = latex.replace('Σ', '\\Sigma')
+        
         # Convert citations from (Author, Year) to \citep{author_year}
         # Handle multiple authors and et al.
         def convert_citation(match):
@@ -111,8 +126,24 @@ class ContentConverter:
                     cite_key = f"jct{year}"
                 elif 'Office of Tax Analysis' in authors:
                     cite_key = f"ota{year}"
-                elif 'Rothbaum and Bee' in authors or 'Rothbaum, Bee' in authors:
+                elif 'Rothbaum and Bee' in authors or 'Rothbaum, Bee' in authors or 'Bee,' in authors:
                     cite_key = f"rothbaum{year}"
+                elif 'Sabelhaus' in authors:
+                    cite_key = f"sabelhaus{year}"
+                elif 'Meyer' in authors:
+                    cite_key = f"meyer{year}"
+                elif 'Tax Policy Center' in authors:
+                    cite_key = f"tpc{year}"
+                elif 'Tax Foundation' in authors:
+                    cite_key = f"tf{year}"
+                elif 'Penn Wharton Budget Model' in authors:
+                    cite_key = f"pwbm{year}"
+                elif 'Institute on Taxation and Economic Policy' in authors:
+                    cite_key = f"itep{year}"
+                elif 'Yale Budget Lab' in authors:
+                    cite_key = f"budgetlab{year}"
+                elif 'Policy Simulation Library' in authors:
+                    cite_key = f"psl{year}"
                 else:
                     # Handle single or multiple authors
                     author_list = authors.split(',')
@@ -184,8 +215,24 @@ class ContentConverter:
                     cite_key = f"jct{year}"
                 elif 'Office of Tax Analysis' in authors:
                     cite_key = f"ota{year}"
-                elif 'Rothbaum and Bee' in authors or 'Rothbaum, Bee' in authors:
+                elif 'Rothbaum and Bee' in authors or 'Rothbaum, Bee' in authors or 'Bee,' in authors:
                     cite_key = f"rothbaum{year}"
+                elif 'Sabelhaus' in authors:
+                    cite_key = f"sabelhaus{year}"
+                elif 'Meyer' in authors:
+                    cite_key = f"meyer{year}"
+                elif 'Tax Policy Center' in authors:
+                    cite_key = f"tpc{year}"
+                elif 'Tax Foundation' in authors:
+                    cite_key = f"tf{year}"
+                elif 'Penn Wharton Budget Model' in authors:
+                    cite_key = f"pwbm{year}"
+                elif 'Institute on Taxation and Economic Policy' in authors:
+                    cite_key = f"itep{year}"
+                elif 'Yale Budget Lab' in authors:
+                    cite_key = f"budgetlab{year}"
+                elif 'Policy Simulation Library' in authors:
+                    cite_key = f"psl{year}"
                 else:
                     # Handle single or multiple authors
                     author_list = authors.split(',')

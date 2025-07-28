@@ -48,6 +48,9 @@ jobs:
       - name: Test specific core import
         run: python -c "from policyengine_core.data import Dataset; print('Core import OK')"
 
+      - name: Test Microsimulation with direct dependencies only
+        run: python -m pytest policyengine_us_data/tests/test_datasets/test_data_us_pipeline.py -v
+
   Test:
       runs-on: ubuntu-latest
       needs: Lint

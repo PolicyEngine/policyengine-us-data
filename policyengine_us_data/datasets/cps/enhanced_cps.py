@@ -21,12 +21,6 @@ import os
 from pathlib import Path
 
 
-try:
-    import torch
-except ImportError:
-    torch = None
-
-
 def reweight(
     original_weights,
     loss_matrix,
@@ -38,6 +32,8 @@ def reweight(
     init_mean=0.999,  # initial proportion with non-zero weights, set near 0
     temperature=0.5,  # Usual values .5 to 3, .5 was working better
 ):
+    import torch
+
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)

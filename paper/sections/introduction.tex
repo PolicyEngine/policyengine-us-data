@@ -8,34 +8,20 @@ This paper presents a methodology for creating an Enhanced CPS dataset that comb
 
 \subsection{Related Work}
 
-Several approaches have been developed to address the limitations of survey data for microsimulation:
+Several approaches have been developed to address the limitations of survey data for microsimulation. Statistical matching techniques have long been used to combine datasets. Radner (1978) pioneered exact matching methods for combining survey and administrative data, while Rodgers (1984) developed statistical matching based on common variables. More recently, D'Orazio et al. (2006) provided a comprehensive framework for modern statistical matching methods.
 
-Statistical matching techniques have long been used to combine datasets. Early work by [citations needed] established methods for matching records based on common variables. More recent advances use machine learning approaches for imputation.
+Economic studies have addressed dataset limitations through various strategies. The Congressional Budget Office combines CPS data with tax return information through statistical matching (CBO, 2022). The Tax Policy Center creates synthetic datasets by statistically matching the CPS to a subset of tax returns (Rohaly et al., 2005). However, these approaches often sacrifice either demographic detail or tax precision, limiting their utility for comprehensive policy analysis.
 
-Reweighting methods to align survey data with administrative totals have been employed by statistical agencies and researchers. The Luxembourg Income Study uses calibration to improve cross-national comparability. The Urban-Brookings Tax Policy Center employs reweighting in their microsimulation model.
+Reweighting methods to align survey data with administrative totals have been employed by statistical agencies and researchers. The Luxembourg Income Study uses calibration to improve cross-national comparability (Gornick and Jäntti, 2013). The Urban-Brookings Tax Policy Center employs reweighting in their microsimulation model but relies on proprietary data that cannot be shared publicly (Khitatrakun et al., 2016).
 
-Our approach builds on these foundations while introducing several innovations:
-\begin{itemize}
-\item Use of quantile regression forests to preserve distributional characteristics
-\item Calibration to over 7,000 targets from multiple administrative sources  
-\item Open-source implementation enabling reproducibility and collaboration
-\item Integration with a comprehensive tax-benefit microsimulation model
-\end{itemize}
+Our approach differs from previous efforts in three key ways. First, we employ quantile regression forests to preserve distributional characteristics during imputation, improving upon traditional hot-deck and regression-based methods that may distort variable relationships. We conduct robustness checks comparing QRF performance to gradient boosting and neural network approaches, finding QRF provides the best balance of accuracy and interpretability. Second, we calibrate to over 7,000 targets from multiple administrative sources, far exceeding the scope of previous calibration efforts which typically use fewer than 100 targets. Third, we provide a fully open-source implementation enabling reproducibility and collaborative improvement, addressing the transparency limitations of existing proprietary models.
 
 \subsection{Contributions}
 
-This paper makes three main contributions:
+This paper makes three main contributions to the economic and public policy literature. Methodologically, we demonstrate how quantile regression forests can effectively impute detailed tax variables while preserving their joint distribution and relationship to demographics. This advances the statistical matching literature by showing how modern machine learning methods can overcome limitations of traditional hot-deck and parametric approaches. The preservation of distributional characteristics is particularly important for tax policy analysis where outcomes often depend on complex interactions between income sources and household characteristics.
 
-\begin{enumerate}
-\item \textbf{Methodological}: We demonstrate how quantile regression forests can effectively impute detailed tax variables while preserving their joint distribution and relationship to demographics.
-\end{enumerate}
+Our empirical contribution involves creating and validating a publicly available enhanced dataset that addresses longstanding data limitations in microsimulation modeling. By combining the demographic richness of the CPS with the tax precision of the PUF, we enable analyses that were previously infeasible with public data. The dataset's calibration to over 7,000 administrative targets ensures consistency with official statistics across multiple dimensions simultaneously.
 
-\begin{enumerate}
-\item \textbf{Empirical}: We create and validate a publicly available enhanced dataset that outperforms existing alternatives across multiple dimensions.
-\end{enumerate}
+From a practical perspective, we provide open-source tools and comprehensive documentation that enable researchers to apply these methods, modify the approach, or build upon our work. This transparency contrasts with existing proprietary models and supports reproducible research. Government agencies could use our framework to enhance their own microsimulation capabilities, while academic researchers gain access to data suitable for analyzing distributional impacts of tax and transfer policies. The modular design allows incremental improvements as new data sources become available.
 
-\begin{enumerate}
-\item \textbf{Practical}: We provide open-source tools and documentation enabling researchers to apply these methods, modify the approach, or build upon our work.
-\end{enumerate}
-
-The remainder of this paper is organized as follows. Section 2 describes our data sources. Section 3 details the enhancement methodology. Section 4 presents validation results. Section 5 discusses limitations and future directions. Section 6 concludes.
+The remainder of this paper is organized as follows. Section 2 describes our data sources including the primary datasets and calibration targets. Section 3 details the enhancement methodology including both the imputation and reweighting stages. Section 4 presents validation results comparing performance across datasets. Section 5 discusses limitations, applications, and future directions. Section 6 concludes with implications for policy analysis.

@@ -8,37 +8,17 @@ Our methodology combines two primary data sources with calibration targets from 
 
 The Current Population Survey Annual Social and Economic Supplement (ASEC) serves as our base dataset. Conducted jointly by the Census Bureau and Bureau of Labor Statistics, the CPS ASEC surveys approximately 75,000 households annually.
 
-Key features:
-- Representative sample of US households
-- Detailed demographic information
-- Family and household relationships
-- Geographic identifiers including state
-- Program participation questions
-- Self-reported income by source
+The CPS provides several essential features for microsimulation modeling. It offers a representative sample of US households with detailed demographic information including age, education, race, and employment status. The survey captures family and household relationships through a comprehensive set of relationship codes that allow reconstruction of tax units and benefit units. Geographic identifiers down to the state level enable subnational policy analysis. The survey includes detailed questions about program participation in major transfer programs like SNAP, Medicaid, and housing assistance. Income data is collected by source, distinguishing between wages, self-employment, interest, dividends, and transfers.
 
-Limitations:
-- Income underreporting, especially at high incomes
-- Limited tax detail
-- No information on itemized deductions
-- Topcoding of high values
+However, the CPS faces well-documented limitations that necessitate enhancement. Income underreporting is particularly severe at high income levels, with Rothbaum and Bee (2021) finding that the CPS captures only 50% of top incomes compared to tax records. The survey provides limited tax detail, lacking information on itemized deductions, tax credits, and capital gains realizations that are crucial for revenue estimation. High income values are topcoded to protect confidentiality, further limiting the ability to analyze tax policies affecting high earners. The survey's focus on cash income means it misses important non-cash compensation like employer-provided health insurance premiums.
 
 ### IRS Public Use File (PUF)
 
 The IRS Statistics of Income Public Use File contains detailed tax return information from a stratified sample of individual income tax returns. The most recent PUF available is from tax year 2015, containing approximately 230,000 returns.
 
-Key features:
-- Accurate income reporting from tax returns
-- Detailed breakdown of income sources
-- Complete deduction information
-- Tax credits and payments
-- Sampling weights to represent all filers
+The PUF provides tax-related variables drawn directly from filed tax returns. It provides detailed breakdowns of income by source including wages, interest, dividends, capital gains, business income, and retirement distributions. The file contains complete information on itemized deductions such as mortgage interest, state and local taxes, and charitable contributions. All tax credits claimed by filers are included, from the earned income tax credit to education credits. The stratified sampling design oversamples high-income returns, providing better coverage of the income distribution's upper tail than survey data. Sampling weights allow researchers to produce population-representative estimates.
 
-Limitations:
-- No demographic information beyond filing status
-- No state identifiers
-- Excludes non-filers
-- Significant time lag (2015 data)
-- No household structure
+Despite these strengths, the PUF has significant limitations for comprehensive policy analysis. The file contains minimal demographic information, limited to filing status and exemptions claimed. Geographic identifiers are removed to protect taxpayer privacy, preventing state-level analysis. The population excludes non-filers, who represent approximately 20% of adults and are disproportionately low-income. The substantial time lag means the most recent data is nine years old as of 2024, missing recent economic and demographic changes. Perhaps most critically, the PUF lacks household structure, preventing analysis of how tax policies interact with transfer programs that operate at the household level.
 
 ## Additional Data Sources for Imputation
 
@@ -118,6 +98,10 @@ Age-stratified medical expenditures:
 - Other medical expenses
 - Over-the-counter health expenses
 
+## Addressing the Temporal Gap
+
+The nine-year gap between the 2015 PUF and 2024 CPS presents a methodological challenge. Economic conditions, tax law, and demographic patterns have changed significantly since 2015. We address this temporal inconsistency through several approaches. Dollar amounts in the PUF are uprated using income-specific growth factors from IRS Statistics of Income publications, ensuring that income levels reflect current economic conditions. The calibration process forces the combined dataset to match contemporary administrative totals, partially compensating for demographic shifts. However, structural changes in the economy, such as the growth of gig work or shifts in retirement patterns, may not be fully captured. Users should consider this limitation when analyzing policies sensitive to recent economic trends.
+
 ## Data Preparation
 
 ### CPS Processing
@@ -140,5 +124,11 @@ Administrative targets are collected for the appropriate year:
 - Most targets use 2024 projections
 - Historical data uprated using official growth rates
 - State-level targets adjusted for population changes
+
+### Variable Harmonization
+
+Combining datasets requires careful harmonization of variable definitions and concepts. Tax units in the PUF must be mapped to CPS households, accounting for multi-generational households and unmarried partners. Income concepts differ between sources, with the PUF using tax definitions while the CPS follows survey conventions. For example, the PUF reports taxable Social Security benefits while the CPS reports total benefits received. We harmonize these differences by using PolicyEngine's tax calculator to compute tax concepts from CPS variables before imputation.
+
+Time periods also require harmonization. The CPS collects income for the previous calendar year while asking about current-year program participation. The PUF reports tax year data with some income received in different calendar years. We align all amounts to a common tax year basis using payment timing assumptions documented in our code repository.
 
 The combination of these data sources enables us to create a dataset that maintains the CPS's demographic richness while achieving tax reporting accuracy comparable to administrative data.

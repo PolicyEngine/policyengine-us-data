@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0] - 2025-07-28 16:34:40
+
+### Added
+
+- Added creation script to build relational database for targets
+- Refactored age targets load script to load the database
+
 ## [1.41.2] - 2025-07-26 20:53:26
 
 ### Added
@@ -607,6 +614,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.42.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.41.2...1.42.0
 [1.41.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.41.1...1.41.2
 [1.41.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.41.0...1.41.1
 [1.41.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.40.1...1.41.0

@@ -2,6 +2,21 @@
 
 The Enhanced CPS dataset is created through a two-stage process: imputation followed by reweighting. This approach leverages the strengths of both data sources while mitigating their individual limitations. The imputation stage uses Quantile Regression Forests to transfer 72 tax variables from the PUF onto CPS records, creating what we call the Extended CPS. The reweighting stage then optimizes household weights to match over 7,000 administrative targets, producing the final Enhanced CPS with weights calibrated to official statistics. A visual overview of this process is provided in Appendix Figure A1.
 
+:::{card} Enhancement Process Overview
+:shadow: md
+
+```{mermaid}
+flowchart TD
+    A[CPS Data] --> B[Stage 1: Imputation]
+    C[PUF Data] --> B
+    D[SIPP/SCF/ACS] --> B
+    B --> E[Extended CPS]
+    E --> F[Stage 2: Reweighting]
+    G[7,000+ Targets] --> F
+    F --> H[Enhanced CPS]
+```
+:::
+
 ## Stage 1: Variable Imputation
 
 We impute missing variables from multiple data sources using Quantile Regression Forests (QRF). This includes both tax variables from the PUF and additional variables from SIPP, SCF, and ACS.
@@ -46,7 +61,59 @@ To prevent overfitting to calibration targets, we apply dropout during optimizat
 
 ### Calibration Targets
 
-The loss matrix includes over 7,000 targets from six sources. IRS Statistics of Income provides the largest share with over 5,300 targets covering income by AGI bracket and filing status, counts of returns by category, and aggregate income totals. Census data contributes over 200 targets including population by single year of age, state populations, and demographic distributions. Program totals from CBO projections and Treasury EITC statistics add approximately 10 targets. Tax expenditure estimates from JCT cover four major deductions. Healthcare spending patterns stratified by age contribute over 40 targets. The remaining 1,500+ targets come from various sources including state-level program participation and income distributions by geography. The complete list of calibration targets is provided in our online documentation.
+The loss matrix includes over 7,000 targets from six sources:
+
+::::{tab-set}
+
+:::{tab-item} IRS SOI
+**5,300+ targets** covering:
+- Income by AGI bracket and filing status
+- Counts of returns by category
+- Aggregate income totals by source
+- Deduction and credit utilization rates
+:::
+
+:::{tab-item} Census
+**200+ targets** including:
+- Population by single year of age (0-85)
+- State total populations
+- State populations under age 5
+- Demographic distributions
+:::
+
+:::{tab-item} CBO/Treasury
+**10+ targets** covering:
+- SNAP participation and benefits
+- SSI recipient counts
+- EITC claims by family size
+- Total federal revenues
+:::
+
+:::{tab-item} JCT
+**4 major deductions**:
+- State and local taxes: $21.2B
+- Charitable contributions: $65.3B
+- Mortgage interest: $24.8B
+- Medical expenses: $11.4B
+:::
+
+:::{tab-item} Healthcare
+**40+ targets** by age:
+- Health insurance premiums
+- Medicare Part B premiums
+- Other medical expenses
+- Over-the-counter health costs
+:::
+
+:::{tab-item} Other
+**1,500+ targets** including:
+- State program participation
+- Income distributions by geography
+- Local area statistics
+- Additional administrative benchmarks
+:::
+
+::::
 
 ### Tax and Benefit Calculations
 

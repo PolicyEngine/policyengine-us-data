@@ -2,6 +2,12 @@
 
 The Enhanced CPS dataset is created through a two-stage process: imputation followed by reweighting. This approach leverages the strengths of both data sources while mitigating their individual limitations. The imputation stage uses Quantile Regression Forests to transfer 72 tax variables from the PUF onto CPS records, creating what we call the Extended CPS. The reweighting stage then optimizes household weights to match over 7,000 administrative targets, producing the final Enhanced CPS with weights calibrated to official statistics. A visual overview of this process is provided in Appendix Figure A1.
 
+:::{card} Enhancement Process Overview
+:shadow: md
+
+[Diagram omitted - see online version]
+:::
+
 \subsection{Stage 1: Variable Imputation}
 
 We impute missing variables from multiple data sources using Quantile Regression Forests (QRF). This includes both tax variables from the PUF and additional variables from SIPP, SCF, and ACS.
@@ -46,7 +52,9 @@ To prevent overfitting to calibration targets, we apply dropout during optimizat
 
 \subsubsection{Calibration Targets}
 
-The loss matrix includes over 7,000 targets from six sources. IRS Statistics of Income provides the largest share with over 5,300 targets covering income by AGI bracket and filing status, counts of returns by category, and aggregate income totals. Census data contributes over 200 targets including population by single year of age, state populations, and demographic distributions. Program totals from CBO projections and Treasury EITC statistics add approximately 10 targets. Tax expenditure estimates from JCT cover four major deductions. Healthcare spending patterns stratified by age contribute over 40 targets. The remaining 1,500+ targets come from various sources including state-level program participation and income distributions by geography. The complete list of calibration targets is provided in our online documentation.
+The loss matrix includes over 7,000 targets from six sources:
+
+
 
 \subsubsection{Tax and Benefit Calculations}
 

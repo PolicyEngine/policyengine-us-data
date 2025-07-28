@@ -38,6 +38,12 @@ documentation:
 	jb clean docs && jb build docs
 	python docs/add_plotly_to_book.py docs
 
+database:
+	python policyengine_us_data/db/create_database_tables.py
+	python policyengine_us_data/db/load_age_targets.py
+
+clean-database:
+	rm *.db
 
 data:
 	python policyengine_us_data/utils/uprating.py

@@ -35,7 +35,6 @@ project:
     - file: technical_details.md
     - file: validation.ipynb
     - file: ssn_statuses_imputation.ipynb
-    - file: bibliography.md
 site:
   options:
     logo: logo.png

@@ -60,16 +60,21 @@ build:
 publish:
 	twine upload dist/*
 
-paper-results:
+paper-content:
+	@echo "Building paper sections and docs from unified content..."
+	python paper/scripts/build_from_content.py
+
+paper-tables:
+	@echo "Generating all LaTeX tables..."
+	python paper/scripts/generate_all_tables.py
+
+paper-results: paper-tables
 	@echo "Generating paper results tables and figures..."
 	python paper/scripts/generate_validation_metrics.py
-	python paper/scripts/generate_weight_stats.py
-	python paper/scripts/generate_distributional_tables.py
-	@echo "Converting results to LaTeX tables..."
-	python paper/scripts/csv_to_latex_tables.py
+	python paper/scripts/calculate_distributional_metrics.py
 	@echo "Paper results generated in paper/results/"
 
-paper: paper-results paper/woodruff_ghenis_2024_enhanced_cps.pdf
+paper: paper-content paper-results paper/woodruff_ghenis_2024_enhanced_cps.pdf
 
 paper/woodruff_ghenis_2024_enhanced_cps.pdf: $(wildcard paper/sections/**/*.tex) $(wildcard paper/bibliography/*.bib) paper/main.tex paper/macros.tex
 	cd paper && \

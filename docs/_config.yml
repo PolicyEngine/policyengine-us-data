@@ -41,6 +41,7 @@ sphinx:
     - sphinx_design
     - sphinx_copybutton
     - sphinx_inline_tabs
+    - sphinxcontrib.bibtex
   config:
     html_theme: pydata_sphinx_theme
     html_theme_options:
@@ -60,3 +61,4 @@ sphinx:
 
 bibtex_bibfiles:
   - references.bib
+bibtex_reference_style: author_year

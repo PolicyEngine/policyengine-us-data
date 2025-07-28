@@ -8,7 +8,7 @@ The core challenges these models face stem from the fundamental tradeoff between
 
 ## Comparison of Major Microsimulation Models
 
-Table 1 summarizes the data preparation approaches used by major US microsimulation models. Each model balances different priorities regarding data sources, enhancement methods, and transparency. Sources for this comparison include {cite}`cbo2018`, {cite}`jct2023`, {cite}`ota2012`, {cite}`tpc2024`, {cite}`tf2024`, {cite}`pwbm2024`, {cite}`policy2024`, {cite}`budgetlab2024`, and {cite}`psl2024`.
+Table 1 summarizes the data preparation approaches used by major US microsimulation models. Each model balances different priorities regarding data sources, enhancement methods, and transparency. Sources for this comparison include {cite}`cbo2018`, {cite}`jct2023`, {cite}`ota2012`, {cite}`tpc2024`, {cite}`tf2024`, {cite}`pwbm2024`, {cite}`itep2024`, {cite}`budgetlab2024`, and {cite}`psl2024`.
 
 | Model | Primary Data | Enhancement Method | Geographic Detail | Transfer Programs | Public Access |
 |-------|--------------|-------------------|-------------------|-------------------|---------------|

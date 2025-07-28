@@ -198,3 +198,311 @@
     removed:
     - Unneeded build of county FIPS dataset to local folder
   date: 2025-03-28 18:07:01
+- bump: patch
+  changes:
+    added:
+    - Non-downsampled versions of the 2021, 2022, and 2023 CPS datasets
+    changed:
+    - Modified downsampling method within CPS base dataset class
+    - Pooled 3-Year CPS generation uses the non-downsampled versions of the 2021,
+      2022, and 2023 CPS datasets
+    - Downsampling method attempts to preserve original dtype values
+  date: 2025-04-22 18:24:44
+- bump: minor
+  changes:
+    added:
+    - Tip income.
+  date: 2025-05-13 12:48:06
+- bump: minor
+  changes:
+    added:
+    - Calibration of the QBID tax expenditure.
+  date: 2025-05-13 13:29:57
+- bump: patch
+  changes:
+    fixed:
+    - Data downloads for Census datasets disabled.
+    - Warning added for downsampling non-existent policyengine-[country] variables.
+  date: 2025-05-14 13:31:21
+- bump: minor
+  changes:
+    added:
+    - SSN card type implementation for CPS dataset.
+    - Calibration of undocumented population to 10.1 million based on Pew Research
+      data.
+  date: 2025-05-14 14:15:06
+- bump: minor
+  changes:
+    added:
+    - scf package loading module
+    - auto loan balance imputation notebook
+  date: 2025-05-14 14:29:32
+- bump: patch
+  changes:
+    fixed:
+    - Runtime for tests reduced.
+  date: 2025-05-19 07:52:35
+- bump: patch
+  changes:
+    fixed:
+    - Upload to GCP on dataset build.
+  date: 2025-05-19 15:34:43
+- bump: patch
+  changes:
+    fixed:
+    - GCP uploads use permissions correctly
+  date: 2025-05-20 10:37:41
+- bump: patch
+  changes:
+    changed:
+    - Methodology to directly impute auto loan interest instead of assuming a 2% interest
+      rate on auto loan balance.
+  date: 2025-05-22 10:56:32
+- bump: minor
+  changes:
+    added:
+    - Auto loan balance variable to cps.
+  date: 2025-05-23 15:00:34
+- bump: minor
+  changes:
+    added:
+    - Hours worked last week variable.
+  date: 2025-05-26 10:43:04
+- bump: patch
+  changes:
+    added:
+    - Versioning to dataset uploads.
+  date: 2025-05-26 21:57:26
+- bump: patch
+  changes:
+    fixed:
+    - Tests run after versioning.
+  date: 2025-05-26 22:01:07
+- bump: patch
+  changes:
+    fixed:
+    - Missing HF token.
+  date: 2025-05-26 22:11:20
+- bump: minor
+  changes:
+    added:
+    - Net worth variable to cps.
+  date: 2025-06-09 10:44:59
+- bump: minor
+  changes:
+    added:
+    - Source for net worth calibration.
+  date: 2025-06-09 11:46:29
+- bump: minor
+  changes:
+    added:
+    - Add ACA and Medicaid take-up rates.
+  date: 2025-06-11 22:28:55
+- bump: patch
+  changes:
+    fixed:
+    - Increase tolerance for auto loan interest and balance test.
+  date: 2025-06-12 16:59:41
+- bump: patch
+  changes:
+    added:
+    - Join wealth and auto loan interest imputations.
+  date: 2025-06-13 11:06:01
+- bump: patch
+  changes:
+    fixed:
+    - Adjust take-up seed variables.
+  date: 2025-06-13 14:46:04
+- bump: patch
+  changes:
+    fixed:
+    - Data length in the take-up variables.
+  date: 2025-06-13 16:30:39
+- bump: minor
+  changes:
+    added:
+    - Change ACA Marketplace variable to use current coverage instead of any coverage
+      within the last year.
+  date: 2025-06-14 20:36:59
+- bump: patch
+  changes:
+    added:
+    - ACA and Medicaid calibration targets.
+  date: 2025-06-18 10:07:41
+- bump: minor
+  changes:
+    added:
+    - Synthetic, small ECPS data file.
+  date: 2025-06-18 12:31:13
+- bump: patch
+  changes:
+    added:
+    - Add test for small ECPS.
+  date: 2025-06-19 10:09:37
+- bump: patch
+  changes:
+    fixed:
+    - Small CPS is now 1000 households.
+  date: 2025-06-19 13:59:12
+- bump: minor
+  changes:
+    added:
+    - Added automated checks for changelog entry
+    - New "would be qualified income" variables simulated
+    - REIT, PTP, and BDC dividend income variables simulated
+    - UBIA property is being simulated
+    - Farm Operations Income added
+    changed:
+    - W2 Wages from Qualified business is now being simulated with random variables
+    - qualified business income sources have been redefined based on IRS PUF inputs
+  date: 2025-06-19 21:34:31
+- bump: minor
+  changes:
+    added:
+    - SSN card type imputation algorithm.
+    - Family correlation adjustment to align parent-child SSN status.
+  date: 2025-06-23 14:48:18
+- bump: patch
+  changes:
+    added:
+    - State age targets.
+  date: 2025-07-01 13:28:38
+- bump: minor
+  changes:
+    added:
+    - State agi calibration targets.
+  date: 2025-07-01 14:51:09
+- bump: patch
+  changes:
+    fixed:
+    - Use full CPS by default.
+  date: 2025-07-01 16:54:09
+- bump: patch
+  changes:
+    fixed:
+    - Increased epochs back to 5k.
+    - Disabled hyperparameter tuning for imputation models.
+  date: 2025-07-01 19:02:50
+- bump: patch
+  changes:
+    fixed:
+    - Bug in hyperparameter tuning.
+  date: 2025-07-01 19:15:43
+- bump: minor
+  changes:
+    added:
+    - State real estate taxes calibration targets.
+  date: 2025-07-01 20:10:32
+- bump: patch
+  changes:
+    changed:
+    - Calibration epochs reduced to 500.
+  date: 2025-07-01 22:12:13
+- bump: minor
+  changes:
+    added:
+    - Normalisation of national and state targets.
+  date: 2025-07-01 23:42:47
+- bump: patch
+  changes:
+    fixed:
+    - Imputed non-CPS income variables from the PUF.
+  date: 2025-07-02 15:00:11
+- bump: patch
+  changes:
+    changed:
+    - Epochs increased to 1k.
+  date: 2025-07-02 15:31:46
+- bump: minor
+  changes:
+    added:
+    - State SNAP calibration targets.
+  date: 2025-07-03 03:03:06
+- bump: patch
+  changes:
+    changed:
+    - PR tests to be more similar to production builds.
+  date: 2025-07-03 09:21:06
+- bump: patch
+  changes:
+    fixed:
+    - Use SURVIVING_SPOUSE and is_surviving_spouse instead of WIDOW and is_widowed.
+  date: 2025-07-08 21:53:02
+- bump: minor
+  changes:
+    added:
+    - Medicaid state level calibration targets.
+  date: 2025-07-09 14:58:33
+- bump: patch
+  changes:
+    changed:
+    - bad targets (causing problems with estimation) removed
+    - lite mode now builds CPS_2023 in addition to CPS_2024
+    - gave reweight an epochs argument and set it at 150 for optimization
+    - updating minimum versions on policyengine-us and pandas dependencies
+    - getting rid of non-working manual workflow code
+  date: 2025-07-14 15:33:11
+- bump: minor
+  changes:
+    changed:
+    - Removed github download capability
+    - Changed download option for soi.csv and np2023_d5_mid.csv to Hugging Face
+  date: 2025-07-16 01:01:25
+- bump: patch
+  changes:
+    fixed:
+    - Github pages deploy
+  date: 2025-07-17 20:07:31
+- bump: minor
+  changes:
+    added:
+    - l0 regularization as described in https://arxiv.org/abs/1712.01312
+  date: 2025-07-18 12:46:15
+- bump: patch
+  changes:
+    fixed:
+    - Edit and create files that pull SOI agi, ACS age, hardcoded and SNAP targets
+      to follow the same clean csv format.
+    - Track all csv files used by loss.py for backwards compatibility.
+  date: 2025-07-18 17:01:51
+- bump: patch
+  changes:
+    changed:
+    - Update microdf_python dependency to >=1.0.0.
+  date: 2025-07-22 21:03:38
+- bump: minor
+  changes:
+    added:
+    - Added Immigration status from SSN algorithm.
+  date: 2025-07-24 13:44:42
+- bump: patch
+  changes:
+    fixed:
+    - Clean up immigration status PR.
+  date: 2025-07-26 13:35:10
+- bump: minor
+  changes:
+    added:
+    - Python 3.13 support
+    changed:
+    - Simplified CI test matrix to only test on Python 3.13 and Ubuntu
+    - Updated policyengine-us to >=1.350.0 for Python 3.13 support
+    - Updated policyengine-core to >=3.19.0 for Python 3.13 support
+    - Updated microimpute from 0.1.4 to 1.0.1 for numpy 2.x compatibility
+    - Updated scipy dependency from <1.13 to >=1.15.3
+    - Updated pandas dependency from >=2.3.0 to >=2.3.1
+    - Updated statsmodels dependency from >=0.14.0 to >=0.14.5
+    - Added lower bounds to dependencies that were missing them
+  date: 2025-07-26 17:22:33
+- bump: patch
+  changes:
+    fixed:
+    - Increased Medicaid calibration tolerance to 100% to handle state-level noise
+  date: 2025-07-26 19:06:45
+- bump: patch
+  changes:
+    added:
+    - PyPI auto-publish workflow in GitHub Actions
+    fixed:
+    - README typo (installion -> installation)
+  date: 2025-07-26 20:53:26

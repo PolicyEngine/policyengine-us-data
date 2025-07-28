@@ -9,6 +9,7 @@ on:
     paths:
       - policyengine_us_data/**
       - tests/**
+      - .github/workflows/**
 
 jobs:
   Lint:
@@ -19,31 +20,70 @@ jobs:
           uses: "lgeiger/black-action@master"
           with:
               args: ". -l 79 --check"
+
+  SmokeTestForMultipleVersions:
+    name: Smoke test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    needs: Lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.13']
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package ONLY (no dev deps)
+        run: python -m pip install .
+
+      - name: Test basic import
+        run: python -c "import policyengine_us_data; print('Minimal import OK')"
+
+      - name: Test specific core import
+        run: python -c "from policyengine_core.data import Dataset; print('Core import OK')"
+
   Test:
       runs-on: ubuntu-latest
+      needs: Lint
+      env:
+        HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
       steps:
           - name: Checkout repo
             uses: actions/checkout@v2
+
           - name: Install uv
             uses: astral-sh/setup-uv@v5
 
           - name: Set up Python
             uses: actions/setup-python@v2
             with:
-                python-version: '3.10'
-              
+                python-version: '3.13'
           - name: Install package
             run: uv pip install -e .[dev] --system
+
           - name: Download data inputs
             run: make download
             env:
               HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-              POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
+
           - name: Build datasets
             run: make data
             env:
-              LITE_MODE: true
+              TEST_LITE: true
+              PYTHON_LOG_LEVEL: INFO  
+          - name: Save calibration log
+            uses: actions/upload-artifact@v4
+            with:
+              name: calibration_log.csv
+              path: calibration_log.csv
           - name: Run tests
             run: pytest
+
           - name: Test documentation builds
             run: make documentation

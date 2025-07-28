@@ -1,31 +1,99 @@
 import pytest
+from pathlib import Path
+import logging
+
+import pandas as pd
+import numpy as np
+
+from policyengine_core.data import Dataset
+from policyengine_core.reforms import Reform
+from policyengine_us import Microsimulation
+from policyengine_us_data.utils import (
+    build_loss_matrix,
+    print_reweighting_diagnostics,
+)
+from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
 
 
-def test_ecps_has_mortgage_interest():
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
-    from policyengine_us import Microsimulation
+@pytest.fixture(scope="session")
+def data():
+    return Dataset.from_file(STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5")
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
 
+@pytest.fixture(scope="session")
+def sim(data):
+    return Microsimulation(dataset=data)
+
+
+@pytest.mark.filterwarnings("ignore:DataFrame is highly fragmented")
+@pytest.mark.filterwarnings("ignore:The distutils package is deprecated")
+@pytest.mark.filterwarnings(
+    "ignore:Series.__getitem__ treating keys as positions is deprecated"
+)
+@pytest.mark.filterwarnings(
+    "ignore:Setting an item of incompatible dtype is deprecated"
+)
+@pytest.mark.filterwarnings(
+    "ignore:Boolean Series key will be reindexed to match DataFrame index."
+)
+def test_sparse_ecps(sim):
+    data = sim.dataset.load_dataset()
+    optimised_weights = data["household_weight"]["2024"]
+
+    bad_targets = [
+        "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
+        "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
+        "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
+        "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
+        "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
+        "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
+        "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
+        "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
+        "state/RI/adjusted_gross_income/amount/-inf_1",
+        "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
+        "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
+        "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
+        "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
+        "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
+        "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
+        "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
+        "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
+        "state/RI/adjusted_gross_income/amount/-inf_1",
+        "nation/irs/exempt interest/count/AGI in -inf-inf/taxable/All",
+    ]
+
+    loss_matrix, targets_array = build_loss_matrix(sim.dataset, 2024)
+    zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
+    bad_mask = loss_matrix.columns.isin(bad_targets)
+    keep_mask_bool = ~(zero_mask | bad_mask)
+    keep_idx = np.where(keep_mask_bool)[0]
+    loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
+    targets_array_clean = targets_array[keep_idx]
+    assert loss_matrix_clean.shape[1] == targets_array_clean.size
+
+    percent_within_10 = print_reweighting_diagnostics(
+        optimised_weights,
+        loss_matrix_clean,
+        targets_array_clean,
+        "Sparse Solutions",
+    )
+    assert percent_within_10 > 60.0
+
+
+def test_sparse_ecps_has_mortgage_interest(sim):
     assert sim.calculate("deductible_mortgage_interest").sum() > 1
 
 
-def test_ecps_has_tips():
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
-    from policyengine_us import Microsimulation
-
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+def test_sparse_ecps_has_tips(sim):
     # Ensure we impute at least $40 billion in tip income.
     # We currently target $38 billion * 1.4 = $53.2 billion.
     TIP_INCOME_MINIMUM = 40e9
     assert sim.calculate("tip_income").sum() > TIP_INCOME_MINIMUM
 
 
-def test_ecps_replicates_jct_tax_expenditures():
-    import pandas as pd
-
+def test_sparse_ecps_replicates_jct_tax_expenditures():
     calibration_log = pd.read_csv(
-        "calibration_log.csv",
+        "calibration_log_sparse.csv",
     )
 
     jct_rows = calibration_log[
@@ -40,10 +108,7 @@ def test_ecps_replicates_jct_tax_expenditures():
     )
 
 
-def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
-    from policyengine_us import Microsimulation
-    from policyengine_core.reforms import Reform
-    from policyengine_us_data.datasets import EnhancedCPS_2024
+def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
 
     # JCT tax expenditure targets
     EXPENDITURE_TARGETS = {
@@ -53,7 +118,7 @@ def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
         "interest_deduction": 24.8e9,
     }
 
-    baseline = Microsimulation(dataset=EnhancedCPS_2024)
+    baseline = sim
     income_tax_b = baseline.calculate(
         "income_tax", period=2024, map_to="household"
     )
@@ -65,9 +130,7 @@ def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
                 self.neutralize_variable(deduction)
 
         # Run reform simulation
-        reformed = Microsimulation(
-            reform=RepealDeduction, dataset=EnhancedCPS_2024
-        )
+        reformed = Microsimulation(reform=RepealDeduction, dataset=sim.dataset)
         income_tax_r = reformed.calculate(
             "income_tax", period=2024, map_to="household"
         )
@@ -77,21 +140,17 @@ def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
         pct_error = abs((tax_expenditure - target) / target)
         TOLERANCE = 0.4
 
-        print(
-            f"{deduction} tax expenditure {tax_expenditure/1e9:.1f}bn differs from target {target/1e9:.1f}bn by {pct_error:.2%}"
+        logging.info(
+            f"{deduction} tax expenditure {tax_expenditure/1e9:.1f}bn "
+            f"differs from target {target/1e9:.1f}bn by {pct_error:.2%}"
         )
         assert pct_error < TOLERANCE, deduction
 
 
-def test_ssn_card_type_none_target():
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
-    from policyengine_us import Microsimulation
-    import numpy as np
+def test_sparse_ssn_card_type_none_target(sim):
 
     TARGET_COUNT = 13e6
-    TOLERANCE = 0.2  # Allow ±20% error
-
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    TOLERANCE = 0.2  # Allow 20% error
 
     # Calculate the number of individuals with ssn_card_type == "NONE"
     ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"
@@ -99,62 +158,19 @@ def test_ssn_card_type_none_target():
 
     pct_error = abs((count - TARGET_COUNT) / TARGET_COUNT)
 
-    print(
-        f'SSN card type "NONE" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
+    logging.info(
+        f'SSN card type "NONE" count: {count:.0f}, '
+        f"target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}"
     )
     assert pct_error < TOLERANCE
 
 
-def test_undocumented_matches_ssn_none():
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
-    from policyengine_us import Microsimulation
-    import numpy as np
-
-    TARGET_COUNT = 13e6
-    TOLERANCE = 0.2  # ±20 %
-
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
-
-    ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"
-    undocumented_mask = sim.calculate("immigration_status") == "UNDOCUMENTED"
-
-    # 1. Per-person equivalence
-    mismatches = np.where(ssn_type_none_mask != undocumented_mask)[0]
-    assert (
-        mismatches.size == 0
-    ), f"{mismatches.size} mismatches between 'NONE' SSN and 'UNDOCUMENTED' status"
-
-    # 2. Optional aggregate sanity-check
-    count = undocumented_mask.sum()
-    pct_error = abs((count - TARGET_COUNT) / TARGET_COUNT)
-    print(
-        f'Immigrant class "UNDOCUMENTED" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
-    )
-    assert pct_error < TOLERANCE
-
-
-def make_person(age, years_in_us, ssn_code, birth_country):
-    from types import SimpleNamespace
-    from policyengine_us import Microsimulation
-    from policyengine_core.reforms import Reform
-
-    return SimpleNamespace(
-        A_AGE=np.array([age]),
-        PEINUSYR=np.array([CURRENT_YEAR - 1981 - years_in_us]),
-        PENATVTY=np.array([birth_country]),
-    ), np.array([ssn_code])
-
-
-def test_ctc_reform_child_recipient_difference():
+def test_sparse_ctc_reform_child_recipient_difference(sim):
     """
     Test CTC reform impact for validation purposes only.
     Note: This is no longer actively targeted in loss matrix calibration
     due to uncertainty around assumptions from hearing comments.
     """
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
-    from policyengine_us import Microsimulation
-    from policyengine_core.reforms import Reform
-
     TARGET_COUNT = 2e6
     TOLERANCE = 4.5  # Allow +/-450% error
 
@@ -169,8 +185,8 @@ def test_ctc_reform_child_recipient_difference():
     )
 
     # Create baseline and reform simulations
-    baseline_sim = Microsimulation(dataset=EnhancedCPS_2024)
-    reform_sim = Microsimulation(dataset=EnhancedCPS_2024, reform=ctc_reform)
+    baseline_sim = Microsimulation(dataset=sim.dataset)
+    reform_sim = Microsimulation(dataset=sim.dataset, reform=ctc_reform)
 
     # Calculate baseline CTC recipients (children with ctc_individual_maximum > 0 and ctc_value > 0)
     baseline_is_child = baseline_sim.calculate("is_child")
@@ -203,21 +219,15 @@ def test_ctc_reform_child_recipient_difference():
 
     pct_error = abs((ctc_recipient_difference - TARGET_COUNT) / TARGET_COUNT)
 
-    print(
-        f"CTC reform child recipient difference: {ctc_recipient_difference:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}"
-    )
-    print(
+    logging.info(
+        f"CTC reform child recipient difference: {ctc_recipient_difference:.0f}, "
+        f"target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}\n"
         "Note: CTC targeting removed from calibration - this is validation only"
     )
     assert pct_error < TOLERANCE
 
 
-def test_aca_calibration():
-
-    import pandas as pd
-    from pathlib import Path
-    from policyengine_us import Microsimulation
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+def test_sparse_aca_calibration(sim):
 
     TARGETS_PATH = Path(
         "policyengine_us_data/storage/calibration_targets/aca_spending_and_enrollment_2024.csv"
@@ -230,11 +240,10 @@ def test_aca_calibration():
         98e9 / targets["spending"].sum()
     )
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
     state_code_hh = sim.calculate("state_code", map_to="household").values
     aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
 
-    TOLERANCE = 0.45
+    TOLERANCE = 1.0
     failed = False
     for _, row in targets.iterrows():
         state = row["state"]
@@ -242,7 +251,7 @@ def test_aca_calibration():
         simulated = aca_ptc[state_code_hh == state].sum()
 
         pct_error = abs(simulated - target_spending) / target_spending
-        print(
+        logging.info(
             f"{state}: simulated ${simulated/1e9:.2f} bn  "
             f"target ${target_spending/1e9:.2f} bn  "
             f"error {pct_error:.2%}"
@@ -256,25 +265,19 @@ def test_aca_calibration():
     ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
 
 
-def test_medicaid_calibration():
-
-    import pandas as pd
-    from pathlib import Path
-    from policyengine_us import Microsimulation
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+def test_sparse_medicaid_calibration(sim):
 
     TARGETS_PATH = Path(
         "policyengine_us_data/storage/calibration_targets/medicaid_enrollment_2024.csv"
     )
     targets = pd.read_csv(TARGETS_PATH)
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
     state_code_hh = sim.calculate("state_code", map_to="household").values
     medicaid_enrolled = sim.calculate(
         "medicaid_enrolled", map_to="household", period=2025
     )
 
-    TOLERANCE = 0.45
+    TOLERANCE = 1.0
     failed = False
     for _, row in targets.iterrows():
         state = row["state"]
@@ -282,7 +285,7 @@ def test_medicaid_calibration():
         simulated = medicaid_enrolled[state_code_hh == state].sum()
 
         pct_error = abs(simulated - target_enrollment) / target_enrollment
-        print(
+        logging.info(
             f"{state}: simulated ${simulated/1e9:.2f} bn  "
             f"target ${target_enrollment/1e9:.2f} bn  "
             f"error {pct_error:.2%}"

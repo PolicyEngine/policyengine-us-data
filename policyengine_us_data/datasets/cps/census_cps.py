@@ -124,7 +124,6 @@ class CensusCPS_2023(CensusCPS):
     name = "census_cps_2023"
     file_path = STORAGE_FOLDER / "census_cps_2023.h5"
     data_format = Dataset.TABLES
-    url = "hf://policyengine/policyengine-us-data/census_cps_2023.h5"
 
 
 class CensusCPS_2022(CensusCPS):
@@ -133,7 +132,6 @@ class CensusCPS_2022(CensusCPS):
     name = "census_cps_2022"
     file_path = STORAGE_FOLDER / "census_cps_2022.h5"
     data_format = Dataset.TABLES
-    url = "hf://policyengine/policyengine-us-data/census_cps_2022.h5"
 
 
 class CensusCPS_2021(CensusCPS):
@@ -142,7 +140,6 @@ class CensusCPS_2021(CensusCPS):
     name = "census_cps_2021"
     file_path = STORAGE_FOLDER / "census_cps_2021.h5"
     data_format = Dataset.TABLES
-    url = "hf://policyengine/policyengine-us-data/census_cps_2021.h5"
 
 
 class CensusCPS_2020(CensusCPS):
@@ -151,7 +148,6 @@ class CensusCPS_2020(CensusCPS):
     name = "census_cps_2020"
     file_path = STORAGE_FOLDER / "census_cps_2020.h5"
     data_format = Dataset.TABLES
-    url = "hf://policyengine/policyengine-us-data/census_cps_2020.h5"
 
 
 class CensusCPS_2019(CensusCPS):
@@ -247,7 +243,7 @@ PERSON_COLUMNS = [
     "A_AGE",
     "A_SEX",
     "PEDISEYE",
-    "MRK",
+    "NOW_MRK",
     "WSAL_VAL",
     "INT_VAL",
     "SEMP_VAL",
@@ -303,4 +299,27 @@ PERSON_COLUMNS = [
     "POTC_VAL",
     "PMED_VAL",
     "PEMCPREM",
+    "PRCITSHP",
+    "NOW_GRP",
+    "POCCU2",
+    "PEINUSYR",
+    "MCARE",
+    "PEN_SC1",
+    "PEN_SC2",
+    "RESNSS1",
+    "RESNSS2",
+    "IHSFLG",
+    "CAID",
+    "CHAMPVA",
+    "PEIO1COW",
+    "A_MJOCC",
+    "SS_YN",
+    "PEAFEVER",
+    "SSI_YN",
+    "RESNSSI1",
+    "RESNSSI2",
+    "PENATVTY",
+    "PEIOOCC",
+    "MIL",
+    "A_HRS1",
 ]

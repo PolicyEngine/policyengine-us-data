@@ -4,48 +4,19 @@ We validate our enhanced dataset against a comprehensive set of official statist
 
 \subsection{Validation Against Administrative Totals}
 
-The enhanced CPS (ECPS) shows substantial improvements over both of its source datasets. When comparing absolute relative errors across all 7,000+ targets, the ECPS outperforms:
-\begin{itemize}
-    \item The Census Bureau's CPS in 73\% of targets
-    \item The IRS Public Use File in 66\% of targets
-\end{itemize}
-
-These improvements are particularly notable because they demonstrate that our enhancement methodology successfully combines the strengths of both source datasets while mitigating their individual weaknesses. The CPS excels at demographic representation but struggles with income reporting, particularly at the top of the distribution. Conversely, the PUF captures tax-related variables well but lacks demographic detail. Our enhanced dataset achieves better accuracy than either source across most metrics.
+The enhanced CPS (ECPS) is validated against over 7,000 administrative targets. The enhancement methodology aims to combine the strengths of both source datasets - the CPS's demographic representation and the PUF's tax precision. Detailed validation results are available in our online dashboard at \url{https://policyengine.github.io/policyengine-us-data/validation.html}.
 
 \subsection{Target Category Performance}
 
-The enhanced dataset shows particularly strong improvements in key categories:
+The enhanced dataset is calibrated to various categories of targets:
 
-\textbf{IRS Income Components:} The ECPS reduces absolute relative error by an average of 45\% compared to the baseline CPS for AGI-stratified income targets. Notable improvements include:
-\begin{itemize}
-    \item Employment income by AGI bracket: 68\% error reduction
-    \item Capital gains distributions: 82\% error reduction  
-    \item Partnership and S-corp income: 71\% error reduction
-    \item Dividend income: 63\% error reduction
-\end{itemize}
+\textbf{IRS Income Components:} AGI-stratified income targets including employment income, capital gains, partnership and S-corp income, and dividend income.
 
-\textbf{Program Participation:} The ECPS achieves close alignment with CBO projections:
-\begin{itemize}
-    \item SNAP benefits: within 3\% of CBO target
-    \item Social Security: within 2\% of CBO target
-    \item Unemployment compensation: within 5\% of CBO target
-    \item Income tax revenue: within 4\% of CBO target
-\end{itemize}
+\textbf{Program Participation:} CBO projections for SNAP benefits, Social Security, unemployment compensation, and income tax revenue.
 
-\textbf{Demographic Targets:} The enhancement maintains demographic accuracy:
-\begin{itemize}
-    \item Population by single year of age: average error under 1\%
-    \item State populations: average error under 2\%
-    \item Healthcare spending by age group: average error of 8\%
-\end{itemize}
+\textbf{Demographic Targets:} Population by single year of age, state populations, and healthcare spending by age group.
 
-\textbf{Tax Expenditures:} Calibration to JCT estimates shows:
-\begin{itemize}
-    \item SALT deduction: within 6\% of \$21.2B target
-    \item Charitable deduction: within 4\% of \$65.3B target
-    \item Mortgage interest: within 8\% of \$24.8B target
-    \item Medical expense: within 11\% of \$11.4B target
-\end{itemize}
+\textbf{Tax Expenditures:} JCT estimates for SALT deduction (\$21.2B), charitable deduction (\$65.3B), mortgage interest (\$24.8B), and medical expense deduction (\$11.4B).
 
 \subsection{Income Distribution}
 
@@ -67,40 +38,7 @@ The poverty metrics in Table \ref{tab:poverty_metrics} warrant particular attent
 
 \input{tables/poverty_metrics}
 
-The substantial increase in measured poverty from 12.7\% to 24.9\% warrants detailed investigation. We conducted a decomposition analysis to understand the sources of this discrepancy:
-
-\subsubsection{Decomposition of Poverty Rate Changes}
-
-Through sequential analysis, we find:
-\begin{itemize}
-    \item \textbf{Imputation effect}: Moving from CPS to Extended CPS (with imputed tax variables) increases poverty from 12.7\% to 18.3\% (+5.6pp)
-    \item \textbf{Reweighting effect}: The calibration process further increases poverty from 18.3\% to 24.9\% (+6.6pp)
-\end{itemize}
-
-The imputation effect likely stems from:
-\begin{enumerate}
-    \item The QRF model learning from PUF data that inherently excludes non-filers and very low-income households
-    \item Imputed tax variables (particularly deductions) reducing disposable income for some households
-    \item The stacking approach effectively doubling the sample, with imputed records potentially having different poverty characteristics
-\end{enumerate}
-
-The reweighting effect appears driven by:
-\begin{enumerate}
-    \item The optimization process prioritizing tax-related targets over poverty-specific metrics
-    \item Geographic misalignment: households in high-cost areas receiving lower weights despite higher SPM thresholds
-    \item The calibration to state-level totals not fully capturing within-state cost-of-living variation
-\end{enumerate}
-
-\subsubsection{Addressing the Poverty Measurement Issue}
-
-While concerning, this discrepancy may reflect genuine measurement challenges rather than dataset flaws:
-\begin{itemize}
-    \item The enhanced dataset captures tax liabilities more accurately, potentially revealing higher poverty when properly accounting for tax burdens
-    \item Official poverty statistics may undercount poverty by missing tax filing non-compliance or informal economy participation
-    \item Future iterations will incorporate poverty-rate-specific calibration targets at the state level
-\end{itemize}
-
-Users analyzing poverty should interpret results cautiously and consider using the original CPS weights when poverty measurement is the primary concern.
+The poverty metrics shown in Table \ref{tab:poverty_metrics} require further investigation in future work. The differences between datasets may reflect various factors including the imputation methodology, reweighting process, and the interaction between tax variables and poverty measurement. Users analyzing poverty should interpret results cautiously and may wish to compare results across different weight specifications.
 
 \subsection{Weight Distribution Analysis}
 
@@ -108,7 +46,7 @@ The weight distribution statistics shown in Table \ref{tab:weight_stats} reveal 
 
 \input{tables/weight_stats}
 
-The original CPS has relatively uniform weights centered around 2,400, reflecting its design as a representative sample. The PUF shows less variation in weights, with a standard deviation of 720 compared to 1,423 for the CPS. The enhanced CPS exhibits greater weight variation and lower mean weights by design - each original record is cloned to potentially incorporate a matching PUF record, effectively doubling the initial sample size. About 54\% of these expanded records receive non-zero weights in the final dataset, as the reweighting procedure selects optimal combinations of records to match administrative targets.
+The weight distribution statistics reflect the different sampling designs of each dataset. The enhanced CPS exhibits different weight patterns due to the combination of CPS and PUF records through the imputation and reweighting process.
 
 A detailed, interactive validation dashboard showing performance across all targets is maintained at \url{https://policyengine.github.io/policyengine-us-data/validation.html} and updates automatically with each dataset revision. This transparency allows users to assess the dataset's strengths and limitations for their specific use cases.
 
@@ -120,4 +58,4 @@ Table \ref{tab:top_rate_reform} compares revenue projections across datasets:
 
 \input{tables/top_rate_reform}
 
-The enhanced CPS projects \$75.7 billion in additional revenue for 2025, closely matching the Treasury Department's estimate of \$75.4 billion. In contrast, the baseline CPS projects only \$28.7 billion, substantially understating the reform's impact. This disparity illustrates how the enhanced dataset's improved capture of high incomes enables more accurate modeling of tax policies targeting high-income households.
+Table \ref{tab:top_rate_reform} presents revenue projections from this reform across the three datasets. The differences in projections illustrate how the enhanced dataset's incorporation of PUF tax data affects modeling of policies targeting high-income households.

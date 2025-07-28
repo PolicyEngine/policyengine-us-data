@@ -256,6 +256,9 @@ class ContentConverter:
         elif stem == 'introduction':
             latex_content = self.md_to_latex(content)
             latex_path = self.paper_dir / "introduction.tex"
+        elif stem == 'background':
+            latex_content = self.md_to_latex(content)
+            latex_path = self.paper_dir / "background.tex"
         elif stem == 'data':
             latex_content = self.md_to_latex(content)
             latex_path = self.paper_dir / "data.tex"

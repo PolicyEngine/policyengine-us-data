@@ -10,3 +10,4 @@ chapters:
 - file: technical_details
 - file: validation.ipynb
 - file: ssn_statuses_imputation.ipynb
+- file: bibliography

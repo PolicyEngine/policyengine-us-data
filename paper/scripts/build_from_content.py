@@ -87,10 +87,146 @@ class ContentConverter:
         # Fix dollar amounts
         latex = re.sub(r'\\\$(\d+(?:\.\d+)?[BMK]?)', r'\\$\1', latex)
         
+        # Convert citations from (Author, Year) to \citep{author_year}
+        # Handle multiple authors and et al.
+        def convert_citation(match):
+            citation = match.group(1)
+            # Remove "and" between authors
+            citation = citation.replace(' and ', ' ')
+            # Extract year
+            year_match = re.search(r'(\d{4})', citation)
+            if year_match:
+                year = year_match.group(1)
+                # Extract author(s)
+                authors = citation[:citation.rfind(year)].strip().rstrip(',')
+                
+                # Handle different citation formats
+                if 'et al.' in authors:
+                    # Extract first author only for et al. citations
+                    first_author = authors.split()[0]
+                    cite_key = f"{first_author.lower()}{year}"
+                elif 'Congressional Budget Office' in authors:
+                    cite_key = f"cbo{year}"
+                elif 'Joint Committee on Taxation' in authors:
+                    cite_key = f"jct{year}"
+                elif 'Office of Tax Analysis' in authors:
+                    cite_key = f"ota{year}"
+                elif 'Rothbaum and Bee' in authors or 'Rothbaum, Bee' in authors:
+                    cite_key = f"rothbaum{year}"
+                else:
+                    # Handle single or multiple authors
+                    author_list = authors.split(',')
+                    if len(author_list) == 1:
+                        # Handle "Author1 and Author2" format
+                        if ' and ' in authors:
+                            first_author = authors.split(' and ')[0].strip().split()[-1]
+                            cite_key = f"{first_author.lower()}{year}"
+                        else:
+                            # Single author
+                            author = author_list[0].strip().split()[-1]  # Last name
+                            cite_key = f"{author.lower()}{year}"
+                    else:
+                        # Multiple authors - use first author
+                        first_author = author_list[0].strip().split()[-1]
+                        cite_key = f"{first_author.lower()}{year}"
+                
+                return f"\\citep{{{cite_key}}}"
+            return match.group(0)  # Return original if no year found
+        
+        latex = re.sub(r'\(([^)]+(?:19|20)\d{2}[a-z]?)\)', convert_citation, latex)
+        
+        # Also handle inline citations like "Author (Year)" or "Author et al. (Year)"
+        def convert_inline_citation(match):
+            author = match.group(1)
+            year = match.group(2)
+            
+            # Determine citation key based on author format
+            if 'et al.' in author:
+                first_author = author.split()[0]
+                cite_key = f"{first_author.lower()}{year}"
+            else:
+                # Single author case
+                cite_key = f"{author.lower()}{year}"
+            
+            return f"\\citet{{{cite_key}}}"
+        
+        # Handle "Author (Year)" and "Author et al. (Year)" patterns
+        latex = re.sub(r'(\w+(?:\s+et\s+al\.)?)\s*\((\d{4})\)', convert_inline_citation, latex)
+        
         # Convert links (basic - just show text and URL)
         latex = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'\1', latex)
         
         return latex
+    
+    def convert_to_myst_citations(self, content):
+        """Convert citations to MyST/Jupyter Book 2 format."""
+        myst = content
+        
+        # Convert parenthetical citations (Author, Year) to {cite}`author_year`
+        def convert_myst_citation(match):
+            citation = match.group(1)
+            # Remove "and" between authors
+            citation = citation.replace(' and ', ' ')
+            # Extract year
+            year_match = re.search(r'(\d{4})', citation)
+            if year_match:
+                year = year_match.group(1)
+                # Extract author(s)
+                authors = citation[:citation.rfind(year)].strip().rstrip(',')
+                
+                # Generate citation key using same logic as LaTeX conversion
+                if 'et al.' in authors:
+                    first_author = authors.split()[0]
+                    cite_key = f"{first_author.lower()}{year}"
+                elif 'Congressional Budget Office' in authors:
+                    cite_key = f"cbo{year}"
+                elif 'Joint Committee on Taxation' in authors:
+                    cite_key = f"jct{year}"
+                elif 'Office of Tax Analysis' in authors:
+                    cite_key = f"ota{year}"
+                elif 'Rothbaum and Bee' in authors or 'Rothbaum, Bee' in authors:
+                    cite_key = f"rothbaum{year}"
+                else:
+                    # Handle single or multiple authors
+                    author_list = authors.split(',')
+                    if len(author_list) == 1:
+                        # Handle "Author1 and Author2" format
+                        if ' and ' in authors:
+                            first_author = authors.split(' and ')[0].strip().split()[-1]
+                            cite_key = f"{first_author.lower()}{year}"
+                        else:
+                            # Single author
+                            author = author_list[0].strip().split()[-1]  # Last name
+                            cite_key = f"{author.lower()}{year}"
+                    else:
+                        # Multiple authors - use first author
+                        first_author = author_list[0].strip().split()[-1]
+                        cite_key = f"{first_author.lower()}{year}"
+                
+                return f"{{cite}}`{cite_key}`"
+            return match.group(0)
+        
+        myst = re.sub(r'\(([^)]+(?:19|20)\d{2}[a-z]?)\)', convert_myst_citation, myst)
+        
+        # Handle inline citations like "Author (Year)" - convert to {cite:t}`author_year`
+        def convert_inline_myst(match):
+            author = match.group(1)
+            year = match.group(2)
+            
+            # Determine citation key based on author format
+            if 'et al.' in author:
+                first_author = author.split()[0]
+                cite_key = f"{first_author.lower()}{year}"
+            else:
+                # Single author case
+                cite_key = f"{author.lower()}{year}"
+            
+            return f"{{cite:t}}`{cite_key}`"
+        
+        # Handle "Author (Year)" and "Author et al. (Year)" patterns
+        myst = re.sub(r'(\w+(?:\s+et\s+al\.)?)\s*\((\d{4})\)', convert_inline_myst, myst)
+        
+        return myst
     
     def process_content_file(self, content_file):
         """Process a single content file to both formats."""
@@ -105,6 +241,9 @@ class ContentConverter:
             if end != -1:
                 metadata = yaml.safe_load(content[3:end])
                 content = content[end+3:].strip()
+        
+        # For Jupyter Book output, convert citations to MyST format
+        jb_content = self.convert_to_myst_citations(content)
         
         # Determine output paths and types
         stem = content_file.stem
@@ -153,7 +292,7 @@ class ContentConverter:
                     f.write('---\n')
                     yaml.dump(metadata, f)
                     f.write('---\n\n')
-                f.write(content)
+                f.write(jb_content)
             print(f"Generated JB page: {docs_path}")
     
     def build_all(self):

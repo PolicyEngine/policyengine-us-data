@@ -3,6 +3,19 @@ author: PolicyEngine
 copyright: "2024"
 logo: logo.png
 
+# MyST settings for Jupyter Book 2
+parse:
+  myst_enable_extensions:
+    - colon_fence
+    - deflist
+    - dollarmath
+    - html_image
+    - linkify
+    - replacements
+    - smartquotes
+    - substitution
+    - tasklist
+
 execute:
   execute_notebooks: off
 
@@ -10,6 +23,10 @@ repository:
   url: https://github.com/policyengine/policyengine-us-data
   branch: master
   path_to_book: docs
+
+# Bibliography
+bibtex_bibfiles:
+  - references.bib
 
 sphinx:
   config:
@@ -20,3 +37,4 @@ sphinx:
     html_css_files:
       - style.css
     nb_remove_code_source: true
+    bibtex_reference_style: author_year

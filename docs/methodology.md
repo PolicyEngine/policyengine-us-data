@@ -1,15 +1,6 @@
 # Methodology
 
-The Enhanced CPS dataset is created through a two-stage process: imputation followed by reweighting. This approach leverages the strengths of both data sources while mitigating their individual limitations.
-
-## Overview
-
-Our enhancement process consists of:
-
-1. **Imputation Stage**: Use Quantile Regression Forests to impute 72 tax variables from the PUF onto CPS records
-2. **Reweighting Stage**: Optimize household weights to match over 7,000 administrative targets
-
-The imputation stage creates what we call the Extended CPS, which maintains the CPS structure while adding tax detail. The reweighting stage produces the final Enhanced CPS with weights calibrated to official statistics.
+The Enhanced CPS dataset is created through a two-stage process: imputation followed by reweighting. This approach leverages the strengths of both data sources while mitigating their individual limitations. The imputation stage uses Quantile Regression Forests to transfer 72 tax variables from the PUF onto CPS records, creating what we call the Extended CPS. The reweighting stage then optimizes household weights to match over 7,000 administrative targets, producing the final Enhanced CPS with weights calibrated to official statistics. A visual overview of this process is provided in Appendix Figure A1.
 
 ## Stage 1: Variable Imputation
 
@@ -17,181 +8,59 @@ We impute missing variables from multiple data sources using Quantile Regression
 
 ### Quantile Regression Forests
 
-We use Quantile Regression Forests (QRF), an extension of random forests that estimates conditional quantiles rather than conditional means. This approach better preserves distributional characteristics compared to standard imputation methods.
-
-QRF works by:
-- Building an ensemble of decision trees on the training data
-- Storing all observations in leaf nodes (not just means)
-- Estimating any quantile of the conditional distribution at prediction time
-- Allowing us to sample from the full conditional distribution
+We use Quantile Regression Forests (QRF), an extension of random forests that estimates conditional quantiles rather than conditional means. This approach better preserves distributional characteristics compared to standard imputation methods. QRF works by building an ensemble of decision trees on the training data, but unlike standard random forests, it stores all observations in leaf nodes rather than just their means. This enables estimation of any quantile of the conditional distribution at prediction time, allowing us to sample from the full conditional distribution rather than relying on point estimates.
 
 ### Implementation
 
-We use the `quantile-forest` package, which provides efficient scikit-learn compatible QRF implementation:
-
-```python
-from quantile_forest import RandomForestQuantileRegressor
-
-qrf = RandomForestQuantileRegressor(
-    n_estimators=100,
-    min_samples_leaf=1,
-    random_state=0
-)
-```
+We use the `quantile-forest` package, which provides efficient scikit-learn compatible QRF implementation. The specific implementation details are provided in Appendix A.1.
 
 ### Predictor Variables
 
-The imputation uses seven variables available in both datasets:
-- Age of the person
-- Gender indicator (is_male)
-- Tax unit filing status (is_joint)
-- Number of dependents in tax unit
-- Tax unit role indicators (head, spouse, dependent)
-
-These predictors capture key determinants of tax variables while being reliably measured in both datasets.
+The imputation uses seven variables available in both datasets. These include age of the person, a gender indicator, tax unit filing status (whether joint or separate), and the number of dependents in the tax unit. We also use tax unit role indicators specifying whether each person is the head, spouse, or dependent within their tax unit. These predictors capture key determinants of tax variables while being reliably measured in both datasets. The limited set of predictors ensures common support between the datasets while capturing the primary sources of variation in tax outcomes.
 
 ### Imputed Variables
 
-We impute 72 tax-related variables spanning six categories:
-
-**Employment and Business Income** (6 variables): employment income, partnership/S-corp income, self-employment income, W-2 wages from qualified businesses, rental income, farm income
-
-**Retirement and Social Security** (4 variables): Social Security benefits, taxable pension income, tax-exempt pension income, taxable IRA distributions
-
-**Investment Income** (6 variables): long and short-term capital gains, qualified and non-qualified dividend income, taxable and tax-exempt interest income
-
-**Deductions** (12 variables): mortgage interest, charitable cash and non-cash donations, state and local taxes, medical expenses, casualty losses, various business deductions
-
-**Tax Credits and Adjustments** (20 variables): foreign tax credit, education credits, retirement savings credit, energy credits, educator expenses, student loan interest, various above-the-line deductions
-
-**Other Income and Special Items** (24 variables): alimony, unemployment compensation, estate income, miscellaneous income, various specialized gains and losses
+We impute 72 tax-related variables spanning six categories: employment and business income (6 variables), retirement and Social Security (4 variables), investment income (6 variables), deductions (12 variables), tax credits and adjustments (20 variables), and other income and special items (24 variables). The complete list of imputed variables is provided in Appendix Table A1. These variables cover the major components needed for tax simulation while maintaining reasonable imputation quality given the available predictors.
 
 ### Additional Imputations
 
-Beyond the 72 PUF tax variables, we impute:
-
-**From SIPP (Survey of Income and Program Participation)**:
-- Tip income using employment income, age, and household composition as predictors
-
-**From SCF (Survey of Consumer Finances)**:
-- Auto loan balances and interest
-- Net worth components
-- Uses SCF reference person definition for proper household matching
-
-**From ACS (American Community Survey)**:
-- Property taxes for homeowners
-- Rent values for specific tenure types
-- Additional housing characteristics
+Beyond the 72 PUF tax variables, we impute additional variables from three other data sources. From the Survey of Income and Program Participation (SIPP), we impute tip income using employment income, age, and household composition as predictors. The Survey of Consumer Finances (SCF) provides data for imputing auto loan balances, interest payments, and net worth components. For SCF matching, we use their reference person definition to ensure proper household alignment. From the American Community Survey (ACS), we impute property taxes for homeowners, rent values for specific tenure types, and additional housing characteristics. These supplementary imputations fill gaps in the CPS that are important for comprehensive policy analysis but not available in tax data.
 
 ### Sampling Process
 
-Rather than using point estimates, we sample from the conditional distribution:
-
-1. Train QRF models on each source dataset
-2. For each CPS record, estimate the conditional distribution
-3. Sample from this distribution using a random quantile
-4. Ensure consistency across related variables
-
-This approach preserves realistic correlations between imputed variables.
+Rather than using point estimates, we sample from the conditional distribution to preserve realistic variation in the imputed variables. We first train QRF models on each source dataset, then for each CPS record, we estimate the conditional distribution of each variable given the predictors. We sample from this distribution using a random quantile drawn from a uniform distribution. To ensure consistency across related variables, we use the same random quantile for variables that should be correlated, such as different types of capital gains. This approach preserves realistic correlations between imputed variables while maintaining the marginal distributions observed in the source data.
 
 ## Stage 2: Reweighting
 
 ### Problem Formulation
 
-Given:
-- Loss matrix **M** ∈ ℝⁿˣᵐ (n households, m targets)  
-- Target vector **t** ∈ ℝᵐ (official statistics)
-
-We optimize log-transformed weights **w** to minimize mean squared relative error:
-
-L(w) = (1/m) Σᵢ ((exp(w)ᵀMᵢ - tᵢ) / tᵢ)²
-
-The log transformation ensures positive weights while allowing unconstrained optimization.
+The reweighting stage adjusts household weights to ensure the enhanced dataset matches known administrative totals. Given a loss matrix M ∈ ℝⁿˣᵐ containing n households' contributions to m targets, and a target vector t ∈ ℝᵐ of official statistics, we optimize log-transformed weights w to minimize mean squared relative error. The objective function is L(w) = (1/m) Σᵢ ((exp(w)ᵀMᵢ - tᵢ) / tᵢ)², where exp(w) represents the exponentiated weights applied to households. The log transformation ensures positive final weights while allowing unconstrained optimization.
 
 ### Optimization
 
-We use PyTorch for gradient-based optimization:
-
-```python
-import torch
-
-# Initialize with log of original weights
-log_weights = torch.log(original_weights)
-log_weights.requires_grad = True
-
-# Adam optimizer
-optimizer = torch.optim.Adam([log_weights], lr=0.1)
-
-# Optimization loop
-for iteration in range(5000):
-    weights = torch.exp(log_weights)
-    achieved = weights @ loss_matrix
-    relative_errors = (achieved - targets) / targets
-    loss = torch.mean(relative_errors ** 2)
-    
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-```
+We use PyTorch for gradient-based optimization with the Adam optimizer. The implementation uses log-transformed weights to ensure positivity constraints are satisfied throughout the optimization process. The detailed optimization code is provided in Appendix A.2.
 
 ### Dropout Regularization
 
-To prevent overfitting to calibration targets, we apply dropout during optimization:
-- Randomly mask 5% of weights each iteration
-- Replace masked weights with mean of unmasked weights
-- Selected through sensitivity analysis on validation performance
+To prevent overfitting to calibration targets, we apply dropout during optimization. We randomly mask 5% of weights each iteration and replace masked weights with the mean of unmasked weights. This percentage was selected through sensitivity analysis on validation performance, testing rates from 0% to 10%. The dropout helps ensure that no single household receives excessive weight in matching targets, improving the stability of policy simulations.
 
 ### Calibration Targets
 
-The loss matrix includes over 7,000 targets from six sources:
-
-**IRS Statistics of Income** (5,300+ targets):
-- Income by AGI bracket and filing status
-- Counts of returns by category
-- Aggregate income totals
-
-**Census Data** (200+ targets):
-- Population by single year of age
-- State populations
-- Demographic distributions
-
-**Program Totals** (10+ targets):
-- CBO projections for major programs
-- Treasury EITC statistics
-
-**Tax Expenditures** (4 targets):
-- JCT estimates for major deductions
-
-**Healthcare Spending** (40+ targets):
-- Age-stratified expenditure patterns
-
-**Other Sources** (1,500+ targets):
-- State-level program participation
-- Income distributions by geography
+The loss matrix includes over 7,000 targets from six sources. IRS Statistics of Income provides the largest share with over 5,300 targets covering income by AGI bracket and filing status, counts of returns by category, and aggregate income totals. Census data contributes over 200 targets including population by single year of age, state populations, and demographic distributions. Program totals from CBO projections and Treasury EITC statistics add approximately 10 targets. Tax expenditure estimates from JCT cover four major deductions. Healthcare spending patterns stratified by age contribute over 40 targets. The remaining 1,500+ targets come from various sources including state-level program participation and income distributions by geography. The complete list of calibration targets is provided in our online documentation.
 
 ### Convergence
 
-The optimization typically converges within 3,000 iterations. We run for 5,000 iterations to ensure stability. Convergence is monitored through:
-- Loss value trajectory
-- Weight stability
-- Target achievement rates
+The optimization typically converges within 3,000 iterations. We run for 5,000 iterations to ensure stability. Convergence is monitored through the loss value trajectory, weight stability across iterations, and target achievement rates. The optimization is considered converged when the relative change in loss falls below 0.001% for 100 consecutive iterations.
 
 ## Validation
 
 ### Cross-Validation
 
-We validate the methodology through:
-- 5-fold cross-validation on calibration targets
-- Stability testing across random seeds
-- Out-of-sample prediction for imputation
+We validate the methodology through three approaches. First, we employ 5-fold cross-validation on calibration targets, holding out subsets of targets to assess out-of-sample performance. Second, we test stability across multiple random seeds to ensure results are not sensitive to initialization. Third, we validate the imputation quality through out-of-sample prediction on held-out records from the source datasets.
 
 ### Quality Checks
 
-Throughout the process, we verify:
-- No negative weights
-- Reasonable weight magnitudes
-- Preservation of demographic relationships
-- Consistency of household structures
+Throughout the enhancement process, we implement several quality checks to ensure data integrity. We verify that all weights remain positive after optimization, as negative weights would violate the interpretation of survey weights as population representations. Weight magnitudes are checked to ensure no single household receives excessive influence on aggregate statistics. We preserve demographic relationships by verifying that household members maintain consistent relationships after reweighting. Finally, we ensure household structures remain intact, with all members of a household receiving the same weight adjustment factor.
 
 ## Implementation
 

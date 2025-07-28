@@ -8,7 +8,7 @@ This paper presents a methodology for creating an Enhanced CPS dataset that comb
 
 ## Related Work
 
-Several approaches have been developed to address the limitations of survey data for microsimulation. Statistical matching techniques have long been used to combine datasets. {cite:t}`radner1978` pioneered exact matching methods for combining survey and administrative data, while {cite:t}`rodgers1984` developed statistical matching based on common variables. More recently, D'{cite:t}`orazio2006` provided a comprehensive framework for modern statistical matching methods.
+Several approaches have been developed to address the limitations of survey data for microsimulation. Statistical matching techniques have long been used to combine datasets. {cite}`radner1978` pioneered exact matching methods for combining survey and administrative data, while {cite}`rodgers1984` developed statistical matching based on common variables. More recently, {cite}`d'orazio2006` provided a comprehensive framework for modern statistical matching methods.
 
 Economic studies have addressed dataset limitations through various strategies. The Congressional Budget Office combines CPS data with tax return information through statistical matching {cite}`cbo2022`. The Tax Policy Center creates synthetic datasets by statistically matching the CPS to a subset of tax returns {cite}`rohaly2005`. However, these approaches often sacrifice either demographic detail or tax precision, limiting their utility for comprehensive policy analysis.
 

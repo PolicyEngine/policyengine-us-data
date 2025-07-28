@@ -2,6 +2,7 @@ format: jb-book
 root: intro
 chapters:
 - file: overview
+- file: background
 - file: data
 - file: methodology
 - file: results

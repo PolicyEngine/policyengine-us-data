@@ -1,19 +1,244 @@
-\section{Methodology}\label{sec:methodology}
+\section{Methodology}
 
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=\textwidth]{figures/data_flow.png}
-    \caption{Data flow diagram for integrating CPS and PUF microdata. The process ages both datasets to a common year, integrates demographic and income information through quantile regression forests, and optimizes household weights using gradient descent.}
-    \label{fig:data_flow}
-\end{figure}
+The Enhanced CPS dataset is created through a two-stage process: imputation followed by reweighting. This approach leverages the strengths of both data sources while mitigating their individual limitations.
 
-\input{sections/methodology/overview}
-\input{sections/methodology/policyengine}
-\input{sections/methodology/demographic_analysis}
-\input{sections/methodology/demographic_variables}  
-\input{sections/methodology/puf_preprocessing}
-\input{sections/methodology/aging}
-\input{sections/methodology/quantile_forests}
-\input{sections/methodology/loss_matrix}
-\input{sections/methodology/reweighting}
-\input{sections/methodology/pipeline}
+\subsection{Overview}
+
+Our enhancement process consists of:
+
+\begin{enumerate}
+\item \textbf{Imputation Stage}: Use Quantile Regression Forests to impute 72 tax variables from the PUF onto CPS records
+\item \textbf{Reweighting Stage}: Optimize household weights to match over 7,000 administrative targets
+\end{enumerate}
+
+The imputation stage creates what we call the Extended CPS, which maintains the CPS structure while adding tax detail. The reweighting stage produces the final Enhanced CPS with weights calibrated to official statistics.
+
+\subsection{Stage 1: Variable Imputation}
+
+We impute missing variables from multiple data sources using Quantile Regression Forests (QRF). This includes both tax variables from the PUF and additional variables from SIPP, SCF, and ACS.
+
+\subsubsection{Quantile Regression Forests}
+
+We use Quantile Regression Forests (QRF), an extension of random forests that estimates conditional quantiles rather than conditional means. This approach better preserves distributional characteristics compared to standard imputation methods.
+
+QRF works by:
+\begin{itemize}
+\item Building an ensemble of decision trees on the training data
+\item Storing all observations in leaf nodes (not just means)
+\item Estimating any quantile of the conditional distribution at prediction time
+\item Allowing us to sample from the full conditional distribution
+\end{itemize}
+
+\subsubsection{Implementation}
+
+We use the \texttt{quantile-forest} package, which provides efficient scikit-learn compatible QRF implementation:
+
+``\texttt{python
+from quantile\_forest import RandomForestQuantileRegressor
+
+qrf = RandomForestQuantileRegressor(
+    n\_estimators=100,
+    min\_samples\_leaf=1,
+    random\_state=0
+)
+}`\texttt{
+
+\subsubsection{Predictor Variables}
+
+The imputation uses seven variables available in both datasets:
+\begin{itemize}
+\item Age of the person
+\item Gender indicator (is\_male)
+\item Tax unit filing status (is\_joint)
+\item Number of dependents in tax unit
+\item Tax unit role indicators (head, spouse, dependent)
+\end{itemize}
+
+These predictors capture key determinants of tax variables while being reliably measured in both datasets.
+
+\subsubsection{Imputed Variables}
+
+We impute 72 tax-related variables spanning six categories:
+
+\textbf{Employment and Business Income} (6 variables): employment income, partnership/S-corp income, self-employment income, W-2 wages from qualified businesses, rental income, farm income
+
+\textbf{Retirement and Social Security} (4 variables): Social Security benefits, taxable pension income, tax-exempt pension income, taxable IRA distributions
+
+\textbf{Investment Income} (6 variables): long and short-term capital gains, qualified and non-qualified dividend income, taxable and tax-exempt interest income
+
+\textbf{Deductions} (12 variables): mortgage interest, charitable cash and non-cash donations, state and local taxes, medical expenses, casualty losses, various business deductions
+
+\textbf{Tax Credits and Adjustments} (20 variables): foreign tax credit, education credits, retirement savings credit, energy credits, educator expenses, student loan interest, various above-the-line deductions
+
+\textbf{Other Income and Special Items} (24 variables): alimony, unemployment compensation, estate income, miscellaneous income, various specialized gains and losses
+
+\subsubsection{Additional Imputations}
+
+Beyond the 72 PUF tax variables, we impute:
+
+\textbf{From SIPP (Survey of Income and Program Participation)}:
+\begin{itemize}
+\item Tip income using employment income, age, and household composition as predictors
+\end{itemize}
+
+\textbf{From SCF (Survey of Consumer Finances)}:
+\begin{itemize}
+\item Auto loan balances and interest
+\item Net worth components
+\item Uses SCF reference person definition for proper household matching
+\end{itemize}
+
+\textbf{From ACS (American Community Survey)}:
+\begin{itemize}
+\item Property taxes for homeowners
+\item Rent values for specific tenure types
+\item Additional housing characteristics
+\end{itemize}
+
+\subsubsection{Sampling Process}
+
+Rather than using point estimates, we sample from the conditional distribution:
+
+\begin{enumerate}
+\item Train QRF models on each source dataset
+\item For each CPS record, estimate the conditional distribution
+\item Sample from this distribution using a random quantile
+\item Ensure consistency across related variables
+\end{enumerate}
+
+This approach preserves realistic correlations between imputed variables.
+
+\subsection{Stage 2: Reweighting}
+
+\subsubsection{Problem Formulation}
+
+Given:
+\begin{itemize}
+\item Loss matrix \textbf{M} ∈ ℝⁿˣᵐ (n households, m targets)  
+\item Target vector \textbf{t} ∈ ℝᵐ (official statistics)
+\end{itemize}
+
+We optimize log-transformed weights \textbf{w} to minimize mean squared relative error:
+
+L(w) = (1/m) Σᵢ ((exp(w)ᵀMᵢ - tᵢ) / tᵢ)²
+
+The log transformation ensures positive weights while allowing unconstrained optimization.
+
+\subsubsection{Optimization}
+
+We use PyTorch for gradient-based optimization:
+
+}`\texttt{python
+import torch
+
+\section{Initialize with log of original weights}
+log\_weights = torch.log(original\_weights)
+log\_weights.requires\_grad = True
+
+\section{Adam optimizer}
+optimizer = torch.optim.Adam([log\_weights], lr=0.1)
+
+\section{Optimization loop}
+for iteration in range(5000):
+    weights = torch.exp(log\_weights)
+    achieved = weights @ loss\_matrix
+    relative\_errors = (achieved - targets) / targets
+    loss = torch.mean(relative\_errors ** 2)
+    
+    optimizer.zero\_grad()
+    loss.backward()
+    optimizer.step()
+}`\texttt{
+
+\subsubsection{Dropout Regularization}
+
+To prevent overfitting to calibration targets, we apply dropout during optimization:
+\begin{itemize}
+\item Randomly mask 5\% of weights each iteration
+\item Replace masked weights with mean of unmasked weights
+\item Selected through sensitivity analysis on validation performance
+\end{itemize}
+
+\subsubsection{Calibration Targets}
+
+The loss matrix includes over 7,000 targets from six sources:
+
+\textbf{IRS Statistics of Income} (5,300+ targets):
+\begin{itemize}
+\item Income by AGI bracket and filing status
+\item Counts of returns by category
+\item Aggregate income totals
+\end{itemize}
+
+\textbf{Census Data} (200+ targets):
+\begin{itemize}
+\item Population by single year of age
+\item State populations
+\item Demographic distributions
+\end{itemize}
+
+\textbf{Program Totals} (10+ targets):
+\begin{itemize}
+\item CBO projections for major programs
+\item Treasury EITC statistics
+\end{itemize}
+
+\textbf{Tax Expenditures} (4 targets):
+\begin{itemize}
+\item JCT estimates for major deductions
+\end{itemize}
+
+\textbf{Healthcare Spending} (40+ targets):
+\begin{itemize}
+\item Age-stratified expenditure patterns
+\end{itemize}
+
+\textbf{Other Sources} (1,500+ targets):
+\begin{itemize}
+\item State-level program participation
+\item Income distributions by geography
+\end{itemize}
+
+\subsubsection{Convergence}
+
+The optimization typically converges within 3,000 iterations. We run for 5,000 iterations to ensure stability. Convergence is monitored through:
+\begin{itemize}
+\item Loss value trajectory
+\item Weight stability
+\item Target achievement rates
+\end{itemize}
+
+\subsection{Validation}
+
+\subsubsection{Cross-Validation}
+
+We validate the methodology through:
+\begin{itemize}
+\item 5-fold cross-validation on calibration targets
+\item Stability testing across random seeds
+\item Out-of-sample prediction for imputation
+\end{itemize}
+
+\subsubsection{Quality Checks}
+
+Throughout the process, we verify:
+\begin{itemize}
+\item No negative weights
+\item Reasonable weight magnitudes
+\item Preservation of demographic relationships
+\item Consistency of household structures
+\end{itemize}
+
+\subsection{Implementation}
+
+The complete implementation is available at:
+https://github.com/PolicyEngine/policyengine-us-data
+
+Key files:
+\begin{itemize}
+\item }policyengine\_us\_data/datasets/cps/extended\_cps.py\texttt{ - Imputation stage
+\item }policyengine\_us\_data/datasets/cps/enhanced\_cps.py\texttt{ - Reweighting stage
+\item }policyengine\_us\_data/utils/loss.py` - Loss matrix construction
+\end{itemize}
+
+The modular design allows researchers to modify or extend individual components while maintaining the overall framework.

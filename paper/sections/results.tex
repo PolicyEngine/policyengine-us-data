@@ -1,61 +1,89 @@
 \section{Results}
 
-We validate our enhanced dataset against a comprehensive set of official statistics and compare its performance to both the original CPS and PUF datasets. Our validation metrics cover over 7,000 distinct targets spanning demographic totals, program participation rates, and detailed income components across the distribution.
+We validate our enhanced dataset against official statistics and compare its performance to both the original CPS and PUF datasets. Our validation framework covers over 7,000 distinct targets spanning demographic totals, program participation rates, and income components across the distribution.
 
 \subsection{Validation Against Administrative Totals}
 
-The enhanced CPS (ECPS) is validated against over 7,000 administrative targets. The enhancement methodology aims to combine the strengths of both source datasets - the CPS's demographic representation and the PUF's tax precision. Detailed validation results are available in our online dashboard at \url{https://policyengine.github.io/policyengine-us-data/validation.html}.
+The Enhanced CPS is validated against all 7,000+ administrative targets used in the calibration process. While the dataset is explicitly calibrated to these targets, the large number and diversity of targets makes achieving good fit across all dimensions a significant challenge.
+
+Detailed validation results are available in our interactive dashboard at https://policyengine.github.io/policyengine-us-data/validation.html.
 
 \subsection{Target Category Performance}
 
 The enhanced dataset is calibrated to various categories of targets:
 
-\textbf{IRS Income Components:} AGI-stratified income targets including employment income, capital gains, partnership and S-corp income, and dividend income.
+\textbf{IRS Income Components}: AGI-stratified income targets including employment income, capital gains, partnership and S-corp income, and dividend income across filing statuses and income ranges.
 
-\textbf{Program Participation:} CBO projections for SNAP benefits, Social Security, unemployment compensation, and income tax revenue.
+\textbf{Program Participation}: CBO projections for SNAP benefits, Social Security, unemployment compensation, and income tax revenue.
 
-\textbf{Demographic Targets:} Population by single year of age, state populations, and healthcare spending by age group.
+\textbf{Demographic Targets}: Population by single year of age, state populations, and healthcare spending by age group.
 
-\textbf{Tax Expenditures:} JCT estimates for SALT deduction (\$21.2B), charitable deduction (\$65.3B), mortgage interest (\$24.8B), and medical expense deduction (\$11.4B).
+\textbf{Tax Expenditures}: JCT estimates for SALT deduction (\$21.2B), charitable deduction (\$65.3B), mortgage interest (\$24.8B), and medical expense deduction (\$11.4B).
 
 \subsection{Income Distribution}
 
-Table \ref{tab:tax_unit_metrics} compares distributional statistics across all three datasets, measuring net income after taxes and transfers at the tax unit level without equivalization:
+Distributional statistics are computed at both tax unit and household levels. Tax unit metrics allow comparison with the PUF, while household metrics are relevant for many policy applications.
 
-\input{tables/tax_unit_metrics}
+\subsubsection{Tax Unit Level Metrics}
 
-The enhanced CPS achieves very similar distributional statistics to the PUF, with a Gini coefficient of 0.572 compared to 0.570 in the PUF, and nearly identical top income shares. This suggests our enhancement procedure successfully incorporates the PUF's more accurate representation of the income distribution. 
+The Enhanced CPS achieves distributional statistics between those of the CPS and PUF. The imputation of tax variables from the PUF increases measured inequality compared to the baseline CPS.
 
-For applications requiring household-level analysis, Table \ref{tab:household_metrics} shows these same metrics calculated over households rather than tax units:
+Key metrics include:
+\begin{itemize}
+\item Gini coefficient
+\item Top 10\% income share  
+\item Top 1\% income share
+\end{itemize}
 
-\input{tables/household_metrics}
+\subsubsection{Household Level Metrics}
 
-The household-level metrics show similar patterns of increased inequality capture compared to the baseline CPS, though the magnitudes differ due to the different unit of analysis.
+For applications requiring household-level analysis, we also compute metrics over households rather than tax units. The PUF cannot provide household-level statistics as it lacks household structure.
 
 \subsection{Poverty Measurement}
 
-The poverty metrics in Table \ref{tab:poverty_metrics} warrant particular attention:
+Poverty metrics require careful interpretation. The interaction between imputed tax variables and poverty measurement is complex, and results may differ from official statistics. Users analyzing poverty should:
 
-\input{tables/poverty_metrics}
+\begin{itemize}
+\item Compare results across different weight specifications
+\item Consider the impact of tax variable imputation
+\item Reference official poverty statistics for validation
+\end{itemize}
 
-The poverty metrics shown in Table \ref{tab:poverty_metrics} require further investigation in future work. The differences between datasets may reflect various factors including the imputation methodology, reweighting process, and the interaction between tax variables and poverty measurement. Users analyzing poverty should interpret results cautiously and may wish to compare results across different weight specifications.
+\subsection{Weight Distribution}
 
-\subsection{Weight Distribution Analysis}
+The weight distribution reflects the enhancement methodology:
 
-The weight distribution statistics shown in Table \ref{tab:weight_stats} reveal notable differences in how the datasets represent the population. Note that CPS and enhanced CPS values reflect household weights, while PUF values reflect tax unit weights:
+\begin{itemize}
+\item Original CPS weights are relatively uniform
+\item Enhanced CPS weights show greater variation due to the calibration process
+\item Some records receive zero weight as the optimization selects representative combinations
+\end{itemize}
 
-\input{tables/weight_stats}
+\subsection{Policy Application: Top Tax Rate Reform}
 
-The weight distribution statistics reflect the different sampling designs of each dataset. The enhanced CPS exhibits different weight patterns due to the combination of CPS and PUF records through the imputation and reweighting process.
+To demonstrate practical applications, we analyze a reform raising the top marginal tax rate from 37\% to 39.6\%. This reform affects high-income taxpayers and tests the dataset's ability to model policies targeting the top of the income distribution.
 
-A detailed, interactive validation dashboard showing performance across all targets is maintained at \url{https://policyengine.github.io/policyengine-us-data/validation.html} and updates automatically with each dataset revision. This transparency allows users to assess the dataset's strengths and limitations for their specific use cases.
+The Enhanced CPS incorporates detailed income data from the PUF, enabling analysis of high-income tax reforms that would be difficult with the CPS alone.
 
-\subsection{Example Policy Reform: Top Tax Rate Increase}
+\subsection{Validation Dashboard}
 
-To demonstrate the enhanced dataset's value for policy analysis, we examine President Biden's 2025 budget proposal to raise the top marginal income tax rate from 37\% to 39.6\%. This would restore the pre-Tax Cuts and Jobs Act rate for high-income taxpayers, applying to income above \$400,000 for single filers, \$425,000 for head of household filers, \$450,000 for married joint filers, and \$225,000 for married separate filers, with thresholds indexed to inflation from 2025.
+Our comprehensive validation dashboard provides:
+\begin{itemize}
+\item Performance metrics for all 7,000+ targets
+\item Comparison across datasets
+\item Filtering by target category and source
+\item Regular updates with each data release
+\end{itemize}
 
-Table \ref{tab:top_rate_reform} compares revenue projections across datasets:
+Visit https://policyengine.github.io/policyengine-us-data/validation.html to explore detailed results.
 
-\input{tables/top_rate_reform}
+\subsection{Summary}
 
-Table \ref{tab:top_rate_reform} presents revenue projections from this reform across the three datasets. The differences in projections illustrate how the enhanced dataset's incorporation of PUF tax data affects modeling of policies targeting high-income households.
+The Enhanced CPS successfully combines the demographic detail of the CPS with tax precision approaching that of administrative data. While specific validation metrics depend on the target category, the dataset provides a suitable foundation for analyzing both tax and transfer policies.
+
+Users should:
+\begin{itemize}
+\item Consult the validation dashboard for metrics relevant to their analysis
+\item Consider the dataset's strengths and limitations for their specific use case
+\item Compare results with official statistics where available
+\end{itemize}

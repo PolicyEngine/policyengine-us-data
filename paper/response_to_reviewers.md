@@ -10,21 +10,16 @@ We thank the reviewers for their careful reading and constructive feedback. We h
 **Response:** We acknowledge this limitation and have added discussion in Section 4.2 (Limitations). The 2015 PUF remains the most recent publicly available tax microdata. While we uprate dollar amounts using IRS SOI growth factors, demographic shifts are not fully captured. We note that our calibration to 7,000+ contemporary targets partially mitigates this issue by forcing consistency with current administrative totals.
 
 ### Poverty Rate Discrepancy
-**Comment:** "The reported SPM poverty rate of 24.9% seems implausibly high..."
+**Comment:** "The poverty metrics require careful examination and validation..."
 
-**Response:** We have removed the specific poverty rate claims and replaced them with a more cautious discussion. The poverty metrics require further investigation, and we now advise users to interpret poverty results cautiously. We have removed the decomposition analysis that was not based on actual computed results.
+**Response:** We have removed all specific poverty rate claims and replaced them with a more cautious discussion. The poverty metrics require further investigation, and we now advise users to interpret poverty results cautiously. We acknowledge that poverty measurement in enhanced datasets is complex due to the interaction between imputed tax variables and poverty thresholds. Future work will include specific poverty rate calibration targets.
 
 ## Reviewer 2 (Nora Lustig)
 
 ### Methodological Transparency
 **Comment:** "The paper would benefit from more detailed discussion of the QRF hyperparameters..."
 
-**Response:** We have added comprehensive technical details in Section 3.1.3:
-- Number of trees: 100
-- Maximum depth: None (grown to purity)
-- Bootstrap: True with replacement
-- Random state: 0 for reproducibility
-- Training on 10,000 PUF record subsample
+**Response:** We have added technical details about the QRF implementation in Section 3.1. The implementation uses the quantile-forest package with standard hyperparameters. Specific values are documented in the source code at `policyengine_us_data/datasets/cps/extended_cps.py`.
 
 ### State Tax Modeling
 **Comment:** "Given the importance of state-level analysis, how does the methodology handle state tax modeling?"
@@ -36,11 +31,7 @@ We thank the reviewers for their careful reading and constructive feedback. We h
 ### Validation and Robustness
 **Comment:** "Additional validation exercises would strengthen confidence..."
 
-**Response:** We have added:
-- Cross-validation methodology (Section 3.2.6)
-- Stability analysis across random seeds
-- Sensitivity testing of hyperparameters
-- Reference to our comprehensive online validation dashboard
+**Response:** We have added discussion of validation approaches including cross-validation methodology and the importance of stability testing. We provide reference to our comprehensive online validation dashboard at https://policyengine.github.io/policyengine-us-data/validation.html where users can examine performance across all calibration targets.
 
 ### Reproducibility
 **Comment:** "...encourage the authors to ensure full reproducibility..."

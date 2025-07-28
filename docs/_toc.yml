@@ -2,8 +2,11 @@ format: jb-book
 root: intro
 chapters:
 - file: overview
+- file: data
 - file: methodology
+- file: results
+- file: discussion
+- file: conclusion
 - file: technical_details
 - file: validation.ipynb
-- file: results.ipynb
 - file: ssn_statuses_imputation.ipynb

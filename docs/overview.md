@@ -37,7 +37,7 @@ The Enhanced CPS supports:
 ## Access
 
 The Enhanced CPS dataset is available through:
-- Direct download from [GitHub releases](https://github.com/PolicyEngine/policyengine-us-data/releases)
+- Direct download from [Hugging Face](https://huggingface.co/PolicyEngine)
 - Python API via `policyengine-us-data` package
 - Integration with PolicyEngine microsimulation model
 

@@ -16,7 +16,7 @@ flowchart TD
 ```
 :::
 
-## Stage 1: variable imputation
+## Stage 1: Variable Imputation
 
 We impute missing variables from multiple data sources using Quantile Regression Forests (QRF). This includes both tax variables from the PUF and additional variables from SIPP, SCF, and ACS.
 
@@ -66,7 +66,7 @@ Beyond the 72 PUF tax variables, we impute additional variables from three other
 
 Rather than using point estimates, we sample from the conditional distribution to preserve realistic variation in the imputed variables. We first train QRF models on each source dataset, then for each CPS record, we estimate the conditional distribution of each variable given the predictors. We sample from this distribution using a random quantile drawn from a uniform distribution. To ensure consistency across related variables, we use the same random quantile for variables that should be correlated, such as different types of capital gains. This approach preserves realistic correlations between imputed variables while maintaining the marginal distributions observed in the source data.
 
-## Stage 2: reweighting
+## Stage 2: Reweighting
 
 ### Problem formulation
 

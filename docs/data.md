@@ -4,7 +4,7 @@ Our methodology combines two primary data sources with calibration targets from 
 
 ## Primary data sources
 
-### Current population survey (cps)
+### Current Population Survey (CPS)
 
 The Current Population Survey Annual Social and Economic Supplement (ASEC) serves as our base dataset. Conducted jointly by the Census Bureau and Bureau of Labor Statistics, the CPS ASEC surveys approximately 75,000 households annually.
 
@@ -12,7 +12,7 @@ The CPS provides several essential features for microsimulation modeling. It off
 
 However, the CPS faces well-documented limitations that necessitate enhancement. Income underreporting is particularly severe at high income levels, with {cite:t}`rothbaum2021` finding that the CPS captures only 50% of top incomes compared to tax records. The survey provides limited tax detail, lacking information on itemized deductions, tax credits, and capital gains realizations that are crucial for revenue estimation. High income values are topcoded to protect confidentiality, further limiting the ability to analyze tax policies affecting high earners. The survey's focus on cash income means it misses important non-cash compensation like employer-provided health insurance premiums.
 
-### IRS public use file (puf)
+### IRS Public Use File (PUF)
 
 The IRS Statistics of Income Public Use File contains detailed tax return information from a stratified sample of individual income tax returns. The most recent PUF available is from tax year 2015, containing approximately 230,000 returns.
 
@@ -24,12 +24,12 @@ Despite these strengths, the PUF has significant limitations for comprehensive p
 
 Beyond the PUF, we incorporate data from three additional surveys to impute specific variables missing from the CPS:
 
-### Survey of income and program participation (sipp)
+### Survey of Income and Program Participation (SIPP)
 
 The SIPP provides detailed income and program participation data. We use SIPP to impute:
 - **Tip income**: Using a Quantile Regression Forest model trained on SIPP data, we impute tip income based on employment income, age, and household composition
 
-### Survey of consumer finances (scf)
+### Survey of Consumer Finances (SCF)
 
 The SCF provides comprehensive wealth and debt information. We use SCF to impute:
 - **Auto loan balances**: Matched based on household demographics and income
@@ -38,7 +38,7 @@ The SCF provides comprehensive wealth and debt information. We use SCF to impute
 
 The SCF imputation uses their reference person definition (male in mixed-sex couples or older person in same-sex couples) to ensure proper matching.
 
-### American community survey (acs)
+### American Community Survey (ACS)
 
 The ACS provides detailed housing and geographic data. We use ACS to impute:
 - **Property taxes**: For homeowners, imputed based on state, household income, and demographics
@@ -51,7 +51,7 @@ These imputations use Quantile Regression Forests to preserve distributional cha
 
 We calibrate the enhanced dataset to over 7,000 targets from six authoritative sources:
 
-### IRS statistics of income (soi)
+### IRS Statistics of Income (SOI)
 
 Annual tabulations from tax returns provide income distributions by:
 - Adjusted Gross Income (AGI) bracket
@@ -67,7 +67,7 @@ National and state-level demographic targets from:
 - State total populations
 - State populations under age 5
 
-### Congressional budget office (cbo)
+### Congressional Budget Office (CBO)
 
 Program participation and revenue projections:
 - SNAP (Supplemental Nutrition Assistance Program)
@@ -76,7 +76,7 @@ Program participation and revenue projections:
 - Unemployment compensation
 - Individual income tax revenue
 
-### Joint committee on taxation (jct)
+### Joint Committee on Taxation (JCT)
 
 Tax expenditure estimates for major deductions:
 - State and local tax deduction: $21.2 billion
@@ -84,7 +84,7 @@ Tax expenditure estimates for major deductions:
 - Mortgage interest deduction: $24.8 billion
 - Medical expense deduction: $11.4 billion
 
-### Treasury department
+### Treasury Department
 
 Additional program totals:
 - Earned Income Tax Credit by number of children
@@ -104,14 +104,14 @@ The nine-year gap between the 2015 PUF and 2024 CPS presents a methodological ch
 
 ## Data preparation
 
-### CPS processing
+### CPS Processing
 
 We use the CPS ASEC from survey year 2024 (covering calendar year 2023 income). The Census Bureau provides:
 - Person-level records with demographics
 - Hierarchical identifiers linking persons to families and households
 - Initial survey weights
 
-### PUF processing
+### PUF Processing
 
 The 2015 PUF requires several adjustments:
 - Dollar amounts uprated using SOI growth factors by income type

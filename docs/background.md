@@ -10,18 +10,18 @@ The core challenges these models face stem from the fundamental tradeoff between
 
 Table 1 summarizes the data preparation approaches used by major US microsimulation models. Each model balances different priorities regarding data sources, enhancement methods, and transparency. Sources for this comparison include {cite}`cbo2018`, {cite}`jct2023`, {cite}`ota2012`, {cite}`tpc2024`, {cite}`tf2024`, {cite}`pwbm2024`, {cite}`itep2024`, {cite}`budgetlab2024`, and {cite}`psl2024`.
 
-| Model | Primary Data | Enhancement Method | Geographic Detail | Transfer Programs | Public Access |
-|-------|--------------|-------------------|-------------------|-------------------|---------------|
-| CBO | CPS + tax data | Statistical matching | National | Yes | No |
-| JCT | Tax returns | Aging/extrapolation | National | Limited | No |
-| Treasury OTA | Tax returns | Administrative linking | National | Limited | No |
-| TPC | CPS + PUF extract | Statistical matching | State | Yes | Limited |
-| Tax Foundation | CPS | Reweighting | State | No | Yes |
-| PWBM | CPS + admin | Dynamic aging | National | Yes | Limited |
-| ITEP | CPS | Imputation | State | Limited | No |
-| Yale Budget Lab | CPS | Reweighting | National | Yes | Yes |
-| PSL Tax-Calculator | CPS/PUF | User choice | National | No | Yes |
-| PolicyEngine (this paper) | CPS + PUF | QRF imputation + reweighting | State | Yes | Yes |
+| Model | Primary Data | Imputation Method | Reweighting Method | Geographic Detail | Transfer Programs | Public Access |
+|-------|--------------|-------------------|-------------------|-------------------|-------------------|---------------|
+| CBO | CPS + tax data | Statistical matching + benefit imputation | Calibration to targets | National | Yes | No |
+| JCT | Tax returns | Limited | Aging/extrapolation | National | Limited | No |
+| Treasury OTA | Tax returns | Administrative linking | Calibration | National | Limited | No |
+| TPC | CPS + PUF extract | Statistical matching + wealth imputation | Constrained optimization | State | Yes | Limited |
+| Tax Foundation | CPS | Limited | Reweighting | State | No | Yes |
+| PWBM | CPS + admin | Statistical matching | Dynamic aging | National | Yes | Limited |
+| ITEP | ACS + IRS | Statistical matching | Calibration to targets | State | Limited | No |
+| Yale Budget Lab | CPS | Limited | Reweighting | National | Yes | Yes |
+| PSL Tax-Calculator | CPS/PUF | User choice | User choice | National | No | Yes |
+| PolicyEngine (this paper) | CPS + PUF | QRF + 3 surveys | L-BFGS-B optimization | State | Yes | Yes |
 
 Government models (CBO, JCT, Treasury) benefit from access to confidential administrative data but cannot share their enhanced microdata. Non-governmental models must work with public data, leading to various enhancement strategies. The Tax Policy Center uses a proprietary extract of tax returns, while others rely entirely on survey data with different enhancement methods.
 

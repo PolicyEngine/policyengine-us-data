@@ -14,7 +14,7 @@ The Current Population Survey (CPS) Annual Social and Economic Supplement provid
 
 This paper presents a methodology for creating an Enhanced CPS dataset that combines the strengths of both sources. Through a two-stage enhancement process—imputation followed by reweighting—we create a dataset suitable for analyzing both tax and transfer policies at federal and state levels.
 
-## Related Work
+## Related work
 
 Several approaches have been developed to address the limitations of survey data for microsimulation. Statistical matching techniques have long been used to combine datasets. {cite}`radner1978` pioneered exact matching methods for combining survey and administrative data, while {cite}`rodgers1984` developed statistical matching based on common variables. More recently, {cite}`d'orazio2006` provided a comprehensive framework for modern statistical matching methods.
 

@@ -2,13 +2,13 @@
 
 We validate our enhanced dataset against official statistics and compare its performance to both the original CPS and PUF datasets. Our validation framework covers over 7,000 distinct targets spanning demographic totals, program participation rates, and income components across the distribution.
 
-## Validation Against Administrative Totals
+## Validation against administrative totals
 
 The Enhanced CPS is validated against all 7,000+ administrative targets used in the calibration process. While the dataset is explicitly calibrated to these targets, the large number and diversity of targets makes achieving good fit across all dimensions a significant challenge.
 
 Detailed validation results are available in our interactive dashboard at [https://policyengine.github.io/policyengine-us-data/validation.html](https://policyengine.github.io/policyengine-us-data/validation.html).
 
-## Target Category Performance
+## Target category performance
 
 The enhanced dataset is calibrated to various categories of targets:
 
@@ -20,7 +20,7 @@ The enhanced dataset is calibrated to various categories of targets:
 
 **Tax Expenditures**: JCT estimates for SALT deduction ($21.2B), charitable deduction ($65.3B), mortgage interest ($24.8B), and medical expense deduction ($11.4B).
 
-### Tax Expenditure Validation
+### Tax expenditure validation
 
 We validate major tax expenditures against JCT estimates:
 
@@ -33,11 +33,11 @@ We validate major tax expenditures against JCT estimates:
 
 The close alignment with JCT estimates validates our imputation methodology for itemized deductions.
 
-## Income Distribution
+## Income distribution
 
 Distributional statistics are computed at both tax unit and household levels. Tax unit metrics allow comparison with the PUF, while household metrics are relevant for many policy applications.
 
-### Tax Unit Level Metrics
+### Tax unit level metrics
 
 The Enhanced CPS achieves distributional statistics between those of the CPS and PUF. The imputation of tax variables from the PUF increases measured inequality compared to the baseline CPS.
 
@@ -48,15 +48,15 @@ Key metrics include:
 
 These results show the Enhanced CPS successfully bridges the gap between survey and administrative data, capturing more realistic income concentration while maintaining household structure.
 
-### Household Level Metrics
+### Household level metrics
 
 For applications requiring household-level analysis, we also compute metrics over households rather than tax units. The PUF cannot provide household-level statistics as it lacks household structure.
 
-## Poverty Measurement
+## Poverty measurement
 
 Poverty metrics require careful interpretation. The interaction between imputed tax variables and poverty measurement is complex, and results may differ from official statistics.
 
-### Poverty Rate Comparison
+### Poverty rate comparison
 
 | Measure | Enhanced CPS | Official CPS | Difference |
 |---------|--------------|--------------|------------|
@@ -70,7 +70,7 @@ The Enhanced CPS closely matches official poverty statistics despite the additio
 - Consider the impact of tax variable imputation
 - Reference official poverty statistics for validation
 
-## Weight Distribution
+## Weight distribution
 
 The weight distribution reflects the enhancement methodology:
 
@@ -78,13 +78,13 @@ The weight distribution reflects the enhancement methodology:
 - Enhanced CPS weights show greater variation due to the calibration process
 - Some records receive zero weight as the optimization selects representative combinations
 
-## Policy Application: Top Tax Rate Reform
+## Policy Application: top tax rate reform
 
 To demonstrate practical applications, we analyze a reform raising the top marginal tax rate from 37% to 39.6%. This reform affects high-income taxpayers and tests the dataset's ability to model policies targeting the top of the income distribution.
 
 The Enhanced CPS incorporates detailed income data from the PUF, enabling analysis of high-income tax reforms that would be difficult with the CPS alone.
 
-## Validation Dashboard
+## Validation dashboard
 
 Our comprehensive validation dashboard provides:
 - Performance metrics for all 7,000+ targets

@@ -2,7 +2,7 @@
 
 We have presented a methodology for creating enhanced microsimulation datasets that combine the strengths of survey and administrative data sources. The Enhanced CPS dataset demonstrates that careful application of modern statistical methods can substantially improve the data available for policy analysis.
 
-## Summary of Contributions
+## Summary of contributions
 
 Our work makes several key contributions:
 
@@ -14,7 +14,7 @@ Our work makes several key contributions:
 
 **Reproducible Research**: All code, data, and documentation are publicly available, supporting reproducibility and collaborative improvement.
 
-## Key Findings
+## Key findings
 
 The validation results demonstrate that combining survey and administrative data through principled statistical methods can achieve:
 - Improved income distribution representation
@@ -24,7 +24,7 @@ The validation results demonstrate that combining survey and administrative data
 
 While no dataset perfectly represents the full population, the Enhanced CPS provides a pragmatic balance of accuracy, detail, and accessibility.
 
-## Implications for Policy Analysis
+## Implications for policy analysis
 
 The availability of enhanced microdata has immediate implications:
 
@@ -36,7 +36,7 @@ The availability of enhanced microdata has immediate implications:
 
 **Distributional Analysis**: Household structure allows examination of policy impacts across family types and income levels.
 
-## Broader Implications
+## Broader implications
 
 Beyond the specific dataset, this work demonstrates:
 
@@ -48,7 +48,7 @@ Beyond the specific dataset, this work demonstrates:
 
 **Collaborative Potential**: Open-source approaches enable community contributions and continuous improvement.
 
-## Limitations and Future Work
+## Limitations and future work
 
 We acknowledge important limitations:
 - Temporal inconsistency between data sources
@@ -62,7 +62,7 @@ Future work should address these through:
 - Additional validation exercises
 - Uncertainty quantification
 
-## Call to Action
+## Call to action
 
 We encourage researchers to:
 
@@ -74,7 +74,7 @@ We encourage researchers to:
 
 **Share Experiences**: Document use cases, limitations discovered, and suggested improvements.
 
-## Final Thoughts
+## Final thoughts
 
 The Enhanced CPS represents one approach to a fundamental challenge in microsimulation: the need for comprehensive, accurate microdata. While not perfect, it demonstrates that substantial improvements are possible through careful methodology and open collaboration.
 

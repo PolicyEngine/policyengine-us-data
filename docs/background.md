@@ -2,13 +2,13 @@
 
 ## The microsimulation landscape
 
-Tax and benefit microsimulation models play a crucial role in policy analysis by projecting the distributional and revenue impacts of proposed reforms. Major institutions maintaining these models include government agencies like the Congressional Budget Office (CBO), Joint Committee on Taxation (JCT), and Treasury's Office of Tax Analysis (OTA), as well as non-governmental organizations including the Urban-Brookings Tax Policy Center (TPC), Tax Foundation, Penn Wharton Budget Model (PWBM), Institute on Taxation and Economic Policy (ITEP), Yale Budget Lab, and the open-source Policy Simulation Library (PSL). Each model serves specific institutional needs but faces common data challenges.
+Tax and benefit microsimulation models play a role in policy analysis by projecting the distributional and revenue impacts of proposed reforms. Institutions maintaining these models include government agencies like the Congressional Budget Office (CBO), Joint Committee on Taxation (JCT), and Treasury's Office of Tax Analysis (OTA), as well as non-governmental organizations including the Urban-Brookings Tax Policy Center (TPC), Tax Foundation, Penn Wharton Budget Model (PWBM), Institute on Taxation and Economic Policy (ITEP), Yale Budget Lab, and the open-source Policy Simulation Library (PSL). Each model serves specific institutional needs but faces common data challenges.
 
 The core challenges these models face stem from the fundamental tradeoff between data comprehensiveness and accessibility. Administrative tax data provides accurate income reporting but lacks the household context needed to model benefit programs and analyze family-level impacts {cite:p}`sabelhaus2020`. Survey data captures household relationships and program participation but suffers from income underreporting that worsens at higher income levels {cite:p}`meyer2021`. The need to protect taxpayer privacy further limits data availability, as administrative microdata cannot be publicly released. Early work on generating synthetic data for microsimulation {cite:p}`ohare2009` demonstrated the feasibility of combining survey and administrative sources while maintaining privacy.
 
-## Comparison of major microsimulation models
+## Comparison of microsimulation models
 
-Table 1 summarizes the data preparation approaches used by major US microsimulation models. Each model balances different priorities regarding data sources, enhancement methods, and transparency. Sources for this comparison include {cite}`cbo2018`, {cite}`jct2023`, {cite}`ota2012`, {cite}`tpc2024`, {cite}`tf2024`, {cite}`pwbm2024`, {cite}`itep2024`, {cite}`budgetlab2024`, and {cite}`psl2024`.
+Table 1 summarizes the data preparation approaches used by US microsimulation models. Each model balances different priorities regarding data sources, enhancement methods, and transparency. Sources for this comparison include {cite}`cbo2018`, {cite}`jct2023`, {cite}`ota2012`, {cite}`tpc2024`, {cite}`tf2024`, {cite}`pwbm2024`, {cite}`itep2024`, {cite}`budgetlab2024`, and {cite}`psl2024`.
 
 | Model | Primary Data | Imputation Method | Reweighting Method | Geographic Detail | Transfer Programs | Public Access |
 |-------|--------------|-------------------|-------------------|-------------------|-------------------|---------------|

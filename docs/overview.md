@@ -1,11 +1,11 @@
 # Overview
 
-The Enhanced CPS dataset provides a comprehensive microdata foundation for US tax and benefit microsimulation. By combining the demographic detail of the Current Population Survey with the tax precision of the IRS Public Use File, we create a dataset that enables accurate policy analysis across the full spectrum of government programs.
+The Enhanced CPS dataset provides a microdata foundation for US tax and benefit microsimulation. By combining the demographic detail of the Current Population Survey with the tax precision of the IRS Public Use File, we create a dataset that enables accurate policy analysis across the full spectrum of government programs.
 
 ## Key features
 
 - **Demographic detail**: Preserves the CPS's household structure, state identifiers, and demographic characteristics
-- **Tax precision**: Incorporates 72 detailed tax variables from IRS administrative data
+- **Tax precision**: Incorporates 72 tax variables from IRS administrative data
 - **Administrative consistency**: Calibrated to over 7,000 targets from six authoritative sources
 - **Open source**: All code, data, and documentation freely available
 - **Reproducible**: Full pipeline from raw data to final weights
@@ -24,7 +24,7 @@ The Enhanced CPS supports:
 
 ### Primary sources
 1. **Current Population Survey (CPS)**: Annual Social and Economic Supplement providing household demographics
-2. **IRS Public Use File (PUF)**: De-identified tax return data with detailed income and deduction information
+2. **IRS Public Use File (PUF)**: De-identified tax return data with income and deduction information
 
 ### Calibration sources
 - IRS Statistics of Income: 5,300+ income distribution targets

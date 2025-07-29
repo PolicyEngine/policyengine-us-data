@@ -4,7 +4,7 @@ We validate our enhanced dataset against official statistics and compare its per
 
 ## Validation against administrative totals
 
-The Enhanced CPS is validated against all 7,000+ administrative targets used in the calibration process. While the dataset is explicitly calibrated to these targets, the large number and diversity of targets makes achieving good fit across all dimensions a significant challenge.
+The Enhanced CPS is validated against all 7,000+ administrative targets used in the calibration process. While the dataset is explicitly calibrated to these targets, the large number and diversity of targets makes achieving good fit across all dimensions a challenge.
 
 Detailed validation results are available in our interactive dashboard at [https://policyengine.github.io/policyengine-us-data/validation.html](https://policyengine.github.io/policyengine-us-data/validation.html).
 
@@ -22,16 +22,16 @@ The enhanced dataset is calibrated to various categories of targets:
 
 ### Tax expenditure validation
 
-We validate major tax expenditures against JCT estimates:
+We validate tax expenditures against JCT estimates from the [2024 Tax Expenditures Report (JCX-48-24)](https://www.jct.gov/publications/2024/jcx-48-24/):
 
-| Tax Expenditure | Enhanced CPS | JCT Estimate | Difference |
-|-----------------|--------------|--------------|------------|
-| SALT Deduction | $22.1B | $21.2B | +4.2% |
-| Charitable | $62.8B | $65.3B | -3.8% |
-| Mortgage Interest | $25.9B | $24.8B | +4.4% |
-| Medical Expense | $10.7B | $11.4B | -6.1% |
+| Deduction | JCT Target |
+|-----------|------------|
+| SALT | \$21.2B |
+| Charitable | \$65.3B |
+| Mortgage Interest | \$24.8B |
+| Medical Expense | \$11.4B |
 
-The close alignment with JCT estimates validates our imputation methodology for itemized deductions.
+These targets are used in the calibration process (`policyengine_us_data/utils/loss.py`, lines 622-628).
 
 ## Income distribution
 
@@ -41,12 +41,7 @@ Distributional statistics are computed at both tax unit and household levels. Ta
 
 The Enhanced CPS achieves distributional statistics between those of the CPS and PUF. The imputation of tax variables from the PUF increases measured inequality compared to the baseline CPS.
 
-Key metrics include:
-- Gini coefficient: 0.521 (CPS: 0.477, PUF: 0.548)
-- Top 10% income share: 47.2% (CPS: 41.3%, PUF: 51.8%)
-- Top 1% income share: 19.8% (CPS: 15.2%, PUF: 22.6%)
-
-These results show the Enhanced CPS successfully bridges the gap between survey and administrative data, capturing more realistic income concentration while maintaining household structure.
+The results notebook (`docs/results.ipynb`) calculates distributional metrics at the tax unit level using the PolicyEngine microsimulation framework. See the notebook for current values.
 
 ### Household level metrics
 
@@ -54,17 +49,11 @@ For applications requiring household-level analysis, we also compute metrics ove
 
 ## Poverty measurement
 
-Poverty metrics require careful interpretation. The interaction between imputed tax variables and poverty measurement is complex, and results may differ from official statistics.
+Poverty metrics require interpretation. The interaction between imputed tax variables and poverty measurement is complex, and results may differ from official statistics.
 
 ### Poverty rate comparison
 
-| Measure | Enhanced CPS | Official CPS | Difference |
-|---------|--------------|--------------|------------|
-| Overall Poverty Rate | 11.6% | 11.5% | +0.1pp |
-| Child Poverty Rate | 16.2% | 16.0% | +0.2pp |
-| Elderly Poverty Rate | 9.8% | 10.3% | -0.5pp |
-
-The Enhanced CPS closely matches official poverty statistics despite the addition of imputed tax variables. Users analyzing poverty should:
+The results notebook (`docs/results.ipynb`) calculates SPM poverty rates for both datasets. See the notebook for current values. Users analyzing poverty should:
 
 - Compare results across different weight specifications
 - Consider the impact of tax variable imputation
@@ -82,17 +71,17 @@ The weight distribution reflects the enhancement methodology:
 
 To demonstrate practical applications, we analyze a reform raising the top marginal tax rate from 37% to 39.6%. This reform affects high-income taxpayers and tests the dataset's ability to model policies targeting the top of the income distribution.
 
-The Enhanced CPS incorporates detailed income data from the PUF, enabling analysis of high-income tax reforms that would be difficult with the CPS alone.
+The Enhanced CPS incorporates income data from the PUF, enabling analysis of high-income tax reforms that would be difficult with the CPS alone.
 
 ## Validation dashboard
 
-Our comprehensive validation dashboard provides:
+Our validation dashboard provides:
 - Performance metrics for all 7,000+ targets
 - Comparison across datasets
 - Filtering by target category and source
 - Regular updates with each data release
 
-Visit [https://policyengine.github.io/policyengine-us-data/validation.html](https://policyengine.github.io/policyengine-us-data/validation.html) to explore detailed results.
+Visit [https://policyengine.github.io/policyengine-us-data/validation.html](https://policyengine.github.io/policyengine-us-data/validation.html) to explore results.
 
 ## Summary
 

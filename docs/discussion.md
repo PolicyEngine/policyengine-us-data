@@ -4,7 +4,7 @@ This section examines the strengths, limitations, and potential applications of 
 
 ## Strengths
 
-### Comprehensive coverage
+### Coverage
 
 The Enhanced CPS uniquely combines:
 - Demographic detail from the CPS including state identifiers
@@ -37,7 +37,7 @@ For policy analysis, the dataset offers:
 
 ### Temporal inconsistency
 
-The most significant limitation is the temporal gap between data sources:
+The primary limitation is the temporal gap between data sources:
 - 2015 PUF data imputed onto 2024 CPS
 - Nine-year gap in underlying populations
 - Demographic shifts not fully captured

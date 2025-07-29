@@ -26,13 +26,13 @@ We use Quantile Regression Forests (QRF), an extension of random forests that es
 
 #### Validation against alternative methods
 
-We validate QRF performance through extensive out-of-sample testing:
+We validate QRF performance through out-of-sample testing:
 
-1. **Prediction Accuracy**: QRF reduces mean absolute error by 34% compared to hot-deck imputation and 19% compared to linear regression for wage imputation.
+1. **Prediction Accuracy**: The diagnostic script compares QRF performance to hot-deck imputation and linear regression methods.
 
-2. **Distribution Preservation**: Joint distributions are preserved with correlation differences below 0.05 for all major income pairs (wages-age, interest-dividends).
+2. **Distribution Preservation**: We test joint distribution preservation by comparing correlations between variable pairs before and after imputation.
 
-3. **Coverage Properties**: 90% prediction intervals contain the true value 89.2% of the time, confirming proper uncertainty quantification.
+3. **Coverage Properties**: We validate prediction interval coverage to ensure proper uncertainty quantification.
 
 ### Implementation
 
@@ -44,15 +44,15 @@ The imputation uses seven variables available in both datasets. These include ag
 
 #### Common support analysis
 
-The limited predictor set raises concerns about common support between datasets. We conduct extensive diagnostics to validate the overlap:
+The limited predictor set raises concerns about common support between datasets. We conduct diagnostics to validate the overlap:
 
-1. **Overlap Coefficients**: For each predictor, we calculate the overlap coefficient {cite:p}`weitzman1970`, which measures the area of intersection between the two distributions. All predictors show overlap coefficients above 0.85, indicating strong common support.
+1. **Overlap Coefficients**: For each predictor, we calculate the overlap coefficient {cite:p}`weitzman1970`, which measures the area of intersection between the two distributions. The diagnostic script (`validation/qrf_diagnostics.py`) implements this calculation.
 
-2. **Standardized Mean Differences**: The SMD for all predictors is below 0.25, meeting conventional thresholds for adequate balance {cite:p}`rubin2001`.
+2. **Standardized Mean Differences**: We calculate SMD for all predictors to assess balance {cite:p}`rubin2001`. The calculation is implemented in `validation/qrf_diagnostics.py`.
 
-3. **Joint Distribution Tests**: Kolmogorov-Smirnov tests show no significant differences in predictor distributions after accounting for survey weights (p > 0.05 for all variables).
+3. **Joint Distribution Tests**: We perform Kolmogorov-Smirnov tests to compare predictor distributions after accounting for survey weights.
 
-Despite the limited predictor set, these variables explain 67% of variation in wages, 54% in capital income, and 71% in retirement income within the PUF, suggesting adequate predictive power for imputation.
+The diagnostic script calculates the variance explained by these predictors for key income variables.
 
 ### Imputed variables
 
@@ -60,7 +60,7 @@ We impute 72 tax-related variables spanning six categories: employment and busin
 
 ### Additional imputations
 
-Beyond the 72 PUF tax variables, we impute additional variables from three other data sources. From the Survey of Income and Program Participation (SIPP), we impute tip income using employment income, age, and household composition as predictors. The Survey of Consumer Finances (SCF) provides data for imputing auto loan balances, interest payments, and net worth components. For SCF matching, we use their reference person definition to ensure proper household alignment. From the American Community Survey (ACS), we impute property taxes for homeowners, rent values for specific tenure types, and additional housing characteristics. These supplementary imputations fill gaps in the CPS that are important for comprehensive policy analysis but not available in tax data.
+Beyond the 72 PUF tax variables, we impute additional variables from three other data sources. From the Survey of Income and Program Participation (SIPP), we impute tip income using employment income, age, and household composition as predictors. The Survey of Consumer Finances (SCF) provides data for imputing auto loan balances, interest payments, and net worth components. For SCF matching, we use their reference person definition to ensure proper household alignment. From the American Community Survey (ACS), we impute property taxes for homeowners, rent values for specific tenure types, and additional housing characteristics. These supplementary imputations fill gaps in the CPS that are important for policy analysis but not available in tax data.
 
 ### Sampling process
 
@@ -78,17 +78,17 @@ We use PyTorch for gradient-based optimization with the Adam optimizer. The impl
 
 ### Dropout regularization
 
-To prevent overfitting to calibration targets, we apply dropout during optimization. We randomly mask 5% of weights each iteration and replace masked weights with the mean of unmasked weights. This percentage was selected through sensitivity analysis on validation performance, testing rates from 0% to 10%. The dropout helps ensure that no single household receives excessive weight in matching targets, improving the stability of policy simulations.
+To prevent overfitting to calibration targets, we apply dropout during optimization. We randomly mask a small percentage of weights each iteration and replace masked weights with the mean of unmasked weights. This percentage was selected through sensitivity analysis on validation performance. The dropout helps ensure that no single household receives excessive weight in matching targets, improving the stability of policy simulations.
 
 #### Weight diagnostics
 
 The reweighting process is monitored through several diagnostics:
 
-1. **Weight Adjustment Factors**: The ratio of final to initial weights has mean 1.0 (by construction) with standard deviation 2.3. 95% of households have adjustment factors between 0.1 and 5.0.
+1. **Weight Adjustment Factors**: The ratio of final to initial weights has mean 1.0 (by construction). The distribution of adjustment factors is monitored to ensure reasonable variation.
 
-2. **Effective Sample Size**: The effective sample size after reweighting is 68% of the original, indicating reasonable weight variation without excessive concentration.
+2. **Effective Sample Size**: The effective sample size after reweighting is tracked to ensure reasonable weight variation without excessive concentration.
 
-3. **Stability Analysis**: Bootstrap resampling shows coefficient of variation below 5% for key statistics, confirming stable estimation.
+3. **Stability Analysis**: Bootstrap resampling is used to assess the stability of key statistics.
 
 ### Calibration targets
 
@@ -97,7 +97,7 @@ The loss matrix includes over 7,000 targets from six sources:
 ::::{tab-set}
 
 :::{tab-item} IRS SOI
-**5,300+ targets** covering:
+**Numerous targets** covering:
 - Income by AGI bracket and filing status
 - Counts of returns by category
 - Aggregate income totals by source
@@ -105,15 +105,15 @@ The loss matrix includes over 7,000 targets from six sources:
 :::
 
 :::{tab-item} Census
-**200+ targets** including:
-- Population by single year of age (0-85)
+**Multiple targets** including:
+- Population by single year of age
 - State total populations
-- State populations under age 5
+- State populations by age group
 - Demographic distributions
 :::
 
 :::{tab-item} CBO/Treasury
-**10+ targets** covering:
+**Various targets** covering:
 - SNAP participation and benefits
 - SSI recipient counts
 - EITC claims by family size
@@ -148,9 +148,9 @@ The loss matrix includes over 7,000 targets from six sources:
 
 ### Tax and benefit calculations
 
-Our calibration process incorporates comprehensive tax and benefit calculations through PolicyEngine's microsimulation capabilities. This ensures that the reweighted dataset accurately reflects not just income distributions but also the complex interactions between tax liabilities and benefit eligibility.
+Our calibration process incorporates tax and benefit calculations through PolicyEngine's microsimulation capabilities. This ensures that the reweighted dataset accurately reflects not just income distributions but also the complex interactions between tax liabilities and benefit eligibility.
 
-For tax calculations, we model federal income tax with all major credits and deductions, as well as state and local taxes. The state and local tax (SALT) calculation involves three components. First, we calculate state and local income tax liabilities for each household based on their state of residence and income characteristics. Second, we incorporate property tax amounts, using the imputed values from ACS data for homeowners. Third, we calculate sales tax deductions using the IRS sales tax tables, which most taxpayers use instead of tracking actual sales tax payments. This comprehensive SALT modeling is crucial for accurately capturing itemized deductions and the impact of the SALT deduction cap.
+For tax calculations, we model federal income tax with all major credits and deductions, as well as state and local taxes. The state and local tax (SALT) calculation involves three components. First, we calculate state and local income tax liabilities for each household based on their state of residence and income characteristics. Second, we incorporate property tax amounts, using the imputed values from ACS data for homeowners. Third, we calculate sales tax deductions using the IRS sales tax tables, which most taxpayers use instead of tracking actual sales tax payments. This SALT modeling is crucial for accurately capturing itemized deductions and the impact of the SALT deduction cap.
 
 The benefit calculations span major federal and state transfer programs. We model Supplemental Nutrition Assistance Program (SNAP) eligibility and benefit amounts based on household composition, income, and expenses. Supplemental Security Income (SSI) calculations consider both income and asset tests. For healthcare programs, we model Medicaid and Children's Health Insurance Program (CHIP) eligibility using state-specific income thresholds and household characteristics. The Affordable Care Act (ACA) premium tax credits are calculated based on household income relative to the federal poverty level and available benchmark plans. We also include Special Supplemental Nutrition Program for Women, Infants, and Children (WIC) eligibility and benefit calculations.
 
@@ -158,13 +158,13 @@ These tax and benefit calculations enter the calibration process through the los
 
 ### Convergence
 
-The optimization typically converges within 3,000 iterations. We run for 5,000 iterations to ensure stability. Convergence is monitored through the loss value trajectory, weight stability across iterations, and target achievement rates. The optimization is considered converged when the relative change in loss falls below 0.001% for 100 consecutive iterations.
+The optimization parameters are defined in [`enhanced_cps.py`](https://github.com/PolicyEngine/policyengine-us-data/blob/main/policyengine_us_data/datasets/cps/enhanced_cps.py#L36). Convergence is monitored through the loss value trajectory and relative loss change at each iteration.
 
 ## Validation
 
-### Cross-Validation
+### Cross-validation
 
-We validate the methodology through three approaches. First, we employ 5-fold cross-validation on calibration targets, holding out subsets of targets to assess out-of-sample performance. Second, we test stability across multiple random seeds to ensure results are not sensitive to initialization. Third, we validate the imputation quality through out-of-sample prediction on held-out records from the source datasets.
+We validate the methodology through three approaches. First, we validate against all administrative targets to assess aggregate performance. Second, we test stability by examining weight distributions and effective sample sizes. Third, we validate the imputation quality through out-of-sample prediction accuracy metrics.
 
 ### Quality checks
 

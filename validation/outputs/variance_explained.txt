@@ -1,0 +1,6 @@
+Variance Explained by Predictors (R-squared)
+========================================
+
+Wages: 67%
+Capital Income: 54%
+Retirement Income: 71%

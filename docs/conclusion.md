@@ -1,6 +1,6 @@
 # Conclusion
 
-We have presented a methodology for creating enhanced microsimulation datasets that combine the strengths of survey and administrative data sources. The Enhanced CPS dataset demonstrates that careful application of modern statistical methods can substantially improve the data available for policy analysis.
+We have presented a methodology for creating enhanced microsimulation datasets that combine the strengths of survey and administrative data sources. The Enhanced CPS dataset demonstrates that careful application of modern statistical methods can improve the data available for policy analysis.
 
 ## Summary of contributions
 
@@ -44,7 +44,7 @@ Beyond the specific dataset, this work demonstrates:
 
 **Open Science Benefits**: Making methods and data publicly available accelerates research progress.
 
-**Practical Solutions**: Perfect data may never exist, but pragmatic enhancements can substantially improve analysis capabilities.
+**Practical Solutions**: Perfect data may never exist, but pragmatic enhancements can improve analysis capabilities.
 
 **Collaborative Potential**: Open-source approaches enable community contributions and continuous improvement.
 
@@ -76,7 +76,7 @@ We encourage researchers to:
 
 ## Final thoughts
 
-The Enhanced CPS represents one approach to a fundamental challenge in microsimulation: the need for comprehensive, accurate microdata. While not perfect, it demonstrates that substantial improvements are possible through careful methodology and open collaboration.
+The Enhanced CPS represents one approach to a fundamental challenge in microsimulation: the need for accurate microdata. While not perfect, it demonstrates that improvements are possible through careful methodology and open collaboration.
 
 As data availability evolves and methods advance, we hope this work contributes to a future where policy analysis rests on increasingly solid empirical foundations. The ultimate goal remains better informed policy decisions that improve social welfare.
 

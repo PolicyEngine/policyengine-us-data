@@ -1,4 +1,4 @@
-# Enhanced CPS: combining survey and administrative data for microsimulation
+# Enhanced CPS: Combining Survey and Administrative Data for Microsimulation
 
 The Enhanced CPS dataset provides the microdata foundation for PolicyEngine's US tax and benefit microsimulation model. This documentation describes how we combine the Current Population Survey with IRS administrative data to create a dataset that accurately represents American households for policy analysis.
 

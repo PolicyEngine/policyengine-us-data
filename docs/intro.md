@@ -1,14 +1,14 @@
-# Enhanced CPS: Combining Survey and Administrative Data for Microsimulation
+# Enhanced CPS: combining survey and administrative data for microsimulation
 
 The Enhanced CPS dataset provides the microdata foundation for PolicyEngine's US tax and benefit microsimulation model. This documentation describes how we combine the Current Population Survey with IRS administrative data to create a dataset that accurately represents American households for policy analysis.
 
-## Quick Start
+## Quick start
 
 ```python
 from policyengine_us import Microsimulation
 from policyengine_us_data.datasets.cps.enhanced_cps import EnhancedCPS
 
-# Load the Enhanced CPS for 2024
+# Load the enhanced CPS for 2024
 sim = Microsimulation(dataset=EnhancedCPS(2024))
 
 # Calculate poverty rate
@@ -17,7 +17,7 @@ poverty_rate = poverty.mean()
 print(f"Poverty rate: {poverty_rate:.1%}")
 ```
 
-## Documentation Structure
+## Documentation structure
 
 This documentation covers:
 

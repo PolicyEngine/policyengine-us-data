@@ -1,6 +1,6 @@
-# Technical Details
+# Technical details
 
-## Quantile Regression Forests
+## Quantile regression forests
 
 The imputation stage uses Quantile Regression Forests (QRF), an extension of random forests that estimates conditional quantiles rather than means. This approach:
 
@@ -29,11 +29,11 @@ quantile = np.random.beta(1, 1)  # Uniform over [0,1]
 prediction = qrf.predict(X_test, quantiles=[quantile])
 ```
 
-## Reweighting Algorithm
+## Reweighting algorithm
 
 The calibration stage uses PyTorch to optimize household weights through gradient descent:
 
-### Objective Function
+### Objective function
 
 Minimize mean squared relative error across all targets:
 
@@ -46,18 +46,18 @@ Where:
 - `M`: Loss matrix (households × targets)
 - `t`: Target values vector
 
-### Optimization Details
+### Optimization details
 
 - **Optimizer**: Adam with learning rate 0.1
 - **Iterations**: 5,000 or until convergence
 - **Regularization**: 5% dropout during training
 - **Initialization**: Log of original CPS weights
 
-## Loss Matrix Construction
+## Loss matrix construction
 
 The loss matrix captures each household's contribution to calibration targets:
 
-### Target Categories
+### Target categories
 
 1. **IRS Income Components**
    - By AGI bracket and filing status
@@ -78,7 +78,7 @@ The loss matrix captures each household's contribution to calibration targets:
    - Simulated revenue effects of repeal
    - SALT, charitable, mortgage interest, medical
 
-### Matrix Assembly
+### Matrix assembly
 
 ```python
 def build_loss_matrix(dataset, year):
@@ -95,21 +95,21 @@ def build_loss_matrix(dataset, year):
     return np.column_stack(matrix), np.array(targets), names
 ```
 
-## Performance Optimization
+## Performance optimization
 
-### Computational Efficiency
+### Computational efficiency
 - Sparse matrix operations where applicable
 - Batch processing for microsimulation
 - Caching of intermediate results
 - Parallelization of independent calculations
 
-### Memory Management
+### Memory management
 - Chunked reading of large datasets
 - Efficient dtype selection
 - Garbage collection between stages
 - HDF5 compression for storage
 
-## Validation Framework
+## Validation framework
 
 ### Cross-Validation
 - 5-fold validation on calibration targets

@@ -3,7 +3,6 @@
 The Enhanced CPS dataset is created through a two-stage process: imputation followed by reweighting. This approach leverages the strengths of both data sources while mitigating their individual limitations. The imputation stage uses Quantile Regression Forests to transfer 72 tax variables from the PUF onto CPS records, creating what we call the Extended CPS. The reweighting stage then optimizes household weights to match over 7,000 administrative targets, producing the final Enhanced CPS with weights calibrated to official statistics. A visual overview of this process is provided in Appendix Figure A1.
 
 :::{card} Enhancement Process Overview
-:shadow: md
 
 ```{mermaid}
 flowchart TD
@@ -47,9 +46,9 @@ The imputation uses seven variables available in both datasets. These include ag
 
 The limited predictor set raises concerns about common support between datasets. We conduct extensive diagnostics to validate the overlap:
 
-1. **Overlap Coefficients**: For each predictor, we calculate the overlap coefficient {cite}`weitzman1970`, which measures the area of intersection between the two distributions. All predictors show overlap coefficients above 0.85, indicating strong common support.
+1. **Overlap Coefficients**: For each predictor, we calculate the overlap coefficient {cite:p}`weitzman1970`, which measures the area of intersection between the two distributions. All predictors show overlap coefficients above 0.85, indicating strong common support.
 
-2. **Standardized Mean Differences**: The SMD for all predictors is below 0.25, meeting conventional thresholds for adequate balance {cite}`rubin2001`.
+2. **Standardized Mean Differences**: The SMD for all predictors is below 0.25, meeting conventional thresholds for adequate balance {cite:p}`rubin2001`.
 
 3. **Joint Distribution Tests**: Kolmogorov-Smirnov tests show no significant differences in predictor distributions after accounting for survey weights (p > 0.05 for all variables).
 

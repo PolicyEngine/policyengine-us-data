@@ -17,12 +17,21 @@ def upload_datasets():
         STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
     ]
 
+    # Filter to only existing files
+    existing_files = []
     for file_path in dataset_files:
-        if not file_path.exists():
-            raise ValueError(f"File {file_path} does not exist.")
+        if file_path.exists():
+            existing_files.append(file_path)
+            print(f"✓ Found: {file_path}")
+        else:
+            print(f"✗ Missing: {file_path} (skipping)")
 
+    if not existing_files:
+        raise ValueError("No dataset files found to upload!")
+
+    print(f"\nUploading {len(existing_files)} files...")
     upload_data_files(
-        files=dataset_files,
+        files=existing_files,
         hf_repo_name="policyengine/policyengine-us-data",
         hf_repo_type="model",
         gcs_bucket_name="policyengine-us-data",

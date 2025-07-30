@@ -1,5 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-      - Made upload script more robust by only uploading files that exist
-      - Added logging to show which files are being uploaded vs skipped

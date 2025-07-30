@@ -523,3 +523,9 @@
     fixed:
     - Fixed push CI upload failure by using 'secrets: inherit' in reusable workflows
   date: 2025-07-30 19:42:58
+- bump: patch
+  changes:
+    fixed:
+    - Made upload script more robust by only uploading files that exist
+    - Added logging to show which files are being uploaded vs skipped
+  date: 2025-07-30 20:28:05

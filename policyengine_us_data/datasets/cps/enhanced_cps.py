@@ -36,10 +36,10 @@ def reweight(
     dropout_rate=0.05,
     log_path="calibration_log.csv",
     epochs=500,
-    l0_lambda=5e-6,  # the action happens between 1e-6 and 1e-5
-    init_mean=0.999,  # initial proportion with non-zero weights, set near 0
-    temperature=0.5,  # Usual values .5 to 3, .5 was working better
-    seed=0,
+    l0_lambda=2.644e-7,
+    init_mean=0.999,  # initial proportion with non-zero weights
+    temperature=0.25,
+    seed=1456,
 ):
     set_seeds(seed)
     target_names = np.array(loss_matrix.columns)
@@ -141,7 +141,10 @@ def reweight(
     )
 
     # New (Sparse) path depending on temperature, init_mean, l0_lambda -----
-    # make a calibration_log_sparse.csv path
+    logging.info(
+        f"Sparse optimization using seed {seed}, temp {temperature} "
+        + f"init_mean {init_mean}, l0_lambda {l0_lambda}"
+    )
     set_seeds(seed)
     p = Path(log_path)
     log_path_sparse = p.with_name(f"{p.stem}_sparse{p.suffix}")

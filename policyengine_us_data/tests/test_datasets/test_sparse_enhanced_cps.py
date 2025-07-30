@@ -165,8 +165,6 @@ def test_sparse_ssn_card_type_none_target(sim):
     assert pct_error < TOLERANCE
 
 
-
-
 def test_sparse_aca_calibration(sim):
 
     TARGETS_PATH = Path(

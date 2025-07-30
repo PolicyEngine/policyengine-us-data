@@ -145,8 +145,6 @@ def make_person(age, years_in_us, ssn_code, birth_country):
     ), np.array([ssn_code])
 
 
-
-
 def test_aca_calibration():
 
     import pandas as pd

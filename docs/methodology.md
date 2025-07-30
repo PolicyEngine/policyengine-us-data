@@ -1,183 +1,263 @@
 # Methodology
 
-The Enhanced CPS dataset is created through a two-stage process: imputation followed by reweighting. This approach leverages the strengths of both data sources while mitigating their individual limitations. The imputation stage uses Quantile Regression Forests to transfer 72 tax variables from the PUF onto CPS records, creating what we call the Extended CPS. The reweighting stage then optimizes household weights to match over 7,000 administrative targets, producing the final Enhanced CPS with weights calibrated to official statistics. A visual overview of this process is provided in Appendix Figure A1.
+The Enhanced CPS dataset is created through a two-stage process: imputation followed by reweighting. The imputation stage creates a copy of the CPS and uses Quantile Regression Forests to impute tax variables from the PUF onto this copy, creating the Extended CPS. The reweighting stage then optimizes household weights to match administrative targets, producing the Enhanced CPS with weights calibrated to statistics.
 
-:::{card} Enhancement Process Overview
-
-```{mermaid}
+```mermaid
 flowchart TD
-    A[CPS Data] --> B[Stage 1: Imputation]
-    C[PUF Data] --> B
-    D[SIPP/SCF/ACS] --> B
-    B --> E[Extended CPS]
-    E --> F[Stage 2: Reweighting]
-    G[7,000+ Targets] --> F
-    F --> H[Enhanced CPS]
+    subgraph src["Source Datasets"]
+        direction LR
+        CPS["CPS ASEC"]
+        PUF["IRS PUF"]
+        SIPP["SIPP"]
+        SCF["SCF"]
+        ACS["ACS"]
+    end
+    
+    Age["Age all to target year"]
+    
+    subgraph aged["Aged Datasets"]
+        direction LR
+        AgedCPS["Aged CPS"]
+        AgedPUF["Aged PUF"]
+        AgedSIPP["Aged SIPP"]
+        AgedSCF["Aged SCF"]
+        AgedACS["Aged ACS"]
+    end
+    
+    ImpOther["Impute SIPP/SCF/ACS variables to CPS"]
+    UpdatedCPS["CPS with additional vars"]
+    
+    Clone["Clone CPS"]
+    QRF["Train QRF"]
+    
+    Copy1["CPS Copy 1: Missing PUF variables filled from PUF"]
+    Copy2["CPS Copy 2: Existing variables replaced from PUF"]
+    
+    Impute["Apply QRF to impute variables"]
+    
+    Concat["Concatenate both copies"]
+    
+    Extended["Extended CPS - 2x households"]
+    
+    Targets["Administrative Targets - 7000+"]
+    
+    Reweight["Reweight Optimization"]
+    
+    Enhanced["Enhanced CPS - Final Dataset"]
+    
+    CPS --> Age
+    PUF --> Age
+    SIPP --> Age
+    SCF --> Age
+    ACS --> Age
+    
+    Age --> AgedCPS
+    Age --> AgedPUF
+    Age --> AgedSIPP
+    Age --> AgedSCF
+    Age --> AgedACS
+    
+    AgedSIPP --> ImpOther
+    AgedSCF --> ImpOther
+    AgedACS --> ImpOther
+    AgedCPS --> ImpOther
+    AgedPUF --> QRF
+    
+    ImpOther --> UpdatedCPS
+    UpdatedCPS --> Clone
+    
+    Clone --> Copy1
+    Clone --> Copy2
+    
+    QRF --> Impute
+    Copy1 --> Impute
+    Copy2 --> Impute
+    
+    Impute --> Concat
+    Concat --> Extended
+    
+    Extended --> Reweight
+    Targets --> Reweight
+    Reweight --> Enhanced
 ```
-:::
 
 ## Stage 1: Variable Imputation
 
-We impute missing variables from multiple data sources using Quantile Regression Forests (QRF). This includes both tax variables from the PUF and additional variables from SIPP, SCF, and ACS.
+The imputation process begins by aging both the CPS and PUF datasets to the target year, then creating a copy of the aged CPS dataset. This allows us to preserve the original CPS structure while adding imputed tax variables.
 
-### Quantile regression forests
+### Data Aging
 
-We use Quantile Regression Forests (QRF), an extension of random forests that estimates conditional quantiles rather than conditional means. This approach better preserves distributional characteristics compared to standard imputation methods. QRF works by building an ensemble of decision trees on the training data, but unlike standard random forests, it stores all observations in leaf nodes rather than just their means. This enables estimation of any quantile of the conditional distribution at prediction time, allowing us to sample from the full conditional distribution rather than relying on point estimates.
+All datasets (CPS, PUF, SIPP, SCF, and ACS) are aged to the target year using:
+- Population growth factors
+- Income growth indices for input variables only
 
-#### Validation against alternative methods
+Calculated values like taxes and benefits from the source datasets are stripped out. These are recalculated only after all inputs have been assembled.
 
-We validate QRF performance through out-of-sample testing:
+This ensures that the imputation models are trained and applied on contemporaneous data.
 
-1. **Prediction Accuracy**: The diagnostic script compares QRF performance to hot-deck imputation and linear regression methods.
+### Data Cloning Approach
 
-2. **Distribution Preservation**: We test joint distribution preservation by comparing correlations between variable pairs before and after imputation.
+The aged CPS dataset is cloned to create two versions:
 
-3. **Coverage Properties**: We validate prediction interval coverage to ensure proper uncertainty quantification.
+1. **CPS Copy 1 - Missing Variables**: Retains original CPS values but fills in variables that don't exist in CPS with imputed values from the PUF (e.g., mortgage interest deduction, charitable contributions)
+
+2. **CPS Copy 2 - Replaced Variables**: Replaces existing CPS income variables with imputed values from the PUF (e.g., wages and salaries, self-employment income, partnership/S-corp income)
+
+This dual approach ensures:
+- Variables not collected in CPS are added from the PUF
+- Variables collected in CPS but with measurement error are replaced with more accurate PUF values
+- Household structure and relationships are preserved in both copies
+
+### Quantile Regression Forests
+
+Quantile Regression Forests (QRF) is an extension of random forests that estimates conditional quantiles rather than conditional means. QRF builds an ensemble of decision trees on the training data and stores all observations in leaf nodes rather than just their means. This enables estimation of any quantile of the conditional distribution at prediction time.
+
+#### QRF Sampling Process
+
+The key innovation of QRF for imputation is the ability to sample from the conditional distribution rather than using point estimates. The process works as follows:
+
+1. **Train the model**: QRF estimates multiple conditional quantiles (e.g., 10 quantiles from 0 to 1)
+2. **Generate random quantiles**: For each CPS record, draw a random quantile from a Beta distribution
+3. **Select imputed value**: Use the randomly selected quantile to extract a value from the conditional distribution
+
+This approach preserves realistic variation and captures conditional tails. For example:
+- A young worker might have low wages most of the time but occasionally have high wages
+- QRF captures this by allowing the imputation to sometimes draw from the upper tail of the conditional distribution
+- This maintains realistic inequality within demographic groups
 
 ### Implementation
 
-We use the `quantile-forest` package, which provides efficient scikit-learn compatible QRF implementation. The specific implementation details are provided in Appendix A.1.
+The implementation uses the `quantile-forest` package, which provides scikit-learn compatible QRF implementation. The aged PUF is subsampled for training efficiency.
 
-### Predictor variables
+### Predictor Variables
 
-The imputation uses seven variables available in both datasets. These include age of the person, a gender indicator, tax unit filing status (whether joint or separate), and the number of dependents in the tax unit. We also use tax unit role indicators specifying whether each person is the head, spouse, or dependent within their tax unit. These predictors capture key determinants of tax variables while being reliably measured in both datasets.
+Both imputations use the same seven demographic variables available in both datasets:
+- Age of the person
+- Gender indicator
+- Tax unit filing status (joint or separate)
+- Number of dependents in the tax unit
+- Tax unit role indicators (head, spouse, or dependent)
 
-#### Common support analysis
+These demographic predictors capture key determinants of income and tax variables while being reliably measured in both datasets.
 
-The limited predictor set raises concerns about common support between datasets. We conduct diagnostics to validate the overlap:
+### Imputed Variables
 
-1. **Overlap Coefficients**: For each predictor, we calculate the overlap coefficient {cite:p}`weitzman1970`, which measures the area of intersection between the two distributions. The diagnostic script (`validation/qrf_diagnostics.py`) implements this calculation.
+The process imputes tax-related variables from the PUF in two ways:
 
-2. **Standardized Mean Differences**: We calculate SMD for all predictors to assess balance {cite:p}`rubin2001`. The calculation is implemented in `validation/qrf_diagnostics.py`.
+**Variables added to CPS Copy 1 (missing in CPS)**:
+- Mortgage interest deduction
+- Charitable contributions (cash and non-cash)
+- State and local tax deductions
+- Medical expense deductions
+- Foreign tax credit
+- Various tax credits (child care, education, energy)
+- Capital gains (short and long term)
+- Dividend income (qualified and non-qualified)
+- Other itemized deductions and adjustments
 
-3. **Joint Distribution Tests**: We perform Kolmogorov-Smirnov tests to compare predictor distributions after accounting for survey weights.
+**Variables replaced in CPS Copy 2 (existing in CPS)**:
+- Partnership and S-corp income
+- Interest deduction
+- Unreimbursed business employee expenses
+- Pre-tax contributions
+- W-2 wages from qualified business
+- Self-employed pension contributions
+- Charitable cash donations
 
-The diagnostic script calculates the variance explained by these predictors for key income variables.
+The concatenation of these two CPS copies creates the Extended CPS, effectively doubling the dataset size.
 
-### Imputed variables
+### Additional Imputations
 
-We impute 72 tax-related variables spanning six categories: employment and business income (6 variables), retirement and Social Security (4 variables), investment income (6 variables), deductions (12 variables), tax credits and adjustments (20 variables), and other income and special items (24 variables). The complete list of imputed variables is provided in Appendix Table A1. These variables cover the major components needed for tax simulation while maintaining reasonable imputation quality given the available predictors.
+Beyond PUF tax variables, the process imputes variables from three other data sources:
 
-### Additional imputations
+**SIPP (Survey of Income and Program Participation)**:
+- **Tip income**: Imputed using predictors:
+  - Employment income
+  - Age
+  - Number of children under 18
+  - Number of children under 6
 
-Beyond the 72 PUF tax variables, we impute additional variables from three other data sources. From the Survey of Income and Program Participation (SIPP), we impute tip income using employment income, age, and household composition as predictors. The Survey of Consumer Finances (SCF) provides data for imputing auto loan balances, interest payments, and net worth components. For SCF matching, we use their reference person definition to ensure proper household alignment. From the American Community Survey (ACS), we impute property taxes for homeowners, rent values for specific tenure types, and additional housing characteristics. These supplementary imputations fill gaps in the CPS that are important for policy analysis but not available in tax data.
+**SCF (Survey of Consumer Finances)**:
+- **Auto loan balances**: Matched based on household demographics and income
+- **Interest on auto loans**: Calculated from imputed balances
+- **Net worth components**: Various wealth measures not available in CPS
 
-### Sampling process
+**ACS (American Community Survey)**:
+- **Property taxes**: For homeowners, imputed based on:
+  - State of residence
+  - Household income
+  - Demographic characteristics
+- **Rent values**: For specific tenure types where CPS data is incomplete
+- **Housing characteristics**: Additional housing-related variables
 
-Rather than using point estimates, we sample from the conditional distribution to preserve realistic variation in the imputed variables. We first train QRF models on each source dataset, then for each CPS record, we estimate the conditional distribution of each variable given the predictors. We sample from this distribution using a random quantile drawn from a uniform distribution. To ensure consistency across related variables, we use the same random quantile for variables that should be correlated, such as different types of capital gains. This approach preserves realistic correlations between imputed variables while maintaining the marginal distributions observed in the source data.
+### Example: Tip Income Imputation
+
+To illustrate how QRF preserves conditional distributions, consider tip income imputation:
+
+1. **Training data**: SIPP contains workers with employment income and tip income
+2. **Predictors**: Employment income=$30,000, age=25, no children
+3. **Conditional distribution**: QRF finds that similar workers in SIPP have:
+   - 10th percentile: $0 (no tips)
+   - 50th percentile: $2,000 
+   - 90th percentile: $8,000
+   - 99th percentile: $15,000
+4. **Random draw**: If the random quantile is 0.85, the imputed tip income would be approximately $6,500
+5. **Result**: Some similar workers get no tips, others get substantial tips, preserving realistic variation
 
 ## Stage 2: Reweighting
 
-### Problem formulation
+### Problem Formulation
 
-The reweighting stage adjusts household weights to ensure the enhanced dataset matches known administrative totals. Given a loss matrix M ∈ R^{n×m} containing n households' contributions to m targets, and a target vector t ∈ R^m of official statistics, we optimize log-transformed weights w to minimize mean squared relative error. The objective function is L(w) = (1/m) Σ_i ((exp(w)^T M_i - t_i) / t_i)^2, where exp(w) represents the exponentiated weights applied to households. The log transformation ensures positive final weights while allowing unconstrained optimization.
+The reweighting stage adjusts household weights to ensure the enhanced dataset matches administrative totals. Given a loss matrix containing households' contributions to targets, and a target vector of statistics, the process optimizes log-transformed weights to minimize mean squared relative error. The log transformation ensures positive weights while allowing unconstrained optimization.
 
 ### Optimization
 
-We use PyTorch for gradient-based optimization with the Adam optimizer. The implementation uses log-transformed weights to ensure positivity constraints are satisfied throughout the optimization process. The detailed optimization code is provided in Appendix A.2.
+PyTorch is used for gradient-based optimization with the Adam optimizer. The implementation uses log-transformed weights to ensure positivity constraints are satisfied throughout the optimization process.
 
-### Dropout regularization
+### Dropout Regularization
 
-To prevent overfitting to calibration targets, we apply dropout during optimization. We randomly mask a small percentage of weights each iteration and replace masked weights with the mean of unmasked weights. This percentage was selected through sensitivity analysis on validation performance. The dropout helps ensure that no single household receives excessive weight in matching targets, improving the stability of policy simulations.
+To prevent overfitting to calibration targets, dropout is applied during optimization. Weights are randomly masked each iteration and replaced with the mean of unmasked weights. This helps ensure that no single household receives excessive weight in matching targets.
 
-#### Weight diagnostics
+### Calibration Targets
 
-The reweighting process is monitored through several diagnostics:
+The loss matrix includes targets from six sources:
 
-1. **Weight Adjustment Factors**: The ratio of final to initial weights has mean 1.0 (by construction). The distribution of adjustment factors is monitored to ensure reasonable variation.
+**IRS SOI**: Income by AGI bracket and filing status, counts of returns by category, aggregate income totals by source, deduction and credit utilization rates
 
-2. **Effective Sample Size**: The effective sample size after reweighting is tracked to ensure reasonable weight variation without excessive concentration.
+**Census**: Population by single year of age, state total populations, demographic distributions
 
-3. **Stability Analysis**: Bootstrap resampling is used to assess the stability of key statistics.
+**CBO/Treasury**: SNAP participation and benefits, SSI recipient counts, EITC claims by family size, total federal revenues
 
-### Calibration targets
+**JCT**: State and local taxes, charitable contributions, mortgage interest, medical expenses
 
-The loss matrix includes over 7,000 targets from six sources:
+**Healthcare**: Health insurance premiums, Medicare Part B premiums, medical expenses by age
 
-::::{tab-set}
+**Other**: State program participation, income distributions by geography, local area statistics
 
-:::{tab-item} IRS SOI
-**Numerous targets** covering:
-- Income by AGI bracket and filing status
-- Counts of returns by category
-- Aggregate income totals by source
-- Deduction and credit utilization rates
-:::
+### Tax and Benefit Calculations
 
-:::{tab-item} Census
-**Multiple targets** including:
-- Population by single year of age
-- State total populations
-- State populations by age group
-- Demographic distributions
-:::
-
-:::{tab-item} CBO/Treasury
-**Various targets** covering:
-- SNAP participation and benefits
-- SSI recipient counts
-- EITC claims by family size
-- Total federal revenues
-:::
-
-:::{tab-item} JCT
-**4 major deductions**:
-- State and local taxes: $21.2B
-- Charitable contributions: $65.3B
-- Mortgage interest: $24.8B
-- Medical expenses: $11.4B
-:::
-
-:::{tab-item} Healthcare
-**40+ targets** by age:
-- Health insurance premiums
-- Medicare Part B premiums
-- Other medical expenses
-- Over-the-counter health costs
-:::
-
-:::{tab-item} Other
-**1,500+ targets** including:
-- State program participation
-- Income distributions by geography
-- Local area statistics
-- Additional administrative benchmarks
-:::
-
-::::
-
-### Tax and benefit calculations
-
-Our calibration process incorporates tax and benefit calculations through PolicyEngine's microsimulation capabilities. This ensures that the reweighted dataset accurately reflects not just income distributions but also the complex interactions between tax liabilities and benefit eligibility.
-
-For tax calculations, we model federal income tax with all major credits and deductions, as well as state and local taxes. The state and local tax (SALT) calculation involves three components. First, we calculate state and local income tax liabilities for each household based on their state of residence and income characteristics. Second, we incorporate property tax amounts, using the imputed values from ACS data for homeowners. Third, we calculate sales tax deductions using the IRS sales tax tables, which most taxpayers use instead of tracking actual sales tax payments. This SALT modeling is crucial for accurately capturing itemized deductions and the impact of the SALT deduction cap.
-
-The benefit calculations span major federal and state transfer programs. We model Supplemental Nutrition Assistance Program (SNAP) eligibility and benefit amounts based on household composition, income, and expenses. Supplemental Security Income (SSI) calculations consider both income and asset tests. For healthcare programs, we model Medicaid and Children's Health Insurance Program (CHIP) eligibility using state-specific income thresholds and household characteristics. The Affordable Care Act (ACA) premium tax credits are calculated based on household income relative to the federal poverty level and available benchmark plans. We also include Special Supplemental Nutrition Program for Women, Infants, and Children (WIC) eligibility and benefit calculations.
-
-These tax and benefit calculations enter the calibration process through the loss matrix construction. Each household's calculated tax liabilities and benefit amounts contribute to aggregate targets for program participation and expenditures. This ensures that the final weights not only match income distributions but also produce realistic estimates of government revenues and transfer spending. The interaction between taxes and benefits is particularly important for analyzing reforms that affect both sides of the fiscal system, such as changes to refundable tax credits or means-tested benefits.
+The calibration process incorporates tax and benefit calculations through PolicyEngine's microsimulation capabilities. This ensures that the reweighted dataset reflects income distributions and the interactions between tax liabilities and benefit eligibility.
 
 ### Convergence
 
-The optimization parameters are defined in [`enhanced_cps.py`](https://github.com/PolicyEngine/policyengine-us-data/blob/main/policyengine_us_data/datasets/cps/enhanced_cps.py#L36). Convergence is monitored through the loss value trajectory and relative loss change at each iteration.
+The optimization converges within iterations. Convergence is monitored through the loss value trajectory, weight stability across iterations, and target achievement rates.
 
 ## Validation
 
-### Cross-validation
+### Cross-Validation
 
-We validate the methodology through three approaches. First, we validate against all administrative targets to assess aggregate performance. Second, we test stability by examining weight distributions and effective sample sizes. Third, we validate the imputation quality through out-of-sample prediction accuracy metrics.
+The methodology is validated through three approaches: cross-validation on calibration targets, testing stability across multiple random seeds, and validating imputation quality through out-of-sample prediction on held-out records from source datasets.
 
-### Quality checks
+### Quality Checks
 
-Throughout the enhancement process, we implement several quality checks to ensure data integrity. We verify that all weights remain positive after optimization, as negative weights would violate the interpretation of survey weights as population representations. Weight magnitudes are checked to ensure no single household receives excessive influence on aggregate statistics. We preserve demographic relationships by verifying that household members maintain consistent relationships after reweighting. Finally, we ensure household structures remain intact, with all members of a household receiving the same weight adjustment factor.
+Quality checks ensure data integrity. Weights remain positive after optimization. Weight magnitudes are checked to ensure no single household receives excessive influence on aggregate statistics. Household structures remain intact, with all members of a household receiving the same weight adjustment factor.
 
 ## Implementation
 
-The complete implementation is available at:
+The implementation is available at:
 [https://github.com/PolicyEngine/policyengine-us-data](https://github.com/PolicyEngine/policyengine-us-data)
 
 Key files:
 - `policyengine_us_data/datasets/cps/extended_cps.py` - Imputation stage
 - `policyengine_us_data/datasets/cps/enhanced_cps.py` - Reweighting stage
 - `policyengine_us_data/utils/loss.py` - Loss matrix construction
-
-The modular design allows researchers to modify or extend individual components while maintaining the overall framework.

@@ -35,8 +35,21 @@ docker:
 	docker buildx build --platform linux/amd64 . -t policyengine-us-data:latest
 	
 documentation:
-	jb clean docs && jb build docs
-	python docs/add_plotly_to_book.py docs
+	cd docs && \
+	rm -rf _build .jupyter_cache && \
+	rm -f _toc.yml && \
+	myst clean && \
+	myst start
+
+documentation-build:
+	cd docs && \
+	rm -rf _build .jupyter_cache && \
+	rm -f _toc.yml && \
+	myst clean && \
+	myst build --html
+
+documentation-serve:
+	cd docs/_build/html && python3 -m http.server 8080
 
 
 data:

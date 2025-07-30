@@ -21,20 +21,18 @@ project:
         - dollarmath
         - linkify
         - substitution
+        - mermaid
   bibliography:
     - references.bib
   toc:
-    - file: intro.md
-    - file: overview.md
+    - file: abstract.md
+    - file: introduction.md
     - file: background.md
     - file: data.md
     - file: methodology.md
-    - file: results.md
     - file: discussion.md
     - file: conclusion.md
-    - file: technical_details.md
-    - file: validation.ipynb
-    - file: ssn_statuses_imputation.ipynb
+    - file: appendix.md
 site:
   options:
     logo: logo.png

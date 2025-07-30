@@ -6,6 +6,7 @@
 **/_build
 **/*.pkl
 venv
+node_modules
 
 ## old (not clean) targets
 !healthcare_spending.csv

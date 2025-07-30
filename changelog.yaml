@@ -536,3 +536,9 @@
     fixed:
     - Fixed documentation deployment for MyST v2 by using timeout command
   date: 2025-07-30 21:55:05
+- changes:
+    changed:
+    - New configuration for sparse solution (~20k non-zero households)
+    - added a seeding function to remove non-deterministic behavior in reweight
+    - Made np2023_d5_mid.csv a git ignorable file (it's in hugging face)
+  date: 2025-07-30 22:29:06

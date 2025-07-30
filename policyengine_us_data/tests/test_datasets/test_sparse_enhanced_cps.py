@@ -165,68 +165,6 @@ def test_sparse_ssn_card_type_none_target(sim):
     assert pct_error < TOLERANCE
 
 
-def test_sparse_ctc_reform_child_recipient_difference(sim):
-    """
-    Test CTC reform impact for validation purposes only.
-    Note: This is no longer actively targeted in loss matrix calibration
-    due to uncertainty around assumptions from hearing comments.
-    """
-    TARGET_COUNT = 2e6
-    TOLERANCE = 4.5  # Allow +/-450% error
-
-    # Define the CTC reform
-    ctc_reform = Reform.from_dict(
-        {
-            "gov.contrib.reconciliation.ctc.in_effect": {
-                "2025-01-01.2100-12-31": True
-            }
-        },
-        country_id="us",
-    )
-
-    # Create baseline and reform simulations
-    baseline_sim = Microsimulation(dataset=sim.dataset)
-    reform_sim = Microsimulation(dataset=sim.dataset, reform=ctc_reform)
-
-    # Calculate baseline CTC recipients (children with ctc_individual_maximum > 0 and ctc_value > 0)
-    baseline_is_child = baseline_sim.calculate("is_child")
-    baseline_ctc_individual_maximum = baseline_sim.calculate(
-        "ctc_individual_maximum"
-    )
-    baseline_ctc_value = baseline_sim.calculate("ctc_value", map_to="person")
-    baseline_child_ctc_recipients = (
-        baseline_is_child
-        * (baseline_ctc_individual_maximum > 0)
-        * (baseline_ctc_value > 0)
-    ).sum()
-
-    # Calculate reform CTC recipients (children with ctc_individual_maximum > 0 and ctc_value > 0)
-    reform_is_child = reform_sim.calculate("is_child")
-    reform_ctc_individual_maximum = reform_sim.calculate(
-        "ctc_individual_maximum"
-    )
-    reform_ctc_value = reform_sim.calculate("ctc_value", map_to="person")
-    reform_child_ctc_recipients = (
-        reform_is_child
-        * (reform_ctc_individual_maximum > 0)
-        * (reform_ctc_value > 0)
-    ).sum()
-
-    # Calculate the difference (baseline - reform child CTC recipients)
-    ctc_recipient_difference = (
-        baseline_child_ctc_recipients - reform_child_ctc_recipients
-    )
-
-    pct_error = abs((ctc_recipient_difference - TARGET_COUNT) / TARGET_COUNT)
-
-    logging.info(
-        f"CTC reform child recipient difference: {ctc_recipient_difference:.0f}, "
-        f"target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}\n"
-        "Note: CTC targeting removed from calibration - this is validation only"
-    )
-    assert pct_error < TOLERANCE
-
-
 def test_sparse_aca_calibration(sim):
 
     TARGETS_PATH = Path(

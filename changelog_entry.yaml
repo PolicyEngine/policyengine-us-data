@@ -1,0 +1,5 @@
+- bump: patch
+  changes:
+    fixed:
+      - Added mystmd to dev dependencies for documentation builds
+      - Removed failing CTC reform tests that reference non-existent parameter

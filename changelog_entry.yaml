@@ -1,3 +1,4 @@
 - bump: minor
-  added:
-    - Paper sections on inequality results, weights, demographic analysis, and PolicyEngine integration.
+  changes:
+    added:
+      - Paper sections on inequality results, weights, demographic analysis, and PolicyEngine integration.

@@ -133,18 +133,6 @@ def test_undocumented_matches_ssn_none():
     assert pct_error < TOLERANCE
 
 
-def make_person(age, years_in_us, ssn_code, birth_country):
-    from types import SimpleNamespace
-    from policyengine_us import Microsimulation
-    from policyengine_core.reforms import Reform
-
-    return SimpleNamespace(
-        A_AGE=np.array([age]),
-        PEINUSYR=np.array([CURRENT_YEAR - 1981 - years_in_us]),
-        PENATVTY=np.array([birth_country]),
-    ), np.array([ssn_code])
-
-
 def test_aca_calibration():
 
     import pandas as pd

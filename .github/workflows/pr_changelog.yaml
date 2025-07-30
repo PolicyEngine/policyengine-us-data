@@ -5,10 +5,7 @@ on:
 
 jobs:
   require-entry:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Ensure changelog entry exists
-        run: .github/check-changelog-entry.sh
+    uses: ./.github/workflows/reusable_changelog_check.yaml
+    with:
+      require_entry: true
+      validate_format: true

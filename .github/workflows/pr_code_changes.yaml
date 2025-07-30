@@ -5,7 +5,6 @@ on:
   pull_request:
     branches:
       - main
-
     paths:
       - policyengine_us_data/**
       - tests/**
@@ -13,13 +12,7 @@ on:
 
 jobs:
   Lint:
-    runs-on: ubuntu-latest
-    steps:
-        - uses: actions/checkout@v4
-        - name: Check formatting
-          uses: "lgeiger/black-action@master"
-          with:
-              args: ". -l 79 --check"
+    uses: ./.github/workflows/reusable_lint.yaml
 
   SmokeTestForMultipleVersions:
     name: Smoke test (${{ matrix.os }}, Python ${{ matrix.python-version }})

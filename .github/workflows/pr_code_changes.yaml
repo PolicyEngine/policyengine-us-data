@@ -72,36 +72,21 @@ jobs:
             env:
               HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
 
-          - name: Build calibration targets
-            run: make targets
-            env:
-              PYTHON_LOG_LEVEL: INFO
-
           - name: Build datasets
             run: make data
             env:
-              PYTHON_LOG_LEVEL: INFO
-              
-          - name: Check for calibration logs
-            run: |
-              echo "Current directory contents:"
-              ls -la
-              echo "Looking for calibration logs:"
-              find . -name "calibration_log*.csv" -type f 2>/dev/null || echo "No calibration logs found"
-              
+              TEST_LITE: true
+              PYTHON_LOG_LEVEL: INFO  
           - name: Save calibration log
             uses: actions/upload-artifact@v4
             with:
               name: calibration_log.csv
-              path: ./calibration_log.csv
-            continue-on-error: true
-            
+              path: calibration_log.csv
           - name: Save sparse calibration log
             uses: actions/upload-artifact@v4
             with:
               name: calibration_log_sparse.csv
-              path: ./calibration_log_sparse.csv
-            continue-on-error: true
+              path: calibration_log_sparse.csv
           - name: Run tests
             run: pytest
 

@@ -1,0 +1,45 @@
+name: Reusable Changelog Check
+
+on:
+  workflow_call:
+    inputs:
+      require_entry:
+        description: 'Whether to require a changelog entry exists'
+        required: false
+        default: true
+        type: boolean
+      validate_format:
+        description: 'Whether to validate the changelog format'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  changelog-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Ensure changelog entry exists
+        if: inputs.require_entry
+        run: .github/check-changelog-entry.sh
+      
+      - name: Setup Python
+        if: inputs.validate_format
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+      
+      - name: Install yaml-changelog
+        if: inputs.validate_format
+        run: pip install yaml-changelog
+      
+      - name: Validate changelog format
+        if: inputs.validate_format
+        run: |
+          # Test if changelog entry is valid by trying to build it
+          if [ -f changelog_entry.yaml ]; then
+            build-changelog changelog.yaml --output /tmp/test_changelog.yaml --append-file changelog_entry.yaml --start-from 1.0.0
+          fi

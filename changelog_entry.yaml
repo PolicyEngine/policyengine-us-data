@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-    - Fixed GitHub Pages documentation rendering by setting BASE_URL for MyST

@@ -1,6 +1,6 @@
 # Methodology
 
-The Enhanced CPS dataset is created through a two-stage process: imputation followed by reweighting. The imputation stage creates a copy of the CPS and uses Quantile Regression Forests to impute tax variables from the PUF onto this copy, creating the Extended CPS. The reweighting stage then optimizes household weights to match administrative targets, producing the Enhanced CPS with weights calibrated to statistics.
+We create the Enhanced CPS dataset through a two-stage process: imputation followed by reweighting. The imputation stage creates a copy of the CPS and uses Quantile Regression Forests to impute tax variables from the PUF onto this copy, creating the Extended CPS. The reweighting stage then optimizes household weights to match administrative targets, producing the Enhanced CPS with weights calibrated to statistics.
 
 ```mermaid
 graph TD
@@ -89,17 +89,17 @@ The imputation process begins by aging both the CPS and PUF datasets to the targ
 
 ### Data Aging
 
-All datasets (CPS, PUF, SIPP, SCF, and ACS) are aged to the target year using:
+We age all datasets (CPS, PUF, SIPP, SCF, and ACS) to the target year using:
 - Population growth factors
 - Income growth indices for input variables only
 
-Calculated values like taxes and benefits from the source datasets are stripped out. These are recalculated only after all inputs have been assembled.
+We strip out calculated values like taxes and benefits from the source datasets. We recalculate these only after assembling all inputs.
 
 This ensures that the imputation models are trained and applied on contemporaneous data.
 
 ### Data Cloning Approach
 
-The aged CPS dataset is cloned to create two versions:
+We clone the aged CPS dataset to create two versions:
 
 1. **CPS Copy 1 - Missing Variables**: Retains original CPS values but fills in variables that don't exist in CPS with imputed values from the PUF (e.g., mortgage interest deduction, charitable contributions)
 
@@ -166,26 +166,26 @@ The process imputes tax-related variables from the PUF in two ways:
 - Self-employed pension contributions
 - Charitable cash donations
 
-The concatenation of these two CPS copies creates the Extended CPS, effectively doubling the dataset size.
+We concatenate these two CPS copies to create the Extended CPS, effectively doubling the dataset size.
 
 ### Additional Imputations
 
-Beyond PUF tax variables, the process imputes variables from three other data sources:
+Beyond PUF tax variables, we impute variables from three other data sources:
 
 **SIPP (Survey of Income and Program Participation)**:
-- **Tip income**: Imputed using predictors:
+- **Tip income**: We impute tip income using predictors:
   - Employment income
   - Age
   - Number of children under 18
   - Number of children under 6
 
 **SCF (Survey of Consumer Finances)**:
-- **Auto loan balances**: Matched based on household demographics and income
-- **Interest on auto loans**: Calculated from imputed balances
+- **Auto loan balances**: We match based on household demographics and income
+- **Interest on auto loans**: We calculate from imputed balances
 - **Net worth components**: Various wealth measures not available in CPS
 
 **ACS (American Community Survey)**:
-- **Property taxes**: For homeowners, imputed based on:
+- **Property taxes**: For homeowners, we impute based on:
   - State of residence
   - Household income
   - Demographic characteristics
@@ -210,15 +210,15 @@ To illustrate how QRF preserves conditional distributions, consider tip income i
 
 ### Problem Formulation
 
-The reweighting stage adjusts household weights to ensure the enhanced dataset matches administrative totals. Given a loss matrix containing households' contributions to targets, and a target vector of statistics, the process optimizes log-transformed weights to minimize mean squared relative error. The log transformation ensures positive weights while allowing unconstrained optimization.
+The reweighting stage adjusts household weights to ensure the enhanced dataset matches administrative totals. We optimize log-transformed weights given a loss matrix containing households' contributions to targets and a target vector of statistics to minimize mean squared relative error. The log transformation ensures positive weights while allowing unconstrained optimization.
 
 ### Optimization
 
-PyTorch is used for gradient-based optimization with the Adam optimizer. The implementation uses log-transformed weights to ensure positivity constraints are satisfied throughout the optimization process.
+We use PyTorch for gradient-based optimization with the Adam optimizer. The implementation uses log-transformed weights to ensure positivity constraints are satisfied throughout the optimization process.
 
 ### Dropout Regularization
 
-To prevent overfitting to calibration targets, dropout is applied during optimization. Weights are randomly masked each iteration and replaced with the mean of unmasked weights. This helps ensure that no single household receives excessive weight in matching targets.
+To prevent overfitting to calibration targets, we apply dropout during optimization. We randomly mask weights each iteration and replace them with the mean of unmasked weights. This helps ensure that no single household receives excessive weight in matching targets.
 
 ### Calibration Targets
 
@@ -242,17 +242,17 @@ The calibration process incorporates tax and benefit calculations through Policy
 
 ### Convergence
 
-The optimization converges within iterations. Convergence is monitored through the loss value trajectory, weight stability across iterations, and target achievement rates.
+The optimization converges within iterations. We monitor convergence through the loss value trajectory, weight stability across iterations, and target achievement rates.
 
 ## Validation
 
 ### Cross-Validation
 
-The methodology is validated through three approaches: cross-validation on calibration targets, testing stability across multiple random seeds, and validating imputation quality through out-of-sample prediction on held-out records from source datasets.
+We validate the methodology through three approaches: cross-validation on calibration targets, testing stability across multiple random seeds, and validating imputation quality through out-of-sample prediction on held-out records from source datasets.
 
 ### Quality Checks
 
-Quality checks ensure data integrity. Weights remain positive after optimization. Weight magnitudes are checked to ensure no single household receives excessive influence on aggregate statistics. Household structures remain intact, with all members of a household receiving the same weight adjustment factor.
+Quality checks ensure data integrity. Weights remain positive after optimization. We check weight magnitudes to ensure no single household receives excessive influence on aggregate statistics. Household structures remain intact, with all members of a household receiving the same weight adjustment factor.
 
 ## Implementation
 

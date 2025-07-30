@@ -19,6 +19,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
 )
 import os
 from pathlib import Path
+import logging
 
 
 try:
@@ -155,9 +156,12 @@ def reweight(
     iterator = trange(epochs * 2)  # lower learning rate, harder optimization
     performance = pd.DataFrame()
     for i in iterator:
+        if i == epochs:  # Halfway through, lower the temperature
+            temperature = temperature / 2
+            logging.info(f"Temperature has been reduced to {temperature}")
+
         optimizer.zero_grad()
-        weights_ = dropout_weights(weights, dropout_rate)
-        masked = torch.exp(weights_) * gates()
+        masked = torch.exp(weights) * gates()
         l_main = loss(masked)
         l = l_main + l0_lambda * gates.get_penalty()
         if (log_path_sparse is not None) and (i % 10 == 0):

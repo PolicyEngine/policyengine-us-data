@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.5] - 2025-07-30 22:43:44
+
+### Fixed
+
+- Fixed GitHub Pages documentation rendering by setting BASE_URL for MyST
+
 ## [1.42.4] - 2025-07-30 22:29:06
 
 ### Changed
@@ -652,6 +658,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.42.5]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.4...1.42.5
 [1.42.4]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.4...1.42.4
 [1.42.4]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.3...1.42.4
 [1.42.3]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.2...1.42.3

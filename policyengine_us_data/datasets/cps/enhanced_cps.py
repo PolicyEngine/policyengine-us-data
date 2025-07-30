@@ -7,6 +7,7 @@ from policyengine_us_data.utils import (
     fmt,
     HardConcrete,
     print_reweighting_diagnostics,
+    set_seeds,
 )
 import numpy as np
 from tqdm import trange
@@ -38,7 +39,9 @@ def reweight(
     l0_lambda=5e-6,  # the action happens between 1e-6 and 1e-5
     init_mean=0.999,  # initial proportion with non-zero weights, set near 0
     temperature=0.5,  # Usual values .5 to 3, .5 was working better
+    seed=0,
 ):
+    set_seeds(seed)
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
@@ -139,6 +142,7 @@ def reweight(
 
     # New (Sparse) path depending on temperature, init_mean, l0_lambda -----
     # make a calibration_log_sparse.csv path
+    set_seeds(seed)
     p = Path(log_path)
     log_path_sparse = p.with_name(f"{p.stem}_sparse{p.suffix}")
 
@@ -156,10 +160,6 @@ def reweight(
     iterator = trange(epochs * 2)  # lower learning rate, harder optimization
     performance = pd.DataFrame()
     for i in iterator:
-        if i == epochs:  # Halfway through, lower the temperature
-            temperature = temperature / 2
-            logging.info(f"Temperature has been reduced to {temperature}")
-
         optimizer.zero_grad()
         masked = torch.exp(weights) * gates()
         l_main = loss(masked)
@@ -313,6 +313,7 @@ class EnhancedCPS(Dataset):
                 targets_array_clean,
                 log_path="calibration_log.csv",
                 epochs=200,
+                seed=1456,
             )
             data["household_weight"][year] = optimised_weights_dense
             data["household_sparse_weight"][year] = optimised_weights_sparse

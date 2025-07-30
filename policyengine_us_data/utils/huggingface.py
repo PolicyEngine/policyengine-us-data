@@ -3,12 +3,6 @@ import os
 
 
 TOKEN = os.environ.get("HUGGING_FACE_TOKEN")
-if not TOKEN:
-    raise ValueError(
-        "Required environment variable 'HUGGING_FACE_TOKEN' is not set. "
-        "This token is needed to download files from Hugging Face Hub. "
-        "Please set the HUGGING_FACE_TOKEN environment variable."
-    )
 
 
 def download(

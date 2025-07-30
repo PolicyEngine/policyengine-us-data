@@ -173,7 +173,7 @@ def impute_pension_contributions_to_puf(puf_df):
         ["employment_income", "household_weight", "pre_tax_contributions"]
     )
 
-    from policyengine_us_data.utils import QRF
+    from microimpute.models.qrf import QRF
 
     pension_contributions = QRF()
 
@@ -189,7 +189,7 @@ def impute_pension_contributions_to_puf(puf_df):
 def impute_missing_demographics(
     puf: pd.DataFrame, demographics: pd.DataFrame
 ) -> pd.DataFrame:
-    from policyengine_us_data.utils import QRF
+    from microimpute.models.qrf import QRF
 
     puf_with_demographics = (
         puf[puf.RECID.isin(demographics.RECID)]

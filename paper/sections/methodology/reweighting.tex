@@ -1,19 +1,22 @@
 \subsection{Reweighting Procedure}
 
-We optimize household weights using gradient descent through PyTorch \citep{pytorch2019}.
+After creating the Extended CPS through imputation, we optimize household weights to match over 7,000 administrative targets using gradient descent through PyTorch \citep{pytorch2019}. This reweighting stage transforms the imputed dataset into the Enhanced CPS by ensuring aggregate consistency with official statistics.
 
 \subsubsection{Problem Formulation}
 
-Given a loss matrix $M$ of household characteristics and a target vector $t$, we optimize the log-transformed weights $w$ to minimize:
+Given a loss matrix $M \in \mathbb{R}^{n \times m}$ containing household contributions to $m$ targets for $n$ households, and a target vector $t \in \mathbb{R}^m$ of official statistics, we optimize the log-transformed weights $w$ to minimize the mean squared relative error:
 
-\[ L(w) = \text{mean}\left(\left(\frac{w^T M + 1}{t + 1} - 1\right)^2\right) \]
+\[ L(w) = \frac{1}{m} \sum_{i=1}^{m} \left(\frac{(e^w)^T M_i - t_i}{t_i}\right)^2 \]
 
 where:
 \begin{itemize}
-    \item $w$ are the log-transformed weights (requires grad=True)
-    \item $M$ is the loss matrix in tensor form (float32)
-    \item $t$ are the targets in tensor form (float32)
+    \item $w \in \mathbb{R}^n$ are the log-transformed household weights
+    \item $M_i$ is the $i$-th column of the loss matrix
+    \item $t_i$ is the $i$-th target value
+    \item $e^w$ represents the exponentiated weights applied to households
 \end{itemize}
+
+The log transformation ensures positivity of final weights while allowing unconstrained optimization. The relative error formulation gives equal importance to targets of different magnitudes, from billion-dollar program totals to small demographic counts.
 
 \subsubsection{Optimization Implementation}
 
@@ -27,14 +30,16 @@ The procedure follows these steps:
     \item Run for 5,000 iterations or until convergence
 \end{enumerate}
 
-\subsubsection{Dropout Application}
+\subsubsection{Dropout Application and Regularization}
 
 We apply dropout regularization during optimization to prevent overfitting:
 \begin{itemize}
-    \item Randomly masks p\% of weights each iteration (p = 5)
+    \item Randomly masks 5\% of weights each iteration (selected through sensitivity analysis on validation performance)
     \item Replaces masked weights with mean of unmasked weights
     \item Returns original weights if dropout rate is 0
 \end{itemize}
+
+Additionally, we explored L0 regularization to encourage sparse solutions, which can improve interpretability and reduce variance in final weights. The L0 penalty is implemented through the Hard Concrete distribution, allowing gradient-based optimization of discrete weight selection.
 
 \subsubsection{Convergence Monitoring}
 
@@ -64,3 +69,13 @@ The final weights are recovered by:
     \item Taking exponential of optimized log weights
     \item Converting from torch tensor to numpy array
 \end{itemize}
+
+\subsubsection{Validation and Stability Analysis}
+
+To ensure robustness of our results, we conduct several validation exercises:
+
+\textbf{Cross-validation}: We perform cross-validation by holding out subsets of calibration targets and evaluating performance on held-out targets.
+
+\textbf{Stability across random seeds}: The optimization is run with multiple random seeds to ensure stability of results.
+
+\textbf{Sensitivity to hyperparameters}: We test various dropout rates, learning rates, and iteration counts to select optimal values.

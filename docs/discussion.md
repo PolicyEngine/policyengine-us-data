@@ -4,7 +4,7 @@ This section examines the strengths, limitations, and potential applications of 
 
 ## Strengths
 
-### Coverage
+### Comprehensive Coverage
 
 The Enhanced CPS uniquely combines:
 - Demographic detail from the CPS including state identifiers
@@ -14,7 +14,7 @@ The Enhanced CPS uniquely combines:
 
 This combination enables analyses that would be difficult or impossible with existing public datasets alone.
 
-### Methodological contributions
+### Methodological Contributions
 
 The use of Quantile Regression Forests for imputation represents an advance over traditional matching methods:
 - Preserves full conditional distributions
@@ -24,7 +24,7 @@ The use of Quantile Regression Forests for imputation represents an advance over
 
 The large-scale calibration to 7,000+ targets ensures consistency with administrative benchmarks across multiple dimensions simultaneously.
 
-### Practical advantages
+### Practical Advantages
 
 For policy analysis, the dataset offers:
 - State-level geographic detail enabling subnational analysis
@@ -35,9 +35,9 @@ For policy analysis, the dataset offers:
 
 ## Limitations
 
-### Temporal inconsistency
+### Temporal Inconsistency
 
-The primary limitation is the temporal gap between data sources:
+The temporal gap between data sources presents a limitation:
 - 2015 PUF data imputed onto 2024 CPS
 - Nine-year gap in underlying populations
 - Demographic shifts not fully captured
@@ -45,7 +45,7 @@ The primary limitation is the temporal gap between data sources:
 
 While dollar amounts are uprated and calibration partially addresses this, fundamental demographic changes may not be reflected.
 
-### Imputation assumptions
+### Imputation Assumptions
 
 The QRF imputation assumes:
 - Relationships between demographics and tax variables remain stable
@@ -55,7 +55,7 @@ The QRF imputation assumes:
 
 These assumptions may not hold perfectly, particularly for subpopulations underrepresented in the PUF.
 
-### Calibration trade-offs
+### Calibration Trade-offs
 
 With 7,000+ targets, perfect fit to all benchmarks is impossible. The optimization must balance:
 - Competing objectives across target types
@@ -67,7 +67,7 @@ Users should consult validation metrics for targets most relevant to their analy
 
 ## Applications
 
-### Tax policy analysis
+### Tax Policy Analysis
 
 The dataset excels at analyzing federal tax reforms:
 - Accurate income distribution at high incomes
@@ -75,7 +75,7 @@ The dataset excels at analyzing federal tax reforms:
 - State identifiers for SALT analysis
 - Household structure for family-based policies
 
-### State and local analysis
+### State and Local Analysis
 
 Unlike the PUF, the Enhanced CPS enables state-level studies:
 - State income tax modeling
@@ -83,7 +83,7 @@ Unlike the PUF, the Enhanced CPS enables state-level studies:
 - State-specific program interactions
 - Regional economic impacts
 
-### Integrated policy analysis
+### Integrated Policy Analysis
 
 The combination of tax and transfer data supports:
 - Universal basic income proposals
@@ -91,7 +91,7 @@ The combination of tax and transfer data supports:
 - Childcare and family benefit reforms
 - Healthcare subsidy design
 
-### Microsimulation model development
+### Microsimulation Model Development
 
 As the foundation for PolicyEngine US, the dataset demonstrates how enhanced microdata improves model capabilities:
 - More accurate baseline distributions
@@ -99,9 +99,9 @@ As the foundation for PolicyEngine US, the dataset demonstrates how enhanced mic
 - Improved validation against benchmarks
 - Enhanced credibility of results
 
-## Comparison with alternatives
+## Comparison with Alternatives
 
-### Versus synthetic data
+### Versus Synthetic Data
 
 Unlike fully synthetic datasets, our approach:
 - Preserves actual survey responses where possible
@@ -109,7 +109,7 @@ Unlike fully synthetic datasets, our approach:
 - Maintains household relationships
 - Provides transparent methodology
 
-### Versus administrative data
+### Versus Administrative Data
 
 While not replacing restricted administrative data, the Enhanced CPS offers:
 - Public availability
@@ -118,7 +118,7 @@ While not replacing restricted administrative data, the Enhanced CPS offers:
 - Integration with survey content
 - No access restrictions
 
-### Versus other matching approaches
+### Versus Other Matching Approaches
 
 Compared to traditional statistical matching:
 - QRF better preserves distributions
@@ -126,9 +126,9 @@ Compared to traditional statistical matching:
 - Open-source implementation enables replication
 - Modular design allows improvements
 
-## Future directions
+## Future Directions
 
-### Methodological enhancements
+### Methodological Enhancements
 
 Potential improvements include:
 - Incorporating additional predictors for imputation
@@ -136,7 +136,7 @@ Potential improvements include:
 - Developing time-series consistency methods
 - Adding uncertainty quantification
 
-### Additional data integration
+### Additional Data Integration
 
 Future versions could incorporate:
 - State tax return data
@@ -144,7 +144,7 @@ Future versions could incorporate:
 - Consumer expenditure information
 - Health insurance claims data
 
-### Model development
+### Model Development
 
 The framework could be extended to:
 - Dynamic microsimulation over time
@@ -152,7 +152,7 @@ The framework could be extended to:
 - Geographic mobility modeling
 - Life-cycle analysis
 
-### International applications
+### International Applications
 
 The methodology could be adapted for other countries:
 - Similar data availability challenges
@@ -160,7 +160,7 @@ The methodology could be adapted for other countries:
 - Open-source implementation
 - Cross-national comparisons
 
-## Conclusion for researchers
+## Conclusion for Researchers
 
 The Enhanced CPS provides a valuable resource for policy analysis, though users should:
 - Understand the limitations, particularly temporal inconsistency

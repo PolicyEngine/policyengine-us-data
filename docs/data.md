@@ -1,26 +1,26 @@
-# Data sources
+# Data Sources
 
-Our methodology combines two primary data sources with calibration targets from six administrative sources.
+Our methodology combines two primary data sources with calibration targets from administrative sources.
 
-## Primary data sources
+## Primary Data Sources
 
 ### Current Population Survey (CPS)
 
-The Current Population Survey Annual Social and Economic Supplement (ASEC) serves as our base dataset. Conducted jointly by the Census Bureau and Bureau of Labor Statistics, the CPS ASEC provides a large sample of households with income and poverty estimates.
+The Current Population Survey Annual Social and Economic Supplement (ASEC) serves as our base dataset. Conducted jointly by the Census Bureau and Bureau of Labor Statistics, the CPS ASEC surveys households annually.
 
-The CPS provides several essential features for microsimulation modeling. It offers a representative sample of US households with demographic information including age, education, race, and employment status. The survey captures family and household relationships through a set of relationship codes that allow reconstruction of tax units and benefit units. Geographic identifiers down to the state level enable subnational policy analysis. The survey includes questions about program participation in transfer programs like SNAP, Medicaid, and housing assistance. Income data is collected by source, distinguishing between wages, self-employment, interest, dividends, and transfers.
+The CPS provides features for microsimulation modeling. It offers a representative sample of US households with demographic information including age, education, race, and employment status. The survey captures family and household relationships through relationship codes that allow reconstruction of tax units and benefit units. Geographic identifiers down to the state level enable subnational policy analysis. The survey includes questions about program participation in transfer programs like SNAP, Medicaid, and housing assistance. Income data is collected by source, distinguishing between wages, self-employment, interest, dividends, and transfers.
 
-However, the CPS faces well-documented limitations that necessitate enhancement. Income underreporting is particularly severe at high income levels, with {cite:t}`rothbaum2021` finding that the CPS captures only 50% of top incomes compared to tax records. The survey provides limited tax detail, lacking information on itemized deductions, tax credits, and capital gains realizations for revenue estimation. High income values are topcoded to protect confidentiality, further limiting the ability to analyze tax policies affecting high earners.
+The CPS faces limitations that necessitate enhancement. Income underreporting is severe at high income levels {cite}`rothbaum2021`. The survey provides limited tax detail, lacking information on itemized deductions, tax credits, and capital gains realizations. High income values are topcoded to protect confidentiality. The survey's focus on cash income means it misses non-cash compensation like employer-provided health insurance premiums.
 
 ### IRS Public Use File (PUF)
 
 The IRS Statistics of Income Public Use File contains tax return information from a stratified sample of individual income tax returns.
 
-The PUF provides tax-related variables from filed tax returns. It provides breakdowns of income by source including wages, interest, dividends, capital gains, business income, and retirement distributions. The file contains information on itemized deductions such as mortgage interest, state and local taxes, and charitable contributions. All tax credits claimed by filers are included, from the earned income tax credit to education credits. The stratified sampling design oversamples high-income returns, providing better coverage of the income distribution's upper tail than survey data. Sampling weights allow researchers to produce population-representative estimates.
+The PUF provides tax-related variables drawn from filed tax returns. It provides breakdowns of income by source including wages, interest, dividends, capital gains, business income, and retirement distributions. The file contains information on itemized deductions such as mortgage interest, state and local taxes, and charitable contributions. Tax credits claimed by filers are included, from the earned income tax credit to education credits. The stratified sampling design oversamples high-income returns. Sampling weights allow researchers to produce population-representative estimates.
 
-Despite these strengths, the PUF has limitations for policy analysis. The file contains minimal demographic information, limited to filing status and exemptions claimed. Geographic identifiers are removed to protect taxpayer privacy, preventing state-level analysis. The population excludes non-filers, who are disproportionately low-income. The PUF lacks household structure, preventing analysis of how tax policies interact with transfer programs that operate at the household level.
+The PUF has limitations for policy analysis. The file contains minimal demographic information, limited to filing status and exemptions claimed. Geographic identifiers are removed to protect taxpayer privacy, preventing state-level analysis. The population excludes non-filers. The PUF lacks household structure, preventing analysis of how tax policies interact with transfer programs that operate at the household level.
 
-## Additional data sources for imputation
+## Additional Data Sources for Imputation
 
 Beyond the PUF, we incorporate data from three additional surveys to impute specific variables missing from the CPS:
 
@@ -34,9 +34,9 @@ The SIPP provides income and program participation data. We use SIPP to impute:
 The SCF provides wealth and debt information. We use SCF to impute:
 - **Auto loan balances**: Matched based on household demographics and income
 - **Interest on auto loans**: Calculated from imputed balances
-- **Net worth components**: Various wealth measures not available in CPS
+- **Net worth components**: Wealth measures not available in CPS
 
-The SCF imputation uses their reference person definition (male in mixed-sex couples or older person in same-sex couples) to ensure proper matching.
+The SCF imputation uses their reference person definition to ensure proper matching.
 
 ### American Community Survey (ACS)
 
@@ -47,84 +47,39 @@ The ACS provides housing and geographic data. We use ACS to impute:
 
 These imputations use Quantile Regression Forests to preserve distributional characteristics while accounting for household heterogeneity.
 
-## Calibration data sources
+## Calibration Data Sources
 
-We calibrate the enhanced dataset to over 7,000 targets from six authoritative sources:
+The calibration process uses targets from six administrative sources:
 
 ### IRS Statistics of Income (SOI)
 
-Annual tabulations from tax returns provide income distributions by:
-- Adjusted Gross Income (AGI) bracket
-- Filing status
-- Income type
+The IRS SOI provides tax return aggregates by income level, filing status, and geography. These include counts of returns, aggregate income by source, deduction amounts, and credit utilization.
 
-We use SOI Table 1.4 which cross-tabulates income components by AGI ranges, creating over 5,300 distinct targets.
+### Census Population Estimates
 
-### Census population projections
+Census provides population counts by age, state, and other demographic characteristics.
 
-National and state-level demographic targets from:
-- Single-year-of-age populations
-- State total populations
-- State populations under age 5
+### Congressional Budget Office
 
-### Congressional Budget Office (CBO)
+CBO provides projections for program participation and spending, including SNAP benefits, unemployment compensation, and tax revenues.
 
-Program participation and revenue projections:
-- SNAP (Supplemental Nutrition Assistance Program)
-- Social Security benefits
-- Supplemental Security Income (SSI)
-- Unemployment compensation
-- Individual income tax revenue
+### Joint Committee on Taxation
 
-### Joint Committee on Taxation (JCT)
+JCT provides estimates of tax expenditures for major deductions and credits.
 
-Tax expenditure estimates for major deductions from the [JCT 2024 Tax Expenditures Report (JCX-48-24)](https://www.jct.gov/publications/2024/jcx-48-24/). See `policyengine_us_data/utils/loss.py` lines 622-628 for the specific values used in calibration.
+### Healthcare Spending Data
 
-### Treasury Department
+Various sources provide data on health insurance premiums, Medicare costs, and medical spending by age group.
 
-Additional program totals:
-- Earned Income Tax Credit by number of children
-- Total EITC expenditure
+### State Administrative Data
 
-### Healthcare spending data
+State-level program participation and spending data from various state agencies.
 
-Age-stratified medical expenditures from calibration data:
-- Health insurance premiums (excluding Medicare Part B)
-- Medicare Part B premiums
-- Other medical expenses
-- Over-the-counter health expenses
+## Data Access and Documentation
 
-## Addressing the temporal gap
+The enhanced dataset is publicly available through Hugging Face:
+- **Repository**: [https://huggingface.co/datasets/PolicyEngine/policyengine-us-data](https://huggingface.co/datasets/PolicyEngine/policyengine-us-data)
+- **Format**: HDF5 files compatible with PolicyEngine and other microsimulation frameworks
+- **Updates**: Released with each new CPS vintage
 
-The temporal gap between the PUF and CPS presents a methodological challenge. Economic conditions, tax law, and demographic patterns have changed since 2015. We address this temporal inconsistency through several approaches. Dollar amounts in the PUF are aged using income-specific growth factors from IRS Statistics of Income publications, ensuring that income levels reflect current economic conditions. The calibration process forces the combined dataset to match contemporary administrative totals, partially compensating for demographic shifts. However, structural changes in the economy, such as the growth of gig work or shifts in retirement patterns, may not be fully captured. Users should consider this limitation when analyzing policies sensitive to recent economic trends.
-
-## Data preparation
-
-### CPS processing
-
-We use the CPS ASEC from survey year 2024 (covering calendar year 2023 income). The Census Bureau provides:
-- Person-level records with demographics
-- Hierarchical identifiers linking persons to families and households
-- Initial survey weights
-
-### PUF processing
-
-The 2015 PUF requires several adjustments:
-- Dollar amounts aged using SOI growth factors by income type
-- Records filtered to remove those with insufficient data
-- Weights normalized to represent the filing population
-
-### Target preparation
-
-Administrative targets are collected for the appropriate year:
-- Most targets use 2024 projections
-- Historical data aged using official growth rates
-- State-level targets adjusted for population changes
-
-### Variable harmonization
-
-Combining datasets requires harmonization of variable definitions and concepts. Tax units in the PUF must be mapped to CPS households, accounting for multi-generational households and unmarried partners. Income concepts differ between sources, with the PUF using tax definitions while the CPS follows survey conventions. For example, the PUF reports taxable Social Security benefits while the CPS reports total benefits received. We harmonize these differences by using PolicyEngine's tax calculator to compute tax concepts from CPS variables before imputation.
-
-Time periods also require harmonization. The CPS collects income for the previous calendar year while asking about current-year program participation. The PUF reports tax year data with some income received in different calendar years. We align all amounts to a common tax year basis using payment timing assumptions documented in our code repository.
-
-The combination of these data sources enables us to create a dataset that maintains the CPS's demographic richness while achieving tax reporting accuracy comparable to administrative data.
+Complete documentation of variable definitions, imputation procedures, and calibration targets is maintained in the project repository.

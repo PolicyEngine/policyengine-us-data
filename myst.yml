@@ -1,0 +1,15 @@
+# See docs at: https://mystmd.org/guide/frontmatter
+version: 1
+project:
+  id: e0e97a8c-0467-4b1c-9ac5-1627f187fadc
+  # title:
+  # description:
+  # keywords: []
+  # authors: []
+  github: https://github.com/MaxGhenis/policyengine-us-data
+  # To autogenerate a Table of Contents, run "myst init --write-toc"
+site:
+  template: book-theme
+  # options:
+  #   favicon: favicon.ico
+  #   logo: site_logo.png

@@ -56,3 +56,42 @@ make clean-paper
 ```
 
 The output PDF will be at `paper/main.pdf`.
+
+## Building the Documentation
+
+### Prerequisites
+
+The documentation uses Jupyter Book 2 (pre-release) with MyST. To install:
+
+```bash
+# Install Jupyter Book 2 pre-release
+pip install --pre "jupyter-book==2.*"
+
+# Install MyST CLI
+npm install -g mystmd
+```
+
+### Building
+
+To build and serve the documentation locally:
+
+```bash
+cd docs
+myst start
+```
+
+Or alternatively from the project root:
+
+```bash
+jupyter book start docs
+```
+
+Both commands will start a local server at http://localhost:3001 where you can view the documentation.
+
+The legacy Makefile command:
+
+```bash
+make documentation
+```
+
+Note: The Makefile uses the older `jb` command syntax which may not work with Jupyter Book 2. Use `myst start` or `jupyter book start docs` instead.

@@ -1,0 +1,5 @@
+- changes:
+    changed:
+    - New configuration for sparse solution (~20k non-zero households) 
+    - added a seeding function to remove non-deterministic behavior in reweight
+    - Made np2023_d5_mid.csv a git ignorable file (it's in hugging face)

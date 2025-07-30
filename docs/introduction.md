@@ -1,13 +1,5 @@
 # Introduction
 
-```{admonition} Key Points
-:class: tip
-- Combines CPS demographic richness with PUF tax precision
-- Two-stage enhancement: imputation + reweighting
-- Calibrated to 7,000+ administrative targets
-- Fully open-source implementation
-```
-
 Microsimulation models require high-quality microdata that accurately represents both demographic characteristics and economic outcomes. The ideal dataset would combine the demographic richness and household structure of surveys with the income precision of administrative tax records. However, publicly available datasets typically excel in one dimension while lacking in the other.
 
 The Current Population Survey (CPS) Annual Social and Economic Supplement provides detailed household demographics, family relationships, and program participation data for a representative sample of US households. However, it suffers from well-documented income underreporting, particularly at the top of the distribution. The IRS Public Use File (PUF) contains accurate tax return information but lacks household structure, demographic detail, and state identifiers needed for comprehensive policy analysis.

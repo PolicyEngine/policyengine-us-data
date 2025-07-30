@@ -89,9 +89,7 @@ The imputation process begins by aging both the CPS and PUF datasets to the targ
 
 ### Data Aging
 
-We age all datasets (CPS, PUF, SIPP, SCF, and ACS) to the target year using:
-- Population growth factors
-- Income growth indices for input variables only
+We age all datasets (CPS, PUF, SIPP, SCF, and ACS) to the target year using population growth factors and income growth indices for input variables only.
 
 We strip out calculated values like taxes and benefits from the source datasets. We recalculate these only after assembling all inputs.
 
@@ -99,16 +97,9 @@ This ensures that the imputation models are trained and applied on contemporaneo
 
 ### Data Cloning Approach
 
-We clone the aged CPS dataset to create two versions:
+We clone the aged CPS dataset to create two versions. The first copy retains original CPS values but fills in variables that don't exist in CPS with imputed values from the PUF, such as mortgage interest deduction and charitable contributions. The second copy replaces existing CPS income variables with imputed values from the PUF, including wages and salaries, self-employment income, and partnership/S-corp income.
 
-1. **CPS Copy 1 - Missing Variables**: Retains original CPS values but fills in variables that don't exist in CPS with imputed values from the PUF (e.g., mortgage interest deduction, charitable contributions)
-
-2. **CPS Copy 2 - Replaced Variables**: Replaces existing CPS income variables with imputed values from the PUF (e.g., wages and salaries, self-employment income, partnership/S-corp income)
-
-This dual approach ensures:
-- Variables not collected in CPS are added from the PUF
-- Variables collected in CPS but with measurement error are replaced with more accurate PUF values
-- Household structure and relationships are preserved in both copies
+This dual approach ensures that variables not collected in CPS are added from the PUF, while variables collected in CPS but with measurement error are replaced with more accurate PUF values. Most importantly, household structure and relationships are preserved in both copies.
 
 ### Quantile Regression Forests
 
@@ -122,10 +113,7 @@ The key innovation of QRF for imputation is the ability to sample from the condi
 2. **Generate random quantiles**: For each CPS record, draw a random quantile from a Beta distribution
 3. **Select imputed value**: Use the randomly selected quantile to extract a value from the conditional distribution
 
-This approach preserves realistic variation and captures conditional tails. For example:
-- A young worker might have low wages most of the time but occasionally have high wages
-- QRF captures this by allowing the imputation to sometimes draw from the upper tail of the conditional distribution
-- This maintains realistic inequality within demographic groups
+This approach preserves realistic variation and captures conditional tails. For example, a young worker might have low wages most of the time but occasionally have high wages. QRF captures this by allowing the imputation to sometimes draw from the upper tail of the conditional distribution, thus maintaining realistic inequality within demographic groups.
 
 ### Implementation
 
@@ -133,12 +121,7 @@ The implementation uses the `quantile-forest` package, which provides scikit-lea
 
 ### Predictor Variables
 
-Both imputations use the same seven demographic variables available in both datasets:
-- Age of the person
-- Gender indicator
-- Tax unit filing status (joint or separate)
-- Number of dependents in the tax unit
-- Tax unit role indicators (head, spouse, or dependent)
+Both imputations use the same seven demographic variables available in both datasets: age of the person, gender indicator, tax unit filing status (joint or separate), number of dependents in the tax unit, and tax unit role indicators (head, spouse, or dependent).
 
 These demographic predictors capture key determinants of income and tax variables while being reliably measured in both datasets.
 
@@ -146,25 +129,9 @@ These demographic predictors capture key determinants of income and tax variable
 
 The process imputes tax-related variables from the PUF in two ways:
 
-**Variables added to CPS Copy 1 (missing in CPS)**:
-- Mortgage interest deduction
-- Charitable contributions (cash and non-cash)
-- State and local tax deductions
-- Medical expense deductions
-- Foreign tax credit
-- Various tax credits (child care, education, energy)
-- Capital gains (short and long term)
-- Dividend income (qualified and non-qualified)
-- Other itemized deductions and adjustments
+For CPS Copy 1, we add variables that are missing in CPS, including mortgage interest deduction, charitable contributions (both cash and non-cash), state and local tax deductions, medical expense deductions, and foreign tax credit. We also impute various tax credits such as child care, education, and energy credits, along with capital gains (both short and long term), dividend income (qualified and non-qualified), and other itemized deductions and adjustments.
 
-**Variables replaced in CPS Copy 2 (existing in CPS)**:
-- Partnership and S-corp income
-- Interest deduction
-- Unreimbursed business employee expenses
-- Pre-tax contributions
-- W-2 wages from qualified business
-- Self-employed pension contributions
-- Charitable cash donations
+For CPS Copy 2, we replace existing CPS income variables with more accurate PUF values, including partnership and S-corp income, interest deduction, unreimbursed business employee expenses, pre-tax contributions, W-2 wages from qualified business, self-employed pension contributions, and charitable cash donations.
 
 We concatenate these two CPS copies to create the Extended CPS, effectively doubling the dataset size.
 
@@ -172,39 +139,15 @@ We concatenate these two CPS copies to create the Extended CPS, effectively doub
 
 Beyond PUF tax variables, we impute variables from three other data sources:
 
-**SIPP (Survey of Income and Program Participation)**:
-- **Tip income**: We impute tip income using predictors:
-  - Employment income
-  - Age
-  - Number of children under 18
-  - Number of children under 6
+From the Survey of Income and Program Participation (SIPP), we impute tip income using predictors including employment income, age, number of children under 18, and number of children under 6.
 
-**SCF (Survey of Consumer Finances)**:
-- **Auto loan balances**: We match based on household demographics and income
-- **Interest on auto loans**: We calculate from imputed balances
-- **Net worth components**: Various wealth measures not available in CPS
+From the Survey of Consumer Finances (SCF), we match auto loan balances based on household demographics and income, then calculate interest on auto loans from these imputed balances. We also impute various net worth components and wealth measures not available in CPS.
 
-**ACS (American Community Survey)**:
-- **Property taxes**: For homeowners, we impute based on:
-  - State of residence
-  - Household income
-  - Demographic characteristics
-- **Rent values**: For specific tenure types where CPS data is incomplete
-- **Housing characteristics**: Additional housing-related variables
+From the American Community Survey (ACS), we impute property taxes for homeowners based on state of residence, household income, and demographic characteristics. We also impute rent values for specific tenure types where CPS data is incomplete, along with additional housing-related variables.
 
 ### Example: Tip Income Imputation
 
-To illustrate how QRF preserves conditional distributions, consider tip income imputation:
-
-1. **Training data**: SIPP contains workers with employment income and tip income
-2. **Predictors**: Employment income=$30,000, age=25, no children
-3. **Conditional distribution**: QRF finds that similar workers in SIPP have:
-   - 10th percentile: $0 (no tips)
-   - 50th percentile: $2,000 
-   - 90th percentile: $8,000
-   - 99th percentile: $15,000
-4. **Random draw**: If the random quantile is 0.85, the imputed tip income would be approximately $6,500
-5. **Result**: Some similar workers get no tips, others get substantial tips, preserving realistic variation
+To illustrate how QRF preserves conditional distributions, consider tip income imputation. The training data from SIPP contains workers with employment income and tip income. For a worker with predictors of $30,000 employment income, age 25, and no children, QRF finds that similar workers in SIPP have a conditional distribution ranging from $0 at the 10th percentile (no tips) to $2,000 at the median, $8,000 at the 90th percentile, and $15,000 at the 99th percentile. If the random quantile drawn is 0.85, the imputed tip income would be approximately $6,500. This approach ensures that some similar workers receive no tips while others receive substantial tips, preserving realistic variation.
 
 ## Stage 2: Reweighting
 

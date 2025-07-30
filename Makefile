@@ -75,7 +75,7 @@ data:
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
 	mv policyengine_us_data/storage/enhanced_cps_2024.h5 policyengine_us_data/storage/dense_enhanced_cps_2024.h5
-	mv policyengine_us_data/storage/sparse_enhanced_cps_2024.h5 policyengine_us_data/storage/enhanced_cps_2024.h5
+	cp policyengine_us_data/storage/sparse_enhanced_cps_2024.h5 policyengine_us_data/storage/enhanced_cps_2024.h5
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

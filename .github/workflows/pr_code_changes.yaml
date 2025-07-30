@@ -82,6 +82,11 @@ jobs:
             with:
               name: calibration_log.csv
               path: calibration_log.csv
+          - name: Save sparse calibration log
+            uses: actions/upload-artifact@v4
+            with:
+              name: calibration_log_sparse.csv
+              path: calibration_log_sparse.csv
           - name: Run tests
             run: pytest
 

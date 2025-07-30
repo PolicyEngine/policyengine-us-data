@@ -1,3 +1,5 @@
-- bump: minor
-  added:
-    - Paper sections on inequality results, weights, demographic analysis, and PolicyEngine integration.
+- bump: patch
+  changes:
+    fixed:
+      - Added docs/node_modules to .gitignore
+      - Fixed CURRENT_YEAR definition in make_person test function

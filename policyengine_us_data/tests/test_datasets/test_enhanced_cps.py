@@ -138,6 +138,8 @@ def make_person(age, years_in_us, ssn_code, birth_country):
     from policyengine_us import Microsimulation
     from policyengine_core.reforms import Reform
 
+    CURRENT_YEAR = 2024
+
     return SimpleNamespace(
         A_AGE=np.array([age]),
         PEINUSYR=np.array([CURRENT_YEAR - 1981 - years_in_us]),

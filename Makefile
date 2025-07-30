@@ -39,7 +39,10 @@ documentation:
 	rm -rf _build .jupyter_cache && \
 	rm -f _toc.yml && \
 	myst clean && \
-	myst build
+	( myst build --html & echo $$! > .myst.pid ) && \
+	sleep 10 && \
+	( kill `cat .myst.pid` 2>/dev/null || true ) && \
+	rm -f .myst.pid
 
 documentation-build:
 	cd docs && \

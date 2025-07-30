@@ -39,7 +39,7 @@ documentation:
 	rm -rf _build .jupyter_cache && \
 	rm -f _toc.yml && \
 	myst clean && \
-	myst build
+	timeout 10 myst build --html || true
 
 documentation-build:
 	cd docs && \

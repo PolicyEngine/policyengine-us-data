@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.4] - 2025-07-30 22:29:06
+
+### Changed
+
+- New configuration for sparse solution (~20k non-zero households)
+- added a seeding function to remove non-deterministic behavior in reweight
+- Made np2023_d5_mid.csv a git ignorable file (it's in hugging face)
+
 ## [1.42.4] - 2025-07-30 21:55:05
 
 ### Added
@@ -644,6 +652,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.42.4]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.4...1.42.4
 [1.42.4]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.3...1.42.4
 [1.42.3]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.2...1.42.3
 [1.42.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.1...1.42.2

@@ -1,3 +1,5 @@
-- bump: minor
-  added:
-    - Paper sections on inequality results, weights, demographic analysis, and PolicyEngine integration.
+- bump: patch
+  changes:
+    fixed:
+      - Removed leftover changelog entry from merged PR that was causing push CI failures
+      - Removed unused make_person function with undefined CURRENT_YEAR variable

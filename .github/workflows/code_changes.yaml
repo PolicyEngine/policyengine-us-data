@@ -6,87 +6,44 @@ on:
   push:
     branches:
       - main
-
     paths:
       - pyproject.toml
 
-env:
-  HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-  POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
-
 jobs:
   Lint:
-    runs-on: ubuntu-latest
-    steps:
-        - uses: actions/checkout@v4
-        - name: Check formatting
-          uses: "lgeiger/black-action@master"
-          with:
-              args: ". -l 79 --check"
-  Test:
-      permissions:
-        contents: "write"  # Required for auth with Github Pages deploy
-        id-token: "write"  # Required for auth with GCP
-      runs-on: ubuntu-latest
-      steps:
-          - name: Checkout repo
-            uses: actions/checkout@v2
-          - name: Install uv
-            uses: astral-sh/setup-uv@v5
+    uses: ./.github/workflows/reusable_lint.yaml
 
-          - name: Set up Python
-            uses: actions/setup-python@v2
-            with:
-                python-version: '3.13'
-          - uses: "google-github-actions/auth@v2"
-            with:
-              workload_identity_provider: "projects/322898545428/locations/global/workloadIdentityPools/policyengine-research-id-pool/providers/prod-github-provider"
-              service_account: "policyengine-research@policyengine-research.iam.gserviceaccount.com"
-          - name: Install package
-            run: uv pip install -e .[dev] --system
-          - name: Download data inputs
-            run: make download
-          - name: Build datasets
-            run: make data   
-            env:
-              PYTHON_LOG_LEVEL: INFO    
-          - name: Save calibration log
-            uses: actions/upload-artifact@v4
-            with:
-              name: calibration_log.csv
-              path: calibration_log.csv
-          - name: Run tests
-            run: pytest
-          - name: Upload data
-            run: make upload
-          - name: Test documentation builds
-            run: make documentation
-          - name: Deploy Github Pages documentation
-            uses: JamesIves/github-pages-deploy-action@v4 
-            with:
-              branch: gh-pages
-              folder: docs/_build/html
-              clean: true
+  Test:
+    needs: Lint
+    uses: ./.github/workflows/reusable_test.yaml
+    with:
+      full_suite: true
+      upload_data: true
+      deploy_docs: true
+    secrets:
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+      POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
+
   Publish:
-      runs-on: ubuntu-latest
-      needs: [Lint, Test]
-      if: github.event.head_commit.message == 'Update package version'
-      steps:
-          - name: Checkout repo
-            uses: actions/checkout@v4
-          - name: Set up Python
-            uses: actions/setup-python@v5
-            with:
-                python-version: 3.13
-          - name: Install uv
-            uses: astral-sh/setup-uv@v5
-          - name: Install package
-            run: uv pip install -e .[dev] --system
-          - name: Build package
-            run: python -m build
-          - name: Publish a Python distribution to PyPI
-            uses: pypa/gh-action-pypi-publish@release/v1
-            with:
-                user: __token__
-                password: ${{ secrets.PYPI }}
-                skip-existing: true
+    runs-on: ubuntu-latest
+    needs: [Lint, Test]
+    if: github.event.head_commit.message == 'Update package version'
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install package
+        run: uv pip install -e .[dev] --system
+      - name: Build package
+        run: python -m build
+      - name: Publish a Python distribution to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI }}
+          skip-existing: true

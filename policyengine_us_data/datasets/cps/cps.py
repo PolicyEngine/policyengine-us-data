@@ -12,7 +12,7 @@ from typing import Type
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
-from policyengine_us_data.utils import QRF
+from microimpute.models.qrf import QRF
 import logging
 
 

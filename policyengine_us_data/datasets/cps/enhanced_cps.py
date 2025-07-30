@@ -36,7 +36,7 @@ def reweight(
     epochs=500,
     l0_lambda=5e-6,  # the action happens between 1e-6 and 1e-5
     init_mean=0.999,  # initial proportion with non-zero weights, set near 0
-    temperature=0.5,  # Usual values .5 to 3, .5 was working better
+    temperature=1.0,  # Usual values .5 to 3, .5 was working better
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")

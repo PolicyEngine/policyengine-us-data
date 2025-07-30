@@ -23,6 +23,20 @@
 - **Line Length**: 79 characters max (Black configured in pyproject.toml)
 - **Python Version**: Targeting Python 3.11
 
+## Git and PR Guidelines
+- **CRITICAL**: NEVER create PRs from personal forks - ALL PRs MUST be created from branches pushed to the upstream PolicyEngine repository
+- CI requires access to secrets that are not available to fork PRs for security reasons
+- Fork PRs will fail on data download steps and cannot be merged
+- Always create branches directly on the upstream repository:
+  ```bash
+  git checkout main
+  git pull upstream main
+  git checkout -b your-branch-name
+  git push -u upstream your-branch-name
+  ```
+- Use descriptive branch names like `fix-issue-123` or `add-feature-name`
+- Always run `make format` before committing
+
 ## CRITICAL RULES FOR ACADEMIC INTEGRITY
 
 ### NEVER FABRICATE DATA OR RESULTS

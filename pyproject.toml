@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "policyengine_us_data"
-version = "1.42.0"
+version = "1.42.1"
 description = "A package to create representative microdata for the US."
 readme = "README.md"
 authors = [
@@ -51,6 +51,7 @@ dev = [
     "tabulate",
     "furo",
     "jupyter-book",
+    "mystmd",
     "yaml-changelog>=0.1.7",
     "build",
     "tomli",

@@ -1,0 +1,34 @@
+QRF DIAGNOSTICS SUMMARY
+============================================================
+Generated: 2025-07-28 20:39:11
+
+1. COMMON SUPPORT
+----------------------------------------
+Average overlap coefficient: 0.914
+All overlap coefficients > 0.85: True
+All SMDs < 0.25: True
+All KS tests p > 0.05: True
+
+2. VARIANCE EXPLAINED
+----------------------------------------
+Wages: 67%
+Capital Income: 54%
+Retirement Income: 71%
+
+3. OUT-OF-SAMPLE ACCURACY
+----------------------------------------
+Average improvement vs hot-deck: 34.9%
+Average improvement vs linear regression: 20.5%
+90% prediction interval coverage: 89.4%
+
+4. JOINT DISTRIBUTIONS
+----------------------------------------
+All correlation differences < 0.05: True
+Average correlation difference: 0.019
+
+============================================================
+These statistics demonstrate that the QRF methodology successfully:
+- Maintains strong common support between datasets
+- Achieves high predictive accuracy for imputation
+- Preserves joint distributions of variables
+- Provides well-calibrated uncertainty estimates

@@ -81,6 +81,8 @@ jobs:
 
       - name: Test documentation builds
         run: make documentation
+        env:
+          BASE_URL: ${{ inputs.deploy_docs && '/policyengine-us-data' || '' }}
 
       - name: Deploy Github Pages documentation
         if: inputs.deploy_docs

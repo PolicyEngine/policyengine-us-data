@@ -228,7 +228,7 @@ def impute_missing_demographics(
         ~puf.RECID.isin(puf_with_demographics.RECID)
     ].reset_index()
     predicted_demographics = demographics_from_puf.predict(
-        X=puf_without_demographics,
+        X=puf_without_demographics[NON_DEMOGRAPHIC_VARIABLES],
     )
     puf_with_imputed_demographics = pd.concat(
         [puf_without_demographics, predicted_demographics], axis=1

@@ -48,5 +48,4 @@ jobs:
       full_suite: true
       upload_data: false
       deploy_docs: false
-    secrets:
-      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+    secrets: inherit

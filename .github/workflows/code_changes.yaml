@@ -20,9 +20,7 @@ jobs:
       full_suite: true
       upload_data: true
       deploy_docs: true
-    secrets:
-      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-      POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
+    secrets: inherit
 
   Publish:
     runs-on: ubuntu-latest

@@ -9,6 +9,7 @@ on:
       - policyengine_us_data/**
       - tests/**
       - .github/workflows/**
+      - Makefile
 
 jobs:
   Lint:

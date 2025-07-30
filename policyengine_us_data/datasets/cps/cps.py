@@ -12,7 +12,7 @@ from typing import Type
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
-from microimpute.models.qrf import QRF
+from microimpute.utils.qrf import QRF
 import logging
 
 
@@ -1928,7 +1928,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
     donor_data = scf_data[PREDICTORS + IMPUTED_VARIABLES + weights].copy()
 
-    from microimpute.models.qrf import QRF
+    from microimpute.utils.qrf import QRF
     import logging
     import os
 

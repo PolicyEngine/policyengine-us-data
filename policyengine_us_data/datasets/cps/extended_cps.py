@@ -5,7 +5,7 @@ from policyengine_us_data.datasets.cps.cps import *
 from policyengine_us_data.datasets.puf import *
 import pandas as pd
 import os
-from microimpute.models.qrf import QRF
+from microimpute.utils.qrf import QRF
 import time
 import logging
 

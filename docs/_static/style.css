@@ -1,2 +1,72 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto+Serif:opsz@8..144&family=Roboto:wght@300&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
+
+/* PolicyEngine Colors */
+:root {
+  --pe-dark-blue: #2C6496;
+  --pe-light-blue: #5091CC;
+  --pe-teal: #39C6C0;
+  --pe-light-gray: #F2F2F2;
+  --pe-medium-gray: #BDBDBD;
+  --pe-dark-gray: #616161;
+  --pe-black: #000000;
+  --pe-white: #FFFFFF;
+}
+
+/* Apply Roboto font globally */
+body {
+  font-family: 'Roboto', sans-serif;
+}
+
+/* Apply Roboto Mono to code blocks */
+code, pre {
+  font-family: 'Roboto Mono', monospace;
+}
+
+/* Style Mermaid diagrams */
+.mermaid {
+  font-family: 'Roboto', sans-serif !important;
+}
+
+/* Override Mermaid node styles */
+.mermaid .node rect,
+.mermaid .node circle,
+.mermaid .node ellipse,
+.mermaid .node polygon,
+.mermaid .node path {
+  fill: var(--pe-light-blue) !important;
+  stroke: var(--pe-dark-blue) !important;
+  stroke-width: 2px !important;
+}
+
+.mermaid .node text {
+  fill: var(--pe-white) !important;
+  font-weight: 500 !important;
+}
+
+/* Style for specific node types */
+.mermaid .node.default rect {
+  fill: var(--pe-light-blue) !important;
+}
+
+.mermaid .node.process rect {
+  fill: var(--pe-teal) !important;
+  stroke: var(--pe-dark-blue) !important;
+}
+
+.mermaid .node.data rect {
+  fill: var(--pe-dark-blue) !important;
+  stroke: var(--pe-dark-blue) !important;
+}
+
+/* Subgraph styling */
+.mermaid .cluster rect {
+  fill: var(--pe-light-gray) !important;
+  stroke: var(--pe-medium-gray) !important;
+  stroke-width: 1px !important;
+}
+
+.mermaid .cluster text {
+  fill: var(--pe-dark-gray) !important;
+  font-weight: 700 !important;
+}
 

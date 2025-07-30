@@ -3,47 +3,45 @@
 The Enhanced CPS dataset is created through a two-stage process: imputation followed by reweighting. The imputation stage creates a copy of the CPS and uses Quantile Regression Forests to impute tax variables from the PUF onto this copy, creating the Extended CPS. The reweighting stage then optimizes household weights to match administrative targets, producing the Enhanced CPS with weights calibrated to statistics.
 
 ```mermaid
-flowchart TD
+graph TD
     subgraph src["Source Datasets"]
-        direction LR
-        CPS["CPS ASEC"]
-        PUF["IRS PUF"]
-        SIPP["SIPP"]
-        SCF["SCF"]
-        ACS["ACS"]
+        CPS["CPS ASEC"]:::data
+        PUF["IRS PUF"]:::data
+        SIPP["SIPP"]:::data
+        SCF["SCF"]:::data
+        ACS["ACS"]:::data
     end
     
-    Age["Age all to target year"]
+    Age["Age all to target year"]:::process
     
     subgraph aged["Aged Datasets"]
-        direction LR
-        AgedCPS["Aged CPS"]
-        AgedPUF["Aged PUF"]
-        AgedSIPP["Aged SIPP"]
-        AgedSCF["Aged SCF"]
-        AgedACS["Aged ACS"]
+        AgedCPS["Aged CPS"]:::data
+        AgedPUF["Aged PUF"]:::data
+        AgedSIPP["Aged SIPP"]:::data
+        AgedSCF["Aged SCF"]:::data
+        AgedACS["Aged ACS"]:::data
     end
     
-    ImpOther["Impute SIPP/SCF/ACS variables to CPS"]
-    UpdatedCPS["CPS with additional vars"]
+    ImpOther["Impute SIPP/SCF/ACS variables to CPS"]:::process
+    UpdatedCPS["CPS with additional vars"]:::data
     
-    Clone["Clone CPS"]
-    QRF["Train QRF"]
+    Clone["Clone CPS"]:::process
+    QRF["Train QRF"]:::process
     
-    Copy1["CPS Copy 1: Missing PUF variables filled from PUF"]
-    Copy2["CPS Copy 2: Existing variables replaced from PUF"]
+    Copy1["CPS Copy 1: Missing PUF variables filled from PUF"]:::data
+    Copy2["CPS Copy 2: Existing variables replaced from PUF"]:::data
     
-    Impute["Apply QRF to impute variables"]
+    Impute["Apply QRF to impute variables"]:::process
     
-    Concat["Concatenate both copies"]
+    Concat["Concatenate both copies"]:::process
     
-    Extended["Extended CPS - 2x households"]
+    Extended["Extended CPS - 2x households"]:::data
     
-    Targets["Administrative Targets - 7000+"]
+    Targets["Administrative Targets - 7000+"]:::data
     
-    Reweight["Reweight Optimization"]
+    Reweight["Reweight Optimization"]:::process
     
-    Enhanced["Enhanced CPS - Final Dataset"]
+    Enhanced["Enhanced CPS - Final Dataset"]:::output
     
     CPS --> Age
     PUF --> Age
@@ -79,6 +77,10 @@ flowchart TD
     Extended --> Reweight
     Targets --> Reweight
     Reweight --> Enhanced
+    
+    classDef data fill:#2C6496,stroke:#2C6496,color:#FFFFFF
+    classDef process fill:#39C6C0,stroke:#2C6496,color:#FFFFFF
+    classDef output fill:#5091CC,stroke:#2C6496,color:#FFFFFF
 ```
 
 ## Stage 1: Variable Imputation

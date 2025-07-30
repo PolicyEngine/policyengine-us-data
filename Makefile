@@ -39,7 +39,7 @@ documentation:
 	rm -rf _build .jupyter_cache && \
 	rm -f _toc.yml && \
 	myst clean && \
-	myst start
+	myst build
 
 documentation-build:
 	cd docs && \
@@ -50,6 +50,13 @@ documentation-build:
 
 documentation-serve:
 	cd docs/_build/html && python3 -m http.server 8080
+
+documentation-dev:
+	cd docs && \
+	rm -rf _build .jupyter_cache && \
+	rm -f _toc.yml && \
+	myst clean && \
+	myst start
 
 
 data:

@@ -26,26 +26,15 @@ Beyond the PUF, we incorporate data from three additional surveys to impute spec
 
 ### Survey of Income and Program Participation (SIPP)
 
-The SIPP provides income and program participation data. We use SIPP to impute:
-- **Tip income**: Using a Quantile Regression Forest model trained on SIPP data, we impute tip income based on employment income, age, and household composition
+The SIPP provides income and program participation data. We use SIPP primarily to impute tip income through a Quantile Regression Forest model trained on SIPP data, using employment income, age, and household composition as predictors.
 
 ### Survey of Consumer Finances (SCF)
 
-The SCF provides wealth and debt information. We use SCF to impute:
-- **Auto loan balances**: Matched based on household demographics and income
-- **Interest on auto loans**: Calculated from imputed balances
-- **Net worth components**: Wealth measures not available in CPS
-
-The SCF imputation uses their reference person definition to ensure proper matching.
+The SCF provides wealth and debt information that we use to impute several financial variables missing from the CPS. We match auto loan balances based on household demographics and income, then calculate interest on auto loans from these imputed balances. Additionally, we impute various net worth components and other wealth measures not available in CPS. The SCF imputation uses their reference person definition to ensure proper matching.
 
 ### American Community Survey (ACS)
 
-The ACS provides housing and geographic data. We use ACS to impute:
-- **Property taxes**: For homeowners, imputed based on state, household income, and demographics
-- **Rent values**: For specific tenure types where CPS data is incomplete
-- **Housing characteristics**: Additional housing-related variables
-
-These imputations use Quantile Regression Forests to preserve distributional characteristics while accounting for household heterogeneity.
+The ACS provides housing and geographic data that supplements the CPS housing information. For homeowners, we impute property taxes based on state of residence, household income, and demographic characteristics. We also impute rent values for specific tenure types where CPS data is incomplete, along with additional housing characteristics not captured in the CPS. These imputations use Quantile Regression Forests to preserve distributional characteristics while accounting for household heterogeneity.
 
 ## Calibration Data Sources
 
@@ -77,9 +66,6 @@ State-level program participation and spending data from various state agencies.
 
 ## Data Access and Documentation
 
-The enhanced dataset is publicly available through Hugging Face:
-- **Repository**: [https://huggingface.co/datasets/PolicyEngine/policyengine-us-data](https://huggingface.co/datasets/PolicyEngine/policyengine-us-data)
-- **Format**: HDF5 files compatible with PolicyEngine and other microsimulation frameworks
-- **Updates**: Released with each new CPS vintage
+The enhanced dataset is publicly available through Hugging Face at [https://huggingface.co/datasets/PolicyEngine/policyengine-us-data](https://huggingface.co/datasets/PolicyEngine/policyengine-us-data). We distribute the data as HDF5 files compatible with PolicyEngine and other microsimulation frameworks, with new releases accompanying each CPS vintage.
 
 We maintain complete documentation of variable definitions, imputation procedures, and calibration targets in the project repository.

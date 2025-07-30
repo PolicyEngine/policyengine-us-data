@@ -1,6 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-    - Fixed documentation deployment for MyST v2 by using timeout command
-    added:
-    - Fork check in PR workflows to fail fast with clear error message

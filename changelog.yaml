@@ -529,3 +529,10 @@
     - Made upload script more robust by only uploading files that exist
     - Added logging to show which files are being uploaded vs skipped
   date: 2025-07-30 20:28:05
+- bump: patch
+  changes:
+    added:
+    - Fork check in PR workflows to fail fast with clear error message
+    fixed:
+    - Fixed documentation deployment for MyST v2 by using timeout command
+  date: 2025-07-30 21:55:05

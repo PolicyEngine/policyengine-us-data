@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-      - Fixed push CI upload failure by using 'secrets: inherit' in reusable workflows

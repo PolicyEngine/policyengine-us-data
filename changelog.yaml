@@ -518,3 +518,8 @@
     - Removed leftover changelog entry from merged PR that was causing push CI failures
     - Removed unused make_person function with undefined CURRENT_YEAR variable
   date: 2025-07-30 18:19:07
+- bump: patch
+  changes:
+    fixed:
+    - Fixed push CI upload failure by using 'secrets: inherit' in reusable workflows
+  date: 2025-07-30 19:42:58

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.1] - 2025-07-30 18:19:07
+
+### Fixed
+
+- Removed leftover changelog entry from merged PR that was causing push CI failures
+- Removed unused make_person function with undefined CURRENT_YEAR variable
+
 ## [1.42.0] - 2025-07-28 16:34:40
 
 ### Added
@@ -614,6 +621,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.42.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.0...1.42.1
 [1.42.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.41.2...1.42.0
 [1.41.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.41.1...1.41.2
 [1.41.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.41.0...1.41.1

@@ -39,7 +39,7 @@ documentation:
 	rm -rf _build .jupyter_cache && \
 	rm -f _toc.yml && \
 	myst clean && \
-	myst start
+	myst build
 
 documentation-build:
 	cd docs && \
@@ -51,12 +51,13 @@ documentation-build:
 documentation-serve:
 	cd docs/_build/html && python3 -m http.server 8080
 
-database:
-	python policyengine_us_data/db/create_database_tables.py
-	python policyengine_us_data/db/load_age_targets.py
+documentation-dev:
+	cd docs && \
+	rm -rf _build .jupyter_cache && \
+	rm -f _toc.yml && \
+	myst clean && \
+	myst start
 
-clean-database:
-	rm *.db
 
 data:
 	python policyengine_us_data/utils/uprating.py

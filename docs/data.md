@@ -10,7 +10,7 @@ The Current Population Survey Annual Social and Economic Supplement (ASEC) serve
 
 The CPS provides features for microsimulation modeling. It offers a representative sample of US households with demographic information including age, education, race, and employment status. The survey captures family and household relationships through relationship codes that allow reconstruction of tax units and benefit units. Geographic identifiers down to the state level enable subnational policy analysis. The survey includes questions about program participation in transfer programs like SNAP, Medicaid, and housing assistance. The survey collects income data by source, distinguishing between wages, self-employment, interest, dividends, and transfers.
 
-The CPS faces limitations that necessitate enhancement. Income underreporting is severe at high income levels {cite}`rothbaum2021`. The survey provides limited tax detail, lacking information on itemized deductions, tax credits, and capital gains realizations. The Census Bureau topcodes high income values to protect confidentiality. The survey's focus on cash income means it misses non-cash compensation like employer-provided health insurance premiums.
+The CPS faces limitations that necessitate enhancement. Income underreporting is severe at high income levels {cite:p}`rothbaum2021`. The survey provides limited tax detail, lacking information on itemized deductions, tax credits, and capital gains realizations. The Census Bureau topcodes high income values to protect confidentiality. The survey's focus on cash income means it misses non-cash compensation like employer-provided health insurance premiums.
 
 ### IRS Public Use File (PUF)
 

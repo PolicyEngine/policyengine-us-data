@@ -12,7 +12,7 @@ graph TD
         ACS["ACS"]:::data
     end
     
-    Age["Age all to target year"]:::process
+    Age("Age all to target year"):::process
     
     subgraph aged["Aged Datasets"]
         AgedCPS["Aged CPS"]:::data
@@ -22,26 +22,26 @@ graph TD
         AgedACS["Aged ACS"]:::data
     end
     
-    ImpOther["Impute SIPP/SCF/ACS variables to CPS"]:::process
+    ImpOther("Impute SIPP/SCF/ACS variables to CPS"):::process
     UpdatedCPS["CPS with additional vars"]:::data
     
-    Clone["Clone CPS"]:::process
-    QRF["Train QRF"]:::process
+    Clone("Clone CPS"):::process
+    QRF("Train QRF"):::process
     
     Copy1["CPS Copy 1: Missing PUF variables filled from PUF"]:::data
     Copy2["CPS Copy 2: Existing variables replaced from PUF"]:::data
     
-    Impute["Apply QRF to impute variables"]:::process
+    Impute("Apply QRF to impute variables"):::process
     
-    Concat["Concatenate both copies"]:::process
+    Concat("Concatenate both copies"):::process
     
     Extended["Extended CPS - 2x households"]:::data
     
-    Targets["Administrative Targets - 7000+"]:::data
+    Targets{{"Administrative Targets - 7000+"}}:::data
     
-    Reweight["Reweight Optimization"]:::process
+    Reweight("Reweight Optimization"):::process
     
-    Enhanced["Enhanced CPS - Final Dataset"]:::output
+    Enhanced{{"Enhanced CPS - Final Dataset"}}:::output
     
     CPS --> Age
     PUF --> Age

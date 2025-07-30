@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    fixed:
+    - Fixed documentation deployment for MyST v2 by handling server process

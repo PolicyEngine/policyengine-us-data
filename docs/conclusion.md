@@ -1,6 +1,6 @@
 # Conclusion
 
-We have presented a methodology for creating enhanced microsimulation datasets that combine the strengths of survey and administrative data sources. The Enhanced CPS dataset demonstrates that careful application of modern statistical methods can substantially improve the data available for policy analysis.
+We present a methodology for creating enhanced microsimulation datasets that combine the strengths of survey and administrative data sources. The Enhanced CPS dataset demonstrates that careful application of modern statistical methods can substantially improve the data available for policy analysis.
 
 ## Summary of Contributions
 
@@ -26,7 +26,7 @@ While no dataset perfectly represents the full population, the Enhanced CPS prov
 
 ## Implications for Policy Analysis
 
-The availability of enhanced microdata has immediate implications:
+Enhanced microdata availability creates immediate implications:
 
 **Improved Revenue Estimates**: More accurate representation of high incomes enables better analysis of progressive tax reforms.
 
@@ -78,6 +78,6 @@ We encourage researchers to:
 
 The Enhanced CPS represents one approach to a fundamental challenge in microsimulation: the need for comprehensive, accurate microdata. While not perfect, it demonstrates that substantial improvements are possible through careful methodology and open collaboration.
 
-As data availability evolves and methods advance, we hope this work contributes to a future where policy analysis rests on increasingly solid empirical foundations. The ultimate goal remains better informed policy decisions that improve social welfare.
+As data availability evolves and methods advance, this work contributes to a future where policy analysis rests on increasingly solid empirical foundations. Our ultimate goal remains better informed policy decisions that improve social welfare.
 
 The enhanced dataset, complete documentation, and all source code are available at [https://github.com/PolicyEngine/policyengine-us-data](https://github.com/PolicyEngine/policyengine-us-data).

@@ -1,6 +1,6 @@
 # Discussion
 
-This section examines the strengths, limitations, and potential applications of the Enhanced CPS dataset, along with directions for future development.
+We examine the strengths, limitations, and potential applications of the Enhanced CPS dataset, along with directions for future development.
 
 ## Strengths
 
@@ -43,7 +43,7 @@ The temporal gap between data sources presents a limitation:
 - Demographic shifts not fully captured
 - Tax law changes since 2015
 
-While dollar amounts are uprated and calibration partially addresses this, fundamental demographic changes may not be reflected.
+While we uprate dollar amounts and calibration partially addresses this, we may not reflect fundamental demographic changes.
 
 ### Imputation Assumptions
 
@@ -53,7 +53,7 @@ The QRF imputation assumes:
 - PUF represents the tax-filing population well
 - Missing data patterns are ignorable
 
-These assumptions may not hold perfectly, particularly for subpopulations underrepresented in the PUF.
+These assumptions may not hold perfectly, particularly for subpopulations that the PUF underrepresents.
 
 ### Calibration Trade-offs
 
@@ -93,7 +93,7 @@ The combination of tax and transfer data supports:
 
 ### Microsimulation Model Development
 
-As the foundation for PolicyEngine US, the dataset demonstrates how enhanced microdata improves model capabilities:
+As the foundation for PolicyEngine US, the dataset demonstrates how enhanced microdata improve model capabilities:
 - More accurate baseline distributions
 - Better behavioral response modeling
 - Improved validation against benchmarks
@@ -138,7 +138,7 @@ Potential improvements include:
 
 ### Additional Data Integration
 
-Future versions could incorporate:
+We could incorporate in future versions:
 - State tax return data
 - Program administrative records
 - Consumer expenditure information
@@ -146,7 +146,7 @@ Future versions could incorporate:
 
 ### Model Development
 
-The framework could be extended to:
+We could extend the framework to:
 - Dynamic microsimulation over time
 - Behavioral response estimation
 - Geographic mobility modeling
@@ -154,7 +154,7 @@ The framework could be extended to:
 
 ### International Applications
 
-The methodology could be adapted for other countries:
+Researchers could adapt the methodology for other countries:
 - Similar data availability challenges
 - Need for tax-benefit integration
 - Open-source implementation
@@ -168,4 +168,4 @@ The Enhanced CPS provides a valuable resource for policy analysis, though users 
 - Consider sensitivity to methodological choices
 - Contribute improvements to the open-source project
 
-The dataset represents a pragmatic solution to data limitations, enabling analyses that advance our understanding of tax and transfer policy impacts while we await improved data access.
+The dataset represents a pragmatic solution to data limitations. It enables analyses that advance our understanding of tax and transfer policy impacts while we await improved data access.

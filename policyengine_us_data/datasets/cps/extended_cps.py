@@ -241,7 +241,10 @@ def impute_income_variables(
         # Predict single output
         pred = model.predict(X)
         # pred is a DataFrame with one column named after the output variable
-        result[output_var] = pred.iloc[:, 0]
+        if isinstance(pred, pd.DataFrame):
+            result[output_var] = pred.iloc[:, 0].values
+        else:
+            result[output_var] = pred.values
 
         if (i + 1) % 10 == 0:
             logging.info(f"Imputed {i + 1}/{len(outputs)} variables")

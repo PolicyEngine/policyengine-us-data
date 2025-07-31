@@ -220,7 +220,13 @@ def impute_income_variables(
     predictors: list[str] = None,
     outputs: list[str] = None,
 ):
-    X_train = puf_sim.calculate_dataframe(predictors + outputs)
+    # Calculate predictors and outputs separately to handle potential calculation issues
+    X_train_predictors = puf_sim.calculate_dataframe(predictors)
+    y_train = puf_sim.calculate_dataframe(outputs)
+
+    # Combine into single dataframe for models.QRF
+    X_train = pd.concat([X_train_predictors, y_train], axis=1)
+
     X_test = cps_sim.calculate_dataframe(predictors)
 
     logging.info(f"Imputing {len(outputs)} variables using QRF")

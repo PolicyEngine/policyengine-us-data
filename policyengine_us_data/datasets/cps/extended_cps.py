@@ -5,7 +5,7 @@ from policyengine_us_data.datasets.cps.cps import *
 from policyengine_us_data.datasets.puf import *
 import pandas as pd
 import os
-from microimpute.utils.qrf import QRF
+from microimpute.models.qrf import QRF
 import time
 import logging
 
@@ -220,35 +220,26 @@ def impute_income_variables(
     predictors: list[str] = None,
     outputs: list[str] = None,
 ):
-    X_train = puf_sim.calculate_dataframe(predictors)
-    y_train = puf_sim.calculate_dataframe(outputs)
-    X = cps_sim.calculate_dataframe(predictors)
+    X_train = puf_sim.calculate_dataframe(predictors + outputs)
+    X_test = cps_sim.calculate_dataframe(predictors)
 
-    # Initialize result DataFrame
-    result = pd.DataFrame(index=X.index)
-
-    # Impute each variable separately
+    logging.info(f"Imputing {len(outputs)} variables using QRF")
     total_start = time.time()
-    for i, output_var in enumerate(outputs):
-        model = QRF()
-
-        # Train on single output
-        model.fit(
-            X_train,
-            y_train[[output_var]],
-        )
-
-        # Predict single output
-        pred = model.predict(X)
-        # pred is a DataFrame with one column named after the output variable
-        if isinstance(pred, pd.DataFrame):
-            result[output_var] = pred.iloc[:, 0].values
-        else:
-            result[output_var] = pred.values
-
-        if (i + 1) % 10 == 0:
-            logging.info(f"Imputed {i + 1}/{len(outputs)} variables")
-
+    
+    # Use models.QRF which can handle multiple variables at once
+    qrf = QRF()
+    fitted_model = qrf.fit(
+        X_train=X_train,
+        predictors=predictors,
+        imputed_variables=outputs,
+    )
+    
+    # Predict all variables at once
+    imputed_values = fitted_model.predict(X_test=X_test)
+    
+    # Extract the 0.5 quantile (median) predictions
+    result = imputed_values[0.5]
+    
     logging.info(
         f"Imputing {len(outputs)} variables took {time.time() - total_start:.2f} seconds total"
     )

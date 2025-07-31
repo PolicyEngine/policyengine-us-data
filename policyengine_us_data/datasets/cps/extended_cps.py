@@ -250,15 +250,25 @@ def impute_income_variables(
     total_start = time.time()
 
     # Batch variables to avoid memory issues with sequential imputation
-    batch_size = 20  # Process 20 variables at a time
+    batch_size = 10  # Reduce to 10 variables at a time
     result = pd.DataFrame(index=X_test.index)
+
+    # Sample training data more aggressively upfront
+    sample_size = min(3000, len(X_train))  # Reduced from 5000
+    if len(X_train) > sample_size:
+        logging.info(
+            f"Sampling training data from {len(X_train)} to {sample_size} rows"
+        )
+        X_train_sampled = X_train.sample(n=sample_size, random_state=42)
+    else:
+        X_train_sampled = X_train
 
     for batch_start in range(0, len(available_outputs), batch_size):
         batch_end = min(batch_start + batch_size, len(available_outputs))
         batch_vars = available_outputs[batch_start:batch_end]
 
         logging.info(
-            f"Processing batch {batch_start//batch_size + 1}: variables {batch_start+1}-{batch_end}"
+            f"Processing batch {batch_start//batch_size + 1}: variables {batch_start+1}-{batch_end} ({batch_vars})"
         )
 
         # Force garbage collection before each batch
@@ -267,21 +277,18 @@ def impute_income_variables(
         # Create a fresh QRF for each batch
         qrf = QRF()
 
-        # Sample training data for this batch
-        batch_X_train = X_train[predictors + batch_vars].copy()
-        if len(batch_X_train) > 5000:
-            batch_X_train = batch_X_train.sample(
-                n=5000, random_state=42 + batch_start
-            )
+        # Use pre-sampled data for this batch
+        batch_X_train = X_train_sampled[predictors + batch_vars].copy()
 
         # Fit model for this batch with sequential imputation within the batch
         fitted_model = qrf.fit(
             X_train=batch_X_train,
             predictors=predictors,
             imputed_variables=batch_vars,
-            n_estimators=30,
-            max_depth=8,
-            min_samples_leaf=30,
+            n_estimators=20,  # Further reduced from 30
+            max_depth=6,  # Further reduced from 8
+            min_samples_leaf=50,  # Increased from 30
+            n_jobs=1,  # Single thread to reduce memory overhead
         )
 
         # Predict for this batch

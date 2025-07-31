@@ -225,7 +225,7 @@ def impute_income_variables(
 
     logging.info(f"Imputing {len(outputs)} variables using QRF")
     total_start = time.time()
-    
+
     # Use models.QRF which can handle multiple variables at once
     qrf = QRF()
     fitted_model = qrf.fit(
@@ -233,13 +233,13 @@ def impute_income_variables(
         predictors=predictors,
         imputed_variables=outputs,
     )
-    
+
     # Predict all variables at once
     imputed_values = fitted_model.predict(X_test=X_test)
-    
+
     # Extract the 0.5 quantile (median) predictions
     result = imputed_values[0.5]
-    
+
     logging.info(
         f"Imputing {len(outputs)} variables took {time.time() - total_start:.2f} seconds total"
     )

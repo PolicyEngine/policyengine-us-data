@@ -176,19 +176,19 @@ def impute_pension_contributions_to_puf(puf_df):
     from microimpute.models.qrf import QRF
 
     qrf = QRF()
-    
+
     # Combine predictors and target into single DataFrame for models.QRF
     cps_train = cps_df[["employment_income", "pre_tax_contributions"]]
-    
+
     fitted_model = qrf.fit(
         X_train=cps_train,
         predictors=["employment_income"],
         imputed_variables=["pre_tax_contributions"],
     )
-    
+
     # Predict using the fitted model
     predictions = fitted_model.predict(X_test=puf_df[["employment_income"]])
-    
+
     # Return the median (0.5 quantile) predictions
     return predictions[0.5]["pre_tax_contributions"]
 
@@ -225,10 +225,12 @@ def impute_missing_demographics(
     ]
 
     qrf = QRF()
-    
+
     # Prepare training data with predictors and variables to impute
-    train_data = puf_with_demographics[NON_DEMOGRAPHIC_VARIABLES + DEMOGRAPHIC_VARIABLES]
-    
+    train_data = puf_with_demographics[
+        NON_DEMOGRAPHIC_VARIABLES + DEMOGRAPHIC_VARIABLES
+    ]
+
     fitted_model = qrf.fit(
         X_train=train_data,
         predictors=NON_DEMOGRAPHIC_VARIABLES,
@@ -238,12 +240,12 @@ def impute_missing_demographics(
     puf_without_demographics = puf[
         ~puf.RECID.isin(puf_with_demographics.RECID)
     ].reset_index()
-    
+
     # Predict demographics
     predictions = fitted_model.predict(
         X_test=puf_without_demographics[NON_DEMOGRAPHIC_VARIABLES]
     )
-    
+
     # Get median predictions
     predicted_demographics = predictions[0.5]
     puf_with_imputed_demographics = pd.concat(

@@ -223,22 +223,33 @@ def impute_income_variables(
     X_train = puf_sim.calculate_dataframe(predictors)
     y_train = puf_sim.calculate_dataframe(outputs)
     X = cps_sim.calculate_dataframe(predictors)
-    y = pd.DataFrame(columns=outputs, index=X.index)
-    model = QRF()
-    start = time.time()
-    model.fit(
-        X_train,
-        y_train,
-    )
+    
+    # Initialize result DataFrame
+    result = pd.DataFrame(index=X.index)
+    
+    # Impute each variable separately
+    total_start = time.time()
+    for i, output_var in enumerate(outputs):
+        model = QRF()
+        
+        # Train on single output
+        model.fit(
+            X_train,
+            y_train[[output_var]],
+        )
+        
+        # Predict single output
+        pred = model.predict(X)
+        result[output_var] = pred[output_var]
+        
+        if (i + 1) % 10 == 0:
+            logging.info(f"Imputed {i + 1}/{len(outputs)} variables")
+        
     logging.info(
-        f"Training imputation models from the PUF took {time.time() - start:.2f} seconds"
+        f"Imputing {len(outputs)} variables took {time.time() - total_start:.2f} seconds total"
     )
-    start = time.time()
-    y = model.predict(X)
-    logging.info(
-        f"Predicting imputed values took {time.time() - start:.2f} seconds"
-    )
-    return y
+    
+    return result
 
 
 class ExtendedCPS_2024(ExtendedCPS):

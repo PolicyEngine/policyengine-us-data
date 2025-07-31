@@ -1928,7 +1928,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
     donor_data = scf_data[PREDICTORS + IMPUTED_VARIABLES + weights].copy()
 
-    from microimpute.utils.qrf import QRF
+    from microimpute.models.qrf import QRF
     import logging
     import os
 

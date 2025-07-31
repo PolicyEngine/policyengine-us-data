@@ -8,6 +8,7 @@ import os
 from microimpute.models.qrf import QRF
 import time
 import logging
+import gc
 
 # These are sorted by magnitude.
 # First 15 contain 90%.
@@ -220,22 +221,25 @@ def impute_income_variables(
     predictors: list[str] = None,
     outputs: list[str] = None,
 ):
-    # Calculate predictors and outputs separately to handle potential calculation issues
-    X_train_predictors = puf_sim.calculate_dataframe(predictors)
-    y_train = puf_sim.calculate_dataframe(outputs)
+    # Calculate all variables together to preserve dependencies
+    X_train = puf_sim.calculate_dataframe(predictors + outputs)
 
-    # Filter outputs to only include variables that were successfully calculated
-    available_outputs = [col for col in outputs if col in y_train.columns]
-    missing_outputs = [col for col in outputs if col not in y_train.columns]
+    # Check which outputs are actually in the result
+    available_outputs = [col for col in outputs if col in X_train.columns]
+    missing_outputs = [col for col in outputs if col not in X_train.columns]
 
     if missing_outputs:
         logging.warning(
-            f"Skipping {len(missing_outputs)} variables not available in PUF: {missing_outputs[:5]}..."
+            f"The following {len(missing_outputs)} variables were not calculated: {missing_outputs}"
         )
+        # Log the specific missing variable that's causing issues
+        if "recapture_of_investment_credit" in missing_outputs:
+            logging.error(
+                "recapture_of_investment_credit is missing from PUF calculation!"
+            )
 
-    # Combine into single dataframe for models.QRF
-    X_train = pd.concat(
-        [X_train_predictors, y_train[available_outputs]], axis=1
+    logging.info(
+        f"X_train shape: {X_train.shape}, columns: {len(X_train.columns)}"
     )
 
     X_test = cps_sim.calculate_dataframe(predictors)
@@ -245,16 +249,28 @@ def impute_income_variables(
     )
     total_start = time.time()
 
+    # Force garbage collection before starting memory-intensive operation
+    gc.collect()
+    logging.info(f"Forced garbage collection before imputation")
+
     # Use models.QRF which does sequential imputation
-    # Consider using fewer trees to reduce memory usage
+    # Only try to impute variables that are actually in X_train
     qrf = QRF()
+
+    # Consider sampling X_train if it's too large
+    if len(X_train) > 5000:
+        logging.info(
+            f"Sampling X_train from {len(X_train)} to 5000 rows to reduce memory usage"
+        )
+        X_train = X_train.sample(n=5000, random_state=42)
+
     fitted_model = qrf.fit(
         X_train=X_train,
         predictors=predictors,
-        imputed_variables=available_outputs,
-        n_estimators=50,  # Reduce from default 100 to save memory
-        max_depth=10,  # Limit tree depth to save memory
-        min_samples_leaf=20,  # Increase to reduce model complexity
+        imputed_variables=available_outputs,  # Only use variables that were successfully calculated
+        n_estimators=30,  # Further reduce from 50 to 30 to save memory
+        max_depth=8,  # Further reduce tree depth
+        min_samples_leaf=30,  # Increase to reduce model complexity
     )
 
     # Predict all variables at once
@@ -262,6 +278,11 @@ def impute_income_variables(
 
     # Extract the 0.5 quantile (median) predictions
     result = imputed_values[0.5]
+
+    # Clean up to free memory
+    del fitted_model
+    del imputed_values
+    gc.collect()
 
     # Add zeros for missing variables
     for var in missing_outputs:

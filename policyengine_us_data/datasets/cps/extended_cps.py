@@ -245,44 +245,59 @@ def impute_income_variables(
     X_test = cps_sim.calculate_dataframe(predictors)
 
     logging.info(
-        f"Imputing {len(available_outputs)} variables using sequential QRF"
+        f"Imputing {len(available_outputs)} variables using batched sequential QRF"
     )
     total_start = time.time()
 
-    # Force garbage collection before starting memory-intensive operation
-    gc.collect()
-    logging.info(f"Forced garbage collection before imputation")
+    # Batch variables to avoid memory issues with sequential imputation
+    batch_size = 20  # Process 20 variables at a time
+    result = pd.DataFrame(index=X_test.index)
 
-    # Use models.QRF which does sequential imputation
-    # Only try to impute variables that are actually in X_train
-    qrf = QRF()
+    for batch_start in range(0, len(available_outputs), batch_size):
+        batch_end = min(batch_start + batch_size, len(available_outputs))
+        batch_vars = available_outputs[batch_start:batch_end]
 
-    # Consider sampling X_train if it's too large
-    if len(X_train) > 5000:
         logging.info(
-            f"Sampling X_train from {len(X_train)} to 5000 rows to reduce memory usage"
+            f"Processing batch {batch_start//batch_size + 1}: variables {batch_start+1}-{batch_end}"
         )
-        X_train = X_train.sample(n=5000, random_state=42)
 
-    fitted_model = qrf.fit(
-        X_train=X_train,
-        predictors=predictors,
-        imputed_variables=available_outputs,  # Only use variables that were successfully calculated
-        n_estimators=30,  # Further reduce from 50 to 30 to save memory
-        max_depth=8,  # Further reduce tree depth
-        min_samples_leaf=30,  # Increase to reduce model complexity
-    )
+        # Force garbage collection before each batch
+        gc.collect()
 
-    # Predict all variables at once
-    imputed_values = fitted_model.predict(X_test=X_test)
+        # Create a fresh QRF for each batch
+        qrf = QRF()
 
-    # Extract the 0.5 quantile (median) predictions
-    result = imputed_values[0.5]
+        # Sample training data for this batch
+        batch_X_train = X_train[predictors + batch_vars].copy()
+        if len(batch_X_train) > 5000:
+            batch_X_train = batch_X_train.sample(
+                n=5000, random_state=42 + batch_start
+            )
 
-    # Clean up to free memory
-    del fitted_model
-    del imputed_values
-    gc.collect()
+        # Fit model for this batch with sequential imputation within the batch
+        fitted_model = qrf.fit(
+            X_train=batch_X_train,
+            predictors=predictors,
+            imputed_variables=batch_vars,
+            n_estimators=30,
+            max_depth=8,
+            min_samples_leaf=30,
+        )
+
+        # Predict for this batch
+        batch_predictions = fitted_model.predict(X_test=X_test)
+
+        # Extract median predictions and add to result
+        for var in batch_vars:
+            result[var] = batch_predictions[0.5][var]
+
+        # Clean up batch objects
+        del fitted_model
+        del batch_predictions
+        del batch_X_train
+        gc.collect()
+
+        logging.info(f"Completed batch {batch_start//batch_size + 1}")
 
     # Add zeros for missing variables
     for var in missing_outputs:

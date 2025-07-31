@@ -220,49 +220,34 @@ def impute_income_variables(
     predictors: list[str] = None,
     outputs: list[str] = None,
 ):
-    X_train = puf_sim.calculate_dataframe(predictors)
+    # Calculate predictors and outputs separately to handle potential calculation issues
+    X_train_predictors = puf_sim.calculate_dataframe(predictors)
+    y_train = puf_sim.calculate_dataframe(outputs)
+
+    # Combine into single dataframe for models.QRF
+    X_train = pd.concat([X_train_predictors, y_train], axis=1)
+
     X_test = cps_sim.calculate_dataframe(predictors)
 
-    # Initialize result DataFrame
-    result = pd.DataFrame(index=X_test.index)
-
-    # Impute each variable separately to avoid sequential dependencies and memory issues
+    logging.info(f"Imputing {len(outputs)} variables using QRF")
     total_start = time.time()
-    successful_imputations = 0
 
-    for i, output_var in enumerate(outputs):
-        try:
-            # Calculate just this variable for training
-            y_train_var = puf_sim.calculate_dataframe([output_var])
+    # Use models.QRF which can handle multiple variables at once
+    qrf = QRF()
+    fitted_model = qrf.fit(
+        X_train=X_train,
+        predictors=predictors,
+        imputed_variables=outputs,
+    )
 
-            # Combine predictors and target
-            train_data = pd.concat([X_train, y_train_var], axis=1)
+    # Predict all variables at once
+    imputed_values = fitted_model.predict(X_test=X_test)
 
-            # Use models.QRF for single variable
-            qrf = QRF()
-            fitted_model = qrf.fit(
-                X_train=train_data,
-                predictors=predictors,
-                imputed_variables=[output_var],
-            )
-
-            # Predict single output
-            predictions = fitted_model.predict(X_test=X_test)
-
-            # Extract median predictions
-            result[output_var] = predictions[0.5][output_var]
-            successful_imputations += 1
-
-        except Exception as e:
-            logging.warning(f"Failed to impute {output_var}: {e}")
-            # Use zeros for failed imputations
-            result[output_var] = 0
-
-        if (i + 1) % 10 == 0:
-            logging.info(f"Imputed {i + 1}/{len(outputs)} variables")
+    # Extract the 0.5 quantile (median) predictions
+    result = imputed_values[0.5]
 
     logging.info(
-        f"Successfully imputed {successful_imputations}/{len(outputs)} variables in {time.time() - total_start:.2f} seconds"
+        f"Imputing {len(outputs)} variables took {time.time() - total_start:.2f} seconds total"
     )
 
     return result

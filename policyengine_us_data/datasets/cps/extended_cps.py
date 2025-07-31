@@ -224,20 +224,37 @@ def impute_income_variables(
     X_train_predictors = puf_sim.calculate_dataframe(predictors)
     y_train = puf_sim.calculate_dataframe(outputs)
 
+    # Filter outputs to only include variables that were successfully calculated
+    available_outputs = [col for col in outputs if col in y_train.columns]
+    missing_outputs = [col for col in outputs if col not in y_train.columns]
+
+    if missing_outputs:
+        logging.warning(
+            f"Skipping {len(missing_outputs)} variables not available in PUF: {missing_outputs[:5]}..."
+        )
+
     # Combine into single dataframe for models.QRF
-    X_train = pd.concat([X_train_predictors, y_train], axis=1)
+    X_train = pd.concat(
+        [X_train_predictors, y_train[available_outputs]], axis=1
+    )
 
     X_test = cps_sim.calculate_dataframe(predictors)
 
-    logging.info(f"Imputing {len(outputs)} variables using QRF")
+    logging.info(
+        f"Imputing {len(available_outputs)} variables using sequential QRF"
+    )
     total_start = time.time()
 
-    # Use models.QRF which can handle multiple variables at once
+    # Use models.QRF which does sequential imputation
+    # Consider using fewer trees to reduce memory usage
     qrf = QRF()
     fitted_model = qrf.fit(
         X_train=X_train,
         predictors=predictors,
-        imputed_variables=outputs,
+        imputed_variables=available_outputs,
+        n_estimators=50,  # Reduce from default 100 to save memory
+        max_depth=10,  # Limit tree depth to save memory
+        min_samples_leaf=20,  # Increase to reduce model complexity
     )
 
     # Predict all variables at once
@@ -246,8 +263,12 @@ def impute_income_variables(
     # Extract the 0.5 quantile (median) predictions
     result = imputed_values[0.5]
 
+    # Add zeros for missing variables
+    for var in missing_outputs:
+        result[var] = 0
+
     logging.info(
-        f"Imputing {len(outputs)} variables took {time.time() - total_start:.2f} seconds total"
+        f"Imputing {len(available_outputs)} variables took {time.time() - total_start:.2f} seconds total"
     )
 
     return result

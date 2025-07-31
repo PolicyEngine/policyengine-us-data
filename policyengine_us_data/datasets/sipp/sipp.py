@@ -2,7 +2,7 @@ import pandas as pd
 from microdf import MicroDataFrame
 import numpy as np
 from policyengine_us import Microsimulation
-from microimpute.utils.qrf import QRF
+from microimpute.models.qrf import QRF
 from policyengine_us_data.storage import STORAGE_FOLDER
 import pickle
 from huggingface_hub import hf_hub_download

@@ -12,7 +12,7 @@ from typing import Type
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
-from policyengine_us_data.utils import QRF
+from microimpute.models.qrf import QRF
 import logging
 
 
@@ -177,19 +177,23 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
 
     qrf = QRF()
     logging.info("Training imputation model for rent and real estate taxes.")
-    qrf.fit(train_df[PREDICTORS], train_df[IMPUTATIONS])
+    fitted_model = qrf.fit(
+        X_train=train_df,
+        predictors=PREDICTORS,
+        imputed_variables=IMPUTATIONS,
+    )
     logging.info("Imputing rent and real estate taxes.")
-    imputed_values = qrf.predict(inference_df[PREDICTORS])
+    imputed_values = fitted_model.predict(X_test=inference_df)
     logging.info("Imputation complete.")
     cps["rent"] = np.zeros_like(cps["age"])
-    cps["rent"][mask] = imputed_values["rent"]
+    cps["rent"][mask] = imputed_values[0.5]["rent"]
     # Assume zero housing assistance since
     cps["pre_subsidy_rent"] = cps["rent"]
     cps["housing_assistance"] = np.zeros_like(
         cps["spm_unit_capped_housing_subsidy_reported"]
     )
     cps["real_estate_taxes"] = np.zeros_like(cps["age"])
-    cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
+    cps["real_estate_taxes"][mask] = imputed_values[0.5]["real_estate_taxes"]
 
 
 def add_takeup(self):

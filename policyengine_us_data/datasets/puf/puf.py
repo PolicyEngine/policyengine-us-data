@@ -173,23 +173,30 @@ def impute_pension_contributions_to_puf(puf_df):
         ["employment_income", "household_weight", "pre_tax_contributions"]
     )
 
-    from policyengine_us_data.utils import QRF
+    from microimpute.models.qrf import QRF
 
-    pension_contributions = QRF()
+    qrf = QRF()
 
-    pension_contributions.fit(
-        cps_df[["employment_income"]],
-        cps_df[["pre_tax_contributions"]],
+    # Combine predictors and target into single DataFrame for models.QRF
+    cps_train = cps_df[["employment_income", "pre_tax_contributions"]]
+
+    fitted_model = qrf.fit(
+        X_train=cps_train,
+        predictors=["employment_income"],
+        imputed_variables=["pre_tax_contributions"],
     )
-    return pension_contributions.predict(
-        X=puf_df[["employment_income"]],
-    )
+
+    # Predict using the fitted model
+    predictions = fitted_model.predict(X_test=puf_df[["employment_income"]])
+
+    # Return the median (0.5 quantile) predictions
+    return predictions[0.5]["pre_tax_contributions"]
 
 
 def impute_missing_demographics(
     puf: pd.DataFrame, demographics: pd.DataFrame
 ) -> pd.DataFrame:
-    from policyengine_us_data.utils import QRF
+    from microimpute.models.qrf import QRF
 
     puf_with_demographics = (
         puf[puf.RECID.isin(demographics.RECID)]
@@ -217,19 +224,30 @@ def impute_missing_demographics(
         "XTOT",
     ]
 
-    demographics_from_puf = QRF()
+    qrf = QRF()
 
-    demographics_from_puf.fit(
-        puf_with_demographics[NON_DEMOGRAPHIC_VARIABLES],
-        puf_with_demographics[DEMOGRAPHIC_VARIABLES],
+    # Prepare training data with predictors and variables to impute
+    train_data = puf_with_demographics[
+        NON_DEMOGRAPHIC_VARIABLES + DEMOGRAPHIC_VARIABLES
+    ]
+
+    fitted_model = qrf.fit(
+        X_train=train_data,
+        predictors=NON_DEMOGRAPHIC_VARIABLES,
+        imputed_variables=DEMOGRAPHIC_VARIABLES,
     )
 
     puf_without_demographics = puf[
         ~puf.RECID.isin(puf_with_demographics.RECID)
     ].reset_index()
-    predicted_demographics = demographics_from_puf.predict(
-        X=puf_without_demographics,
+
+    # Predict demographics
+    predictions = fitted_model.predict(
+        X_test=puf_without_demographics[NON_DEMOGRAPHIC_VARIABLES]
     )
+
+    # Get median predictions
+    predicted_demographics = predictions[0.5]
     puf_with_imputed_demographics = pd.concat(
         [puf_without_demographics, predicted_demographics], axis=1
     )

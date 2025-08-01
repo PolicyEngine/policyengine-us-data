@@ -547,3 +547,8 @@
     fixed:
     - Fixed GitHub Pages documentation rendering by setting BASE_URL for MyST
   date: 2025-07-30 22:43:44
+- bump: patch
+  changes:
+    fixed:
+    - Lite mode was used in production.
+  date: 2025-08-01 11:29:48

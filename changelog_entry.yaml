@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    fixed:
+    - Lite mode was used in production.

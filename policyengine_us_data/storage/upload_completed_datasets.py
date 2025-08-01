@@ -24,7 +24,8 @@ def upload_datasets():
             existing_files.append(file_path)
             print(f"✓ Found: {file_path}")
         else:
-            print(f"✗ Missing: {file_path} (skipping)")
+            print(f"⚠ Warning: File not found: {file_path}")
+            print("  This file will be skipped in the upload process.")
 
     if not existing_files:
         raise ValueError("No dataset files found to upload!")

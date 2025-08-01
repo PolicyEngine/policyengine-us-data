@@ -29,7 +29,7 @@ IMPUTED_VARIABLES = [
     "self_employment_income",
     "w2_wages_from_qualified_business",
     "unadjusted_basis_qualified_property",
-    "business_is_sstb",
+    "business_is_sstb",  # bool
     "short_term_capital_gains",
     "qualified_dividend_income",
     "charitable_cash_donations",
@@ -221,6 +221,7 @@ def impute_income_variables(
     predictors: list[str] = None,
     outputs: list[str] = None,
 ):
+
     # Calculate all variables together to preserve dependencies
     X_train = puf_sim.calculate_dataframe(predictors + outputs)
 
@@ -254,7 +255,7 @@ def impute_income_variables(
     result = pd.DataFrame(index=X_test.index)
 
     # Sample training data more aggressively upfront
-    sample_size = min(3000, len(X_train))  # Reduced from 5000
+    sample_size = min(5000, len(X_train))  # Reduced from 5000
     if len(X_train) > sample_size:
         logging.info(
             f"Sampling training data from {len(X_train)} to {sample_size} rows"
@@ -275,7 +276,12 @@ def impute_income_variables(
         gc.collect()
 
         # Create a fresh QRF for each batch
-        qrf = QRF()
+        qrf = QRF(
+            log_level="INFO",
+            memory_efficient=True,
+            batch_size=10,
+            cleanup_interval=5,
+        )
 
         # Use pre-sampled data for this batch
         batch_X_train = X_train_sampled[predictors + batch_vars].copy()
@@ -285,11 +291,7 @@ def impute_income_variables(
             X_train=batch_X_train,
             predictors=predictors,
             imputed_variables=batch_vars,
-            n_estimators=20,  # Further reduced from 30
-            max_depth=6,  # Further reduced from 8
-            min_samples_leaf=50,  # Increased from 30
             n_jobs=1,  # Single thread to reduce memory overhead
-            skip_missing=True,  # Skip missing imputed variables
         )
 
         # Predict for this batch

@@ -289,6 +289,7 @@ def impute_income_variables(
             max_depth=6,  # Further reduced from 8
             min_samples_leaf=50,  # Increased from 30
             n_jobs=1,  # Single thread to reduce memory overhead
+            skip_missing=True, #Skip missing imputed variables
         )
 
         # Predict for this batch

@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.6] - 2025-08-01 11:29:48
+
+### Fixed
+
+- Lite mode was used in production.
+
+## [1.42.5] - 2025-07-30 22:43:44
+
+### Fixed
+
+- Fixed GitHub Pages documentation rendering by setting BASE_URL for MyST
+
+## [1.42.4] - 2025-07-30 22:29:06
+
+### Changed
+
+- New configuration for sparse solution (~20k non-zero households)
+- added a seeding function to remove non-deterministic behavior in reweight
+- Made np2023_d5_mid.csv a git ignorable file (it's in hugging face)
+
+## [1.42.4] - 2025-07-30 21:55:05
+
+### Added
+
+- Fork check in PR workflows to fail fast with clear error message
+
+### Fixed
+
+- Fixed documentation deployment for MyST v2 by using timeout command
+
+## [1.42.3] - 2025-07-30 20:28:05
+
+### Fixed
+
+- Made upload script more robust by only uploading files that exist
+- Added logging to show which files are being uploaded vs skipped
+
+## [1.42.2] - 2025-07-30 19:42:58
+
+### Fixed
+
+- {"Fixed push CI upload failure by using 'secrets": "inherit' in reusable workflows"}
+
+## [1.42.1] - 2025-07-30 18:19:07
+
+### Fixed
+
+- Removed leftover changelog entry from merged PR that was causing push CI failures
+- Removed unused make_person function with undefined CURRENT_YEAR variable
+
 ## [1.42.0] - 2025-07-28 16:34:40
 
 ### Added
@@ -614,6 +664,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.42.6]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.5...1.42.6
+[1.42.5]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.4...1.42.5
+[1.42.4]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.4...1.42.4
+[1.42.4]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.3...1.42.4
+[1.42.3]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.2...1.42.3
+[1.42.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.1...1.42.2
+[1.42.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.0...1.42.1
 [1.42.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.41.2...1.42.0
 [1.41.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.41.1...1.41.2
 [1.41.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.41.0...1.41.1

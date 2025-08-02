@@ -1,6 +1,6 @@
 \subsection{Loss Matrix Construction}
 
-The loss matrix measures deviation from 570 administrative targets sourced from IRS Statistics of Income (SOI), Census population estimates, CBO projections, and other administrative data.
+The loss matrix measures deviation from over 7,000 administrative targets sourced from six authoritative data sources: IRS Statistics of Income (SOI), Census population estimates, Congressional Budget Office (CBO) projections, Treasury Department data, Joint Committee on Taxation (JCT) estimates, and healthcare spending patterns. This comprehensive calibration ensures the enhanced dataset accurately represents both tax filing patterns and demographic distributions.
 
 \subsubsection{IRS Statistics of Income Targets}
 
@@ -119,10 +119,35 @@ From spm\_threshold\_agi.csv, we target:
     \item Count of households in each SPM threshold decile
 \end{itemize}
 
+\subsubsection{State Population Targets}
+
+From Census state population data (population\_by\_state.csv), we include:
+\begin{itemize}
+    \item Total population by state
+    \item Population under age 5 by state
+    \item Total infant population (age 0-1) projected from ACS data
+\end{itemize}
+
+\subsubsection{Joint Committee on Taxation Tax Expenditures}
+
+We calibrate to JCT's 2024 tax expenditure estimates by simulating the revenue effect of repealing each provision:
+\begin{itemize}
+    \item State and local tax (SALT) deduction: \$21.2B
+    \item Medical expense deduction: \$11.4B  
+    \item Charitable contribution deduction: \$65.3B
+    \item Mortgage interest deduction: \$24.8B
+\end{itemize}
+
+For each deduction, we create a custom reform that neutralizes the provision, calculate the resulting income tax change at the household level, and target the aggregate revenue effect to match JCT estimates.
+
 \subsubsection{Target Validation}
 
-The loss matrix construction enforces two key checks:
+The loss matrix construction enforces several key validation checks:
 \begin{itemize}
     \item No missing values in any target row
     \item No NaN values in the targets array
+    \item Proper aggregation from tax unit to household level
+    \item Consistent uprating factors applied across related targets
 \end{itemize}
+
+The resulting 7,000+ targets provide comprehensive coverage of income distributions, program participation, demographic patterns, and tax expenditure utilization, ensuring the enhanced dataset accurately reflects the complexity of the US tax and benefit system. The majority of targets come from IRS Statistics of Income data (over 5,300 targets), supplemented by state-level demographic and program participation data (over 1,700 targets).

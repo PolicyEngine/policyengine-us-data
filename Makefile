@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data clean build paper clean-paper
+.PHONY: all format test install download upload docker documentation data clean build paper clean-paper presentations
 
 all: data test
 
@@ -35,8 +35,28 @@ docker:
 	docker buildx build --platform linux/amd64 . -t policyengine-us-data:latest
 	
 documentation:
-	jb clean docs && jb build docs
-	python docs/add_plotly_to_book.py docs
+	cd docs && \
+	rm -rf _build .jupyter_cache && \
+	rm -f _toc.yml && \
+	myst clean && \
+	timeout 10 myst build --html || true
+
+documentation-build:
+	cd docs && \
+	rm -rf _build .jupyter_cache && \
+	rm -f _toc.yml && \
+	myst clean && \
+	myst build --html
+
+documentation-serve:
+	cd docs/_build/html && python3 -m http.server 8080
+
+documentation-dev:
+	cd docs && \
+	rm -rf _build .jupyter_cache && \
+	rm -f _toc.yml && \
+	myst clean && \
+	myst start
 
 database:
 	python policyengine_us_data/db/create_database_tables.py
@@ -54,6 +74,8 @@ data:
 	python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
+	mv policyengine_us_data/storage/enhanced_cps_2024.h5 policyengine_us_data/storage/dense_enhanced_cps_2024.h5
+	cp policyengine_us_data/storage/sparse_enhanced_cps_2024.h5 policyengine_us_data/storage/enhanced_cps_2024.h5
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5
@@ -66,14 +88,35 @@ build:
 publish:
 	twine upload dist/*
 
-paper: paper/main.pdf
+paper-content:
+	@echo "Building paper sections and docs from unified content..."
+	python paper/scripts/build_from_content.py
 
-paper/main.pdf: $(wildcard paper/sections/**/*.tex) $(wildcard paper/bibliography/*.bib) paper/main.tex paper/macros.tex
+paper-tables:
+	@echo "Generating all LaTeX tables..."
+	python paper/scripts/generate_all_tables.py
+
+paper-results: paper-tables
+	@echo "Generating paper results tables and figures..."
+	python paper/scripts/generate_validation_metrics.py
+	python paper/scripts/calculate_distributional_metrics.py
+	@echo "Paper results generated in paper/results/"
+
+paper: paper-content paper-results paper/woodruff_ghenis_2024_enhanced_cps.pdf
+
+paper/woodruff_ghenis_2024_enhanced_cps.pdf: $(wildcard paper/sections/**/*.tex) $(wildcard paper/bibliography/*.bib) paper/main.tex paper/macros.tex
 	cd paper && \
 	BIBINPUTS=./bibliography pdflatex main && \
 	BIBINPUTS=./bibliography bibtex main && \
-	pdflatex main && \
-	pdflatex main
+	pdflatex -jobname=woodruff_ghenis_2024_enhanced_cps main && \
+	pdflatex -jobname=woodruff_ghenis_2024_enhanced_cps main
 
 clean-paper:
-	rm -f paper/*.aux paper/*.bbl paper/*.blg paper/*.log paper/*.out paper/*.toc paper/main.pdf paper/sections/**/*.aux
+	rm -f paper/*.aux paper/*.bbl paper/*.blg paper/*.log paper/*.out paper/*.toc paper/*.pdf paper/sections/**/*.aux
+
+presentations: presentations/nta_2024_11/nta_2024_slides.pdf
+
+presentations/nta_2024_11/nta_2024_slides.pdf: presentations/nta_2024_11/main.tex
+	cd presentations/nta_2024_11 && \
+		pdflatex -jobname=nta_2024_slides main && \
+		pdflatex -jobname=nta_2024_slides main

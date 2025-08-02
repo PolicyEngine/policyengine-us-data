@@ -1,0 +1,93 @@
+name: Reusable Test
+
+on:
+  workflow_call:
+    inputs:
+      full_suite:
+        description: 'Run full test suite including data build'
+        required: false
+        default: false
+        type: boolean
+      upload_data:
+        description: 'Upload data after build'
+        required: false
+        default: false
+        type: boolean
+      deploy_docs:
+        description: 'Deploy documentation to GitHub Pages'
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      HUGGING_FACE_TOKEN:
+        required: false
+      POLICYENGINE_US_DATA_GITHUB_TOKEN:
+        required: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required for GitHub Pages deploy
+      id-token: write  # Required for GCP auth
+    env:
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+      POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - uses: "google-github-actions/auth@v2"
+        if: inputs.upload_data
+        with:
+          workload_identity_provider: "projects/322898545428/locations/global/workloadIdentityPools/policyengine-research-id-pool/providers/prod-github-provider"
+          service_account: "policyengine-research@policyengine-research.iam.gserviceaccount.com"
+
+      - name: Install package
+        run: uv pip install -e .[dev] --system
+
+      - name: Download data inputs
+        if: inputs.full_suite
+        run: make download
+
+      - name: Build datasets
+        if: inputs.full_suite
+        run: make data
+        env:
+          TEST_LITE: ${{ !inputs.upload_data }}
+          PYTHON_LOG_LEVEL: INFO
+
+      - name: Save calibration log
+        if: inputs.full_suite
+        uses: actions/upload-artifact@v4
+        with:
+          name: calibration_log.csv
+          path: calibration_log.csv
+
+      - name: Run tests
+        run: pytest
+
+      - name: Upload data
+        if: inputs.upload_data
+        run: make upload
+
+      - name: Test documentation builds
+        run: make documentation
+        env:
+          BASE_URL: ${{ inputs.deploy_docs && '/policyengine-us-data' || '' }}
+
+      - name: Deploy Github Pages documentation
+        if: inputs.deploy_docs
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: docs/_build/html
+          clean: true

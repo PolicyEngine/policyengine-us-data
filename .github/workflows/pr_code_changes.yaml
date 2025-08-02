@@ -5,26 +5,39 @@ on:
   pull_request:
     branches:
       - main
-
     paths:
       - policyengine_us_data/**
       - tests/**
       - .github/workflows/**
+      - Makefile
 
 jobs:
-  Lint:
+  check-fork:
     runs-on: ubuntu-latest
     steps:
-        - uses: actions/checkout@v4
-        - name: Check formatting
-          uses: "lgeiger/black-action@master"
-          with:
-              args: ". -l 79 --check"
+      - name: Check if PR is from fork
+        run: |
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "❌ ERROR: This PR is from a fork repository."
+            echo "PRs must be created from branches in the main PolicyEngine/policyengine-us-data repository."
+            echo "Please close this PR and create a new one following these steps:"
+            echo "1. git checkout main"
+            echo "2. git pull upstream main"
+            echo "3. git checkout -b your-branch-name"
+            echo "4. git push -u upstream your-branch-name"
+            echo "5. Create PR from the upstream branch"
+            exit 1
+          fi
+          echo "✅ PR is from the correct repository"
+
+  Lint:
+    needs: check-fork
+    uses: ./.github/workflows/reusable_lint.yaml
 
   SmokeTestForMultipleVersions:
     name: Smoke test (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
-    needs: Lint
+    needs: [check-fork, Lint]
     strategy:
       fail-fast: false
       matrix:
@@ -49,41 +62,10 @@ jobs:
         run: python -c "from policyengine_core.data import Dataset; print('Core import OK')"
 
   Test:
-      runs-on: ubuntu-latest
-      needs: Lint
-      env:
-        HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-      steps:
-          - name: Checkout repo
-            uses: actions/checkout@v2
-
-          - name: Install uv
-            uses: astral-sh/setup-uv@v5
-
-          - name: Set up Python
-            uses: actions/setup-python@v2
-            with:
-                python-version: '3.13'
-          - name: Install package
-            run: uv pip install -e .[dev] --system
-
-          - name: Download data inputs
-            run: make download
-            env:
-              HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-
-          - name: Build datasets
-            run: make data
-            env:
-              TEST_LITE: true
-              PYTHON_LOG_LEVEL: INFO  
-          - name: Save calibration log
-            uses: actions/upload-artifact@v4
-            with:
-              name: calibration_log.csv
-              path: calibration_log.csv
-          - name: Run tests
-            run: pytest
-
-          - name: Test documentation builds
-            run: make documentation
+    needs: [check-fork, Lint]
+    uses: ./.github/workflows/reusable_test.yaml
+    with:
+      full_suite: true
+      upload_data: false
+      deploy_docs: false
+    secrets: inherit

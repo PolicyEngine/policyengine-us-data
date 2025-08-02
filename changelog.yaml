@@ -512,3 +512,43 @@
     - Added creation script to build relational database for targets
     - Refactored age targets load script to load the database
   date: 2025-07-28 16:34:40
+- bump: patch
+  changes:
+    fixed:
+    - Removed leftover changelog entry from merged PR that was causing push CI failures
+    - Removed unused make_person function with undefined CURRENT_YEAR variable
+  date: 2025-07-30 18:19:07
+- bump: patch
+  changes:
+    fixed:
+    - Fixed push CI upload failure by using 'secrets: inherit' in reusable workflows
+  date: 2025-07-30 19:42:58
+- bump: patch
+  changes:
+    fixed:
+    - Made upload script more robust by only uploading files that exist
+    - Added logging to show which files are being uploaded vs skipped
+  date: 2025-07-30 20:28:05
+- bump: patch
+  changes:
+    added:
+    - Fork check in PR workflows to fail fast with clear error message
+    fixed:
+    - Fixed documentation deployment for MyST v2 by using timeout command
+  date: 2025-07-30 21:55:05
+- changes:
+    changed:
+    - New configuration for sparse solution (~20k non-zero households)
+    - added a seeding function to remove non-deterministic behavior in reweight
+    - Made np2023_d5_mid.csv a git ignorable file (it's in hugging face)
+  date: 2025-07-30 22:29:06
+- bump: patch
+  changes:
+    fixed:
+    - Fixed GitHub Pages documentation rendering by setting BASE_URL for MyST
+  date: 2025-07-30 22:43:44
+- bump: patch
+  changes:
+    fixed:
+    - Lite mode was used in production.
+  date: 2025-08-01 11:29:48

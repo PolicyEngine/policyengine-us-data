@@ -7,6 +7,7 @@
 **/*.pkl
 **/*.db
 venv
+node_modules
 
 ## old (not clean) targets
 !healthcare_spending.csv
@@ -16,7 +17,6 @@ venv
 !population_by_state.csv
 !aca_spending_and_enrollment_2024.csv
 !real_estate_taxes_by_state_acs.csv
-!np2023_d5_mid.csv
 !snap_state.csv
 !age_state.csv
 !agi_state.csv

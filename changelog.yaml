@@ -552,3 +552,8 @@
     fixed:
     - Lite mode was used in production.
   date: 2025-08-01 11:29:48
+- bump: minor
+  changes:
+    added:
+    - Pin -us to a version pre-OBBBA baseline changes were implemented.
+  date: 2025-08-04 18:52:21

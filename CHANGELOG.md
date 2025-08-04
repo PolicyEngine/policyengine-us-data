@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.0] - 2025-08-04 18:52:21
+
+### Added
+
+- Pin -us to a version pre-OBBBA baseline changes were implemented.
+
 ## [1.42.6] - 2025-08-01 11:29:48
 
 ### Fixed
@@ -664,6 +670,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.43.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.6...1.43.0
 [1.42.6]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.5...1.42.6
 [1.42.5]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.4...1.42.5
 [1.42.4]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.4...1.42.4

@@ -557,3 +557,8 @@
     added:
     - Pin -us to a version pre-OBBBA baseline changes were implemented.
   date: 2025-08-04 18:52:21
+- bump: patch
+  changes:
+    fixed:
+    - Moved QRF implementation to microimpute package to avoid code duplication
+  date: 2025-08-05 10:23:02

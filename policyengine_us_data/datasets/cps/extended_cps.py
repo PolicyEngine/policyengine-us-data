@@ -5,9 +5,10 @@ from policyengine_us_data.datasets.cps.cps import *
 from policyengine_us_data.datasets.puf import *
 import pandas as pd
 import os
-from policyengine_us_data.utils import QRF
+from microimpute.models.qrf import QRF
 import time
 import logging
+import gc
 
 # These are sorted by magnitude.
 # First 15 contain 90%.
@@ -28,7 +29,7 @@ IMPUTED_VARIABLES = [
     "self_employment_income",
     "w2_wages_from_qualified_business",
     "unadjusted_basis_qualified_property",
-    "business_is_sstb",
+    "business_is_sstb",  # bool
     "short_term_capital_gains",
     "qualified_dividend_income",
     "charitable_cash_donations",
@@ -220,25 +221,103 @@ def impute_income_variables(
     predictors: list[str] = None,
     outputs: list[str] = None,
 ):
-    X_train = puf_sim.calculate_dataframe(predictors)
-    y_train = puf_sim.calculate_dataframe(outputs)
-    X = cps_sim.calculate_dataframe(predictors)
-    y = pd.DataFrame(columns=outputs, index=X.index)
-    model = QRF()
-    start = time.time()
-    model.fit(
-        X_train,
-        y_train,
-    )
+
+    # Calculate all variables together to preserve dependencies
+    X_train = puf_sim.calculate_dataframe(predictors + outputs)
+
+    # Check which outputs are actually in the result
+    available_outputs = [col for col in outputs if col in X_train.columns]
+    missing_outputs = [col for col in outputs if col not in X_train.columns]
+
+    if missing_outputs:
+        logging.warning(
+            f"The following {len(missing_outputs)} variables were not calculated: {missing_outputs}"
+        )
+        # Log the specific missing variable that's causing issues
+        if "recapture_of_investment_credit" in missing_outputs:
+            logging.error(
+                "recapture_of_investment_credit is missing from PUF calculation!"
+            )
+
     logging.info(
-        f"Training imputation models from the PUF took {time.time() - start:.2f} seconds"
+        f"X_train shape: {X_train.shape}, columns: {len(X_train.columns)}"
     )
-    start = time.time()
-    y = model.predict(X)
+
+    X_test = cps_sim.calculate_dataframe(predictors)
+
     logging.info(
-        f"Predicting imputed values took {time.time() - start:.2f} seconds"
+        f"Imputing {len(available_outputs)} variables using batched sequential QRF"
     )
-    return y
+    total_start = time.time()
+
+    # Batch variables to avoid memory issues with sequential imputation
+    batch_size = 10  # Reduce to 10 variables at a time
+    result = pd.DataFrame(index=X_test.index)
+
+    # Sample training data more aggressively upfront
+    sample_size = min(5000, len(X_train))  # Reduced from 5000
+    if len(X_train) > sample_size:
+        logging.info(
+            f"Sampling training data from {len(X_train)} to {sample_size} rows"
+        )
+        X_train_sampled = X_train.sample(n=sample_size, random_state=42)
+    else:
+        X_train_sampled = X_train
+
+    for batch_start in range(0, len(available_outputs), batch_size):
+        batch_end = min(batch_start + batch_size, len(available_outputs))
+        batch_vars = available_outputs[batch_start:batch_end]
+
+        logging.info(
+            f"Processing batch {batch_start//batch_size + 1}: variables {batch_start+1}-{batch_end} ({batch_vars})"
+        )
+
+        # Force garbage collection before each batch
+        gc.collect()
+
+        # Create a fresh QRF for each batch
+        qrf = QRF(
+            log_level="INFO",
+            memory_efficient=True,
+            batch_size=10,
+            cleanup_interval=5,
+        )
+
+        # Use pre-sampled data for this batch
+        batch_X_train = X_train_sampled[predictors + batch_vars].copy()
+
+        # Fit model for this batch with sequential imputation within the batch
+        fitted_model = qrf.fit(
+            X_train=batch_X_train,
+            predictors=predictors,
+            imputed_variables=batch_vars,
+            n_jobs=1,  # Single thread to reduce memory overhead
+        )
+
+        # Predict for this batch
+        batch_predictions = fitted_model.predict(X_test=X_test)
+
+        # Extract median predictions and add to result
+        for var in batch_vars:
+            result[var] = batch_predictions[0.5][var]
+
+        # Clean up batch objects
+        del fitted_model
+        del batch_predictions
+        del batch_X_train
+        gc.collect()
+
+        logging.info(f"Completed batch {batch_start//batch_size + 1}")
+
+    # Add zeros for missing variables
+    for var in missing_outputs:
+        result[var] = 0
+
+    logging.info(
+        f"Imputing {len(available_outputs)} variables took {time.time() - total_start:.2f} seconds total"
+    )
+
+    return result
 
 
 class ExtendedCPS_2024(ExtendedCPS):

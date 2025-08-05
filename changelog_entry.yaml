@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-    - Moved QRF implementation to microimpute package to avoid code duplication

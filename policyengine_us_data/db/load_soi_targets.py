@@ -122,119 +122,128 @@ STATE_ABBR_TO_FIPS = {
 FIPS_TO_STATE_ABBR = {v: k for k, v in STATE_ABBR_TO_FIPS.items()}
 
 
-def pull_national_soi_variable(
-    soi_variable_ident: int,  # the national SOI xlsx file has a row for each target variable
-    variable_name: Union[str, None],
-    is_count: bool,
-    national_df: Optional[pd.DataFrame] = None,
-) -> pd.DataFrame:
-    """Download and save national AGI totals."""
-    df = pd.read_excel(
-        "https://www.irs.gov/pub/irs-soi/22in54us.xlsx", skiprows=7
-    )
+#def pull_national_soi_variable(
+#    soi_variable_ident: int,  # the national SOI xlsx file has a row for each target variable
+#    variable_name: Union[str, None],
+#    is_count: bool,
+#    national_df: Optional[pd.DataFrame] = None,
+#) -> pd.DataFrame:
+#    """Download and save national AGI totals."""
+#    df = pd.read_excel(
+#        "https://www.irs.gov/pub/irs-soi/22in54us.xlsx", skiprows=7
+#    )
+#
+#    assert (
+#        np.abs(
+#            df.iloc[soi_variable_ident, 1]
+#            - df.iloc[soi_variable_ident, 2:12].sum()
+#        )
+#        < 100
+#    ), "Row 0 doesn't add up — check the file."
+#
+#    agi_values = df.iloc[soi_variable_ident, 2:12].astype(int).to_numpy()
+#    agi_values = np.concatenate(
+#        [agi_values[:8], [agi_values[8] + agi_values[9]]]
+#    )
+#
+#    agi_brackets = [
+#        AGI_STUB_TO_BAND[i] for i in range(1, len(SOI_COLUMNS) + 1)
+#    ]
+#
+#    result = pd.DataFrame(
+#        {
+#            "GEO_ID": ["0100000US"] * len(agi_brackets),
+#            "GEO_NAME": ["national"] * len(agi_brackets),
+#            "LOWER_BOUND": [AGI_BOUNDS[b][0] for b in agi_brackets],
+#            "UPPER_BOUND": [AGI_BOUNDS[b][1] for b in agi_brackets],
+#            "VALUE": agi_values,
+#        }
+#    )
+#
+#    # final column order
+#    result = result[
+#        ["GEO_ID", "GEO_NAME", "LOWER_BOUND", "UPPER_BOUND", "VALUE"]
+#    ]
+#    result["IS_COUNT"] = int(is_count)
+#    result["VARIABLE"] = variable_name
+#
+#    result["VALUE"] = np.where(
+#        result["IS_COUNT"] == 0, result["VALUE"] * 1_000, result["VALUE"]
+#    )
+#
+#    if national_df is not None:
+#        # If a DataFrame is passed, we append the new data to it.
+#        df = pd.concat([national_df, result], ignore_index=True)
+#        return df
+#
+#    return result
+#
+#
+#def pull_state_soi_variable(
+#    soi_variable_ident: str,  # the state SOI csv file has a column for each target variable
+#    variable_name: Union[str, None],
+#    is_count: bool,
+#    state_df: Optional[pd.DataFrame] = None,
+#) -> pd.DataFrame:
+#    """Download and save state AGI totals."""
+#    df = pd.read_csv(
+#        "https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv", thousands=","
+#    )
+#
+#    merged = (
+#        df[df["AGI_STUB"].isin([9, 10])]
+#        .groupby("STATE", as_index=False)
+#        .agg({soi_variable_ident: "sum"})
+#        .assign(AGI_STUB=9)
+#    )
+#    df = df[~df["AGI_STUB"].isin([9, 10])]
+#    df = pd.concat([df, merged], ignore_index=True)
+#    df = df[df["AGI_STUB"] != 0]
+#
+#    df["agi_bracket"] = df["AGI_STUB"].map(AGI_STUB_TO_BAND)
+#
+#    df["state_abbr"] = df["STATE"]
+#    df["GEO_ID"] = "0400000US" + df["state_abbr"].map(STATE_ABBR_TO_FIPS)
+#    df["GEO_NAME"] = "state_" + df["state_abbr"]
+#
+#    result = df.loc[
+#        ~df["STATE"].isin(NON_VOTING_STATES.union({"US"})),
+#        ["GEO_ID", "GEO_NAME", "agi_bracket", soi_variable_ident],
+#    ].rename(columns={soi_variable_ident: "VALUE"})
+#
+#    result["LOWER_BOUND"] = result["agi_bracket"].map(
+#        lambda b: AGI_BOUNDS[b][0]
+#    )
+#    result["UPPER_BOUND"] = result["agi_bracket"].map(
+#        lambda b: AGI_BOUNDS[b][1]
+#    )
+#
+#    # final column order
+#    result = result[
+#        ["GEO_ID", "GEO_NAME", "LOWER_BOUND", "UPPER_BOUND", "VALUE"]
+#    ]
+#    result["IS_COUNT"] = int(is_count)
+#    result["VARIABLE"] = variable_name
+#
+#    result["VALUE"] = np.where(
+#        result["IS_COUNT"] == 0, result["VALUE"] * 1_000, result["VALUE"]
+#    )
+#
+#    if state_df is not None:
+#        # If a DataFrame is passed, we append the new data to it.
+#        df = pd.concat([state_df, result], ignore_index=True)
+#        return df
+#
+#    return result
 
-    assert (
-        np.abs(
-            df.iloc[soi_variable_ident, 1]
-            - df.iloc[soi_variable_ident, 2:12].sum()
-        )
-        < 100
-    ), "Row 0 doesn't add up — check the file."
-
-    agi_values = df.iloc[soi_variable_ident, 2:12].astype(int).to_numpy()
-    agi_values = np.concatenate(
-        [agi_values[:8], [agi_values[8] + agi_values[9]]]
-    )
-
-    agi_brackets = [
-        AGI_STUB_TO_BAND[i] for i in range(1, len(SOI_COLUMNS) + 1)
-    ]
-
-    result = pd.DataFrame(
-        {
-            "GEO_ID": ["0100000US"] * len(agi_brackets),
-            "GEO_NAME": ["national"] * len(agi_brackets),
-            "LOWER_BOUND": [AGI_BOUNDS[b][0] for b in agi_brackets],
-            "UPPER_BOUND": [AGI_BOUNDS[b][1] for b in agi_brackets],
-            "VALUE": agi_values,
-        }
-    )
-
-    # final column order
-    result = result[
-        ["GEO_ID", "GEO_NAME", "LOWER_BOUND", "UPPER_BOUND", "VALUE"]
-    ]
-    result["IS_COUNT"] = int(is_count)
-    result["VARIABLE"] = variable_name
-
-    result["VALUE"] = np.where(
-        result["IS_COUNT"] == 0, result["VALUE"] * 1_000, result["VALUE"]
-    )
-
-    if national_df is not None:
-        # If a DataFrame is passed, we append the new data to it.
-        df = pd.concat([national_df, result], ignore_index=True)
-        return df
-
-    return result
-
-
-def pull_state_soi_variable(
-    soi_variable_ident: str,  # the state SOI csv file has a column for each target variable
-    variable_name: Union[str, None],
-    is_count: bool,
-    state_df: Optional[pd.DataFrame] = None,
-) -> pd.DataFrame:
-    """Download and save state AGI totals."""
-    df = pd.read_csv(
-        "https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv", thousands=","
-    )
-
-    merged = (
-        df[df["AGI_STUB"].isin([9, 10])]
-        .groupby("STATE", as_index=False)
-        .agg({soi_variable_ident: "sum"})
-        .assign(AGI_STUB=9)
-    )
-    df = df[~df["AGI_STUB"].isin([9, 10])]
-    df = pd.concat([df, merged], ignore_index=True)
-    df = df[df["AGI_STUB"] != 0]
-
-    df["agi_bracket"] = df["AGI_STUB"].map(AGI_STUB_TO_BAND)
-
-    df["state_abbr"] = df["STATE"]
-    df["GEO_ID"] = "0400000US" + df["state_abbr"].map(STATE_ABBR_TO_FIPS)
-    df["GEO_NAME"] = "state_" + df["state_abbr"]
-
-    result = df.loc[
-        ~df["STATE"].isin(NON_VOTING_STATES.union({"US"})),
-        ["GEO_ID", "GEO_NAME", "agi_bracket", soi_variable_ident],
-    ].rename(columns={soi_variable_ident: "VALUE"})
-
-    result["LOWER_BOUND"] = result["agi_bracket"].map(
-        lambda b: AGI_BOUNDS[b][0]
-    )
-    result["UPPER_BOUND"] = result["agi_bracket"].map(
-        lambda b: AGI_BOUNDS[b][1]
-    )
-
-    # final column order
-    result = result[
-        ["GEO_ID", "GEO_NAME", "LOWER_BOUND", "UPPER_BOUND", "VALUE"]
-    ]
-    result["IS_COUNT"] = int(is_count)
-    result["VARIABLE"] = variable_name
-
-    result["VALUE"] = np.where(
-        result["IS_COUNT"] == 0, result["VALUE"] * 1_000, result["VALUE"]
-    )
-
-    if state_df is not None:
-        # If a DataFrame is passed, we append the new data to it.
-        df = pd.concat([state_df, result], ignore_index=True)
-        return df
-
-    return result
+def create_records(df, breakdown_variable, target_variable):
+    """Transforms a DataFrame subset into a standardized list of records."""
+    temp_df = df[["ucgid_str"]].copy()
+    temp_df["breakdown_variable"] = breakdown_variable 
+    temp_df["breakdown_value"] = df[breakdown_variable]
+    temp_df["target_variable"] = target_variable 
+    temp_df["target_value"] = df[target_variable]
+    return temp_df
 
 
 def extract_soi_data() -> pd.DataFrame:
@@ -242,15 +251,15 @@ def extract_soi_data() -> pd.DataFrame:
 
     In the file below, "22" is 2022, "in" is individual returns,
     "cd" is congressional districts
-
     """
     return pd.read_csv("https://www.irs.gov/pub/irs-soi/22incd.csv")
 
 
-raw_df = df
+raw_df = extract_soi_data()
 # a "stub" is a term the IRS uses for a predefined category or group, specifically an income bracket.
 
 def transform_soi_data(raw_df)
+
 
     # agi_stub is only 0, so there are only agi breakdowns at the state level
     # So you can confirm summability for 0 and then forget that national exists
@@ -260,6 +269,7 @@ def transform_soi_data(raw_df)
     national_df = raw_df.copy().loc[
         (raw_df.STATE == "US")
     ]
+    national_df["ucgid_str"] = "0100000US"
 
     # You've got agi_stub == 0 in here, which you want to use any time you don't want to
     # break things up by AGI
@@ -267,6 +277,7 @@ def transform_soi_data(raw_df)
         (raw_df.STATE != "US") &
         (raw_df.CONG_DISTRICT == 0)
     ]
+    state_df["ucgid_str"] = "0400000US" + state_df["STATEFIPS"].astype(str).str.zfill(2)
 
     # This is going to fail because we're missing the single cong district states
     district_df = raw_df.copy().loc[
@@ -278,10 +289,21 @@ def transform_soi_data(raw_df)
         (raw_df['CONG_DISTRICT'] > 0) | (max_cong_district_by_state == 0)
     ]
     district_df = district_df.loc[district_df['STATE'] != 'US']
+    district_df["STATEFIPS"] = district_df["STATEFIPS"].astype(int).astype(str).str.zfill(2)
+    district_df["CONG_DISTRICT"] = (
+        district_df["CONG_DISTRICT"].astype(int).astype(str).str.zfill(2)
+    )
+    district_df["ucgid_str"] = "5001800US" + district_df["STATEFIPS"] + district_df["CONG_DISTRICT"]
+    district_df = district_df[~district_df["ucgid_str"].isin(IGNORE_GEO_IDS)]
 
     assert district_df.shape[0] % 436 == 0
 
-    # And you've got everything you need for all 3 levels of targets from this guy
+    # And you've got everything you need for all 3 levels of targets:
+    #  1. national_df
+    #  2. state_df
+    #  3. district_df
+    
+    all_df = pd.concat([national_df, state_df, district_df])
 
     # So I want to get 2 variable categories out of this thing, in long format
     # 1) EITC, and 2) AGI
@@ -289,132 +311,110 @@ def transform_soi_data(raw_df)
     # but no household_count. That's why you're doing this though, for a great example
     # Wide (a new variable per number of children) or Long (breakdown variable is number of children)
 
+    # Marginal in terms of AGI, which this data set is organized with respect to 
+    all_marginals = all_df.copy().loc[all_df.agi_stub == 0]
+    assert all_marginals.shape[0] == 436 + 51 + 1
 
-    district_df["STATEFIPS"] = district_df["STATEFIPS"].astype(int).astype(str).str.zfill(2)
-    district_df["CONG_DISTRICT"] = (
-        district_df["CONG_DISTRICT"].astype(int).astype(str).str.zfill(2)
-    )
-    district_df["ucgid_str"] = "5001800US" + district_df["STATEFIPS"] + district_df["CONG_DISTRICT"]
+    # Collect targets from the SOI file
+    records = []
 
-    district_df = district_df[~district_df["ucgid_str"].isin(IGNORE_GEO_IDS)]
-
-    # eitc: you'll only want to take agi_stub = 0 cases
-
-    district_marginals = district_df.copy().loc[district_df.agi_stub == 0]
-    assert district_marginals.shape[0] == 436
-
-    eitc_no_children = district_marginals.copy()[['ucgid_str', 'N59661', 'A59661']].rename({
+    # EITC ---------------------------------------------------------------------------
+    eitc_no_children = all_marginals.copy().rename({
         'N59661': 'tax_unit_count',
         'A59661': 'eitc'
     }, axis = 1)
-
     eitc_no_children['eitc_children'] = 0
 
-    eitc_one_child = district_marginals.copy()[['ucgid_str', 'N59662', 'A59662']].rename({
+    records.append(
+        create_records(eitc_no_children, "eitc_children", "tax_unit_count")
+    )
+    records.append(
+        create_records(eitc_no_children, "eitc_children", "eitc")
+    )
+
+    eitc_one_child = all_marginals.copy().rename({
         'N59662': 'tax_unit_count',
         'A59662': 'eitc'
     }, axis=1)
     eitc_one_child['eitc_children'] = 1
-    
-    eitc_two_children = district_marginals.copy()[['ucgid_str', 'N59663', 'A59663']].rename({
+
+    records.append(
+        create_records(eitc_one_child, "eitc_children", "tax_unit_count")
+    )
+    records.append(
+        create_records(eitc_one_child, "eitc_children", "eitc")
+    )
+
+    eitc_two_children = all_marginals.copy().rename({
         'N59663': 'tax_unit_count',
         'A59663': 'eitc'
     }, axis=1)
     eitc_two_children['eitc_children'] = 2
-    
-    eitc_three_plus_children = district_marginals.copy()[['ucgid_str', 'N59664', 'A59664']].rename({
+
+    records.append(
+        create_records(eitc_two_children, "eitc_children", "tax_unit_count")
+    )
+    records.append(
+        create_records(eitc_two_children, "eitc_children", "eitc")
+    )
+
+    eitc_three_plus_children = all_marginals.copy().rename({
         'N59664': 'tax_unit_count',
         'A59664': 'eitc'
     }, axis=1)
     eitc_three_plus_children['eitc_children'] = '3+'
 
-    # Question: so many: why do this processing at the district level, since the structure is the same all over?
-    # OR, is it? At least the renaming is.
-    # Keep going for now and see how much you can generalize
-
-
-
-
-    at_large_states = (
-        district_df.groupby("STATEFIPS")["CONG_DISTRICT"]
-        .nunique()
-        .pipe(lambda s: s[s == 1].index)
+    records.append(
+        create_records(eitc_three_plus_children, "eitc_children", "tax_unit_count")
     )
-    district_df = district_df.loc[
-        (district_df["CONG_DISTRICT"] != "00") | (district_df["STATEFIPS"].isin(at_large_states))
-    ].reset_index(drop=True)
-
-    district_df["GEO_NAME"] = "district_" + (
-        f"{district_df['STATEFIPS'].map(FIPS_TO_STATE_ABBR)}-{district_df['CONG_DISTRICT']}"
+    records.append(
+        create_records(eitc_three_plus_children, "eitc_children", "eitc")
     )
 
-    district_df["agi_bracket"] = district_df["agi_stub"].map(AGI_STUB_TO_BAND)
+    # QBID ----------------------------------------------------------------------
+    qbid = all_marginals.copy().rename({
+        'N59664': 'tax_unit_count',
+        'A59664': 'qbid'
+    }, axis=1)
+    # No breakdown variable other than the geo here
+    qbid['one'] = 1
 
-    district_df
-
-    result = df[
-        [
-            "GEO_ID",
-            "GEO_NAME",
-            "CONG_DISTRICT",
-            "STATE",
-            "agi_bracket",
-            soi_variable_ident,
-        ]
-    ].rename(columns={soi_variable_ident: "VALUE"})
-
-    result["LOWER_BOUND"] = result["agi_bracket"].map(
-        lambda b: AGI_BOUNDS[b][0]
+    records.append(
+        create_records(qbid, "one", "tax_unit_count")
     )
-    result["UPPER_BOUND"] = result["agi_bracket"].map(
-        lambda b: AGI_BOUNDS[b][1]
+    records.append(
+        create_records(qbid, "one", "qbid")
     )
 
-    # if redistrict:
-    # result = apply_redistricting(result, variable_name)
+    # SALT -----------------------------------------------------------------------
 
-    assert df["GEO_ID"].nunique() == 436
+    # TODO: THERE's definitely a pattern here
+    # TODO: you forgot to multiply by 1000!
+    # For all the files, the money amounts are reported in thousands of dollars.
+    salt = all_marginals.copy().rename({
+        'N18425': 'tax_unit_count',
+        'A18425': 'salt'
+    }, axis=1)
+    salt['one'] = 1
 
-    if redistrict:
-        # After redistricting, validate against the new district codes from the mapping
-        mapping_df = pd.read_csv(CALIBRATION_FOLDER / "district_mapping.csv")
-        valid_district_codes = set(mapping_df["code_new"].unique())
-
-        # Check that all GEO_IDs are valid
-        produced_codes = set(result["GEO_ID"])
-        invalid_codes = produced_codes - valid_district_codes
-        assert (
-            not invalid_codes
-        ), f"Invalid district codes after redistricting: {invalid_codes}"
-
-        # Check we have exactly 436 districts
-        assert (
-            len(produced_codes) == 436
-        ), f"Expected 436 districts after redistricting, got {len(produced_codes)}"
-
-        # Check that all GEO_IDs successfully mapped to names
-        missing_names = result[result["GEO_NAME"].isna()]["GEO_ID"].unique()
-        assert (
-            len(missing_names) == 0
-        ), f"GEO_IDs without names in ID_TO_NAME mapping: {missing_names}"
-
-    # final column order
-    result = result[
-        ["GEO_ID", "GEO_NAME", "LOWER_BOUND", "UPPER_BOUND", "VALUE"]
-    ]
-    result["IS_COUNT"] = int(is_count)
-    result["VARIABLE"] = variable_name
-
-    result["VALUE"] = np.where(
-        result["IS_COUNT"] == 0, result["VALUE"] * 1_000, result["VALUE"]
+    records.append(
+        create_records(salt, "one", "tax_unit_count")
+    )
+    records.append(
+        create_records(qbid, "one", "salt")
     )
 
-    if district_df is not None:
-        # If a DataFrame is passed, we append the new data to it.
-        df = pd.concat([district_df, result], ignore_index=True)
-        return df
 
-    return result
+    return records
+
+
+
+
+
+
+
+
+
 
 
 def _get_soi_data(geo_level: str) -> pd.DataFrame:

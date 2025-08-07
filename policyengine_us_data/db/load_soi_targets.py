@@ -5,8 +5,7 @@
 # The Data: https://www.irs.gov/pub/irs-soi/22incd.csv
 
 from pathlib import Path
-
-from typing import Optional, Union
+from typing import List, Optional, Sequence, Dict, Tuple, Any, Union
 
 import numpy as np
 import pandas as pd
@@ -246,6 +245,97 @@ def create_records(df, breakdown_variable, target_variable):
     return temp_df
 
 
+def make_records(
+    df: pd.DataFrame,
+    *,
+    count_col: str,
+    amount_col: str,
+    amount_name: str,
+    breakdown_col: Optional[str] = None,
+    multiplier: int = 1_000,
+):
+    df = (
+        df.rename({count_col: "tax_unit_count",
+                   amount_col: amount_name},
+                  axis=1)
+          .copy()
+    )
+
+    if breakdown_col is None:
+        breakdown_col = "one"
+        df[breakdown_col] = 1
+
+    rec_counts  = create_records(df, breakdown_col, "tax_unit_count")
+    rec_amounts = create_records(df, breakdown_col, amount_name)
+    rec_amounts["target_value"] *= multiplier  # Only the amounts get * 1000
+    rec_counts["target_variable"] = f"{amount_name}_tax_unit_count"
+
+    return rec_counts, rec_amounts
+
+
+
+_TARGET_COL_MAP = {
+    "N1":     "agi_tax_unit_count",   # number of returns (≈ “tax units”)
+    "N2":     "agi_person_count",     # number of individuals
+    "A00100": "agi_total_amount",     # total Adjusted Gross Income
+}
+
+_BREAKDOWN_FIELD = "agi_stub"        # numeric AGI stub 1‑10 from IRS
+_BREAKDOWN_NAME  = "agi_stub"        # what will go in `breakdown_variable`
+
+def make_agi_long(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convert IRS SOI AGI‑split table from wide to the long format used
+    in your `records[*]` list.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        Must contain `ucgid_str`, `agi_stub` and the three IRS fields
+        in `_TARGET_COL_MAP` (N1, N2, A00100).
+    
+    Returns
+    -------
+    DataFrame with columns:
+        ucgid_str
+        breakdown_variable   (always "agi_stub")
+        breakdown_value      (1‑10)
+        target_variable      ("agi_tax_unit_count" | "agi_person_count" | "agi_total_amount")
+        target_value         (float)
+    """
+    # — keep only what we need and rename for clarity
+    work = (
+        df[["ucgid_str", _BREAKDOWN_FIELD] + list(_TARGET_COL_MAP)]
+          .rename(columns=_TARGET_COL_MAP)     # N1 → agi_tax_unit_count, etc.
+    )
+
+    # — wide → long
+    long = (
+        work.melt(
+            id_vars=["ucgid_str", _BREAKDOWN_FIELD],
+            var_name="target_variable",
+            value_name="target_value"
+        )
+        .rename(columns={_BREAKDOWN_FIELD: "breakdown_value"})
+        .assign(breakdown_variable=_BREAKDOWN_NAME)
+        # Optional: add a human‑readable band label if useful
+        # .assign(breakdown_label=lambda d: d["breakdown_value"].map(AGI_STUB_TO_BAND))
+    )
+
+    # — final column order
+    long = long[["ucgid_str",
+                 "breakdown_variable",
+                 "breakdown_value",
+                 "target_variable",
+                 "target_value"]]
+
+    # consistently sort (purely cosmetic)
+    return (
+        long.sort_values(["ucgid_str", "breakdown_value", "target_variable"])
+            .reset_index(drop=True)
+    )
+
+
 def extract_soi_data() -> pd.DataFrame:
     """Download and save congressional district AGI totals.
 
@@ -257,6 +347,32 @@ def extract_soi_data() -> pd.DataFrame:
 
 raw_df = extract_soi_data()
 # a "stub" is a term the IRS uses for a predefined category or group, specifically an income bracket.
+
+TARGETS = [
+    dict(code="59661", name="eitc", breakdown=("eitc_children", 0)),
+    dict(code="59662", name="eitc", breakdown=("eitc_children", 1)),
+    dict(code="59663", name="eitc", breakdown=("eitc_children", 2)),
+    dict(code="59664", name="eitc", breakdown=("eitc_children", "3+")),
+    dict(code="59664", name="qbid", breakdown=None),
+    dict(code="18500", name="real_estate_taxes", breakdown=None),
+    dict(code="01000", name="net_capital_gain", breakdown=None),
+    dict(code="03150", name="ira_payments", breakdown=None),
+    dict(code="00300", name="taxable_interest", breakdown=None),
+    dict(code="00400", name="tax_exempt_interest", breakdown=None),
+    dict(code="00600", name="oridinary_dividends", breakdown=None),
+    dict(code="00650", name="qualified_dividends", breakdown=None),
+    dict(code="26270", name="partnership_and_s_crop_net_income", breakdown=None),
+    dict(code="02500", name="total_social_security", breakdown=None),
+    dict(code="01700", name="pension_and_annuities", breakdown=None),
+    dict(code="02300", name="unemployment_compensation", breakdown=None),
+    dict(code="00900", name="business_net_income", breakdown=None),
+    dict(code="17000", name="medical_and_dental_deduction", breakdown=None),
+    dict(code="00700", name="salt_refunds", breakdown=None),
+    dict(code="18425", name="salt_amount", breakdown=None),
+    dict(code="06500", name="income_tax", breakdown=None),
+]
+
+
 
 def transform_soi_data(raw_df)
 
@@ -317,104 +433,53 @@ def transform_soi_data(raw_df)
 
     # Collect targets from the SOI file
     records = []
-
-    # EITC ---------------------------------------------------------------------------
-    eitc_no_children = all_marginals.copy().rename({
-        'N59661': 'tax_unit_count',
-        'A59661': 'eitc'
-    }, axis = 1)
-    eitc_no_children['eitc_children'] = 0
-
-    records.append(
-        create_records(eitc_no_children, "eitc_children", "tax_unit_count")
-    )
-    records.append(
-        create_records(eitc_no_children, "eitc_children", "eitc")
-    )
-
-    eitc_one_child = all_marginals.copy().rename({
-        'N59662': 'tax_unit_count',
-        'A59662': 'eitc'
-    }, axis=1)
-    eitc_one_child['eitc_children'] = 1
-
-    records.append(
-        create_records(eitc_one_child, "eitc_children", "tax_unit_count")
-    )
-    records.append(
-        create_records(eitc_one_child, "eitc_children", "eitc")
-    )
-
-    eitc_two_children = all_marginals.copy().rename({
-        'N59663': 'tax_unit_count',
-        'A59663': 'eitc'
-    }, axis=1)
-    eitc_two_children['eitc_children'] = 2
-
-    records.append(
-        create_records(eitc_two_children, "eitc_children", "tax_unit_count")
-    )
-    records.append(
-        create_records(eitc_two_children, "eitc_children", "eitc")
-    )
-
-    eitc_three_plus_children = all_marginals.copy().rename({
-        'N59664': 'tax_unit_count',
-        'A59664': 'eitc'
-    }, axis=1)
-    eitc_three_plus_children['eitc_children'] = '3+'
-
-    records.append(
-        create_records(eitc_three_plus_children, "eitc_children", "tax_unit_count")
-    )
-    records.append(
-        create_records(eitc_three_plus_children, "eitc_children", "eitc")
-    )
-
-    # QBID ----------------------------------------------------------------------
-    qbid = all_marginals.copy().rename({
-        'N59664': 'tax_unit_count',
-        'A59664': 'qbid'
-    }, axis=1)
-    # No breakdown variable other than the geo here
-    qbid['one'] = 1
-
-    records.append(
-        create_records(qbid, "one", "tax_unit_count")
-    )
-    records.append(
-        create_records(qbid, "one", "qbid")
-    )
-
-    # SALT -----------------------------------------------------------------------
-
-    # TODO: THERE's definitely a pattern here
-    # TODO: you forgot to multiply by 1000!
-    # For all the files, the money amounts are reported in thousands of dollars.
-    salt = all_marginals.copy().rename({
-        'N18425': 'tax_unit_count',
-        'A18425': 'salt'
-    }, axis=1)
-    salt['one'] = 1
-
-    records.append(
-        create_records(salt, "one", "tax_unit_count")
-    )
-    records.append(
-        create_records(qbid, "one", "salt")
-    )
+    for spec in TARGETS:
+        count_col  = f"N{spec['code']}"   # e.g. 'N59661'
+        amount_col = f"A{spec['code']}"   # e.g. 'A59661'
+    
+        df = all_marginals.copy()
+    
+        if spec["breakdown"] is not None:
+            col, val = spec["breakdown"]
+            df[col] = val
+            breakdown_col = col
+        else:
+            breakdown_col = None
+    
+        rec_counts, rec_amounts = make_records(
+            df,
+            count_col   = count_col,
+            amount_col  = amount_col,
+            amount_name = spec["name"],
+            breakdown_col = breakdown_col,
+            multiplier  = 1_000,
+        )
+        records.extend([rec_counts, rec_amounts])
 
 
-    return records
+    # Custom AGI amount, which doesn't have a count column (it has N1 and N2)
+    temp_df = df[["ucgid_str"]].copy()
+    temp_df["breakdown_variable"] = "one" 
+    temp_df["breakdown_value"] = 1 
+    temp_df["target_variable"] = "agi"
+    temp_df["target_value"] = df["A00100"] * 1_000
 
+    records.append(temp_df)
 
+    # It's notable that the national counts only have agi_stub = 0
+    all_agi_splits = all_df.copy().loc[all_df.agi_stub != 0]
+    assert all_agi_splits.shape[0] % (436 + 51 + 0) == 0
 
+    # Still a bit of work to do at the time of loading, since the breakdown variable
+    # is agi_stub
+    agi_long = make_agi_long(all_agi_splits)
 
+    # We have the distribution and the total amount, let's not go crazy here
+    agi_long = agi_long.loc[agi_long.target_variable != "agi_total_amount"] 
 
+    records.append(agi_long)
 
-
-
-
+    return pd.concat(records)
 
 
 def _get_soi_data(geo_level: str) -> pd.DataFrame:

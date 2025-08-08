@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-    - Fixed GitHub Pages documentation by adding .nojekyll file to serve underscore-prefixed directories

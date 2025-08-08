@@ -575,3 +575,9 @@
     - removed [0.5] key access from imputation results as per microimpute's new output
       format
   date: 2025-08-08 10:19:16
+- bump: patch
+  changes:
+    fixed:
+    - Fixed GitHub Pages documentation by adding .nojekyll file to serve underscore-prefixed
+      directories
+  date: 2025-08-08 15:16:00

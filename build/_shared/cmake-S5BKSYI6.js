@@ -1,1 +1,1 @@
-import{a}from"/myst_assets_folder/_shared/chunk-UGT3P5XQ.js";import"/myst_assets_folder/_shared/chunk-2NH4LW52.js";export default a();
+import{a}from"/policyengine-us-data/build/_shared/chunk-UGT3P5XQ.js";import"/policyengine-us-data/build/_shared/chunk-2NH4LW52.js";export default a();

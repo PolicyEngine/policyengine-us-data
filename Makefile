@@ -40,6 +40,7 @@ documentation:
 	rm -f _toc.yml && \
 	myst clean && \
 	timeout 10 myst build --html || true
+	cd docs && test -d _build/html && touch _build/html/.nojekyll || true
 
 documentation-build:
 	cd docs && \

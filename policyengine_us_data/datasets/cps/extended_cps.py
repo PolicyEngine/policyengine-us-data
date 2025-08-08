@@ -299,7 +299,7 @@ def impute_income_variables(
 
         # Extract median predictions and add to result
         for var in batch_vars:
-            result[var] = batch_predictions[0.5][var]
+            result[var] = batch_predictions[var]
 
         # Clean up batch objects
         del fitted_model

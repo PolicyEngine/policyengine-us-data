@@ -189,8 +189,7 @@ def impute_pension_contributions_to_puf(puf_df):
     # Predict using the fitted model
     predictions = fitted_model.predict(X_test=puf_df[["employment_income"]])
 
-    # Return the median (0.5 quantile) predictions
-    return predictions[0.5]["pre_tax_contributions"]
+    return predictions["pre_tax_contributions"]
 
 
 def impute_missing_demographics(
@@ -242,12 +241,10 @@ def impute_missing_demographics(
     ].reset_index()
 
     # Predict demographics
-    predictions = fitted_model.predict(
+    predicted_demographics = fitted_model.predict(
         X_test=puf_without_demographics[NON_DEMOGRAPHIC_VARIABLES]
     )
 
-    # Get median predictions
-    predicted_demographics = predictions[0.5]
     puf_with_imputed_demographics = pd.concat(
         [puf_without_demographics, predicted_demographics], axis=1
     )

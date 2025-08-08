@@ -174,18 +174,18 @@ def transform_age_data(age_data, docs):
     )
 
     df = df.drop(columns="NAME")
-    df = df.rename({"GEO_ID": "ucgid"}, axis=1)
-    df_data = df.rename(columns=rename_mapping)[["ucgid"] + list(AGE_COLS)]
+    df = df.rename({"GEO_ID": "ucgid_str"}, axis=1)
+    df_data = df.rename(columns=rename_mapping)[["ucgid_str"] + list(AGE_COLS)]
 
     # Filter out Puerto Rico's district and state records, if needed
     df_geos = df_data[
-        ~df_data["ucgid"].isin(["5001800US7298", "0400000US72"])
+        ~df_data["ucgid_str"].isin(["5001800US7298", "0400000US72"])
     ].copy()
 
-    df = df_geos[["ucgid"] + AGE_COLS]
+    df = df_geos[["ucgid_str"] + AGE_COLS]
 
     df_long = df.melt(
-        id_vars="ucgid",
+        id_vars="ucgid_str",
         value_vars=AGE_COLS,
         var_name="age_range",
         value_name="value",
@@ -212,11 +212,11 @@ def load_age_data(df_long, geo, stratum_lookup={}):
 
     # Quick data quality check before loading ----
     if geo == "National":
-        assert len(set(df_long.ucgid)) == 1
+        assert len(set(df_long.ucgid_str)) == 1
     elif geo == "State":
-        assert len(set(df_long.ucgid)) == 51
+        assert len(set(df_long.ucgid_str)) == 51
     elif geo == "District":
-        assert len(set(df_long.ucgid)) == 436
+        assert len(set(df_long.ucgid_str)) == 436
     else:
         raise ValueError('geo must be one of "National", "State", "District"')
 
@@ -238,7 +238,7 @@ def load_age_data(df_long, geo, stratum_lookup={}):
 
         # Create the parent Stratum object.
         # We will attach children to it before adding it to the session.
-        note = f"Age: {row['age_range']}, Geo: {row['ucgid']}"
+        note = f"Age: {row['age_range']}, Geo: {row['ucgid_str']}"
         parent_geo = get_parent_geo(geo)
         parent_stratum_id = (
             stratum_lookup[parent_geo][row["age_range"]]
@@ -253,9 +253,9 @@ def load_age_data(df_long, geo, stratum_lookup={}):
         # Create constraints and link them to the parent's relationship attribute.
         new_stratum.constraints_rel = [
             StratumConstraint(
-                constraint_variable="ucgid",
-                operation="equals",
-                value=row["ucgid"],
+                constraint_variable="ucgid_str",
+                operation="in",
+                value=row["ucgid_str"],
             ),
             StratumConstraint(
                 constraint_variable="age",

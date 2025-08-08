@@ -186,14 +186,14 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     imputed_values = fitted_model.predict(X_test=inference_df)
     logging.info("Imputation complete.")
     cps["rent"] = np.zeros_like(cps["age"])
-    cps["rent"][mask] = imputed_values[0.5]["rent"]
+    cps["rent"][mask] = imputed_values["rent"]
     # Assume zero housing assistance since
     cps["pre_subsidy_rent"] = cps["rent"]
     cps["housing_assistance"] = np.zeros_like(
         cps["spm_unit_capped_housing_subsidy_reported"]
     )
     cps["real_estate_taxes"] = np.zeros_like(cps["age"])
-    cps["real_estate_taxes"][mask] = imputed_values[0.5]["real_estate_taxes"]
+    cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
 
 def add_takeup(self):
@@ -1618,7 +1618,7 @@ def add_tips(self, cps: h5py.File):
     cps["tip_income"] = model.predict(
         X_test=cps,
         mean_quantile=0.5,
-    )[0.5].tip_income.values
+    ).tip_income.values
 
     self.save_dataset(cps)
 
@@ -1957,7 +1957,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     imputations = fitted_model.predict(X_test=receiver_data)
 
     for var in IMPUTED_VARIABLES:
-        cps[var] = imputations[0.5][var]
+        cps[var] = imputations[var]
 
     cps["net_worth"] = cps["networth"]
     del cps["networth"]

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.1] - 2025-08-08 10:19:16
+
+### Changed
+
+- renamed "ucgid" to "ucgid_str" in age targets loading script and operation to "in"
+- removed [0.5] key access from imputation results as per microimpute's new output format
+
 ## [1.44.0] - 2025-08-06 19:01:03
 
 ### Added
@@ -682,6 +689,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.44.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.44.0...1.44.1
 [1.44.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.43.1...1.44.0
 [1.43.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.43.0...1.43.1
 [1.43.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.42.6...1.43.0

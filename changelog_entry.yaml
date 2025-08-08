@@ -1,5 +1,0 @@
-- bump: patch
-  changes:
-    changed:
-    - renamed "ucgid" to "ucgid_str" in age targets loading script and operation to "in"
-    - removed [0.5] key access from imputation results as per microimpute's new output format

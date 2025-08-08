@@ -33,6 +33,23 @@ jobs:
         env:
           BASE_URL: '/policyengine-us-data'
 
+      - name: Verify documentation build
+        run: |
+          echo "Checking .nojekyll file exists..."
+          test -f docs/_build/html/.nojekyll || (echo "ERROR: .nojekyll file missing!" && exit 1)
+          
+          echo "Checking index.html exists..."
+          test -f docs/_build/html/index.html || (echo "ERROR: index.html missing!" && exit 1)
+          
+          echo "Checking for correct base URL in HTML..."
+          if grep -q 'href="/policyengine-us-data/' docs/_build/html/index.html; then
+            echo "✓ Base URL correctly set in HTML"
+          else
+            echo "ERROR: Base URL not found in HTML!" && exit 1
+          fi
+          
+          echo "Documentation build verification passed!"
+
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:

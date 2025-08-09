@@ -1972,7 +1972,7 @@ class CPS_2019(CPS):
     previous_year_raw_cps = CensusCPS_2018
     file_path = STORAGE_FOLDER / "cps_2019.h5"
     time_period = 2019
-    frac = 0.8  # Moderate downsampling + L0 for intelligent selection
+    frac = 0.75  # Proven stable downsampling + L0 for intelligent selection
 
 
 class CPS_2020(CPS):
@@ -1982,7 +1982,7 @@ class CPS_2020(CPS):
     previous_year_raw_cps = CensusCPS_2019
     file_path = STORAGE_FOLDER / "cps_2020.h5"
     time_period = 2020
-    frac = 0.8  # Moderate downsampling + L0 for intelligent selection
+    frac = 0.75  # Proven stable downsampling + L0 for intelligent selection
 
 
 class CPS_2021(CPS):
@@ -1992,7 +1992,7 @@ class CPS_2021(CPS):
     previous_year_raw_cps = CensusCPS_2020
     file_path = STORAGE_FOLDER / "cps_2021_v1_6_1.h5"
     time_period = 2021
-    frac = 0.8  # Moderate downsampling + L0 for intelligent selection
+    frac = 0.75  # Proven stable downsampling + L0 for intelligent selection
 
 
 class CPS_2022(CPS):
@@ -2002,7 +2002,7 @@ class CPS_2022(CPS):
     previous_year_raw_cps = CensusCPS_2021
     file_path = STORAGE_FOLDER / "cps_2022_v1_6_1.h5"
     time_period = 2022
-    frac = 0.8  # Moderate downsampling + L0 for intelligent selection
+    frac = 0.75  # Proven stable downsampling + L0 for intelligent selection
 
 
 class CPS_2023(CPS):
@@ -2012,7 +2012,7 @@ class CPS_2023(CPS):
     previous_year_raw_cps = CensusCPS_2022
     file_path = STORAGE_FOLDER / "cps_2023.h5"
     time_period = 2023
-    frac = 0.8  # Moderate downsampling + L0 for intelligent selection
+    frac = 0.75  # Proven stable downsampling + L0 for intelligent selection
 
 
 class CPS_2024(CPS):

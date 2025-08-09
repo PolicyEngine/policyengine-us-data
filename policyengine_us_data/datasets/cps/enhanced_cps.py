@@ -36,7 +36,7 @@ def reweight(
     dropout_rate=0.05,
     log_path="calibration_log.csv",
     epochs=500,
-    l0_lambda=5.0e-05,  # Increased from 2.6445e-07, combined with 80% sampling for stable performance
+    l0_lambda=1.0e-06,  # Reduced from 5e-05 - was too aggressive (only 1286 households, need 20k-25k)
     init_mean=0.999,  # initial proportion with non-zero weights
     temperature=0.25,
     seed=1456,

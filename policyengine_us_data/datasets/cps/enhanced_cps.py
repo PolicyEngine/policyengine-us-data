@@ -36,7 +36,7 @@ def reweight(
     dropout_rate=0.05,
     log_path="calibration_log.csv",
     epochs=500,
-    l0_lambda=1.0e-06,  # Increased from 2.6445e-07 to replace 50% downsampling
+    l0_lambda=5.0e-05,  # Increased from 2.6445e-07 to achieve ~50% sparsity matching downsampling
     init_mean=0.999,  # initial proportion with non-zero weights
     temperature=0.25,
     seed=1456,

@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    changed:
+    - Replaced 50% random downsampling with larger L0 penalty for CPS 2019-2023 datasets to improve accuracy while maintaining similar computational efficiency

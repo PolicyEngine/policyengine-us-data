@@ -1,0 +1,12 @@
+﻿2025-08-10T11:46:11.0155135Z ##[group]Run python -c "from policyengine_core.data import Dataset; print('Core import OK')"
+2025-08-10T11:46:11.0155736Z [36;1mpython -c "from policyengine_core.data import Dataset; print('Core import OK')"[0m
+2025-08-10T11:46:11.0197710Z shell: /usr/bin/bash -e {0}
+2025-08-10T11:46:11.0197932Z env:
+2025-08-10T11:46:11.0198160Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T11:46:11.0198547Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib/pkgconfig
+2025-08-10T11:46:11.0198925Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T11:46:11.0199276Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T11:46:11.0199635Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T11:46:11.0199973Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib
+2025-08-10T11:46:11.0200259Z ##[endgroup]
+2025-08-10T11:46:11.9789339Z Core import OK

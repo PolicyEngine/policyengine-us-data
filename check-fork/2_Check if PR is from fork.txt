@@ -1,0 +1,16 @@
+﻿2025-08-10T11:43:10.2438196Z ##[group]Run if [ "PolicyEngine/policyengine-us-data" != "PolicyEngine/policyengine-us-data" ]; then
+2025-08-10T11:43:10.2439673Z [36;1mif [ "PolicyEngine/policyengine-us-data" != "PolicyEngine/policyengine-us-data" ]; then[0m
+2025-08-10T11:43:10.2440683Z [36;1m  echo "❌ ERROR: This PR is from a fork repository."[0m
+2025-08-10T11:43:10.2441711Z [36;1m  echo "PRs must be created from branches in the main PolicyEngine/policyengine-us-data repository."[0m
+2025-08-10T11:43:10.2442858Z [36;1m  echo "Please close this PR and create a new one following these steps:"[0m
+2025-08-10T11:43:10.2443703Z [36;1m  echo "1. git checkout main"[0m
+2025-08-10T11:43:10.2444332Z [36;1m  echo "2. git pull upstream main"[0m
+2025-08-10T11:43:10.2445220Z [36;1m  echo "3. git checkout -b your-branch-name"[0m
+2025-08-10T11:43:10.2446068Z [36;1m  echo "4. git push -u upstream your-branch-name"[0m
+2025-08-10T11:43:10.2446810Z [36;1m  echo "5. Create PR from the upstream branch"[0m
+2025-08-10T11:43:10.2447424Z [36;1m  exit 1[0m
+2025-08-10T11:43:10.2448083Z [36;1mfi[0m
+2025-08-10T11:43:10.2448641Z [36;1mecho "✅ PR is from the correct repository"[0m
+2025-08-10T11:43:10.2735465Z shell: /usr/bin/bash -e {0}
+2025-08-10T11:43:10.2736511Z ##[endgroup]
+2025-08-10T11:43:10.3030685Z ✅ PR is from the correct repository

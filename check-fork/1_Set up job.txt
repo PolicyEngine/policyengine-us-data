@@ -1,0 +1,39 @@
+﻿2025-08-10T11:43:10.1269128Z Current runner version: '2.327.1'
+2025-08-10T11:43:10.1292492Z ##[group]Runner Image Provisioner
+2025-08-10T11:43:10.1293280Z Hosted Compute Agent
+2025-08-10T11:43:10.1293897Z Version: 20250711.363
+2025-08-10T11:43:10.1294480Z Commit: 6785254374ce925a23743850c1cb91912ce5c14c
+2025-08-10T11:43:10.1295298Z Build Date: 2025-07-11T20:04:25Z
+2025-08-10T11:43:10.1295960Z ##[endgroup]
+2025-08-10T11:43:10.1296532Z ##[group]Operating System
+2025-08-10T11:43:10.1297092Z Ubuntu
+2025-08-10T11:43:10.1297567Z 24.04.2
+2025-08-10T11:43:10.1298037Z LTS
+2025-08-10T11:43:10.1298511Z ##[endgroup]
+2025-08-10T11:43:10.1299057Z ##[group]Runner Image
+2025-08-10T11:43:10.1299642Z Image: ubuntu-24.04
+2025-08-10T11:43:10.1300110Z Version: 20250804.2.0
+2025-08-10T11:43:10.1301138Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250804.2/images/ubuntu/Ubuntu2404-Readme.md
+2025-08-10T11:43:10.1302472Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250804.2
+2025-08-10T11:43:10.1303620Z ##[endgroup]
+2025-08-10T11:43:10.1306144Z ##[group]GITHUB_TOKEN Permissions
+2025-08-10T11:43:10.1307969Z Actions: write
+2025-08-10T11:43:10.1308636Z Attestations: write
+2025-08-10T11:43:10.1309144Z Checks: write
+2025-08-10T11:43:10.1309581Z Contents: write
+2025-08-10T11:43:10.1310183Z Deployments: write
+2025-08-10T11:43:10.1310656Z Discussions: write
+2025-08-10T11:43:10.1311132Z Issues: write
+2025-08-10T11:43:10.1311635Z Metadata: read
+2025-08-10T11:43:10.1312116Z Models: read
+2025-08-10T11:43:10.1312565Z Packages: write
+2025-08-10T11:43:10.1313231Z Pages: write
+2025-08-10T11:43:10.1313768Z PullRequests: write
+2025-08-10T11:43:10.1314310Z RepositoryProjects: write
+2025-08-10T11:43:10.1315328Z SecurityEvents: write
+2025-08-10T11:43:10.1315939Z Statuses: write
+2025-08-10T11:43:10.1316444Z ##[endgroup]
+2025-08-10T11:43:10.1318421Z Secret source: Actions
+2025-08-10T11:43:10.1319164Z Prepare workflow directory
+2025-08-10T11:43:10.1630865Z Prepare all required actions
+2025-08-10T11:43:10.1721487Z Complete job name: check-fork

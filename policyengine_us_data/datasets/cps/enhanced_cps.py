@@ -209,10 +209,12 @@ def reweight(
         targets_array,
         "L0 Sparse Solution",
     )
-    
+
     # Log household count for CI monitoring
     nonzero_count = np.sum(final_weights_sparse > 0.01)
-    logging.info(f"HOUSEHOLD_COUNT_CHECK: {nonzero_count} non-zero households (target: 20k-25k)")
+    logging.info(
+        f"HOUSEHOLD_COUNT_CHECK: {nonzero_count} non-zero households (target: 20k-25k)"
+    )
 
     return final_weights_dense, final_weights_sparse
 

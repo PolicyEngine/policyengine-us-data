@@ -1,0 +1,56 @@
+﻿2025-08-10T03:12:36.9713901Z Current runner version: '2.327.1'
+2025-08-10T03:12:36.9745264Z ##[group]Runner Image Provisioner
+2025-08-10T03:12:36.9746702Z Hosted Compute Agent
+2025-08-10T03:12:36.9747579Z Version: 20250711.363
+2025-08-10T03:12:36.9748821Z Commit: 6785254374ce925a23743850c1cb91912ce5c14c
+2025-08-10T03:12:36.9750084Z Build Date: 2025-07-11T20:04:25Z
+2025-08-10T03:12:36.9751062Z ##[endgroup]
+2025-08-10T03:12:36.9751848Z ##[group]Operating System
+2025-08-10T03:12:36.9752899Z Ubuntu
+2025-08-10T03:12:36.9753639Z 24.04.2
+2025-08-10T03:12:36.9754503Z LTS
+2025-08-10T03:12:36.9755446Z ##[endgroup]
+2025-08-10T03:12:36.9756256Z ##[group]Runner Image
+2025-08-10T03:12:36.9757203Z Image: ubuntu-24.04
+2025-08-10T03:12:36.9758474Z Version: 20250804.2.0
+2025-08-10T03:12:36.9760341Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250804.2/images/ubuntu/Ubuntu2404-Readme.md
+2025-08-10T03:12:36.9762941Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250804.2
+2025-08-10T03:12:36.9764808Z ##[endgroup]
+2025-08-10T03:12:36.9769158Z ##[group]GITHUB_TOKEN Permissions
+2025-08-10T03:12:36.9772542Z Actions: write
+2025-08-10T03:12:36.9773405Z Attestations: write
+2025-08-10T03:12:36.9774364Z Checks: write
+2025-08-10T03:12:36.9775244Z Contents: write
+2025-08-10T03:12:36.9776237Z Deployments: write
+2025-08-10T03:12:36.9777071Z Discussions: write
+2025-08-10T03:12:36.9778425Z Issues: write
+2025-08-10T03:12:36.9779253Z Metadata: read
+2025-08-10T03:12:36.9780138Z Models: read
+2025-08-10T03:12:36.9781179Z Packages: write
+2025-08-10T03:12:36.9782006Z Pages: write
+2025-08-10T03:12:36.9782847Z PullRequests: write
+2025-08-10T03:12:36.9783832Z RepositoryProjects: write
+2025-08-10T03:12:36.9784849Z SecurityEvents: write
+2025-08-10T03:12:36.9785890Z Statuses: write
+2025-08-10T03:12:36.9786976Z ##[endgroup]
+2025-08-10T03:12:36.9791874Z Secret source: Actions
+2025-08-10T03:12:36.9793050Z Prepare workflow directory
+2025-08-10T03:12:37.0268205Z Prepare all required actions
+2025-08-10T03:12:37.0402471Z Complete job name: check-fork
+2025-08-10T03:12:37.1461120Z ##[group]Run if [ "PolicyEngine/policyengine-us-data" != "PolicyEngine/policyengine-us-data" ]; then
+2025-08-10T03:12:37.1462609Z [36;1mif [ "PolicyEngine/policyengine-us-data" != "PolicyEngine/policyengine-us-data" ]; then[0m
+2025-08-10T03:12:37.1463629Z [36;1m  echo "❌ ERROR: This PR is from a fork repository."[0m
+2025-08-10T03:12:37.1464659Z [36;1m  echo "PRs must be created from branches in the main PolicyEngine/policyengine-us-data repository."[0m
+2025-08-10T03:12:37.1465858Z [36;1m  echo "Please close this PR and create a new one following these steps:"[0m
+2025-08-10T03:12:37.1466703Z [36;1m  echo "1. git checkout main"[0m
+2025-08-10T03:12:37.1467329Z [36;1m  echo "2. git pull upstream main"[0m
+2025-08-10T03:12:37.1468139Z [36;1m  echo "3. git checkout -b your-branch-name"[0m
+2025-08-10T03:12:37.1468948Z [36;1m  echo "4. git push -u upstream your-branch-name"[0m
+2025-08-10T03:12:37.1469640Z [36;1m  echo "5. Create PR from the upstream branch"[0m
+2025-08-10T03:12:37.1470448Z [36;1m  exit 1[0m
+2025-08-10T03:12:37.1470926Z [36;1mfi[0m
+2025-08-10T03:12:37.1471457Z [36;1mecho "✅ PR is from the correct repository"[0m
+2025-08-10T03:12:37.1728986Z shell: /usr/bin/bash -e {0}
+2025-08-10T03:12:37.1729880Z ##[endgroup]
+2025-08-10T03:12:37.2122238Z ✅ PR is from the correct repository
+2025-08-10T03:12:37.2226496Z Cleaning up orphan processes

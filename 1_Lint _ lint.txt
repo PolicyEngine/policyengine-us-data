@@ -1,0 +1,257 @@
+﻿2025-08-10T03:12:41.4551515Z Current runner version: '2.327.1'
+2025-08-10T03:12:41.4574796Z ##[group]Runner Image Provisioner
+2025-08-10T03:12:41.4575740Z Hosted Compute Agent
+2025-08-10T03:12:41.4576270Z Version: 20250711.363
+2025-08-10T03:12:41.4576852Z Commit: 6785254374ce925a23743850c1cb91912ce5c14c
+2025-08-10T03:12:41.4577658Z Build Date: 2025-07-11T20:04:25Z
+2025-08-10T03:12:41.4578220Z ##[endgroup]
+2025-08-10T03:12:41.4578732Z ##[group]Operating System
+2025-08-10T03:12:41.4579325Z Ubuntu
+2025-08-10T03:12:41.4579815Z 24.04.2
+2025-08-10T03:12:41.4580228Z LTS
+2025-08-10T03:12:41.4580980Z ##[endgroup]
+2025-08-10T03:12:41.4581449Z ##[group]Runner Image
+2025-08-10T03:12:41.4581985Z Image: ubuntu-24.04
+2025-08-10T03:12:41.4582569Z Version: 20250804.2.0
+2025-08-10T03:12:41.4583546Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250804.2/images/ubuntu/Ubuntu2404-Readme.md
+2025-08-10T03:12:41.4585165Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250804.2
+2025-08-10T03:12:41.4586116Z ##[endgroup]
+2025-08-10T03:12:41.4588597Z ##[group]GITHUB_TOKEN Permissions
+2025-08-10T03:12:41.4590590Z Actions: write
+2025-08-10T03:12:41.4591626Z Attestations: write
+2025-08-10T03:12:41.4592419Z Checks: write
+2025-08-10T03:12:41.4592909Z Contents: write
+2025-08-10T03:12:41.4593366Z Deployments: write
+2025-08-10T03:12:41.4593954Z Discussions: write
+2025-08-10T03:12:41.4594452Z Issues: write
+2025-08-10T03:12:41.4594933Z Metadata: read
+2025-08-10T03:12:41.4595486Z Models: read
+2025-08-10T03:12:41.4595987Z Packages: write
+2025-08-10T03:12:41.4596457Z Pages: write
+2025-08-10T03:12:41.4597065Z PullRequests: write
+2025-08-10T03:12:41.4597617Z RepositoryProjects: write
+2025-08-10T03:12:41.4598147Z SecurityEvents: write
+2025-08-10T03:12:41.4598875Z Statuses: write
+2025-08-10T03:12:41.4599349Z ##[endgroup]
+2025-08-10T03:12:41.4601771Z Secret source: Actions
+2025-08-10T03:12:41.4602593Z Prepare workflow directory
+2025-08-10T03:12:41.4922563Z Prepare all required actions
+2025-08-10T03:12:41.4959762Z Getting action download info
+2025-08-10T03:12:41.7730020Z ##[group]Download immutable action package 'actions/checkout@v4'
+2025-08-10T03:12:41.7731439Z Version: 4.2.2
+2025-08-10T03:12:41.7732511Z Digest: sha256:ccb2698953eaebd21c7bf6268a94f9c26518a7e38e27e0b83c1fe1ad049819b1
+2025-08-10T03:12:41.7733698Z Source commit SHA: 11bd71901bbe5b1630ceea73d27597364c9af683
+2025-08-10T03:12:41.7734431Z ##[endgroup]
+2025-08-10T03:12:41.8605531Z Download action repository 'lgeiger/black-action@master' (SHA:6d855d727b1f709b1ee1af273a3db751792f67ef)
+2025-08-10T03:12:42.1643116Z Uses: PolicyEngine/policyengine-us-data/.github/workflows/reusable_lint.yaml@refs/pull/428/merge (3282d1a16562a6d05e8bda2c136134173996988f)
+2025-08-10T03:12:42.1647987Z Complete job name: Lint / lint
+2025-08-10T03:12:42.2070906Z ##[group]Build container for action use: '/home/runner/work/_actions/lgeiger/black-action/master/Dockerfile'.
+2025-08-10T03:12:42.2229091Z ##[command]/usr/bin/docker build -t 4a88a1:787ef017cd8443fcba17f4c146c83850 -f "/home/runner/work/_actions/lgeiger/black-action/master/Dockerfile" "/home/runner/work/_actions/lgeiger/black-action/master"
+2025-08-10T03:12:44.7650231Z #0 building with "default" instance using docker driver
+2025-08-10T03:12:44.7651596Z 
+2025-08-10T03:12:44.7652049Z #1 [internal] load build definition from Dockerfile
+2025-08-10T03:12:44.7653097Z #1 transferring dockerfile: 533B done
+2025-08-10T03:12:44.7653962Z #1 DONE 0.0s
+2025-08-10T03:12:44.7654340Z 
+2025-08-10T03:12:44.7654855Z #2 [auth] library/python:pull token for registry-1.docker.io
+2025-08-10T03:12:44.7655927Z #2 DONE 0.0s
+2025-08-10T03:12:44.7656312Z 
+2025-08-10T03:12:44.7656796Z #3 [internal] load metadata for docker.io/library/python:3
+2025-08-10T03:12:44.9780379Z #3 DONE 0.4s
+2025-08-10T03:12:45.1003388Z 
+2025-08-10T03:12:45.1004041Z #4 [internal] load .dockerignore
+2025-08-10T03:12:45.1005472Z #4 transferring context: 2B done
+2025-08-10T03:12:45.1005808Z #4 DONE 0.0s
+2025-08-10T03:12:45.1005967Z 
+2025-08-10T03:12:45.1006093Z #5 [internal] load build context
+2025-08-10T03:12:45.1006728Z #5 transferring context: 74B done
+2025-08-10T03:12:45.1007056Z #5 DONE 0.0s
+2025-08-10T03:12:45.1007194Z 
+2025-08-10T03:12:45.1007593Z #6 [1/3] FROM docker.io/library/python:3@sha256:68d0775234842868248bfe185eece56e725d3cb195f511a21233d0f564dee501
+2025-08-10T03:12:45.1008348Z #6 resolve docker.io/library/python:3@sha256:68d0775234842868248bfe185eece56e725d3cb195f511a21233d0f564dee501 done
+2025-08-10T03:12:45.1009072Z #6 sha256:68d0775234842868248bfe185eece56e725d3cb195f511a21233d0f564dee501 9.72kB / 9.72kB done
+2025-08-10T03:12:45.1009719Z #6 sha256:3e7f48ebe9d8b258a2c0273be4a8af2fb855a201ff384de4d1534761c7f4e103 6.32kB / 6.32kB done
+2025-08-10T03:12:45.1010356Z #6 sha256:37f838b71c6b82c581b7543a313255b8c99c23cc9d96c1ad6f9f5f208c942553 3.15MB / 64.40MB 0.1s
+2025-08-10T03:12:45.1011331Z #6 sha256:c2d8038fe0719799a42e436e8e51920f537b2c3518449fcb753d69509057daf6 2.32kB / 2.32kB done
+2025-08-10T03:12:45.1012015Z #6 sha256:ebed137c7c18cb1906fb8314eabc10611ddf49a281f8c1b5eab987a7137f749f 6.29MB / 48.49MB 0.1s
+2025-08-10T03:12:45.1012691Z #6 sha256:c2e76af9483f2d17a3e370639403df2c53a3da1480d533116a8694cd91f15d5a 4.19MB / 24.02MB 0.1s
+2025-08-10T03:12:45.2996965Z #6 sha256:37f838b71c6b82c581b7543a313255b8c99c23cc9d96c1ad6f9f5f208c942553 25.17MB / 64.40MB 0.3s
+2025-08-10T03:12:45.2998449Z #6 sha256:ebed137c7c18cb1906fb8314eabc10611ddf49a281f8c1b5eab987a7137f749f 40.89MB / 48.49MB 0.3s
+2025-08-10T03:12:45.3000060Z #6 sha256:c2e76af9483f2d17a3e370639403df2c53a3da1480d533116a8694cd91f15d5a 24.02MB / 24.02MB 0.2s done
+2025-08-10T03:12:45.4879735Z #6 sha256:37f838b71c6b82c581b7543a313255b8c99c23cc9d96c1ad6f9f5f208c942553 45.91MB / 64.40MB 0.4s
+2025-08-10T03:12:45.4884482Z #6 sha256:ebed137c7c18cb1906fb8314eabc10611ddf49a281f8c1b5eab987a7137f749f 48.49MB / 48.49MB 0.3s done
+2025-08-10T03:12:45.4887412Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 20.97MB / 211.36MB 0.4s
+2025-08-10T03:12:45.4889612Z #6 extracting sha256:ebed137c7c18cb1906fb8314eabc10611ddf49a281f8c1b5eab987a7137f749f 0.1s
+2025-08-10T03:12:45.4891009Z #6 sha256:66d01326c43588e03963922f1698cb99403558cf7e64a79d9da93e6edf9c5899 4.19MB / 6.16MB 0.4s
+2025-08-10T03:12:45.5993429Z #6 sha256:37f838b71c6b82c581b7543a313255b8c99c23cc9d96c1ad6f9f5f208c942553 64.40MB / 64.40MB 0.5s done
+2025-08-10T03:12:45.5994703Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 37.75MB / 211.36MB 0.6s
+2025-08-10T03:12:45.5995879Z #6 sha256:66d01326c43588e03963922f1698cb99403558cf7e64a79d9da93e6edf9c5899 6.16MB / 6.16MB 0.4s done
+2025-08-10T03:12:45.5997115Z #6 sha256:505bcd5de71db2becc8dafff688d0812a3c5df8eca1e85d6158e3957b14e0498 251B / 251B 0.5s done
+2025-08-10T03:12:45.5998993Z #6 sha256:fb5f775313f04521fd0f937e04bdb9e2583276f9c2e275447005a2968c57318d 27.40MB / 27.40MB 0.6s done
+2025-08-10T03:12:45.7124369Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 53.48MB / 211.36MB 0.7s
+2025-08-10T03:12:45.8169375Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 67.11MB / 211.36MB 0.8s
+2025-08-10T03:12:45.9992687Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 92.27MB / 211.36MB 1.0s
+2025-08-10T03:12:46.0993733Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 102.85MB / 211.36MB 1.1s
+2025-08-10T03:12:46.1993376Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 121.63MB / 211.36MB 1.2s
+2025-08-10T03:12:46.3401103Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 133.17MB / 211.36MB 1.3s
+2025-08-10T03:12:46.4516727Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 154.14MB / 211.36MB 1.4s
+2025-08-10T03:12:46.5685759Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 172.24MB / 211.36MB 1.5s
+2025-08-10T03:12:46.6848122Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 186.65MB / 211.36MB 1.6s
+2025-08-10T03:12:46.7995216Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 211.36MB / 211.36MB 1.8s
+2025-08-10T03:12:46.9992150Z #6 sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 211.36MB / 211.36MB 2.0s done
+2025-08-10T03:12:47.1426049Z #6 extracting sha256:ebed137c7c18cb1906fb8314eabc10611ddf49a281f8c1b5eab987a7137f749f 1.8s done
+2025-08-10T03:12:47.3054134Z #6 extracting sha256:c2e76af9483f2d17a3e370639403df2c53a3da1480d533116a8694cd91f15d5a 0.1s
+2025-08-10T03:12:47.8584593Z #6 extracting sha256:c2e76af9483f2d17a3e370639403df2c53a3da1480d533116a8694cd91f15d5a 0.5s done
+2025-08-10T03:12:47.9657961Z #6 extracting sha256:37f838b71c6b82c581b7543a313255b8c99c23cc9d96c1ad6f9f5f208c942553
+2025-08-10T03:12:50.1362405Z #6 extracting sha256:37f838b71c6b82c581b7543a313255b8c99c23cc9d96c1ad6f9f5f208c942553 2.0s done
+2025-08-10T03:12:50.2527857Z #6 extracting sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45
+2025-08-10T03:12:55.3757910Z #6 extracting sha256:873a4c80287477653c01b20948fc34bb1bacf0f826bcc2ddc3bd2fe25b342d45 5.0s done
+2025-08-10T03:12:56.5069360Z #6 extracting sha256:66d01326c43588e03963922f1698cb99403558cf7e64a79d9da93e6edf9c5899
+2025-08-10T03:12:56.9111506Z #6 extracting sha256:66d01326c43588e03963922f1698cb99403558cf7e64a79d9da93e6edf9c5899 0.3s done
+2025-08-10T03:12:56.9112614Z #6 extracting sha256:fb5f775313f04521fd0f937e04bdb9e2583276f9c2e275447005a2968c57318d 0.1s
+2025-08-10T03:12:57.4870384Z #6 extracting sha256:fb5f775313f04521fd0f937e04bdb9e2583276f9c2e275447005a2968c57318d 0.6s done
+2025-08-10T03:12:57.4871867Z #6 extracting sha256:505bcd5de71db2becc8dafff688d0812a3c5df8eca1e85d6158e3957b14e0498
+2025-08-10T03:12:57.6683798Z #6 extracting sha256:505bcd5de71db2becc8dafff688d0812a3c5df8eca1e85d6158e3957b14e0498 done
+2025-08-10T03:12:57.6684520Z #6 DONE 12.5s
+2025-08-10T03:12:57.6684738Z 
+2025-08-10T03:12:57.6684864Z #7 [2/3] RUN pip install black
+2025-08-10T03:12:59.0598045Z #7 1.542 Collecting black
+2025-08-10T03:12:59.1605485Z #7 1.583   Downloading black-25.1.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_28_x86_64.whl.metadata (81 kB)
+2025-08-10T03:12:59.1606551Z #7 1.624 Collecting click>=8.0.0 (from black)
+2025-08-10T03:12:59.1607156Z #7 1.628   Downloading click-8.2.1-py3-none-any.whl.metadata (2.5 kB)
+2025-08-10T03:12:59.1607809Z #7 1.639 Collecting mypy-extensions>=0.4.3 (from black)
+2025-08-10T03:12:59.1608522Z #7 1.643   Downloading mypy_extensions-1.1.0-py3-none-any.whl.metadata (1.1 kB)
+2025-08-10T03:12:59.2775451Z #7 1.660 Collecting packaging>=22.0 (from black)
+2025-08-10T03:12:59.2776223Z #7 1.664   Downloading packaging-25.0-py3-none-any.whl.metadata (3.3 kB)
+2025-08-10T03:12:59.2776894Z #7 1.677 Collecting pathspec>=0.9.0 (from black)
+2025-08-10T03:12:59.2777950Z #7 1.680   Downloading pathspec-0.12.1-py3-none-any.whl.metadata (21 kB)
+2025-08-10T03:12:59.2778659Z #7 1.704 Collecting platformdirs>=2 (from black)
+2025-08-10T03:12:59.2779326Z #7 1.708   Downloading platformdirs-4.3.8-py3-none-any.whl.metadata (12 kB)
+2025-08-10T03:12:59.2780383Z #7 1.720 Downloading black-25.1.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_28_x86_64.whl (1.8 MB)
+2025-08-10T03:12:59.4840622Z #7 1.760    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 49.4 MB/s  0:00:00
+2025-08-10T03:12:59.4841413Z #7 1.764 Downloading click-8.2.1-py3-none-any.whl (102 kB)
+2025-08-10T03:12:59.4842132Z #7 1.770 Downloading mypy_extensions-1.1.0-py3-none-any.whl (5.0 kB)
+2025-08-10T03:12:59.4842830Z #7 1.775 Downloading packaging-25.0-py3-none-any.whl (66 kB)
+2025-08-10T03:12:59.4843579Z #7 1.781 Downloading pathspec-0.12.1-py3-none-any.whl (31 kB)
+2025-08-10T03:12:59.4844322Z #7 1.786 Downloading platformdirs-4.3.8-py3-none-any.whl (18 kB)
+2025-08-10T03:12:59.4845535Z #7 1.816 Installing collected packages: platformdirs, pathspec, packaging, mypy-extensions, click, black
+2025-08-10T03:12:59.5984110Z #7 2.081 
+2025-08-10T03:12:59.7488306Z #7 2.083 Successfully installed black-25.1.0 click-8.2.1 mypy-extensions-1.1.0 packaging-25.0 pathspec-0.12.1 platformdirs-4.3.8
+2025-08-10T03:12:59.7490211Z #7 2.083 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+2025-08-10T03:12:59.7491917Z #7 DONE 2.2s
+2025-08-10T03:12:59.9184956Z 
+2025-08-10T03:12:59.9185441Z #8 [3/3] COPY entrypoint.sh /entrypoint.sh
+2025-08-10T03:12:59.9185924Z #8 DONE 0.0s
+2025-08-10T03:12:59.9186106Z 
+2025-08-10T03:12:59.9186261Z #9 exporting to image
+2025-08-10T03:12:59.9186588Z #9 exporting layers
+2025-08-10T03:13:01.0906983Z #9 exporting layers 1.3s done
+2025-08-10T03:13:01.1101684Z #9 writing image sha256:78068eca7ff1ebd569cb9666bd3f5f55777350ea172ed6d2e46d45414f0a077d done
+2025-08-10T03:13:01.1102599Z #9 naming to docker.io/library/4a88a1:787ef017cd8443fcba17f4c146c83850 done
+2025-08-10T03:13:01.1103155Z #9 DONE 1.3s
+2025-08-10T03:13:01.1150140Z ##[endgroup]
+2025-08-10T03:13:01.1399316Z ##[group]Run actions/checkout@v4
+2025-08-10T03:13:01.1399845Z with:
+2025-08-10T03:13:01.1400074Z   repository: PolicyEngine/policyengine-us-data
+2025-08-10T03:13:01.1400479Z   token: ***
+2025-08-10T03:13:01.1400647Z   ssh-strict: true
+2025-08-10T03:13:01.1401059Z   ssh-user: git
+2025-08-10T03:13:01.1401235Z   persist-credentials: true
+2025-08-10T03:13:01.1401438Z   clean: true
+2025-08-10T03:13:01.1401623Z   sparse-checkout-cone-mode: true
+2025-08-10T03:13:01.1401846Z   fetch-depth: 1
+2025-08-10T03:13:01.1402011Z   fetch-tags: false
+2025-08-10T03:13:01.1402187Z   show-progress: true
+2025-08-10T03:13:01.1402355Z   lfs: false
+2025-08-10T03:13:01.1402516Z   submodules: false
+2025-08-10T03:13:01.1402685Z   set-safe-directory: true
+2025-08-10T03:13:01.1403118Z ##[endgroup]
+2025-08-10T03:13:01.2462945Z Syncing repository: PolicyEngine/policyengine-us-data
+2025-08-10T03:13:01.2464229Z ##[group]Getting Git version info
+2025-08-10T03:13:01.2464735Z Working directory is '/home/runner/work/policyengine-us-data/policyengine-us-data'
+2025-08-10T03:13:01.2465391Z [command]/usr/bin/git version
+2025-08-10T03:13:01.2480074Z git version 2.50.1
+2025-08-10T03:13:01.2505902Z ##[endgroup]
+2025-08-10T03:13:01.2519261Z Temporarily overriding HOME='/home/runner/work/_temp/53ecc984-7a10-4d03-b8be-1de476e0de4f' before making global git config changes
+2025-08-10T03:13:01.2520474Z Adding repository directory to the temporary git global config as a safe directory
+2025-08-10T03:13:01.2524835Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/policyengine-us-data/policyengine-us-data
+2025-08-10T03:13:01.2558138Z Deleting the contents of '/home/runner/work/policyengine-us-data/policyengine-us-data'
+2025-08-10T03:13:01.2561632Z ##[group]Initializing the repository
+2025-08-10T03:13:01.2565517Z [command]/usr/bin/git init /home/runner/work/policyengine-us-data/policyengine-us-data
+2025-08-10T03:13:01.2629172Z hint: Using 'master' as the name for the initial branch. This default branch name
+2025-08-10T03:13:01.2629964Z hint: is subject to change. To configure the initial branch name to use in all
+2025-08-10T03:13:01.2630578Z hint: of your new repositories, which will suppress this warning, call:
+2025-08-10T03:13:01.2631133Z hint:
+2025-08-10T03:13:01.2631391Z hint: 	git config --global init.defaultBranch <name>
+2025-08-10T03:13:01.2631670Z hint:
+2025-08-10T03:13:01.2631930Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2025-08-10T03:13:01.2632355Z hint: 'development'. The just-created branch can be renamed via this command:
+2025-08-10T03:13:01.2632697Z hint:
+2025-08-10T03:13:01.2632866Z hint: 	git branch -m <name>
+2025-08-10T03:13:01.2633130Z hint:
+2025-08-10T03:13:01.2633624Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2025-08-10T03:13:01.2634598Z Initialized empty Git repository in /home/runner/work/policyengine-us-data/policyengine-us-data/.git/
+2025-08-10T03:13:01.2644853Z [command]/usr/bin/git remote add origin https://github.com/PolicyEngine/policyengine-us-data
+2025-08-10T03:13:01.2716522Z ##[endgroup]
+2025-08-10T03:13:01.2716994Z ##[group]Disabling automatic garbage collection
+2025-08-10T03:13:01.2720831Z [command]/usr/bin/git config --local gc.auto 0
+2025-08-10T03:13:01.2747675Z ##[endgroup]
+2025-08-10T03:13:01.2748041Z ##[group]Setting up auth
+2025-08-10T03:13:01.2754427Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-08-10T03:13:01.2783081Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-08-10T03:13:01.3077964Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-08-10T03:13:01.3106405Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-08-10T03:13:01.3324579Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2025-08-10T03:13:01.3367413Z ##[endgroup]
+2025-08-10T03:13:01.3368063Z ##[group]Fetching the repository
+2025-08-10T03:13:01.3376739Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +3282d1a16562a6d05e8bda2c136134173996988f:refs/remotes/pull/428/merge
+2025-08-10T03:13:01.7415267Z From https://github.com/PolicyEngine/policyengine-us-data
+2025-08-10T03:13:01.7416157Z  * [new ref]         3282d1a16562a6d05e8bda2c136134173996988f -> pull/428/merge
+2025-08-10T03:13:01.7448623Z ##[endgroup]
+2025-08-10T03:13:01.7449220Z ##[group]Determining the checkout info
+2025-08-10T03:13:01.7451219Z ##[endgroup]
+2025-08-10T03:13:01.7456510Z [command]/usr/bin/git sparse-checkout disable
+2025-08-10T03:13:01.7530142Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2025-08-10T03:13:01.7559078Z ##[group]Checking out the ref
+2025-08-10T03:13:01.7563299Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/428/merge
+2025-08-10T03:13:01.8107192Z Note: switching to 'refs/remotes/pull/428/merge'.
+2025-08-10T03:13:01.8108286Z 
+2025-08-10T03:13:01.8108961Z You are in 'detached HEAD' state. You can look around, make experimental
+2025-08-10T03:13:01.8109719Z changes and commit them, and you can discard any commits you make in this
+2025-08-10T03:13:01.8110465Z state without impacting any branches by switching back to a branch.
+2025-08-10T03:13:01.8111079Z 
+2025-08-10T03:13:01.8111374Z If you want to create a new branch to retain commits you create, you may
+2025-08-10T03:13:01.8112056Z do so (now or later) by using -c with the switch command. Example:
+2025-08-10T03:13:01.8112436Z 
+2025-08-10T03:13:01.8112597Z   git switch -c <new-branch-name>
+2025-08-10T03:13:01.8112858Z 
+2025-08-10T03:13:01.8112999Z Or undo this operation with:
+2025-08-10T03:13:01.8113238Z 
+2025-08-10T03:13:01.8113352Z   git switch -
+2025-08-10T03:13:01.8113586Z 
+2025-08-10T03:13:01.8113934Z Turn off this advice by setting config variable advice.detachedHead to false
+2025-08-10T03:13:01.8114420Z 
+2025-08-10T03:13:01.8115005Z HEAD is now at 3282d1a Merge 32fc89b9bc82d3d57a3116777c4dd34c54b8dd53 into 4a96cfc8b203ff846bd248fc34056015eb7f041c
+2025-08-10T03:13:01.8122042Z ##[endgroup]
+2025-08-10T03:13:01.8167234Z [command]/usr/bin/git log -1 --format=%H
+2025-08-10T03:13:01.8191379Z 3282d1a16562a6d05e8bda2c136134173996988f
+2025-08-10T03:13:01.8367844Z ##[group]Run lgeiger/black-action@master
+2025-08-10T03:13:01.8368131Z with:
+2025-08-10T03:13:01.8368309Z   args: . -l 79 --check
+2025-08-10T03:13:01.8368502Z ##[endgroup]
+2025-08-10T03:13:01.8456378Z ##[command]/usr/bin/docker run --name a88a1787ef017cd8443fcba17f4c146c83850_3d1290 --label 4a88a1 --workdir /github/workspace --rm -e "INPUT_ARGS" -e "HOME" -e "GITHUB_JOB" -e "GITHUB_REF" -e "GITHUB_SHA" -e "GITHUB_REPOSITORY" -e "GITHUB_REPOSITORY_OWNER" -e "GITHUB_REPOSITORY_OWNER_ID" -e "GITHUB_RUN_ID" -e "GITHUB_RUN_NUMBER" -e "GITHUB_RETENTION_DAYS" -e "GITHUB_RUN_ATTEMPT" -e "GITHUB_ACTOR_ID" -e "GITHUB_ACTOR" -e "GITHUB_WORKFLOW" -e "GITHUB_HEAD_REF" -e "GITHUB_BASE_REF" -e "GITHUB_EVENT_NAME" -e "GITHUB_SERVER_URL" -e "GITHUB_API_URL" -e "GITHUB_GRAPHQL_URL" -e "GITHUB_REF_NAME" -e "GITHUB_REF_PROTECTED" -e "GITHUB_REF_TYPE" -e "GITHUB_WORKFLOW_REF" -e "GITHUB_WORKFLOW_SHA" -e "GITHUB_REPOSITORY_ID" -e "GITHUB_TRIGGERING_ACTOR" -e "GITHUB_WORKSPACE" -e "GITHUB_ACTION" -e "GITHUB_EVENT_PATH" -e "GITHUB_ACTION_REPOSITORY" -e "GITHUB_ACTION_REF" -e "GITHUB_PATH" -e "GITHUB_ENV" -e "GITHUB_STEP_SUMMARY" -e "GITHUB_STATE" -e "GITHUB_OUTPUT" -e "RUNNER_OS" -e "RUNNER_ARCH" -e "RUNNER_NAME" -e "RUNNER_ENVIRONMENT" -e "RUNNER_TOOL_CACHE" -e "RUNNER_TEMP" -e "RUNNER_WORKSPACE" -e "ACTIONS_RUNTIME_URL" -e "ACTIONS_RUNTIME_TOKEN" -e "ACTIONS_CACHE_URL" -e "ACTIONS_RESULTS_URL" -e GITHUB_ACTIONS=true -e CI=true -v "/var/run/docker.sock":"/var/run/docker.sock" -v "/home/runner/work/_temp/_github_home":"/github/home" -v "/home/runner/work/_temp/_github_workflow":"/github/workflow" -v "/home/runner/work/_temp/_runner_file_commands":"/github/file_commands" -v "/home/runner/work/policyengine-us-data/policyengine-us-data":"/github/workspace" 4a88a1:787ef017cd8443fcba17f4c146c83850 . -l 79 --check
+2025-08-10T03:13:03.0929772Z All done! ✨ 🍰 ✨
+2025-08-10T03:13:03.0930170Z 69 files would be left unchanged.
+2025-08-10T03:13:03.1951631Z Post job cleanup.
+2025-08-10T03:13:03.2946541Z [command]/usr/bin/git version
+2025-08-10T03:13:03.2981832Z git version 2.50.1
+2025-08-10T03:13:03.3029796Z Temporarily overriding HOME='/home/runner/work/_temp/9b1dd7e8-1e1e-48e1-a6b2-12a0e977054d' before making global git config changes
+2025-08-10T03:13:03.3031171Z Adding repository directory to the temporary git global config as a safe directory
+2025-08-10T03:13:03.3035259Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/policyengine-us-data/policyengine-us-data
+2025-08-10T03:13:03.3067379Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-08-10T03:13:03.3098085Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-08-10T03:13:03.3317341Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-08-10T03:13:03.3336820Z http.https://github.com/.extraheader
+2025-08-10T03:13:03.3348892Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2025-08-10T03:13:03.3377623Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-08-10T03:13:03.3691513Z Cleaning up orphan processes

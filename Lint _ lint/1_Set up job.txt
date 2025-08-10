@@ -1,0 +1,47 @@
+﻿2025-08-10T11:15:30.2535825Z Current runner version: '2.327.1'
+2025-08-10T11:15:30.2568638Z ##[group]Runner Image Provisioner
+2025-08-10T11:15:30.2569837Z Hosted Compute Agent
+2025-08-10T11:15:30.2570814Z Version: 20250711.363
+2025-08-10T11:15:30.2571724Z Commit: 6785254374ce925a23743850c1cb91912ce5c14c
+2025-08-10T11:15:30.2573075Z Build Date: 2025-07-11T20:04:25Z
+2025-08-10T11:15:30.2574156Z ##[endgroup]
+2025-08-10T11:15:30.2574957Z ##[group]Operating System
+2025-08-10T11:15:30.2575893Z Ubuntu
+2025-08-10T11:15:30.2576701Z 24.04.2
+2025-08-10T11:15:30.2577503Z LTS
+2025-08-10T11:15:30.2578222Z ##[endgroup]
+2025-08-10T11:15:30.2579039Z ##[group]Runner Image
+2025-08-10T11:15:30.2579922Z Image: ubuntu-24.04
+2025-08-10T11:15:30.2580758Z Version: 20250804.2.0
+2025-08-10T11:15:30.2582700Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250804.2/images/ubuntu/Ubuntu2404-Readme.md
+2025-08-10T11:15:30.2585031Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250804.2
+2025-08-10T11:15:30.2587015Z ##[endgroup]
+2025-08-10T11:15:30.2591100Z ##[group]GITHUB_TOKEN Permissions
+2025-08-10T11:15:30.2593928Z Actions: write
+2025-08-10T11:15:30.2594793Z Attestations: write
+2025-08-10T11:15:30.2595559Z Checks: write
+2025-08-10T11:15:30.2596535Z Contents: write
+2025-08-10T11:15:30.2597386Z Deployments: write
+2025-08-10T11:15:30.2598151Z Discussions: write
+2025-08-10T11:15:30.2599036Z Issues: write
+2025-08-10T11:15:30.2599818Z Metadata: read
+2025-08-10T11:15:30.2600767Z Models: read
+2025-08-10T11:15:30.2601545Z Packages: write
+2025-08-10T11:15:30.2602612Z Pages: write
+2025-08-10T11:15:30.2603429Z PullRequests: write
+2025-08-10T11:15:30.2604486Z RepositoryProjects: write
+2025-08-10T11:15:30.2605337Z SecurityEvents: write
+2025-08-10T11:15:30.2606370Z Statuses: write
+2025-08-10T11:15:30.2607352Z ##[endgroup]
+2025-08-10T11:15:30.2610197Z Secret source: Actions
+2025-08-10T11:15:30.2611237Z Prepare workflow directory
+2025-08-10T11:15:30.3067548Z Prepare all required actions
+2025-08-10T11:15:30.3123335Z Getting action download info
+2025-08-10T11:15:30.6177374Z ##[group]Download immutable action package 'actions/checkout@v4'
+2025-08-10T11:15:30.6178404Z Version: 4.2.2
+2025-08-10T11:15:30.6179395Z Digest: sha256:ccb2698953eaebd21c7bf6268a94f9c26518a7e38e27e0b83c1fe1ad049819b1
+2025-08-10T11:15:30.6180655Z Source commit SHA: 11bd71901bbe5b1630ceea73d27597364c9af683
+2025-08-10T11:15:30.6181417Z ##[endgroup]
+2025-08-10T11:15:30.6955139Z Download action repository 'lgeiger/black-action@master' (SHA:6d855d727b1f709b1ee1af273a3db751792f67ef)
+2025-08-10T11:15:30.9949835Z Uses: PolicyEngine/policyengine-us-data/.github/workflows/reusable_lint.yaml@refs/pull/428/merge (65419968b7b1719df4143963f8efe5e7b5cd0ce0)
+2025-08-10T11:15:30.9954926Z Complete job name: Lint / lint

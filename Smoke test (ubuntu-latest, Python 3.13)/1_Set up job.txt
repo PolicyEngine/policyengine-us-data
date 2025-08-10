@@ -1,0 +1,50 @@
+﻿2025-08-10T11:15:55.8225474Z Current runner version: '2.327.1'
+2025-08-10T11:15:55.8253677Z ##[group]Runner Image Provisioner
+2025-08-10T11:15:55.8254762Z Hosted Compute Agent
+2025-08-10T11:15:55.8255411Z Version: 20250711.363
+2025-08-10T11:15:55.8256140Z Commit: 6785254374ce925a23743850c1cb91912ce5c14c
+2025-08-10T11:15:55.8256869Z Build Date: 2025-07-11T20:04:25Z
+2025-08-10T11:15:55.8257683Z ##[endgroup]
+2025-08-10T11:15:55.8258297Z ##[group]Operating System
+2025-08-10T11:15:55.8258984Z Ubuntu
+2025-08-10T11:15:55.8259500Z 24.04.2
+2025-08-10T11:15:55.8260061Z LTS
+2025-08-10T11:15:55.8260566Z ##[endgroup]
+2025-08-10T11:15:55.8261156Z ##[group]Runner Image
+2025-08-10T11:15:55.8261981Z Image: ubuntu-24.04
+2025-08-10T11:15:55.8262589Z Version: 20250804.2.0
+2025-08-10T11:15:55.8263725Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250804.2/images/ubuntu/Ubuntu2404-Readme.md
+2025-08-10T11:15:55.8265113Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250804.2
+2025-08-10T11:15:55.8266492Z ##[endgroup]
+2025-08-10T11:15:55.8269453Z ##[group]GITHUB_TOKEN Permissions
+2025-08-10T11:15:55.8271924Z Actions: write
+2025-08-10T11:15:55.8272595Z Attestations: write
+2025-08-10T11:15:55.8273234Z Checks: write
+2025-08-10T11:15:55.8273795Z Contents: write
+2025-08-10T11:15:55.8274347Z Deployments: write
+2025-08-10T11:15:55.8274968Z Discussions: write
+2025-08-10T11:15:55.8275563Z Issues: write
+2025-08-10T11:15:55.8276076Z Metadata: read
+2025-08-10T11:15:55.8276734Z Models: read
+2025-08-10T11:15:55.8277259Z Packages: write
+2025-08-10T11:15:55.8278294Z Pages: write
+2025-08-10T11:15:55.8278887Z PullRequests: write
+2025-08-10T11:15:55.8279542Z RepositoryProjects: write
+2025-08-10T11:15:55.8280183Z SecurityEvents: write
+2025-08-10T11:15:55.8280899Z Statuses: write
+2025-08-10T11:15:55.8281490Z ##[endgroup]
+2025-08-10T11:15:55.8283753Z Secret source: Actions
+2025-08-10T11:15:55.8284638Z Prepare workflow directory
+2025-08-10T11:15:55.8640689Z Prepare all required actions
+2025-08-10T11:15:55.8681257Z Getting action download info
+2025-08-10T11:15:56.2085835Z ##[group]Download immutable action package 'actions/checkout@v4'
+2025-08-10T11:15:56.2086932Z Version: 4.2.2
+2025-08-10T11:15:56.2088236Z Digest: sha256:ccb2698953eaebd21c7bf6268a94f9c26518a7e38e27e0b83c1fe1ad049819b1
+2025-08-10T11:15:56.2089625Z Source commit SHA: 11bd71901bbe5b1630ceea73d27597364c9af683
+2025-08-10T11:15:56.2090381Z ##[endgroup]
+2025-08-10T11:15:56.3117945Z ##[group]Download immutable action package 'actions/setup-python@v5'
+2025-08-10T11:15:56.3118815Z Version: 5.6.0
+2025-08-10T11:15:56.3119746Z Digest: sha256:0b35a0c11c97499e4e0576589036d450b9f5f9da74b7774225b3614b57324404
+2025-08-10T11:15:56.3120699Z Source commit SHA: a26af69be951a213d495a4c3e4e4022e16d87065
+2025-08-10T11:15:56.3121507Z ##[endgroup]
+2025-08-10T11:15:56.6518080Z Complete job name: Smoke test (ubuntu-latest, Python 3.13)

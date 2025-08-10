@@ -1,0 +1,13 @@
+﻿2025-08-10T11:18:14.9474381Z ##[group]Run python -c "import policyengine_us_data; print('Minimal import OK')"
+2025-08-10T11:18:14.9474980Z [36;1mpython -c "import policyengine_us_data; print('Minimal import OK')"[0m
+2025-08-10T11:18:14.9557826Z shell: /usr/bin/bash -e {0}
+2025-08-10T11:18:14.9558082Z env:
+2025-08-10T11:18:14.9558328Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T11:18:14.9558726Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib/pkgconfig
+2025-08-10T11:18:14.9559096Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T11:18:14.9559432Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T11:18:14.9559750Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T11:18:14.9560103Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib
+2025-08-10T11:18:14.9560389Z ##[endgroup]
+2025-08-10T11:18:20.0514979Z TEST_LITE == False
+2025-08-10T11:18:20.0515782Z Minimal import OK

@@ -1,0 +1,606 @@
+﻿2025-08-10T10:18:54.4192832Z Current runner version: '2.327.1'
+2025-08-10T10:18:54.4227585Z ##[group]Runner Image Provisioner
+2025-08-10T10:18:54.4228837Z Hosted Compute Agent
+2025-08-10T10:18:54.4229886Z Version: 20250711.363
+2025-08-10T10:18:54.4230885Z Commit: 6785254374ce925a23743850c1cb91912ce5c14c
+2025-08-10T10:18:54.4232249Z Build Date: 2025-07-11T20:04:25Z
+2025-08-10T10:18:54.4233300Z ##[endgroup]
+2025-08-10T10:18:54.4234288Z ##[group]Operating System
+2025-08-10T10:18:54.4235162Z Ubuntu
+2025-08-10T10:18:54.4236133Z 24.04.2
+2025-08-10T10:18:54.4236829Z LTS
+2025-08-10T10:18:54.4237624Z ##[endgroup]
+2025-08-10T10:18:54.4238549Z ##[group]Runner Image
+2025-08-10T10:18:54.4239486Z Image: ubuntu-24.04
+2025-08-10T10:18:54.4240402Z Version: 20250804.2.0
+2025-08-10T10:18:54.4242317Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250804.2/images/ubuntu/Ubuntu2404-Readme.md
+2025-08-10T10:18:54.4245097Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250804.2
+2025-08-10T10:18:54.4247031Z ##[endgroup]
+2025-08-10T10:18:54.4251365Z ##[group]GITHUB_TOKEN Permissions
+2025-08-10T10:18:54.4254516Z Actions: write
+2025-08-10T10:18:54.4255362Z Attestations: write
+2025-08-10T10:18:54.4256250Z Checks: write
+2025-08-10T10:18:54.4257079Z Contents: write
+2025-08-10T10:18:54.4257902Z Deployments: write
+2025-08-10T10:18:54.4258936Z Discussions: write
+2025-08-10T10:18:54.4259823Z Issues: write
+2025-08-10T10:18:54.4260706Z Metadata: read
+2025-08-10T10:18:54.4261619Z Models: read
+2025-08-10T10:18:54.4262909Z Packages: write
+2025-08-10T10:18:54.4263733Z Pages: write
+2025-08-10T10:18:54.4264650Z PullRequests: write
+2025-08-10T10:18:54.4265555Z RepositoryProjects: write
+2025-08-10T10:18:54.4266506Z SecurityEvents: write
+2025-08-10T10:18:54.4267749Z Statuses: write
+2025-08-10T10:18:54.4268536Z ##[endgroup]
+2025-08-10T10:18:54.4271788Z Secret source: Actions
+2025-08-10T10:18:54.4273162Z Prepare workflow directory
+2025-08-10T10:18:54.4761283Z Prepare all required actions
+2025-08-10T10:18:54.4818887Z Getting action download info
+2025-08-10T10:18:54.7002472Z ##[group]Download immutable action package 'actions/checkout@v4'
+2025-08-10T10:18:54.7003599Z Version: 4.2.2
+2025-08-10T10:18:54.7004611Z Digest: sha256:ccb2698953eaebd21c7bf6268a94f9c26518a7e38e27e0b83c1fe1ad049819b1
+2025-08-10T10:18:54.7005875Z Source commit SHA: 11bd71901bbe5b1630ceea73d27597364c9af683
+2025-08-10T10:18:54.7006530Z ##[endgroup]
+2025-08-10T10:18:54.7808507Z ##[group]Download immutable action package 'actions/setup-python@v5'
+2025-08-10T10:18:54.7809283Z Version: 5.6.0
+2025-08-10T10:18:54.7810149Z Digest: sha256:0b35a0c11c97499e4e0576589036d450b9f5f9da74b7774225b3614b57324404
+2025-08-10T10:18:54.7811140Z Source commit SHA: a26af69be951a213d495a4c3e4e4022e16d87065
+2025-08-10T10:18:54.7812031Z ##[endgroup]
+2025-08-10T10:18:55.1007460Z Complete job name: Smoke test (ubuntu-latest, Python 3.13)
+2025-08-10T10:18:55.1611482Z ##[group]Run actions/checkout@v4
+2025-08-10T10:18:55.1612525Z with:
+2025-08-10T10:18:55.1612993Z   repository: PolicyEngine/policyengine-us-data
+2025-08-10T10:18:55.1613758Z   token: ***
+2025-08-10T10:18:55.1614140Z   ssh-strict: true
+2025-08-10T10:18:55.1614626Z   ssh-user: git
+2025-08-10T10:18:55.1615092Z   persist-credentials: true
+2025-08-10T10:18:55.1615529Z   clean: true
+2025-08-10T10:18:55.1615931Z   sparse-checkout-cone-mode: true
+2025-08-10T10:18:55.1616404Z   fetch-depth: 1
+2025-08-10T10:18:55.1616775Z   fetch-tags: false
+2025-08-10T10:18:55.1617176Z   show-progress: true
+2025-08-10T10:18:55.1617577Z   lfs: false
+2025-08-10T10:18:55.1617951Z   submodules: false
+2025-08-10T10:18:55.1618345Z   set-safe-directory: true
+2025-08-10T10:18:55.1619119Z ##[endgroup]
+2025-08-10T10:18:55.2695859Z Syncing repository: PolicyEngine/policyengine-us-data
+2025-08-10T10:18:55.2697749Z ##[group]Getting Git version info
+2025-08-10T10:18:55.2698892Z Working directory is '/home/runner/work/policyengine-us-data/policyengine-us-data'
+2025-08-10T10:18:55.2699985Z [command]/usr/bin/git version
+2025-08-10T10:18:55.2741292Z git version 2.50.1
+2025-08-10T10:18:55.2767739Z ##[endgroup]
+2025-08-10T10:18:55.2783766Z Temporarily overriding HOME='/home/runner/work/_temp/9098aad0-6864-4135-94e7-fb75103159b3' before making global git config changes
+2025-08-10T10:18:55.2786111Z Adding repository directory to the temporary git global config as a safe directory
+2025-08-10T10:18:55.2790459Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/policyengine-us-data/policyengine-us-data
+2025-08-10T10:18:55.2825137Z Deleting the contents of '/home/runner/work/policyengine-us-data/policyengine-us-data'
+2025-08-10T10:18:55.2829294Z ##[group]Initializing the repository
+2025-08-10T10:18:55.2834131Z [command]/usr/bin/git init /home/runner/work/policyengine-us-data/policyengine-us-data
+2025-08-10T10:18:55.2905692Z hint: Using 'master' as the name for the initial branch. This default branch name
+2025-08-10T10:18:55.2907368Z hint: is subject to change. To configure the initial branch name to use in all
+2025-08-10T10:18:55.2908918Z hint: of your new repositories, which will suppress this warning, call:
+2025-08-10T10:18:55.2910058Z hint:
+2025-08-10T10:18:55.2910976Z hint: 	git config --global init.defaultBranch <name>
+2025-08-10T10:18:55.2912406Z hint:
+2025-08-10T10:18:55.2913555Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2025-08-10T10:18:55.2915366Z hint: 'development'. The just-created branch can be renamed via this command:
+2025-08-10T10:18:55.2916795Z hint:
+2025-08-10T10:18:55.2917494Z hint: 	git branch -m <name>
+2025-08-10T10:18:55.2918252Z hint:
+2025-08-10T10:18:55.2919225Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2025-08-10T10:18:55.2921258Z Initialized empty Git repository in /home/runner/work/policyengine-us-data/policyengine-us-data/.git/
+2025-08-10T10:18:55.2924630Z [command]/usr/bin/git remote add origin https://github.com/PolicyEngine/policyengine-us-data
+2025-08-10T10:18:55.2956256Z ##[endgroup]
+2025-08-10T10:18:55.2957440Z ##[group]Disabling automatic garbage collection
+2025-08-10T10:18:55.2961343Z [command]/usr/bin/git config --local gc.auto 0
+2025-08-10T10:18:55.2990068Z ##[endgroup]
+2025-08-10T10:18:55.2991228Z ##[group]Setting up auth
+2025-08-10T10:18:55.2997805Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-08-10T10:18:55.3028433Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-08-10T10:18:55.3312189Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-08-10T10:18:55.3344741Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-08-10T10:18:55.3568845Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2025-08-10T10:18:55.3605294Z ##[endgroup]
+2025-08-10T10:18:55.3606733Z ##[group]Fetching the repository
+2025-08-10T10:18:55.3615288Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +5953d2ecb244d8965c3da7b495d5bbf90f976b8b:refs/remotes/pull/428/merge
+2025-08-10T10:18:55.7686340Z From https://github.com/PolicyEngine/policyengine-us-data
+2025-08-10T10:18:55.7688167Z  * [new ref]         5953d2ecb244d8965c3da7b495d5bbf90f976b8b -> pull/428/merge
+2025-08-10T10:18:55.7716506Z ##[endgroup]
+2025-08-10T10:18:55.7717715Z ##[group]Determining the checkout info
+2025-08-10T10:18:55.7719141Z ##[endgroup]
+2025-08-10T10:18:55.7723710Z [command]/usr/bin/git sparse-checkout disable
+2025-08-10T10:18:55.7771138Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2025-08-10T10:18:55.7801034Z ##[group]Checking out the ref
+2025-08-10T10:18:55.7804526Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/428/merge
+2025-08-10T10:18:55.8351482Z Note: switching to 'refs/remotes/pull/428/merge'.
+2025-08-10T10:18:55.8355159Z 
+2025-08-10T10:18:55.8355795Z You are in 'detached HEAD' state. You can look around, make experimental
+2025-08-10T10:18:55.8357420Z changes and commit them, and you can discard any commits you make in this
+2025-08-10T10:18:55.8359459Z state without impacting any branches by switching back to a branch.
+2025-08-10T10:18:55.8360622Z 
+2025-08-10T10:18:55.8361470Z If you want to create a new branch to retain commits you create, you may
+2025-08-10T10:18:55.8363394Z do so (now or later) by using -c with the switch command. Example:
+2025-08-10T10:18:55.8364595Z 
+2025-08-10T10:18:55.8365112Z   git switch -c <new-branch-name>
+2025-08-10T10:18:55.8365961Z 
+2025-08-10T10:18:55.8366547Z Or undo this operation with:
+2025-08-10T10:18:55.8367252Z 
+2025-08-10T10:18:55.8367704Z   git switch -
+2025-08-10T10:18:55.8368419Z 
+2025-08-10T10:18:55.8369366Z Turn off this advice by setting config variable advice.detachedHead to false
+2025-08-10T10:18:55.8370675Z 
+2025-08-10T10:18:55.8372306Z HEAD is now at 5953d2e Merge 91a8039dd6b6cd0cd050427f030bee81ff2cbcce into 4a96cfc8b203ff846bd248fc34056015eb7f041c
+2025-08-10T10:18:55.8376923Z ##[endgroup]
+2025-08-10T10:18:55.8405263Z [command]/usr/bin/git log -1 --format=%H
+2025-08-10T10:18:55.8427464Z 5953d2ecb244d8965c3da7b495d5bbf90f976b8b
+2025-08-10T10:18:55.8733585Z ##[group]Run actions/setup-python@v5
+2025-08-10T10:18:55.8734792Z with:
+2025-08-10T10:18:55.8735604Z   python-version: 3.13
+2025-08-10T10:18:55.8736511Z   check-latest: false
+2025-08-10T10:18:55.8737656Z   token: ***
+2025-08-10T10:18:55.8738497Z   update-environment: true
+2025-08-10T10:18:55.8739497Z   allow-prereleases: false
+2025-08-10T10:18:55.8740484Z   freethreaded: false
+2025-08-10T10:18:55.8741376Z ##[endgroup]
+2025-08-10T10:18:56.0408266Z ##[group]Installed versions
+2025-08-10T10:18:56.0526644Z Successfully set up CPython (3.13.5)
+2025-08-10T10:18:56.0527664Z ##[endgroup]
+2025-08-10T10:18:56.0652958Z ##[group]Run python -m pip install .
+2025-08-10T10:18:56.0653454Z [36;1mpython -m pip install .[0m
+2025-08-10T10:18:56.0753987Z shell: /usr/bin/bash -e {0}
+2025-08-10T10:18:56.0754334Z env:
+2025-08-10T10:18:56.0754668Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:18:56.0755213Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib/pkgconfig
+2025-08-10T10:18:56.0755726Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:18:56.0756185Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:18:56.0756635Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:18:56.0757095Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib
+2025-08-10T10:18:56.0757483Z ##[endgroup]
+2025-08-10T10:18:56.7683784Z Processing /home/runner/work/policyengine-us-data/policyengine-us-data
+2025-08-10T10:18:56.7710982Z   Installing build dependencies: started
+2025-08-10T10:18:57.8163699Z   Installing build dependencies: finished with status 'done'
+2025-08-10T10:18:57.8170423Z   Getting requirements to build wheel: started
+2025-08-10T10:18:58.4140651Z   Getting requirements to build wheel: finished with status 'done'
+2025-08-10T10:18:58.4150508Z   Preparing metadata (pyproject.toml): started
+2025-08-10T10:18:58.6940192Z   Preparing metadata (pyproject.toml): finished with status 'done'
+2025-08-10T10:18:59.0820145Z Collecting policyengine-us>=1.353.0 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.1272201Z   Downloading policyengine_us-1.367.0-py3-none-any.whl.metadata (1.7 kB)
+2025-08-10T10:18:59.1688169Z Collecting policyengine-core>=3.19.0 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.1768087Z   Downloading policyengine_core-3.19.4-py3-none-any.whl.metadata (7.4 kB)
+2025-08-10T10:18:59.3021470Z Collecting pandas>=2.3.1 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.3094618Z   Downloading pandas-2.3.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (91 kB)
+2025-08-10T10:18:59.3914568Z Collecting requests>=2.25.0 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.3984337Z   Downloading requests-2.32.4-py3-none-any.whl.metadata (4.9 kB)
+2025-08-10T10:18:59.4363151Z Collecting tqdm>=4.60.0 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.4433937Z   Downloading tqdm-4.67.1-py3-none-any.whl.metadata (57 kB)
+2025-08-10T10:18:59.4648681Z Collecting microdf_python>=1.0.0 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.4726681Z   Downloading microdf_python-1.0.2-py3-none-any.whl.metadata (2.5 kB)
+2025-08-10T10:18:59.6023228Z Collecting setuptools>=60 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.6037362Z   Using cached setuptools-80.9.0-py3-none-any.whl.metadata (6.6 kB)
+2025-08-10T10:18:59.6280970Z Collecting microimpute>=1.1.4 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.6368202Z   Downloading microimpute-1.1.6-py3-none-any.whl.metadata (2.0 kB)
+2025-08-10T10:18:59.6570543Z Collecting pip-system-certs>=3.0 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.6648179Z   Downloading pip_system_certs-5.2-py3-none-any.whl.metadata (3.9 kB)
+2025-08-10T10:18:59.7007400Z Collecting google-cloud-storage>=2.0.0 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.7081326Z   Downloading google_cloud_storage-3.2.0-py3-none-any.whl.metadata (13 kB)
+2025-08-10T10:18:59.7586492Z Collecting google-auth>=2.0.0 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.7659714Z   Downloading google_auth-2.40.3-py2.py3-none-any.whl.metadata (6.2 kB)
+2025-08-10T10:18:59.9027438Z Collecting scipy>=1.15.3 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.9101582Z   Downloading scipy-1.16.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (61 kB)
+2025-08-10T10:18:59.9783557Z Collecting statsmodels>=0.14.5 (from policyengine_us_data==1.44.2)
+2025-08-10T10:18:59.9870378Z   Downloading statsmodels-0.14.5-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (9.5 kB)
+2025-08-10T10:19:00.0140559Z Collecting openpyxl>=3.1.5 (from policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.0215368Z   Downloading openpyxl-3.1.5-py2.py3-none-any.whl.metadata (2.5 kB)
+2025-08-10T10:19:00.0565698Z Collecting tables>=3.10.2 (from policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.0643648Z   Downloading tables-3.10.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.0 kB)
+2025-08-10T10:19:00.1192423Z Collecting torch>=2.7.1 (from policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.1268945Z   Downloading torch-2.8.0-cp313-cp313-manylinux_2_28_x86_64.whl.metadata (30 kB)
+2025-08-10T10:19:00.1516562Z Collecting us>=2.0.0 (from policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.1592875Z   Downloading us-3.2.0-py3-none-any.whl.metadata (10 kB)
+2025-08-10T10:19:00.4421802Z Collecting sqlalchemy>=2.0.41 (from policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.4496891Z   Downloading sqlalchemy-2.0.42-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (9.6 kB)
+2025-08-10T10:19:00.4759454Z Collecting sqlmodel>=0.0.24 (from policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.4834919Z   Downloading sqlmodel-0.0.24-py3-none-any.whl.metadata (10 kB)
+2025-08-10T10:19:00.5087286Z Collecting cachetools<6.0,>=2.0.0 (from google-auth>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.5158202Z   Downloading cachetools-5.5.2-py3-none-any.whl.metadata (5.4 kB)
+2025-08-10T10:19:00.5397517Z Collecting pyasn1-modules>=0.2.1 (from google-auth>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.5487057Z   Downloading pyasn1_modules-0.4.2-py3-none-any.whl.metadata (3.5 kB)
+2025-08-10T10:19:00.5701771Z Collecting rsa<5,>=3.1.4 (from google-auth>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.5773296Z   Downloading rsa-4.9.1-py3-none-any.whl.metadata (5.6 kB)
+2025-08-10T10:19:00.6061245Z Collecting pyasn1>=0.1.3 (from rsa<5,>=3.1.4->google-auth>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.6131641Z   Downloading pyasn1-0.6.1-py3-none-any.whl.metadata (8.4 kB)
+2025-08-10T10:19:00.6639803Z Collecting google-api-core<3.0.0,>=2.15.0 (from google-cloud-storage>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.6710507Z   Downloading google_api_core-2.25.1-py3-none-any.whl.metadata (3.0 kB)
+2025-08-10T10:19:00.6963318Z Collecting google-cloud-core<3.0.0,>=2.4.2 (from google-cloud-storage>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.7032256Z   Downloading google_cloud_core-2.4.3-py2.py3-none-any.whl.metadata (2.7 kB)
+2025-08-10T10:19:00.7272727Z Collecting google-resumable-media<3.0.0,>=2.7.2 (from google-cloud-storage>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.7342713Z   Downloading google_resumable_media-2.7.2-py2.py3-none-any.whl.metadata (2.2 kB)
+2025-08-10T10:19:00.7942132Z Collecting google-crc32c<2.0.0,>=1.1.3 (from google-cloud-storage>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.8013263Z   Downloading google_crc32c-1.7.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.3 kB)
+2025-08-10T10:19:00.8273656Z Collecting googleapis-common-protos<2.0.0,>=1.56.2 (from google-api-core<3.0.0,>=2.15.0->google-cloud-storage>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:00.8342610Z   Downloading googleapis_common_protos-1.70.0-py3-none-any.whl.metadata (9.3 kB)
+2025-08-10T10:19:01.0885524Z Collecting protobuf!=3.20.0,!=3.20.1,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<7.0.0,>=3.19.5 (from google-api-core<3.0.0,>=2.15.0->google-cloud-storage>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:01.0957621Z   Downloading protobuf-6.31.1-cp39-abi3-manylinux2014_x86_64.whl.metadata (593 bytes)
+2025-08-10T10:19:01.1199695Z Collecting proto-plus<2.0.0,>=1.22.3 (from google-api-core<3.0.0,>=2.15.0->google-cloud-storage>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:01.1268132Z   Downloading proto_plus-1.26.1-py3-none-any.whl.metadata (2.2 kB)
+2025-08-10T10:19:01.4219886Z Collecting charset_normalizer<4,>=2 (from requests>=2.25.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:01.4293554Z   Downloading charset_normalizer-3.4.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (36 kB)
+2025-08-10T10:19:01.4518689Z Collecting idna<4,>=2.5 (from requests>=2.25.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:01.4587513Z   Downloading idna-3.10-py3-none-any.whl.metadata (10 kB)
+2025-08-10T10:19:01.4929946Z Collecting urllib3<3,>=1.21.1 (from requests>=2.25.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:01.4999674Z   Downloading urllib3-2.5.0-py3-none-any.whl.metadata (6.5 kB)
+2025-08-10T10:19:01.5277720Z Collecting certifi>=2017.4.17 (from requests>=2.25.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:01.5347743Z   Downloading certifi-2025.8.3-py3-none-any.whl.metadata (2.4 kB)
+2025-08-10T10:19:01.7187662Z Collecting numpy (from microdf_python>=1.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:01.7261027Z   Downloading numpy-2.3.2-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (62 kB)
+2025-08-10T10:19:01.7983155Z Collecting plotly<6.0.0,>=5.24.0 (from microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:01.8053721Z   Downloading plotly-5.24.1-py3-none-any.whl.metadata (7.3 kB)
+2025-08-10T10:19:01.8907128Z Collecting scikit-learn<2.0.0,>=1.6.1 (from microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:01.8987450Z   Downloading scikit_learn-1.7.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (11 kB)
+2025-08-10T10:19:01.9768002Z Collecting quantile-forest<1.5.0,>=1.4.0 (from microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:01.9857975Z   Downloading quantile_forest-1.4.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (5.2 kB)
+2025-08-10T10:19:02.1086803Z Collecting pydantic<3.0.0,>=2.8.0 (from microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.1159138Z   Downloading pydantic-2.11.7-py3-none-any.whl.metadata (67 kB)
+2025-08-10T10:19:02.1447521Z Collecting optuna<5.0.0,>=4.3.0 (from microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.1520793Z   Downloading optuna-4.4.0-py3-none-any.whl.metadata (17 kB)
+2025-08-10T10:19:02.1853877Z Collecting joblib<2.0.0,>=1.5.0 (from microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.1922434Z   Downloading joblib-1.5.1-py3-none-any.whl.metadata (5.6 kB)
+2025-08-10T10:19:02.2624558Z Collecting psutil (from microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.2697690Z   Downloading psutil-7.0.0-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (22 kB)
+2025-08-10T10:19:02.3072823Z Collecting alembic>=1.5.0 (from optuna<5.0.0,>=4.3.0->microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.3141040Z   Downloading alembic-1.16.4-py3-none-any.whl.metadata (7.3 kB)
+2025-08-10T10:19:02.3374999Z Collecting colorlog (from optuna<5.0.0,>=4.3.0->microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.3444539Z   Downloading colorlog-6.9.0-py3-none-any.whl.metadata (10 kB)
+2025-08-10T10:19:02.3661024Z Collecting packaging>=20.0 (from optuna<5.0.0,>=4.3.0->microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.3672120Z   Using cached packaging-25.0-py3-none-any.whl.metadata (3.3 kB)
+2025-08-10T10:19:02.4172205Z Collecting PyYAML (from optuna<5.0.0,>=4.3.0->microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.4242957Z   Downloading PyYAML-6.0.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.1 kB)
+2025-08-10T10:19:02.4493929Z Collecting python-dateutil>=2.8.2 (from pandas>=2.3.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.4562448Z   Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+2025-08-10T10:19:02.4981182Z Collecting pytz>=2020.1 (from pandas>=2.3.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.5050868Z   Downloading pytz-2025.2-py2.py3-none-any.whl.metadata (22 kB)
+2025-08-10T10:19:02.5249895Z Collecting tzdata>=2022.7 (from pandas>=2.3.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.5317562Z   Downloading tzdata-2025.2-py2.py3-none-any.whl.metadata (1.4 kB)
+2025-08-10T10:19:02.5543014Z Collecting tenacity>=6.2.0 (from plotly<6.0.0,>=5.24.0->microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.5611136Z   Downloading tenacity-9.1.2-py3-none-any.whl.metadata (1.2 kB)
+2025-08-10T10:19:02.5777458Z Collecting annotated-types>=0.6.0 (from pydantic<3.0.0,>=2.8.0->microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:02.5844671Z   Downloading annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+2025-08-10T10:19:03.2293745Z Collecting pydantic-core==2.33.2 (from pydantic<3.0.0,>=2.8.0->microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.2372266Z   Downloading pydantic_core-2.33.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
+2025-08-10T10:19:03.2618506Z Collecting typing-extensions>=4.12.2 (from pydantic<3.0.0,>=2.8.0->microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.2688840Z   Downloading typing_extensions-4.14.1-py3-none-any.whl.metadata (3.0 kB)
+2025-08-10T10:19:03.2833979Z Collecting typing-inspection>=0.4.0 (from pydantic<3.0.0,>=2.8.0->microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.2901140Z   Downloading typing_inspection-0.4.1-py3-none-any.whl.metadata (2.6 kB)
+2025-08-10T10:19:03.3377776Z Collecting threadpoolctl>=3.1.0 (from scikit-learn<2.0.0,>=1.6.1->microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.3447082Z   Downloading threadpoolctl-3.6.0-py3-none-any.whl.metadata (13 kB)
+2025-08-10T10:19:03.3911171Z Collecting patsy>=0.5.6 (from statsmodels>=0.14.5->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.3982816Z   Downloading patsy-1.0.1-py2.py3-none-any.whl.metadata (3.3 kB)
+2025-08-10T10:19:03.4406751Z Collecting Mako (from alembic>=1.5.0->optuna<5.0.0,>=4.3.0->microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.4475976Z   Downloading mako-1.3.10-py3-none-any.whl.metadata (2.9 kB)
+2025-08-10T10:19:03.4690822Z Collecting et-xmlfile (from openpyxl>=3.1.5->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.4758527Z   Downloading et_xmlfile-2.0.0-py3-none-any.whl.metadata (2.7 kB)
+2025-08-10T10:19:03.4930018Z Requirement already satisfied: pip>=24.2 in /opt/hostedtoolcache/Python/3.13.5/x64/lib/python3.13/site-packages (from pip-system-certs>=3.0->policyengine_us_data==1.44.2) (25.2)
+2025-08-10T10:19:03.5346418Z Collecting pytest<9,>=8 (from policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.5418720Z   Downloading pytest-8.4.1-py3-none-any.whl.metadata (7.7 kB)
+2025-08-10T10:19:03.5580652Z Collecting numpy (from microdf_python>=1.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.5653611Z   Downloading numpy-2.1.3-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (62 kB)
+2025-08-10T10:19:03.5985184Z Collecting sortedcontainers<3 (from policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.6054152Z   Downloading sortedcontainers-2.4.0-py2.py3-none-any.whl.metadata (10 kB)
+2025-08-10T10:19:03.6681189Z Collecting numexpr<3 (from policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.6765201Z   Downloading numexpr-2.11.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (9.0 kB)
+2025-08-10T10:19:03.6969008Z Collecting dpath<3 (from policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.7058716Z   Downloading dpath-2.2.0-py3-none-any.whl.metadata (15 kB)
+2025-08-10T10:19:03.7137905Z Collecting psutil (from microimpute>=1.1.4->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.7220091Z   Downloading psutil-6.1.1-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (22 kB)
+2025-08-10T10:19:03.7504609Z Collecting wheel<1 (from policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.7515689Z   Using cached wheel-0.45.1-py3-none-any.whl.metadata (2.3 kB)
+2025-08-10T10:19:03.7935836Z Collecting h5py<4,>=3 (from policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.8018367Z   Downloading h5py-3.14.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.7 kB)
+2025-08-10T10:19:03.8745235Z Collecting ipython<9,>=8 (from policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.8813692Z   Downloading ipython-8.37.0-py3-none-any.whl.metadata (5.1 kB)
+2025-08-10T10:19:03.9056669Z Collecting pyvis>=0.3.2 (from policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.9139877Z   Downloading pyvis-0.3.2-py3-none-any.whl.metadata (1.7 kB)
+2025-08-10T10:19:03.9572733Z Collecting huggingface_hub>=0.25.1 (from policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:03.9647166Z   Downloading huggingface_hub-0.34.4-py3-none-any.whl.metadata (14 kB)
+2025-08-10T10:19:04.0005066Z Collecting standard-imghdr (from policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.0081757Z   Downloading standard_imghdr-3.13.0-py3-none-any.whl.metadata (862 bytes)
+2025-08-10T10:19:04.0423300Z Collecting decorator (from ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.0490569Z   Downloading decorator-5.2.1-py3-none-any.whl.metadata (3.9 kB)
+2025-08-10T10:19:04.0676017Z Collecting jedi>=0.16 (from ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.0744849Z   Downloading jedi-0.19.2-py2.py3-none-any.whl.metadata (22 kB)
+2025-08-10T10:19:04.0948208Z Collecting matplotlib-inline (from ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.1015358Z   Downloading matplotlib_inline-0.1.7-py3-none-any.whl.metadata (3.9 kB)
+2025-08-10T10:19:04.1173976Z Collecting pexpect>4.3 (from ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.1242306Z   Downloading pexpect-4.9.0-py2.py3-none-any.whl.metadata (2.5 kB)
+2025-08-10T10:19:04.1633521Z Collecting prompt_toolkit<3.1.0,>=3.0.41 (from ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.1704068Z   Downloading prompt_toolkit-3.0.51-py3-none-any.whl.metadata (6.4 kB)
+2025-08-10T10:19:04.1951769Z Collecting pygments>=2.4.0 (from ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.2024851Z   Downloading pygments-2.19.2-py3-none-any.whl.metadata (2.5 kB)
+2025-08-10T10:19:04.2188029Z Collecting stack_data (from ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.2256374Z   Downloading stack_data-0.6.3-py3-none-any.whl.metadata (18 kB)
+2025-08-10T10:19:04.2475419Z Collecting traitlets>=5.13.0 (from ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.2550266Z   Downloading traitlets-5.14.3-py3-none-any.whl.metadata (10 kB)
+2025-08-10T10:19:04.2804401Z Collecting wcwidth (from prompt_toolkit<3.1.0,>=3.0.41->ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.2874394Z   Downloading wcwidth-0.2.13-py2.py3-none-any.whl.metadata (14 kB)
+2025-08-10T10:19:04.3074450Z Collecting iniconfig>=1 (from pytest<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.3143752Z   Downloading iniconfig-2.1.0-py3-none-any.whl.metadata (2.7 kB)
+2025-08-10T10:19:04.3315367Z Collecting pluggy<2,>=1.5 (from pytest<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.3388426Z   Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)
+2025-08-10T10:19:04.3752216Z Collecting filelock (from huggingface_hub>=0.25.1->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.3822394Z   Downloading filelock-3.18.0-py3-none-any.whl.metadata (2.9 kB)
+2025-08-10T10:19:04.4104925Z Collecting fsspec>=2023.5.0 (from huggingface_hub>=0.25.1->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.4172670Z   Downloading fsspec-2025.7.0-py3-none-any.whl.metadata (12 kB)
+2025-08-10T10:19:04.4938574Z Collecting hf-xet<2.0.0,>=1.1.3 (from huggingface_hub>=0.25.1->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.5009317Z   Downloading hf_xet-1.1.7-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (703 bytes)
+2025-08-10T10:19:04.5288511Z Collecting parso<0.9.0,>=0.8.4 (from jedi>=0.16->ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.5355839Z   Downloading parso-0.8.4-py2.py3-none-any.whl.metadata (7.7 kB)
+2025-08-10T10:19:04.5542602Z Collecting ptyprocess>=0.5 (from pexpect>4.3->ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.5610109Z   Downloading ptyprocess-0.7.0-py2.py3-none-any.whl.metadata (1.3 kB)
+2025-08-10T10:19:04.6018637Z Collecting six>=1.5 (from python-dateutil>=2.8.2->pandas>=2.3.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.6085258Z   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+2025-08-10T10:19:04.6522118Z Collecting jinja2>=2.9.6 (from pyvis>=0.3.2->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.6590887Z   Downloading jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+2025-08-10T10:19:04.6806869Z Collecting jsonpickle>=1.4.1 (from pyvis>=0.3.2->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.6877997Z   Downloading jsonpickle-4.1.1-py3-none-any.whl.metadata (8.1 kB)
+2025-08-10T10:19:04.7190810Z Collecting networkx>=1.11 (from pyvis>=0.3.2->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.7260027Z   Downloading networkx-3.5-py3-none-any.whl.metadata (6.3 kB)
+2025-08-10T10:19:04.8728545Z Collecting MarkupSafe>=2.0 (from jinja2>=2.9.6->pyvis>=0.3.2->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:04.8801538Z   Downloading MarkupSafe-3.0.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.0 kB)
+2025-08-10T10:19:05.0255551Z Collecting greenlet>=1 (from sqlalchemy>=2.0.41->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.0330300Z   Downloading greenlet-3.2.4-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (4.1 kB)
+2025-08-10T10:19:05.1020567Z Collecting py-cpuinfo (from tables>=3.10.2->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.1090052Z   Downloading py_cpuinfo-9.0.0-py3-none-any.whl.metadata (794 bytes)
+2025-08-10T10:19:05.1944126Z Collecting blosc2>=2.3.0 (from tables>=3.10.2->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.2025515Z   Downloading blosc2-3.6.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (7.0 kB)
+2025-08-10T10:19:05.2368853Z Collecting ndindex (from blosc2>=2.3.0->tables>=3.10.2->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.2488995Z   Downloading ndindex-1.10.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (3.6 kB)
+2025-08-10T10:19:05.3177612Z Collecting msgpack (from blosc2>=2.3.0->tables>=3.10.2->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.3252075Z   Downloading msgpack-1.1.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (8.4 kB)
+2025-08-10T10:19:05.3512805Z Collecting platformdirs (from blosc2>=2.3.0->tables>=3.10.2->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.3588256Z   Downloading platformdirs-4.3.8-py3-none-any.whl.metadata (12 kB)
+2025-08-10T10:19:05.3960689Z Collecting sympy>=1.13.3 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.4032547Z   Downloading sympy-1.14.0-py3-none-any.whl.metadata (12 kB)
+2025-08-10T10:19:05.4235417Z Collecting nvidia-cuda-nvrtc-cu12==12.8.93 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.4304599Z   Downloading nvidia_cuda_nvrtc_cu12-12.8.93-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl.metadata (1.7 kB)
+2025-08-10T10:19:05.4494252Z Collecting nvidia-cuda-runtime-cu12==12.8.90 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.4569797Z   Downloading nvidia_cuda_runtime_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.7 kB)
+2025-08-10T10:19:05.4759505Z Collecting nvidia-cuda-cupti-cu12==12.8.90 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.4829017Z   Downloading nvidia_cuda_cupti_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.7 kB)
+2025-08-10T10:19:05.5022620Z Collecting nvidia-cudnn-cu12==9.10.2.21 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.5237718Z   Downloading nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_x86_64.whl.metadata (1.8 kB)
+2025-08-10T10:19:05.5417335Z Collecting nvidia-cublas-cu12==12.8.4.1 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.5544827Z   Downloading nvidia_cublas_cu12-12.8.4.1-py3-none-manylinux_2_27_x86_64.whl.metadata (1.7 kB)
+2025-08-10T10:19:05.5794864Z Collecting nvidia-cufft-cu12==11.3.3.83 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.5876731Z   Downloading nvidia_cufft_cu12-11.3.3.83-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.7 kB)
+2025-08-10T10:19:05.6065639Z Collecting nvidia-curand-cu12==10.3.9.90 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.6138275Z   Downloading nvidia_curand_cu12-10.3.9.90-py3-none-manylinux_2_27_x86_64.whl.metadata (1.7 kB)
+2025-08-10T10:19:05.6334488Z Collecting nvidia-cusolver-cu12==11.7.3.90 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.6406504Z   Downloading nvidia_cusolver_cu12-11.7.3.90-py3-none-manylinux_2_27_x86_64.whl.metadata (1.8 kB)
+2025-08-10T10:19:05.6590328Z Collecting nvidia-cusparse-cu12==12.5.8.93 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.6659667Z   Downloading nvidia_cusparse_cu12-12.5.8.93-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.8 kB)
+2025-08-10T10:19:05.6808922Z Collecting nvidia-cusparselt-cu12==0.7.1 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.6879601Z   Downloading nvidia_cusparselt_cu12-0.7.1-py3-none-manylinux2014_x86_64.whl.metadata (7.0 kB)
+2025-08-10T10:19:05.7074762Z Collecting nvidia-nccl-cu12==2.27.3 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.7149296Z   Downloading nvidia_nccl_cu12-2.27.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.0 kB)
+2025-08-10T10:19:05.7327650Z Collecting nvidia-nvtx-cu12==12.8.90 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.7396990Z   Downloading nvidia_nvtx_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.8 kB)
+2025-08-10T10:19:05.7577867Z Collecting nvidia-nvjitlink-cu12==12.8.93 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.7648993Z   Downloading nvidia_nvjitlink_cu12-12.8.93-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl.metadata (1.7 kB)
+2025-08-10T10:19:05.7809653Z Collecting nvidia-cufile-cu12==1.13.1.3 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.7895493Z   Downloading nvidia_cufile_cu12-1.13.1.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (1.7 kB)
+2025-08-10T10:19:05.8119560Z Collecting triton==3.4.0 (from torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.8204621Z   Downloading triton-3.4.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (1.7 kB)
+2025-08-10T10:19:05.9287607Z Collecting mpmath<1.4,>=1.1.0 (from sympy>=1.13.3->torch>=2.7.1->policyengine_us_data==1.44.2)
+2025-08-10T10:19:05.9356208Z   Downloading mpmath-1.3.0-py3-none-any.whl.metadata (8.6 kB)
+2025-08-10T10:19:06.0154791Z Collecting jellyfish (from us>=2.0.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:06.0230726Z   Downloading jellyfish-1.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.6 kB)
+2025-08-10T10:19:06.0762512Z Collecting executing>=1.2.0 (from stack_data->ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:06.0834775Z   Downloading executing-2.2.0-py2.py3-none-any.whl.metadata (8.9 kB)
+2025-08-10T10:19:06.1051735Z Collecting asttokens>=2.1.0 (from stack_data->ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:06.1119641Z   Downloading asttokens-3.0.0-py3-none-any.whl.metadata (4.7 kB)
+2025-08-10T10:19:06.1298329Z Collecting pure-eval (from stack_data->ipython<9,>=8->policyengine-core>=3.19.0->policyengine_us_data==1.44.2)
+2025-08-10T10:19:06.1369495Z   Downloading pure_eval-0.2.3-py3-none-any.whl.metadata (6.3 kB)
+2025-08-10T10:19:06.1625766Z Downloading google_auth-2.40.3-py2.py3-none-any.whl (216 kB)
+2025-08-10T10:19:06.1814043Z Downloading cachetools-5.5.2-py3-none-any.whl (10 kB)
+2025-08-10T10:19:06.1919912Z Downloading rsa-4.9.1-py3-none-any.whl (34 kB)
+2025-08-10T10:19:06.2016582Z Downloading google_cloud_storage-3.2.0-py3-none-any.whl (176 kB)
+2025-08-10T10:19:06.2169983Z Downloading google_api_core-2.25.1-py3-none-any.whl (160 kB)
+2025-08-10T10:19:06.2323969Z Downloading google_cloud_core-2.4.3-py2.py3-none-any.whl (29 kB)
+2025-08-10T10:19:06.2422450Z Downloading google_crc32c-1.7.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (32 kB)
+2025-08-10T10:19:06.2513521Z Downloading google_resumable_media-2.7.2-py2.py3-none-any.whl (81 kB)
+2025-08-10T10:19:06.2627673Z Downloading googleapis_common_protos-1.70.0-py3-none-any.whl (294 kB)
+2025-08-10T10:19:06.2827663Z Downloading proto_plus-1.26.1-py3-none-any.whl (50 kB)
+2025-08-10T10:19:06.2926216Z Downloading protobuf-6.31.1-cp39-abi3-manylinux2014_x86_64.whl (321 kB)
+2025-08-10T10:19:06.3109019Z Downloading requests-2.32.4-py3-none-any.whl (64 kB)
+2025-08-10T10:19:06.3210318Z Downloading charset_normalizer-3.4.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (151 kB)
+2025-08-10T10:19:06.3335982Z Downloading idna-3.10-py3-none-any.whl (70 kB)
+2025-08-10T10:19:06.3434469Z Downloading urllib3-2.5.0-py3-none-any.whl (129 kB)
+2025-08-10T10:19:06.3547066Z Downloading certifi-2025.8.3-py3-none-any.whl (161 kB)
+2025-08-10T10:19:06.3700164Z Downloading microdf_python-1.0.2-py3-none-any.whl (15 kB)
+2025-08-10T10:19:06.3808269Z Downloading microimpute-1.1.6-py3-none-any.whl (52 kB)
+2025-08-10T10:19:06.3900055Z Downloading joblib-1.5.1-py3-none-any.whl (307 kB)
+2025-08-10T10:19:06.4078532Z Downloading optuna-4.4.0-py3-none-any.whl (395 kB)
+2025-08-10T10:19:06.4282107Z Downloading pandas-2.3.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (12.1 MB)
+2025-08-10T10:19:06.6042622Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12.1/12.1 MB 70.4 MB/s  0:00:00
+2025-08-10T10:19:06.6120778Z Downloading plotly-5.24.1-py3-none-any.whl (19.1 MB)
+2025-08-10T10:19:06.7362330Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 19.1/19.1 MB 155.5 MB/s  0:00:00
+2025-08-10T10:19:06.7434419Z Downloading pydantic-2.11.7-py3-none-any.whl (444 kB)
+2025-08-10T10:19:06.7558067Z Downloading pydantic_core-2.33.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.0 MB)
+2025-08-10T10:19:06.7715315Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 130.3 MB/s  0:00:00
+2025-08-10T10:19:06.7813060Z Downloading quantile_forest-1.4.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (1.9 MB)
+2025-08-10T10:19:06.7958721Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 149.8 MB/s  0:00:00
+2025-08-10T10:19:06.8030353Z Downloading scikit_learn-1.7.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (9.4 MB)
+2025-08-10T10:19:06.8587394Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 9.4/9.4 MB 176.0 MB/s  0:00:00
+2025-08-10T10:19:06.8659729Z Downloading scipy-1.16.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (35.2 MB)
+2025-08-10T10:19:07.0095398Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.2/35.2 MB 249.8 MB/s  0:00:00
+2025-08-10T10:19:07.0183364Z Downloading statsmodels-0.14.5-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (10.5 MB)
+2025-08-10T10:19:07.0725885Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 10.5/10.5 MB 197.3 MB/s  0:00:00
+2025-08-10T10:19:07.0799253Z Downloading tqdm-4.67.1-py3-none-any.whl (78 kB)
+2025-08-10T10:19:07.0900048Z Downloading alembic-1.16.4-py3-none-any.whl (247 kB)
+2025-08-10T10:19:07.1001312Z Downloading annotated_types-0.7.0-py3-none-any.whl (13 kB)
+2025-08-10T10:19:07.1092975Z Downloading openpyxl-3.1.5-py2.py3-none-any.whl (250 kB)
+2025-08-10T10:19:07.1143446Z Using cached packaging-25.0-py3-none-any.whl (66 kB)
+2025-08-10T10:19:07.1212069Z Downloading patsy-1.0.1-py2.py3-none-any.whl (232 kB)
+2025-08-10T10:19:07.1314531Z Downloading pip_system_certs-5.2-py3-none-any.whl (5.9 kB)
+2025-08-10T10:19:07.1427933Z Downloading policyengine_core-3.19.4-py3-none-any.whl (220 kB)
+2025-08-10T10:19:07.1546320Z Downloading dpath-2.2.0-py3-none-any.whl (17 kB)
+2025-08-10T10:19:07.1671582Z Downloading h5py-3.14.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (4.9 MB)
+2025-08-10T10:19:07.1953748Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.9/4.9 MB 182.0 MB/s  0:00:00
+2025-08-10T10:19:07.2022714Z Downloading ipython-8.37.0-py3-none-any.whl (831 kB)
+2025-08-10T10:19:07.2108274Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 831.9/831.9 kB 93.2 MB/s  0:00:00
+2025-08-10T10:19:07.2178395Z Downloading numexpr-2.11.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (406 kB)
+2025-08-10T10:19:07.2321506Z Downloading numpy-2.1.3-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (16.0 MB)
+2025-08-10T10:19:07.2988230Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.0/16.0 MB 246.5 MB/s  0:00:00
+2025-08-10T10:19:07.3058402Z Downloading prompt_toolkit-3.0.51-py3-none-any.whl (387 kB)
+2025-08-10T10:19:07.3166361Z Downloading psutil-6.1.1-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (287 kB)
+2025-08-10T10:19:07.3272457Z Downloading pytest-8.4.1-py3-none-any.whl (365 kB)
+2025-08-10T10:19:07.3378784Z Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
+2025-08-10T10:19:07.3500343Z Downloading sortedcontainers-2.4.0-py2.py3-none-any.whl (29 kB)
+2025-08-10T10:19:07.3534605Z Using cached wheel-0.45.1-py3-none-any.whl (72 kB)
+2025-08-10T10:19:07.3603364Z Downloading huggingface_hub-0.34.4-py3-none-any.whl (561 kB)
+2025-08-10T10:19:07.3661532Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 561.5/561.5 kB 86.8 MB/s  0:00:00
+2025-08-10T10:19:07.3730476Z Downloading hf_xet-1.1.7-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.2 MB)
+2025-08-10T10:19:07.3900396Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.2/3.2 MB 198.1 MB/s  0:00:00
+2025-08-10T10:19:07.3969712Z Downloading fsspec-2025.7.0-py3-none-any.whl (199 kB)
+2025-08-10T10:19:07.4064012Z Downloading iniconfig-2.1.0-py3-none-any.whl (6.0 kB)
+2025-08-10T10:19:07.4167851Z Downloading jedi-0.19.2-py2.py3-none-any.whl (1.6 MB)
+2025-08-10T10:19:07.4272851Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.6/1.6 MB 160.5 MB/s  0:00:00
+2025-08-10T10:19:07.4340915Z Downloading parso-0.8.4-py2.py3-none-any.whl (103 kB)
+2025-08-10T10:19:07.4443745Z Downloading pexpect-4.9.0-py2.py3-none-any.whl (63 kB)
+2025-08-10T10:19:07.4574594Z Downloading policyengine_us-1.367.0-py3-none-any.whl (5.8 MB)
+2025-08-10T10:19:07.4869051Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.8/5.8 MB 205.6 MB/s  0:00:00
+2025-08-10T10:19:07.4940419Z Downloading ptyprocess-0.7.0-py2.py3-none-any.whl (13 kB)
+2025-08-10T10:19:07.5038564Z Downloading pyasn1-0.6.1-py3-none-any.whl (83 kB)
+2025-08-10T10:19:07.5150862Z Downloading pyasn1_modules-0.4.2-py3-none-any.whl (181 kB)
+2025-08-10T10:19:07.5250753Z Downloading pygments-2.19.2-py3-none-any.whl (1.2 MB)
+2025-08-10T10:19:07.5346252Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 134.1 MB/s  0:00:00
+2025-08-10T10:19:07.5415433Z Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+2025-08-10T10:19:07.5522856Z Downloading pytz-2025.2-py2.py3-none-any.whl (509 kB)
+2025-08-10T10:19:07.5667643Z Downloading pyvis-0.3.2-py3-none-any.whl (756 kB)
+2025-08-10T10:19:07.5751545Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 756.0/756.0 kB 101.4 MB/s  0:00:00
+2025-08-10T10:19:07.5819606Z Downloading jinja2-3.1.6-py3-none-any.whl (134 kB)
+2025-08-10T10:19:07.5930201Z Downloading jsonpickle-4.1.1-py3-none-any.whl (47 kB)
+2025-08-10T10:19:07.6034327Z Downloading MarkupSafe-3.0.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (23 kB)
+2025-08-10T10:19:07.6125734Z Downloading networkx-3.5-py3-none-any.whl (2.0 MB)
+2025-08-10T10:19:07.6255849Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 169.0 MB/s  0:00:00
+2025-08-10T10:19:07.6326804Z Downloading PyYAML-6.0.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (759 kB)
+2025-08-10T10:19:07.6405156Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 759.5/759.5 kB 89.8 MB/s  0:00:00
+2025-08-10T10:19:07.6416903Z Using cached setuptools-80.9.0-py3-none-any.whl (1.2 MB)
+2025-08-10T10:19:07.6495588Z Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+2025-08-10T10:19:07.6590988Z Downloading sqlalchemy-2.0.42-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.3 MB)
+2025-08-10T10:19:07.6763866Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.3/3.3 MB 199.1 MB/s  0:00:00
+2025-08-10T10:19:07.6831410Z Downloading greenlet-3.2.4-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (610 kB)
+2025-08-10T10:19:07.6914285Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 610.5/610.5 kB 66.8 MB/s  0:00:00
+2025-08-10T10:19:07.6982682Z Downloading sqlmodel-0.0.24-py3-none-any.whl (28 kB)
+2025-08-10T10:19:07.7087941Z Downloading tables-3.10.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (7.5 MB)
+2025-08-10T10:19:07.7438113Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 7.5/7.5 MB 237.1 MB/s  0:00:00
+2025-08-10T10:19:07.7509972Z Downloading blosc2-3.6.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (4.4 MB)
+2025-08-10T10:19:07.7761506Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.4/4.4 MB 214.8 MB/s  0:00:00
+2025-08-10T10:19:07.7831214Z Downloading tenacity-9.1.2-py3-none-any.whl (28 kB)
+2025-08-10T10:19:07.7929548Z Downloading threadpoolctl-3.6.0-py3-none-any.whl (18 kB)
+2025-08-10T10:19:07.8046424Z Downloading torch-2.8.0-cp313-cp313-manylinux_2_28_x86_64.whl (887.9 MB)
+2025-08-10T10:19:14.4072780Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 887.9/887.9 MB 58.4 MB/s  0:00:06
+2025-08-10T10:19:14.4147927Z Downloading nvidia_cublas_cu12-12.8.4.1-py3-none-manylinux_2_27_x86_64.whl (594.3 MB)
+2025-08-10T10:19:18.7300254Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 594.3/594.3 MB 77.4 MB/s  0:00:04
+2025-08-10T10:19:18.7375997Z Downloading nvidia_cuda_cupti_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (10.2 MB)
+2025-08-10T10:19:18.7804496Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 10.2/10.2 MB 250.2 MB/s  0:00:00
+2025-08-10T10:19:18.7875285Z Downloading nvidia_cuda_nvrtc_cu12-12.8.93-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl (88.0 MB)
+2025-08-10T10:19:19.1408457Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 88.0/88.0 MB 250.4 MB/s  0:00:00
+2025-08-10T10:19:19.1481483Z Downloading nvidia_cuda_runtime_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (954 kB)
+2025-08-10T10:19:19.1557474Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 954.8/954.8 kB 137.2 MB/s  0:00:00
+2025-08-10T10:19:19.1627831Z Downloading nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_x86_64.whl (706.8 MB)
+2025-08-10T10:19:24.7082602Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 706.8/706.8 MB 61.6 MB/s  0:00:05
+2025-08-10T10:19:24.7162284Z Downloading nvidia_cufft_cu12-11.3.3.83-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (193.1 MB)
+2025-08-10T10:19:25.6100513Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 193.1/193.1 MB 216.5 MB/s  0:00:00
+2025-08-10T10:19:25.6174884Z Downloading nvidia_cufile_cu12-1.13.1.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (1.2 MB)
+2025-08-10T10:19:25.6271641Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 133.9 MB/s  0:00:00
+2025-08-10T10:19:25.6346052Z Downloading nvidia_curand_cu12-10.3.9.90-py3-none-manylinux_2_27_x86_64.whl (63.6 MB)
+2025-08-10T10:19:25.8751819Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 63.6/63.6 MB 266.2 MB/s  0:00:00
+2025-08-10T10:19:25.8825377Z Downloading nvidia_cusolver_cu12-11.7.3.90-py3-none-manylinux_2_27_x86_64.whl (267.5 MB)
+2025-08-10T10:19:27.6750210Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 267.5/267.5 MB 147.4 MB/s  0:00:01
+2025-08-10T10:19:27.6825379Z Downloading nvidia_cusparse_cu12-12.5.8.93-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (288.2 MB)
+2025-08-10T10:19:29.9790259Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 288.2/288.2 MB 117.3 MB/s  0:00:02
+2025-08-10T10:19:29.9865816Z Downloading nvidia_cusparselt_cu12-0.7.1-py3-none-manylinux2014_x86_64.whl (287.2 MB)
+2025-08-10T10:19:32.2736574Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 287.2/287.2 MB 118.5 MB/s  0:00:02
+2025-08-10T10:19:32.2809073Z Downloading nvidia_nccl_cu12-2.27.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (322.4 MB)
+2025-08-10T10:19:34.8255944Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 322.4/322.4 MB 109.9 MB/s  0:00:02
+2025-08-10T10:19:34.8351117Z Downloading nvidia_nvjitlink_cu12-12.8.93-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl (39.3 MB)
+2025-08-10T10:19:34.9924317Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 39.3/39.3 MB 252.1 MB/s  0:00:00
+2025-08-10T10:19:34.9995551Z Downloading nvidia_nvtx_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (89 kB)
+2025-08-10T10:19:35.0093515Z Downloading triton-3.4.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (155.6 MB)
+2025-08-10T10:19:35.6966707Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 155.6/155.6 MB 227.0 MB/s  0:00:00
+2025-08-10T10:19:35.7042419Z Downloading sympy-1.14.0-py3-none-any.whl (6.3 MB)
+2025-08-10T10:19:35.7368845Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.3/6.3 MB 203.3 MB/s  0:00:00
+2025-08-10T10:19:35.7445767Z Downloading mpmath-1.3.0-py3-none-any.whl (536 kB)
+2025-08-10T10:19:35.7515409Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 536.2/536.2 kB 61.6 MB/s  0:00:00
+2025-08-10T10:19:35.7584842Z Downloading traitlets-5.14.3-py3-none-any.whl (85 kB)
+2025-08-10T10:19:35.7687124Z Downloading typing_extensions-4.14.1-py3-none-any.whl (43 kB)
+2025-08-10T10:19:35.7787358Z Downloading typing_inspection-0.4.1-py3-none-any.whl (14 kB)
+2025-08-10T10:19:35.7895392Z Downloading tzdata-2025.2-py2.py3-none-any.whl (347 kB)
+2025-08-10T10:19:35.8020117Z Downloading us-3.2.0-py3-none-any.whl (13 kB)
+2025-08-10T10:19:35.8177103Z Downloading colorlog-6.9.0-py3-none-any.whl (11 kB)
+2025-08-10T10:19:35.8291026Z Downloading decorator-5.2.1-py3-none-any.whl (9.2 kB)
+2025-08-10T10:19:35.8391379Z Downloading et_xmlfile-2.0.0-py3-none-any.whl (18 kB)
+2025-08-10T10:19:35.8579571Z Downloading filelock-3.18.0-py3-none-any.whl (16 kB)
+2025-08-10T10:19:35.8687932Z Downloading jellyfish-1.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (355 kB)
+2025-08-10T10:19:35.8802359Z Downloading mako-1.3.10-py3-none-any.whl (78 kB)
+2025-08-10T10:19:35.8911621Z Downloading matplotlib_inline-0.1.7-py3-none-any.whl (9.9 kB)
+2025-08-10T10:19:35.9016719Z Downloading msgpack-1.1.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (423 kB)
+2025-08-10T10:19:35.9133960Z Downloading ndindex-1.10.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (526 kB)
+2025-08-10T10:19:35.9207996Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 526.9/526.9 kB 65.0 MB/s  0:00:00
+2025-08-10T10:19:35.9279836Z Downloading platformdirs-4.3.8-py3-none-any.whl (18 kB)
+2025-08-10T10:19:35.9380794Z Downloading py_cpuinfo-9.0.0-py3-none-any.whl (22 kB)
+2025-08-10T10:19:35.9486233Z Downloading stack_data-0.6.3-py3-none-any.whl (24 kB)
+2025-08-10T10:19:35.9578650Z Downloading asttokens-3.0.0-py3-none-any.whl (26 kB)
+2025-08-10T10:19:35.9674695Z Downloading executing-2.2.0-py2.py3-none-any.whl (26 kB)
+2025-08-10T10:19:35.9836166Z Downloading pure_eval-0.2.3-py3-none-any.whl (11 kB)
+2025-08-10T10:19:35.9948031Z Downloading standard_imghdr-3.13.0-py3-none-any.whl (4.6 kB)
+2025-08-10T10:19:36.0035864Z Downloading wcwidth-0.2.13-py2.py3-none-any.whl (34 kB)
+2025-08-10T10:19:39.1963146Z Building wheels for collected packages: policyengine_us_data
+2025-08-10T10:19:39.1974740Z   Building wheel for policyengine_us_data (pyproject.toml): started
+2025-08-10T10:19:39.7273509Z   Building wheel for policyengine_us_data (pyproject.toml): finished with status 'done'
+2025-08-10T10:19:39.7290719Z   Created wheel for policyengine_us_data: filename=policyengine_us_data-1.44.2-py3-none-any.whl size=1277154 sha256=0aa5adc3dccd3743f72e19af4be18a7b1ad4e26cec525c077dd9d510bc890b7e
+2025-08-10T10:19:39.7293022Z   Stored in directory: /home/runner/.cache/pip/wheels/29/b0/3c/6796889ea510c4f0b4e3b87095cd21d0c40072dfce146ffbf5
+2025-08-10T10:19:39.7316509Z Successfully built policyengine_us_data
+2025-08-10T10:19:40.1511021Z Installing collected packages: wcwidth, standard-imghdr, sortedcontainers, pytz, py-cpuinfo, pure-eval, ptyprocess, nvidia-cusparselt-cu12, mpmath, wheel, urllib3, tzdata, typing-extensions, traitlets, tqdm, threadpoolctl, tenacity, sympy, six, setuptools, PyYAML, pygments, pyasn1, psutil, protobuf, prompt_toolkit, pluggy, platformdirs, pip-system-certs, pexpect, parso, packaging, nvidia-nvtx-cu12, nvidia-nvjitlink-cu12, nvidia-nccl-cu12, nvidia-curand-cu12, nvidia-cufile-cu12, nvidia-cuda-runtime-cu12, nvidia-cuda-nvrtc-cu12, nvidia-cuda-cupti-cu12, nvidia-cublas-cu12, numpy, networkx, ndindex, msgpack, MarkupSafe, jsonpickle, joblib, jellyfish, iniconfig, idna, hf-xet, greenlet, google-crc32c, fsspec, filelock, executing, et-xmlfile, dpath, decorator, colorlog, charset_normalizer, certifi, cachetools, asttokens, annotated-types, us, typing-inspection, triton, stack_data, sqlalchemy, scipy, rsa, requests, python-dateutil, pytest, pydantic-core, pyasn1-modules, proto-plus, plotly, patsy, openpyxl, nvidia-cusparse-cu12, nvidia-cufft-cu12, nvidia-cudnn-cu12, numexpr, matplotlib-inline, Mako, jinja2, jedi, h5py, googleapis-common-protos, google-resumable-media, scikit-learn, pydantic, pandas, nvidia-cusolver-cu12, ipython, huggingface_hub, google-auth, blosc2, alembic, torch, tables, statsmodels, sqlmodel, quantile-forest, pyvis, optuna, microdf_python, google-api-core, policyengine-core, microimpute, google-cloud-core, google-cloud-storage, policyengine-us, policyengine_us_data
+2025-08-10T10:21:07.8728734Z 
+2025-08-10T10:21:07.8870101Z Successfully installed Mako-1.3.10 MarkupSafe-3.0.2 PyYAML-6.0.2 alembic-1.16.4 annotated-types-0.7.0 asttokens-3.0.0 blosc2-3.6.1 cachetools-5.5.2 certifi-2025.8.3 charset_normalizer-3.4.3 colorlog-6.9.0 decorator-5.2.1 dpath-2.2.0 et-xmlfile-2.0.0 executing-2.2.0 filelock-3.18.0 fsspec-2025.7.0 google-api-core-2.25.1 google-auth-2.40.3 google-cloud-core-2.4.3 google-cloud-storage-3.2.0 google-crc32c-1.7.1 google-resumable-media-2.7.2 googleapis-common-protos-1.70.0 greenlet-3.2.4 h5py-3.14.0 hf-xet-1.1.7 huggingface_hub-0.34.4 idna-3.10 iniconfig-2.1.0 ipython-8.37.0 jedi-0.19.2 jellyfish-1.2.0 jinja2-3.1.6 joblib-1.5.1 jsonpickle-4.1.1 matplotlib-inline-0.1.7 microdf_python-1.0.2 microimpute-1.1.6 mpmath-1.3.0 msgpack-1.1.1 ndindex-1.10.0 networkx-3.5 numexpr-2.11.0 numpy-2.1.3 nvidia-cublas-cu12-12.8.4.1 nvidia-cuda-cupti-cu12-12.8.90 nvidia-cuda-nvrtc-cu12-12.8.93 nvidia-cuda-runtime-cu12-12.8.90 nvidia-cudnn-cu12-9.10.2.21 nvidia-cufft-cu12-11.3.3.83 nvidia-cufile-cu12-1.13.1.3 nvidia-curand-cu12-10.3.9.90 nvidia-cusolver-cu12-11.7.3.90 nvidia-cusparse-cu12-12.5.8.93 nvidia-cusparselt-cu12-0.7.1 nvidia-nccl-cu12-2.27.3 nvidia-nvjitlink-cu12-12.8.93 nvidia-nvtx-cu12-12.8.90 openpyxl-3.1.5 optuna-4.4.0 packaging-25.0 pandas-2.3.1 parso-0.8.4 patsy-1.0.1 pexpect-4.9.0 pip-system-certs-5.2 platformdirs-4.3.8 plotly-5.24.1 pluggy-1.6.0 policyengine-core-3.19.4 policyengine-us-1.367.0 policyengine_us_data-1.44.2 prompt_toolkit-3.0.51 proto-plus-1.26.1 protobuf-6.31.1 psutil-6.1.1 ptyprocess-0.7.0 pure-eval-0.2.3 py-cpuinfo-9.0.0 pyasn1-0.6.1 pyasn1-modules-0.4.2 pydantic-2.11.7 pydantic-core-2.33.2 pygments-2.19.2 pytest-8.4.1 python-dateutil-2.9.0.post0 pytz-2025.2 pyvis-0.3.2 quantile-forest-1.4.0 requests-2.32.4 rsa-4.9.1 scikit-learn-1.7.1 scipy-1.16.1 setuptools-80.9.0 six-1.17.0 sortedcontainers-2.4.0 sqlalchemy-2.0.42 sqlmodel-0.0.24 stack_data-0.6.3 standard-imghdr-3.13.0 statsmodels-0.14.5 sympy-1.14.0 tables-3.10.2 tenacity-9.1.2 threadpoolctl-3.6.0 torch-2.8.0 tqdm-4.67.1 traitlets-5.14.3 triton-3.4.0 typing-extensions-4.14.1 typing-inspection-0.4.1 tzdata-2025.2 urllib3-2.5.0 us-3.2.0 wcwidth-0.2.13 wheel-0.45.1
+2025-08-10T10:21:09.1599397Z ##[group]Run python -c "import policyengine_us_data; print('Minimal import OK')"
+2025-08-10T10:21:09.1599978Z [36;1mpython -c "import policyengine_us_data; print('Minimal import OK')"[0m
+2025-08-10T10:21:09.1682735Z shell: /usr/bin/bash -e {0}
+2025-08-10T10:21:09.1682967Z env:
+2025-08-10T10:21:09.1683200Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:21:09.1683591Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib/pkgconfig
+2025-08-10T10:21:09.1683957Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:21:09.1684287Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:21:09.1684621Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:21:09.1684948Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib
+2025-08-10T10:21:09.1685232Z ##[endgroup]
+2025-08-10T10:21:13.9603219Z TEST_LITE == False
+2025-08-10T10:21:13.9603523Z Minimal import OK
+2025-08-10T10:21:14.6090477Z ##[group]Run python -c "from policyengine_core.data import Dataset; print('Core import OK')"
+2025-08-10T10:21:14.6091079Z [36;1mpython -c "from policyengine_core.data import Dataset; print('Core import OK')"[0m
+2025-08-10T10:21:14.6132591Z shell: /usr/bin/bash -e {0}
+2025-08-10T10:21:14.6132814Z env:
+2025-08-10T10:21:14.6133053Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:21:14.6133453Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib/pkgconfig
+2025-08-10T10:21:14.6133830Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:21:14.6134146Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:21:14.6134473Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-10T10:21:14.6134792Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib
+2025-08-10T10:21:14.6135065Z ##[endgroup]
+2025-08-10T10:21:15.5997397Z Core import OK
+2025-08-10T10:21:15.7795981Z Post job cleanup.
+2025-08-10T10:21:15.9476523Z Post job cleanup.
+2025-08-10T10:21:16.0441688Z [command]/usr/bin/git version
+2025-08-10T10:21:16.0479762Z git version 2.50.1
+2025-08-10T10:21:16.0530881Z Temporarily overriding HOME='/home/runner/work/_temp/bfc6e3c5-e25b-4882-b9e1-d47caf7b16ba' before making global git config changes
+2025-08-10T10:21:16.0532497Z Adding repository directory to the temporary git global config as a safe directory
+2025-08-10T10:21:16.0537449Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/policyengine-us-data/policyengine-us-data
+2025-08-10T10:21:16.0572574Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-08-10T10:21:16.0605688Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-08-10T10:21:16.0867472Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-08-10T10:21:16.0891415Z http.https://github.com/.extraheader
+2025-08-10T10:21:16.0906664Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2025-08-10T10:21:16.0936930Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-08-10T10:21:16.1270025Z Cleaning up orphan processes

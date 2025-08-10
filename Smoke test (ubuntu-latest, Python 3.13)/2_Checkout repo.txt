@@ -1,0 +1,85 @@
+﻿2025-08-10T10:18:55.1611454Z ##[group]Run actions/checkout@v4
+2025-08-10T10:18:55.1612512Z with:
+2025-08-10T10:18:55.1612989Z   repository: PolicyEngine/policyengine-us-data
+2025-08-10T10:18:55.1613754Z   token: ***
+2025-08-10T10:18:55.1614137Z   ssh-strict: true
+2025-08-10T10:18:55.1614622Z   ssh-user: git
+2025-08-10T10:18:55.1615088Z   persist-credentials: true
+2025-08-10T10:18:55.1615526Z   clean: true
+2025-08-10T10:18:55.1615927Z   sparse-checkout-cone-mode: true
+2025-08-10T10:18:55.1616402Z   fetch-depth: 1
+2025-08-10T10:18:55.1616772Z   fetch-tags: false
+2025-08-10T10:18:55.1617174Z   show-progress: true
+2025-08-10T10:18:55.1617574Z   lfs: false
+2025-08-10T10:18:55.1617948Z   submodules: false
+2025-08-10T10:18:55.1618342Z   set-safe-directory: true
+2025-08-10T10:18:55.1619104Z ##[endgroup]
+2025-08-10T10:18:55.2695807Z Syncing repository: PolicyEngine/policyengine-us-data
+2025-08-10T10:18:55.2697735Z ##[group]Getting Git version info
+2025-08-10T10:18:55.2698803Z Working directory is '/home/runner/work/policyengine-us-data/policyengine-us-data'
+2025-08-10T10:18:55.2699980Z [command]/usr/bin/git version
+2025-08-10T10:18:55.2741268Z git version 2.50.1
+2025-08-10T10:18:55.2767713Z ##[endgroup]
+2025-08-10T10:18:55.2783735Z Temporarily overriding HOME='/home/runner/work/_temp/9098aad0-6864-4135-94e7-fb75103159b3' before making global git config changes
+2025-08-10T10:18:55.2786095Z Adding repository directory to the temporary git global config as a safe directory
+2025-08-10T10:18:55.2790428Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/policyengine-us-data/policyengine-us-data
+2025-08-10T10:18:55.2825105Z Deleting the contents of '/home/runner/work/policyengine-us-data/policyengine-us-data'
+2025-08-10T10:18:55.2829272Z ##[group]Initializing the repository
+2025-08-10T10:18:55.2834106Z [command]/usr/bin/git init /home/runner/work/policyengine-us-data/policyengine-us-data
+2025-08-10T10:18:55.2905657Z hint: Using 'master' as the name for the initial branch. This default branch name
+2025-08-10T10:18:55.2907322Z hint: is subject to change. To configure the initial branch name to use in all
+2025-08-10T10:18:55.2908899Z hint: of your new repositories, which will suppress this warning, call:
+2025-08-10T10:18:55.2910041Z hint:
+2025-08-10T10:18:55.2910957Z hint: 	git config --global init.defaultBranch <name>
+2025-08-10T10:18:55.2912361Z hint:
+2025-08-10T10:18:55.2913538Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2025-08-10T10:18:55.2915342Z hint: 'development'. The just-created branch can be renamed via this command:
+2025-08-10T10:18:55.2916777Z hint:
+2025-08-10T10:18:55.2917486Z hint: 	git branch -m <name>
+2025-08-10T10:18:55.2918245Z hint:
+2025-08-10T10:18:55.2919216Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2025-08-10T10:18:55.2921235Z Initialized empty Git repository in /home/runner/work/policyengine-us-data/policyengine-us-data/.git/
+2025-08-10T10:18:55.2924588Z [command]/usr/bin/git remote add origin https://github.com/PolicyEngine/policyengine-us-data
+2025-08-10T10:18:55.2956228Z ##[endgroup]
+2025-08-10T10:18:55.2957429Z ##[group]Disabling automatic garbage collection
+2025-08-10T10:18:55.2961315Z [command]/usr/bin/git config --local gc.auto 0
+2025-08-10T10:18:55.2990044Z ##[endgroup]
+2025-08-10T10:18:55.2991210Z ##[group]Setting up auth
+2025-08-10T10:18:55.2997778Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-08-10T10:18:55.3028392Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-08-10T10:18:55.3312116Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-08-10T10:18:55.3344262Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-08-10T10:18:55.3568809Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2025-08-10T10:18:55.3605267Z ##[endgroup]
+2025-08-10T10:18:55.3606712Z ##[group]Fetching the repository
+2025-08-10T10:18:55.3615250Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +5953d2ecb244d8965c3da7b495d5bbf90f976b8b:refs/remotes/pull/428/merge
+2025-08-10T10:18:55.7686242Z From https://github.com/PolicyEngine/policyengine-us-data
+2025-08-10T10:18:55.7688126Z  * [new ref]         5953d2ecb244d8965c3da7b495d5bbf90f976b8b -> pull/428/merge
+2025-08-10T10:18:55.7716476Z ##[endgroup]
+2025-08-10T10:18:55.7717700Z ##[group]Determining the checkout info
+2025-08-10T10:18:55.7719126Z ##[endgroup]
+2025-08-10T10:18:55.7723679Z [command]/usr/bin/git sparse-checkout disable
+2025-08-10T10:18:55.7771101Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2025-08-10T10:18:55.7800935Z ##[group]Checking out the ref
+2025-08-10T10:18:55.7804494Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/428/merge
+2025-08-10T10:18:55.8351373Z Note: switching to 'refs/remotes/pull/428/merge'.
+2025-08-10T10:18:55.8355126Z 
+2025-08-10T10:18:55.8355787Z You are in 'detached HEAD' state. You can look around, make experimental
+2025-08-10T10:18:55.8357394Z changes and commit them, and you can discard any commits you make in this
+2025-08-10T10:18:55.8359419Z state without impacting any branches by switching back to a branch.
+2025-08-10T10:18:55.8360569Z 
+2025-08-10T10:18:55.8361455Z If you want to create a new branch to retain commits you create, you may
+2025-08-10T10:18:55.8363342Z do so (now or later) by using -c with the switch command. Example:
+2025-08-10T10:18:55.8364585Z 
+2025-08-10T10:18:55.8365101Z   git switch -c <new-branch-name>
+2025-08-10T10:18:55.8365951Z 
+2025-08-10T10:18:55.8366537Z Or undo this operation with:
+2025-08-10T10:18:55.8367237Z 
+2025-08-10T10:18:55.8367690Z   git switch -
+2025-08-10T10:18:55.8368372Z 
+2025-08-10T10:18:55.8369347Z Turn off this advice by setting config variable advice.detachedHead to false
+2025-08-10T10:18:55.8370658Z 
+2025-08-10T10:18:55.8372285Z HEAD is now at 5953d2e Merge 91a8039dd6b6cd0cd050427f030bee81ff2cbcce into 4a96cfc8b203ff846bd248fc34056015eb7f041c
+2025-08-10T10:18:55.8376906Z ##[endgroup]
+2025-08-10T10:18:55.8405228Z [command]/usr/bin/git log -1 --format=%H
+2025-08-10T10:18:55.8427432Z 5953d2ecb244d8965c3da7b495d5bbf90f976b8b

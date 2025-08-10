@@ -9,7 +9,7 @@ def test_enhanced_cps_household_count():
 
     # Load the enhanced dataset
     sim = Microsimulation(dataset=EnhancedCPS_2024)
-    weights = sim.calculate("household_weight")
+    weights = sim.calculate("household_weight").values
 
     # Count non-zero weights (threshold for "active" households)
     threshold = 0.01

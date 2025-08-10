@@ -1,10 +1,7 @@
 from policyengine_core.data import Dataset
 import pandas as pd
 from policyengine_us_data.utils import (
-    pe_to_soi,
-    get_soi,
     build_loss_matrix,
-    fmt,
     HardConcrete,
     print_reweighting_diagnostics,
     set_seeds,
@@ -18,7 +15,6 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_2019,
     CPS_2024,
 )
-import os
 from pathlib import Path
 import logging
 

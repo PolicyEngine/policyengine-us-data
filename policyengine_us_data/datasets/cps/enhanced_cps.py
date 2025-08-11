@@ -32,7 +32,7 @@ def reweight(
     dropout_rate=0.05,
     log_path="calibration_log.csv",
     epochs=500,
-    l0_lambda=5.000125e-07,  # L0 penalty to induce sparsity
+    l0_lambda=5.0000625e-07,  # L0 penalty to induce sparsity
     init_mean=0.999,  # initial proportion with non-zero weights
     temperature=0.25,
     seed=1456,

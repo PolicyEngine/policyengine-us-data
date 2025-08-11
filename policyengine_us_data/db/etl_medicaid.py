@@ -2,28 +2,14 @@ import requests
 import pandas as pd
 
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
-# This is from another file
-#def extract_docs(year=2023):
-#    docs_url = (
-#        f"https://api.census.gov/data/{year}/acs/acs1/subject/variables.json"
-#    )
-#
-#    try:
-#        docs_response = requests.get(docs_url)
-#        docs_response.raise_for_status()
-#
-#        docs = docs_response.json()
-#        docs["year"] = year
-#
-#    except requests.exceptions.RequestException as e:
-#        print(f"Error during API request: {e}")
-#        raise
-#    except Exception as e:
-#        print(f"An error occurred: {e}")
-#        raise
-#    return docs
-
+from policyengine_us_data.db.create_database_tables import (
+    Stratum,
+    StratumConstraint,
+    Target,
+)
 
 
 # State abbreviation to FIPS code mapping
@@ -42,17 +28,14 @@ state_fips_map = {
 }
 
 
-
-# I can get data from:
-
-    "S2704_C02_006E": {
-      "label": "Estimate!!Public Coverage!!COVERAGE ALONE OR IN COMBINATION!!Medicaid/means-tested public coverage alone or in combination",
-      "concept": "Public Health Insurance Coverage by Type and Selected Characteristics",
-      "predicateType": "int",
-      "group": "S2704",
-      "limit": 0,
-      "attributes": "S2704_C02_006EA,S2704_C02_006M,S2704_C02_006MA"
-    },
+#"S2704_C02_006E": {
+#  "label": "Estimate!!Public Coverage!!COVERAGE ALONE OR IN COMBINATION!!Medicaid/means-tested public coverage alone or in combination",
+#  "concept": "Public Health Insurance Coverage by Type and Selected Characteristics",
+#  "predicateType": "int",
+#  "group": "S2704",
+#  "limit": 0,
+#  "attributes": "S2704_C02_006EA,S2704_C02_006M,S2704_C02_006MA"
+#},
 
 
 def extract_medicaid_data():
@@ -82,8 +65,6 @@ def extract_medicaid_data():
     return cd_survey_df, state_admin_df
 
 
-cd_survey_df, state_admin_df = extract_medicaid_data()
-
 def transform_medicaid_data(state_admin_df, cd_survey_df):
     state_df = state_admin_df.loc[
         (state_admin_df["Reporting Period"] == 202312) &
@@ -100,107 +81,112 @@ def transform_medicaid_data(state_admin_df, cd_survey_df):
     assert nc_cd_sum > .5 * nc_state_sum
     assert nc_cd_sum <= nc_state_sum
 
-    return long_df
+    state_df = state_df.rename(columns={'Total Medicaid Enrollment': 'medicaid_enrollment'})
+    state_df['ucgid_str'] = '0400000US' + state_df['FIPS'].astype(str)
 
-# YOU KNOW WHAT TO DO!
+    cd_df = cd_df.rename(columns={'S2704_C02_006E': 'medicaid_enrollment', 'GEO_ID': 'ucgid_str'})
+    cd_df = cd_df.loc[cd_df.state != '72']
 
-def load_medicaid_data():
-
-    pass
-
-
-
+    out_cols = ['ucgid_str', 'medicaid_enrollment']
+    return state_df[out_cols], cd_df[out_cols]
 
 
+def load_medicaid_data(long_state, long_cd):
+
+    DATABASE_URL = "sqlite:///policy_data.db"
+    engine = create_engine(DATABASE_URL)
+
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    stratum_lookup = {}
+
+    # Wow, the first time we're making these geos with no breakdown variable
+
+    # National ----------------
+    nat_stratum = Stratum(
+        parent_stratum_id=None, stratum_group_id=0, notes="Geo: 0100000US"
+    )
+    nat_stratum.constraints_rel = [
+        StratumConstraint(
+            constraint_variable="ucgid_str",
+            operation="in",
+            value="0100000US",
+        )
+    ]
+
+    session.add(nat_stratum)
+    session.flush()
+    stratum_lookup["National"] = nat_stratum.stratum_id
+
+    # State -------------------
+    stratum_lookup["State"] = {} 
+    for _, row in long_state.iterrows():
+
+        note = f"Geo: {row['ucgid_str']}"
+        parent_stratum_id = nat_stratum.stratum_id
+
+        new_stratum = Stratum(
+            parent_stratum_id=parent_stratum_id, stratum_group_id=0, notes=note
+        )
+        new_stratum.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="ucgid_str",
+                operation="in",
+                value=row["ucgid_str"],
+            ),
+        ]
+        new_stratum.targets_rel.append(
+            Target(
+                variable="medicaid_enrollment",
+                period=2023,
+                value=row["medicaid_enrollment"],
+                source_id=2,
+                active=True,
+            )
+        )
+        session.add(new_stratum)
+        session.flush()
+        stratum_lookup["State"][row['ucgid_str']] = new_stratum.stratum_id
 
 
+    # District -------------------
+    stratum_lookup["District"] = {} 
+    for _, row in long_cd.iterrows():
+
+        note = f"Geo: {row['ucgid_str']}"
+        parent_stratum_id = stratum_lookup["State"][f'0400000US{row["ucgid_str"][-4:-2]}']
+
+        new_stratum = Stratum(
+            parent_stratum_id=parent_stratum_id, stratum_group_id=0, notes=note
+        )
+        new_stratum.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="ucgid_str",
+                operation="in",
+                value=row["ucgid_str"],
+            ),
+        ]
+        new_stratum.targets_rel.append(
+            Target(
+                variable="medicaid_enrollment",
+                period=2023,
+                value=row["medicaid_enrollment"],
+                source_id=2,
+                active=True,
+            )
+        )
+        session.add(new_stratum)
+        session.flush()
 
 
+    session.commit()
 
+    return stratum_lookup
 
+if __name__ == "__main__":
+    cd_survey_df, state_admin_df = extract_medicaid_data()
 
+    long_state, long_cd = transform_medicaid_data(state_admin_df, cd_survey_df)
 
-
-
-
-
-def _geo_clause_for(geo: str) -> str:
-    if geo == "National":
-        return "for=us:*"
-    if geo == "State":
-        return "for=state:*"
-    if geo == "District":
-        # Congressional districts; adding 'in=state:*' avoids API ambiguities
-        return "for=congressional+district:*&in=state:*"
-    raise ValueError("geo must be 'National', 'State', or 'District'")
-
-
-def _group_meta(year: int, dataset: str, group: str) -> dict:
-    url = f"https://api.census.gov/data/{year}/{dataset}/groups/{group}.json"
-    r = requests.get(url, timeout=60)
-    r.raise_for_status()
-    return r.json()
-
-
-def extract_medicaid_s2701(geo: str, year: int = 2023,
-                           which: str = "estimate",
-                           by_age: bool = True) -> pd.DataFrame:
-    """
-    Pulls ACS S2701 'With Medicaid/means-tested public coverage' for the requested geography.
-      which: 'estimate' (counts) or 'percent'
-      by_age: True -> Under 19, 19-64, 65+ ; False -> all ages combined
-    Returns: tidy DataFrame with readable columns plus geo identifiers.
-    """
-    dataset = "acs/acs1/subject"
-    group = "S2701"
-    meta = _group_meta(year, dataset, group)["variables"]
-
-    target_prefix = "Estimate" if which == "estimate" else "Percent"
-    selected, rename = [], {}
-
-    for vid, v in meta.items():
-        pass
-
-        if not vid.endswith("E"):  # just the estimates
-            continue
-        label = v["label"]
-        if not label.startswith(target_prefix):
-            continue
-        ## Keep 'With Medicaid/means-tested public coverage'
-        #if "COVERAGE TYPE!!With Medicaid/means-tested public coverage" not in label:
-        #    continue
-
-        has_age = "!!AGE!!" in label
-        if by_age and not has_age:
-            continue
-        if not by_age and has_age:
-            continue
-
-        selected.append(vid)
-        nice = label.split("!!")[-1] if by_age else "All ages"
-        rename[vid] = f"Medicaid ({nice}) - {which}"
-
-    if not selected:
-        raise RuntimeError("No S2701 Medicaid variables matched. Check 'which' or 'by_age' options.")
-
-    get_vars = ["NAME"] + selected
-    url = f"https://api.census.gov/data/{year}/{dataset}?get={','.join(get_vars)}&{_geo_clause_for(geo)}"
-    r = requests.get(url, timeout=120)
-    r.raise_for_status()
-    raw = r.json()
-
-    df = pd.DataFrame(raw[1:], columns=raw[0])
-    for vid in selected:
-        df[vid] = pd.to_numeric(df[vid], errors="coerce")
-    df = df.rename(columns=rename)
-
-    # Reorder: geo columns first, then NAME, then our measures
-    geo_cols = [c for c in ["us", "state", "congressional district"] if c in df.columns]
-    measure_cols = [rename[v] for v in selected]
-    return df[geo_cols + ["NAME"] + measure_cols]
-
-
-df = extract_medicaid_s2701("District",
-                            2023,
-                            "estimate",
-                            False)
+    load_medicaid_data(long_state, long_cd)

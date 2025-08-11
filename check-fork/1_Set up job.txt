@@ -1,0 +1,36 @@
+﻿2025-08-11T01:06:39.5339428Z Current runner version: '2.327.1'
+2025-08-11T01:06:39.5377597Z ##[group]Operating System
+2025-08-11T01:06:39.5378920Z Ubuntu
+2025-08-11T01:06:39.5379682Z 24.04.2
+2025-08-11T01:06:39.5380418Z LTS
+2025-08-11T01:06:39.5381275Z ##[endgroup]
+2025-08-11T01:06:39.5382170Z ##[group]Runner Image
+2025-08-11T01:06:39.5383306Z Image: ubuntu-24.04
+2025-08-11T01:06:39.5384518Z Version: 20250804.2.0
+2025-08-11T01:06:39.5386389Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250804.2/images/ubuntu/Ubuntu2404-Readme.md
+2025-08-11T01:06:39.5388973Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250804.2
+2025-08-11T01:06:39.5390618Z ##[endgroup]
+2025-08-11T01:06:39.5391428Z ##[group]Runner Image Provisioner
+2025-08-11T01:06:39.5392588Z 2.0.449.1
+2025-08-11T01:06:39.5393398Z ##[endgroup]
+2025-08-11T01:06:39.5397955Z ##[group]GITHUB_TOKEN Permissions
+2025-08-11T01:06:39.5400747Z Actions: write
+2025-08-11T01:06:39.5401642Z Attestations: write
+2025-08-11T01:06:39.5403176Z Checks: write
+2025-08-11T01:06:39.5404358Z Contents: write
+2025-08-11T01:06:39.5405299Z Deployments: write
+2025-08-11T01:06:39.5406221Z Discussions: write
+2025-08-11T01:06:39.5407158Z Issues: write
+2025-08-11T01:06:39.5408110Z Metadata: read
+2025-08-11T01:06:39.5408935Z Models: read
+2025-08-11T01:06:39.5409997Z Packages: write
+2025-08-11T01:06:39.5410822Z Pages: write
+2025-08-11T01:06:39.5411649Z PullRequests: write
+2025-08-11T01:06:39.5412703Z RepositoryProjects: write
+2025-08-11T01:06:39.5413731Z SecurityEvents: write
+2025-08-11T01:06:39.5414855Z Statuses: write
+2025-08-11T01:06:39.5415769Z ##[endgroup]
+2025-08-11T01:06:39.5418748Z Secret source: Actions
+2025-08-11T01:06:39.5420011Z Prepare workflow directory
+2025-08-11T01:06:39.5896610Z Prepare all required actions
+2025-08-11T01:06:39.6038419Z Complete job name: check-fork

@@ -1,0 +1,106 @@
+﻿2025-08-11T01:29:48.4699778Z ##[group]Run pytest
+2025-08-11T01:29:48.4700092Z [36;1mpytest[0m
+2025-08-11T01:29:48.4995915Z shell: /usr/bin/bash -e {0}
+2025-08-11T01:29:48.4996301Z env:
+2025-08-11T01:29:48.4996846Z   HUGGING_FACE_TOKEN: ***
+2025-08-11T01:29:48.4998036Z   POLICYENGINE_US_DATA_GITHUB_TOKEN: ***
+2025-08-11T01:29:48.4998531Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2025-08-11T01:29:48.4999098Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-11T01:29:48.4999742Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib/pkgconfig
+2025-08-11T01:29:48.5000372Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-11T01:29:48.5000975Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-11T01:29:48.5001540Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-11T01:29:48.5002111Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib
+2025-08-11T01:29:48.5002593Z ##[endgroup]
+2025-08-11T01:29:49.0295526Z ============================= test session starts ==============================
+2025-08-11T01:29:49.0296707Z platform linux -- Python 3.13.5, pytest-8.4.1, pluggy-1.6.0 -- /opt/hostedtoolcache/Python/3.13.5/x64/bin/python
+2025-08-11T01:29:49.0297576Z cachedir: .pytest_cache
+2025-08-11T01:29:49.0298195Z rootdir: /home/runner/work/policyengine-us-data/policyengine-us-data
+2025-08-11T01:29:49.0298878Z configfile: pyproject.toml
+2025-08-11T01:29:49.0299357Z testpaths: policyengine_us_data/tests
+2025-08-11T01:30:03.3969324Z collecting ... collected 29 items
+2025-08-11T01:30:03.3969844Z 
+2025-08-11T01:30:12.5325971Z policyengine_us_data/tests/test_datasets/test_acs.py::test_acs_generates[2022] PASSED [  3%]
+2025-08-11T01:30:12.5335702Z policyengine_us_data/tests/test_datasets/test_census_cps.py::test_census_cps_generates[2022] PASSED [  6%]
+2025-08-11T01:30:13.1006448Z policyengine_us_data/tests/test_datasets/test_census_cps.py::test_census_cps_has_all_tables[2022] PASSED [ 10%]
+2025-08-11T01:30:13.1056299Z policyengine_us_data/tests/test_datasets/test_county_fips.py::test_successful_download_and_processing PASSED [ 13%]
+2025-08-11T01:30:13.1065847Z policyengine_us_data/tests/test_datasets/test_county_fips.py::test_download_failure PASSED [ 17%]
+2025-08-11T01:30:13.1116472Z policyengine_us_data/tests/test_datasets/test_county_fips.py::test_dataframe_transformation PASSED [ 20%]
+2025-08-11T01:30:13.1153773Z policyengine_us_data/tests/test_datasets/test_county_fips.py::test_output_file_creation PASSED [ 24%]
+2025-08-11T01:30:13.1189878Z policyengine_us_data/tests/test_datasets/test_county_fips.py::test_huggingface_upload PASSED [ 27%]
+2025-08-11T01:30:13.5436936Z policyengine_us_data/tests/test_datasets/test_cps.py::test_cps_has_auto_loan_interest PASSED [ 31%]
+2025-08-11T01:30:13.6764290Z policyengine_us_data/tests/test_datasets/test_cps.py::test_cps_has_fsla_overtime_premium PASSED [ 34%]
+2025-08-11T01:31:20.9690485Z policyengine_us_data/tests/test_datasets/test_cps.py::test_cps_has_net_worth PASSED [ 37%]
+2025-08-11T01:31:21.1833007Z policyengine_us_data/tests/test_datasets/test_enhanced_cps.py::test_ecps_has_mortgage_interest PASSED [ 41%]
+2025-08-11T01:31:21.3956544Z policyengine_us_data/tests/test_datasets/test_enhanced_cps.py::test_ecps_has_tips PASSED [ 44%]
+2025-08-11T01:31:21.4556649Z policyengine_us_data/tests/test_datasets/test_enhanced_cps.py::test_ecps_replicates_jct_tax_expenditures PASSED [ 48%]
+2025-08-11T01:31:21.6715230Z policyengine_us_data/tests/test_datasets/test_enhanced_cps.py::test_ssn_card_type_none_target PASSED [ 51%]
+2025-08-11T01:31:21.8918543Z policyengine_us_data/tests/test_datasets/test_enhanced_cps.py::test_undocumented_matches_ssn_none PASSED [ 55%]
+2025-08-11T01:31:24.7047844Z policyengine_us_data/tests/test_datasets/test_enhanced_cps.py::test_aca_calibration PASSED [ 58%]
+2025-08-11T01:31:25.5297155Z policyengine_us_data/tests/test_datasets/test_enhanced_cps.py::test_medicaid_calibration PASSED [ 62%]
+2025-08-11T01:31:26.0114897Z policyengine_us_data/tests/test_datasets/test_household_count.py::test_enhanced_cps_household_count FAILED [ 65%]
+2025-08-11T01:31:26.0122254Z policyengine_us_data/tests/test_datasets/test_irs_puf.py::test_irs_puf_generates[2015] SKIPPED [ 68%]
+2025-08-11T01:31:34.5344968Z policyengine_us_data/tests/test_datasets/test_small_enhanced_cps.py::test_small_ecps_loads[2024] PASSED [ 72%]
+2025-08-11T01:33:17.8456051Z policyengine_us_data/tests/test_datasets/test_sparse_enhanced_cps.py::test_sparse_ecps PASSED [ 75%]
+2025-08-11T01:33:17.8458615Z policyengine_us_data/tests/test_datasets/test_sparse_enhanced_cps.py::test_sparse_ecps_has_mortgage_interest PASSED [ 79%]
+2025-08-11T01:33:17.8485463Z policyengine_us_data/tests/test_datasets/test_sparse_enhanced_cps.py::test_sparse_ecps_has_tips PASSED [ 82%]
+2025-08-11T01:33:17.9856644Z policyengine_us_data/tests/test_datasets/test_sparse_enhanced_cps.py::test_sparse_ecps_replicates_jct_tax_expenditures PASSED [ 86%]
+2025-08-11T01:33:17.9903424Z policyengine_us_data/tests/test_datasets/test_sparse_enhanced_cps.py::test_sparse_ssn_card_type_none_target PASSED [ 89%]
+2025-08-11T01:33:19.2939955Z policyengine_us_data/tests/test_datasets/test_sparse_enhanced_cps.py::test_sparse_aca_calibration PASSED [ 93%]
+2025-08-11T01:33:19.3250302Z policyengine_us_data/tests/test_datasets/test_sparse_enhanced_cps.py::test_sparse_medicaid_calibration PASSED [ 96%]
+2025-08-11T01:33:23.5995230Z policyengine_us_data/tests/test_import.py::test_import PASSED            [100%]
+2025-08-11T01:33:23.5995972Z 
+2025-08-11T01:33:23.5996226Z =================================== FAILURES ===================================
+2025-08-11T01:33:23.5996874Z ______________________ test_enhanced_cps_household_count _______________________
+2025-08-11T01:33:23.5997327Z 
+2025-08-11T01:33:23.5997521Z     def test_enhanced_cps_household_count():
+2025-08-11T01:33:23.5998231Z         """Test that EnhancedCPS_2024 has between 20,000 and 25,000 non-zero weights."""
+2025-08-11T01:33:23.5999240Z         from policyengine_us_data.datasets.cps.enhanced_cps import EnhancedCPS_2024
+2025-08-11T01:33:23.5999986Z         from policyengine_us import Microsimulation
+2025-08-11T01:33:23.6000561Z         import numpy as np
+2025-08-11T01:33:23.6000936Z     
+2025-08-11T01:33:23.6001275Z         # Load the enhanced dataset
+2025-08-11T01:33:23.6001748Z         sim = Microsimulation(dataset=EnhancedCPS_2024)
+2025-08-11T01:33:23.6002135Z         weights = sim.calculate("household_weight").values
+2025-08-11T01:33:23.6002445Z     
+2025-08-11T01:33:23.6002714Z         # Count non-zero weights (threshold for "active" households)
+2025-08-11T01:33:23.6003070Z         threshold = 0.01
+2025-08-11T01:33:23.6003348Z         nonzero_weights = np.sum(weights > threshold)
+2025-08-11T01:33:23.6003647Z     
+2025-08-11T01:33:23.6004005Z         print(f"\nHousehold count check:")
+2025-08-11T01:33:23.6004738Z         print(f"Non-zero weights (> {threshold}): {nonzero_weights:,}")
+2025-08-11T01:33:23.6005146Z         print(f"Target range: 20,000 - 25,000")
+2025-08-11T01:33:23.6005425Z     
+2025-08-11T01:33:23.6005640Z         # Assert the count is in our target range
+2025-08-11T01:33:23.6005974Z >       assert 20000 <= nonzero_weights <= 25000, (
+2025-08-11T01:33:23.6006374Z             f"Expected 20k-25k active households, got {nonzero_weights:,}. "
+2025-08-11T01:33:23.6006833Z             f"Need to adjust L0 penalty: too high if < 20k, too low if > 25k"
+2025-08-11T01:33:23.6007163Z         )
+2025-08-11T01:33:23.6007590Z E       AssertionError: Expected 20k-25k active households, got 7,968. Need to adjust L0 penalty: too high if < 20k, too low if > 25k
+2025-08-11T01:33:23.6008099Z E       assert 20000 <= np.int64(7968)
+2025-08-11T01:33:23.6008293Z 
+2025-08-11T01:33:23.6008526Z policyengine_us_data/tests/test_datasets/test_household_count.py:23: AssertionError
+2025-08-11T01:33:23.6008999Z ----------------------------- Captured stdout call -----------------------------
+2025-08-11T01:33:23.6009251Z 
+2025-08-11T01:33:23.6009337Z Household count check:
+2025-08-11T01:33:23.6009550Z Non-zero weights (> 0.01): 7,968
+2025-08-11T01:33:23.6009791Z Target range: 20,000 - 25,000
+2025-08-11T01:33:23.6010431Z =============================== warnings summary ===============================
+2025-08-11T01:33:23.6011073Z policyengine_us_data/tests/test_datasets/test_cps.py: 32 warnings
+2025-08-11T01:33:23.6012787Z   /opt/hostedtoolcache/Python/3.13.5/x64/lib/python3.13/site-packages/policyengine_core/simulations/simulation.py:1512: PerformanceWarning: DataFrame is highly fragmented.  This is usually the result of calling `frame.insert` many times, which has poor performance.  Consider joining all columns at once using pd.concat(axis=1) instead. To get a de-fragmented frame, use `newframe = frame.copy()`
+2025-08-11T01:33:23.6014178Z     df[f"{variable}__{period}"] = values
+2025-08-11T01:33:23.6014353Z 
+2025-08-11T01:33:23.6014918Z policyengine_us_data/tests/test_datasets/test_small_enhanced_cps.py::test_small_ecps_loads[2024]
+2025-08-11T01:33:23.6015822Z   /opt/hostedtoolcache/Python/3.13.5/x64/lib/python3.13/site-packages/policyengine_core/taxscales/rate_tax_scale_like.py:185: RuntimeWarning: invalid value encountered in subtract
+2025-08-11T01:33:23.6016590Z     return (base1 - thresholds1 >= 0).sum(axis=1) - 1
+2025-08-11T01:33:23.6016794Z 
+2025-08-11T01:33:23.6017005Z -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2025-08-11T01:33:23.6017420Z =========================== short test summary info ============================
+2025-08-11T01:33:23.6018337Z FAILED policyengine_us_data/tests/test_datasets/test_household_count.py::test_enhanced_cps_household_count - AssertionError: Expected 20k-25k active households, got 7,968. Need to adjust L0 penalty: too high if < 20k, too low if > 25k
+2025-08-11T01:33:23.6019207Z assert 20000 <= np.int64(7968)
+2025-08-11T01:33:23.6019526Z ======= 1 failed, 27 passed, 1 skipped, 33 warnings in 210.30s (0:03:30) =======
+2025-08-11T01:33:23.6021287Z /opt/hostedtoolcache/Python/3.13.5/x64/lib/python3.13/site-packages/tables/file.py:130: UnclosedFileWarning: Closing remaining open file: /home/runner/work/policyengine-us-data/policyengine-us-data/policyengine_us_data/storage/census_cps_2021.h5
+2025-08-11T01:33:23.6023021Z   warnings.warn(UnclosedFileWarning(msg))
+2025-08-11T01:33:23.6024358Z /opt/hostedtoolcache/Python/3.13.5/x64/lib/python3.13/site-packages/tables/file.py:130: UnclosedFileWarning: Closing remaining open file: /home/runner/work/policyengine-us-data/policyengine-us-data/policyengine_us_data/storage/census_cps_2022.h5
+2025-08-11T01:33:23.6025648Z   warnings.warn(UnclosedFileWarning(msg))
+2025-08-11T01:33:27.2803726Z ##[error]Process completed with exit code 1.

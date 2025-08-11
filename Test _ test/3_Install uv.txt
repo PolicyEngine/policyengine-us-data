@@ -1,0 +1,30 @@
+﻿2025-08-11T01:07:14.8651709Z ##[group]Run astral-sh/setup-uv@v5
+2025-08-11T01:07:14.8652099Z with:
+2025-08-11T01:07:14.8652522Z   github-token: ***
+2025-08-11T01:07:14.8652816Z   enable-cache: auto
+2025-08-11T01:07:14.8653183Z   cache-dependency-glob: **/uv.lock
+**/requirements*.txt
+
+2025-08-11T01:07:14.8653608Z   prune-cache: true
+2025-08-11T01:07:14.8653898Z   ignore-nothing-to-cache: false
+2025-08-11T01:07:14.8654248Z   ignore-empty-workdir: false
+2025-08-11T01:07:14.8654847Z env:
+2025-08-11T01:07:14.8655211Z   HUGGING_FACE_TOKEN: ***
+2025-08-11T01:07:14.8655955Z   POLICYENGINE_US_DATA_GITHUB_TOKEN: ***
+2025-08-11T01:07:14.8656311Z ##[endgroup]
+2025-08-11T01:07:15.3895415Z Downloading uv from "https://github.com/astral-sh/uv/releases/download/0.8.8/uv-x86_64-unknown-linux-gnu.tar.gz" ...
+2025-08-11T01:07:15.6655037Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/1716025d-2e48-4f97-a2c7-3491fd9ae7e2 -f /home/runner/work/_temp/0aa44e66-61ab-4d21-8e6f-2c8b915eb1af
+2025-08-11T01:07:16.0573852Z Added /home/runner/.local/bin to the path
+2025-08-11T01:07:16.0577279Z Added /opt/hostedtoolcache/uv/0.8.8/x86_64 to the path
+2025-08-11T01:07:16.0598122Z Set UV_CACHE_DIR to /home/runner/work/_temp/setup-uv-cache
+2025-08-11T01:07:16.0598686Z Successfully installed uv version 0.8.8
+2025-08-11T01:07:16.0599453Z Searching files using cache dependency glob: **/uv.lock,**/requirements*.txt
+2025-08-11T01:07:16.0930734Z No matches found for glob
+2025-08-11T01:07:16.0959496Z ##[warning]No file matched to [**/uv.lock,**/requirements*.txt]. The cache will never get invalidated. Make sure you have checked out the target repository and configured the cache-dependency-glob input correctly.
+2025-08-11T01:07:16.1635396Z Trying to restore uv cache from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-no-dependency-glob
+2025-08-11T01:07:16.2139581Z Cache hit for: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-no-dependency-glob
+2025-08-11T01:07:16.4539593Z Received 7929711 of 7929711 (100.0%), 41.3 MBs/sec
+2025-08-11T01:07:16.4540676Z Cache Size: ~8 MB (7929711 B)
+2025-08-11T01:07:16.4572148Z [command]/usr/bin/tar -xf /home/runner/work/_temp/7b9294bd-bb2b-40c2-a081-2c23cbcef6ed/cache.tzst -P -C /home/runner/work/policyengine-us-data/policyengine-us-data --use-compress-program unzstd
+2025-08-11T01:07:16.5247922Z Cache restored successfully
+2025-08-11T01:07:16.5268883Z uv cache restored from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-3.12.3-no-dependency-glob

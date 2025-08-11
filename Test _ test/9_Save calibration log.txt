@@ -1,0 +1,30 @@
+﻿2025-08-11T01:29:47.5266998Z ##[group]Run actions/upload-artifact@v4
+2025-08-11T01:29:47.5267331Z with:
+2025-08-11T01:29:47.5267542Z   name: calibration_log.csv
+2025-08-11T01:29:47.5267810Z   path: calibration_log.csv
+2025-08-11T01:29:47.5268071Z   if-no-files-found: warn
+2025-08-11T01:29:47.5268320Z   compression-level: 6
+2025-08-11T01:29:47.5268556Z   overwrite: false
+2025-08-11T01:29:47.5268793Z   include-hidden-files: false
+2025-08-11T01:29:47.5269053Z env:
+2025-08-11T01:29:47.5269460Z   HUGGING_FACE_TOKEN: ***
+2025-08-11T01:29:47.5270198Z   POLICYENGINE_US_DATA_GITHUB_TOKEN: ***
+2025-08-11T01:29:47.5270569Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2025-08-11T01:29:47.5270976Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-11T01:29:47.5271470Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib/pkgconfig
+2025-08-11T01:29:47.5271947Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-11T01:29:47.5272382Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-11T01:29:47.5272842Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.5/x64
+2025-08-11T01:29:47.5273264Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.5/x64/lib
+2025-08-11T01:29:47.5273631Z ##[endgroup]
+2025-08-11T01:29:47.8551897Z With the provided path, there will be 1 file uploaded
+2025-08-11T01:29:47.8557363Z Artifact name is valid!
+2025-08-11T01:29:47.8559051Z Root directory input is valid!
+2025-08-11T01:29:47.9585811Z Beginning upload of artifact content to blob storage
+2025-08-11T01:29:48.3497482Z Uploaded bytes 1894785
+2025-08-11T01:29:48.3696032Z Finished uploading artifact content to blob storage!
+2025-08-11T01:29:48.3699558Z SHA256 digest of uploaded artifact zip is b8e4e4a5e601f3687e91311ac5ab7a698ebd1117e694c67f0de121ac0777044f
+2025-08-11T01:29:48.3701297Z Finalizing artifact upload
+2025-08-11T01:29:48.4556029Z Artifact calibration_log.csv.zip successfully finalized. Artifact ID 3730674649
+2025-08-11T01:29:48.4557405Z Artifact calibration_log.csv has been successfully uploaded! Final size is 1894785 bytes. Artifact ID is 3730674649
+2025-08-11T01:29:48.4564851Z Artifact download URL: https://github.com/PolicyEngine/policyengine-us-data/actions/runs/16868572788/artifacts/3730674649

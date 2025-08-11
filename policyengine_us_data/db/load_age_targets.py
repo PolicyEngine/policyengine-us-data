@@ -254,7 +254,7 @@ def load_age_data(df_long, geo, stratum_lookup={}):
         new_stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="equals",
+                operation="in",
                 value=row["ucgid_str"],
             ),
             StratumConstraint(

@@ -12,7 +12,7 @@ from typing import Type
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
-from policyengine_us_data.utils import QRF
+from microimpute.models.qrf import QRF
 import logging
 
 
@@ -177,9 +177,13 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
 
     qrf = QRF()
     logging.info("Training imputation model for rent and real estate taxes.")
-    qrf.fit(train_df[PREDICTORS], train_df[IMPUTATIONS])
+    fitted_model = qrf.fit(
+        X_train=train_df,
+        predictors=PREDICTORS,
+        imputed_variables=IMPUTATIONS,
+    )
     logging.info("Imputing rent and real estate taxes.")
-    imputed_values = qrf.predict(inference_df[PREDICTORS])
+    imputed_values = fitted_model.predict(X_test=inference_df)
     logging.info("Imputation complete.")
     cps["rent"] = np.zeros_like(cps["age"])
     cps["rent"][mask] = imputed_values["rent"]
@@ -1614,7 +1618,7 @@ def add_tips(self, cps: h5py.File):
     cps["tip_income"] = model.predict(
         X_test=cps,
         mean_quantile=0.5,
-    )[0.5].tip_income.values
+    ).tip_income.values
 
     self.save_dataset(cps)
 
@@ -1953,7 +1957,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     imputations = fitted_model.predict(X_test=receiver_data)
 
     for var in IMPUTED_VARIABLES:
-        cps[var] = imputations[0.5][var]
+        cps[var] = imputations[var]
 
     cps["net_worth"] = cps["networth"]
     del cps["networth"]

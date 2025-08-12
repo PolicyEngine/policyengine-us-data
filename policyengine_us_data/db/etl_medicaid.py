@@ -1,7 +1,6 @@
 import requests
+
 import pandas as pd
-
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -28,18 +27,7 @@ state_fips_map = {
 }
 
 
-#"S2704_C02_006E": {
-#  "label": "Estimate!!Public Coverage!!COVERAGE ALONE OR IN COMBINATION!!Medicaid/means-tested public coverage alone or in combination",
-#  "concept": "Public Health Insurance Coverage by Type and Selected Characteristics",
-#  "predicateType": "int",
-#  "group": "S2704",
-#  "limit": 0,
-#  "attributes": "S2704_C02_006EA,S2704_C02_006M,S2704_C02_006MA"
-#},
-
-
-def extract_medicaid_data():
-    year = 2023
+def extract_medicaid_data(year):
     base_url = (
         f"https://api.census.gov/data/{year}/acs/acs1/subject?get=group(S2704)"
     )
@@ -65,9 +53,12 @@ def extract_medicaid_data():
     return cd_survey_df, state_admin_df
 
 
-def transform_medicaid_data(state_admin_df, cd_survey_df):
+def transform_medicaid_data(state_admin_df, cd_survey_df, year):
+
+    reporting_period = year * 100 + 12
+    print(f"Reporting period is {reporting_period}")
     state_df = state_admin_df.loc[
-        (state_admin_df["Reporting Period"] == 202312) &
+        (state_admin_df["Reporting Period"] == reporting_period) &
         (state_admin_df["Final Report"] == "Y"),
         ["State Abbreviation", "Reporting Period", "Total Medicaid Enrollment"]
     ]
@@ -91,29 +82,34 @@ def transform_medicaid_data(state_admin_df, cd_survey_df):
     return state_df[out_cols], cd_df[out_cols]
 
 
-def load_medicaid_data(long_state, long_cd):
+def load_medicaid_data(long_state, long_cd, year):
 
     DATABASE_URL = "sqlite:///policy_data.db"
     engine = create_engine(DATABASE_URL)
+    year = 2023
 
     Session = sessionmaker(bind=engine)
     session = Session()
 
     stratum_lookup = {}
 
-    # Wow, the first time we're making these geos with no breakdown variable
-
     # National ----------------
     nat_stratum = Stratum(
-        parent_stratum_id=None, stratum_group_id=0, notes="Geo: 0100000US"
+        parent_stratum_id=None, stratum_group_id=0, notes="Geo: 0100000US Medicaid Enrolled"
     )
     nat_stratum.constraints_rel = [
         StratumConstraint(
             constraint_variable="ucgid_str",
-            operation="in",
+            operation="equals",
             value="0100000US",
-        )
+        ),
+        StratumConstraint(
+            constraint_variable="medicaid_enrolled",
+            operation="equals",
+            value="True",
+        ),
     ]
+    # No target at the national level is provided at this time.
 
     session.add(nat_stratum)
     session.flush()
@@ -123,7 +119,7 @@ def load_medicaid_data(long_state, long_cd):
     stratum_lookup["State"] = {} 
     for _, row in long_state.iterrows():
 
-        note = f"Geo: {row['ucgid_str']}"
+        note = f"Geo: {row['ucgid_str']} Medicaid Enrolled"
         parent_stratum_id = nat_stratum.stratum_id
 
         new_stratum = Stratum(
@@ -132,14 +128,19 @@ def load_medicaid_data(long_state, long_cd):
         new_stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="in",
+                operation="equals",
                 value=row["ucgid_str"],
+            ),
+            StratumConstraint(
+                constraint_variable="medicaid_enrolled",
+                operation="equals",
+                value="True",
             ),
         ]
         new_stratum.targets_rel.append(
             Target(
-                variable="medicaid_enrollment",
-                period=2023,
+                variable="person_count",
+                period=year,
                 value=row["medicaid_enrollment"],
                 source_id=2,
                 active=True,
@@ -149,12 +150,10 @@ def load_medicaid_data(long_state, long_cd):
         session.flush()
         stratum_lookup["State"][row['ucgid_str']] = new_stratum.stratum_id
 
-
     # District -------------------
-    stratum_lookup["District"] = {} 
     for _, row in long_cd.iterrows():
 
-        note = f"Geo: {row['ucgid_str']}"
+        note = f"Geo: {row['ucgid_str']} Medicaid Enrolled"
         parent_stratum_id = stratum_lookup["State"][f'0400000US{row["ucgid_str"][-4:-2]}']
 
         new_stratum = Stratum(
@@ -163,14 +162,19 @@ def load_medicaid_data(long_state, long_cd):
         new_stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="in",
+                operation="equals",
                 value=row["ucgid_str"],
+            ),
+            StratumConstraint(
+                constraint_variable="medicaid_enrolled",
+                operation="equals",
+                value="True",
             ),
         ]
         new_stratum.targets_rel.append(
             Target(
-                variable="medicaid_enrollment",
-                period=2023,
+                variable="person_count",
+                period=year,
                 value=row["medicaid_enrollment"],
                 source_id=2,
                 active=True,
@@ -179,14 +183,15 @@ def load_medicaid_data(long_state, long_cd):
         session.add(new_stratum)
         session.flush()
 
-
     session.commit()
 
-    return stratum_lookup
 
 if __name__ == "__main__":
-    cd_survey_df, state_admin_df = extract_medicaid_data()
 
-    long_state, long_cd = transform_medicaid_data(state_admin_df, cd_survey_df)
+    year = 2023
 
-    load_medicaid_data(long_state, long_cd)
+    cd_survey_df, state_admin_df = extract_medicaid_data(year)
+
+    long_state, long_cd = transform_medicaid_data(state_admin_df, cd_survey_df, year)
+
+    load_medicaid_data(long_state, long_cd, year)

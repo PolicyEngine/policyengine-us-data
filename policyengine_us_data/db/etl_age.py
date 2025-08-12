@@ -1,4 +1,3 @@
-import logging
 import requests
 from pathlib import Path
 import io
@@ -13,9 +12,6 @@ from policyengine_us_data.db.create_database_tables import (
     StratumConstraint,
     Target,
 )
-
-
-logger = logging.getLogger(__name__)
 
 
 LABEL_TO_SHORT = {

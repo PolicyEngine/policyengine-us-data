@@ -18,7 +18,8 @@ from policyengine_us_data.db.create_database_tables import (
 )
 from policyengine_us_data.utils.census import (
     get_census_docs,
-    pull_subject_table,
+    pull_acs_table,
+    STATE_NAME_TO_FIPS,
 )
 
 
@@ -76,6 +77,7 @@ STATE_NAME_TO_FIPS = {
     "Wyoming": "56",
 }
 
+# Administrative data ------------------------------------------------
 
 def extract_administrative_snap_data(year=2023):
     """
@@ -120,7 +122,7 @@ def extract_administrative_snap_data(year=2023):
     return zipfile.ZipFile(io.BytesIO(response.content))
 
 
-def transform_snap_administrative_data(zip_file, year):
+def transform_administrative_snap_data(zip_file, year):
     filename = f"FY{str(year)[-2:]}.xlsx"
     with zip_file.open(filename) as f:
         xls = pd.ExcelFile(f)
@@ -180,17 +182,10 @@ def transform_snap_administrative_data(zip_file, year):
     )
     df_states["ucgid_str"] = "0400000US" + df_states["STATE_FIPS"]
 
-    # I don't think I need to make this long, because it's going to be 3 different variables
-    #df_states[['ucgid_str', 'Households']]
-    #df_states[['ucgid_str', 'Persons']]
-    #df_states[['ucgid_str', 'Cost']]
-
     return df_states
 
 
-def load_snap_administrative_data(?, year):
-
-    year = 2023
+def load_administrative_snap_data(df_states, year):
 
     DATABASE_URL = "sqlite:///policy_data.db"
     engine = create_engine(DATABASE_URL)
@@ -207,7 +202,7 @@ def load_snap_administrative_data(?, year):
     nat_stratum.constraints_rel = [
         StratumConstraint(
             constraint_variable="ucgid_str",
-            operation="equals",
+            operation="in",
             value="0100000US",
         ),
         StratumConstraint(
@@ -235,7 +230,7 @@ def load_snap_administrative_data(?, year):
         new_stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="equals",
+                operation="in",
                 value=row["ucgid_str"],
             ),
             StratumConstraint(
@@ -268,170 +263,139 @@ def load_snap_administrative_data(?, year):
         stratum_lookup["State"][row['ucgid_str']] = new_stratum.stratum_id
 
     session.commit()
+    return stratum_lookup
 
 
-
-# Moving  away from administrative data to get the survey data ------
-
-
+# Survey data ------------------------------------------------------
 
 def extract_survey_snap_data(year):
 
-    # Household count data -----
-    data = pull_acs_table("S2201", "National", 2023)
-    data["S2201_C03_001E"]
-
-
-    # Ha, this is off my a factor of 1000, and ACS does not report dollars in 1000s
-    # TODO: try to figure it out.
-    data = pull_acs_table("B19058", "State", 2023)
-    np.sum(data["B19058_001E"].values.astype(int)) / 1E9
-
-
-
     raw_dfs = {}
     for geo in ["District", "State", "National"]:
-        df = pull_subject_table(group, geo, year)
-        df_data = df.rename(columns=rename_mapping)[
-            ["GEO_ID", "NAME"] + list(label_to_short_name_mapping.values())
-        ]
-        if geo == "State":
-            raw_dfs["DC"] = df_data[df_data["GEO_ID"].isin(["0400000US11"])]
+        df = pull_acs_table("S2201", geo, year)
+        raw_dfs[geo] = df
 
-        # Filter out Puerto Rico
-        df_geos = df_data[
-            ~df_data["GEO_ID"].isin(
-                [
-                    "5001800US7298",
+    return raw_dfs
+
+
+def transform_survey_snap_data(raw_dfs):
+
+    dfs = {}
+    for geo in raw_dfs.keys():
+        df = raw_dfs[geo] 
+        dfs[geo] = df_data = df[["GEO_ID", "S2201_C03_001E"]].rename({
+            "GEO_ID": "ucgid_str",
+            "S2201_C03_001E": "snap_household_ct"
+            }, axis=1
+        )[
+            ~df["GEO_ID"].isin(
+                [  # Puerto Rico's state and district
                     "0400000US72",
+                    "5001800US7298",
                 ]
             )
         ].copy()
-        raw_dfs[geo] = df_geos
-        SAVE_DIR = Path(get_data_directory() / "input" / "demographics")
-        df_geos.to_csv(SAVE_DIR / f"raw_snap_{geo}.csv", index=False)
 
-    folder_path = (
-        f"{get_data_directory()}/targets/edition=raw/"
-        f"base_period={year}/reference_period={year}/"
-        f"variable=snap_households/"
+    return dfs
+
+
+def load_survey_snap_data(survey_dfs, year, stratum_lookup ={}):
+    """Use an already defined stratum_lookup to load the survey SNAP data"""
+
+    DATABASE_URL = "sqlite:///policy_data.db"
+    engine = create_engine(DATABASE_URL)
+
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # National. Use the stratum from the administrative data function
+    nat_df = survey_dfs["National"]
+    nat_stratum = session.get(Stratum, stratum_lookup["National"])
+
+    nat_stratum.targets_rel.append(
+        Target(
+            variable="household_count",
+            period=year,
+            value=nat_df["snap_household_ct"],
+            source_id=4,
+            active=True,
+        )
     )
-    raw_out = pd.concat([
-        raw_dfs['National'][['GEO_ID', 'overall']],
-        raw_dfs['State'][['GEO_ID', 'overall']],
-        raw_dfs['DC'][['GEO_ID', 'overall']],
-        raw_dfs['District'][['GEO_ID', 'overall']]
-    ]).rename({"GEO_ID": "geography_id", "overall": "value"}, axis=1)
-        
-    raw_out.to_csv(os.path.join(folder_path, "part-001.csv"), index=False)     
+    session.add(nat_stratum)
+    session.flush()
 
-    additive_dfs = enforce_geographic_self_consistency(raw_dfs, 'overall')    
-    usda_snap_df = extract_usda_snap_data()
-    adjusted_dfs = adjust_to_administrative_data(additive_dfs, 'overall', usda_snap_df)
-    assert check_geographic_consistency(adjusted_dfs, 'overall') 
+    # Skipping state for now, but 
+    # # State. Also use the stratum from the administrative data function
+    # state_df = survey_dfs["State"]
+    # for _, row in state_df.iterrows():
+    #     print(row)
+    #     state_stratum = session.get(Stratum, stratum_lookup["State"][row["ucgid_str"]])
 
-    folder_path = (
-        f"{get_data_directory()}/targets/edition=cleaned/"
-        f"base_period={year}/reference_period={year}/"
-        f"variable=snap_households/"
-    )
- 
-    clean_out = pd.concat([
-        adjusted_dfs['National'][['GEO_ID', 'overall']],
-        adjusted_dfs['State'][['GEO_ID', 'overall']],
-        adjusted_dfs['DC'][['GEO_ID', 'overall']],
-        adjusted_dfs['District'][['GEO_ID', 'overall']]
-    ]).rename({"GEO_ID": "geography_id", "overall": "value"}, axis=1)
- 
-    clean_out.to_csv(os.path.join(folder_path, "part-001.csv"), index=False)
+    #     state_stratum.targets_rel.append(
+    #         Target(
+    #             variable="household_count",
+    #             period=year,
+    #             value=row["snap_household_ct"],
+    #             source_id=4,
+    #             active=True,
+    #         )
+    #     )
+    #     session.add(state_stratum)
+    #     session.flush()
 
+    # You will need to create new strata for districts
+    district_df = survey_dfs["District"]
+    for _, row in district_df.iterrows():
+        note = f"Geo: {row['ucgid_str']} Received SNAP Benefits"
+        state_ucgid_str = '0400000US' + row['ucgid_str'][9:11]
+        state_stratum_id = stratum_lookup['State'][state_ucgid_str]
+        new_stratum = Stratum(
+            parent_stratum_id=state_stratum_id, stratum_group_id=0, notes=note
+        )
 
-def reformat_cleaned_data():
-    """Temporary conversion function"""
-    benefits_dir = Path(get_data_directory() / 'input' / 'benefits')
-   
-    snap_filepath = Path(
-        get_data_directory(),
-        "targets",
-        "edition=cleaned",
-        "base_period=2023",
-        "reference_period=2023",
-        "variable=snap_households",
-        "part-001.csv"
-    )
-    snap_data = pd.read_csv(snap_filepath)
-    geo_hierarchies = pd.read_csv(Path(get_data_directory(), 'meta', 'geo_hierarchies.csv'))
-    
-    # Use Type II SCD to Filter geo_hierarchies for the year 2023
-    geo_hierarchies['start_date'] = pd.to_datetime(geo_hierarchies['start_date'])
-    geo_hierarchies['end_date'] = pd.to_datetime(geo_hierarchies['end_date'])
-    geo_hierarchies_2023 = geo_hierarchies[
-        (geo_hierarchies['start_date'] <= '2023-01-01') &
-        (geo_hierarchies['end_date'] >= '2023-01-01')
-    ]
-    
-    merged_data = pd.merge(snap_data, geo_hierarchies_2023, left_on='geography_id', right_on='geography_id')
-    
-    def create_cleaned_df(data, geo_name_map=None, geo_name_prefix=''):
-        df = pd.DataFrame()
-        df['GEO_ID'] = data['geography_id']
-        if geo_name_map:
-            df['GEO_NAME'] = data['geography_id'].map(geo_name_map)
-        elif 'geography_name' in data.columns:
-            df['GEO_NAME'] = data['geography_name']
-        else:
-            df['GEO_NAME'] = ''
-    
-        df['AGI_LOWER_BOUND'] = ''
-        df['AGI_UPPER_BOUND'] = ''
-        df['VALUE'] = data['value']
-        df['IS_COUNT'] = 1
-        df['VARIABLE'] = 'snap_households'
-        return df
-    
-    # National data
-    national_data = merged_data[merged_data['geography_type'] == 'nation'].copy()
-    national_data['geography_name'] = 'US'
-    cleaned_national = create_cleaned_df(national_data)
-    cleaned_national.to_csv(Path(get_data_directory(), 'input', 'benefits', 'cleaned_snap_national.csv'), index=False)
-    
-    # State data
-    state_data = merged_data[merged_data['geography_type'] == 'state-equivalent'].copy()
-    # TODO: fix this redundancy if this becomes permanenent
-    state_fips_map = {
-        '01': 'AL', '02': 'AK', '04': 'AZ', '05': 'AR', '06': 'CA', '08': 'CO', '09': 'CT', '10': 'DE', '11': 'DC',
-        '12': 'FL', '13': 'GA', '15': 'HI', '16': 'ID', '17': 'IL', '18': 'IN', '19': 'IA', '20': 'KS', '21': 'KY',
-        '22': 'LA', '23': 'ME', '24': 'MD', '25': 'MA', '26': 'MI', '27': 'MN', '28': 'MS', '29': 'MO', '30': 'MT',
-        '31': 'NE', '32': 'NV', '33': 'NH', '34': 'NJ', '35': 'NM', '36': 'NY', '37': 'NC', '38': 'ND', '39': 'OH',
-        '40': 'OK', '41': 'OR', '42': 'PA', '44': 'RI', '45': 'SC', '46': 'SD', '47': 'TN', '48': 'TX', '49': 'UT',
-        '50': 'VT', '51': 'VA', '53': 'WA', '54': 'WV', '55': 'WI', '56': 'WY'
-    }
-    state_data['state_fips'] = state_data['geography_id'].str[-2:]
-    state_data['geography_name'] = state_data['state_fips'].map(state_fips_map)
-    cleaned_state = create_cleaned_df(state_data)
-    cleaned_state.to_csv(Path('us-congressional-districts/data/input/benefits/cleaned_snap_state.csv', index=False)
-    cleaned_state.to_csv(Path(get_data_directory(), 'input', 'benefits', 'cleaned_snap_state.csv'), index=False)
-    
-    # District data
-    district_data = merged_data[merged_data['geography_type'] == 'district'].copy()
-    district_data['state_fips'] = district_data['geography_id'].str[9:11]
-    district_data['district_num'] = district_data['geography_id'].str[11:]
-    district_data['geography_name'] = district_data['state_fips'].map(state_fips_map) + ' - District ' + district_data['district_num']
-    cleaned_district = create_cleaned_df(district_data)
-    cleaned_district["VALUE"] = cleaned_district["VALUE"].round().astype(int)
-    cleaned_district.to_csv(Path(get_data_directory(), 'input', 'benefits', 'cleaned_snap_district.csv'), index=False)
+        new_stratum.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="ucgid_str",
+                operation="in",
+                value=row["ucgid_str"],
+            ),
+            StratumConstraint(
+                constraint_variable="snap",
+                operation="greater_than",
+                value='0',
+            ),
+        ]
+        new_stratum.targets_rel.append(
+            Target(
+                variable="household_count",
+                period=year,
+                value=row["snap_household_ct"],
+                source_id=4,
+                active=True,
+            )
+        )
+        session.add(new_stratum)
+        session.flush()
+
+    session.commit()
+
+    return stratum_lookup
 
 
-
-if __name__ == "__main__":
-    process_snap_data(2023)
-
-
-
-def main() -> None:
+def main():
     year = 2023
 
-    zip_file = extract_snap_data(2023)
+    # Extract ---------
+    zip_file_admin = extract_administrative_snap_data()
+    raw_survey_dfs = extract_survey_snap_data(year)
+
+    # Transform -------
+    state_admin_df = transform_administrative_snap_data(zip_file_admin, year)
+    survey_dfs = transform_survey_snap_data(raw_survey_dfs)
+
+    # Load -----------
+    stratum_lookup = load_administrative_snap_data(state_admin_df, year)
+    load_survey_snap_data(survey_dfs, year, stratum_lookup)
 
 
 if __name__ == "__main__":

@@ -28,13 +28,13 @@ def extract_medicaid_data(year):
 
     item = "6165f45b-ca93-5bb5-9d06-db29c692a360"
     response = requests.get(
-      f"https://data.medicaid.gov/api/1/metastore/schemas/dataset/items/{item}?show-reference-ids=false"
+        f"https://data.medicaid.gov/api/1/metastore/schemas/dataset/items/{item}?show-reference-ids=false"
     )
     metadata = response.json()
-    
-    data_url = metadata['distribution'][0]['data']['downloadURL']
+
+    data_url = metadata["distribution"][0]["data"]["downloadURL"]
     state_admin_df = pd.read_csv(data_url)
-    
+
     return cd_survey_df, state_admin_df
 
 
@@ -43,27 +43,42 @@ def transform_medicaid_data(state_admin_df, cd_survey_df, year):
     reporting_period = year * 100 + 12
     print(f"Reporting period is {reporting_period}")
     state_df = state_admin_df.loc[
-        (state_admin_df["Reporting Period"] == reporting_period) &
-        (state_admin_df["Final Report"] == "Y"),
-        ["State Abbreviation", "Reporting Period", "Total Medicaid Enrollment"]
+        (state_admin_df["Reporting Period"] == reporting_period)
+        & (state_admin_df["Final Report"] == "Y"),
+        [
+            "State Abbreviation",
+            "Reporting Period",
+            "Total Medicaid Enrollment",
+        ],
     ]
 
     state_df["FIPS"] = state_df["State Abbreviation"].map(STATE_ABBREV_TO_FIPS)
 
-    cd_df = cd_survey_df[["GEO_ID", "state", "congressional district", "S2704_C02_006E"]]
+    cd_df = cd_survey_df[
+        ["GEO_ID", "state", "congressional district", "S2704_C02_006E"]
+    ]
 
     nc_cd_sum = cd_df.loc[cd_df.state == "37"].S2704_C02_006E.astype(int).sum()
-    nc_state_sum = state_df.loc[state_df.FIPS == '37']['Total Medicaid Enrollment'].values[0]
-    assert nc_cd_sum > .5 * nc_state_sum
+    nc_state_sum = state_df.loc[state_df.FIPS == "37"][
+        "Total Medicaid Enrollment"
+    ].values[0]
+    assert nc_cd_sum > 0.5 * nc_state_sum
     assert nc_cd_sum <= nc_state_sum
 
-    state_df = state_df.rename(columns={'Total Medicaid Enrollment': 'medicaid_enrollment'})
-    state_df['ucgid_str'] = '0400000US' + state_df['FIPS'].astype(str)
+    state_df = state_df.rename(
+        columns={"Total Medicaid Enrollment": "medicaid_enrollment"}
+    )
+    state_df["ucgid_str"] = "0400000US" + state_df["FIPS"].astype(str)
 
-    cd_df = cd_df.rename(columns={'S2704_C02_006E': 'medicaid_enrollment', 'GEO_ID': 'ucgid_str'})
-    cd_df = cd_df.loc[cd_df.state != '72']
+    cd_df = cd_df.rename(
+        columns={
+            "S2704_C02_006E": "medicaid_enrollment",
+            "GEO_ID": "ucgid_str",
+        }
+    )
+    cd_df = cd_df.loc[cd_df.state != "72"]
 
-    out_cols = ['ucgid_str', 'medicaid_enrollment']
+    out_cols = ["ucgid_str", "medicaid_enrollment"]
     return state_df[out_cols], cd_df[out_cols]
 
 
@@ -80,7 +95,9 @@ def load_medicaid_data(long_state, long_cd, year):
 
     # National ----------------
     nat_stratum = Stratum(
-        parent_stratum_id=None, stratum_group_id=0, notes="Geo: 0100000US Medicaid Enrolled"
+        parent_stratum_id=None,
+        stratum_group_id=0,
+        notes="Geo: 0100000US Medicaid Enrolled",
     )
     nat_stratum.constraints_rel = [
         StratumConstraint(
@@ -101,7 +118,7 @@ def load_medicaid_data(long_state, long_cd, year):
     stratum_lookup["National"] = nat_stratum.stratum_id
 
     # State -------------------
-    stratum_lookup["State"] = {} 
+    stratum_lookup["State"] = {}
     for _, row in long_state.iterrows():
 
         note = f"Geo: {row['ucgid_str']} Medicaid Enrolled"
@@ -133,13 +150,15 @@ def load_medicaid_data(long_state, long_cd, year):
         )
         session.add(new_stratum)
         session.flush()
-        stratum_lookup["State"][row['ucgid_str']] = new_stratum.stratum_id
+        stratum_lookup["State"][row["ucgid_str"]] = new_stratum.stratum_id
 
     # District -------------------
     for _, row in long_cd.iterrows():
 
         note = f"Geo: {row['ucgid_str']} Medicaid Enrolled"
-        parent_stratum_id = stratum_lookup["State"][f'0400000US{row["ucgid_str"][-4:-2]}']
+        parent_stratum_id = stratum_lookup["State"][
+            f'0400000US{row["ucgid_str"][-4:-2]}'
+        ]
 
         new_stratum = Stratum(
             parent_stratum_id=parent_stratum_id, stratum_group_id=0, notes=note
@@ -179,7 +198,9 @@ if __name__ == "__main__":
     cd_survey_df, state_admin_df = extract_medicaid_data(year)
 
     # Transform -------------------
-    long_state, long_cd = transform_medicaid_data(state_admin_df, cd_survey_df, year)
+    long_state, long_cd = transform_medicaid_data(
+        state_admin_df, cd_survey_df, year
+    )
 
     # Load -----------------------
     load_medicaid_data(long_state, long_cd, year)

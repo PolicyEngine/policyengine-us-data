@@ -246,7 +246,11 @@ def get_district_mapping():
         mapping_matrix[i, j] = row.proportion
 
     assert np.allclose(mapping_matrix.sum(axis=1), 1.0)
-    return {'mapping_matrix': mapping_matrix, 'old_codes': old_codes, 'new_codes': new_codes}
+    return {
+        "mapping_matrix": mapping_matrix,
+        "old_codes": old_codes,
+        "new_codes": new_codes,
+    }
 
 
 if __name__ == "__main__":

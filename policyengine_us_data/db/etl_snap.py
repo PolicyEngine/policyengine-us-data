@@ -134,10 +134,8 @@ def transform_administrative_snap_data(zip_file, year):
 
 def transform_survey_snap_data(raw_df):
     df = raw_df.copy()
-    return df[["GEO_ID", "S2201_C03_001E"]].rename({
-        "GEO_ID": "ucgid_str",
-        "S2201_C03_001E": "snap_household_ct"
-        }, axis=1
+    return df[["GEO_ID", "S2201_C03_001E"]].rename(
+        {"GEO_ID": "ucgid_str", "S2201_C03_001E": "snap_household_ct"}, axis=1
     )[
         ~df["GEO_ID"].isin(
             [  # Puerto Rico's state and district
@@ -160,7 +158,9 @@ def load_administrative_snap_data(df_states, year):
 
     # National ----------------
     nat_stratum = Stratum(
-        parent_stratum_id=None, stratum_group_id=0, notes="Geo: 0100000US Received SNAP Benefits"
+        parent_stratum_id=None,
+        stratum_group_id=0,
+        notes="Geo: 0100000US Received SNAP Benefits",
     )
     nat_stratum.constraints_rel = [
         StratumConstraint(
@@ -182,7 +182,7 @@ def load_administrative_snap_data(df_states, year):
     stratum_lookup["National"] = nat_stratum.stratum_id
 
     # State -------------------
-    stratum_lookup["State"] = {} 
+    stratum_lookup["State"] = {}
     for _, row in df_states.iterrows():
 
         note = f"Geo: {row['ucgid_str']} Received SNAP Benefits"
@@ -224,13 +224,13 @@ def load_administrative_snap_data(df_states, year):
         )
         session.add(new_stratum)
         session.flush()
-        stratum_lookup["State"][row['ucgid_str']] = new_stratum.stratum_id
+        stratum_lookup["State"][row["ucgid_str"]] = new_stratum.stratum_id
 
     session.commit()
     return stratum_lookup
 
 
-def load_survey_snap_data(survey_df, year, stratum_lookup ={}):
+def load_survey_snap_data(survey_df, year, stratum_lookup={}):
     """Use an already defined stratum_lookup to load the survey SNAP data"""
 
     DATABASE_URL = "sqlite:///policy_data.db"
@@ -243,8 +243,8 @@ def load_survey_snap_data(survey_df, year, stratum_lookup ={}):
     district_df = survey_df.copy()
     for _, row in district_df.iterrows():
         note = f"Geo: {row['ucgid_str']} Received SNAP Benefits"
-        state_ucgid_str = '0400000US' + row['ucgid_str'][9:11]
-        state_stratum_id = stratum_lookup['State'][state_ucgid_str]
+        state_ucgid_str = "0400000US" + row["ucgid_str"][9:11]
+        state_stratum_id = stratum_lookup["State"][state_ucgid_str]
         new_stratum = Stratum(
             parent_stratum_id=state_stratum_id, stratum_group_id=0, notes=note
         )
@@ -258,7 +258,7 @@ def load_survey_snap_data(survey_df, year, stratum_lookup ={}):
             StratumConstraint(
                 constraint_variable="snap",
                 operation="greater_than",
-                value='0',
+                value="0",
             ),
         ]
         new_stratum.targets_rel.append(

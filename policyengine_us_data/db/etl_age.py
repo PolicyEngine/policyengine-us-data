@@ -78,11 +78,11 @@ def transform_age_data(age_data, docs):
     )
     age_bounds = df_long["age_range"].str.split("-", expand=True).astype(int)
     age_bounds.columns = ["ge", "le"]
-    age_bounds[['gt']] = age_bounds[["ge"]] - 1
-    age_bounds[['lt']] = age_bounds[["le"]] + 1
+    age_bounds[["gt"]] = age_bounds[["ge"]] - 1
+    age_bounds[["lt"]] = age_bounds[["le"]] + 1
 
     df_long["age_greater_than"] = age_bounds[["gt"]]
-    df_long["age_less_than"] = age_bounds[["lt"]] 
+    df_long["age_less_than"] = age_bounds[["lt"]]
     df_long["variable"] = "person_count"
     df_long["reform_id"] = 0
     df_long["source_id"] = 1
@@ -208,6 +208,4 @@ if __name__ == "__main__":
     state_strata_lku = load_age_data(
         long_state_df, "State", year, national_strata_lku
     )
-    load_age_data(
-        long_district_df, "District", year, state_strata_lku
-    )
+    load_age_data(long_district_df, "District", year, state_strata_lku)

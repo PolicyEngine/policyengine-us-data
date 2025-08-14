@@ -3,7 +3,10 @@ from typing import List, Optional
 from sqlmodel import Session, select
 import sqlalchemy as sa
 
-from policyengine_us_data.db.create_database_tables import Stratum, StratumConstraint
+from policyengine_us_data.db.create_database_tables import (
+    Stratum,
+    StratumConstraint,
+)
 
 
 def get_stratum_by_id(session: Session, stratum_id: int) -> Optional[Stratum]:
@@ -11,14 +14,18 @@ def get_stratum_by_id(session: Session, stratum_id: int) -> Optional[Stratum]:
     return session.get(Stratum, stratum_id)
 
 
-def get_simple_stratum_by_ucgid(session: Session, ucgid: str) -> Optional[Stratum]:
+def get_simple_stratum_by_ucgid(
+    session: Session, ucgid: str
+) -> Optional[Stratum]:
     """
     Finds a stratum defined *only* by a single ucgid_str constraint.
     """
     constraint_count_subquery = (
         select(
             StratumConstraint.stratum_id,
-            sa.func.count(StratumConstraint.stratum_id).label("constraint_count")
+            sa.func.count(StratumConstraint.stratum_id).label(
+                "constraint_count"
+            ),
         )
         .group_by(StratumConstraint.stratum_id)
         .subquery()
@@ -29,7 +36,7 @@ def get_simple_stratum_by_ucgid(session: Session, ucgid: str) -> Optional[Stratu
         .join(StratumConstraint)
         .join(
             constraint_count_subquery,
-            Stratum.stratum_id == constraint_count_subquery.c.stratum_id
+            Stratum.stratum_id == constraint_count_subquery.c.stratum_id,
         )
         .where(StratumConstraint.constraint_variable == "ucgid_str")
         .where(StratumConstraint.value == ucgid)

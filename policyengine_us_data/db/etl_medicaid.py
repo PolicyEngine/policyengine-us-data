@@ -9,22 +9,7 @@ from policyengine_us_data.db.create_database_tables import (
     StratumConstraint,
     Target,
 )
-
-
-# State abbreviation to FIPS code mapping
-state_fips_map = {
-    'AL': '01', 'AK': '02', 'AZ': '04', 'AR': '05', 'CA': '06',
-    'CO': '08', 'CT': '09', 'DE': '10', 'FL': '12', 'GA': '13',
-    'HI': '15', 'ID': '16', 'IL': '17', 'IN': '18', 'IA': '19',
-    'KS': '20', 'KY': '21', 'LA': '22', 'ME': '23', 'MD': '24',
-    'MA': '25', 'MI': '26', 'MN': '27', 'MS': '28', 'MO': '29',
-    'MT': '30', 'NE': '31', 'NV': '32', 'NH': '33', 'NJ': '34',
-    'NM': '35', 'NY': '36', 'NC': '37', 'ND': '38', 'OH': '39',
-    'OK': '40', 'OR': '41', 'PA': '42', 'RI': '44', 'SC': '45',
-    'SD': '46', 'TN': '47', 'TX': '48', 'UT': '49', 'VT': '50',
-    'VA': '51', 'WA': '53', 'WV': '54', 'WI': '55', 'WY': '56',
-    'DC': '11'
-}
+from policyengine_us_data.utils.census import STATE_ABBREV_TO_FIPS
 
 
 def extract_medicaid_data(year):
@@ -63,7 +48,7 @@ def transform_medicaid_data(state_admin_df, cd_survey_df, year):
         ["State Abbreviation", "Reporting Period", "Total Medicaid Enrollment"]
     ]
 
-    state_df["FIPS"] = state_df["State Abbreviation"].map(state_fips_map)
+    state_df["FIPS"] = state_df["State Abbreviation"].map(STATE_ABBREV_TO_FIPS)
 
     cd_df = cd_survey_df[["GEO_ID", "state", "congressional district", "S2704_C02_006E"]]
 
@@ -100,7 +85,7 @@ def load_medicaid_data(long_state, long_cd, year):
     nat_stratum.constraints_rel = [
         StratumConstraint(
             constraint_variable="ucgid_str",
-            operation="equals",
+            operation="in",
             value="0100000US",
         ),
         StratumConstraint(
@@ -128,7 +113,7 @@ def load_medicaid_data(long_state, long_cd, year):
         new_stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="equals",
+                operation="in",
                 value=row["ucgid_str"],
             ),
             StratumConstraint(
@@ -162,7 +147,7 @@ def load_medicaid_data(long_state, long_cd, year):
         new_stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="equals",
+                operation="in",
                 value=row["ucgid_str"],
             ),
             StratumConstraint(
@@ -190,8 +175,11 @@ if __name__ == "__main__":
 
     year = 2023
 
+    # Extract ------------------------------
     cd_survey_df, state_admin_df = extract_medicaid_data(year)
 
+    # Transform -------------------
     long_state, long_cd = transform_medicaid_data(state_admin_df, cd_survey_df, year)
 
+    # Load -----------------------
     load_medicaid_data(long_state, long_cd, year)

@@ -1,64 +1,35 @@
-from pathlib import Path
-from typing import List, Optional, Sequence, Dict, Tuple, Any, Union
+from typing import Optional
 
 import numpy as np
 import pandas as pd
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlmodel import Session, create_engine
 
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
 )
+from policyengine_us_data.utils.db import get_stratum_by_id, get_simple_stratum_by_ucgid, get_root_strata, get_stratum_children, get_stratum_parent
+from policyengine_us_data.utils.census import TERRITORY_UCGIDS
+from policyengine_us_data.storage.calibration_targets.make_district_mapping import get_district_mapping
 
 
-
-
-"""Utilities to pull AGI targets from the IRS SOI data files."""
-
-# Congressional districts have one fewer level than the national and state
-# They're missing the million plus category
-#  ("No AGI Stub") is a specific, intentional category used by the IRS in its summary data files.
-#
-#SOI_COLUMNS = [
-#    "Under $1",
-#    "$1 under $10,000",
-#    "$10,000 under $25,000",
-#    "$25,000 under $50,000",
-#    "$50,000 under $75,000",
-#    "$75,000 under $100,000",
-#    "$100,000 under $200,000",
-#    "$200,000 under $500,000",
-#    "$500,000 or more",
-#]
-#
-#AGI_STUB_TO_BAND = {i + 1: band for i, band in enumerate(SOI_COLUMNS)}
-#
-#AGI_BOUNDS = {
-#    "Under $1": (-np.inf, 1),
-#    "$1 under $10,000": (1, 10_000),
-#    "$10,000 under $25,000": (10_000, 25_000),
-#    "$25,000 under $50,000": (25_000, 50_000),
-#    "$50,000 under $75,000": (50_000, 75_000),
-#    "$75,000 under $100,000": (75_000, 100_000),
-#    "$100,000 under $200,000": (100_000, 200_000),
-#    "$200,000 under $500,000": (200_000, 500_000),
-#    "$500,000 or more": (500_000, np.inf),
-#}
-#
-##NON_VOTING_STATES = {"US", "AS", "GU", "MP", "PR", "VI", "OA"}
-#
-IGNORE_GEO_IDS = {
-    "0400000US72",  # Puerto Rico (state level)
-    "5001800US7298",  # Puerto Rico
-    "5001800US6098",  # American Samoa
-    "5001800US6698",  # Guam
-    "5001800US6998",  # Northern Mariana Islands
-    "5001800US7898",  # U.S. Virgin Islands
+"""See the 22incddocguide.docx manual from the IRS SOI"""
+# Let's make this work with strict inequalities
+# Interpret Language: '$10,000 under $25,000'
+epsilon = 0.005  # Half a penny
+AGI_STUB_TO_INCOME_RANGE = {
+    1: (-np.inf, 1),
+    2: (1 - epsilon, 10_000),
+    3: (10_000 - epsilon , 25_000),
+    4: (25_000 - epsilon, 50_000),
+    5: (50_000 - epsilon, 75_000),
+    6: (75_000 - epsilon, 100_000),
+    7: (100_000 - epsilon, 200_000),
+    8: (200_000 - epsilon, 500_000),
+    9: (500_000 - epsilon, np.inf),
 }
-
 
 def create_records(df, breakdown_variable, target_variable):
     """Transforms a DataFrame subset into a standardized list of records."""
@@ -123,10 +94,39 @@ def make_agi_long(df: pd.DataFrame) -> pd.DataFrame:
                  "breakdown_value",
                  "target_variable",
                  "target_value"]]
-    return (
-        long.sort_values(["ucgid_str", "breakdown_value", "target_variable"])
-            .reset_index(drop=True)
-    )
+
+    return [
+        df.sort_values(by='ucgid_str').reset_index(drop=True)
+        for name, df in long.groupby(['breakdown_value', 'target_variable'])
+    ]
+
+
+def convert_district_data(
+    input_df: pd.DataFrame,
+    mapping_matrix: np.ndarray,  # 436 x 436A
+    new_district_codes
+) -> pd.DataFrame:
+    """Transforms data from pre- to post- 2020 census districts"""
+    df = input_df.copy()
+    old_districts_df = df[df['ucgid_str'].str.startswith("5001800US")].copy()
+    old_districts_df = old_districts_df.sort_values('ucgid_str').reset_index(drop=True)
+    old_values = old_districts_df['target_value'].to_numpy()
+    new_values = mapping_matrix.T @ old_values
+
+    # Create a new DataFrame for the transformed data, preserving the original schema.
+    new_districts_df = pd.DataFrame({
+        'ucgid_str': new_district_codes,
+        'breakdown_variable': old_districts_df['breakdown_variable'],
+        'breakdown_value': old_districts_df['breakdown_value'],
+        'target_variable': old_districts_df['target_variable'],
+        'target_value': new_values
+    })
+
+    other_geos_df = df[~df['ucgid_str'].str.startswith("5001800US")].copy()
+
+    final_df = pd.concat([other_geos_df, new_districts_df], ignore_index=True)
+
+    return final_df
 
 
 def extract_soi_data() -> pd.DataFrame:
@@ -195,7 +195,7 @@ def transform_soi_data(raw_df):
         district_df["CONG_DISTRICT"].astype(int).astype(str).str.zfill(2)
     )
     district_df["ucgid_str"] = "5001800US" + district_df["STATEFIPS"] + district_df["CONG_DISTRICT"]
-    district_df = district_df[~district_df["ucgid_str"].isin(IGNORE_GEO_IDS)]
+    district_df = district_df[~district_df["ucgid_str"].isin(TERRITORY_UCGIDS)]
 
     assert district_df.shape[0] % 436 == 0
 
@@ -244,12 +244,15 @@ def transform_soi_data(raw_df):
     all_agi_splits = all_df.copy().loc[all_df.agi_stub != 0]
     assert all_agi_splits.shape[0] % (436 + 51 + 0) == 0
 
-    agi_long = make_agi_long(all_agi_splits)
-    agi_long = agi_long.loc[agi_long.target_variable != "agi_total_amount"] 
+    agi_long_records = make_agi_long(all_agi_splits)
 
-    records.append(agi_long)
+    records.extend(agi_long_records)
 
-    return pd.concat(records)
+    # Pre- to Post- 2020 Census redisticting
+    mapping = get_district_mapping()
+    converted = [convert_district_data(r, mapping['mapping_matrix'], mapping['new_codes']) for r in records]
+
+    return converted 
 
 
 def load_soi_data(long_dfs, year):
@@ -257,11 +260,10 @@ def load_soi_data(long_dfs, year):
     DATABASE_URL = "sqlite:///policy_data.db"
     engine = create_engine(DATABASE_URL)
 
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session = Session(engine)
 
     # Load EITC data -------------------------------------------------------- 
-    # NOTE: obviously this is not especially robust ---
+    # Obviously this is not especially robust ---
     eitc_data = {'0': (long_dfs[0], long_dfs[1]),
                  '1': (long_dfs[2], long_dfs[3]),
                  '2': (long_dfs[4], long_dfs[5]),
@@ -302,8 +304,8 @@ def load_soi_data(long_dfs, year):
                new_stratum.constraints_rel.append(
                    StratumConstraint(
                        constraint_variable="eitc_children",
-                       operation="greater_than_or_equal_to",
-                       value='3',
+                       operation="greater_than",
+                       value='2',
                    )
                )
             else:
@@ -316,13 +318,14 @@ def load_soi_data(long_dfs, year):
                )
 
             new_stratum.targets_rel = [
-                Target(
-                    variable="tax_unit_count",
-                    period=year,
-                    value=eitc_count_i.iloc[i][["target_value"]].values[0],
-                    source_id=5,
-                    active=True,
-                ),
+                # It's already complex enough
+                #Target(
+                #    variable="tax_unit_count",
+                #    period=year,
+                #    value=eitc_count_i.iloc[i][["target_value"]].values[0],
+                #    source_id=5,
+                #    active=True,
+                #),
                 Target(
                     variable="eitc",
                     period=year,
@@ -340,26 +343,104 @@ def load_soi_data(long_dfs, year):
             elif len(ucgid_i) == 11: 
                  stratum_lookup["State"][ucgid_i] = new_stratum.stratum_id
 
+    session.commit()
 
     # No breakdown variables in this set 
     for j in range(8, 42, 2):
-        print(long_dfs[j])  # count
-        print(long_dfs[j + 1])  # amount
-
-        # Why are we making strata here? You have a lot of these to run through
         count_j, amount_j = long_dfs[j], long_dfs[j + 1] 
+        amount_variable_name = amount_j.iloc[0][["target_variable"]].values[0]
+        print(f"Loading amount data for IRS SOI data on {amount_variable_name}")
         for i in range(count_j.shape[0]):
             ucgid_i = count_j[['ucgid_str']].iloc[i].values[0]
-            # If there's no breakdown variable, is this a new geo?
-            # The problem is, it's vary difficult to search for a geography
-            # That's already in existance
-            note = f"Geo: {ucgid_i}"
 
-            if len(ucgid_i) == 9:  # National.
-                new_stratum = Stratum(
-                    parent_stratum_id=None, stratum_group_id=0, notes=note
+            # Reusing an existing stratum this time, since there is no breakdown
+            stratum = get_simple_stratum_by_ucgid(session, ucgid_i)
+            amount_value = amount_j.iloc[i][["target_value"]].values[0]
+
+            stratum.targets_rel.append(
+                # NOTE: If I do the counts, I'm going to need to explode the strata for the vars != 0
+                # OR, create new variables like qbid_tax_unit_count which requires adding stuff to -us
+                # AND, it's already complex enough -----
+                #Target(
+                #    variable="tax_unit_count",
+                #    period=year,
+                #    value=count_j.iloc[i][["target_value"]].values[0],
+                #    source_id=5,
+                #    active=True,
+                #),
+                Target(
+                    variable=amount_variable_name,
+                    period=year,
+                    value=amount_value,
+                    source_id=5,
+                    active=True,
                 )
-            elif len(ucgid_i) == 11:  # State 
+            )
+
+            session.add(stratum)
+            session.flush()
+
+    session.commit()
+
+    # Adjusted Gross Income ------ 
+    agi_values = long_dfs[42]
+
+    for i in range(agi_values.shape[0]):
+        ucgid_i = agi_values[['ucgid_str']].iloc[i].values[0]
+        stratum = get_simple_stratum_by_ucgid(session, ucgid_i)
+        stratum.targets_rel.append(
+            Target(
+                variable="agi",
+                period=year,
+                value=agi_values.iloc[i][["target_value"]].values[0],
+                source_id=5,
+                active=True,
+            )
+        )
+        session.add(stratum)
+        session.flush()
+    
+    session.commit()
+
+    agi_person_count_dfs = [df for df in long_dfs[43:] if df['target_variable'].iloc[0] == 'agi_person_count']
+
+    for agi_df in agi_person_count_dfs:
+        agi_stub = agi_df.iloc[0][["breakdown_value"]].values[0]
+        agi_income_lower, agi_income_upper = AGI_STUB_TO_INCOME_RANGE[agi_stub]
+
+        # Make a National Stratum for each AGI Stub, even though there's no national target
+        # There no national target because the data set only has agi_stub = 0 for national
+        nat_stratum = Stratum(
+            parent_stratum_id=None, stratum_group_id=0, notes=note
+        )
+        nat_stratum.constraints_rel.extend([
+           StratumConstraint(
+               constraint_variable="ucgid_str",
+               operation="in",
+               value=ucgid_i,
+           ),
+           StratumConstraint(
+               constraint_variable="agi",
+               operation="greater_than",
+               value=str(agi_income_lower),
+           ),
+           StratumConstraint(
+               constraint_variable="agi",
+               operation="less_than",
+               value=str(agi_income_upper),
+           ),
+        ])
+        session.add(nat_stratum)
+        session.flush()
+ 
+        stratum_lookup = {"National": nat_stratum.stratum_id, "State": {}, "District": {}}
+        for i in range(agi_df.shape[0]):
+            ucgid_i = agi_df[['ucgid_str']].iloc[i].values[0]
+            note = f"Geo: {ucgid_i}, AGI > {agi_income_lower}, AGI < {agi_income_upper}"
+
+            person_count = agi_df.iloc[i][["target_value"]].values[0]
+
+            if len(ucgid_i) == 11:  # State 
                 new_stratum = Stratum(
                     parent_stratum_id=stratum_lookup["National"],
                     stratum_group_id=0,
@@ -371,26 +452,28 @@ def load_soi_data(long_dfs, year):
                     stratum_group_id=0,
                     notes=note
                 )
-
-            new_stratum.constraints_rel = [
+            new_stratum.constraints_rel.extend([
                StratumConstraint(
                    constraint_variable="ucgid_str",
                    operation="in",
                    value=ucgid_i,
                ),
-            ]
+               StratumConstraint(
+                   constraint_variable="agi",
+                   operation="greater_than",
+                   value=str(agi_income_lower),
+               ),
+               StratumConstraint(
+                   constraint_variable="agi",
+                   operation="less_than",
+                   value=str(agi_income_upper),
+               ),
+            ])
             new_stratum.targets_rel = [
                 Target(
-                    variable="tax_unit_count",
+                    variable="person_count",
                     period=year,
-                    value=count_j.iloc[i][["target_value"]].values[0],
-                    source_id=5,
-                    active=True,
-                ),
-                Target(
-                    variable=amount_j.iloc[0][["target_variable"]].values[0],
-                    period=year,
-                    value=amount_j.iloc[i][["target_value"]].values[0],
+                    value=person_count,
                     source_id=5,
                     active=True,
                 )
@@ -407,12 +490,17 @@ def load_soi_data(long_dfs, year):
     session.commit()
 
 
-
-def main() -> None:
+def main():
     year = 2022  # NOTE: predates the finalization of the 2020 Census redistricting
+
+    # Extract -----------------------
     raw_df = extract_soi_data()
 
-    long_dfs = transform_soi_data(raw_df):
+    # Transform ---------------------
+    long_dfs = transform_soi_data(raw_df)
+
+    # Load ---------------------
+    load_soi_data(long_dfs, year)
 
 
 if __name__ == "__main__":

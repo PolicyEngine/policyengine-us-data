@@ -12,6 +12,7 @@ from policyengine_us_data.db.create_database_tables import (
     StratumConstraint,
     Target,
 )
+from policyengine_us_data.utils.census import get_census_docs, pull_acs_table
 
 
 LABEL_TO_SHORT = {
@@ -32,65 +33,9 @@ LABEL_TO_SHORT = {
     "Estimate!!Total!!Total population!!AGE!!70 to 74 years": "70-74",
     "Estimate!!Total!!Total population!!AGE!!75 to 79 years": "75-79",
     "Estimate!!Total!!Total population!!AGE!!80 to 84 years": "80-84",
-    "Estimate!!Total!!Total population!!AGE!!85 years and over": "85-inf",
+    "Estimate!!Total!!Total population!!AGE!!85 years and over": "85-999",
 }
 AGE_COLS = list(LABEL_TO_SHORT.values())
-
-
-def extract_docs(year=2023):
-    docs_url = (
-        f"https://api.census.gov/data/{year}/acs/acs1/subject/variables.json"
-    )
-
-    try:
-        docs_response = requests.get(docs_url)
-        docs_response.raise_for_status()
-
-        docs = docs_response.json()
-        docs["year"] = year
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error during API request: {e}")
-        raise
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        raise
-    return docs
-
-
-def extract_age_data(geo, year=2023):
-    base_url = (
-        f"https://api.census.gov/data/{year}/acs/acs1/subject?get=group(S0101)"
-    )
-
-    if geo == "State":
-        url = f"{base_url}&for=state:*"
-    elif geo == "District":
-        url = f"{base_url}&for=congressional+district:*"
-    elif geo == "National":
-        url = f"{base_url}&for=us:*"
-    else:
-        raise ValueError(
-            "geo must be either 'National', 'State', or 'District'"
-        )
-
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-
-        data = response.json()
-
-        headers = data[0]
-        data_rows = data[1:]
-        df = pd.DataFrame(data_rows, columns=headers)
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error during API request: {e}")
-        raise
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        raise
-    return df
 
 
 def transform_age_data(age_data, docs):
@@ -131,13 +76,14 @@ def transform_age_data(age_data, docs):
         var_name="age_range",
         value_name="value",
     )
-    age_bounds = df_long["age_range"].str.split("-", expand=True)
-    df_long["age_greater_than_or_equal_to"] = (
-        age_bounds[0].str.replace("+", "").astype(int)
-    )
-    df_long["age_less_than_or_equal_to"] = pd.to_numeric(age_bounds[1])
+    age_bounds = df_long["age_range"].str.split("-", expand=True).astype(int)
+    age_bounds.columns = ["ge", "le"]
+    age_bounds[['gt']] = age_bounds[["ge"]] - 1
+    age_bounds[['lt']] = age_bounds[["le"]] + 1
+
+    df_long["age_greater_than"] = age_bounds[["gt"]]
+    df_long["age_less_than"] = age_bounds[["lt"]] 
     df_long["variable"] = "person_count"
-    df_long["period"] = docs["year"]
     df_long["reform_id"] = 0
     df_long["source_id"] = 1
     df_long["active"] = True
@@ -149,7 +95,7 @@ def get_parent_geo(geo):
     return {"National": None, "State": "National", "District": "State"}[geo]
 
 
-def load_age_data(df_long, geo, stratum_lookup={}):
+def load_age_data(df_long, geo, year, stratum_lookup={}):
 
     # Quick data quality check before loading ----
     if geo == "National":
@@ -192,6 +138,7 @@ def load_age_data(df_long, geo, stratum_lookup={}):
         )
 
         # Create constraints and link them to the parent's relationship attribute.
+        # TODO: greater_than_or_equal_to to just greater than!
         new_stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
@@ -200,18 +147,18 @@ def load_age_data(df_long, geo, stratum_lookup={}):
             ),
             StratumConstraint(
                 constraint_variable="age",
-                operation="greater_than_or_equal",
-                value=str(row["age_greater_than_or_equal_to"]),
+                operation="greater_than",
+                value=str(row["age_greater_than"]),
             ),
         ]
 
-        age_lt_value = row["age_less_than_or_equal_to"]
+        age_lt_value = row["age_less_than"]
         if not np.isinf(age_lt_value):
             new_stratum.constraints_rel.append(
                 StratumConstraint(
                     constraint_variable="age",
                     operation="less_than",
-                    value=str(age_lt_value + 1),
+                    value=str(row["age_less_than"]),
                 )
             )
 
@@ -219,7 +166,7 @@ def load_age_data(df_long, geo, stratum_lookup={}):
         new_stratum.targets_rel.append(
             Target(
                 variable=row["variable"],
-                period=row["period"],
+                period=year,
                 value=row["value"],
                 source_id=row["source_id"],
                 active=row["active"],
@@ -243,18 +190,24 @@ def load_age_data(df_long, geo, stratum_lookup={}):
 if __name__ == "__main__":
 
     # --- ETL: Extract, Transform, Load ----
+    year = 2023
 
     # ---- Extract ----------
-    docs = extract_docs(2023)
-    national_df = extract_age_data("National", 2023)
-    state_df = extract_age_data("State", 2023)
+    docs = get_census_docs(year)
+    national_df = pull_acs_table("S0101", "National", year)
+    state_df = pull_acs_table("S0101", "State", year)
+    district_df = pull_acs_table("S0101", "District", year)
 
     # --- Transform ----------
     long_national_df = transform_age_data(national_df, docs)
     long_state_df = transform_age_data(state_df, docs)
+    long_district_df = transform_age_data(district_df, docs)
 
     # --- Load --------
-    national_strata_lku = load_age_data(long_national_df, "National")
+    national_strata_lku = load_age_data(long_national_df, "National", year)
     state_strata_lku = load_age_data(
-        long_state_df, "State", national_strata_lku
+        long_state_df, "State", year, national_strata_lku
+    )
+    load_age_data(
+        long_district_df, "District", year, state_strata_lku
     )

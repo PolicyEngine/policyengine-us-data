@@ -17,67 +17,10 @@ from policyengine_us_data.db.create_database_tables import (
     Target,
 )
 from policyengine_us_data.utils.census import (
-    get_census_docs,
     pull_acs_table,
     STATE_NAME_TO_FIPS,
 )
 
-
-STATE_NAME_TO_FIPS = {
-    "Alabama": "01",
-    "Alaska": "02",
-    "Arizona": "04",
-    "Arkansas": "05",
-    "California": "06",
-    "Colorado": "08",
-    "Connecticut": "09",
-    "Delaware": "10",
-    "District of Columbia": "11",
-    "Florida": "12",
-    "Georgia": "13",
-    "Hawaii": "15",
-    "Idaho": "16",
-    "Illinois": "17",
-    "Indiana": "18",
-    "Iowa": "19",
-    "Kansas": "20",
-    "Kentucky": "21",
-    "Louisiana": "22",
-    "Maine": "23",
-    "Maryland": "24",
-    "Massachusetts": "25",
-    "Michigan": "26",
-    "Minnesota": "27",
-    "Mississippi": "28",
-    "Missouri": "29",
-    "Montana": "30",
-    "Nebraska": "31",
-    "Nevada": "32",
-    "New Hampshire": "33",
-    "New Jersey": "34",
-    "New Mexico": "35",
-    "New York": "36",
-    "North Carolina": "37",
-    "North Dakota": "38",
-    "Ohio": "39",
-    "Oklahoma": "40",
-    "Oregon": "41",
-    "Pennsylvania": "42",
-    "Rhode Island": "44",
-    "South Carolina": "45",
-    "South Dakota": "46",
-    "Tennessee": "47",
-    "Texas": "48",
-    "Utah": "49",
-    "Vermont": "50",
-    "Virginia": "51",
-    "Washington": "53",
-    "West Virginia": "54",
-    "Wisconsin": "55",
-    "Wyoming": "56",
-}
-
-# Administrative data ------------------------------------------------
 
 def extract_administrative_snap_data(year=2023):
     """
@@ -120,6 +63,10 @@ def extract_administrative_snap_data(year=2023):
             return None
 
     return zipfile.ZipFile(io.BytesIO(response.content))
+
+
+def extract_survey_snap_data(year):
+    return pull_acs_table("S2201", "District", year)
 
 
 def transform_administrative_snap_data(zip_file, year):
@@ -185,6 +132,22 @@ def transform_administrative_snap_data(zip_file, year):
     return df_states
 
 
+def transform_survey_snap_data(raw_df):
+    df = raw_df.copy()
+    return df[["GEO_ID", "S2201_C03_001E"]].rename({
+        "GEO_ID": "ucgid_str",
+        "S2201_C03_001E": "snap_household_ct"
+        }, axis=1
+    )[
+        ~df["GEO_ID"].isin(
+            [  # Puerto Rico's state and district
+                "0400000US72",
+                "5001800US7298",
+            ]
+        )
+    ]
+
+
 def load_administrative_snap_data(df_states, year):
 
     DATABASE_URL = "sqlite:///policy_data.db"
@@ -211,7 +174,8 @@ def load_administrative_snap_data(df_states, year):
             value="0",
         ),
     ]
-    # No target at the national level is provided at this time.
+    # No target at the national level is provided at this time. Keeping it
+    # so that the state strata can have a parent stratum
 
     session.add(nat_stratum)
     session.flush()
@@ -266,40 +230,7 @@ def load_administrative_snap_data(df_states, year):
     return stratum_lookup
 
 
-# Survey data ------------------------------------------------------
-
-def extract_survey_snap_data(year):
-
-    raw_dfs = {}
-    for geo in ["District", "State", "National"]:
-        df = pull_acs_table("S2201", geo, year)
-        raw_dfs[geo] = df
-
-    return raw_dfs
-
-
-def transform_survey_snap_data(raw_dfs):
-
-    dfs = {}
-    for geo in raw_dfs.keys():
-        df = raw_dfs[geo] 
-        dfs[geo] = df_data = df[["GEO_ID", "S2201_C03_001E"]].rename({
-            "GEO_ID": "ucgid_str",
-            "S2201_C03_001E": "snap_household_ct"
-            }, axis=1
-        )[
-            ~df["GEO_ID"].isin(
-                [  # Puerto Rico's state and district
-                    "0400000US72",
-                    "5001800US7298",
-                ]
-            )
-        ].copy()
-
-    return dfs
-
-
-def load_survey_snap_data(survey_dfs, year, stratum_lookup ={}):
+def load_survey_snap_data(survey_df, year, stratum_lookup ={}):
     """Use an already defined stratum_lookup to load the survey SNAP data"""
 
     DATABASE_URL = "sqlite:///policy_data.db"
@@ -308,43 +239,8 @@ def load_survey_snap_data(survey_dfs, year, stratum_lookup ={}):
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    # National. Use the stratum from the administrative data function
-    nat_df = survey_dfs["National"]
-    nat_stratum = session.get(Stratum, stratum_lookup["National"])
-
-    nat_stratum.targets_rel.append(
-        Target(
-            variable="household_count",
-            period=year,
-            value=nat_df["snap_household_ct"],
-            source_id=4,
-            active=True,
-        )
-    )
-    session.add(nat_stratum)
-    session.flush()
-
-    # Skipping state for now, but 
-    # # State. Also use the stratum from the administrative data function
-    # state_df = survey_dfs["State"]
-    # for _, row in state_df.iterrows():
-    #     print(row)
-    #     state_stratum = session.get(Stratum, stratum_lookup["State"][row["ucgid_str"]])
-
-    #     state_stratum.targets_rel.append(
-    #         Target(
-    #             variable="household_count",
-    #             period=year,
-    #             value=row["snap_household_ct"],
-    #             source_id=4,
-    #             active=True,
-    #         )
-    #     )
-    #     session.add(state_stratum)
-    #     session.flush()
-
-    # You will need to create new strata for districts
-    district_df = survey_dfs["District"]
+    # Create new strata for districts whose households recieve SNAP benefits
+    district_df = survey_df.copy()
     for _, row in district_df.iterrows():
         note = f"Geo: {row['ucgid_str']} Received SNAP Benefits"
         state_ucgid_str = '0400000US' + row['ucgid_str'][9:11]
@@ -387,15 +283,15 @@ def main():
 
     # Extract ---------
     zip_file_admin = extract_administrative_snap_data()
-    raw_survey_dfs = extract_survey_snap_data(year)
+    raw_survey_df = extract_survey_snap_data(year)
 
     # Transform -------
     state_admin_df = transform_administrative_snap_data(zip_file_admin, year)
-    survey_dfs = transform_survey_snap_data(raw_survey_dfs)
+    district_survey_df = transform_survey_snap_data(raw_survey_df)
 
     # Load -----------
     stratum_lookup = load_administrative_snap_data(state_admin_df, year)
-    load_survey_snap_data(survey_dfs, year, stratum_lookup)
+    load_survey_snap_data(district_survey_df, year, stratum_lookup)
 
 
 if __name__ == "__main__":

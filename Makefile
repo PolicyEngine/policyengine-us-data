@@ -61,7 +61,11 @@ documentation-dev:
 
 database:
 	python policyengine_us_data/db/create_database_tables.py
-	python policyengine_us_data/db/load_age_targets.py
+	python policyengine_us_data/db/create_initial_strata.py
+	python policyengine_us_data/db/etl_age.py
+	python policyengine_us_data/db/etl_medicaid.py
+	python policyengine_us_data/db/etl_snap.py
+	python policyengine_us_data/db/etl_irs_soi.py
 
 clean-database:
 	rm *.db

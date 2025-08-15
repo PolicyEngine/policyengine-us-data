@@ -1,8 +1,7 @@
 import requests
 
 import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlmodel import Session, create_engine
 
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
@@ -86,52 +85,21 @@ def load_medicaid_data(long_state, long_cd, year):
 
     DATABASE_URL = "sqlite:///policy_data.db"
     engine = create_engine(DATABASE_URL)
-    year = 2023
-
-    Session = sessionmaker(bind=engine)
-    session = Session()
 
     stratum_lookup = {}
 
-    # National ----------------
-    nat_stratum = Stratum(
-        parent_stratum_id=None,
-        stratum_group_id=0,
-        notes="Geo: 0100000US Medicaid Enrolled",
-    )
-    nat_stratum.constraints_rel = [
-        StratumConstraint(
-            constraint_variable="ucgid_str",
-            operation="in",
-            value="0100000US",
-        ),
-        StratumConstraint(
-            constraint_variable="medicaid_enrolled",
-            operation="equals",
-            value="True",
-        ),
-    ]
-    # No target at the national level is provided at this time.
-
-    session.add(nat_stratum)
-    session.flush()
-    stratum_lookup["National"] = nat_stratum.stratum_id
-
-    # State -------------------
-    stratum_lookup["State"] = {}
-    for _, row in long_state.iterrows():
-
-        note = f"Geo: {row['ucgid_str']} Medicaid Enrolled"
-        parent_stratum_id = nat_stratum.stratum_id
-
-        new_stratum = Stratum(
-            parent_stratum_id=parent_stratum_id, stratum_group_id=0, notes=note
+    with Session(engine) as session:
+        # National ----------------
+        nat_stratum = Stratum(
+            parent_stratum_id=None,
+            stratum_group_id=0,
+            notes="Geo: 0100000US Medicaid Enrolled",
         )
-        new_stratum.constraints_rel = [
+        nat_stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
                 operation="in",
-                value=row["ucgid_str"],
+                value="0100000US",
             ),
             StratumConstraint(
                 constraint_variable="medicaid_enrolled",
@@ -139,55 +107,87 @@ def load_medicaid_data(long_state, long_cd, year):
                 value="True",
             ),
         ]
-        new_stratum.targets_rel.append(
-            Target(
-                variable="person_count",
-                period=year,
-                value=row["medicaid_enrollment"],
-                source_id=2,
-                active=True,
-            )
-        )
-        session.add(new_stratum)
+        # No target at the national level is provided at this time.
+
+        session.add(nat_stratum)
         session.flush()
-        stratum_lookup["State"][row["ucgid_str"]] = new_stratum.stratum_id
+        stratum_lookup["National"] = nat_stratum.stratum_id
 
-    # District -------------------
-    for _, row in long_cd.iterrows():
+        # State -------------------
+        stratum_lookup["State"] = {}
+        for _, row in long_state.iterrows():
 
-        note = f"Geo: {row['ucgid_str']} Medicaid Enrolled"
-        parent_stratum_id = stratum_lookup["State"][
-            f'0400000US{row["ucgid_str"][-4:-2]}'
-        ]
+            note = f"Geo: {row['ucgid_str']} Medicaid Enrolled"
+            parent_stratum_id = nat_stratum.stratum_id
 
-        new_stratum = Stratum(
-            parent_stratum_id=parent_stratum_id, stratum_group_id=0, notes=note
-        )
-        new_stratum.constraints_rel = [
-            StratumConstraint(
-                constraint_variable="ucgid_str",
-                operation="in",
-                value=row["ucgid_str"],
-            ),
-            StratumConstraint(
-                constraint_variable="medicaid_enrolled",
-                operation="equals",
-                value="True",
-            ),
-        ]
-        new_stratum.targets_rel.append(
-            Target(
-                variable="person_count",
-                period=year,
-                value=row["medicaid_enrollment"],
-                source_id=2,
-                active=True,
+            new_stratum = Stratum(
+                parent_stratum_id=parent_stratum_id,
+                stratum_group_id=0,
+                notes=note,
             )
-        )
-        session.add(new_stratum)
-        session.flush()
+            new_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable="ucgid_str",
+                    operation="in",
+                    value=row["ucgid_str"],
+                ),
+                StratumConstraint(
+                    constraint_variable="medicaid_enrolled",
+                    operation="equals",
+                    value="True",
+                ),
+            ]
+            new_stratum.targets_rel.append(
+                Target(
+                    variable="person_count",
+                    period=year,
+                    value=row["medicaid_enrollment"],
+                    source_id=2,
+                    active=True,
+                )
+            )
+            session.add(new_stratum)
+            session.flush()
+            stratum_lookup["State"][row["ucgid_str"]] = new_stratum.stratum_id
 
-    session.commit()
+        # District -------------------
+        for _, row in long_cd.iterrows():
+
+            note = f"Geo: {row['ucgid_str']} Medicaid Enrolled"
+            parent_stratum_id = stratum_lookup["State"][
+                f'0400000US{row["ucgid_str"][-4:-2]}'
+            ]
+
+            new_stratum = Stratum(
+                parent_stratum_id=parent_stratum_id,
+                stratum_group_id=0,
+                notes=note,
+            )
+            new_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable="ucgid_str",
+                    operation="in",
+                    value=row["ucgid_str"],
+                ),
+                StratumConstraint(
+                    constraint_variable="medicaid_enrolled",
+                    operation="equals",
+                    value="True",
+                ),
+            ]
+            new_stratum.targets_rel.append(
+                Target(
+                    variable="person_count",
+                    period=year,
+                    value=row["medicaid_enrollment"],
+                    source_id=2,
+                    active=True,
+                )
+            )
+            session.add(new_stratum)
+            session.flush()
+
+        session.commit()
 
 
 if __name__ == "__main__":

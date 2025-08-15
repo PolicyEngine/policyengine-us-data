@@ -1,15 +1,11 @@
 import requests
 import zipfile
 import io
-import os
-import re
-from pathlib import Path
 
 import pandas as pd
 import numpy as np
 import us
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlmodel import Session, create_engine
 
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
@@ -151,109 +147,20 @@ def load_administrative_snap_data(df_states, year):
     DATABASE_URL = "sqlite:///policy_data.db"
     engine = create_engine(DATABASE_URL)
 
-    Session = sessionmaker(bind=engine)
-    session = Session()
-
     stratum_lookup = {}
 
-    # National ----------------
-    nat_stratum = Stratum(
-        parent_stratum_id=None,
-        stratum_group_id=0,
-        notes="Geo: 0100000US Received SNAP Benefits",
-    )
-    nat_stratum.constraints_rel = [
-        StratumConstraint(
-            constraint_variable="ucgid_str",
-            operation="in",
-            value="0100000US",
-        ),
-        StratumConstraint(
-            constraint_variable="snap",
-            operation="is_greater_than",
-            value="0",
-        ),
-    ]
-    # No target at the national level is provided at this time. Keeping it
-    # so that the state strata can have a parent stratum
-
-    session.add(nat_stratum)
-    session.flush()
-    stratum_lookup["National"] = nat_stratum.stratum_id
-
-    # State -------------------
-    stratum_lookup["State"] = {}
-    for _, row in df_states.iterrows():
-
-        note = f"Geo: {row['ucgid_str']} Received SNAP Benefits"
-        parent_stratum_id = nat_stratum.stratum_id
-
-        new_stratum = Stratum(
-            parent_stratum_id=parent_stratum_id, stratum_group_id=0, notes=note
+    with Session(engine) as session:
+        # National ----------------
+        nat_stratum = Stratum(
+            parent_stratum_id=None,
+            stratum_group_id=0,
+            notes="Geo: 0100000US Received SNAP Benefits",
         )
-        new_stratum.constraints_rel = [
+        nat_stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
                 operation="in",
-                value=row["ucgid_str"],
-            ),
-            StratumConstraint(
-                constraint_variable="snap",
-                operation="is_greater_than",
-                value="0",
-            ),
-        ]
-        # Two targets now. Same data source. Same stratum
-        new_stratum.targets_rel.append(
-            Target(
-                variable="household_count",
-                period=year,
-                value=row["Households"],
-                source_id=3,
-                active=True,
-            )
-        )
-        new_stratum.targets_rel.append(
-            Target(
-                variable="snap",
-                period=year,
-                value=row["Cost"],
-                source_id=3,
-                active=True,
-            )
-        )
-        session.add(new_stratum)
-        session.flush()
-        stratum_lookup["State"][row["ucgid_str"]] = new_stratum.stratum_id
-
-    session.commit()
-    return stratum_lookup
-
-
-def load_survey_snap_data(survey_df, year, stratum_lookup={}):
-    """Use an already defined stratum_lookup to load the survey SNAP data"""
-
-    DATABASE_URL = "sqlite:///policy_data.db"
-    engine = create_engine(DATABASE_URL)
-
-    Session = sessionmaker(bind=engine)
-    session = Session()
-
-    # Create new strata for districts whose households recieve SNAP benefits
-    district_df = survey_df.copy()
-    for _, row in district_df.iterrows():
-        note = f"Geo: {row['ucgid_str']} Received SNAP Benefits"
-        state_ucgid_str = "0400000US" + row["ucgid_str"][9:11]
-        state_stratum_id = stratum_lookup["State"][state_ucgid_str]
-        new_stratum = Stratum(
-            parent_stratum_id=state_stratum_id, stratum_group_id=0, notes=note
-        )
-
-        new_stratum.constraints_rel = [
-            StratumConstraint(
-                constraint_variable="ucgid_str",
-                operation="in",
-                value=row["ucgid_str"],
+                value="0100000US",
             ),
             StratumConstraint(
                 constraint_variable="snap",
@@ -261,19 +168,111 @@ def load_survey_snap_data(survey_df, year, stratum_lookup={}):
                 value="0",
             ),
         ]
-        new_stratum.targets_rel.append(
-            Target(
-                variable="household_count",
-                period=year,
-                value=row["snap_household_ct"],
-                source_id=4,
-                active=True,
-            )
-        )
-        session.add(new_stratum)
-        session.flush()
+        # No target at the national level is provided at this time. Keeping it
+        # so that the state strata can have a parent stratum
 
-    session.commit()
+        session.add(nat_stratum)
+        session.flush()
+        stratum_lookup["National"] = nat_stratum.stratum_id
+
+        # State -------------------
+        stratum_lookup["State"] = {}
+        for _, row in df_states.iterrows():
+
+            note = f"Geo: {row['ucgid_str']} Received SNAP Benefits"
+            parent_stratum_id = nat_stratum.stratum_id
+
+            new_stratum = Stratum(
+                parent_stratum_id=parent_stratum_id,
+                stratum_group_id=0,
+                notes=note,
+            )
+            new_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable="ucgid_str",
+                    operation="in",
+                    value=row["ucgid_str"],
+                ),
+                StratumConstraint(
+                    constraint_variable="snap",
+                    operation="greater_than",
+                    value="0",
+                ),
+            ]
+            # Two targets now. Same data source. Same stratum
+            new_stratum.targets_rel.append(
+                Target(
+                    variable="household_count",
+                    period=year,
+                    value=row["Households"],
+                    source_id=3,
+                    active=True,
+                )
+            )
+            new_stratum.targets_rel.append(
+                Target(
+                    variable="snap",
+                    period=year,
+                    value=row["Cost"],
+                    source_id=3,
+                    active=True,
+                )
+            )
+            session.add(new_stratum)
+            session.flush()
+            stratum_lookup["State"][row["ucgid_str"]] = new_stratum.stratum_id
+
+        session.commit()
+    return stratum_lookup
+
+
+def load_survey_snap_data(survey_df, year, stratum_lookup=None):
+    """Use an already defined stratum_lookup to load the survey SNAP data"""
+
+    if stratum_lookup is None:
+        raise ValueError("stratum_lookup must be provided")
+
+    DATABASE_URL = "sqlite:///policy_data.db"
+    engine = create_engine(DATABASE_URL)
+
+    with Session(engine) as session:
+        # Create new strata for districts whose households recieve SNAP benefits
+        district_df = survey_df.copy()
+        for _, row in district_df.iterrows():
+            note = f"Geo: {row['ucgid_str']} Received SNAP Benefits"
+            state_ucgid_str = "0400000US" + row["ucgid_str"][9:11]
+            state_stratum_id = stratum_lookup["State"][state_ucgid_str]
+            new_stratum = Stratum(
+                parent_stratum_id=state_stratum_id,
+                stratum_group_id=0,
+                notes=note,
+            )
+
+            new_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable="ucgid_str",
+                    operation="in",
+                    value=row["ucgid_str"],
+                ),
+                StratumConstraint(
+                    constraint_variable="snap",
+                    operation="greater_than",
+                    value="0",
+                ),
+            ]
+            new_stratum.targets_rel.append(
+                Target(
+                    variable="household_count",
+                    period=year,
+                    value=row["snap_household_ct"],
+                    source_id=4,
+                    active=True,
+                )
+            )
+            session.add(new_stratum)
+            session.flush()
+
+        session.commit()
 
     return stratum_lookup
 

@@ -1,9 +1,7 @@
 from typing import Dict
 
 import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel, Session, select
+from sqlmodel import Session, create_engine
 
 
 from policyengine_us.variables.household.demographic.geographic.ucgid.ucgid_enum import (
@@ -37,40 +35,38 @@ def main():
     DATABASE_URL = "sqlite:///policy_data.db"
     engine = create_engine(DATABASE_URL)
 
-    Session = sessionmaker(bind=engine)
-    session = Session()
-
     # map the ucgid_str 'code' to auto-generated 'stratum_id'
     code_to_stratum_id: Dict[str, int] = {}
 
-    for _, row in hierarchy_df.iterrows():
-        parent_code = row["parent"]
+    with Session(engine) as session:
+        for _, row in hierarchy_df.iterrows():
+            parent_code = row["parent"]
 
-        parent_id = (
-            code_to_stratum_id.get(parent_code) if parent_code else None
-        )
-
-        new_stratum = Stratum(
-            parent_stratum_id=parent_id,
-            notes=f'{row["name"]} (ucgid {row["code"]})',
-            stratum_group_id=1,
-        )
-
-        new_stratum.constraints_rel = [
-            StratumConstraint(
-                constraint_variable="ucgid_str",
-                operation="in",
-                value=row["code"],
+            parent_id = (
+                code_to_stratum_id.get(parent_code) if parent_code else None
             )
-        ]
 
-        session.add(new_stratum)
+            new_stratum = Stratum(
+                parent_stratum_id=parent_id,
+                notes=f'{row["name"]} (ucgid {row["code"]})',
+                stratum_group_id=1,
+            )
 
-        session.flush()
+            new_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable="ucgid_str",
+                    operation="in",
+                    value=row["code"],
+                )
+            ]
 
-        code_to_stratum_id[row["code"]] = new_stratum.stratum_id
+            session.add(new_stratum)
 
-    session.commit()
+            session.flush()
+
+            code_to_stratum_id[row["code"]] = new_stratum.stratum_id
+
+        session.commit()
 
 
 if __name__ == "__main__":

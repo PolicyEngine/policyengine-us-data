@@ -27,8 +27,8 @@ from policyengine_us_data.storage.calibration_targets.make_district_mapping impo
 
 """See the 22incddocguide.docx manual from the IRS SOI"""
 # Let's make this work with strict inequalities
-# Interpret Language: '$10,000 under $25,000'
-epsilon = 0.005  # Half a penny
+# Language in the doc: '$10,000 under $25,000'
+epsilon = 0.005  # i.e., half a penny
 AGI_STUB_TO_INCOME_RANGE = {
     1: (-np.inf, 1),
     2: (1 - epsilon, 10_000),
@@ -191,7 +191,7 @@ def transform_soi_data(raw_df):
 
     # State -------------------
     # You've got agi_stub == 0 in here, which you want to use any time you don't want to
-    # break things up by AGI
+    # divide data by AGI classes (i.e., agi_stub)
     state_df = raw_df.copy().loc[
         (raw_df.STATE != "US") & (raw_df.CONG_DISTRICT == 0)
     ]
@@ -200,7 +200,6 @@ def transform_soi_data(raw_df):
     ).str.zfill(2)
 
     # District ------------------
-    # This is going to fail because we're missing the single cong district states
     district_df = raw_df.copy().loc[(raw_df.CONG_DISTRICT > 0)]
 
     max_cong_district_by_state = raw_df.groupby("STATE")[
@@ -284,6 +283,7 @@ def transform_soi_data(raw_df):
 
 
 def load_soi_data(long_dfs, year):
+    """Load a list of databases into the db, critically dependent on order"""
 
     DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
@@ -291,7 +291,6 @@ def load_soi_data(long_dfs, year):
     session = Session(engine)
 
     # Load EITC data --------------------------------------------------------
-    # Obviously this is not especially robust ---
     eitc_data = {
         "0": (long_dfs[0], long_dfs[1]),
         "1": (long_dfs[2], long_dfs[3]),
@@ -377,7 +376,7 @@ def load_soi_data(long_dfs, year):
 
     session.commit()
 
-    # No breakdown variables in this set
+    # There are no breakdown variables used in the following set
     for j in range(8, 42, 2):
         count_j, amount_j = long_dfs[j], long_dfs[j + 1]
         amount_variable_name = amount_j.iloc[0][["target_variable"]].values[0]
@@ -446,8 +445,7 @@ def load_soi_data(long_dfs, year):
         agi_stub = agi_df.iloc[0][["breakdown_value"]].values[0]
         agi_income_lower, agi_income_upper = AGI_STUB_TO_INCOME_RANGE[agi_stub]
 
-        # Make a National Stratum for each AGI Stub, even though there's no national target
-        # There no national target because the data set only has agi_stub = 0 for national
+        # Make a National Stratum for each AGI Stub even w/o associated national target
         note = f"Geo: 0100000US, AGI > {agi_income_lower}, AGI < {agi_income_upper}"
         nat_stratum = Stratum(
             parent_stratum_id=None, stratum_group_id=0, notes=note
@@ -540,7 +538,9 @@ def load_soi_data(long_dfs, year):
 
 
 def main():
-    year = 2022  # NOTE: predates the finalization of the 2020 Census redistricting
+    # NOTE: predates the finalization of the 2020 Census redistricting
+    # and there is district mapping in the Transform step
+    year = 2022
 
     # Extract -----------------------
     raw_df = extract_soi_data()

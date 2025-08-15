@@ -22,12 +22,6 @@ changelog:
 download:
 	python policyengine_us_data/storage/download_private_prerequisites.py
 
-targets:
-	python policyengine_us_data/storage/calibration_targets/pull_hardcoded_targets.py
-	python policyengine_us_data/storage/calibration_targets/pull_age_targets.py
-	python policyengine_us_data/storage/calibration_targets/pull_soi_targets.py
-	python policyengine_us_data/storage/calibration_targets/pull_snap_targets.py
-
 upload:
 	python policyengine_us_data/storage/upload_completed_datasets.py
 

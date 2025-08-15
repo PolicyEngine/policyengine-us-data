@@ -1,11 +1,6 @@
-import requests
-from pathlib import Path
-import io
-
 import pandas as pd
 import numpy as np
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlmodel import Session, create_engine
 
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
@@ -95,7 +90,7 @@ def get_parent_geo(geo):
     return {"National": None, "State": "National", "District": "State"}[geo]
 
 
-def load_age_data(df_long, geo, year, stratum_lookup={}):
+def load_age_data(df_long, geo, year, stratum_lookup=None):
 
     # Quick data quality check before loading ----
     if geo == "National":
@@ -111,78 +106,77 @@ def load_age_data(df_long, geo, year, stratum_lookup={}):
     DATABASE_URL = "sqlite:///policy_data.db"
     engine = create_engine(DATABASE_URL)
 
-    Session = sessionmaker(bind=engine)
-    session = Session()
-
-    if not stratum_lookup:
+    if stratum_lookup is None:
         if geo != "National":
             raise ValueError("Include stratum_lookup unless National geo")
         stratum_lookup = {"National": {}}
     else:
         stratum_lookup[geo] = {}
 
-    for _, row in df_long.iterrows():
+    with Session(engine) as session:
+        for _, row in df_long.iterrows():
+            # Create the parent Stratum object.
+            # We will attach children to it before adding it to the session.
+            note = f"Age: {row['age_range']}, Geo: {row['ucgid_str']}"
+            parent_geo = get_parent_geo(geo)
+            parent_stratum_id = (
+                stratum_lookup[parent_geo][row["age_range"]]
+                if parent_geo
+                else None
+            )
 
-        # Create the parent Stratum object.
-        # We will attach children to it before adding it to the session.
-        note = f"Age: {row['age_range']}, Geo: {row['ucgid_str']}"
-        parent_geo = get_parent_geo(geo)
-        parent_stratum_id = (
-            stratum_lookup[parent_geo][row["age_range"]]
-            if parent_geo
-            else None
-        )
+            new_stratum = Stratum(
+                parent_stratum_id=parent_stratum_id,
+                stratum_group_id=0,
+                notes=note,
+            )
 
-        new_stratum = Stratum(
-            parent_stratum_id=parent_stratum_id, stratum_group_id=0, notes=note
-        )
-
-        # Create constraints and link them to the parent's relationship attribute.
-        # TODO: greater_than_or_equal_to to just greater than!
-        new_stratum.constraints_rel = [
-            StratumConstraint(
-                constraint_variable="ucgid_str",
-                operation="in",
-                value=row["ucgid_str"],
-            ),
-            StratumConstraint(
-                constraint_variable="age",
-                operation="greater_than",
-                value=str(row["age_greater_than"]),
-            ),
-        ]
-
-        age_lt_value = row["age_less_than"]
-        if not np.isinf(age_lt_value):
-            new_stratum.constraints_rel.append(
+            # Create constraints and link them to the parent's relationship attribute.
+            # TODO: greater_than_or_equal_to to just greater than!
+            new_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable="ucgid_str",
+                    operation="in",
+                    value=row["ucgid_str"],
+                ),
                 StratumConstraint(
                     constraint_variable="age",
-                    operation="less_than",
-                    value=str(row["age_less_than"]),
+                    operation="greater_than",
+                    value=str(row["age_greater_than"]),
+                ),
+            ]
+
+            age_lt_value = row["age_less_than"]
+            if not np.isinf(age_lt_value):
+                new_stratum.constraints_rel.append(
+                    StratumConstraint(
+                        constraint_variable="age",
+                        operation="less_than",
+                        value=str(row["age_less_than"]),
+                    )
+                )
+
+            # Create the Target and link it to the parent.
+            new_stratum.targets_rel.append(
+                Target(
+                    variable=row["variable"],
+                    period=year,
+                    value=row["value"],
+                    source_id=row["source_id"],
+                    active=row["active"],
                 )
             )
 
-        # Create the Target and link it to the parent.
-        new_stratum.targets_rel.append(
-            Target(
-                variable=row["variable"],
-                period=year,
-                value=row["value"],
-                source_id=row["source_id"],
-                active=row["active"],
-            )
-        )
+            # Add ONLY the parent object to the session.
+            # The 'cascade' setting will handle the children automatically.
+            session.add(new_stratum)
 
-        # Add ONLY the parent object to the session.
-        # The 'cascade' setting will handle the children automatically.
-        session.add(new_stratum)
+            # Flush to get the id
+            session.flush()
+            stratum_lookup[geo][row["age_range"]] = new_stratum.stratum_id
 
-        # Flush to get the id
-        session.flush()
-        stratum_lookup[geo][row["age_range"]] = new_stratum.stratum_id
-
-    # Commit all the new objects at once.
-    session.commit()
+        # Commit all the new objects at once.
+        session.commit()
 
     return stratum_lookup
 

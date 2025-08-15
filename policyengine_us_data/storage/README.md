@@ -9,3 +9,9 @@
   • Source: MACPAC Enrollment Tables, FFY 2024  
   • Date: 2024  
   • Location: https://www.medicaid.gov/resources-for-states/downloads/eligib-oper-and-enrol-snap-december2024.pdf#page=26
+
+- **district_mapping.csv**  
+  • Source: created by the script `policyengine_us/storage/calibration_targets/make_district_mapping.py`
+  • Notes: this script is not part of `make data` because of the length of time it takes to run and the
+    likelhood of timeout errors. See the script for more notes, including an alternative source. Also,
+    once the IRS SOI updates their data in 2026, this mapping will likely be unncessesary. 

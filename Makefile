@@ -67,9 +67,6 @@ database:
 	python policyengine_us_data/db/etl_snap.py
 	python policyengine_us_data/db/etl_irs_soi.py
 
-clean-database:
-	rm *.db
-
 data:
 	python policyengine_us_data/utils/uprating.py
 	python policyengine_us_data/datasets/acs/acs.py
@@ -84,6 +81,7 @@ data:
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5
+	rm -f policyengine_us_data/storage/*.db
 	git clean -fX -- '*.csv'
 	rm -rf policyengine_us_data/docs/_build
 

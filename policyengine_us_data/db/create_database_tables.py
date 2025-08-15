@@ -173,9 +173,6 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
     fingerprint_text = "\n".join(constraint_strings)
     h = hashlib.sha256(fingerprint_text.encode("utf-8"))
     target.definition_hash = h.hexdigest()
-    logger.info(
-        f"Set definition_hash for Stratum to '{target.definition_hash}'"
-    )
 
 
 def create_database(

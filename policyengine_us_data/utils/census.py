@@ -127,8 +127,8 @@ def get_census_docs(year):
     docs_url = (
         f"https://api.census.gov/data/{year}/acs/acs1/subject/variables.json"
     )
-    # TODO: Alternative: incorporate it!
-    "https://api.census.gov/data/2023/acs/acs1/variables.json"
+    # NOTE: The URL for detail tables, should we ever need it is:
+    # "https://api.census.gov/data/2023/acs/acs1/variables.json"
 
     docs_response = requests.get(docs_url)
     docs_response.raise_for_status()

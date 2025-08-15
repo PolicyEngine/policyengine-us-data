@@ -134,7 +134,6 @@ def load_age_data(df_long, geo, year, stratum_lookup=None):
             )
 
             # Create constraints and link them to the parent's relationship attribute.
-            # TODO: greater_than_or_equal_to to just greater than!
             new_stratum.constraints_rel = [
                 StratumConstraint(
                     constraint_variable="ucgid_str",

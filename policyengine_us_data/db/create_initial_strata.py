@@ -3,6 +3,8 @@ from typing import Dict
 import pandas as pd
 from sqlmodel import Session, create_engine
 
+from policyengine_us_data.storage import STORAGE_FOLDER
+
 
 from policyengine_us.variables.household.demographic.geographic.ucgid.ucgid_enum import (
     UCGID,
@@ -32,7 +34,7 @@ def main():
         .reset_index(drop=True)
     )
 
-    DATABASE_URL = "sqlite:///policy_data.db"
+    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 
     # map the ucgid_str 'code' to auto-generated 'stratum_id'

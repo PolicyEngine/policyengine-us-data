@@ -5,6 +5,8 @@ import pandas as pd
 
 from sqlmodel import Session, create_engine
 
+from policyengine_us_data.storage import STORAGE_FOLDER
+
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -283,7 +285,7 @@ def transform_soi_data(raw_df):
 
 def load_soi_data(long_dfs, year):
 
-    DATABASE_URL = "sqlite:///policy_data.db"
+    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 
     session = Session(engine)

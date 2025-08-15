@@ -12,6 +12,8 @@ from sqlmodel import (
     create_engine,
 )
 
+from policyengine_us_data.storage import STORAGE_FOLDER
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -176,7 +178,9 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
     )
 
 
-def create_database(db_uri="sqlite:///policy_data.db"):
+def create_database(
+    db_uri: str = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}",
+):
     """
     Creates a SQLite database and all the defined tables.
 

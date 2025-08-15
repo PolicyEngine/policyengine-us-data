@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 from sqlmodel import Session, create_engine
 
+from policyengine_us_data.storage import STORAGE_FOLDER
+
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -103,7 +105,7 @@ def load_age_data(df_long, geo, year, stratum_lookup=None):
         raise ValueError('geo must be one of "National", "State", "District"')
 
     # Prepare to load data -----------
-    DATABASE_URL = "sqlite:///policy_data.db"
+    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 
     if stratum_lookup is None:

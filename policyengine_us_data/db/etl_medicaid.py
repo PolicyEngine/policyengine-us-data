@@ -3,6 +3,8 @@ import requests
 import pandas as pd
 from sqlmodel import Session, create_engine
 
+from policyengine_us_data.storage import STORAGE_FOLDER
+
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -83,7 +85,7 @@ def transform_medicaid_data(state_admin_df, cd_survey_df, year):
 
 def load_medicaid_data(long_state, long_cd, year):
 
-    DATABASE_URL = "sqlite:///policy_data.db"
+    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 
     stratum_lookup = {}

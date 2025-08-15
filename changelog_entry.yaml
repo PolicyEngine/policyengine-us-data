@@ -1,4 +1,4 @@
 - bump: minor
   changes:
     added:
-    - load script for eitc targets
+    - add SQLite database for calibration targets 

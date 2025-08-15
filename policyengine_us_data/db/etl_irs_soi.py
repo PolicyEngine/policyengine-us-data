@@ -446,6 +446,7 @@ def load_soi_data(long_dfs, year):
 
         # Make a National Stratum for each AGI Stub, even though there's no national target
         # There no national target because the data set only has agi_stub = 0 for national
+        note = f"Geo: 0100000US, AGI > {agi_income_lower}, AGI < {agi_income_upper}"
         nat_stratum = Stratum(
             parent_stratum_id=None, stratum_group_id=0, notes=note
         )
@@ -454,7 +455,7 @@ def load_soi_data(long_dfs, year):
                 StratumConstraint(
                     constraint_variable="ucgid_str",
                     operation="in",
-                    value=ucgid_i,
+                    value="0100000US",
                 ),
                 StratumConstraint(
                     constraint_variable="agi",
@@ -515,7 +516,7 @@ def load_soi_data(long_dfs, year):
                     ),
                 ]
             )
-            new_stratum.targets_rel = [
+            new_stratum.targets_rel.append(
                 Target(
                     variable="person_count",
                     period=year,
@@ -523,7 +524,7 @@ def load_soi_data(long_dfs, year):
                     source_id=5,
                     active=True,
                 )
-            ]
+            )
 
             session.add(new_stratum)
             session.flush()

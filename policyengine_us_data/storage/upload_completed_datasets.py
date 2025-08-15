@@ -15,6 +15,7 @@ def upload_datasets():
         Pooled_3_Year_CPS_2023.file_path,
         CPS_2023.file_path,
         STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
+        STORAGE_FOLDER / "policy_data.db",
     ]
 
     # Filter to only existing files

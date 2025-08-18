@@ -42,6 +42,7 @@ dependencies = [
     "sqlalchemy>=2.0.41",
     "sqlmodel>=0.0.24",
     "xlrd>=2.0.2",
+    "great_expectations>=0.18.0",
 ]
 
 [project.optional-dependencies]

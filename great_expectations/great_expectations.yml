@@ -1,0 +1,31 @@
+config_version: 3.0
+datasources:
+  policy_db:
+    class_name: Datasource
+    execution_engine:
+      class_name: SqlAlchemyExecutionEngine
+      connection_string: sqlite:///policyengine_us_data/storage/policy_data.db
+    data_connectors:
+      default_runtime_data_connector_name:
+        class_name: RuntimeDataConnector
+        batch_identifiers:
+          - default_identifier_name
+stores:
+  expectations_store:
+    class_name: ExpectationsStore
+    store_backend:
+      class_name: InlineStoreBackend
+  validations_store:
+    class_name: ValidationsStore
+    store_backend:
+      class_name: InlineStoreBackend
+  checkpoint_store:
+    class_name: CheckpointStore
+    store_backend:
+      class_name: InlineStoreBackend
+expectations_store_name: expectations_store
+validations_store_name: validations_store
+checkpoint_store_name: checkpoint_store
+data_docs_sites: {}
+anonymous_usage_statistics:
+  enabled: false

@@ -80,9 +80,9 @@ def make_records(
 def make_agi_long(df: pd.DataFrame) -> pd.DataFrame:
     """Convert IRS SOI AGI‑split table from wide to the long format used"""
     target_col_map = {
-        "N1": "agi_tax_unit_count",
-        "N2": "agi_person_count",
-        "A00100": "agi_total_amount",
+        "N1": "tax_unit_count",
+        "N2": "person_count",
+        "A00100": "adjusted_gross_income",
     }
     work = df[["ucgid_str", "agi_stub"] + list(target_col_map)].rename(
         columns=target_col_map
@@ -156,32 +156,27 @@ def extract_soi_data() -> pd.DataFrame:
 def transform_soi_data(raw_df):
 
     TARGETS = [
-        dict(code="59661", name="eitc", breakdown=("eitc_children", 0)),
-        dict(code="59662", name="eitc", breakdown=("eitc_children", 1)),
-        dict(code="59663", name="eitc", breakdown=("eitc_children", 2)),
-        dict(code="59664", name="eitc", breakdown=("eitc_children", "3+")),
-        dict(code="59664", name="qbid", breakdown=None),
+        dict(code="59661", name="eitc", breakdown=("eitc_child_count", 0)),
+        dict(code="59662", name="eitc", breakdown=("eitc_child_count", 1)),
+        dict(code="59663", name="eitc", breakdown=("eitc_child_count", 2)),
+        dict(code="59664", name="eitc", breakdown=("eitc_child_count", "3+")),
+        dict(code="59664", name="qualified_business_income_deduction", breakdown=None),
         dict(code="18500", name="real_estate_taxes", breakdown=None),
         dict(code="01000", name="net_capital_gain", breakdown=None),
-        dict(code="03150", name="ira_payments", breakdown=None),
-        dict(code="00300", name="taxable_interest", breakdown=None),
-        dict(code="00400", name="tax_exempt_interest", breakdown=None),
-        dict(code="00600", name="oridinary_dividends", breakdown=None),
-        dict(code="00650", name="qualified_dividends", breakdown=None),
+        dict(code="03150", name="retirement_distributions", breakdown=None),
+        dict(code="00300", name="taxable_interest_income", breakdown=None),
+        dict(code="00400", name="tax_exempt_interest_income", breakdown=None),
+        dict(code="00600", name="non_qualified_dividend_income", breakdown=None),
+        dict(code="00650", name="qualified_dividend_income", breakdown=None),
         dict(
             code="26270",
-            name="partnership_and_s_crop_net_income",
+            name="partnership_s_corp_income",
             breakdown=None,
         ),
-        dict(code="02500", name="total_social_security", breakdown=None),
-        dict(code="01700", name="pension_and_annuities", breakdown=None),
+        dict(code="02500", name="social_security", breakdown=None),
         dict(code="02300", name="unemployment_compensation", breakdown=None),
-        dict(code="00900", name="business_net_income", breakdown=None),
-        dict(
-            code="17000", name="medical_and_dental_deduction", breakdown=None
-        ),
-        dict(code="00700", name="salt_refunds", breakdown=None),
-        dict(code="18425", name="salt_amount", breakdown=None),
+        dict(code="00700", name="salt_refund_income", breakdown=None),
+        dict(code="18425", name="reported_salt", breakdown=None),
         dict(code="06500", name="income_tax", breakdown=None),
     ]
 
@@ -257,7 +252,7 @@ def transform_soi_data(raw_df):
     temp_df = df[["ucgid_str"]].copy()
     temp_df["breakdown_variable"] = "one"
     temp_df["breakdown_value"] = 1
-    temp_df["target_variable"] = "agi"
+    temp_df["target_variable"] = "adjusted_gross_income"
     temp_df["target_value"] = df["A00100"] * 1_000
 
     records.append(temp_df)
@@ -349,14 +344,6 @@ def load_soi_data(long_dfs, year):
                 )
 
             new_stratum.targets_rel = [
-                # It's already complex enough
-                # Target(
-                #    variable="tax_unit_count",
-                #    period=year,
-                #    value=eitc_count_i.iloc[i][["target_value"]].values[0],
-                #    source_id=5,
-                #    active=True,
-                # ),
                 Target(
                     variable="eitc",
                     period=year,
@@ -377,7 +364,7 @@ def load_soi_data(long_dfs, year):
     session.commit()
 
     # There are no breakdown variables used in the following set
-    for j in range(8, 42, 2):
+    for j in range(8, 36, 2):
         count_j, amount_j = long_dfs[j], long_dfs[j + 1]
         amount_variable_name = amount_j.iloc[0][["target_variable"]].values[0]
         print(
@@ -391,16 +378,6 @@ def load_soi_data(long_dfs, year):
             amount_value = amount_j.iloc[i][["target_value"]].values[0]
 
             stratum.targets_rel.append(
-                # NOTE: If I do the counts, I'm going to need to explode the strata for the vars != 0
-                # OR, create new variables like qbid_tax_unit_count which requires adding stuff to -us
-                # AND, it's already complex enough -----
-                # Target(
-                #    variable="tax_unit_count",
-                #    period=year,
-                #    value=count_j.iloc[i][["target_value"]].values[0],
-                #    source_id=5,
-                #    active=True,
-                # ),
                 Target(
                     variable=amount_variable_name,
                     period=year,
@@ -416,14 +393,15 @@ def load_soi_data(long_dfs, year):
     session.commit()
 
     # Adjusted Gross Income ------
-    agi_values = long_dfs[42]
+    agi_values = long_dfs[36]
+    assert agi_values[['target_variable']].values[0] == 'adjusted_gross_income'
 
     for i in range(agi_values.shape[0]):
         ucgid_i = agi_values[["ucgid_str"]].iloc[i].values[0]
         stratum = get_simple_stratum_by_ucgid(session, ucgid_i)
         stratum.targets_rel.append(
             Target(
-                variable="agi",
+                variable="adjusted_gross_income",
                 period=year,
                 value=agi_values.iloc[i][["target_value"]].values[0],
                 source_id=5,
@@ -438,7 +416,7 @@ def load_soi_data(long_dfs, year):
     agi_person_count_dfs = [
         df
         for df in long_dfs[43:]
-        if df["target_variable"].iloc[0] == "agi_person_count"
+        if df["target_variable"].iloc[0] == "person_count"
     ]
 
     for agi_df in agi_person_count_dfs:
@@ -458,12 +436,12 @@ def load_soi_data(long_dfs, year):
                     value="0100000US",
                 ),
                 StratumConstraint(
-                    constraint_variable="agi",
+                    constraint_variable="adjusted_gross_income",
                     operation="greater_than",
                     value=str(agi_income_lower),
                 ),
                 StratumConstraint(
-                    constraint_variable="agi",
+                    constraint_variable="adjusted_gross_income",
                     operation="less_than",
                     value=str(agi_income_upper),
                 ),
@@ -505,12 +483,12 @@ def load_soi_data(long_dfs, year):
                         value=ucgid_i,
                     ),
                     StratumConstraint(
-                        constraint_variable="agi",
+                        constraint_variable="adjusted_gross_income",
                         operation="greater_than",
                         value=str(agi_income_lower),
                     ),
                     StratumConstraint(
-                        constraint_variable="agi",
+                        constraint_variable="adjusted_gross_income",
                         operation="less_than",
                         value=str(agi_income_upper),
                     ),

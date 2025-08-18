@@ -1,18 +1,23 @@
-from __future__ import annotations
+"""
+This is the start of a data validation pipeline. It is meant to be a separate
+validation track from the unit tests in policyengine_us_data/tests in that it tests
+the overall correctness of data after a full pipeline run with production data.
+"""
+import sqlite3
 
-import great_expectations as ge
-
-
-def main() -> None:
-    """Run Great Expectations validation on the policy data database."""
-    # Ensure we load the DataContext from the repository root
-    context = ge.get_context()
-    # Execute the checkpoint configured for the policy database
-    result = context.run_checkpoint(checkpoint_name="policy_data_checkpoint")
-    if not result["success"]:
-        raise ValueError("Great Expectations validation failed")
-    print("Great Expectations validation succeeded")
+import pandas as pd
+from policyengine_us.system import system 
 
 
-if __name__ == "__main__":  # pragma: no cover - script entry point
-    main()
+conn = sqlite3.connect("policyengine_us_data/storage/policy_data.db")
+
+stratum_constraints_df = pd.read_sql("SELECT * FROM stratum_constraints", conn)
+targets_df = pd.read_sql("SELECT * FROM targets", conn)
+
+for var_name in set(targets_df['variable']):
+    if not var_name in system.variables.keys():
+        raise ValueError(f'{var_name} not a policyengine-us variable')
+
+for var_name in set(stratum_constraints_df['constraint_variable']):
+    if not var_name in system.variables.keys():
+        raise ValueError(f'{var_name} not a policyengine-us variable')

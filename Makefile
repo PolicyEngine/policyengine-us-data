@@ -54,13 +54,13 @@ documentation-dev:
 	myst start
 
 database:
-        python policyengine_us_data/db/create_database_tables.py
-        python policyengine_us_data/db/create_initial_strata.py
-        python policyengine_us_data/db/etl_age.py
-        python policyengine_us_data/db/etl_medicaid.py
-        python policyengine_us_data/db/etl_snap.py
-        python policyengine_us_data/db/etl_irs_soi.py
-        python policyengine_us_data/db/validate_database.py
+	python policyengine_us_data/db/create_database_tables.py
+	python policyengine_us_data/db/create_initial_strata.py
+	python policyengine_us_data/db/etl_age.py
+	python policyengine_us_data/db/etl_medicaid.py
+	python policyengine_us_data/db/etl_snap.py
+	python policyengine_us_data/db/etl_irs_soi.py
+	python policyengine_us_data/db/validate_database.py
 
 data:
 	python policyengine_us_data/utils/uprating.py

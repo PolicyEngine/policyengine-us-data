@@ -11,7 +11,7 @@ from sqlmodel import (
     SQLModel,
     create_engine,
 )
-from policyengine_us.system import system 
+from policyengine_us.system import system
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 # An Enum type to ensure the variable exists in policyengine-us
-USVariable = Enum("USVariable", {name: name for name in system.variables.keys()}, type=str)
+USVariable = Enum(
+    "USVariable", {name: name for name in system.variables.keys()}, type=str
+)
 
 
 class Stratum(SQLModel, table=True):

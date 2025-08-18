@@ -24,7 +24,9 @@ def test_stratum_hash_and_relationships(engine):
         stratum = Stratum(notes="test", stratum_group_id=0)
         stratum.constraints_rel = [
             StratumConstraint(
-                constraint_variable="ucgid_str", operation="equals", value="0400000US30"
+                constraint_variable="ucgid_str",
+                operation="equals",
+                value="0400000US30",
             ),
             StratumConstraint(
                 constraint_variable="age", operation="greater_than", value="20"
@@ -60,7 +62,9 @@ def test_unique_definition_hash(engine):
         s1 = Stratum(stratum_group_id=0)
         s1.constraints_rel = [
             StratumConstraint(
-                constraint_variable="ucgid_str", operation="equals", value="0400000US30"
+                constraint_variable="ucgid_str",
+                operation="equals",
+                value="0400000US30",
             )
         ]
         session.add(s1)
@@ -68,7 +72,9 @@ def test_unique_definition_hash(engine):
         s2 = Stratum(stratum_group_id=0)
         s2.constraints_rel = [
             StratumConstraint(
-                constraint_variable="ucgid_str", operation="equals", value="0400000US30"
+                constraint_variable="ucgid_str",
+                operation="equals",
+                value="0400000US30",
             )
         ]
         session.add(s2)

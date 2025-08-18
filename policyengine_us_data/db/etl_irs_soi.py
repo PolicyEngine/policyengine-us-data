@@ -160,13 +160,19 @@ def transform_soi_data(raw_df):
         dict(code="59662", name="eitc", breakdown=("eitc_child_count", 1)),
         dict(code="59663", name="eitc", breakdown=("eitc_child_count", 2)),
         dict(code="59664", name="eitc", breakdown=("eitc_child_count", "3+")),
-        dict(code="59664", name="qualified_business_income_deduction", breakdown=None),
+        dict(
+            code="59664",
+            name="qualified_business_income_deduction",
+            breakdown=None,
+        ),
         dict(code="18500", name="real_estate_taxes", breakdown=None),
         dict(code="01000", name="net_capital_gain", breakdown=None),
         dict(code="03150", name="retirement_distributions", breakdown=None),
         dict(code="00300", name="taxable_interest_income", breakdown=None),
         dict(code="00400", name="tax_exempt_interest_income", breakdown=None),
-        dict(code="00600", name="non_qualified_dividend_income", breakdown=None),
+        dict(
+            code="00600", name="non_qualified_dividend_income", breakdown=None
+        ),
         dict(code="00650", name="qualified_dividend_income", breakdown=None),
         dict(
             code="26270",
@@ -329,7 +335,7 @@ def load_soi_data(long_dfs, year):
             if n_children == "3+":
                 new_stratum.constraints_rel.append(
                     StratumConstraint(
-                        constraint_variable="eitc_children",
+                        constraint_variable="eitc_child_count",
                         operation="greater_than",
                         value="2",
                     )
@@ -337,7 +343,7 @@ def load_soi_data(long_dfs, year):
             else:
                 new_stratum.constraints_rel.append(
                     StratumConstraint(
-                        constraint_variable="eitc_children",
+                        constraint_variable="eitc_child_count",
                         operation="equals",
                         value=f"{n_children}",
                     )
@@ -394,7 +400,7 @@ def load_soi_data(long_dfs, year):
 
     # Adjusted Gross Income ------
     agi_values = long_dfs[36]
-    assert agi_values[['target_variable']].values[0] == 'adjusted_gross_income'
+    assert agi_values[["target_variable"]].values[0] == "adjusted_gross_income"
 
     for i in range(agi_values.shape[0]):
         ucgid_i = agi_values[["ucgid_str"]].iloc[i].values[0]

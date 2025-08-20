@@ -22,12 +22,6 @@ changelog:
 download:
 	python policyengine_us_data/storage/download_private_prerequisites.py
 
-targets:
-	python policyengine_us_data/storage/calibration_targets/pull_hardcoded_targets.py
-	python policyengine_us_data/storage/calibration_targets/pull_age_targets.py
-	python policyengine_us_data/storage/calibration_targets/pull_soi_targets.py
-	python policyengine_us_data/storage/calibration_targets/pull_snap_targets.py
-
 upload:
 	python policyengine_us_data/storage/upload_completed_datasets.py
 
@@ -61,10 +55,12 @@ documentation-dev:
 
 database:
 	python policyengine_us_data/db/create_database_tables.py
-	python policyengine_us_data/db/load_age_targets.py
-
-clean-database:
-	rm *.db
+	python policyengine_us_data/db/create_initial_strata.py
+	python policyengine_us_data/db/etl_age.py
+	python policyengine_us_data/db/etl_medicaid.py
+	python policyengine_us_data/db/etl_snap.py
+	python policyengine_us_data/db/etl_irs_soi.py
+	python policyengine_us_data/db/validate_database.py
 
 data:
 	python policyengine_us_data/utils/uprating.py
@@ -80,6 +76,7 @@ data:
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5
+	rm -f policyengine_us_data/storage/*.db
 	git clean -fX -- '*.csv'
 	rm -rf policyengine_us_data/docs/_build
 

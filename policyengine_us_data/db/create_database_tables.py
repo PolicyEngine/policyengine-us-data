@@ -1,16 +1,20 @@
 import logging
 import hashlib
 from typing import List, Optional
+from enum import Enum
 
 from sqlalchemy import event, UniqueConstraint
 from sqlalchemy.orm.attributes import get_history
-
 from sqlmodel import (
     Field,
     Relationship,
     SQLModel,
     create_engine,
 )
+from policyengine_us.system import system
+
+from policyengine_us_data.storage import STORAGE_FOLDER
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,6 +22,12 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+
+# An Enum type to ensure the variable exists in policyengine-us
+USVariable = Enum(
+    "USVariable", {name: name for name in system.variables.keys()}, type=str
+)
 
 
 class Stratum(SQLModel, table=True):
@@ -79,7 +89,7 @@ class StratumConstraint(SQLModel, table=True):
     __tablename__ = "stratum_constraints"
 
     stratum_id: int = Field(foreign_key="strata.stratum_id", primary_key=True)
-    constraint_variable: str = Field(
+    constraint_variable: USVariable = Field(
         primary_key=True,
         description="The variable the constraint applies to (e.g., 'age').",
     )
@@ -112,7 +122,7 @@ class Target(SQLModel, table=True):
     )
 
     target_id: Optional[int] = Field(default=None, primary_key=True)
-    variable: str = Field(
+    variable: USVariable = Field(
         description="A variable defined in policyengine-us (e.g., 'income_tax')."
     )
     period: int = Field(
@@ -171,12 +181,11 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
     fingerprint_text = "\n".join(constraint_strings)
     h = hashlib.sha256(fingerprint_text.encode("utf-8"))
     target.definition_hash = h.hexdigest()
-    logger.info(
-        f"Set definition_hash for Stratum to '{target.definition_hash}'"
-    )
 
 
-def create_database(db_uri="sqlite:///policy_data.db"):
+def create_database(
+    db_uri: str = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}",
+):
     """
     Creates a SQLite database and all the defined tables.
 

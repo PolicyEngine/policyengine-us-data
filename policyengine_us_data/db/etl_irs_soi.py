@@ -182,10 +182,7 @@ def transform_soi_data(raw_df):
         dict(code="17000", name="medical_expense_deduction", breakdown=None),
         dict(code="01700", name="taxable_pension_income", breakdown=None),
         dict(code="11070", name="refundable_ctc", breakdown=None),
-        # NOTE: A18460 is the capped SALT deduction and matches the `salt` variable.
-        # Our SALT base currently excludes personal property taxes (not modeled yet),
-        # so amounts may be slightly below IRS totals.
-        dict(code="18460", name="salt", breakdown=None),
+        dict(code="18425", name="salt", breakdown=None),
         dict(code="06500", name="income_tax", breakdown=None),
     ]
 

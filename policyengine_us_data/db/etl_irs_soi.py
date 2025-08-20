@@ -161,28 +161,31 @@ def transform_soi_data(raw_df):
         dict(code="59663", name="eitc", breakdown=("eitc_child_count", 2)),
         dict(code="59664", name="eitc", breakdown=("eitc_child_count", "3+")),
         dict(
-            code="59664",
+            code="04475",
             name="qualified_business_income_deduction",
             breakdown=None,
         ),
         dict(code="18500", name="real_estate_taxes", breakdown=None),
         dict(code="01000", name="net_capital_gain", breakdown=None),
-        dict(code="03150", name="retirement_distributions", breakdown=None),
+        dict(code="01400", name="taxable_ira_distributions", breakdown=None),
         dict(code="00300", name="taxable_interest_income", breakdown=None),
         dict(code="00400", name="tax_exempt_interest_income", breakdown=None),
-        dict(
-            code="00600", name="non_qualified_dividend_income", breakdown=None
-        ),
+        dict(code="00600", name="dividend_income", breakdown=None),
         dict(code="00650", name="qualified_dividend_income", breakdown=None),
         dict(
             code="26270",
-            name="partnership_s_corp_income",
+            name="tax_unit_partnership_s_corp_income",
             breakdown=None,
         ),
-        dict(code="02500", name="social_security", breakdown=None),
+        dict(code="02500", name="taxable_social_security", breakdown=None),
         dict(code="02300", name="unemployment_compensation", breakdown=None),
-        dict(code="00700", name="salt_refund_income", breakdown=None),
-        dict(code="18425", name="reported_salt", breakdown=None),
+        dict(code="17000", name="medical_expense_deduction", breakdown=None),
+        dict(code="01700", name="taxable_pension_income", breakdown=None),
+        dict(code="11070", name="refundable_ctc", breakdown=None),
+        # NOTE: A18460 is the capped SALT deduction and matches the `salt` variable.
+        # Our SALT base currently excludes personal property taxes (not modeled yet),
+        # so amounts may be slightly below IRS totals.
+        dict(code="18460", name="salt", breakdown=None),
         dict(code="06500", name="income_tax", breakdown=None),
     ]
 
@@ -370,7 +373,14 @@ def load_soi_data(long_dfs, year):
     session.commit()
 
     # There are no breakdown variables used in the following set
-    for j in range(8, 36, 2):
+    first_agi_index = [
+        i
+        for i in range(len(long_dfs))
+        if long_dfs[i][["target_variable"]].values[0]
+        == "adjusted_gross_income"
+        and long_dfs[i][["breakdown_variable"]].values[0] == "one"
+    ][0]
+    for j in range(8, first_agi_index, 2):
         count_j, amount_j = long_dfs[j], long_dfs[j + 1]
         amount_variable_name = amount_j.iloc[0][["target_variable"]].values[0]
         print(
@@ -399,7 +409,7 @@ def load_soi_data(long_dfs, year):
     session.commit()
 
     # Adjusted Gross Income ------
-    agi_values = long_dfs[36]
+    agi_values = long_dfs[first_agi_index]
     assert agi_values[["target_variable"]].values[0] == "adjusted_gross_income"
 
     for i in range(agi_values.shape[0]):
@@ -421,7 +431,7 @@ def load_soi_data(long_dfs, year):
 
     agi_person_count_dfs = [
         df
-        for df in long_dfs[43:]
+        for df in long_dfs[(first_agi_index + 1) :]
         if df["target_variable"].iloc[0] == "person_count"
     ]
 

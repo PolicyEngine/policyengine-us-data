@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+    - Incorporate take-up of itemized medical deduction.

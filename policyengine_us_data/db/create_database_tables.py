@@ -89,7 +89,7 @@ class StratumConstraint(SQLModel, table=True):
     __tablename__ = "stratum_constraints"
 
     stratum_id: int = Field(foreign_key="strata.stratum_id", primary_key=True)
-    constraint_variable: USVariable = Field(
+    constraint_variable: str = Field(
         primary_key=True,
         description="The variable the constraint applies to (e.g., 'age').",
     )

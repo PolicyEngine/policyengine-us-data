@@ -193,7 +193,8 @@ def validate_age_hierarchy(session):
         
         if not age_constraints:
             errors.append("ERROR: Sample age stratum missing age constraints")
-        if len(geo_constraints) == 0 and "0100000US" not in sample_age.notes:
+        # National-level age strata don't need geographic constraints
+        if len(geo_constraints) == 0 and "US" not in sample_age.notes:
             errors.append("ERROR: Sample age stratum missing geographic constraints")
     
     return errors

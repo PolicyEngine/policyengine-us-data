@@ -11,6 +11,7 @@ from sqlmodel import (
     SQLModel,
     create_engine,
 )
+from pydantic import validator
 from policyengine_us.system import system
 
 from policyengine_us_data.storage import STORAGE_FOLDER
@@ -28,6 +29,16 @@ logger = logging.getLogger(__name__)
 USVariable = Enum(
     "USVariable", {name: name for name in system.variables.keys()}, type=str
 )
+
+
+class ConstraintOperation(str, Enum):
+    """Allowed operations for stratum constraints."""
+    EQ = "=="  # Equals
+    NE = "!="  # Not equals
+    GT = ">"   # Greater than
+    GE = ">="  # Greater than or equal
+    LT = "<"   # Less than
+    LE = "<="  # Less than or equal
 
 
 class Stratum(SQLModel, table=True):
@@ -95,7 +106,7 @@ class StratumConstraint(SQLModel, table=True):
     )
     operation: str = Field(
         primary_key=True,
-        description="The comparison operator (e.g., 'greater_than_or_equal').",
+        description="The comparison operator (==, !=, >, >=, <, <=).",
     )
     value: str = Field(
         description="The value for the constraint rule (e.g., '25')."
@@ -105,6 +116,16 @@ class StratumConstraint(SQLModel, table=True):
     )
 
     strata_rel: Stratum = Relationship(back_populates="constraints_rel")
+    
+    @validator("operation")
+    def validate_operation(cls, v):
+        """Validate that the operation is one of the allowed values."""
+        allowed_ops = [op.value for op in ConstraintOperation]
+        if v not in allowed_ops:
+            raise ValueError(
+                f"Invalid operation '{v}'. Must be one of: {', '.join(allowed_ops)}"
+            )
+        return v
 
 
 class Target(SQLModel, table=True):

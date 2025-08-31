@@ -1,7 +1,8 @@
 import requests
 
 import pandas as pd
-from sqlmodel import Session, create_engine
+import numpy as np
+from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
@@ -11,6 +12,7 @@ from policyengine_us_data.db.create_database_tables import (
     Target,
 )
 from policyengine_us_data.utils.census import STATE_ABBREV_TO_FIPS
+from policyengine_us_data.utils.db import parse_ucgid, get_geographic_strata
 
 
 def extract_medicaid_data(year):
@@ -88,24 +90,21 @@ def load_medicaid_data(long_state, long_cd, year):
     DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 
-    stratum_lookup = {}
-
     with Session(engine) as session:
+        # Fetch existing geographic strata
+        geo_strata = get_geographic_strata(session)
+        
         # National ----------------
+        # Create a Medicaid stratum as child of the national geographic stratum
         nat_stratum = Stratum(
-            parent_stratum_id=None,
-            stratum_group_id=0,
-            notes="Geo: 0100000US Medicaid Enrolled",
+            parent_stratum_id=geo_strata["national"],
+            stratum_group_id=0,  # Medicaid strata group
+            notes="National Medicaid Enrolled",
         )
         nat_stratum.constraints_rel = [
             StratumConstraint(
-                constraint_variable="ucgid_str",
-                operation="in",
-                value="0100000US",
-            ),
-            StratumConstraint(
                 constraint_variable="medicaid_enrolled",
-                operation="equals",
+                operation="==",
                 value="True",
             ),
         ]
@@ -113,29 +112,33 @@ def load_medicaid_data(long_state, long_cd, year):
 
         session.add(nat_stratum)
         session.flush()
-        stratum_lookup["National"] = nat_stratum.stratum_id
+        medicaid_stratum_lookup = {"national": nat_stratum.stratum_id, "state": {}}
 
         # State -------------------
-        stratum_lookup["State"] = {}
         for _, row in long_state.iterrows():
-
-            note = f"Geo: {row['ucgid_str']} Medicaid Enrolled"
-            parent_stratum_id = nat_stratum.stratum_id
+            # Parse the UCGID to get state_fips
+            geo_info = parse_ucgid(row['ucgid_str'])
+            state_fips = geo_info["state_fips"]
+            
+            # Get the parent geographic stratum
+            parent_stratum_id = geo_strata["state"][state_fips]
+            
+            note = f"State FIPS {state_fips} Medicaid Enrolled"
 
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=0,
+                stratum_group_id=0,  # Medicaid strata group
                 notes=note,
             )
             new_stratum.constraints_rel = [
                 StratumConstraint(
-                    constraint_variable="ucgid_str",
-                    operation="in",
-                    value=row["ucgid_str"],
+                    constraint_variable="state_fips",
+                    operation="==",
+                    value=str(state_fips),
                 ),
                 StratumConstraint(
                     constraint_variable="medicaid_enrolled",
-                    operation="equals",
+                    operation="==",
                     value="True",
                 ),
             ]
@@ -150,30 +153,33 @@ def load_medicaid_data(long_state, long_cd, year):
             )
             session.add(new_stratum)
             session.flush()
-            stratum_lookup["State"][row["ucgid_str"]] = new_stratum.stratum_id
+            medicaid_stratum_lookup["state"][state_fips] = new_stratum.stratum_id
 
         # District -------------------
         for _, row in long_cd.iterrows():
-
-            note = f"Geo: {row['ucgid_str']} Medicaid Enrolled"
-            parent_stratum_id = stratum_lookup["State"][
-                f'0400000US{row["ucgid_str"][-4:-2]}'
-            ]
+            # Parse the UCGID to get district info
+            geo_info = parse_ucgid(row['ucgid_str'])
+            cd_geoid = geo_info["congressional_district_geoid"]
+            
+            # Get the parent geographic stratum
+            parent_stratum_id = geo_strata["district"][cd_geoid]
+            
+            note = f"Congressional District {cd_geoid} Medicaid Enrolled"
 
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=0,
+                stratum_group_id=0,  # Medicaid strata group
                 notes=note,
             )
             new_stratum.constraints_rel = [
                 StratumConstraint(
-                    constraint_variable="ucgid_str",
-                    operation="in",
-                    value=row["ucgid_str"],
+                    constraint_variable="congressional_district_geoid",
+                    operation="==",
+                    value=str(cd_geoid),
                 ),
                 StratumConstraint(
                     constraint_variable="medicaid_enrolled",
-                    operation="equals",
+                    operation="==",
                     value="True",
                 ),
             ]

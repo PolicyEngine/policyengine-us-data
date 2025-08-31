@@ -10,6 +10,7 @@ from policyengine_us_data.db.create_database_tables import (
     Target,
 )
 from policyengine_us_data.utils.census import get_census_docs, pull_acs_table
+from policyengine_us_data.utils.db import parse_ucgid, get_geographic_strata
 
 
 LABEL_TO_SHORT = {
@@ -33,83 +34,6 @@ LABEL_TO_SHORT = {
     "Estimate!!Total!!Total population!!AGE!!85 years and over": "85-999",
 }
 AGE_COLS = list(LABEL_TO_SHORT.values())
-
-
-def parse_ucgid(ucgid_str):
-    """Parse UCGID string to extract geographic information.
-    
-    Returns:
-        dict with keys: 'type' ('national', 'state', 'district'),
-                       'state_fips' (if applicable),
-                       'district_number' (if applicable),
-                       'congressional_district_geoid' (if applicable)
-    """
-    if ucgid_str == "0100000US":
-        return {"type": "national"}
-    elif ucgid_str.startswith("0400000US"):
-        state_fips = int(ucgid_str[9:])
-        return {"type": "state", "state_fips": state_fips}
-    elif ucgid_str.startswith("5001800US"):
-        # Format: 5001800USSSDD where SS is state FIPS, DD is district
-        state_and_district = ucgid_str[9:]
-        state_fips = int(state_and_district[:2])
-        district_number = int(state_and_district[2:])
-        # Convert district 00 to 01 for at-large districts (matches create_initial_strata.py)
-        # Also convert DC's delegate district 98 to 01
-        if district_number == 0 or (state_fips == 11 and district_number == 98):
-            district_number = 1
-        cd_geoid = state_fips * 100 + district_number
-        return {
-            "type": "district",
-            "state_fips": state_fips,
-            "district_number": district_number,
-            "congressional_district_geoid": cd_geoid,
-        }
-    else:
-        raise ValueError(f"Unknown UCGID format: {ucgid_str}")
-
-
-def get_geographic_strata(session):
-    """Fetch existing geographic strata from database.
-    
-    Returns dict mapping:
-        - 'national': stratum_id for US
-        - 'state': {state_fips: stratum_id}
-        - 'district': {congressional_district_geoid: stratum_id}
-    """
-    strata_map = {
-        "national": None,
-        "state": {},
-        "district": {},
-    }
-    
-    # Get all strata with stratum_group_id = 1 (geographic strata)
-    stmt = select(Stratum).where(Stratum.stratum_group_id == 1)
-    geographic_strata = session.exec(stmt).unique().all()
-    
-    for stratum in geographic_strata:
-        # Get constraints for this stratum
-        constraints = session.exec(
-            select(StratumConstraint).where(
-                StratumConstraint.stratum_id == stratum.stratum_id
-            )
-        ).all()
-        
-        if not constraints:
-            # No constraints = national level
-            strata_map["national"] = stratum.stratum_id
-        else:
-            # Check constraint types
-            constraint_vars = {c.constraint_variable: c.value for c in constraints}
-            
-            if "congressional_district_geoid" in constraint_vars:
-                cd_geoid = int(constraint_vars["congressional_district_geoid"])
-                strata_map["district"][cd_geoid] = stratum.stratum_id
-            elif "state_fips" in constraint_vars:
-                state_fips = int(constraint_vars["state_fips"])
-                strata_map["state"][state_fips] = stratum.stratum_id
-    
-    return strata_map
 
 
 def transform_age_data(age_data, docs):
@@ -202,7 +126,52 @@ def load_age_data(df_long, geo, year):
                 raise ValueError(f"Unknown geography type: {geo_info['type']}")
             
             # Create the age stratum as a child of the geographic stratum
-            note = f"Age: {row['age_range']}, Geo: {row['ucgid_str']}"
+            # Build a proper geographic identifier for the notes
+            if geo_info["type"] == "national":
+                geo_desc = "US"
+            elif geo_info["type"] == "state":
+                geo_desc = f"State FIPS {geo_info['state_fips']}"
+            elif geo_info["type"] == "district":
+                geo_desc = f"CD {geo_info['congressional_district_geoid']}"
+            else:
+                geo_desc = "Unknown"
+            
+            note = f"Age: {row['age_range']}, {geo_desc}"
+            
+            # Check if this age stratum already exists
+            existing_stratum = session.exec(
+                select(Stratum).where(
+                    Stratum.parent_stratum_id == parent_stratum_id,
+                    Stratum.stratum_group_id == 0,
+                    Stratum.notes == note
+                )
+            ).first()
+            
+            if existing_stratum:
+                # Update the existing stratum's target instead of creating a duplicate
+                existing_target = session.exec(
+                    select(Target).where(
+                        Target.stratum_id == existing_stratum.stratum_id,
+                        Target.variable == row["variable"],
+                        Target.period == year
+                    )
+                ).first()
+                
+                if existing_target:
+                    # Update existing target
+                    existing_target.value = row["value"]
+                else:
+                    # Add new target to existing stratum
+                    new_target = Target(
+                        stratum_id=existing_stratum.stratum_id,
+                        variable=row["variable"],
+                        period=year,
+                        value=row["value"],
+                        source_id=row["source_id"],
+                        active=row["active"],
+                    )
+                    session.add(new_target)
+                continue  # Skip creating a new stratum
             
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
@@ -236,7 +205,7 @@ def load_age_data(df_long, geo, year):
             new_stratum.constraints_rel.append(
                 StratumConstraint(
                     constraint_variable="age",
-                    operation="greater_than",
+                    operation=">",
                     value=str(row["age_greater_than"]),
                 )
             )
@@ -246,7 +215,7 @@ def load_age_data(df_long, geo, year):
                 new_stratum.constraints_rel.append(
                     StratumConstraint(
                         constraint_variable="age",
-                        operation="less_than",
+                        operation="<",
                         value=str(row["age_less_than"]),
                     )
                 )

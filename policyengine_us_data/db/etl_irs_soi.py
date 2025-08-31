@@ -3,7 +3,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from sqlmodel import Session, create_engine
+from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
@@ -14,10 +14,11 @@ from policyengine_us_data.db.create_database_tables import (
 )
 from policyengine_us_data.utils.db import (
     get_stratum_by_id,
-    get_simple_stratum_by_ucgid,
     get_root_strata,
     get_stratum_children,
     get_stratum_parent,
+    parse_ucgid,
+    get_geographic_strata,
 )
 from policyengine_us_data.utils.census import TERRITORY_UCGIDS
 from policyengine_us_data.storage.calibration_targets.make_district_mapping import (
@@ -26,19 +27,17 @@ from policyengine_us_data.storage.calibration_targets.make_district_mapping impo
 
 
 """See the 22incddocguide.docx manual from the IRS SOI"""
-# Let's make this work with strict inequalities
-# Language in the doc: '$10,000 under $25,000'
-epsilon = 0.005  # i.e., half a penny
+# Language in the doc: '$10,000 under $25,000' means >= $10,000 and < $25,000
 AGI_STUB_TO_INCOME_RANGE = {
-    1: (-np.inf, 1),
-    2: (1 - epsilon, 10_000),
-    3: (10_000 - epsilon, 25_000),
-    4: (25_000 - epsilon, 50_000),
-    5: (50_000 - epsilon, 75_000),
-    6: (75_000 - epsilon, 100_000),
-    7: (100_000 - epsilon, 200_000),
-    8: (200_000 - epsilon, 500_000),
-    9: (500_000 - epsilon, np.inf),
+    1: (-np.inf, 1),          # Under $1 (negative AGI allowed)
+    2: (1, 10_000),            # $1 under $10,000
+    3: (10_000, 25_000),       # $10,000 under $25,000
+    4: (25_000, 50_000),       # $25,000 under $50,000
+    5: (50_000, 75_000),       # $50,000 under $75,000
+    6: (75_000, 100_000),      # $75,000 under $100,000
+    7: (100_000, 200_000),     # $100,000 under $200,000
+    8: (200_000, 500_000),     # $200,000 under $500,000
+    9: (500_000, np.inf),      # $500,000 or more
 }
 
 
@@ -290,6 +289,9 @@ def load_soi_data(long_dfs, year):
     engine = create_engine(DATABASE_URL)
 
     session = Session(engine)
+    
+    # Fetch existing geographic strata
+    geo_strata = get_geographic_strata(session)
 
     # Load EITC data --------------------------------------------------------
     eitc_data = {
@@ -299,44 +301,51 @@ def load_soi_data(long_dfs, year):
         "3+": (long_dfs[6], long_dfs[7]),
     }
 
-    stratum_lookup = {"State": {}, "District": {}}
+    eitc_stratum_lookup = {"national": {}, "state": {}, "district": {}}
     for n_children in eitc_data.keys():
         eitc_count_i, eitc_amount_i = eitc_data[n_children]
         for i in range(eitc_count_i.shape[0]):
             ucgid_i = eitc_count_i[["ucgid_str"]].iloc[i].values[0]
-            note = f"Geo: {ucgid_i}, EITC received with {n_children} children"
+            geo_info = parse_ucgid(ucgid_i)
+            
+            # Determine parent stratum based on geographic level
+            if geo_info["type"] == "national":
+                parent_stratum_id = geo_strata["national"]
+                note = f"National EITC received with {n_children} children"
+                constraints = []
+            elif geo_info["type"] == "state":
+                parent_stratum_id = geo_strata["state"][geo_info["state_fips"]]
+                note = f"State FIPS {geo_info['state_fips']} EITC received with {n_children} children"
+                constraints = [
+                    StratumConstraint(
+                        constraint_variable="state_fips",
+                        operation="==",
+                        value=str(geo_info["state_fips"]),
+                    )
+                ]
+            elif geo_info["type"] == "district":
+                parent_stratum_id = geo_strata["district"][geo_info["congressional_district_geoid"]]
+                note = f"Congressional District {geo_info['congressional_district_geoid']} EITC received with {n_children} children"
+                constraints = [
+                    StratumConstraint(
+                        constraint_variable="congressional_district_geoid",
+                        operation="==",
+                        value=str(geo_info["congressional_district_geoid"]),
+                    )
+                ]
 
-            if len(ucgid_i) == 9:  # National.
-                new_stratum = Stratum(
-                    parent_stratum_id=None, stratum_group_id=0, notes=note
-                )
-            elif len(ucgid_i) == 11:  # State
-                new_stratum = Stratum(
-                    parent_stratum_id=stratum_lookup["National"],
-                    stratum_group_id=0,
-                    notes=note,
-                )
-            elif len(ucgid_i) == 13:  # District
-                new_stratum = Stratum(
-                    parent_stratum_id=stratum_lookup["State"][
-                        "0400000US" + ucgid_i[9:11]
-                    ],
-                    stratum_group_id=0,
-                    notes=note,
-                )
-
-            new_stratum.constraints_rel = [
-                StratumConstraint(
-                    constraint_variable="ucgid_str",
-                    operation="in",
-                    value=ucgid_i,
-                ),
-            ]
+            new_stratum = Stratum(
+                parent_stratum_id=parent_stratum_id,
+                stratum_group_id=0,  # IRS SOI strata group
+                notes=note,
+            )
+            
+            new_stratum.constraints_rel = constraints
             if n_children == "3+":
                 new_stratum.constraints_rel.append(
                     StratumConstraint(
                         constraint_variable="eitc_child_count",
-                        operation="greater_than",
+                        operation=">",
                         value="2",
                     )
                 )
@@ -344,7 +353,7 @@ def load_soi_data(long_dfs, year):
                 new_stratum.constraints_rel.append(
                     StratumConstraint(
                         constraint_variable="eitc_child_count",
-                        operation="equals",
+                        operation="==",
                         value=f"{n_children}",
                     )
                 )
@@ -362,10 +371,15 @@ def load_soi_data(long_dfs, year):
             session.add(new_stratum)
             session.flush()
 
-            if len(ucgid_i) == 9:
-                stratum_lookup["National"] = new_stratum.stratum_id
-            elif len(ucgid_i) == 11:
-                stratum_lookup["State"][ucgid_i] = new_stratum.stratum_id
+            # Store lookup for later use
+            if geo_info["type"] == "national":
+                eitc_stratum_lookup["national"][n_children] = new_stratum.stratum_id
+            elif geo_info["type"] == "state":
+                key = (geo_info["state_fips"], n_children)
+                eitc_stratum_lookup["state"][key] = new_stratum.stratum_id
+            elif geo_info["type"] == "district":
+                key = (geo_info["congressional_district_geoid"], n_children)
+                eitc_stratum_lookup["district"][key] = new_stratum.stratum_id
 
     session.commit()
 
@@ -385,9 +399,16 @@ def load_soi_data(long_dfs, year):
         )
         for i in range(count_j.shape[0]):
             ucgid_i = count_j[["ucgid_str"]].iloc[i].values[0]
+            geo_info = parse_ucgid(ucgid_i)
 
-            # Reusing an existing stratum this time, since there is no breakdown
-            stratum = get_simple_stratum_by_ucgid(session, ucgid_i)
+            # Add target to existing geographic stratum
+            if geo_info["type"] == "national":
+                stratum = session.get(Stratum, geo_strata["national"])
+            elif geo_info["type"] == "state":
+                stratum = session.get(Stratum, geo_strata["state"][geo_info["state_fips"]])
+            elif geo_info["type"] == "district":
+                stratum = session.get(Stratum, geo_strata["district"][geo_info["congressional_district_geoid"]])
+            
             amount_value = amount_j.iloc[i][["target_value"]].values[0]
 
             stratum.targets_rel.append(
@@ -411,7 +432,16 @@ def load_soi_data(long_dfs, year):
 
     for i in range(agi_values.shape[0]):
         ucgid_i = agi_values[["ucgid_str"]].iloc[i].values[0]
-        stratum = get_simple_stratum_by_ucgid(session, ucgid_i)
+        geo_info = parse_ucgid(ucgid_i)
+        
+        # Add target to existing geographic stratum
+        if geo_info["type"] == "national":
+            stratum = session.get(Stratum, geo_strata["national"])
+        elif geo_info["type"] == "state":
+            stratum = session.get(Stratum, geo_strata["state"][geo_info["state_fips"]])
+        elif geo_info["type"] == "district":
+            stratum = session.get(Stratum, geo_strata["district"][geo_info["congressional_district_geoid"]])
+        
         stratum.targets_rel.append(
             Target(
                 variable="adjusted_gross_income",
@@ -437,25 +467,22 @@ def load_soi_data(long_dfs, year):
         agi_income_lower, agi_income_upper = AGI_STUB_TO_INCOME_RANGE[agi_stub]
 
         # Make a National Stratum for each AGI Stub even w/o associated national target
-        note = f"Geo: 0100000US, AGI > {agi_income_lower}, AGI < {agi_income_upper}"
+        note = f"National, AGI >= {agi_income_lower}, AGI < {agi_income_upper}"
         nat_stratum = Stratum(
-            parent_stratum_id=None, stratum_group_id=0, notes=note
+            parent_stratum_id=geo_strata["national"],
+            stratum_group_id=0,  # IRS SOI strata group
+            notes=note
         )
         nat_stratum.constraints_rel.extend(
             [
                 StratumConstraint(
-                    constraint_variable="ucgid_str",
-                    operation="in",
-                    value="0100000US",
-                ),
-                StratumConstraint(
                     constraint_variable="adjusted_gross_income",
-                    operation="greater_than",
+                    operation=">=",
                     value=str(agi_income_lower),
                 ),
                 StratumConstraint(
                     constraint_variable="adjusted_gross_income",
-                    operation="less_than",
+                    operation="<",
                     value=str(agi_income_upper),
                 ),
             ]
@@ -463,46 +490,55 @@ def load_soi_data(long_dfs, year):
         session.add(nat_stratum)
         session.flush()
 
-        stratum_lookup = {
-            "National": nat_stratum.stratum_id,
-            "State": {},
-            "District": {},
+        agi_stratum_lookup = {
+            "national": nat_stratum.stratum_id,
+            "state": {},
+            "district": {},
         }
         for i in range(agi_df.shape[0]):
             ucgid_i = agi_df[["ucgid_str"]].iloc[i].values[0]
-            note = f"Geo: {ucgid_i}, AGI > {agi_income_lower}, AGI < {agi_income_upper}"
-
+            geo_info = parse_ucgid(ucgid_i)
             person_count = agi_df.iloc[i][["target_value"]].values[0]
 
-            if len(ucgid_i) == 11:  # State
-                new_stratum = Stratum(
-                    parent_stratum_id=stratum_lookup["National"],
-                    stratum_group_id=0,
-                    notes=note,
-                )
-            elif len(ucgid_i) == 13:  # District
-                new_stratum = Stratum(
-                    parent_stratum_id=stratum_lookup["State"][
-                        "0400000US" + ucgid_i[9:11]
-                    ],
-                    stratum_group_id=0,
-                    notes=note,
-                )
+            if geo_info["type"] == "state":
+                parent_stratum_id = geo_strata["state"][geo_info["state_fips"]]
+                note = f"State FIPS {geo_info['state_fips']}, AGI >= {agi_income_lower}, AGI < {agi_income_upper}"
+                constraints = [
+                    StratumConstraint(
+                        constraint_variable="state_fips",
+                        operation="==",
+                        value=str(geo_info["state_fips"]),
+                    )
+                ]
+            elif geo_info["type"] == "district":
+                parent_stratum_id = geo_strata["district"][geo_info["congressional_district_geoid"]]
+                note = f"Congressional District {geo_info['congressional_district_geoid']}, AGI >= {agi_income_lower}, AGI < {agi_income_upper}"
+                constraints = [
+                    StratumConstraint(
+                        constraint_variable="congressional_district_geoid",
+                        operation="==",
+                        value=str(geo_info["congressional_district_geoid"]),
+                    )
+                ]
+            else:
+                continue  # Skip if not state or district (shouldn't happen, but defensive)
+            
+            new_stratum = Stratum(
+                parent_stratum_id=parent_stratum_id,
+                stratum_group_id=0,  # IRS SOI strata group
+                notes=note,
+            )
+            new_stratum.constraints_rel = constraints
             new_stratum.constraints_rel.extend(
                 [
                     StratumConstraint(
-                        constraint_variable="ucgid_str",
-                        operation="in",
-                        value=ucgid_i,
-                    ),
-                    StratumConstraint(
                         constraint_variable="adjusted_gross_income",
-                        operation="greater_than",
+                        operation=">=",
                         value=str(agi_income_lower),
                     ),
                     StratumConstraint(
                         constraint_variable="adjusted_gross_income",
-                        operation="less_than",
+                        operation="<",
                         value=str(agi_income_upper),
                     ),
                 ]
@@ -520,10 +556,10 @@ def load_soi_data(long_dfs, year):
             session.add(new_stratum)
             session.flush()
 
-            if len(ucgid_i) == 9:
-                stratum_lookup["National"] = new_stratum.stratum_id
-            elif len(ucgid_i) == 11:
-                stratum_lookup["State"][ucgid_i] = new_stratum.stratum_id
+            if geo_info["type"] == "state":
+                agi_stratum_lookup["state"][geo_info["state_fips"]] = new_stratum.stratum_id
+            elif geo_info["type"] == "district":
+                agi_stratum_lookup["district"][geo_info["congressional_district_geoid"]] = new_stratum.stratum_id
 
     session.commit()
 

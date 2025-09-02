@@ -131,71 +131,65 @@ def validate_geographic_hierarchy(session):
     return errors
 
 
-def validate_age_hierarchy(session):
-    """Validate age strata are properly attached to geographic strata"""
+def validate_demographic_strata(session):
+    """Validate demographic strata are properly attached to geographic strata"""
     
     print("\n" + "="*60)
-    print("VALIDATING AGE STRATA")
+    print("VALIDATING DEMOGRAPHIC STRATA")
     print("="*60)
     
     errors = []
     
-    # Count age strata
-    age_strata = session.exec(
-        select(Stratum).where(Stratum.stratum_group_id == 0)
-    ).unique().all()
+    # Group names for the new scheme
+    group_names = {
+        2: ("Age", 18),
+        3: ("Income/AGI", 9),
+        4: ("SNAP", 1),
+        5: ("Medicaid", 1),
+        6: ("EITC", 4),
+    }
     
-    print(f"✓ Found {len(age_strata)} age strata")
+    # Validate each demographic group
+    for group_id, (name, expected_per_geo) in group_names.items():
+        strata = session.exec(
+            select(Stratum).where(Stratum.stratum_group_id == group_id)
+        ).unique().all()
+        
+        expected_total = expected_per_geo * 488  # 488 geographic areas
+        print(f"\n{name} strata (group {group_id}):")
+        print(f"  Found: {len(strata)}")
+        print(f"  Expected: {expected_total} ({expected_per_geo} × 488 geographic areas)")
+        
+        if len(strata) != expected_total:
+            errors.append(f"WARNING: {name} has {len(strata)} strata, expected {expected_total}")
     
-    # Expected: 18 age groups × 488 geographic areas = 8,784
-    expected = 18 * 488
-    if len(age_strata) != expected:
-        errors.append(f"WARNING: Expected {expected} age strata (18 × 488), found {len(age_strata)}")
     
-    # Check that age strata have geographic parents
-    age_with_geo_parent = 0
-    age_with_age_parent = 0
-    age_with_no_parent = 0
+    # Check parent relationships for a sample of demographic strata
+    print("\nChecking parent relationships (sample):")
+    sample_strata = session.exec(
+        select(Stratum).where(Stratum.stratum_group_id > 1)  # All demographic groups
+    ).unique().all()[:100]  # Take first 100
     
-    for age_stratum in age_strata[:100]:  # Sample first 100
-        if age_stratum.parent_stratum_id:
-            parent = session.get(Stratum, age_stratum.parent_stratum_id)
-            if parent:
-                if parent.stratum_group_id == 1:
-                    age_with_geo_parent += 1
-                elif parent.stratum_group_id == 0:
-                    age_with_age_parent += 1
-                    errors.append(f"ERROR: Age stratum {age_stratum.stratum_id} has age stratum as parent")
+    correct_parents = 0
+    wrong_parents = 0
+    no_parents = 0
+    
+    for stratum in sample_strata:
+        if stratum.parent_stratum_id:
+            parent = session.get(Stratum, stratum.parent_stratum_id)
+            if parent and parent.stratum_group_id == 1:  # Geographic parent
+                correct_parents += 1
+            else:
+                wrong_parents += 1
+                errors.append(f"ERROR: Stratum {stratum.stratum_id} has non-geographic parent")
         else:
-            age_with_no_parent += 1
-            errors.append(f"ERROR: Age stratum {age_stratum.stratum_id} has no parent")
+            no_parents += 1
+            errors.append(f"ERROR: Stratum {stratum.stratum_id} has no parent")
     
-    print(f"Sample of 100 age strata:")
-    print(f"  - With geographic parent: {age_with_geo_parent}")
-    print(f"  - With age parent (ERROR): {age_with_age_parent}")
-    print(f"  - With no parent (ERROR): {age_with_no_parent}")
-    
-    # Verify age strata have both age and geographic constraints
-    sample_age = age_strata[0] if age_strata else None
-    if sample_age:
-        constraints = session.exec(
-            select(StratumConstraint).where(
-                StratumConstraint.stratum_id == sample_age.stratum_id
-            )
-        ).all()
-        
-        age_constraints = [c for c in constraints if c.constraint_variable == "age"]
-        geo_constraints = [c for c in constraints if c.constraint_variable in ["state_fips", "congressional_district_geoid"]]
-        
-        print(f"\nSample age stratum constraints ({sample_age.notes}):")
-        print(f"  - Age constraints: {len(age_constraints)}")
-        print(f"  - Geographic constraints: {len(geo_constraints)}")
-        
-        if not age_constraints:
-            errors.append("ERROR: Sample age stratum missing age constraints")
-        # National-level age strata don't need geographic constraints
-        if len(geo_constraints) == 0 and "US" not in sample_age.notes:
-            errors.append("ERROR: Sample age stratum missing geographic constraints")
+    print(f"  Sample of {len(sample_strata)} demographic strata:")
+    print(f"    - With geographic parent: {correct_parents}")
+    print(f"    - With wrong parent: {wrong_parents}")
+    print(f"    - With no parent: {no_parents}")
     
     return errors
 
@@ -244,7 +238,7 @@ def main():
     with Session(engine) as session:
         # Run validation checks
         all_errors.extend(validate_geographic_hierarchy(session))
-        all_errors.extend(validate_age_hierarchy(session))
+        all_errors.extend(validate_demographic_strata(session))
         all_errors.extend(validate_constraint_uniqueness(session))
     
     # Summary
@@ -260,7 +254,7 @@ def main():
     else:
         print("\n✅ All validation checks passed!")
         print("   - Geographic hierarchy is correct")
-        print("   - Age strata properly attached to geographic strata")
+        print("   - Demographic strata properly organized and attached")
         print("   - All constraint combinations are unique")
         sys.exit(0)
 

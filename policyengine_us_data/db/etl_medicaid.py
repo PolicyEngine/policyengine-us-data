@@ -10,9 +10,15 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
+    SourceType,
 )
 from policyengine_us_data.utils.census import STATE_ABBREV_TO_FIPS
 from policyengine_us_data.utils.db import parse_ucgid, get_geographic_strata
+from policyengine_us_data.utils.db_metadata import (
+    get_or_create_source,
+    get_or_create_variable_group,
+    get_or_create_variable_metadata,
+)
 
 
 def extract_medicaid_data(year):
@@ -91,6 +97,60 @@ def load_medicaid_data(long_state, long_cd, year):
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
+        # Get or create sources
+        admin_source = get_or_create_source(
+            session,
+            name="Medicaid T-MSIS",
+            source_type=SourceType.ADMINISTRATIVE,
+            vintage=f"{year} Final Report",
+            description="Medicaid Transformed MSIS administrative enrollment data",
+            url="https://data.medicaid.gov/",
+            notes="State-level Medicaid enrollment from administrative records"
+        )
+        
+        survey_source = get_or_create_source(
+            session,
+            name="Census ACS Table S2704",
+            source_type=SourceType.SURVEY,
+            vintage=f"{year} ACS 1-year estimates",
+            description="American Community Survey health insurance coverage data",
+            url="https://data.census.gov/",
+            notes="Congressional district level Medicaid coverage from ACS"
+        )
+        
+        # Get or create Medicaid variable group
+        medicaid_group = get_or_create_variable_group(
+            session,
+            name="medicaid_recipients",
+            category="benefit",
+            is_histogram=False,
+            is_exclusive=False,
+            aggregation_method="sum",
+            display_order=3,
+            description="Medicaid enrollment and spending"
+        )
+        
+        # Create variable metadata
+        get_or_create_variable_metadata(
+            session,
+            variable="medicaid",
+            group=medicaid_group,
+            display_name="Medicaid Enrollment",
+            display_order=1,
+            units="count",
+            notes="Number of people enrolled in Medicaid"
+        )
+        
+        get_or_create_variable_metadata(
+            session,
+            variable="person_count",
+            group=medicaid_group,
+            display_name="Person Count (Medicaid)",
+            display_order=2,
+            units="count",
+            notes="Number of people enrolled in Medicaid (same as medicaid variable)"
+        )
+        
         # Fetch existing geographic strata
         geo_strata = get_geographic_strata(session)
         
@@ -98,7 +158,7 @@ def load_medicaid_data(long_state, long_cd, year):
         # Create a Medicaid stratum as child of the national geographic stratum
         nat_stratum = Stratum(
             parent_stratum_id=geo_strata["national"],
-            stratum_group_id=0,  # Medicaid strata group
+            stratum_group_id=5,  # Medicaid strata group
             notes="National Medicaid Enrolled",
         )
         nat_stratum.constraints_rel = [
@@ -127,7 +187,7 @@ def load_medicaid_data(long_state, long_cd, year):
 
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=0,  # Medicaid strata group
+                stratum_group_id=5,  # Medicaid strata group
                 notes=note,
             )
             new_stratum.constraints_rel = [
@@ -147,7 +207,7 @@ def load_medicaid_data(long_state, long_cd, year):
                     variable="person_count",
                     period=year,
                     value=row["medicaid_enrollment"],
-                    source_id=2,
+                    source_id=admin_source.source_id,
                     active=True,
                 )
             )
@@ -168,7 +228,7 @@ def load_medicaid_data(long_state, long_cd, year):
 
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=0,  # Medicaid strata group
+                stratum_group_id=5,  # Medicaid strata group
                 notes=note,
             )
             new_stratum.constraints_rel = [
@@ -188,7 +248,7 @@ def load_medicaid_data(long_state, long_cd, year):
                     variable="person_count",
                     period=year,
                     value=row["medicaid_enrollment"],
-                    source_id=2,
+                    source_id=survey_source.source_id,
                     active=True,
                 )
             )

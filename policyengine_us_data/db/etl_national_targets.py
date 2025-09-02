@@ -4,6 +4,12 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     Target,
+    SourceType,
+)
+from policyengine_us_data.utils.db_metadata import (
+    get_or_create_source,
+    get_or_create_variable_group,
+    get_or_create_variable_metadata,
 )
 
 
@@ -12,6 +18,76 @@ def main():
     engine = create_engine(DATABASE_URL)
     
     with Session(engine) as session:
+        # Get or create the hardcoded calibration source
+        calibration_source = get_or_create_source(
+            session,
+            name="PolicyEngine Calibration Targets",
+            source_type=SourceType.HARDCODED,
+            vintage="2024",
+            description="Hardcoded calibration targets from various sources",
+            url=None,
+            notes="National totals from CPS-derived statistics, IRS, and other sources"
+        )
+        
+        # Create variable groups for different types of hardcoded targets
+        medical_group = get_or_create_variable_group(
+            session,
+            name="medical_expenses",
+            category="expense",
+            is_histogram=False,
+            is_exclusive=False,
+            aggregation_method="sum",
+            display_order=9,
+            description="Medical expenses and health insurance premiums"
+        )
+        
+        other_income_group = get_or_create_variable_group(
+            session,
+            name="other_income",
+            category="income",
+            is_histogram=False,
+            is_exclusive=False,
+            aggregation_method="sum",
+            display_order=10,
+            description="Other income sources (tips, etc.)"
+        )
+        
+        # Create variable metadata
+        medical_vars = [
+            ("health_insurance_premiums_without_medicare_part_b", "Health Insurance Premiums (non-Medicare)", 1),
+            ("other_medical_expenses", "Other Medical Expenses", 2),
+            ("medicare_part_b_premiums", "Medicare Part B Premiums", 3),
+        ]
+        
+        for var_name, display_name, order in medical_vars:
+            get_or_create_variable_metadata(
+                session,
+                variable=var_name,
+                group=medical_group,
+                display_name=display_name,
+                display_order=order,
+                units="dollars"
+            )
+        
+        # Child support and tip income
+        get_or_create_variable_metadata(
+            session,
+            variable="child_support_expense",
+            group=None,  # Doesn't fit neatly into a group
+            display_name="Child Support Expense",
+            display_order=1,
+            units="dollars"
+        )
+        
+        get_or_create_variable_metadata(
+            session,
+            variable="tip_income",
+            group=other_income_group,
+            display_name="Tip Income",
+            display_order=1,
+            units="dollars"
+        )
+        
         # Get the national stratum
         us_stratum = session.query(Stratum).filter(
             Stratum.parent_stratum_id == None
@@ -94,7 +170,7 @@ def main():
                     variable=target_data["variable"],
                     period=period,
                     value=target_data["value"],
-                    source_id=5,  # Hardcoded source ID for national targets
+                    source_id=calibration_source.source_id,
                     active=True,
                     notes=" | ".join(notes_parts)
                 )

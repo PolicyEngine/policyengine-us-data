@@ -13,12 +13,21 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
+    Source,
+    SourceType,
+    VariableGroup,
+    VariableMetadata,
 )
 from policyengine_us_data.utils.census import (
     pull_acs_table,
     STATE_NAME_TO_FIPS,
 )
 from policyengine_us_data.utils.db import parse_ucgid, get_geographic_strata
+from policyengine_us_data.utils.db_metadata import (
+    get_or_create_source,
+    get_or_create_variable_group,
+    get_or_create_variable_metadata,
+)
 
 
 def extract_administrative_snap_data(year=2023):
@@ -151,6 +160,50 @@ def load_administrative_snap_data(df_states, year):
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
+        # Get or create the administrative source
+        admin_source = get_or_create_source(
+            session,
+            name="USDA FNS SNAP Data",
+            source_type=SourceType.ADMINISTRATIVE,
+            vintage=f"FY {year}",
+            description="SNAP administrative data from USDA Food and Nutrition Service",
+            url="https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
+            notes="State-level administrative totals for households and costs"
+        )
+        
+        # Get or create the SNAP variable group
+        snap_group = get_or_create_variable_group(
+            session,
+            name="snap_recipients",
+            category="benefit",
+            is_histogram=False,
+            is_exclusive=False,
+            aggregation_method="sum",
+            display_order=2,
+            description="SNAP (food stamps) recipient counts and benefits"
+        )
+        
+        # Get or create variable metadata
+        get_or_create_variable_metadata(
+            session,
+            variable="snap",
+            group=snap_group,
+            display_name="SNAP Benefits",
+            display_order=1,
+            units="dollars",
+            notes="Annual SNAP benefit costs"
+        )
+        
+        get_or_create_variable_metadata(
+            session,
+            variable="household_count",
+            group=snap_group,
+            display_name="SNAP Household Count",
+            display_order=2,
+            units="count",
+            notes="Number of households receiving SNAP"
+        )
+        
         # Fetch existing geographic strata
         geo_strata = get_geographic_strata(session)
         
@@ -158,7 +211,7 @@ def load_administrative_snap_data(df_states, year):
         # Create a SNAP stratum as child of the national geographic stratum
         nat_stratum = Stratum(
             parent_stratum_id=geo_strata["national"],
-            stratum_group_id=0,  # SNAP strata group
+            stratum_group_id=4,  # SNAP strata group
             notes="National Received SNAP Benefits",
         )
         nat_stratum.constraints_rel = [
@@ -188,7 +241,7 @@ def load_administrative_snap_data(df_states, year):
 
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=0,  # SNAP strata group
+                stratum_group_id=4,  # SNAP strata group
                 notes=note,
             )
             new_stratum.constraints_rel = [
@@ -209,7 +262,7 @@ def load_administrative_snap_data(df_states, year):
                     variable="household_count",
                     period=year,
                     value=row["Households"],
-                    source_id=3,
+                    source_id=admin_source.source_id,
                     active=True,
                 )
             )
@@ -218,7 +271,7 @@ def load_administrative_snap_data(df_states, year):
                     variable="snap",
                     period=year,
                     value=row["Cost"],
-                    source_id=3,
+                    source_id=admin_source.source_id,
                     active=True,
                 )
             )
@@ -230,16 +283,28 @@ def load_administrative_snap_data(df_states, year):
     return snap_stratum_lookup
 
 
-def load_survey_snap_data(survey_df, year, snap_stratum_lookup=None):
-    """Use an already defined snap_stratum_lookup to load the survey SNAP data"""
-
-    if snap_stratum_lookup is None:
-        raise ValueError("snap_stratum_lookup must be provided")
+def load_survey_snap_data(survey_df, year, snap_stratum_lookup):
+    """Use an already defined snap_stratum_lookup to load the survey SNAP data
+    
+    Note: snap_stratum_lookup should contain the SNAP strata created by 
+    load_administrative_snap_data, so we don't recreate them.
+    """
 
     DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
+        # Get or create the survey source
+        survey_source = get_or_create_source(
+            session,
+            name="Census ACS Table S2201",
+            source_type=SourceType.SURVEY,
+            vintage=f"{year} ACS 5-year estimates",
+            description="American Community Survey SNAP/Food Stamps data",
+            url="https://data.census.gov/",
+            notes="Congressional district level SNAP household counts from ACS"
+        )
+        
         # Fetch existing geographic strata
         geo_strata = get_geographic_strata(session)
         
@@ -257,7 +322,7 @@ def load_survey_snap_data(survey_df, year, snap_stratum_lookup=None):
             
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=0,  # SNAP strata group
+                stratum_group_id=4,  # SNAP strata group
                 notes=note,
             )
 
@@ -278,7 +343,7 @@ def load_survey_snap_data(survey_df, year, snap_stratum_lookup=None):
                     variable="household_count",
                     period=year,
                     value=row["snap_household_ct"],
-                    source_id=4,
+                    source_id=survey_source.source_id,
                     active=True,
                 )
             )

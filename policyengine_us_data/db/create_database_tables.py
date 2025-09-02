@@ -158,7 +158,9 @@ class Target(SQLModel, table=True):
         default=None, description="The numerical value of the target variable."
     )
     source_id: Optional[int] = Field(
-        default=None, description="Identifier for the data source."
+        default=None, 
+        foreign_key="sources.source_id",
+        description="Identifier for the data source."
     )
     active: bool = Field(
         default=True,
@@ -174,6 +176,140 @@ class Target(SQLModel, table=True):
     )
 
     strata_rel: Stratum = Relationship(back_populates="targets_rel")
+    source_rel: Optional["Source"] = Relationship()
+
+
+class SourceType(str, Enum):
+    """Types of data sources."""
+    ADMINISTRATIVE = "administrative"
+    SURVEY = "survey"
+    SYNTHETIC = "synthetic"
+    DERIVED = "derived"
+    HARDCODED = "hardcoded"  # Values from various sources, hardcoded into the system
+
+
+class Source(SQLModel, table=True):
+    """Metadata about data sources."""
+    
+    __tablename__ = "sources"
+    __table_args__ = (
+        UniqueConstraint("name", "vintage", name="uq_source_name_vintage"),
+    )
+    
+    source_id: Optional[int] = Field(
+        default=None,
+        primary_key=True,
+        description="Unique identifier for the data source."
+    )
+    name: str = Field(
+        description="Name of the data source (e.g., 'IRS SOI', 'Census ACS').",
+        index=True
+    )
+    type: SourceType = Field(
+        description="Type of data source (administrative, survey, etc.)."
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Detailed description of the data source."
+    )
+    url: Optional[str] = Field(
+        default=None,
+        description="URL or reference to the original data source."
+    )
+    vintage: Optional[str] = Field(
+        default=None,
+        description="Version or release date of the data source."
+    )
+    notes: Optional[str] = Field(
+        default=None,
+        description="Additional notes about the source."
+    )
+
+
+class VariableGroup(SQLModel, table=True):
+    """Groups of related variables that form logical units."""
+    
+    __tablename__ = "variable_groups"
+    
+    group_id: Optional[int] = Field(
+        default=None,
+        primary_key=True,
+        description="Unique identifier for the variable group."
+    )
+    name: str = Field(
+        description="Name of the variable group (e.g., 'age_distribution', 'snap_recipients').",
+        index=True,
+        unique=True
+    )
+    category: str = Field(
+        description="High-level category (e.g., 'demographic', 'benefit', 'tax', 'income').",
+        index=True
+    )
+    is_histogram: bool = Field(
+        default=False,
+        description="Whether this group represents a histogram/distribution."
+    )
+    is_exclusive: bool = Field(
+        default=False,
+        description="Whether variables in this group are mutually exclusive."
+    )
+    aggregation_method: Optional[str] = Field(
+        default=None,
+        description="How to aggregate variables in this group (sum, weighted_avg, etc.)."
+    )
+    display_order: Optional[int] = Field(
+        default=None,
+        description="Order for displaying this group in matrices/reports."
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Description of what this group represents."
+    )
+
+
+class VariableMetadata(SQLModel, table=True):
+    """Maps PolicyEngine variables to their groups and provides metadata."""
+    
+    __tablename__ = "variable_metadata"
+    __table_args__ = (
+        UniqueConstraint("variable", name="uq_variable_metadata_variable"),
+    )
+    
+    metadata_id: Optional[int] = Field(
+        default=None,
+        primary_key=True
+    )
+    variable: str = Field(
+        description="PolicyEngine variable name.",
+        index=True
+    )
+    group_id: Optional[int] = Field(
+        default=None,
+        foreign_key="variable_groups.group_id",
+        description="ID of the variable group this belongs to."
+    )
+    display_name: Optional[str] = Field(
+        default=None,
+        description="Human-readable name for display in matrices."
+    )
+    display_order: Optional[int] = Field(
+        default=None,
+        description="Order within its group for display purposes."
+    )
+    units: Optional[str] = Field(
+        default=None,
+        description="Units of measurement (dollars, count, percent, etc.)."
+    )
+    is_primary: bool = Field(
+        default=True,
+        description="Whether this is a primary variable vs derived/auxiliary."
+    )
+    notes: Optional[str] = Field(
+        default=None,
+        description="Additional notes about the variable."
+    )
+    
+    group_rel: Optional[VariableGroup] = Relationship()
 
 
 # This SQLAlchemy event listener works directly with the SQLModel class

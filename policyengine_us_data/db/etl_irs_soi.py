@@ -11,6 +11,7 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
+    SourceType,
 )
 from policyengine_us_data.utils.db import (
     get_stratum_by_id,
@@ -19,6 +20,11 @@ from policyengine_us_data.utils.db import (
     get_stratum_parent,
     parse_ucgid,
     get_geographic_strata,
+)
+from policyengine_us_data.utils.db_metadata import (
+    get_or_create_source,
+    get_or_create_variable_group,
+    get_or_create_variable_metadata,
 )
 from policyengine_us_data.utils.census import TERRITORY_UCGIDS
 from policyengine_us_data.storage.calibration_targets.make_district_mapping import (
@@ -71,7 +77,8 @@ def make_records(
     rec_counts = create_records(df, breakdown_col, "tax_unit_count")
     rec_amounts = create_records(df, breakdown_col, amount_name)
     rec_amounts["target_value"] *= multiplier  # Only the amounts get * 1000
-    rec_counts["target_variable"] = f"{amount_name}_tax_unit_count"
+    # Note: tax_unit_count is the correct variable - the stratum constraints
+    # indicate what is being counted (e.g., eitc > 0 for EITC recipients)
 
     return rec_counts, rec_amounts
 
@@ -290,6 +297,178 @@ def load_soi_data(long_dfs, year):
 
     session = Session(engine)
     
+    # Get or create the IRS SOI source
+    irs_source = get_or_create_source(
+        session,
+        name="IRS Statistics of Income",
+        source_type=SourceType.ADMINISTRATIVE,
+        vintage=f"{year} Tax Year",
+        description="IRS Statistics of Income administrative tax data",
+        url="https://www.irs.gov/statistics",
+        notes="Tax return data by congressional district, state, and national levels"
+    )
+    
+    # Create variable groups
+    agi_group = get_or_create_variable_group(
+        session,
+        name="agi_distribution",
+        category="income",
+        is_histogram=True,
+        is_exclusive=True,
+        aggregation_method="sum",
+        display_order=4,
+        description="Adjusted Gross Income distribution by IRS income stubs"
+    )
+    
+    eitc_group = get_or_create_variable_group(
+        session,
+        name="eitc_recipients",
+        category="tax",
+        is_histogram=False,
+        is_exclusive=False,
+        aggregation_method="sum",
+        display_order=5,
+        description="Earned Income Tax Credit by number of qualifying children"
+    )
+    
+    ctc_group = get_or_create_variable_group(
+        session,
+        name="ctc_recipients",
+        category="tax",
+        is_histogram=False,
+        is_exclusive=False,
+        aggregation_method="sum",
+        display_order=6,
+        description="Child Tax Credit recipients and amounts"
+    )
+    
+    income_components_group = get_or_create_variable_group(
+        session,
+        name="income_components",
+        category="income",
+        is_histogram=False,
+        is_exclusive=False,
+        aggregation_method="sum",
+        display_order=7,
+        description="Components of income (interest, dividends, capital gains, etc.)"
+    )
+    
+    deductions_group = get_or_create_variable_group(
+        session,
+        name="tax_deductions",
+        category="tax",
+        is_histogram=False,
+        is_exclusive=False,
+        aggregation_method="sum",
+        display_order=8,
+        description="Tax deductions (SALT, medical, real estate, etc.)"
+    )
+    
+    # Create variable metadata
+    # EITC - both amount and count use same variable with different constraints
+    get_or_create_variable_metadata(
+        session,
+        variable="eitc",
+        group=eitc_group,
+        display_name="EITC Amount",
+        display_order=1,
+        units="dollars",
+        notes="EITC amounts by number of qualifying children"
+    )
+    
+    # For counts, tax_unit_count is used with appropriate constraints
+    get_or_create_variable_metadata(
+        session,
+        variable="tax_unit_count",
+        group=None,  # This spans multiple groups based on constraints
+        display_name="Tax Unit Count",
+        display_order=100,
+        units="count",
+        notes="Number of tax units - meaning depends on stratum constraints"
+    )
+    
+    # CTC
+    get_or_create_variable_metadata(
+        session,
+        variable="refundable_ctc",
+        group=ctc_group,
+        display_name="Refundable CTC",
+        display_order=1,
+        units="dollars"
+    )
+    
+    # AGI and related
+    get_or_create_variable_metadata(
+        session,
+        variable="adjusted_gross_income",
+        group=agi_group,
+        display_name="Adjusted Gross Income",
+        display_order=1,
+        units="dollars"
+    )
+    
+    get_or_create_variable_metadata(
+        session,
+        variable="person_count",
+        group=agi_group,
+        display_name="Person Count",
+        display_order=3,
+        units="count",
+        notes="Number of people in tax units by AGI bracket"
+    )
+    
+    # Income components
+    income_vars = [
+        ("taxable_interest_income", "Taxable Interest", 1),
+        ("tax_exempt_interest_income", "Tax-Exempt Interest", 2),
+        ("dividend_income", "Ordinary Dividends", 3),
+        ("qualified_dividend_income", "Qualified Dividends", 4),
+        ("net_capital_gain", "Net Capital Gain", 5),
+        ("taxable_ira_distributions", "Taxable IRA Distributions", 6),
+        ("taxable_pension_income", "Taxable Pensions", 7),
+        ("taxable_social_security", "Taxable Social Security", 8),
+        ("unemployment_compensation", "Unemployment Compensation", 9),
+        ("tax_unit_partnership_s_corp_income", "Partnership/S-Corp Income", 10),
+    ]
+    
+    for var_name, display_name, order in income_vars:
+        get_or_create_variable_metadata(
+            session,
+            variable=var_name,
+            group=income_components_group,
+            display_name=display_name,
+            display_order=order,
+            units="dollars"
+        )
+    
+    # Deductions
+    deduction_vars = [
+        ("salt", "State and Local Taxes", 1),
+        ("real_estate_taxes", "Real Estate Taxes", 2),
+        ("medical_expense_deduction", "Medical Expenses", 3),
+        ("qualified_business_income_deduction", "QBI Deduction", 4),
+    ]
+    
+    for var_name, display_name, order in deduction_vars:
+        get_or_create_variable_metadata(
+            session,
+            variable=var_name,
+            group=deductions_group,
+            display_name=display_name,
+            display_order=order,
+            units="dollars"
+        )
+    
+    # Income tax
+    get_or_create_variable_metadata(
+        session,
+        variable="income_tax",
+        group=None,  # Could create a tax_liability group if needed
+        display_name="Income Tax",
+        display_order=1,
+        units="dollars"
+    )
+    
     # Fetch existing geographic strata
     geo_strata = get_geographic_strata(session)
 
@@ -336,7 +515,7 @@ def load_soi_data(long_dfs, year):
 
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=0,  # IRS SOI strata group
+                stratum_group_id=6,  # EITC strata group
                 notes=note,
             )
             
@@ -363,7 +542,7 @@ def load_soi_data(long_dfs, year):
                     variable="eitc",
                     period=year,
                     value=eitc_amount_i.iloc[i][["target_value"]].values[0],
-                    source_id=5,
+                    source_id=irs_source.source_id,
                     active=True,
                 )
             ]
@@ -416,7 +595,7 @@ def load_soi_data(long_dfs, year):
                     variable=amount_variable_name,
                     period=year,
                     value=amount_value,
-                    source_id=5,
+                    source_id=irs_source.source_id,
                     active=True,
                 )
             )
@@ -470,7 +649,7 @@ def load_soi_data(long_dfs, year):
         note = f"National, AGI >= {agi_income_lower}, AGI < {agi_income_upper}"
         nat_stratum = Stratum(
             parent_stratum_id=geo_strata["national"],
-            stratum_group_id=0,  # IRS SOI strata group
+            stratum_group_id=3,  # Income/AGI strata group
             notes=note
         )
         nat_stratum.constraints_rel.extend(
@@ -525,7 +704,7 @@ def load_soi_data(long_dfs, year):
             
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=0,  # IRS SOI strata group
+                stratum_group_id=3,  # Income/AGI strata group
                 notes=note,
             )
             new_stratum.constraints_rel = constraints
@@ -548,7 +727,7 @@ def load_soi_data(long_dfs, year):
                     variable="person_count",
                     period=year,
                     value=person_count,
-                    source_id=5,
+                    source_id=irs_source.source_id,
                     active=True,
                 )
             )

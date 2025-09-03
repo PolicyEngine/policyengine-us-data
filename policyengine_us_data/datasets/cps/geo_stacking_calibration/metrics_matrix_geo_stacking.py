@@ -17,12 +17,19 @@ logger = logging.getLogger(__name__)
 
 
 class GeoStackingMatrixBuilder:
-    """Build calibration matrices for geo-stacking approach."""
+    """Build calibration matrices for geo-stacking approach.
     
-    def __init__(self, db_uri: str, time_period: int = 2023):
+    NOTE: Period handling is complex due to mismatched data years:
+    - The enhanced CPS 2024 dataset only contains 2024 data
+    - Targets in the database exist for different years (2022, 2023, 2024)
+    - For now, we pull targets from whatever year they exist and use 2024 data
+    - This temporal mismatch will be addressed in future iterations
+    """
+    
+    def __init__(self, db_uri: str, time_period: int = 2024):
         self.db_uri = db_uri
         self.engine = create_engine(db_uri)
-        self.time_period = time_period
+        self.time_period = time_period  # Default to 2024 to match CPS data
         
     def get_national_hardcoded_targets(self) -> pd.DataFrame:
         """
@@ -42,15 +49,15 @@ class GeoStackingMatrixBuilder:
         FROM targets t
         JOIN strata s ON t.stratum_id = s.stratum_id
         JOIN sources src ON t.source_id = src.source_id
-        WHERE t.period = :period
-          AND s.parent_stratum_id IS NULL  -- National level
+        WHERE s.parent_stratum_id IS NULL  -- National level
           AND s.stratum_group_id = 1  -- Geographic stratum
-          AND src.type = 'hardcoded'  -- Hardcoded national targets
+          AND UPPER(src.type) = 'HARDCODED'  -- Hardcoded national targets (case-insensitive)
         ORDER BY t.variable
         """
         
         with self.engine.connect() as conn:
-            df = pd.read_sql(query, conn, params={'period': self.time_period})
+            # Don't filter by period for now - get any available hardcoded targets
+            df = pd.read_sql(query, conn)
         
         logger.info(f"Found {len(df)} national hardcoded targets")
         return df
@@ -66,7 +73,8 @@ class GeoStackingMatrixBuilder:
             stratum_group_id: The demographic group (2=Age, 3=Income, 4=SNAP, 5=Medicaid, 6=EITC)
             group_name: Descriptive name for logging
         """
-        query = """
+        # First try with the specified period, then fall back to most recent
+        query_with_period = """
         SELECT 
             t.target_id,
             t.stratum_id,
@@ -78,7 +86,8 @@ class GeoStackingMatrixBuilder:
             s.stratum_group_id,
             sc.constraint_variable,
             sc.operation,
-            sc.value as constraint_value
+            sc.value as constraint_value,
+            t.period
         FROM targets t
         JOIN strata s ON t.stratum_id = s.stratum_id
         LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
@@ -88,12 +97,52 @@ class GeoStackingMatrixBuilder:
         ORDER BY t.variable, sc.constraint_variable
         """
         
+        query_any_period = """
+        SELECT 
+            t.target_id,
+            t.stratum_id,
+            t.variable,
+            t.value,
+            t.active,
+            t.tolerance,
+            s.notes as stratum_notes,
+            s.stratum_group_id,
+            sc.constraint_variable,
+            sc.operation,
+            sc.value as constraint_value,
+            t.period
+        FROM targets t
+        JOIN strata s ON t.stratum_id = s.stratum_id
+        LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+        WHERE s.stratum_group_id = :stratum_group_id
+          AND s.parent_stratum_id = :parent_id
+          AND t.period = (
+              SELECT MAX(t2.period)
+              FROM targets t2
+              JOIN strata s2 ON t2.stratum_id = s2.stratum_id
+              WHERE s2.stratum_group_id = :stratum_group_id
+                AND s2.parent_stratum_id = :parent_id
+          )
+        ORDER BY t.variable, sc.constraint_variable
+        """
+        
         with self.engine.connect() as conn:
-            df = pd.read_sql(query, conn, params={
+            # Try with specified period first
+            df = pd.read_sql(query_with_period, conn, params={
                 'period': self.time_period,
                 'stratum_group_id': stratum_group_id,
                 'parent_id': geographic_stratum_id
             })
+            
+            # If no results, try most recent period
+            if len(df) == 0:
+                df = pd.read_sql(query_any_period, conn, params={
+                    'stratum_group_id': stratum_group_id,
+                    'parent_id': geographic_stratum_id
+                })
+                if len(df) > 0:
+                    period_used = df['period'].iloc[0]
+                    logger.info(f"No {group_name} targets for {self.time_period}, using {period_used} instead")
         
         logger.info(f"Found {len(df)} {group_name} targets for stratum {geographic_stratum_id}")
         return df
@@ -278,8 +327,9 @@ class GeoStackingMatrixBuilder:
                 'active': target['active'],
                 'tolerance': target['tolerance'],
                 'stratum_id': target['stratum_id'],
+                'stratum_group_id': 'national_hardcoded',  # Special marker for national hardcoded
                 'geographic_level': 'national',
-                'geographic_id': geographic_id,
+                'geographic_id': 'US',  # National targets apply to entire US, not specific geography
                 'description': f"{target['variable']}_national"
             })
         
@@ -307,6 +357,7 @@ class GeoStackingMatrixBuilder:
                 'active': target['active'],
                 'tolerance': target['tolerance'],
                 'stratum_id': target['stratum_id'],
+                'stratum_group_id': target['stratum_group_id'],  # Preserve the demographic group ID
                 'geographic_level': geographic_level,
                 'geographic_id': geographic_id,
                 'description': '_'.join(desc_parts)
@@ -316,7 +367,8 @@ class GeoStackingMatrixBuilder:
         
         # Build matrix if sim provided
         if sim is not None:
-            household_ids = sim.calculate("household_id", period=self.time_period).values
+            # Use whatever period the sim is at (typically 2024 for the enhanced CPS)
+            household_ids = sim.calculate("household_id").values
             n_households = len(household_ids)
             
             # Initialize matrix (targets x households)
@@ -359,26 +411,70 @@ class GeoStackingMatrixBuilder:
         all_targets = []
         all_matrices = []
         
+        # First, get national targets once (they apply to all geographic copies)
+        national_targets = self.get_national_hardcoded_targets()
+        national_targets_list = []
+        for _, target in national_targets.iterrows():
+            national_targets_list.append({
+                'target_id': target['target_id'],
+                'variable': target['variable'],
+                'value': target['value'],
+                'active': target['active'],
+                'tolerance': target['tolerance'],
+                'stratum_id': target['stratum_id'],
+                'stratum_group_id': 'national_hardcoded',  # Preserve the special marker
+                'geographic_level': 'national',
+                'geographic_id': 'US',
+                'description': f"{target['variable']}_national",
+                'stacked_target_id': f"{target['target_id']}_national"
+            })
+        
+        # Add national targets to the list once
+        if national_targets_list:
+            all_targets.append(pd.DataFrame(national_targets_list))
+        
+        # Now process each geography for its specific targets
         for i, geo_id in enumerate(geographic_ids):
             logger.info(f"Processing {geographic_level} {geo_id} ({i+1}/{len(geographic_ids)})")
             
+            # Build matrix but we'll modify to exclude national targets from duplication
             targets_df, matrix_df = self.build_matrix_for_geography(
                 geographic_level, geo_id, sim
             )
             
+            # Filter out national targets (we already added them once)
+            geo_specific_targets = targets_df[targets_df['geographic_id'] != 'US'].copy()
+            
             # Add geographic index to target IDs to make them unique
             prefix = "state" if geographic_level == "state" else "cd"
-            targets_df['stacked_target_id'] = (
-                targets_df['target_id'].astype(str) + f"_{prefix}{geo_id}"
+            geo_specific_targets['stacked_target_id'] = (
+                geo_specific_targets['target_id'].astype(str) + f"_{prefix}{geo_id}"
             )
             
             if matrix_df is not None:
                 # Add geographic index to household IDs
                 matrix_df.columns = [f"{hh_id}_{prefix}{geo_id}" for hh_id in matrix_df.columns]
-                matrix_df.index = targets_df['stacked_target_id'].values
+                
+                # For national targets, we need to keep their rows
+                # For geo-specific targets, we need to update the index
+                national_rows = targets_df[targets_df['geographic_id'] == 'US']
+                if not national_rows.empty:
+                    # Extract national target rows from matrix
+                    national_matrix = matrix_df.iloc[:len(national_rows)].copy()
+                    national_matrix.index = [f"{tid}_national" for tid in national_rows['target_id']]
+                    
+                    # Extract geo-specific rows
+                    geo_matrix = matrix_df.iloc[len(national_rows):].copy()
+                    geo_matrix.index = geo_specific_targets['stacked_target_id'].values
+                    
+                    # Combine them
+                    matrix_df = pd.concat([national_matrix, geo_matrix])
+                else:
+                    matrix_df.index = geo_specific_targets['stacked_target_id'].values
+                    
                 all_matrices.append(matrix_df)
             
-            all_targets.append(targets_df)
+            all_targets.append(geo_specific_targets)
         
         # Combine all targets
         combined_targets = pd.concat(all_targets, ignore_index=True)
@@ -420,17 +516,13 @@ def main():
     # Database path
     db_uri = "sqlite:////home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
     
-    # Initialize builder with 2023 targets
-    builder = GeoStackingMatrixBuilder(db_uri, time_period=2023)
+    # Initialize builder - using 2024 to match the CPS data
+    # NOTE: Targets come from various years (2022, 2023, 2024) but we use what's available
+    builder = GeoStackingMatrixBuilder(db_uri, time_period=2024)
     
-    # Create microsimulation
-    # IMPORTANT: The 2024 dataset only contains 2024 data. When we request 2023 data explicitly,
-    # it returns defaults (age=40, weight=0). However, if we set default_calculation_period=2023
-    # BEFORE build_from_dataset() and then DON'T pass period to calculate(), it uses the 2024 data.
-    # This is likely a fallback behavior in PolicyEngine.
+    # Create microsimulation with 2024 data
     print("Loading microsimulation...")
     sim = Microsimulation(dataset="hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5")
-    sim.default_calculation_period = 2023
     sim.build_from_dataset()
     
     # Build matrix for California

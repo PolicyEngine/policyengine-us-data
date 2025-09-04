@@ -1,4 +1,7 @@
 """
+TODO: what is this file? Do we still need it?
+
+
 Migration script to update stratum_group_id values to represent conceptual categories.
 
 New scheme:

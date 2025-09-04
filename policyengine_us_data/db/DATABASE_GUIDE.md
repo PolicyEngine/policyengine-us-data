@@ -430,3 +430,37 @@ ORDER BY stratum_group_id;
 9. **NEW: Auto-generated source IDs instead of hardcoding**
 10. **NEW: Proper categorization of admin vs survey data for same concepts**
 11. **NEW: Implemented conceptual stratum_group_id scheme for better organization and querying**
+
+## Known Issues / TODOs
+
+### IMPORTANT: stratum_id vs state_fips Codes
+**WARNING**: The `stratum_id` is an auto-generated sequential ID and has NO relationship to FIPS codes, despite some confusing coincidences:
+- California: stratum_id = 6, state_fips = "06" (coincidental match!)
+- North Carolina: stratum_id = 35, state_fips = "37" (no match)
+- Ohio: stratum_id = 37, state_fips = "39" (no match)
+
+When querying for states, ALWAYS use the `state_fips` constraint value, never assume stratum_id matches FIPS. The calibration code correctly uses `get_state_stratum_id(state_fips)` to look up the proper stratum_id.
+
+Example of correct lookup:
+```sql
+-- Find North Carolina's stratum_id by FIPS code
+SELECT s.stratum_id, s.notes 
+FROM strata s
+JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+WHERE sc.constraint_variable = 'state_fips' 
+  AND sc.value = '37';  -- Returns stratum_id = 35
+```
+
+### Type Conversion for Constraint Values  
+**DESIGN DECISION**: The `value` column in `stratum_constraints` must store heterogeneous data types as strings. The calibration code deserializes these (lines 233-247 in `metrics_matrix_geo_stacking.py`):
+- Numeric strings → int/float (for age, income constraints)
+- "True"/"False" → Python booleans (for medicaid_enrolled, snap_enrolled)  
+- Other strings remain strings (for state_fips, which may have leading zeros)
+
+This explicit type conversion is necessary and correct. The alternative of using "1"/"0" for booleans would work but be less clear in the database.
+
+### Medicaid Data Structure
+- Medicaid uses `person_count` variable (not `medicaid`) because it's structured as a histogram with constraints
+- State-level targets use administrative data (T-MSIS source)
+- Congressional district level uses survey data (ACS source)
+- No national Medicaid target exists (intentionally, to avoid double-counting when using state-level data)

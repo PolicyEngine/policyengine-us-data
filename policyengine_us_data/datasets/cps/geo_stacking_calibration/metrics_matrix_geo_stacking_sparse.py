@@ -1,23 +1,26 @@
 """
-Geo-stacking calibration matrix creation for PolicyEngine US.
+Sparse geo-stacking calibration matrix creation for PolicyEngine US.
 
 This module creates calibration matrices for the geo-stacking approach where
 the same household dataset is treated as existing in multiple geographic areas.
 Targets are rows, households are columns (small n, large p formulation).
+
+This version builds sparse matrices directly, avoiding dense intermediate structures.
 """
 
 import logging
 from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
+from scipy import sparse
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 
-class GeoStackingMatrixBuilder:
-    """Build calibration matrices for geo-stacking approach.
+class SparseGeoStackingMatrixBuilder:
+    """Build sparse calibration matrices for geo-stacking approach.
     
     NOTE: Period handling is complex due to mismatched data years:
     - The enhanced CPS 2024 dataset only contains 2024 data
@@ -256,14 +259,13 @@ class GeoStackingMatrixBuilder:
         with self.engine.connect() as conn:
             return pd.read_sql(query, conn, params={'stratum_id': stratum_id})
     
-    def apply_constraints_to_sim(self, sim, constraints_df: pd.DataFrame, 
-                                target_variable: str) -> np.ndarray:
+    def apply_constraints_to_sim_sparse(self, sim, constraints_df: pd.DataFrame, 
+                                       target_variable: str) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Apply constraints to create a mask at household level.
-        Returns household-level values after applying constraints.
+        Apply constraints and return sparse representation (indices and values).
         
-        NOTE: We DON'T pass period to calculate() - this uses sim.default_calculation_period
-        which was set before build_from_dataset(). This allows using 2024 data for 2023 calculations.
+        Returns:
+            Tuple of (nonzero_indices, nonzero_values) at household level
         """
         if sim is None:
             raise ValueError("Microsimulation instance required")
@@ -272,7 +274,6 @@ class GeoStackingMatrixBuilder:
         target_entity = sim.tax_benefit_system.variables[target_variable].entity.key
         
         # Start with all ones mask at entity level
-        # DON'T pass period - use default_calculation_period
         entity_count = len(sim.calculate(f"{target_entity}_id").values)
         entity_mask = np.ones(entity_count, dtype=bool)
         
@@ -297,21 +298,12 @@ class GeoStackingMatrixBuilder:
                     if parsed_val.is_integer():
                         parsed_val = int(parsed_val)
                 except ValueError:
-                    # CRITICAL: Database stores booleans as strings "True"/"False"
-                    # but PolicyEngine variables use actual Python booleans.
-                    # Without this conversion, constraints like medicaid_enrolled == "True"
-                    # will silently fail (always return empty masks)
                     if val == "True":
                         parsed_val = True
                     elif val == "False":
                         parsed_val = False
                     else:
                         parsed_val = val
-                    
-                    # TODO: Fix database - FIPS 39 (Ohio) incorrectly used for 
-                    # North Carolina (should be 37) in multiple ETL files:
-                    # etl_medicaid.py, etl_snap.py, etl_irs_soi.py
-                    # This affects all demographic strata for NC
                 
                 # Apply operation using standardized operators from database
                 if op == '==':
@@ -333,7 +325,7 @@ class GeoStackingMatrixBuilder:
                 # Map to target entity if needed
                 if constraint_entity != target_entity:
                     mask = sim.map_result(mask, constraint_entity, target_entity)
-                    mask = mask.astype(bool)  # Ensure mapped result is also boolean
+                    mask = mask.astype(bool)
                 
                 # Combine with existing mask
                 entity_mask = entity_mask & mask
@@ -353,19 +345,21 @@ class GeoStackingMatrixBuilder:
             household_values = sim.map_result(masked_values, target_entity, "household")
         else:
             household_values = masked_values
-            
-        return household_values
-    
-    def build_matrix_for_geography(self, geographic_level: str, 
-                                  geographic_id: str, 
-                                  sim=None) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """
-        Build calibration matrix for any geographic level.
         
-        Args:
-            geographic_level: 'state' or 'congressional_district'
-            geographic_id: state_fips or congressional_district_geoid
-            sim: Microsimulation instance
+        # Return sparse representation
+        nonzero_indices = np.nonzero(household_values)[0]
+        nonzero_values = household_values[nonzero_indices]
+        
+        return nonzero_indices, nonzero_values
+    
+    def build_matrix_for_geography_sparse(self, geographic_level: str, 
+                                         geographic_id: str, 
+                                         sim=None) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
+        """
+        Build sparse calibration matrix for any geographic level.
+        
+        Returns:
+            Tuple of (targets_df, sparse_matrix, household_ids)
         """
         # Get the geographic stratum ID
         if geographic_level == 'state':
@@ -405,153 +399,53 @@ class GeoStackingMatrixBuilder:
                 'active': target['active'],
                 'tolerance': target['tolerance'],
                 'stratum_id': target['stratum_id'],
-                'stratum_group_id': 'national_hardcoded',  # Special marker for national hardcoded
+                'stratum_group_id': 'national_hardcoded',
                 'geographic_level': 'national',
-                'geographic_id': 'US',  # National targets apply to entire US, not specific geography
+                'geographic_id': 'US',
                 'description': f"{target['variable']}_national"
             })
         
-        # Process age targets
+        # Process demographic targets (similar to original but simplified)
         processed_strata = set()
-        for stratum_id in age_targets['stratum_id'].unique():
-            if stratum_id in processed_strata:
-                continue
-            processed_strata.add(stratum_id)
-            
-            stratum_targets = age_targets[age_targets['stratum_id'] == stratum_id]
-            target = stratum_targets.iloc[0]
-            
-            # Build description from constraints
-            constraints = stratum_targets[['constraint_variable', 'operation', 'constraint_value']].drop_duplicates()
-            desc_parts = [target['variable']]
-            for _, c in constraints.iterrows():
-                if c['constraint_variable'] == 'age':
-                    desc_parts.append(f"age{c['operation']}{c['constraint_value']}")
-            
-            all_targets.append({
-                'target_id': target['target_id'],
-                'variable': target['variable'],
-                'value': target['value'],
-                'active': target['active'],
-                'tolerance': target['tolerance'],
-                'stratum_id': target['stratum_id'],
-                'stratum_group_id': target['stratum_group_id'],  # Preserve the demographic group ID
-                'geographic_level': geographic_level,
-                'geographic_id': geographic_id,
-                'description': '_'.join(desc_parts)
-            })
         
-        # Process AGI distribution targets (person_count by AGI bracket)
-        for stratum_id in agi_distribution_targets['stratum_id'].unique():
-            if stratum_id in processed_strata:
-                continue
-            processed_strata.add(stratum_id)
-            
-            stratum_targets = agi_distribution_targets[agi_distribution_targets['stratum_id'] == stratum_id]
-            target = stratum_targets.iloc[0]
-            
-            # Build description from constraints
-            constraints = stratum_targets[['constraint_variable', 'operation', 'constraint_value']].drop_duplicates()
-            desc_parts = [target['variable']]
-            for _, c in constraints.iterrows():
-                if c['constraint_variable'] == 'adjusted_gross_income':
-                    desc_parts.append(f"agi{c['operation']}{c['constraint_value']}")
-            
-            all_targets.append({
-                'target_id': target['target_id'],
-                'variable': target['variable'],
-                'value': target['value'],
-                'active': target['active'],
-                'tolerance': target['tolerance'],
-                'stratum_id': target['stratum_id'],
-                'stratum_group_id': target['stratum_group_id'],  # Will be 3
-                'geographic_level': geographic_level,
-                'geographic_id': geographic_id,
-                'description': '_'.join(desc_parts)
-            })
-        
-        # Process SNAP targets (two variables per stratum: household_count and snap dollars)
-        for stratum_id in snap_targets['stratum_id'].unique():
-            if stratum_id in processed_strata:
-                continue
-            processed_strata.add(stratum_id)
-            
-            stratum_targets = snap_targets[snap_targets['stratum_id'] == stratum_id]
-            
-            # SNAP has two targets per stratum: household_count and snap (dollars)
-            for _, target in stratum_targets.iterrows():
-                # Better naming: household_count stays as is, snap becomes snap_benefits
-                if target['variable'] == 'snap':
-                    desc = 'snap_benefits'
-                else:
-                    desc = f"{target['variable']}_snap_recipients"
+        # Helper function to process target groups
+        def process_target_group(targets_df, group_name):
+            for stratum_id in targets_df['stratum_id'].unique():
+                if stratum_id in processed_strata:
+                    continue
+                processed_strata.add(stratum_id)
                 
-                all_targets.append({
-                    'target_id': target['target_id'],
-                    'variable': target['variable'],
-                    'value': target['value'],
-                    'active': target['active'],
-                    'tolerance': target['tolerance'],
-                    'stratum_id': target['stratum_id'],
-                    'stratum_group_id': target['stratum_group_id'],  # Will be 4 for SNAP
-                    'geographic_level': geographic_level,
-                    'geographic_id': geographic_id,
-                    'description': desc
-                })
-        
-        # Process Medicaid targets (simpler since they're not histograms)
-        for stratum_id in medicaid_targets['stratum_id'].unique():
-            if stratum_id in processed_strata:
-                continue
-            processed_strata.add(stratum_id)
-            
-            stratum_targets = medicaid_targets[medicaid_targets['stratum_id'] == stratum_id]
-            target = stratum_targets.iloc[0]
-            
-            all_targets.append({
-                'target_id': target['target_id'],
-                'variable': target['variable'],
-                'value': target['value'],
-                'active': target['active'],
-                'tolerance': target['tolerance'],
-                'stratum_id': target['stratum_id'],
-                'stratum_group_id': target['stratum_group_id'],  # Will be 5 for Medicaid
-                'geographic_level': geographic_level,
-                'geographic_id': geographic_id,
-                'description': f"{target['variable']}_medicaid_enrolled"
-            })
-        
-        # Process EITC targets (4 categories by qualifying children)
-        for stratum_id in eitc_targets['stratum_id'].unique():
-            if stratum_id in processed_strata:
-                continue
-            processed_strata.add(stratum_id)
-            
-            stratum_targets = eitc_targets[eitc_targets['stratum_id'] == stratum_id]
-            
-            # EITC has one target per stratum (the dollar amount)
-            for _, target in stratum_targets.iterrows():
-                # Build description from constraints to identify the category
-                constraints = stratum_targets[['constraint_variable', 'operation', 'constraint_value']].drop_duplicates()
-                desc_parts = ['eitc']
-                for _, c in constraints.iterrows():
-                    if c['constraint_variable'] == 'eitc_child_count':
-                        desc_parts.append(f"children_{c['constraint_value']}")
+                stratum_targets = targets_df[targets_df['stratum_id'] == stratum_id]
                 
-                all_targets.append({
-                    'target_id': target['target_id'],
-                    'variable': target['variable'],
-                    'value': target['value'],
-                    'active': target['active'],
-                    'tolerance': target['tolerance'],
-                    'stratum_id': target['stratum_id'],
-                    'stratum_group_id': target['stratum_group_id'],  # Will be 6
-                    'geographic_level': geographic_level,
-                    'geographic_id': geographic_id,
-                    'description': '_'.join(desc_parts) if len(desc_parts) > 1 else 'eitc'
-                })
+                # Handle multiple targets per stratum (e.g., SNAP has household_count and snap)
+                for _, target in stratum_targets.iterrows():
+                    # Build description from constraints
+                    constraints = stratum_targets[['constraint_variable', 'operation', 'constraint_value']].drop_duplicates()
+                    desc_parts = [target['variable']]
+                    for _, c in constraints.iterrows():
+                        if c['constraint_variable'] in ['age', 'adjusted_gross_income', 'eitc_child_count']:
+                            desc_parts.append(f"{c['constraint_variable']}{c['operation']}{c['constraint_value']}")
+                    
+                    all_targets.append({
+                        'target_id': target['target_id'],
+                        'variable': target['variable'],
+                        'value': target['value'],
+                        'active': target['active'],
+                        'tolerance': target['tolerance'],
+                        'stratum_id': target['stratum_id'],
+                        'stratum_group_id': target['stratum_group_id'],
+                        'geographic_level': geographic_level,
+                        'geographic_id': geographic_id,
+                        'description': '_'.join(desc_parts)
+                    })
         
-        # Process IRS scalar targets (each gets its own group)
+        process_target_group(age_targets, "age")
+        process_target_group(agi_distribution_targets, "agi_distribution")
+        process_target_group(snap_targets, "snap")
+        process_target_group(medicaid_targets, "medicaid")
+        process_target_group(eitc_targets, "eitc")
+        
+        # Process IRS scalar targets
         for _, target in irs_scalar_targets.iterrows():
             all_targets.append({
                 'target_id': target['target_id'],
@@ -560,13 +454,13 @@ class GeoStackingMatrixBuilder:
                 'active': target.get('active', True),
                 'tolerance': target.get('tolerance', 0.05),
                 'stratum_id': target['stratum_id'],
-                'stratum_group_id': f'irs_scalar_{target["variable"]}',  # Each IRS scalar is its own group
+                'stratum_group_id': f'irs_scalar_{target["variable"]}',
                 'geographic_level': geographic_level,
                 'geographic_id': geographic_id,
                 'description': f"{target['variable']}_{geographic_level}"
             })
         
-        # Process AGI total target (separate from distribution)
+        # Process AGI total target
         for _, target in agi_total_target.iterrows():
             all_targets.append({
                 'target_id': target['target_id'],
@@ -575,7 +469,7 @@ class GeoStackingMatrixBuilder:
                 'active': target.get('active', True),
                 'tolerance': target.get('tolerance', 0.05),
                 'stratum_id': target['stratum_id'],
-                'stratum_group_id': 'agi_total_amount',  # Separate group from AGI distribution
+                'stratum_group_id': 'agi_total_amount',
                 'geographic_level': geographic_level,
                 'geographic_id': geographic_id,
                 'description': f"agi_total_{geographic_level}"
@@ -583,51 +477,48 @@ class GeoStackingMatrixBuilder:
         
         targets_df = pd.DataFrame(all_targets)
         
-        # Build matrix if sim provided
+        # Build sparse matrix if sim provided
         if sim is not None:
-            # Use whatever period the sim is at (typically 2024 for the enhanced CPS)
             household_ids = sim.calculate("household_id").values
             n_households = len(household_ids)
+            n_targets = len(targets_df)
             
-            # Initialize matrix (targets x households)
-            matrix_data = []
+            # Use LIL matrix for efficient row-by-row construction
+            matrix = sparse.lil_matrix((n_targets, n_households), dtype=np.float32)
             
-            for _, target in targets_df.iterrows():
+            for i, (_, target) in enumerate(targets_df.iterrows()):
                 # Get constraints for this stratum
                 constraints = self.get_constraints_for_stratum(target['stratum_id'])
                 
-                # Apply constraints and get household values
-                household_values = self.apply_constraints_to_sim(
+                # Get sparse representation of household values
+                nonzero_indices, nonzero_values = self.apply_constraints_to_sim_sparse(
                     sim, constraints, target['variable']
                 )
                 
-                matrix_data.append(household_values)
+                # Set the sparse row
+                if len(nonzero_indices) > 0:
+                    matrix[i, nonzero_indices] = nonzero_values
             
-            # Create matrix DataFrame (targets as rows, households as columns)
-            matrix_df = pd.DataFrame(
-                data=np.array(matrix_data),
-                index=targets_df['target_id'].values,
-                columns=household_ids
-            )
+            # Convert to CSR for efficient operations
+            matrix = matrix.tocsr()
             
-            logger.info(f"Created matrix for {geographic_level} {geographic_id}: shape {matrix_df.shape}")
-            return targets_df, matrix_df
+            logger.info(f"Created sparse matrix for {geographic_level} {geographic_id}: shape {matrix.shape}, nnz={matrix.nnz}")
+            return targets_df, matrix, household_ids.tolist()
         
-        return targets_df, None
+        return targets_df, None, []
     
-    def build_stacked_matrix(self, geographic_level: str, 
-                           geographic_ids: List[str], 
-                           sim=None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def build_stacked_matrix_sparse(self, geographic_level: str, 
+                                   geographic_ids: List[str], 
+                                   sim=None) -> Tuple[pd.DataFrame, sparse.csr_matrix, Dict[str, List[str]]]:
         """
-        Build stacked calibration matrix for multiple geographic areas.
+        Build stacked sparse calibration matrix for multiple geographic areas.
         
-        Args:
-            geographic_level: 'state' or 'congressional_district'
-            geographic_ids: List of state_fips or cd_geoids
-            sim: Microsimulation instance
+        Returns:
+            Tuple of (targets_df, sparse_matrix, household_id_mapping)
         """
         all_targets = []
-        all_matrices = []
+        geo_matrices = []
+        household_id_mapping = {}
         
         # First, get national targets once (they apply to all geographic copies)
         national_targets = self.get_national_hardcoded_targets()
@@ -640,150 +531,128 @@ class GeoStackingMatrixBuilder:
                 'active': target['active'],
                 'tolerance': target['tolerance'],
                 'stratum_id': target['stratum_id'],
-                'stratum_group_id': 'national_hardcoded',  # Preserve the special marker
+                'stratum_group_id': 'national_hardcoded',
                 'geographic_level': 'national',
                 'geographic_id': 'US',
                 'description': f"{target['variable']}_national",
                 'stacked_target_id': f"{target['target_id']}_national"
             })
         
-        # Add national targets to the list once
-        if national_targets_list:
-            all_targets.append(pd.DataFrame(national_targets_list))
-        
-        # Now process each geography for its specific targets
+        # Build matrix for each geography
+        national_matrix_parts = []
         for i, geo_id in enumerate(geographic_ids):
             logger.info(f"Processing {geographic_level} {geo_id} ({i+1}/{len(geographic_ids)})")
             
-            # Build matrix but we'll modify to exclude national targets from duplication
-            targets_df, matrix_df = self.build_matrix_for_geography(
+            # Build matrix for this geography
+            targets_df, matrix, household_ids = self.build_matrix_for_geography_sparse(
                 geographic_level, geo_id, sim
             )
             
-            # Filter out national targets (we already added them once)
-            geo_specific_targets = targets_df[targets_df['geographic_id'] != 'US'].copy()
-            
-            # Add geographic index to target IDs to make them unique
-            prefix = "state" if geographic_level == "state" else "cd"
-            geo_specific_targets['stacked_target_id'] = (
-                geo_specific_targets['target_id'].astype(str) + f"_{prefix}{geo_id}"
-            )
-            
-            if matrix_df is not None:
-                # Add geographic index to household IDs
-                matrix_df.columns = [f"{hh_id}_{prefix}{geo_id}" for hh_id in matrix_df.columns]
+            if matrix is not None:
+                # Separate national and geo-specific targets
+                national_mask = targets_df['geographic_id'] == 'US'
+                geo_mask = ~national_mask
                 
-                # For national targets, we need to keep their rows
-                # For geo-specific targets, we need to update the index
-                national_rows = targets_df[targets_df['geographic_id'] == 'US']
-                if not national_rows.empty:
-                    # Extract national target rows from matrix
-                    national_matrix = matrix_df.iloc[:len(national_rows)].copy()
-                    national_matrix.index = [f"{tid}_national" for tid in national_rows['target_id']]
-                    
-                    # Extract geo-specific rows
-                    geo_matrix = matrix_df.iloc[len(national_rows):].copy()
-                    geo_matrix.index = geo_specific_targets['stacked_target_id'].values
-                    
-                    # Combine them
-                    matrix_df = pd.concat([national_matrix, geo_matrix])
-                else:
-                    matrix_df.index = geo_specific_targets['stacked_target_id'].values
-                    
-                all_matrices.append(matrix_df)
-            
-            all_targets.append(geo_specific_targets)
+                # Extract submatrices - convert pandas Series to numpy array for indexing
+                if national_mask.any():
+                    national_part = matrix[national_mask.values, :]
+                    national_matrix_parts.append(national_part)
+                
+                if geo_mask.any():
+                    geo_part = matrix[geo_mask.values, :]
+                    geo_matrices.append(geo_part)
+                
+                # Add geo-specific targets
+                geo_specific_targets = targets_df[geo_mask].copy()
+                prefix = "state" if geographic_level == "state" else "cd"
+                geo_specific_targets['stacked_target_id'] = (
+                    geo_specific_targets['target_id'].astype(str) + f"_{prefix}{geo_id}"
+                )
+                all_targets.append(geo_specific_targets)
+                
+                # Store household ID mapping
+                household_id_mapping[f"{prefix}{geo_id}"] = [
+                    f"{hh_id}_{prefix}{geo_id}" for hh_id in household_ids
+                ]
+        
+        # Add national targets to the list once
+        if national_targets_list:
+            all_targets.insert(0, pd.DataFrame(national_targets_list))
         
         # Combine all targets
         combined_targets = pd.concat(all_targets, ignore_index=True)
         
         # Stack matrices if provided
-        if all_matrices:
-            # Get all unique household columns
-            all_columns = []
-            for matrix in all_matrices:
-                all_columns.extend(matrix.columns.tolist())
+        if geo_matrices:
+            # Stack national targets (horizontally concatenate across all geographies)
+            if national_matrix_parts:
+                stacked_national = sparse.hstack(national_matrix_parts)
+            else:
+                stacked_national = None
             
-            # Create combined matrix with proper alignment
-            combined_matrix = pd.DataFrame(
-                index=combined_targets['stacked_target_id'].values,
-                columns=all_columns,
-                dtype=float
-            ).fillna(0.0)
+            # Stack geo-specific targets (block diagonal)
+            stacked_geo = sparse.block_diag(geo_matrices)
             
-            # Fill in values from each geographic area's matrix
-            for matrix in all_matrices:
-                # Use the intersection of indices to avoid mismatches
-                common_targets = combined_matrix.index.intersection(matrix.index)
-                for target_id in common_targets:
-                    # Get the columns for this matrix
-                    cols = matrix.columns
-                    # Set the values - ensure we're setting the right shape
-                    combined_matrix.loc[target_id, cols] = matrix.loc[target_id, cols].values
+            # Combine national and geo-specific
+            if stacked_national is not None:
+                combined_matrix = sparse.vstack([stacked_national, stacked_geo])
+            else:
+                combined_matrix = stacked_geo
             
-            logger.info(f"Created stacked matrix: shape {combined_matrix.shape}")
-            return combined_targets, combined_matrix
+            # Convert to CSR for efficiency
+            combined_matrix = combined_matrix.tocsr()
+            
+            logger.info(f"Created stacked sparse matrix: shape {combined_matrix.shape}, nnz={combined_matrix.nnz}")
+            return combined_targets, combined_matrix, household_id_mapping
         
-        return combined_targets, None
+        return combined_targets, None, household_id_mapping
 
 
 def main():
-    """Example usage for California and congressional districts."""
+    """Example usage for California and North Carolina."""
     from policyengine_us import Microsimulation
     
     # Database path
     db_uri = "sqlite:////home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
     
-    # Initialize builder - using 2024 to match the CPS data
-    # NOTE: Targets come from various years (2022, 2023, 2024) but we use what's available
-    builder = GeoStackingMatrixBuilder(db_uri, time_period=2024)
+    # Initialize sparse builder
+    builder = SparseGeoStackingMatrixBuilder(db_uri, time_period=2024)
     
     # Create microsimulation with 2024 data
     print("Loading microsimulation...")
     sim = Microsimulation(dataset="hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5")
     sim.build_from_dataset()
     
-    # Build matrix for California
-    print("\nBuilding matrix for California (FIPS 6)...")
-    targets_df, matrix_df = builder.build_matrix_for_geography('state', '6', sim)
+    # Test single state
+    print("\nBuilding sparse matrix for California (FIPS 6)...")
+    targets_df, matrix, household_ids = builder.build_matrix_for_geography_sparse('state', '6', sim)
     
     print("\nTarget Summary:")
     print(f"Total targets: {len(targets_df)}")
-    print(f"National targets: {(targets_df['geographic_level'] == 'national').sum()}")
-    print(f"State age targets: {(targets_df['geographic_level'] == 'state').sum()}")
-    print(f"Active targets: {targets_df['active'].sum()}")
+    print(f"Matrix shape: {matrix.shape}")
+    print(f"Matrix sparsity: {matrix.nnz} non-zero elements ({100*matrix.nnz/(matrix.shape[0]*matrix.shape[1]):.4f}%)")
+    print(f"Memory usage: {matrix.data.nbytes + matrix.indices.nbytes + matrix.indptr.nbytes} bytes")
     
-    if matrix_df is not None:
-        print(f"\nMatrix shape: {matrix_df.shape}")
-        print(f"Matrix has {matrix_df.shape[0]} targets (rows) x {matrix_df.shape[1]} households (columns)")
-        
-        # Create our own weights for validation - don't use dataset weights
-        # as we'll be reweighting anyway
-        n_households = matrix_df.shape[1]
-        ca_population = 39_000_000  # Approximate California population
-        uniform_weights = np.ones(n_households) * (ca_population / n_households)
-        
-        estimates = matrix_df.values @ uniform_weights
-        
-        print("\nValidation with uniform weights scaled to CA population:")
-        print("(Note: These won't match until proper calibration/reweighting)")
-        for i in range(min(10, len(targets_df))):
-            target = targets_df.iloc[i]
-            estimate = estimates[i]
-            ratio = estimate / target['value'] if target['value'] > 0 else 0
-            print(f"  {target['description']}: target={target['value']:,.0f}, estimate={estimate:,.0f}, ratio={ratio:.2f}")
+    # Test stacking multiple states
+    print("\n" + "="*70)
+    print("Testing multi-state stacking: California (6) and North Carolina (37)")
+    print("="*70)
     
-    # Example: Stack California and Texas
-    # TODO: Fix stacking implementation - currently has DataFrame indexing issues
-    print("\n" + "="*50)
-    print("Stacking multiple states is implemented but needs debugging.")
-    print("The single-state matrix creation is working correctly!")
+    targets_df, matrix, hh_mapping = builder.build_stacked_matrix_sparse(
+        'state', 
+        ['6', '37'],
+        sim
+    )
     
-    # Show what the stacked matrix would look like
-    print("\nWhen stacking works, it will create:")
-    print("- For 2 states: ~36 targets x ~42,502 household columns")
-    print("- For all 51 states: ~918 targets x ~1,083,801 household columns")
-    print("- Matrix will be very sparse with block structure")
+    if matrix is not None:
+        print(f"\nStacked matrix shape: {matrix.shape}")
+        print(f"Stacked matrix sparsity: {matrix.nnz} non-zero elements ({100*matrix.nnz/(matrix.shape[0]*matrix.shape[1]):.4f}%)")
+        print(f"Memory usage: {matrix.data.nbytes + matrix.indices.nbytes + matrix.indptr.nbytes} bytes")
+        
+        # Compare to dense matrix memory
+        dense_memory = matrix.shape[0] * matrix.shape[1] * 4  # 4 bytes per float32
+        print(f"Dense matrix would use: {dense_memory} bytes")
+        print(f"Memory savings: {100*(1 - (matrix.data.nbytes + matrix.indices.nbytes + matrix.indptr.nbytes)/dense_memory):.2f}%")
 
 
 if __name__ == "__main__":

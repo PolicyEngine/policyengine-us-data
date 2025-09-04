@@ -66,6 +66,15 @@ def make_records(
     breakdown_col: Optional[str] = None,
     multiplier: int = 1_000,
 ):
+    """
+    Create standardized records from IRS SOI data.
+    
+    IMPORTANT DATA INCONSISTENCY (discovered 2024-12):
+    The IRS SOI documentation states "money amounts are reported in thousands of dollars."
+    This is true for almost all columns EXCEPT A59664 (EITC with 3+ children amount),
+    which is already in dollars, not thousands. This appears to be a data quality issue
+    in the IRS SOI file itself. We handle this special case below.
+    """
     df = df.rename(
         {count_col: "tax_unit_count", amount_col: amount_name}, axis=1
     ).copy()
@@ -76,7 +85,25 @@ def make_records(
 
     rec_counts = create_records(df, breakdown_col, "tax_unit_count")
     rec_amounts = create_records(df, breakdown_col, amount_name)
-    rec_amounts["target_value"] *= multiplier  # Only the amounts get * 1000
+    
+    # SPECIAL CASE: A59664 (EITC with 3+ children) is already in dollars, not thousands!
+    # All other EITC amounts (A59661-A59663) are correctly in thousands.
+    # This was verified by checking that A59660 (total EITC) equals the sum only when
+    # A59664 is treated as already being in dollars.
+    if amount_col == 'A59664':
+        # Check if IRS has fixed the data inconsistency
+        # If values are < 10 million, they're likely already in thousands (fixed)
+        max_value = rec_amounts["target_value"].max()
+        if max_value < 10_000_000:
+            print(f"WARNING: A59664 values appear to be in thousands (max={max_value:,.0f})")
+            print("The IRS may have fixed their data inconsistency.")
+            print("Please verify and remove the special case handling if confirmed.")
+            # Don't apply the fix - data appears to already be in thousands
+        else:
+            # Convert from dollars to thousands to match other columns
+            rec_amounts["target_value"] /= 1_000
+    
+    rec_amounts["target_value"] *= multiplier  # Apply standard multiplier
     # Note: tax_unit_count is the correct variable - the stratum constraints
     # indicate what is being counted (e.g., eitc > 0 for EITC recipients)
 
@@ -156,7 +183,33 @@ def extract_soi_data() -> pd.DataFrame:
     In the file below, "22" is 2022, "in" is individual returns,
     "cd" is congressional districts
     """
-    return pd.read_csv("https://www.irs.gov/pub/irs-soi/22incd.csv")
+    df = pd.read_csv("https://www.irs.gov/pub/irs-soi/22incd.csv")
+    
+    # Validate EITC data consistency (check if IRS fixed the A59664 issue)
+    us_data = df[(df['STATE'] == 'US') & (df['agi_stub'] == 0)]
+    if not us_data.empty and all(col in us_data.columns for col in ['A59660', 'A59661', 'A59662', 'A59663', 'A59664']):
+        total_eitc = us_data['A59660'].values[0]
+        sum_as_thousands = (us_data['A59661'].values[0] + 
+                           us_data['A59662'].values[0] + 
+                           us_data['A59663'].values[0] + 
+                           us_data['A59664'].values[0])
+        sum_mixed = (us_data['A59661'].values[0] + 
+                    us_data['A59662'].values[0] + 
+                    us_data['A59663'].values[0] + 
+                    us_data['A59664'].values[0] / 1000)
+        
+        # Check which interpretation matches the total
+        if abs(total_eitc - sum_as_thousands) < 100:  # Within 100K (thousands)
+            print("=" * 60)
+            print("ALERT: IRS may have fixed the A59664 data inconsistency!")
+            print(f"Total EITC (A59660): {total_eitc:,.0f}")
+            print(f"Sum treating A59664 as thousands: {sum_as_thousands:,.0f}")
+            print("These now match! Please verify and update the code.")
+            print("=" * 60)
+        elif abs(total_eitc - sum_mixed) < 100:
+            print("Note: A59664 still has the units inconsistency (in dollars, not thousands)")
+    
+    return df
 
 
 def transform_soi_data(raw_df):
@@ -165,7 +218,7 @@ def transform_soi_data(raw_df):
         dict(code="59661", name="eitc", breakdown=("eitc_child_count", 0)),
         dict(code="59662", name="eitc", breakdown=("eitc_child_count", 1)),
         dict(code="59663", name="eitc", breakdown=("eitc_child_count", 2)),
-        dict(code="59664", name="eitc", breakdown=("eitc_child_count", "3+")),
+        dict(code="59664", name="eitc", breakdown=("eitc_child_count", "3+")),  # Doc says "three" but data shows this is 3+
         dict(
             code="04475",
             name="qualified_business_income_deduction",

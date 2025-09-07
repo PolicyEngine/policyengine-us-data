@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""
-Calibrate household weights for multiple states using L0 sparse optimization.
-
-This version uses sparse matrices throughout the entire pipeline for memory efficiency.
-"""
-
 from pathlib import Path
 import os
 import tempfile
@@ -109,37 +102,32 @@ states_to_calibrate = [
 print(f"Total jurisdictions: {len(states_to_calibrate)}")
 print("=" * 70)
 
-targets_df, sparse_matrix, household_id_mapping = builder.build_stacked_matrix_sparse(
+targets_df, X_sparse, household_id_mapping = builder.build_stacked_matrix_sparse(
     'state', 
     states_to_calibrate,
     sim
 )
 
 print(f"\nSparse Matrix Statistics:")
-print(f"- Shape: {sparse_matrix.shape}")
-print(f"- Non-zero elements: {sparse_matrix.nnz:,}")
-print(f"- Percent non-zero: {100 * sparse_matrix.nnz / (sparse_matrix.shape[0] * sparse_matrix.shape[1]):.4f}%")
-print(f"- Memory usage: {(sparse_matrix.data.nbytes + sparse_matrix.indices.nbytes + sparse_matrix.indptr.nbytes) / 1024**2:.2f} MB")
+print(f"- Shape: {X_sparse.shape}")
+print(f"- Non-zero elements: {X_sparse.nnz:,}")
+print(f"- Percent non-zero: {100 * X_sparse.nnz / (X_sparse.shape[0] * X_sparse.shape[1]):.4f}%")
+print(f"- Memory usage: {(X_sparse.data.nbytes + X_sparse.indices.nbytes + X_sparse.indptr.nbytes) / 1024**2:.2f} MB")
 
 # Compare to dense matrix memory
-dense_memory = sparse_matrix.shape[0] * sparse_matrix.shape[1] * 4 / 1024**2  # 4 bytes per float32, in MB
+dense_memory = X_sparse.shape[0] * X_sparse.shape[1] * 4 / 1024**2  # 4 bytes per float32, in MB
 print(f"- Dense matrix would use: {dense_memory:.2f} MB")
-print(f"- Memory savings: {100*(1 - (sparse_matrix.data.nbytes + sparse_matrix.indices.nbytes + sparse_matrix.indptr.nbytes)/(dense_memory * 1024**2)):.2f}%")
+print(f"- Memory savings: {100*(1 - (X_sparse.data.nbytes + X_sparse.indices.nbytes + X_sparse.indptr.nbytes)/(dense_memory * 1024**2)):.2f}%")
 
 
-# Calibrate using our L0 package
+# Calibrate using our L0 package ---------------
    
-# The sparse matrix is already in CSR format
-X_sparse = sparse_matrix
-
 # TRAINING PARAMETERS
 EPOCHS_PER_TEMPERATURE = 50  # Number of epochs for each temperature stage
 VERBOSE_FREQ = 10  # How often to print training updates
 
-# State-aware initialization: calculate per-household keep probabilities
-# based on state population sizes
+# Initialize weights based on state population sizes
     
-# Calculate state populations from targets
 state_populations = {}
 for state_fips in states_to_calibrate:
     state_age_targets = targets_df[
@@ -154,37 +142,67 @@ for state_fips in states_to_calibrate:
 # Find min population for normalization (DC is smallest)
 min_pop = min(state_populations.values())
 
-# Create array of keep probabilities based on state population
+# Create arrays for both keep probabilities and initial weights
 keep_probs = np.zeros(X_sparse.shape[1])
+init_weights = np.zeros(X_sparse.shape[1])
 cumulative_idx = 0
+
+# Calculate weights for ALL states (not just a subset!)
 for state_key, household_list in household_id_mapping.items():
     state_fips = state_key.replace('state', '')
     n_households = len(household_list)
+    state_pop = state_populations[state_fips]
     
-    if state_fips in state_populations:
-        # Scale initial keep probability by population
-        # Larger states get higher initial keep probability
-        pop_ratio = state_populations[state_fips] / min_pop
-        # Use sqrt to avoid too extreme differences
-        adjusted_keep_prob = min(0.15, 0.02 * np.sqrt(pop_ratio))
-        keep_probs[cumulative_idx:cumulative_idx + n_households] = adjusted_keep_prob
-    else:
-        # Default for states not in population dict
-        keep_probs[cumulative_idx:cumulative_idx + n_households] = 0.05
+    # Scale initial keep probability by population
+    # Larger states get higher initial keep probability
+    pop_ratio = state_pop / min_pop
+    # Use sqrt to avoid too extreme differences
+    adjusted_keep_prob = min(0.15, 0.02 * np.sqrt(pop_ratio))
+    keep_probs[cumulative_idx:cumulative_idx + n_households] = adjusted_keep_prob
+    
+    # Calculate initial weight based on population and expected sparsity
+    # Base weight: population / n_households gives weight if all households were used
+    base_weight = state_pop / n_households
+    
+    # Adjust for expected sparsity: if only keep_prob fraction will be active,
+    # those that remain need higher weights
+    # But don't fully compensate (use sqrt) to avoid extreme initial values
+    sparsity_adjustment = 1.0 / np.sqrt(adjusted_keep_prob)
+    
+    # Set initial weight with some reasonable bounds
+    initial_weight = base_weight * sparsity_adjustment
+    initial_weight = np.clip(initial_weight, 100, 100000)  # Reasonable bounds
+    
+    init_weights[cumulative_idx:cumulative_idx + n_households] = initial_weight
     
     cumulative_idx += n_households
 
-print("State-aware keep probabilities calculated.")
+print("State-aware keep probabilities and initial weights calculated.")
+print(f"Initial weight range: {init_weights.min():.0f} to {init_weights.max():.0f}")
+print(f"Mean initial weight: {init_weights.mean():.0f}")
 
-# Create model with per-feature keep probabilities
+# Show a few example states for verification (just for display, all states were processed above)
+print("\nExample initial weights by state:")
+cumulative_idx = 0
+states_to_show = ['6', '37', '48', '11', '2']  # CA, NC, TX, DC, AK - just examples
+for state_key, household_list in household_id_mapping.items():
+    state_fips = state_key.replace('state', '')
+    n_households = len(household_list)
+    if state_fips in states_to_show:
+        state_weights = init_weights[cumulative_idx:cumulative_idx + n_households]
+        print(f"  State {state_fips:>2}: pop={state_populations[state_fips]:>10,.0f}, "
+              f"weight={state_weights[0]:>7.0f}, keep_prob={keep_probs[cumulative_idx]:.3f}")
+    cumulative_idx += n_households
+
+# Create model with per-feature keep probabilities and weights
 model = SparseCalibrationWeights(
     n_features=X_sparse.shape[1],
-    beta=2/3,  # We'll end up overriding this at the time of fitting
+    beta=2/3,  # From paper. We have the option to override it during fitting 
     gamma=-0.1,  # Keep as in paper
     zeta=1.1,    # Keep as in paper
     init_keep_prob=keep_probs,  # Per-household keep probabilities based on state
-    init_weights=1.0,  # Start all weights at 1.0
-    weight_jitter_sd=0.5,  # Add jitter at fit() time to break symmetry
+    init_weights=init_weights,  # Population-based initial weights (ALL states, not just examples!)
+    log_weight_jitter_sd=0.05,  # Small jitter to log weights just to break symmetry
 )
 
 # Create automatic target groups
@@ -195,52 +213,16 @@ print(f"Total groups: {len(np.unique(target_groups))}")
 for info in group_info:
     print(f"  {info}")
 
-
-print("\nUsing multi-stage training with temperature annealing...")
 start_time = time.perf_counter()
 
-# Stage 1: Warm start with higher temperature (softer decisions)
-print(f"\nStage 1: Warm-up (beta=1.5, {EPOCHS_PER_TEMPERATURE} epochs)")
-model.beta = 1.5
+#model.beta = 1.5  # Warm start, if we want
 model.fit(
     M=X_sparse,
     y=targets_df.value.values,
     target_groups=target_groups,
-    lambda_l0=0.5e-7,  # Very gentle sparsity at first
+    lambda_l0=1.0e-7,  # Note that we can change this as we go, start gentle & go higher
     lambda_l2=0,
-    lr=0.1,  # Lower learning rate for warm-up
-    epochs=EPOCHS_PER_TEMPERATURE,
-    loss_type="relative",
-    verbose=True,
-    verbose_freq=VERBOSE_FREQ,
-)
-
-# Stage 2: Intermediate temperature
-print(f"\nStage 2: Cooling (beta=1.0, {EPOCHS_PER_TEMPERATURE} epochs)")
-model.beta = 1.0
-model.fit(
-    M=X_sparse,
-    y=targets_df.value.values,
-    target_groups=target_groups,
-    lambda_l0=0.8e-7,  # Increase sparsity pressure
-    lambda_l2=0,
-    lr=0.15,
-    epochs=EPOCHS_PER_TEMPERATURE,
-    loss_type="relative",
-    verbose=True,
-    verbose_freq=VERBOSE_FREQ,
-)
-
-# Stage 3: Final temperature (as in paper)
-print(f"\nStage 3: Final (beta=0.66, {EPOCHS_PER_TEMPERATURE} epochs)")
-model.beta = 0.66
-model.fit(
-    M=X_sparse,
-    y=targets_df.value.values,
-    target_groups=target_groups,
-    lambda_l0=1.0e-7,  # Final sparsity level
-    lambda_l2=0,
-    lr=0.2,  # Can be more aggressive now
+    lr=0.2,  # Lower learning rate for warm-up
     epochs=EPOCHS_PER_TEMPERATURE,
     loss_type="relative",
     verbose=True,
@@ -293,7 +275,7 @@ print("COMPUTING PREDICTIONS AND ANALYZING ERRORS")
 print("=" * 70)
 
 # Predictions are simply matrix multiplication: X @ w
-y_pred = sparse_matrix @ w
+y_pred = X_sparse @ w
 y_actual = targets_df['value'].values
 
 # Calculate errors

@@ -312,6 +312,41 @@ model = SparseCalibrationWeights(
 ### Result:
 State-aware initialization is now a first-class feature rather than a workaround. The API clearly separates the two concerns of survey calibration: weight values and sparsity selection.
 
+## Population-Based Weight Initialization (2025-09-07) ✅
+
+### Achievement: Smart Initial Weights Based on State Population
+
+Fixed critical initialization issue where all weights started at 1.0 regardless of state population needs. Now weights initialize based on state characteristics.
+
+### Key Changes:
+
+1. **Population-Proportional Initialization**:
+   - Base weight = state_population / n_households_per_state
+   - Sparsity adjustment = 1/sqrt(keep_probability) to compensate for dropout
+   - Final weight clipped to [100, 100,000] range for stability
+
+2. **Example Initial Weights**:
+   - **Texas** (pop 30.5M): ~20,000 per household
+   - **California** (pop 39M): ~6,400 per household  
+   - **North Carolina** (pop 10.8M): ~2,500 per household
+   - **DC** (pop 679K): ~500 per household
+
+3. **API Clarification**:
+   - Renamed `weight_jitter_sd` → `log_weight_jitter_sd` in L0 package
+   - Makes clear that jitter applies to log-scale weights
+   - Reduced jitter from 0.5 to 0.05 (just enough for symmetry breaking)
+
+### Impact:
+- Optimizer no longer needs to learn massive weight differences from scratch
+- Texas households start at appropriate scale instead of 1.0
+- Should significantly improve convergence and final fit quality
+- Addresses root cause identified in CALIBRATION_DIAGNOSTICS.md
+
+### Files Updated:
+- `calibrate_states_sparse.py` - Implemented smart initialization
+- `/home/baogorek/devl/L0/l0/calibration.py` - API improvement
+- `/home/baogorek/devl/L0/tests/test_calibration.py` - Test updates
+
 ## Next Priority
 
 The system is ready for scaling to production:

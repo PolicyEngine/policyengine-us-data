@@ -47,7 +47,8 @@ model = SparseCalibrationWeights(
     gamma=-0.1,
     zeta=1.1,
     init_keep_prob=0.3,
-    init_weight_scale=0.5,
+    init_weights=1.0,  # Start all weights at 1.0
+    weight_jitter_sd=0.5,  # Add jitter at fit() time to break symmetry
 )
 
 

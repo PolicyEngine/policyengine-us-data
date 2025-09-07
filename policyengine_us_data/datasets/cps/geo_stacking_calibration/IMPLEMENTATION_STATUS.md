@@ -244,6 +244,74 @@ Successfully refactored entire pipeline to build sparse matrices directly, achie
 - 51 states easily fit in 32 GB RAM
 - 436 CDs would fit but take hours to build/optimize
 
+## L0 Calibration API Improvements (2025-09-07) ✅
+
+### Achievement: Cleaner, More Intuitive API for Survey Calibration
+
+Successfully refactored the L0 `SparseCalibrationWeights` class to provide a cleaner separation between calibration weights and sparsity gates, making the API more intuitive for survey weighting applications.
+
+### Key Changes:
+
+1. **Replaced `init_weight_scale` with `init_weights`**:
+   - Old: Abstract "scale" parameter that was confusing
+   - New: Accept actual weight values (scalar or per-household array)
+   - Users can pass natural survey weights directly (e.g., "10 people per household")
+
+2. **Per-Feature Gate Initialization**:
+   - `init_keep_prob` now accepts arrays, not just scalars
+   - Enables state-aware initialization without manual `log_alpha` hacking
+   - California households can have higher keep probability than North Carolina
+
+3. **Clarified Jitter Parameters**:
+   - Renamed `log_weight_jitter_sd` → `weight_jitter_sd`
+   - Single jitter parameter for symmetry breaking during optimization
+   - Applied to log weights at start of `fit()` to break identical initializations
+
+### Before (Hacky):
+```python
+model = SparseCalibrationWeights(
+    n_features=n_households,
+    init_weight_scale=1.0,  # What does "scale" mean?
+    init_keep_prob=0.05,    # Same for all states
+)
+
+# Manual hack to set per-state keep probabilities
+with torch.no_grad():
+    for i, hh in enumerate(household_ids):
+        if "_state6" in hh:  # California
+            model.log_alpha.data[i] = 7.0  # Higher keep prob
+        elif "_state37" in hh:  # North Carolina
+            model.log_alpha.data[i] = 3.0  # Lower keep prob
+```
+
+### After (Clean):
+```python
+# Calculate per-household keep probabilities based on state
+keep_probs = np.zeros(n_households)
+keep_probs[ca_households] = 0.15  # CA more likely to stay
+keep_probs[nc_households] = 0.05  # NC more likely to drop
+
+model = SparseCalibrationWeights(
+    n_features=n_households,
+    init_weights=10.0,           # Natural survey weight
+    init_keep_prob=keep_probs,   # Per-household probabilities
+    weight_jitter_sd=0.5,        # Symmetry breaking
+)
+```
+
+### Conceptual Clarity:
+- **Weights** (`init_weights`): The actual calibration values - "how many people does this household represent?"
+- **Gates** (`init_keep_prob`): Binary selection switches - "should this household be included?"
+- **Final calibration**: `weight × gate` for each household
+
+### Files Updated:
+- `/home/baogorek/devl/L0/l0/calibration.py` - Core API changes
+- `/home/baogorek/devl/L0/tests/test_calibration.py` - Added test coverage
+- `calibrate_states_sparse.py` - Now uses clean array API
+
+### Result:
+State-aware initialization is now a first-class feature rather than a workaround. The API clearly separates the two concerns of survey calibration: weight values and sparsity selection.
+
 ## Next Priority
 
 The system is ready for scaling to production:

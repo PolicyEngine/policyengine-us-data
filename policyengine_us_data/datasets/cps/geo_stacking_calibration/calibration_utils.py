@@ -1,10 +1,13 @@
 """
 Shared utilities for calibration scripts.
 """
+import os
+import urllib
+import tempfile
+from typing import Tuple, List
 
 import numpy as np
 import pandas as pd
-from typing import Tuple, List
 
 
 def create_target_groups(targets_df: pd.DataFrame) -> Tuple[np.ndarray, List[str]]:
@@ -165,3 +168,24 @@ def create_target_groups(targets_df: pd.DataFrame) -> Tuple[np.ndarray, List[str
     print("=" * 40)
     
     return target_groups, group_info
+
+
+# NOTE: this is for public files. A TODO is to contrast it with what we already have
+def download_from_huggingface(file_name):
+    """Download a file from HuggingFace to a temporary location."""
+    base_url = "https://huggingface.co/policyengine/test/resolve/main/"
+    url = base_url + file_name
+    
+    # Create temporary file
+    temp_dir = tempfile.gettempdir()
+    local_path = os.path.join(temp_dir, file_name)
+    
+    # Check if already downloaded
+    if not os.path.exists(local_path):
+        print(f"Downloading {file_name} from HuggingFace...")
+        urllib.request.urlretrieve(url, local_path)
+        print(f"Downloaded to {local_path}")
+    else:
+        print(f"Using cached {local_path}")
+    
+    return local_path

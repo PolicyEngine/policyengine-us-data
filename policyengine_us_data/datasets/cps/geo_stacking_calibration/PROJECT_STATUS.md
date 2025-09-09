@@ -129,6 +129,67 @@ Clear inverse correlation between activation rate and error:
 - Created `weight_diagnostics.py` for verification
 - Established Microsimulation as ground truth for household ordering
 
+### 2025-09-09: Sparse State-Stacked Dataset Creation ✅
+- Created `create_sparse_state_stacked.py` to build reality-linked dataset
+- Successfully reduced 5.7M household dataset (would crash system) to 64K households
+- Achieved **97% memory reduction** while preserving calibrated weights
+- Used DataFrame approach to handle all entity types correctly (households, persons, tax units, SPM units, marital units)
+- Dataset loads successfully in Microsimulation with all relationships intact
+- Key findings:
+  - Florida has only 906 active households but achieves 10M population through high weights
+  - All state_fips values correctly assigned and consistent across entities
+  - Total population achieved: 136M across all states
+
+#### Technical Implementation
+- Leveraged `Dataset.from_dataframe()` for automatic entity relationship handling
+- **Critical**: Added household-to-state assignment logic - each household assigned to state with maximum weight
+- Modified entity IDs using encoding scheme:
+  - Household IDs: `state_idx * 10_000_000 + original_id`
+  - Person/Tax/SPM/Marital IDs: `state_idx * 100_000_000 + original_id`
+- Added complete reindexing after combination to prevent overflow
+- Processed each state separately to manage memory, then concatenated DataFrames
+- Validated against original `extended_cps_2023.h5` (112,502 households)
+- Output: `/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/sparse_state_stacked_2023.h5`
+
+### 2025-09-09: Sparse Dataset Creation - FULLY RESOLVED ✅
+
+#### Original Issues
+1. **ID Overflow Warnings**: PolicyEngine multiplies person IDs by 100 for RNG seeds
+2. **Duplicate Persons**: Same household appearing in multiple states
+3. **Household Count Mismatch**: Only 64,522 households instead of 167,089 non-zero weights
+
+#### Root Cause Discovery
+- L0 sparse calibration creates "universal donor" households active in multiple states
+- 33,484 households (30%) had weights in multiple states  
+- Some households active in up to 50 states!
+- Original approach incorrectly assigned each household to only ONE state (max weight)
+
+#### The Conceptual Breakthrough
+**Key Insight**: In geo-stacking, each household-state pair with non-zero weight should be treated as a **separate household** in the final dataset. 
+
+Example:
+- Household 6 has weight 32.57 in Hawaii and weight 0.79 in South Dakota
+- This becomes TWO separate households in the sparse dataset:
+  - One household assigned to Hawaii with weight 32.57
+  - Another household assigned to South Dakota with weight 0.79
+
+#### Final Implementation ✅
+Modified `create_sparse_state_stacked.py` to:
+1. Keep ALL household-state pairs where weight > 0 (not just max weight)
+2. Process each state independently, keeping all active households
+3. After concatenation, reindex all entities to handle duplicates:
+   - Each household occurrence gets unique ID
+   - Person/tax/SPM/marital units properly linked to new household IDs
+4. Sequential reindexing keeps IDs small to prevent overflow
+
+#### Results
+- **167,089 households** in final dataset (matching non-zero weights exactly)
+- **495,170 persons** with max ID well below int32 limit
+- **No overflow** when PolicyEngine multiplies by 100
+- **No duplicate persons** - each household-state combo is unique
+- **Proper state assignments** - each household has correct state_fips
+- **Total population**: 136M across all states
+
 ## Next Priority Actions
 
 1. **Run full 51-state calibration** - The system is ready, test at scale
@@ -143,6 +204,7 @@ Clear inverse correlation between activation rate and error:
 - `calibrate_states_sparse.py` - Main calibration script with diagnostics
 - `calibration_utils.py` - Shared utilities (target grouping)
 - `weight_diagnostics.py` - Standalone weight analysis tool
+- `create_sparse_state_stacked.py` - Creates sparse state-stacked dataset from calibrated weights
 
 ### L0 Package (~/devl/L0)
 - `l0/calibration.py` - Core calibration class

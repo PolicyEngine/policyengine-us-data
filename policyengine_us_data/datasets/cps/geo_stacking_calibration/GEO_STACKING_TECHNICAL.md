@@ -184,14 +184,56 @@ household_ids = sim.calculate("household_id", map_to="household").values
 # household_ids[586] is ALWAYS household 1595 across ALL states
 ```
 
-**Minimal Model Persistence**:
-```python
-model_state = {
-    'weights': w,                    # The calibrated weight vector
-    'states': states_to_calibrate,   # State FIPS in order
-    'data_source': 'hf://policyengine/test/extended_cps_2023.h5'
-}
+### Universal Donor Households
+
+L0 sparse calibration creates "universal donor" households that contribute to multiple states:
+- **64,522 unique households** have non-zero weights
+- These households appear in **167,089 household-state pairs**
+- Average: 2.59 states per active household
+- Distribution:
+  - 31,038 households in only 1 state
+  - 15,047 households in 2 states
+  - 2,095 households in 10+ states
+  - Maximum: One household active in 50 states!
+
+## Sparse State-Stacked Dataset Creation
+
+### Conceptual Model
+
+Each household-state pair with non-zero weight becomes a **separate household** in the final dataset:
+
 ```
+Original: Household 6 with weights in multiple states
+- Hawaii: weight = 32.57
+- South Dakota: weight = 0.79
+
+Sparse Dataset: Two separate households
+- Household_A: state_fips=15 (HI), weight=32.57, all characteristics of HH 6
+- Household_B: state_fips=46 (SD), weight=0.79, all characteristics of HH 6
+```
+
+### Implementation (`create_sparse_state_stacked.py`)
+
+1. **State Processing**: For each state, extract ALL households with non-zero weight
+2. **DataFrame Creation**: Use `sim.to_input_dataframe()` to preserve entity relationships
+3. **State Assignment**: Set `state_fips` to the target state for all entities
+4. **Concatenation**: Combine all state DataFrames (creates duplicate IDs)
+5. **Reindexing**: Sequential reindexing to handle duplicates and prevent overflow:
+   - Each household occurrence gets unique ID
+   - Person/tax/SPM/marital units properly linked to new household IDs
+   - Max person ID kept below 500K (prevents int32 overflow)
+
+### Results
+
+- **Input**: 5,737,602 weights (51 states × 112,502 households)
+- **Active weights**: 167,089 non-zero weights
+- **Output dataset**:
+  - 167,089 households (one per non-zero weight)
+  - 495,170 persons
+  - Total population: 136M
+  - No ID overflow issues
+  - No duplicate persons
+  - Correct state assignments
 
 ## Period Handling
 

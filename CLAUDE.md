@@ -1,5 +1,13 @@
 # CLAUDE.md - Guidelines for PolicyEngine US Data
 
+## Python Environment
+**IMPORTANT**: Always use the uv environment at `~/envs/pe` when running Python:
+```bash
+source ~/envs/pe/bin/activate
+# OR use directly:
+~/envs/pe/bin/python
+```
+
 ## Build Commands
 - `make install` - Install dependencies and dev environment
 - `make build` - Build the package using Python build

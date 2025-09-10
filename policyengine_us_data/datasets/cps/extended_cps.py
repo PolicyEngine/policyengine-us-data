@@ -320,6 +320,15 @@ def impute_income_variables(
     return result
 
 
+class ExtendedCPS_2023(ExtendedCPS):
+    cps = CPS_2023_Full
+    puf = PUF_2023
+    name = "extended_cps_2023"
+    label = "Extended CPS (2023)"
+    file_path = STORAGE_FOLDER / "extended_cps_2023.h5"
+    time_period = 2023
+
+
 class ExtendedCPS_2024(ExtendedCPS):
     cps = CPS_2024
     puf = PUF_2024
@@ -330,4 +339,12 @@ class ExtendedCPS_2024(ExtendedCPS):
 
 
 if __name__ == "__main__":
+    geo_stacking_mode = os.environ.get("GEO_STACKING_MODE", "").lower() == "true"
+    
+    if geo_stacking_mode:
+        print("Running in GEO_STACKING_MODE")
+        print("Generating ExtendedCPS_2023 for geo-stacking pipeline...")
+        ExtendedCPS_2023().generate()
+        print("Also generating ExtendedCPS_2024 to satisfy downstream dependencies...")
+    
     ExtendedCPS_2024().generate()

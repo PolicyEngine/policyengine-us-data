@@ -2117,6 +2117,11 @@ if __name__ == "__main__":
     if test_lite:
         CPS_2023().generate()
         CPS_2024().generate()
+    elif True: # special_pipeline:  TODO
+        print("We need the CPS 2021 reduced version for the PUF uprating, strangely enough")
+        CPS_2021().generate()
+        print("doing the full CPS 2023!")
+        CPS_2023_Full().generate()
     else:
         CPS_2021().generate()
         CPS_2022().generate()

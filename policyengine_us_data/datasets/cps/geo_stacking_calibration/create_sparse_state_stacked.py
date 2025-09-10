@@ -18,8 +18,9 @@ from policyengine_core.enums import Enum
 
 def create_sparse_state_stacked_dataset(
     w, 
-    states_to_calibrate, 
-    output_path="/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/sparse_state_stacked_2023.h5"
+    states_to_calibrate,
+    state_subset=None,
+    output_path=None
 ):
     """
     Create a SPARSE state-stacked dataset using DataFrame approach.
@@ -34,11 +35,55 @@ def create_sparse_state_stacked_dataset(
     Args:
         w: Calibrated weight vector from L0 calibration (length = n_households * n_states)
         states_to_calibrate: List of state FIPS codes used in calibration
-        output_path: Where to save the sparse state-stacked h5 file
+        state_subset: Optional list of state FIPS codes to include (subset of states_to_calibrate)
+        output_path: Where to save the sparse state-stacked h5 file (auto-generated if None)
     """
     print("\n" + "=" * 70)
     print("CREATING SPARSE STATE-STACKED DATASET (DataFrame approach)")
     print("=" * 70)
+    
+    # Handle state subset filtering
+    if state_subset is not None:
+        # Validate that requested states are in the calibration
+        for state in state_subset:
+            if state not in states_to_calibrate:
+                raise ValueError(f"State {state} not in calibrated states list")
+        
+        # Get indices of requested states
+        state_indices = [states_to_calibrate.index(s) for s in state_subset]
+        states_to_process = state_subset
+        
+        print(f"Processing subset of {len(state_subset)} states: {', '.join(state_subset)}")
+    else:
+        # Process all states
+        state_indices = list(range(len(states_to_calibrate)))
+        states_to_process = states_to_calibrate
+        print(f"Processing all {len(states_to_calibrate)} states")
+    
+    # Generate output path if not provided
+    if output_path is None:
+        base_dir = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage"
+        if state_subset is None:
+            # Default name for all states
+            output_path = f"{base_dir}/sparse_state_stacked_2023.h5"
+        else:
+            # State-specific name
+            state_abbrevs = {
+                '1': 'AL', '2': 'AK', '4': 'AZ', '5': 'AR', '6': 'CA', '8': 'CO',
+                '9': 'CT', '10': 'DE', '11': 'DC', '12': 'FL', '13': 'GA', '15': 'HI',
+                '16': 'ID', '17': 'IL', '18': 'IN', '19': 'IA', '20': 'KS', '21': 'KY',
+                '22': 'LA', '23': 'ME', '24': 'MD', '25': 'MA', '26': 'MI', '27': 'MN',
+                '28': 'MS', '29': 'MO', '30': 'MT', '31': 'NE', '32': 'NV', '33': 'NH',
+                '34': 'NJ', '35': 'NM', '36': 'NY', '37': 'NC', '38': 'ND', '39': 'OH',
+                '40': 'OK', '41': 'OR', '42': 'PA', '44': 'RI', '45': 'SC', '46': 'SD',
+                '47': 'TN', '48': 'TX', '49': 'UT', '50': 'VT', '51': 'VA', '53': 'WA',
+                '54': 'WV', '55': 'WI', '56': 'WY'
+            }
+            state_names = [state_abbrevs.get(s, s) for s in state_subset]
+            suffix = "_".join(state_names)
+            output_path = f"{base_dir}/sparse_state_stacked_2023_{suffix}.h5"
+    
+    print(f"Output path: {output_path}")
     
     # Load the original simulation
     base_sim = Microsimulation(dataset="hf://policyengine/test/extended_cps_2023.h5")
@@ -59,11 +104,17 @@ def create_sparse_state_stacked_dataset(
     )
     
     print(f"\nOriginal dataset has {n_households_orig:,} households")
-    print(f"Processing {len(states_to_calibrate)} states...")
     
     # Process the weight vector to understand active household-state pairs
     print("\nProcessing weight vector...")
-    W = w.reshape(len(states_to_calibrate), n_households_orig)
+    W_full = w.reshape(len(states_to_calibrate), n_households_orig)
+    
+    # Extract only the states we want to process
+    if state_subset is not None:
+        W = W_full[state_indices, :]
+        print(f"Extracted weights for {len(state_indices)} states from full weight matrix")
+    else:
+        W = W_full
     
     # Count total active weights
     total_active_weights = np.sum(W > 0)
@@ -74,8 +125,11 @@ def create_sparse_state_stacked_dataset(
     total_kept_households = 0
     time_period = int(base_sim.default_calculation_period)
     
-    for state_idx, state_fips in enumerate(states_to_calibrate):
-        print(f"\nProcessing state {state_fips} ({state_idx + 1}/{len(states_to_calibrate)})...")
+    for idx, state_fips in enumerate(states_to_process):
+        print(f"\nProcessing state {state_fips} ({idx + 1}/{len(states_to_process)})...")
+        
+        # Get the correct index in the weight matrix
+        state_idx = idx  # Index in our filtered W matrix
         
         # Get ALL households with non-zero weight in this state
         # (not just those "assigned" to this state)
@@ -335,6 +389,8 @@ def create_sparse_state_stacked_dataset(
 
 
 if __name__ == "__main__":
+    import sys
+    
     # Load the calibrated weights
     print("Loading calibrated weights...")
     w = np.load("/home/baogorek/Downloads/w_array_20250908_185748.npy")
@@ -350,8 +406,26 @@ if __name__ == "__main__":
     n_active = sum(w != 0)
     print(f"Sparsity: {n_active} active weights out of {len(w)} ({100*n_active/len(w):.2f}%)")
     
-    # Create sparse state-stacked dataset
-    output_file = create_sparse_state_stacked_dataset(w, states_to_calibrate)
+    # Check for command line arguments for state subset
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "CA_FL_NC":
+            # Test case: California, Florida, North Carolina
+            state_subset = ['6', '12', '37']
+            print(f"\nCreating dataset for CA, FL, NC only...")
+            output_file = create_sparse_state_stacked_dataset(w, states_to_calibrate, state_subset=state_subset)
+        elif sys.argv[1] == "CA":
+            # Test case: California only
+            state_subset = ['6']
+            print(f"\nCreating dataset for CA only...")
+            output_file = create_sparse_state_stacked_dataset(w, states_to_calibrate, state_subset=state_subset)
+        else:
+            print(f"Unknown argument: {sys.argv[1]}")
+            print("Usage: python create_sparse_state_stacked.py [CA_FL_NC|CA]")
+            sys.exit(1)
+    else:
+        # Default: all states
+        print("\nCreating dataset for all states...")
+        output_file = create_sparse_state_stacked_dataset(w, states_to_calibrate)
     
     print(f"\nDone! Created: {output_file}")
     print("\nTo test loading:")

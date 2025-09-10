@@ -1,6 +1,6 @@
 from importlib.resources import files
 from policyengine_core.data import Dataset
-from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER, DOCS_FOLDER
 import h5py
 from policyengine_us_data.datasets.cps.census_cps import *
 from pandas import DataFrame, Series
@@ -38,11 +38,16 @@ class CPS(Dataset):
         """
 
         if self.raw_cps is None:
-            # Extrapolate from CPS 2023
-
-            cps_2023 = CPS_2023(require=True)
-            arrays = cps_2023.load_dataset()
-            arrays = uprate_cps_data(arrays, 2023, self.time_period)
+            # Extrapolate from previous year
+            if self.time_period == 2025:
+                cps_2024 = CPS_2024(require=True)
+                arrays = cps_2024.load_dataset()
+                arrays = uprate_cps_data(arrays, 2024, self.time_period)
+            else:
+                # Default to CPS 2023 for backward compatibility
+                cps_2023 = CPS_2023(require=True)
+                arrays = cps_2023.load_dataset()
+                arrays = uprate_cps_data(arrays, 2023, self.time_period)
             self.save_dataset(arrays)
             return
 
@@ -1503,31 +1508,21 @@ def add_ssn_card_type(
     )
 
     # Save population log to CSV
-    import os
-
     log_df = pd.DataFrame(population_log)
-    csv_path = os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "..",
-        "..",
-        "docs",
-        "asec_population_log.csv",
-    )
+    csv_path = DOCS_FOLDER / "asec_population_log.csv"
+    DOCS_FOLDER.mkdir(exist_ok=True)
     log_df.to_csv(csv_path, index=False)
     print(f"Population log saved to: {csv_path}")
 
     # Update documentation with actual numbers
-    _update_documentation_with_numbers(log_df, os.path.dirname(csv_path))
+    _update_documentation_with_numbers(log_df, DOCS_FOLDER)
 
 
 def _update_documentation_with_numbers(log_df, docs_dir):
     """Update the documentation file with actual population numbers from CSV"""
-    import os
+    doc_path = docs_dir / "SSN_statuses_imputation.ipynb"
 
-    doc_path = os.path.join(docs_dir, "SSN_statuses_imputation.ipynb")
-
-    if not os.path.exists(doc_path):
+    if not doc_path.exists():
         print(f"Documentation file not found at: {doc_path}")
         return
 
@@ -2017,10 +2012,19 @@ class CPS_2023(CPS):
 
 class CPS_2024(CPS):
     name = "cps_2024"
-    label = "CPS 2024 (2022-based)"
+    label = "CPS 2024"
+    raw_cps = CensusCPS_2024
+    previous_year_raw_cps = CensusCPS_2023
     file_path = STORAGE_FOLDER / "cps_2024.h5"
     time_period = 2024
-    url = "release://policyengine/policyengine-us-data/1.13.0/cps_2024.h5"
+    frac = 0.5
+
+
+class CPS_2025(CPS):
+    name = "cps_2025"
+    label = "CPS 2025 (2024-based)"
+    file_path = STORAGE_FOLDER / "cps_2025.h5"
+    time_period = 2025
     frac = 1
 
 
@@ -2115,13 +2119,14 @@ class Pooled_3_Year_CPS_2023(PooledCPS):
 
 if __name__ == "__main__":
     if test_lite:
-        CPS_2023().generate()
         CPS_2024().generate()
+        CPS_2025().generate()
     else:
         CPS_2021().generate()
         CPS_2022().generate()
         CPS_2023().generate()
         CPS_2024().generate()
+        CPS_2025().generate()
         CPS_2021_Full().generate()
         CPS_2022_Full().generate()
         CPS_2023_Full().generate()

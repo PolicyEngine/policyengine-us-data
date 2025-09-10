@@ -61,3 +61,17 @@ def test_cps_has_net_worth():
         abs(sim.calculate("net_worth").sum() / NET_WORTH_TARGET - 1)
         < RELATIVE_TOLERANCE
     )
+
+
+def test_cps_2025_generates():
+    """Test that CPS_2025 can be generated via extrapolation from CPS_2024."""
+    from policyengine_us_data.datasets.cps import CPS_2025
+    
+    # This should not raise an error
+    dataset = CPS_2025()
+    assert dataset.exists
+    
+    # Basic sanity check - ensure it has data
+    data = dataset.load_dataset()
+    assert "person_id" in data
+    assert len(data["person_id"]) > 0

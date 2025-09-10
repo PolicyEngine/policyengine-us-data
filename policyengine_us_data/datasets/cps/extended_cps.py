@@ -339,8 +339,12 @@ class ExtendedCPS_2024(ExtendedCPS):
 
 
 if __name__ == "__main__":
-
-    if True:  # TODO: Ben's special branch!
+    geo_stacking_mode = os.environ.get("GEO_STACKING_MODE", "").lower() == "true"
+    
+    if geo_stacking_mode:
+        print("Running in GEO_STACKING_MODE")
+        print("Generating ExtendedCPS_2023 for geo-stacking pipeline...")
         ExtendedCPS_2023().generate()
-    else:
-        ExtendedCPS_2024().generate()
+        print("Also generating ExtendedCPS_2024 to satisfy downstream dependencies...")
+    
+    ExtendedCPS_2024().generate()

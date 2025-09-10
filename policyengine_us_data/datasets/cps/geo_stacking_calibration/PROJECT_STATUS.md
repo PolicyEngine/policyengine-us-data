@@ -190,6 +190,34 @@ Modified `create_sparse_state_stacked.py` to:
 - **Proper state assignments** - each household has correct state_fips
 - **Total population**: 136M across all states
 
+## Pipeline Control Mechanism (2025-01-10) ✅
+
+### Environment Variable Control
+The geo-stacking pipeline is now controlled via the `GEO_STACKING_MODE` environment variable:
+
+```bash
+# Run the geo-stacking pipeline (generates BOTH 2023 and 2024)
+GEO_STACKING_MODE=true make data
+
+# Run the regular pipeline (only 2024)
+make data
+```
+
+This mechanism:
+- When `GEO_STACKING_MODE=true`:
+  - Generates `ExtendedCPS_2023` using `CPS_2023_Full` (non-downsampled) for geo-stacking
+  - Also generates `ExtendedCPS_2024` to satisfy downstream dependencies
+  - All downstream scripts (enhanced_cps, small_enhanced_cps) run normally
+- When not set (default):
+  - Only generates `ExtendedCPS_2024` as usual
+- Provides clear logging to indicate which mode is active
+- Ready for future workflow integration but not yet added to CI/CD
+
+### Implementation Details
+- Modified only `extended_cps.py` - no changes needed to other pipeline scripts
+- Generates both datasets in geo-stacking mode to avoid breaking downstream dependencies
+- Extra compute cost is acceptable for the simplicity gained
+
 ## Next Priority Actions
 
 1. **Run full 51-state calibration** - The system is ready, test at scale

@@ -196,6 +196,43 @@ L0 sparse calibration creates "universal donor" households that contribute to mu
   - 2,095 households in 10+ states
   - Maximum: One household active in 50 states!
 
+## Stratified CPS Sampling for Congressional Districts
+
+### The Memory Challenge
+
+Congressional district calibration with full CPS data creates intractable memory requirements:
+- 436 CDs × 112,502 households = 49M matrix columns
+- Even sparse matrices exceed 32GB RAM and 15GB GPU limits
+- Random sampling would lose critical high-income households essential for tax policy simulation
+
+### Stratified Sampling Solution
+
+Created `create_stratified_cps.py` implementing income-based stratified sampling that:
+
+1. **Preserves ALL high-income households** (top 1% by AGI)
+2. **Progressively samples lower income strata** with decreasing rates
+3. **Maintains income distribution integrity** while reducing size by ~75%
+
+#### Sampling Strategy
+
+| Income Percentile | Sampling Rate | Rationale |
+|------------------|---------------|-----------|
+| 99.9-100% | 100% | Ultra-high earners critical for tax revenue |
+| 99-99.9% | 100% | High earners essential for policy analysis |
+| 95-99% | 80% | Upper middle class well-represented |
+| 90-95% | 60% | Professional class adequately sampled |
+| 75-90% | 40% | Middle class proportionally represented |
+| 50-75% | 25% | Lower middle class sampled |
+| 25-50% | 15% | Working class represented |
+| 0-25% | 10% | Lower income maintained for completeness |
+
+#### Results
+
+- **10k target**: Yields 13k households (preserving all high earners)
+- **30k target**: Yields 29k households (balanced across strata)
+- **Maximum AGI preserved**: $2,276,370 (identical to original)
+- **Memory reduction**: 88% (5.7M vs 49M matrix columns for CDs)
+
 ## Sparse State-Stacked Dataset Creation
 
 ### Conceptual Model
@@ -285,6 +322,10 @@ Uses database metadata (`stratum_group_id`) to automatically adapt as new types 
 For full US implementation:
 - 51 states (including DC) × ~100,000 households = 5.1M columns
 - 436 congressional districts × ~100,000 households = 43.6M columns
+
+**With stratified sampling:**
+- 51 states × 30,000 households = 1.5M columns (manageable)
+- 436 CDs × 13,000 households = 5.7M columns (feasible on 32GB RAM)
 
 With targets:
 - National: ~10-20 targets

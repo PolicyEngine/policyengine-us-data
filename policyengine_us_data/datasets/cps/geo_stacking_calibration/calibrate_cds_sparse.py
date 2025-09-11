@@ -42,8 +42,8 @@ with engine.connect() as conn:
 print(f"Found {len(all_cd_geoids)} congressional districts in database")
 
 # For testing, use only 10 CDs (can change to all_cd_geoids for full run)
-TEST_MODE = True
-if TEST_MODE:
+MODE = "Stratified" 
+if MODE == "Test":
     # Select 10 diverse CDs from different states
     # Note: CD GEOIDs are 3-4 digits, format is state_fips + district_number
     cds_to_calibrate = [
@@ -59,12 +59,17 @@ if TEST_MODE:
         '1101',  # DC at-large
     ]
     print(f"TEST MODE: Using only {len(cds_to_calibrate)} CDs for testing")
+    dataset_uri = "hf://policyengine/test/extended_cps_2023.h5"
+elif MODE == "Stratified":
+    cds_to_calibrate = all_cd_geoids
+    dataset_uri = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/stratified_extended_cps_2023.h5"
+    print(f"Stratified mode")
 else:
     cds_to_calibrate = all_cd_geoids
-    print(f"FULL MODE: Using all {len(cds_to_calibrate)} CDs")
+    dataset_uri = "hf://policyengine/test/extended_cps_2023.h5"
+    print(f"FULL MODE (HOPE THERE IS PLENTY RAM!): Using all {len(cds_to_calibrate)} CDs")
 
-sim = Microsimulation(dataset="hf://policyengine/test/extended_cps_2023.h5")
-sim.build_from_dataset()
+sim = Microsimulation(dataset=dataset_uri)
 
 # ============================================================================
 # STEP 2: BUILD SPARSE MATRIX
@@ -167,7 +172,7 @@ for cd_key, household_list in household_id_mapping.items():
     base_weight = cd_pop / n_households
     sparsity_adjustment = 1.0 / np.sqrt(adjusted_keep_prob)
     initial_weight = base_weight * sparsity_adjustment
-    initial_weight = np.clip(initial_weight, 100, 100000)
+    #initial_weight = np.clip(initial_weight, 0, 100000)   # Not clipping 
     
     init_weights[cumulative_idx:cumulative_idx + n_households] = initial_weight
     cumulative_idx += n_households
@@ -225,45 +230,40 @@ model = SparseCalibrationWeights(
 # Run minimal epochs just to test functionality
 MINIMAL_EPOCHS = 3  # Just 3 epochs to verify it works
 
-try:
-    model.fit(
-        M=X_sparse,
-        y=targets,
-        target_groups=target_groups,
-        lambda_l0=1.5e-6,
-        lambda_l2=0,
-        lr=0.2,
-        epochs=MINIMAL_EPOCHS,
-        loss_type="relative",
-        verbose=True,
-        verbose_freq=1,  # Print every epoch since we're only doing 3
-    )
+model.fit(
+    M=X_sparse,
+    y=targets,
+    target_groups=target_groups,
+    lambda_l0=1.5e-6,
+    lambda_l2=0,
+    lr=0.2,
+    epochs=MINIMAL_EPOCHS,
+    loss_type="relative",
+    verbose=True,
+    verbose_freq=1,  # Print every epoch since we're only doing 3
+)
     
-    # Quick evaluation
-    with torch.no_grad():
-        y_pred = model.predict(X_sparse).cpu().numpy()
-        y_actual = targets
-        rel_errors = np.abs((y_actual - y_pred) / (y_actual + 1))
-        
-        print(f"\nAfter {MINIMAL_EPOCHS} epochs:")
-        print(f"Mean relative error: {np.mean(rel_errors):.2%}")
-        print(f"Max relative error: {np.max(rel_errors):.2%}")
-        
-        # Get sparsity info
-        active_info = model.get_active_weights()
-        print(f"Active weights: {active_info['count']} out of {X_sparse.shape[1]} ({100*active_info['count']/X_sparse.shape[1]:.2f}%)")
-        
-        # Save minimal test weights
-        w = model.get_weights(deterministic=True).cpu().numpy()
-        test_weights_path = os.path.join(export_dir, "cd_test_weights_3epochs.npy")
-        np.save(test_weights_path, w)
-        print(f"\nSaved test weights (3 epochs) to: {test_weights_path}")
-        
-    print("\n✅ L0 calibration test successful! Matrix and targets are ready for full GPU optimization.")
+# Quick evaluation
+with torch.no_grad():
+    y_pred = model.predict(X_sparse).cpu().numpy()
+    y_actual = targets
+    rel_errors = np.abs((y_actual - y_pred) / (y_actual + 1))
     
-except Exception as e:
-    print(f"\n❌ Error during L0 calibration test: {e}")
-    print("Matrix and targets are still exported and ready for GPU processing.")
+    print(f"\nAfter {MINIMAL_EPOCHS} epochs:")
+    print(f"Mean relative error: {np.mean(rel_errors):.2%}")
+    print(f"Max relative error: {np.max(rel_errors):.2%}")
+    
+    # Get sparsity info
+    active_info = model.get_active_weights()
+    print(f"Active weights: {active_info['count']} out of {X_sparse.shape[1]} ({100*active_info['count']/X_sparse.shape[1]:.2f}%)")
+    
+    # Save minimal test weights
+    w = model.get_weights(deterministic=True).cpu().numpy()
+    test_weights_path = os.path.join(export_dir, "cd_test_weights_3epochs.npy")
+    np.save(test_weights_path, w)
+    print(f"\nSaved test weights (3 epochs) to: {test_weights_path}")
+    
+print("\n✅ L0 calibration test successful! Matrix and targets are ready for full GPU optimization.")
 
 # ============================================================================
 # SUMMARY

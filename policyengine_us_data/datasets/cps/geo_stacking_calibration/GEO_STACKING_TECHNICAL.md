@@ -353,3 +353,66 @@ Constraints are applied hierarchically:
 4. **Reweighting**: Each geography gets appropriate weights for its households
 5. **Memory Efficient**: Sparse implementation makes national-scale calibration feasible
 6. **Balanced Optimization**: Group-wise loss ensures all target types contribute fairly
+
+## Sparse Dataset Creation - Implementation Details
+
+### Critical Dataset Requirements
+- **Congressional Districts**: Must use `stratified_extended_cps_2023.h5` (13,089 households)
+- **States**: Must use standard `extended_cps_2023.h5` (112,502 households)  
+- **IMPORTANT**: The dataset used for stacking MUST match what was used during calibration
+
+### The DataFrame Approach (Essential for Entity Relationships)
+The DataFrame approach preserves all entity relationships automatically:
+
+```python
+# Pattern that works:
+sim = Microsimulation(dataset=dataset_path)
+sim.set_input("household_weight", period, calibrated_weights)
+df = sim.to_input_dataframe()  # This preserves ALL relationships
+# ... filter and process df ...
+sparse_dataset = Dataset.from_dataframe(combined_df, period)
+```
+
+Direct array manipulation will break household-person-tax unit relationships.
+
+### ID Overflow Prevention Strategy
+With large geo-stacked datasets (e.g., 436 CDs × 13,089 households):
+- Person IDs can overflow int32 when multiplied by 100 (PolicyEngine internal)
+- Solution: Complete reindexing of ALL entity IDs after combining DataFrames
+- Start from 0 and assign sequential IDs to prevent overflow
+
+### EnumArray Handling for h5 Serialization
+When saving to h5, handle PolicyEngine's EnumArray objects:
+```python
+if hasattr(values, 'decode_to_str'):
+    values = values.decode_to_str().astype("S")
+else:
+    # Already numpy array
+    values = values.astype("S")
+```
+
+### Geographic Code Formats
+- State FIPS: String format ('1', '2', ..., '56')
+- Congressional District GEOIDs: String format ('601', '3601', '4801')
+  - First 1-2 digits = state FIPS
+  - Last 2 digits = district number
+
+### File Organization
+- `create_sparse_state_stacked.py` - Self-contained state stacking (function + runner)
+- `create_sparse_cd_stacked.py` - Self-contained CD stacking (function + runner)
+- Both follow identical patterns for consistency
+
+### Common Pitfalls to Avoid
+1. Using the wrong dataset (extended vs stratified)
+2. Not reindexing IDs after combining geographic units
+3. Trying to modify arrays directly instead of using DataFrames
+4. Not checking for integer overflow with large datasets
+5. Forgetting that the same household appears in multiple geographic units
+6. Progress indicators - use appropriate intervals (every 10 CDs, not 50)
+
+### Testing Strategy
+Always test with subsets first:
+- Single geographic unit
+- Small diverse set (10 units)
+- Regional subset (e.g., all California CDs)
+- Full dataset only after smaller tests pass

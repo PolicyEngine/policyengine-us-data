@@ -99,7 +99,7 @@ def create_target_groups(targets_df: pd.DataFrame) -> Tuple[np.ndarray, List[str
                 stratum_name = stratum_labels.get(stratum_group, f'Unknown({stratum_group})')
                 n_targets = mask.sum()
             
-            # Handle string stratum_group_ids (IRS scalars and AGI total)
+            # Handle string stratum_group_ids (IRS scalars, AGI total, and state SNAP cost)
             elif isinstance(stratum_group, str):
                 if stratum_group.startswith('irs_scalar_'):
                     # Each IRS scalar variable gets its own group
@@ -116,6 +116,13 @@ def create_target_groups(targets_df: pd.DataFrame) -> Tuple[np.ndarray, List[str
                     target_groups[mask] = group_id
                     stratum_name = 'AGI Total Amount'
                     n_targets = mask.sum()
+                elif stratum_group == 'state_snap_cost':
+                    # State-level SNAP costs get their own group
+                    mask = (targets_df['stratum_group_id'] == stratum_group)
+                    matching_targets = targets_df[mask]
+                    target_groups[mask] = group_id
+                    stratum_name = 'State SNAP Cost (Administrative)'
+                    n_targets = mask.sum()
                 else:
                     continue  # Skip unknown string groups
             else:
@@ -125,42 +132,13 @@ def create_target_groups(targets_df: pd.DataFrame) -> Tuple[np.ndarray, List[str
             unique_geos = matching_targets['geographic_id'].unique()
             n_geos = len(unique_geos)
             
-            # Get geographic breakdown
-            geo_counts = matching_targets.groupby('geographic_id').size()
-            
-            # Build state name mapping (extend as needed)
-            state_names = {
-                '6': 'California', 
-                '37': 'North Carolina',
-                '48': 'Texas',
-                '36': 'New York',
-                '12': 'Florida',
-                '42': 'Pennsylvania',
-                '17': 'Illinois',
-                '39': 'Ohio',
-                '13': 'Georgia',
-                '26': 'Michigan',
-                # Add more states as needed
-            }
-            
-            geo_breakdown = []
-            for geo_id, count in geo_counts.items():
-                geo_name = state_names.get(geo_id, f'State {geo_id}')
-                geo_breakdown.append(f"{geo_name}: {count}")
-            
             group_info.append(f"Group {group_id}: All {stratum_name} targets ({n_targets} total)")
-            print(f"  Group {group_id}: {stratum_name} histogram across {n_geos} geographies ({n_targets} total targets)")
-            print(f"    Geographic breakdown: {', '.join(geo_breakdown)}")
             
-            # Show sample targets from different geographies
-            if n_geos > 1 and n_targets > 3:
-                for geo_id in unique_geos[:2]:  # Show first two geographies
-                    geo_name = state_names.get(geo_id, f'State {geo_id}')
-                    geo_targets = matching_targets[matching_targets['geographic_id'] == geo_id]
-                    print(f"    {geo_name} samples:")
-                    print(f"      - {geo_targets.iloc[0]['description']}")
-                    if len(geo_targets) > 1:
-                        print(f"      - {geo_targets.iloc[-1]['description']}")
+            # Only show details for small groups, otherwise just summary
+            if n_geos <= 10:
+                print(f"  Group {group_id}: {stratum_name} ({n_targets} targets across {n_geos} geographies)")
+            else:
+                print(f"  Group {group_id}: {stratum_name} ({n_targets} targets)")
             
             group_id += 1
     

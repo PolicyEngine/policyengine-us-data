@@ -208,11 +208,11 @@ np.save(target_groups_path, target_groups)
 print(f"\nExported target groups to: {target_groups_path}")
 
 # ============================================================================
-# STEP 6: MINIMAL L0 CALIBRATION (3 EPOCHS FOR TESTING)
+# STEP 6: L0 CALIBRATION WITH EPOCH LOGGING
 # ============================================================================
 
 print("\n" + "="*70)
-print("RUNNING MINIMAL L0 CALIBRATION (3 EPOCHS)")
+print("RUNNING L0 CALIBRATION WITH EPOCH LOGGING")
 print("="*70)
 
 # Create model with per-feature keep probabilities and weights
@@ -228,29 +228,81 @@ model = SparseCalibrationWeights(
     # device = "cuda",  # Uncomment for GPU
 )
 
-# Run minimal epochs just to test functionality
-MINIMAL_EPOCHS = 3  # Just 3 epochs to verify it works
+# Configuration for epoch logging
+ENABLE_EPOCH_LOGGING = True  # Set to False to disable logging
+EPOCHS_PER_CHUNK = 5  # Train in chunks of 50 epochs
+TOTAL_EPOCHS = 100  # Total epochs to train (set to 3 for quick test)
+# For testing, you can use:
+# EPOCHS_PER_CHUNK = 1
+# TOTAL_EPOCHS = 3
 
-model.fit(
-    M=X_sparse,
-    y=targets,
-    target_groups=target_groups,
-    lambda_l0=1.5e-6,
-    lambda_l2=0,
-    lr=0.2,
-    epochs=MINIMAL_EPOCHS,
-    loss_type="relative",
-    verbose=True,
-    verbose_freq=1,  # Print every epoch since we're only doing 3
-)
+epoch_data = []
+
+# Train in chunks and capture metrics between chunks
+for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
+    chunk_epochs = min(EPOCHS_PER_CHUNK, TOTAL_EPOCHS - chunk_start)
+    current_epoch = chunk_start + chunk_epochs
     
-# Quick evaluation
+    print(f"\nTraining epochs {chunk_start + 1} to {current_epoch} of {TOTAL_EPOCHS}")
+    
+    model.fit(
+        M=X_sparse,
+        y=targets,
+        target_groups=target_groups,
+        lambda_l0=1.5e-6,
+        lambda_l2=0,
+        lr=0.2,
+        epochs=chunk_epochs,
+        loss_type="relative",
+        verbose=True,
+        verbose_freq=chunk_epochs,  # Print at end of chunk
+    )
+    
+    if ENABLE_EPOCH_LOGGING:
+        # Capture metrics after this chunk
+        print(f"Capturing metrics at epoch {current_epoch}...")
+        with torch.no_grad():
+            y_pred = model.predict(X_sparse).cpu().numpy()
+            
+            for i, (idx, row) in enumerate(targets_df.iterrows()):
+                # Create hierarchical target name
+                if row['geographic_id'] == 'US':
+                    target_name = f"nation/{row['variable']}/{row['description']}"
+                else:
+                    target_name = f"CD{row['geographic_id']}/{row['variable']}/{row['description']}"
+                
+                # Calculate all metrics
+                estimate = y_pred[i]
+                target = row['value']
+                error = estimate - target
+                rel_error = error / target if target != 0 else 0
+                
+                epoch_data.append({
+                    'target_name': target_name,
+                    'estimate': estimate,
+                    'target': target,
+                    'epoch': current_epoch,
+                    'error': error,
+                    'rel_error': rel_error,
+                    'abs_error': abs(error),
+                    'rel_abs_error': abs(rel_error),
+                    'loss': rel_error ** 2
+                })
+# Save epoch logging data if enabled
+if ENABLE_EPOCH_LOGGING and epoch_data:
+    calibration_log = pd.DataFrame(epoch_data)
+    log_path = os.path.join(export_dir, "cd_calibration_log.csv")
+    calibration_log.to_csv(log_path, index=False)
+    print(f"\nSaved calibration log with {len(epoch_data)} entries to: {log_path}")
+    print(f"Log contains metrics for {len(calibration_log['epoch'].unique())} epochs")
+    
+# Final evaluation
 with torch.no_grad():
     y_pred = model.predict(X_sparse).cpu().numpy()
     y_actual = targets
     rel_errors = np.abs((y_actual - y_pred) / (y_actual + 1))
     
-    print(f"\nAfter {MINIMAL_EPOCHS} epochs:")
+    print(f"\nAfter {TOTAL_EPOCHS} epochs:")
     print(f"Mean relative error: {np.mean(rel_errors):.2%}")
     print(f"Max relative error: {np.max(rel_errors):.2%}")
     
@@ -258,13 +310,13 @@ with torch.no_grad():
     active_info = model.get_active_weights()
     print(f"Active weights: {active_info['count']} out of {X_sparse.shape[1]} ({100*active_info['count']/X_sparse.shape[1]:.2f}%)")
     
-    # Save minimal test weights
+    # Save final weights
     w = model.get_weights(deterministic=True).cpu().numpy()
-    test_weights_path = os.path.join(export_dir, "cd_test_weights_3epochs.npy")
-    np.save(test_weights_path, w)
-    print(f"\nSaved test weights (3 epochs) to: {test_weights_path}")
+    final_weights_path = os.path.join(export_dir, f"cd_weights_{TOTAL_EPOCHS}epochs.npy")
+    np.save(final_weights_path, w)
+    print(f"\nSaved final weights ({TOTAL_EPOCHS} epochs) to: {final_weights_path}")
     
-print("\n✅ L0 calibration test successful! Matrix and targets are ready for full GPU optimization.")
+print("\n✅ L0 calibration complete! Matrix, targets, and epoch log are ready for analysis.")
 
 # ============================================================================
 # SUMMARY
@@ -283,7 +335,9 @@ print(f"  5. cd_init_weights.npy - Initial weights")
 print(f"  6. cd_target_groups.npy - Target grouping for loss")
 print(f"  7. cd_list.txt - List of CD GEOIDs")
 if 'w' in locals():
-    print(f"  8. cd_test_weights_3epochs.npy - Test weights from 3 epochs")
+    print(f"  8. cd_weights_{TOTAL_EPOCHS}epochs.npy - Final calibration weights")
+if ENABLE_EPOCH_LOGGING and epoch_data:
+    print(f"  9. cd_calibration_log.csv - Epoch-by-epoch metrics for dashboard")
 
 print("\nTo load on GPU platform:")
 print("  import scipy.sparse as sp")

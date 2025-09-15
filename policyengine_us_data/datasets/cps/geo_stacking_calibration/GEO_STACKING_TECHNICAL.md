@@ -572,3 +572,68 @@ Always test with subsets first:
 - Small diverse set (10 units)
 - Regional subset (e.g., all California CDs)
 - Full dataset only after smaller tests pass
+
+## Dashboard Integration and Target Accounting
+
+### Understanding "Excluded Targets" in the Calibration Dashboard
+
+The calibration dashboard (https://microcalibrate.vercel.app) may show fewer targets than expected due to its "excluded targets" logic.
+
+#### What Are Excluded Targets?
+The dashboard identifies targets as "excluded" when their estimates remain constant across all training epochs. Specifically:
+- Targets with multiple epoch data points where all estimates are within 1e-6 tolerance
+- Most commonly: targets that remain at 0.0 throughout training
+- These targets are effectively not participating in the calibration
+
+#### Example: Congressional District Calibration
+- **Total targets in matrix**: 30,576
+- **Targets shown in dashboard**: 24,036  
+- **"Excluded" targets**: 6,540
+
+This discrepancy occurs when ~6,540 targets have zero estimates throughout training, indicating they're not being actively calibrated. Common reasons:
+- Very sparse targets with no qualifying households in the sample
+- Targets for rare demographic combinations
+- Early training epochs where the model hasn't activated weights for certain targets
+
+#### Target Group Accounting
+
+The 30,576 CD calibration targets break down into 28 groups:
+
+**National Targets (5 singleton groups)**:
+- Group 0-4: Individual national targets (tip_income, medical expenses, etc.)
+
+**Demographic Targets (23 groups)**:
+- Group 5: Age (7,848 targets - 18 bins × 436 CDs)
+- Group 6: AGI Distribution (3,924 targets - 9 bins × 436 CDs)  
+- Group 7: SNAP household counts (436 targets - 1 × 436 CDs)
+- Group 8: Medicaid (436 targets - 1 × 436 CDs)
+- Group 9: EITC (3,488 targets - 4 categories × 436 CDs, some CDs missing categories)
+- Groups 10-25: IRS SOI variables (16 groups × 872 targets each)
+- Group 26: AGI Total Amount (436 targets - 1 × 436 CDs)
+- Group 27: State SNAP Cost Administrative (51 targets - state-level constraints)
+
+**Important**: The state SNAP costs (Group 27) have `stratum_group_id = 'state_snap_cost'` rather than `4`, keeping them separate from CD-level SNAP household counts. This is intentional as they represent different constraint types (counts vs. dollars).
+
+#### Verifying Target Counts
+
+To debug target accounting issues:
+
+```python
+# Check what's actually in the targets dataframe
+import pandas as pd
+targets_df = pd.read_pickle('cd_targets_df.pkl')
+
+# Total should be 30,576
+print(f"Total targets: {len(targets_df)}")
+
+# Check for state SNAP costs specifically
+state_snap = targets_df[targets_df['stratum_group_id'] == 'state_snap_cost']
+print(f"State SNAP cost targets: {len(state_snap)}")  # Should be 51
+
+# Check for CD SNAP household counts
+cd_snap = targets_df[targets_df['stratum_group_id'] == 4]
+print(f"CD SNAP household targets: {len(cd_snap)}")  # Should be 436
+
+# Total SNAP-related targets
+print(f"Total SNAP targets: {len(state_snap) + len(cd_snap)}")  # Should be 487
+```

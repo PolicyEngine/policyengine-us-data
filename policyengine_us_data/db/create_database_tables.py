@@ -326,7 +326,9 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
         return
 
     if not target.constraints_rel:  # Handle cases with no constraints
-        target.definition_hash = hashlib.sha256(b"").hexdigest()
+        # Include parent_stratum_id to make hash unique per parent
+        parent_str = str(target.parent_stratum_id) if target.parent_stratum_id else ""
+        target.definition_hash = hashlib.sha256(parent_str.encode("utf-8")).hexdigest()
         return
 
     constraint_strings = [
@@ -335,7 +337,9 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
     ]
 
     constraint_strings.sort()
-    fingerprint_text = "\n".join(constraint_strings)
+    # Include parent_stratum_id in the hash to ensure uniqueness per parent
+    parent_str = str(target.parent_stratum_id) if target.parent_stratum_id else ""
+    fingerprint_text = parent_str + "\n" + "\n".join(constraint_strings)
     h = hashlib.sha256(fingerprint_text.encode("utf-8"))
     target.definition_hash = h.hexdigest()
 

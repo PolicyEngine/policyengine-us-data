@@ -590,11 +590,22 @@ def load_soi_data(long_dfs, year):
                     )
                 )
 
+            # Get both count and amount values
+            count_value = eitc_count_i.iloc[i][["target_value"]].values[0]
+            amount_value = eitc_amount_i.iloc[i][["target_value"]].values[0]
+            
             new_stratum.targets_rel = [
                 Target(
-                    variable="eitc",
+                    variable="tax_unit_count",  # Count of tax units with EITC
                     period=year,
-                    value=eitc_amount_i.iloc[i][["target_value"]].values[0],
+                    value=count_value,
+                    source_id=irs_source.source_id,
+                    active=True,
+                ),
+                Target(
+                    variable="eitc",  # EITC amount
+                    period=year,
+                    value=amount_value,
                     source_id=irs_source.source_id,
                     active=True,
                 )
@@ -623,27 +634,80 @@ def load_soi_data(long_dfs, year):
         == "adjusted_gross_income"
         and long_dfs[i][["breakdown_variable"]].values[0] == "one"
     ][0]
+    # IRS variables start at stratum_group_id 100
+    irs_group_id_start = 100
+    
     for j in range(8, first_agi_index, 2):
         count_j, amount_j = long_dfs[j], long_dfs[j + 1]
+        count_variable_name = count_j.iloc[0][["target_variable"]].values[0]  # Should be tax_unit_count
         amount_variable_name = amount_j.iloc[0][["target_variable"]].values[0]
+        
+        # Assign a unique stratum_group_id for this IRS variable
+        stratum_group_id = irs_group_id_start + (j - 8) // 2
+        
         print(
-            f"Loading amount data for IRS SOI data on {amount_variable_name}"
+            f"Loading count and amount data for IRS SOI data on {amount_variable_name} (group_id={stratum_group_id})"
         )
+        
         for i in range(count_j.shape[0]):
             ucgid_i = count_j[["ucgid_str"]].iloc[i].values[0]
             geo_info = parse_ucgid(ucgid_i)
 
-            # Add target to existing geographic stratum
+            # Get parent geographic stratum
             if geo_info["type"] == "national":
-                stratum = session.get(Stratum, geo_strata["national"])
+                parent_stratum_id = geo_strata["national"]
+                geo_description = "National"
             elif geo_info["type"] == "state":
-                stratum = session.get(Stratum, geo_strata["state"][geo_info["state_fips"]])
+                parent_stratum_id = geo_strata["state"][geo_info["state_fips"]]
+                geo_description = f"State {geo_info['state_fips']}"
             elif geo_info["type"] == "district":
-                stratum = session.get(Stratum, geo_strata["district"][geo_info["congressional_district_geoid"]])
+                parent_stratum_id = geo_strata["district"][geo_info["congressional_district_geoid"]]
+                geo_description = f"CD {geo_info['congressional_district_geoid']}"
             
+            # Create child stratum with constraint for this IRS variable
+            # Note: This stratum will have the constraint that amount_variable > 0
+            note = f"{geo_description} with {amount_variable_name} > 0"
+            
+            # Check if child stratum already exists
+            existing_stratum = session.query(Stratum).filter(
+                Stratum.parent_stratum_id == parent_stratum_id,
+                Stratum.stratum_group_id == stratum_group_id
+            ).first()
+            
+            if existing_stratum:
+                child_stratum = existing_stratum
+            else:
+                # Create new child stratum with constraint
+                child_stratum = Stratum(
+                    parent_stratum_id=parent_stratum_id,
+                    stratum_group_id=stratum_group_id,
+                    notes=note
+                )
+                
+                # Add constraint that this IRS variable must be positive
+                child_stratum.constraints_rel.append(
+                    StratumConstraint(
+                        constraint_variable=amount_variable_name,
+                        operation=">",
+                        value="0"
+                    )
+                )
+                
+                session.add(child_stratum)
+                session.flush()
+            
+            count_value = count_j.iloc[i][["target_value"]].values[0]
             amount_value = amount_j.iloc[i][["target_value"]].values[0]
 
-            stratum.targets_rel.append(
+            # Add BOTH count and amount targets to the child stratum
+            child_stratum.targets_rel.extend([
+                Target(
+                    variable=count_variable_name,  # tax_unit_count
+                    period=year,
+                    value=count_value,
+                    source_id=irs_source.source_id,
+                    active=True,
+                ),
                 Target(
                     variable=amount_variable_name,
                     period=year,
@@ -651,9 +715,9 @@ def load_soi_data(long_dfs, year):
                     source_id=irs_source.source_id,
                     active=True,
                 )
-            )
+            ])
 
-            session.add(stratum)
+            session.add(child_stratum)
             session.flush()
 
     session.commit()

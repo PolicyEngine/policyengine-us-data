@@ -34,9 +34,9 @@ class SparseGeoStackingMatrixBuilder:
         self.engine = create_engine(db_uri)
         self.time_period = time_period  # Default to 2024 to match CPS data
         
-    def get_national_hardcoded_targets(self) -> pd.DataFrame:
+    def get_national_targets(self) -> pd.DataFrame:
         """
-        Get national-level hardcoded targets (non-histogram variables).
+        Get national-level targets from the database.
         These have no state equivalents and apply to all geographies.
         """
         query = """
@@ -62,14 +62,14 @@ class SparseGeoStackingMatrixBuilder:
             # Don't filter by period for now - get any available hardcoded targets
             df = pd.read_sql(query, conn)
         
-        logger.info(f"Found {len(df)} national hardcoded targets")
+        logger.info(f"Found {len(df)} national targets from database")
         return df
     
     def get_irs_scalar_targets(self, geographic_stratum_id: int,
                                geographic_level: str) -> pd.DataFrame:
         """
-        Get IRS scalar variables stored directly on geographic strata.
-        These are individual income/deduction/tax variables, not histograms.
+        Get IRS scalar variables from child strata with constraints.
+        These are now in child strata with constraints like "salt > 0"
         """
         query = """
         SELECT 
@@ -80,14 +80,16 @@ class SparseGeoStackingMatrixBuilder:
             t.active,
             t.tolerance,
             s.notes as stratum_notes,
+            s.stratum_group_id,
             src.name as source_name
         FROM targets t
         JOIN strata s ON t.stratum_id = s.stratum_id
         JOIN sources src ON t.source_id = src.source_id
-        WHERE s.stratum_id = :stratum_id
+        WHERE s.parent_stratum_id = :stratum_id  -- Look for children of geographic stratum
+          AND s.stratum_group_id >= 100  -- IRS strata have group_id >= 100
           AND src.name = 'IRS Statistics of Income'
           AND t.variable NOT IN ('adjusted_gross_income')  -- AGI handled separately
-        ORDER BY t.variable
+        ORDER BY s.stratum_group_id, t.variable
         """
         
         with self.engine.connect() as conn:
@@ -260,9 +262,16 @@ class SparseGeoStackingMatrixBuilder:
             return pd.read_sql(query, conn, params={'stratum_id': stratum_id})
     
     def apply_constraints_to_sim_sparse(self, sim, constraints_df: pd.DataFrame, 
-                                       target_variable: str) -> Tuple[np.ndarray, np.ndarray]:
+                                       target_variable: str, 
+                                       skip_geographic: bool = True) -> Tuple[np.ndarray, np.ndarray]:
         """
         Apply constraints and return sparse representation (indices and values).
+        
+        Args:
+            sim: Microsimulation instance
+            constraints_df: DataFrame with constraints
+            target_variable: Variable to calculate
+            skip_geographic: Whether to skip geographic constraints (default True)
         
         Returns:
             Tuple of (nonzero_indices, nonzero_values) at household level
@@ -283,8 +292,8 @@ class SparseGeoStackingMatrixBuilder:
             op = constraint['operation']
             val = constraint['value']
             
-            # Skip geographic constraints (already handled by stratification)
-            if var in ['state_fips', 'congressional_district_geoid']:
+            # Skip geographic constraints only if requested
+            if skip_geographic and var in ['state_fips', 'congressional_district_geoid']:
                 continue
                 
             # Get values for this constraint variable WITHOUT explicit period
@@ -374,12 +383,16 @@ class SparseGeoStackingMatrixBuilder:
         if geo_stratum_id is None:
             raise ValueError(f"Could not find {geographic_level} {geographic_id} in database")
         
-        # Get national hardcoded targets
-        national_targets = self.get_national_hardcoded_targets()
+        # Get national targets from database
+        national_targets = self.get_national_targets()
         
         # Get demographic targets for this geography
         age_targets = self.get_demographic_targets(geo_stratum_id, 2, "age")
+        
+        # For AGI distribution, we want only one count variable (ideally tax_unit_count)
+        # Currently the database has person_count, so we'll use that for now
         agi_distribution_targets = self.get_demographic_targets(geo_stratum_id, 3, "AGI_distribution")
+        
         snap_targets = self.get_demographic_targets(geo_stratum_id, 4, "SNAP")
         medicaid_targets = self.get_demographic_targets(geo_stratum_id, 5, "Medicaid")
         eitc_targets = self.get_demographic_targets(geo_stratum_id, 6, "EITC")
@@ -399,7 +412,7 @@ class SparseGeoStackingMatrixBuilder:
                 'active': target['active'],
                 'tolerance': target['tolerance'],
                 'stratum_id': target['stratum_id'],
-                'stratum_group_id': 'national_hardcoded',
+                'stratum_group_id': 'national',
                 'geographic_level': 'national',
                 'geographic_id': 'US',
                 'description': f"{target['variable']}_national"
@@ -417,14 +430,21 @@ class SparseGeoStackingMatrixBuilder:
                 
                 stratum_targets = targets_df[targets_df['stratum_id'] == stratum_id]
                 
-                # Handle multiple targets per stratum (e.g., SNAP has household_count and snap)
-                for _, target in stratum_targets.iterrows():
-                    # Build description from constraints
-                    constraints = stratum_targets[['constraint_variable', 'operation', 'constraint_value']].drop_duplicates()
-                    desc_parts = [target['variable']]
-                    for _, c in constraints.iterrows():
-                        if c['constraint_variable'] in ['age', 'adjusted_gross_income', 'eitc_child_count']:
-                            desc_parts.append(f"{c['constraint_variable']}{c['operation']}{c['constraint_value']}")
+                # Build description from constraints once per stratum
+                constraints = stratum_targets[['constraint_variable', 'operation', 'constraint_value']].drop_duplicates()
+                desc_parts = []
+                for _, c in constraints.iterrows():
+                    if c['constraint_variable'] in ['age', 'adjusted_gross_income', 'eitc_child_count']:
+                        desc_parts.append(f"{c['constraint_variable']}{c['operation']}{c['constraint_value']}")
+                
+                # Group by variable to handle multiple variables per stratum (e.g., SNAP)
+                for variable in stratum_targets['variable'].unique():
+                    variable_targets = stratum_targets[stratum_targets['variable'] == variable]
+                    # Use the first row for this variable (they should all have same value)
+                    target = variable_targets.iloc[0]
+                    
+                    # Build description with variable name
+                    full_desc_parts = [variable] + desc_parts
                     
                     all_targets.append({
                         'target_id': target['target_id'],
@@ -436,7 +456,7 @@ class SparseGeoStackingMatrixBuilder:
                         'stratum_group_id': target['stratum_group_id'],
                         'geographic_level': geographic_level,
                         'geographic_id': geographic_id,
-                        'description': '_'.join(desc_parts)
+                        'description': '_'.join(full_desc_parts)
                     })
         
         process_target_group(age_targets, "age")
@@ -445,8 +465,21 @@ class SparseGeoStackingMatrixBuilder:
         process_target_group(medicaid_targets, "medicaid")
         process_target_group(eitc_targets, "eitc")
         
-        # Process IRS scalar targets
+        # Process IRS scalar targets - need to check if they come from constrained strata
         for _, target in irs_scalar_targets.iterrows():
+            # Check if this target's stratum has a constraint (indicating it's an IRS child stratum)
+            constraints = self.get_constraints_for_stratum(target['stratum_id'])
+            
+            # If there's a constraint like "salt > 0", use "salt" for the group ID
+            if not constraints.empty and len(constraints) > 0:
+                # Get the constraint variable (e.g., "salt" from "salt > 0")
+                constraint_var = constraints.iloc[0]['constraint_variable']
+                # Use the constraint variable for grouping both count and amount
+                stratum_group_override = f'irs_scalar_{constraint_var}'
+            else:
+                # Fall back to using the target variable name
+                stratum_group_override = f'irs_scalar_{target["variable"]}'
+            
             all_targets.append({
                 'target_id': target['target_id'],
                 'variable': target['variable'],
@@ -454,7 +487,7 @@ class SparseGeoStackingMatrixBuilder:
                 'active': target.get('active', True),
                 'tolerance': target.get('tolerance', 0.05),
                 'stratum_id': target['stratum_id'],
-                'stratum_group_id': f'irs_scalar_{target["variable"]}',
+                'stratum_group_id': stratum_group_override,
                 'geographic_level': geographic_level,
                 'geographic_id': geographic_id,
                 'description': f"{target['variable']}_{geographic_level}"
@@ -507,6 +540,43 @@ class SparseGeoStackingMatrixBuilder:
         
         return targets_df, None, []
     
+    def get_state_snap_cost(self, state_fips: str) -> pd.DataFrame:
+        """Get state-level SNAP cost target (administrative data)."""
+        query = """
+        SELECT 
+            t.target_id,
+            t.stratum_id,
+            t.variable,
+            t.value,
+            t.active,
+            t.tolerance
+        FROM targets t
+        JOIN strata s ON t.stratum_id = s.stratum_id
+        JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+        WHERE s.stratum_group_id = 4  -- SNAP
+          AND t.variable = 'snap'  -- Cost variable
+          AND sc.constraint_variable = 'state_fips'
+          AND sc.value = :state_fips
+          AND t.period = :period
+        """
+        
+        with self.engine.connect() as conn:
+            return pd.read_sql(query, conn, params={
+                'state_fips': state_fips,
+                'period': self.time_period
+            })
+    
+    def get_state_fips_for_cd(self, cd_geoid: str) -> str:
+        """Extract state FIPS from CD GEOID."""
+        # CD GEOIDs are formatted as state_fips + district_number
+        # e.g., "601" = California (06) district 01
+        if len(cd_geoid) == 3:
+            return str(int(cd_geoid[:1]))  # Single digit state, return as string of integer
+        elif len(cd_geoid) == 4:
+            return str(int(cd_geoid[:2]))  # Two digit state, return as string of integer
+        else:
+            raise ValueError(f"Unexpected CD GEOID format: {cd_geoid}")
+    
     def build_stacked_matrix_sparse(self, geographic_level: str, 
                                    geographic_ids: List[str], 
                                    sim=None) -> Tuple[pd.DataFrame, sparse.csr_matrix, Dict[str, List[str]]]:
@@ -521,7 +591,7 @@ class SparseGeoStackingMatrixBuilder:
         household_id_mapping = {}
         
         # First, get national targets once (they apply to all geographic copies)
-        national_targets = self.get_national_hardcoded_targets()
+        national_targets = self.get_national_targets()
         national_targets_list = []
         for _, target in national_targets.iterrows():
             national_targets_list.append({
@@ -531,7 +601,7 @@ class SparseGeoStackingMatrixBuilder:
                 'active': target['active'],
                 'tolerance': target['tolerance'],
                 'stratum_id': target['stratum_id'],
-                'stratum_group_id': 'national_hardcoded',
+                'stratum_group_id': 'national',
                 'geographic_level': 'national',
                 'geographic_id': 'US',
                 'description': f"{target['variable']}_national",
@@ -575,6 +645,84 @@ class SparseGeoStackingMatrixBuilder:
                     f"{hh_id}_{prefix}{geo_id}" for hh_id in household_ids
                 ]
         
+        # If building for congressional districts, add state-level SNAP costs
+        state_snap_targets_list = []
+        state_snap_matrices = []
+        if geographic_level == "congressional_district" and sim is not None:
+            # Identify unique states from the CDs
+            unique_states = set()
+            for cd_id in geographic_ids:
+                state_fips = self.get_state_fips_for_cd(cd_id)
+                unique_states.add(state_fips)
+            
+            logger.info(f"Adding state SNAP costs for {len(unique_states)} states")
+            
+            # Get household info - must match the actual matrix columns
+            household_ids = sim.calculate("household_id").values
+            n_households = len(household_ids)
+            total_cols = n_households * len(geographic_ids)
+            
+            # Get SNAP cost target for each state
+            for state_fips in sorted(unique_states):
+                snap_cost_df = self.get_state_snap_cost(state_fips)
+                if not snap_cost_df.empty:
+                    for _, target in snap_cost_df.iterrows():
+                        state_snap_targets_list.append({
+                            'target_id': target['target_id'],
+                            'variable': target['variable'],
+                            'value': target['value'],
+                            'active': target.get('active', True),
+                            'tolerance': target.get('tolerance', 0.05),
+                            'stratum_id': target['stratum_id'],
+                            'stratum_group_id': 'state_snap_cost',
+                            'geographic_level': 'state',
+                            'geographic_id': state_fips,
+                            'description': f"snap_cost_state_{state_fips}",
+                            'stacked_target_id': f"{target['target_id']}_state_{state_fips}"
+                        })
+                        
+                        # Build matrix row for this state SNAP cost
+                        # This row should have SNAP values for households in CDs of this state
+                        # Get constraints for this state SNAP stratum to apply to simulation
+                        constraints = self.get_constraints_for_stratum(target['stratum_id'])
+                        
+                        # Create a sparse row with correct dimensions (1 x total_cols)
+                        row_data = []
+                        row_indices = []
+                        
+                        # Calculate SNAP values once (only for households with SNAP > 0 in this state)
+                        # Apply the state constraint to get SNAP values
+                        # Important: skip_geographic=False to apply state_fips constraint
+                        nonzero_indices, nonzero_values = self.apply_constraints_to_sim_sparse(
+                            sim, constraints, 'snap', skip_geographic=False
+                        )
+                        
+                        # Create a mapping of household indices to SNAP values
+                        snap_value_map = dict(zip(nonzero_indices, nonzero_values))
+                        
+                        # For each CD, check if it's in this state and add SNAP values
+                        for cd_idx, cd_id in enumerate(geographic_ids):
+                            cd_state_fips = self.get_state_fips_for_cd(cd_id)
+                            if cd_state_fips == state_fips:
+                                # This CD is in the target state
+                                # Add SNAP values at the correct column positions
+                                col_offset = cd_idx * n_households
+                                for hh_idx, snap_val in snap_value_map.items():
+                                    row_indices.append(col_offset + hh_idx)
+                                    row_data.append(snap_val)
+                        
+                        # Create sparse matrix row
+                        if row_data:
+                            row_matrix = sparse.csr_matrix(
+                                (row_data, ([0] * len(row_data), row_indices)),
+                                shape=(1, total_cols)
+                            )
+                            state_snap_matrices.append(row_matrix)
+            
+            # Add state SNAP targets to all_targets
+            if state_snap_targets_list:
+                all_targets.append(pd.DataFrame(state_snap_targets_list))
+        
         # Add national targets to the list once
         if national_targets_list:
             all_targets.insert(0, pd.DataFrame(national_targets_list))
@@ -593,11 +741,19 @@ class SparseGeoStackingMatrixBuilder:
             # Stack geo-specific targets (block diagonal)
             stacked_geo = sparse.block_diag(geo_matrices)
             
-            # Combine national and geo-specific
+            # Combine all matrix parts
+            matrix_parts = []
             if stacked_national is not None:
-                combined_matrix = sparse.vstack([stacked_national, stacked_geo])
-            else:
-                combined_matrix = stacked_geo
+                matrix_parts.append(stacked_national)
+            matrix_parts.append(stacked_geo)
+            
+            # Add state SNAP matrices if we have them (for CD calibration)
+            if state_snap_matrices:
+                stacked_state_snap = sparse.vstack(state_snap_matrices)
+                matrix_parts.append(stacked_state_snap)
+            
+            # Combine all parts
+            combined_matrix = sparse.vstack(matrix_parts)
             
             # Convert to CSR for efficiency
             combined_matrix = combined_matrix.tocsr()

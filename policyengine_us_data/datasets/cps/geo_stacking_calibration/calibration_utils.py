@@ -51,12 +51,12 @@ def create_target_groups(targets_df: pd.DataFrame) -> Tuple[np.ndarray, List[str
     
     print("\n=== Creating Target Groups ===")
     
-    # Process national hardcoded targets first - each gets its own group
-    national_mask = targets_df['stratum_group_id'] == 'national_hardcoded'
+    # Process national targets first - each gets its own group
+    national_mask = targets_df['stratum_group_id'] == 'national'
     national_targets = targets_df[national_mask]
     
     if len(national_targets) > 0:
-        print(f"\nNational hardcoded targets (each is a singleton group):")
+        print(f"\nNational targets (each is a singleton group):")
         for idx in national_targets.index:
             target = targets_df.loc[idx]
             var_name = target['variable']

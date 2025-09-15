@@ -1,24 +1,44 @@
 # Geo-Stacking Calibration: Project Status
 
-## Current Issues & Analysis
+### In Progress 🚧
 
-### The Texas Problem (Critical)
+### Congressional District Target Hierarchy Issue (Critical)
 
-Analysis of L0 sparse calibration weights (97.8% sparsity) reveals severe underfitting for specific states, particularly Texas, which achieves only 24.5% of its population target.
+After careful analysis, the correct target count **for congressional district calibration** should be:
 
-#### Performance Metrics
-- **Overall mean relative error**: 6.27% across all 5,717 targets
-- **National targets**: Excellent performance (<0.03% error)
-- **State targets**: Highly variable (0% to 88% error)
-- **Active weights**: 24,331 out of 1,083,801 (2.24% active)
+| Target Type | Count | Calculation | Notes |
+|-------------|-------|-------------|-------|
+| National | 5 | From etl_national_targets | All 5 confirmed present |
+| CD Age | 7,848 | 18 bins × 436 CDs | Survey source |
+| CD Medicaid | 436 | 1 × 436 CDs | Survey (state admin exists but not used) |
+| SNAP Hybrid | 487 | 436 CD household_count + 51 state cost | Mixed admin sources |
+| CD IRS SOI | 21,800 | 50 × 436 CDs | See breakdown below |
+| **TOTAL** | **30,576** | | **For CD calibration only** |
 
-#### Texas-Specific Issues
-- **Mean error**: 26.1% (highest of all states)
-- **Max error**: 88.1% (age group 60-64)
-- **Active weights**: Only 40 out of 21,251 available (0.2% activation rate)
-- **Population coverage**: 7.5M out of 30.5M target (24.5% achievement)
+**IRS SOI Breakdown (50 variables per CD)**:
+- 20 straightforward targets with tax_unit_count and amount (20 × 2 = 40)
+  - Includes 4 EITC categories (eitc_qualifying_children_0 through 3)
+- 9 AGI histogram bins with ONE count variable (9 × 1 = 9)
+  - Must choose between person_count or tax_unit_count for consistency
+  - NOT including adjusted_gross_income amounts in bins (would double-count)
+- 1 AGI total amount scalar
+- Total: 40 + 9 + 1 = 50 per CD
 
-Paradoxically, Texas is the second-most represented state in the underlying CPS data (1,365 households, 6.4% of dataset).
+**Key Design Decision for CD Calibration**: State SNAP cost targets (51 total) apply to households within each state but remain state-level constraints. Households in CDs within a state have non-zero values in the design matrix for their state's SNAP cost target.
+
+**Note**: This target accounting is specific to congressional district calibration. State-level calibration will have a different target structure and count.
+
+#### What Should Happen (Hierarchical Target Selection)
+For each target concept (e.g., "age 25-30 population in Texas"):
+1. **If CD-level target exists** → use it for that CD only
+2. **If no CD target but state target exists** → use state target for all CDs in that state  
+3. **If neither CD nor state target exists** → use national target
+
+For administrative data (e.g., SNAP):
+- **Always prefer administrative over survey data**, even if admin is less granular
+- State-level SNAP admin data should override CD-level survey estimates
+
+## Analysis
 
 #### State Activation Patterns
 
@@ -43,59 +63,6 @@ Clear inverse correlation between activation rate and error:
 | North Carolina | 10,835,491 | 3,609,763 | 33.3% |
 | Florida | 22,610,726 | 7,601,966 | 33.6% |
 | New York | 19,571,216 | 7,328,156 | 37.4% |
-
-### Root Cause Analysis
-
-1. **Extreme Sparsity Constraint**: The 97.8% sparsity constraint forces selection of only 2.2% of available household weights, creating competition for "universal donor" households.
-
-2. **Texas Household Characteristics**: Despite good representation in base data, Texas households appear to be poor universal donors. The optimizer sacrifices Texas accuracy for better overall performance.
-
-3. **Weight Magnitude Constraints**: With only 40 active weights for 30.5M people, each weight would need to average 763K - approximately 500x larger than typical survey weights.
-
-### Recommendations
-
-#### Short-term Solutions
-1. **Reduce sparsity constraint**: Target 95-96% sparsity instead of 97.8%
-2. **State-specific minimum weights**: Enforce minimum 1% activation per state
-3. **Population-proportional sparsity**: Allocate active weights proportional to state populations
-
-#### Long-term Solutions
-1. **Hierarchical calibration**: Calibrate national targets first, then state targets
-2. **State-specific models**: Separate calibration for problematic states
-3. **Adaptive sparsity**: Allow sparsity to vary by state based on fit quality
-
-## In Progress 🚧
-
-### Congressional District Support
-- Functions are stubbed out but need testing
-- Will create even sparser matrices (436 CDs)
-- ~~Memory feasible but computation time is the bottleneck~~ **RESOLVED with stratified sampling**
-- Stratified dataset reduces matrix from 49M to 5.7M columns (88% reduction)
-
-## To Do 📋
-
-### 1. Scale to All States
-- [ ] Test with all 51 states (including DC)
-- [ ] Monitor memory usage and performance
-- [ ] Verify group-wise loss still converges well
-
-### 2. Add Remaining Demographic Groups
-- [x] Age targets (stratum_group_id = 2) - COMPLETED
-- [x] SNAP targets (stratum_group_id = 4) - COMPLETED  
-- [x] Medicaid targets (stratum_group_id = 5) - COMPLETED (person_count only)
-- [ ] Income/AGI targets (stratum_group_id = 3) - TODO
-- [ ] EITC targets (stratum_group_id = 6) - TODO
-
-### 3. Optimization & Performance
-- [ ] Parallelize matrix construction for speed
-- [ ] Implement chunking strategies for very large matrices
-- [ ] Consider GPU acceleration for L0 optimization
-
-### 4. Production Readiness
-- [ ] Address temporal mismatch between CPS data (2024) and targets (various years)
-- [ ] Implement proper uprating for temporal consistency
-- [ ] Create validation suite for calibration quality
-- [ ] Build monitoring/diagnostics dashboard
 
 ## Implementation History
 
@@ -180,6 +147,16 @@ sample_rate = 0.3  # Use 30% of households
 household_mask = np.random.random(n_households) < sample_rate
 X_sparse_sampled = X_sparse[:, household_mask]
 ```
+
+### 2025-01-12: CD Duplication Fix ✅
+
+Successfully fixed the duplication issue in congressional district calibration:
+- **Root cause**: The `process_target_group` helper function was iterating over each row in multi-constraint strata
+- **The fix**: Modified function to process each stratum once and group by variable within strata
+- **Results**: 
+  - Before: 47,965 total rows with 26,160 duplicates
+  - After: 21,805 unique targets with 0 duplicates
+  - Breakdown: 5 national + 21,800 CD-specific targets
 
 ### 2025-09-11: Stratified CPS Sampling for Congressional Districts ✅
 
@@ -281,20 +258,118 @@ This mechanism:
 
 ## Next Priority Actions
 
-1. **Run full 51-state calibration** - The system is ready, test at scale
-2. **Experiment with sparsity relaxation** - Try 95% instead of 97.8% to improve Texas
-3. **Add income demographic targets** - Next logical variable type to include
-4. **Parallelize matrix construction** - Address the computation bottleneck
+### Critical CD Calibration Fixes (Reference these by number)
+
+1. ~~**Fix the duplication issue**~~ ✅ **COMPLETED (2025-01-12)**
+   - Fixed `process_target_group` function in `metrics_matrix_geo_stacking_sparse.py`
+   - Eliminated all 26,160 duplicate rows
+   - Now have exactly 21,805 unique targets (down from 47,965 with duplicates)
+
+2. **Implement proper hierarchical target selection** - **NEXT PRIORITY**
+   - Current gap: Missing 8,771 targets to reach 30,576 total
+   - These are the 51 state-level SNAP cost targets that should cascade to CDs
+   - Matrix builder must cascade targets: CD → State → National
+   - Need to add state SNAP costs (51 targets applied across 436 CDs in matrix)
+
+3. **Decide on AGI histogram variable** - Choose between person_count vs tax_unit_count
+   - Currently using person_count (9 bins × 436 CDs = 3,924 targets)
+   - Must ensure consistent household weight mapping
+   - May need tax_unit_count for IRS consistency
+
+4. **Verify matrix sparsity pattern** - Ensure state SNAP costs have correct household contributions
+   - After implementing #2, verify households in CDs have non-zero values for their state's SNAP cost
+   - Confirm the geo-stacking structure matches intent
+
+### Longer-term Actions
+
+5. **Add epoch-by-epoch logging for calibration dashboard** - Enable loss curve visualization
+6. **Run full 51-state calibration** - The system is ready, test at scale
+7. **Experiment with sparsity relaxation** - Try 95% instead of 97.8% to improve Texas
+8. **Add income demographic targets** - Next logical variable type to include
+9. **Parallelize matrix construction** - Address the computation bottleneck
+
+### Epoch Logging Implementation Plan
+
+To enable loss curve visualization in the calibration dashboard (https://microcalibrate.vercel.app), we need to capture metrics at regular intervals during training. The dashboard expects a CSV with columns: `target_name`, `estimate`, `target`, `epoch`, `error`, `rel_error`, `abs_error`, `rel_abs_error`, `loss`.
+
+**Recommended approach (without modifying L0):**
+
+Train in chunks of epochs and capture metrics between chunks:
+
+```python
+# In calibrate_cds_sparse.py or calibrate_states_sparse.py
+epochs_per_chunk = 50
+total_epochs = 1000
+epoch_data = []
+
+for chunk in range(0, total_epochs, epochs_per_chunk):
+    # Train for a chunk of epochs
+    model.fit(
+        M=X_sparse,
+        y=targets,
+        lambda_l0=0.01,
+        epochs=epochs_per_chunk,
+        loss_type="relative",
+        verbose=True,
+        verbose_freq=epochs_per_chunk,
+        target_groups=target_groups
+    )
+    
+    # Capture metrics after this chunk
+    with torch.no_grad():
+        y_pred = model.forward(X_sparse, deterministic=True).cpu().numpy()
+        
+        for i, (idx, row) in enumerate(targets_df.iterrows()):
+            # Create hierarchical target name
+            if row['geographic_id'] == 'US':
+                target_name = f"nation/{row['variable']}/{row['description']}"
+            else:
+                target_name = f"CD{row['geographic_id']}/{row['variable']}/{row['description']}"
+            
+            # Calculate all metrics
+            estimate = y_pred[i]
+            target = row['value']
+            error = estimate - target
+            rel_error = error / target if target != 0 else 0
+            
+            epoch_data.append({
+                'target_name': target_name,
+                'estimate': estimate,
+                'target': target,
+                'epoch': chunk + epochs_per_chunk,
+                'error': error,
+                'rel_error': rel_error,
+                'abs_error': abs(error),
+                'rel_abs_error': abs(rel_error),
+                'loss': rel_error ** 2
+            })
+
+# Save to CSV
+calibration_log = pd.DataFrame(epoch_data)
+calibration_log.to_csv('calibration_log.csv', index=False)
+```
+
+This approach:
+- Trains efficiently in 50-epoch chunks (avoiding single-epoch overhead)
+- Captures full metrics every 50 epochs for the loss curve
+- Produces the exact CSV format expected by the dashboard
+- Works without any modifications to the L0 package
 
 ## Project Files
 
 ### Core Implementation
 - `metrics_matrix_geo_stacking_sparse.py` - Sparse matrix builder
 - `calibrate_states_sparse.py` - Main calibration script with diagnostics
+- `calibrate_cds_sparse.py` - Congressional district calibration script
 - `calibration_utils.py` - Shared utilities (target grouping)
-- `weight_diagnostics.py` - Standalone weight analysis tool
+- `weight_diagnostics.py` - State-level weight analysis tool with CSV export
+- `cd_weight_diagnostics.py` - CD-level weight analysis tool with CSV export
 - `create_sparse_state_stacked.py` - Creates sparse state-stacked dataset from calibrated weights
 - `create_stratified_cps.py` - Creates stratified sample preserving high-income households
+
+### Diagnostic Scripts (Can be cleaned up later)
+- `analyze_cd_exclusions.py` - Analysis of excluded CD targets in dashboard
+- `check_duplicates.py` - Investigation of duplicate targets in CSV output
 
 ### L0 Package (~/devl/L0)
 - `l0/calibration.py` - Core calibration class

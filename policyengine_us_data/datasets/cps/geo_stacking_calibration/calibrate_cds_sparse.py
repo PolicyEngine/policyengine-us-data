@@ -20,7 +20,8 @@ from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_util
 # STEP 1: DATA LOADING AND CD LIST RETRIEVAL
 # ============================================================================
    
-db_path = download_from_huggingface("policy_data.db")
+# db_path = download_from_huggingface("policy_data.db")
+db_path = '/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db'
 db_uri = f"sqlite:///{db_path}"
 builder = SparseGeoStackingMatrixBuilder(db_uri, time_period=2023)
 

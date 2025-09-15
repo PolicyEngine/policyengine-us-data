@@ -306,3 +306,50 @@ print("=" * 70)
 print("\nFor detailed diagnostics, see CALIBRATION_DIAGNOSTICS.md")
 print("\nTo create sparse state-stacked dataset, run:")
 print("  python create_sparse_state_stacked.py")
+
+# Export to calibration log CSV format
+print("\n" + "=" * 70)
+print("EXPORTING TO CALIBRATION LOG CSV FORMAT")
+print("=" * 70)
+
+# Create calibration log rows
+log_rows = []
+for idx, row in targets_df.iterrows():
+    # Create target name in hierarchical format
+    if row['geographic_id'] == 'US':
+        target_name = f"nation/{row['variable']}/{row['description']}"
+    else:
+        # State format - use US prefix like in original
+        target_name = f"US{row['geographic_id']}/{row['variable']}/{row['description']}"
+    
+    # Calculate metrics
+    estimate = row['y_pred']
+    target = row['value']
+    error = estimate - target
+    rel_error = error / target if target != 0 else 0
+    abs_error = abs(error)
+    rel_abs_error = abs(rel_error)
+    loss = rel_error ** 2
+    
+    log_rows.append({
+        'target_name': target_name,
+        'estimate': estimate,
+        'target': target,
+        'epoch': 0,  # Single evaluation, not training epochs
+        'error': error,
+        'rel_error': rel_error,
+        'abs_error': abs_error,
+        'rel_abs_error': rel_abs_error,
+        'loss': loss
+    })
+
+# Create DataFrame and save
+calibration_log_df = pd.DataFrame(log_rows)
+csv_path = 'state_calibration_log.csv'
+calibration_log_df.to_csv(csv_path, index=False)
+print(f"\nSaved calibration log to: {csv_path}")
+print(f"Total rows: {len(calibration_log_df):,}")
+
+# Show sample of the CSV
+print("\nSample rows from calibration log:")
+print(calibration_log_df.head(10).to_string(index=False, max_colwidth=50))

@@ -119,36 +119,12 @@ Using relative loss function: `((y - y_pred) / (y + 1))^2`
 1. **National hardcoded targets**: Each gets its own singleton group
 2. **Demographic targets**: Grouped by `stratum_group_id` across ALL geographies
 
-**Result with 2-state example (CA + NC)**:
+**Simplified Example Result with 2-state example (CA + NC)**:
 - 8 total groups: 5 national + 1 age + 1 SNAP + 1 Medicaid
 - National targets contribute 5/8 of total loss
 - Age targets (36) contribute 1/8 of total loss
 - Mean group loss: ~25% (good convergence given target diversity)
 - Sparsity: 99.5% (228 active weights out of 42,502)
-
-### L0 API Improvements
-
-Successfully refactored `SparseCalibrationWeights` class for cleaner API:
-
-**Key Changes**:
-1. Replaced `init_weight_scale` with `init_weights` - accept actual weight values
-2. Per-feature gate initialization via arrays in `init_keep_prob`
-3. Clarified jitter parameters for symmetry breaking
-
-**Clean API Example**:
-```python
-# Calculate per-household keep probabilities based on state
-keep_probs = np.zeros(n_households)
-keep_probs[ca_households] = 0.15  # CA more likely to stay
-keep_probs[nc_households] = 0.05  # NC more likely to drop
-
-model = SparseCalibrationWeights(
-    n_features=n_households,
-    init_weights=10.0,           # Natural survey weight
-    init_keep_prob=keep_probs,   # Per-household probabilities
-    weight_jitter_sd=0.5,        # Symmetry breaking
-)
-```
 
 ## Weight Initialization and Mapping
 
@@ -274,12 +250,192 @@ Sparse Dataset: Two separate households
 
 ## Period Handling
 
-**Critical Finding**: The 2024 enhanced CPS dataset only contains 2024 data
+The 2024 enhanced CPS dataset only contains 2024 data
 - Attempting to set `default_calculation_period=2023` doesn't actually work - it remains 2024
 - When requesting past data explicitly via `calculate(period=2023)`, returns defaults (zeros)
 - **Final Decision**: Use 2024 data and pull targets from whatever year they exist in the database
 - **Temporal Mismatch**: Targets exist for different years (2022 for admin data, 2023 for age, 2024 for hardcoded)
 - This mismatch is acceptable for the calibration prototype and will be addressed in production
+
+## Tutorial: Understanding the Target Structure
+
+### Where Do the 30,576 Targets Come From?
+
+When calibrating 436 congressional districts, the target count breaks down as follows:
+
+| Target Category | Count | Database Location | Variable Name |
+|-----------------|-------|-------------------|----------------|
+| **National** | 5 | Database: `stratum_group_id=1`, `source.type='HARDCODED'` | Various (e.g., `child_support_expense`) |
+| **CD Age** | 7,848 | `stratum_group_id=2`, 18 bins × 436 CDs | `person_count` |
+| **CD Medicaid** | 436 | `stratum_group_id=5`, 1 × 436 CDs | `person_count` |
+| **CD SNAP household** | 436 | `stratum_group_id=4`, 1 × 436 CDs | `household_count` |
+| **State SNAP costs** | 51 | `stratum_group_id=4`, state-level | `snap` |
+| **CD AGI distribution** | 3,924 | `stratum_group_id=3`, 9 bins × 436 CDs | `person_count` (with AGI constraints) |
+| **CD IRS SOI** | 21,800 | `stratum_group_id=7`, 50 vars × 436 CDs | Various tax variables |
+| **TOTAL** | **30,576** | | |
+
+### Finding Targets in the Database
+
+#### 1. National Targets (5 total)
+These are pulled directly from the database (not hardcoded in Python):
+```sql
+-- National targets from the database
+SELECT t.variable, t.value, t.period, s.notes
+FROM targets t
+JOIN strata s ON t.stratum_id = s.stratum_id
+WHERE t.variable IN ('child_support_expense', 
+                     'health_insurance_premiums_without_medicare_part_b',
+                     'medicare_part_b_premiums', 
+                     'other_medical_expenses', 
+                     'tip_income')
+  AND s.notes = 'United States';
+```
+
+#### 2. Age Targets (18 bins per CD)
+```sql
+-- Find age targets for a specific CD (e.g., California CD 1)
+SELECT t.variable, t.value, sc.constraint_variable, sc.value as constraint_value
+FROM targets t
+JOIN strata s ON t.stratum_id = s.stratum_id
+JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+WHERE s.stratum_group_id = 2  -- Age group
+  AND s.parent_stratum_id IN (
+    SELECT stratum_id FROM strata WHERE stratum_group_id = 1
+    AND stratum_id IN (
+      SELECT stratum_id FROM stratum_constraints
+      WHERE constraint_variable = 'congressional_district_geoid'
+      AND value = '601'  -- California CD 1
+    )
+  )
+  AND t.period = 2023;
+```
+
+#### 3. AGI Distribution Targets (9 bins per CD)
+**Important:** These appear as `person_count` with AGI ranges in the description. They're in stratum_group_id=3 but only exist for period=2022 in the database:
+
+```python
+# After loading targets_df
+agi_targets = targets_df[
+    (targets_df['description'].str.contains('adjusted_gross_income', na=False)) &
+    (targets_df['variable'] == 'person_count')
+]
+# Example descriptions:
+# - person_count_adjusted_gross_income<1_adjusted_gross_income>=-inf
+# - person_count_adjusted_gross_income<10000_adjusted_gross_income>=1
+# - person_count_adjusted_gross_income<inf_adjusted_gross_income>=500000
+```
+
+Note: AGI distribution targets exist in the database but only for states (not CDs) and only for period=2022. The CD-level AGI targets are likely being generated programmatically.
+
+#### 4. SNAP Targets (Hierarchical)
+- **CD-level**: `household_count` for SNAP>0 households (survey data)
+- **State-level**: `snap` cost in dollars (administrative data)
+
+```sql
+-- CD-level SNAP household count (survey) for California CD 1
+SELECT t.variable, t.value, sc.constraint_variable, sc.value as constraint_value
+FROM targets t
+JOIN strata s ON t.stratum_id = s.stratum_id
+LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+WHERE s.stratum_group_id = 4  -- SNAP
+  AND t.variable = 'household_count'
+  AND s.parent_stratum_id IN (
+    SELECT stratum_id FROM strata WHERE stratum_group_id = 1
+    AND stratum_id IN (
+      SELECT stratum_id FROM stratum_constraints
+      WHERE constraint_variable = 'congressional_district_geoid'
+      AND value = '601'
+    )
+  )
+  AND t.period = 2023;
+
+-- State SNAP cost for California (administrative)
+SELECT t.variable, t.value
+FROM targets t
+JOIN strata s ON t.stratum_id = s.stratum_id
+JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+WHERE s.stratum_group_id = 4  -- SNAP
+  AND t.variable = 'snap'  -- Cost variable
+  AND sc.constraint_variable = 'state_fips'
+  AND sc.value = '6'  -- California
+  AND t.period = 2023;
+```
+
+The state SNAP costs cascade to all CDs within that state in the calibration matrix.
+
+#### 5. IRS SOI Targets (50 per CD)
+These include various tax-related variables stored with stratum_group_id=115 and period=2022:
+
+```sql
+-- Example: Income tax for California CD 601
+SELECT t.variable, t.value, t.period, s.notes
+FROM targets t
+JOIN strata s ON t.stratum_id = s.stratum_id
+WHERE t.variable = 'income_tax'
+  AND s.notes = 'CD 601 with income_tax > 0'
+  AND t.period = 2022;
+-- Returns: income_tax = $2,802,681,423
+```
+
+```python
+# In Python targets_df, find income_tax for CD 601
+income_tax = targets_df[
+    (targets_df['variable'] == 'income_tax') &
+    (targets_df['geographic_id'] == '601')
+]
+# Shows: income_tax with stratum_group_id='irs_scalar_income_tax'
+
+# Common IRS variables (many have both tax_unit_count and amount versions)
+irs_variables = [
+    'income_tax',
+    'qualified_business_income_deduction', 
+    'salt_refundable_credits',
+    'net_capital_gain',
+    'taxable_ira_distributions',
+    'taxable_interest_income',
+    'tax_exempt_interest_income',
+    'dividend_income',
+    'qualified_dividend_income',
+    'partnership_s_corp_income',
+    'taxable_social_security',
+    'unemployment_compensation',
+    'real_estate_taxes',
+    'eitc_qualifying_children_0',  # through _3
+    'adjusted_gross_income'  # scalar total
+]
+```
+
+### Debugging Target Counts
+
+If your target count doesn't match expectations:
+
+```python
+# Load the calibration results
+import pickle
+with open('/path/to/cd_targets_df.pkl', 'rb') as f:
+    targets_df = pickle.load(f)
+
+# Check breakdown by geographic level
+print("National:", len(targets_df[targets_df['geographic_level'] == 'national']))
+print("State:", len(targets_df[targets_df['geographic_level'] == 'state']))
+print("CD:", len(targets_df[targets_df['geographic_level'] == 'congressional_district']))
+
+# Check by stratum_group_id
+for group_id in targets_df['stratum_group_id'].unique():
+    count = len(targets_df[targets_df['stratum_group_id'] == group_id])
+    print(f"Group {group_id}: {count} targets")
+
+# Find missing categories
+expected_groups = {
+    'national': 5,
+    'age': 7848,  # 18 × 436
+    'agi_distribution': 3924,  # 9 × 436
+    'snap': 436,  # household_count
+    'state_snap_cost': 51,  # state costs
+    'medicaid': 436,
+    # Plus various IRS groups
+}
+```
 
 ## Usage Example
 

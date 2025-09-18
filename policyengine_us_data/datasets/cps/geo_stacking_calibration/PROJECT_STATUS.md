@@ -198,11 +198,140 @@ This mechanism:
 - Generates both datasets in geo-stacking mode to avoid breaking downstream dependencies
 - Extra compute cost is acceptable for the simplicity gained
 
+## Variable Coverage Analysis (2025-01-16) ✅
+
+### Analysis Scripts Created
+Seven diagnostic scripts were created to analyze variable coverage:
+
+1. **`analyze_missing_variables.py`** - Initial legacy column analysis
+2. **`analyze_missing_actionable.py`** - Tests PolicyEngine variable availability  
+3. **`compare_legacy_vs_new.py`** - Direct legacy vs new comparison
+4. **`analyze_calibration_coverage.py`** - Checks what's actually in calibration matrix
+5. **`missing_irs_variables.py`** - Compares IRS SOI documentation to database
+6. **`irs_variables_final_analysis.py`** - Final IRS variable analysis with ETL check
+7. **`missing_national_targets.py`** - Identifies missing national-level targets
+
+### Key Findings
+
+#### ✅ Variables We Have (Confirmed)
+- **IRS SOI Variables** (19 total at CD level):
+  - Income tax, EITC (by children), qualified dividends, capital gains
+  - SALT payments, medical expense deductions, QBI deductions
+  - Unemployment compensation, taxable social security/pensions
+  - Real estate taxes, partnership/S-corp income
+- **Demographics**: Age bins (18 categories)
+- **Benefits**: SNAP (hybrid state/CD), Medicaid enrollment
+- **National Targets**: 5 hardcoded from database
+
+#### ❌ Critical Missing Variables
+
+**1. Self-Employment Income (A00900)** - **CONFIRMED MISSING**
+- Boss was correct - this is NOT in the database
+- IRS provides it at CD level (Schedule C business income)
+- Added to `etl_irs_soi.py` line 227 but database needs update
+- PolicyEngine variable: `self_employment_income` ($444B total)
+
+**2. Major Benefits Programs**
+- **Social Security benefits** (~$1.5T) - Have taxable portion, missing total
+- **SSI** (~$60B) - Completely missing
+- **TANF** ($9B) - Hardcoded in loss.py, missing from our calibration
+
+**3. Tax Expenditures vs Deductions**
+- We have deduction AMOUNTS (what people claimed)
+- Missing tax EXPENDITURES (federal revenue loss)
+- Example: Have SALT payments, missing SALT revenue impact
+
+**4. Other IRS Variables Available but Not Extracted**
+- A25870: Rental and royalty income
+- A19700: Charitable contributions  
+- A19300: Mortgage interest
+- A09400: Self-employment tax
+
+### Understanding Variable Naming
+
+**Legacy System Structure**:
+- Format: `geography/source/variable/details`
+- Example: `nation/irs/business net profits/total/AGI in -inf-inf/taxable/All`
+
+**Key Mappings**:
+- `business_net_profits` = PolicyEngine's `self_employment_income` (positive values)
+- `rent_and_royalty_net_income` = PolicyEngine's `rental_income`
+- These are split into positive/negative in legacy for IRS alignment
+
+**Geographic Levels**:
+- National: Authoritative totals (CBO, Treasury)
+- State: Some admin data (SNAP costs)
+- CD: Primarily IRS SOI and survey data
+
+### Action Items
+
+**Immediate** (Database Updates Needed):
+1. Run ETL with self_employment_income (A00900) added
+2. Add Social Security benefits, SSI, TANF as national targets
+3. Consider adding filing status breakdowns
+
+**Future Improvements**:
+- Add more IRS variables (rental, charitable, mortgage interest)
+- Implement hierarchical target selection (prefer admin over survey)
+- Add tax expenditure targets for better high-income calibration
+
+## ETL and Uprating Refactoring (2025-09-18) ✅
+
+### Major Refactoring of National Targets ETL
+
+Refactored `etl_national_targets.py` to follow proper ETL pattern and moved uprating logic to calibration pipeline:
+
+#### Key Changes Made:
+
+1. **Proper ETL Structure**:
+   - Separated into `extract_national_targets()`, `transform_national_targets()`, and `load_national_targets()` functions
+   - Fixed code ordering bug where `sim` was used before being defined
+   - Removed unnecessary variable group metadata creation (not used by calibration system)
+
+2. **Enrollment Count Handling**:
+   - Split targets into direct sum targets (dollar amounts) and conditional count targets (enrollments)
+   - Created proper strata with constraints for enrollment counts (e.g., `medicaid > 0` with target `person_count`)
+   - Follows pattern established in `etl_snap.py`
+
+3. **Uprating Moved to Calibration**:
+   - **Database now stores actual source years**: 2024 for hardcoded values from loss.py, 2023 for CBO/Treasury
+   - Added `uprate_target_value()` and `uprate_targets_df()` to `calibration_utils.py`
+   - All `get_*_targets()` methods in `SparseGeoStackingMatrixBuilder` now apply uprating
+   - Uses CPI-U for monetary values, population growth for count variables
+
+#### Important Notes:
+
+⚠️ **Database Recreation Required**: After ETL changes, must delete and recreate `policy_data.db`:
+```bash
+rm policyengine_us_data/storage/policy_data.db
+python policyengine_us_data/db/create_database_tables.py
+python policyengine_us_data/db/create_initial_strata.py
+python policyengine_us_data/db/etl_national_targets.py
+```
+
+⚠️ **Import Issues**: Added fallback imports in `metrics_matrix_geo_stacking_sparse.py` due to `microimpute` dependency issues
+
+⚠️ **Years in Database**: Targets now show their actual source years (2023/2024 mix) rather than all being 2023
+
+#### Benefits of New Approach:
+
+- **Transparency**: Database shows actual source years
+- **Flexibility**: Can calibrate to any dataset year without re-running ETL
+- **Auditability**: Uprating happens explicitly with logging (shows when >1% change)
+- **Correctness**: Each target type uses appropriate uprating method
+
+#### Uprating Factors (2024→2023):
+- CPI-U: 0.970018 (3% reduction for monetary values)
+- Population: 0.989172 (1.1% reduction for enrollment counts)
+
 ## Next Priority Actions
 
 ### TODOs 
 
 1. **Add epoch-by-epoch logging for calibration dashboard** - Enable loss curve visualization
+2. **Update database with self_employment_income** - Re-run ETL with A00900 added
+3. **Add missing benefit programs** - Social Security total, SSI, TANF at national level (Note: TANF was added in the refactoring)
+4. **Add filing status breakdowns for IRS variables** - The legacy system segments many IRS variables by filing status (Single, MFJ/Surviving Spouse, MFS, Head of Household). This should be added as stratum constraints to improve calibration accuracy.
 
 ### Epoch Logging Implementation Plan
 

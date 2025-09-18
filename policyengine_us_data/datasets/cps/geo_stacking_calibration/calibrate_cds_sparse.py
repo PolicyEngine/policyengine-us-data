@@ -221,7 +221,7 @@ model = SparseCalibrationWeights(
     beta=2/3,
     gamma=-0.1,
     zeta=1.1,
-    init_keep_prob=keep_probs,  # CD-specific keep probabilities
+    init_keep_prob=.999, # keep_probs,  # CD-specific keep probabilities
     init_weights=init_weights,  # CD population-based initial weights
     log_weight_jitter_sd=0.05,
     log_alpha_jitter_sd=0.01,
@@ -237,6 +237,63 @@ TOTAL_EPOCHS = 100  # Total epochs to train (set to 3 for quick test)
 # TOTAL_EPOCHS = 3
 
 epoch_data = []
+sparsity_history = []  # Track (epoch, sparsity_pct) for forecasting
+
+def forecast_sparsity(history, target_epoch):
+    """Forecast sparsity at target_epoch based on recent trend with decay."""
+    if len(history) < 3:
+        return None, None, None
+    
+    # Use last 5-10 points (adaptive based on available data)
+    n_points = min(10, max(5, len(history) // 2))
+    recent = history[-n_points:]
+    
+    epochs = np.array([e for e, s in recent])
+    sparsities = np.array([s for e, s in recent])
+    
+    # Calculate recent rate of change
+    if len(recent) >= 2:
+        recent_rate = (sparsities[-1] - sparsities[-2]) / (epochs[-1] - epochs[-2])
+        rate_per_100 = recent_rate * 100
+    else:
+        coeffs = np.polyfit(epochs, sparsities, 1)
+        recent_rate = coeffs[0]
+        rate_per_100 = coeffs[0] * 100
+    
+    # Method 1: Exponential decay model - fit y = a - b*exp(-c*x)
+    # For simplicity, use a hybrid approach:
+    # 1. Estimate asymptote as current + decaying future gains
+    # 2. Account for decreasing rate
+    
+    current_sparsity = sparsities[-1]
+    current_epoch = epochs[-1]
+    remaining_epochs = target_epoch - current_epoch
+    
+    # Calculate rate decay factor from historical rates if possible
+    decay_factor = 0.8  # Default
+    if len(recent) >= 4:
+        # Calculate how rate is changing
+        mid = len(recent) // 2
+        early_rate = (sparsities[mid] - sparsities[0]) / (epochs[mid] - epochs[0]) if epochs[mid] != epochs[0] else 0
+        late_rate = (sparsities[-1] - sparsities[mid]) / (epochs[-1] - epochs[mid]) if epochs[-1] != epochs[mid] else 0
+        if early_rate > 0:
+            decay_factor = late_rate / early_rate
+            decay_factor = np.clip(decay_factor, 0.3, 1.0)  # Reasonable bounds
+    
+    # Project forward with decaying rate
+    # Sum of geometric series for decreasing increments
+    if recent_rate > 0 and decay_factor < 1:
+        # Total gain = rate * (1 - decay^n) / (1 - decay) * epoch_size
+        n_steps = remaining_epochs / 100  # In units of 100 epochs
+        total_gain = rate_per_100 * (1 - decay_factor**n_steps) / (1 - decay_factor)
+        predicted_sparsity = current_sparsity + total_gain
+    else:
+        # Fallback to linear if rate is negative or no decay
+        predicted_sparsity = current_sparsity + recent_rate * remaining_epochs
+    
+    predicted_sparsity = np.clip(predicted_sparsity, 0, 100)
+    
+    return predicted_sparsity, rate_per_100, decay_factor
 
 # Train in chunks and capture metrics between chunks
 for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
@@ -249,7 +306,7 @@ for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
         M=X_sparse,
         y=targets,
         target_groups=target_groups,
-        lambda_l0=1.5e-6,
+        lambda_l0=1.0e-6,
         lambda_l2=0,
         lr=0.2,
         epochs=chunk_epochs,
@@ -257,6 +314,26 @@ for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
         verbose=True,
         verbose_freq=chunk_epochs,  # Print at end of chunk
     )
+    
+    # Capture sparsity for forecasting
+    active_info = model.get_active_weights()
+    current_sparsity = 100 * (1 - active_info['count'] / X_sparse.shape[1])
+    sparsity_history.append((current_epoch, current_sparsity))
+    
+    # Display sparsity forecast
+    forecast, rate, decay = forecast_sparsity(sparsity_history, TOTAL_EPOCHS)
+    if forecast is not None:
+        if rate > 0:
+            if decay < 0.7:
+                trend_desc = f"slowing growth (decay={decay:.2f})"
+            elif decay > 0.95:
+                trend_desc = "steady growth"
+            else:
+                trend_desc = f"gradual slowdown (decay={decay:.2f})"
+        else:
+            trend_desc = "decreasing"
+        print(f"→ Sparsity forecast: {forecast:.1f}% at epoch {TOTAL_EPOCHS} "
+              f"(current rate: {abs(rate):.2f}%/100ep, {trend_desc})")
     
     if ENABLE_EPOCH_LOGGING:
         # Capture metrics after this chunk
@@ -308,7 +385,20 @@ with torch.no_grad():
     
     # Get sparsity info
     active_info = model.get_active_weights()
+    final_sparsity = 100 * (1 - active_info['count'] / X_sparse.shape[1])
     print(f"Active weights: {active_info['count']} out of {X_sparse.shape[1]} ({100*active_info['count']/X_sparse.shape[1]:.2f}%)")
+    print(f"Final sparsity: {final_sparsity:.2f}%")
+    
+    # Show forecast accuracy if we had forecasts
+    if len(sparsity_history) >= 3:
+        # Get forecast from halfway point
+        halfway_idx = len(sparsity_history) // 2
+        halfway_history = sparsity_history[:halfway_idx]
+        halfway_forecast, _, _ = forecast_sparsity(halfway_history, TOTAL_EPOCHS)
+        if halfway_forecast is not None:
+            forecast_error = abs(halfway_forecast - final_sparsity)
+            print(f"Forecast accuracy: Midpoint forecast was {halfway_forecast:.1f}%, "
+                  f"error of {forecast_error:.1f} percentage points")
     
     # Save final weights
     w = model.get_weights(deterministic=True).cpu().numpy()

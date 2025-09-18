@@ -4,7 +4,7 @@ Shared utilities for calibration scripts.
 import os
 import urllib
 import tempfile
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -167,3 +167,111 @@ def download_from_huggingface(file_name):
         print(f"Using cached {local_path}")
     
     return local_path
+
+
+def uprate_target_value(value: float, variable_name: str, from_year: int, to_year: int, 
+                        sim=None) -> float:
+    """
+    Uprate a target value from source year to dataset year.
+    
+    Parameters
+    ----------
+    value : float
+        The value to uprate
+    variable_name : str
+        Name of the variable (used to determine uprating type)
+    from_year : int
+        Source year of the value
+    to_year : int
+        Target year to uprate to
+    sim : Microsimulation, optional
+        Existing microsimulation instance for getting parameters
+    
+    Returns
+    -------
+    float
+        Uprated value
+    """
+    if from_year == to_year:
+        return value
+    
+    # Need PolicyEngine parameters for uprating factors
+    if sim is None:
+        from policyengine_us import Microsimulation
+        sim = Microsimulation(dataset="hf://policyengine/test/extended_cps_2023.h5")
+    
+    params = sim.tax_benefit_system.parameters
+    
+    # Determine uprating type based on variable
+    # Count variables use population uprating
+    count_variables = [
+        'person_count', 'household_count', 'tax_unit_count', 
+        'spm_unit_count', 'family_count', 'marital_unit_count'
+    ]
+    
+    if variable_name in count_variables:
+        # Use population uprating for counts
+        try:
+            pop_from = params.calibration.gov.census.populations.total(from_year)
+            pop_to = params.calibration.gov.census.populations.total(to_year)
+            factor = pop_to / pop_from
+        except Exception as e:
+            print(f"Warning: Could not get population uprating for {from_year}->{to_year}: {e}")
+            factor = 1.0
+    else:
+        # Use CPI-U for monetary values (default)
+        try:
+            cpi_from = params.gov.bls.cpi.cpi_u(from_year)
+            cpi_to = params.gov.bls.cpi.cpi_u(to_year)
+            factor = cpi_to / cpi_from
+        except Exception as e:
+            print(f"Warning: Could not get CPI uprating for {from_year}->{to_year}: {e}")
+            factor = 1.0
+    
+    return value * factor
+
+
+def uprate_targets_df(targets_df: pd.DataFrame, target_year: int, sim=None) -> pd.DataFrame:
+    """
+    Uprate all targets in a DataFrame to the target year.
+    
+    Parameters
+    ----------
+    targets_df : pd.DataFrame
+        DataFrame containing targets with 'period', 'variable', and 'value' columns
+    target_year : int
+        Year to uprate all targets to
+    sim : Microsimulation, optional
+        Existing microsimulation instance for getting parameters
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with uprated values
+    """
+    if 'period' not in targets_df.columns:
+        print("Warning: No 'period' column in targets_df, returning unchanged")
+        return targets_df
+    
+    uprated_df = targets_df.copy()
+    
+    for idx, row in uprated_df.iterrows():
+        source_year = row['period']
+        if source_year != target_year:
+            original_value = row['value']
+            uprated_value = uprate_target_value(
+                original_value,
+                row['variable'],
+                source_year,
+                target_year,
+                sim
+            )
+            uprated_df.at[idx, 'value'] = uprated_value
+            
+            # Log significant uprating
+            if abs(uprated_value / original_value - 1) > 0.01:  # More than 1% change
+                print(f"Uprated {row['variable']} from {source_year} to {target_year}: "
+                      f"{original_value:,.0f} → {uprated_value:,.0f} "
+                      f"(factor: {uprated_value/original_value:.4f})")
+    
+    return uprated_df

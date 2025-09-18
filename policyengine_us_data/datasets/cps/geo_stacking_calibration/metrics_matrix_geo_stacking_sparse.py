@@ -15,6 +15,13 @@ import pandas as pd
 from scipy import sparse
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
+try:
+    from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+        uprate_targets_df
+    )
+except ImportError:
+    # Direct import if full package path not available
+    from calibration_utils import uprate_targets_df
 
 logger = logging.getLogger(__name__)
 
@@ -34,39 +41,60 @@ class SparseGeoStackingMatrixBuilder:
         self.engine = create_engine(db_uri)
         self.time_period = time_period  # Default to 2024 to match CPS data
         
-    def get_national_targets(self) -> pd.DataFrame:
+    def get_national_targets(self, sim=None) -> pd.DataFrame:
         """
         Get national-level targets from the database.
-        These have no state equivalents and apply to all geographies.
+        Includes both direct national targets and national targets with strata/constraints.
         """
         query = """
+        WITH national_stratum AS (
+            -- Get the national (US) stratum ID
+            SELECT stratum_id 
+            FROM strata 
+            WHERE parent_stratum_id IS NULL
+            LIMIT 1
+        )
         SELECT 
             t.target_id,
             t.stratum_id,
             t.variable,
             t.value,
+            t.period,
             t.active,
             t.tolerance,
             s.notes as stratum_notes,
+            sc.constraint_variable,
+            sc.operation,
+            sc.value as constraint_value,
             src.name as source_name
         FROM targets t
         JOIN strata s ON t.stratum_id = s.stratum_id
         JOIN sources src ON t.source_id = src.source_id
-        WHERE s.parent_stratum_id IS NULL  -- National level
-          AND s.stratum_group_id = 1  -- Geographic stratum
-          AND UPPER(src.type) = 'HARDCODED'  -- Hardcoded national targets (case-insensitive)
-        ORDER BY t.variable
+        LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+        WHERE (
+            -- Direct national targets (no parent)
+            s.parent_stratum_id IS NULL
+            OR 
+            -- National targets with strata (parent is national stratum)
+            s.parent_stratum_id = (SELECT stratum_id FROM national_stratum)
+        )
+        AND UPPER(src.type) = 'HARDCODED'  -- Hardcoded targets only
+        ORDER BY t.variable, sc.constraint_variable
         """
         
         with self.engine.connect() as conn:
             # Don't filter by period for now - get any available hardcoded targets
             df = pd.read_sql(query, conn)
         
+        # Apply uprating to the dataset year
+        if len(df) > 0:
+            df = uprate_targets_df(df, self.time_period, sim)
+        
         logger.info(f"Found {len(df)} national targets from database")
         return df
     
     def get_irs_scalar_targets(self, geographic_stratum_id: int,
-                               geographic_level: str) -> pd.DataFrame:
+                               geographic_level: str, sim=None) -> pd.DataFrame:
         """
         Get IRS scalar variables from child strata with constraints.
         These are now in child strata with constraints like "salt > 0"
@@ -77,6 +105,7 @@ class SparseGeoStackingMatrixBuilder:
             t.stratum_id,
             t.variable,
             t.value,
+            t.period,
             t.active,
             t.tolerance,
             s.notes as stratum_notes,
@@ -95,12 +124,14 @@ class SparseGeoStackingMatrixBuilder:
         with self.engine.connect() as conn:
             df = pd.read_sql(query, conn, params={'stratum_id': geographic_stratum_id})
         
+        # Apply uprating
         if len(df) > 0:
+            df = uprate_targets_df(df, self.time_period, sim)
             logger.info(f"Found {len(df)} IRS scalar targets for {geographic_level}")
         return df
     
     def get_agi_total_target(self, geographic_stratum_id: int,
-                             geographic_level: str) -> pd.DataFrame:
+                             geographic_level: str, sim=None) -> pd.DataFrame:
         """
         Get the total AGI amount for a geography.
         This is a single scalar value, not a distribution.
@@ -111,6 +142,7 @@ class SparseGeoStackingMatrixBuilder:
             t.stratum_id,
             t.variable,
             t.value,
+            t.period,
             t.active,
             t.tolerance,
             s.notes as stratum_notes,
@@ -125,13 +157,15 @@ class SparseGeoStackingMatrixBuilder:
         with self.engine.connect() as conn:
             df = pd.read_sql(query, conn, params={'stratum_id': geographic_stratum_id})
         
+        # Apply uprating
         if len(df) > 0:
+            df = uprate_targets_df(df, self.time_period, sim)
             logger.info(f"Found AGI total target for {geographic_level}")
         return df
     
     def get_demographic_targets(self, geographic_stratum_id: int, 
                               stratum_group_id: int, 
-                              group_name: str) -> pd.DataFrame:
+                              group_name: str, sim=None) -> pd.DataFrame:
         """
         Generic function to get demographic targets for a geographic area.
         
@@ -210,6 +244,10 @@ class SparseGeoStackingMatrixBuilder:
                 if len(df) > 0:
                     period_used = df['period'].iloc[0]
                     logger.info(f"No {group_name} targets for {self.time_period}, using {period_used} instead")
+        
+        # Apply uprating
+        if len(df) > 0:
+            df = uprate_targets_df(df, self.time_period, sim)
         
         logger.info(f"Found {len(df)} {group_name} targets for stratum {geographic_stratum_id}")
         return df
@@ -315,7 +353,8 @@ class SparseGeoStackingMatrixBuilder:
                         parsed_val = val
                 
                 # Apply operation using standardized operators from database
-                if op == '==':
+                # Handle both '=' and '==' for equality
+                if op == '==' or op == '=':
                     mask = (constraint_values == parsed_val).astype(bool)
                 elif op == '>':
                     mask = (constraint_values > parsed_val).astype(bool)
@@ -384,39 +423,75 @@ class SparseGeoStackingMatrixBuilder:
             raise ValueError(f"Could not find {geographic_level} {geographic_id} in database")
         
         # Get national targets from database
-        national_targets = self.get_national_targets()
+        national_targets = self.get_national_targets(sim)
         
         # Get demographic targets for this geography
-        age_targets = self.get_demographic_targets(geo_stratum_id, 2, "age")
+        age_targets = self.get_demographic_targets(geo_stratum_id, 2, "age", sim)
         
         # For AGI distribution, we want only one count variable (ideally tax_unit_count)
         # Currently the database has person_count, so we'll use that for now
-        agi_distribution_targets = self.get_demographic_targets(geo_stratum_id, 3, "AGI_distribution")
+        agi_distribution_targets = self.get_demographic_targets(geo_stratum_id, 3, "AGI_distribution", sim)
         
-        snap_targets = self.get_demographic_targets(geo_stratum_id, 4, "SNAP")
-        medicaid_targets = self.get_demographic_targets(geo_stratum_id, 5, "Medicaid")
-        eitc_targets = self.get_demographic_targets(geo_stratum_id, 6, "EITC")
+        snap_targets = self.get_demographic_targets(geo_stratum_id, 4, "SNAP", sim)
+        medicaid_targets = self.get_demographic_targets(geo_stratum_id, 5, "Medicaid", sim)
+        eitc_targets = self.get_demographic_targets(geo_stratum_id, 6, "EITC", sim)
         
         # Get IRS scalar targets (individual variables, each its own group)
-        irs_scalar_targets = self.get_irs_scalar_targets(geo_stratum_id, geographic_level)
-        agi_total_target = self.get_agi_total_target(geo_stratum_id, geographic_level)
+        irs_scalar_targets = self.get_irs_scalar_targets(geo_stratum_id, geographic_level, sim)
+        agi_total_target = self.get_agi_total_target(geo_stratum_id, geographic_level, sim)
         
         all_targets = []
         
-        # Add national targets
-        for _, target in national_targets.iterrows():
-            all_targets.append({
-                'target_id': target['target_id'],
-                'variable': target['variable'],
-                'value': target['value'],
-                'active': target['active'],
-                'tolerance': target['tolerance'],
-                'stratum_id': target['stratum_id'],
-                'stratum_group_id': 'national',
-                'geographic_level': 'national',
-                'geographic_id': 'US',
-                'description': f"{target['variable']}_national"
-            })
+        # Add national targets - handle constraints properly
+        # Group national targets by stratum_id to process constraints
+        for stratum_id in national_targets['stratum_id'].unique():
+            stratum_targets = national_targets[national_targets['stratum_id'] == stratum_id]
+            
+            # Check if this stratum has constraints
+            has_constraints = stratum_targets['constraint_variable'].notna().any()
+            
+            if has_constraints:
+                # Handle targets with constraints (e.g., ssn_count_none > 0, medicaid > 0)
+                constraints = stratum_targets[['constraint_variable', 'operation', 'constraint_value']].drop_duplicates()
+                constraints = constraints.dropna()
+                
+                # Build description from constraints
+                constraint_parts = []
+                for _, c in constraints.iterrows():
+                    constraint_parts.append(f"{c['constraint_variable']}{c['operation']}{c['constraint_value']}")
+                constraint_desc = "_".join(constraint_parts)
+                
+                # Add each target variable for this constrained stratum
+                for _, target in stratum_targets.iterrows():
+                    if pd.notna(target['variable']):  # Skip rows that are just constraint info
+                        all_targets.append({
+                            'target_id': target['target_id'],
+                            'variable': target['variable'],
+                            'value': target['value'],
+                            'active': target['active'],
+                            'tolerance': target['tolerance'],
+                            'stratum_id': target['stratum_id'],
+                            'stratum_group_id': 'national_constrained',
+                            'geographic_level': 'national',
+                            'geographic_id': 'US',
+                            'description': f"{target['variable']}_national_{constraint_desc}",
+                            'constraints': constraints.to_dict('records')  # Store constraints for later use
+                        })
+            else:
+                # Regular national targets without constraints
+                for _, target in stratum_targets.iterrows():
+                    all_targets.append({
+                        'target_id': target['target_id'],
+                        'variable': target['variable'],
+                        'value': target['value'],
+                        'active': target['active'],
+                        'tolerance': target['tolerance'],
+                        'stratum_id': target['stratum_id'],
+                        'stratum_group_id': 'national',
+                        'geographic_level': 'national',
+                        'geographic_id': 'US',
+                        'description': f"{target['variable']}_national"
+                    })
         
         # Process demographic targets (similar to original but simplified)
         processed_strata = set()
@@ -591,7 +666,7 @@ class SparseGeoStackingMatrixBuilder:
         household_id_mapping = {}
         
         # First, get national targets once (they apply to all geographic copies)
-        national_targets = self.get_national_targets()
+        national_targets = self.get_national_targets(sim)
         national_targets_list = []
         for _, target in national_targets.iterrows():
             national_targets_list.append({

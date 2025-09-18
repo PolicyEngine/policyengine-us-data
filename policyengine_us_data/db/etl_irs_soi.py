@@ -224,7 +224,10 @@ def transform_soi_data(raw_df):
             name="qualified_business_income_deduction",
             breakdown=None,
         ),
+        dict(code="00900", name="self_employment_income", breakdown=None),
+        dict(code="01000", name="net_capital_gains", breakdown=None),
         dict(code="18500", name="real_estate_taxes", breakdown=None),
+        dict(code="25870", name="rental_income", breakdown=None),
         dict(code="01000", name="net_capital_gain", breakdown=None),
         dict(code="01400", name="taxable_ira_distributions", breakdown=None),
         dict(code="00300", name="taxable_interest_income", breakdown=None),
@@ -243,6 +246,7 @@ def transform_soi_data(raw_df):
         dict(code="11070", name="refundable_ctc", breakdown=None),
         dict(code="18425", name="salt", breakdown=None),
         dict(code="06500", name="income_tax", breakdown=None),
+        dict(code="05800", name="income_tax_before_credits", breakdown=None),
     ]
 
     # National ---------------

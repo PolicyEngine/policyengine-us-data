@@ -16,6 +16,65 @@ from policyengine_us_data.datasets.cps.geo_stacking_calibration.metrics_matrix_g
 from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import create_target_groups, download_from_huggingface
 
 
+def forecast_sparsity(history, target_epoch):
+    """Forecast sparsity at target_epoch based on recent trend with decay."""
+    if len(history) < 3:
+        return None, None, None
+    
+    # Use last 5-10 points (adaptive based on available data)
+    n_points = min(10, max(5, len(history) // 2))
+    recent = history[-n_points:]
+    
+    epochs = np.array([e for e, s in recent])
+    sparsities = np.array([s for e, s in recent])
+    
+    # Calculate recent rate of change
+    if len(recent) >= 2:
+        recent_rate = (sparsities[-1] - sparsities[-2]) / (epochs[-1] - epochs[-2])
+        rate_per_100 = recent_rate * 100
+    else:
+        coeffs = np.polyfit(epochs, sparsities, 1)
+        recent_rate = coeffs[0]
+        rate_per_100 = coeffs[0] * 100
+    
+    # Method 1: Exponential decay model - fit y = a - b*exp(-c*x)
+    # For simplicity, use a hybrid approach:
+    # 1. Estimate asymptote as current + decaying future gains
+    # 2. Account for decreasing rate
+    
+    current_sparsity = sparsities[-1]
+    current_epoch = epochs[-1]
+    remaining_epochs = target_epoch - current_epoch
+    
+    # Calculate rate decay factor from historical rates if possible
+    decay_factor = 0.8  # Default
+    if len(recent) >= 4:
+        # Calculate how rate is changing
+        mid = len(recent) // 2
+        early_rate = (sparsities[mid] - sparsities[0]) / (epochs[mid] - epochs[0]) if epochs[mid] != epochs[0] else 0
+        late_rate = (sparsities[-1] - sparsities[mid]) / (epochs[-1] - epochs[mid]) if epochs[-1] != epochs[mid] else 0
+        if early_rate > 0:
+            decay_factor = late_rate / early_rate
+            decay_factor = np.clip(decay_factor, 0.3, 1.0)  # Reasonable bounds
+    
+    # Project forward with decaying rate
+    # Sum of geometric series for decreasing increments
+    if recent_rate > 0 and decay_factor < 1:
+        # Total gain = rate * (1 - decay^n) / (1 - decay) * epoch_size
+        n_steps = remaining_epochs / 100  # In units of 100 epochs
+        total_gain = rate_per_100 * (1 - decay_factor**n_steps) / (1 - decay_factor)
+        predicted_sparsity = current_sparsity + total_gain
+    else:
+        # Fallback to linear if rate is negative or no decay
+        predicted_sparsity = current_sparsity + recent_rate * remaining_epochs
+    
+    predicted_sparsity = np.clip(predicted_sparsity, 0, 100)
+    
+    return predicted_sparsity, rate_per_100, decay_factor
+
+
+
+
 # ============================================================================
 # STEP 1: DATA LOADING AND CD LIST RETRIEVAL
 # ============================================================================
@@ -63,7 +122,8 @@ if MODE == "Test":
     dataset_uri = "hf://policyengine/test/extended_cps_2023.h5"
 elif MODE == "Stratified":
     cds_to_calibrate = all_cd_geoids
-    dataset_uri = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/stratified_extended_cps_2023.h5"
+    #dataset_uri = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/stratified_extended_cps_2023.h5"
+    dataset_uri = "/home/baogorek/devl/stratified_10k.h5"
     print(f"Stratified mode")
 else:
     cds_to_calibrate = all_cd_geoids
@@ -109,10 +169,23 @@ sparse_path = os.path.join(export_dir, "cd_matrix_sparse.npz")
 sp.save_npz(sparse_path, X_sparse)
 print(f"\nExported sparse matrix to: {sparse_path}")
 
-# Save targets dataframe with all metadata
-targets_df_path = os.path.join(export_dir, "cd_targets_df.pkl")
-targets_df.to_pickle(targets_df_path)
-print(f"Exported targets dataframe to: {targets_df_path}")
+# Create target names array for epoch logging
+target_names = []
+for _, row in targets_df.iterrows():
+    if row['geographic_id'] == 'US':
+        name = f"nation/{row['variable']}/{row['description']}"
+    elif len(str(row['geographic_id'])) <= 2 or 'state' in row['description'].lower():
+        name = f"state{row['geographic_id']}/{row['variable']}/{row['description']}"
+    else:
+        name = f"CD{row['geographic_id']}/{row['variable']}/{row['description']}"
+    target_names.append(name)
+
+# Save target names array (replaces pickled dataframe)
+target_names_path = os.path.join(export_dir, "cd_target_names.json")
+import json
+with open(target_names_path, 'w') as f:
+    json.dump(target_names, f)
+print(f"Exported target names to: {target_names_path}")
 
 # Save targets array for direct model.fit() use
 targets_array_path = os.path.join(export_dir, "cd_targets_array.npy")
@@ -230,70 +303,14 @@ model = SparseCalibrationWeights(
 
 # Configuration for epoch logging
 ENABLE_EPOCH_LOGGING = True  # Set to False to disable logging
-EPOCHS_PER_CHUNK = 5  # Train in chunks of 50 epochs
-TOTAL_EPOCHS = 100  # Total epochs to train (set to 3 for quick test)
+EPOCHS_PER_CHUNK = 2  # Train in chunks of 50 epochs
+TOTAL_EPOCHS = 4  # Total epochs to train (set to 3 for quick test)
 # For testing, you can use:
 # EPOCHS_PER_CHUNK = 1
 # TOTAL_EPOCHS = 3
 
 epoch_data = []
 sparsity_history = []  # Track (epoch, sparsity_pct) for forecasting
-
-def forecast_sparsity(history, target_epoch):
-    """Forecast sparsity at target_epoch based on recent trend with decay."""
-    if len(history) < 3:
-        return None, None, None
-    
-    # Use last 5-10 points (adaptive based on available data)
-    n_points = min(10, max(5, len(history) // 2))
-    recent = history[-n_points:]
-    
-    epochs = np.array([e for e, s in recent])
-    sparsities = np.array([s for e, s in recent])
-    
-    # Calculate recent rate of change
-    if len(recent) >= 2:
-        recent_rate = (sparsities[-1] - sparsities[-2]) / (epochs[-1] - epochs[-2])
-        rate_per_100 = recent_rate * 100
-    else:
-        coeffs = np.polyfit(epochs, sparsities, 1)
-        recent_rate = coeffs[0]
-        rate_per_100 = coeffs[0] * 100
-    
-    # Method 1: Exponential decay model - fit y = a - b*exp(-c*x)
-    # For simplicity, use a hybrid approach:
-    # 1. Estimate asymptote as current + decaying future gains
-    # 2. Account for decreasing rate
-    
-    current_sparsity = sparsities[-1]
-    current_epoch = epochs[-1]
-    remaining_epochs = target_epoch - current_epoch
-    
-    # Calculate rate decay factor from historical rates if possible
-    decay_factor = 0.8  # Default
-    if len(recent) >= 4:
-        # Calculate how rate is changing
-        mid = len(recent) // 2
-        early_rate = (sparsities[mid] - sparsities[0]) / (epochs[mid] - epochs[0]) if epochs[mid] != epochs[0] else 0
-        late_rate = (sparsities[-1] - sparsities[mid]) / (epochs[-1] - epochs[mid]) if epochs[-1] != epochs[mid] else 0
-        if early_rate > 0:
-            decay_factor = late_rate / early_rate
-            decay_factor = np.clip(decay_factor, 0.3, 1.0)  # Reasonable bounds
-    
-    # Project forward with decaying rate
-    # Sum of geometric series for decreasing increments
-    if recent_rate > 0 and decay_factor < 1:
-        # Total gain = rate * (1 - decay^n) / (1 - decay) * epoch_size
-        n_steps = remaining_epochs / 100  # In units of 100 epochs
-        total_gain = rate_per_100 * (1 - decay_factor**n_steps) / (1 - decay_factor)
-        predicted_sparsity = current_sparsity + total_gain
-    else:
-        # Fallback to linear if rate is negative or no decay
-        predicted_sparsity = current_sparsity + recent_rate * remaining_epochs
-    
-    predicted_sparsity = np.clip(predicted_sparsity, 0, 100)
-    
-    return predicted_sparsity, rate_per_100, decay_factor
 
 # Train in chunks and capture metrics between chunks
 for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
@@ -341,21 +358,15 @@ for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
         with torch.no_grad():
             y_pred = model.predict(X_sparse).cpu().numpy()
             
-            for i, (idx, row) in enumerate(targets_df.iterrows()):
-                # Create hierarchical target name
-                if row['geographic_id'] == 'US':
-                    target_name = f"nation/{row['variable']}/{row['description']}"
-                else:
-                    target_name = f"CD{row['geographic_id']}/{row['variable']}/{row['description']}"
-                
+            for i in range(len(targets)):
                 # Calculate all metrics
                 estimate = y_pred[i]
-                target = row['value']
+                target = targets[i]
                 error = estimate - target
                 rel_error = error / target if target != 0 else 0
                 
                 epoch_data.append({
-                    'target_name': target_name,
+                    'target_name': target_names[i],
                     'estimate': estimate,
                     'target': target,
                     'epoch': current_epoch,
@@ -418,7 +429,7 @@ print("="*70)
 print(f"\nAll files exported to: {export_dir}")
 print("\nFiles ready for GPU transfer:")
 print(f"  1. cd_matrix_sparse.npz - Sparse calibration matrix")
-print(f"  2. cd_targets_df.pkl - Full targets with metadata")
+print(f"  2. cd_target_names.json - Target names for epoch logging")
 print(f"  3. cd_targets_array.npy - Target values array")
 print(f"  4. cd_keep_probs.npy - Initial keep probabilities")
 print(f"  5. cd_init_weights.npy - Initial weights")

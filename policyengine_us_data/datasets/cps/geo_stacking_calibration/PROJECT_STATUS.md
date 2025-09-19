@@ -324,6 +324,35 @@ python policyengine_us_data/db/etl_national_targets.py
 - CPI-U: 0.970018 (3% reduction for monetary values)
 - Population: 0.989172 (1.1% reduction for enrollment counts)
 
+### Redundant Uprating Issue (2025-09-19) ⚠️
+
+Discovered redundant uprating calculations causing excessive console output and wasted computation:
+
+#### The Problem:
+- National targets are fetched and uprated **for each geographic unit** (state or CD)
+- With 436 CDs, the same 33 national targets get uprated 436 times redundantly
+- Each uprating with >1% change prints a log message to console
+- Results in thousands of repetitive console messages and unnecessary computation
+
+#### Uprating Details:
+- **National variables** (2024→2023): Downrated using CPI factor 0.9700
+  - Examples: interest_deduction, medicaid, rent, tanf
+- **IRS scalar variables** (2022→2023): Uprated using CPI factor 1.0641  
+  - Examples: income_tax, qualified_business_income_deduction, taxable_ira_distributions
+- **IRS AGI distribution** (2022→2023): Uprated using **population growth** factor 1.0641
+  - These are `person_count` variables counting people in each AGI bin
+  - Correctly uses population growth, not CPI, for demographic counts
+
+#### Impact:
+- **Performance**: ~436x more uprating calculations than necessary for national targets
+- **Console output**: Thousands of redundant log messages making progress hard to track
+- **User experience**: Appears frozen due to console spam, though actually progressing
+
+#### Solution Needed:
+- Cache uprated national targets since they're identical for all geographic units
+- Consider caching other repeatedly uprated target sets
+- Would reduce uprating calls from O(n_geographic_units) to O(1) for shared targets
+
 ## Next Priority Actions
 
 ### TODOs 

@@ -1,8 +1,15 @@
 # ============================================================================
+# CONFIGURATION
+# ============================================================================
+import os
+# Set before any CUDA operations - helps with memory fragmentation on long runs
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
+# ============================================================================
 # IMPORTS
 # ============================================================================
 from pathlib import Path
-import os
+from datetime import datetime
 from sqlalchemy import create_engine, text
 
 import torch
@@ -15,62 +22,6 @@ from policyengine_us import Microsimulation
 from policyengine_us_data.datasets.cps.geo_stacking_calibration.metrics_matrix_geo_stacking_sparse import SparseGeoStackingMatrixBuilder
 from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import create_target_groups, download_from_huggingface
 
-
-def forecast_sparsity(history, target_epoch):
-    """Forecast sparsity at target_epoch based on recent trend with decay."""
-    if len(history) < 3:
-        return None, None, None
-    
-    # Use last 5-10 points (adaptive based on available data)
-    n_points = min(10, max(5, len(history) // 2))
-    recent = history[-n_points:]
-    
-    epochs = np.array([e for e, s in recent])
-    sparsities = np.array([s for e, s in recent])
-    
-    # Calculate recent rate of change
-    if len(recent) >= 2:
-        recent_rate = (sparsities[-1] - sparsities[-2]) / (epochs[-1] - epochs[-2])
-        rate_per_100 = recent_rate * 100
-    else:
-        coeffs = np.polyfit(epochs, sparsities, 1)
-        recent_rate = coeffs[0]
-        rate_per_100 = coeffs[0] * 100
-    
-    # Method 1: Exponential decay model - fit y = a - b*exp(-c*x)
-    # For simplicity, use a hybrid approach:
-    # 1. Estimate asymptote as current + decaying future gains
-    # 2. Account for decreasing rate
-    
-    current_sparsity = sparsities[-1]
-    current_epoch = epochs[-1]
-    remaining_epochs = target_epoch - current_epoch
-    
-    # Calculate rate decay factor from historical rates if possible
-    decay_factor = 0.8  # Default
-    if len(recent) >= 4:
-        # Calculate how rate is changing
-        mid = len(recent) // 2
-        early_rate = (sparsities[mid] - sparsities[0]) / (epochs[mid] - epochs[0]) if epochs[mid] != epochs[0] else 0
-        late_rate = (sparsities[-1] - sparsities[mid]) / (epochs[-1] - epochs[mid]) if epochs[-1] != epochs[mid] else 0
-        if early_rate > 0:
-            decay_factor = late_rate / early_rate
-            decay_factor = np.clip(decay_factor, 0.3, 1.0)  # Reasonable bounds
-    
-    # Project forward with decaying rate
-    # Sum of geometric series for decreasing increments
-    if recent_rate > 0 and decay_factor < 1:
-        # Total gain = rate * (1 - decay^n) / (1 - decay) * epoch_size
-        n_steps = remaining_epochs / 100  # In units of 100 epochs
-        total_gain = rate_per_100 * (1 - decay_factor**n_steps) / (1 - decay_factor)
-        predicted_sparsity = current_sparsity + total_gain
-    else:
-        # Fallback to linear if rate is negative or no decay
-        predicted_sparsity = current_sparsity + recent_rate * remaining_epochs
-    
-    predicted_sparsity = np.clip(predicted_sparsity, 0, 100)
-    
-    return predicted_sparsity, rate_per_100, decay_factor
 
 
 
@@ -309,8 +260,20 @@ TOTAL_EPOCHS = 4  # Total epochs to train (set to 3 for quick test)
 # EPOCHS_PER_CHUNK = 1
 # TOTAL_EPOCHS = 3
 
-epoch_data = []
-sparsity_history = []  # Track (epoch, sparsity_pct) for forecasting
+# Initialize CSV files for incremental writing
+if ENABLE_EPOCH_LOGGING:
+    log_path = os.path.join(export_dir, "cd_calibration_log.csv")
+    # Write header
+    with open(log_path, 'w') as f:
+        f.write('target_name,estimate,target,epoch,error,rel_error,abs_error,rel_abs_error,loss\n')
+    print(f"Initialized incremental log at: {log_path}")
+
+# Initialize sparsity tracking CSV with timestamp
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+sparsity_path = os.path.join(export_dir, f"cd_sparsity_history_{timestamp}.csv")
+with open(sparsity_path, 'w') as f:
+    f.write('epoch,active_weights,total_weights,sparsity_pct\n')
+print(f"Initialized sparsity tracking at: {sparsity_path}")
 
 # Train in chunks and capture metrics between chunks
 for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
@@ -332,57 +295,43 @@ for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
         verbose_freq=chunk_epochs,  # Print at end of chunk
     )
     
-    # Capture sparsity for forecasting
+    # Track sparsity after each chunk
     active_info = model.get_active_weights()
-    current_sparsity = 100 * (1 - active_info['count'] / X_sparse.shape[1])
-    sparsity_history.append((current_epoch, current_sparsity))
+    active_count = active_info['count']
+    total_count = X_sparse.shape[1]
+    sparsity_pct = 100 * (1 - active_count / total_count)
     
-    # Display sparsity forecast
-    forecast, rate, decay = forecast_sparsity(sparsity_history, TOTAL_EPOCHS)
-    if forecast is not None:
-        if rate > 0:
-            if decay < 0.7:
-                trend_desc = f"slowing growth (decay={decay:.2f})"
-            elif decay > 0.95:
-                trend_desc = "steady growth"
-            else:
-                trend_desc = f"gradual slowdown (decay={decay:.2f})"
-        else:
-            trend_desc = "decreasing"
-        print(f"→ Sparsity forecast: {forecast:.1f}% at epoch {TOTAL_EPOCHS} "
-              f"(current rate: {abs(rate):.2f}%/100ep, {trend_desc})")
+    with open(sparsity_path, 'a') as f:
+        f.write(f'{current_epoch},{active_count},{total_count},{sparsity_pct:.4f}\n')
     
     if ENABLE_EPOCH_LOGGING:
         # Capture metrics after this chunk
-        print(f"Capturing metrics at epoch {current_epoch}...")
         with torch.no_grad():
             y_pred = model.predict(X_sparse).cpu().numpy()
             
-            for i in range(len(targets)):
-                # Calculate all metrics
-                estimate = y_pred[i]
-                target = targets[i]
-                error = estimate - target
-                rel_error = error / target if target != 0 else 0
-                
-                epoch_data.append({
-                    'target_name': target_names[i],
-                    'estimate': estimate,
-                    'target': target,
-                    'epoch': current_epoch,
-                    'error': error,
-                    'rel_error': rel_error,
-                    'abs_error': abs(error),
-                    'rel_abs_error': abs(rel_error),
-                    'loss': rel_error ** 2
-                })
+            # Write incrementally to CSV
+            with open(log_path, 'a') as f:
+                for i in range(len(targets)):
+                    # Calculate all metrics
+                    estimate = y_pred[i]
+                    target = targets[i]
+                    error = estimate - target
+                    rel_error = error / target if target != 0 else 0
+                    abs_error = abs(error)
+                    rel_abs_error = abs(rel_error)
+                    loss = rel_error ** 2
+                    
+                    # Write row directly to file
+                    f.write(f'"{target_names[i]}",{estimate},{target},{current_epoch},'
+                           f'{error},{rel_error},{abs_error},{rel_abs_error},{loss}\n')
+        
+        # Clear GPU cache after large prediction operation
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 # Save epoch logging data if enabled
-if ENABLE_EPOCH_LOGGING and epoch_data:
-    calibration_log = pd.DataFrame(epoch_data)
-    log_path = os.path.join(export_dir, "cd_calibration_log.csv")
-    calibration_log.to_csv(log_path, index=False)
-    print(f"\nSaved calibration log with {len(epoch_data)} entries to: {log_path}")
-    print(f"Log contains metrics for {len(calibration_log['epoch'].unique())} epochs")
+if ENABLE_EPOCH_LOGGING:
+    print(f"\nIncremental log complete at: {log_path}")
+    print(f"Log contains metrics for {TOTAL_EPOCHS // EPOCHS_PER_CHUNK} logging points")
     
 # Final evaluation
 with torch.no_grad():
@@ -399,17 +348,6 @@ with torch.no_grad():
     final_sparsity = 100 * (1 - active_info['count'] / X_sparse.shape[1])
     print(f"Active weights: {active_info['count']} out of {X_sparse.shape[1]} ({100*active_info['count']/X_sparse.shape[1]:.2f}%)")
     print(f"Final sparsity: {final_sparsity:.2f}%")
-    
-    # Show forecast accuracy if we had forecasts
-    if len(sparsity_history) >= 3:
-        # Get forecast from halfway point
-        halfway_idx = len(sparsity_history) // 2
-        halfway_history = sparsity_history[:halfway_idx]
-        halfway_forecast, _, _ = forecast_sparsity(halfway_history, TOTAL_EPOCHS)
-        if halfway_forecast is not None:
-            forecast_error = abs(halfway_forecast - final_sparsity)
-            print(f"Forecast accuracy: Midpoint forecast was {halfway_forecast:.1f}%, "
-                  f"error of {forecast_error:.1f} percentage points")
     
     # Save final weights
     w = model.get_weights(deterministic=True).cpu().numpy()
@@ -437,8 +375,9 @@ print(f"  6. cd_target_groups.npy - Target grouping for loss")
 print(f"  7. cd_list.txt - List of CD GEOIDs")
 if 'w' in locals():
     print(f"  8. cd_weights_{TOTAL_EPOCHS}epochs.npy - Final calibration weights")
-if ENABLE_EPOCH_LOGGING and epoch_data:
+if ENABLE_EPOCH_LOGGING:
     print(f"  9. cd_calibration_log.csv - Epoch-by-epoch metrics for dashboard")
+print(f"  10. cd_sparsity_history_{timestamp}.csv - Sparsity tracking over epochs")
 
 print("\nTo load on GPU platform:")
 print("  import scipy.sparse as sp")

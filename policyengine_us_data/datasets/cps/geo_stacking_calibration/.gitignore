@@ -1,4 +1,14 @@
+# Test files (but not verify_calibration.py)
 test*
+
+# Analysis scripts - uncomment specific ones to commit if needed
 analyze*
+# !analyze_calibration_coverage.py
+# !analyze_missing_actionable.py  
+# !analyze_missing_variables.py
+
+# NumPy weight arrays
 *.npy
+
+# Debug scripts (including debug_uprating.py - temporary tool)
 debug*

@@ -22,10 +22,6 @@ from policyengine_us import Microsimulation
 from policyengine_us_data.datasets.cps.geo_stacking_calibration.metrics_matrix_geo_stacking_sparse import SparseGeoStackingMatrixBuilder
 from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import create_target_groups, download_from_huggingface
 
-
-
-
-
 # ============================================================================
 # STEP 1: DATA LOADING AND CD LIST RETRIEVAL
 # ============================================================================

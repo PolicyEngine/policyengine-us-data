@@ -41,6 +41,114 @@ class SparseGeoStackingMatrixBuilder:
         self.engine = create_engine(db_uri)
         self.time_period = time_period  # Default to 2024 to match CPS data
         
+    def get_all_descendant_targets(self, stratum_id: int, sim=None) -> pd.DataFrame:
+        """
+        Recursively get all targets from a stratum and all its descendants.
+        This handles the new filer stratum layer transparently.
+        """
+        query = """
+        WITH RECURSIVE descendant_strata AS (
+            -- Base case: the stratum itself
+            SELECT stratum_id
+            FROM strata
+            WHERE stratum_id = :stratum_id
+            
+            UNION ALL
+            
+            -- Recursive case: all children
+            SELECT s.stratum_id
+            FROM strata s
+            JOIN descendant_strata d ON s.parent_stratum_id = d.stratum_id
+        )
+        SELECT 
+            t.target_id,
+            t.stratum_id,
+            t.variable,
+            t.value,
+            t.period,
+            t.active,
+            t.tolerance,
+            s.notes as stratum_notes,
+            s.stratum_group_id,
+            s.parent_stratum_id,
+            src.name as source_name,
+            sc.constraint_variable,
+            sc.operation,
+            sc.value as constraint_value
+        FROM targets t
+        JOIN strata s ON t.stratum_id = s.stratum_id
+        JOIN sources src ON t.source_id = src.source_id
+        LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+        WHERE s.stratum_id IN (SELECT stratum_id FROM descendant_strata)
+        ORDER BY s.stratum_id, t.variable
+        """
+        
+        with self.engine.connect() as conn:
+            df = pd.read_sql(query, conn, params={'stratum_id': stratum_id})
+        
+        # Apply uprating
+        if len(df) > 0 and sim is not None:
+            df = uprate_targets_df(df, self.time_period, sim)
+        
+        return df
+    
+    def get_hierarchical_targets(self, cd_stratum_id: int, state_stratum_id: int, 
+                                 national_stratum_id: int, sim=None) -> pd.DataFrame:
+        """
+        Get targets using hierarchical fallback: CD -> State -> National.
+        For each target concept, use the most geographically specific available.
+        """
+        # Get all targets at each level (including descendants)
+        cd_targets = self.get_all_descendant_targets(cd_stratum_id, sim)
+        state_targets = self.get_all_descendant_targets(state_stratum_id, sim)
+        national_targets = self.get_all_descendant_targets(national_stratum_id, sim)
+        
+        # Add geographic level to each
+        cd_targets['geo_level'] = 'congressional_district'
+        cd_targets['geo_priority'] = 1  # Highest priority
+        state_targets['geo_level'] = 'state'
+        state_targets['geo_priority'] = 2
+        national_targets['geo_level'] = 'national'
+        national_targets['geo_priority'] = 3  # Lowest priority
+        
+        # Combine all targets
+        all_targets = pd.concat([cd_targets, state_targets, national_targets], ignore_index=True)
+        
+        # Create concept identifier: variable + constraint pattern
+        # For IRS targets with constraints like "salt > 0", group by the constraint variable
+        def get_concept_id(row):
+            # For targets with constraints on IRS variables
+            if pd.notna(row['constraint_variable']) and row['constraint_variable'] not in [
+                'state_fips', 'congressional_district_geoid', 'tax_unit_is_filer',
+                'age', 'adjusted_gross_income', 'eitc_child_count', 'snap', 'medicaid'
+            ]:
+                # This is likely an IRS variable constraint like "salt > 0"
+                return f"{row['constraint_variable']}_constrained"
+            # For other targets, use variable name and key constraints
+            elif row['variable']:
+                concept = row['variable']
+                # Add demographic constraints to concept ID
+                if pd.notna(row['constraint_variable']):
+                    if row['constraint_variable'] in ['age', 'adjusted_gross_income', 'eitc_child_count']:
+                        concept += f"_{row['constraint_variable']}_{row['operation']}_{row['constraint_value']}"
+                return concept
+            return None
+        
+        all_targets['concept_id'] = all_targets.apply(get_concept_id, axis=1)
+        
+        # Remove targets without a valid concept
+        all_targets = all_targets[all_targets['concept_id'].notna()]
+        
+        # For each concept, keep only the most geographically specific target
+        # Sort by concept and priority, then keep first of each concept
+        all_targets = all_targets.sort_values(['concept_id', 'geo_priority'])
+        selected_targets = all_targets.groupby('concept_id').first().reset_index()
+        
+        logger.info(f"Hierarchical fallback selected {len(selected_targets)} targets from "
+                   f"{len(all_targets)} total across all levels")
+        
+        return selected_targets
+        
     def get_national_targets(self, sim=None) -> pd.DataFrame:
         """
         Get national-level targets from the database.
@@ -252,6 +360,19 @@ class SparseGeoStackingMatrixBuilder:
         logger.info(f"Found {len(df)} {group_name} targets for stratum {geographic_stratum_id}")
         return df
     
+    def get_national_stratum_id(self) -> Optional[int]:
+        """Get stratum ID for national level."""
+        query = """
+        SELECT stratum_id 
+        FROM strata 
+        WHERE parent_stratum_id IS NULL
+          AND stratum_group_id = 1  -- Geographic stratum
+        LIMIT 1
+        """
+        with self.engine.connect() as conn:
+            result = conn.execute(text(query)).fetchone()
+            return result[0] if result else None
+    
     def get_state_stratum_id(self, state_fips: str) -> Optional[int]:
         """Get the stratum_id for a state."""
         query = """
@@ -266,6 +387,17 @@ class SparseGeoStackingMatrixBuilder:
         with self.engine.connect() as conn:
             result = conn.execute(text(query), {'state_fips': state_fips}).fetchone()
             return result[0] if result else None
+    
+    def get_state_fips_from_cd(self, cd_geoid: str) -> str:
+        """Extract state FIPS code from congressional district GEOID."""
+        # CD GEOIDs are formatted as state_fips (1-2 digits) + district (2 digits)
+        # Examples: '601' -> '6', '3601' -> '36'
+        if len(cd_geoid) == 3:
+            return cd_geoid[0]  # Single digit state
+        elif len(cd_geoid) == 4:
+            return cd_geoid[:2]  # Two digit state
+        else:
+            raise ValueError(f"Invalid CD GEOID format: {cd_geoid}")
     
     def get_cd_stratum_id(self, cd_geoid: str) -> Optional[int]:
         """Get the stratum_id for a congressional district."""
@@ -404,183 +536,106 @@ class SparseGeoStackingMatrixBuilder:
                                          geographic_id: str, 
                                          sim=None) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
         """
-        Build sparse calibration matrix for any geographic level.
+        Build sparse calibration matrix for any geographic level using hierarchical fallback.
         
         Returns:
             Tuple of (targets_df, sparse_matrix, household_ids)
         """
-        # Get the geographic stratum ID
+        # Get the geographic stratum IDs for all levels
+        national_stratum_id = self.get_national_stratum_id()
+        
         if geographic_level == 'state':
-            geo_stratum_id = self.get_state_stratum_id(geographic_id)
+            state_stratum_id = self.get_state_stratum_id(geographic_id)
+            cd_stratum_id = None  # No CD level for state calibration
             geo_label = f"state_{geographic_id}"
+            if state_stratum_id is None:
+                raise ValueError(f"Could not find state {geographic_id} in database")
         elif geographic_level == 'congressional_district':
-            geo_stratum_id = self.get_cd_stratum_id(geographic_id)
+            cd_stratum_id = self.get_cd_stratum_id(geographic_id)
+            state_fips = self.get_state_fips_from_cd(geographic_id)
+            state_stratum_id = self.get_state_stratum_id(state_fips)
             geo_label = f"cd_{geographic_id}"
+            if cd_stratum_id is None:
+                raise ValueError(f"Could not find CD {geographic_id} in database")
         else:
             raise ValueError(f"Unknown geographic level: {geographic_level}")
         
-        if geo_stratum_id is None:
-            raise ValueError(f"Could not find {geographic_level} {geographic_id} in database")
+        # Use hierarchical fallback to get all targets
+        if geographic_level == 'congressional_district':
+            # CD calibration: Use CD -> State -> National fallback
+            hierarchical_targets = self.get_hierarchical_targets(
+                cd_stratum_id, state_stratum_id, national_stratum_id, sim
+            )
+        else:  # state
+            # State calibration: Use State -> National fallback (no CD level)
+            # For state calibration, we pass state_stratum_id twice to avoid null issues
+            state_targets = self.get_all_descendant_targets(state_stratum_id, sim)
+            national_targets = self.get_all_descendant_targets(national_stratum_id, sim)
+            
+            # Add geographic level
+            state_targets['geo_level'] = 'state'
+            state_targets['geo_priority'] = 1
+            national_targets['geo_level'] = 'national'
+            national_targets['geo_priority'] = 2
+            
+            # Combine and deduplicate
+            all_targets = pd.concat([state_targets, national_targets], ignore_index=True)
+            
+            # Create concept identifier
+            def get_concept_id(row):
+                if pd.notna(row['constraint_variable']) and row['constraint_variable'] not in [
+                    'state_fips', 'congressional_district_geoid', 'tax_unit_is_filer',
+                    'age', 'adjusted_gross_income', 'eitc_child_count', 'snap', 'medicaid'
+                ]:
+                    return f"{row['constraint_variable']}_constrained"
+                elif row['variable']:
+                    concept = row['variable']
+                    if pd.notna(row['constraint_variable']):
+                        if row['constraint_variable'] in ['age', 'adjusted_gross_income', 'eitc_child_count']:
+                            concept += f"_{row['constraint_variable']}_{row['operation']}_{row['constraint_value']}"
+                    return concept
+                return None
+            
+            all_targets['concept_id'] = all_targets.apply(get_concept_id, axis=1)
+            all_targets = all_targets[all_targets['concept_id'].notna()]
+            all_targets = all_targets.sort_values(['concept_id', 'geo_priority'])
+            hierarchical_targets = all_targets.groupby('concept_id').first().reset_index()
         
-        # Get national targets from database
-        national_targets = self.get_national_targets(sim)
-        
-        # Get demographic targets for this geography
-        age_targets = self.get_demographic_targets(geo_stratum_id, 2, "age", sim)
-        
-        # For AGI distribution, we want only one count variable (ideally tax_unit_count)
-        # Currently the database has person_count, so we'll use that for now
-        agi_distribution_targets = self.get_demographic_targets(geo_stratum_id, 3, "AGI_distribution", sim)
-        
-        snap_targets = self.get_demographic_targets(geo_stratum_id, 4, "SNAP", sim)
-        medicaid_targets = self.get_demographic_targets(geo_stratum_id, 5, "Medicaid", sim)
-        eitc_targets = self.get_demographic_targets(geo_stratum_id, 6, "EITC", sim)
-        
-        # Get IRS scalar targets (individual variables, each its own group)
-        irs_scalar_targets = self.get_irs_scalar_targets(geo_stratum_id, geographic_level, sim)
-        agi_total_target = self.get_agi_total_target(geo_stratum_id, geographic_level, sim)
-        
+        # Process hierarchical targets into the format expected by the rest of the code
         all_targets = []
         
-        # Add national targets - handle constraints properly
-        # Group national targets by stratum_id to process constraints
-        for stratum_id in national_targets['stratum_id'].unique():
-            stratum_targets = national_targets[national_targets['stratum_id'] == stratum_id]
+        for _, target_row in hierarchical_targets.iterrows():
+            # Build description from constraints
+            desc_parts = [target_row['variable']]
             
-            # Check if this stratum has constraints
-            has_constraints = stratum_targets['constraint_variable'].notna().any()
+            # Add constraint info to description if present
+            if pd.notna(target_row.get('constraint_variable')):
+                desc_parts.append(f"{target_row['constraint_variable']}{target_row.get('operation', '=')}{target_row.get('constraint_value', '')}")
             
-            if has_constraints:
-                # Handle targets with constraints (e.g., ssn_count_none > 0, medicaid > 0)
-                constraints = stratum_targets[['constraint_variable', 'operation', 'constraint_value']].drop_duplicates()
-                constraints = constraints.dropna()
-                
-                # Build description from constraints
-                constraint_parts = []
-                for _, c in constraints.iterrows():
-                    constraint_parts.append(f"{c['constraint_variable']}{c['operation']}{c['constraint_value']}")
-                constraint_desc = "_".join(constraint_parts)
-                
-                # Add each target variable for this constrained stratum
-                for _, target in stratum_targets.iterrows():
-                    if pd.notna(target['variable']):  # Skip rows that are just constraint info
-                        all_targets.append({
-                            'target_id': target['target_id'],
-                            'variable': target['variable'],
-                            'value': target['value'],
-                            'active': target['active'],
-                            'tolerance': target['tolerance'],
-                            'stratum_id': target['stratum_id'],
-                            'stratum_group_id': 'national_constrained',
-                            'geographic_level': 'national',
-                            'geographic_id': 'US',
-                            'description': f"{target['variable']}_national_{constraint_desc}",
-                            'constraints': constraints.to_dict('records')  # Store constraints for later use
-                        })
+            # Determine stratum_group_id for proper grouping
+            if target_row['stratum_group_id'] == 2:  # Filer stratum
+                # This is an IRS target through filer stratum
+                group_id = f"irs_{target_row['variable']}"
+            elif pd.isna(target_row['stratum_group_id']) or target_row['stratum_group_id'] == 1:
+                # Geographic or national target
+                group_id = target_row['geo_level']
             else:
-                # Regular national targets without constraints
-                for _, target in stratum_targets.iterrows():
-                    all_targets.append({
-                        'target_id': target['target_id'],
-                        'variable': target['variable'],
-                        'value': target['value'],
-                        'active': target['active'],
-                        'tolerance': target['tolerance'],
-                        'stratum_id': target['stratum_id'],
-                        'stratum_group_id': 'national',
-                        'geographic_level': 'national',
-                        'geographic_id': 'US',
-                        'description': f"{target['variable']}_national"
-                    })
-        
-        # Process demographic targets (similar to original but simplified)
-        processed_strata = set()
-        
-        # Helper function to process target groups
-        def process_target_group(targets_df, group_name):
-            for stratum_id in targets_df['stratum_id'].unique():
-                if stratum_id in processed_strata:
-                    continue
-                processed_strata.add(stratum_id)
-                
-                stratum_targets = targets_df[targets_df['stratum_id'] == stratum_id]
-                
-                # Build description from constraints once per stratum
-                constraints = stratum_targets[['constraint_variable', 'operation', 'constraint_value']].drop_duplicates()
-                desc_parts = []
-                for _, c in constraints.iterrows():
-                    if c['constraint_variable'] in ['age', 'adjusted_gross_income', 'eitc_child_count']:
-                        desc_parts.append(f"{c['constraint_variable']}{c['operation']}{c['constraint_value']}")
-                
-                # Group by variable to handle multiple variables per stratum (e.g., SNAP)
-                for variable in stratum_targets['variable'].unique():
-                    variable_targets = stratum_targets[stratum_targets['variable'] == variable]
-                    # Use the first row for this variable (they should all have same value)
-                    target = variable_targets.iloc[0]
-                    
-                    # Build description with variable name
-                    full_desc_parts = [variable] + desc_parts
-                    
-                    all_targets.append({
-                        'target_id': target['target_id'],
-                        'variable': target['variable'],
-                        'value': target['value'],
-                        'active': target['active'],
-                        'tolerance': target['tolerance'],
-                        'stratum_id': target['stratum_id'],
-                        'stratum_group_id': target['stratum_group_id'],
-                        'geographic_level': geographic_level,
-                        'geographic_id': geographic_id,
-                        'description': '_'.join(full_desc_parts)
-                    })
-        
-        process_target_group(age_targets, "age")
-        process_target_group(agi_distribution_targets, "agi_distribution")
-        process_target_group(snap_targets, "snap")
-        process_target_group(medicaid_targets, "medicaid")
-        process_target_group(eitc_targets, "eitc")
-        
-        # Process IRS scalar targets - need to check if they come from constrained strata
-        for _, target in irs_scalar_targets.iterrows():
-            # Check if this target's stratum has a constraint (indicating it's an IRS child stratum)
-            constraints = self.get_constraints_for_stratum(target['stratum_id'])
-            
-            # If there's a constraint like "salt > 0", use "salt" for the group ID
-            if not constraints.empty and len(constraints) > 0:
-                # Get the constraint variable (e.g., "salt" from "salt > 0")
-                constraint_var = constraints.iloc[0]['constraint_variable']
-                # Use the constraint variable for grouping both count and amount
-                stratum_group_override = f'irs_scalar_{constraint_var}'
-            else:
-                # Fall back to using the target variable name
-                stratum_group_override = f'irs_scalar_{target["variable"]}'
+                # Use existing stratum_group_id
+                group_id = target_row['stratum_group_id']
             
             all_targets.append({
-                'target_id': target['target_id'],
-                'variable': target['variable'],
-                'value': target['value'],
-                'active': target.get('active', True),
-                'tolerance': target.get('tolerance', 0.05),
-                'stratum_id': target['stratum_id'],
-                'stratum_group_id': stratum_group_override,
-                'geographic_level': geographic_level,
-                'geographic_id': geographic_id,
-                'description': f"{target['variable']}_{geographic_level}"
-            })
-        
-        # Process AGI total target
-        for _, target in agi_total_target.iterrows():
-            all_targets.append({
-                'target_id': target['target_id'],
-                'variable': target['variable'],
-                'value': target['value'],
-                'active': target.get('active', True),
-                'tolerance': target.get('tolerance', 0.05),
-                'stratum_id': target['stratum_id'],
-                'stratum_group_id': 'agi_total_amount',
-                'geographic_level': geographic_level,
-                'geographic_id': geographic_id,
-                'description': f"agi_total_{geographic_level}"
+                'target_id': target_row.get('target_id'),
+                'variable': target_row['variable'],
+                'value': target_row['value'],
+                'active': target_row.get('active', True),
+                'tolerance': target_row.get('tolerance', 0.05),
+                'stratum_id': target_row['stratum_id'],
+                'stratum_group_id': group_id,
+                'geographic_level': target_row['geo_level'],
+                'geographic_id': geographic_id if target_row['geo_level'] == geographic_level else (
+                    'US' if target_row['geo_level'] == 'national' else state_fips
+                ),
+                'description': '_'.join(desc_parts)
             })
         
         targets_df = pd.DataFrame(all_targets)

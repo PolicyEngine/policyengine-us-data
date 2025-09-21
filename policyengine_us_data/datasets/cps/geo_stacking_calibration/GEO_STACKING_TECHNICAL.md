@@ -77,6 +77,61 @@ The approach respects the geographic hierarchy:
 
 When more precise geographic data is available, it overrides less precise data.
 
+### Hierarchical Fallback for Target Selection
+
+When building calibration matrices for a specific geographic level (e.g., congressional districts or states), the system implements a **hierarchical fallback** strategy to select the most appropriate target for each concept.
+
+#### The Problem
+With the introduction of filer strata (tax_unit_is_filer == 1) as an intermediate layer between geographic and IRS-specific strata, targets now exist at multiple levels of geographic specificity:
+- National filer level → IRS-specific strata
+- State filer level → IRS-specific strata  
+- CD filer level → IRS-specific strata
+
+For example, `qualified_business_income_deduction` might exist at the national level but not at state or CD levels. Without proper handling, this could lead to:
+1. Missing targets (if only looking at the CD level)
+2. Duplicate targets (if including all levels)
+3. Incorrect calibration (using less specific targets when more specific ones exist)
+
+#### The Solution: Hierarchical Fallback
+For each target concept, the system follows this priority order:
+
+**For Congressional District Calibration:**
+1. Check if target exists at CD level → Use it
+2. If not, check if target exists at State level → Use it
+3. If not, use National level target
+
+**For State Calibration:**
+1. Check if target exists at State level → Use it
+2. If not, use National level target
+
+#### Important Distinctions
+- Each **target concept** is evaluated independently
+- A "concept" is defined by the combination of variable name and constraint pattern
+- Different concepts can resolve at different levels
+
+**Example:** For California CD 1 calibration:
+- `SNAP person_count` → Found at CD level (use CD target)
+- `SNAP cost` → Not at CD level, found at State level (use state target)
+- `qualified_business_income_deduction` → Not at CD or State, found at National (use national target)
+
+#### Implementation Considerations
+
+**Query Strategy:**
+Instead of querying only direct children of geographic strata, the system must:
+1. Query the entire subtree rooted at each geographic level
+2. Traverse through filer strata to reach IRS-specific strata
+3. Deduplicate targets based on concept and geographic specificity
+
+**For IRS Targets specifically:**
+- Geographic stratum (e.g., CD 601)
+  - → Filer stratum (CD 601 filers, tax_unit_is_filer == 1)
+    - → IRS variable stratum (CD 601 filers with salt > 0)
+
+The system needs to traverse this full hierarchy, checking at each geographic level (CD → State → National) before falling back.
+
+**Constraint Inheritance:**
+When a target is selected from a higher geographic level (e.g., using a national target for CD calibration), the constraints from that target's stratum still apply, ensuring the target is calculated correctly for the subset of households it represents.
+
 ## Sparse Matrix Implementation
 
 ### Achievement: 99% Memory Reduction

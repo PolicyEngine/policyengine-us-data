@@ -247,31 +247,122 @@ def uprate_targets_df(targets_df: pd.DataFrame, target_year: int, sim=None) -> p
     Returns
     -------
     pd.DataFrame
-        DataFrame with uprated values
+        DataFrame with uprated values and tracking columns:
+        - original_value: The value before uprating
+        - uprating_factor: The factor applied
+        - uprating_source: 'CPI-U', 'Population', or 'None'
     """
     if 'period' not in targets_df.columns:
-        print("Warning: No 'period' column in targets_df, returning unchanged")
         return targets_df
     
-    uprated_df = targets_df.copy()
+    df = targets_df.copy()
     
-    for idx, row in uprated_df.iterrows():
-        source_year = row['period']
-        if source_year != target_year:
-            original_value = row['value']
-            uprated_value = uprate_target_value(
-                original_value,
-                row['variable'],
-                source_year,
-                target_year,
-                sim
-            )
-            uprated_df.at[idx, 'value'] = uprated_value
+    # Check if already uprated (avoid double uprating)
+    if 'uprating_factor' in df.columns:
+        return df
+    
+    # Store original values and initialize tracking columns
+    df['original_value'] = df['value']
+    df['uprating_factor'] = 1.0
+    df['uprating_source'] = 'None'
+    
+    # Identify rows needing uprating
+    needs_uprating = df['period'] != target_year
+    
+    if not needs_uprating.any():
+        return df
+    
+    # Get parameters once
+    if sim is None:
+        from policyengine_us import Microsimulation
+        sim = Microsimulation(dataset="hf://policyengine/test/extended_cps_2023.h5")
+    params = sim.tax_benefit_system.parameters
+    
+    # Get unique years that need uprating
+    unique_years = set(df.loc[needs_uprating, 'period'].unique())
+    
+    # Remove NaN values if any
+    unique_years = {year for year in unique_years if pd.notna(year)}
+    
+    # Pre-calculate all uprating factors
+    factors = {}
+    for from_year in unique_years:
+        # Convert numpy int64 to Python int for parameter lookups
+        from_year_int = int(from_year)
+        target_year_int = int(target_year)
+        
+        if from_year_int == target_year_int:
+            factors[(from_year, 'cpi')] = 1.0
+            factors[(from_year, 'population')] = 1.0
+            continue
             
-            # Log significant uprating
-            if abs(uprated_value / original_value - 1) > 0.01:  # More than 1% change
-                print(f"Uprated {row['variable']} from {source_year} to {target_year}: "
-                      f"{original_value:,.0f} → {uprated_value:,.0f} "
-                      f"(factor: {uprated_value/original_value:.4f})")
+        # CPI-U factor
+        try:
+            cpi_from = params.gov.bls.cpi.cpi_u(from_year_int)
+            cpi_to = params.gov.bls.cpi.cpi_u(target_year_int)
+            factors[(from_year, 'cpi')] = cpi_to / cpi_from
+        except Exception as e:
+            print(f"  Warning: CPI uprating failed for {from_year_int}->{target_year_int}: {e}")
+            factors[(from_year, 'cpi')] = 1.0
+            
+        # Population factor
+        try:
+            pop_from = params.calibration.gov.census.populations.total(from_year_int)
+            pop_to = params.calibration.gov.census.populations.total(target_year_int)
+            factors[(from_year, 'population')] = pop_to / pop_from
+        except Exception as e:
+            print(f"  Warning: Population uprating failed for {from_year_int}->{target_year_int}: {e}")
+            factors[(from_year, 'population')] = 1.0
     
-    return uprated_df
+    # Define count variables (use population uprating)
+    count_variables = {
+        'person_count', 'household_count', 'tax_unit_count', 
+        'spm_unit_count', 'family_count', 'marital_unit_count'
+    }
+    
+    # Vectorized application of uprating factors
+    for from_year in unique_years:
+        year_mask = (df['period'] == from_year) & needs_uprating
+        
+        # Population-based variables
+        pop_mask = year_mask & df['variable'].isin(count_variables)
+        if pop_mask.any():
+            factor = factors[(from_year, 'population')]
+            df.loc[pop_mask, 'value'] *= factor
+            df.loc[pop_mask, 'uprating_factor'] = factor
+            df.loc[pop_mask, 'uprating_source'] = 'Population'
+        
+        # CPI-based variables (everything else)
+        cpi_mask = year_mask & ~df['variable'].isin(count_variables)
+        if cpi_mask.any():
+            factor = factors[(from_year, 'cpi')]
+            df.loc[cpi_mask, 'value'] *= factor
+            df.loc[cpi_mask, 'uprating_factor'] = factor
+            df.loc[cpi_mask, 'uprating_source'] = 'CPI-U'
+    
+    # Summary logging (only if factors are not all 1.0)
+    uprated_count = needs_uprating.sum()
+    if uprated_count > 0:
+        # Check if any real uprating happened
+        cpi_factors = df.loc[df['uprating_source'] == 'CPI-U', 'uprating_factor']
+        pop_factors = df.loc[df['uprating_source'] == 'Population', 'uprating_factor']
+        
+        cpi_changed = len(cpi_factors) > 0 and (cpi_factors != 1.0).any()
+        pop_changed = len(pop_factors) > 0 and (pop_factors != 1.0).any()
+        
+        if cpi_changed or pop_changed:
+            # Count unique source years (excluding NaN and target year)
+            source_years = df.loc[needs_uprating, 'period'].dropna().unique()
+            source_years = [y for y in source_years if y != target_year]
+            unique_sources = len(source_years)
+            
+            print(f"\n  ✓ Uprated {uprated_count:,} targets from year(s) {sorted(source_years)} to {target_year}")
+            
+            if cpi_changed:
+                cpi_count = (df['uprating_source'] == 'CPI-U').sum()
+                print(f"    - {cpi_count:,} monetary targets: CPI factors {cpi_factors.min():.4f} - {cpi_factors.max():.4f}")
+            if pop_changed:
+                pop_count = (df['uprating_source'] == 'Population').sum()  
+                print(f"    - {pop_count:,} count targets: Population factors {pop_factors.min():.4f} - {pop_factors.max():.4f}")
+    
+    return df

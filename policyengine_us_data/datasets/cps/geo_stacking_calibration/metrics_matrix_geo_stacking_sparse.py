@@ -15,13 +15,7 @@ import pandas as pd
 from scipy import sparse
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
-try:
-    from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
-        uprate_targets_df
-    )
-except ImportError:
-    # Direct import if full package path not available
-    from calibration_utils import uprate_targets_df
+# Note: uprate_targets_df import removed - uprating now done in calibration scripts
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +34,133 @@ class SparseGeoStackingMatrixBuilder:
         self.db_uri = db_uri
         self.engine = create_engine(db_uri)
         self.time_period = time_period  # Default to 2024 to match CPS data
+        self._uprating_factors = None  # Lazy load when needed
+        self._params = None  # Cache for PolicyEngine parameters
+    
+    @property
+    def uprating_factors(self):
+        """Lazy-load uprating factors from PolicyEngine parameters."""
+        if self._uprating_factors is None:
+            self._uprating_factors = self._calculate_uprating_factors()
+        return self._uprating_factors
+    
+    def _calculate_uprating_factors(self):
+        """Calculate all needed uprating factors from PolicyEngine parameters."""
+        from policyengine_us import Microsimulation
+        
+        # Get a minimal sim just for parameters
+        if self._params is None:
+            sim = Microsimulation()
+            self._params = sim.tax_benefit_system.parameters
+        
+        factors = {}
+        
+        # Get unique years from database
+        query = """
+        SELECT DISTINCT period 
+        FROM targets 
+        WHERE period IS NOT NULL
+        ORDER BY period
+        """
+        with self.engine.connect() as conn:
+            result = conn.execute(text(query))
+            years_needed = [row[0] for row in result]
+        
+        logger.info(f"Calculating uprating factors for years {years_needed} to {self.time_period}")
+        
+        for from_year in years_needed:
+            if from_year == self.time_period:
+                factors[(from_year, 'cpi')] = 1.0
+                factors[(from_year, 'pop')] = 1.0
+                continue
+            
+            # CPI factor
+            try:
+                cpi_from = self._params.gov.bls.cpi.cpi_u(from_year)
+                cpi_to = self._params.gov.bls.cpi.cpi_u(self.time_period)
+                factors[(from_year, 'cpi')] = float(cpi_to / cpi_from)
+            except Exception as e:
+                logger.warning(f"Could not calculate CPI factor for {from_year}: {e}")
+                factors[(from_year, 'cpi')] = 1.0
+            
+            # Population factor
+            try:
+                pop_from = self._params.calibration.gov.census.populations.total(from_year)
+                pop_to = self._params.calibration.gov.census.populations.total(self.time_period)
+                factors[(from_year, 'pop')] = float(pop_to / pop_from)
+            except Exception as e:
+                logger.warning(f"Could not calculate population factor for {from_year}: {e}")
+                factors[(from_year, 'pop')] = 1.0
+        
+        # Log the factors
+        for (year, type_), factor in sorted(factors.items()):
+            if factor != 1.0:
+                logger.info(f"  {year} -> {self.time_period} ({type_}): {factor:.4f}")
+        
+        return factors
+    
+    def _get_uprating_info(self, variable: str, period: int):
+        """
+        Get uprating factor and type for a single variable.
+        Returns (factor, uprating_type)
+        """
+        if period == self.time_period:
+            return 1.0, 'none'
+        
+        # Determine uprating type based on variable name
+        count_indicators = ['count', 'person', 'people', 'households', 'tax_units']
+        is_count = any(indicator in variable.lower() for indicator in count_indicators)
+        uprating_type = 'pop' if is_count else 'cpi'
+        
+        # Get factor from pre-calculated dict
+        factor = self.uprating_factors.get((period, uprating_type), 1.0)
+        
+        return factor, uprating_type
+    
+    def get_best_period_for_targets(self, query_base: str, params: dict) -> int:
+        """
+        Find the best period for targets: closest year <= target_year, 
+        or closest future year if no past years exist.
+        
+        Args:
+            query_base: SQL query that should return period column
+            params: Parameters for the query
+            
+        Returns:
+            Best period to use, or None if no targets found
+        """
+        # Get all available periods for these targets
+        period_query = f"""
+        WITH target_periods AS (
+            {query_base}
+        )
+        SELECT DISTINCT period 
+        FROM target_periods 
+        WHERE period IS NOT NULL
+        ORDER BY period
+        """
+        
+        with self.engine.connect() as conn:
+            result = conn.execute(text(period_query), params)
+            available_periods = [row[0] for row in result.fetchall()]
+        
+        if not available_periods:
+            return None
+            
+        # Find best period: closest <= target_year, or closest > target_year
+        past_periods = [p for p in available_periods if p <= self.time_period]
+        if past_periods:
+            # Return the most recent past period (closest to target)
+            return max(past_periods)
+        else:
+            # No past periods, return closest future period
+            return min(available_periods)
         
     def get_all_descendant_targets(self, stratum_id: int, sim=None) -> pd.DataFrame:
         """
         Recursively get all targets from a stratum and all its descendants.
         This handles the new filer stratum layer transparently.
+        Selects the best period for each target (closest to target_year in the past, or closest future).
         """
         query = """
         WITH RECURSIVE descendant_strata AS (
@@ -59,6 +175,22 @@ class SparseGeoStackingMatrixBuilder:
             SELECT s.stratum_id
             FROM strata s
             JOIN descendant_strata d ON s.parent_stratum_id = d.stratum_id
+        ),
+        -- Find best period for each stratum/variable combination
+        best_periods AS (
+            SELECT 
+                t.stratum_id,
+                t.variable,
+                CASE
+                    -- If there are periods <= target_year, use the maximum (most recent)
+                    WHEN MAX(CASE WHEN t.period <= :target_year THEN t.period END) IS NOT NULL
+                    THEN MAX(CASE WHEN t.period <= :target_year THEN t.period END)
+                    -- Otherwise use the minimum period (closest future)
+                    ELSE MIN(t.period)
+                END as best_period
+            FROM targets t
+            WHERE t.stratum_id IN (SELECT stratum_id FROM descendant_strata)
+            GROUP BY t.stratum_id, t.variable
         )
         SELECT 
             t.target_id,
@@ -72,23 +204,47 @@ class SparseGeoStackingMatrixBuilder:
             s.stratum_group_id,
             s.parent_stratum_id,
             src.name as source_name,
-            sc.constraint_variable,
-            sc.operation,
-            sc.value as constraint_value
+            -- Aggregate constraint info to avoid duplicate rows
+            (SELECT GROUP_CONCAT(sc2.constraint_variable || sc2.operation || sc2.value, '|')
+             FROM stratum_constraints sc2 
+             WHERE sc2.stratum_id = s.stratum_id
+             GROUP BY sc2.stratum_id) as constraint_info,
+            -- Get first constraint variable for backward compatibility
+            (SELECT sc3.constraint_variable 
+             FROM stratum_constraints sc3 
+             WHERE sc3.stratum_id = s.stratum_id
+               AND sc3.constraint_variable NOT IN ('state_fips', 'congressional_district_geoid', 'tax_unit_is_filer')
+             LIMIT 1) as constraint_variable,
+            (SELECT sc3.operation 
+             FROM stratum_constraints sc3 
+             WHERE sc3.stratum_id = s.stratum_id
+               AND sc3.constraint_variable NOT IN ('state_fips', 'congressional_district_geoid', 'tax_unit_is_filer')
+             LIMIT 1) as operation,
+            (SELECT sc3.value 
+             FROM stratum_constraints sc3 
+             WHERE sc3.stratum_id = s.stratum_id
+               AND sc3.constraint_variable NOT IN ('state_fips', 'congressional_district_geoid', 'tax_unit_is_filer')
+             LIMIT 1) as constraint_value
         FROM targets t
         JOIN strata s ON t.stratum_id = s.stratum_id
         JOIN sources src ON t.source_id = src.source_id
-        LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+        JOIN best_periods bp ON t.stratum_id = bp.stratum_id 
+            AND t.variable = bp.variable 
+            AND t.period = bp.best_period
         WHERE s.stratum_id IN (SELECT stratum_id FROM descendant_strata)
         ORDER BY s.stratum_id, t.variable
         """
         
         with self.engine.connect() as conn:
-            df = pd.read_sql(query, conn, params={'stratum_id': stratum_id})
+            df = pd.read_sql(query, conn, params={
+                'stratum_id': stratum_id,
+                'target_year': self.time_period
+            })
         
-        # Apply uprating
-        if len(df) > 0 and sim is not None:
-            df = uprate_targets_df(df, self.time_period, sim)
+        if len(df) > 0:
+            # Log which periods were selected
+            periods_used = df['period'].unique()
+            logger.debug(f"Selected targets from periods: {sorted(periods_used)}")
         
         return df
     
@@ -153,6 +309,7 @@ class SparseGeoStackingMatrixBuilder:
         """
         Get national-level targets from the database.
         Includes both direct national targets and national targets with strata/constraints.
+        Selects the best period for each target (closest to target_year in the past, or closest future).
         """
         query = """
         WITH national_stratum AS (
@@ -161,44 +318,67 @@ class SparseGeoStackingMatrixBuilder:
             FROM strata 
             WHERE parent_stratum_id IS NULL
             LIMIT 1
+        ),
+        national_targets AS (
+            -- Get all national targets
+            SELECT 
+                t.target_id,
+                t.stratum_id,
+                t.variable,
+                t.value,
+                t.period,
+                t.active,
+                t.tolerance,
+                s.notes as stratum_notes,
+                sc.constraint_variable,
+                sc.operation,
+                sc.value as constraint_value,
+                src.name as source_name
+            FROM targets t
+            JOIN strata s ON t.stratum_id = s.stratum_id
+            JOIN sources src ON t.source_id = src.source_id
+            LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+            WHERE (
+                -- Direct national targets (no parent)
+                s.parent_stratum_id IS NULL
+                OR 
+                -- National targets with strata (parent is national stratum)
+                s.parent_stratum_id = (SELECT stratum_id FROM national_stratum)
+            )
+            AND UPPER(src.type) = 'HARDCODED'  -- Hardcoded targets only
+        ),
+        -- Find best period for each stratum/variable combination
+        best_periods AS (
+            SELECT 
+                stratum_id,
+                variable,
+                CASE
+                    -- If there are periods <= target_year, use the maximum (most recent)
+                    WHEN MAX(CASE WHEN period <= :target_year THEN period END) IS NOT NULL
+                    THEN MAX(CASE WHEN period <= :target_year THEN period END)
+                    -- Otherwise use the minimum period (closest future)
+                    ELSE MIN(period)
+                END as best_period
+            FROM national_targets
+            GROUP BY stratum_id, variable
         )
-        SELECT 
-            t.target_id,
-            t.stratum_id,
-            t.variable,
-            t.value,
-            t.period,
-            t.active,
-            t.tolerance,
-            s.notes as stratum_notes,
-            sc.constraint_variable,
-            sc.operation,
-            sc.value as constraint_value,
-            src.name as source_name
-        FROM targets t
-        JOIN strata s ON t.stratum_id = s.stratum_id
-        JOIN sources src ON t.source_id = src.source_id
-        LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-        WHERE (
-            -- Direct national targets (no parent)
-            s.parent_stratum_id IS NULL
-            OR 
-            -- National targets with strata (parent is national stratum)
-            s.parent_stratum_id = (SELECT stratum_id FROM national_stratum)
-        )
-        AND UPPER(src.type) = 'HARDCODED'  -- Hardcoded targets only
-        ORDER BY t.variable, sc.constraint_variable
+        SELECT nt.*
+        FROM national_targets nt
+        JOIN best_periods bp ON nt.stratum_id = bp.stratum_id 
+            AND nt.variable = bp.variable 
+            AND nt.period = bp.best_period
+        ORDER BY nt.variable, nt.constraint_variable
         """
         
         with self.engine.connect() as conn:
-            # Don't filter by period for now - get any available hardcoded targets
-            df = pd.read_sql(query, conn)
+            df = pd.read_sql(query, conn, params={'target_year': self.time_period})
         
-        # Apply uprating to the dataset year
         if len(df) > 0:
-            df = uprate_targets_df(df, self.time_period, sim)
+            periods_used = df['period'].unique()
+            logger.info(f"Found {len(df)} national targets from periods: {sorted(periods_used)}")
+        else:
+            logger.info("No national targets found")
         
-        logger.info(f"Found {len(df)} national targets from database")
         return df
     
     def get_irs_scalar_targets(self, geographic_stratum_id: int,
@@ -232,9 +412,7 @@ class SparseGeoStackingMatrixBuilder:
         with self.engine.connect() as conn:
             df = pd.read_sql(query, conn, params={'stratum_id': geographic_stratum_id})
         
-        # Apply uprating
-        if len(df) > 0:
-            df = uprate_targets_df(df, self.time_period, sim)
+        # Note: Uprating removed - should be done once after matrix assembly
             logger.info(f"Found {len(df)} IRS scalar targets for {geographic_level}")
         return df
     
@@ -265,9 +443,7 @@ class SparseGeoStackingMatrixBuilder:
         with self.engine.connect() as conn:
             df = pd.read_sql(query, conn, params={'stratum_id': geographic_stratum_id})
         
-        # Apply uprating
-        if len(df) > 0:
-            df = uprate_targets_df(df, self.time_period, sim)
+        # Note: Uprating removed - should be done once after matrix assembly
             logger.info(f"Found AGI total target for {geographic_level}")
         return df
     
@@ -276,88 +452,71 @@ class SparseGeoStackingMatrixBuilder:
                               group_name: str, sim=None) -> pd.DataFrame:
         """
         Generic function to get demographic targets for a geographic area.
+        Selects the best period for each target (closest to target_year in the past, or closest future).
         
         Args:
             geographic_stratum_id: The parent geographic stratum
             stratum_group_id: The demographic group (2=Age, 3=Income, 4=SNAP, 5=Medicaid, 6=EITC)
             group_name: Descriptive name for logging
         """
-        # First try with the specified period, then fall back to most recent
-        query_with_period = """
-        SELECT 
-            t.target_id,
-            t.stratum_id,
-            t.variable,
-            t.value,
-            t.active,
-            t.tolerance,
-            s.notes as stratum_notes,
-            s.stratum_group_id,
-            sc.constraint_variable,
-            sc.operation,
-            sc.value as constraint_value,
-            t.period
-        FROM targets t
-        JOIN strata s ON t.stratum_id = s.stratum_id
-        LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-        WHERE t.period = :period
-          AND s.stratum_group_id = :stratum_group_id
-          AND s.parent_stratum_id = :parent_id
-        ORDER BY t.variable, sc.constraint_variable
-        """
-        
-        query_any_period = """
-        SELECT 
-            t.target_id,
-            t.stratum_id,
-            t.variable,
-            t.value,
-            t.active,
-            t.tolerance,
-            s.notes as stratum_notes,
-            s.stratum_group_id,
-            sc.constraint_variable,
-            sc.operation,
-            sc.value as constraint_value,
-            t.period
-        FROM targets t
-        JOIN strata s ON t.stratum_id = s.stratum_id
-        LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-        WHERE s.stratum_group_id = :stratum_group_id
-          AND s.parent_stratum_id = :parent_id
-          AND t.period = (
-              SELECT MAX(t2.period)
-              FROM targets t2
-              JOIN strata s2 ON t2.stratum_id = s2.stratum_id
-              WHERE s2.stratum_group_id = :stratum_group_id
-                AND s2.parent_stratum_id = :parent_id
-          )
-        ORDER BY t.variable, sc.constraint_variable
+        query = """
+        WITH demographic_targets AS (
+            -- Get all targets for this demographic group
+            SELECT 
+                t.target_id,
+                t.stratum_id,
+                t.variable,
+                t.value,
+                t.active,
+                t.tolerance,
+                s.notes as stratum_notes,
+                s.stratum_group_id,
+                sc.constraint_variable,
+                sc.operation,
+                sc.value as constraint_value,
+                t.period
+            FROM targets t
+            JOIN strata s ON t.stratum_id = s.stratum_id
+            LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+            WHERE s.stratum_group_id = :stratum_group_id
+              AND s.parent_stratum_id = :parent_id
+        ),
+        -- Find best period for each stratum/variable combination
+        best_periods AS (
+            SELECT 
+                stratum_id,
+                variable,
+                CASE
+                    -- If there are periods <= target_year, use the maximum (most recent)
+                    WHEN MAX(CASE WHEN period <= :target_year THEN period END) IS NOT NULL
+                    THEN MAX(CASE WHEN period <= :target_year THEN period END)
+                    -- Otherwise use the minimum period (closest future)
+                    ELSE MIN(period)
+                END as best_period
+            FROM demographic_targets
+            GROUP BY stratum_id, variable
+        )
+        SELECT dt.*
+        FROM demographic_targets dt
+        JOIN best_periods bp ON dt.stratum_id = bp.stratum_id 
+            AND dt.variable = bp.variable 
+            AND dt.period = bp.best_period
+        ORDER BY dt.variable, dt.constraint_variable
         """
         
         with self.engine.connect() as conn:
-            # Try with specified period first
-            df = pd.read_sql(query_with_period, conn, params={
-                'period': self.time_period,
+            df = pd.read_sql(query, conn, params={
+                'target_year': self.time_period,
                 'stratum_group_id': stratum_group_id,
                 'parent_id': geographic_stratum_id
             })
             
-            # If no results, try most recent period
-            if len(df) == 0:
-                df = pd.read_sql(query_any_period, conn, params={
-                    'stratum_group_id': stratum_group_id,
-                    'parent_id': geographic_stratum_id
-                })
-                if len(df) > 0:
-                    period_used = df['period'].iloc[0]
-                    logger.info(f"No {group_name} targets for {self.time_period}, using {period_used} instead")
+            if len(df) > 0:
+                periods_used = df['period'].unique()
+                logger.debug(f"Found {len(df)} {group_name} targets for stratum {geographic_stratum_id} from periods: {sorted(periods_used)}")
+            else:
+                logger.info(f"No {group_name} targets found for stratum {geographic_stratum_id}")
         
-        # Apply uprating
-        if len(df) > 0:
-            df = uprate_targets_df(df, self.time_period, sim)
-        
-        logger.info(f"Found {len(df)} {group_name} targets for stratum {geographic_stratum_id}")
         return df
     
     def get_national_stratum_id(self) -> Optional[int]:
@@ -673,27 +832,41 @@ class SparseGeoStackingMatrixBuilder:
     def get_state_snap_cost(self, state_fips: str) -> pd.DataFrame:
         """Get state-level SNAP cost target (administrative data)."""
         query = """
-        SELECT 
-            t.target_id,
-            t.stratum_id,
-            t.variable,
-            t.value,
-            t.active,
-            t.tolerance
-        FROM targets t
-        JOIN strata s ON t.stratum_id = s.stratum_id
-        JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-        WHERE s.stratum_group_id = 4  -- SNAP
-          AND t.variable = 'snap'  -- Cost variable
-          AND sc.constraint_variable = 'state_fips'
-          AND sc.value = :state_fips
-          AND t.period = :period
+        WITH snap_targets AS (
+            SELECT 
+                t.target_id,
+                t.stratum_id,
+                t.variable,
+                t.value,
+                t.active,
+                t.tolerance,
+                t.period
+            FROM targets t
+            JOIN strata s ON t.stratum_id = s.stratum_id
+            JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+            WHERE s.stratum_group_id = 4  -- SNAP
+              AND t.variable = 'snap'  -- Cost variable
+              AND sc.constraint_variable = 'state_fips'
+              AND sc.value = :state_fips
+        ),
+        best_period AS (
+            SELECT 
+                CASE
+                    WHEN MAX(CASE WHEN period <= :target_year THEN period END) IS NOT NULL
+                    THEN MAX(CASE WHEN period <= :target_year THEN period END)
+                    ELSE MIN(period)
+                END as selected_period
+            FROM snap_targets
+        )
+        SELECT st.*
+        FROM snap_targets st
+        JOIN best_period bp ON st.period = bp.selected_period
         """
         
         with self.engine.connect() as conn:
             return pd.read_sql(query, conn, params={
                 'state_fips': state_fips,
-                'period': self.time_period
+                'target_year': self.time_period
             })
     
     def get_state_fips_for_cd(self, cd_geoid: str) -> str:
@@ -724,10 +897,14 @@ class SparseGeoStackingMatrixBuilder:
         national_targets = self.get_national_targets(sim)
         national_targets_list = []
         for _, target in national_targets.iterrows():
+            # Get uprating info
+            factor, uprating_type = self._get_uprating_info(target['variable'], target['period'])
+            
             national_targets_list.append({
                 'target_id': target['target_id'],
                 'variable': target['variable'],
-                'value': target['value'],
+                'value': target['value'] * factor,  # Apply uprating
+                'original_value': target['value'],  # Keep original
                 'active': target['active'],
                 'tolerance': target['tolerance'],
                 'stratum_id': target['stratum_id'],
@@ -735,45 +912,189 @@ class SparseGeoStackingMatrixBuilder:
                 'geographic_level': 'national',
                 'geographic_id': 'US',
                 'description': f"{target['variable']}_national",
-                'stacked_target_id': f"{target['target_id']}_national"
+                'stacked_target_id': f"{target['target_id']}_national",
+                'period': target['period'],  # Preserve the period
+                'uprating_factor': factor,
+                'uprating_type': uprating_type
             })
         
-        # Build matrix for each geography
-        national_matrix_parts = []
-        for i, geo_id in enumerate(geographic_ids):
-            logger.info(f"Processing {geographic_level} {geo_id} ({i+1}/{len(geographic_ids)})")
+        # Build national targets matrix ONCE before the loop
+        national_matrix = None
+        if sim is not None and len(national_targets) > 0:
+            import time
+            start = time.time()
+            logger.info(f"Building national targets matrix once... ({len(national_targets)} targets)")
+            household_ids = sim.calculate("household_id").values
+            n_households = len(household_ids)
+            n_national_targets = len(national_targets)
             
-            # Build matrix for this geography
-            targets_df, matrix, household_ids = self.build_matrix_for_geography_sparse(
-                geographic_level, geo_id, sim
-            )
+            # Build sparse matrix for national targets
+            national_matrix = sparse.lil_matrix((n_national_targets, n_households), dtype=np.float32)
             
-            if matrix is not None:
-                # Separate national and geo-specific targets
-                national_mask = targets_df['geographic_id'] == 'US'
-                geo_mask = ~national_mask
+            for i, (_, target) in enumerate(national_targets.iterrows()):
+                if i % 10 == 0:
+                    logger.info(f"  Processing national target {i+1}/{n_national_targets}: {target['variable']}")
+                # Get constraints for this stratum
+                constraints = self.get_constraints_for_stratum(target['stratum_id'])
                 
-                # Extract submatrices - convert pandas Series to numpy array for indexing
-                if national_mask.any():
-                    national_part = matrix[national_mask.values, :]
-                    national_matrix_parts.append(national_part)
-                
-                if geo_mask.any():
-                    geo_part = matrix[geo_mask.values, :]
-                    geo_matrices.append(geo_part)
-                
-                # Add geo-specific targets
-                geo_specific_targets = targets_df[geo_mask].copy()
-                prefix = "state" if geographic_level == "state" else "cd"
-                geo_specific_targets['stacked_target_id'] = (
-                    geo_specific_targets['target_id'].astype(str) + f"_{prefix}{geo_id}"
+                # Get sparse representation of household values
+                nonzero_indices, nonzero_values = self.apply_constraints_to_sim_sparse(
+                    sim, constraints, target['variable']
                 )
-                all_targets.append(geo_specific_targets)
                 
-                # Store household ID mapping
-                household_id_mapping[f"{prefix}{geo_id}"] = [
-                    f"{hh_id}_{prefix}{geo_id}" for hh_id in household_ids
-                ]
+                # Set the sparse row
+                if len(nonzero_indices) > 0:
+                    national_matrix[i, nonzero_indices] = nonzero_values
+            
+            # Convert to CSR for efficiency
+            national_matrix = national_matrix.tocsr()
+            elapsed = time.time() - start
+            logger.info(f"National matrix built in {elapsed:.1f}s: shape {national_matrix.shape}, nnz={national_matrix.nnz}")
+        
+        # Build matrix for each geography (CD-specific targets only)
+        for i, geo_id in enumerate(geographic_ids):
+            if i % 50 == 0:  # Log every 50th CD instead of every one
+                logger.info(f"Processing {geographic_level}s: {i+1}/{len(geographic_ids)} completed...")
+            
+            # Get CD-specific targets directly without rebuilding national
+            if geographic_level == 'congressional_district':
+                cd_stratum_id = self.get_cd_stratum_id(geo_id)
+                if cd_stratum_id is None:
+                    logger.warning(f"Could not find CD {geo_id} in database")
+                    continue
+                    
+                # Get only CD-specific targets with deduplication
+                cd_targets_raw = self.get_all_descendant_targets(cd_stratum_id, sim)
+                
+                # Deduplicate CD targets by concept
+                def get_cd_concept_id(row):
+                    # For IRS scalar variables (stratum_group_id >= 100)
+                    if row['stratum_group_id'] >= 100:
+                        # These are IRS variables with constraints like "salt > 0"
+                        # Each stratum has both amount and count, keep both
+                        return f"irs_{row['stratum_group_id']}_{row['variable']}"
+                    # For AGI bins (stratum_group_id = 3)
+                    elif row['stratum_group_id'] == 3:
+                        # Keep all AGI bins separate including operation
+                        if pd.notna(row['constraint_variable']) and row['constraint_variable'] == 'adjusted_gross_income':
+                            # Include operation to distinguish < from >=
+                            op_str = row['operation'].replace('>=', 'gte').replace('<', 'lt').replace('==', 'eq')
+                            return f"{row['variable']}_agi_{op_str}_{row['constraint_value']}"
+                        else:
+                            return f"{row['variable']}_agi_total"
+                    # For EITC bins (stratum_group_id = 6)
+                    elif row['stratum_group_id'] == 6:
+                        # Keep all EITC child count bins separate including operation
+                        if pd.notna(row['constraint_variable']) and row['constraint_variable'] == 'eitc_child_count':
+                            # Include operation to distinguish == from >
+                            op_str = row['operation'].replace('>', 'gt').replace('==', 'eq')
+                            return f"{row['variable']}_eitc_{op_str}_{row['constraint_value']}"
+                        else:
+                            return f"{row['variable']}_eitc_all"
+                    # For age targets (stratum_group_id = 2)
+                    elif row['stratum_group_id'] == 2:
+                        # Keep all age bins separate
+                        if pd.notna(row['constraint_variable']) and row['constraint_variable'] == 'age':
+                            return f"{row['variable']}_age_{row['constraint_value']}"
+                        else:
+                            return f"{row['variable']}_all_ages"
+                    # For other targets
+                    elif row['variable']:
+                        return row['variable']
+                    return None
+                
+                cd_targets_raw['cd_concept_id'] = cd_targets_raw.apply(get_cd_concept_id, axis=1)
+                
+                # Remove targets without a valid concept
+                cd_targets_raw = cd_targets_raw[cd_targets_raw['cd_concept_id'].notna()]
+                
+                # For each concept, keep the first occurrence (or most specific based on stratum_group_id)
+                # Prioritize by stratum_group_id: higher values are more specific
+                cd_targets_raw = cd_targets_raw.sort_values(['cd_concept_id', 'stratum_group_id'], ascending=[True, False])
+                cd_targets = cd_targets_raw.groupby('cd_concept_id').first().reset_index(drop=True)
+                
+                if len(cd_targets_raw) != len(cd_targets):
+                    logger.debug(f"CD {geo_id}: Selected {len(cd_targets)} unique targets from {len(cd_targets_raw)} raw targets")
+                
+                # Format targets
+                cd_target_list = []
+                for _, target in cd_targets.iterrows():
+                    # Get uprating info
+                    factor, uprating_type = self._get_uprating_info(target['variable'], target['period'])
+                    
+                    cd_target_list.append({
+                        'target_id': target['target_id'],
+                        'variable': target['variable'],
+                        'value': target['value'] * factor,  # Apply uprating
+                        'original_value': target['value'],  # Keep original
+                        'active': target.get('active', True),
+                        'tolerance': target.get('tolerance', 0.05),
+                        'stratum_id': target['stratum_id'],
+                        'stratum_group_id': 'congressional_district',
+                        'geographic_level': 'congressional_district',
+                        'geographic_id': geo_id,
+                        'description': f"{target['variable']}_cd_{geo_id}",
+                        'stacked_target_id': f"{target['target_id']}_cd{geo_id}",
+                        'period': target['period'],  # Preserve the period
+                        'uprating_factor': factor,
+                        'uprating_type': uprating_type
+                    })
+                
+                if cd_target_list:
+                    targets_df = pd.DataFrame(cd_target_list)
+                    
+                    # Build matrix for CD-specific targets only
+                    if sim is not None:
+                        household_ids = sim.calculate("household_id").values
+                        n_households = len(household_ids)
+                        n_targets = len(targets_df)
+                        
+                        matrix = sparse.lil_matrix((n_targets, n_households), dtype=np.float32)
+                        
+                        for j, (_, target) in enumerate(targets_df.iterrows()):
+                            constraints = self.get_constraints_for_stratum(target['stratum_id'])
+                            nonzero_indices, nonzero_values = self.apply_constraints_to_sim_sparse(
+                                sim, constraints, target['variable']
+                            )
+                            if len(nonzero_indices) > 0:
+                                matrix[j, nonzero_indices] = nonzero_values
+                        
+                        matrix = matrix.tocsr()
+                        geo_matrices.append(matrix)
+                        all_targets.append(targets_df)
+                        
+                        # Store household ID mapping
+                        household_id_mapping[f"cd{geo_id}"] = [
+                            f"{hh_id}_cd{geo_id}" for hh_id in household_ids
+                        ]
+            else:
+                # For state-level, use existing method (or optimize similarly)
+                targets_df, matrix, household_ids = self.build_matrix_for_geography_sparse(
+                    geographic_level, geo_id, sim
+                )
+                
+                if matrix is not None:
+                    # Separate national and geo-specific targets
+                    national_mask = targets_df['geographic_id'] == 'US'
+                    geo_mask = ~national_mask
+                    
+                    # Only extract geo-specific part (we'll handle national separately)
+                    if geo_mask.any():
+                        geo_part = matrix[geo_mask.values, :]
+                        geo_matrices.append(geo_part)
+                    
+                    # Add geo-specific targets
+                    geo_specific_targets = targets_df[geo_mask].copy()
+                    prefix = "state"
+                    geo_specific_targets['stacked_target_id'] = (
+                        geo_specific_targets['target_id'].astype(str) + f"_{prefix}{geo_id}"
+                    )
+                    all_targets.append(geo_specific_targets)
+                    
+                    # Store household ID mapping
+                    household_id_mapping[f"{prefix}{geo_id}"] = [
+                        f"{hh_id}_{prefix}{geo_id}" for hh_id in household_ids
+                    ]
         
         # If building for congressional districts, add state-level SNAP costs
         state_snap_targets_list = []
@@ -797,10 +1118,15 @@ class SparseGeoStackingMatrixBuilder:
                 snap_cost_df = self.get_state_snap_cost(state_fips)
                 if not snap_cost_df.empty:
                     for _, target in snap_cost_df.iterrows():
+                        # Get uprating info
+                        period = target.get('period', self.time_period)
+                        factor, uprating_type = self._get_uprating_info(target['variable'], period)
+                        
                         state_snap_targets_list.append({
                             'target_id': target['target_id'],
                             'variable': target['variable'],
-                            'value': target['value'],
+                            'value': target['value'] * factor,  # Apply uprating
+                            'original_value': target['value'],  # Keep original
                             'active': target.get('active', True),
                             'tolerance': target.get('tolerance', 0.05),
                             'stratum_id': target['stratum_id'],
@@ -808,7 +1134,10 @@ class SparseGeoStackingMatrixBuilder:
                             'geographic_level': 'state',
                             'geographic_id': state_fips,
                             'description': f"snap_cost_state_{state_fips}",
-                            'stacked_target_id': f"{target['target_id']}_state_{state_fips}"
+                            'stacked_target_id': f"{target['target_id']}_state_{state_fips}",
+                            'period': period,  # Preserve period if available
+                            'uprating_factor': factor,
+                            'uprating_type': uprating_type
                         })
                         
                         # Build matrix row for this state SNAP cost
@@ -862,14 +1191,17 @@ class SparseGeoStackingMatrixBuilder:
         
         # Stack matrices if provided
         if geo_matrices:
-            # Stack national targets (horizontally concatenate across all geographies)
-            if national_matrix_parts:
-                stacked_national = sparse.hstack(national_matrix_parts)
-            else:
-                stacked_national = None
+            # Replicate national targets matrix for all geographies
+            stacked_national = None
+            if national_matrix is not None:
+                # Create list of national matrix repeated for each geography
+                national_copies = [national_matrix] * len(geographic_ids)
+                stacked_national = sparse.hstack(national_copies)
+                logger.info(f"Stacked national matrix: shape {stacked_national.shape}, nnz={stacked_national.nnz}")
             
             # Stack geo-specific targets (block diagonal)
             stacked_geo = sparse.block_diag(geo_matrices)
+            logger.info(f"Stacked geo-specific matrix: shape {stacked_geo.shape}, nnz={stacked_geo.nnz}")
             
             # Combine all matrix parts
             matrix_parts = []

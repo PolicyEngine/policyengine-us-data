@@ -259,11 +259,6 @@ Created `create_stratified_cps.py` implementing income-based stratified sampling
 
 #### Results
 
-- **10k target**: Yields 13k households (preserving all high earners)
-- **30k target**: Yields 29k households (balanced across strata)
-- **Maximum AGI preserved**: $2,276,370 (identical to original)
-- **Memory reduction**: 88% (5.7M vs 49M matrix columns for CDs)
-
 ## Sparse State-Stacked Dataset Creation
 
 ### Conceptual Model
@@ -290,44 +285,6 @@ Sparse Dataset: Two separate households
    - Each household occurrence gets unique ID
    - Person/tax/SPM/marital units properly linked to new household IDs
    - Max person ID kept below 500K (prevents int32 overflow)
-
-### Results
-
-- **Input**: 5,737,602 weights (51 states × 112,502 households)
-- **Active weights**: 167,089 non-zero weights
-- **Output dataset**:
-  - 167,089 households (one per non-zero weight)
-  - 495,170 persons
-  - Total population: 136M
-  - No ID overflow issues
-  - No duplicate persons
-  - Correct state assignments
-
-## Period Handling
-
-The 2024 enhanced CPS dataset only contains 2024 data
-- Attempting to set `default_calculation_period=2023` doesn't actually work - it remains 2024
-- When requesting past data explicitly via `calculate(period=2023)`, returns defaults (zeros)
-- **Final Decision**: Use 2024 data and pull targets from whatever year they exist in the database
-- **Temporal Mismatch**: Targets exist for different years (2022 for admin data, 2023 for age, 2024 for hardcoded)
-- This mismatch is acceptable for the calibration prototype and will be addressed in production
-
-## Tutorial: Understanding the Target Structure
-
-### Where Do the 30,576 Targets Come From?
-
-When calibrating 436 congressional districts, the target count breaks down as follows:
-
-| Target Category | Count | Database Location | Variable Name |
-|-----------------|-------|-------------------|----------------|
-| **National** | 5 | Database: `stratum_group_id=1`, `source.type='HARDCODED'` | Various (e.g., `child_support_expense`) |
-| **CD Age** | 7,848 | `stratum_group_id=2`, 18 bins × 436 CDs | `person_count` |
-| **CD Medicaid** | 436 | `stratum_group_id=5`, 1 × 436 CDs | `person_count` |
-| **CD SNAP household** | 436 | `stratum_group_id=4`, 1 × 436 CDs | `household_count` |
-| **State SNAP costs** | 51 | `stratum_group_id=4`, state-level | `snap` |
-| **CD AGI distribution** | 3,924 | `stratum_group_id=3`, 9 bins × 436 CDs | `person_count` (with AGI constraints) |
-| **CD IRS SOI** | 21,800 | `stratum_group_id=7`, 50 vars × 436 CDs | Various tax variables |
-| **TOTAL** | **30,576** | | |
 
 ### Finding Targets in the Database
 
@@ -460,6 +417,26 @@ irs_variables = [
 ]
 ```
 
+### IRS Target Deduplication (Critical Implementation Detail)
+
+**Problem Discovered (2024-12)**: The AGI histogram bins have overlapping boundary constraints that were being incorrectly deduplicated:
+- Each AGI bin has TWO constraints: `adjusted_gross_income >= lower` AND `adjusted_gross_income < upper`
+- The `get_all_descendant_targets` query returns only the FIRST non-geographic constraint for backward compatibility
+- The deduplication logic was creating concept IDs without the operation, causing collisions
+
+**Example of the Issue**:
+- Bin 3: `adjusted_gross_income >= 10000` AND `adjusted_gross_income < 25000`
+- Bin 4: `adjusted_gross_income >= 25000` AND `adjusted_gross_income < 50000`
+- Both would return first constraint with value 10000/25000
+- Without operation in concept ID: both become `person_count_agi_25000` → collision!
+
+**Solution**: Include the operation in concept IDs:
+- `person_count_agi_lt_25000` (for bin 3's upper bound)
+- `person_count_agi_gte_25000` (for bin 4's lower bound)
+- Now properly distinguished → all 58 targets per CD preserved
+
+This fix recovered 872 missing targets (2 per CD × 436 CDs) and brought the matrix to its correct dimensions.
+
 ### Debugging Target Counts
 
 If your target count doesn't match expectations:
@@ -480,16 +457,6 @@ for group_id in targets_df['stratum_group_id'].unique():
     count = len(targets_df[targets_df['stratum_group_id'] == group_id])
     print(f"Group {group_id}: {count} targets")
 
-# Find missing categories
-expected_groups = {
-    'national': 5,
-    'age': 7848,  # 18 × 436
-    'agi_distribution': 3924,  # 9 × 436
-    'snap': 436,  # household_count
-    'state_snap_cost': 51,  # state costs
-    'medicaid': 436,
-    # Plus various IRS groups
-}
 ```
 
 ## Usage Example

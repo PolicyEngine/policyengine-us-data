@@ -11,6 +11,10 @@ os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 from pathlib import Path
 from datetime import datetime
 from sqlalchemy import create_engine, text
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 import torch
 import numpy as np
@@ -84,11 +88,18 @@ sim = Microsimulation(dataset=dataset_uri)
 # ============================================================================
 
 print("\nBuilding sparse calibration matrix for congressional districts...")
+import time
+start_time = time.time()
 targets_df, X_sparse, household_id_mapping = builder.build_stacked_matrix_sparse(
     'congressional_district', 
     cds_to_calibrate,
     sim
 )
+elapsed = time.time() - start_time
+print(f"Matrix building took {elapsed:.1f} seconds")
+
+# Uprating now happens during matrix building (see metrics_matrix_geo_stacking_sparse.py)
+# Each target is uprated when formatted, using factors from PolicyEngine parameters
 
 targets = targets_df.value.values
 

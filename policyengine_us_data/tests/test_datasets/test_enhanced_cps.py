@@ -210,17 +210,19 @@ def test_immigration_status_diversity():
     )
 
     # Also check that we have a reasonable percentage of citizens (should be 85-90%)
-    assert 80 < citizen_pct < 95, (
-        f"Citizen percentage ({citizen_pct:.1f}%) outside expected range (80-95%)"
-    )
+    assert (
+        80 < citizen_pct < 95
+    ), f"Citizen percentage ({citizen_pct:.1f}%) outside expected range (80-95%)"
 
     # Check that we have some non-citizens
     non_citizen_pct = 100 - citizen_pct
-    assert non_citizen_pct > 5, (
-        f"Too few non-citizens ({non_citizen_pct:.1f}%) - expected at least 5%"
-    )
+    assert (
+        non_citizen_pct > 5
+    ), f"Too few non-citizens ({non_citizen_pct:.1f}%) - expected at least 5%"
 
-    print(f"Immigration status diversity test passed: {citizen_pct:.1f}% citizens")
+    print(
+        f"Immigration status diversity test passed: {citizen_pct:.1f}% citizens"
+    )
 
 
 def test_medicaid_calibration():

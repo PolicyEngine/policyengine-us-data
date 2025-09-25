@@ -186,6 +186,7 @@ else:
 keep_probs = np.zeros(X_sparse.shape[1])
 init_weights = np.zeros(X_sparse.shape[1])
 cumulative_idx = 0
+cd_household_indices = {}  # Maps CD to (start_col, end_col) in X_sparse
 
 # Calculate weights for ALL CDs
 for cd_key, household_list in household_id_mapping.items():
@@ -209,6 +210,7 @@ for cd_key, household_list in household_id_mapping.items():
     #initial_weight = np.clip(initial_weight, 0, 100000)   # Not clipping 
     
     init_weights[cumulative_idx:cumulative_idx + n_households] = initial_weight
+    cd_household_indices[cd_geoid] = (cumulative_idx, cumulative_idx + n_households)
     cumulative_idx += n_households
 
 print("\nCD-aware keep probabilities and initial weights calculated.")
@@ -241,7 +243,41 @@ np.save(target_groups_path, target_groups)
 print(f"\nExported target groups to: {target_groups_path}")
 
 # ============================================================================
-# STEP 6: L0 CALIBRATION WITH EPOCH LOGGING
+# STEP 6: CREATE EXPLORATION PACKAGE (BEFORE CALIBRATION)
+# ============================================================================
+print("\n" + "="*70)
+print("CREATING EXPLORATION PACKAGE")
+print("="*70)
+
+# Save exploration package with just the essentials (before calibration)
+exploration_package = {
+    'X_sparse': X_sparse,
+    'targets_df': targets_df,
+    'household_id_mapping': household_id_mapping,
+    'cd_household_indices': cd_household_indices,
+    'dataset_uri': dataset_uri,
+    'cds_to_calibrate': cds_to_calibrate,
+    'initial_weights': init_weights,
+    'keep_probs': keep_probs,
+    'target_groups': target_groups
+}
+
+package_path = os.path.join(export_dir, "calibration_package.pkl")
+with open(package_path, 'wb') as f:
+    import pickle
+    pickle.dump(exploration_package, f)
+
+print(f"✅ Exploration package saved to {package_path}")
+print(f"   Size: {os.path.getsize(package_path) / 1024 / 1024:.1f} MB")
+print("\nTo use the package:")
+print("  with open('calibration_package.pkl', 'rb') as f:")
+print("      data = pickle.load(f)")
+print("  X_sparse = data['X_sparse']")
+print("  targets_df = data['targets_df']")
+print("  # See create_and_use_exploration_package.py for usage examples")
+
+# ============================================================================
+# STEP 7: L0 CALIBRATION WITH EPOCH LOGGING
 # ============================================================================
 
 print("\n" + "="*70)
@@ -398,3 +434,8 @@ print(f"  targets = np.load('{targets_array_path}')")
 print(f"  target_groups = np.load('{target_groups_path}')")
 print(f"  keep_probs = np.load('{keep_probs_path}')")
 print(f"  init_weights = np.load('{init_weights_path}')")
+
+# Note: The exploration package was already created earlier (Step 6)
+# It can be used immediately without waiting for calibration to complete
+print("\n📦 Exploration package available at:", package_path)
+print("   Can be shared with coworkers for data exploration")

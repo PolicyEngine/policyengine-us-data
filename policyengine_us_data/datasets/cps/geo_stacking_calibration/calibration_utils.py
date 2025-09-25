@@ -57,88 +57,136 @@ def create_target_groups(targets_df: pd.DataFrame) -> Tuple[np.ndarray, List[str
     
     if len(national_targets) > 0:
         print(f"\nNational targets (each is a singleton group):")
+        
+        # Map stratum_id to descriptive labels for person_count targets
+        stratum_labels = {
+            489: "Medicaid enrollment",
+            490: "ACA PTC recipients",
+            491: "Undocumented population"
+        }
+        
         for idx in national_targets.index:
             target = targets_df.loc[idx]
             var_name = target['variable']
             value = target['value']
+            stratum_id = target.get('stratum_id', None)
+            
+            # Add descriptive label for person_count targets
+            if var_name == 'person_count' and stratum_id in stratum_labels:
+                display_name = f"{var_name} ({stratum_labels[stratum_id]})"
+            else:
+                display_name = var_name
             
             target_groups[idx] = group_id
-            group_info.append(f"Group {group_id}: National {var_name} (1 target, value={value:,.0f})")
-            print(f"  Group {group_id}: {var_name} = {value:,.0f}")
+            group_info.append(f"Group {group_id}: National {display_name} (1 target, value={value:,.0f})")
+            print(f"  Group {group_id}: {display_name} = {value:,.0f}")
             group_id += 1
     
-    # Process demographic targets - grouped by stratum_group_id ONLY (not geography)
-    # This ensures all age targets across all states form ONE group
+    # Process geographic targets - group by TARGET TYPE (stratum_group_id) not by geography
+    # This ensures each type of measurement contributes equally to the loss
     demographic_mask = ~national_mask
     demographic_df = targets_df[demographic_mask]
     
     if len(demographic_df) > 0:
-        print(f"\nDemographic and IRS targets:")
+        print(f"\nGeographic targets (grouped by type):")
         
-        # Get unique stratum_group_ids (NOT grouped by geography)
+        # Get all unique stratum_group_ids for non-national targets
         unique_stratum_groups = demographic_df['stratum_group_id'].unique()
         
-        for stratum_group in unique_stratum_groups:
-            # Handle numeric stratum_group_ids (histograms)
-            if isinstance(stratum_group, (int, np.integer)):
-                # Find ALL targets with this stratum_group_id across ALL geographies
-                mask = (targets_df['stratum_group_id'] == stratum_group)
+        # Sort to process numeric IDs first, then string IDs
+        numeric_groups = sorted([g for g in unique_stratum_groups if isinstance(g, (int, np.integer))])
+        string_groups = sorted([g for g in unique_stratum_groups if isinstance(g, str)])
+        all_groups = numeric_groups + string_groups
+        
+        for stratum_group in all_groups:
+            # Skip the geographic identifier group (stratum_group_id = 1)
+            if stratum_group == 1:
+                continue
                 
-                matching_targets = targets_df[mask]
-                target_groups[mask] = group_id
-                
-                # Create descriptive label
-                stratum_labels = {
-                    1: 'Geographic',  # This shouldn't appear in demographic targets
-                    2: 'Age',
-                    3: 'AGI Distribution',
-                    4: 'SNAP',
-                    5: 'Medicaid', 
-                    6: 'EITC'
-                }
-                stratum_name = stratum_labels.get(stratum_group, f'Unknown({stratum_group})')
-                n_targets = mask.sum()
+            # Find ALL targets with this stratum_group_id across ALL geographies
+            mask = (targets_df['stratum_group_id'] == stratum_group) & demographic_mask
             
-            # Handle string stratum_group_ids (IRS scalars, AGI total, and state SNAP cost)
-            elif isinstance(stratum_group, str):
-                if stratum_group.startswith('irs_scalar_'):
-                    # Each IRS scalar variable gets its own group
-                    mask = (targets_df['stratum_group_id'] == stratum_group)
-                    matching_targets = targets_df[mask]
-                    target_groups[mask] = group_id
-                    var_name = stratum_group.replace('irs_scalar_', '')
-                    stratum_name = f'IRS {var_name}'
-                    n_targets = mask.sum()
-                elif stratum_group == 'agi_total_amount':
-                    # AGI total amount gets its own group
-                    mask = (targets_df['stratum_group_id'] == stratum_group)
-                    matching_targets = targets_df[mask]
-                    target_groups[mask] = group_id
-                    stratum_name = 'AGI Total Amount'
-                    n_targets = mask.sum()
-                elif stratum_group == 'state_snap_cost':
-                    # State-level SNAP costs get their own group
-                    mask = (targets_df['stratum_group_id'] == stratum_group)
-                    matching_targets = targets_df[mask]
-                    target_groups[mask] = group_id
-                    stratum_name = 'State SNAP Cost (Administrative)'
-                    n_targets = mask.sum()
+            if not mask.any():
+                continue
+                
+            matching_targets = targets_df[mask]
+            target_groups[mask] = group_id
+            n_targets = mask.sum()
+            
+            # Create descriptive label based on stratum_group_id
+            if isinstance(stratum_group, (int, np.integer)):
+                stratum_labels = {
+                    2: 'Age Distribution',
+                    3: 'AGI Distribution', 
+                    4: 'SNAP Household Count',
+                    5: 'Medicaid Enrollment',
+                    6: 'EITC Recipients'
+                }
+                
+                # For IRS SOI variables (100+), use descriptive names
+                if stratum_group >= 100:
+                    irs_labels = {
+                        100: 'IRS QBI Deduction',
+                        101: 'IRS Self-Employment Income',
+                        102: 'IRS Net Capital Gains',
+                        103: 'IRS Real Estate Taxes',
+                        104: 'IRS Rental Income',
+                        105: 'IRS Net Capital Gain',
+                        106: 'IRS Taxable IRA Distributions',
+                        107: 'IRS Taxable Interest Income',
+                        108: 'IRS Tax-Exempt Interest',
+                        109: 'IRS Dividend Income',
+                        110: 'IRS Qualified Dividends',
+                        111: 'IRS Partnership/S-Corp Income',
+                        112: 'IRS All Filers',
+                        113: 'IRS Unemployment Compensation',
+                        114: 'IRS Medical Expense Deduction',
+                        115: 'IRS Taxable Pension Income',
+                        116: 'IRS Refundable CTC',
+                        117: 'IRS SALT Deduction',
+                        118: 'IRS Income Tax Paid',
+                        119: 'IRS Income Tax Before Credits'
+                    }
+                    stratum_name = irs_labels.get(stratum_group, f'IRS Variable {stratum_group}')
                 else:
-                    continue  # Skip unknown string groups
+                    stratum_name = stratum_labels.get(stratum_group, f'Stratum {stratum_group}')
+                    
+            elif isinstance(stratum_group, str):
+                if stratum_group == 'congressional_district':
+                    # This shouldn't happen as we filter geographic identifiers
+                    continue
+                elif stratum_group.startswith('irs_scalar_'):
+                    var_name = stratum_group.replace('irs_scalar_', '')
+                    stratum_name = f'IRS Scalar {var_name}'
+                elif stratum_group == 'agi_total_amount':
+                    stratum_name = 'AGI Total Amount'
+                elif stratum_group == 'state_snap_cost':
+                    stratum_name = 'State SNAP Cost (Administrative)'
+                else:
+                    stratum_name = stratum_group
             else:
-                continue  # Skip other types
+                stratum_name = f'Unknown Type ({stratum_group})'
             
             # Count unique geographies in this group
             unique_geos = matching_targets['geographic_id'].unique()
             n_geos = len(unique_geos)
             
-            group_info.append(f"Group {group_id}: All {stratum_name} targets ({n_targets} total)")
+            # Special note for reconciled targets
+            reconciled_note = ""
+            if stratum_group == 4:  # SNAP
+                reconciled_note = " [Reconciled to State Admin]"
+            elif stratum_group == 5:  # Medicaid
+                reconciled_note = " [Reconciled to State Admin]"
             
-            # Only show details for small groups, otherwise just summary
-            if n_geos <= 10:
-                print(f"  Group {group_id}: {stratum_name} ({n_targets} targets across {n_geos} geographies)")
+            group_info.append(f"Group {group_id}: {stratum_name}{reconciled_note} ({n_targets} targets across {n_geos} CDs)")
+            
+            # Print summary
+            if n_geos == 436:  # Full CD coverage
+                print(f"  Group {group_id}: All CD {stratum_name}{reconciled_note} ({n_targets} targets)")
+            elif n_geos <= 10:
+                print(f"  Group {group_id}: {stratum_name}{reconciled_note} ({n_targets} targets across {n_geos} geographies)")
             else:
-                print(f"  Group {group_id}: {stratum_name} ({n_targets} targets)")
+                print(f"  Group {group_id}: {stratum_name}{reconciled_note} ({n_targets} targets)")
             
             group_id += 1
     

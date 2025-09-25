@@ -130,12 +130,8 @@ print(f"\nExported sparse matrix to: {sparse_path}")
 # Create target names array for epoch logging
 target_names = []
 for _, row in targets_df.iterrows():
-    if row['geographic_id'] == 'US':
-        name = f"nation/{row['variable']}/{row['description']}"
-    elif len(str(row['geographic_id'])) <= 2 or 'state' in row['description'].lower():
-        name = f"state{row['geographic_id']}/{row['variable']}/{row['description']}"
-    else:
-        name = f"CD{row['geographic_id']}/{row['variable']}/{row['description']}"
+    geo_prefix = f"{row['geographic_id']}"
+    name = f"{geo_prefix}/{row['variable_desc']}"
     target_names.append(name)
 
 # Save target names array (replaces pickled dataframe)
@@ -150,6 +146,11 @@ targets_array_path = os.path.join(export_dir, "cd_targets_array.npy")
 np.save(targets_array_path, targets)
 print(f"Exported targets array to: {targets_array_path}")
 
+# Save the full targets_df for debugging
+targets_df_path = os.path.join(export_dir, "cd_targets_df.csv")
+targets_df.to_csv(targets_df_path, index=False)
+print(f"Exported targets dataframe to: {targets_df_path}")
+
 # Save CD list for reference
 cd_list_path = os.path.join(export_dir, "cd_list.txt")
 with open(cd_list_path, 'w') as f:
@@ -163,13 +164,14 @@ print(f"Exported CD list to: {cd_list_path}")
 
 cd_populations = {}
 for cd_geoid in cds_to_calibrate:
+    # Match targets for this CD using geographic_id
     cd_age_targets = targets_df[
         (targets_df['geographic_id'] == cd_geoid) & 
         (targets_df['variable'] == 'person_count') &
-        (targets_df['description'].str.contains('age', na=False))
+        (targets_df['variable_desc'].str.contains('age', na=False))
     ]
     if not cd_age_targets.empty:
-        unique_ages = cd_age_targets.drop_duplicates(subset=['description'])
+        unique_ages = cd_age_targets.drop_duplicates(subset=['variable_desc'])
         cd_populations[cd_geoid] = unique_ages['value'].sum()
 
 if cd_populations:
@@ -376,15 +378,16 @@ print("\nFiles ready for GPU transfer:")
 print(f"  1. cd_matrix_sparse.npz - Sparse calibration matrix")
 print(f"  2. cd_target_names.json - Target names for epoch logging")
 print(f"  3. cd_targets_array.npy - Target values array")
-print(f"  4. cd_keep_probs.npy - Initial keep probabilities")
-print(f"  5. cd_init_weights.npy - Initial weights")
-print(f"  6. cd_target_groups.npy - Target grouping for loss")
-print(f"  7. cd_list.txt - List of CD GEOIDs")
+print(f"  4. cd_targets_df.csv - Full targets dataframe for debugging")
+print(f"  5. cd_keep_probs.npy - Initial keep probabilities")
+print(f"  6. cd_init_weights.npy - Initial weights")
+print(f"  7. cd_target_groups.npy - Target grouping for loss")
+print(f"  8. cd_list.txt - List of CD GEOIDs")
 if 'w' in locals():
-    print(f"  8. cd_weights_{TOTAL_EPOCHS}epochs.npy - Final calibration weights")
+    print(f"  9. cd_weights_{TOTAL_EPOCHS}epochs.npy - Final calibration weights")
 if ENABLE_EPOCH_LOGGING:
-    print(f"  9. cd_calibration_log.csv - Epoch-by-epoch metrics for dashboard")
-print(f"  10. cd_sparsity_history_{timestamp}.csv - Sparsity tracking over epochs")
+    print(f"  10. cd_calibration_log.csv - Epoch-by-epoch metrics for dashboard")
+print(f"  11. cd_sparsity_history_{timestamp}.csv - Sparsity tracking over epochs")
 
 print("\nTo load on GPU platform:")
 print("  import scipy.sparse as sp")

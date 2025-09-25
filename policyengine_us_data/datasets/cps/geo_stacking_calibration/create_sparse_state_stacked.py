@@ -11,9 +11,61 @@ import numpy as np
 import pandas as pd
 import h5py
 import os
+import json
+import random
+from pathlib import Path
 from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 from policyengine_core.enums import Enum
+from policyengine_us.variables.household.demographic.geographic.state_name import StateName
+from policyengine_us.variables.household.demographic.geographic.state_code import StateCode
+from policyengine_us.variables.household.demographic.geographic.county.county_enum import County
+
+
+def load_cd_county_mappings():
+    """Load CD to county mappings from JSON file."""
+    mapping_file = Path("cd_county_mappings.json")
+    if not mapping_file.exists():
+        print("WARNING: cd_county_mappings.json not found. Counties will not be updated.")
+        return None
+    
+    with open(mapping_file, 'r') as f:
+        return json.load(f)
+
+
+def get_county_for_cd(cd_geoid, cd_county_mappings):
+    """
+    Get a county FIPS code for a given congressional district.
+    Uses weighted random selection based on county proportions.
+    """
+    if not cd_county_mappings or str(cd_geoid) not in cd_county_mappings:
+        return None
+    
+    county_props = cd_county_mappings[str(cd_geoid)]
+    if not county_props:
+        return None
+    
+    counties = list(county_props.keys())
+    weights = list(county_props.values())
+    
+    # Normalize weights to ensure they sum to 1
+    total_weight = sum(weights)
+    if total_weight > 0:
+        weights = [w/total_weight for w in weights]
+        return random.choices(counties, weights=weights)[0]
+    
+    return None
+
+
+def get_county_name_from_fips(county_fips, state_code):
+    """Convert county FIPS to county name string for enum mapping."""
+    # This would ideally use a comprehensive lookup table
+    # For now, return a formatted string that can be mapped to County enum
+    # The County enum expects format like "Los Angeles County, CA"
+    
+    # You'd need a full county FIPS to name mapping here
+    # For demonstration, returning the FIPS as placeholder
+    return f"County {county_fips}"
 
 
 def create_sparse_state_stacked_dataset(
@@ -120,6 +172,37 @@ def create_sparse_state_stacked_dataset(
     total_active_weights = np.sum(W > 0)
     print(f"Total active household-state pairs: {total_active_weights:,}")
     
+    # Create mappings for state variables
+    STATE_FIPS_TO_NAME = {
+        1: StateName.AL, 2: StateName.AK, 4: StateName.AZ, 5: StateName.AR, 6: StateName.CA,
+        8: StateName.CO, 9: StateName.CT, 10: StateName.DE, 11: StateName.DC,
+        12: StateName.FL, 13: StateName.GA, 15: StateName.HI, 16: StateName.ID, 17: StateName.IL,
+        18: StateName.IN, 19: StateName.IA, 20: StateName.KS, 21: StateName.KY, 22: StateName.LA,
+        23: StateName.ME, 24: StateName.MD, 25: StateName.MA, 26: StateName.MI,
+        27: StateName.MN, 28: StateName.MS, 29: StateName.MO, 30: StateName.MT,
+        31: StateName.NE, 32: StateName.NV, 33: StateName.NH, 34: StateName.NJ,
+        35: StateName.NM, 36: StateName.NY, 37: StateName.NC, 38: StateName.ND,
+        39: StateName.OH, 40: StateName.OK, 41: StateName.OR, 42: StateName.PA,
+        44: StateName.RI, 45: StateName.SC, 46: StateName.SD, 47: StateName.TN,
+        48: StateName.TX, 49: StateName.UT, 50: StateName.VT, 51: StateName.VA, 53: StateName.WA,
+        54: StateName.WV, 55: StateName.WI, 56: StateName.WY
+    }
+    
+    STATE_FIPS_TO_CODE = {
+        1: StateCode.AL, 2: StateCode.AK, 4: StateCode.AZ, 5: StateCode.AR, 6: StateCode.CA,
+        8: StateCode.CO, 9: StateCode.CT, 10: StateCode.DE, 11: StateCode.DC,
+        12: StateCode.FL, 13: StateCode.GA, 15: StateCode.HI, 16: StateCode.ID, 17: StateCode.IL,
+        18: StateCode.IN, 19: StateCode.IA, 20: StateCode.KS, 21: StateCode.KY, 22: StateCode.LA,
+        23: StateCode.ME, 24: StateCode.MD, 25: StateCode.MA, 26: StateCode.MI,
+        27: StateCode.MN, 28: StateCode.MS, 29: StateCode.MO, 30: StateCode.MT,
+        31: StateCode.NE, 32: StateCode.NV, 33: StateCode.NH, 34: StateCode.NJ,
+        35: StateCode.NM, 36: StateCode.NY, 37: StateCode.NC, 38: StateCode.ND,
+        39: StateCode.OH, 40: StateCode.OK, 41: StateCode.OR, 42: StateCode.PA,
+        44: StateCode.RI, 45: StateCode.SC, 46: StateCode.SD, 47: StateCode.TN,
+        48: StateCode.TX, 49: StateCode.UT, 50: StateCode.VT, 51: StateCode.VA, 53: StateCode.WA,
+        54: StateCode.WV, 55: StateCode.WI, 56: StateCode.WY
+    }
+    
     # Collect DataFrames for each state
     state_dfs = []
     total_kept_households = 0
@@ -167,6 +250,8 @@ def create_sparse_state_stacked_dataset(
         marital_unit_id_col = f"marital_unit_id__{time_period}"
         person_marital_unit_col = f"person_marital_unit_id__{time_period}"
         state_fips_col = f"state_fips__{time_period}"
+        state_name_col = f"state_name__{time_period}"
+        state_code_col = f"state_code__{time_period}"
         
         # Filter to only active households in this state
         df_filtered = df[df[hh_id_col].isin(active_household_ids)].copy()
@@ -179,13 +264,26 @@ def create_sparse_state_stacked_dataset(
         # Skip ID modification - we'll reindex everything at the end anyway
         # This avoids any risk of overflow from large offsets
         
-        # Update state_fips to target state
-        df_filtered[state_fips_col] = state_fips
+        # Update all state variables to target state for consistency
+        state_fips_int = int(state_fips)
+        df_filtered[state_fips_col] = state_fips_int
+        
+        # Set state_name and state_code based on state_fips
+        if state_fips_int in STATE_FIPS_TO_NAME:
+            df_filtered[state_name_col] = STATE_FIPS_TO_NAME[state_fips_int]
+        if state_fips_int in STATE_FIPS_TO_CODE:
+            df_filtered[state_code_col] = STATE_FIPS_TO_CODE[state_fips_int]
         
         state_dfs.append(df_filtered)
         total_kept_households += len(kept_hh_ids)
         
         print(f"  Kept {len(kept_hh_ids):,} households")
+        
+        # Debug: Verify state variables are set correctly
+        if state_name_col in df_filtered.columns and state_code_col in df_filtered.columns:
+            sample_state_name = df_filtered[state_name_col].iloc[0] if len(df_filtered) > 0 else None
+            sample_state_code = df_filtered[state_code_col].iloc[0] if len(df_filtered) > 0 else None
+            print(f"  State variables: FIPS={state_fips_int}, Name={sample_state_name}, Code={sample_state_code}")
     
     print(f"\nCombining {len(state_dfs)} state DataFrames...")
     print(f"Total households across all states: {total_kept_households:,}")

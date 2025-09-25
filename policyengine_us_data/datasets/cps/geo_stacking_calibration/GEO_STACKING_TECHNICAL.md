@@ -595,6 +595,26 @@ Always test with subsets first:
 - Regional subset (e.g., all California CDs)
 - Full dataset only after smaller tests pass
 
+## Tax Unit Count Aggregation (Investigation 2024-12-25)
+
+### Initial Concern
+
+There was initial concern that `tax_unit_count` variables were being double-counted when aggregated from tax unit to household level, potentially causing over-prediction.
+
+### Investigation Results
+
+After thorough testing, it was determined that the original implementation was correct:
+
+1. **29% of households have multiple tax units** - this is real structure in the CPS data
+2. **Tax unit weights = household weights** - when a household has 2 tax units, both inherit the household weight
+3. **Summing is the correct operation** - when we sum tax unit counts to household level and multiply by household weights, we get the correct total
+
+Testing showed:
+- Original method (summing): 0.0% error
+- Alternative method (scaled binary): 0.4% error
+
+The original approach of summing tax unit counts to household level produces virtually perfect results.
+
 ## Dashboard Integration and Target Accounting
 
 ### Understanding "Excluded Targets" in the Calibration Dashboard

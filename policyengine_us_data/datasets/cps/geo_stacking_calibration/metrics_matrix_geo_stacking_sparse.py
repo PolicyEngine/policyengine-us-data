@@ -558,6 +558,323 @@ class SparseGeoStackingMatrixBuilder:
         else:
             raise ValueError(f"Invalid CD GEOID format: {cd_geoid}")
     
+    def reconcile_targets_to_higher_level(self, 
+                                         lower_targets_dict: Dict[str, pd.DataFrame],
+                                         higher_level: str,
+                                         target_filters: Dict[str, any],
+                                         sim=None) -> Dict[str, pd.DataFrame]:
+        """
+        Reconcile lower-level targets to match higher-level aggregates.
+        Generic method that can handle CD->State or State->National reconciliation.
+        
+        Args:
+            lower_targets_dict: Dict mapping geography_id to its targets DataFrame
+            higher_level: 'state' or 'national'
+            target_filters: Dict with filters like {'stratum_group_id': 2} for age
+            sim: Microsimulation instance (if needed)
+            
+        Returns:
+            Dict with same structure but adjusted targets including diagnostic columns
+        """
+        reconciled_dict = {}
+        
+        # Group lower-level geographies by their parent
+        if higher_level == 'state':
+            # Group CDs by state
+            grouped = {}
+            for cd_id, targets_df in lower_targets_dict.items():
+                state_fips = self.get_state_fips_from_cd(cd_id)
+                if state_fips not in grouped:
+                    grouped[state_fips] = {}
+                grouped[state_fips][cd_id] = targets_df
+        else:  # national
+            # All states belong to one national group
+            grouped = {'US': lower_targets_dict}
+        
+        # Process each group
+        for parent_id, children_dict in grouped.items():
+            # Get parent-level targets
+            if higher_level == 'state':
+                parent_stratum_id = self.get_state_stratum_id(parent_id)
+            else:  # national
+                parent_stratum_id = self.get_national_stratum_id()
+            
+            if parent_stratum_id is None:
+                logger.warning(f"Could not find {higher_level} stratum for {parent_id}")
+                # Return unchanged
+                for child_id, child_df in children_dict.items():
+                    reconciled_dict[child_id] = child_df.copy()
+                continue
+            
+            # Get parent targets matching the filter
+            parent_targets = self._get_filtered_targets(parent_stratum_id, target_filters)
+            
+            if parent_targets.empty:
+                # No parent targets to reconcile to
+                for child_id, child_df in children_dict.items():
+                    reconciled_dict[child_id] = child_df.copy()
+                continue
+            
+            # First, calculate adjustment factors for all targets
+            adjustment_factors = {}
+            for _, parent_target in parent_targets.iterrows():
+                # Sum all children for this concept
+                total_child_sum = 0.0
+                for child_id, child_df in children_dict.items():
+                    child_mask = self._get_matching_targets_mask(child_df, parent_target, target_filters)
+                    if child_mask.any():
+                        # Use ORIGINAL values, not modified ones
+                        if 'original_value_pre_reconciliation' in child_df.columns:
+                            total_child_sum += child_df.loc[child_mask, 'original_value_pre_reconciliation'].sum()
+                        else:
+                            total_child_sum += child_df.loc[child_mask, 'value'].sum()
+                
+                if total_child_sum > 0:
+                    parent_value = parent_target['value']
+                    factor = parent_value / total_child_sum
+                    adjustment_factors[parent_target['variable']] = factor
+                    logger.info(f"Calculated factor for {parent_target['variable']}: {factor:.4f} "
+                               f"(parent={parent_value:,.0f}, children_sum={total_child_sum:,.0f})")
+            
+            # Now apply the factors to each child
+            for child_id, child_df in children_dict.items():
+                reconciled_df = self._apply_reconciliation_factors(
+                    child_df, parent_targets, adjustment_factors, child_id, higher_level, target_filters
+                )
+                reconciled_dict[child_id] = reconciled_df
+        
+        return reconciled_dict
+    
+    def _apply_reconciliation_factors(self, child_df: pd.DataFrame,
+                                      parent_targets: pd.DataFrame,
+                                      adjustment_factors: Dict[str, float],
+                                      child_id: str, parent_level: str,
+                                      target_filters: Dict) -> pd.DataFrame:
+        """Apply pre-calculated reconciliation factors to a child geography."""
+        result_df = child_df.copy()
+        
+        # Add diagnostic columns if not present
+        if 'original_value_pre_reconciliation' not in result_df.columns:
+            result_df['original_value_pre_reconciliation'] = result_df['value'].copy()
+        if 'reconciliation_factor' not in result_df.columns:
+            result_df['reconciliation_factor'] = 1.0
+        if 'reconciliation_source' not in result_df.columns:
+            result_df['reconciliation_source'] = 'none'
+        if 'undercount_pct' not in result_df.columns:
+            result_df['undercount_pct'] = 0.0
+        
+        # Apply factors for matching targets
+        for _, parent_target in parent_targets.iterrows():
+            var_name = parent_target['variable']
+            if var_name in adjustment_factors:
+                matching_mask = self._get_matching_targets_mask(result_df, parent_target, target_filters)
+                if matching_mask.any():
+                    factor = adjustment_factors[var_name]
+                    # Apply to ORIGINAL value, not current value
+                    original_vals = result_df.loc[matching_mask, 'original_value_pre_reconciliation']
+                    result_df.loc[matching_mask, 'value'] = original_vals * factor
+                    result_df.loc[matching_mask, 'reconciliation_factor'] = factor
+                    result_df.loc[matching_mask, 'reconciliation_source'] = f"{parent_level}_{var_name}"
+                    result_df.loc[matching_mask, 'undercount_pct'] = (1 - 1/factor) * 100 if factor != 0 else 0
+        
+        return result_df
+    
+    def _get_filtered_targets(self, stratum_id: int, filters: Dict) -> pd.DataFrame:
+        """Get targets from database matching filters."""
+        # Build query conditions
+        conditions = ["s.stratum_id = :stratum_id OR s.parent_stratum_id = :stratum_id"]
+        
+        for key, value in filters.items():
+            if key == 'stratum_group_id':
+                conditions.append(f"s.stratum_group_id = {value}")
+            elif key == 'variable':
+                conditions.append(f"t.variable = '{value}'")
+        
+        query = f"""
+        SELECT 
+            t.target_id,
+            t.stratum_id,
+            t.variable,
+            t.value,
+            t.period,
+            s.stratum_group_id,
+            sc.constraint_variable,
+            sc.operation,
+            sc.value as constraint_value
+        FROM targets t
+        JOIN strata s ON t.stratum_id = s.stratum_id
+        LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+        WHERE {' AND '.join(conditions)}
+        """
+        
+        with self.engine.connect() as conn:
+            return pd.read_sql(query, conn, params={'stratum_id': stratum_id})
+    
+    def _reconcile_single_geography(self, child_df: pd.DataFrame, 
+                                   parent_targets: pd.DataFrame,
+                                   child_id: str, parent_id: str, 
+                                   parent_level: str,
+                                   filters: Dict,
+                                   all_children_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+        """Reconcile a single geography's targets to parent aggregates."""
+        result_df = child_df.copy()
+        
+        # Add diagnostic columns if not present
+        if 'original_value_pre_reconciliation' not in result_df.columns:
+            result_df['original_value_pre_reconciliation'] = result_df['value'].copy()
+        if 'reconciliation_factor' not in result_df.columns:
+            result_df['reconciliation_factor'] = 1.0
+        if 'reconciliation_source' not in result_df.columns:
+            result_df['reconciliation_source'] = 'none'
+        if 'undercount_pct' not in result_df.columns:
+            result_df['undercount_pct'] = 0.0
+        
+        # Match targets by concept (variable + constraints)
+        for _, parent_target in parent_targets.iterrows():
+            # Find matching child targets
+            matching_mask = self._get_matching_targets_mask(result_df, parent_target, filters)
+            
+            if not matching_mask.any():
+                continue
+            
+            # Aggregate all siblings for this concept using already-collected data
+            sibling_sum = 0.0
+            for sibling_id, sibling_df in all_children_dict.items():
+                sibling_mask = self._get_matching_targets_mask(sibling_df, parent_target, filters)
+                if sibling_mask.any():
+                    sibling_sum += sibling_df.loc[sibling_mask, 'value'].sum()
+            
+            if sibling_sum == 0:
+                logger.warning(f"Zero sum for {parent_target['variable']} in {parent_level}")
+                continue
+            
+            # Calculate adjustment factor
+            parent_value = parent_target['value']
+            adjustment_factor = parent_value / sibling_sum
+            
+            # Apply adjustment
+            result_df.loc[matching_mask, 'value'] *= adjustment_factor
+            result_df.loc[matching_mask, 'reconciliation_factor'] = adjustment_factor
+            result_df.loc[matching_mask, 'reconciliation_source'] = f"{parent_level}_{parent_target['variable']}"
+            result_df.loc[matching_mask, 'undercount_pct'] = (1 - 1/adjustment_factor) * 100
+            
+            logger.info(f"Reconciled {parent_target['variable']} for {child_id}: "
+                       f"factor={adjustment_factor:.4f}, undercount={((1-1/adjustment_factor)*100):.1f}%")
+        
+        return result_df
+    
+    def _get_matching_targets_mask(self, df: pd.DataFrame, 
+                                   parent_target: pd.Series,
+                                   filters: Dict) -> pd.Series:
+        """Get mask for targets matching parent target concept."""
+        mask = df['variable'] == parent_target['variable']
+        
+        # Match stratum_group_id if in filters
+        if 'stratum_group_id' in filters and 'stratum_group_id' in df.columns:
+            mask &= df['stratum_group_id'] == filters['stratum_group_id']
+        
+        # Match constraints if present - need to match the actual constraint values
+        parent_constraint = parent_target.get('constraint_variable')
+        if pd.notna(parent_constraint) and 'constraint_variable' in df.columns:
+            # Match targets with same constraint variable, operation, and value
+            constraint_mask = (
+                (df['constraint_variable'] == parent_constraint) &
+                (df['operation'] == parent_target.get('operation')) &
+                (df['constraint_value'] == parent_target.get('constraint_value'))
+            )
+            mask &= constraint_mask
+        elif pd.isna(parent_constraint) and 'constraint_variable' in df.columns:
+            # Parent has no constraint, child should have none either
+            mask &= df['constraint_variable'].isna()
+        
+        return mask
+    
+    def _aggregate_cd_targets_for_state(self, state_fips: str, 
+                                       target_concept: pd.Series,
+                                       filters: Dict) -> float:
+        """Sum CD targets for a state matching the concept."""
+        # Get all CDs in state
+        query = """
+        SELECT DISTINCT sc.value as cd_geoid
+        FROM stratum_constraints sc
+        JOIN strata s ON sc.stratum_id = s.stratum_id
+        WHERE sc.constraint_variable = 'congressional_district_geoid'
+          AND sc.value LIKE :state_pattern
+        """
+        
+        # Determine pattern based on state_fips length
+        if len(state_fips) == 1:
+            pattern = f"{state_fips}__"  # e.g., "6__" for CA
+        else:
+            pattern = f"{state_fips}__"  # e.g., "36__" for NY
+        
+        with self.engine.connect() as conn:
+            cd_result = conn.execute(text(query), {'state_pattern': pattern})
+            cd_ids = [row[0] for row in cd_result]
+        
+        # Sum targets across CDs
+        total = 0.0
+        for cd_id in cd_ids:
+            cd_stratum_id = self.get_cd_stratum_id(cd_id)
+            if cd_stratum_id:
+                cd_targets = self._get_filtered_targets(cd_stratum_id, filters)
+                # Sum matching targets
+                for _, cd_target in cd_targets.iterrows():
+                    if self._targets_match_concept(cd_target, target_concept):
+                        total += cd_target['value']
+        
+        return total
+    
+    def _targets_match_concept(self, target1: pd.Series, target2: pd.Series) -> bool:
+        """Check if two targets represent the same concept."""
+        # Must have same variable
+        if target1['variable'] != target2['variable']:
+            return False
+        
+        # Must have same constraint pattern (simplified for now)
+        constraint1 = target1.get('constraint_variable')
+        constraint2 = target2.get('constraint_variable')
+        
+        if pd.isna(constraint1) != pd.isna(constraint2):
+            return False
+        
+        if pd.notna(constraint1):
+            # Check constraint details match
+            return (constraint1 == constraint2 and
+                   target1.get('operation') == target2.get('operation') and
+                   target1.get('constraint_value') == target2.get('constraint_value'))
+        
+        return True
+    
+    def _aggregate_state_targets_for_national(self, 
+                                             target_concept: pd.Series,
+                                             filters: Dict) -> float:
+        """Sum state targets for national matching the concept."""
+        # Get all states
+        query = """
+        SELECT DISTINCT sc.value as state_fips
+        FROM stratum_constraints sc
+        JOIN strata s ON sc.stratum_id = s.stratum_id
+        WHERE sc.constraint_variable = 'state_fips'
+        """
+        
+        with self.engine.connect() as conn:
+            state_result = conn.execute(text(query))
+            state_fips_list = [row[0] for row in state_result]
+        
+        # Sum targets across states
+        total = 0.0
+        for state_fips in state_fips_list:
+            state_stratum_id = self.get_state_stratum_id(state_fips)
+            if state_stratum_id:
+                state_targets = self._get_filtered_targets(state_stratum_id, filters)
+                # Sum matching targets
+                for _, state_target in state_targets.iterrows():
+                    if self._targets_match_concept(state_target, target_concept):
+                        total += state_target['value']
+        
+        return total
+    
     def get_cd_stratum_id(self, cd_geoid: str) -> Optional[int]:
         """Get the stratum_id for a congressional district."""
         query = """
@@ -674,13 +991,18 @@ class SparseGeoStackingMatrixBuilder:
                 continue
         
         # Calculate target variable values WITHOUT explicit period
-        target_values = sim.calculate(target_variable).values
+        if target_variable == "tax_unit_count":
+            # For tax_unit_count, use binary mask (1 if meets criteria, 0 otherwise)
+            target_values = entity_mask.astype(float)
+        else:
+            target_values = sim.calculate(target_variable).values
         
         # Apply mask at entity level
         masked_values = target_values * entity_mask
         
         # Map to household level
         if target_entity != "household":
+            # For all variables, sum to household level
             household_values = sim.map_result(masked_values, target_entity, "household")
         else:
             household_values = masked_values
@@ -771,15 +1093,17 @@ class SparseGeoStackingMatrixBuilder:
             if pd.notna(target_row.get('constraint_variable')):
                 desc_parts.append(f"{target_row['constraint_variable']}{target_row.get('operation', '=')}{target_row.get('constraint_value', '')}")
             
-            # Determine stratum_group_id for proper grouping
-            if target_row['stratum_group_id'] == 2:  # Filer stratum
-                # This is an IRS target through filer stratum
-                group_id = f"irs_{target_row['variable']}"
-            elif pd.isna(target_row['stratum_group_id']) or target_row['stratum_group_id'] == 1:
-                # Geographic or national target
-                group_id = target_row['geo_level']
+            # Preserve the original stratum_group_id for proper grouping
+            # Special handling only for truly national/geographic targets
+            if pd.isna(target_row['stratum_group_id']):
+                # No stratum_group_id means it's a national target
+                group_id = 'national'
+            elif target_row['stratum_group_id'] == 1:
+                # Geographic identifier (not a real target)
+                group_id = 'geographic'
             else:
-                # Use existing stratum_group_id
+                # Keep the original numeric stratum_group_id
+                # This preserves 2=Age, 3=AGI, 4=SNAP, 5=Medicaid, 6=EITC, 100+=IRS
                 group_id = target_row['stratum_group_id']
             
             all_targets.append({
@@ -900,22 +1224,24 @@ class SparseGeoStackingMatrixBuilder:
             # Get uprating info
             factor, uprating_type = self._get_uprating_info(target['variable'], target['period'])
             
+            # Build concise description with constraint info
+            if 'constraint_variable' in target and pd.notna(target['constraint_variable']):
+                var_desc = f"{target['variable']}_{target['constraint_variable']}{target.get('operation', '')}{target.get('constraint_value', '')}"
+            else:
+                var_desc = target['variable']
+            
             national_targets_list.append({
                 'target_id': target['target_id'],
-                'variable': target['variable'],
-                'value': target['value'] * factor,  # Apply uprating
-                'original_value': target['value'],  # Keep original
-                'active': target['active'],
-                'tolerance': target['tolerance'],
                 'stratum_id': target['stratum_id'],
-                'stratum_group_id': 'national',
-                'geographic_level': 'national',
+                'value': target['value'] * factor,
+                'original_value': target['value'],
+                'variable': target['variable'],
+                'variable_desc': var_desc,
                 'geographic_id': 'US',
-                'description': f"{target['variable']}_national",
-                'stacked_target_id': f"{target['target_id']}_national",
-                'period': target['period'],  # Preserve the period
+                'stratum_group_id': 'national',  # Required for create_target_groups
+                'period': target['period'],
                 'uprating_factor': factor,
-                'uprating_type': uprating_type
+                'reconciliation_factor': 1.0,
             })
         
         # Build national targets matrix ONCE before the loop
@@ -950,6 +1276,9 @@ class SparseGeoStackingMatrixBuilder:
             national_matrix = national_matrix.tocsr()
             elapsed = time.time() - start
             logger.info(f"National matrix built in {elapsed:.1f}s: shape {national_matrix.shape}, nnz={national_matrix.nnz}")
+        
+        # Collect all geography targets first for reconciliation
+        all_geo_targets_dict = {}
         
         # Build matrix for each geography (CD-specific targets only)
         for i, geo_id in enumerate(geographic_ids):
@@ -1016,82 +1345,171 @@ class SparseGeoStackingMatrixBuilder:
                 if len(cd_targets_raw) != len(cd_targets):
                     logger.debug(f"CD {geo_id}: Selected {len(cd_targets)} unique targets from {len(cd_targets_raw)} raw targets")
                 
-                # Format targets
-                cd_target_list = []
-                for _, target in cd_targets.iterrows():
-                    # Get uprating info
-                    factor, uprating_type = self._get_uprating_info(target['variable'], target['period'])
-                    
-                    cd_target_list.append({
-                        'target_id': target['target_id'],
-                        'variable': target['variable'],
-                        'value': target['value'] * factor,  # Apply uprating
-                        'original_value': target['value'],  # Keep original
-                        'active': target.get('active', True),
-                        'tolerance': target.get('tolerance', 0.05),
-                        'stratum_id': target['stratum_id'],
-                        'stratum_group_id': 'congressional_district',
-                        'geographic_level': 'congressional_district',
-                        'geographic_id': geo_id,
-                        'description': f"{target['variable']}_cd_{geo_id}",
-                        'stacked_target_id': f"{target['target_id']}_cd{geo_id}",
-                        'period': target['period'],  # Preserve the period
-                        'uprating_factor': factor,
-                        'uprating_type': uprating_type
-                    })
-                
-                if cd_target_list:
-                    targets_df = pd.DataFrame(cd_target_list)
-                    
-                    # Build matrix for CD-specific targets only
-                    if sim is not None:
-                        household_ids = sim.calculate("household_id").values
-                        n_households = len(household_ids)
-                        n_targets = len(targets_df)
-                        
-                        matrix = sparse.lil_matrix((n_targets, n_households), dtype=np.float32)
-                        
-                        for j, (_, target) in enumerate(targets_df.iterrows()):
-                            constraints = self.get_constraints_for_stratum(target['stratum_id'])
-                            nonzero_indices, nonzero_values = self.apply_constraints_to_sim_sparse(
-                                sim, constraints, target['variable']
-                            )
-                            if len(nonzero_indices) > 0:
-                                matrix[j, nonzero_indices] = nonzero_values
-                        
-                        matrix = matrix.tocsr()
-                        geo_matrices.append(matrix)
-                        all_targets.append(targets_df)
-                        
-                        # Store household ID mapping
-                        household_id_mapping[f"cd{geo_id}"] = [
-                            f"{hh_id}_cd{geo_id}" for hh_id in household_ids
-                        ]
+                # Store CD targets with stratum_group_id preserved for reconciliation
+                cd_targets['geographic_id'] = geo_id
+                all_geo_targets_dict[geo_id] = cd_targets
             else:
-                # For state-level, use existing method (or optimize similarly)
-                targets_df, matrix, household_ids = self.build_matrix_for_geography_sparse(
-                    geographic_level, geo_id, sim
-                )
+                # For state-level, collect targets for later reconciliation
+                state_stratum_id = self.get_state_stratum_id(geo_id)
+                if state_stratum_id is None:
+                    logger.warning(f"Could not find state {geo_id} in database")
+                    continue
+                state_targets = self.get_all_descendant_targets(state_stratum_id, sim)
+                state_targets['geographic_id'] = geo_id
+                all_geo_targets_dict[geo_id] = state_targets
+        
+        # Reconcile targets to higher level if CD calibration
+        if geographic_level == 'congressional_district' and all_geo_targets_dict:
+            # Age targets (stratum_group_id=2) - already match so no-op
+            logger.info("Reconciling CD age targets to state totals...")
+            reconciled_dict = self.reconcile_targets_to_higher_level(
+                all_geo_targets_dict,
+                higher_level='state',
+                target_filters={'stratum_group_id': 2},  # Age targets
+                sim=sim
+            )
+            all_geo_targets_dict = reconciled_dict
+            
+            # Medicaid targets (stratum_group_id=5) - needs reconciliation
+            logger.info("Reconciling CD Medicaid targets to state admin totals...")
+            reconciled_dict = self.reconcile_targets_to_higher_level(
+                all_geo_targets_dict,
+                higher_level='state', 
+                target_filters={'stratum_group_id': 5},  # Medicaid targets
+                sim=sim
+            )
+            all_geo_targets_dict = reconciled_dict
+            
+            # SNAP household targets (stratum_group_id=4) - needs reconciliation
+            logger.info("Reconciling CD SNAP household counts to state admin totals...")
+            reconciled_dict = self.reconcile_targets_to_higher_level(
+                all_geo_targets_dict,
+                higher_level='state',
+                target_filters={'stratum_group_id': 4, 'variable': 'household_count'},  # SNAP households
+                sim=sim
+            )
+            all_geo_targets_dict = reconciled_dict
+        
+        # Now build matrices for all collected and reconciled targets
+        for geo_id, geo_targets_df in all_geo_targets_dict.items():
+            # Format targets
+            geo_target_list = []
+            for _, target in geo_targets_df.iterrows():
+                # Get uprating info
+                factor, uprating_type = self._get_uprating_info(target['variable'], target.get('period', self.time_period))
                 
-                if matrix is not None:
-                    # Separate national and geo-specific targets
-                    national_mask = targets_df['geographic_id'] == 'US'
-                    geo_mask = ~national_mask
+                # Apply uprating to value (may already have reconciliation factor applied)
+                final_value = target['value'] * factor
+                
+                # Create meaningful description based on stratum_group_id and variable
+                stratum_group = target.get('stratum_group_id')
+                
+                # Build descriptive prefix based on stratum_group_id
+                if isinstance(stratum_group, (int, np.integer)):
+                    if stratum_group == 2:  # Age
+                        # Use stratum_notes if available, otherwise build from constraint
+                        if 'stratum_notes' in target and pd.notna(target.get('stratum_notes')):
+                            # Extract age range from notes like "Age: 0-4, CD 601"
+                            notes = str(target['stratum_notes'])
+                            if 'Age:' in notes:
+                                age_part = notes.split('Age:')[1].split(',')[0].strip()
+                                desc_prefix = f"age_{age_part}"
+                            else:
+                                desc_prefix = 'age'
+                        else:
+                            desc_prefix = 'age'
+                    elif stratum_group == 3:  # AGI
+                        desc_prefix = 'AGI'
+                    elif stratum_group == 4:  # SNAP
+                        desc_prefix = 'SNAP_households'
+                    elif stratum_group == 5:  # Medicaid
+                        desc_prefix = 'Medicaid_enrollment' 
+                    elif stratum_group == 6:  # EITC
+                        desc_prefix = 'EITC'
+                    elif stratum_group >= 100:  # IRS variables
+                        irs_names = {
+                            100: 'QBI_deduction',
+                            101: 'self_employment',
+                            102: 'net_capital_gains',
+                            103: 'real_estate_taxes',
+                            104: 'rental_income',
+                            105: 'net_capital_gain',
+                            106: 'taxable_IRA_distributions',
+                            107: 'taxable_interest',
+                            108: 'tax_exempt_interest',
+                            109: 'dividends',
+                            110: 'qualified_dividends',
+                            111: 'partnership_S_corp',
+                            112: 'all_filers',
+                            113: 'unemployment_comp',
+                            114: 'medical_deduction',
+                            115: 'taxable_pension',
+                            116: 'refundable_CTC',
+                            117: 'SALT_deduction',
+                            118: 'income_tax_paid',
+                            119: 'income_tax_before_credits'
+                        }
+                        desc_prefix = irs_names.get(stratum_group, f'IRS_{stratum_group}')
+                        # Add variable suffix for amount vs count
+                        if target['variable'] == 'tax_unit_count':
+                            desc_prefix = f"{desc_prefix}_count"
+                        else:
+                            desc_prefix = f"{desc_prefix}_amount"
+                    else:
+                        desc_prefix = target['variable']
+                else:
+                    desc_prefix = target['variable']
+                
+                # Just use the descriptive prefix without geographic suffix
+                # The geographic context is already provided elsewhere
+                description = desc_prefix
+                
+                # Build concise description with constraint info
+                if 'constraint_variable' in target and pd.notna(target['constraint_variable']):
+                    var_desc = f"{target['variable']}_{target['constraint_variable']}{target.get('operation', '')}{target.get('constraint_value', '')}"
+                else:
+                    var_desc = target['variable']
+                
+                geo_target_list.append({
+                    'target_id': target['target_id'],
+                    'stratum_id': target['stratum_id'],
+                    'value': final_value,
+                    'original_value': target.get('original_value_pre_reconciliation', target['value']),
+                    'variable': target['variable'],
+                    'variable_desc': var_desc,
+                    'geographic_id': geo_id,
+                    'stratum_group_id': target.get('stratum_group_id', geographic_level),  # Preserve original group ID
+                    'period': target.get('period', self.time_period),
+                    'uprating_factor': factor,
+                    'reconciliation_factor': target.get('reconciliation_factor', 1.0),
+                    'undercount_pct': target.get('undercount_pct', 0.0)
+                })
+            
+            if geo_target_list:
+                targets_df = pd.DataFrame(geo_target_list)
+                all_targets.append(targets_df)
+                
+                # Build matrix for geo-specific targets
+                if sim is not None:
+                    household_ids = sim.calculate("household_id").values
+                    n_households = len(household_ids)
+                    n_targets = len(targets_df)
                     
-                    # Only extract geo-specific part (we'll handle national separately)
-                    if geo_mask.any():
-                        geo_part = matrix[geo_mask.values, :]
-                        geo_matrices.append(geo_part)
+                    matrix = sparse.lil_matrix((n_targets, n_households), dtype=np.float32)
                     
-                    # Add geo-specific targets
-                    geo_specific_targets = targets_df[geo_mask].copy()
-                    prefix = "state"
-                    geo_specific_targets['stacked_target_id'] = (
-                        geo_specific_targets['target_id'].astype(str) + f"_{prefix}{geo_id}"
-                    )
-                    all_targets.append(geo_specific_targets)
+                    for j, (_, target) in enumerate(targets_df.iterrows()):
+                        constraints = self.get_constraints_for_stratum(target['stratum_id'])
+                        nonzero_indices, nonzero_values = self.apply_constraints_to_sim_sparse(
+                            sim, constraints, target['variable']
+                        )
+                        if len(nonzero_indices) > 0:
+                            matrix[j, nonzero_indices] = nonzero_values
+                    
+                    matrix = matrix.tocsr()
+                    geo_matrices.append(matrix)
                     
                     # Store household ID mapping
+                    prefix = "cd" if geographic_level == 'congressional_district' else "state"
                     household_id_mapping[f"{prefix}{geo_id}"] = [
                         f"{hh_id}_{prefix}{geo_id}" for hh_id in household_ids
                     ]
@@ -1124,20 +1542,17 @@ class SparseGeoStackingMatrixBuilder:
                         
                         state_snap_targets_list.append({
                             'target_id': target['target_id'],
-                            'variable': target['variable'],
-                            'value': target['value'] * factor,  # Apply uprating
-                            'original_value': target['value'],  # Keep original
-                            'active': target.get('active', True),
-                            'tolerance': target.get('tolerance', 0.05),
                             'stratum_id': target['stratum_id'],
-                            'stratum_group_id': 'state_snap_cost',
-                            'geographic_level': 'state',
+                            'value': target['value'] * factor,
+                            'original_value': target['value'],
+                            'variable': target['variable'],
+                            'variable_desc': 'snap_cost_state',
                             'geographic_id': state_fips,
-                            'description': f"snap_cost_state_{state_fips}",
-                            'stacked_target_id': f"{target['target_id']}_state_{state_fips}",
-                            'period': period,  # Preserve period if available
+                            'stratum_group_id': 'state_snap_cost',  # Special group for state SNAP costs
+                            'period': period,
                             'uprating_factor': factor,
-                            'uprating_type': uprating_type
+                            'reconciliation_factor': 1.0,
+                            'undercount_pct': 0.0
                         })
                         
                         # Build matrix row for this state SNAP cost

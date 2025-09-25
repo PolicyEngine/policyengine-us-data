@@ -7,11 +7,85 @@ import numpy as np
 import pandas as pd
 import h5py
 import os
+import json
+import random
+from pathlib import Path
 from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 from policyengine_core.enums import Enum
 from sqlalchemy import create_engine, text
 from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import download_from_huggingface
+from policyengine_us.variables.household.demographic.geographic.state_name import StateName
+from policyengine_us.variables.household.demographic.geographic.state_code import StateCode
+from policyengine_us.variables.household.demographic.geographic.county.county_enum import County
+
+
+# State FIPS to StateName and StateCode mappings
+STATE_FIPS_TO_NAME = {
+    1: StateName.AL, 2: StateName.AK, 4: StateName.AZ, 5: StateName.AR, 6: StateName.CA,
+    8: StateName.CO, 9: StateName.CT, 10: StateName.DE, 11: StateName.DC,
+    12: StateName.FL, 13: StateName.GA, 15: StateName.HI, 16: StateName.ID, 17: StateName.IL,
+    18: StateName.IN, 19: StateName.IA, 20: StateName.KS, 21: StateName.KY, 22: StateName.LA,
+    23: StateName.ME, 24: StateName.MD, 25: StateName.MA, 26: StateName.MI,
+    27: StateName.MN, 28: StateName.MS, 29: StateName.MO, 30: StateName.MT,
+    31: StateName.NE, 32: StateName.NV, 33: StateName.NH, 34: StateName.NJ,
+    35: StateName.NM, 36: StateName.NY, 37: StateName.NC, 38: StateName.ND,
+    39: StateName.OH, 40: StateName.OK, 41: StateName.OR, 42: StateName.PA,
+    44: StateName.RI, 45: StateName.SC, 46: StateName.SD, 47: StateName.TN,
+    48: StateName.TX, 49: StateName.UT, 50: StateName.VT, 51: StateName.VA, 53: StateName.WA,
+    54: StateName.WV, 55: StateName.WI, 56: StateName.WY
+}
+
+# Note that this is not exactly the same as above: StateName vs StateCode
+STATE_FIPS_TO_CODE = {
+    1: StateCode.AL, 2: StateCode.AK, 4: StateCode.AZ, 5: StateCode.AR, 6: StateCode.CA,
+    8: StateCode.CO, 9: StateCode.CT, 10: StateCode.DE, 11: StateCode.DC,
+    12: StateCode.FL, 13: StateCode.GA, 15: StateCode.HI, 16: StateCode.ID, 17: StateCode.IL,
+    18: StateCode.IN, 19: StateCode.IA, 20: StateCode.KS, 21: StateCode.KY, 22: StateCode.LA,
+    23: StateCode.ME, 24: StateCode.MD, 25: StateCode.MA, 26: StateCode.MI,
+    27: StateCode.MN, 28: StateCode.MS, 29: StateCode.MO, 30: StateCode.MT,
+    31: StateCode.NE, 32: StateCode.NV, 33: StateCode.NH, 34: StateCode.NJ,
+    35: StateCode.NM, 36: StateCode.NY, 37: StateCode.NC, 38: StateCode.ND,
+    39: StateCode.OH, 40: StateCode.OK, 41: StateCode.OR, 42: StateCode.PA,
+    44: StateCode.RI, 45: StateCode.SC, 46: StateCode.SD, 47: StateCode.TN,
+    48: StateCode.TX, 49: StateCode.UT, 50: StateCode.VT, 51: StateCode.VA, 53: StateCode.WA,
+    54: StateCode.WV, 55: StateCode.WI, 56: StateCode.WY
+}
+
+
+def load_cd_county_mappings():
+    """Load CD to county mappings from JSON file."""
+    mapping_file = Path("cd_county_mappings.json")
+    if not mapping_file.exists():
+        print("WARNING: cd_county_mappings.json not found. Counties will not be updated.")
+        return None
+    
+    with open(mapping_file, 'r') as f:
+        return json.load(f)
+
+
+def get_county_for_cd(cd_geoid, cd_county_mappings):
+    """
+    Get a county FIPS code for a given congressional district.
+    Uses weighted random selection based on county proportions.
+    """
+    if not cd_county_mappings or str(cd_geoid) not in cd_county_mappings:
+        return None
+    
+    county_props = cd_county_mappings[str(cd_geoid)]
+    if not county_props:
+        return None
+    
+    counties = list(county_props.keys())
+    weights = list(county_props.values())
+    
+    # Normalize weights to ensure they sum to 1
+    total_weight = sum(weights)
+    if total_weight > 0:
+        weights = [w/total_weight for w in weights]
+        return random.choices(counties, weights=weights)[0]
+    
+    return None
 
 
 def create_sparse_cd_stacked_dataset(
@@ -71,6 +145,11 @@ def create_sparse_cd_stacked_dataset(
     # Load the original simulation
     base_sim = Microsimulation(dataset=dataset_path)
     
+    # Load CD to county mappings
+    cd_county_mappings = load_cd_county_mappings()
+    if cd_county_mappings:
+        print("Loaded CD to county mappings")
+    
     # Get household IDs and create mapping
     household_ids = base_sim.calculate("household_id", map_to="household").values
     n_households_orig = len(household_ids)
@@ -78,13 +157,21 @@ def create_sparse_cd_stacked_dataset(
     # Create mapping from household ID to index for proper filtering
     hh_id_to_idx = {int(hh_id): idx for idx, hh_id in enumerate(household_ids)}
     
-    # Validate weight vector
-    expected_weight_length = n_households_orig * len(cds_to_calibrate)
-    assert len(w) == expected_weight_length, (
-        f"Weight vector length mismatch! Expected {expected_weight_length:,} "
-        f"(={n_households_orig:,} households × {len(cds_to_calibrate)} CDs), "
-        f"but got {len(w):,}"
-    )
+    # Infer the number of households from weight vector and CD count
+    if len(w) % len(cds_to_calibrate) != 0:
+        raise ValueError(
+            f"Weight vector length ({len(w):,}) is not evenly divisible by "
+            f"number of CDs ({len(cds_to_calibrate)}). Cannot determine household count."
+        )
+    
+    n_households_from_weights = len(w) // len(cds_to_calibrate)
+    
+    # Check if they match
+    if n_households_from_weights != n_households_orig:
+        print(f"WARNING: Weight vector suggests {n_households_from_weights:,} households")
+        print(f"         but dataset has {n_households_orig:,} households")
+        print(f"         Using weight vector dimensions (assuming dataset matches calibration)")
+        n_households_orig = n_households_from_weights
     
     print(f"\nOriginal dataset has {n_households_orig:,} households")
     
@@ -139,12 +226,50 @@ def create_sparse_cd_stacked_dataset(
         hh_weight_col = f"household_weight__{time_period}"
         hh_id_col = f"household_id__{time_period}"
         cd_geoid_col = f"congressional_district_geoid__{time_period}"
+        state_fips_col = f"state_fips__{time_period}"
+        state_name_col = f"state_name__{time_period}"
+        state_code_col = f"state_code__{time_period}"
+        county_fips_col = f"county_fips__{time_period}"
+        county_col = f"county__{time_period}"
+        county_str_col = f"county_str__{time_period}"
         
         # Filter to only active households in this CD
         df_filtered = df[df[hh_id_col].isin(active_household_ids)].copy()
         
         # Update congressional_district_geoid to target CD
-        df_filtered[cd_geoid_col] = cd_geoid
+        df_filtered[cd_geoid_col] = int(cd_geoid)
+        
+        # Extract state FIPS from CD GEOID (first 1-2 digits)
+        cd_geoid_int = int(cd_geoid)
+        state_fips = cd_geoid_int // 100
+        
+        # Update state variables for consistency
+        df_filtered[state_fips_col] = state_fips
+        if state_fips in STATE_FIPS_TO_NAME:
+            df_filtered[state_name_col] = STATE_FIPS_TO_NAME[state_fips]
+        if state_fips in STATE_FIPS_TO_CODE:
+            df_filtered[state_code_col] = STATE_FIPS_TO_CODE[state_fips]
+        
+        # Update county variables if we have mappings
+        if cd_county_mappings:
+            # For each household, assign a county based on CD proportions
+            n_households_in_cd = len(df_filtered)
+            county_assignments = []
+            
+            for _ in range(n_households_in_cd):
+                county_fips = get_county_for_cd(cd_geoid, cd_county_mappings)
+                if county_fips:
+                    county_assignments.append(county_fips)
+                else:
+                    # Default to empty if no mapping found
+                    county_assignments.append("")
+            
+            if county_assignments and county_assignments[0]:  # If we have valid assignments
+                df_filtered[county_fips_col] = county_assignments
+                # For now, set county and county_str to the FIPS code
+                # In production, you'd map these to proper County enum values
+                df_filtered[county_col] = County.UNKNOWN  # Would need proper mapping
+                df_filtered[county_str_col] = county_assignments
         
         cd_dfs.append(df_filtered)
         total_kept_households += len(df_filtered[hh_id_col].unique())
@@ -353,16 +478,15 @@ def create_sparse_cd_stacked_dataset(
 if __name__ == "__main__":
     import sys
     
-    # Load the calibrated CD weights
-    print("Loading calibrated CD weights...")
-    w = np.load("w_cd_20250911_102023.npy")
+    # Two user inputs:
+    # 1. the path of the original dataset that was used for state stacking (prior to being stacked!)
+    # 2. the weights from a model fitting run
+    #dataset_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/stratified_10k.h5"
+    dataset_path = "/home/baogorek/devl/stratified_10k.h5"
+    w = np.load("w_cd_20250924_180347.npy")
     
-    print(f"Weight array shape: {w.shape}")
-    print(f"Non-zero weights: {np.sum(w != 0):,}")
-    print(f"Sparsity: {100*np.sum(w != 0)/len(w):.2f}%")
-    
+   
     # Get all CD GEOIDs from database (must match calibration order)
-    print("\nRetrieving CD list from database...")
     db_path = download_from_huggingface('policy_data.db')
     db_uri = f'sqlite:///{db_path}'
     engine = create_engine(db_uri)
@@ -380,17 +504,14 @@ if __name__ == "__main__":
         result = conn.execute(text(query)).fetchall()
         cds_to_calibrate = [row[0] for row in result]
     
-    print(f"Found {len(cds_to_calibrate)} congressional districts")
-    
-    # Determine dataset path (stratified CPS was used for calibration)
-    dataset_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/stratified_extended_cps_2023.h5"
-    
-    # Verify dimensions match
-    expected_length = 436 * 13089  # 436 CDs × 13,089 households
+    ## Verify dimensions match
+    assert_sim = Microsimulation(dataset=dataset_path)
+    n_hh = assert_sim.calculate("household_id", map_to="household").shape[0]
+    expected_length = len(cds_to_calibrate) * n_hh
+
     if len(w) != expected_length:
-        print(f"WARNING: Weight vector length ({len(w):,}) doesn't match expected ({expected_length:,})")
-        print("Attempting to continue anyway...")
-    
+        raise ValueError(f"Weight vector length ({len(w):,}) doesn't match expected ({expected_length:,})")
+   
     # Check for command line arguments for CD subset
     if len(sys.argv) > 1:
         if sys.argv[1] == "test10":
@@ -445,8 +566,10 @@ if __name__ == "__main__":
             sys.exit(0)
         
         output_file = create_sparse_cd_stacked_dataset(
-            w, cds_to_calibrate,
-            dataset_path=dataset_path
+            w,
+            cds_to_calibrate,
+            dataset_path=dataset_path,
+            #output_path="./test_sparse_cds.h5"
         )
     
     print(f"\nDone! Created: {output_file}")

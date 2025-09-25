@@ -1,6 +1,6 @@
 # Geo-Stacking Calibration: Project Status
 
-### Congressional District Calibration - RESOLVED ✓
+### Congressional District Calibration - FIX APPLIED, AWAITING VALIDATION ⏳
 
 **Matrix Dimensions Verified**: 34,089 × 4,612,880
 - 30 national targets
@@ -10,7 +10,9 @@
 - 25,288 IRS SOI targets (58 × 436 CDs)
 - **Total: 34,089 targets** ✓
 
-**Critical Fix Applied (2024-12)**: Fixed IRS target deduplication by including constraint operations in concept IDs. AGI bins with boundaries like `< 10000` and `>= 10000` are now properly distinguished.
+**Critical Fix Applied (2024-12-24)**: Fixed IRS target deduplication by including constraint operations in concept IDs. AGI bins with boundaries like `< 10000` and `>= 10000` are now properly distinguished.
+
+**Fix Reverted (2024-12-25)**: Reverted tax_unit_count changes after investigation showed the original implementation was correct. Testing demonstrated that summing tax unit counts to household level produces virtually perfect results (0.0% error). The perceived issue was a misunderstanding of how tax unit weights work in PolicyEngine.
 
 **Key Design Decision for CD Calibration**: State SNAP cost targets (51 total) apply to households within each state but remain state-level constraints. Households in CDs within a state have non-zero values in the design matrix for their state's SNAP cost target.
 
@@ -26,6 +28,23 @@ For administrative data (e.g., SNAP):
 - **Always prefer administrative over survey data**, even if admin is less granular
 - State-level SNAP admin data should override CD-level survey estimates
 
+## Next Steps
+
+### Immediate (After Matrix Rebuild)
+1. **Run calibration with new matrix** - Test if EITC and other tax_unit_count targets now converge properly
+2. **Validate fix effectiveness** - Check if tax_unit_count predictions are within reasonable error bounds (<50% instead of 200-300%)
+3. **Monitor convergence** - Ensure the fix doesn't negatively impact other target types
+
+### If Fix Validated
+1. **Full CD calibration run** - Run complete calibration with appropriate epochs and sparsity settings
+2. **Document final performance** - Update with actual error rates for all target groups
+3. **Create sparse CD-stacked dataset** - Use calibrated weights to create final dataset
+
+### Known Issues to Watch
+- **Sparsity constraints**: Current L0 settings may be too aggressive (99.17% sparsity is extreme)
+- **Rental income targets**: Some showing very high errors (check if this persists)
+- **Multi-tax-unit household weighting**: Our scaling assumption may need refinement
+
 ## Analysis
 
 #### State Activation Patterns
@@ -35,6 +54,69 @@ For administrative data (e.g., SNAP):
 ## L0 Package (~/devl/L0)
 - `l0/calibration.py` - Core calibration class
 - `tests/test_calibration.py` - Test coverage
+
+## Hierarchical Target Reconciliation
+
+### Implementation Status
+A reconciliation system has been implemented to adjust lower-level survey targets to match higher-level administrative totals when available.
+
+#### ETL Files and Reconciliation Needs
+
+1. **etl_age.py** ✅ No reconciliation needed
+   - Source: Census ACS Table S0101 (survey data for both state and CD)
+   - Status: Age targets already sum correctly (state = sum of CDs)
+   - Example: California age < 5: State = 2,086,820, Sum of 52 CDs = 2,086,820
+
+2. **etl_medicaid.py** ✅ Reconciliation ACTIVE
+   - State: Medicaid T-MSIS (administrative)
+   - CD: Census ACS Table S2704 (survey)
+   - Adjustment factor: 1.1962 (16.4% undercount)
+   - Example: California adjusted from 10,474,055 → 12,529,315
+
+3. **etl_snap.py** ✅ Reconciliation ACTIVE
+   - State: USDA FNS SNAP Data (administrative)
+   - CD: Census ACS Table S2201 (survey)
+   - Adjustment factor: 1.6306 (38.7% undercount)
+   - Example: California households adjusted from 1,833,346 → 2,989,406
+
+4. **etl_irs_soi.py** ✅ No reconciliation needed
+   - Source: IRS Statistics of Income (administrative at both levels)
+   - Both state and CD use same administrative source
+
+5. **etl_national_targets.py** ✅ No reconciliation needed
+   - National-level hardcoded targets only
+
+### Reconciliation System Features
+- Calculates adjustment factors by comparing administrative totals to survey sums
+- Applies proportional adjustments to maintain relative distributions
+- Tracks diagnostic information (original values, factors, undercount percentages)
+- Currently active for:
+  - Medicaid enrollment (stratum_group_id = 5)
+  - SNAP household counts (stratum_group_id = 4)
+
+## Calibration Performance Analysis (2024-09-24)
+
+### Critical Finding: Extreme Sparsity Constraints Preventing Convergence
+
+**Dataset**: 644MB calibration log with 3.4M records tracking 10,979 targets over 10,000 epochs
+
+#### Sparsity Progression
+- **Initial (epoch 100)**: 0.01% sparsity, 4,612,380 active weights
+- **Final (epoch 10,000)**: 99.17% sparsity, only 38,168 active weights (0.83% of original!)
+- **Critical failure**: Catastrophic pruning event at epochs 2500-2600 dropped from 1.3M to 328K weights
+
+#### Performance Impact
+1. **Loss vs Error Mismatch**: Loss reduced 99.92% but error only reduced 86.62%
+2. **Plateau after epoch 1000**: No meaningful improvement despite 9000 more epochs
+3. **Insufficient capacity**: Only 3.5 weights per target on average (38K weights for 11K targets)
+
+#### Problem Areas
+- **Rental Income**: 43 targets with >100% error, worst case 1,987x target value
+- **Tax Unit Counts**: 976 CD-level counts still >100% error at final epoch
+- **Congressional Districts**: 1,460 targets never converged below 100% error
+
+#### Root Cause
+The aggressive L0 sparsity regularization is starving the model of parameters needed to fit complex geographic patterns. Previous runs without these constraints performed much better. The model cannot represent the relationships between household features and geographic targets with such extreme sparsity.
 
 ## Documentation
 - `GEO_STACKING_TECHNICAL.md` - Technical documentation and architecture

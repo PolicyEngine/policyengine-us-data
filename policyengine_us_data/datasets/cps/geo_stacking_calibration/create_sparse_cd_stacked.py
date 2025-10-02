@@ -3,6 +3,7 @@ Create a sparse congressional district-stacked dataset with only non-zero weight
 Standalone version that doesn't modify the working state stacking code.
 """
 
+import sys
 import numpy as np
 import pandas as pd
 import h5py
@@ -476,18 +477,18 @@ def create_sparse_cd_stacked_dataset(
 
 
 if __name__ == "__main__":
-    import sys
     
     # Two user inputs:
     # 1. the path of the original dataset that was used for state stacking (prior to being stacked!)
     # 2. the weights from a model fitting run
     #dataset_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/stratified_10k.h5"
     dataset_path = "/home/baogorek/devl/stratified_10k.h5"
-    w = np.load("w_cd_20250924_180347.npy")
+    w = np.load("w_cd.npy")
     
    
     # Get all CD GEOIDs from database (must match calibration order)
-    db_path = download_from_huggingface('policy_data.db')
+    #db_path = download_from_huggingface('policy_data.db')
+    db_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
     db_uri = f'sqlite:///{db_path}'
     engine = create_engine(db_uri)
     
@@ -511,69 +512,31 @@ if __name__ == "__main__":
 
     if len(w) != expected_length:
         raise ValueError(f"Weight vector length ({len(w):,}) doesn't match expected ({expected_length:,})")
-   
-    # Check for command line arguments for CD subset
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "test10":
-            # Test case: 10 diverse CDs from different states
-            cd_subset = [
-                '601',   # California CD 1
-                '652',   # California CD 52
-                '3601',  # New York CD 1
-                '3626',  # New York CD 26
-                '4801',  # Texas CD 1
-                '4838',  # Texas CD 38
-                '1201',  # Florida CD 1
-                '1228',  # Florida CD 28
-                '1701',  # Illinois CD 1
-                '1101',  # DC at-large
-            ]
-            print(f"\nCreating dataset for 10 test CDs...")
-            output_file = create_sparse_cd_stacked_dataset(
-                w, cds_to_calibrate, 
-                cd_subset=cd_subset,
-                dataset_path=dataset_path
-            )
-        elif sys.argv[1] == "CA":
-            # Test case: All California CDs (start with '6')
-            cd_subset = [cd for cd in cds_to_calibrate if cd.startswith('6')]
-            print(f"\nCreating dataset for {len(cd_subset)} California CDs...")
-            output_file = create_sparse_cd_stacked_dataset(
-                w, cds_to_calibrate, 
-                cd_subset=cd_subset,
-                dataset_path=dataset_path
-            )
-        elif sys.argv[1] == "test1":
-            # Single CD test
-            cd_subset = ['601']  # California CD 1
-            print(f"\nCreating dataset for single test CD (CA-01)...")
-            output_file = create_sparse_cd_stacked_dataset(
-                w, cds_to_calibrate, 
-                cd_subset=cd_subset,
-                dataset_path=dataset_path
-            )
-        else:
-            print(f"Unknown argument: {sys.argv[1]}")
-            print("Usage: python create_sparse_cd_stacked_standalone.py [test1|test10|CA]")
-            sys.exit(1)
-    else:
-        # Default: all CDs (WARNING: This will be large!)
-        print("\nCreating dataset for ALL 436 congressional districts...")
-        print("WARNING: This will create a large dataset with ~89K households!")
-        response = input("Continue? (y/n): ")
-        if response.lower() != 'y':
-            print("Aborted.")
-            sys.exit(0)
-        
-        output_file = create_sparse_cd_stacked_dataset(
-            w,
-            cds_to_calibrate,
-            dataset_path=dataset_path,
-            #output_path="./test_sparse_cds.h5"
-        )
+  
+
+    # Create the .h5 files ---------------------------------------------
+    cd_subset = [cd for cd in cds_to_calibrate if cd[:-2] == '34']
+    output_file = create_sparse_cd_stacked_dataset(
+        w,
+        cds_to_calibrate, 
+        cd_subset=cd_subset,
+        dataset_path=dataset_path,
+        output_path = "./NJ_0929.h5"
+    )
     
-    print(f"\nDone! Created: {output_file}")
-    print("\nTo test loading:")
-    print("  from policyengine_us import Microsimulation")
-    print(f"  sim = Microsimulation(dataset='{output_file}')")
-    print("  sim.build_from_dataset()")
+    cd_subset = ['1101']
+    output_file = create_sparse_cd_stacked_dataset(
+        w,
+        cds_to_calibrate, 
+        cd_subset=cd_subset,
+        dataset_path=dataset_path,
+        output_path = "./DC_0930_v2.h5"
+    )
+   
+    # Everything ------------------------------------------------
+    output_file = create_sparse_cd_stacked_dataset(
+        w,
+        cds_to_calibrate,
+        dataset_path=dataset_path,
+        output_path="./cd_calibration_0929v1.h5"
+    )

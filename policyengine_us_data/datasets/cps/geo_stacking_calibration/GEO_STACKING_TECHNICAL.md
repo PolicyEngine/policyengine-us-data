@@ -158,6 +158,28 @@ Using relative loss function: `((y - y_pred) / (y + 1))^2`
 - The `+1` epsilon is negligible given target scales but prevents edge cases
 - Loss is symmetric: 50% over-prediction and 50% under-prediction produce equal penalty
 
+### Gate-Induced Sparsity (Important Finding)
+
+The L0 regularization framework induces sparsity through **stochastic gates** even when `lambda_l0=0`:
+
+**Gate Mechanism**:
+- Gates control which weights are active: `weight = exp(log_weight) * gate`
+- Gate formula: `gate = sigmoid(log_alpha/beta) * (zeta - gamma) + gamma`
+- With default parameters: `gamma = -0.1`, `zeta = 1.1`, `beta = 2/3`
+
+**Implicit Sparsity Creation**:
+- The gate formula becomes: `gate = s * 1.2 - 0.1` where `s = sigmoid(log_alpha/beta)`
+- When `sigmoid(log_alpha/beta) < 0.0833`, the gate becomes negative
+- Negative gates are clamped to 0, creating **exact zeros** in weights
+- This happens even with `lambda_l0=0` (no explicit sparsity penalty)
+
+**Practical Implications**:
+- Sparsity emerges naturally during optimization as the model learns
+- The `gamma` parameter creates a "hard concrete" distribution with mass at exactly 0
+- To prevent any sparsity, would need `gamma=0` or a very small negative value
+- The L0 penalty (`lambda_l0 > 0`) encourages more weights to hit this zero threshold
+- Default parameters typically achieve 5-40% sparsity even without L0 penalty
+
 ### Group-wise Loss Averaging (Critical Innovation)
 
 **Problem**: Without grouping, histogram-type variables dominate the loss function

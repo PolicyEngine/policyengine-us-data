@@ -238,9 +238,9 @@ def create_stratified_cps_dataset(
     print(f"  Stratified: ${max_agi_stratified:,.0f}")
     
     if max_agi_stratified < max_agi_original * 0.9:
-        print("  ⚠️ WARNING: May have lost some ultra-high earners!")
+        print("WARNING: May have lost some ultra-high earners!")
     else:
-        print("  ✓ Ultra-high earners preserved!")
+        print("Ultra-high earners preserved!")
     
     return output_path
 

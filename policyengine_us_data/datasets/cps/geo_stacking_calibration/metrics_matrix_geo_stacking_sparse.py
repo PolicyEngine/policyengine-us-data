@@ -1293,10 +1293,14 @@ class SparseGeoStackingMatrixBuilder:
                     continue
                     
                 # Get only CD-specific targets with deduplication
+                # TODO (baogorek): the contraint_variable, operation, and constraint_value column
+                # Imply atomic constraints which is not true.
                 cd_targets_raw = self.get_all_descendant_targets(cd_stratum_id, sim)
                 
                 # Deduplicate CD targets by concept
+                # TODO(baogorek): I had never intended for stratum_group_id to take this level of importance
                 def get_cd_concept_id(row):
+                    """This creates concept IDs like person_count_age_0 for age bins."""
                     # For IRS scalar variables (stratum_group_id >= 100)
                     if row['stratum_group_id'] >= 100:
                         # These are IRS variables with constraints like "salt > 0"
@@ -1333,9 +1337,9 @@ class SparseGeoStackingMatrixBuilder:
                     return None
                 
                 cd_targets_raw['cd_concept_id'] = cd_targets_raw.apply(get_cd_concept_id, axis=1)
-                
-                # Remove targets without a valid concept
-                cd_targets_raw = cd_targets_raw[cd_targets_raw['cd_concept_id'].notna()]
+
+                if cd_targets_raw['cd_concept_id'].isna().any():
+                    raise ValueError("Error: One or more targets were found without a valid concept ID.")
                 
                 # For each concept, keep the first occurrence (or most specific based on stratum_group_id)
                 # Prioritize by stratum_group_id: higher values are more specific
@@ -1343,7 +1347,7 @@ class SparseGeoStackingMatrixBuilder:
                 cd_targets = cd_targets_raw.groupby('cd_concept_id').first().reset_index(drop=True)
                 
                 if len(cd_targets_raw) != len(cd_targets):
-                    logger.debug(f"CD {geo_id}: Selected {len(cd_targets)} unique targets from {len(cd_targets_raw)} raw targets")
+                    raise ValueError(f"CD {geo_id}: Unwanted duplication: {len(cd_targets)} unique targets from {len(cd_targets_raw)} raw targets")
                 
                 # Store CD targets with stratum_group_id preserved for reconciliation
                 cd_targets['geographic_id'] = geo_id
@@ -1649,12 +1653,11 @@ def main():
     db_uri = "sqlite:////home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
     
     # Initialize sparse builder
-    builder = SparseGeoStackingMatrixBuilder(db_uri, time_period=2024)
+    builder = SparseGeoStackingMatrixBuilder(db_uri, time_period=2023)
     
     # Create microsimulation with 2024 data
     print("Loading microsimulation...")
     sim = Microsimulation(dataset="hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5")
-    sim.build_from_dataset()
     
     # Test single state
     print("\nBuilding sparse matrix for California (FIPS 6)...")

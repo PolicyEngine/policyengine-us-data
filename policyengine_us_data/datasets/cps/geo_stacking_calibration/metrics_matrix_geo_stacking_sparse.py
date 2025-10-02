@@ -992,6 +992,8 @@ class SparseGeoStackingMatrixBuilder:
         
         # Calculate target variable values WITHOUT explicit period
         if target_variable == "tax_unit_count":
+            # TODO (baogorek): Are we sure this is what we want to do (the binary mask)?
+            # TODO (baogorek): Why wouldn't we do this with person_count as well, for instance?
             # For tax_unit_count, use binary mask (1 if meets criteria, 0 otherwise)
             target_values = entity_mask.astype(float)
         else:
@@ -1287,54 +1289,55 @@ class SparseGeoStackingMatrixBuilder:
             
             # Get CD-specific targets directly without rebuilding national
             if geographic_level == 'congressional_district':
-                cd_stratum_id = self.get_cd_stratum_id(geo_id)
+                cd_stratum_id = self.get_cd_stratum_id(geo_id)  # The base geographic stratum
                 if cd_stratum_id is None:
-                    logger.warning(f"Could not find CD {geo_id} in database")
-                    continue
+                    raise ValueError(f"Could not find CD {geo_id} in database")
                     
                 # Get only CD-specific targets with deduplication
                 # TODO (baogorek): the contraint_variable, operation, and constraint_value column
-                # Imply atomic constraints which is not true.
+                # Imply atomic constraints which is not true. Do we still need them?
                 cd_targets_raw = self.get_all_descendant_targets(cd_stratum_id, sim)
                 
-                # Deduplicate CD targets by concept
-                # TODO(baogorek): I had never intended for stratum_group_id to take this level of importance
+                # Deduplicate CD targets by concept using ALL constraints
                 def get_cd_concept_id(row):
-                    """This creates concept IDs like person_count_age_0 for age bins."""
-                    # For IRS scalar variables (stratum_group_id >= 100)
-                    if row['stratum_group_id'] >= 100:
-                        # These are IRS variables with constraints like "salt > 0"
-                        # Each stratum has both amount and count, keep both
-                        return f"irs_{row['stratum_group_id']}_{row['variable']}"
-                    # For AGI bins (stratum_group_id = 3)
-                    elif row['stratum_group_id'] == 3:
-                        # Keep all AGI bins separate including operation
-                        if pd.notna(row['constraint_variable']) and row['constraint_variable'] == 'adjusted_gross_income':
-                            # Include operation to distinguish < from >=
-                            op_str = row['operation'].replace('>=', 'gte').replace('<', 'lt').replace('==', 'eq')
-                            return f"{row['variable']}_agi_{op_str}_{row['constraint_value']}"
-                        else:
-                            return f"{row['variable']}_agi_total"
-                    # For EITC bins (stratum_group_id = 6)
-                    elif row['stratum_group_id'] == 6:
-                        # Keep all EITC child count bins separate including operation
-                        if pd.notna(row['constraint_variable']) and row['constraint_variable'] == 'eitc_child_count':
-                            # Include operation to distinguish == from >
-                            op_str = row['operation'].replace('>', 'gt').replace('==', 'eq')
-                            return f"{row['variable']}_eitc_{op_str}_{row['constraint_value']}"
-                        else:
-                            return f"{row['variable']}_eitc_all"
-                    # For age targets (stratum_group_id = 2)
-                    elif row['stratum_group_id'] == 2:
-                        # Keep all age bins separate
-                        if pd.notna(row['constraint_variable']) and row['constraint_variable'] == 'age':
-                            return f"{row['variable']}_age_{row['constraint_value']}"
-                        else:
-                            return f"{row['variable']}_all_ages"
-                    # For other targets
-                    elif row['variable']:
-                        return row['variable']
-                    return None
+                    """
+                    Creates unique concept IDs from ALL constraints, not just the first one.
+                    This eliminates the need for hard-coded stratum_group_id logic.
+                    
+                    Examples:
+                    - person_count with age>4|age<10 -> person_count_age_gt_4_age_lt_10
+                    - person_count with adjusted_gross_income>=25000|adjusted_gross_income<50000 
+                      -> person_count_adjusted_gross_income_gte_25000_adjusted_gross_income_lt_50000
+                    """
+                    variable = row['variable']
+                    
+                    # Parse constraint_info which contains ALL constraints
+                    if 'constraint_info' in row and pd.notna(row['constraint_info']):
+                        constraints = row['constraint_info'].split('|')
+                        
+                        # Filter out geographic constraints (not part of the concept)
+                        demographic_constraints = []
+                        for c in constraints:
+                            # Skip geographic and filer constraints
+                            if not any(skip in c for skip in ['state_fips', 'congressional_district_geoid', 'tax_unit_is_filer']):
+                                # Normalize the constraint format for consistency
+                                # Replace operators with text equivalents for valid Python identifiers
+                                c_normalized = c.replace('>=', '_gte_').replace('<=', '_lte_')
+                                c_normalized = c_normalized.replace('>', '_gt_').replace('<', '_lt_')
+                                c_normalized = c_normalized.replace('==', '_eq_').replace('=', '_eq_')
+                                c_normalized = c_normalized.replace(' ', '')  # Remove any spaces
+                                demographic_constraints.append(c_normalized)
+                        
+                        # Sort for consistency (ensures same constraints always produce same ID)
+                        demographic_constraints.sort()
+                        
+                        if demographic_constraints:
+                            # Join all constraints to create unique concept
+                            constraint_str = '_'.join(demographic_constraints)
+                            return f"{variable}_{constraint_str}"
+                    
+                    # No constraints, just the variable name
+                    return variable
                 
                 cd_targets_raw['cd_concept_id'] = cd_targets_raw.apply(get_cd_concept_id, axis=1)
 
@@ -1375,6 +1378,7 @@ class SparseGeoStackingMatrixBuilder:
             all_geo_targets_dict = reconciled_dict
             
             # Medicaid targets (stratum_group_id=5) - needs reconciliation
+            # TODO(bogorek): manually trace a reconcilliation
             logger.info("Reconciling CD Medicaid targets to state admin totals...")
             reconciled_dict = self.reconcile_targets_to_higher_level(
                 all_geo_targets_dict,
@@ -1395,6 +1399,7 @@ class SparseGeoStackingMatrixBuilder:
             all_geo_targets_dict = reconciled_dict
         
         # Now build matrices for all collected and reconciled targets
+        # TODO (baogorek): a lot of hard-coded stuff here, but there is an else backoff
         for geo_id, geo_targets_df in all_geo_targets_dict.items():
             # Format targets
             geo_target_list = []
@@ -1409,6 +1414,7 @@ class SparseGeoStackingMatrixBuilder:
                 stratum_group = target.get('stratum_group_id')
                 
                 # Build descriptive prefix based on stratum_group_id
+                # TODO (baogorek): Usage of stratum_group is not ideal, but is this just building notes?
                 if isinstance(stratum_group, (int, np.integer)):
                     if stratum_group == 2:  # Age
                         # Use stratum_notes if available, otherwise build from constraint

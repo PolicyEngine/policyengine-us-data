@@ -208,23 +208,7 @@ class SparseGeoStackingMatrixBuilder:
             (SELECT GROUP_CONCAT(sc2.constraint_variable || sc2.operation || sc2.value, '|')
              FROM stratum_constraints sc2 
              WHERE sc2.stratum_id = s.stratum_id
-             GROUP BY sc2.stratum_id) as constraint_info,
-            -- Get first constraint variable for backward compatibility
-            (SELECT sc3.constraint_variable 
-             FROM stratum_constraints sc3 
-             WHERE sc3.stratum_id = s.stratum_id
-               AND sc3.constraint_variable NOT IN ('state_fips', 'congressional_district_geoid', 'tax_unit_is_filer')
-             LIMIT 1) as constraint_variable,
-            (SELECT sc3.operation 
-             FROM stratum_constraints sc3 
-             WHERE sc3.stratum_id = s.stratum_id
-               AND sc3.constraint_variable NOT IN ('state_fips', 'congressional_district_geoid', 'tax_unit_is_filer')
-             LIMIT 1) as operation,
-            (SELECT sc3.value 
-             FROM stratum_constraints sc3 
-             WHERE sc3.stratum_id = s.stratum_id
-               AND sc3.constraint_variable NOT IN ('state_fips', 'congressional_district_geoid', 'tax_unit_is_filer')
-             LIMIT 1) as constraint_value
+             GROUP BY sc2.stratum_id) as constraint_info
         FROM targets t
         JOIN strata s ON t.stratum_id = s.stratum_id
         JOIN sources src ON t.source_id = src.source_id
@@ -270,25 +254,53 @@ class SparseGeoStackingMatrixBuilder:
         # Combine all targets
         all_targets = pd.concat([cd_targets, state_targets, national_targets], ignore_index=True)
         
-        # Create concept identifier: variable + constraint pattern
-        # For IRS targets with constraints like "salt > 0", group by the constraint variable
+        # Create concept identifier from variable + all constraints
         def get_concept_id(row):
-            # For targets with constraints on IRS variables
-            if pd.notna(row['constraint_variable']) and row['constraint_variable'] not in [
-                'state_fips', 'congressional_district_geoid', 'tax_unit_is_filer',
-                'age', 'adjusted_gross_income', 'eitc_child_count', 'snap', 'medicaid'
-            ]:
-                # This is likely an IRS variable constraint like "salt > 0"
-                return f"{row['constraint_variable']}_constrained"
-            # For other targets, use variable name and key constraints
-            elif row['variable']:
-                concept = row['variable']
-                # Add demographic constraints to concept ID
-                if pd.notna(row['constraint_variable']):
-                    if row['constraint_variable'] in ['age', 'adjusted_gross_income', 'eitc_child_count']:
-                        concept += f"_{row['constraint_variable']}_{row['operation']}_{row['constraint_value']}"
-                return concept
-            return None
+            if not row['variable']:
+                return None
+            
+            variable = row['variable']
+            
+            # Parse constraint_info if present
+            if pd.notna(row.get('constraint_info')):
+                constraints = row['constraint_info'].split('|')
+                
+                # Filter out geographic and filer constraints
+                demographic_constraints = []
+                irs_constraint = None
+                
+                for c in constraints:
+                    if not any(skip in c for skip in ['state_fips', 'congressional_district_geoid', 'tax_unit_is_filer']):
+                        # Check if this is an IRS variable constraint
+                        if not any(demo in c for demo in ['age', 'adjusted_gross_income', 'eitc_child_count', 'snap', 'medicaid']):
+                            # This is likely an IRS variable constraint like "salt>0"
+                            irs_constraint = c
+                        else:
+                            demographic_constraints.append(c)
+                
+                # If we have an IRS constraint, use that as the concept
+                if irs_constraint:
+                    # Extract just the variable name from something like "salt>0"
+                    import re
+                    match = re.match(r'([a-zA-Z_]+)', irs_constraint)
+                    if match:
+                        return f"{match.group(1)}_constrained"
+                
+                # Otherwise build concept from variable + demographic constraints
+                if demographic_constraints:
+                    # Sort for consistency
+                    demographic_constraints.sort()
+                    # Normalize operators for valid identifiers
+                    normalized = []
+                    for c in demographic_constraints:
+                        c_norm = c.replace('>=', '_gte_').replace('<=', '_lte_')
+                        c_norm = c_norm.replace('>', '_gt_').replace('<', '_lt_')
+                        c_norm = c_norm.replace('==', '_eq_').replace('=', '_eq_')
+                        normalized.append(c_norm)
+                    return f"{variable}_{'_'.join(normalized)}"
+            
+            # No constraints, just the variable
+            return variable
         
         all_targets['concept_id'] = all_targets.apply(get_concept_id, axis=1)
         
@@ -330,14 +342,14 @@ class SparseGeoStackingMatrixBuilder:
                 t.active,
                 t.tolerance,
                 s.notes as stratum_notes,
-                sc.constraint_variable,
-                sc.operation,
-                sc.value as constraint_value,
+                (SELECT GROUP_CONCAT(sc2.constraint_variable || sc2.operation || sc2.value, '|')
+                 FROM stratum_constraints sc2 
+                 WHERE sc2.stratum_id = s.stratum_id
+                 GROUP BY sc2.stratum_id) as constraint_info,
                 src.name as source_name
             FROM targets t
             JOIN strata s ON t.stratum_id = s.stratum_id
             JOIN sources src ON t.source_id = src.source_id
-            LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
             WHERE (
                 -- Direct national targets (no parent)
                 s.parent_stratum_id IS NULL
@@ -367,7 +379,7 @@ class SparseGeoStackingMatrixBuilder:
         JOIN best_periods bp ON nt.stratum_id = bp.stratum_id 
             AND nt.variable = bp.variable 
             AND nt.period = bp.best_period
-        ORDER BY nt.variable, nt.constraint_variable
+        ORDER BY nt.variable, nt.constraint_info
         """
         
         with self.engine.connect() as conn:
@@ -471,13 +483,13 @@ class SparseGeoStackingMatrixBuilder:
                 t.tolerance,
                 s.notes as stratum_notes,
                 s.stratum_group_id,
-                sc.constraint_variable,
-                sc.operation,
-                sc.value as constraint_value,
+                (SELECT GROUP_CONCAT(sc2.constraint_variable || sc2.operation || sc2.value, '|')
+                 FROM stratum_constraints sc2 
+                 WHERE sc2.stratum_id = s.stratum_id
+                 GROUP BY sc2.stratum_id) as constraint_info,
                 t.period
             FROM targets t
             JOIN strata s ON t.stratum_id = s.stratum_id
-            LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
             WHERE s.stratum_group_id = :stratum_group_id
               AND s.parent_stratum_id = :parent_id
         ),
@@ -501,7 +513,7 @@ class SparseGeoStackingMatrixBuilder:
         JOIN best_periods bp ON dt.stratum_id = bp.stratum_id 
             AND dt.variable = bp.variable 
             AND dt.period = bp.best_period
-        ORDER BY dt.variable, dt.constraint_variable
+        ORDER BY dt.variable, dt.constraint_info
         """
         
         with self.engine.connect() as conn:
@@ -698,12 +710,12 @@ class SparseGeoStackingMatrixBuilder:
             t.value,
             t.period,
             s.stratum_group_id,
-            sc.constraint_variable,
-            sc.operation,
-            sc.value as constraint_value
+            (SELECT GROUP_CONCAT(sc2.constraint_variable || sc2.operation || sc2.value, '|')
+             FROM stratum_constraints sc2 
+             WHERE sc2.stratum_id = s.stratum_id
+             GROUP BY sc2.stratum_id) as constraint_info
         FROM targets t
         JOIN strata s ON t.stratum_id = s.stratum_id
-        LEFT JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
         WHERE {' AND '.join(conditions)}
         """
         
@@ -773,19 +785,15 @@ class SparseGeoStackingMatrixBuilder:
         if 'stratum_group_id' in filters and 'stratum_group_id' in df.columns:
             mask &= df['stratum_group_id'] == filters['stratum_group_id']
         
-        # Match constraints if present - need to match the actual constraint values
-        parent_constraint = parent_target.get('constraint_variable')
-        if pd.notna(parent_constraint) and 'constraint_variable' in df.columns:
-            # Match targets with same constraint variable, operation, and value
-            constraint_mask = (
-                (df['constraint_variable'] == parent_constraint) &
-                (df['operation'] == parent_target.get('operation')) &
-                (df['constraint_value'] == parent_target.get('constraint_value'))
-            )
-            mask &= constraint_mask
-        elif pd.isna(parent_constraint) and 'constraint_variable' in df.columns:
-            # Parent has no constraint, child should have none either
-            mask &= df['constraint_variable'].isna()
+        # Match constraints based on constraint_info
+        parent_constraint_info = parent_target.get('constraint_info')
+        if 'constraint_info' in df.columns:
+            if pd.notna(parent_constraint_info):
+                # Both have constraints - must match exactly
+                mask &= df['constraint_info'] == parent_constraint_info
+            else:
+                # Parent has no constraints - child should have none either
+                mask &= df['constraint_info'].isna()
         
         return mask
     
@@ -831,18 +839,17 @@ class SparseGeoStackingMatrixBuilder:
         if target1['variable'] != target2['variable']:
             return False
         
-        # Must have same constraint pattern (simplified for now)
-        constraint1 = target1.get('constraint_variable')
-        constraint2 = target2.get('constraint_variable')
+        # Must have same constraint pattern based on constraint_info
+        constraint1 = target1.get('constraint_info')
+        constraint2 = target2.get('constraint_info')
         
+        # Both must be either null or non-null
         if pd.isna(constraint1) != pd.isna(constraint2):
             return False
         
+        # If both have constraints, they must match exactly
         if pd.notna(constraint1):
-            # Check constraint details match
-            return (constraint1 == constraint2 and
-                   target1.get('operation') == target2.get('operation') and
-                   target1.get('constraint_value') == target2.get('constraint_value'))
+            return constraint1 == constraint2
         
         return True
     
@@ -922,30 +929,31 @@ class SparseGeoStackingMatrixBuilder:
         Returns:
             Tuple of (nonzero_indices, nonzero_values) at household level
         """
-        if sim is None:
-            raise ValueError("Microsimulation instance required")
-            
+           
         # Get target entity level
         target_entity = sim.tax_benefit_system.variables[target_variable].entity.key
         
-        # Start with all ones mask at entity level
-        entity_count = len(sim.calculate(f"{target_entity}_id").values)
-        entity_mask = np.ones(entity_count, dtype=bool)
-        
-        # Apply each constraint
+        # TODO(baogorek): confirm that this was never needed
+        entity_count = len(sim.calculate(f"{target_entity}_id").values)  # map_to is implicit for different types
+        entity_mask = np.ones(entity_count, dtype=bool)  # Start all ones and poke holes with successive mask applications
+       
+        # poke holes in entity_mask
         for _, constraint in constraints_df.iterrows():
             var = constraint['constraint_variable']
             op = constraint['operation']
             val = constraint['value']
             
             # Skip geographic constraints only if requested
+            # TODO(baogorek): what is the use-case for this?
             if skip_geographic and var in ['state_fips', 'congressional_district_geoid']:
                 continue
                 
-            # Get values for this constraint variable WITHOUT explicit period
             try:
-                constraint_values = sim.calculate(var).values
+                constraint_values = sim.calculate(var, map_to=target_entity).values
                 constraint_entity = sim.tax_benefit_system.variables[var].entity.key
+
+                if constraint_entity != target_entity:
+                    raise ValueError(f"Constraint entity is {constraint_entity} while target entity is {target_entity}")
                 
                 # Parse value based on type
                 try:
@@ -975,13 +983,13 @@ class SparseGeoStackingMatrixBuilder:
                 elif op == '!=':
                     mask = (constraint_values != parsed_val).astype(bool)
                 else:
-                    logger.warning(f"Unknown operation {op}, skipping")
-                    continue
-                
-                # Map to target entity if needed
-                if constraint_entity != target_entity:
-                    mask = sim.map_result(mask, constraint_entity, target_entity)
-                    mask = mask.astype(bool)
+                    raise ValueError(f"Unknown operation {op}, skipping")
+               
+                # Ensure the mask is at the level of the target
+                mask = sim.map_result(mask, constraint_entity, target_entity)
+                if np.max(mask) > 1:
+                    raise ValueError("A mapped constraint mask has values greater than 1")
+                mask = mask.astype(bool)
                 
                 # Combine with existing mask
                 entity_mask = entity_mask & mask
@@ -990,42 +998,64 @@ class SparseGeoStackingMatrixBuilder:
                 logger.warning(f"Could not apply constraint {var} {op} {val}: {e}")
                 continue
         
-        # Calculate target variable values WITHOUT explicit period
-        if target_variable == "tax_unit_count":
-            # TODO (baogorek): Are we sure this is what we want to do (the binary mask)?
-            # TODO (baogorek): Why wouldn't we do this with person_count as well, for instance?
-            # For tax_unit_count, use binary mask (1 if meets criteria, 0 otherwise)
-            target_values = entity_mask.astype(float)
-        else:
-            target_values = sim.calculate(target_variable).values
-        
-        # Apply mask at entity level
+        target_values = sim.calculate(target_variable, map_to=target_entity).values
         masked_values = target_values * entity_mask
-        
-        # Map to household level
-        if target_entity != "household":
-            # For all variables, sum to household level
-            household_values = sim.map_result(masked_values, target_entity, "household")
+
+        # Could probably use map_to="household" but baogorek is not taking chances
+        entity_rel = pd.DataFrame({
+            'entity_id': sim.calculate(f"{target_entity}_id", map_to="person"),
+            'household_id': sim.calculate("household_id", map_to="person"),
+            'person_id': sim.calculate("person_id", map_to="person"),
+        })
+        entity_df = pd.DataFrame({
+            'entity_id': sim.calculate(f"{target_entity}_id", map_to=target_entity),
+            'entity_masked_metric': masked_values  # either 1.0 for a count or a value
+        })
+
+        # Flip a switch for when you're counting vs summing, because otherwise you're going
+        # to broadcast the mask values to person_id, which is a problem if you're counting anything but people.
+        is_count_target = target_variable.endswith("_count")
+
+        merged_df = entity_rel.merge(entity_df, how="inner", on=["entity_id"])
+        if merged_df.shape[0] != entity_rel.shape[0]:
+            raise ValueError(f"Problem with merge for target entity {target_entity}")
+
+        if is_count_target:
+            masked_df = merged_df.loc[merged_df['entity_masked_metric'] == 1]
+            household_counts = masked_df.groupby('household_id')['entity_id'].nunique()
+            all_households = merged_df['household_id'].unique()
+            household_values_df = household_counts.reindex(all_households, fill_value=0).reset_index()
+            household_values_df.columns = ['household_id', 'household_metric']
+
         else:
-            household_values = masked_values
-        
-        # Return sparse representation
-        nonzero_indices = np.nonzero(household_values)[0]
-        nonzero_values = household_values[nonzero_indices]
+            household_values_df = (
+                merged_df.groupby("household_id")[["entity_masked_metric"]]
+                         .sum()
+                         .reset_index()
+                         .rename({'entity_masked_metric': 'household_metric'}, axis=1)
+            )
+
+        # TODO (baogorek): try to understand the differences: these aren't matching
+        #household_values_df['map_agg'] = sim.map_result(masked_values, target_entity, "household")
+        #household_values_df.loc[household_values_df.household_metric != household_values_df.map_agg]
+
+        # Return sparse representation, taking no changes with the order of household ids
+        household_values_df = household_values_df.sort_values(['household_id']).reset_index(drop=True)
+        nonzero_indices = np.nonzero(household_values_df["household_metric"])[0]
+        nonzero_values = household_values_df.iloc[nonzero_indices]["household_metric"]
         
         return nonzero_indices, nonzero_values
     
     def build_matrix_for_geography_sparse(self, geographic_level: str, 
                                          geographic_id: str, 
-                                         sim=None) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
+                                         sim) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
         """
         Build sparse calibration matrix for any geographic level using hierarchical fallback.
         
         Returns:
             Tuple of (targets_df, sparse_matrix, household_ids)
         """
-        # Get the geographic stratum IDs for all levels
-        national_stratum_id = self.get_national_stratum_id()
+        national_stratum_id = self.get_national_stratum_id()  # 1 is the id for the US stratum with no other constraints
         
         if geographic_level == 'state':
             state_stratum_id = self.get_state_stratum_id(geographic_id)
@@ -1034,7 +1064,7 @@ class SparseGeoStackingMatrixBuilder:
             if state_stratum_id is None:
                 raise ValueError(f"Could not find state {geographic_id} in database")
         elif geographic_level == 'congressional_district':
-            cd_stratum_id = self.get_cd_stratum_id(geographic_id)
+            cd_stratum_id = self.get_cd_stratum_id(geographic_id)  # congressional district stratum with no other constraints
             state_fips = self.get_state_fips_from_cd(geographic_id)
             state_stratum_id = self.get_state_stratum_id(state_fips)
             geo_label = f"cd_{geographic_id}"
@@ -1046,12 +1076,14 @@ class SparseGeoStackingMatrixBuilder:
         # Use hierarchical fallback to get all targets
         if geographic_level == 'congressional_district':
             # CD calibration: Use CD -> State -> National fallback
+            # TODO: why does CD level use a function other than get_all_descendant_targets below?
             hierarchical_targets = self.get_hierarchical_targets(
                 cd_stratum_id, state_stratum_id, national_stratum_id, sim
             )
         else:  # state
             # State calibration: Use State -> National fallback (no CD level)
             # For state calibration, we pass state_stratum_id twice to avoid null issues
+            # TODO: why does state and national levels use a function other than get_hierarchical_targets above?_
             state_targets = self.get_all_descendant_targets(state_stratum_id, sim)
             national_targets = self.get_all_descendant_targets(national_stratum_id, sim)
             
@@ -1064,20 +1096,55 @@ class SparseGeoStackingMatrixBuilder:
             # Combine and deduplicate
             all_targets = pd.concat([state_targets, national_targets], ignore_index=True)
             
-            # Create concept identifier
+            # Create concept identifier from variable + all constraints
+            # TODO (baogorek): Is this function defined muliple times? (I think it is)
             def get_concept_id(row):
-                if pd.notna(row['constraint_variable']) and row['constraint_variable'] not in [
-                    'state_fips', 'congressional_district_geoid', 'tax_unit_is_filer',
-                    'age', 'adjusted_gross_income', 'eitc_child_count', 'snap', 'medicaid'
-                ]:
-                    return f"{row['constraint_variable']}_constrained"
-                elif row['variable']:
-                    concept = row['variable']
-                    if pd.notna(row['constraint_variable']):
-                        if row['constraint_variable'] in ['age', 'adjusted_gross_income', 'eitc_child_count']:
-                            concept += f"_{row['constraint_variable']}_{row['operation']}_{row['constraint_value']}"
-                    return concept
-                return None
+                if not row['variable']:
+                    return None
+                
+                variable = row['variable']
+                
+                # Parse constraint_info if present
+                # TODO (baogorek): hard-coding needs refactoring
+                if pd.notna(row.get('constraint_info')):
+                    constraints = row['constraint_info'].split('|')
+                    
+                    # Filter out geographic and filer constraints
+                    demographic_constraints = []
+                    irs_constraint = None
+                    
+                    for c in constraints:
+                        if not any(skip in c for skip in ['state_fips', 'congressional_district_geoid', 'tax_unit_is_filer']):
+                            # Check if this is an IRS variable constraint
+                            if not any(demo in c for demo in ['age', 'adjusted_gross_income', 'eitc_child_count', 'snap', 'medicaid']):
+                                # This is likely an IRS variable constraint like "salt>0"
+                                irs_constraint = c
+                            else:
+                                demographic_constraints.append(c)
+                    
+                    # If we have an IRS constraint, use that as the concept
+                    if irs_constraint:
+                        # Extract just the variable name from something like "salt>0"
+                        import re
+                        match = re.match(r'([a-zA-Z_]+)', irs_constraint)
+                        if match:
+                            return f"{match.group(1)}_constrained"
+                    
+                    # Otherwise build concept from variable + demographic constraints
+                    if demographic_constraints:
+                        # Sort for consistency
+                        demographic_constraints.sort()
+                        # Normalize operators for valid identifiers
+                        normalized = []
+                        for c in demographic_constraints:
+                            c_norm = c.replace('>=', '_gte_').replace('<=', '_lte_')
+                            c_norm = c_norm.replace('>', '_gt_').replace('<', '_lt_')
+                            c_norm = c_norm.replace('==', '_eq_').replace('=', '_eq_')
+                            normalized.append(c_norm)
+                        return f"{variable}_{'_'.join(normalized)}"
+                
+                # No constraints, just the variable
+                return variable
             
             all_targets['concept_id'] = all_targets.apply(get_concept_id, axis=1)
             all_targets = all_targets[all_targets['concept_id'].notna()]
@@ -1088,12 +1155,17 @@ class SparseGeoStackingMatrixBuilder:
         all_targets = []
         
         for _, target_row in hierarchical_targets.iterrows():
-            # Build description from constraints
+            # BUILD DESCRIPTION from variable and constraints (but not all constraints) ----
             desc_parts = [target_row['variable']]
             
-            # Add constraint info to description if present
-            if pd.notna(target_row.get('constraint_variable')):
-                desc_parts.append(f"{target_row['constraint_variable']}{target_row.get('operation', '=')}{target_row.get('constraint_value', '')}")
+            # Parse constraint_info to add all constraints to description
+            if pd.notna(target_row.get('constraint_info')):
+                constraints = target_row['constraint_info'].split('|')
+                # Filter out geographic and filer constraints FOR DESCRIPTION
+                for c in constraints:
+                    # TODO (baogorek): I get that the string is getting long, but "(filers)" doesn't add too much and geo_ids are max 4 digits 
+                    if not any(skip in c for skip in ['state_fips', 'congressional_district_geoid', 'tax_unit_is_filer']):
+                        desc_parts.append(c)
             
             # Preserve the original stratum_group_id for proper grouping
             # Special handling only for truly national/geographic targets
@@ -1125,36 +1197,29 @@ class SparseGeoStackingMatrixBuilder:
         
         targets_df = pd.DataFrame(all_targets)
         
-        # Build sparse matrix if sim provided
-        if sim is not None:
-            household_ids = sim.calculate("household_id").values
-            n_households = len(household_ids)
-            n_targets = len(targets_df)
-            
-            # Use LIL matrix for efficient row-by-row construction
-            matrix = sparse.lil_matrix((n_targets, n_households), dtype=np.float32)
-            
-            for i, (_, target) in enumerate(targets_df.iterrows()):
-                # Get constraints for this stratum
-                constraints = self.get_constraints_for_stratum(target['stratum_id'])
-                
-                # Get sparse representation of household values
-                nonzero_indices, nonzero_values = self.apply_constraints_to_sim_sparse(
-                    sim, constraints, target['variable']
-                )
-                
-                # Set the sparse row
-                if len(nonzero_indices) > 0:
-                    matrix[i, nonzero_indices] = nonzero_values
-            
-            # Convert to CSR for efficient operations
-            matrix = matrix.tocsr()
-            
-            logger.info(f"Created sparse matrix for {geographic_level} {geographic_id}: shape {matrix.shape}, nnz={matrix.nnz}")
-            return targets_df, matrix, household_ids.tolist()
+        # Build sparse data matrix ("loss matrix" historically) --------------------------------------- 
+        household_ids = sim.calculate("household_id").values   # Implicit map to "household" entity level 
+        n_households = len(household_ids)
+        n_targets = len(targets_df)
         
-        return targets_df, None, []
-    
+        # Use LIL matrix for efficient row-by-row construction
+        matrix = sparse.lil_matrix((n_targets, n_households), dtype=np.float32)
+        
+        for i, (_, target) in enumerate(targets_df.iterrows()):
+            constraints = self.get_constraints_for_stratum(target['stratum_id'])  # will not return the geo constraint
+            nonzero_indices, nonzero_values = self.apply_constraints_to_sim_sparse(
+                sim, constraints, target['variable']
+            )
+            if len(nonzero_indices) > 0:
+                matrix[i, nonzero_indices] = nonzero_values
+        
+        matrix = matrix.tocsr()  # To compressed sparse row (CSR) for efficient operations
+        
+        logger.info(f"Created sparse matrix for {geographic_level} {geographic_id}: shape {matrix.shape}, nnz={matrix.nnz}")
+        return targets_df, matrix, household_ids.tolist()
+        
+   
+    # TODO (baogorek): instance of hard-coding (figure it out. This is why we have a targets database)
     def get_state_snap_cost(self, state_fips: str) -> pd.DataFrame:
         """Get state-level SNAP cost target (administrative data)."""
         query = """
@@ -1226,11 +1291,16 @@ class SparseGeoStackingMatrixBuilder:
             # Get uprating info
             factor, uprating_type = self._get_uprating_info(target['variable'], target['period'])
             
-            # Build concise description with constraint info
-            if 'constraint_variable' in target and pd.notna(target['constraint_variable']):
-                var_desc = f"{target['variable']}_{target['constraint_variable']}{target.get('operation', '')}{target.get('constraint_value', '')}"
-            else:
-                var_desc = target['variable']
+            # Build description with all constraints from constraint_info
+            var_desc = target['variable']
+            if 'constraint_info' in target and pd.notna(target['constraint_info']):
+                constraints = target['constraint_info'].split('|')
+                # Filter out geographic and filer constraints
+                demo_constraints = [c for c in constraints 
+                                   if not any(skip in c for skip in ['state_fips', 'congressional_district_geoid', 'tax_unit_is_filer'])]
+                if demo_constraints:
+                    # Join all constraints with underscores
+                    var_desc = f"{target['variable']}_{'_'.join(demo_constraints)}"
             
             national_targets_list.append({
                 'target_id': target['target_id'],
@@ -1294,8 +1364,6 @@ class SparseGeoStackingMatrixBuilder:
                     raise ValueError(f"Could not find CD {geo_id} in database")
                     
                 # Get only CD-specific targets with deduplication
-                # TODO (baogorek): the contraint_variable, operation, and constraint_value column
-                # Imply atomic constraints which is not true. Do we still need them?
                 cd_targets_raw = self.get_all_descendant_targets(cd_stratum_id, sim)
                 
                 # Deduplicate CD targets by concept using ALL constraints
@@ -1474,11 +1542,16 @@ class SparseGeoStackingMatrixBuilder:
                 # The geographic context is already provided elsewhere
                 description = desc_prefix
                 
-                # Build concise description with constraint info
-                if 'constraint_variable' in target and pd.notna(target['constraint_variable']):
-                    var_desc = f"{target['variable']}_{target['constraint_variable']}{target.get('operation', '')}{target.get('constraint_value', '')}"
-                else:
-                    var_desc = target['variable']
+                # Build description with all constraints from constraint_info
+                var_desc = target['variable']
+                if 'constraint_info' in target and pd.notna(target['constraint_info']):
+                    constraints = target['constraint_info'].split('|')
+                    # Filter out geographic and filer constraints
+                    demo_constraints = [c for c in constraints 
+                                       if not any(skip in c for skip in ['state_fips', 'congressional_district_geoid', 'tax_unit_is_filer'])]
+                    if demo_constraints:
+                        # Join all constraints with underscores
+                        var_desc = f"{target['variable']}_{'_'.join(demo_constraints)}"
                 
                 geo_target_list.append({
                     'target_id': target['target_id'],

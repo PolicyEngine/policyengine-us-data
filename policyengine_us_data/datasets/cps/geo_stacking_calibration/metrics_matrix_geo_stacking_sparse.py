@@ -915,16 +915,17 @@ class SparseGeoStackingMatrixBuilder:
             return pd.read_sql(query, conn, params={'stratum_id': stratum_id})
     
     def apply_constraints_to_sim_sparse(self, sim, constraints_df: pd.DataFrame, 
-                                       target_variable: str, 
-                                       skip_geographic: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+                                       target_variable: str) -> Tuple[np.ndarray, np.ndarray]:
         """
         Apply constraints and return sparse representation (indices and values).
+        
+        Note: Geographic constraints are ALWAYS skipped as geographic isolation 
+        happens through matrix column structure in geo-stacking, not data filtering.
         
         Args:
             sim: Microsimulation instance
             constraints_df: DataFrame with constraints
             target_variable: Variable to calculate
-            skip_geographic: Whether to skip geographic constraints (default True)
         
         Returns:
             Tuple of (nonzero_indices, nonzero_values) at household level
@@ -933,27 +934,40 @@ class SparseGeoStackingMatrixBuilder:
         # Get target entity level
         target_entity = sim.tax_benefit_system.variables[target_variable].entity.key
         
-        # TODO(baogorek): confirm that this was never needed
-        entity_count = len(sim.calculate(f"{target_entity}_id").values)  # map_to is implicit for different types
-        entity_mask = np.ones(entity_count, dtype=bool)  # Start all ones and poke holes with successive mask applications
+        # Build entity relationship DataFrame at person level
+        # This gives us the mapping between all entities
+        entity_rel = pd.DataFrame({
+            'person_id': sim.calculate("person_id", map_to="person").values,
+            'household_id': sim.calculate("household_id", map_to="person").values,
+        })
+        
+        # Add target entity ID if it's not person or household
+        if target_entity not in ['person', 'household']:
+            entity_rel[f'{target_entity}_id'] = sim.calculate(f"{target_entity}_id", map_to="person").values
+        
+        # Start with all persons satisfying constraints (will be ANDed together)
+        person_constraint_mask = np.ones(len(entity_rel), dtype=bool)
        
-        # poke holes in entity_mask
+        # Apply each constraint at person level
         for _, constraint in constraints_df.iterrows():
             var = constraint['constraint_variable']
             op = constraint['operation']
             val = constraint['value']
             
-            # Skip geographic constraints only if requested
-            # TODO(baogorek): what is the use-case for this?
-            if skip_geographic and var in ['state_fips', 'congressional_district_geoid']:
+            # ALWAYS skip geographic constraints - geo-stacking handles geography through matrix structure
+            if var in ['state_fips', 'congressional_district_geoid']:
                 continue
                 
             try:
-                constraint_values = sim.calculate(var, map_to=target_entity).values
+                # Get constraint values at person level
+                # We need to explicitly map to person for non-person variables
                 constraint_entity = sim.tax_benefit_system.variables[var].entity.key
-
-                if constraint_entity != target_entity:
-                    raise ValueError(f"Constraint entity is {constraint_entity} while target entity is {target_entity}")
+                if constraint_entity == "person":
+                    constraint_values = sim.calculate(var).values
+                else:
+                    # For tax_unit or household variables, map to person level
+                    # This broadcasts the values so each person gets their tax_unit/household's value
+                    constraint_values = sim.calculate(var, map_to="person").values
                 
                 # Parse value based on type
                 try:
@@ -968,8 +982,7 @@ class SparseGeoStackingMatrixBuilder:
                     else:
                         parsed_val = val
                 
-                # Apply operation using standardized operators from database
-                # Handle both '=' and '==' for equality
+                # Apply operation at person level
                 if op == '==' or op == '=':
                     mask = (constraint_values == parsed_val).astype(bool)
                 elif op == '>':
@@ -983,66 +996,95 @@ class SparseGeoStackingMatrixBuilder:
                 elif op == '!=':
                     mask = (constraint_values != parsed_val).astype(bool)
                 else:
-                    raise ValueError(f"Unknown operation {op}, skipping")
-               
-                # Ensure the mask is at the level of the target
-                mask = sim.map_result(mask, constraint_entity, target_entity)
-                if np.max(mask) > 1:
-                    raise ValueError("A mapped constraint mask has values greater than 1")
-                mask = mask.astype(bool)
+                    logger.warning(f"Unknown operation {op}")
+                    continue
                 
-                # Combine with existing mask
-                entity_mask = entity_mask & mask
+                # AND this constraint with existing constraints
+                person_constraint_mask = person_constraint_mask & mask
                 
             except Exception as e:
                 logger.warning(f"Could not apply constraint {var} {op} {val}: {e}")
                 continue
         
-        target_values = sim.calculate(target_variable, map_to=target_entity).values
-        masked_values = target_values * entity_mask
-
-        # Could probably use map_to="household" but baogorek is not taking chances
-        entity_rel = pd.DataFrame({
-            'entity_id': sim.calculate(f"{target_entity}_id", map_to="person"),
-            'household_id': sim.calculate("household_id", map_to="person"),
-            'person_id': sim.calculate("person_id", map_to="person"),
-        })
-        entity_df = pd.DataFrame({
-            'entity_id': sim.calculate(f"{target_entity}_id", map_to=target_entity),
-            'entity_masked_metric': masked_values  # either 1.0 for a count or a value
-        })
-
-        # Flip a switch for when you're counting vs summing, because otherwise you're going
-        # to broadcast the mask values to person_id, which is a problem if you're counting anything but people.
-        is_count_target = target_variable.endswith("_count")
-
-        merged_df = entity_rel.merge(entity_df, how="inner", on=["entity_id"])
-        if merged_df.shape[0] != entity_rel.shape[0]:
-            raise ValueError(f"Problem with merge for target entity {target_entity}")
-
-        if is_count_target:
-            masked_df = merged_df.loc[merged_df['entity_masked_metric'] == 1]
-            household_counts = masked_df.groupby('household_id')['entity_id'].nunique()
-            all_households = merged_df['household_id'].unique()
-            household_values_df = household_counts.reindex(all_households, fill_value=0).reset_index()
-            household_values_df.columns = ['household_id', 'household_metric']
-
+        # Add constraint mask to entity_rel
+        entity_rel['satisfies_constraints'] = person_constraint_mask
+        
+        # Now aggregate constraints to target entity level
+        if target_entity == 'person':
+            # Already at person level
+            entity_mask = person_constraint_mask
+            entity_ids = entity_rel['person_id'].values
+        elif target_entity == 'household':
+            # Aggregate to household: household satisfies if ANY person in it satisfies
+            household_mask = entity_rel.groupby('household_id')['satisfies_constraints'].any()
+            entity_mask = household_mask.values
+            entity_ids = household_mask.index.values
+        elif target_entity == 'tax_unit':
+            # Aggregate to tax_unit: tax_unit satisfies if ANY person in it satisfies
+            tax_unit_mask = entity_rel.groupby('tax_unit_id')['satisfies_constraints'].any()
+            entity_mask = tax_unit_mask.values
+            entity_ids = tax_unit_mask.index.values
         else:
+            # Other entities - aggregate similarly
+            entity_mask_series = entity_rel.groupby(f'{target_entity}_id')['satisfies_constraints'].any()
+            entity_mask = entity_mask_series.values
+            entity_ids = entity_mask_series.index.values
+        
+        # Calculate target values at the target entity level
+        if target_entity == 'person':
+            target_values = sim.calculate(target_variable).values
+        else:
+            # For non-person entities, we need to be careful
+            # Using map_to here for the TARGET calculation (not constraints)
+            target_values_raw = sim.calculate(target_variable, map_to=target_entity).values
+            target_values = target_values_raw
+        
+        # Apply entity mask to target values
+        masked_values = target_values * entity_mask
+        
+        # Now aggregate to household level using the same pattern as original code
+        entity_df = pd.DataFrame({
+            f'{target_entity}_id': entity_ids,
+            'entity_masked_metric': masked_values
+        })
+        
+        # Build fresh entity_rel for the aggregation to household
+        entity_rel_for_agg = pd.DataFrame({
+            f'{target_entity}_id': sim.calculate(f"{target_entity}_id", map_to="person").values,
+            'household_id': sim.calculate("household_id", map_to="person").values,
+            'person_id': sim.calculate("person_id", map_to="person").values,
+        })
+        
+        # Merge to get metrics at person level
+        merged_df = entity_rel_for_agg.merge(entity_df, how="left", on=[f"{target_entity}_id"])
+        merged_df['entity_masked_metric'] = merged_df['entity_masked_metric'].fillna(0)
+        
+        # Check if this is a count variable
+        is_count_target = target_variable.endswith("_count")
+        
+        if is_count_target:
+            # For counts, count unique entities per household that satisfy constraints
+            masked_df = merged_df.loc[merged_df['entity_masked_metric'] > 0]
+            household_counts = masked_df.groupby('household_id')[f'{target_entity}_id'].nunique()
+            all_households = merged_df['household_id'].unique()
+            # Convert series to DataFrame properly
+            household_values_df = pd.DataFrame({
+                'household_id': all_households,
+                'household_metric': household_counts.reindex(all_households, fill_value=0).values
+            })
+        else:
+            # For non-counts, sum the values
             household_values_df = (
                 merged_df.groupby("household_id")[["entity_masked_metric"]]
                          .sum()
                          .reset_index()
                          .rename({'entity_masked_metric': 'household_metric'}, axis=1)
             )
-
-        # TODO (baogorek): try to understand the differences: these aren't matching
-        #household_values_df['map_agg'] = sim.map_result(masked_values, target_entity, "household")
-        #household_values_df.loc[household_values_df.household_metric != household_values_df.map_agg]
-
-        # Return sparse representation, taking no changes with the order of household ids
+        
+        # Return sparse representation
         household_values_df = household_values_df.sort_values(['household_id']).reset_index(drop=True)
         nonzero_indices = np.nonzero(household_values_df["household_metric"])[0]
-        nonzero_values = household_values_df.iloc[nonzero_indices]["household_metric"]
+        nonzero_values = household_values_df.iloc[nonzero_indices]["household_metric"].values
         
         return nonzero_indices, nonzero_values
     
@@ -1647,22 +1689,22 @@ class SparseGeoStackingMatrixBuilder:
                         row_data = []
                         row_indices = []
                         
-                        # Calculate SNAP values once (only for households with SNAP > 0 in this state)
-                        # Apply the state constraint to get SNAP values
-                        # Important: skip_geographic=False to apply state_fips constraint
+                        # Calculate SNAP values once for ALL households (geographic isolation via matrix structure)
+                        # Note: state_fips constraint is automatically skipped, SNAP values calculated for all
                         nonzero_indices, nonzero_values = self.apply_constraints_to_sim_sparse(
-                            sim, constraints, 'snap', skip_geographic=False
+                            sim, constraints, 'snap'
                         )
                         
                         # Create a mapping of household indices to SNAP values
                         snap_value_map = dict(zip(nonzero_indices, nonzero_values))
                         
-                        # For each CD, check if it's in this state and add SNAP values
+                        # Place SNAP values in ALL CD columns that belong to this state
+                        # This creates the proper geo-stacking structure where state-level targets
+                        # span multiple CD columns (all CDs within the state)
                         for cd_idx, cd_id in enumerate(geographic_ids):
-                            cd_state_fips = self.get_state_fips_for_cd(cd_id)
+                            cd_state_fips = self.get_state_fips_from_cd(cd_id)
                             if cd_state_fips == state_fips:
-                                # This CD is in the target state
-                                # Add SNAP values at the correct column positions
+                                # This CD is in the target state - add SNAP values to its columns
                                 col_offset = cd_idx * n_households
                                 for hh_idx, snap_val in snap_value_map.items():
                                     row_indices.append(col_offset + hh_idx)

@@ -14,6 +14,7 @@ from policyengine_us_data.utils.uprating import (
 )
 from microimpute.models.qrf import QRF
 import logging
+from policyengine_us_data.parameters import load_take_up_rate
 
 
 class CPS(Dataset):
@@ -194,25 +195,46 @@ def add_takeup(self):
     from policyengine_us import system, Microsimulation
 
     baseline = Microsimulation(dataset=self)
-    parameters = baseline.tax_benefit_system.parameters(self.time_period)
 
+    # Generate all stochastic take-up decisions using take-up rates from parameter files
+    # This keeps the country package purely deterministic
     generator = np.random.default_rng(seed=100)
 
-    eitc_takeup_rates = parameters.gov.irs.credits.eitc.takeup
+    # Load take-up rates from parameter files
+    eitc_rates_by_children = load_take_up_rate("eitc", self.time_period)
+    dc_ptc_rate = load_take_up_rate("dc_ptc", self.time_period)
+    snap_rate = load_take_up_rate("snap", self.time_period)
+    aca_rate = load_take_up_rate("aca", self.time_period)
+    medicaid_rate = load_take_up_rate("medicaid", self.time_period)
+
+    # EITC: varies by number of children
     eitc_child_count = baseline.calculate("eitc_child_count").values
-    eitc_takeup_rate = eitc_takeup_rates.calc(eitc_child_count)
+    eitc_takeup_rate = np.array(
+        [eitc_rates_by_children.get(min(int(c), 3), 0.85) for c in eitc_child_count]
+    )
     data["takes_up_eitc"] = (
         generator.random(len(data["tax_unit_id"])) < eitc_takeup_rate
     )
-    dc_ptc_takeup_rate = parameters.gov.states.dc.tax.income.credits.ptc.takeup
-    data["takes_up_dc_ptc"] = (
-        generator.random(len(data["tax_unit_id"])) < dc_ptc_takeup_rate
-    )
-    generator = np.random.default_rng(seed=100)
 
-    data["snap_take_up_seed"] = generator.random(len(data["spm_unit_id"]))
-    data["aca_take_up_seed"] = generator.random(len(data["tax_unit_id"]))
-    data["medicaid_take_up_seed"] = generator.random(len(data["person_id"]))
+    # DC Property Tax Credit
+    data["takes_up_dc_ptc"] = (
+        generator.random(len(data["tax_unit_id"])) < dc_ptc_rate
+    )
+
+    # SNAP
+    data["takes_up_snap_if_eligible"] = (
+        generator.random(len(data["spm_unit_id"])) < snap_rate
+    )
+
+    # ACA
+    data["takes_up_aca_if_eligible"] = (
+        generator.random(len(data["tax_unit_id"])) < aca_rate
+    )
+
+    # Medicaid
+    data["takes_up_medicaid_if_eligible"] = (
+        generator.random(len(data["person_id"])) < medicaid_rate
+    )
 
     self.save_dataset(data)
 

@@ -234,6 +234,77 @@ Pipeline stages:
 - **GCP Authentication**: Workload identity for uploads
 - **TEST_LITE**: Reduces processing for non-production runs
 
+## Geographic Stacking and Entity Weights (Beta)
+
+### Geographic Stacking Architecture
+**Note: The geo-stacking approach is currently in beta development with ongoing work to improve calibration accuracy.**
+
+The geo-stacking calibration creates sparse datasets where the same household characteristics can be weighted differently across multiple geographic units (states or congressional districts). This allows a single household to represent similar households in different locations with appropriate statistical weights.
+
+### Calibration Approach
+The geo-stacking method calibrates household weights to match:
+- **Census demographic targets**: Age distributions, population counts
+- **IRS tax statistics**: Income distributions, tax filing patterns
+- **Administrative program data**: SNAP participation, Medicaid enrollment
+- **National hardcoded targets**: Medical expenses, child support, tips
+
+For congressional districts, a stratified sampling approach reduces the CPS from 112,502 to ~13,000 households while preserving all high-income households critical for tax policy analysis.
+
+### Hierarchical Target Selection
+When calibrating to specific geographic levels, the system uses a hierarchical fallback:
+1. Use target at most specific level (e.g., congressional district) if available
+2. Fall back to state-level target if CD-level doesn't exist
+3. Use national target if neither CD nor state target exists
+
+This ensures complete coverage while respecting the most granular data available.
+
+### Critical Entity Weight Relationships
+When creating geo-stacked datasets, PolicyEngine uses a **person-level DataFrame** structure where:
+- Each row represents one person
+- Household weights are repeated for each person in the household
+- Tax units and other entities are represented through ID references, not separate rows
+
+#### Weight Assignment Rules
+1. **Person weights = household weights** (NOT multiplied by persons_per_household)
+2. **Tax unit weights = household weights** (derived automatically by PolicyEngine)
+3. **DO NOT** explicitly set tax_unit_weight - let PolicyEngine derive from household structure
+
+#### Entity Reindexing Requirements
+When combining DataFrames from multiple geographic units:
+
+1. **Households**: Must preserve groupings - all persons in a household get the SAME new household ID
+2. **Tax Units**: Must stay within households - use `person_tax_unit_id` column for grouping
+3. **SPM/Marital Units**: Follow same pattern as tax units
+
+**Common Bug**: Creating new IDs for each row instead of each entity group breaks household structure.
+
+#### Correct Reindexing Pattern
+```python
+# CORRECT: One ID per household group
+for old_hh_id, row_indices in hh_groups.items():
+    for row_idx in row_indices:
+        hh_row_to_new_id[row_idx] = new_hh_id
+    new_hh_id += 1  # Increment AFTER all rows in group
+
+# WRONG: Creates new household for each person
+for old_hh_id, row_indices in hh_groups.items():
+    for row_idx in row_indices:
+        hh_row_to_new_id[row_idx] = new_hh_id
+        new_hh_id += 1  # BUG: Splits household
+```
+
+#### Weight Validation
+To verify correct implementation:
+```python
+# These should be equal if weights are correct:
+sim.calculate("person_count", map_to="household").sum()
+sim.calculate("person_count", map_to="person").sum()
+
+# Tax unit count should be less than person count:
+sim.calculate("tax_unit_count", map_to="household").sum() < 
+sim.calculate("person_count", map_to="household").sum()
+```
+
 ## Data Validation Checkpoints
 
 ### After CPS Generation

@@ -775,26 +775,42 @@ class SparseGeoStackingMatrixBuilder:
         
         return result_df
     
-    def _get_matching_targets_mask(self, df: pd.DataFrame, 
+    def _get_matching_targets_mask(self, df: pd.DataFrame,
                                    parent_target: pd.Series,
                                    filters: Dict) -> pd.Series:
         """Get mask for targets matching parent target concept."""
         mask = df['variable'] == parent_target['variable']
-        
+
         # Match stratum_group_id if in filters
         if 'stratum_group_id' in filters and 'stratum_group_id' in df.columns:
             mask &= df['stratum_group_id'] == filters['stratum_group_id']
-        
-        # Match constraints based on constraint_info
+
+        # Match constraints based on constraint_info, ignoring geographic constraints
         parent_constraint_info = parent_target.get('constraint_info')
         if 'constraint_info' in df.columns:
+            # Extract demographic constraints from parent (exclude geographic)
+            parent_demo_constraints = set()
             if pd.notna(parent_constraint_info):
-                # Both have constraints - must match exactly
-                mask &= df['constraint_info'] == parent_constraint_info
-            else:
-                # Parent has no constraints - child should have none either
-                mask &= df['constraint_info'].isna()
-        
+                for c in str(parent_constraint_info).split('|'):
+                    if not any(geo in c for geo in ['state_fips', 'congressional_district_geoid']):
+                        parent_demo_constraints.add(c)
+
+            # Create vectorized comparison for efficiency
+            def extract_demo_constraints(constraint_str):
+                """Extract non-geographic constraints from constraint string."""
+                if pd.isna(constraint_str):
+                    return frozenset()
+                demo_constraints = []
+                for c in str(constraint_str).split('|'):
+                    if not any(geo in c for geo in ['state_fips', 'congressional_district_geoid']):
+                        demo_constraints.append(c)
+                return frozenset(demo_constraints)
+
+            # Apply extraction and compare
+            child_demo_constraints = df['constraint_info'].apply(extract_demo_constraints)
+            parent_demo_set = frozenset(parent_demo_constraints)
+            mask &= child_demo_constraints == parent_demo_set
+
         return mask
     
     def _aggregate_cd_targets_for_state(self, state_fips: str, 

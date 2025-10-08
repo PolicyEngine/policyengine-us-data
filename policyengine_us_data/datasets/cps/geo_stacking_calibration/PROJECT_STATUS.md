@@ -118,6 +118,60 @@ A reconciliation system has been implemented to adjust lower-level survey target
 #### Root Cause
 The aggressive L0 sparsity regularization is starving the model of parameters needed to fit complex geographic patterns. Previous runs without these constraints performed much better. The model cannot represent the relationships between household features and geographic targets with such extreme sparsity.
 
+## Calibration Variable Exclusions (2025-01-01)
+
+### Variables Excluded from Calibration
+Based on analysis of calibration errors, the following variables are excluded:
+
+#### CD/State-Level Exclusions (applied across all geographic levels)
+**Tax/Income Variables with Consistent High Errors:**
+- `rental_income_rental_income>0`
+- `salt_salt>0`
+- `tax_unit_count_salt>0`
+- `net_capital_gains`
+- `net_capital_gain`
+- `self_employment`
+- `medical_deduction`
+- `QBI_deduction`
+- `rental_income`
+- `qualified_dividends`
+- `dividends`
+- `partnership_S_corp`
+- `taxable_IRA_distributions`
+- `taxable_interest`
+- `tax_exempt_interest`
+- `income_tax_paid`
+- `income_tax_before_credits`
+- `SALT_deduction`
+- `real_estate_taxes`
+- `taxable_pension`
+- `all_filers`
+- `unemployment_comp`
+- `refundable_CTC`
+
+**Variables with "_national" suffix:**
+- `alimony_expense_national`
+- `charitable_deduction_national`
+- `health_insurance_premiums_without_medicare_part_b_national`
+- `medicare_part_b_premiums_national`
+- `other_medical_expenses_national`
+- `real_estate_taxes_national`
+- `salt_deduction_national`
+
+#### National-Level Only Exclusions (only removed for geographic_id == 'US')
+**Specific problematic national targets with >50% error:**
+- `medical_expense_deduction_tax_unit_is_filer==1` (440% error)
+- `interest_deduction_tax_unit_is_filer==1` (325% error)
+- `qualified_business_income_deduction_tax_unit_is_filer==1` (146% error)
+- `charitable_deduction_tax_unit_is_filer==1` (122% error)
+- `alimony_expense_tax_unit_is_filer==1` (96% error)
+- `person_count_aca_ptc>0` (114% error)
+- `person_count_ssn_card_type=NONE` (62% error)
+- `child_support_expense` (51% error)
+- `health_insurance_premiums_without_medicare_part_b` (51% error)
+
+**IMPORTANT**: AGI, EITC, and age demographics are NOT excluded at CD level as they are critical for calibration.
+
 ## Documentation
 - `GEO_STACKING_TECHNICAL.md` - Technical documentation and architecture
 - `PROJECT_STATUS.md` - This file (active project management)

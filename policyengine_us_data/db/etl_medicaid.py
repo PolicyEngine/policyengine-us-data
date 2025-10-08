@@ -131,24 +131,16 @@ def load_medicaid_data(long_state, long_cd, year):
         )
         
         # Create variable metadata
-        get_or_create_variable_metadata(
-            session,
-            variable="medicaid",
-            group=medicaid_group,
-            display_name="Medicaid Enrollment",
-            display_order=1,
-            units="count",
-            notes="Number of people enrolled in Medicaid"
-        )
-        
+        # Note: The actual target variable used is "person_count" with medicaid_enrolled==True constraint
+        # This metadata entry is kept for consistency with the actual variable being used
         get_or_create_variable_metadata(
             session,
             variable="person_count",
             group=medicaid_group,
-            display_name="Person Count (Medicaid)",
-            display_order=2,
+            display_name="Medicaid Enrollment",
+            display_order=1,
             units="count",
-            notes="Number of people enrolled in Medicaid (same as medicaid variable)"
+            notes="Number of people enrolled in Medicaid (person_count with medicaid_enrolled==True)"
         )
         
         # Fetch existing geographic strata

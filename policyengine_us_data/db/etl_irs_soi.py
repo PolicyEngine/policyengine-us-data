@@ -533,67 +533,90 @@ def load_soi_data(long_dfs, year):
     # All IRS data represents only tax filers, not the entire population
     filer_strata = {"national": None, "state": {}, "district": {}}
     
-    # National filer stratum
-    national_filer_stratum = Stratum(
-        parent_stratum_id=geo_strata["national"],
-        stratum_group_id=2,  # Filer population group
-        notes="United States - Tax Filers"
-    )
-    national_filer_stratum.constraints_rel = [
-        StratumConstraint(
-            constraint_variable="tax_unit_is_filer",
-            operation="==",
-            value="1"
+    # National filer stratum - check if it exists first
+    national_filer_stratum = session.query(Stratum).filter(
+        Stratum.parent_stratum_id == geo_strata["national"],
+        Stratum.notes == "United States - Tax Filers"
+    ).first()
+    
+    if not national_filer_stratum:
+        national_filer_stratum = Stratum(
+            parent_stratum_id=geo_strata["national"],
+            stratum_group_id=2,  # Filer population group
+            notes="United States - Tax Filers"
         )
-    ]
-    session.add(national_filer_stratum)
-    session.flush()
+        national_filer_stratum.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="tax_unit_is_filer",
+                operation="==",
+                value="1"
+            )
+        ]
+        session.add(national_filer_stratum)
+        session.flush()
+    
     filer_strata["national"] = national_filer_stratum.stratum_id
     
     # State filer strata
     for state_fips, state_geo_stratum_id in geo_strata["state"].items():
-        state_filer_stratum = Stratum(
-            parent_stratum_id=state_geo_stratum_id,
-            stratum_group_id=2,  # Filer population group
-            notes=f"State FIPS {state_fips} - Tax Filers"
-        )
-        state_filer_stratum.constraints_rel = [
-            StratumConstraint(
-                constraint_variable="tax_unit_is_filer",
-                operation="==",
-                value="1"
-            ),
-            StratumConstraint(
-                constraint_variable="state_fips",
-                operation="==",
-                value=str(state_fips)
+        # Check if state filer stratum exists
+        state_filer_stratum = session.query(Stratum).filter(
+            Stratum.parent_stratum_id == state_geo_stratum_id,
+            Stratum.notes == f"State FIPS {state_fips} - Tax Filers"
+        ).first()
+        
+        if not state_filer_stratum:
+            state_filer_stratum = Stratum(
+                parent_stratum_id=state_geo_stratum_id,
+                stratum_group_id=2,  # Filer population group
+                notes=f"State FIPS {state_fips} - Tax Filers"
             )
-        ]
-        session.add(state_filer_stratum)
-        session.flush()
+            state_filer_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable="tax_unit_is_filer",
+                    operation="==",
+                    value="1"
+                ),
+                StratumConstraint(
+                    constraint_variable="state_fips",
+                    operation="==",
+                    value=str(state_fips)
+                )
+            ]
+            session.add(state_filer_stratum)
+            session.flush()
+        
         filer_strata["state"][state_fips] = state_filer_stratum.stratum_id
     
     # District filer strata
     for district_geoid, district_geo_stratum_id in geo_strata["district"].items():
-        district_filer_stratum = Stratum(
-            parent_stratum_id=district_geo_stratum_id,
-            stratum_group_id=2,  # Filer population group
-            notes=f"Congressional District {district_geoid} - Tax Filers"
-        )
-        district_filer_stratum.constraints_rel = [
-            StratumConstraint(
-                constraint_variable="tax_unit_is_filer",
-                operation="==",
-                value="1"
-            ),
-            StratumConstraint(
-                constraint_variable="congressional_district_geoid",
-                operation="==",
-                value=str(district_geoid)
+        # Check if district filer stratum exists
+        district_filer_stratum = session.query(Stratum).filter(
+            Stratum.parent_stratum_id == district_geo_stratum_id,
+            Stratum.notes == f"Congressional District {district_geoid} - Tax Filers"
+        ).first()
+        
+        if not district_filer_stratum:
+            district_filer_stratum = Stratum(
+                parent_stratum_id=district_geo_stratum_id,
+                stratum_group_id=2,  # Filer population group
+                notes=f"Congressional District {district_geoid} - Tax Filers"
             )
-        ]
-        session.add(district_filer_stratum)
-        session.flush()
+            district_filer_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable="tax_unit_is_filer",
+                    operation="==",
+                    value="1"
+                ),
+                StratumConstraint(
+                    constraint_variable="congressional_district_geoid",
+                    operation="==",
+                    value=str(district_geoid)
+                )
+            ]
+            session.add(district_filer_stratum)
+            session.flush()
+        
         filer_strata["district"][district_geoid] = district_filer_stratum.stratum_id
     
     session.commit()
@@ -655,50 +678,68 @@ def load_soi_data(long_dfs, year):
                     )
                 ]
 
-            new_stratum = Stratum(
-                parent_stratum_id=parent_stratum_id,
-                stratum_group_id=6,  # EITC strata group
-                notes=note,
-            )
+            # Check if stratum already exists
+            existing_stratum = session.query(Stratum).filter(
+                Stratum.parent_stratum_id == parent_stratum_id,
+                Stratum.stratum_group_id == 6,
+                Stratum.notes == note
+            ).first()
             
-            new_stratum.constraints_rel = constraints
-            if n_children == "3+":
-                new_stratum.constraints_rel.append(
-                    StratumConstraint(
-                        constraint_variable="eitc_child_count",
-                        operation=">",
-                        value="2",
-                    )
-                )
+            if existing_stratum:
+                new_stratum = existing_stratum
             else:
-                new_stratum.constraints_rel.append(
-                    StratumConstraint(
-                        constraint_variable="eitc_child_count",
-                        operation="==",
-                        value=f"{n_children}",
-                    )
+                new_stratum = Stratum(
+                    parent_stratum_id=parent_stratum_id,
+                    stratum_group_id=6,  # EITC strata group
+                    notes=note,
                 )
+                
+                new_stratum.constraints_rel = constraints
+                if n_children == "3+":
+                    new_stratum.constraints_rel.append(
+                        StratumConstraint(
+                            constraint_variable="eitc_child_count",
+                            operation=">",
+                            value="2",
+                        )
+                    )
+                else:
+                    new_stratum.constraints_rel.append(
+                        StratumConstraint(
+                            constraint_variable="eitc_child_count",
+                            operation="==",
+                            value=f"{n_children}",
+                        )
+                    )
+                
+                session.add(new_stratum)
+                session.flush()
 
             # Get both count and amount values
             count_value = eitc_count_i.iloc[i][["target_value"]].values[0]
             amount_value = eitc_amount_i.iloc[i][["target_value"]].values[0]
             
-            new_stratum.targets_rel = [
-                Target(
-                    variable="tax_unit_count",  # Count of tax units with EITC
-                    period=year,
-                    value=count_value,
-                    source_id=irs_source.source_id,
-                    active=True,
-                ),
-                Target(
-                    variable="eitc",  # EITC amount
-                    period=year,
-                    value=amount_value,
-                    source_id=irs_source.source_id,
-                    active=True,
-                )
-            ]
+            # Check if targets already exist and update or create them
+            for variable, value in [("tax_unit_count", count_value), ("eitc", amount_value)]:
+                existing_target = session.query(Target).filter(
+                    Target.stratum_id == new_stratum.stratum_id,
+                    Target.variable == variable,
+                    Target.period == year
+                ).first()
+                
+                if existing_target:
+                    existing_target.value = value
+                    existing_target.source_id = irs_source.source_id
+                else:
+                    new_stratum.targets_rel.append(
+                        Target(
+                            variable=variable,
+                            period=year,
+                            value=value,
+                            source_id=irs_source.source_id,
+                            active=True,
+                        )
+                    )
 
             session.add(new_stratum)
             session.flush()
@@ -811,23 +852,27 @@ def load_soi_data(long_dfs, year):
             count_value = count_j.iloc[i][["target_value"]].values[0]
             amount_value = amount_j.iloc[i][["target_value"]].values[0]
 
-            # Add BOTH count and amount targets to the child stratum
-            child_stratum.targets_rel.extend([
-                Target(
-                    variable=count_variable_name,  # tax_unit_count
-                    period=year,
-                    value=count_value,
-                    source_id=irs_source.source_id,
-                    active=True,
-                ),
-                Target(
-                    variable=amount_variable_name,
-                    period=year,
-                    value=amount_value,
-                    source_id=irs_source.source_id,
-                    active=True,
-                )
-            ])
+            # Check if targets already exist and update or create them
+            for variable, value in [(count_variable_name, count_value), (amount_variable_name, amount_value)]:
+                existing_target = session.query(Target).filter(
+                    Target.stratum_id == child_stratum.stratum_id,
+                    Target.variable == variable,
+                    Target.period == year
+                ).first()
+                
+                if existing_target:
+                    existing_target.value = value
+                    existing_target.source_id = irs_source.source_id
+                else:
+                    child_stratum.targets_rel.append(
+                        Target(
+                            variable=variable,
+                            period=year,
+                            value=value,
+                            source_id=irs_source.source_id,
+                            active=True,
+                        )
+                    )
 
             session.add(child_stratum)
             session.flush()
@@ -850,15 +895,26 @@ def load_soi_data(long_dfs, year):
         elif geo_info["type"] == "district":
             stratum = session.get(Stratum, filer_strata["district"][geo_info["congressional_district_geoid"]])
         
-        stratum.targets_rel.append(
-            Target(
-                variable="adjusted_gross_income",
-                period=year,
-                value=agi_values.iloc[i][["target_value"]].values[0],
-                source_id=irs_source.source_id,
-                active=True,
+        # Check if target already exists
+        existing_target = session.query(Target).filter(
+            Target.stratum_id == stratum.stratum_id,
+            Target.variable == "adjusted_gross_income",
+            Target.period == year
+        ).first()
+        
+        if existing_target:
+            existing_target.value = agi_values.iloc[i][["target_value"]].values[0]
+            existing_target.source_id = irs_source.source_id
+        else:
+            stratum.targets_rel.append(
+                Target(
+                    variable="adjusted_gross_income",
+                    period=year,
+                    value=agi_values.iloc[i][["target_value"]].values[0],
+                    source_id=irs_source.source_id,
+                    active=True,
+                )
             )
-        )
         session.add(stratum)
         session.flush()
 
@@ -876,32 +932,41 @@ def load_soi_data(long_dfs, year):
 
         # Make a National Stratum for each AGI Stub even w/o associated national target
         note = f"National filers, AGI >= {agi_income_lower}, AGI < {agi_income_upper}"
-        nat_stratum = Stratum(
-            parent_stratum_id=filer_strata["national"],
-            stratum_group_id=3,  # Income/AGI strata group
-            notes=note
-        )
-        nat_stratum.constraints_rel.extend(
-            [
-                StratumConstraint(
-                    constraint_variable="tax_unit_is_filer",
-                    operation="==",
-                    value="1",
-                ),
-                StratumConstraint(
-                    constraint_variable="adjusted_gross_income",
-                    operation=">=",
-                    value=str(agi_income_lower),
-                ),
-                StratumConstraint(
-                    constraint_variable="adjusted_gross_income",
-                    operation="<",
-                    value=str(agi_income_upper),
-                ),
-            ]
-        )
-        session.add(nat_stratum)
-        session.flush()
+        
+        # Check if national AGI stratum already exists
+        nat_stratum = session.query(Stratum).filter(
+            Stratum.parent_stratum_id == filer_strata["national"],
+            Stratum.stratum_group_id == 3,
+            Stratum.notes == note
+        ).first()
+        
+        if not nat_stratum:
+            nat_stratum = Stratum(
+                parent_stratum_id=filer_strata["national"],
+                stratum_group_id=3,  # Income/AGI strata group
+                notes=note
+            )
+            nat_stratum.constraints_rel.extend(
+                [
+                    StratumConstraint(
+                        constraint_variable="tax_unit_is_filer",
+                        operation="==",
+                        value="1",
+                    ),
+                    StratumConstraint(
+                        constraint_variable="adjusted_gross_income",
+                        operation=">=",
+                        value=str(agi_income_lower),
+                    ),
+                    StratumConstraint(
+                        constraint_variable="adjusted_gross_income",
+                        operation="<",
+                        value=str(agi_income_upper),
+                    ),
+                ]
+            )
+            session.add(nat_stratum)
+            session.flush()
 
         agi_stratum_lookup = {
             "national": nat_stratum.stratum_id,
@@ -946,35 +1011,59 @@ def load_soi_data(long_dfs, year):
             else:
                 continue  # Skip if not state or district (shouldn't happen, but defensive)
             
-            new_stratum = Stratum(
-                parent_stratum_id=parent_stratum_id,
-                stratum_group_id=3,  # Income/AGI strata group
-                notes=note,
-            )
-            new_stratum.constraints_rel = constraints
-            new_stratum.constraints_rel.extend(
-                [
-                    StratumConstraint(
-                        constraint_variable="adjusted_gross_income",
-                        operation=">=",
-                        value=str(agi_income_lower),
-                    ),
-                    StratumConstraint(
-                        constraint_variable="adjusted_gross_income",
-                        operation="<",
-                        value=str(agi_income_upper),
-                    ),
-                ]
-            )
-            new_stratum.targets_rel.append(
-                Target(
-                    variable="person_count",
-                    period=year,
-                    value=person_count,
-                    source_id=irs_source.source_id,
-                    active=True,
+            # Check if stratum already exists
+            existing_stratum = session.query(Stratum).filter(
+                Stratum.parent_stratum_id == parent_stratum_id,
+                Stratum.stratum_group_id == 3,
+                Stratum.notes == note
+            ).first()
+            
+            if existing_stratum:
+                new_stratum = existing_stratum
+            else:
+                new_stratum = Stratum(
+                    parent_stratum_id=parent_stratum_id,
+                    stratum_group_id=3,  # Income/AGI strata group
+                    notes=note,
                 )
-            )
+                new_stratum.constraints_rel = constraints
+                new_stratum.constraints_rel.extend(
+                    [
+                        StratumConstraint(
+                            constraint_variable="adjusted_gross_income",
+                            operation=">=",
+                            value=str(agi_income_lower),
+                        ),
+                        StratumConstraint(
+                            constraint_variable="adjusted_gross_income",
+                            operation="<",
+                            value=str(agi_income_upper),
+                        ),
+                    ]
+                )
+                session.add(new_stratum)
+                session.flush()
+            
+            # Check if target already exists and update or create it
+            existing_target = session.query(Target).filter(
+                Target.stratum_id == new_stratum.stratum_id,
+                Target.variable == "person_count",
+                Target.period == year
+            ).first()
+            
+            if existing_target:
+                existing_target.value = person_count
+                existing_target.source_id = irs_source.source_id
+            else:
+                new_stratum.targets_rel.append(
+                    Target(
+                        variable="person_count",
+                        period=year,
+                        value=person_count,
+                        source_id=irs_source.source_id,
+                        active=True,
+                    )
+                )
 
             session.add(new_stratum)
             session.flush()

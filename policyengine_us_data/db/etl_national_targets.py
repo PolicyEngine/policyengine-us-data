@@ -22,6 +22,7 @@ def extract_national_targets():
     dict
         Dictionary containing:
         - direct_sum_targets: Variables that can be summed directly
+        - tax_filer_targets: Tax-related variables requiring filer constraint
         - conditional_count_targets: Enrollment counts requiring constraints
         - cbo_targets: List of CBO projection targets
         - treasury_targets: List of Treasury/JCT targets
@@ -35,21 +36,8 @@ def extract_national_targets():
     # Store with their actual source year (2024 for hardcoded values from loss.py)
     HARDCODED_YEAR = 2024
     
-    direct_sum_targets = [
-        {
-            "variable": "medicaid",
-            "value": 871.7e9,
-            "source": "https://www.cms.gov/files/document/highlights.pdf",
-            "notes": "CMS 2023 highlights document - total Medicaid spending",
-            "year": HARDCODED_YEAR
-        },
-        {
-            "variable": "net_worth",
-            "value": 160e12,
-            "source": "Federal Reserve SCF",
-            "notes": "Total household net worth",
-            "year": HARDCODED_YEAR
-        },
+    # Separate tax-related targets that need filer constraint
+    tax_filer_targets = [
         {
             "variable": "salt_deduction",
             "value": 21.247e9,
@@ -83,6 +71,37 @@ def extract_national_targets():
             "value": 63.1e9,
             "source": "Joint Committee on Taxation",
             "notes": "QBI deduction tax expenditure",
+            "year": HARDCODED_YEAR
+        },
+    ]
+
+    direct_sum_targets = [
+        {
+            "variable": "alimony_income",
+            "value": 13e9,
+            "source": "Survey-reported (post-TCJA grandfathered)",
+            "notes": "Alimony received - survey reported, not tax-filer restricted",
+            "year": HARDCODED_YEAR
+        },
+        {
+            "variable": "alimony_expense",
+            "value": 13e9,
+            "source": "Survey-reported (post-TCJA grandfathered)",
+            "notes": "Alimony paid - survey reported, not tax-filer restricted",
+            "year": HARDCODED_YEAR
+        },
+        {
+            "variable": "medicaid",
+            "value": 871.7e9,
+            "source": "https://www.cms.gov/files/document/highlights.pdf",
+            "notes": "CMS 2023 highlights document - total Medicaid spending",
+            "year": HARDCODED_YEAR
+        },
+        {
+            "variable": "net_worth",
+            "value": 160e12,
+            "source": "Federal Reserve SCF",
+            "notes": "Total household net worth",
             "year": HARDCODED_YEAR
         },
         {
@@ -146,20 +165,6 @@ def extract_national_targets():
             "value": 9e9,
             "source": "HHS/ACF",
             "notes": "TANF cash assistance",
-            "year": HARDCODED_YEAR
-        },
-        {
-            "variable": "alimony_income",
-            "value": 13e9,
-            "source": "IRS Statistics of Income",
-            "notes": "Alimony received",
-            "year": HARDCODED_YEAR
-        },
-        {
-            "variable": "alimony_expense",
-            "value": 13e9,
-            "source": "IRS Statistics of Income",
-            "notes": "Alimony paid",
             "year": HARDCODED_YEAR
         },
         {
@@ -304,6 +309,7 @@ def extract_national_targets():
     
     return {
         "direct_sum_targets": direct_sum_targets,
+        "tax_filer_targets": tax_filer_targets,
         "conditional_count_targets": conditional_count_targets,
         "cbo_targets": cbo_targets,
         "treasury_targets": treasury_targets
@@ -322,27 +328,39 @@ def transform_national_targets(raw_targets):
     Returns
     -------
     tuple
-        (direct_targets_df, conditional_targets)
+        (direct_targets_df, tax_filer_df, conditional_targets)
         - direct_targets_df: DataFrame with direct sum targets
+        - tax_filer_df: DataFrame with tax-related targets needing filer constraint
         - conditional_targets: List of conditional count targets
     """
     
-    # Process direct sum targets
+    # Process direct sum targets (non-tax items and some CBO items)
+    # Note: income_tax from CBO and eitc from Treasury need filer constraint
+    cbo_non_tax = [t for t in raw_targets["cbo_targets"] if t["variable"] != "income_tax"]
+    cbo_tax = [t for t in raw_targets["cbo_targets"] if t["variable"] == "income_tax"]
+    
     all_direct_targets = (
         raw_targets["direct_sum_targets"] +
-        raw_targets["cbo_targets"] +
-        raw_targets["treasury_targets"]
+        cbo_non_tax
     )
     
-    direct_df = pd.DataFrame(all_direct_targets)
+    # Tax-related targets that need filer constraint
+    all_tax_filer_targets = (
+        raw_targets["tax_filer_targets"] +
+        cbo_tax +
+        raw_targets["treasury_targets"]  # EITC
+    )
+    
+    direct_df = pd.DataFrame(all_direct_targets) if all_direct_targets else pd.DataFrame()
+    tax_filer_df = pd.DataFrame(all_tax_filer_targets) if all_tax_filer_targets else pd.DataFrame()
     
     # Conditional targets stay as list for special processing
     conditional_targets = raw_targets["conditional_count_targets"]
     
-    return direct_df, conditional_targets
+    return direct_df, tax_filer_df, conditional_targets
 
 
-def load_national_targets(direct_targets_df, conditional_targets):
+def load_national_targets(direct_targets_df, tax_filer_df, conditional_targets):
     """
     Load national targets into the database.
     
@@ -350,10 +368,10 @@ def load_national_targets(direct_targets_df, conditional_targets):
     ----------
     direct_targets_df : pd.DataFrame
         DataFrame with direct sum target data
+    tax_filer_df : pd.DataFrame
+        DataFrame with tax-related targets needing filer constraint
     conditional_targets : list
         List of conditional count targets requiring strata
-    year : int
-        Year for the targets
     """
     
     DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
@@ -414,6 +432,68 @@ def load_national_targets(direct_targets_df, conditional_targets):
                 )
                 session.add(target)
                 print(f"Added target: {target_data['variable']}")
+        
+        # Process tax-related targets that need filer constraint
+        if not tax_filer_df.empty:
+            # Get or create the national filer stratum
+            national_filer_stratum = session.query(Stratum).filter(
+                Stratum.parent_stratum_id == us_stratum.stratum_id,
+                Stratum.notes == "United States - Tax Filers"
+            ).first()
+            
+            if not national_filer_stratum:
+                # Create national filer stratum
+                national_filer_stratum = Stratum(
+                    parent_stratum_id=us_stratum.stratum_id,
+                    stratum_group_id=2,  # Filer population group
+                    notes="United States - Tax Filers"
+                )
+                national_filer_stratum.constraints_rel = [
+                    StratumConstraint(
+                        constraint_variable="tax_unit_is_filer",
+                        operation="==",
+                        value="1"
+                    )
+                ]
+                session.add(national_filer_stratum)
+                session.flush()
+                print("Created national filer stratum")
+            
+            # Add tax-related targets to filer stratum
+            for _, target_data in tax_filer_df.iterrows():
+                target_year = target_data["year"]
+                # Check if target already exists
+                existing_target = session.query(Target).filter(
+                    Target.stratum_id == national_filer_stratum.stratum_id,
+                    Target.variable == target_data["variable"],
+                    Target.period == target_year
+                ).first()
+                
+                # Combine source info into notes
+                notes_parts = []
+                if pd.notna(target_data.get("notes")):
+                    notes_parts.append(target_data["notes"])
+                notes_parts.append(f"Source: {target_data.get('source', 'Unknown')}")
+                combined_notes = " | ".join(notes_parts)
+                
+                if existing_target:
+                    # Update existing target
+                    existing_target.value = target_data["value"]
+                    existing_target.notes = combined_notes
+                    print(f"Updated filer target: {target_data['variable']}")
+                else:
+                    # Create new target
+                    target = Target(
+                        stratum_id=national_filer_stratum.stratum_id,
+                        variable=target_data["variable"],
+                        period=target_year,
+                        value=target_data["value"],
+                        source_id=calibration_source.source_id,
+                        active=True,
+                        notes=combined_notes
+                    )
+                    session.add(target)
+                    print(f"Added filer target: {target_data['variable']}")
         
         # Process conditional count targets (enrollment counts)
         for cond_target in conditional_targets:
@@ -507,9 +587,10 @@ def load_national_targets(direct_targets_df, conditional_targets):
         
         session.commit()
         
-        total_targets = len(direct_targets_df) + len(conditional_targets)
+        total_targets = len(direct_targets_df) + len(tax_filer_df) + len(conditional_targets)
         print(f"\nSuccessfully loaded {total_targets} national targets")
         print(f"  - {len(direct_targets_df)} direct sum targets")
+        print(f"  - {len(tax_filer_df)} tax filer targets")
         print(f"  - {len(conditional_targets)} enrollment count targets (as strata)")
 
 
@@ -522,11 +603,11 @@ def main():
     
     # Transform
     print("Transforming targets...")
-    direct_targets_df, conditional_targets = transform_national_targets(raw_targets)
+    direct_targets_df, tax_filer_df, conditional_targets = transform_national_targets(raw_targets)
     
     # Load
     print("Loading targets into database...")
-    load_national_targets(direct_targets_df, conditional_targets)
+    load_national_targets(direct_targets_df, tax_filer_df, conditional_targets)
     
     print("\nETL pipeline complete!")
 

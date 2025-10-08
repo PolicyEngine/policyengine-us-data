@@ -174,30 +174,20 @@ def create_target_groups(targets_df: pd.DataFrame) -> Tuple[np.ndarray, List[str
             # Create descriptive label based on variable name
             # Count unique geographic locations for this variable
             n_geos = matching_targets['geographic_id'].nunique()
-            
-            # Create a readable label for common variables
-            variable_labels = {
-                'person_count': 'Age Distribution (all age bins)',
-                'adjusted_gross_income': 'AGI Distribution', 
-                'household_count': 'Household Count',
-                'household_income': 'Household Income Distribution',
-                'tax_unit_count': 'Tax Unit Count',
-                'snap': 'SNAP Recipients',
-                'medicaid': 'Medicaid Enrollment',
-                'eitc': 'EITC Recipients',
-                'unemployment_compensation': 'Unemployment Compensation',
-                'social_security': 'Social Security',
-                'qualified_business_income_deduction': 'QBI Deduction',
-                'self_employment_income': 'Self-Employment Income',
-                'net_capital_gains': 'Net Capital Gains',
-                'real_estate_taxes': 'Real Estate Taxes',
-                'rental_income': 'Rental Income',
-                'taxable_social_security': 'Taxable Social Security',
-                'medical_expense_deduction': 'Medical Expense Deduction'
-            }
-            
-            # Get label or use variable name as fallback
-            label = variable_labels.get(variable_name, variable_name.replace('_', ' ').title())
+
+            # Get stratum_group for context-aware labeling
+            stratum_group = matching_targets['stratum_group_id'].iloc[0]
+
+            # Handle only truly ambiguous cases with stratum_group_id context
+            if variable_name == 'household_count' and stratum_group == 4:
+                label = 'SNAP Household Count'
+            elif variable_name == 'snap' and stratum_group == 'state_snap_cost':
+                label = 'SNAP Cost (State)'
+            elif variable_name == 'adjusted_gross_income' and stratum_group == 2:
+                label = 'AGI Total Amount'
+            else:
+                # Default: clean up variable name (most are already descriptive)
+                label = variable_name.replace('_', ' ').title()
             
             # Store group information
             group_info.append(f"Group {group_id}: {label} ({n_targets} targets across {n_geos} geographies)")
@@ -434,7 +424,116 @@ def uprate_targets_df(targets_df: pd.DataFrame, target_year: int, sim=None) -> p
                 cpi_count = (df['uprating_source'] == 'CPI-U').sum()
                 print(f"    - {cpi_count:,} monetary targets: CPI factors {cpi_factors.min():.4f} - {cpi_factors.max():.4f}")
             if pop_changed:
-                pop_count = (df['uprating_source'] == 'Population').sum()  
+                pop_count = (df['uprating_source'] == 'Population').sum()
                 print(f"    - {pop_count:,} count targets: Population factors {pop_factors.min():.4f} - {pop_factors.max():.4f}")
-    
+
     return df
+
+
+def filter_target_groups(targets_df: pd.DataFrame, X_sparse, target_groups: np.ndarray,
+                         groups_to_exclude: List[int]) -> Tuple[pd.DataFrame, any, np.ndarray]:
+    """
+    Filter out specified target groups from targets_df and X_sparse.
+
+    Parameters
+    ----------
+    targets_df : pd.DataFrame
+        DataFrame containing target metadata
+    X_sparse : scipy.sparse matrix
+        Sparse calibration matrix (rows = targets, cols = households)
+    target_groups : np.ndarray
+        Array of group IDs for each target
+    groups_to_exclude : List[int]
+        List of group IDs to exclude
+
+    Returns
+    -------
+    filtered_targets_df : pd.DataFrame
+        Filtered targets dataframe
+    filtered_X_sparse : scipy.sparse matrix
+        Filtered sparse matrix
+    filtered_target_groups : np.ndarray
+        Filtered target groups array
+    """
+    if len(groups_to_exclude) == 0:
+        return targets_df, X_sparse, target_groups
+
+    keep_mask = ~np.isin(target_groups, groups_to_exclude)
+
+    n_to_remove = (~keep_mask).sum()
+    is_national = targets_df['geographic_id'] == 'US'
+    n_national_removed = is_national[~keep_mask].sum()
+    n_cd_removed = n_to_remove - n_national_removed
+
+    print(f"\nExcluding groups: {groups_to_exclude}")
+    print(f"Total targets removed: {n_to_remove} out of {len(targets_df)}")
+    print(f"  - CD/state-level targets removed: {n_cd_removed}")
+    print(f"  - National-level targets removed: {n_national_removed}")
+
+    filtered_targets_df = targets_df[keep_mask].reset_index(drop=True)
+    filtered_X_sparse = X_sparse[keep_mask, :]
+    filtered_target_groups = target_groups[keep_mask]
+
+    print(f"After filtering: {len(filtered_targets_df)} targets, matrix shape: {filtered_X_sparse.shape}")
+
+    return filtered_targets_df, filtered_X_sparse, filtered_target_groups
+
+
+def analyze_target_groups(targets_df: pd.DataFrame, target_groups: np.ndarray,
+                          max_rows: int = 50) -> pd.DataFrame:
+    """
+    Analyze target groups and return a summary dataframe.
+
+    Parameters
+    ----------
+    targets_df : pd.DataFrame
+        DataFrame containing target metadata
+    target_groups : np.ndarray
+        Array of group IDs for each target
+    max_rows : int
+        Maximum number of rows to display
+
+    Returns
+    -------
+    groups_df : pd.DataFrame
+        Summary dataframe with columns: group_id, n_targets, is_national, group_type, variable, sample_desc, n_geos
+    """
+    group_details = []
+    for group_id in np.unique(target_groups):
+        group_mask = target_groups == group_id
+        group_targets = targets_df[group_mask]
+
+        n_targets = len(group_targets)
+        geos = group_targets['geographic_id'].unique()
+        variables = group_targets['variable'].unique()
+        var_descs = group_targets['variable_desc'].unique()
+
+        is_national = len(geos) == 1 and geos[0] == 'US'
+
+        if len(geos) == 1 and len(variables) == 1:
+            if len(var_descs) > 1:
+                group_type = f"Single geo/var with {len(var_descs)} bins"
+            else:
+                group_type = "Single target"
+        elif len(geos) > 1 and len(variables) == 1:
+            group_type = f"Multi-geo ({len(geos)} geos), single var"
+        else:
+            group_type = f"Complex: {len(geos)} geos, {len(variables)} vars"
+
+        detail = {
+            'group_id': group_id,
+            'n_targets': n_targets,
+            'is_national': is_national,
+            'group_type': group_type,
+            'variable': variables[0] if len(variables) == 1 else f"{len(variables)} vars",
+            'sample_desc': var_descs[0] if len(var_descs) > 0 else "",
+            'n_geos': len(geos)
+        }
+        group_details.append(detail)
+
+    groups_df = pd.DataFrame(group_details)
+
+    print("\nAll target groups (review for exclusion):")
+    print(groups_df[['group_id', 'n_targets', 'variable', 'group_type', 'is_national']].head(max_rows).to_string())
+
+    return groups_df

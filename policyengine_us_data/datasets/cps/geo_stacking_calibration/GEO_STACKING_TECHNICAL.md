@@ -132,6 +132,42 @@ The system needs to traverse this full hierarchy, checking at each geographic le
 **Constraint Inheritance:**
 When a target is selected from a higher geographic level (e.g., using a national target for CD calibration), the constraints from that target's stratum still apply, ensuring the target is calculated correctly for the subset of households it represents.
 
+### Target Concept IDs and Deduplication
+
+#### What Are Concept IDs?
+
+Concept IDs are unique identifiers that prevent the same calibration target from being counted multiple times when it appears at different geographic levels. Without them, a target like "person count age 0-4" could appear three times (CD, state, national) and be triple-counted in the calibration matrix.
+
+#### How They Work
+
+A concept ID combines the variable name with its constraints to create a unique identifier:
+- `person_count_age_0` - Person count for age bin 0-4
+- `person_count_agi_gte_25000` - Person count with AGI >= $25,000
+- `irs_100_qualified_business_income` - QBI deduction amount
+- `person_count_eitc_eq_0` - Person count with 0 EITC qualifying children
+
+The hierarchical fallback system uses these IDs to match concepts across geographic levels and select the most specific version available.
+
+#### Implementation Fragility
+
+**Critical Issue:** The concept ID generation hard-codes `stratum_group_id` values from the database:
+
+```python
+if row['stratum_group_id'] == 2:      # Age - hard-coded assumption
+    return f"{row['variable']}_age_{row['constraint_value']}"
+elif row['stratum_group_id'] == 3:    # AGI - fragile coupling
+    return f"{row['variable']}_agi_{op_str}_{row['constraint_value']}"
+elif row['stratum_group_id'] >= 100:  # IRS - assumes all >= 100
+    return f"irs_{row['stratum_group_id']}_{row['variable']}"
+```
+
+This creates tight coupling between the code and database schema. If `stratum_group_id` values change in the database, deduplication will silently fail without errors, potentially causing:
+- Duplicate targets in the calibration matrix
+- Incorrect aggregation of demographic groups
+- Wrong calibration results
+
+A more robust approach would store concept ID rules in the database or use constraint patterns rather than group IDs.
+
 ## Sparse Matrix Implementation
 
 ### Achievement: 99% Memory Reduction

@@ -176,6 +176,10 @@ def create_sparse_cd_stacked_dataset(
     
     print(f"\nOriginal dataset has {n_households_orig:,} households")
     
+    # Pre-calculate household structure needed for person weight assignments
+    print("Calculating household structure...")
+    person_household_id = base_sim.calculate("person_household_id").values
+    
     # Process the weight vector to understand active household-CD pairs
     print("\nProcessing weight vector...")
     W_full = w.reshape(len(cds_to_calibrate), n_households_orig)
@@ -216,17 +220,35 @@ def create_sparse_cd_stacked_dataset(
         cd_weights = np.zeros(n_households_orig)
         cd_weights[active_household_indices] = W[cd_idx, active_household_indices]
         
+        # Create person weights using vectorized operations
+        # Each person gets their household's weight (NOT multiplied by persons_per_household)
+        person_hh_indices = np.array([hh_id_to_idx.get(int(hh_id), -1) 
+                                      for hh_id in person_household_id])
+        person_weights = np.where(person_hh_indices >= 0,
+                                  cd_weights[person_hh_indices],
+                                  0)
+        
         # Create a simulation with these weights
         cd_sim = Microsimulation(dataset=dataset_path)
         cd_sim.set_input("household_weight", time_period, cd_weights)
+        cd_sim.set_input("person_weight", time_period, person_weights)
+        # Don't set tax_unit_weight - let PolicyEngine derive it from household weights
         
         # Convert to DataFrame
         df = cd_sim.to_input_dataframe()
         
         # Column names follow pattern: variable__year
         hh_weight_col = f"household_weight__{time_period}"
+        person_weight_col = f"person_weight__{time_period}"
         hh_id_col = f"household_id__{time_period}"
         cd_geoid_col = f"congressional_district_geoid__{time_period}"
+        
+        # Ensure person weights are in the DataFrame
+        # The DataFrame is at person-level, so person_weight should be there
+        if person_weight_col not in df.columns:
+            print(f"WARNING: {person_weight_col} not in DataFrame columns")
+            # Add it manually if needed
+            df[person_weight_col] = person_weights
         state_fips_col = f"state_fips__{time_period}"
         state_name_col = f"state_name__{time_period}"
         state_code_col = f"state_code__{time_period}"
@@ -303,90 +325,90 @@ def create_sparse_cd_stacked_dataset(
     # Group by household ID to track which rows belong to same original household
     hh_groups = combined_df.groupby(hh_id_col)['_row_idx'].apply(list).to_dict()
     
-    # Create new unique household IDs (one per row group)
+    # Create new unique household IDs (one per household, not per row!)
     new_hh_id = 0
     hh_row_to_new_id = {}
     for old_hh_id, row_indices in hh_groups.items():
+        # All rows in the same household group get the SAME new ID
         for row_idx in row_indices:
             hh_row_to_new_id[row_idx] = new_hh_id
-            new_hh_id += 1
+        new_hh_id += 1  # Increment AFTER assigning to all rows in household
     
     # Apply new household IDs based on row index
     combined_df['_new_hh_id'] = combined_df['_row_idx'].map(hh_row_to_new_id)
     
-    # Now update person household references to point to new household IDs
-    # Create mapping from old household ID + CD context to new household ID
-    old_to_new_hh = {}
-    for idx, row in combined_df.iterrows():
-        old_hh = row[hh_id_col]
-        new_hh = row['_new_hh_id']
-        # Store mapping for this specific occurrence
-        if old_hh not in old_to_new_hh:
-            old_to_new_hh[old_hh] = {}
-        cd = row[cd_geoid_col]
-        old_to_new_hh[old_hh][cd] = new_hh
-    
     # Update household IDs
     combined_df[hh_id_col] = combined_df['_new_hh_id']
     
-    # For person household references, we need to match based on CD
-    def map_person_hh(row):
-        old_hh = row[person_hh_id_col]
-        cd = row[cd_geoid_col]
-        if old_hh in old_to_new_hh and cd in old_to_new_hh[old_hh]:
-            return old_to_new_hh[old_hh][cd]
-        # Fallback
-        return row['_new_hh_id']
-    
-    combined_df[person_hh_id_col] = combined_df.apply(map_person_hh, axis=1)
+    # Update person household references - since persons are already in their households,
+    # person_household_id should just match the household_id of their row
+    combined_df[person_hh_id_col] = combined_df['_new_hh_id']
     
     print(f"  Created {new_hh_id:,} unique households from duplicates")
     
     # Now handle other entities - they also need unique IDs
     # Persons - each occurrence needs a unique ID
     print("  Reindexing persons...")
-    combined_df['_new_person_id'] = range(len(combined_df))
-    old_person_to_new = dict(zip(combined_df[person_id_col], combined_df['_new_person_id']))
-    combined_df[person_id_col] = combined_df['_new_person_id']
+    combined_df[person_id_col] = range(len(combined_df))
     
-    # Tax units - similar approach
+    # Tax units - preserve structure within households
     print("  Reindexing tax units...")
-    tax_groups = combined_df.groupby([tax_unit_id_col, hh_id_col]).groups
+    # Group by household first, then handle tax units within each household
     new_tax_id = 0
-    tax_map = {}
-    for (old_tax, hh), indices in tax_groups.items():
-        for idx in indices:
-            tax_map[idx] = new_tax_id
-        new_tax_id += 1
-    combined_df['_new_tax_id'] = combined_df.index.map(tax_map)
-    combined_df[tax_unit_id_col] = combined_df['_new_tax_id']
-    combined_df[person_tax_unit_col] = combined_df['_new_tax_id']
+    for hh_id in combined_df[hh_id_col].unique():
+        hh_mask = combined_df[hh_id_col] == hh_id
+        hh_df = combined_df[hh_mask]
+        
+        # Get unique tax units within this household
+        unique_tax_in_hh = hh_df[person_tax_unit_col].unique()
+        
+        # Create mapping for this household's tax units
+        for old_tax in unique_tax_in_hh:
+            # Update all persons with this tax unit ID in this household
+            mask = (combined_df[hh_id_col] == hh_id) & (combined_df[person_tax_unit_col] == old_tax)
+            combined_df.loc[mask, person_tax_unit_col] = new_tax_id
+            # Also update tax_unit_id if it exists in the DataFrame
+            if tax_unit_id_col in combined_df.columns:
+                combined_df.loc[mask, tax_unit_id_col] = new_tax_id
+            new_tax_id += 1
     
-    # SPM units
+    # SPM units - preserve structure within households
     print("  Reindexing SPM units...")
-    spm_groups = combined_df.groupby([spm_unit_id_col, hh_id_col]).groups
     new_spm_id = 0
-    spm_map = {}
-    for (old_spm, hh), indices in spm_groups.items():
-        for idx in indices:
-            spm_map[idx] = new_spm_id
-        new_spm_id += 1
-    combined_df['_new_spm_id'] = combined_df.index.map(spm_map)
-    combined_df[spm_unit_id_col] = combined_df['_new_spm_id']
-    combined_df[person_spm_unit_col] = combined_df['_new_spm_id']
+    for hh_id in combined_df[hh_id_col].unique():
+        hh_mask = combined_df[hh_id_col] == hh_id
+        hh_df = combined_df[hh_mask]
+        
+        # Get unique SPM units within this household
+        unique_spm_in_hh = hh_df[person_spm_unit_col].unique()
+        
+        for old_spm in unique_spm_in_hh:
+            # Update all persons with this SPM unit ID in this household
+            mask = (combined_df[hh_id_col] == hh_id) & (combined_df[person_spm_unit_col] == old_spm)
+            combined_df.loc[mask, person_spm_unit_col] = new_spm_id
+            # Also update spm_unit_id if it exists
+            if spm_unit_id_col in combined_df.columns:
+                combined_df.loc[mask, spm_unit_id_col] = new_spm_id
+            new_spm_id += 1
     
-    # Marital units
+    # Marital units - preserve structure within households  
     print("  Reindexing marital units...")
-    marital_groups = combined_df.groupby([marital_unit_id_col, hh_id_col]).groups
     new_marital_id = 0
-    marital_map = {}
-    for (old_marital, hh), indices in marital_groups.items():
-        for idx in indices:
-            marital_map[idx] = new_marital_id
-        new_marital_id += 1
-    combined_df['_new_marital_id'] = combined_df.index.map(marital_map)
-    combined_df[marital_unit_id_col] = combined_df['_new_marital_id']
-    combined_df[person_marital_unit_col] = combined_df['_new_marital_id']
+    for hh_id in combined_df[hh_id_col].unique():
+        hh_mask = combined_df[hh_id_col] == hh_id
+        hh_df = combined_df[hh_mask]
+        
+        # Get unique marital units within this household
+        unique_marital_in_hh = hh_df[person_marital_unit_col].unique()
+        
+        for old_marital in unique_marital_in_hh:
+            # Update all persons with this marital unit ID in this household
+            mask = (combined_df[hh_id_col] == hh_id) & (combined_df[person_marital_unit_col] == old_marital)
+            combined_df.loc[mask, person_marital_unit_col] = new_marital_id
+            # Also update marital_unit_id if it exists
+            if marital_unit_id_col in combined_df.columns:
+                combined_df.loc[mask, marital_unit_id_col] = new_marital_id
+            new_marital_id += 1
     
     # Clean up temporary columns
     temp_cols = [col for col in combined_df.columns if col.startswith('_')]
@@ -471,7 +493,11 @@ def create_sparse_cd_stacked_dataset(
             print(f"  Final persons: {len(person_ids):,}")
         if "household_weight" in f and str(time_period) in f["household_weight"]:
             weights = f["household_weight"][str(time_period)][:]
-            print(f"  Total population: {np.sum(weights):,.0f}")
+            print(f"  Total population (from household weights): {np.sum(weights):,.0f}")
+        if "person_weight" in f and str(time_period) in f["person_weight"]:
+            person_weights = f["person_weight"][str(time_period)][:]
+            print(f"  Total population (from person weights): {np.sum(person_weights):,.0f}")
+            print(f"  Average persons per household: {np.sum(person_weights) / np.sum(weights):.2f}")
     
     return output_path
 
@@ -514,29 +540,46 @@ if __name__ == "__main__":
         raise ValueError(f"Weight vector length ({len(w):,}) doesn't match expected ({expected_length:,})")
   
 
-    # Create the .h5 files ---------------------------------------------
-    cd_subset = [cd for cd in cds_to_calibrate if cd[:-2] == '34']
-    output_file = create_sparse_cd_stacked_dataset(
-        w,
-        cds_to_calibrate, 
-        cd_subset=cd_subset,
-        dataset_path=dataset_path,
-        output_path = "./NJ_0929.h5"
-    )
+    # Create the .h5 files for each state ---------------------------------------------
+    STATE_CODES = {
+        1: 'AL', 2: 'AK', 4: 'AZ', 5: 'AR', 6: 'CA',
+        8: 'CO', 9: 'CT', 10: 'DE', 11: 'DC',
+        12: 'FL', 13: 'GA', 15: 'HI', 16: 'ID', 17: 'IL',
+        18: 'IN', 19: 'IA', 20: 'KS', 21: 'KY', 22: 'LA',
+        23: 'ME', 24: 'MD', 25: 'MA', 26: 'MI',
+        27: 'MN', 28: 'MS', 29: 'MO', 30: 'MT',
+        31: 'NE', 32: 'NV', 33: 'NH', 34: 'NJ',
+        35: 'NM', 36: 'NY', 37: 'NC', 38: 'ND',
+        39: 'OH', 40: 'OK', 41: 'OR', 42: 'PA',
+        44: 'RI', 45: 'SC', 46: 'SD', 47: 'TN',
+        48: 'TX', 49: 'UT', 50: 'VT', 51: 'VA', 53: 'WA',
+        54: 'WV', 55: 'WI', 56: 'WY'
+    }
     
-    cd_subset = ['1101']
-    output_file = create_sparse_cd_stacked_dataset(
-        w,
-        cds_to_calibrate, 
-        cd_subset=cd_subset,
-        dataset_path=dataset_path,
-        output_path = "./DC_0930_v2.h5"
-    )
+    # Create temp directory for outputs
+    os.makedirs("./temp", exist_ok=True)
+    
+    # Loop through states and create datasets
+    for state_fips, state_code in STATE_CODES.items():
+        #state_fips = 36 
+        #state_code = 'NY'
+        state_fips_str = str(state_fips).zfill(2) if state_fips >= 10 else str(state_fips)
+        cd_subset = [cd for cd in cds_to_calibrate if cd[:len(state_fips_str)] == state_fips_str]
+        
+        output_path = f"./temp/{state_code}.h5"
+        output_file = create_sparse_cd_stacked_dataset(
+            w,
+            cds_to_calibrate, 
+            cd_subset=cd_subset,
+            dataset_path=dataset_path,
+            output_path=output_path
+        )
+        print(f"Created {state_code}.h5")
    
     # Everything ------------------------------------------------
     output_file = create_sparse_cd_stacked_dataset(
         w,
         cds_to_calibrate,
         dataset_path=dataset_path,
-        output_path="./cd_calibration_0929v1.h5"
+        output_path="./temp/cd_calibration.h5"
     )

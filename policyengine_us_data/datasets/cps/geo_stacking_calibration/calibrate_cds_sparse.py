@@ -24,7 +24,9 @@ from l0.calibration import SparseCalibrationWeights
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.datasets.cps.geo_stacking_calibration.metrics_matrix_geo_stacking_sparse import SparseGeoStackingMatrixBuilder
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import create_target_groups, download_from_huggingface
+from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+    create_target_groups, download_from_huggingface, analyze_target_groups, filter_target_groups
+)
 
 # ============================================================================
 # STEP 1: DATA LOADING AND CD LIST RETRIEVAL
@@ -92,240 +94,47 @@ targets_df, X_sparse, household_id_mapping = builder.build_stacked_matrix_sparse
     cds_to_calibrate,
     sim
 )
-print(f"\nMatrix shape before any filtering: {X_sparse.shape}")
-print(f"Targets before any filtering: {len(targets_df)}")
+print(f"\nMatrix shape: {X_sparse.shape}")
+print(f"Total targets: {len(targets_df)}")
 
 # ============================================================================
-# STEP 2.5: CREATE TARGET GROUPS AND FILTER USING GROUP INDICES
+# STEP 2.5: GROUP ANALYSIS AND OPTIONAL FILTERING
 # ============================================================================
 
-# Create target groups to enable clean filtering
-target_groups_pre_filter, group_info_list = create_target_groups(targets_df)
+target_groups, group_info = create_target_groups(targets_df)
 
-print(f"\nTarget grouping before filtering:")
-print(f"Total groups: {len(np.unique(target_groups_pre_filter))}")
-for info in group_info_list:
+print(f"\nAutomatic target grouping:")
+print(f"Total groups: {len(np.unique(target_groups))}")
+for info in group_info:
     print(f"  {info}")
 
-# Build a dataframe to analyze groups (similar to run_holdout_fold.py)
-group_details = []
-for group_id in np.unique(target_groups_pre_filter):
-    group_mask = target_groups_pre_filter == group_id
-    group_targets = targets_df[group_mask]
-    
-    n_targets = len(group_targets)
-    geos = group_targets['geographic_id'].unique()
-    variables = group_targets['variable'].unique()
-    var_descs = group_targets['variable_desc'].unique()
-    
-    # Check if it's a national-level group
-    is_national = len(geos) == 1 and geos[0] == 'US'
-    
-    # Classify the group type
-    if len(geos) == 1 and len(variables) == 1:
-        if len(var_descs) > 1:
-            group_type = f"Single geo/var with {len(var_descs)} bins"
-        else:
-            group_type = "Single target"
-    elif len(geos) > 1 and len(variables) == 1:
-        group_type = f"Multi-geo ({len(geos)} geos), single var"
-    else:
-        group_type = f"Complex: {len(geos)} geos, {len(variables)} vars"
-    
-    detail = {
-        'group_id': group_id,
-        'n_targets': n_targets,
-        'is_national': is_national,
-        'group_type': group_type,
-        'variable': variables[0] if len(variables) == 1 else f"{len(variables)} vars",
-        'sample_desc': var_descs[0] if len(var_descs) > 0 else "",
-        'n_geos': len(geos)
-    }
-    group_details.append(detail)
+# TODO: why do I need this when I have group_info above?
+# groups_df = analyze_target_groups(targets_df, target_groups, max_rows=150)
 
-groups_df = pd.DataFrame(group_details)
+# After reviewing the printout above, specify group IDs to exclude
+# Example: groups_to_exclude = [5, 12, 18, 23, 27]
+groups_to_exclude = [
+    0, # Group 0: National alimony_expense (1 target, value=12,610,232,250)
+    2, # Group 2: National charitable_deduction (1 target, value=63,343,136,630) 
+    3, # Group 3: National child_support_expense (1 target, value=32,010,589,559) - 51% error
+    5, # Group 5: National eitc (1 target, value=64,440,000,000) 
+    8, # Group 8: National interest_deduction (1 target, value=24,056,443,062) 
+    10, # Group 10: National medical_expense_deduction (1 target, value=11,058,203,666)
+    15, # Group 15: National person_count (Undocumented population) (1 target, value=19,529,896)
+    18, # Group 18: National qualified_business_income_deduction (1 target, value=61,208,127,308)
 
-# Print all groups for manual selection (like run_holdout_fold.py does)
-print("\nAll target groups (review for exclusion):")
-print(groups_df[['group_id', 'n_targets', 'variable', 'group_type', 'is_national']].head(50).to_string())
+    # TODO: what is going on with 41 and 42? gains vs gain?  Go back into the IRS SOI file and see what it is
+    41, #Group 41: Tax Units net_capital_gain>0 (436 targets across 436 geographies)
+    42, #Group 42: Tax Units net_capital_gains>0 (436 targets across 436 geographies)
 
-# TODO: After reviewing the output above, manually specify group IDs to exclude
-# For now, we'll just placeholder with empty list
-# Example format (from run_holdout_fold.py):
-# groups_to_exclude = [5, 12, 18, 23, 27]  # Group IDs identified as problematic
-groups_to_exclude = []
-
-# If groups are specified for exclusion, filter them out
-if len(groups_to_exclude) > 0:
-    print(f"\nExcluding groups: {groups_to_exclude}")
-    
-    # Create mask for targets to keep using group indices
-    keep_mask = ~np.isin(target_groups_pre_filter, groups_to_exclude)
-    
-    n_to_remove = (~keep_mask).sum()
-    n_national_removed = groups_df[groups_df['group_id'].isin(groups_to_exclude) & groups_df['is_national']]['n_targets'].sum()
-    n_cd_removed = n_to_remove - n_national_removed
-    
-    print(f"\nTotal targets removed: {n_to_remove} out of {len(targets_df)}")
-    print(f"  - CD/state-level targets removed: {n_cd_removed}")
-    print(f"  - National-level targets removed: {n_national_removed}")
-    
-    # Filter targets and corresponding matrix rows
-    targets_df = targets_df[keep_mask].reset_index(drop=True)
-    X_sparse = X_sparse[keep_mask, :]
-    
-    print(f"After filtering: {len(targets_df)} targets, matrix shape: {X_sparse.shape}")
-else:
-    print("\nNo groups excluded - using all targets")
-
-# TEMPORARY: Until we identify specific group IDs, keep the old filtering
-# This section should be removed once we have the group IDs
-
-# Filter out problematic variables based on high error analysis
-# ULTRA-AGGRESSIVE PRUNING - Remove almost everything with high errors
-
-variables_to_exclude = [
-    # Original exact matches - these specific variable combinations
-    'rental_income_rental_income>0',
-    'salt_salt>0',
-    'tax_unit_count_salt>0',
-    
-    'net_capital_gains',
-    'net_capital_gain',
-    'self_employment',
-    'medical_deduction',
-    'QBI_deduction',
-    'rental_income',
-    'qualified_dividends',
-    'dividends',
-    'partnership_S_corp',
-    'taxable_IRA_distributions',
-    'taxable_interest',
-    'tax_exempt_interest',
-    'income_tax_paid',
-    'income_tax_before_credits',
-    'SALT_deduction',
-    'real_estate_taxes',
-    'taxable_pension',
-    'all_filers',
-    'unemployment_comp',
-    'refundable_CTC',
-    
-    # National variables with "_national" suffix
-    'alimony_expense_national',
-    'charitable_deduction_national',
-    'health_insurance_premiums_without_medicare_part_b_national',
-    'medicare_part_b_premiums_national',
-    'other_medical_expenses_national',
-    'real_estate_taxes_national',
-    'salt_deduction_national',
-    
-    # Note: National-level targets are now handled separately in the filtering logic below
-    # to ensure we only remove US-level targets, not CD-level ones with similar names
-]
-print(f"\nFiltering out variables with high errors: {variables_to_exclude}")
-
-# Check what we're matching
-print("\nChecking for matching variables...")
-
-# Debug: Show actual variable_desc values
-print("\nFirst 20 unique variable_desc values:")
-unique_descs = targets_df['variable_desc'].unique()
-for desc in unique_descs[:20]:
-    print(f"  '{desc}'")
-
-# Now check matches
-print("\nMatching against exclusion list:")
-total_matches = 0
-for var_to_exclude in variables_to_exclude[:10]:  # Just show first 10
-    matching = targets_df[targets_df['variable_desc'] == var_to_exclude]
-    if len(matching) > 0:
-        print(f"  {var_to_exclude}: {len(matching)} targets found")
-        total_matches += len(matching)
-
-# Create mask for rows to keep using partial matching
-# Since variable_desc has suffixes like "_tax_unit_is_filer==1", we need to check if 
-# the base variable name is in our exclusion list
-keep_mask = pd.Series(True, index=targets_df.index)
-
-# Debug: show what we're actually matching
-print("\nDetailed matching check:")
-for i, var_to_exclude in enumerate(variables_to_exclude[:5]):  # Just check first 5
-    # Check for partial matches (variable name is contained in variable_desc, case insensitive)
-    partial_match = targets_df['variable_desc'].str.contains(var_to_exclude, na=False, regex=False, case=False)
-    n_matches = partial_match.sum()
-    if n_matches > 0:
-        print(f"  '{var_to_exclude}' matches {n_matches} targets")
-        # Show first match as example
-        first_match = targets_df[partial_match]['variable_desc'].iloc[0]
-        print(f"    Example: '{first_match}'")
-
-# Now do the actual filtering with case-insensitive matching
-# But also check for national-level targets specifically
-keep_mask = pd.Series(True, index=targets_df.index)
-
-# First, handle CD/state-level exclusions (existing patterns)
-cd_level_exclusions = [v for v in variables_to_exclude if not v.endswith('_national')]
-for var_to_exclude in cd_level_exclusions:
-    # Case-insensitive partial matching for CD-level variables
-    partial_match = targets_df['variable_desc'].str.contains(var_to_exclude, na=False, regex=False, case=False)
-    keep_mask = keep_mask & ~partial_match
-
-# Then, handle national-level exclusions more precisely
-national_level_exclusions = [
-    'medical_expense_deduction_tax_unit_is_filer==1',  # 440% error
-    'interest_deduction_tax_unit_is_filer==1',  # 325% error
-    'qualified_business_income_deduction_tax_unit_is_filer==1',  # 146% error
-    'charitable_deduction_tax_unit_is_filer==1',  # 122% error
-    'alimony_expense_tax_unit_is_filer==1',  # 96% error
-    'person_count_aca_ptc>0',  # 114% error
-    'person_count_ssn_card_type=NONE',  # 62% error
-    'child_support_expense',  # 51% error
-    'health_insurance_premiums_without_medicare_part_b',  # 51% error
+    47, # Group 47: Tax Units rental_income>0 (436 targets across 436 geographies)
+    48, # Group 48: Tax Units salt>0 (436 targets across 436 geographies)
+    66, # Group 66: Qualified Business Income Deduction (436 targets across 436 geographies)
 ]
 
-# Remove only US-level targets for these problematic variables
-n_national_removed = 0
-for var_to_exclude in national_level_exclusions:
-    is_national = targets_df['geographic_id'] == 'US'
-    matches_var = targets_df['variable_desc'] == var_to_exclude
-    to_remove = is_national & matches_var
-    n_national_removed += to_remove.sum()
-    keep_mask = keep_mask & ~to_remove
-
-print(f"\nRemoving {n_national_removed} national-level targets with high errors")
-
-n_to_remove = (~keep_mask).sum()
-
-if n_to_remove > 0:
-    n_cd_removed = n_to_remove - n_national_removed
-    print(f"\nTotal targets removed: {n_to_remove} out of {len(targets_df)}")
-    print(f"  - CD/state-level targets removed: {n_cd_removed}")
-    print(f"  - National-level targets removed: {n_national_removed}")
-    
-    # Convert to numpy array for sparse matrix indexing
-    keep_mask_np = keep_mask.values
-    
-    # Filter targets and corresponding matrix rows
-    targets_df = targets_df[keep_mask].reset_index(drop=True)
-    X_sparse = X_sparse[keep_mask_np, :]
-    
-    print(f"After filtering: {len(targets_df)} targets, matrix shape: {X_sparse.shape}")
-else:
-    print("\nNo targets matched the exclusion list - checking why...")
-    # Debug: show unique variable_desc values that contain our keywords
-    unique_vars = targets_df['variable_desc'].unique()
-    
-    print("\nLooking for variables containing 'rental':")
-    rental_vars = [v for v in unique_vars if 'rental' in v.lower()]
-    print(f"  Found: {rental_vars[:5]}")
-    
-    print("\nLooking for variables containing 'salt':")
-    salt_vars = [v for v in unique_vars if 'salt' in v.lower()]
-    print(f"  Found: {salt_vars[:5]}")
-
-# Uprating now happens during matrix building (see metrics_matrix_geo_stacking_sparse.py)
-# Each target is uprated when formatted, using factors from PolicyEngine parameters
+targets_df, X_sparse, target_groups = filter_target_groups(
+    targets_df, X_sparse, target_groups, groups_to_exclude
+)
 
 # Extract target values after filtering
 targets = targets_df.value.values
@@ -348,6 +157,11 @@ print(f"- Memory savings: {100*(1 - (X_sparse.data.nbytes + X_sparse.indices.nby
 # Create export directory
 export_dir = os.path.expanduser("~/Downloads/cd_calibration_data")
 os.makedirs(export_dir, exist_ok=True)
+
+# Save target groups
+target_groups_path = os.path.join(export_dir, "cd_target_groups.npy")
+np.save(target_groups_path, target_groups)
+print(f"\nExported target groups to: {target_groups_path}")
 
 # Save sparse matrix
 sparse_path = os.path.join(export_dir, "cd_matrix_sparse.npz")
@@ -458,22 +272,6 @@ print(f"Exported keep probabilities to: {keep_probs_path}")
 init_weights_path = os.path.join(export_dir, "cd_init_weights.npy")
 np.save(init_weights_path, init_weights)
 print(f"Exported initial weights to: {init_weights_path}")
-
-# ============================================================================
-# STEP 5: CREATE TARGET GROUPS
-# ============================================================================
-
-target_groups, group_info = create_target_groups(targets_df)
-
-print(f"\nAutomatic target grouping:")
-print(f"Total groups: {len(np.unique(target_groups))}")
-for info in group_info:
-    print(f"  {info}")
-
-# Save target groups
-target_groups_path = os.path.join(export_dir, "cd_target_groups.npy")
-np.save(target_groups_path, target_groups)
-print(f"\nExported target groups to: {target_groups_path}")
 
 # ============================================================================
 # STEP 6: CREATE EXPLORATION PACKAGE (BEFORE CALIBRATION)

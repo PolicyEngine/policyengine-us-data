@@ -25,7 +25,7 @@ from l0.calibration import SparseCalibrationWeights
 from policyengine_us import Microsimulation
 from policyengine_us_data.datasets.cps.geo_stacking_calibration.metrics_matrix_geo_stacking_sparse import SparseGeoStackingMatrixBuilder
 from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
-    create_target_groups, download_from_huggingface, analyze_target_groups, filter_target_groups
+    create_target_groups, download_from_huggingface, filter_target_groups
 )
 
 # ============================================================================
@@ -108,28 +108,42 @@ print(f"Total groups: {len(np.unique(target_groups))}")
 for info in group_info:
     print(f"  {info}")
 
-# TODO: why do I need this when I have group_info above?
-# groups_df = analyze_target_groups(targets_df, target_groups, max_rows=150)
-
 # After reviewing the printout above, specify group IDs to exclude
 # Example: groups_to_exclude = [5, 12, 18, 23, 27]
 groups_to_exclude = [
+    # National --
     0, # Group 0: National alimony_expense (1 target, value=12,610,232,250)
+    1, # Group 1: National alimony_income (1 target, value=12,610,232,250)
     2, # Group 2: National charitable_deduction (1 target, value=63,343,136,630) 
     3, # Group 3: National child_support_expense (1 target, value=32,010,589,559) - 51% error
+    4, # Group 4: National child_support_received (1 target, value=32,010,589,559)
     5, # Group 5: National eitc (1 target, value=64,440,000,000) 
     8, # Group 8: National interest_deduction (1 target, value=24,056,443,062) 
+    12, # Group 12: National net_worth (1 target, value=155,202,858,467,594)',
     10, # Group 10: National medical_expense_deduction (1 target, value=11,058,203,666)
     15, # Group 15: National person_count (Undocumented population) (1 target, value=19,529,896)
+    17, # Group 17: National person_count_ssn_card_type=NONE (1 target, value=12,200,000)',
     18, # Group 18: National qualified_business_income_deduction (1 target, value=61,208,127,308)
+    21, # Group 21: National salt_deduction (1 target, value=20,609,969,587)'
 
-    # TODO: what is going on with 41 and 42? gains vs gain?  Go back into the IRS SOI file and see what it is
-    41, #Group 41: Tax Units net_capital_gain>0 (436 targets across 436 geographies)
-    42, #Group 42: Tax Units net_capital_gains>0 (436 targets across 436 geographies)
+    # IRS variables at the cd level ---
 
-    47, # Group 47: Tax Units rental_income>0 (436 targets across 436 geographies)
-    48, # Group 48: Tax Units salt>0 (436 targets across 436 geographies)
-    66, # Group 66: Qualified Business Income Deduction (436 targets across 436 geographies)
+    34, # Group 34: Tax Units eitc_child_count==0 (436 targets across 436 geographies)',
+    35, # Group 35: Tax Units eitc_child_count==1 (436 targets across 436 geographies)',
+    36, # Group 36: Tax Units eitc_child_count==2 (436 targets across 436 geographies)',
+    37, # Group 37: Tax Units eitc_child_count>2 (436 targets across 436 geographies)',
+
+    31, # 'Group 31: Person Income Distribution (3924 targets across 436 geographies)'
+    56, # 'Group 56: AGI Total Amount (436 targets across 436 geographies)',
+
+    42, # Group 42: Tax Units qualified_business_income_deduction>0 (436 targets across 436 geographies)
+    64, # Group 64: Qualified Business Income Deduction (436 targets across 436 geographies)
+
+    46, # Group 46: Tax Units rental_income>0 (436 targets across 436 geographies)
+    68, # Group 68: Rental Income (436 targets across 436 geographies)
+
+    47, # Group 47: Tax Units salt>0 (436 targets across 436 geographies)
+    69, # Group 69: Salt (436 targets across 436 geographies)
 ]
 
 targets_df, X_sparse, target_groups = filter_target_groups(

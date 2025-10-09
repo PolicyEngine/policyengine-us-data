@@ -214,7 +214,7 @@ def create_sparse_cd_stacked_dataset(
             continue
         
         # Get the household IDs for active households
-        active_household_ids = set(household_ids[idx] for idx in active_household_indices)
+        active_household_ids = set(household_ids[hh_idx] for hh_idx in active_household_indices)
         
         # Create weight vector with weights for this CD
         cd_weights = np.zeros(n_households_orig)
@@ -276,23 +276,20 @@ def create_sparse_cd_stacked_dataset(
         # Update county variables if we have mappings
         if cd_county_mappings:
             # For each household, assign a county based on CD proportions
-            n_households_in_cd = len(df_filtered)
-            county_assignments = []
-            
-            for _ in range(n_households_in_cd):
+            unique_hh_ids = df_filtered[hh_id_col].unique()
+            hh_to_county = {}
+
+            for hh_id in unique_hh_ids:
                 county_fips = get_county_for_cd(cd_geoid, cd_county_mappings)
                 if county_fips:
-                    county_assignments.append(county_fips)
+                    hh_to_county[hh_id] = county_fips
                 else:
-                    # Default to empty if no mapping found
-                    county_assignments.append("")
-            
-            if county_assignments and county_assignments[0]:  # If we have valid assignments
-                df_filtered[county_fips_col] = county_assignments
-                # For now, set county and county_str to the FIPS code
-                # In production, you'd map these to proper County enum values
-                df_filtered[county_col] = County.UNKNOWN  # Would need proper mapping
-                df_filtered[county_str_col] = county_assignments
+                    hh_to_county[hh_id] = ""
+
+            if hh_to_county and any(hh_to_county.values()):
+                df_filtered[county_fips_col] = df_filtered[hh_id_col].map(hh_to_county)
+                df_filtered[county_col] = County.UNKNOWN
+                df_filtered[county_str_col] = df_filtered[hh_id_col].map(hh_to_county)
         
         cd_dfs.append(df_filtered)
         total_kept_households += len(df_filtered[hh_id_col].unique())
@@ -509,8 +506,7 @@ if __name__ == "__main__":
     # 2. the weights from a model fitting run
     #dataset_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/stratified_10k.h5"
     dataset_path = "/home/baogorek/devl/stratified_10k.h5"
-    w = np.load("w_cd.npy")
-    
+    w = np.load("w_cd.npy")  # Note that the dim of the weights does not depend on # of targets
    
     # Get all CD GEOIDs from database (must match calibration order)
     #db_path = download_from_huggingface('policy_data.db')
@@ -561,10 +557,9 @@ if __name__ == "__main__":
     
     # Loop through states and create datasets
     for state_fips, state_code in STATE_CODES.items():
-        #state_fips = 36 
-        #state_code = 'NY'
-        state_fips_str = str(state_fips).zfill(2) if state_fips >= 10 else str(state_fips)
-        cd_subset = [cd for cd in cds_to_calibrate if cd[:len(state_fips_str)] == state_fips_str]
+        state_fips = 6 
+        state_code = 'CA'
+        cd_subset = [cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips]
         
         output_path = f"./temp/{state_code}.h5"
         output_file = create_sparse_cd_stacked_dataset(

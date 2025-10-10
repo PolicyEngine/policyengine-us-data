@@ -1,0 +1,9 @@
+- bump: minor
+  changes:
+    added:
+    - Targets database infrastructure for geo-stacking calibration
+    - Congressional district level estimation capability
+    - Geo-stacking calibration utilities and modeling functionality
+    - GEO_STACKING environment variable for specialized data pipeline
+    - Hierarchical validation for calibration targets
+    - Holdout validation framework for geo-stacking models

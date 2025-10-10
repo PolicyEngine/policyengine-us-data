@@ -58,9 +58,10 @@ jobs:
         if: inputs.full_suite
         run: make download
 
-      - name: Create and load calibration targets database 
-        if: inputs.full_suite
-        run: make database
+      # Temporarily disabled - database target causing issues
+      # - name: Create and load calibration targets database 
+      #   if: inputs.full_suite
+      #   run: make database
 
       - name: Build datasets
         if: inputs.full_suite

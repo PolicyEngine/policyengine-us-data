@@ -1,23 +1,31 @@
 import pytest
 
 
-@pytest.mark.parametrize("year", [2022])
+@pytest.mark.parametrize("year", [2022, 2024])
 def test_census_cps_generates(year: int):
-    from policyengine_us_data.datasets.cps.census_cps import CensusCPS_2022
+    from policyengine_us_data.datasets.cps.census_cps import (
+        CensusCPS_2022,
+        CensusCPS_2024,
+    )
 
     dataset_by_year = {
         2022: CensusCPS_2022,
+        2024: CensusCPS_2024,
     }
 
     dataset_by_year[year](require=True)
 
 
-@pytest.mark.parametrize("year", [2022])
+@pytest.mark.parametrize("year", [2022, 2024])
 def test_census_cps_has_all_tables(year: int):
-    from policyengine_us_data.datasets.cps.census_cps import CensusCPS_2022
+    from policyengine_us_data.datasets.cps.census_cps import (
+        CensusCPS_2022,
+        CensusCPS_2024,
+    )
 
     dataset_by_year = {
         2022: CensusCPS_2022,
+        2024: CensusCPS_2024,
     }
 
     dataset = dataset_by_year[year](require=True)

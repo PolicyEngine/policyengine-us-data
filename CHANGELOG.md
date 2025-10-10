@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.46.0] - 2025-09-10 20:30:41
+
+### Added
+
+- Support for 2024 CPS ASEC data (March 2024 survey)
+- CensusCPS_2024 class to download raw 2024 ASEC data
+- CPS_2024 class using actual 2024 data instead of extrapolation
+- CPS_2025 class with extrapolation from 2024 data
+- DOCS_FOLDER constant to storage module for cleaner file paths
+- Tests for CPS 2024 and 2025 datasets
+
+### Changed
+
+- Fixed __file__ NameError in interactive Python environments
+- Updated generate method to handle 2025 extrapolation from 2024
+
 ## [1.45.0] - 2025-08-20 18:44:07
 
 ### Added
@@ -701,6 +717,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.46.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.45.0...1.46.0
 [1.45.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.44.2...1.45.0
 [1.44.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.44.1...1.44.2
 [1.44.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.44.0...1.44.1

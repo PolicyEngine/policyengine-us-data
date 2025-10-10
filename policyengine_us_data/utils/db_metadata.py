@@ -23,7 +23,7 @@ def get_or_create_source(
 ) -> Source:
     """
     Get an existing source or create a new one.
-    
+
     Args:
         session: Database session
         name: Name of the data source
@@ -32,7 +32,7 @@ def get_or_create_source(
         description: Detailed description
         url: Reference URL
         notes: Additional notes
-        
+
     Returns:
         Source object with source_id populated
     """
@@ -40,9 +40,9 @@ def get_or_create_source(
     query = select(Source).where(Source.name == name)
     if vintage:
         query = query.where(Source.vintage == vintage)
-    
+
     source = session.exec(query).first()
-    
+
     if not source:
         # Create new source
         source = Source(
@@ -55,7 +55,7 @@ def get_or_create_source(
         )
         session.add(source)
         session.flush()  # Get the auto-generated ID
-    
+
     return source
 
 
@@ -71,7 +71,7 @@ def get_or_create_variable_group(
 ) -> VariableGroup:
     """
     Get an existing variable group or create a new one.
-    
+
     Args:
         session: Database session
         name: Unique name of the variable group
@@ -81,14 +81,14 @@ def get_or_create_variable_group(
         aggregation_method: How to aggregate (sum, weighted_avg, etc.)
         display_order: Order for display
         description: Description of the group
-        
+
     Returns:
         VariableGroup object with group_id populated
     """
     group = session.exec(
         select(VariableGroup).where(VariableGroup.name == name)
     ).first()
-    
+
     if not group:
         group = VariableGroup(
             name=name,
@@ -101,7 +101,7 @@ def get_or_create_variable_group(
         )
         session.add(group)
         session.flush()  # Get the auto-generated ID
-    
+
     return group
 
 
@@ -117,7 +117,7 @@ def get_or_create_variable_metadata(
 ) -> VariableMetadata:
     """
     Get existing variable metadata or create new.
-    
+
     Args:
         session: Database session
         variable: PolicyEngine variable name
@@ -127,14 +127,14 @@ def get_or_create_variable_metadata(
         units: Units of measurement
         is_primary: Whether this is a primary variable
         notes: Additional notes
-        
+
     Returns:
         VariableMetadata object
     """
     metadata = session.exec(
         select(VariableMetadata).where(VariableMetadata.variable == variable)
     ).first()
-    
+
     if not metadata:
         metadata = VariableMetadata(
             variable=variable,
@@ -147,5 +147,5 @@ def get_or_create_variable_metadata(
         )
         session.add(metadata)
         session.flush()
-    
+
     return metadata

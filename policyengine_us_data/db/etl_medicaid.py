@@ -105,9 +105,9 @@ def load_medicaid_data(long_state, long_cd, year):
             vintage=f"{year} Final Report",
             description="Medicaid Transformed MSIS administrative enrollment data",
             url="https://data.medicaid.gov/",
-            notes="State-level Medicaid enrollment from administrative records"
+            notes="State-level Medicaid enrollment from administrative records",
         )
-        
+
         survey_source = get_or_create_source(
             session,
             name="Census ACS Table S2704",
@@ -115,9 +115,9 @@ def load_medicaid_data(long_state, long_cd, year):
             vintage=f"{year} ACS 1-year estimates",
             description="American Community Survey health insurance coverage data",
             url="https://data.census.gov/",
-            notes="Congressional district level Medicaid coverage from ACS"
+            notes="Congressional district level Medicaid coverage from ACS",
         )
-        
+
         # Get or create Medicaid variable group
         medicaid_group = get_or_create_variable_group(
             session,
@@ -127,9 +127,9 @@ def load_medicaid_data(long_state, long_cd, year):
             is_exclusive=False,
             aggregation_method="sum",
             display_order=3,
-            description="Medicaid enrollment and spending"
+            description="Medicaid enrollment and spending",
         )
-        
+
         # Create variable metadata
         # Note: The actual target variable used is "person_count" with medicaid_enrolled==True constraint
         # This metadata entry is kept for consistency with the actual variable being used
@@ -140,12 +140,12 @@ def load_medicaid_data(long_state, long_cd, year):
             display_name="Medicaid Enrollment",
             display_order=1,
             units="count",
-            notes="Number of people enrolled in Medicaid (person_count with medicaid_enrolled==True)"
+            notes="Number of people enrolled in Medicaid (person_count with medicaid_enrolled==True)",
         )
-        
+
         # Fetch existing geographic strata
         geo_strata = get_geographic_strata(session)
-        
+
         # National ----------------
         # Create a Medicaid stratum as child of the national geographic stratum
         nat_stratum = Stratum(
@@ -164,17 +164,20 @@ def load_medicaid_data(long_state, long_cd, year):
 
         session.add(nat_stratum)
         session.flush()
-        medicaid_stratum_lookup = {"national": nat_stratum.stratum_id, "state": {}}
+        medicaid_stratum_lookup = {
+            "national": nat_stratum.stratum_id,
+            "state": {},
+        }
 
         # State -------------------
         for _, row in long_state.iterrows():
             # Parse the UCGID to get state_fips
-            geo_info = parse_ucgid(row['ucgid_str'])
+            geo_info = parse_ucgid(row["ucgid_str"])
             state_fips = geo_info["state_fips"]
-            
+
             # Get the parent geographic stratum
             parent_stratum_id = geo_strata["state"][state_fips]
-            
+
             note = f"State FIPS {state_fips} Medicaid Enrolled"
 
             new_stratum = Stratum(
@@ -205,17 +208,19 @@ def load_medicaid_data(long_state, long_cd, year):
             )
             session.add(new_stratum)
             session.flush()
-            medicaid_stratum_lookup["state"][state_fips] = new_stratum.stratum_id
+            medicaid_stratum_lookup["state"][
+                state_fips
+            ] = new_stratum.stratum_id
 
         # District -------------------
         for _, row in long_cd.iterrows():
             # Parse the UCGID to get district info
-            geo_info = parse_ucgid(row['ucgid_str'])
+            geo_info = parse_ucgid(row["ucgid_str"])
             cd_geoid = geo_info["congressional_district_geoid"]
-            
+
             # Get the parent geographic stratum
             parent_stratum_id = geo_strata["district"][cd_geoid]
-            
+
             note = f"Congressional District {cd_geoid} Medicaid Enrolled"
 
             new_stratum = Stratum(

@@ -168,9 +168,9 @@ def load_administrative_snap_data(df_states, year):
             vintage=f"FY {year}",
             description="SNAP administrative data from USDA Food and Nutrition Service",
             url="https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
-            notes="State-level administrative totals for households and costs"
+            notes="State-level administrative totals for households and costs",
         )
-        
+
         # Get or create the SNAP variable group
         snap_group = get_or_create_variable_group(
             session,
@@ -180,9 +180,9 @@ def load_administrative_snap_data(df_states, year):
             is_exclusive=False,
             aggregation_method="sum",
             display_order=2,
-            description="SNAP (food stamps) recipient counts and benefits"
+            description="SNAP (food stamps) recipient counts and benefits",
         )
-        
+
         # Get or create variable metadata
         get_or_create_variable_metadata(
             session,
@@ -191,9 +191,9 @@ def load_administrative_snap_data(df_states, year):
             display_name="SNAP Benefits",
             display_order=1,
             units="dollars",
-            notes="Annual SNAP benefit costs"
+            notes="Annual SNAP benefit costs",
         )
-        
+
         get_or_create_variable_metadata(
             session,
             variable="household_count",
@@ -201,12 +201,12 @@ def load_administrative_snap_data(df_states, year):
             display_name="SNAP Household Count",
             display_order=2,
             units="count",
-            notes="Number of households receiving SNAP"
+            notes="Number of households receiving SNAP",
         )
-        
+
         # Fetch existing geographic strata
         geo_strata = get_geographic_strata(session)
-        
+
         # National ----------------
         # Create a SNAP stratum as child of the national geographic stratum
         nat_stratum = Stratum(
@@ -231,12 +231,12 @@ def load_administrative_snap_data(df_states, year):
         # State -------------------
         for _, row in df_states.iterrows():
             # Parse the UCGID to get state_fips
-            geo_info = parse_ucgid(row['ucgid_str'])
+            geo_info = parse_ucgid(row["ucgid_str"])
             state_fips = geo_info["state_fips"]
-            
+
             # Get the parent geographic stratum
             parent_stratum_id = geo_strata["state"][state_fips]
-            
+
             note = f"State FIPS {state_fips} Received SNAP Benefits"
 
             new_stratum = Stratum(
@@ -285,8 +285,8 @@ def load_administrative_snap_data(df_states, year):
 
 def load_survey_snap_data(survey_df, year, snap_stratum_lookup):
     """Use an already defined snap_stratum_lookup to load the survey SNAP data
-    
-    Note: snap_stratum_lookup should contain the SNAP strata created by 
+
+    Note: snap_stratum_lookup should contain the SNAP strata created by
     load_administrative_snap_data, so we don't recreate them.
     """
 
@@ -302,24 +302,24 @@ def load_survey_snap_data(survey_df, year, snap_stratum_lookup):
             vintage=f"{year} ACS 5-year estimates",
             description="American Community Survey SNAP/Food Stamps data",
             url="https://data.census.gov/",
-            notes="Congressional district level SNAP household counts from ACS"
+            notes="Congressional district level SNAP household counts from ACS",
         )
-        
+
         # Fetch existing geographic strata
         geo_strata = get_geographic_strata(session)
-        
+
         # Create new strata for districts whose households recieve SNAP benefits
         district_df = survey_df.copy()
         for _, row in district_df.iterrows():
             # Parse the UCGID to get district info
-            geo_info = parse_ucgid(row['ucgid_str'])
+            geo_info = parse_ucgid(row["ucgid_str"])
             cd_geoid = geo_info["congressional_district_geoid"]
-            
+
             # Get the parent geographic stratum
             parent_stratum_id = geo_strata["district"][cd_geoid]
-            
+
             note = f"Congressional District {cd_geoid} Received SNAP Benefits"
-            
+
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
                 stratum_group_id=4,  # SNAP strata group

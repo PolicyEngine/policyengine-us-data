@@ -119,9 +119,9 @@ def load_age_data(df_long, geo, year):
             vintage=f"{year} ACS 5-year estimates",
             description="American Community Survey Age and Sex demographics",
             url="https://data.census.gov/",
-            notes="Age distribution in 18 brackets across all geographic levels"
+            notes="Age distribution in 18 brackets across all geographic levels",
         )
-        
+
         # Get or create the age distribution variable group
         age_group = get_or_create_variable_group(
             session,
@@ -131,9 +131,9 @@ def load_age_data(df_long, geo, year):
             is_exclusive=True,
             aggregation_method="sum",
             display_order=1,
-            description="Age distribution in 18 brackets (0-4, 5-9, ..., 85+)"
+            description="Age distribution in 18 brackets (0-4, 5-9, ..., 85+)",
         )
-        
+
         # Create variable metadata for person_count
         get_or_create_variable_metadata(
             session,
@@ -142,16 +142,16 @@ def load_age_data(df_long, geo, year):
             display_name="Population Count",
             display_order=1,
             units="count",
-            notes="Number of people in age bracket"
+            notes="Number of people in age bracket",
         )
-        
+
         # Fetch existing geographic strata
         geo_strata = get_geographic_strata(session)
-        
+
         for _, row in df_long.iterrows():
             # Parse the UCGID to determine geographic info
             geo_info = parse_ucgid(row["ucgid_str"])
-            
+
             # Determine parent stratum based on geographic level
             if geo_info["type"] == "national":
                 parent_stratum_id = geo_strata["national"]
@@ -163,7 +163,7 @@ def load_age_data(df_long, geo, year):
                 ]
             else:
                 raise ValueError(f"Unknown geography type: {geo_info['type']}")
-            
+
             # Create the age stratum as a child of the geographic stratum
             # Build a proper geographic identifier for the notes
             if geo_info["type"] == "national":
@@ -174,28 +174,28 @@ def load_age_data(df_long, geo, year):
                 geo_desc = f"CD {geo_info['congressional_district_geoid']}"
             else:
                 geo_desc = "Unknown"
-            
+
             note = f"Age: {row['age_range']}, {geo_desc}"
-            
+
             # Check if this age stratum already exists
             existing_stratum = session.exec(
                 select(Stratum).where(
                     Stratum.parent_stratum_id == parent_stratum_id,
                     Stratum.stratum_group_id == 2,  # Age strata group
-                    Stratum.notes == note
+                    Stratum.notes == note,
                 )
             ).first()
-            
+
             if existing_stratum:
                 # Update the existing stratum's target instead of creating a duplicate
                 existing_target = session.exec(
                     select(Target).where(
                         Target.stratum_id == existing_stratum.stratum_id,
                         Target.variable == row["variable"],
-                        Target.period == year
+                        Target.period == year,
                     )
                 ).first()
-                
+
                 if existing_target:
                     # Update existing target
                     existing_target.value = row["value"]
@@ -211,7 +211,7 @@ def load_age_data(df_long, geo, year):
                     )
                     session.add(new_target)
                 continue  # Skip creating a new stratum
-            
+
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
                 stratum_group_id=2,  # Age strata group
@@ -220,7 +220,7 @@ def load_age_data(df_long, geo, year):
 
             # Create constraints including both age and geographic for uniqueness
             new_stratum.constraints_rel = []
-            
+
             # Add geographic constraints based on level
             if geo_info["type"] == "state":
                 new_stratum.constraints_rel.append(
@@ -239,7 +239,7 @@ def load_age_data(df_long, geo, year):
                     )
                 )
             # For national level, no geographic constraint needed
-            
+
             # Add age constraints
             new_stratum.constraints_rel.append(
                 StratumConstraint(

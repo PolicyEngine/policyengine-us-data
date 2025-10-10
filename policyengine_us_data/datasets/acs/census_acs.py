@@ -210,7 +210,7 @@ class CensusACS_2022(CensusACS):
 
 # TODO: 2023 ACS obviously exists, but this generation script is not
 # able to extract it, potentially due to changes
-#class CensusACS_2023(CensusACS):
+# class CensusACS_2023(CensusACS):
 #    label = "Census ACS (2023)"
 #    name = "census_acs_2023.h5"
 #    file_path = STORAGE_FOLDER / "census_acs_2023.h5"

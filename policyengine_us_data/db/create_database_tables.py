@@ -33,11 +33,12 @@ USVariable = Enum(
 
 class ConstraintOperation(str, Enum):
     """Allowed operations for stratum constraints."""
+
     EQ = "=="  # Equals
     NE = "!="  # Not equals
-    GT = ">"   # Greater than
+    GT = ">"  # Greater than
     GE = ">="  # Greater than or equal
-    LT = "<"   # Less than
+    LT = "<"  # Less than
     LE = "<="  # Less than or equal
 
 
@@ -116,7 +117,7 @@ class StratumConstraint(SQLModel, table=True):
     )
 
     strata_rel: Stratum = Relationship(back_populates="constraints_rel")
-    
+
     @validator("operation")
     def validate_operation(cls, v):
         """Validate that the operation is one of the allowed values."""
@@ -158,9 +159,9 @@ class Target(SQLModel, table=True):
         default=None, description="The numerical value of the target variable."
     )
     source_id: Optional[int] = Field(
-        default=None, 
+        default=None,
         foreign_key="sources.source_id",
-        description="Identifier for the data source."
+        description="Identifier for the data source.",
     )
     active: bool = Field(
         default=True,
@@ -181,134 +182,128 @@ class Target(SQLModel, table=True):
 
 class SourceType(str, Enum):
     """Types of data sources."""
+
     ADMINISTRATIVE = "administrative"
     SURVEY = "survey"
     SYNTHETIC = "synthetic"
     DERIVED = "derived"
-    HARDCODED = "hardcoded"  # Values from various sources, hardcoded into the system
+    HARDCODED = (
+        "hardcoded"  # Values from various sources, hardcoded into the system
+    )
 
 
 class Source(SQLModel, table=True):
     """Metadata about data sources."""
-    
+
     __tablename__ = "sources"
     __table_args__ = (
         UniqueConstraint("name", "vintage", name="uq_source_name_vintage"),
     )
-    
+
     source_id: Optional[int] = Field(
         default=None,
         primary_key=True,
-        description="Unique identifier for the data source."
+        description="Unique identifier for the data source.",
     )
     name: str = Field(
         description="Name of the data source (e.g., 'IRS SOI', 'Census ACS').",
-        index=True
+        index=True,
     )
     type: SourceType = Field(
         description="Type of data source (administrative, survey, etc.)."
     )
     description: Optional[str] = Field(
-        default=None,
-        description="Detailed description of the data source."
+        default=None, description="Detailed description of the data source."
     )
     url: Optional[str] = Field(
         default=None,
-        description="URL or reference to the original data source."
+        description="URL or reference to the original data source.",
     )
     vintage: Optional[str] = Field(
-        default=None,
-        description="Version or release date of the data source."
+        default=None, description="Version or release date of the data source."
     )
     notes: Optional[str] = Field(
-        default=None,
-        description="Additional notes about the source."
+        default=None, description="Additional notes about the source."
     )
 
 
 class VariableGroup(SQLModel, table=True):
     """Groups of related variables that form logical units."""
-    
+
     __tablename__ = "variable_groups"
-    
+
     group_id: Optional[int] = Field(
         default=None,
         primary_key=True,
-        description="Unique identifier for the variable group."
+        description="Unique identifier for the variable group.",
     )
     name: str = Field(
         description="Name of the variable group (e.g., 'age_distribution', 'snap_recipients').",
         index=True,
-        unique=True
+        unique=True,
     )
     category: str = Field(
         description="High-level category (e.g., 'demographic', 'benefit', 'tax', 'income').",
-        index=True
+        index=True,
     )
     is_histogram: bool = Field(
         default=False,
-        description="Whether this group represents a histogram/distribution."
+        description="Whether this group represents a histogram/distribution.",
     )
     is_exclusive: bool = Field(
         default=False,
-        description="Whether variables in this group are mutually exclusive."
+        description="Whether variables in this group are mutually exclusive.",
     )
     aggregation_method: Optional[str] = Field(
         default=None,
-        description="How to aggregate variables in this group (sum, weighted_avg, etc.)."
+        description="How to aggregate variables in this group (sum, weighted_avg, etc.).",
     )
     display_order: Optional[int] = Field(
         default=None,
-        description="Order for displaying this group in matrices/reports."
+        description="Order for displaying this group in matrices/reports.",
     )
     description: Optional[str] = Field(
-        default=None,
-        description="Description of what this group represents."
+        default=None, description="Description of what this group represents."
     )
 
 
 class VariableMetadata(SQLModel, table=True):
     """Maps PolicyEngine variables to their groups and provides metadata."""
-    
+
     __tablename__ = "variable_metadata"
     __table_args__ = (
         UniqueConstraint("variable", name="uq_variable_metadata_variable"),
     )
-    
-    metadata_id: Optional[int] = Field(
-        default=None,
-        primary_key=True
-    )
+
+    metadata_id: Optional[int] = Field(default=None, primary_key=True)
     variable: str = Field(
-        description="PolicyEngine variable name.",
-        index=True
+        description="PolicyEngine variable name.", index=True
     )
     group_id: Optional[int] = Field(
         default=None,
         foreign_key="variable_groups.group_id",
-        description="ID of the variable group this belongs to."
+        description="ID of the variable group this belongs to.",
     )
     display_name: Optional[str] = Field(
         default=None,
-        description="Human-readable name for display in matrices."
+        description="Human-readable name for display in matrices.",
     )
     display_order: Optional[int] = Field(
         default=None,
-        description="Order within its group for display purposes."
+        description="Order within its group for display purposes.",
     )
     units: Optional[str] = Field(
         default=None,
-        description="Units of measurement (dollars, count, percent, etc.)."
+        description="Units of measurement (dollars, count, percent, etc.).",
     )
     is_primary: bool = Field(
         default=True,
-        description="Whether this is a primary variable vs derived/auxiliary."
+        description="Whether this is a primary variable vs derived/auxiliary.",
     )
     notes: Optional[str] = Field(
-        default=None,
-        description="Additional notes about the variable."
+        default=None, description="Additional notes about the variable."
     )
-    
+
     group_rel: Optional[VariableGroup] = Relationship()
 
 
@@ -327,8 +322,12 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
 
     if not target.constraints_rel:  # Handle cases with no constraints
         # Include parent_stratum_id to make hash unique per parent
-        parent_str = str(target.parent_stratum_id) if target.parent_stratum_id else ""
-        target.definition_hash = hashlib.sha256(parent_str.encode("utf-8")).hexdigest()
+        parent_str = (
+            str(target.parent_stratum_id) if target.parent_stratum_id else ""
+        )
+        target.definition_hash = hashlib.sha256(
+            parent_str.encode("utf-8")
+        ).hexdigest()
         return
 
     constraint_strings = [
@@ -338,7 +337,9 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
 
     constraint_strings.sort()
     # Include parent_stratum_id in the hash to ensure uniqueness per parent
-    parent_str = str(target.parent_stratum_id) if target.parent_stratum_id else ""
+    parent_str = (
+        str(target.parent_stratum_id) if target.parent_stratum_id else ""
+    )
     fingerprint_text = parent_str + "\n" + "\n".join(constraint_strings)
     h = hashlib.sha256(fingerprint_text.encode("utf-8"))
     target.definition_hash = h.hexdigest()

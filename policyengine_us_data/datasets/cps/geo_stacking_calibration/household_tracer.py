@@ -546,7 +546,7 @@ class HouseholdTracer:
         }
 
 
-def main():
+def matrix_tracer():
     """Demo the household tracer."""
 
     # Setup - match calibrate_cds_sparse.py configuration exactly
@@ -773,5 +773,81 @@ def main():
     print(f"\nAudit summary: {audit['summary']}")
 
 
-if __name__ == "__main__":
-    demo_tracer()
+def h5_tracer():
+    import pandas as pd
+    from policyengine_us import Microsimulation
+    
+    # --- 1. Setup: Load simulations and mapping file ---
+    
+    # Paths to the datasets and mapping file
+    new_dataset_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/datasets/cps/geo_stacking_calibration/temp/RI.h5"
+    original_dataset_path = "/home/baogorek/devl/stratified_10k.h5"
+    mapping_file_path = "./temp/RI_household_mapping.csv"
+    
+    # Initialize the two microsimulations
+    sim_new = Microsimulation(dataset=new_dataset_path)
+    sim_orig = Microsimulation(dataset=original_dataset_path)
+    
+    # Load the household ID mapping file
+    mapping_df = pd.read_csv(mapping_file_path)
+    
+    # --- 2. Identify households for comparison ---
+    
+    # Specify the household ID from the NEW dataset to test
+    test_hh_new = 2741169
+    
+    # Find the corresponding ORIGINAL household ID using the mapping file
+    test_hh_orig = mapping_df.loc[
+        mapping_df.new_household_id == test_hh_new
+    ].original_household_id.values[0]
+    
+    print(f"Comparing new household '{test_hh_new}' with original household '{test_hh_orig}'\n")
+    
+    # --- 3. Compare household-level data ---
+    
+    # Define the variables to analyze at the household level
+    household_vars = [
+        'household_id', 
+        'state_fips', 
+        'congressional_district_geoid', 
+        'adjusted_gross_income'
+    ]
+    
+    # Calculate dataframes for both simulations
+    df_new = sim_new.calculate_dataframe(household_vars, map_to='household')
+    df_orig = sim_orig.calculate_dataframe(household_vars, map_to='household')
+    
+    # Filter for the specific households
+    household_new_data = df_new.loc[df_new.household_id == test_hh_new]
+    household_orig_data = df_orig.loc[df_orig.household_id == test_hh_orig]
+    
+    print("--- Household-Level Comparison ---")
+    print("\nData from New Simulation (RI.h5):")
+    print(household_new_data)
+    print("\nData from Original Simulation (stratified_10k.h5):")
+    print(household_orig_data)
+    
+    
+    # --- 4. Compare person-level data ---
+    
+    # A helper function to create a person-level dataframe from a simulation
+    def get_person_df(simulation):
+        return pd.DataFrame({
+            'household_id': simulation.calculate('household_id', map_to="person"),
+            'person_id': simulation.calculate('person_id', map_to="person"),
+            'age': simulation.calculate('age', map_to="person")
+        })
+    
+    # Get person-level dataframes
+    df_person_new = get_person_df(sim_new)
+    df_person_orig = get_person_df(sim_orig)
+    
+    # Filter for the members of the specific households
+    persons_new = df_person_new.loc[df_person_new.household_id == test_hh_new]
+    persons_orig = df_person_orig.loc[df_person_orig.household_id == test_hh_orig]
+    
+    print("\n\n--- Person-Level Comparison ---")
+    print("\nData from New Simulation (RI.h5):")
+    print(persons_new)
+    print("\nData from Original Simulation (stratified_10k.h5):")
+    print(persons_orig)

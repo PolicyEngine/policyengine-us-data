@@ -225,10 +225,9 @@ def transform_soi_data(raw_df):
             breakdown=None,
         ),
         dict(code="00900", name="self_employment_income", breakdown=None),
-        dict(code="01000", name="net_capital_gains", breakdown=None),
+        dict(code="01000", name="net_capital_gains", breakdown=None),  # Not to be confused with the always positive net_capital_gain
         dict(code="18500", name="real_estate_taxes", breakdown=None),
         dict(code="25870", name="rental_income", breakdown=None),
-        dict(code="01000", name="net_capital_gain", breakdown=None),
         dict(code="01400", name="taxable_ira_distributions", breakdown=None),
         dict(code="00300", name="taxable_interest_income", breakdown=None),
         dict(code="00400", name="tax_exempt_interest_income", breakdown=None),

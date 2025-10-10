@@ -15,7 +15,12 @@ from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 from policyengine_core.enums import Enum
 from sqlalchemy import create_engine, text
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import download_from_huggingface
+from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+    download_from_huggingface,
+    get_cd_index_mapping,
+    get_id_range_for_cd,
+    get_cd_from_id
+)
 from policyengine_us.variables.household.demographic.geographic.state_name import StateName
 from policyengine_us.variables.household.demographic.geographic.state_code import StateCode
 from policyengine_us.variables.household.demographic.geographic.county.county_enum import County
@@ -302,8 +307,8 @@ def create_sparse_cd_stacked_dataset(
     print(f"Combined DataFrame shape: {combined_df.shape}")
     
     # REINDEX ALL IDs TO PREVENT OVERFLOW AND HANDLE DUPLICATES
-    print("\nReindexing all entity IDs to handle duplicates and prevent overflow...")
-    
+    print("\nReindexing all entity IDs using 10k ranges per CD...")
+
     # Column names
     hh_id_col = f"household_id__{time_period}"
     person_id_col = f"person_id__{time_period}"
@@ -315,38 +320,96 @@ def create_sparse_cd_stacked_dataset(
     marital_unit_id_col = f"marital_unit_id__{time_period}"
     person_marital_unit_col = f"person_marital_unit_id__{time_period}"
     cd_geoid_col = f"congressional_district_geoid__{time_period}"
-    
+
+    # Cache the CD mapping to avoid thousands of database calls!
+    cd_to_index, _, _ = get_cd_index_mapping()
+
+    # Create household mapping for CSV export
+    household_mapping = []
+
     # First, create a unique row identifier to track relationships
     combined_df['_row_idx'] = range(len(combined_df))
-    
-    # Group by household ID to track which rows belong to same original household
-    hh_groups = combined_df.groupby(hh_id_col)['_row_idx'].apply(list).to_dict()
-    
-    # Create new unique household IDs (one per household, not per row!)
-    new_hh_id = 0
+
+    # Group by household ID AND congressional district to create unique household-CD pairs
+    hh_groups = combined_df.groupby([hh_id_col, cd_geoid_col])['_row_idx'].apply(list).to_dict()
+
+    # Assign new household IDs using 10k ranges per CD
     hh_row_to_new_id = {}
-    for old_hh_id, row_indices in hh_groups.items():
-        # All rows in the same household group get the SAME new ID
+    cd_hh_counters = {}  # Track how many households assigned per CD
+
+    for (old_hh_id, cd_geoid), row_indices in hh_groups.items():
+        # Calculate the ID range for this CD directly (avoiding function call)
+        cd_str = str(int(cd_geoid))
+        cd_idx = cd_to_index[cd_str]
+        start_id = cd_idx * 10_000
+        end_id = start_id + 9_999
+
+        # Get the next available ID in this CD's range
+        if cd_str not in cd_hh_counters:
+            cd_hh_counters[cd_str] = 0
+
+        new_hh_id = start_id + cd_hh_counters[cd_str]
+
+        # Check we haven't exceeded the range
+        if new_hh_id > end_id:
+            raise ValueError(f"CD {cd_str} exceeded its 10k household allocation")
+
+        # All rows in the same household-CD pair get the SAME new ID
         for row_idx in row_indices:
             hh_row_to_new_id[row_idx] = new_hh_id
-        new_hh_id += 1  # Increment AFTER assigning to all rows in household
-    
+
+        # Save the mapping
+        household_mapping.append({
+            'new_household_id': new_hh_id,
+            'original_household_id': int(old_hh_id),
+            'congressional_district': cd_str,
+            'state_fips': int(cd_str) // 100
+        })
+
+        cd_hh_counters[cd_str] += 1
+
     # Apply new household IDs based on row index
     combined_df['_new_hh_id'] = combined_df['_row_idx'].map(hh_row_to_new_id)
-    
+
     # Update household IDs
     combined_df[hh_id_col] = combined_df['_new_hh_id']
-    
+
     # Update person household references - since persons are already in their households,
     # person_household_id should just match the household_id of their row
     combined_df[person_hh_id_col] = combined_df['_new_hh_id']
-    
-    print(f"  Created {new_hh_id:,} unique households from duplicates")
-    
-    # Now handle other entities - they also need unique IDs
-    # Persons - each occurrence needs a unique ID
-    print("  Reindexing persons...")
-    combined_df[person_id_col] = range(len(combined_df))
+
+    # Report statistics
+    total_households = sum(cd_hh_counters.values())
+    print(f"  Created {total_households:,} unique households across {len(cd_hh_counters)} CDs")
+
+    # Now handle persons with same 10k range approach - VECTORIZED
+    print("  Reindexing persons using 10k ranges...")
+
+    # OFFSET PERSON IDs by 5 million to avoid collision with household IDs
+    PERSON_ID_OFFSET = 5_000_000
+
+    # Group by CD and assign IDs in bulk for each CD
+    for cd_geoid_val in combined_df[cd_geoid_col].unique():
+        cd_str = str(int(cd_geoid_val))
+
+        # Calculate the ID range for this CD directly
+        cd_idx = cd_to_index[cd_str]
+        start_id = cd_idx * 10_000 + PERSON_ID_OFFSET  # Add offset for persons
+        end_id = start_id + 9_999
+
+        # Get all rows for this CD
+        cd_mask = combined_df[cd_geoid_col] == cd_geoid_val
+        n_persons_in_cd = cd_mask.sum()
+
+        # Check we won't exceed the range
+        if n_persons_in_cd > (end_id - start_id + 1):
+            raise ValueError(f"CD {cd_str} has {n_persons_in_cd} persons, exceeds 10k allocation")
+
+        # Create sequential IDs for this CD
+        new_person_ids = np.arange(start_id, start_id + n_persons_in_cd)
+
+        # Assign all at once using loc
+        combined_df.loc[cd_mask, person_id_col] = new_person_ids
     
     # Tax units - preserve structure within households
     print("  Reindexing tax units...")
@@ -412,7 +475,7 @@ def create_sparse_cd_stacked_dataset(
     combined_df = combined_df.drop(columns=temp_cols)
     
     print(f"  Final persons: {len(combined_df):,}")
-    print(f"  Final households: {new_hh_id:,}")
+    print(f"  Final households: {total_households:,}")
     print(f"  Final tax units: {new_tax_id:,}")
     print(f"  Final SPM units: {new_spm_id:,}")
     print(f"  Final marital units: {new_marital_id:,}")
@@ -478,7 +541,13 @@ def create_sparse_cd_stacked_dataset(
                 grp.create_dataset(str(period), data=values)
     
     print(f"Sparse CD-stacked dataset saved successfully!")
-    
+
+    # Save household mapping to CSV
+    mapping_df = pd.DataFrame(household_mapping)
+    csv_path = output_path.replace('.h5', '_household_mapping.csv')
+    mapping_df.to_csv(csv_path, index=False)
+    print(f"Household mapping saved to {csv_path}")
+
     # Verify the saved file
     print("\nVerifying saved file...")
     with h5py.File(output_path, "r") as f:
@@ -557,14 +626,12 @@ if __name__ == "__main__":
     
     # Loop through states and create datasets
     for state_fips, state_code in STATE_CODES.items():
-        state_fips = 6 
-        state_code = 'CA'
         cd_subset = [cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips]
-        
+
         output_path = f"./temp/{state_code}.h5"
         output_file = create_sparse_cd_stacked_dataset(
             w,
-            cds_to_calibrate, 
+            cds_to_calibrate,
             cd_subset=cd_subset,
             dataset_path=dataset_path,
             output_path=output_path

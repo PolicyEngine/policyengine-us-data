@@ -57,26 +57,13 @@ def create_target_groups(targets_df: pd.DataFrame) -> Tuple[np.ndarray, List[str
     
     if len(national_targets) > 0:
         print(f"\nNational targets (each is a singleton group):")
-        
-        # Map stratum_id to descriptive labels for person_count targets
-        stratum_labels = {
-            489: "Medicaid enrollment",
-            490: "ACA PTC recipients",
-            491: "Undocumented population"
-        }
-        
+
         for idx in national_targets.index:
             target = targets_df.loc[idx]
-            var_name = target['variable']
+            # Use variable_desc which contains full descriptive name from DB
+            display_name = target['variable_desc']
             value = target['value']
-            stratum_id = target.get('stratum_id', None)
-            
-            # Add descriptive label for person_count targets
-            if var_name == 'person_count' and stratum_id in stratum_labels:
-                display_name = f"{var_name} ({stratum_labels[stratum_id]})"
-            else:
-                display_name = var_name
-            
+
             target_groups[idx] = group_id
             group_info.append(f"Group {group_id}: National {display_name} (1 target, value={value:,.0f})")
             print(f"  Group {group_id}: {display_name} = {value:,.0f}")
@@ -479,61 +466,102 @@ def filter_target_groups(targets_df: pd.DataFrame, X_sparse, target_groups: np.n
     return filtered_targets_df, filtered_X_sparse, filtered_target_groups
 
 
-def analyze_target_groups(targets_df: pd.DataFrame, target_groups: np.ndarray,
-                          max_rows: int = 50) -> pd.DataFrame:
+def get_cd_index_mapping():
     """
-    Analyze target groups and return a summary dataframe.
+    Get the canonical CD GEOID to index mapping.
+    This MUST be consistent across all uses!
+    Each CD gets 10,000 IDs for each entity type.
 
-    Parameters
-    ----------
-    targets_df : pd.DataFrame
-        DataFrame containing target metadata
-    target_groups : np.ndarray
-        Array of group IDs for each target
-    max_rows : int
-        Maximum number of rows to display
-
-    Returns
-    -------
-    groups_df : pd.DataFrame
-        Summary dataframe with columns: group_id, n_targets, is_national, group_type, variable, sample_desc, n_geos
+    Returns:
+        dict: Maps CD GEOID string to index (0-435)
+        dict: Maps index to CD GEOID string
+        list: Ordered list of CD GEOIDs
     """
-    group_details = []
-    for group_id in np.unique(target_groups):
-        group_mask = target_groups == group_id
-        group_targets = targets_df[group_mask]
+    from sqlalchemy import create_engine, text
 
-        n_targets = len(group_targets)
-        geos = group_targets['geographic_id'].unique()
-        variables = group_targets['variable'].unique()
-        var_descs = group_targets['variable_desc'].unique()
+    db_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
+    db_uri = f'sqlite:///{db_path}'
+    engine = create_engine(db_uri)
 
-        is_national = len(geos) == 1 and geos[0] == 'US'
+    query = """
+    SELECT DISTINCT sc.value as cd_geoid
+    FROM strata s
+    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+    WHERE s.stratum_group_id = 1
+      AND sc.constraint_variable = "congressional_district_geoid"
+    ORDER BY sc.value
+    """
 
-        if len(geos) == 1 and len(variables) == 1:
-            if len(var_descs) > 1:
-                group_type = f"Single geo/var with {len(var_descs)} bins"
-            else:
-                group_type = "Single target"
-        elif len(geos) > 1 and len(variables) == 1:
-            group_type = f"Multi-geo ({len(geos)} geos), single var"
-        else:
-            group_type = f"Complex: {len(geos)} geos, {len(variables)} vars"
+    with engine.connect() as conn:
+        result = conn.execute(text(query)).fetchall()
+        cds_ordered = [row[0] for row in result]
 
-        detail = {
-            'group_id': group_id,
-            'n_targets': n_targets,
-            'is_national': is_national,
-            'group_type': group_type,
-            'variable': variables[0] if len(variables) == 1 else f"{len(variables)} vars",
-            'sample_desc': var_descs[0] if len(var_descs) > 0 else "",
-            'n_geos': len(geos)
-        }
-        group_details.append(detail)
+    # Create bidirectional mappings
+    cd_to_index = {cd: idx for idx, cd in enumerate(cds_ordered)}
+    index_to_cd = {idx: cd for idx, cd in enumerate(cds_ordered)}
 
-    groups_df = pd.DataFrame(group_details)
+    return cd_to_index, index_to_cd, cds_ordered
 
-    print("\nAll target groups (review for exclusion):")
-    print(groups_df[['group_id', 'n_targets', 'variable', 'group_type', 'is_national']].head(max_rows).to_string())
 
-    return groups_df
+def get_id_range_for_cd(cd_geoid, entity_type='household'):
+    """
+    Get the ID range for a specific CD and entity type.
+
+    Args:
+        cd_geoid: Congressional district GEOID string (e.g., '3701')
+        entity_type: Entity type ('household', 'person', 'tax_unit', 'spm_unit', 'marital_unit')
+
+    Returns:
+        tuple: (start_id, end_id) inclusive
+    """
+    cd_to_index, _, _ = get_cd_index_mapping()
+
+    if cd_geoid not in cd_to_index:
+        raise ValueError(f"Unknown CD GEOID: {cd_geoid}")
+
+    idx = cd_to_index[cd_geoid]
+    base_start = idx * 10_000
+    base_end = base_start + 9_999
+
+    # Offset different entities to avoid ID collisions
+    # Max base ID is 435 * 10,000 + 9,999 = 4,359,999
+    # Must ensure max_id * 100 < 2,147,483,647 (int32 max)
+    # So max_id must be < 21,474,836
+    # NOTE: Currently only household/person use CD-based ranges
+    # Tax/SPM/marital units still use sequential numbering from 0
+    offsets = {
+        'household': 0,           # Max: 4,359,999
+        'person': 5_000_000,      # Max: 9,359,999
+        'tax_unit': 0,            # Not implemented yet
+        'spm_unit': 0,            # Not implemented yet
+        'marital_unit': 0         # Not implemented yet
+    }
+
+    offset = offsets.get(entity_type, 0)
+    return base_start + offset, base_end + offset
+
+
+def get_cd_from_id(entity_id):
+    """
+    Determine which CD an entity ID belongs to.
+
+    Args:
+        entity_id: The household/person/etc ID
+
+    Returns:
+        str: CD GEOID
+    """
+    # Remove offset to get base ID
+    # Currently only persons have offset (5M)
+    if entity_id >= 5_000_000:
+        base_id = entity_id - 5_000_000   # Person
+    else:
+        base_id = entity_id                # Household (or tax/spm/marital unit)
+
+    idx = base_id // 10_000
+    _, index_to_cd, _ = get_cd_index_mapping()
+
+    if idx not in index_to_cd:
+        raise ValueError(f"ID {entity_id} (base {base_id}) maps to invalid CD index {idx}")
+
+    return index_to_cd[idx]

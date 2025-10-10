@@ -638,6 +638,32 @@ else:
 - `create_sparse_cd_stacked.py` - Self-contained CD stacking (function + runner)
 - Both follow identical patterns for consistency
 
+### ID Allocation System for CD Stacking (2025-01-09)
+
+The CD-stacked datasets use a fixed 10,000 ID range per congressional district to avoid collisions when combining multiple CDs or states.
+
+#### ID Ranges
+- **Household IDs**: CD_index × 10,000 to CD_index × 10,000 + 9,999
+- **Person IDs**: CD_index × 10,000 + 5,000,000 (5M offset to avoid household ID collision)
+- **Tax/SPM/Marital units**: Currently sequential from 0 (not using CD ranges yet)
+
+#### Key Functions in `calibration_utils.py`
+- `get_cd_index_mapping()`: Returns canonical CD ordering from database
+- `get_id_range_for_cd(cd_geoid, entity_type)`: Returns the 10k range for a CD
+- `get_cd_from_id(entity_id)`: Reverse lookup from ID to CD
+
+#### Overflow Safety
+- Max household ID: 4,359,999 (CD 905)
+- Max person ID: 9,359,999 (CD 905 + 5M offset)
+- After ×100 (PolicyEngine's random function): 935,999,900 < 2.147B int32 max ✓
+
+#### Household Mapping CSV Files
+Each stacked .h5 file has a companion `*_household_mapping.csv` for tracing:
+```python
+mapping = pd.read_csv('./temp/AL_household_mapping.csv')
+mapping[mapping['new_household_id'] == 71751]  # Find original household
+```
+
 ### Common Pitfalls to Avoid
 1. Using the wrong dataset (extended vs stratified)
 2. Not reindexing IDs after combining geographic units
@@ -645,6 +671,10 @@ else:
 4. Not checking for integer overflow with large datasets
 5. Forgetting that the same household appears in multiple geographic units
 6. Progress indicators - use appropriate intervals (every 10 CDs, not 50)
+7. **Not caching CD mappings** - causes thousands of unnecessary database queries
+8. **Using row-by-row operations** - vectorize ID assignments for 1000x speedup
+9. **ID collisions between entity types** - always offset person IDs from household IDs
+10. **Exceeding 10k entities per CD** - monitor sparsity or increase range size
 
 ### Testing Strategy
 Always test with subsets first:

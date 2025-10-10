@@ -118,6 +118,34 @@ A reconciliation system has been implemented to adjust lower-level survey target
 #### Root Cause
 The aggressive L0 sparsity regularization is starving the model of parameters needed to fit complex geographic patterns. Previous runs without these constraints performed much better. The model cannot represent the relationships between household features and geographic targets with such extreme sparsity.
 
+## Target Group Labeling (2025-01-09)
+
+### Current Implementation
+Target group labels displayed during calibration are partially hardcoded in `calibration_utils.py`:
+
+**National targets**: ✅ Fully data-driven
+- Uses `variable_desc` from database
+- Example: `person_count_ssn_card_type=NONE`
+
+**Geographic targets**: ⚠️ Partially hardcoded
+- Pattern-based labels (lines 89-95):
+  - `'age<'` → `'Age Distribution'`
+  - `'adjusted_gross_income<'` → `'Person Income Distribution'`
+  - `'medicaid'` → `'Medicaid Enrollment'`
+  - `'aca_ptc'` → `'ACA PTC Recipients'`
+- Stratum-based labels (lines 169-174):
+  - `household_count + stratum_group==4` → `'SNAP Household Count'`
+  - `snap + stratum_group=='state_snap_cost'` → `'SNAP Cost (State)'`
+  - `adjusted_gross_income + stratum_group==2` → `'AGI Total Amount'`
+
+### Impact
+- **Functional**: No impact on calibration performance or accuracy
+- **Usability**: Inconsistent naming (e.g., "Person Income Distribution" vs "AGI Total Amount" for related AGI concepts)
+- **Maintenance**: Labels require manual updates when new target types are added
+
+### Future Work
+Consider migrating all labels to database-driven approach using `variable_desc` to eliminate hardcoded mappings and ensure consistency.
+
 ## Calibration Variable Exclusions (2025-01-01)
 
 ### Variables Excluded from Calibration
@@ -171,6 +199,57 @@ Based on analysis of calibration errors, the following variables are excluded:
 - `health_insurance_premiums_without_medicare_part_b` (51% error)
 
 **IMPORTANT**: AGI, EITC, and age demographics are NOT excluded at CD level as they are critical for calibration.
+
+## CD-Stacked Dataset Creation (2025-01-09)
+
+### Critical Bug Fixed: Household-CD Pair Collapse
+**Issue**: The reindexing logic was grouping all occurrences of the same household across different CDs and assigning them the same new ID, collapsing the geographic stacking structure.
+- Example: Household 25 appearing in CDs 3701, 3702, 3703 all got ID 0
+- Result: Only ~20% of intended household-CD pairs were preserved
+
+**Fix**: Changed groupby from `[household_id]` to `[household_id, congressional_district]` to preserve unique household-CD pairs.
+
+### ID Allocation System with 10k Ranges
+Each CD gets exactly 10,000 IDs (CD index × 10,000):
+- CD 101 (index 1): IDs 10,000-19,999
+- CD 3701 (index 206): IDs 2,060,000-2,069,999
+- Person IDs offset by 5M to avoid collisions with household IDs
+
+### Performance Optimizations
+- **Cached CD mapping**: Reduced database queries from 12,563 to 1
+- **Vectorized person ID assignment**: Changed from O(n) row operations to O(k) bulk operations
+- **Result**: Alabama processing time reduced from hanging indefinitely to ~30 seconds
+
+### Household Tracing
+Each .h5 file now has a companion CSV (`*_household_mapping.csv`) containing:
+- `new_household_id`: ID in the stacked dataset
+- `original_household_id`: ID from stratified_10k.h5
+- `congressional_district`: CD for this household-CD pair
+- `state_fips`: State FIPS code
+
+### Options for Handling >10k Entities per CD
+
+If you encounter "exceeds 10k allocation" errors, you have several options:
+
+**Option 1: Increase Range Size (Simplest)**
+- Change from 10k to 15k or 20k per CD
+- Update in `calibration_utils.py`: change `10_000` to `15_000`
+- Max safe value: ~49k per CD (to stay under int32 overflow with ×100)
+
+**Option 2: Dynamic Allocation**
+- Pre-calculate actual needs per CD from weight matrix
+- Allocate variable ranges based on actual non-zero weights
+- More complex but memory-efficient
+
+**Option 3: Increase Sparsity**
+- Apply weight threshold (e.g., > 0.01) to filter numerical noise
+- Reduces households per CD significantly
+- You're already doing this with the rerun
+
+**Option 4: State-Specific Offsets**
+- Process states separately with their own ID spaces
+- Only combine states that won't overflow together
+- Most flexible but requires careful tracking
 
 ## Documentation
 - `GEO_STACKING_TECHNICAL.md` - Technical documentation and architecture

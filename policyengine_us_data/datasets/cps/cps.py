@@ -2121,6 +2121,7 @@ geo_stacking = os.environ.get("GEO_STACKING") == "true"
 
 if __name__ == "__main__":
     if test_lite:
+        CPS_2023().generate()
         CPS_2024().generate()
     elif geo_stacking:
         print("Running geo stacking pipeline")

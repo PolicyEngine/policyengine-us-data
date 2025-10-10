@@ -755,7 +755,10 @@ MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
 }
 
 if __name__ == "__main__":
+    geo_stacking = os.environ.get("GEO_STACKING") == "true"
+
     PUF_2015().generate()
     PUF_2021().generate()
-    PUF_2023().generate()
+    if geo_stacking:
+        PUF_2023().generate()
     PUF_2024().generate()

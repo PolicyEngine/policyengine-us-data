@@ -2123,6 +2123,7 @@ if __name__ == "__main__":
     if test_lite:
         CPS_2023().generate()
         CPS_2024().generate()
+        CPS_2025().generate()
     elif geo_stacking:
         print("Running geo stacking pipeline")
         CPS_2021().generate()

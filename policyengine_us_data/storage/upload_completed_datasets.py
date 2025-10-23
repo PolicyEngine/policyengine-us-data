@@ -18,6 +18,13 @@ def upload_datasets():
         # STORAGE_FOLDER / "policy_data.db",
     ]
 
+    cd_states_dir = STORAGE_FOLDER / "cd_states"
+    if cd_states_dir.exists():
+        state_files = list(cd_states_dir.glob("*.h5"))
+        if state_files:
+            print(f"Found {len(state_files)} state files in cd_states/")
+            dataset_files.extend(state_files)
+
     # Filter to only existing files
     existing_files = []
     for file_path in dataset_files:

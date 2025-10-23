@@ -2125,8 +2125,6 @@ if __name__ == "__main__":
         CPS_2024().generate()
         CPS_2025().generate()
     elif geo_stacking:
-        print("Running geo stacking pipeline")
-        CPS_2021().generate()
         CPS_2023_Full().generate()
     else:
         CPS_2021().generate()

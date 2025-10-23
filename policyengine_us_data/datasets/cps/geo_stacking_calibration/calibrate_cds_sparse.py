@@ -89,7 +89,7 @@ else:
     cds_to_calibrate = all_cd_geoids
     dataset_uri = "hf://policyengine/test/extended_cps_2023.h5"
     print(
-        f"FULL MODE (HOPE THERE IS PLENTY RAM!): Using all {len(cds_to_calibrate)} CDs"
+        f"FULL MODE needs a lot of RAM!: Using all {len(cds_to_calibrate)} CDs"
     )
 
 sim = Microsimulation(dataset=dataset_uri)

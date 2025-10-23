@@ -21,3 +21,7 @@ node_modules
 !age_state.csv
 !agi_state.csv
 !soi_targets.csv
+
+# Geo-stacking pipeline outputs
+policyengine_us_data/storage/calibration/
+policyengine_us_data/storage/cd_states/

@@ -1,0 +1,70 @@
+{
+  "taskGroups": [
+    {
+      "taskSpec": {
+        "runnables": [
+          {
+            "container": {
+              "imageUri": "us-docker.pkg.dev/policyengine-research/us.gcr.io/calibration-optimizer:latest",
+              "entrypoint": "/app/run_batch_job.sh"
+            }
+          }
+        ],
+        "computeResource": {
+          "cpuMilli": 8000,
+          "memoryMib": 32768
+        },
+        "maxRunDuration": "86400s",
+        "environment": {
+          "variables": {
+            "BUCKET_NAME": "policyengine-calibration",
+            "INPUT_PATH": "2025-10-22-1721/inputs",
+            "OUTPUT_PATH": "2025-10-22-1721/outputs",
+            "BETA": "0.35",
+            "LAMBDA_L0": "5e-7",
+            "LAMBDA_L2": "5e-9",
+            "LR": "0.1",
+            "TOTAL_EPOCHS": "4000",
+            "EPOCHS_PER_CHUNK": "1000",
+            "ENABLE_LOGGING": "true"
+          }
+        }
+      },
+      "taskCount": 1,
+      "parallelism": 1
+    }
+  ],
+  "allocationPolicy": {
+    "instances": [
+      {
+        "installGpuDrivers": true,
+        "policy": {
+          "machineType": "n1-standard-2",
+          "provisioningModel": "SPOT",
+          "accelerators": [
+            {
+              "type": "nvidia-tesla-p100",
+              "count": 1
+            }
+          ],
+          "bootDisk": {
+            "sizeGb": "50"
+          }
+        }
+      }
+    ],
+    "location": {
+      "allowedLocations": [
+        "zones/us-central1-a",
+        "zones/us-central1-b",
+        "zones/us-central1-c"
+      ]
+    },
+    "serviceAccount": {
+      "email": "policyengine-research@policyengine-research.iam.gserviceaccount.com"
+    }
+  },
+  "logsPolicy": {
+    "destination": "CLOUD_LOGGING"
+  }
+}

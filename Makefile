@@ -75,12 +75,76 @@ data:
 	mv policyengine_us_data/storage/enhanced_cps_2024.h5 policyengine_us_data/storage/dense_enhanced_cps_2024.h5
 	cp policyengine_us_data/storage/sparse_enhanced_cps_2024.h5 policyengine_us_data/storage/enhanced_cps_2024.h5
 
-data-geo:
+data-geo: data
 	GEO_STACKING=true python policyengine_us_data/datasets/cps/cps.py
+	GEO_STACKING=true python policyengine_us_data/datasets/puf/puf.py
+	GEO_STACKING_MODE=true python policyengine_us_data/datasets/cps/extended_cps.py
+	python policyengine_us_data/datasets/cps/geo_stacking_calibration/create_stratified_cps.py 10000
+
+calibration-package: data-geo
+	python policyengine_us_data/datasets/cps/geo_stacking_calibration/create_calibration_package.py \
+		--db-path policyengine_us_data/storage/policy_data.db \
+		--dataset-uri policyengine_us_data/storage/stratified_extended_cps_2023.h5 \
+		--mode Stratified \
+		--local-output policyengine_us_data/storage/calibration
+
+optimize-weights-local: calibration-package
+	python policyengine_us_data/datasets/cps/geo_stacking_calibration/optimize_weights.py \
+		--input-dir policyengine_us_data/storage/calibration \
+		--output-dir policyengine_us_data/storage/calibration \
+		--total-epochs 100 \
+		--device cpu
+
+create-state-files: optimize-weights-local
+	python -m policyengine_us_data.datasets.cps.geo_stacking_calibration.create_sparse_cd_stacked \
+		--weights-path policyengine_us_data/storage/calibration/w_cd.npy \
+		--dataset-path policyengine_us_data/storage/stratified_extended_cps_2023.h5 \
+		--db-path policyengine_us_data/storage/policy_data.db \
+		--output-dir policyengine_us_data/storage/cd_states
+
+upload-calibration-package: calibration-package
+	$(eval GCS_DATE := $(shell date +%Y-%m-%d-%H%M))  # For bash: GCS_DATE=$$(date +%Y-%m-%d-%H%M)
+	python policyengine_us_data/datasets/cps/geo_stacking_calibration/create_calibration_package.py \
+		--db-path policyengine_us_data/storage/policy_data.db \
+		--dataset-uri policyengine_us_data/storage/stratified_extended_cps_2023.h5 \
+		--mode Stratified \
+		--gcs-bucket policyengine-calibration \
+		--gcs-date $(GCS_DATE)
+	@echo ""
+	@echo "Calibration package uploaded to GCS"
+	@echo "Date prefix: $(GCS_DATE)"
+	@echo ""
+	@echo "To submit GCP batch job, update batch_pipeline/config.env:"
+	@echo "  INPUT_PATH=$(GCS_DATE)/inputs"
+	@echo "  OUTPUT_PATH=$(GCS_DATE)/outputs"
+
+optimize-weights-gcp:
+	@echo "Submitting Cloud Batch job for weight optimization..."
+	@echo "Make sure you've run 'make upload-calibration-package' first"
+	@echo "and updated batch_pipeline/config.env with the correct paths"
+	@echo ""
+	cd policyengine_us_data/datasets/cps/geo_stacking_calibration/batch_pipeline && ./submit_batch_job.sh
+
+download-weights-from-gcs:
+	@echo "Downloading weights from GCS..."
+	rm -f policyengine_us_data/storage/calibration/w_cd.npy
+	@read -p "Enter GCS date prefix (e.g., 2025-10-22-1630): " gcs_date; \
+	gsutil ls gs://policyengine-calibration/$$gcs_date/outputs/**/w_cd.npy | head -1 | xargs -I {} gsutil cp {} policyengine_us_data/storage/calibration/w_cd.npy && \
+	gsutil ls gs://policyengine-calibration/$$gcs_date/outputs/**/w_cd_*.npy | xargs -I {} gsutil cp {} policyengine_us_data/storage/calibration/ && \
+	echo "Weights downloaded successfully"
+
+upload-state-files-to-gcs:
+	@echo "Uploading state files to GCS..."
+	@read -p "Enter GCS date prefix (e.g., 2025-10-22-1721): " gcs_date; \
+	gsutil -m cp policyengine_us_data/storage/cd_states/*.h5 gs://policyengine-calibration/$$gcs_date/state_files/ && \
+	gsutil -m cp policyengine_us_data/storage/cd_states/*_household_mapping.csv gs://policyengine-calibration/$$gcs_date/state_files/ && \
+	echo "" && \
+	echo "State files uploaded to gs://policyengine-calibration/$$gcs_date/state_files/"
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5
 	rm -f policyengine_us_data/storage/*.db
+	rm -f policyengine_us_data/storage/*.pkl
 	git clean -fX -- '*.csv'
 	rm -rf policyengine_us_data/docs/_build
 

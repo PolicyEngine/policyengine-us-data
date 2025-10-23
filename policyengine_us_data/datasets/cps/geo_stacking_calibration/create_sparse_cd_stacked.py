@@ -145,7 +145,8 @@ STATE_FIPS_TO_CODE = {
 
 def load_cd_county_mappings():
     """Load CD to county mappings from JSON file."""
-    mapping_file = Path("cd_county_mappings.json")
+    script_dir = Path(__file__).parent
+    mapping_file = script_dir / "cd_county_mappings.json"
     if not mapping_file.exists():
         print(
             "WARNING: cd_county_mappings.json not found. Counties will not be updated."
@@ -709,19 +710,19 @@ def create_sparse_cd_stacked_dataset(
 
 
 if __name__ == "__main__":
+    import argparse
 
-    # Two user inputs:
-    # 1. the path of the original dataset that was used for state stacking (prior to being stacked!)
-    # 2. the weights from a model fitting run
-    # dataset_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/stratified_10k.h5"
-    dataset_path = "/home/baogorek/devl/stratified_10k.h5"
-    w = np.load(
-        "w_cd.npy"
-    )  # Note that the dim of the weights does not depend on # of targets
+    parser = argparse.ArgumentParser(description="Create sparse CD-stacked state datasets")
+    parser.add_argument("--weights-path", required=True, help="Path to w_cd.npy file")
+    parser.add_argument("--dataset-path", required=True, help="Path to stratified dataset .h5 file")
+    parser.add_argument("--db-path", required=True, help="Path to policy_data.db")
+    parser.add_argument("--output-dir", default="./temp", help="Output directory for state files")
 
-    # Get all CD GEOIDs from database (must match calibration order)
-    # db_path = download_from_huggingface('policy_data.db')
-    db_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
+    args = parser.parse_args()
+
+    dataset_path = args.dataset_path
+    w = np.load(args.weights_path)
+    db_path = args.db_path
     db_uri = f"sqlite:///{db_path}"
     engine = create_engine(db_uri)
 
@@ -803,8 +804,8 @@ if __name__ == "__main__":
         56: "WY",
     }
 
-    # Create temp directory for outputs
-    os.makedirs("./temp", exist_ok=True)
+    # Create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
 
     # Loop through states and create datasets
     for state_fips, state_code in STATE_CODES.items():
@@ -812,7 +813,7 @@ if __name__ == "__main__":
             cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips
         ]
 
-        output_path = f"./temp/{state_code}.h5"
+        output_path = f"{args.output_dir}/{state_code}.h5"
         output_file = create_sparse_cd_stacked_dataset(
             w,
             cds_to_calibrate,
@@ -827,5 +828,5 @@ if __name__ == "__main__":
         w,
         cds_to_calibrate,
         dataset_path=dataset_path,
-        output_path="./temp/cd_calibration.h5",
+        output_path=f"{args.output_dir}/cd_calibration.h5",
     )

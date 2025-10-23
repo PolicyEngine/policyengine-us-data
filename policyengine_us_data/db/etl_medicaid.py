@@ -297,7 +297,7 @@ def main():
 
     # Validate consistency between sources
     nc_cd_sum = long_cd.loc[
-        long_cd.ucgid_str.str.contains("5001600US37")
+        long_cd.ucgid_str.str.contains("5001800US37")
     ].medicaid_enrollment.astype(int).sum()
     nc_state_sum = long_state.loc[
         long_state.ucgid_str == "0400000US37"

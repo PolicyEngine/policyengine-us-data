@@ -251,6 +251,25 @@ If you encounter "exceeds 10k allocation" errors, you have several options:
 - Only combine states that won't overflow together
 - Most flexible but requires careful tracking
 
+## Known Issues / Future Work
+
+### CD-County Mappings Need Improvement
+**Current Status**: `build_cd_county_mappings.py` uses crude approximations
+- Only 10 CDs have real county proportions (test CDs)
+- Remaining ~426 CDs assigned to state's most populous county only
+- Example: All non-mapped CA districts → Los Angeles County (06037)
+
+**Impact**:
+- County-level variables in datasets will have inaccurate geographic assignments
+- Fine for testing, problematic for production county-level analysis
+
+**Proper Solution**: Use Census Bureau's geographic relationship files
+- See script comments (lines 18-44) for Census API approach
+- Would provide actual county proportions for all 436 CDs
+- Relationship files available at: https://www.census.gov/geographies/reference-files/time-series/geo/relationship-files.html
+
+**Priority**: Medium (only if county-level accuracy needed)
+
 ## Documentation
 - `GEO_STACKING_TECHNICAL.md` - Technical documentation and architecture
 - `PROJECT_STATUS.md` - This file (active project management)

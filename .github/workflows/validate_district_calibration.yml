@@ -1,6 +1,9 @@
 name: Validate District-Level Calibration
 
 on:
+  push:
+    branches:
+      - new-cd-var
   workflow_dispatch:
     inputs:
       gcs_date:
@@ -39,9 +42,10 @@ jobs:
 
       - name: Download weights from GCS
         run: |
-          echo "Downloading weights from gs://policyengine-calibration/${{ inputs.gcs_date }}/outputs/"
+          GCS_DATE="${{ inputs.gcs_date || '2025-10-22-1721' }}"
+          echo "Downloading weights from gs://policyengine-calibration/$GCS_DATE/outputs/"
           mkdir -p policyengine_us_data/storage/calibration
-          gsutil ls gs://policyengine-calibration/${{ inputs.gcs_date }}/outputs/**/w_cd.npy | head -1 | xargs -I {} gsutil cp {} policyengine_us_data/storage/calibration/w_cd.npy
+          gsutil ls gs://policyengine-calibration/$GCS_DATE/outputs/**/w_cd.npy | head -1 | xargs -I {} gsutil cp {} policyengine_us_data/storage/calibration/w_cd.npy
           echo "Downloaded w_cd.npy"
 
       - name: Download prerequisite datasets
@@ -67,11 +71,12 @@ jobs:
       - name: Upload state files to GCS
         if: success()
         run: |
+          GCS_DATE="${{ inputs.gcs_date || '2025-10-22-1721' }}"
           echo "Tests passed! Uploading state files to GCS..."
-          gsutil -m cp policyengine_us_data/storage/cd_states/*.h5 gs://policyengine-calibration/${{ inputs.gcs_date }}/state_files/
-          gsutil -m cp policyengine_us_data/storage/cd_states/*_household_mapping.csv gs://policyengine-calibration/${{ inputs.gcs_date }}/state_files/
+          gsutil -m cp policyengine_us_data/storage/cd_states/*.h5 gs://policyengine-calibration/$GCS_DATE/state_files/
+          gsutil -m cp policyengine_us_data/storage/cd_states/*_household_mapping.csv gs://policyengine-calibration/$GCS_DATE/state_files/
           echo ""
-          echo "✅ State files uploaded to gs://policyengine-calibration/${{ inputs.gcs_date }}/state_files/"
+          echo "✅ State files uploaded to gs://policyengine-calibration/$GCS_DATE/state_files/"
 
       - name: Report validation failure
         if: failure()

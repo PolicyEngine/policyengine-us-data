@@ -50,13 +50,11 @@ jobs:
 
       - name: Download prerequisite datasets
         run: |
-          echo "Downloading stratified dataset and database..."
-          gsutil -q stat gs://policyengine-us-data/stratified_extended_cps_2023.h5 && \
-            gsutil cp gs://policyengine-us-data/stratified_extended_cps_2023.h5 policyengine_us_data/storage/ || \
-            echo "Dataset already exists or download failed"
-          gsutil -q stat gs://policyengine-us-data/policy_data.db && \
-            gsutil cp gs://policyengine-us-data/policy_data.db policyengine_us_data/storage/ || \
-            echo "Database already exists or download failed"
+          GCS_DATE="${{ inputs.gcs_date || '2025-10-22-1721' }}"
+          echo "Downloading stratified dataset and database from calibration run..."
+          mkdir -p policyengine_us_data/storage
+          gsutil cp gs://policyengine-calibration/$GCS_DATE/inputs/stratified_extended_cps_2023.h5 policyengine_us_data/storage/
+          gsutil cp gs://policyengine-calibration/$GCS_DATE/inputs/policy_data.db policyengine_us_data/storage/
 
       - name: Create state files
         run: |

@@ -712,11 +712,25 @@ def create_sparse_cd_stacked_dataset(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Create sparse CD-stacked state datasets")
-    parser.add_argument("--weights-path", required=True, help="Path to w_cd.npy file")
-    parser.add_argument("--dataset-path", required=True, help="Path to stratified dataset .h5 file")
-    parser.add_argument("--db-path", required=True, help="Path to policy_data.db")
-    parser.add_argument("--output-dir", default="./temp", help="Output directory for state files")
+    parser = argparse.ArgumentParser(
+        description="Create sparse CD-stacked state datasets"
+    )
+    parser.add_argument(
+        "--weights-path", required=True, help="Path to w_cd.npy file"
+    )
+    parser.add_argument(
+        "--dataset-path",
+        required=True,
+        help="Path to stratified dataset .h5 file",
+    )
+    parser.add_argument(
+        "--db-path", required=True, help="Path to policy_data.db"
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="./temp",
+        help="Output directory for state files",
+    )
 
     args = parser.parse_args()
 

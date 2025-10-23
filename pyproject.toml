@@ -71,6 +71,9 @@ addopts = "-v"
 testpaths = [
     "policyengine_us_data/tests",
 ]
+markers = [
+    "district_level_validation: tests that require generated data files from the district-level calibration pipeline",
+]
 
 [tool.black]
 line-length = 79

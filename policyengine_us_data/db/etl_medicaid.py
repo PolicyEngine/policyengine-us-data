@@ -45,23 +45,34 @@ def extract_administrative_medicaid_data(year):
 
         metadata = response.json()
 
-        if "distribution" not in metadata or len(metadata["distribution"]) == 0:
-            raise ValueError(f"No distribution found in metadata for item {item}")
+        if (
+            "distribution" not in metadata
+            or len(metadata["distribution"]) == 0
+        ):
+            raise ValueError(
+                f"No distribution found in metadata for item {item}"
+            )
 
         data_url = metadata["distribution"][0]["data"]["downloadURL"]
         print(f"Downloading Medicaid data from: {data_url}")
 
         try:
             state_admin_df = pd.read_csv(data_url)
-            print(f"Successfully downloaded {len(state_admin_df)} rows of Medicaid administrative data")
+            print(
+                f"Successfully downloaded {len(state_admin_df)} rows of Medicaid administrative data"
+            )
             return state_admin_df
         except Exception as csv_error:
             print(f"\nError downloading CSV from: {data_url}")
             print(f"Error: {csv_error}")
-            print(f"\nThe metadata API returned successfully, but the data file doesn't exist.")
+            print(
+                f"\nThe metadata API returned successfully, but the data file doesn't exist."
+            )
             print(f"This suggests the dataset has been updated/moved.")
             print(f"Please visit https://data.medicaid.gov/ and search for:")
-            print(f"  - 'Medicaid Enrollment' or 'T-MSIS' or 'Performance Indicators'")
+            print(
+                f"  - 'Medicaid Enrollment' or 'T-MSIS' or 'Performance Indicators'"
+            )
             print(f"Then update the item ID in the code (currently: {item})\n")
             raise
 
@@ -69,7 +80,9 @@ def extract_administrative_medicaid_data(year):
         if e.response.status_code == 404:
             print(f"\n404 Error: Medicaid metadata item not found.")
             print(f"The item ID '{item}' may have changed.")
-            print(f"Please check https://data.medicaid.gov/ for updated dataset IDs.")
+            print(
+                f"Please check https://data.medicaid.gov/ for updated dataset IDs."
+            )
             print(f"Search for 'Medicaid Enrollment' or 'T-MSIS' datasets.\n")
         raise
     except requests.exceptions.RequestException as e:
@@ -296,14 +309,20 @@ def main():
     long_cd = transform_survey_medicaid_data(cd_survey_df)
 
     # Validate consistency between sources
-    nc_cd_sum = long_cd.loc[
-        long_cd.ucgid_str.str.contains("5001800US37")
-    ].medicaid_enrollment.astype(int).sum()
-    nc_state_sum = long_state.loc[
-        long_state.ucgid_str == "0400000US37"
-    ]["medicaid_enrollment"].values[0]
-    assert nc_cd_sum > 0.5 * nc_state_sum, f"NC CD sum ({nc_cd_sum}) is too low compared to state sum ({nc_state_sum})"
-    assert nc_cd_sum <= nc_state_sum, f"NC CD sum ({nc_cd_sum}) exceeds state sum ({nc_state_sum})"
+    nc_cd_sum = (
+        long_cd.loc[long_cd.ucgid_str.str.contains("5001800US37")]
+        .medicaid_enrollment.astype(int)
+        .sum()
+    )
+    nc_state_sum = long_state.loc[long_state.ucgid_str == "0400000US37"][
+        "medicaid_enrollment"
+    ].values[0]
+    assert (
+        nc_cd_sum > 0.5 * nc_state_sum
+    ), f"NC CD sum ({nc_cd_sum}) is too low compared to state sum ({nc_state_sum})"
+    assert (
+        nc_cd_sum <= nc_state_sum
+    ), f"NC CD sum ({nc_cd_sum}) exceeds state sum ({nc_state_sum})"
 
     # Load -----------------------
     load_medicaid_data(long_state, long_cd, year)

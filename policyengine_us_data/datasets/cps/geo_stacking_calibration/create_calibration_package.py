@@ -73,13 +73,23 @@ def create_calibration_package(
         result = conn.execute(text(query)).fetchall()
         all_cd_geoids = [row[0] for row in result]
 
-    logging.info(f"Found {len(all_cd_geoids)} congressional districts in database")
+    logging.info(
+        f"Found {len(all_cd_geoids)} congressional districts in database"
+    )
 
     # Select CDs based on mode
     if mode == "Test":
         cds_to_calibrate = [
-            "601", "652", "3601", "3626", "4801", "4838",
-            "1201", "1228", "1701", "1101",
+            "601",
+            "652",
+            "3601",
+            "3626",
+            "4801",
+            "4838",
+            "1201",
+            "1228",
+            "1701",
+            "1101",
         ]
         logging.info(f"TEST MODE: Using {len(cds_to_calibrate)} CDs")
     else:
@@ -122,7 +132,9 @@ def create_calibration_package(
             & (targets_df["variable_desc"].str.contains("age", na=False))
         ]
         if not cd_age_targets.empty:
-            unique_ages = cd_age_targets.drop_duplicates(subset=["variable_desc"])
+            unique_ages = cd_age_targets.drop_duplicates(
+                subset=["variable_desc"]
+            )
             cd_populations[cd_geoid] = unique_ages["value"].sum()
 
     if cd_populations:
@@ -166,7 +178,9 @@ def create_calibration_package(
         )
         cumulative_idx += n_households
 
-    logging.info(f"Initial weight range: {init_weights.min():.0f} to {init_weights.max():.0f}")
+    logging.info(
+        f"Initial weight range: {init_weights.min():.0f} to {init_weights.max():.0f}"
+    )
     logging.info(f"Mean initial weight: {init_weights.mean():.0f}")
 
     # Step 5: Create calibration package
@@ -210,7 +224,9 @@ def create_calibration_package(
             json.dump(metadata, f, indent=2)
 
         logging.info(f"✅ Saved locally to {pkg_path}")
-        logging.info(f"   Size: {pkg_path.stat().st_size / 1024 / 1024:.1f} MB")
+        logging.info(
+            f"   Size: {pkg_path.stat().st_size / 1024 / 1024:.1f} MB"
+        )
         results["local_path"] = str(pkg_path)
 
     # Upload to GCS if requested
@@ -222,6 +238,7 @@ def create_calibration_package(
 
         # Save to temp location for upload
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_pkg = Path(tmpdir) / "calibration_package.pkl"
             tmp_meta = Path(tmpdir) / "metadata.json"
@@ -236,7 +253,9 @@ def create_calibration_package(
             import google.auth
 
             credentials, project_id = google.auth.default()
-            storage_client = storage.Client(credentials=credentials, project=project_id)
+            storage_client = storage.Client(
+                credentials=credentials, project=project_id
+            )
             bucket = storage_client.bucket(gcs_bucket)
 
             for local_file, blob_name in [
@@ -257,19 +276,54 @@ def create_calibration_package(
 
 def main():
     parser = argparse.ArgumentParser(description="Create calibration package")
-    parser.add_argument("--db-path", required=True, help="Path to policy_data.db")
-    parser.add_argument("--dataset-uri", required=True, help="Dataset URI (local path or hf://)")
-    parser.add_argument("--mode", default="Stratified", choices=["Test", "Stratified", "Full"])
+    parser.add_argument(
+        "--db-path", required=True, help="Path to policy_data.db"
+    )
+    parser.add_argument(
+        "--dataset-uri",
+        required=True,
+        help="Dataset URI (local path or hf://)",
+    )
+    parser.add_argument(
+        "--mode", default="Stratified", choices=["Test", "Stratified", "Full"]
+    )
     parser.add_argument("--local-output", help="Local output directory")
-    parser.add_argument("--gcs-bucket", help="GCS bucket name (e.g., policyengine-calibration)")
-    parser.add_argument("--gcs-date", help="GCS date prefix (default: YYYY-MM-DD-HHMM)")
+    parser.add_argument(
+        "--gcs-bucket", help="GCS bucket name (e.g., policyengine-calibration)"
+    )
+    parser.add_argument(
+        "--gcs-date", help="GCS date prefix (default: YYYY-MM-DD-HHMM)"
+    )
 
     args = parser.parse_args()
 
     # Default groups to exclude (from original script)
     groups_to_exclude = [
-        0, 1, 2, 3, 4, 5, 8, 12, 10, 15, 17, 18, 21,
-        34, 35, 36, 37, 31, 56, 42, 64, 46, 68, 47, 69,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        8,
+        12,
+        10,
+        15,
+        17,
+        18,
+        21,
+        34,
+        35,
+        36,
+        37,
+        31,
+        56,
+        42,
+        64,
+        46,
+        68,
+        47,
+        69,
     ]
 
     results = create_calibration_package(

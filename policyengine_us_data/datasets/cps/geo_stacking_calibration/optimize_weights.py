@@ -11,32 +11,71 @@ from l0.calibration import SparseCalibrationWeights
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Run sparse L0 weight optimization')
-    parser.add_argument('--input-dir', required=True, help='Directory containing calibration_package.pkl')
-    parser.add_argument('--output-dir', required=True, help='Directory for output files')
-    parser.add_argument('--beta', type=float, default=0.35, help='Beta parameter for L0 regularization')
-    parser.add_argument('--lambda-l0', type=float, default=5e-7, help='L0 regularization strength')
-    parser.add_argument('--lambda-l2', type=float, default=5e-9, help='L2 regularization strength')
-    parser.add_argument('--lr', type=float, default=0.1, help='Learning rate')
-    parser.add_argument('--total-epochs', type=int, default=12000, help='Total training epochs')
-    parser.add_argument('--epochs-per-chunk', type=int, default=1000, help='Epochs per logging chunk')
-    parser.add_argument('--enable-logging', action='store_true', help='Enable detailed epoch logging')
-    parser.add_argument('--device', default='cuda', choices=['cuda', 'cpu'], help='Device to use')
+    parser = argparse.ArgumentParser(
+        description="Run sparse L0 weight optimization"
+    )
+    parser.add_argument(
+        "--input-dir",
+        required=True,
+        help="Directory containing calibration_package.pkl",
+    )
+    parser.add_argument(
+        "--output-dir", required=True, help="Directory for output files"
+    )
+    parser.add_argument(
+        "--beta",
+        type=float,
+        default=0.35,
+        help="Beta parameter for L0 regularization",
+    )
+    parser.add_argument(
+        "--lambda-l0",
+        type=float,
+        default=5e-7,
+        help="L0 regularization strength",
+    )
+    parser.add_argument(
+        "--lambda-l2",
+        type=float,
+        default=5e-9,
+        help="L2 regularization strength",
+    )
+    parser.add_argument("--lr", type=float, default=0.1, help="Learning rate")
+    parser.add_argument(
+        "--total-epochs", type=int, default=12000, help="Total training epochs"
+    )
+    parser.add_argument(
+        "--epochs-per-chunk",
+        type=int,
+        default=1000,
+        help="Epochs per logging chunk",
+    )
+    parser.add_argument(
+        "--enable-logging",
+        action="store_true",
+        help="Enable detailed epoch logging",
+    )
+    parser.add_argument(
+        "--device",
+        default="cuda",
+        choices=["cuda", "cpu"],
+        help="Device to use",
+    )
 
     args = parser.parse_args()
 
-    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading calibration package from {args.input_dir}")
-    with open(Path(args.input_dir) / 'calibration_package.pkl', 'rb') as f:
+    with open(Path(args.input_dir) / "calibration_package.pkl", "rb") as f:
         calibration_data = pickle.load(f)
 
-    X_sparse = calibration_data['X_sparse']
-    init_weights = calibration_data['initial_weights']
-    targets_df = calibration_data['targets_df']
+    X_sparse = calibration_data["X_sparse"]
+    init_weights = calibration_data["initial_weights"]
+    targets_df = calibration_data["targets_df"]
     targets = targets_df.value.values
 
     print(f"Matrix shape: {X_sparse.shape}")
@@ -64,20 +103,26 @@ def main():
 
     if args.enable_logging:
         log_path = output_dir / "cd_calibration_log.csv"
-        with open(log_path, 'w') as f:
-            f.write('target_name,estimate,target,epoch,error,rel_error,abs_error,rel_abs_error,loss\n')
+        with open(log_path, "w") as f:
+            f.write(
+                "target_name,estimate,target,epoch,error,rel_error,abs_error,rel_abs_error,loss\n"
+            )
         print(f"Initialized incremental log at: {log_path}")
 
     sparsity_path = output_dir / f"cd_sparsity_history_{timestamp}.csv"
-    with open(sparsity_path, 'w') as f:
-        f.write('epoch,active_weights,total_weights,sparsity_pct\n')
+    with open(sparsity_path, "w") as f:
+        f.write("epoch,active_weights,total_weights,sparsity_pct\n")
     print(f"Initialized sparsity tracking at: {sparsity_path}")
 
     for chunk_start in range(0, args.total_epochs, args.epochs_per_chunk):
-        chunk_epochs = min(args.epochs_per_chunk, args.total_epochs - chunk_start)
+        chunk_epochs = min(
+            args.epochs_per_chunk, args.total_epochs - chunk_start
+        )
         current_epoch = chunk_start + chunk_epochs
 
-        print(f"\nTraining epochs {chunk_start + 1} to {current_epoch} of {args.total_epochs}")
+        print(
+            f"\nTraining epochs {chunk_start + 1} to {current_epoch} of {args.total_epochs}"
+        )
 
         model.fit(
             M=X_sparse,
@@ -93,18 +138,20 @@ def main():
         )
 
         active_info = model.get_active_weights()
-        active_count = active_info['count']
+        active_count = active_info["count"]
         total_count = X_sparse.shape[1]
         sparsity_pct = 100 * (1 - active_count / total_count)
 
-        with open(sparsity_path, 'a') as f:
-            f.write(f'{current_epoch},{active_count},{total_count},{sparsity_pct:.4f}\n')
+        with open(sparsity_path, "a") as f:
+            f.write(
+                f"{current_epoch},{active_count},{total_count},{sparsity_pct:.4f}\n"
+            )
 
         if args.enable_logging:
             with torch.no_grad():
                 y_pred = model.predict(X_sparse).cpu().numpy()
 
-                with open(log_path, 'a') as f:
+                with open(log_path, "a") as f:
                     for i in range(len(targets)):
                         estimate = y_pred[i]
                         target = targets[i]
@@ -112,10 +159,12 @@ def main():
                         rel_error = error / target if target != 0 else 0
                         abs_error = abs(error)
                         rel_abs_error = abs(rel_error)
-                        loss = rel_error ** 2
+                        loss = rel_error**2
 
-                        f.write(f'"{target_names[i]}",{estimate},{target},{current_epoch},'
-                               f'{error},{rel_error},{abs_error},{rel_abs_error},{loss}\n')
+                        f.write(
+                            f'"{target_names[i]}",{estimate},{target},{current_epoch},'
+                            f"{error},{rel_error},{abs_error},{rel_abs_error},{loss}\n"
+                        )
 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

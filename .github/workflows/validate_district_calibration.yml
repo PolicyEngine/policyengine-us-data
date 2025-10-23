@@ -1,0 +1,82 @@
+name: Validate District-Level Calibration
+
+on:
+  workflow_dispatch:
+    inputs:
+      gcs_date:
+        description: 'GCS date prefix (e.g., 2025-10-22-1721)'
+        required: true
+        type: string
+
+jobs:
+  validate-and-upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: uv pip install -e .[dev] --system
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/322898545428/locations/global/workloadIdentityPools/policyengine-research-id-pool/providers/prod-github-provider"
+          service_account: "policyengine-research@policyengine-research.iam.gserviceaccount.com"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Download weights from GCS
+        run: |
+          echo "Downloading weights from gs://policyengine-calibration/${{ inputs.gcs_date }}/outputs/"
+          mkdir -p policyengine_us_data/storage/calibration
+          gsutil ls gs://policyengine-calibration/${{ inputs.gcs_date }}/outputs/**/w_cd.npy | head -1 | xargs -I {} gsutil cp {} policyengine_us_data/storage/calibration/w_cd.npy
+          echo "Downloaded w_cd.npy"
+
+      - name: Download prerequisite datasets
+        run: |
+          echo "Downloading stratified dataset and database..."
+          gsutil -q stat gs://policyengine-us-data/stratified_extended_cps_2023.h5 && \
+            gsutil cp gs://policyengine-us-data/stratified_extended_cps_2023.h5 policyengine_us_data/storage/ || \
+            echo "Dataset already exists or download failed"
+          gsutil -q stat gs://policyengine-us-data/policy_data.db && \
+            gsutil cp gs://policyengine-us-data/policy_data.db policyengine_us_data/storage/ || \
+            echo "Database already exists or download failed"
+
+      - name: Create state files
+        run: |
+          echo "Creating state-level .h5 files..."
+          make create-state-files
+
+      - name: Run district-level validation tests
+        run: |
+          echo "Running validation tests..."
+          pytest -m "district_level_validation" -v
+
+      - name: Upload state files to GCS
+        if: success()
+        run: |
+          echo "Tests passed! Uploading state files to GCS..."
+          gsutil -m cp policyengine_us_data/storage/cd_states/*.h5 gs://policyengine-calibration/${{ inputs.gcs_date }}/state_files/
+          gsutil -m cp policyengine_us_data/storage/cd_states/*_household_mapping.csv gs://policyengine-calibration/${{ inputs.gcs_date }}/state_files/
+          echo ""
+          echo "✅ State files uploaded to gs://policyengine-calibration/${{ inputs.gcs_date }}/state_files/"
+
+      - name: Report validation failure
+        if: failure()
+        run: |
+          echo "❌ District-level calibration validation FAILED"
+          echo "Check the test output above for details"
+          echo "State files were NOT uploaded to GCS"
+          exit 1

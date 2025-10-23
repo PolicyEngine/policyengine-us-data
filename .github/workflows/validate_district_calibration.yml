@@ -61,7 +61,11 @@ jobs:
       - name: Create state files
         run: |
           echo "Creating state-level .h5 files..."
-          make create-state-files
+          python -m policyengine_us_data.datasets.cps.geo_stacking_calibration.create_sparse_cd_stacked \
+            --weights-path policyengine_us_data/storage/calibration/w_cd.npy \
+            --dataset-path policyengine_us_data/storage/stratified_extended_cps_2023.h5 \
+            --db-path policyengine_us_data/storage/policy_data.db \
+            --output-dir policyengine_us_data/storage/cd_states
 
       - name: Run district-level validation tests
         run: |

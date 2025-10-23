@@ -734,7 +734,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    dataset_path = args.dataset_path
+    dataset_path_str = args.dataset_path
+    dataset_path = Dataset.from_file(dataset_path_str)
     w = np.load(args.weights_path)
     db_path = args.db_path
     db_uri = f"sqlite:///{db_path}"

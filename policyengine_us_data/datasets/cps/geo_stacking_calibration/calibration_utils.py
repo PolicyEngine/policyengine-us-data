@@ -574,8 +574,18 @@ def get_cd_index_mapping():
         list: Ordered list of CD GEOIDs
     """
     from sqlalchemy import create_engine, text
+    from pathlib import Path
+    import os
 
-    db_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
+    script_dir = Path(__file__).parent
+    db_path = script_dir.parent.parent.parent / "storage" / "policy_data.db"
+
+    if not db_path.exists():
+        raise FileNotFoundError(
+            f"Database file not found at {db_path}. "
+            f"Current working directory: {os.getcwd()}"
+        )
+
     db_uri = f"sqlite:///{db_path}"
     engine = create_engine(db_uri)
 

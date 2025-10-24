@@ -110,6 +110,9 @@ upload-calibration-package: calibration-package
 		--mode Stratified \
 		--gcs-bucket policyengine-calibration \
 		--gcs-date $(GCS_DATE)
+	@echo "Uploading dataset and database to GCS inputs..."
+	gsutil cp policyengine_us_data/storage/stratified_extended_cps_2023.h5 gs://policyengine-calibration/$(GCS_DATE)/inputs/
+	gsutil cp policyengine_us_data/storage/policy_data.db gs://policyengine-calibration/$(GCS_DATE)/inputs/
 	@echo ""
 	@echo "Calibration package uploaded to GCS"
 	@echo "Date prefix: $(GCS_DATE)"

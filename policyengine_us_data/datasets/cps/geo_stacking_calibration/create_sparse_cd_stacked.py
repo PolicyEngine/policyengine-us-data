@@ -737,7 +737,14 @@ if __name__ == "__main__":
     dataset_path_str = args.dataset_path
     dataset_path = Dataset.from_file(dataset_path_str)
     w = np.load(args.weights_path)
-    db_path = args.db_path
+
+    db_path = Path(args.db_path).resolve()
+    if not db_path.exists():
+        raise FileNotFoundError(
+            f"Database file not found at {db_path}. "
+            f"Ensure the file exists before running this script."
+        )
+
     db_uri = f"sqlite:///{db_path}"
     engine = create_engine(db_uri)
 

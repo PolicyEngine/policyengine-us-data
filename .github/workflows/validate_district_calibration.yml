@@ -56,6 +56,21 @@ jobs:
           gsutil cp gs://policyengine-calibration/$GCS_DATE/inputs/stratified_extended_cps_2023.h5 policyengine_us_data/storage/
           gsutil cp gs://policyengine-calibration/$GCS_DATE/inputs/policy_data.db policyengine_us_data/storage/
 
+      - name: Verify downloaded files
+        run: |
+          echo "Verifying downloaded files exist..."
+          if [ ! -f policyengine_us_data/storage/stratified_extended_cps_2023.h5 ]; then
+            echo "ERROR: stratified_extended_cps_2023.h5 not found"
+            exit 1
+          fi
+          if [ ! -f policyengine_us_data/storage/policy_data.db ]; then
+            echo "ERROR: policy_data.db not found"
+            exit 1
+          fi
+          echo "All required files present:"
+          ls -lh policyengine_us_data/storage/stratified_extended_cps_2023.h5
+          ls -lh policyengine_us_data/storage/policy_data.db
+
       - name: Create state files
         run: |
           echo "Creating state-level .h5 files..."

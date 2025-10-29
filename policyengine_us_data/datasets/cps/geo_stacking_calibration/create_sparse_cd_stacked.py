@@ -731,6 +731,11 @@ if __name__ == "__main__":
         default="./temp",
         help="Output directory for state files",
     )
+    parser.add_argument(
+        "--include-full-dataset",
+        action="store_true",
+        help="Also create the combined dataset with all CDs (memory intensive)",
+    )
 
     args = parser.parse_args()
 
@@ -846,9 +851,13 @@ if __name__ == "__main__":
         print(f"Created {state_code}.h5")
 
     # Everything ------------------------------------------------
-    output_file = create_sparse_cd_stacked_dataset(
-        w,
-        cds_to_calibrate,
-        dataset_path=dataset_path,
-        output_path=f"{args.output_dir}/cd_calibration.h5",
-    )
+    if args.include_full_dataset:
+        print("\nCreating combined dataset with all CDs...")
+        output_file = create_sparse_cd_stacked_dataset(
+            w,
+            cds_to_calibrate,
+            dataset_path=dataset_path,
+            output_path=f"{args.output_dir}/cd_calibration.h5",
+        )
+    else:
+        print("\nSkipping combined dataset (use --include-full-dataset to create it)")

@@ -204,9 +204,12 @@ python -m policyengine_us_data.datasets.cps.geo_stacking_calibration.create_spar
   --output-dir policyengine_us_data/storage/cd_states
 ```
 
+**Optional Flags**:
+- `--include-full-dataset`: Also create combined file with all 436 CDs (memory intensive, may exceed ordinary machine capacity). By default, only state files are created.
+
 **Outputs** (in `policyengine_us_data/storage/cd_states/`):
-- 51 state files: `AL.h5`, `AK.h5`, ..., `WY.h5`
-- 1 combined file: `cd_calibration.h5`
+- 51 state files: `AL.h5`, `AK.h5`, ..., `WY.h5` (always created)
+- 1 combined file: `cd_calibration.h5` (only with `--include-full-dataset`)
 - Mapping CSVs: `STATE_household_mapping.csv` for tracing
 
 **Processing Details**:
@@ -336,6 +339,7 @@ python -m policyengine_us_data.datasets.cps.geo_stacking_calibration.create_spar
 ### Memory Issues
 **For local runs**: Reduce batch size or use GCP
 **For GCP**: Increase `MEMORY_MIB` in config.env (default: 32768)
+**For state file creation**: The combined dataset (`cd_calibration.h5`) with all 436 CDs may be too large for ordinary machines. By default, only state files are created. Use `--include-full-dataset` only if you have sufficient memory (typically requires 32GB+ RAM).
 
 ## Architecture Decisions
 

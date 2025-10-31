@@ -14,10 +14,13 @@ from tqdm import trange
 from typing import Type
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.cps.extended_cps import (
-    ExtendedCPS_2024,
+    ExtendedCPS_2024,  # NOTE (baogorek) : I made this the FULL version
     CPS_2019,
     CPS_2024,
 )
+from scipy import sparse as sp
+from l0.calibration import SparseCalibrationWeights
+
 import os
 from pathlib import Path
 import logging
@@ -33,7 +36,7 @@ def reweight(
     original_weights,
     loss_matrix,
     targets_array,
-    dropout_rate=0.05,
+    dropout_rate=0.00,
     log_path="calibration_log.csv",
     epochs=500,
     l0_lambda=2.6445e-07,
@@ -44,6 +47,12 @@ def reweight(
     set_seeds(seed)
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
+
+    # I just realized that I already have a stratified data set which I can reweight
+    # I don't really need L0 right now at all!
+    ## Breaking in with the new L0 method
+    #X_sparse = sp.csr_matrix(loss_matrix.values)
+
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
     nation_normalisation_factor = is_national * (1 / is_national.sum())
     state_normalisation_factor = ~is_national * (1 / (~is_national).sum())
@@ -354,7 +363,7 @@ class ReweightedCPS_2024(Dataset):
 
 
 class EnhancedCPS_2024(EnhancedCPS):
-    input_dataset = ExtendedCPS_2024
+    input_dataset = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/stratified_extended_cps_2024.h5"  # ExtendedCPS_2024
     start_year = 2024
     end_year = 2024
     name = "enhanced_cps_2024"

@@ -329,8 +329,10 @@ class ExtendedCPS_2023(ExtendedCPS):
     time_period = 2023
 
 
+# TODO (baogorek added _Full), not sure what the ramifications are,
+# But I need the extra data for the lon
 class ExtendedCPS_2024(ExtendedCPS):
-    cps = CPS_2024
+    cps = CPS_2024_Full
     puf = PUF_2024
     name = "extended_cps_2024"
     label = "Extended CPS (2024)"

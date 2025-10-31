@@ -79,7 +79,24 @@ def create_sparse_ecps():
 
     # Write the data to an h5
     data = {}
+
+    essential_vars = {'person_id', 'household_id', 'tax_unit_id', 'spm_unit_id',
+                      'marital_unit_id', 'person_weight', 'household_weight',
+                      'person_household_id', 'person_tax_unit_id', 'person_spm_unit_id',
+                      'person_marital_unit_id'}
+
     for variable in sim.tax_benefit_system.variables:
+        var_def = sim.tax_benefit_system.variables[variable]
+
+        # Skip calculated variables (those with formulas) unless they're essential IDs/weights
+        if variable not in essential_vars:
+            if var_def.formulas:
+                continue
+
+            # Skip aggregate variables (those with adds/subtracts)
+            if (hasattr(var_def, 'adds') and var_def.adds) or (hasattr(var_def, 'subtracts') and var_def.subtracts):
+                continue
+
         data[variable] = {}
         for time_period in sim.get_holder(variable).get_known_periods():
             values = sim.get_holder(variable).get_array(time_period)

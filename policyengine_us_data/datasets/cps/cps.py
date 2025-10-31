@@ -2058,6 +2058,15 @@ class CPS_2023_Full(CPS):
     time_period = 2023
 
 
+class CPS_2024_Full(CPS):
+    name = "cps_2024_full"
+    label = "CPS 2024 (full)"
+    raw_cps = CensusCPS_2024
+    previous_year_raw_cps = CensusCPS_2023
+    file_path = STORAGE_FOLDER / "cps_2024_full.h5"
+    time_period = 2024
+
+
 class PooledCPS(Dataset):
     data_format = Dataset.ARRAYS
     input_datasets: list
@@ -2135,4 +2144,5 @@ if __name__ == "__main__":
         CPS_2021_Full().generate()
         CPS_2022_Full().generate()
         CPS_2023_Full().generate()
+        CPS_2024_Full().generate()
         Pooled_3_Year_CPS_2023().generate()

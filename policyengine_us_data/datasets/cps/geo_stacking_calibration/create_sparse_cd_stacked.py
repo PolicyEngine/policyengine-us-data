@@ -3,6 +3,14 @@ Create a sparse congressional district-stacked dataset with only non-zero weight
 Standalone version that doesn't modify the working state stacking code.
 """
 
+# Testing with this:
+output_dir = "national"
+dataset_path_str = "/home/baogorek/devl/stratified_10k.h5"
+db_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
+weights_path_str = "national/w_cd_20251031_122119.npy"
+include_full_dataset = True
+# end testing lines --
+
 import sys
 import numpy as np
 import pandas as pd
@@ -31,6 +39,61 @@ from policyengine_us.variables.household.demographic.geographic.county.county_en
     County,
 )
 
+
+# TODO: consolidate mappings
+STATE_CODES = {
+    1: "AL",
+    2: "AK",
+    4: "AZ",
+    5: "AR",
+    6: "CA",
+    8: "CO",
+    9: "CT",
+    10: "DE",
+    11: "DC",
+    12: "FL",
+    13: "GA",
+    15: "HI",
+    16: "ID",
+    17: "IL",
+    18: "IN",
+    19: "IA",
+    20: "KS",
+    21: "KY",
+    22: "LA",
+    23: "ME",
+    24: "MD",
+    25: "MA",
+    26: "MI",
+    27: "MN",
+    28: "MS",
+    29: "MO",
+    30: "MT",
+    31: "NE",
+    32: "NV",
+    33: "NH",
+    34: "NJ",
+    35: "NM",
+    36: "NY",
+    37: "NC",
+    38: "ND",
+    39: "OH",
+    40: "OK",
+    41: "OR",
+    42: "PA",
+    44: "RI",
+    45: "SC",
+    46: "SD",
+    47: "TN",
+    48: "TX",
+    49: "UT",
+    50: "VT",
+    51: "VA",
+    53: "WA",
+    54: "WV",
+    55: "WI",
+    56: "WY",
+}
 
 # State FIPS to StateName and StateCode mappings
 STATE_FIPS_TO_NAME = {
@@ -145,8 +208,9 @@ STATE_FIPS_TO_CODE = {
 
 def load_cd_county_mappings():
     """Load CD to county mappings from JSON file."""
-    script_dir = Path(__file__).parent
-    mapping_file = script_dir / "cd_county_mappings.json"
+    #script_dir = Path(__file__).parent
+    #mapping_file = script_dir / "cd_county_mappings.json"
+    mapping_file = Path.cwd() / "cd_county_mappings.json"
     if not mapping_file.exists():
         print(
             "WARNING: cd_county_mappings.json not found. Counties will not be updated."
@@ -186,7 +250,7 @@ def create_sparse_cd_stacked_dataset(
     cds_to_calibrate,
     cd_subset=None,
     output_path=None,
-    dataset_path="hf://policyengine/test/extended_cps_2023.h5",
+    dataset_path=None,
 ):
     """
     Create a SPARSE congressional district-stacked dataset using DataFrame approach.
@@ -195,12 +259,9 @@ def create_sparse_cd_stacked_dataset(
         w: Calibrated weight vector from L0 calibration (length = n_households * n_cds)
         cds_to_calibrate: List of CD GEOID codes used in calibration
         cd_subset: Optional list of CD GEOIDs to include (subset of cds_to_calibrate)
-        output_path: Where to save the sparse CD-stacked h5 file (auto-generated if None)
-        dataset_path: Path to the input dataset (default is standard extended CPS)
+        output_path: Where to save the sparse CD-stacked h5 file
+        dataset_path: Path to the base .h5 dataset used to create the training matrices
     """
-    print("\n" + "=" * 70)
-    print("CREATING SPARSE CD-STACKED DATASET (DataFrame approach)")
-    print("=" * 70)
 
     # Handle CD subset filtering
     if cd_subset is not None:
@@ -226,34 +287,20 @@ def create_sparse_cd_stacked_dataset(
 
     # Generate output path if not provided
     if output_path is None:
-        base_dir = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage"
-        if cd_subset is None:
-            # Default name for all CDs
-            output_path = f"{base_dir}/sparse_cd_stacked_2023.h5"
-        else:
-            # CD-specific name
-            suffix = "_".join(cd_subset[:3])  # Use first 3 CDs for naming
-            if len(cd_subset) > 3:
-                suffix += f"_plus{len(cd_subset)-3}"
-            output_path = f"{base_dir}/sparse_cd_stacked_2023_{suffix}.h5"
-
+        raise ValueError("No output .h5 path given")
     print(f"Output path: {output_path}")
 
     # Load the original simulation
     base_sim = Microsimulation(dataset=dataset_path)
 
-    # Load CD to county mappings
     cd_county_mappings = load_cd_county_mappings()
-    if cd_county_mappings:
-        print("Loaded CD to county mappings")
 
-    # Get household IDs and create mapping
     household_ids = base_sim.calculate(
         "household_id", map_to="household"
     ).values
     n_households_orig = len(household_ids)
 
-    # Create mapping from household ID to index for proper filtering
+    # From the base sim, create mapping from household ID to index for proper filtering
     hh_id_to_idx = {int(hh_id): idx for idx, hh_id in enumerate(household_ids)}
 
     # Infer the number of households from weight vector and CD count
@@ -262,28 +309,17 @@ def create_sparse_cd_stacked_dataset(
             f"Weight vector length ({len(w):,}) is not evenly divisible by "
             f"number of CDs ({len(cds_to_calibrate)}). Cannot determine household count."
         )
-
     n_households_from_weights = len(w) // len(cds_to_calibrate)
 
-    # Check if they match
     if n_households_from_weights != n_households_orig:
-        print(
-            f"WARNING: Weight vector suggests {n_households_from_weights:,} households"
-        )
-        print(f"         but dataset has {n_households_orig:,} households")
-        print(
-            f"         Using weight vector dimensions (assuming dataset matches calibration)"
-        )
-        n_households_orig = n_households_from_weights
+        raise ValueError("Households from base data set do not match households from weights")
 
     print(f"\nOriginal dataset has {n_households_orig:,} households")
 
     # Pre-calculate household structure needed for person weight assignments
-    print("Calculating household structure...")
-    person_household_id = base_sim.calculate("person_household_id").values
+    #person_household_id = base_sim.calculate("person_household_id").values
 
     # Process the weight vector to understand active household-CD pairs
-    print("\nProcessing weight vector...")
     W_full = w.reshape(len(cds_to_calibrate), n_households_orig)
 
     # Extract only the CDs we want to process
@@ -295,19 +331,22 @@ def create_sparse_cd_stacked_dataset(
     else:
         W = W_full
 
-    # Count total active weights
+    # Count total active weights: i.e., number of active households
     total_active_weights = np.sum(W > 0)
+    total_weight_in_W = np.sum(W)
     print(f"Total active household-CD pairs: {total_active_weights:,}")
+    print(f"Total weight in W matrix: {total_weight_in_W:,.0f}")
 
     # Collect DataFrames for each CD
     cd_dfs = []
     total_kept_households = 0
+    total_calibrated_weight = 0
+    total_kept_weight = 0
     time_period = int(base_sim.default_calculation_period)
 
     for idx, cd_geoid in enumerate(cds_to_process):
-        if (idx + 1) % 10 == 0 or (idx + 1) == len(
-            cds_to_process
-        ):  # Progress every 10 CDs and at the end
+        # Progress every 10 CDs and at the end ----
+        if (idx + 1) % 10 == 0 or (idx + 1) == len(cds_to_process):
             print(
                 f"Processing CD {cd_geoid} ({idx + 1}/{len(cds_to_process)})..."
             )
@@ -326,42 +365,97 @@ def create_sparse_cd_stacked_dataset(
             household_ids[hh_idx] for hh_idx in active_household_indices
         )
 
-        # Create weight vector with weights for this CD
-        cd_weights = np.zeros(n_households_orig)
-        cd_weights[active_household_indices] = W[
-            cd_idx, active_household_indices
-        ]
-
-        # Create person weights using vectorized operations
-        # Each person gets their household's weight (NOT multiplied by persons_per_household)
-        person_hh_indices = np.array(
-            [hh_id_to_idx.get(int(hh_id), -1) for hh_id in person_household_id]
-        )
-        person_weights = np.where(
-            person_hh_indices >= 0, cd_weights[person_hh_indices], 0
-        )
-
-        # Create a simulation with these weights
+        # Fresh simulation
         cd_sim = Microsimulation(dataset=dataset_path)
-        cd_sim.set_input("household_weight", time_period, cd_weights)
-        cd_sim.set_input("person_weight", time_period, person_weights)
-        # Don't set tax_unit_weight - let PolicyEngine derive it from household weights
 
-        # Convert to DataFrame
+        # First, create hh_df with CALIBRATED weights from the W matrix
+        household_ids_in_sim = cd_sim.calculate(
+            "household_id", map_to="household"
+        ).values
+
+        # Get this CD's calibrated weights from the weight matrix
+        calibrated_weights_for_cd = W[cd_idx, :]  # Get this CD's row from weight matrix
+
+        # Map the calibrated weights to household IDs
+        hh_weight_values = []
+        for hh_id in household_ids_in_sim:
+            hh_idx = hh_id_to_idx[int(hh_id)]  # Get index in weight matrix
+            hh_weight_values.append(calibrated_weights_for_cd[hh_idx])
+
+        hh_df = pd.DataFrame(
+            {
+                "household_id": household_ids_in_sim,
+                "household_weight": hh_weight_values,
+            }
+        )
+
+        # Now create person_rel with calibrated household weights
+        person_ids = cd_sim.calculate("person_id", map_to="person").values
+        person_household_ids = cd_sim.calculate("household_id", map_to="person").values
+        person_tax_unit_ids = cd_sim.calculate("tax_unit_id", map_to="person").values
+
+        # Map calibrated household weights to person level
+        hh_weight_map = dict(zip(hh_df['household_id'], hh_df['household_weight']))
+        person_household_weights = [hh_weight_map[int(hh_id)] for hh_id in person_household_ids]
+
+        person_rel = pd.DataFrame(
+            {
+                "person_id": person_ids,
+                "household_id": person_household_ids,
+                "household_weight": person_household_weights,
+                "tax_unit_id": person_tax_unit_ids,
+            }
+        )
+
+        # Calculate person weights based on calibrated household weights
+        # Person weight equals household weight (each person represents the household weight)
+        person_rel['person_weight'] = person_rel['household_weight']
+
+        # Tax unit weight: each tax unit gets the weight of its household
+        tax_unit_df = person_rel.groupby('tax_unit_id').agg(
+            tax_unit_weight=('household_weight', 'first')
+        ).reset_index()
+
+        # SPM unit weight: each SPM unit gets the weight of its household
+        person_spm_ids = cd_sim.calculate('spm_unit_id', map_to='person').values
+        person_rel['spm_unit_id'] = person_spm_ids
+        spm_unit_df = person_rel.groupby('spm_unit_id').agg(
+            spm_unit_weight=('household_weight', 'first')
+        ).reset_index()
+
+        # Marital unit weight: each marital unit gets the weight of its household
+        person_marital_ids = cd_sim.calculate('marital_unit_id', map_to='person').values
+        person_rel['marital_unit_id'] = person_marital_ids
+        marital_unit_df = person_rel.groupby('marital_unit_id').agg(
+            marital_unit_weight=('household_weight', 'first')
+        ).reset_index()
+
+        # Track calibrated weight for this CD
+        cd_calibrated_weight = calibrated_weights_for_cd.sum()
+        cd_active_weight = calibrated_weights_for_cd[calibrated_weights_for_cd > 0].sum()
+
+        # SET WEIGHTS IN SIMULATION BEFORE EXTRACTING DATAFRAME
+        # This is the key - set_input updates the simulation's internal state
+        cd_sim.set_input("household_weight", time_period, hh_df['household_weight'].values)
+        cd_sim.set_input("person_weight", time_period, person_rel['person_weight'].values)
+        cd_sim.set_input("tax_unit_weight", time_period, tax_unit_df['tax_unit_weight'].values)
+        cd_sim.set_input("spm_unit_weight", time_period, spm_unit_df['spm_unit_weight'].values)
+        cd_sim.set_input("marital_unit_weight", time_period, marital_unit_df['marital_unit_weight'].values)
+
+        # Now extract the dataframe with updated weights
         df = cd_sim.to_input_dataframe()
 
+        assert df.shape[0] == person_rel.shape[0]  # df is at the person level
+
         # Column names follow pattern: variable__year
-        hh_weight_col = f"household_weight__{time_period}"
-        person_weight_col = f"person_weight__{time_period}"
         hh_id_col = f"household_id__{time_period}"
         cd_geoid_col = f"congressional_district_geoid__{time_period}"
+        hh_weight_col = f"household_weight__{time_period}"
+        person_weight_col = f"person_weight__{time_period}"
+        tax_unit_weight_col = f"tax_unit_weight__{time_period}"
+        person_id_col = f"person_id__{time_period}"
+        tax_unit_id_col = f"tax_unit_id__{time_period}"
 
-        # Ensure person weights are in the DataFrame
-        # The DataFrame is at person-level, so person_weight should be there
-        if person_weight_col not in df.columns:
-            print(f"WARNING: {person_weight_col} not in DataFrame columns")
-            # Add it manually if needed
-            df[person_weight_col] = person_weights
         state_fips_col = f"state_fips__{time_period}"
         state_name_col = f"state_name__{time_period}"
         state_code_col = f"state_code__{time_period}"
@@ -371,6 +465,15 @@ def create_sparse_cd_stacked_dataset(
 
         # Filter to only active households in this CD
         df_filtered = df[df[hh_id_col].isin(active_household_ids)].copy()
+
+        # Track weight after filtering - need to group by household since df_filtered is person-level
+        df_filtered_weight = df_filtered.groupby(hh_id_col)[hh_weight_col].first().sum()
+
+        if abs(cd_active_weight - df_filtered_weight) > 10:
+            print(f"  CD {cd_geoid}: Calibrated active weight = {cd_active_weight:,.0f}, df_filtered weight = {df_filtered_weight:,.0f}, LOST {cd_active_weight - df_filtered_weight:,.0f}")
+
+        total_calibrated_weight += cd_active_weight
+        total_kept_weight += df_filtered_weight
 
         # Update congressional_district_geoid to target CD
         df_filtered[cd_geoid_col] = int(cd_geoid)
@@ -400,23 +503,42 @@ def create_sparse_cd_stacked_dataset(
                     hh_to_county[hh_id] = ""
 
             if hh_to_county and any(hh_to_county.values()):
-                df_filtered[county_fips_col] = df_filtered[hh_id_col].map(
-                    hh_to_county
+                # Map household to county FIPS string
+                county_fips_str = df_filtered[hh_id_col].map(hh_to_county)
+
+                # Convert FIPS string to integer for county_fips column
+                # Handle empty strings by converting to 0
+                df_filtered[county_fips_col] = county_fips_str.apply(
+                    lambda x: int(x) if x and x != "" else 0
                 )
+
+                # Set county enum to UNKNOWN (since we don't have specific enum values)
                 df_filtered[county_col] = County.UNKNOWN
-                df_filtered[county_str_col] = df_filtered[hh_id_col].map(
-                    hh_to_county
-                )
+
+                # Set county_str to the string representation of FIPS
+                df_filtered[county_str_col] = county_fips_str
 
         cd_dfs.append(df_filtered)
         total_kept_households += len(df_filtered[hh_id_col].unique())
 
     print(f"\nCombining {len(cd_dfs)} CD DataFrames...")
     print(f"Total households across all CDs: {total_kept_households:,}")
+    print(f"\nWeight tracking:")
+    print(f"  Total calibrated active weight: {total_calibrated_weight:,.0f}")
+    print(f"  Total kept weight in df_filtered: {total_kept_weight:,.0f}")
+    print(f"  Weight retention: {100 * total_kept_weight / total_calibrated_weight:.2f}%")
 
     # Combine all CD DataFrames
     combined_df = pd.concat(cd_dfs, ignore_index=True)
     print(f"Combined DataFrame shape: {combined_df.shape}")
+
+    # Check weights in combined_df before any reindexing
+    hh_weight_col = f"household_weight__{time_period}"
+    person_weight_col = f"person_weight__{time_period}"
+    print(f"\nWeights in combined_df BEFORE reindexing:")
+    print(f"  HH weight sum: {combined_df[hh_weight_col].sum()/1e6:.2f}M")
+    print(f"  Person weight sum: {combined_df[person_weight_col].sum()/1e6:.2f}M")
+    print(f"  Ratio: {combined_df[person_weight_col].sum() / combined_df[hh_weight_col].sum():.2f}")
 
     # REINDEX ALL IDs TO PREVENT OVERFLOW AND HANDLE DUPLICATES
     print("\nReindexing all entity IDs using 10k ranges per CD...")
@@ -610,6 +732,12 @@ def create_sparse_cd_stacked_dataset(
     print(f"  Final SPM units: {new_spm_id:,}")
     print(f"  Final marital units: {new_marital_id:,}")
 
+    # Check weights in combined_df AFTER reindexing
+    print(f"\nWeights in combined_df AFTER reindexing:")
+    print(f"  HH weight sum: {combined_df[hh_weight_col].sum()/1e6:.2f}M")
+    print(f"  Person weight sum: {combined_df[person_weight_col].sum()/1e6:.2f}M")
+    print(f"  Ratio: {combined_df[person_weight_col].sum() / combined_df[hh_weight_col].sum():.2f}")
+
     # Verify no overflow risk
     max_person_id = combined_df[person_id_col].max()
     print(f"\nOverflow check:")
@@ -635,7 +763,41 @@ def create_sparse_cd_stacked_dataset(
     print(f"\nSaving to {output_path}...")
     data = {}
 
+    # Load the base dataset to see what variables were available during training
+    import h5py as h5py_check
+    with h5py_check.File(dataset_path.file_path, 'r') as base_file:
+        base_dataset_vars = set(base_file.keys())
+    print(f"Base dataset has {len(base_dataset_vars)} variables")
+
+    # Define essential variables that must be kept even if they have formulas
+    essential_vars = {
+        'person_id', 'household_id', 'tax_unit_id', 'spm_unit_id',
+        'marital_unit_id', 'person_weight', 'household_weight', 'tax_unit_weight',
+        'person_household_id', 'person_tax_unit_id', 'person_spm_unit_id',
+        'person_marital_unit_id',
+        'congressional_district_geoid',
+        'state_fips', 'state_name', 'state_code',
+        'county_fips', 'county', 'county_str'
+    }
+
+    variables_saved = 0
+    variables_skipped = 0
+
     for variable in sparse_sim.tax_benefit_system.variables:
+        var_def = sparse_sim.tax_benefit_system.variables[variable]
+
+        # Save if it's essential OR if it was in the base dataset
+        if variable in essential_vars or variable in base_dataset_vars:
+            pass  # Will try to save below
+        else:
+            # Skip other calculated/aggregate variables
+            if var_def.formulas or \
+               (hasattr(var_def, 'adds') and var_def.adds) or \
+               (hasattr(var_def, 'subtracts') and var_def.subtracts):
+                variables_skipped += 1
+                continue
+
+        # Only process variables that have actual data
         data[variable] = {}
         for period in sparse_sim.get_holder(variable).get_known_periods():
             values = sparse_sim.get_holder(variable).get_array(period)
@@ -661,9 +823,13 @@ def create_sparse_cd_stacked_dataset(
 
             if values is not None:
                 data[variable][period] = values
+                variables_saved += 1
 
         if len(data[variable]) == 0:
             del data[variable]
+
+    print(f"Variables saved: {variables_saved}")
+    print(f"Variables skipped: {variables_skipped}")
 
     # Write to h5
     with h5py.File(output_path, "w") as f:
@@ -709,138 +875,95 @@ def create_sparse_cd_stacked_dataset(
     return output_path
 
 
-if __name__ == "__main__":
-    import argparse
+#if __name__ == "__main__":
+#    import argparse
+#
+#    parser = argparse.ArgumentParser(
+#        description="Create sparse CD-stacked state datasets"
+#    )
+#    parser.add_argument(
+#        "--weights-path", required=True, help="Path to w_cd.npy file"
+#    )
+#    parser.add_argument(
+#        "--dataset-path",
+#        required=True,
+#        help="Path to stratified dataset .h5 file",
+#    )
+#    parser.add_argument(
+#        "--db-path", required=True, help="Path to policy_data.db"
+#    )
+#    parser.add_argument(
+#        "--output-dir",
+#        default="./temp",
+#        help="Output directory for state files",
+#    )
+#    parser.add_argument(
+#        "--include-full-dataset",
+#        action="store_true",
+#        help="Also create the combined dataset with all CDs (memory intensive)",
+#    )
+#
+#    args = parser.parse_args()
+#    dataset_path_str = args.dataset_path
+#    weights_path_str = args.weights_path
+#    db_path = Path(args.db_path).resolve()
+#    output_dir = args.output_dir
+#    include_full_dataset = args.include_full_dataset
+#
+#    # All args read in ---------
+#    os.makedirs(output_dir, exist_ok=True)
 
-    parser = argparse.ArgumentParser(
-        description="Create sparse CD-stacked state datasets"
+dataset_path = Dataset.from_file(dataset_path_str)
+w = np.load(weights_path_str)
+
+db_uri = f"sqlite:///{db_path}"
+engine = create_engine(db_uri)
+
+query = """
+SELECT DISTINCT sc.value as cd_geoid
+FROM strata s
+JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+WHERE s.stratum_group_id = 1
+  AND sc.constraint_variable = "congressional_district_geoid"
+ORDER BY sc.value
+"""
+
+with engine.connect() as conn:
+    result = conn.execute(text(query)).fetchall()
+    cds_to_calibrate = [row[0] for row in result]
+
+## Verify dimensions match
+# Note: this is the base dataset that was stacked repeatedly
+assert_sim = Microsimulation(dataset=dataset_path)
+n_hh = assert_sim.calculate("household_id", map_to="household").shape[0]
+expected_length = len(cds_to_calibrate) * n_hh
+
+# Ensure that the data set we're rebuilding has a shape that's consistent with training
+if len(w) != expected_length:
+    raise ValueError(
+        f"Weight vector length ({len(w):,}) doesn't match expected ({expected_length:,})"
     )
-    parser.add_argument(
-        "--weights-path", required=True, help="Path to w_cd.npy file"
-    )
-    parser.add_argument(
-        "--dataset-path",
-        required=True,
-        help="Path to stratified dataset .h5 file",
-    )
-    parser.add_argument(
-        "--db-path", required=True, help="Path to policy_data.db"
-    )
-    parser.add_argument(
-        "--output-dir",
-        default="./temp",
-        help="Output directory for state files",
-    )
-    parser.add_argument(
-        "--include-full-dataset",
-        action="store_true",
-        help="Also create the combined dataset with all CDs (memory intensive)",
+
+# Create the .h5 files ---------------------------------------------
+# National Dataset with all districts ------------------------------------------------
+if include_full_dataset:
+    output_path = f"{output_dir}/national.h5"
+    print(f"\nCreating combined dataset with all CDs in {output_path}")
+    output_file = create_sparse_cd_stacked_dataset(
+        w,
+        cds_to_calibrate,
+        dataset_path=dataset_path,
+        output_path=output_path,
     )
 
-    args = parser.parse_args()
-
-    dataset_path_str = args.dataset_path
-    dataset_path = Dataset.from_file(dataset_path_str)
-    w = np.load(args.weights_path)
-
-    db_path = Path(args.db_path).resolve()
-    if not db_path.exists():
-        raise FileNotFoundError(
-            f"Database file not found at {db_path}. "
-            f"Ensure the file exists before running this script."
-        )
-
-    db_uri = f"sqlite:///{db_path}"
-    engine = create_engine(db_uri)
-
-    query = """
-    SELECT DISTINCT sc.value as cd_geoid
-    FROM strata s
-    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-    WHERE s.stratum_group_id = 1
-      AND sc.constraint_variable = "congressional_district_geoid"
-    ORDER BY sc.value
-    """
-
-    with engine.connect() as conn:
-        result = conn.execute(text(query)).fetchall()
-        cds_to_calibrate = [row[0] for row in result]
-
-    ## Verify dimensions match
-    assert_sim = Microsimulation(dataset=dataset_path)
-    n_hh = assert_sim.calculate("household_id", map_to="household").shape[0]
-    expected_length = len(cds_to_calibrate) * n_hh
-
-    if len(w) != expected_length:
-        raise ValueError(
-            f"Weight vector length ({len(w):,}) doesn't match expected ({expected_length:,})"
-        )
-
-    # Create the .h5 files for each state ---------------------------------------------
-    STATE_CODES = {
-        1: "AL",
-        2: "AK",
-        4: "AZ",
-        5: "AR",
-        6: "CA",
-        8: "CO",
-        9: "CT",
-        10: "DE",
-        11: "DC",
-        12: "FL",
-        13: "GA",
-        15: "HI",
-        16: "ID",
-        17: "IL",
-        18: "IN",
-        19: "IA",
-        20: "KS",
-        21: "KY",
-        22: "LA",
-        23: "ME",
-        24: "MD",
-        25: "MA",
-        26: "MI",
-        27: "MN",
-        28: "MS",
-        29: "MO",
-        30: "MT",
-        31: "NE",
-        32: "NV",
-        33: "NH",
-        34: "NJ",
-        35: "NM",
-        36: "NY",
-        37: "NC",
-        38: "ND",
-        39: "OH",
-        40: "OK",
-        41: "OR",
-        42: "PA",
-        44: "RI",
-        45: "SC",
-        46: "SD",
-        47: "TN",
-        48: "TX",
-        49: "UT",
-        50: "VT",
-        51: "VA",
-        53: "WA",
-        54: "WV",
-        55: "WI",
-        56: "WY",
-    }
-
-    # Create output directory
-    os.makedirs(args.output_dir, exist_ok=True)
-
-    # Loop through states and create datasets
+# State Datasets with state districts ---------
+if False:
     for state_fips, state_code in STATE_CODES.items():
         cd_subset = [
             cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips
         ]
 
-        output_path = f"{args.output_dir}/{state_code}.h5"
+        output_path = f"{output_dir}/{state_code}.h5"
         output_file = create_sparse_cd_stacked_dataset(
             w,
             cds_to_calibrate,
@@ -849,15 +972,3 @@ if __name__ == "__main__":
             output_path=output_path,
         )
         print(f"Created {state_code}.h5")
-
-    # Everything ------------------------------------------------
-    if args.include_full_dataset:
-        print("\nCreating combined dataset with all CDs...")
-        output_file = create_sparse_cd_stacked_dataset(
-            w,
-            cds_to_calibrate,
-            dataset_path=dataset_path,
-            output_path=f"{args.output_dir}/cd_calibration.h5",
-        )
-    else:
-        print("\nSkipping combined dataset (use --include-full-dataset to create it)")

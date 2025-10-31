@@ -19,6 +19,7 @@ from policyengine_core.enums import Enum
 def create_stratified_cps_dataset(
     target_households=30_000,
     high_income_percentile=99,  # Keep ALL households above this percentile
+    base_dataset="hf://policyengine/test/extended_cps_2023.h5",
     output_path=None,
 ):
     """
@@ -35,9 +36,7 @@ def create_stratified_cps_dataset(
 
     # Load the original simulation
     print("Loading original dataset...")
-    sim = Microsimulation(
-        dataset="hf://policyengine/test/extended_cps_2023.h5"
-    )
+    sim = Microsimulation(dataset=base_dataset)
 
     # Calculate AGI for all households
     print("Calculating household AGI...")
@@ -193,7 +192,23 @@ def create_stratified_cps_dataset(
     print(f"\nSaving to {output_path}...")
     data = {}
 
+    essential_vars = {'person_id', 'household_id', 'tax_unit_id', 'spm_unit_id',
+                      'marital_unit_id', 'person_weight', 'household_weight',
+                      'person_household_id', 'person_tax_unit_id', 'person_spm_unit_id',
+                      'person_marital_unit_id'}
+
     for variable in stratified_sim.tax_benefit_system.variables:
+        var_def = stratified_sim.tax_benefit_system.variables[variable]
+
+        # Skip calculated variables (those with formulas) unless they're essential IDs/weights
+        if variable not in essential_vars:
+            if var_def.formulas:
+                continue
+
+            # Skip aggregate variables (those with adds/subtracts)
+            if (hasattr(var_def, 'adds') and var_def.adds) or (hasattr(var_def, 'subtracts') and var_def.subtracts):
+                continue
+
         data[variable] = {}
         for period in stratified_sim.get_holder(variable).get_known_periods():
             values = stratified_sim.get_holder(variable).get_array(period)

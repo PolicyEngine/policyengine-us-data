@@ -474,3 +474,82 @@ Creating year-specific .h5 files for PolicyEngine is complex because:
 The most promising immediate fix is implementing multi-entity level mapping to ensure all 179 input variables are properly uprated to the target year. This should resolve the $40B discrepancy.
 
 A longer-term architectural question is whether creating 76 separate .h5 files is the right approach, or if a more lightweight solution (storing only calibrated weights + using base file) would be more maintainable and reliable.
+
+---
+
+## Design Decision: Household-Only Projection Pathway (2025)
+
+### Context
+
+While `run_full_projection.py` handles all entity levels (person, household, tax_unit, spm_unit, marital_unit), we created `run_household_projection.py` as a simpler alternative that uses `map_to="household"` exclusively in the projection calculations.
+
+### Key Design Choices
+
+#### 1. Projection Calculations: Household-Level Only
+
+In the main projection loop, we calculate aggregates at household level:
+```python
+# Simplified approach
+income_tax_hh = sim.calculate('income_tax', period=year, map_to='household')
+income_tax_values = income_tax_hh.values  # Already in household order
+```
+
+**Rationale**:
+- Eliminates person→household aggregation steps
+- Values come directly in household order for weight calibration
+- ~60% less code than multi-entity approach
+- Suitable for aggregate revenue projections
+
+**Limitation**: Cannot analyze by person-level characteristics in the projection loop
+
+#### 2. H5 File Creation: Person-Level Storage Required
+
+Despite using household-level calculations for projections, when creating .h5 files we still need person-level detail:
+
+```python
+def create_household_year_h5(year, household_weights, base_dataset_path, output_dir):
+    # Broadcast calibrated household weights to persons
+    person_weights = person_household_id.map(hh_to_weight)  # ✓ Correct
+
+    # Uprate variables at PERSON level, not household
+    uprated_values = sim.calculate(var_name, period=year).values  # ✓ Person-level
+```
+
+**Critical Distinction**:
+- **Household weights → Persons**: Broadcast (all persons in household share same weight) ✓
+- **Data variables**: Calculate at person level to preserve individual-specific values ✓
+
+**Why Not Broadcast Data Variables?**
+If we did `sim.calculate('social_security', map_to='household')` and broadcast to persons:
+- Each person would get the TOTAL household SS benefits
+- Person with $2000/month SS would show as $3500 (household total)
+- Age, income, benefits are individual attributes, not shared across household
+
+**Why Broadcast Weights?**
+- Weights represent the sampling/expansion factor
+- All persons in a household represent the same number of population members
+- This is statistically correct for survey weighting
+
+#### 3. The "Household-Only" Name
+
+The pathway is called "household-only" because:
+- **Projection loop**: Uses `map_to='household'` for simplicity
+- **Weight calibration**: Works with household-level weights
+- **Aggregation**: Household-level totals for revenue projections
+
+But NOT because:
+- ❌ It broadcasts household data to persons (that would be wrong)
+- ❌ It ignores person-level characteristics (those are preserved in .h5)
+- ❌ It can't create proper datasets (it can, using person-level uprating)
+
+### Summary of Approach
+
+| Component | Level | Rationale |
+|-----------|-------|-----------|
+| Projection calculations | Household | Simpler, faster, suitable for aggregates |
+| Weight calibration | Household | IPF/GREG works on household weights |
+| Weight storage | Broadcast to person | All household members share weight |
+| Variable uprating | Person | Preserves individual characteristics |
+| H5 file structure | Person-level rows | Required by PolicyEngine architecture |
+
+This design provides a simpler pathway for aggregate projections while still producing valid person-level datasets when needed.

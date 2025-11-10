@@ -3,17 +3,50 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-y_age_2024 = np.array([
-    18333697., 19799430., 21203879., 22168390., 21618383., 21906706.,
-    23405056., 22650099., 22126485., 19859230., 20661941., 20198508.,
-    21676036., 19026961., 15797857., 11318751.,  7041419.,  6122068.
-])
+y_age_2024 = np.array(
+    [
+        18333697.0,
+        19799430.0,
+        21203879.0,
+        22168390.0,
+        21618383.0,
+        21906706.0,
+        23405056.0,
+        22650099.0,
+        22126485.0,
+        19859230.0,
+        20661941.0,
+        20198508.0,
+        21676036.0,
+        19026961.0,
+        15797857.0,
+        11318751.0,
+        7041419.0,
+        6122068.0,
+    ]
+)
 
 age_brackets = [
-    '0-4', '5-9', '10-14', '15-19', '20-24', '25-29',
-    '30-34', '35-39', '40-44', '45-49', '50-54', '55-59',
-    '60-64', '65-69', '70-74', '75-79', '80-84', '85-999'
+    "0-4",
+    "5-9",
+    "10-14",
+    "15-19",
+    "20-24",
+    "25-29",
+    "30-34",
+    "35-39",
+    "40-44",
+    "45-49",
+    "50-54",
+    "55-59",
+    "60-64",
+    "65-69",
+    "70-74",
+    "75-79",
+    "80-84",
+    "85-999",
 ]
+
 
 def create_simple_transition_matrix():
     """
@@ -43,26 +76,28 @@ def create_realistic_transition_matrix(survival_rates=None):
     T = np.zeros((n, n))
 
     if survival_rates is None:
-        survival_rates = np.array([
-            0.995,  # 0-4 -> 5-9
-            0.998,  # 5-9 -> 10-14
-            0.998,  # 10-14 -> 15-19
-            0.997,  # 15-19 -> 20-24
-            0.996,  # 20-24 -> 25-29
-            0.995,  # 25-29 -> 30-34
-            0.994,  # 30-34 -> 35-39
-            0.992,  # 35-39 -> 40-44
-            0.988,  # 40-44 -> 45-49
-            0.982,  # 45-49 -> 50-54
-            0.972,  # 50-54 -> 55-59
-            0.958,  # 55-59 -> 60-64
-            0.935,  # 60-64 -> 65-69
-            0.900,  # 65-69 -> 70-74
-            0.850,  # 70-74 -> 75-79
-            0.780,  # 75-79 -> 80-84
-            0.650,  # 80-84 -> 85-999
-            0.400,  # 85-999 -> 85-999 (stay in bracket with some survival)
-        ])
+        survival_rates = np.array(
+            [
+                0.995,  # 0-4 -> 5-9
+                0.998,  # 5-9 -> 10-14
+                0.998,  # 10-14 -> 15-19
+                0.997,  # 15-19 -> 20-24
+                0.996,  # 20-24 -> 25-29
+                0.995,  # 25-29 -> 30-34
+                0.994,  # 30-34 -> 35-39
+                0.992,  # 35-39 -> 40-44
+                0.988,  # 40-44 -> 45-49
+                0.982,  # 45-49 -> 50-54
+                0.972,  # 50-54 -> 55-59
+                0.958,  # 55-59 -> 60-64
+                0.935,  # 60-64 -> 65-69
+                0.900,  # 65-69 -> 70-74
+                0.850,  # 70-74 -> 75-79
+                0.780,  # 75-79 -> 80-84
+                0.650,  # 80-84 -> 85-999
+                0.400,  # 85-999 -> 85-999 (stay in bracket with some survival)
+            ]
+        )
 
     for i in range(n - 1):
         T[i + 1, i] = survival_rates[i]
@@ -72,7 +107,9 @@ def create_realistic_transition_matrix(survival_rates=None):
     return T
 
 
-def project_population(initial_pop, transition_matrix, n_periods, births_per_period=None):
+def project_population(
+    initial_pop, transition_matrix, n_periods, births_per_period=None
+):
     """
     Project population forward using transition matrix.
 
@@ -111,21 +148,23 @@ def visualize_projections(projections, years, selected_brackets=None):
     fig = go.Figure()
 
     for idx in selected_brackets:
-        fig.add_trace(go.Scatter(
-            x=years,
-            y=projections[:, idx] / 1e6,
-            mode='lines',
-            name=age_brackets[idx],
-            line=dict(width=2)
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=years,
+                y=projections[:, idx] / 1e6,
+                mode="lines",
+                name=age_brackets[idx],
+                line=dict(width=2),
+            )
+        )
 
     fig.update_layout(
-        title='Population Projections by Age Bracket',
-        xaxis_title='Year',
-        yaxis_title='Population (millions)',
-        hovermode='x unified',
+        title="Population Projections by Age Bracket",
+        xaxis_title="Year",
+        yaxis_title="Population (millions)",
+        hovermode="x unified",
         width=900,
-        height=500
+        height=500,
     )
 
     return fig
@@ -148,9 +187,13 @@ def main():
         period = (year - 2024) // 5
         if period <= n_periods:
             print(f"\nYear {year} (Period {period}):")
-            print(f"  Total population: {projections_simple[period].sum():,.0f}")
-            print(f"  In 85+ bracket: {projections_simple[period, 17]:,.0f} "
-                  f"({100 * projections_simple[period, 17] / projections_simple[period].sum():.1f}%)")
+            print(
+                f"  Total population: {projections_simple[period].sum():,.0f}"
+            )
+            print(
+                f"  In 85+ bracket: {projections_simple[period, 17]:,.0f} "
+                f"({100 * projections_simple[period, 17] / projections_simple[period].sum():.1f}%)"
+            )
 
     print("\n\n2. REALISTIC PROJECTION (With mortality)")
     print("-" * 40)
@@ -168,11 +211,19 @@ def main():
         period = (year - 2024) // 5
         if period <= n_periods:
             print(f"\nYear {year} (Period {period}):")
-            print(f"  Total population: {projections_realistic[period].sum():,.0f}")
+            print(
+                f"  Total population: {projections_realistic[period].sum():,.0f}"
+            )
             print(f"  Age distribution:")
             for i in [0, 5, 10, 15, 17]:
-                pct = 100 * projections_realistic[period, i] / projections_realistic[period].sum()
-                print(f"    {age_brackets[i]:8} : {projections_realistic[period, i]:12,.0f} ({pct:5.1f}%)")
+                pct = (
+                    100
+                    * projections_realistic[period, i]
+                    / projections_realistic[period].sum()
+                )
+                print(
+                    f"    {age_brackets[i]:8} : {projections_realistic[period, i]:12,.0f} ({pct:5.1f}%)"
+                )
 
     print("\n\n3. TRANSITION MATRIX STRUCTURE")
     print("-" * 40)
@@ -182,12 +233,10 @@ def main():
     print("\nRealistic transition matrix (first 5x5):")
     print(T_realistic[:5, :5])
 
-    years = [2024 + 5*i for i in range(n_periods + 1)]
+    years = [2024 + 5 * i for i in range(n_periods + 1)]
 
     df_projections = pd.DataFrame(
-        projections_realistic,
-        index=years,
-        columns=age_brackets
+        projections_realistic, index=years, columns=age_brackets
     )
 
     print("\n\n4. PROJECTION SUMMARY TABLE")
@@ -195,9 +244,9 @@ def main():
     print("\nPopulation by age bracket (millions):")
     print(df_projections.iloc[::3, ::3] / 1e6)
 
-    years = [2024 + 5*i for i in range(n_periods + 1)]
+    years = [2024 + 5 * i for i in range(n_periods + 1)]
     fig = visualize_projections(projections_realistic, years)
-    fig.write_html('age_projections.html')
+    fig.write_html("age_projections.html")
     print("\nVisualization saved to age_projections.html")
 
     print("\n\n5. TRANSITION MATRIX PROPERTIES")
@@ -223,28 +272,30 @@ def create_annual_transition_matrix():
     n = 18
     T = np.zeros((n, n))
 
-    survival_rates_5yr = np.array([
-        0.995,  # 0-4 -> 5-9
-        0.998,  # 5-9 -> 10-14
-        0.998,  # 10-14 -> 15-19
-        0.997,  # 15-19 -> 20-24
-        0.996,  # 20-24 -> 25-29
-        0.995,  # 25-29 -> 30-34
-        0.994,  # 30-34 -> 35-39
-        0.992,  # 35-39 -> 40-44
-        0.988,  # 40-44 -> 45-49
-        0.982,  # 45-49 -> 50-54
-        0.972,  # 50-54 -> 55-59
-        0.958,  # 55-59 -> 60-64
-        0.935,  # 60-64 -> 65-69
-        0.900,  # 65-69 -> 70-74
-        0.850,  # 70-74 -> 75-79
-        0.780,  # 75-79 -> 80-84
-        0.650,  # 80-84 -> 85-999
-        0.400,  # 85-999 -> 85-999 (5-year survival in same bracket)
-    ])
+    survival_rates_5yr = np.array(
+        [
+            0.995,  # 0-4 -> 5-9
+            0.998,  # 5-9 -> 10-14
+            0.998,  # 10-14 -> 15-19
+            0.997,  # 15-19 -> 20-24
+            0.996,  # 20-24 -> 25-29
+            0.995,  # 25-29 -> 30-34
+            0.994,  # 30-34 -> 35-39
+            0.992,  # 35-39 -> 40-44
+            0.988,  # 40-44 -> 45-49
+            0.982,  # 45-49 -> 50-54
+            0.972,  # 50-54 -> 55-59
+            0.958,  # 55-59 -> 60-64
+            0.935,  # 60-64 -> 65-69
+            0.900,  # 65-69 -> 70-74
+            0.850,  # 70-74 -> 75-79
+            0.780,  # 75-79 -> 80-84
+            0.650,  # 80-84 -> 85-999
+            0.400,  # 85-999 -> 85-999 (5-year survival in same bracket)
+        ]
+    )
 
-    annual_survival = survival_rates_5yr ** 0.2
+    annual_survival = survival_rates_5yr**0.2
 
     aging_fraction = 0.2
 

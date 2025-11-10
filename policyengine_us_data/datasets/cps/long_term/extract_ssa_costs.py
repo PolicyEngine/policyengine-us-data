@@ -2,14 +2,18 @@ import pandas as pd
 import numpy as np
 
 # Read the file
-df = pd.read_excel('SingleYearTRTables_TR2025.xlsx', sheet_name='VI.G9', header=None)
+df = pd.read_excel(
+    "SingleYearTRTables_TR2025.xlsx", sheet_name="VI.G9", header=None
+)
 
 print("DataFrame shape:", df.shape)
 print("\nChecking data types around row 66-70:")
 for i in range(66, 71):
     year_val = df.iloc[i, 0]
     cost_val = df.iloc[i, 2]
-    print(f"Row {i}: Year={year_val} (type: {type(year_val)}), Cost={cost_val} (type: {type(cost_val)})")
+    print(
+        f"Row {i}: Year={year_val} (type: {type(year_val)}), Cost={cost_val} (type: {type(cost_val)})"
+    )
 
 # Extract OASDI costs more carefully
 oasdi_costs_2025_dollars = {}

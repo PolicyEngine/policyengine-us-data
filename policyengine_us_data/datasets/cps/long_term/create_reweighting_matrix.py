@@ -5,7 +5,8 @@ import numpy as np
 from policyengine_us import Microsimulation
 
 # Database connection
-db_path = '/home/baogorek/devl/sep/policyengine-us-data/policyengine_us_data/storage/policy_data.db'
+db_path = "/home/baogorek/devl/sep/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
+
 
 def get_national_age_targets():
     """
@@ -45,33 +46,49 @@ def get_national_age_targets():
     conn.close()
 
     # Extract age ranges from notes column
-    df['age_range'] = df['notes'].str.extract(r'Age: ([\d-]+)')
+    df["age_range"] = df["notes"].str.extract(r"Age: ([\d-]+)")
 
     # Define the expected age ranges in order
     expected_age_ranges = [
-        '0-4', '5-9', '10-14', '15-19', '20-24', '25-29',
-        '30-34', '35-39', '40-44', '45-49', '50-54', '55-59',
-        '60-64', '65-69', '70-74', '75-79', '80-84', '85-999'
+        "0-4",
+        "5-9",
+        "10-14",
+        "15-19",
+        "20-24",
+        "25-29",
+        "30-34",
+        "35-39",
+        "40-44",
+        "45-49",
+        "50-54",
+        "55-59",
+        "60-64",
+        "65-69",
+        "70-74",
+        "75-79",
+        "80-84",
+        "85-999",
     ]
 
     # Create a mapping for sorting
     age_range_order = {age: i for i, age in enumerate(expected_age_ranges)}
-    df['sort_order'] = df['age_range'].map(age_range_order)
+    df["sort_order"] = df["age_range"].map(age_range_order)
 
     # Sort by the predefined order
-    df_sorted = df.sort_values('sort_order')
+    df_sorted = df.sort_values("sort_order")
 
     # Extract the 18x1 vector of population counts
-    y_targets = df_sorted['value'].values
+    y_targets = df_sorted["value"].values
 
     # Create reference DataFrame
-    reference_df = pd.DataFrame({
-        'age_range': df_sorted['age_range'].values,
-        'target_value': y_targets
-    })
+    reference_df = pd.DataFrame(
+        {"age_range": df_sorted["age_range"].values, "target_value": y_targets}
+    )
 
     # Verify we have exactly 18 age groups
-    assert len(y_targets) == 18, f"Expected 18 age groups, got {len(y_targets)}"
+    assert (
+        len(y_targets) == 18
+    ), f"Expected 18 age groups, got {len(y_targets)}"
 
     return y_targets, reference_df
 
@@ -95,12 +112,16 @@ def create_reweighting_target_matrix():
     target_matrix = age_targets.reshape(-1, 1)
 
     # Track what each row represents
-    target_descriptions = [f"Age {row['age_range']}" for _, row in age_ref_df.iterrows()]
+    target_descriptions = [
+        f"Age {row['age_range']}" for _, row in age_ref_df.iterrows()
+    ]
 
     return target_matrix, target_descriptions
 
 
-def iterative_proportional_fitting(X, y, w_initial, max_iters=100, tol=1e-6, verbose=True):
+def iterative_proportional_fitting(
+    X, y, w_initial, max_iters=100, tol=1e-6, verbose=True
+):
     """
     Fast iterative proportional fitting (raking) for reweighting.
     Much faster than optimization for large datasets.
@@ -136,7 +157,13 @@ def iterative_proportional_fitting(X, y, w_initial, max_iters=100, tol=1e-6, ver
             relevant_adjustments = adjustment_factors[household_features > 0]
             if len(relevant_adjustments) > 0:
                 # Geometric mean of adjustments
-                adjustment = np.prod(relevant_adjustments ** (household_features[household_features > 0] / household_features.sum()))
+                adjustment = np.prod(
+                    relevant_adjustments
+                    ** (
+                        household_features[household_features > 0]
+                        / household_features.sum()
+                    )
+                )
                 w_new[i] *= adjustment
 
         # Check convergence
@@ -147,7 +174,9 @@ def iterative_proportional_fitting(X, y, w_initial, max_iters=100, tol=1e-6, ver
             predictions_new = X.T @ w
             rel_errors = np.abs(predictions_new - y) / y
             max_rel_error = rel_errors.max()
-            print(f"Iteration {iter_num:3d}: Max relative error = {max_rel_error:.6f}, Weight change = {rel_change:.6e}")
+            print(
+                f"Iteration {iter_num:3d}: Max relative error = {max_rel_error:.6f}, Weight change = {rel_change:.6e}"
+            )
 
         if rel_change < tol:
             if verbose:
@@ -159,13 +188,13 @@ def iterative_proportional_fitting(X, y, w_initial, max_iters=100, tol=1e-6, ver
     predictions_initial = X.T @ w_initial
 
     info = {
-        'success': True,
-        'iterations': iter_num + 1,
-        'predictions_initial': predictions_initial,
-        'predictions_new': predictions_final,
-        'relative_errors_initial': (predictions_initial - y) / y,
-        'relative_errors_new': (predictions_final - y) / y,
-        'weight_ratio': w / w_initial
+        "success": True,
+        "iterations": iter_num + 1,
+        "predictions_initial": predictions_initial,
+        "predictions_new": predictions_final,
+        "relative_errors_initial": (predictions_initial - y) / y,
+        "relative_errors_new": (predictions_final - y) / y,
+        "weight_ratio": w / w_initial,
     }
 
     return w, info
@@ -196,8 +225,8 @@ def create_age_design_matrix(sim):
 
     # Define age brackets (matching the targets)
     age_brackets = [
-        (0, 5),    # 0-4
-        (5, 10),   # 5-9
+        (0, 5),  # 0-4
+        (5, 10),  # 5-9
         (10, 15),  # 10-14
         (15, 20),  # 15-19
         (20, 25),  # 20-24
@@ -213,7 +242,7 @@ def create_age_design_matrix(sim):
         (70, 75),  # 70-74
         (75, 80),  # 75-79
         (80, 85),  # 80-84
-        (85, 999), # 85+
+        (85, 999),  # 85+
     ]
     n_brackets = len(age_brackets)
 
@@ -221,7 +250,9 @@ def create_age_design_matrix(sim):
     X = np.zeros((n_households, n_brackets))
 
     # Map household IDs to row indices
-    hh_id_to_idx = {hh_id: idx for idx, hh_id in enumerate(household_ids_unique)}
+    hh_id_to_idx = {
+        hh_id: idx for idx, hh_id in enumerate(household_ids_unique)
+    }
 
     # Fill design matrix: count people in each age bracket per household
     for person_idx in range(len(age_person)):
@@ -254,7 +285,9 @@ if __name__ == "__main__":
     y_age, age_df = get_national_age_targets()
 
     # Load microsimulation
-    sim = Microsimulation(dataset="hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5")
+    sim = Microsimulation(
+        dataset="hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5"
+    )
 
     # Create design matrix
     X, weights = create_age_design_matrix(sim)
@@ -262,73 +295,84 @@ if __name__ == "__main__":
     # Calculate initialized current weighted totals (X'w)
     current_totals = X.T @ weights
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("CURRENT VS TARGET COMPARISON")
-    print("="*60)
-    print(f"{'Age Bracket':<12} {'Current':>15} {'Target':>15} {'Difference':>15}")
-    print("-"*60)
+    print("=" * 60)
+    print(
+        f"{'Age Bracket':<12} {'Current':>15} {'Target':>15} {'Difference':>15}"
+    )
+    print("-" * 60)
 
-    age_labels = age_df['age_range'].values
+    age_labels = age_df["age_range"].values
     for i, label in enumerate(age_labels):
         current = current_totals[i]
         target = y_age[i]
         diff = current - target
         print(f"{label:<12} {current:15,.0f} {target:15,.0f} {diff:+15,.0f}")
 
-    print("-"*60)
-    print(f"{'TOTAL':<12} {current_totals.sum():15,.0f} {y_age.sum():15,.0f} {(current_totals.sum() - y_age.sum()):+15,.0f}")
+    print("-" * 60)
+    print(
+        f"{'TOTAL':<12} {current_totals.sum():15,.0f} {y_age.sum():15,.0f} {(current_totals.sum() - y_age.sum()):+15,.0f}"
+    )
 
     # Perform reweighting
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("PERFORMING REWEIGHTING (IPF/Raking)")
-    print("="*60)
+    print("=" * 60)
 
-    w_new, info = iterative_proportional_fitting(X, y_age, weights,
-                                                  max_iters=100,
-                                                  tol=1e-6,
-                                                  verbose=True)
+    w_new, info = iterative_proportional_fitting(
+        X, y_age, weights, max_iters=100, tol=1e-6, verbose=True
+    )
 
     # Display results
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("REWEIGHTING RESULTS")
-    print("="*60)
-    print(f"{'Age Bracket':<12} {'Initial':>15} {'Target':>15} {'Reweighted':>15} {'Rel Error':>12}")
-    print("-"*70)
+    print("=" * 60)
+    print(
+        f"{'Age Bracket':<12} {'Initial':>15} {'Target':>15} {'Reweighted':>15} {'Rel Error':>12}"
+    )
+    print("-" * 70)
 
     for i, label in enumerate(age_labels):
-        initial = info['predictions_initial'][i]
+        initial = info["predictions_initial"][i]
         target = y_age[i]
-        reweighted = info['predictions_new'][i]
-        rel_error = info['relative_errors_new'][i]
-        print(f"{label:<12} {initial:15,.0f} {target:15,.0f} {reweighted:15,.0f} {rel_error:12.4%}")
+        reweighted = info["predictions_new"][i]
+        rel_error = info["relative_errors_new"][i]
+        print(
+            f"{label:<12} {initial:15,.0f} {target:15,.0f} {reweighted:15,.0f} {rel_error:12.4%}"
+        )
 
-    print("-"*70)
-    print(f"{'TOTAL':<12} {info['predictions_initial'].sum():15,.0f} {y_age.sum():15,.0f} {info['predictions_new'].sum():15,.0f}")
+    print("-" * 70)
+    print(
+        f"{'TOTAL':<12} {info['predictions_initial'].sum():15,.0f} {y_age.sum():15,.0f} {info['predictions_new'].sum():15,.0f}"
+    )
 
     # Weight statistics
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("WEIGHT STATISTICS")
-    print("="*60)
+    print("=" * 60)
     print(f"Min weight ratio: {info['weight_ratio'].min():.4f}")
     print(f"Max weight ratio: {info['weight_ratio'].max():.4f}")
     print(f"Mean weight ratio: {info['weight_ratio'].mean():.4f}")
     print(f"Std weight ratio: {info['weight_ratio'].std():.4f}")
     print(f"Weights kept positive: {np.all(w_new > 0)}")
-    print(f"Total weight preserved: {np.abs(w_new.sum() - weights.sum()) < 1e-6}")
+    print(
+        f"Total weight preserved: {np.abs(w_new.sum() - weights.sum()) < 1e-6}"
+    )
 
     # Overall performance
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("OVERALL PERFORMANCE")
-    print("="*60)
-    initial_rel_error = np.sqrt(np.mean(info['relative_errors_initial']**2))
-    final_rel_error = np.sqrt(np.mean(info['relative_errors_new']**2))
+    print("=" * 60)
+    initial_rel_error = np.sqrt(np.mean(info["relative_errors_initial"] ** 2))
+    final_rel_error = np.sqrt(np.mean(info["relative_errors_new"] ** 2))
     print(f"Initial RMSE (relative): {initial_rel_error:.4%}")
     print(f"Final RMSE (relative): {final_rel_error:.4%}")
     print(f"Improvement: {(1 - final_rel_error/initial_rel_error):.2%}")
 
     save_numpy_arrays = False
     if save_numpy_arrays:
-        np.save('X_age_design.npy', X)
-        np.save('y_age_targets.npy', y_age)
-        np.save('weights_initial.npy', weights)
-        np.save('weights_reweighted.npy', w_new)
+        np.save("X_age_design.npy", X)
+        np.save("y_age_targets.npy", y_age)
+        np.save("weights_initial.npy", weights)
+        np.save("weights_reweighted.npy", w_new)

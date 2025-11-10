@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+      - Additional calibration based on SSA Trustees data that extends projections until 2100

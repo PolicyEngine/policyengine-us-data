@@ -206,6 +206,8 @@ def add_takeup(self):
     snap_rate = load_take_up_rate("snap", self.time_period)
     aca_rate = load_take_up_rate("aca", self.time_period)
     medicaid_rate = load_take_up_rate("medicaid", self.time_period)
+    head_start_rate = load_take_up_rate("head_start", self.time_period)
+    early_head_start_rate = load_take_up_rate("early_head_start", self.time_period)
 
     # EITC: varies by number of children
     eitc_child_count = baseline.calculate("eitc_child_count").values
@@ -234,6 +236,16 @@ def add_takeup(self):
     # Medicaid
     data["takes_up_medicaid_if_eligible"] = (
         generator.random(len(data["person_id"])) < medicaid_rate
+    )
+
+    # Head Start
+    data["takes_up_head_start_if_eligible"] = (
+        generator.random(len(data["person_id"])) < head_start_rate
+    )
+
+    # Early Head Start
+    data["takes_up_early_head_start_if_eligible"] = (
+        generator.random(len(data["person_id"])) < early_head_start_rate
     )
 
     self.save_dataset(data)

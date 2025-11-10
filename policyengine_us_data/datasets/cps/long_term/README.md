@@ -1,6 +1,35 @@
 # Long-Term Income Tax Revenue Projection Methodology
 ## Integrating Economic Uprating with Demographic Reweighting
 
+### Quick Start
+
+Run projections using `run_household_projection.py`:
+
+```bash
+# Navigate to the long_term directory
+cd policyengine_us_data/datasets/cps/long_term
+
+# Basic usage - project to 2035 using IPF calibration
+python run_household_projection.py 2035
+
+# Project to 2050 using GREG calibration
+python run_household_projection.py 2050 --greg
+
+# Full 75-year projection with GREG + Social Security benefits constraint
+python run_household_projection.py 2100 --greg --use-ss
+
+# Save calibrated datasets as .h5 files for each year
+python run_household_projection.py 2100 --greg --use-ss --save-h5
+```
+
+**Arguments:**
+- `END_YEAR`: Target year for projection (default: 2035)
+- `--greg`: Use GREG calibration instead of IPF (optional)
+- `--use-ss`: Include Social Security benefit totals as calibration target (requires --greg)
+- `--save-h5`: Save year-specific .h5 files to `./projected_datasets/` directory
+
+---
+
 ### Executive Summary
 
 This document outlines an innovative approach for projecting federal income tax revenue through 2100 that uniquely combines sophisticated economic microsimulation with demographic reweighting. By harmonizing PolicyEngine's state-of-the-art tax modeling with Social Security Administration demographic projections, we can isolate and quantify the fiscal impact of population aging while preserving the full complexity of the tax code.

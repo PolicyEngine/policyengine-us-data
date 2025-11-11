@@ -1,18 +1,19 @@
 import numpy as np
 import pandas as pd
+from policyengine_us_data.storage import STORAGE_FOLDER
 
 
-def load_ssa_age_projections(end_year=2100, csv_path="SSPopJul_TR2024.csv"):
+def load_ssa_age_projections(end_year=2100):
     """
-    Load SSA population projections from local CSV.
+    Load SSA population projections from package storage.
 
     Args:
         end_year: Final year to include (default 2100)
-        csv_path: Path to SSA population CSV file
 
     Returns:
         86 x n_years matrix (ages 0-85+ x years 2025-end_year)
     """
+    csv_path = STORAGE_FOLDER / "SSPopJul_TR2024.csv"
     df = pd.read_csv(csv_path)
 
     df_future = df[(df["Year"] >= 2025) & (df["Year"] <= end_year)]
@@ -34,17 +35,17 @@ def load_ssa_age_projections(end_year=2100, csv_path="SSPopJul_TR2024.csv"):
     return target_matrix
 
 
-def load_ssa_benefit_projections(year, csv_path="social_security_aux.csv"):
+def load_ssa_benefit_projections(year):
     """
     Load SSA Trustee Report projections for Social Security benefits.
 
     Args:
         year: Year to load benefits for
-        csv_path: Path to SSA benefits CSV file
 
     Returns:
         Total OASDI benefits in nominal dollars
     """
+    csv_path = STORAGE_FOLDER / "social_security_aux.csv"
     df = pd.read_csv(csv_path, thousands=",")
 
     row = df[df["year"] == year]

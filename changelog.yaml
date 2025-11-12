@@ -599,3 +599,9 @@
     - Fixed __file__ NameError in interactive Python environments
     - Updated generate method to handle 2025 extrapolation from 2024
   date: 2025-09-10 20:30:41
+- bump: patch
+  changes:
+    changed:
+    - GitHub Actions workflow now uses self-hosted GCP runner to handle memory-intensive
+      dataset builds
+  date: 2025-11-12 20:08:59

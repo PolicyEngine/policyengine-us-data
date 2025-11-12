@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    changed:
-    - GitHub Actions workflow now uses self-hosted GCP runner to handle memory-intensive dataset builds

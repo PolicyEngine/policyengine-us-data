@@ -26,7 +26,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: write  # Required for GitHub Pages deploy
       id-token: write  # Required for GCP auth

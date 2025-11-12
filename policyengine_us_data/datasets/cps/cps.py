@@ -38,11 +38,15 @@ class CPS(Dataset):
         """
 
         if self.raw_cps is None:
-            # Extrapolate from previous year
+            # Extrapolate from previous year or use actual data when available
             if self.time_period == 2025:
                 cps_2024 = CPS_2024(require=True)
                 arrays = cps_2024.load_dataset()
                 arrays = uprate_cps_data(arrays, 2024, self.time_period)
+            elif self.time_period == 2024:
+                # Use actual 2024 data from CPS_2024
+                cps_2024 = CPS_2024(require=True)
+                arrays = cps_2024.load_dataset()
             else:
                 # Default to CPS 2023 for backward compatibility
                 cps_2023 = CPS_2023(require=True)

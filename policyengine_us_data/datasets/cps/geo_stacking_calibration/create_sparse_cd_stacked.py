@@ -303,6 +303,12 @@ def create_sparse_cd_stacked_dataset(
     # From the base sim, create mapping from household ID to index for proper filtering
     hh_id_to_idx = {int(hh_id): idx for idx, hh_id in enumerate(household_ids)}
 
+    # I.e.,  
+    # {25: 0,
+    #  78: 1,
+    #  103: 2,
+    #  125: 3,
+
     # Infer the number of households from weight vector and CD count
     if len(w) % len(cds_to_calibrate) != 0:
         raise ValueError(
@@ -316,11 +322,9 @@ def create_sparse_cd_stacked_dataset(
 
     print(f"\nOriginal dataset has {n_households_orig:,} households")
 
-    # Pre-calculate household structure needed for person weight assignments
-    #person_household_id = base_sim.calculate("person_household_id").values
-
     # Process the weight vector to understand active household-CD pairs
     W_full = w.reshape(len(cds_to_calibrate), n_households_orig)
+    # (436, 10580)
 
     # Extract only the CDs we want to process
     if cd_subset is not None:
@@ -340,8 +344,8 @@ def create_sparse_cd_stacked_dataset(
     # Collect DataFrames for each CD
     cd_dfs = []
     total_kept_households = 0
-    total_calibrated_weight = 0
-    total_kept_weight = 0
+    #total_calibrated_weight = 0
+    #total_kept_weight = 0
     time_period = int(base_sim.default_calculation_period)
 
     for idx, cd_geoid in enumerate(cds_to_process):
@@ -382,70 +386,115 @@ def create_sparse_cd_stacked_dataset(
             hh_idx = hh_id_to_idx[int(hh_id)]  # Get index in weight matrix
             hh_weight_values.append(calibrated_weights_for_cd[hh_idx])
 
+        # TODO: do I need this?
+        entity_rel = pd.DataFrame(
+            {
+                "person_id": cd_sim.calculate(
+                    "person_id", map_to="person"
+                ).values,
+                "household_id": cd_sim.calculate(
+                    "household_id", map_to="person"
+                ).values,
+                "tax_unit_id": cd_sim.calculate(
+                    "tax_unit_id", map_to="person"
+                ).values,
+                "spm_unit_id": cd_sim.calculate(
+                    "spm_unit_id", map_to="person"
+                ).values,
+                "family_id": cd_sim.calculate(
+                    "family_id", map_to="person"
+                ).values,
+                "marital_unit_id": cd_sim.calculate(
+                    "marital_unit_id", map_to="person"
+                ).values,
+            }
+        )
+
         hh_df = pd.DataFrame(
             {
                 "household_id": household_ids_in_sim,
                 "household_weight": hh_weight_values,
             }
         )
+        counts = entity_rel.groupby('household_id')['person_id'].size().reset_index(name="persons_per_hh")
+        hh_df = hh_df.merge(counts)
+        hh_df['per_person_hh_weight'] = hh_df.household_weight / hh_df.persons_per_hh
 
-        # Now create person_rel with calibrated household weights
-        person_ids = cd_sim.calculate("person_id", map_to="person").values
-        person_household_ids = cd_sim.calculate("household_id", map_to="person").values
-        person_tax_unit_ids = cd_sim.calculate("tax_unit_id", map_to="person").values
+        ## Now create person_rel with calibrated household weights
+        #person_ids = cd_sim.calculate("person_id", map_to="person").values
+        #person_household_ids = cd_sim.calculate("household_id", map_to="person").values
+        #person_tax_unit_ids = cd_sim.calculate("tax_unit_id", map_to="person").values
 
-        # Map calibrated household weights to person level
-        hh_weight_map = dict(zip(hh_df['household_id'], hh_df['household_weight']))
-        person_household_weights = [hh_weight_map[int(hh_id)] for hh_id in person_household_ids]
+        ## Map calibrated household weights to person level
+        #hh_weight_map = dict(zip(hh_df['household_id'], hh_df['household_weight']))
+        #person_household_weights = [hh_weight_map[int(hh_id)] for hh_id in person_household_ids]
 
-        person_rel = pd.DataFrame(
-            {
-                "person_id": person_ids,
-                "household_id": person_household_ids,
-                "household_weight": person_household_weights,
-                "tax_unit_id": person_tax_unit_ids,
-            }
-        )
+        #person_rel = pd.DataFrame(
+        #    {
+        #        "person_id": person_ids,
+        #        "household_id": person_household_ids,
+        #        "household_weight": person_household_weights,
+        #        "tax_unit_id": person_tax_unit_ids,
+        #    }
+        #)
 
-        # Calculate person weights based on calibrated household weights
-        # Person weight equals household weight (each person represents the household weight)
-        person_rel['person_weight'] = person_rel['household_weight']
+        ## Calculate person weights based on calibrated household weights
+        ## Person weight equals household weight (each person represents the household weight)
+        #person_rel['person_weight'] = person_rel['household_weight']
 
-        # Tax unit weight: each tax unit gets the weight of its household
-        tax_unit_df = person_rel.groupby('tax_unit_id').agg(
-            tax_unit_weight=('household_weight', 'first')
-        ).reset_index()
+        ## Tax unit weight: each tax unit gets the weight of its household
+        #tax_unit_df = person_rel.groupby('tax_unit_id').agg(
+        #    tax_unit_weight=('household_weight', 'first')
+        #).reset_index()
 
-        # SPM unit weight: each SPM unit gets the weight of its household
-        person_spm_ids = cd_sim.calculate('spm_unit_id', map_to='person').values
-        person_rel['spm_unit_id'] = person_spm_ids
-        spm_unit_df = person_rel.groupby('spm_unit_id').agg(
-            spm_unit_weight=('household_weight', 'first')
-        ).reset_index()
+        ## SPM unit weight: each SPM unit gets the weight of its household
+        #person_spm_ids = cd_sim.calculate('spm_unit_id', map_to='person').values
+        #person_rel['spm_unit_id'] = person_spm_ids
+        #spm_unit_df = person_rel.groupby('spm_unit_id').agg(
+        #    spm_unit_weight=('household_weight', 'first')
+        #).reset_index()
 
-        # Marital unit weight: each marital unit gets the weight of its household
-        person_marital_ids = cd_sim.calculate('marital_unit_id', map_to='person').values
-        person_rel['marital_unit_id'] = person_marital_ids
-        marital_unit_df = person_rel.groupby('marital_unit_id').agg(
-            marital_unit_weight=('household_weight', 'first')
-        ).reset_index()
+        ## Marital unit weight: each marital unit gets the weight of its household
+        #person_marital_ids = cd_sim.calculate('marital_unit_id', map_to='person').values
+        #person_rel['marital_unit_id'] = person_marital_ids
+        #marital_unit_df = person_rel.groupby('marital_unit_id').agg(
+        #    marital_unit_weight=('household_weight', 'first')
+        #).reset_index()
 
-        # Track calibrated weight for this CD
-        cd_calibrated_weight = calibrated_weights_for_cd.sum()
-        cd_active_weight = calibrated_weights_for_cd[calibrated_weights_for_cd > 0].sum()
+        ## Track calibrated weight for this CD
+        #cd_calibrated_weight = calibrated_weights_for_cd.sum()
+        #cd_active_weight = calibrated_weights_for_cd[calibrated_weights_for_cd > 0].sum()
 
         # SET WEIGHTS IN SIMULATION BEFORE EXTRACTING DATAFRAME
         # This is the key - set_input updates the simulation's internal state
-        cd_sim.set_input("household_weight", time_period, hh_df['household_weight'].values)
-        cd_sim.set_input("person_weight", time_period, person_rel['person_weight'].values)
-        cd_sim.set_input("tax_unit_weight", time_period, tax_unit_df['tax_unit_weight'].values)
-        cd_sim.set_input("spm_unit_weight", time_period, spm_unit_df['spm_unit_weight'].values)
-        cd_sim.set_input("marital_unit_weight", time_period, marital_unit_df['marital_unit_weight'].values)
+
+        non_household_cols = ['person_id', 'tax_unit_id', 'spm_unit_id', 'family_id', 'marital_unit_id']
+
+        new_weights_per_id = {}
+        for col in non_household_cols:
+            person_counts = entity_rel.groupby(col)['person_id'].size().reset_index(name="person_id_count")
+            # Below: drop duplicates to undo the broadcast join done in entity_rel
+            id_link = entity_rel[['household_id', col]].drop_duplicates()
+            hh_info = id_link.merge(hh_df)
+
+            hh_info2 = hh_info.merge(person_counts, on=col)
+            hh_info2["id_weight"] = hh_info2.per_person_hh_weight * hh_info2.person_id_count
+            new_weights_per_id[col] = hh_info2.id_weight
+
+        for key in new_weights_per_id.keys():
+            assert np.isclose(np.sum(hh_weight_values), np.sum(new_weights_per_id[key]), atol=5)
+        
+        cd_sim.set_input("household_weight", time_period, hh_df.household_weight.values)
+        cd_sim.set_input("person_weight", time_period, new_weights_per_id['person_id'])
+        cd_sim.set_input("tax_unit_weight", time_period, new_weights_per_id['tax_unit_id'])
+        cd_sim.set_input("spm_unit_weight", time_period, new_weights_per_id['spm_unit_id'])
+        cd_sim.set_input("marital_unit_weight", time_period, new_weights_per_id['marital_unit_id'])
+        cd_sim.set_input("family_weight", time_period,  new_weights_per_id['family_id'])
 
         # Now extract the dataframe with updated weights
         df = cd_sim.to_input_dataframe()
 
-        assert df.shape[0] == person_rel.shape[0]  # df is at the person level
+        assert df.shape[0] == entity_rel.shape[0]  # df is at the person level
 
         # Column names follow pattern: variable__year
         hh_id_col = f"household_id__{time_period}"
@@ -466,14 +515,14 @@ def create_sparse_cd_stacked_dataset(
         # Filter to only active households in this CD
         df_filtered = df[df[hh_id_col].isin(active_household_ids)].copy()
 
-        # Track weight after filtering - need to group by household since df_filtered is person-level
-        df_filtered_weight = df_filtered.groupby(hh_id_col)[hh_weight_col].first().sum()
+        ## Track weight after filtering - need to group by household since df_filtered is person-level
+        #df_filtered_weight = df_filtered.groupby(hh_id_col)[hh_weight_col].first().sum()
 
-        if abs(cd_active_weight - df_filtered_weight) > 10:
-            print(f"  CD {cd_geoid}: Calibrated active weight = {cd_active_weight:,.0f}, df_filtered weight = {df_filtered_weight:,.0f}, LOST {cd_active_weight - df_filtered_weight:,.0f}")
+        #if abs(cd_active_weight - df_filtered_weight) > 10:
+        #    print(f"  CD {cd_geoid}: Calibrated active weight = {cd_active_weight:,.0f}, df_filtered weight = {df_filtered_weight:,.0f}, LOST {cd_active_weight - df_filtered_weight:,.0f}")
 
-        total_calibrated_weight += cd_active_weight
-        total_kept_weight += df_filtered_weight
+        #total_calibrated_weight += cd_active_weight
+        #total_kept_weight += df_filtered_weight
 
         # Update congressional_district_geoid to target CD
         df_filtered[cd_geoid_col] = int(cd_geoid)
@@ -523,10 +572,10 @@ def create_sparse_cd_stacked_dataset(
 
     print(f"\nCombining {len(cd_dfs)} CD DataFrames...")
     print(f"Total households across all CDs: {total_kept_households:,}")
-    print(f"\nWeight tracking:")
-    print(f"  Total calibrated active weight: {total_calibrated_weight:,.0f}")
-    print(f"  Total kept weight in df_filtered: {total_kept_weight:,.0f}")
-    print(f"  Weight retention: {100 * total_kept_weight / total_calibrated_weight:.2f}%")
+    #print(f"\nWeight tracking:")
+    #print(f"  Total calibrated active weight: {total_calibrated_weight:,.0f}")
+    #print(f"  Total kept weight in df_filtered: {total_kept_weight:,.0f}")
+    #print(f"  Weight retention: {100 * total_kept_weight / total_calibrated_weight:.2f}%")
 
     # Combine all CD DataFrames
     combined_df = pd.concat(cd_dfs, ignore_index=True)

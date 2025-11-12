@@ -16,7 +16,6 @@ from scipy import sparse
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
-# Note: uprate_targets_df import removed - uprating now done in calibration scripts
 
 logger = logging.getLogger(__name__)
 
@@ -31,16 +30,28 @@ class SparseGeoStackingMatrixBuilder:
     - This temporal mismatch will be addressed in future iterations
     """
 
-    def __init__(self, db_uri: str, time_period: int = 2024):
+    def __init__(self, db_uri: str, time_period: int):
         self.db_uri = db_uri
         self.engine = create_engine(db_uri)
-        self.time_period = time_period  # Default to 2024 to match CPS data
-        self._uprating_factors = None  # Lazy load when needed
-        self._params = None  # Cache for PolicyEngine parameters
+        self.time_period = time_period
+        self._uprating_factors = None
+        self._params = None
 
     @property
     def uprating_factors(self):
         """Lazy-load uprating factors from PolicyEngine parameters."""
+        # NOTE: this is pretty limited. What kind of CPI?
+        # In [44]: self._uprating_factors
+        # Out[44]:
+        # {(2022, 'cpi'): 1.0641014696885627,
+        #  (2022, 'pop'): 1.009365413037974,
+        #  (2023, 'cpi'): 1.0,
+        #  (2023, 'pop'): 1.0,
+        #  (2024, 'cpi'): 0.9657062435037478,
+        #  (2024, 'pop'): 0.989171581243436,
+        #  (2025, 'cpi'): 0.937584224942492,
+        #  (2025, 'pop'): 0.9892021773614242}
+
         if self._uprating_factors is None:
             self._uprating_factors = self._calculate_uprating_factors()
         return self._uprating_factors
@@ -1114,6 +1125,9 @@ class SparseGeoStackingMatrixBuilder:
     def apply_constraints_to_sim_sparse(
         self, sim, constraints_df: pd.DataFrame, target_variable: str
     ) -> Tuple[np.ndarray, np.ndarray]:
+        # TODO: is it really a good idea to skip geographic filtering?
+        # I'm seeing all of the US here for SNAP and I'm only in one congressional district
+        # We're putting a lot of faith on later functions to filter them out
         """
         Apply constraints and return sparse representation (indices and values).
 
@@ -1144,14 +1158,27 @@ class SparseGeoStackingMatrixBuilder:
                 "household_id": sim.calculate(
                     "household_id", map_to="person"
                 ).values,
+                "tax_unit_id": sim.calculate(
+                    "tax_unit_id", map_to="person"
+                ).values,
+                "spm_unit_id": sim.calculate(
+                    "spm_unit_id", map_to="person"
+                ).values,
+                "family_id": sim.calculate(
+                    "family_id", map_to="person"
+                ).values,
+                "marital_unit_id": sim.calculate(
+                    "marital_unit_id", map_to="person"
+                ).values,
             }
         )
 
         # Add target entity ID if it's not person or household
-        if target_entity not in ["person", "household"]:
-            entity_rel[f"{target_entity}_id"] = sim.calculate(
-                f"{target_entity}_id", map_to="person"
-            ).values
+        # NOTE: I could make entity rel this way
+        #if target_entity not in ["person", "household"]:
+        #    entity_rel[f"{target_entity}_id"] = sim.calculate(
+        #        f"{target_entity}_id", map_to="person"
+        #    ).values
 
         # Start with all persons satisfying constraints (will be ANDed together)
         person_constraint_mask = np.ones(len(entity_rel), dtype=bool)
@@ -1252,7 +1279,7 @@ class SparseGeoStackingMatrixBuilder:
 
         # Calculate target values at the target entity level
         if target_entity == "person":
-            target_values = sim.calculate(target_variable).values
+            target_values = sim.calculate(target_variable, map_to="person").values
         else:
             # For non-person entities, we need to be careful
             # Using map_to here for the TARGET calculation (not constraints)
@@ -1272,23 +1299,24 @@ class SparseGeoStackingMatrixBuilder:
             }
         )
 
-        # Build fresh entity_rel for the aggregation to household
-        entity_rel_for_agg = pd.DataFrame(
-            {
-                f"{target_entity}_id": sim.calculate(
-                    f"{target_entity}_id", map_to="person"
-                ).values,
-                "household_id": sim.calculate(
-                    "household_id", map_to="person"
-                ).values,
-                "person_id": sim.calculate(
-                    "person_id", map_to="person"
-                ).values,
-            }
-        )
+        # NOTE: I should not need this again
+        ## Build fresh entity_rel for the aggregation to household
+        #entity_rel_for_agg = pd.DataFrame(
+        #    {
+        #        f"{target_entity}_id": sim.calculate(
+        #            f"{target_entity}_id", map_to="person"
+        #        ).values,
+        #        "household_id": sim.calculate(
+        #            "household_id", map_to="person"
+        #        ).values,
+        #        "person_id": sim.calculate(
+        #            "person_id", map_to="person"
+        #        ).values,
+        #    }
+        #)
 
         # Merge to get metrics at person level
-        merged_df = entity_rel_for_agg.merge(
+        merged_df = entity_rel.merge(
             entity_df, how="left", on=[f"{target_entity}_id"]
         )
         merged_df["entity_masked_metric"] = merged_df[
@@ -1546,6 +1574,7 @@ class SparseGeoStackingMatrixBuilder:
         targets_df = pd.DataFrame(all_targets)
 
         # Build sparse data matrix ("loss matrix" historically) ---------------------------------------
+        # NOTE: we are unapologetically at the household level at this point
         household_ids = sim.calculate(
             "household_id"
         ).values  # Implicit map to "household" entity level
@@ -1555,10 +1584,13 @@ class SparseGeoStackingMatrixBuilder:
         # Use LIL matrix for efficient row-by-row construction
         matrix = sparse.lil_matrix((n_targets, n_households), dtype=np.float32)
 
+        # TODO: is this were all the values are set?
         for i, (_, target) in enumerate(targets_df.iterrows()):
+            # target = targets_df.iloc[68]
             constraints = self.get_constraints_for_stratum(
                 target["stratum_id"]
-            )  # will not return the geo constraint
+            )  # NOTE:will not return the geo constraint
+            # TODO: going in with snap target with index 68, and no constraints came out
             nonzero_indices, nonzero_values = (
                 self.apply_constraints_to_sim_sparse(
                     sim, constraints, target["variable"]

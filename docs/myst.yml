@@ -7,12 +7,6 @@ project:
         family: Team
   copyright: '2024'
   github: policyengine/policyengine-us-data
-  thebe:
-    binder:
-      repo: policyengine/policyengine-us-data
-      provider: github
-      url: https://mybinder.org
-      ref: master
   jupyter:
     myst:
       enable_extensions:
@@ -30,6 +24,7 @@ project:
     - file: background.md
     - file: data.md
     - file: methodology.md
+    - file: long_term_projections.ipynb
     - file: discussion.md
     - file: conclusion.md
     - file: appendix.md

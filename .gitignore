@@ -21,3 +21,6 @@ node_modules
 !age_state.csv
 !agi_state.csv
 !soi_targets.csv
+!policyengine_us_data/storage/social_security_aux.csv
+!policyengine_us_data/storage/SSPopJul_TR2024.csv
+docs/.ipynb_checkpoints/

@@ -14,6 +14,14 @@ which installs the development dependencies in a reference-only manner (so that 
 to the package code will be reflected immediately); `policyengine-us-data` is a dev package
 and not intended for direct access.
 
+## SSA Data Sources
+
+The following SSA data sources are used in this project:
+
+- [Latest Trustee's Report (2025)](https://www.ssa.gov/oact/TR/2025/index.html) - Source for `social_security_aux.csv` (extracted via `extract_ssa_costs.py`)
+- [Single Year Supplementary Tables (2025)](https://www.ssa.gov/oact/tr/2025/lrIndex.html) - Long-range demographic and economic projections
+- [Single Year Age Demographic Projections (2024 - latest published)](https://www.ssa.gov/oact/HistEst/Population/2024/Population2024.html) - Source for `SSPopJul_TR2024.csv` population data
+
 ## Building the Paper
 
 ### Prerequisites

@@ -34,7 +34,7 @@ documentation:
 	rm -f _toc.yml && \
 	myst clean && \
 	timeout 10 myst build --html || true
-	cd docs && test -d _build/html && touch _build/html/.nojekyll || true
+	cd docs && test -d _build/site && touch _build/site/.nojekyll || true
 
 documentation-build:
 	cd docs && \
@@ -44,7 +44,7 @@ documentation-build:
 	myst build --html
 
 documentation-serve:
-	cd docs/_build/html && python3 -m http.server 8080
+	cd docs/_build/site && python3 -m http.server 8080
 
 documentation-dev:
 	cd docs && \

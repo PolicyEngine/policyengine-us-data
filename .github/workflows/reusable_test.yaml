@@ -94,5 +94,5 @@ jobs:
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages
-          folder: docs/_build/html
+          folder: docs/_build/site
           clean: true

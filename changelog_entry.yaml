@@ -2,3 +2,6 @@
   changes:
     added:
       - Additional calibration based on SSA Trustees data that extends projections until 2100
+      - Manual trigger capability for documentation deployment workflow
+    fixed:
+      - GitHub Pages documentation deployment path

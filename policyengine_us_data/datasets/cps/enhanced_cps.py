@@ -1,10 +1,7 @@
 from policyengine_core.data import Dataset
 import pandas as pd
 from policyengine_us_data.utils import (
-    pe_to_soi,
-    get_soi,
     build_loss_matrix,
-    fmt,
     HardConcrete,
     print_reweighting_diagnostics,
     set_seeds,
@@ -18,7 +15,6 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_2019,
     CPS_2024,
 )
-import os
 from pathlib import Path
 import logging
 
@@ -36,7 +32,7 @@ def reweight(
     dropout_rate=0.05,
     log_path="calibration_log.csv",
     epochs=500,
-    l0_lambda=2.6445e-07,
+    l0_lambda=4.9999e-07,  # L0 penalty to induce sparsity
     init_mean=0.999,  # initial proportion with non-zero weights
     temperature=0.25,
     seed=1456,
@@ -208,6 +204,12 @@ def reweight(
         loss_matrix,
         targets_array,
         "L0 Sparse Solution",
+    )
+
+    # Log household count for CI monitoring
+    nonzero_count = np.sum(final_weights_sparse > 0.01)
+    logging.info(
+        f"HOUSEHOLD_COUNT_CHECK: {nonzero_count} non-zero households (target: 20k-25k)"
     )
 
     return final_weights_dense, final_weights_sparse

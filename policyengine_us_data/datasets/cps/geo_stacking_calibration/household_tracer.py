@@ -3,6 +3,78 @@ Household tracer utility for debugging geo-stacking sparse matrices.
 
 This utility allows tracing a single household through the complex stacked matrix
 structure to verify values match sim.calculate results.
+
+USAGE
+=====
+
+Basic Setup (from calibration package):
+
+    import pickle
+    from household_tracer import HouseholdTracer
+
+    # Load calibration package
+    with open('calibration_package.pkl', 'rb') as f:
+        data = pickle.load(f)
+
+    # Extract components
+    X_sparse = data['X_sparse']
+    targets_df = data['targets_df']
+    household_id_mapping = data['household_id_mapping']
+    cds_to_calibrate = data['cds_to_calibrate']
+    # Note: you also need 'sim' (Microsimulation instance)
+
+    # Create tracer
+    tracer = HouseholdTracer(
+        targets_df, X_sparse, household_id_mapping,
+        cds_to_calibrate, sim
+    )
+
+Common Operations:
+
+    # 1. Understand what a column represents
+    col_info = tracer.get_column_info(100)
+    # Returns: {'column_index': 100, 'cd_geoid': '101',
+    #           'household_id': 100, 'household_index': 99}
+
+    # 2. Access full column catalog (all column mappings)
+    tracer.column_catalog  # DataFrame with all 4.6M column mappings
+
+    # 3. Find where a household appears across all CDs
+    positions = tracer.get_household_column_positions(565)
+    # Returns: {'101': 564, '102': 11144, '201': 21724, ...}
+
+    # 4. Look up a specific matrix cell with full context
+    cell = tracer.lookup_matrix_cell(row_idx=50, col_idx=100)
+    # Returns complete info about target, household, and value
+
+    # 5. Get info about a row (target)
+    row_info = tracer.get_row_info(50)
+
+    # 6. View matrix structure
+    tracer.print_matrix_structure()
+
+    # 7. View column/row catalogs
+    tracer.print_column_catalog(max_rows=50)
+    tracer.print_row_catalog(max_rows=50)
+
+    # 8. Trace all target values for a specific household
+    household_targets = tracer.trace_household_targets(565)
+
+    # 9. Get targets by group
+    from calibration_utils import create_target_groups
+    tracer.target_groups, _ = create_target_groups(targets_df)
+    group_31 = tracer.get_group_rows(31)  # Person count targets
+
+Matrix Structure:
+
+    Columns are organized as: [CD1_households | CD2_households | ... | CD436_households]
+    Each CD block has n_households columns (e.g., 10,580 households)
+
+    Formula to find column index:
+        column_idx = cd_block_number × n_households + household_index
+
+    Example: Household at index 12 in CD block 371:
+        column_idx = 371 × 10580 + 12 = 3,925,192
 """
 
 import logging

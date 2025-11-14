@@ -33,6 +33,8 @@ project:
     - file: discussion.md
     - file: conclusion.md
     - file: appendix.md
+    - file: SNAP_SIMULATION_ANALYSIS.md
+      title: SNAP Simulation Analysis
 site:
   options:
     logo: logo.png

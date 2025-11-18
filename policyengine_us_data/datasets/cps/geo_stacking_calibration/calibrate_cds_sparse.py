@@ -34,6 +34,7 @@ from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_util
     download_from_huggingface,
     filter_target_groups,
 )
+from policyengine_us_data.datasets.cps.geo_stacking_calibration.household_tracer import HouseholdTracer
 
 # ============================================================================
 # STEP 1: DATA LOADING AND CD LIST RETRIEVAL
@@ -117,6 +118,10 @@ print(f"Total groups: {len(np.unique(target_groups))}")
 for info in group_info:
     print(f"  {info}")
 
+
+tracer = HouseholdTracer(targets_df, X_sparse, household_id_mapping, cds_to_calibrate, sim)
+tracer.print_matrix_structure()
+
 # After reviewing the printout above, specify group IDs to exclude
 # Example: groups_to_exclude = [5, 12, 18, 23, 27]
 groups_to_exclude = [
@@ -152,6 +157,14 @@ groups_to_exclude = [
 targets_df, X_sparse, target_groups = filter_target_groups(
     targets_df, X_sparse, target_groups, groups_to_exclude
 )
+
+tracer = HouseholdTracer(targets_df, X_sparse, household_id_mapping, cds_to_calibrate, sim)
+tracer.print_matrix_structure()
+
+household_targets = tracer.trace_household_targets(565)
+
+
+
 
 # Extract target values after filtering
 targets = targets_df.value.values

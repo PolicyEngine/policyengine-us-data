@@ -1,5 +1,4 @@
 # Test files (but not verify_calibration.py)
-test*
 
 # Analysis scripts - uncomment specific ones to commit if needed
 analyze*

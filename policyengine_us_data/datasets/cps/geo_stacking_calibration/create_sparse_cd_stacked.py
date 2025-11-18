@@ -3,13 +3,13 @@ Create a sparse congressional district-stacked dataset with only non-zero weight
 Standalone version that doesn't modify the working state stacking code.
 """
 
-# Testing with this:
-output_dir = "national"
-dataset_path_str = "/home/baogorek/devl/stratified_10k.h5"
-db_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
-weights_path_str = "national/w_cd_20251031_122119.npy"
-include_full_dataset = True
-# end testing lines --
+## Testing with this:
+#output_dir = "national"
+#dataset_path_str = "/home/baogorek/devl/stratified_10k.h5"
+#db_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
+#weights_path_str = "national/w_cd_20251031_122119.npy"
+#include_full_dataset = True
+## end testing lines --
 
 import sys
 import numpy as np
@@ -814,7 +814,7 @@ def create_sparse_cd_stacked_dataset(
 
     # Load the base dataset to see what variables were available during training
     import h5py as h5py_check
-    with h5py_check.File(dataset_path.file_path, 'r') as base_file:
+    with h5py_check.File(dataset_path, 'r') as base_file:
         base_dataset_vars = set(base_file.keys())
     print(f"Base dataset has {len(base_dataset_vars)} variables")
 
@@ -924,6 +924,69 @@ def create_sparse_cd_stacked_dataset(
     return output_path
 
 
+def main(dataset_path, w, db_uri):
+    #dataset_path = Dataset.from_file(dataset_path_str)
+    #w = np.load(weights_path_str)
+    #db_uri = f"sqlite:///{db_path}"
+
+    engine = create_engine(db_uri)
+    
+    query = """
+    SELECT DISTINCT sc.value as cd_geoid
+    FROM strata s
+    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+    WHERE s.stratum_group_id = 1
+      AND sc.constraint_variable = "congressional_district_geoid"
+    ORDER BY sc.value
+    """
+    
+    with engine.connect() as conn:
+        result = conn.execute(text(query)).fetchall()
+        cds_to_calibrate = [row[0] for row in result]
+    
+    ## Verify dimensions match
+    # Note: this is the base dataset that was stacked repeatedly
+    assert_sim = Microsimulation(dataset=dataset_path)
+    n_hh = assert_sim.calculate("household_id", map_to="household").shape[0]
+    expected_length = len(cds_to_calibrate) * n_hh
+    
+    # Ensure that the data set we're rebuilding has a shape that's consistent with training
+    if len(w) != expected_length:
+        raise ValueError(
+            f"Weight vector length ({len(w):,}) doesn't match expected ({expected_length:,})"
+        )
+    
+    # Create the .h5 files ---------------------------------------------
+    # National Dataset with all districts ------------------------------------------------
+    # TODO: what is the cds_to_calibrate doing for us if we have the cd_subset command?
+    if include_full_dataset:
+        output_path = f"{output_dir}/national.h5"
+        print(f"\nCreating combined dataset with all CDs in {output_path}")
+        output_file = create_sparse_cd_stacked_dataset(
+            w,
+            cds_to_calibrate,
+            dataset_path=dataset_path,
+            output_path=output_path,
+        )
+    
+    # State Datasets with state districts ---------
+    if False:
+        for state_fips, state_code in STATE_CODES.items():
+            cd_subset = [
+                cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips
+            ]
+    
+            output_path = f"{output_dir}/{state_code}.h5"
+            output_file = create_sparse_cd_stacked_dataset(
+                w,
+                cds_to_calibrate,
+                cd_subset=cd_subset,
+                dataset_path=dataset_path,
+                output_path=output_path,
+            )
+            print(f"Created {state_code}.h5")
+
+
 #if __name__ == "__main__":
 #    import argparse
 #
@@ -962,62 +1025,4 @@ def create_sparse_cd_stacked_dataset(
 #    # All args read in ---------
 #    os.makedirs(output_dir, exist_ok=True)
 
-dataset_path = Dataset.from_file(dataset_path_str)
-w = np.load(weights_path_str)
 
-db_uri = f"sqlite:///{db_path}"
-engine = create_engine(db_uri)
-
-query = """
-SELECT DISTINCT sc.value as cd_geoid
-FROM strata s
-JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-WHERE s.stratum_group_id = 1
-  AND sc.constraint_variable = "congressional_district_geoid"
-ORDER BY sc.value
-"""
-
-with engine.connect() as conn:
-    result = conn.execute(text(query)).fetchall()
-    cds_to_calibrate = [row[0] for row in result]
-
-## Verify dimensions match
-# Note: this is the base dataset that was stacked repeatedly
-assert_sim = Microsimulation(dataset=dataset_path)
-n_hh = assert_sim.calculate("household_id", map_to="household").shape[0]
-expected_length = len(cds_to_calibrate) * n_hh
-
-# Ensure that the data set we're rebuilding has a shape that's consistent with training
-if len(w) != expected_length:
-    raise ValueError(
-        f"Weight vector length ({len(w):,}) doesn't match expected ({expected_length:,})"
-    )
-
-# Create the .h5 files ---------------------------------------------
-# National Dataset with all districts ------------------------------------------------
-if include_full_dataset:
-    output_path = f"{output_dir}/national.h5"
-    print(f"\nCreating combined dataset with all CDs in {output_path}")
-    output_file = create_sparse_cd_stacked_dataset(
-        w,
-        cds_to_calibrate,
-        dataset_path=dataset_path,
-        output_path=output_path,
-    )
-
-# State Datasets with state districts ---------
-if False:
-    for state_fips, state_code in STATE_CODES.items():
-        cd_subset = [
-            cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips
-        ]
-
-        output_path = f"{output_dir}/{state_code}.h5"
-        output_file = create_sparse_cd_stacked_dataset(
-            w,
-            cds_to_calibrate,
-            cd_subset=cd_subset,
-            dataset_path=dataset_path,
-            output_path=output_path,
-        )
-        print(f"Created {state_code}.h5")

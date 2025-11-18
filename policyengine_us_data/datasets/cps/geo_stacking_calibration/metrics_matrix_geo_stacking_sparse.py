@@ -1125,11 +1125,16 @@ class SparseGeoStackingMatrixBuilder:
     def apply_constraints_to_sim_sparse(
         self, sim, constraints_df: pd.DataFrame, target_variable: str
     ) -> Tuple[np.ndarray, np.ndarray]:
+
         # TODO: is it really a good idea to skip geographic filtering?
         # I'm seeing all of the US here for SNAP and I'm only in one congressional district
         # We're putting a lot of faith on later functions to filter them out
         """
         Apply constraints and return sparse representation (indices and values).
+
+        Wow this is where the values are actually set at the household level. So
+        this function is really misnamed because its a crucial part of getting
+        the value at the household level!
 
         Note: Geographic constraints are ALWAYS skipped as geographic isolation
         happens through matrix column structure in geo-stacking, not data filtering.
@@ -1172,13 +1177,6 @@ class SparseGeoStackingMatrixBuilder:
                 ).values,
             }
         )
-
-        # Add target entity ID if it's not person or household
-        # NOTE: I could make entity rel this way
-        #if target_entity not in ["person", "household"]:
-        #    entity_rel[f"{target_entity}_id"] = sim.calculate(
-        #        f"{target_entity}_id", map_to="person"
-        #    ).values
 
         # Start with all persons satisfying constraints (will be ANDed together)
         person_constraint_mask = np.ones(len(entity_rel), dtype=bool)
@@ -1252,88 +1250,57 @@ class SparseGeoStackingMatrixBuilder:
 
         # Now aggregate constraints to target entity level
         if target_entity == "person":
-            # Already at person level
             entity_mask = person_constraint_mask
             entity_ids = entity_rel["person_id"].values
         elif target_entity == "household":
-            # Aggregate to household: household satisfies if ANY person in it satisfies
             household_mask = entity_rel.groupby("household_id")[
                 "satisfies_constraints"
             ].any()
             entity_mask = household_mask.values
             entity_ids = household_mask.index.values
         elif target_entity == "tax_unit":
-            # Aggregate to tax_unit: tax_unit satisfies if ANY person in it satisfies
             tax_unit_mask = entity_rel.groupby("tax_unit_id")[
                 "satisfies_constraints"
             ].any()
             entity_mask = tax_unit_mask.values
             entity_ids = tax_unit_mask.index.values
-        else:
-            # Other entities - aggregate similarly
-            entity_mask_series = entity_rel.groupby(f"{target_entity}_id")[
+        elif target_entity == "spm_unit":
+            spm_unit_mask = entity_rel.groupby("spm_unit_id")[
                 "satisfies_constraints"
             ].any()
-            entity_mask = entity_mask_series.values
-            entity_ids = entity_mask_series.index.values
-
-        # Calculate target values at the target entity level
-        if target_entity == "person":
-            target_values = sim.calculate(target_variable, map_to="person").values
+            entity_mask = spm_unit_mask.values
+            entity_ids = spm_unit_mask.index.values
         else:
-            # For non-person entities, we need to be careful
-            # Using map_to here for the TARGET calculation (not constraints)
-            target_values_raw = sim.calculate(
-                target_variable, map_to=target_entity
-            ).values
-            target_values = target_values_raw
+            raise ValueError(f"Entity type {target_entity} not handled")
 
-        # Apply entity mask to target values
-        masked_values = target_values * entity_mask
+        target_values_raw = sim.calculate(
+            target_variable, map_to=target_entity
+        ).values
 
-        # Now aggregate to household level using the same pattern as original code
+        masked_values = target_values_raw * entity_mask
+
         entity_df = pd.DataFrame(
             {
                 f"{target_entity}_id": entity_ids,
                 "entity_masked_metric": masked_values,
             }
         )
-
-        # NOTE: I should not need this again
-        ## Build fresh entity_rel for the aggregation to household
-        #entity_rel_for_agg = pd.DataFrame(
-        #    {
-        #        f"{target_entity}_id": sim.calculate(
-        #            f"{target_entity}_id", map_to="person"
-        #        ).values,
-        #        "household_id": sim.calculate(
-        #            "household_id", map_to="person"
-        #        ).values,
-        #        "person_id": sim.calculate(
-        #            "person_id", map_to="person"
-        #        ).values,
-        #    }
-        #)
-
-        # Merge to get metrics at person level
-        merged_df = entity_rel.merge(
-            entity_df, how="left", on=[f"{target_entity}_id"]
-        )
-        merged_df["entity_masked_metric"] = merged_df[
-            "entity_masked_metric"
-        ].fillna(0)
+        if target_entity == "household":
+            hh_df = entity_df
+        else:
+            entity_rel_for_agg = entity_rel[["household_id", f"{target_entity}_id"]].drop_duplicates()
+            hh_df = entity_rel_for_agg.merge(entity_df, on=f"{target_entity}_id")
 
         # Check if this is a count variable
         is_count_target = target_variable.endswith("_count")
 
         if is_count_target:
             # For counts, count unique entities per household that satisfy constraints
-            masked_df = merged_df.loc[merged_df["entity_masked_metric"] > 0]
+            masked_df = hh_df.loc[hh_df["entity_masked_metric"] > 0]
             household_counts = masked_df.groupby("household_id")[
                 f"{target_entity}_id"
             ].nunique()
-            all_households = merged_df["household_id"].unique()
-            # Convert series to DataFrame properly
+            all_households = hh_df["household_id"].unique()
             household_values_df = pd.DataFrame(
                 {
                     "household_id": all_households,
@@ -1345,7 +1312,7 @@ class SparseGeoStackingMatrixBuilder:
         else:
             # For non-counts, sum the values
             household_values_df = (
-                merged_df.groupby("household_id")[["entity_masked_metric"]]
+                hh_df.groupby("household_id")[["entity_masked_metric"]]
                 .sum()
                 .reset_index()
                 .rename({"entity_masked_metric": "household_metric"}, axis=1)
@@ -2119,16 +2086,12 @@ class SparseGeoStackingMatrixBuilder:
         # If building for congressional districts, add state-level SNAP costs
         state_snap_targets_list = []
         state_snap_matrices = []
-        if geographic_level == "congressional_district" and sim is not None:
+        if geographic_level == "congressional_district":
             # Identify unique states from the CDs
             unique_states = set()
             for cd_id in geographic_ids:
                 state_fips = self.get_state_fips_for_cd(cd_id)
                 unique_states.add(state_fips)
-
-            logger.info(
-                f"Adding state SNAP costs for {len(unique_states)} states"
-            )
 
             # Get household info - must match the actual matrix columns
             household_ids = sim.calculate("household_id").values
@@ -2141,6 +2104,7 @@ class SparseGeoStackingMatrixBuilder:
                 if not snap_cost_df.empty:
                     for _, target in snap_cost_df.iterrows():
                         # Get uprating info
+                        # TODO: why is period showing up as 2022 in my interactive run?
                         period = target.get("period", self.time_period)
                         factor, uprating_type = self._get_uprating_info(
                             target["variable"], period

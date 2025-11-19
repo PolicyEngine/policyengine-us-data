@@ -3,15 +3,16 @@ Household-level projection pathway for income tax revenue 2025-2100.
 
 
 Usage:
-    python run_household_projection.py [END_YEAR] [--greg] [--use-ss] [--save-h5]
+    python run_household_projection.py [END_YEAR] [--greg] [--use-ss] [--use-payroll] [--save-h5]
 
     END_YEAR: Optional ending year (default: 2035)
     --greg: Use GREG calibration instead of IPF (optional)
     --use-ss: Include Social Security benefit totals as calibration target (requires --greg)
+    --use-payroll: Include taxable payroll totals as calibration target (requires --greg)
     --save-h5: Save year-specific .h5 files with calibrated weights to ./projected_datasets/
 
 Examples:
-    python run_household_projection.py 2100 --greg --use-ss --save-h5
+    python run_household_projection.py 2100 --greg --use-ss --use-payroll --save-h5
 """
 
 import sys
@@ -23,7 +24,11 @@ import numpy as np
 
 from policyengine_us import Microsimulation
 
-from ssa_data import load_ssa_age_projections, load_ssa_benefit_projections
+from ssa_data import (
+    load_ssa_age_projections,
+    load_ssa_benefit_projections,
+    load_taxable_payroll_projections,
+)
 from calibration import calibrate_weights
 from projection_utils import (
     build_household_age_matrix,
@@ -65,6 +70,15 @@ if USE_SS:
         print("Warning: --use-ss requires --greg, enabling GREG automatically")
         USE_GREG = True
 
+USE_PAYROLL = "--use-payroll" in sys.argv
+if USE_PAYROLL:
+    sys.argv.remove("--use-payroll")
+    if not USE_GREG:
+        print(
+            "Warning: --use-payroll requires --greg, enabling GREG automatically"
+        )
+        USE_GREG = True
+
 SAVE_H5 = "--save-h5" in sys.argv
 if SAVE_H5:
     sys.argv.remove("--save-h5")
@@ -90,6 +104,8 @@ print(f"  Calculation level: HOUSEHOLD ONLY (simplified)")
 print(f"  Calibration method: {'GREG' if USE_GREG else 'IPF'}")
 if USE_SS:
     print(f"  Including Social Security benefits constraint: Yes")
+if USE_PAYROLL:
+    print(f"  Including taxable payroll constraint: Yes")
 if SAVE_H5:
     print(f"  Saving year-specific .h5 files: Yes (to {OUTPUT_DIR}/)")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -194,6 +210,33 @@ for year_idx in range(n_years):
         )
         ss_values = ss_hh.values
         ss_target = load_ssa_benefit_projections(year)
+        if year in display_years:
+            ss_baseline = np.sum(ss_values * baseline_weights)
+            print(
+                f"  [DEBUG {year}] SS baseline: ${ss_baseline/1e9:.1f}B, target: ${ss_target/1e9:.1f}B"
+            )
+
+    payroll_values = None
+    payroll_target = None
+    if USE_PAYROLL:
+        # SSA taxable payroll = W-2 wages capped at wage base + SE income within remaining cap room
+        taxable_wages_hh = sim.calculate(
+            "taxable_earnings_for_social_security",
+            period=year,
+            map_to="household",
+        )
+        taxable_self_emp_hh = sim.calculate(
+            "social_security_taxable_self_employment_income",
+            period=year,
+            map_to="household",
+        )
+        payroll_values = taxable_wages_hh.values + taxable_self_emp_hh.values
+        payroll_target = load_taxable_payroll_projections(year)
+        if year in display_years:
+            payroll_baseline = np.sum(payroll_values * baseline_weights)
+            print(
+                f"  [DEBUG {year}] Payroll baseline: ${payroll_baseline/1e9:.1f}B, target: ${payroll_target/1e9:.1f}B"
+            )
 
     y_target = target_matrix[:, year_idx]
 
@@ -205,11 +248,25 @@ for year_idx in range(n_years):
         calibrator=calibrator,
         ss_values=ss_values,
         ss_target=ss_target,
+        payroll_values=payroll_values,
+        payroll_target=payroll_target,
         n_ages=n_ages,
         max_iters=100,
         tol=1e-6,
         verbose=False,
     )
+
+    if year in display_years and (USE_SS or USE_PAYROLL):
+        if USE_SS:
+            ss_achieved = np.sum(ss_values * w_new)
+            print(
+                f"  [DEBUG {year}] SS achieved: ${ss_achieved/1e9:.1f}B (error: {(ss_achieved - ss_target)/ss_target*100:.1f}%)"
+            )
+        if USE_PAYROLL:
+            payroll_achieved = np.sum(payroll_values * w_new)
+            print(
+                f"  [DEBUG {year}] Payroll achieved: ${payroll_achieved/1e9:.1f}B (error: {(payroll_achieved - payroll_target)/payroll_target*100:.1f}%)"
+            )
 
     weights_matrix[:, year_idx] = w_new
     baseline_weights_matrix[:, year_idx] = baseline_weights

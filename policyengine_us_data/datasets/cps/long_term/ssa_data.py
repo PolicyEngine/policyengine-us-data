@@ -46,8 +46,26 @@ def load_ssa_benefit_projections(year):
         Total OASDI benefits in nominal dollars
     """
     csv_path = STORAGE_FOLDER / "social_security_aux.csv"
-    df = pd.read_csv(csv_path, thousands=",")
+    df = pd.read_csv(csv_path)
 
     row = df[df["year"] == year]
     nominal_billions = row["oasdi_cost_in_billion_nominal_usd"].values[0]
+    return nominal_billions * 1e9
+
+
+def load_taxable_payroll_projections(year):
+    """
+    Load SSA Trustee Report projections for taxable payroll.
+
+    Args:
+        year: Year to load taxable payroll for
+
+    Returns:
+        Total taxable payroll in nominal dollars
+    """
+    csv_path = STORAGE_FOLDER / "social_security_aux.csv"
+    df = pd.read_csv(csv_path)
+
+    row = df[df["year"] == year]
+    nominal_billions = row["taxable_payroll_in_billion_nominal_usd"].values[0]
     return nominal_billions * 1e9

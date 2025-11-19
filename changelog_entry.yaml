@@ -3,5 +3,11 @@
     added:
       - Additional calibration based on SSA Trustees data that extends projections until 2100
       - Manual trigger capability for documentation deployment workflow
+      - Documentation for SSA data sources in storage README
+    changed:
+      - Renamed long-term projections notebook to clarify PWBM comparison scope (2025-2100)
     fixed:
       - GitHub Pages documentation deployment path
+      - Corrected number of imputed variables from 72 to 67 in documentation
+      - Corrected calibration target count from 7,000+ to 2,813 across all docs
+      - Removed inaccurate "two-stage" terminology in methodology descriptions

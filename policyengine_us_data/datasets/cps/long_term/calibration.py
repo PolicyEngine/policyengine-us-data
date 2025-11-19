@@ -81,6 +81,8 @@ def calibrate_greg(
     baseline_weights,
     ss_values=None,
     ss_target=None,
+    payroll_values=None,
+    payroll_target=None,
     n_ages=86,
 ):
     """
@@ -93,6 +95,8 @@ def calibrate_greg(
         baseline_weights: Initial household weights
         ss_values: Optional Social Security values per household
         ss_target: Optional Social Security target total
+        payroll_values: Optional taxable payroll values per household
+        payroll_target: Optional taxable payroll target total
         n_ages: Number of age groups
 
     Returns:
@@ -103,11 +107,21 @@ def calibrate_greg(
     for age_idx in range(n_ages):
         controls[f"age_{age_idx}"] = y_target[age_idx]
 
-    if ss_values is not None and ss_target is not None:
+    # Build auxiliary variables dataframe if any continuous constraints are provided
+    if (ss_values is not None and ss_target is not None) or (
+        payroll_values is not None and payroll_target is not None
+    ):
         age_cols = {f"age_{i}": X[:, i] for i in range(n_ages)}
         aux_df = pd.DataFrame(age_cols)
-        aux_df["ss_total"] = ss_values
-        controls["ss_total"] = ss_target
+
+        if ss_values is not None and ss_target is not None:
+            aux_df["ss_total"] = ss_values
+            controls["ss_total"] = ss_target
+
+        if payroll_values is not None and payroll_target is not None:
+            aux_df["payroll_total"] = payroll_values
+            controls["payroll_total"] = payroll_target
+
         aux_vars = aux_df
     else:
         aux_vars = X
@@ -129,6 +143,8 @@ def calibrate_weights(
     calibrator=None,
     ss_values=None,
     ss_target=None,
+    payroll_values=None,
+    payroll_target=None,
     n_ages=86,
     max_iters=100,
     tol=1e-6,
@@ -145,6 +161,8 @@ def calibrate_weights(
         calibrator: Required if method='greg'
         ss_values: Optional SS values (for GREG with SS)
         ss_target: Optional SS target (for GREG with SS)
+        payroll_values: Optional payroll values (for GREG with payroll)
+        payroll_target: Optional payroll target (for GREG with payroll)
         n_ages: Number of age groups
         max_iters: Max iterations for IPF
         tol: Convergence tolerance for IPF
@@ -165,6 +183,8 @@ def calibrate_weights(
                 baseline_weights,
                 ss_values,
                 ss_target,
+                payroll_values,
+                payroll_target,
                 n_ages,
             )
         except Exception as e:

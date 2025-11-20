@@ -35,6 +35,7 @@ documentation:
 	myst clean && \
 	myst build --html
 	cd docs && test -d _build/site && touch _build/site/.nojekyll
+	cd docs && test ! -f _build/site/index.html && cp index.html _build/site/index.html || true
 
 documentation-build:
 	cd docs && \

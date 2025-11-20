@@ -3,34 +3,36 @@ import pandas as pd
 from policyengine_us_data.storage import STORAGE_FOLDER
 
 
-def load_ssa_age_projections(end_year=2100):
+def load_ssa_age_projections(start_year=2025, end_year=2100):
     """
     Load SSA population projections from package storage.
 
     Args:
+        start_year: First year to include (default 2025)
         end_year: Final year to include (default 2100)
 
     Returns:
-        86 x n_years matrix (ages 0-85+ x years 2025-end_year)
+        86 x n_years matrix (ages 0-85+ x years start_year-end_year)
     """
     csv_path = STORAGE_FOLDER / "SSPopJul_TR2024.csv"
     df = pd.read_csv(csv_path)
 
-    df_future = df[(df["Year"] >= 2025) & (df["Year"] <= end_year)]
+    df_future = df[(df["Year"] >= start_year) & (df["Year"] <= end_year)]
 
-    n_ages = 86
-    n_years = end_year - 2025 + 1
+    MAX_SINGLE_AGE = 85
+    n_ages = MAX_SINGLE_AGE + 1
+    n_years = end_year - start_year + 1
     target_matrix = np.zeros((n_ages, n_years))
 
-    for year_idx, year in enumerate(range(2025, end_year + 1)):
+    for year_idx, year in enumerate(range(start_year, end_year + 1)):
         df_year = df_future[df_future["Year"] == year]
 
-        for age in range(85):
+        for age in range(MAX_SINGLE_AGE):
             pop = df_year[df_year["Age"] == age]["Total"].values[0]
             target_matrix[age, year_idx] = pop
 
-        pop_85plus = df_year[df_year["Age"] >= 85]["Total"].sum()
-        target_matrix[85, year_idx] = pop_85plus
+        pop_85plus = df_year[df_year["Age"] >= MAX_SINGLE_AGE]["Total"].sum()
+        target_matrix[MAX_SINGLE_AGE, year_idx] = pop_85plus
 
     return target_matrix
 

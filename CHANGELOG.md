@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.47.0] - 2025-11-20 02:54:32
+
+### Added
+
+- Additional calibration based on SSA Trustees data that extends projections until 2100
+- Manual trigger capability for documentation deployment workflow
+- Documentation for SSA data sources in storage README
+
+### Changed
+
+- Renamed long-term projections notebook to clarify PWBM comparison scope (2025-2100)
+
+### Fixed
+
+- GitHub Pages documentation deployment path
+- Corrected number of imputed variables from 72 to 67 in documentation
+- Corrected calibration target count from 7,000+ to 2,813 across all docs
+- Removed inaccurate "two-stage" terminology in methodology descriptions
+
 ## [1.46.1] - 2025-11-12 20:08:59
 
 ### Changed
@@ -723,6 +742,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.47.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.46.1...1.47.0
 [1.46.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.46.0...1.46.1
 [1.46.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.45.0...1.46.0
 [1.45.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.44.2...1.45.0

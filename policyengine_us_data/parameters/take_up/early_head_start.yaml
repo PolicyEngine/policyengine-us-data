@@ -1,0 +1,9 @@
+description: Percentage of eligible infants and toddlers who enroll in Early Head Start.
+metadata:
+  label: Early Head Start take-up rate
+  unit: /1
+  reference:
+    - title: NIEER State(s) of Head Start and Early Head Start Report
+      href: https://nieer.org/research-library/states-head-start-early-head-start
+values:
+  2020-09-01: 0.09

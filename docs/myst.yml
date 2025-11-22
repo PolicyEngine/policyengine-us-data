@@ -24,7 +24,7 @@ project:
     - file: background.md
     - file: data.md
     - file: methodology.md
-    - file: pwbm_ss_comparison_2025_2100.ipynb
+    - file: long_term_projections.ipynb
     - file: discussion.md
     - file: conclusion.md
     - file: appendix.md

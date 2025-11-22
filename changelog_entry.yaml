@@ -1,0 +1,10 @@
+- bump: patch
+  changes:
+    fixed:
+    - GitHub Pages documentation deployment (was deploying wrong directory causing blank pages)
+    - Removed timeout and error suppression from documentation build
+    added:
+    - Node.js setup to CI workflow for MyST builds
+    - start_year parameter to load_ssa_age_projections function
+    - MAX_SINGLE_AGE constant to replace hardcoded values
+    - docs/README.md documenting MyST build output pitfall

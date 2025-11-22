@@ -3,16 +3,17 @@ Household-level projection pathway for income tax revenue 2025-2100.
 
 
 Usage:
-    python run_household_projection.py [END_YEAR] [--greg] [--use-ss] [--use-payroll] [--save-h5]
+    python run_household_projection.py [END_YEAR] [--greg] [--use-ss] [--use-payroll] [--use-h6-reform] [--save-h5]
 
     END_YEAR: Optional ending year (default: 2035)
     --greg: Use GREG calibration instead of IPF (optional)
     --use-ss: Include Social Security benefit totals as calibration target (requires --greg)
     --use-payroll: Include taxable payroll totals as calibration target (requires --greg)
+    --use-h6-reform: Include H6 reform income impact ratio as calibration target (requires --greg)
     --save-h5: Save year-specific .h5 files with calibrated weights to ./projected_datasets/
 
 Examples:
-    python run_household_projection.py 2100 --greg --use-ss --use-payroll --save-h5
+    python run_household_projection.py 2100 --greg --use-ss --use-payroll --use-h6-reform --save-h5
 """
 
 import sys
@@ -34,6 +35,57 @@ from projection_utils import (
     build_household_age_matrix,
     create_household_year_h5,
 )
+
+
+def create_h6_reform():
+    """
+    Create H6 Social Security reform that phases out benefit taxation.
+
+    The reform has two phases:
+    1. Phase-in (2045-2053): Gradually increase thresholds
+    2. Elimination (2054-2100): Set thresholds to infinity
+    """
+    reform_payload = {
+        "gov.irs.social_security.taxability.threshold.base.main.SINGLE": {},
+        "gov.irs.social_security.taxability.threshold.base.main.JOINT": {},
+        "gov.irs.social_security.taxability.threshold.base.main.SEPARATE": {},
+        "gov.irs.social_security.taxability.threshold.base.main.HEAD_OF_HOUSEHOLD": {},
+        "gov.irs.social_security.taxability.threshold.base.main.SURVIVING_SPOUSE": {},
+    }
+
+    # Phase-in period: 2045 to 2053
+    for year in range(2045, 2054):
+        # Calculate the index (0 for 2045, 1 for 2046, etc.)
+        i = year - 2045
+
+        # H6 Formulas
+        single_val = 32_500 + (7_500 * i)
+        joint_val = 65_000 + (15_000 * i)
+
+        # Create the time key for this specific year
+        time_key = f"{year}-01-01.{year}-12-31"
+
+        # Assign values
+        reform_payload["gov.irs.social_security.taxability.threshold.base.main.SINGLE"][time_key] = single_val
+        reform_payload["gov.irs.social_security.taxability.threshold.base.main.SEPARATE"][time_key] = single_val
+        reform_payload["gov.irs.social_security.taxability.threshold.base.main.HEAD_OF_HOUSEHOLD"][time_key] = single_val
+        reform_payload["gov.irs.social_security.taxability.threshold.base.main.SURVIVING_SPOUSE"][time_key] = single_val
+        reform_payload["gov.irs.social_security.taxability.threshold.base.main.JOINT"][time_key] = joint_val
+
+    # Elimination period: 2054 to 2100
+    # To "Eliminate" taxation, we set the threshold to Infinity (or an arbitrarily high number)
+    final_period_key = "2054-01-01.2100-12-31"
+    inf_value = 9e99  # Effectively infinity
+
+    reform_payload["gov.irs.social_security.taxability.threshold.base.main.SINGLE"][final_period_key] = inf_value
+    reform_payload["gov.irs.social_security.taxability.threshold.base.main.SEPARATE"][final_period_key] = inf_value
+    reform_payload["gov.irs.social_security.taxability.threshold.base.main.HEAD_OF_HOUSEHOLD"][final_period_key] = inf_value
+    reform_payload["gov.irs.social_security.taxability.threshold.base.main.SURVIVING_SPOUSE"][final_period_key] = inf_value
+    reform_payload["gov.irs.social_security.taxability.threshold.base.main.JOINT"][final_period_key] = inf_value
+
+    # Create the Reform Object
+    from policyengine_core.reforms import Reform
+    return Reform.from_dict(reform_payload, country_id="us")
 
 
 # =========================================================================
@@ -79,6 +131,14 @@ if USE_PAYROLL:
         )
         USE_GREG = True
 
+USE_H6_REFORM = "--use-h6-reform" in sys.argv
+if USE_H6_REFORM:
+    sys.argv.remove("--use-h6-reform")
+    if not USE_GREG:
+        print("Warning: --use-h6-reform requires --greg, enabling GREG automatically")
+        USE_GREG = True
+    from ssa_data import load_h6_income_rate_change
+
 SAVE_H5 = "--save-h5" in sys.argv
 if SAVE_H5:
     sys.argv.remove("--save-h5")
@@ -106,6 +166,8 @@ if USE_SS:
     print(f"  Including Social Security benefits constraint: Yes")
 if USE_PAYROLL:
     print(f"  Including taxable payroll constraint: Yes")
+if USE_H6_REFORM:
+    print(f"  Including H6 reform income impact constraint: Yes")
 if SAVE_H5:
     print(f"  Saving year-specific .h5 files: Yes (to {OUTPUT_DIR}/)")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -238,6 +300,46 @@ for year_idx in range(n_years):
                 f"  [DEBUG {year}] Payroll baseline: ${payroll_baseline/1e9:.1f}B, target: ${payroll_target/1e9:.1f}B"
             )
 
+    h6_income_values = None
+    h6_revenue_target = None
+    if USE_H6_REFORM:
+        # Load target ratio from CSV
+        h6_target_ratio = load_h6_income_rate_change(year)
+
+        # Only calculate H6 reform impacts if the target ratio is non-zero
+        # (Reform has no effect before 2045, so skip computation for efficiency)
+        if h6_target_ratio != 0:
+            # Create and apply H6 reform
+            h6_reform = create_h6_reform()
+            reform_sim = Microsimulation(dataset=BASE_DATASET_PATH, reform=h6_reform)
+
+            # Calculate reform income tax
+            income_tax_reform_hh = reform_sim.calculate(
+                "income_tax", period=year, map_to="household"
+            )
+            income_tax_reform = income_tax_reform_hh.values
+
+            # Revenue impact per household
+            h6_income_values = income_tax_reform - income_tax_values
+
+            # Calculate H6 revenue target: ratio × payroll target
+            # This converts the ratio constraint to an absolute revenue constraint
+            payroll_target_year = load_taxable_payroll_projections(year)
+            h6_revenue_target = h6_target_ratio * payroll_target_year
+
+            # Debug output for key years
+            if year in display_years:
+                h6_impact_baseline = np.sum(h6_income_values * baseline_weights)
+                print(
+                    f"  [DEBUG {year}] H6 baseline revenue: ${h6_impact_baseline/1e9:.3f}B, target: ${h6_revenue_target/1e9:.3f}B"
+                )
+                print(
+                    f"  [DEBUG {year}] H6 target ratio: {h6_target_ratio:.4f} × payroll ${payroll_target_year/1e9:.1f}B"
+                )
+
+            del reform_sim
+            gc.collect()
+
     y_target = target_matrix[:, year_idx]
 
     w_new, iterations = calibrate_weights(
@@ -250,13 +352,15 @@ for year_idx in range(n_years):
         ss_target=ss_target,
         payroll_values=payroll_values,
         payroll_target=payroll_target,
+        h6_income_values=h6_income_values,
+        h6_revenue_target=h6_revenue_target,
         n_ages=n_ages,
         max_iters=100,
         tol=1e-6,
         verbose=False,
     )
 
-    if year in display_years and (USE_SS or USE_PAYROLL):
+    if year in display_years and (USE_SS or USE_PAYROLL or USE_H6_REFORM):
         if USE_SS:
             ss_achieved = np.sum(ss_values * w_new)
             print(
@@ -266,6 +370,12 @@ for year_idx in range(n_years):
             payroll_achieved = np.sum(payroll_values * w_new)
             print(
                 f"  [DEBUG {year}] Payroll achieved: ${payroll_achieved/1e9:.1f}B (error: {(payroll_achieved - payroll_target)/payroll_target*100:.1f}%)"
+            )
+        if USE_H6_REFORM and h6_revenue_target is not None:
+            h6_revenue_achieved = np.sum(h6_income_values * w_new)
+            error_pct = (h6_revenue_achieved - h6_revenue_target) / abs(h6_revenue_target) * 100 if h6_revenue_target != 0 else 0
+            print(
+                f"  [DEBUG {year}] H6 achieved revenue: ${h6_revenue_achieved/1e9:.3f}B (error: {error_pct:.1f}%)"
             )
 
     weights_matrix[:, year_idx] = w_new

@@ -83,6 +83,8 @@ def calibrate_greg(
     ss_target=None,
     payroll_values=None,
     payroll_target=None,
+    h6_income_values=None,
+    h6_revenue_target=None,
     n_ages=86,
 ):
     """
@@ -97,6 +99,8 @@ def calibrate_greg(
         ss_target: Optional Social Security target total
         payroll_values: Optional taxable payroll values per household
         payroll_target: Optional taxable payroll target total
+        h6_income_values: Optional H6 reform income values per household
+        h6_revenue_target: Optional H6 reform total revenue impact target
         n_ages: Number of age groups
 
     Returns:
@@ -108,9 +112,13 @@ def calibrate_greg(
         controls[f"age_{age_idx}"] = y_target[age_idx]
 
     # Build auxiliary variables dataframe if any continuous constraints are provided
-    if (ss_values is not None and ss_target is not None) or (
-        payroll_values is not None and payroll_target is not None
-    ):
+    needs_aux_df = (
+        (ss_values is not None and ss_target is not None) or
+        (payroll_values is not None and payroll_target is not None) or
+        (h6_income_values is not None and h6_revenue_target is not None)
+    )
+
+    if needs_aux_df:
         age_cols = {f"age_{i}": X[:, i] for i in range(n_ages)}
         aux_df = pd.DataFrame(age_cols)
 
@@ -121,6 +129,11 @@ def calibrate_greg(
         if payroll_values is not None and payroll_target is not None:
             aux_df["payroll_total"] = payroll_values
             controls["payroll_total"] = payroll_target
+
+        # H6 reform revenue impact as a simple linear constraint
+        if h6_income_values is not None and h6_revenue_target is not None:
+            aux_df["h6_revenue"] = h6_income_values
+            controls["h6_revenue"] = h6_revenue_target
 
         aux_vars = aux_df
     else:
@@ -145,6 +158,8 @@ def calibrate_weights(
     ss_target=None,
     payroll_values=None,
     payroll_target=None,
+    h6_income_values=None,
+    h6_revenue_target=None,
     n_ages=86,
     max_iters=100,
     tol=1e-6,
@@ -163,6 +178,8 @@ def calibrate_weights(
         ss_target: Optional SS target (for GREG with SS)
         payroll_values: Optional payroll values (for GREG with payroll)
         payroll_target: Optional payroll target (for GREG with payroll)
+        h6_income_values: Optional H6 reform income values per household
+        h6_revenue_target: Optional H6 reform total revenue impact target
         n_ages: Number of age groups
         max_iters: Max iterations for IPF
         tol: Convergence tolerance for IPF
@@ -185,6 +202,8 @@ def calibrate_weights(
                 ss_target,
                 payroll_values,
                 payroll_target,
+                h6_income_values,
+                h6_revenue_target,
                 n_ages,
             )
         except Exception as e:

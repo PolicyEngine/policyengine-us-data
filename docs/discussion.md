@@ -8,7 +8,7 @@ We examine the strengths, limitations, and potential applications of the Enhance
 
 The Enhanced CPS uniquely combines:
 - Demographic detail from the CPS including state identifiers
-- Tax precision from IRS administrative data  
+- Tax precision from IRS administrative data
 - Calibration to contemporary official statistics
 - Open-source availability for research use
 
@@ -26,7 +26,7 @@ The large-scale calibration to 2,813 targets ensures consistency with administra
 
 ### Practical Advantages
 
-For policy analysis, the dataset offers state-level geographic detail enabling subnational analysis, household structure for distributional studies, tax detail for revenue estimation, program participation for benefit analysis, and recent data calibrated to current totals.
+For policy analysis, the dataset offers several key features: state-level geographic detail for subnational analysis, household structure for distributional studies, tax detail for revenue estimation, program participation for benefit analysis, and calibration to current administrative totals.
 
 ## Limitations
 

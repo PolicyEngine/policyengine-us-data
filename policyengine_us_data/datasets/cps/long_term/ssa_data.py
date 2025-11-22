@@ -71,3 +71,21 @@ def load_taxable_payroll_projections(year):
     row = df[df["year"] == year]
     nominal_billions = row["taxable_payroll_in_billion_nominal_usd"].values[0]
     return nominal_billions * 1e9
+
+
+def load_h6_income_rate_change(year):
+    """
+    Load H6 reform income rate change target for a given year.
+
+    Args:
+        year: Year to load rate change for
+
+    Returns:
+        H6 income rate change as decimal (e.g., -0.0018 for -0.18%)
+    """
+    csv_path = STORAGE_FOLDER / "social_security_aux.csv"
+    df = pd.read_csv(csv_path)
+
+    row = df[df["year"] == year]
+    # CSV stores as percentage (e.g., -0.18), convert to decimal
+    return row["h6_income_rate_change"].values[0] / 100

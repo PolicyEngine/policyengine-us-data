@@ -25,5 +25,7 @@
 - **social_security_aux.csv**
   • Source: SSA Single Year supplementary tables
   • Date: 2025 Trustees Report
-  • Location: https://www.ssa.gov/oact/tr/2025/lrIndex.html
+  • Locations:
+     - https://www.ssa.gov/oact/tr/2025/lrIndex.html
+     - `https://www.ssa.gov/oact/solvency/provisions/tables/table_run133.html`
   • Notes: Contains OASDI cost projections and taxable payroll data (2025-2100) 

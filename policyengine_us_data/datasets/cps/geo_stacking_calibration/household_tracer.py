@@ -83,10 +83,9 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 from scipy import sparse
 
-from calibration_utils import create_target_groups
-from metrics_matrix_geo_stacking_sparse import SparseGeoStackingMatrixBuilder
+from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import create_target_groups
+from policyengine_us_data.datasets.cps.geo_stacking_calibration.metrics_matrix_geo_stacking_sparse import SparseGeoStackingMatrixBuilder
 from policyengine_us import Microsimulation
-from metrics_matrix_geo_stacking_sparse import SparseGeoStackingMatrixBuilder
 from sqlalchemy import create_engine, text
 
 

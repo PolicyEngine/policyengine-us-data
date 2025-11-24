@@ -293,6 +293,12 @@ def create_sparse_cd_stacked_dataset(
         raise ValueError("No output .h5 path given")
     print(f"Output path: {output_path}")
 
+    # Check that output directory exists, create if needed
+    output_dir_path = os.path.dirname(output_path)
+    if output_dir_path and not os.path.exists(output_dir_path):
+        print(f"Creating output directory: {output_dir_path}")
+        os.makedirs(output_dir_path, exist_ok=True)
+
     # Load the original simulation
     base_sim = Microsimulation(dataset=dataset_path)
 
@@ -494,8 +500,31 @@ def create_sparse_cd_stacked_dataset(
         cd_sim.set_input("marital_unit_weight", time_period, new_weights_per_id['marital_unit_id'])
         cd_sim.set_input("family_weight", time_period,  new_weights_per_id['family_id'])
 
-        # Now extract the dataframe with updated weights
+        # Extract state from CD GEOID and update simulation BEFORE calling to_input_dataframe()
+        # This ensures calculated variables (SNAP, Medicaid) use the correct state
+        cd_geoid_int = int(cd_geoid)
+        state_fips = cd_geoid_int // 100
+
+        cd_sim.set_input("state_fips", time_period,
+                         np.full(n_households_orig, state_fips, dtype=np.int32))
+        cd_sim.set_input("congressional_district_geoid", time_period,
+                         np.full(n_households_orig, cd_geoid_int, dtype=np.int32))
+
+        # Now extract the dataframe - calculated vars will use the updated state
         df = cd_sim.to_input_dataframe()
+
+        # If freeze_calculated_vars, add state-dependent calculated variables to dataframe
+        if freeze_calculated_vars:
+            # Only calculate SNAP for now (most critical state-dependent variable)
+            state_dependent_vars = ['snap']
+            for var in state_dependent_vars:
+                try:
+                    # Calculate at person level (df is person-level)
+                    var_values = cd_sim.calculate(var, map_to="person").values
+                    df[f"{var}__{time_period}"] = var_values
+                except Exception as e:
+                    # Skip variables that can't be calculated
+                    pass
 
         assert df.shape[0] == entity_rel.shape[0]  # df is at the person level
 
@@ -832,12 +861,12 @@ def create_sparse_cd_stacked_dataset(
         'county_fips', 'county', 'county_str'
     }
 
-    # If freeze_calculated_vars is True, add all calculated variables to essential vars
+    # If freeze_calculated_vars is True, add state-dependent calculated variables to essential vars
     if freeze_calculated_vars:
-        from metrics_matrix_geo_stacking_sparse import get_calculated_variables
-        calculated_vars = get_calculated_variables(sparse_sim)
-        essential_vars.update(calculated_vars)
-        print(f"Freezing {len(calculated_vars)} calculated variables (will be saved to h5)")
+        # Only freeze SNAP for now (matches what we calculated per-CD above)
+        state_dependent_vars = ['snap']
+        essential_vars.update(state_dependent_vars)
+        print(f"Freezing {len(state_dependent_vars)} state-dependent calculated variables (will be saved to h5)")
 
     variables_saved = 0
     variables_skipped = 0

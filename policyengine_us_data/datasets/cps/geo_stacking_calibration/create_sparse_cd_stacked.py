@@ -251,6 +251,7 @@ def create_sparse_cd_stacked_dataset(
     cd_subset=None,
     output_path=None,
     dataset_path=None,
+    freeze_calculated_vars=False,
 ):
     """
     Create a SPARSE congressional district-stacked dataset using DataFrame approach.
@@ -261,6 +262,8 @@ def create_sparse_cd_stacked_dataset(
         cd_subset: Optional list of CD GEOIDs to include (subset of cds_to_calibrate)
         output_path: Where to save the sparse CD-stacked h5 file
         dataset_path: Path to the base .h5 dataset used to create the training matrices
+        freeze_calculated_vars: If True, save calculated variables (like SNAP) to h5 file so they're not recalculated on load.
+                               If False (default), calculated variables are omitted and will be recalculated on load.
     """
 
     # Handle CD subset filtering
@@ -828,6 +831,13 @@ def create_sparse_cd_stacked_dataset(
         'state_fips', 'state_name', 'state_code',
         'county_fips', 'county', 'county_str'
     }
+
+    # If freeze_calculated_vars is True, add all calculated variables to essential vars
+    if freeze_calculated_vars:
+        from metrics_matrix_geo_stacking_sparse import get_calculated_variables
+        calculated_vars = get_calculated_variables(sparse_sim)
+        essential_vars.update(calculated_vars)
+        print(f"Freezing {len(calculated_vars)} calculated variables (will be saved to h5)")
 
     variables_saved = 0
     variables_skipped = 0

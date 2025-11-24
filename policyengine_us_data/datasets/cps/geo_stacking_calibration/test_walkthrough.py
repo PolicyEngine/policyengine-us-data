@@ -317,4 +317,42 @@ assert match == 0
 hh_mapping = cd2_mapping.loc[cd2_mapping.original_household_id == hh_id]
 
 assert hh_mapping.shape[0] == 0
-# Nothing else to see here!
+
+
+# Let's do a full test of the whole file and see if we can match sim.calculate
+w = np.zeros(total_size)
+# Smaller number of non-zero weights because we want to hold the file in memory
+n_nonzero = 50000
+nonzero_indices = rng_ben.choice(total_size, n_nonzero, replace=False)
+w[nonzero_indices] = 7 
+w[hh_col_lku[cd1]] = 11 
+w[hh_col_lku[cd2]] = 12 
+assert np.sum(w > 0) <= n_nonzero + 2
+
+output_path = f"{output_dir}/national.h5" 
+output_file = create_sparse_cd_stacked_dataset(
+    w,
+    cds_to_calibrate,
+    dataset_path=str(dataset_uri),
+    output_path=output_path,
+)
+
+sim_test = Microsimulation(dataset = output_path)
+hh_snap_df = pd.DataFrame(sim_test.calculate_dataframe(["household_id", "household_weight", "state_fips", "snap"]))
+assert np.sum(w > 0) == hh_snap_df.shape[0]
+
+# Reminder:
+print(row_info)
+
+y_hat = X_sparse @ w
+snap_hat_geo1 = y_hat[row_loc]
+
+geo_1_df = hh_snap_df.loc[hh_snap_df.state_fips == 1]
+
+y_hat_sim = np.sum(geo_1_df.snap.values * geo_1_df.household_weight.values)
+
+assert np.isclose(y_hat_sim, snap_hat_geo1, atol=10)
+
+
+
+

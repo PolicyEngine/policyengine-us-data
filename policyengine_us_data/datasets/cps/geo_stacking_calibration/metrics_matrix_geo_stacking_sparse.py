@@ -20,6 +20,43 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
+def get_calculated_variables(sim):
+    """
+    Identify variables that are calculated (have formulas) rather than input data.
+
+    Args:
+        sim: Microsimulation instance
+
+    Returns:
+        List of variable names that are calculated
+    """
+    calculated_vars = []
+    for var_name, var_def in sim.tax_benefit_system.variables.items():
+        # Has a formula = calculated
+        if var_def.formulas:
+            calculated_vars.append(var_name)
+        # Or is an aggregate/sum of other variables
+        elif (hasattr(var_def, 'adds') and var_def.adds) or \
+             (hasattr(var_def, 'subtracts') and var_def.subtracts):
+            calculated_vars.append(var_name)
+    return calculated_vars
+
+
+def get_state_dependent_variables():
+    """
+    Return list of variables that should be calculated state-specifically.
+
+    These are variables whose values depend on state policy rules,
+    so the same household can have different values in different states.
+
+    Returns:
+        List of variable names that are state-dependent
+    """
+    # Start with known state-policy variables
+    # Can be expanded as needed
+    return ['snap', 'medicaid']
+
+
 class SparseGeoStackingMatrixBuilder:
     """Build sparse calibration matrices for geo-stacking approach.
 
@@ -36,6 +73,7 @@ class SparseGeoStackingMatrixBuilder:
         self.time_period = time_period
         self._uprating_factors = None
         self._params = None
+        self._state_specific_cache = {}  # Cache for state-specific calculated values: {(hh_id, state_fips, var): value}
 
     @property
     def uprating_factors(self):
@@ -150,6 +188,64 @@ class SparseGeoStackingMatrixBuilder:
         factor = self.uprating_factors.get((period, uprating_type), 1.0)
 
         return factor, uprating_type
+
+    def _calculate_state_specific_values(self, sim, variables_to_calculate: List[str]):
+        """
+        Pre-calculate state-specific values for variables that depend on state policy.
+
+        For each household and each state, temporarily assign the household to that state
+        and calculate the specified variables. This allows the same household to have
+        different values (like SNAP amounts) in different states.
+
+        Args:
+            sim: Microsimulation instance with household data
+            variables_to_calculate: List of variable names to calculate state-specifically
+
+        Returns:
+            None (populates self._state_specific_cache)
+        """
+        # State FIPS codes (skipping gaps in numbering)
+        valid_states = [1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22,
+                       23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+                       40, 41, 42, 44, 45, 46, 47, 48, 49, 50, 51, 53, 54, 55, 56]
+
+        household_ids = sim.calculate("household_id", map_to="household").values
+        n_households = len(household_ids)
+
+        # Get original state assignments to restore later
+        original_states = sim.calculate("state_fips", map_to="household").values
+
+        logger.info(f"Calculating state-specific values for {len(variables_to_calculate)} variables "
+                   f"across {n_households} households and {len(valid_states)} states...")
+        logger.info(f"This will create {n_households * len(valid_states) * len(variables_to_calculate):,} cached values")
+
+        total_calcs = len(valid_states) * len(variables_to_calculate)
+        calc_count = 0
+
+        # For each state, set all households to that state and calculate variables
+        for state_fips in valid_states:
+            # Set all households to this state
+            sim.set_input("state_fips", self.time_period,
+                         np.full(n_households, state_fips, dtype=np.int32))
+
+            # Calculate each variable for all households in this state
+            for var_name in variables_to_calculate:
+                # Calculate at household level
+                values = sim.calculate(var_name, map_to="household").values
+
+                # Cache all values for this state
+                for hh_idx, hh_id in enumerate(household_ids):
+                    cache_key = (int(hh_id), int(state_fips), var_name)
+                    self._state_specific_cache[cache_key] = float(values[hh_idx])
+
+                calc_count += 1
+                if calc_count % 10 == 0 or calc_count == total_calcs:
+                    logger.info(f"  Progress: {calc_count}/{total_calcs} state-variable combinations complete")
+
+        # Restore original state assignments
+        sim.set_input("state_fips", self.time_period, original_states)
+
+        logger.info(f"State-specific cache populated with {len(self._state_specific_cache):,} values")
 
     def get_best_period_for_targets(
         self, query_base: str, params: dict
@@ -1123,7 +1219,8 @@ class SparseGeoStackingMatrixBuilder:
             return pd.read_sql(query, conn, params={"stratum_id": stratum_id})
 
     def apply_constraints_to_sim_sparse(
-        self, sim, constraints_df: pd.DataFrame, target_variable: str
+        self, sim, constraints_df: pd.DataFrame, target_variable: str,
+        target_state_fips: Optional[int] = None
     ) -> Tuple[np.ndarray, np.ndarray]:
 
         # TODO: is it really a good idea to skip geographic filtering?
@@ -1143,10 +1240,97 @@ class SparseGeoStackingMatrixBuilder:
             sim: Microsimulation instance
             constraints_df: DataFrame with constraints
             target_variable: Variable to calculate
+            target_state_fips: If provided and variable is state-dependent, use cached state-specific values
 
         Returns:
             Tuple of (nonzero_indices, nonzero_values) at household level
         """
+
+        # Check if we should use state-specific cached values
+        state_dependent_vars = get_state_dependent_variables()
+        use_cache = (target_state_fips is not None and
+                    target_variable in state_dependent_vars and
+                    len(self._state_specific_cache) > 0)
+
+        if use_cache:
+            # Use cached state-specific values instead of calculating
+            logger.debug(f"Using cached {target_variable} values for state {target_state_fips}")
+            household_ids = sim.calculate("household_id", map_to="household").values
+
+            # Get values from cache for this state
+            household_values = []
+            for hh_id in household_ids:
+                cache_key = (int(hh_id), int(target_state_fips), target_variable)
+                value = self._state_specific_cache.get(cache_key, 0.0)
+                household_values.append(value)
+
+            household_values = np.array(household_values)
+
+            # Apply non-geographic constraints to determine which households qualify
+            # (We still need to filter based on constraints like "snap > 0")
+            # Build entity relationship to check constraints
+            entity_rel = pd.DataFrame({
+                "person_id": sim.calculate("person_id", map_to="person").values,
+                "household_id": sim.calculate("household_id", map_to="person").values,
+            })
+
+            # Start with all persons
+            person_constraint_mask = np.ones(len(entity_rel), dtype=bool)
+
+            # Apply each non-geographic constraint
+            for _, constraint in constraints_df.iterrows():
+                var = constraint["constraint_variable"]
+                op = constraint["operation"]
+                val = constraint["value"]
+
+                if var in ["state_fips", "congressional_district_geoid"]:
+                    continue
+
+                # Special handling for the target variable itself
+                if var == target_variable:
+                    # Map household values to person level for constraint checking
+                    hh_value_map = dict(zip(household_ids, household_values))
+                    person_hh_ids = entity_rel["household_id"].values
+                    person_target_values = np.array([hh_value_map.get(hh_id, 0.0) for hh_id in person_hh_ids])
+
+                    # Parse constraint value
+                    try:
+                        parsed_val = float(val)
+                        if parsed_val.is_integer():
+                            parsed_val = int(parsed_val)
+                    except ValueError:
+                        parsed_val = val
+
+                    # Apply operation
+                    if op == "==" or op == "=":
+                        mask = (person_target_values == parsed_val).astype(bool)
+                    elif op == ">":
+                        mask = (person_target_values > parsed_val).astype(bool)
+                    elif op == ">=":
+                        mask = (person_target_values >= parsed_val).astype(bool)
+                    elif op == "<":
+                        mask = (person_target_values < parsed_val).astype(bool)
+                    elif op == "<=":
+                        mask = (person_target_values <= parsed_val).astype(bool)
+                    elif op == "!=":
+                        mask = (person_target_values != parsed_val).astype(bool)
+                    else:
+                        continue
+
+                    person_constraint_mask = person_constraint_mask & mask
+
+            # Aggregate to household level
+            entity_rel["satisfies_constraints"] = person_constraint_mask
+            household_mask = entity_rel.groupby("household_id")["satisfies_constraints"].any()
+
+            # Apply mask to values
+            masked_values = household_values * household_mask.values
+
+            # Return sparse representation
+            nonzero_indices = np.nonzero(masked_values)[0]
+            nonzero_values = masked_values[nonzero_indices]
+
+            return nonzero_indices, nonzero_values
 
         # Get target entity level
         target_entity = sim.tax_benefit_system.variables[
@@ -1648,6 +1832,13 @@ class SparseGeoStackingMatrixBuilder:
         geo_matrices = []
         household_id_mapping = {}
 
+        # Pre-calculate state-specific values for state-dependent variables
+        if sim is not None and len(self._state_specific_cache) == 0:
+            state_dependent_vars = get_state_dependent_variables()
+            if state_dependent_vars:
+                logger.info("Pre-calculating state-specific values for state-dependent variables...")
+                self._calculate_state_specific_values(sim, state_dependent_vars)
+
         # First, get national targets once (they apply to all geographic copies)
         national_targets = self.get_national_targets(sim)
         national_targets_list = []
@@ -2140,9 +2331,11 @@ class SparseGeoStackingMatrixBuilder:
 
                         # Calculate SNAP values once for ALL households (geographic isolation via matrix structure)
                         # Note: state_fips constraint is automatically skipped, SNAP values calculated for all
+                        # Use state-specific cached values if available
                         nonzero_indices, nonzero_values = (
                             self.apply_constraints_to_sim_sparse(
-                                sim, constraints, "snap"
+                                sim, constraints, "snap",
+                                target_state_fips=int(state_fips)  # Pass state to use cached values
                             )
                         )
 

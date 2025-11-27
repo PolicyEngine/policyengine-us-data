@@ -42,19 +42,21 @@ def get_calculated_variables(sim):
     return calculated_vars
 
 
-def get_state_dependent_variables():
+def get_us_state_dependent_variables():
     """
-    Return list of variables that should be calculated state-specifically.
+    Return list of variables that should be calculated US-state-specifically.
 
-    These are variables whose values depend on state policy rules,
+    These are variables whose values depend on US state policy rules,
     so the same household can have different values in different states.
 
+    NOTE: Only include variables that are CALCULATED based on state policy.
+    Variables based on INPUT data (like salt_deduction, which uses
+    state_withheld_income_tax as an input) will NOT vary when state changes.
+
     Returns:
-        List of variable names that are state-dependent
+        List of variable names that are US-state-dependent
     """
-    # Start with known state-policy variables
-    # Can be expanded as needed
-    return ['snap', 'medicaid']
+    return ['snap', 'medicaid', 'salt_deduction']
 
 
 class SparseGeoStackingMatrixBuilder:
@@ -189,48 +191,56 @@ class SparseGeoStackingMatrixBuilder:
 
         return factor, uprating_type
 
-    def _calculate_state_specific_values(self, sim, variables_to_calculate: List[str]):
+    def _calculate_state_specific_values(self, dataset_path: str, variables_to_calculate: List[str]):
         """
         Pre-calculate state-specific values for variables that depend on state policy.
 
-        For each household and each state, temporarily assign the household to that state
-        and calculate the specified variables. This allows the same household to have
-        different values (like SNAP amounts) in different states.
+        Creates a FRESH simulation for each state to avoid PolicyEngine caching issues.
+        This ensures calculated variables like salt_deduction are properly recomputed
+        with the new state's policy rules.
 
         Args:
-            sim: Microsimulation instance with household data
+            dataset_path: Path to the dataset file (e.g., stratified_10k.h5)
             variables_to_calculate: List of variable names to calculate state-specifically
 
         Returns:
             None (populates self._state_specific_cache)
         """
+        import gc
+        from policyengine_us import Microsimulation
+
         # State FIPS codes (skipping gaps in numbering)
         valid_states = [1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22,
                        23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
                        40, 41, 42, 44, 45, 46, 47, 48, 49, 50, 51, 53, 54, 55, 56]
 
+        # Get household IDs from a temporary sim (they're constant across states)
+        #temp_sim = Microsimulation(dataset=dataset_path)
+        sim = Microsimulation(dataset=dataset_path)
         household_ids = sim.calculate("household_id", map_to="household").values
         n_households = len(household_ids)
-
-        # Get original state assignments to restore later
-        original_states = sim.calculate("state_fips", map_to="household").values
 
         logger.info(f"Calculating state-specific values for {len(variables_to_calculate)} variables "
                    f"across {n_households} households and {len(valid_states)} states...")
         logger.info(f"This will create {n_households * len(valid_states) * len(variables_to_calculate):,} cached values")
 
-        total_calcs = len(valid_states) * len(variables_to_calculate)
-        calc_count = 0
+        total_states = len(valid_states)
 
-        # For each state, set all households to that state and calculate variables
-        for state_fips in valid_states:
-            # Set all households to this state
+        # For each state, create a FRESH simulation to avoid caching issues
+        for state_idx, state_fips in enumerate(valid_states):
+            # Create brand new simulation for this state
+            #sim = Microsimulation(dataset=dataset_path)
+
+            # Set ALL households to this state
             sim.set_input("state_fips", self.time_period,
                          np.full(n_households, state_fips, dtype=np.int32))
+            # you still need to delete all calculated arrays so that the state changes can propogate
+            for computed_variable in sim.tax_benefit_system.variables:
+                if computed_variable not in sim.input_variables:
+                    sim.delete_arrays(computed_variable)
 
             # Calculate each variable for all households in this state
             for var_name in variables_to_calculate:
-                # Calculate at household level
                 values = sim.calculate(var_name, map_to="household").values
 
                 # Cache all values for this state
@@ -238,12 +248,10 @@ class SparseGeoStackingMatrixBuilder:
                     cache_key = (int(hh_id), int(state_fips), var_name)
                     self._state_specific_cache[cache_key] = float(values[hh_idx])
 
-                calc_count += 1
-                if calc_count % 10 == 0 or calc_count == total_calcs:
-                    logger.info(f"  Progress: {calc_count}/{total_calcs} state-variable combinations complete")
+            # Log progress
+            if (state_idx + 1) % 10 == 0 or state_idx == total_states - 1:
+                logger.info(f"  Progress: {state_idx + 1}/{total_states} states complete")
 
-        # Restore original state assignments
-        sim.set_input("state_fips", self.time_period, original_states)
 
         logger.info(f"State-specific cache populated with {len(self._state_specific_cache):,} values")
 
@@ -1229,9 +1237,9 @@ class SparseGeoStackingMatrixBuilder:
         """
         Apply constraints and return sparse representation (indices and values).
 
-        Wow this is where the values are actually set at the household level. So
+        *** Wow this is where the values are actually set at the household level. So
         this function is really misnamed because its a crucial part of getting
-        the value at the household level!
+        the value at the household level! ***
 
         Note: Geographic constraints are ALWAYS skipped as geographic isolation
         happens through matrix column structure in geo-stacking, not data filtering.
@@ -1246,10 +1254,10 @@ class SparseGeoStackingMatrixBuilder:
             Tuple of (nonzero_indices, nonzero_values) at household level
         """
 
-        # Check if we should use state-specific cached values
-        state_dependent_vars = get_state_dependent_variables()
+        # Check if we should use US-state-specific cached values
+        us_state_dependent_vars = get_us_state_dependent_variables()
         use_cache = (target_state_fips is not None and
-                    target_variable in state_dependent_vars and
+                    target_variable in us_state_dependent_vars and
                     len(self._state_specific_cache) > 0)
 
         if use_cache:
@@ -1332,7 +1340,7 @@ class SparseGeoStackingMatrixBuilder:
 
             return nonzero_indices, nonzero_values
 
-        # Get target entity level
+        ## Get target entity level
         target_entity = sim.tax_benefit_system.variables[
             target_variable
         ].entity.key
@@ -1832,12 +1840,14 @@ class SparseGeoStackingMatrixBuilder:
         geo_matrices = []
         household_id_mapping = {}
 
-        # Pre-calculate state-specific values for state-dependent variables
+        # Pre-calculate US-state-specific values for state-dependent variables
         if sim is not None and len(self._state_specific_cache) == 0:
-            state_dependent_vars = get_state_dependent_variables()
-            if state_dependent_vars:
-                logger.info("Pre-calculating state-specific values for state-dependent variables...")
-                self._calculate_state_specific_values(sim, state_dependent_vars)
+            us_state_dependent_vars = get_us_state_dependent_variables()
+            if us_state_dependent_vars:
+                logger.info("Pre-calculating US-state-specific values for state-dependent variables...")
+                # Get dataset path from sim to create fresh simulations per state
+                dataset_path = str(sim.dataset.__class__.file_path)
+                self._calculate_state_specific_values(dataset_path, us_state_dependent_vars)
 
         # First, get national targets once (they apply to all geographic copies)
         national_targets = self.get_national_targets(sim)
@@ -2375,47 +2385,40 @@ class SparseGeoStackingMatrixBuilder:
         # Combine all targets
         combined_targets = pd.concat(all_targets, ignore_index=True)
 
-        # Stack matrices if provided
-        if geo_matrices:
-            # Replicate national targets matrix for all geographies
-            stacked_national = None
-            if national_matrix is not None:
-                # Create list of national matrix repeated for each geography
-                national_copies = [national_matrix] * len(geographic_ids)
-                stacked_national = sparse.hstack(national_copies)
-                logger.info(
-                    f"Stacked national matrix: shape {stacked_national.shape}, nnz={stacked_national.nnz}"
-                )
+        # Stack matrices
+        if not geo_matrices:
+            raise ValueError("No geo_matrices were built - this should not happen")
 
-            # Stack geo-specific targets (block diagonal)
-            stacked_geo = sparse.block_diag(geo_matrices)
+        # Stack geo-specific targets (block diagonal)
+        stacked_geo = sparse.block_diag(geo_matrices)
+        logger.info(
+            f"Stacked geo-specific matrix: shape {stacked_geo.shape}, nnz={stacked_geo.nnz}"
+        )
+
+        # Combine all matrix parts
+        matrix_parts = []
+        if national_matrix is not None:
+            national_copies = [national_matrix] * len(geographic_ids)
+            stacked_national = sparse.hstack(national_copies)
             logger.info(
-                f"Stacked geo-specific matrix: shape {stacked_geo.shape}, nnz={stacked_geo.nnz}"
+                f"Stacked national matrix: shape {stacked_national.shape}, nnz={stacked_national.nnz}"
             )
+            matrix_parts.append(stacked_national)
+        matrix_parts.append(stacked_geo)
 
-            # Combine all matrix parts
-            matrix_parts = []
-            if stacked_national is not None:
-                matrix_parts.append(stacked_national)
-            matrix_parts.append(stacked_geo)
+        # Add state SNAP matrices if we have them (for CD calibration)
+        if state_snap_matrices:
+            stacked_state_snap = sparse.vstack(state_snap_matrices)
+            matrix_parts.append(stacked_state_snap)
 
-            # Add state SNAP matrices if we have them (for CD calibration)
-            if state_snap_matrices:
-                stacked_state_snap = sparse.vstack(state_snap_matrices)
-                matrix_parts.append(stacked_state_snap)
+        # Combine all parts
+        combined_matrix = sparse.vstack(matrix_parts)
+        combined_matrix = combined_matrix.tocsr()
 
-            # Combine all parts
-            combined_matrix = sparse.vstack(matrix_parts)
-
-            # Convert to CSR for efficiency
-            combined_matrix = combined_matrix.tocsr()
-
-            logger.info(
-                f"Created stacked sparse matrix: shape {combined_matrix.shape}, nnz={combined_matrix.nnz}"
-            )
-            return combined_targets, combined_matrix, household_id_mapping
-
-        return combined_targets, None, household_id_mapping
+        logger.info(
+            f"Created stacked sparse matrix: shape {combined_matrix.shape}, nnz={combined_matrix.nnz}"
+        )
+        return combined_targets, combined_matrix, household_id_mapping
 
 
 def main():

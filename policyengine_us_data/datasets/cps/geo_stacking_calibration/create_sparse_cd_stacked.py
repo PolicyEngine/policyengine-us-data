@@ -487,11 +487,12 @@ def create_sparse_cd_stacked_dataset(
             hh_info = id_link.merge(hh_df)
 
             hh_info2 = hh_info.merge(person_counts, on=col)
-            hh_info2["id_weight"] = hh_info2.per_person_hh_weight * hh_info2.person_id_count
+            if col == 'person_id':
+                # Person weight = household weight (each person represents same count as their household)
+                hh_info2["id_weight"] = hh_info2.household_weight
+            else:
+                hh_info2["id_weight"] = hh_info2.per_person_hh_weight * hh_info2.person_id_count
             new_weights_per_id[col] = hh_info2.id_weight
-
-        for key in new_weights_per_id.keys():
-            assert np.isclose(np.sum(hh_weight_values), np.sum(new_weights_per_id[key]), atol=5)
         
         cd_sim.set_input("household_weight", time_period, hh_df.household_weight.values)
         cd_sim.set_input("person_weight", time_period, new_weights_per_id['person_id'])
@@ -509,6 +510,16 @@ def create_sparse_cd_stacked_dataset(
                          np.full(n_households_orig, state_fips, dtype=np.int32))
         cd_sim.set_input("congressional_district_geoid", time_period,
                          np.full(n_households_orig, cd_geoid_int, dtype=np.int32))
+
+        # Delete cached calculated variables to ensure they're recalculated with new state
+        input_variables = set(cd_sim.dataset.variables)
+        all_variables = list(cd_sim.tax_benefit_system.variables.keys())
+        for variable_name in all_variables:
+            if variable_name not in input_variables:
+                try:
+                    cd_sim.delete_arrays(variable_name, time_period)
+                except:
+                    pass
 
         # Now extract the dataframe - calculated vars will use the updated state
         df = cd_sim.to_input_dataframe()
@@ -622,7 +633,7 @@ def create_sparse_cd_stacked_dataset(
     print(f"  Ratio: {combined_df[person_weight_col].sum() / combined_df[hh_weight_col].sum():.2f}")
 
     # REINDEX ALL IDs TO PREVENT OVERFLOW AND HANDLE DUPLICATES
-    print("\nReindexing all entity IDs using 10k ranges per CD...")
+    print("\nReindexing all entity IDs using 25k ranges per CD...")
 
     # Column names
     hh_id_col = f"household_id__{time_period}"
@@ -652,7 +663,7 @@ def create_sparse_cd_stacked_dataset(
         .to_dict()
     )
 
-    # Assign new household IDs using 10k ranges per CD
+    # Assign new household IDs using 25k ranges per CD
     hh_row_to_new_id = {}
     cd_hh_counters = {}  # Track how many households assigned per CD
 
@@ -660,8 +671,8 @@ def create_sparse_cd_stacked_dataset(
         # Calculate the ID range for this CD directly (avoiding function call)
         cd_str = str(int(cd_geoid))
         cd_idx = cd_to_index[cd_str]
-        start_id = cd_idx * 10_000
-        end_id = start_id + 9_999
+        start_id = cd_idx * 25_000
+        end_id = start_id + 24_999
 
         # Get the next available ID in this CD's range
         if cd_str not in cd_hh_counters:
@@ -672,7 +683,7 @@ def create_sparse_cd_stacked_dataset(
         # Check we haven't exceeded the range
         if new_hh_id > end_id:
             raise ValueError(
-                f"CD {cd_str} exceeded its 10k household allocation"
+                f"CD {cd_str} exceeded its 25k household allocation"
             )
 
         # All rows in the same household-CD pair get the SAME new ID
@@ -707,8 +718,8 @@ def create_sparse_cd_stacked_dataset(
         f"  Created {total_households:,} unique households across {len(cd_hh_counters)} CDs"
     )
 
-    # Now handle persons with same 10k range approach - VECTORIZED
-    print("  Reindexing persons using 10k ranges...")
+    # Now handle persons with same 25k range approach - VECTORIZED
+    print("  Reindexing persons using 25k ranges...")
 
     # OFFSET PERSON IDs by 5 million to avoid collision with household IDs
     PERSON_ID_OFFSET = 5_000_000
@@ -719,8 +730,8 @@ def create_sparse_cd_stacked_dataset(
 
         # Calculate the ID range for this CD directly
         cd_idx = cd_to_index[cd_str]
-        start_id = cd_idx * 10_000 + PERSON_ID_OFFSET  # Add offset for persons
-        end_id = start_id + 9_999
+        start_id = cd_idx * 25_000 + PERSON_ID_OFFSET  # Add offset for persons
+        end_id = start_id + 24_999
 
         # Get all rows for this CD
         cd_mask = combined_df[cd_geoid_col] == cd_geoid_val
@@ -729,7 +740,7 @@ def create_sparse_cd_stacked_dataset(
         # Check we won't exceed the range
         if n_persons_in_cd > (end_id - start_id + 1):
             raise ValueError(
-                f"CD {cd_str} has {n_persons_in_cd} persons, exceeds 10k allocation"
+                f"CD {cd_str} has {n_persons_in_cd} persons, exceeds 25k allocation"
             )
 
         # Create sequential IDs for this CD
@@ -928,9 +939,13 @@ def create_sparse_cd_stacked_dataset(
 
     print(f"Sparse CD-stacked dataset saved successfully!")
 
-    # Save household mapping to CSV
+    # Save household mapping to CSV in a mappings subdirectory
     mapping_df = pd.DataFrame(household_mapping)
-    csv_path = output_path.replace(".h5", "_household_mapping.csv")
+    output_dir = os.path.dirname(output_path)
+    mappings_dir = os.path.join(output_dir, "mappings") if output_dir else "mappings"
+    os.makedirs(mappings_dir, exist_ok=True)
+    csv_filename = os.path.basename(output_path).replace(".h5", "_household_mapping.csv")
+    csv_path = os.path.join(mappings_dir, csv_filename)
     mapping_df.to_csv(csv_path, index=False)
     print(f"Household mapping saved to {csv_path}")
 
@@ -1026,42 +1041,172 @@ def main(dataset_path, w, db_uri):
             print(f"Created {state_code}.h5")
 
 
-#if __name__ == "__main__":
-#    import argparse
-#
-#    parser = argparse.ArgumentParser(
-#        description="Create sparse CD-stacked state datasets"
-#    )
-#    parser.add_argument(
-#        "--weights-path", required=True, help="Path to w_cd.npy file"
-#    )
-#    parser.add_argument(
-#        "--dataset-path",
-#        required=True,
-#        help="Path to stratified dataset .h5 file",
-#    )
-#    parser.add_argument(
-#        "--db-path", required=True, help="Path to policy_data.db"
-#    )
-#    parser.add_argument(
-#        "--output-dir",
-#        default="./temp",
-#        help="Output directory for state files",
-#    )
-#    parser.add_argument(
-#        "--include-full-dataset",
-#        action="store_true",
-#        help="Also create the combined dataset with all CDs (memory intensive)",
-#    )
-#
-#    args = parser.parse_args()
-#    dataset_path_str = args.dataset_path
-#    weights_path_str = args.weights_path
-#    db_path = Path(args.db_path).resolve()
-#    output_dir = args.output_dir
-#    include_full_dataset = args.include_full_dataset
-#
-#    # All args read in ---------
-#    os.makedirs(output_dir, exist_ok=True)
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Create sparse CD-stacked datasets"
+    )
+    parser.add_argument(
+        "--weights-path", required=True, help="Path to w_cd.npy file"
+    )
+    parser.add_argument(
+        "--dataset-path",
+        required=True,
+        help="Path to stratified dataset .h5 file",
+    )
+    parser.add_argument(
+        "--db-path", required=True, help="Path to policy_data.db"
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="./temp",
+        help="Output directory for files",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["national", "states", "cds", "single-cd", "single-state"],
+        default="national",
+        help="Output mode: national (one file), states (per-state files), cds (per-CD files), single-cd (one CD), single-state (one state)",
+    )
+    parser.add_argument(
+        "--cd",
+        type=str,
+        help="Single CD GEOID to process (only used with --mode single-cd)",
+    )
+    parser.add_argument(
+        "--state",
+        type=str,
+        help="State code to process, e.g. RI, CA, NC (only used with --mode single-state)",
+    )
+
+    args = parser.parse_args()
+    dataset_path_str = args.dataset_path
+    weights_path_str = args.weights_path
+    db_path = Path(args.db_path).resolve()
+    output_dir = args.output_dir
+    mode = args.mode
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Load weights
+    w = np.load(weights_path_str)
+    db_uri = f"sqlite:///{db_path}"
+    engine = create_engine(db_uri)
+
+    # Get list of CDs from database
+    query = """
+    SELECT DISTINCT sc.value as cd_geoid
+    FROM strata s
+    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+    WHERE s.stratum_group_id = 1
+      AND sc.constraint_variable = "congressional_district_geoid"
+    ORDER BY sc.value
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text(query)).fetchall()
+        cds_to_calibrate = [row[0] for row in result]
+
+    print(f"Found {len(cds_to_calibrate)} congressional districts")
+
+    # Verify dimensions
+    assert_sim = Microsimulation(dataset=dataset_path_str)
+    n_hh = assert_sim.calculate("household_id", map_to="household").shape[0]
+    expected_length = len(cds_to_calibrate) * n_hh
+
+    if len(w) != expected_length:
+        raise ValueError(
+            f"Weight vector length ({len(w):,}) doesn't match expected ({expected_length:,})"
+        )
+
+    if mode == "national":
+        output_path = f"{output_dir}/national.h5"
+        print(f"\nCreating national dataset with all CDs: {output_path}")
+        create_sparse_cd_stacked_dataset(
+            w,
+            cds_to_calibrate,
+            dataset_path=dataset_path_str,
+            output_path=output_path,
+        )
+
+    elif mode == "states":
+        for state_fips, state_code in STATE_CODES.items():
+            cd_subset = [
+                cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips
+            ]
+            if not cd_subset:
+                continue
+            output_path = f"{output_dir}/{state_code}.h5"
+            print(f"\nCreating {state_code} dataset: {output_path}")
+            create_sparse_cd_stacked_dataset(
+                w,
+                cds_to_calibrate,
+                cd_subset=cd_subset,
+                dataset_path=dataset_path_str,
+                output_path=output_path,
+            )
+
+    elif mode == "cds":
+        for i, cd_geoid in enumerate(cds_to_calibrate):
+            # Convert GEOID to friendly name: 3705 -> NC-05
+            cd_int = int(cd_geoid)
+            state_fips = cd_int // 100
+            district_num = cd_int % 100
+            state_code = STATE_CODES.get(state_fips, str(state_fips))
+            friendly_name = f"{state_code}-{district_num:02d}"
+
+            output_path = f"{output_dir}/{friendly_name}.h5"
+            print(f"\n[{i+1}/{len(cds_to_calibrate)}] Creating {friendly_name}.h5 (GEOID {cd_geoid})")
+            create_sparse_cd_stacked_dataset(
+                w,
+                cds_to_calibrate,
+                cd_subset=[cd_geoid],
+                dataset_path=dataset_path_str,
+                output_path=output_path,
+            )
+
+    elif mode == "single-cd":
+        if not args.cd:
+            raise ValueError("--cd required with --mode single-cd")
+        if args.cd not in cds_to_calibrate:
+            raise ValueError(f"CD {args.cd} not in calibrated CDs list")
+        output_path = f"{output_dir}/{args.cd}.h5"
+        print(f"\nCreating single CD dataset: {output_path}")
+        create_sparse_cd_stacked_dataset(
+            w,
+            cds_to_calibrate,
+            cd_subset=[args.cd],
+            dataset_path=dataset_path_str,
+            output_path=output_path,
+        )
+
+    elif mode == "single-state":
+        if not args.state:
+            raise ValueError("--state required with --mode single-state")
+        # Find FIPS code for this state
+        state_code_upper = args.state.upper()
+        state_fips = None
+        for fips, code in STATE_CODES.items():
+            if code == state_code_upper:
+                state_fips = fips
+                break
+        if state_fips is None:
+            raise ValueError(f"Unknown state code: {args.state}")
+
+        cd_subset = [cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips]
+        if not cd_subset:
+            raise ValueError(f"No CDs found for state {state_code_upper}")
+
+        output_path = f"{output_dir}/{state_code_upper}.h5"
+        print(f"\nCreating {state_code_upper} dataset with {len(cd_subset)} CDs: {output_path}")
+        create_sparse_cd_stacked_dataset(
+            w,
+            cds_to_calibrate,
+            cd_subset=cd_subset,
+            dataset_path=dataset_path_str,
+            output_path=output_path,
+        )
+
+    print("\nDone!")
 
 

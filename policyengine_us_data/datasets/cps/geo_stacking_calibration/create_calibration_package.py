@@ -35,12 +35,6 @@ def create_calibration_package(
     gcs_bucket: str = None,
     gcs_date_prefix: str = None,
 ):
-    # Testing
-    db_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/"
-    dataset_uri = "/home/baogorek/devl/stratified_10k.h5"
-    mode = "Stratified"  # Why am I putting this here?
-    # Did I really set groups to exclude correctly? I must have! I saw the 24K dimension
-
     """
     Create a calibration package from database and dataset.
 
@@ -56,6 +50,7 @@ def create_calibration_package(
     Returns:
         dict with 'local_path' and/or 'gcs_path' keys
     """
+
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
     if groups_to_exclude is None:

@@ -855,46 +855,30 @@ def create_sparse_cd_stacked_dataset(
     print(f"\nSaving to {output_path}...")
     data = {}
 
-    # Load the base dataset to see what variables were available during training
-    import h5py as h5py_check
-    with h5py_check.File(dataset_path, 'r') as base_file:
-        base_dataset_vars = set(base_file.keys())
-    print(f"Base dataset has {len(base_dataset_vars)} variables")
+    # Only save input variables (not calculated/derived variables)
+    # Calculated variables like state_name, state_code will be recalculated on load
+    input_vars = set(sparse_sim.input_variables)
+    print(f"Found {len(input_vars)} input variables (excluding calculated variables)")
 
-    # Define essential variables that must be kept even if they have formulas
-    essential_vars = {
-        'person_id', 'household_id', 'tax_unit_id', 'spm_unit_id',
-        'marital_unit_id', 'person_weight', 'household_weight', 'tax_unit_weight',
-        'person_household_id', 'person_tax_unit_id', 'person_spm_unit_id',
-        'person_marital_unit_id',
-        'congressional_district_geoid',
-        'state_fips', 'state_name', 'state_code',
-        'county_fips', 'county', 'county_str'
-    }
+    # If freeze_calculated_vars, also save specific state-dependent calculated variables
+    vars_to_save = input_vars.copy()
 
-    # If freeze_calculated_vars is True, add state-dependent calculated variables to essential vars
+    # congressional_district_geoid isn't in the original microdata and has no formula,
+    # so it's not in input_vars. Since we set it explicitly during stacking, save it.
+    vars_to_save.add('congressional_district_geoid')
+
     if freeze_calculated_vars:
-        # Only freeze SNAP for now (matches what we calculated per-CD above)
-        state_dependent_vars = ['snap']
-        essential_vars.update(state_dependent_vars)
-        print(f"Freezing {len(state_dependent_vars)} state-dependent calculated variables (will be saved to h5)")
+        state_dependent_vars = {'snap'}
+        vars_to_save.update(state_dependent_vars)
+        print(f"Also freezing {len(state_dependent_vars)} state-dependent calculated variables")
 
     variables_saved = 0
     variables_skipped = 0
 
     for variable in sparse_sim.tax_benefit_system.variables:
-        var_def = sparse_sim.tax_benefit_system.variables[variable]
-
-        # Save if it's essential OR if it was in the base dataset
-        if variable in essential_vars or variable in base_dataset_vars:
-            pass  # Will try to save below
-        else:
-            # Skip other calculated/aggregate variables
-            if var_def.formulas or \
-               (hasattr(var_def, 'adds') and var_def.adds) or \
-               (hasattr(var_def, 'subtracts') and var_def.subtracts):
-                variables_skipped += 1
-                continue
+        if variable not in vars_to_save:
+            variables_skipped += 1
+            continue
 
         # Only process variables that have actual data
         data[variable] = {}

@@ -1,6 +1,6 @@
 # Methodology
 
-We create the Enhanced CPS dataset through a two-stage process: imputation followed by reweighting. The imputation stage creates a copy of the CPS and uses Quantile Regression Forests to impute tax variables from the PUF onto this copy, creating the Extended CPS. The reweighting stage then optimizes household weights to match administrative targets, producing the Enhanced CPS with weights calibrated to statistics.
+We create the Enhanced CPS dataset through imputation followed by reweighting. The imputation stage creates a copy of the CPS and uses Quantile Regression Forests to impute tax variables from the PUF onto this copy, creating the Extended CPS. The reweighting stage then optimizes household weights to match administrative targets, producing the Enhanced CPS with weights calibrated to statistics.
 
 ```mermaid
 graph TD
@@ -37,7 +37,7 @@ graph TD
     
     Extended["Extended CPS - 2x households"]:::data
     
-    Targets{{"Administrative Targets - 7000+"}}:::data
+    Targets{{"Administrative Targets - 2,813"}}:::data
     
     Reweight("Reweight Optimization"):::process
     

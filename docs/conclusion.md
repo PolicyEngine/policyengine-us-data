@@ -6,7 +6,7 @@ We present a methodology for creating enhanced microsimulation datasets that com
 
 Our work makes several key contributions:
 
-**Methodological Innovation**: The use of Quantile Regression Forests for imputation preserves distributional characteristics while maintaining computational efficiency. The large-scale calibration to 7,000+ targets pushes the boundaries of survey data enhancement.
+**Methodological Innovation**: The use of Quantile Regression Forests for imputation preserves distributional characteristics while maintaining computational efficiency. The large-scale calibration to 2,813 targets pushes the boundaries of survey data enhancement.
 
 **Practical Tools**: We provide open-source implementations that enable researchers to apply, modify, and extend these methods. The modular design facilitates experimentation with alternative approaches.
 

@@ -22,7 +22,7 @@ The use of Quantile Regression Forests for imputation represents an advance over
 - Maintains realistic variable correlations
 - Allows uncertainty quantification
 
-The large-scale calibration to 7,000+ targets ensures consistency with administrative benchmarks across multiple dimensions simultaneously.
+The large-scale calibration to 2,813 targets ensures consistency with administrative benchmarks across multiple dimensions simultaneously.
 
 ### Practical Advantages
 
@@ -44,7 +44,7 @@ These assumptions may not hold perfectly, particularly for subpopulations that t
 
 ### Calibration Trade-offs
 
-With 7,000+ targets, perfect fit to all benchmarks is impossible. The optimization must balance competing objectives across target types, the relative importance of different statistics, stability of resulting weights, and preservation of household relationships.
+With 2,813 targets, perfect fit to all benchmarks is impossible. The optimization must balance competing objectives across target types, the relative importance of different statistics, stability of resulting weights, and preservation of household relationships.
 
 Users should consult validation metrics for targets most relevant to their analysis.
 

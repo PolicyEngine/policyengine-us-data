@@ -207,12 +207,17 @@ def add_takeup(self):
     aca_rate = load_take_up_rate("aca", self.time_period)
     medicaid_rate = load_take_up_rate("medicaid", self.time_period)
     head_start_rate = load_take_up_rate("head_start", self.time_period)
-    early_head_start_rate = load_take_up_rate("early_head_start", self.time_period)
+    early_head_start_rate = load_take_up_rate(
+        "early_head_start", self.time_period
+    )
 
     # EITC: varies by number of children
     eitc_child_count = baseline.calculate("eitc_child_count").values
     eitc_takeup_rate = np.array(
-        [eitc_rates_by_children.get(min(int(c), 3), 0.85) for c in eitc_child_count]
+        [
+            eitc_rates_by_children.get(min(int(c), 3), 0.85)
+            for c in eitc_child_count
+        ]
     )
     data["takes_up_eitc"] = (
         generator.random(len(data["tax_unit_id"])) < eitc_takeup_rate

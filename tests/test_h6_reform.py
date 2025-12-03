@@ -36,7 +36,9 @@ def get_swapped_thresholds(
 
     Returns (base_threshold, adjusted_threshold) where base <= adjusted.
     """
-    return min(oasdi_threshold, hi_threshold), max(oasdi_threshold, hi_threshold)
+    return min(oasdi_threshold, hi_threshold), max(
+        oasdi_threshold, hi_threshold
+    )
 
 
 def needs_crossover_swap(oasdi_threshold: int, hi_threshold: int) -> bool:
@@ -144,7 +146,9 @@ class TestH6ThresholdCrossover:
         # 2046+: crossover
         for year in range(2046, 2054):
             oasdi_single, _ = calculate_oasdi_thresholds(year)
-            assert needs_crossover_swap(oasdi_single, HI_SINGLE), f"Year {year}"
+            assert needs_crossover_swap(
+                oasdi_single, HI_SINGLE
+            ), f"Year {year}"
 
 
 class TestH6ThresholdSwapping:
@@ -208,9 +212,9 @@ class TestH6RateSwapping:
 
         assert single_error_swapped == pytest.approx(225)
         assert joint_error_default == pytest.approx(3_150)
-        assert joint_error_default / single_error_swapped == pytest.approx(14.0), (
-            "Swapped rates should have 14x less error"
-        )
+        assert joint_error_default / single_error_swapped == pytest.approx(
+            14.0
+        ), "Swapped rates should have 14x less error"
 
     def test_swapped_rates_align_with_tax_cut_intent(self):
         """Swapped rates undertax (not overtax), aligning with reform intent."""

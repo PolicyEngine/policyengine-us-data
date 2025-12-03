@@ -11,6 +11,17 @@ import numpy as np
 import pandas as pd
 
 
+def _get_geo_level(geo_id) -> int:
+    """Return geographic level: 0=National, 1=State, 2=District."""
+    if geo_id == 'US':
+        return 0
+    try:
+        val = int(geo_id)
+        return 1 if val < 100 else 2
+    except (ValueError, TypeError):
+        return 3
+
+
 def create_target_groups(
     targets_df: pd.DataFrame,
 ) -> Tuple[np.ndarray, List[str]]:
@@ -18,28 +29,18 @@ def create_target_groups(
     Automatically create target groups based on metadata.
 
     Grouping rules:
-    1. Each national hardcoded target gets its own group (singleton)
-       - These are scalar values like "tip_income" or "medical_expenses"
-       - Each one represents a fundamentally different quantity
-       - We want each to contribute equally to the loss
-
-    2. All demographic targets grouped by (geographic_id, stratum_group_id)
-       - All 18 age bins for California form ONE group
-       - All 18 age bins for North Carolina form ONE group
-       - This prevents age variables from dominating the loss
-
-    The result is that each group contributes equally to the total loss,
-    regardless of how many individual targets are in the group.
+    1. Groups are ordered by geographic level: National → State → District
+    2. Within each level, targets are grouped by variable type
+    3. Each group contributes equally to the total loss
 
     Parameters
     ----------
     targets_df : pd.DataFrame
         DataFrame containing target metadata with columns:
         - stratum_group_id: Identifier for the type of target
-        - geographic_id: Geographic identifier (US, state FIPS, etc.)
+        - geographic_id: Geographic identifier (US, state FIPS, CD GEOID)
         - variable: Variable name
         - value: Target value
-        - description: Human-readable description
 
     Returns
     -------
@@ -51,193 +52,67 @@ def create_target_groups(
     target_groups = np.zeros(len(targets_df), dtype=int)
     group_id = 0
     group_info = []
+    processed_mask = np.zeros(len(targets_df), dtype=bool)
 
     print("\n=== Creating Target Groups ===")
 
-    # Process national targets first - each gets its own group
-    national_mask = targets_df["stratum_group_id"] == "national"
-    national_targets = targets_df[national_mask]
+    # Add geo_level column for sorting
+    targets_df = targets_df.copy()
+    targets_df['_geo_level'] = targets_df['geographic_id'].apply(_get_geo_level)
 
-    if len(national_targets) > 0:
-        print(f"\nNational targets (each is a singleton group):")
+    geo_level_names = {0: "National", 1: "State", 2: "District"}
 
-        for idx in national_targets.index:
-            target = targets_df.loc[idx]
-            # Use variable_desc which contains full descriptive name from DB
-            display_name = target["variable_desc"]
-            value = target["value"]
+    # Process by geographic level: National (0) → State (1) → District (2)
+    for level in [0, 1, 2]:
+        level_mask = targets_df['_geo_level'] == level
+        if not level_mask.any():
+            continue
 
-            target_groups[idx] = group_id
-            group_info.append(
-                f"Group {group_id}: National {display_name} (1 target, value={value:,.0f})"
-            )
-            print(f"  Group {group_id}: {display_name} = {value:,.0f}")
-            group_id += 1
+        level_name = geo_level_names.get(level, f"Level {level}")
+        print(f"\n{level_name} targets:")
 
-    # Process geographic targets - group by variable name AND description pattern
-    # This ensures each type of measurement contributes equally to the loss
-    demographic_mask = ~national_mask
-    demographic_df = targets_df[demographic_mask]
+        # Get unique variables at this level
+        level_df = targets_df[level_mask & ~processed_mask]
+        unique_vars = sorted(level_df['variable'].unique())
 
-    if len(demographic_df) > 0:
-        print(f"\nGeographic targets (grouped by variable type):")
-
-        # For person_count, we need to split by description pattern
-        # For other variables, group by variable name only
-        processed_masks = np.zeros(len(targets_df), dtype=bool)
-
-        # First handle person_count specially - split by description pattern
-        person_count_mask = (
-            targets_df["variable"] == "person_count"
-        ) & demographic_mask
-        if person_count_mask.any():
-            person_count_df = targets_df[person_count_mask]
-
-            # Define patterns to group person_count targets
-            patterns = [
-                ("age<", "Age Distribution"),
-                ("adjusted_gross_income<", "Person Income Distribution"),
-                ("medicaid", "Medicaid Enrollment"),
-                ("aca_ptc", "ACA PTC Recipients"),
-            ]
-
-            for pattern, label in patterns:
-                # Find targets matching this pattern
-                pattern_mask = person_count_mask & targets_df[
-                    "variable_desc"
-                ].str.contains(pattern, na=False)
-
-                if pattern_mask.any():
-                    matching_targets = targets_df[pattern_mask]
-                    target_groups[pattern_mask] = group_id
-                    n_targets = pattern_mask.sum()
-                    n_geos = matching_targets["geographic_id"].nunique()
-
-                    group_info.append(
-                        f"Group {group_id}: {label} ({n_targets} targets across {n_geos} geographies)"
-                    )
-
-                    if n_geos == 436:
-                        print(
-                            f"  Group {group_id}: All CD {label} ({n_targets} targets)"
-                        )
-                    else:
-                        print(
-                            f"  Group {group_id}: {label} ({n_targets} targets across {n_geos} geographies)"
-                        )
-
-                    group_id += 1
-                    processed_masks |= pattern_mask
-
-        # Handle tax_unit_count specially - split by condition in variable_desc
-        tax_unit_mask = (
-            (targets_df["variable"] == "tax_unit_count")
-            & demographic_mask
-            & ~processed_masks
-        )
-        if tax_unit_mask.any():
-            tax_unit_df = targets_df[tax_unit_mask]
-            unique_descs = sorted(tax_unit_df["variable_desc"].unique())
-
-            for desc in unique_descs:
-                # Find targets matching this exact description
-                desc_mask = tax_unit_mask & (
-                    targets_df["variable_desc"] == desc
-                )
-
-                if desc_mask.any():
-                    matching_targets = targets_df[desc_mask]
-                    target_groups[desc_mask] = group_id
-                    n_targets = desc_mask.sum()
-                    n_geos = matching_targets["geographic_id"].nunique()
-
-                    # Extract condition from description (e.g., "tax_unit_count_dividend_income>0" -> "dividend_income>0")
-                    condition = desc.replace("tax_unit_count_", "")
-
-                    group_info.append(
-                        f"Group {group_id}: Tax Units {condition} ({n_targets} targets across {n_geos} geographies)"
-                    )
-
-                    if n_geos == 436:
-                        print(
-                            f"  Group {group_id}: All CD Tax Units {condition} ({n_targets} targets)"
-                        )
-                    else:
-                        print(
-                            f"  Group {group_id}: Tax Units {condition} ({n_targets} targets across {n_geos} geographies)"
-                        )
-
-                    group_id += 1
-                    processed_masks |= desc_mask
-
-        # Now handle all other variables (non-person_count and non-tax_unit_count)
-        other_variables = demographic_df[
-            ~demographic_df["variable"].isin(
-                ["person_count", "tax_unit_count"]
-            )
-        ]["variable"].unique()
-        other_variables = sorted(other_variables)
-
-        for variable_name in other_variables:
-            # Find ALL targets with this variable name across ALL geographies
-            mask = (
-                (targets_df["variable"] == variable_name)
-                & demographic_mask
-                & ~processed_masks
+        for var_name in unique_vars:
+            var_mask = (
+                (targets_df['variable'] == var_name)
+                & level_mask
+                & ~processed_mask
             )
 
-            if not mask.any():
+            if not var_mask.any():
                 continue
 
-            matching_targets = targets_df[mask]
-            target_groups[mask] = group_id
-            n_targets = mask.sum()
+            matching = targets_df[var_mask]
+            n_targets = var_mask.sum()
+            n_geos = matching['geographic_id'].nunique()
 
-            # Create descriptive label based on variable name
-            # Count unique geographic locations for this variable
-            n_geos = matching_targets["geographic_id"].nunique()
+            # Assign group
+            target_groups[var_mask] = group_id
+            processed_mask |= var_mask
 
-            # Get stratum_group for context-aware labeling
-            stratum_group = matching_targets["stratum_group_id"].iloc[0]
-
-            # Handle only truly ambiguous cases with stratum_group_id context
-            if variable_name == "household_count" and stratum_group == 4:
+            # Create descriptive label
+            stratum_group = matching['stratum_group_id'].iloc[0]
+            if var_name == "household_count" and stratum_group == 4:
                 label = "SNAP Household Count"
-            elif (
-                variable_name == "snap" and stratum_group == "state_snap_cost"
-            ):
-                label = "SNAP Cost (State)"
-            elif (
-                variable_name == "adjusted_gross_income" and stratum_group == 2
-            ):
-                label = "AGI Total Amount"
+            elif var_name == "snap":
+                label = "Snap"
             else:
-                # Default: clean up variable name (most are already descriptive)
-                label = variable_name.replace("_", " ").title()
+                label = var_name.replace("_", " ").title()
 
-            # Store group information
-            group_info.append(
-                f"Group {group_id}: {label} ({n_targets} targets across {n_geos} geographies)"
-            )
-
-            # Print summary
-            if n_geos == 436:  # Full CD coverage
-                print(
-                    f"  Group {group_id}: All CD {label} ({n_targets} targets)"
-                )
-            elif n_geos == 51:  # State-level
-                print(
-                    f"  Group {group_id}: State-level {label} ({n_targets} targets)"
-                )
-            elif n_geos <= 10:
-                print(
-                    f"  Group {group_id}: {label} ({n_targets} targets across {n_geos} geographies)"
-                )
+            # Format output based on level and count
+            if n_targets == 1:
+                value = matching['value'].iloc[0]
+                info_str = f"{level_name} {label} (1 target, value={value:,.0f})"
+                print_str = f"  Group {group_id}: {label} = {value:,.0f}"
             else:
-                print(
-                    f"  Group {group_id}: {label} ({n_targets} targets across {n_geos} geographies)"
-                )
+                info_str = f"{level_name} {label} ({n_targets} targets)"
+                print_str = f"  Group {group_id}: {label} ({n_targets} targets)"
 
+            group_info.append(f"Group {group_id}: {info_str}")
+            print(print_str)
             group_id += 1
 
     print(f"\nTotal groups created: {group_id}")

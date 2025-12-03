@@ -49,6 +49,17 @@ def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
     return np.ones(len(values), dtype=bool)
 
 
+def _get_geo_level(geo_id) -> int:
+    """Return geographic level: 0=National, 1=State, 2=District."""
+    if geo_id == 'US':
+        return 0
+    try:
+        val = int(geo_id)
+        return 1 if val < 100 else 2
+    except (ValueError, TypeError):
+        return 3
+
+
 class SparseMatrixBuilder:
     """Build sparse calibration matrices for geo-stacking."""
 
@@ -61,30 +72,36 @@ class SparseMatrixBuilder:
         self.dataset_path = dataset_path
 
     def _query_targets(self, target_filter: dict) -> pd.DataFrame:
-        """Query targets based on filter criteria."""
-        conditions = []
+        """Query targets based on filter criteria using OR logic."""
+        or_conditions = []
 
         if "stratum_group_ids" in target_filter:
             ids = ",".join(map(str, target_filter["stratum_group_ids"]))
-            conditions.append(f"s.stratum_group_id IN ({ids})")
+            or_conditions.append(f"s.stratum_group_id IN ({ids})")
+
+        if "variables" in target_filter:
+            vars_str = ",".join(f"'{v}'" for v in target_filter["variables"])
+            or_conditions.append(f"t.variable IN ({vars_str})")
 
         if "target_ids" in target_filter:
             ids = ",".join(map(str, target_filter["target_ids"]))
-            conditions.append(f"t.target_id IN ({ids})")
+            or_conditions.append(f"t.target_id IN ({ids})")
 
         if "stratum_ids" in target_filter:
             ids = ",".join(map(str, target_filter["stratum_ids"]))
-            conditions.append(f"t.stratum_id IN ({ids})")
+            or_conditions.append(f"t.stratum_id IN ({ids})")
 
-        if not conditions:
+        if not or_conditions:
             raise ValueError("target_filter must specify at least one filter criterion")
+
+        where_clause = " OR ".join(f"({c})" for c in or_conditions)
 
         query = f"""
         SELECT t.target_id, t.stratum_id, t.variable, t.value, t.period,
                s.stratum_group_id
         FROM targets t
         JOIN strata s ON t.stratum_id = s.stratum_id
-        WHERE {' AND '.join(conditions)}
+        WHERE {where_clause}
         ORDER BY t.target_id
         """
 
@@ -145,6 +162,11 @@ class SparseMatrixBuilder:
             raise ValueError("No targets found matching filter")
 
         targets_df['geographic_id'] = targets_df['stratum_id'].apply(self._get_geographic_id)
+
+        # Sort by (geo_level, variable, geographic_id) for contiguous group rows
+        targets_df['_geo_level'] = targets_df['geographic_id'].apply(_get_geo_level)
+        targets_df = targets_df.sort_values(['_geo_level', 'variable', 'geographic_id'])
+        targets_df = targets_df.drop(columns=['_geo_level']).reset_index(drop=True)
 
         X = sparse.lil_matrix((n_targets, n_cols), dtype=np.float32)
 

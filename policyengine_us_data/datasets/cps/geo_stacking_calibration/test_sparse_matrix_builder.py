@@ -9,6 +9,11 @@ import pandas as pd
 from policyengine_us import Microsimulation
 from policyengine_us_data.storage import STORAGE_FOLDER
 from sparse_matrix_builder import SparseMatrixBuilder, get_calculated_variables
+from household_tracer import HouseholdTracer
+from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+    create_target_groups,
+)
+from policyengine_us_data.datasets.cps.geo_stacking_calibration.household_tracer import HouseholdTracer  
 
 db_path = STORAGE_FOLDER / "policy_data.db"
 db_uri = f"sqlite:///{db_path}"
@@ -39,11 +44,16 @@ sim = Microsimulation(dataset=str(dataset_uri))
 builder = SparseMatrixBuilder(db_uri, time_period=2023, cds_to_calibrate=test_cds,
                               dataset_path=str(dataset_uri))
 
-print("\nBuilding matrix with stratum_group_id=4 (SNAP)...")
+print("\nBuilding matrix with stratum_group_id=4 (SNAP) + variable='snap' (national)...")
 targets_df, X_sparse, household_id_mapping = builder.build_matrix(
     sim,
-    target_filter={"stratum_group_ids": [4]}
+    target_filter={"stratum_group_ids": [4], "variables": ["snap"]}
 )
+
+target_groups, group_info = create_target_groups(targets_df)
+tracer = HouseholdTracer(targets_df, X_sparse, household_id_mapping, test_cds, sim)
+
+tracer.print_matrix_structure()
 
 print(f"\nMatrix shape: {X_sparse.shape}")
 print(f"Non-zero elements: {X_sparse.nnz}")

@@ -9,5 +9,9 @@ analyze*
 # NumPy weight arrays
 *.npy
 
+# Generated artifacts
+metadata.json
+.ipynb_checkpoints/
+
 # Debug scripts (including debug_uprating.py - temporary tool)
 debug*

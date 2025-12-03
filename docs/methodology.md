@@ -147,7 +147,20 @@ From the American Community Survey (ACS), we impute property taxes for homeowner
 
 ### Example: Tip Income Imputation
 
-To illustrate how QRF preserves conditional distributions, consider tip income imputation. The training data from SIPP contains workers with employment income and tip income. For a worker with predictors of $30,000 employment income, age 25, and no children, QRF finds that similar workers in SIPP have a conditional distribution ranging from $0 at the 10th percentile (no tips) to $2,000 at the median, $8,000 at the 90th percentile, and $15,000 at the 99th percentile. If the random quantile drawn is 0.85, the imputed tip income would be approximately $6,500. This approach ensures that some similar workers receive no tips while others receive substantial tips, preserving realistic variation.
+To illustrate how QRF preserves conditional distributions, consider tip income imputation. The training data from SIPP contains workers with employment income and tip income.
+
+For a worker with the following characteristics:
+- Employment income: \$30,000
+- Age: 25
+- Number of children: 0
+
+QRF finds that similar workers in SIPP have a conditional distribution of tip income:
+- 10th percentile: \$0 (no tips)
+- 50th percentile: \$2,000
+- 90th percentile: \$8,000
+- 99th percentile: \$15,000
+
+If the random quantile drawn is 0.85, the imputed tip income would be approximately \$6,500. This approach ensures that some similar workers receive no tips while others receive substantial tips, preserving realistic variation.
 
 ## Stage 2: Reweighting
 
@@ -185,7 +198,7 @@ The calibration process incorporates tax and benefit calculations through Policy
 
 ### Convergence
 
-The optimization converges within iterations. We monitor convergence through the loss value trajectory, weight stability across iterations, and target achievement rates.
+The optimization converges within 500 epochs. We monitor convergence through the loss value trajectory, weight stability across iterations, and target achievement rates.
 
 ## Validation
 

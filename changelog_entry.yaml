@@ -1,8 +1,4 @@
 - bump: minor
   changes:
     added:
-    - 4k district and county representative test dataset.
-    - Parallelization of data building steps.
-    - Checkpointing mechanism to resume data builds and testing modules from last successful step in Modal runs.
-    changed:
-    - Removed duplicate run of test_local_area_calibration tests.
+      - Move all randomness to data package for deterministic country package. Take-up decisions for SNAP, Medicaid, ACA, EITC, DC PTC, Head Start, and Early Head Start are now generated stochastically during dataset creation using take-up rates from YAML parameter files.

@@ -4,6 +4,7 @@ Take-up rate parameters for stochastic simulation.
 These parameters are stored in the data package to keep the country package
 as a purely deterministic rules engine.
 """
+
 import yaml
 from pathlib import Path
 
@@ -48,6 +49,8 @@ def load_take_up_rate(variable_name: str, year: int = 2018) -> float:
             break
 
     if applicable_value is None:
-        raise ValueError(f"No take-up rate found for {variable_name} in {year}")
+        raise ValueError(
+            f"No take-up rate found for {variable_name} in {year}"
+        )
 
     return applicable_value

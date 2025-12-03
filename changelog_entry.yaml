@@ -1,5 +1,4 @@
 - bump: minor
   changes:
     added:
-    - field_valid_values table in the targets database as source of truth for semantic or external target information.
-    - constraint_validation.py to ensure constraint operations result in consistent and valid sets of constraints for a given stratum.
+      - Move all randomness to data package for deterministic country package. Take-up decisions for SNAP, Medicaid, ACA, EITC, DC PTC, Head Start, and Early Head Start are now generated stochastically during dataset creation using take-up rates from YAML parameter files.

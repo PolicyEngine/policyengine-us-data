@@ -4,7 +4,7 @@
     - GitHub Pages documentation deployment (was deploying wrong directory causing blank pages)
     - Removed timeout and error suppression from documentation build
     added:
-    - Node.js 22 LTS setup to CI workflow for MyST builds
+    - Node.js 24 LTS setup to CI workflow for MyST builds
     - H6 Social Security reform calibration for long-term projections (phases out OASDI taxation 2045-2054)
     - H6 threshold crossover handling when OASDI thresholds exceed HI thresholds
     - start_year parameter to run_household_projection.py CLI

@@ -45,12 +45,12 @@ def create_h6_reform():
     1. Phase out OASDI taxation (Tier 1) from 2045-2053 by raising thresholds.
     2. Eliminate OASDI taxation fully in 2054+ (set Tier 1 rate to 0%).
     3. HOLD HARMLESS: Maintain HI taxation (Tier 2) revenue at current law levels throughout.
-    
+
     CRITICAL: Handles the "Threshold Crossover" problem.
     As OASDI thresholds rise above HI thresholds ($34k/$44k), we must
     swap the parameter definitions to prevent the engine from breaking.
     """
-    
+
     reform_payload = {
         # Thresholds
         "gov.irs.social_security.taxability.threshold.base.main.SINGLE": {},
@@ -58,17 +58,14 @@ def create_h6_reform():
         "gov.irs.social_security.taxability.threshold.base.main.HEAD_OF_HOUSEHOLD": {},
         "gov.irs.social_security.taxability.threshold.base.main.SURVIVING_SPOUSE": {},
         "gov.irs.social_security.taxability.threshold.base.main.SEPARATE": {},
-
         "gov.irs.social_security.taxability.threshold.adjusted_base.main.SINGLE": {},
         "gov.irs.social_security.taxability.threshold.adjusted_base.main.JOINT": {},
         "gov.irs.social_security.taxability.threshold.adjusted_base.main.HEAD_OF_HOUSEHOLD": {},
         "gov.irs.social_security.taxability.threshold.adjusted_base.main.SURVIVING_SPOUSE": {},
         "gov.irs.social_security.taxability.threshold.adjusted_base.main.SEPARATE": {},
-
         # Rates - Base (Tier 1)
         "gov.irs.social_security.taxability.rate.base.benefit_cap": {},
         "gov.irs.social_security.taxability.rate.base.excess": {},
-        
         # Rates - Additional (Tier 2 - HI)
         "gov.irs.social_security.taxability.rate.additional.benefit_cap": {},
         "gov.irs.social_security.taxability.rate.additional.excess": {},
@@ -78,17 +75,17 @@ def create_h6_reform():
     # We must preserve these specific triggers to protect the HI Trust Fund
     HI_SINGLE = 34_000
     HI_JOINT = 44_000
-    
+
     # --- PHASE 1: THE TRANSITION (2045-2053) ---
     for year in range(2045, 2054):
         period = f"{year}-01-01"
         i = year - 2045
-        
+
         # 1. Calculate the Target OASDI Thresholds (Rising)
         #    (a) 2045 = $32,500 ... (i) 2053 = $92,500
         oasdi_target_single = 32_500 + (7_500 * i)
         oasdi_target_joint = 65_000 + (15_000 * i)
-        
+
         # 2. Handle Threshold Crossover
         #    OASDI thresholds rise above HI thresholds during phase-out.
         #    We must swap parameters: put lower threshold in 'base' slot.
@@ -107,62 +104,103 @@ def create_h6_reform():
         # The swapped rate error is 14x smaller and aligns with tax-cutting intent.
 
         # Tier 1 (Base): HI ONLY (35%)
-        reform_payload["gov.irs.social_security.taxability.rate.base.benefit_cap"][period] = 0.35
-        reform_payload["gov.irs.social_security.taxability.rate.base.excess"][period] = 0.35
+        reform_payload[
+            "gov.irs.social_security.taxability.rate.base.benefit_cap"
+        ][period] = 0.35
+        reform_payload["gov.irs.social_security.taxability.rate.base.excess"][
+            period
+        ] = 0.35
 
         # Tier 2 (Additional): HI + OASDI Combined (85%)
-        reform_payload["gov.irs.social_security.taxability.rate.additional.benefit_cap"][period] = 0.85
-        reform_payload["gov.irs.social_security.taxability.rate.additional.excess"][period] = 0.85
+        reform_payload[
+            "gov.irs.social_security.taxability.rate.additional.benefit_cap"
+        ][period] = 0.85
+        reform_payload[
+            "gov.irs.social_security.taxability.rate.additional.excess"
+        ][period] = 0.85
 
         # --- SET THRESHOLDS (MIN/MAX SWAP) ---
         # Always put the smaller number in 'base' and larger in 'adjusted_base'
-        
+
         # Single
-        reform_payload["gov.irs.social_security.taxability.threshold.base.main.SINGLE"][period] = min(oasdi_target_single, HI_SINGLE)
-        reform_payload["gov.irs.social_security.taxability.threshold.adjusted_base.main.SINGLE"][period] = max(oasdi_target_single, HI_SINGLE)
-        
+        reform_payload[
+            "gov.irs.social_security.taxability.threshold.base.main.SINGLE"
+        ][period] = min(oasdi_target_single, HI_SINGLE)
+        reform_payload[
+            "gov.irs.social_security.taxability.threshold.adjusted_base.main.SINGLE"
+        ][period] = max(oasdi_target_single, HI_SINGLE)
+
         # Joint
-        reform_payload["gov.irs.social_security.taxability.threshold.base.main.JOINT"][period] = min(oasdi_target_joint, HI_JOINT)
-        reform_payload["gov.irs.social_security.taxability.threshold.adjusted_base.main.JOINT"][period] = max(oasdi_target_joint, HI_JOINT)
-        
+        reform_payload[
+            "gov.irs.social_security.taxability.threshold.base.main.JOINT"
+        ][period] = min(oasdi_target_joint, HI_JOINT)
+        reform_payload[
+            "gov.irs.social_security.taxability.threshold.adjusted_base.main.JOINT"
+        ][period] = max(oasdi_target_joint, HI_JOINT)
+
         # Map other statuses (Head/Surviving Spouse -> Single logic, Separate -> Single logic usually)
         # Note: Separate is usually 0, but for H6 strictness we map to Single logic here
         for status in ["HEAD_OF_HOUSEHOLD", "SURVIVING_SPOUSE", "SEPARATE"]:
-            reform_payload[f"gov.irs.social_security.taxability.threshold.base.main.{status}"][period] = min(oasdi_target_single, HI_SINGLE)
-            reform_payload[f"gov.irs.social_security.taxability.threshold.adjusted_base.main.{status}"][period] = max(oasdi_target_single, HI_SINGLE)
+            reform_payload[
+                f"gov.irs.social_security.taxability.threshold.base.main.{status}"
+            ][period] = min(oasdi_target_single, HI_SINGLE)
+            reform_payload[
+                f"gov.irs.social_security.taxability.threshold.adjusted_base.main.{status}"
+            ][period] = max(oasdi_target_single, HI_SINGLE)
 
     # --- PHASE 2: ELIMINATION (2054+) ---
     # OASDI is gone. We only collect HI.
     # Logic: "Base" becomes the HI tier ($34k). Rate is 0.35.
     # "Adjusted" becomes irrelevant (set high or rate to same).
-    
+
     elim_period = "2054-01-01.2100-12-31"
-    
+
     # 1. Set Thresholds to "HI Only" mode
     # Base = $34k / $44k
-    reform_payload["gov.irs.social_security.taxability.threshold.base.main.SINGLE"][elim_period] = HI_SINGLE
-    reform_payload["gov.irs.social_security.taxability.threshold.base.main.JOINT"][elim_period] = HI_JOINT
-    
+    reform_payload[
+        "gov.irs.social_security.taxability.threshold.base.main.SINGLE"
+    ][elim_period] = HI_SINGLE
+    reform_payload[
+        "gov.irs.social_security.taxability.threshold.base.main.JOINT"
+    ][elim_period] = HI_JOINT
+
     # Adjusted = Infinity (Disable the second tier effectively)
-    reform_payload["gov.irs.social_security.taxability.threshold.adjusted_base.main.SINGLE"][elim_period] = 9_999_999
-    reform_payload["gov.irs.social_security.taxability.threshold.adjusted_base.main.JOINT"][elim_period] = 9_999_999
-    
+    reform_payload[
+        "gov.irs.social_security.taxability.threshold.adjusted_base.main.SINGLE"
+    ][elim_period] = 9_999_999
+    reform_payload[
+        "gov.irs.social_security.taxability.threshold.adjusted_base.main.JOINT"
+    ][elim_period] = 9_999_999
+
     # Map others
     for status in ["HEAD_OF_HOUSEHOLD", "SURVIVING_SPOUSE", "SEPARATE"]:
-         reform_payload[f"gov.irs.social_security.taxability.threshold.base.main.{status}"][elim_period] = HI_SINGLE
-         reform_payload[f"gov.irs.social_security.taxability.threshold.adjusted_base.main.{status}"][elim_period] = 9_999_999
+        reform_payload[
+            f"gov.irs.social_security.taxability.threshold.base.main.{status}"
+        ][elim_period] = HI_SINGLE
+        reform_payload[
+            f"gov.irs.social_security.taxability.threshold.adjusted_base.main.{status}"
+        ][elim_period] = 9_999_999
 
     # 2. Set Rates for HI Only Revenue
     # Tier 1 (Now the ONLY tier) = 35% (HI Share)
-    reform_payload["gov.irs.social_security.taxability.rate.base.benefit_cap"][elim_period] = 0.35
-    reform_payload["gov.irs.social_security.taxability.rate.base.excess"][elim_period] = 0.35
-    
+    reform_payload["gov.irs.social_security.taxability.rate.base.benefit_cap"][
+        elim_period
+    ] = 0.35
+    reform_payload["gov.irs.social_security.taxability.rate.base.excess"][
+        elim_period
+    ] = 0.35
+
     # Tier 2 (Disabled via threshold, but zero out for safety)
-    reform_payload["gov.irs.social_security.taxability.rate.additional.benefit_cap"][elim_period] = 0.35
-    reform_payload["gov.irs.social_security.taxability.rate.additional.excess"][elim_period] = 0.35
+    reform_payload[
+        "gov.irs.social_security.taxability.rate.additional.benefit_cap"
+    ][elim_period] = 0.35
+    reform_payload[
+        "gov.irs.social_security.taxability.rate.additional.excess"
+    ][elim_period] = 0.35
 
     # Create the Reform Object
     from policyengine_core.reforms import Reform
+
     return Reform.from_dict(reform_payload, country_id="us")
 
 
@@ -212,7 +250,9 @@ USE_H6_REFORM = "--use-h6-reform" in sys.argv
 if USE_H6_REFORM:
     sys.argv.remove("--use-h6-reform")
     if not USE_GREG:
-        print("Warning: --use-h6-reform requires --greg, enabling GREG automatically")
+        print(
+            "Warning: --use-h6-reform requires --greg, enabling GREG automatically"
+        )
         USE_GREG = True
     from ssa_data import load_h6_income_rate_change
 
@@ -262,7 +302,9 @@ print("\n" + "=" * 70)
 print("STEP 1: DEMOGRAPHIC PROJECTIONS")
 print("=" * 70)
 
-target_matrix = load_ssa_age_projections(start_year=START_YEAR, end_year=END_YEAR)
+target_matrix = load_ssa_age_projections(
+    start_year=START_YEAR, end_year=END_YEAR
+)
 n_years = target_matrix.shape[1]
 n_ages = target_matrix.shape[0]
 
@@ -389,7 +431,9 @@ for year_idx in range(n_years):
         if h6_target_ratio != 0:
             # Create and apply H6 reform
             h6_reform = create_h6_reform()
-            reform_sim = Microsimulation(dataset=BASE_DATASET_PATH, reform=h6_reform)
+            reform_sim = Microsimulation(
+                dataset=BASE_DATASET_PATH, reform=h6_reform
+            )
 
             # Calculate reform income tax
             income_tax_reform_hh = reform_sim.calculate(
@@ -407,7 +451,9 @@ for year_idx in range(n_years):
 
             # Debug output for key years
             if year in display_years:
-                h6_impact_baseline = np.sum(h6_income_values * baseline_weights)
+                h6_impact_baseline = np.sum(
+                    h6_income_values * baseline_weights
+                )
                 print(
                     f"  [DEBUG {year}] H6 baseline revenue: ${h6_impact_baseline/1e9:.3f}B, target: ${h6_revenue_target/1e9:.3f}B"
                 )
@@ -451,7 +497,13 @@ for year_idx in range(n_years):
             )
         if USE_H6_REFORM and h6_revenue_target is not None:
             h6_revenue_achieved = np.sum(h6_income_values * w_new)
-            error_pct = (h6_revenue_achieved - h6_revenue_target) / abs(h6_revenue_target) * 100 if h6_revenue_target != 0 else 0
+            error_pct = (
+                (h6_revenue_achieved - h6_revenue_target)
+                / abs(h6_revenue_target)
+                * 100
+                if h6_revenue_target != 0
+                else 0
+            )
             print(
                 f"  [DEBUG {year}] H6 achieved revenue: ${h6_revenue_achieved/1e9:.3f}B (error: {error_pct:.1f}%)"
             )

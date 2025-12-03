@@ -113,9 +113,9 @@ def calibrate_greg(
 
     # Build auxiliary variables dataframe if any continuous constraints are provided
     needs_aux_df = (
-        (ss_values is not None and ss_target is not None) or
-        (payroll_values is not None and payroll_target is not None) or
-        (h6_income_values is not None and h6_revenue_target is not None)
+        (ss_values is not None and ss_target is not None)
+        or (payroll_values is not None and payroll_target is not None)
+        or (h6_income_values is not None and h6_revenue_target is not None)
     )
 
     if needs_aux_df:

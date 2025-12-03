@@ -4,7 +4,8 @@
     - GitHub Pages documentation deployment (was deploying wrong directory causing blank pages)
     - Removed timeout and error suppression from documentation build
     added:
-    - Node.js setup to CI workflow for MyST builds
-    - start_year parameter to load_ssa_age_projections function
-    - MAX_SINGLE_AGE constant to replace hardcoded values
+    - Node.js 22 LTS setup to CI workflow for MyST builds
+    - H6 Social Security reform calibration for long-term projections (phases out OASDI taxation 2045-2054)
+    - H6 threshold crossover handling when OASDI thresholds exceed HI thresholds
+    - start_year parameter to run_household_projection.py CLI
     - docs/README.md documenting MyST build output pitfall

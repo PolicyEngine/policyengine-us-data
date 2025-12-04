@@ -1,0 +1,8 @@
+- bump: minor
+  changes:
+    added:
+    - SPM threshold calculation using policyengine/spm-calculator package
+    - New utility module (policyengine_us_data/utils/spm.py) for SPM calculations
+    changed:
+    - CPS datasets now calculate SPM thresholds using spm-calculator with Census-provided geographic adjustments
+    - ACS datasets now calculate SPM thresholds using spm-calculator with national-level thresholds

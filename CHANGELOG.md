@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.47.1] - 2025-12-03 23:00:20
+
+### Added
+
+- Node.js 24 LTS setup to CI workflow for MyST builds
+- H6 Social Security reform calibration for long-term projections (phases out OASDI taxation 2045-2054)
+- H6 threshold crossover handling when OASDI thresholds exceed HI thresholds
+- start_year parameter to run_household_projection.py CLI
+- docs/README.md documenting MyST build output pitfall
+
+### Fixed
+
+- GitHub Pages documentation deployment (was deploying wrong directory causing blank pages)
+- Removed timeout and error suppression from documentation build
+
 ## [1.47.0] - 2025-11-20 02:54:32
 
 ### Added
@@ -742,6 +757,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.47.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.47.0...1.47.1
 [1.47.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.46.1...1.47.0
 [1.46.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.46.0...1.46.1
 [1.46.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.45.0...1.46.0

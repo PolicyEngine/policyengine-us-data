@@ -18,7 +18,7 @@ Our work makes several key contributions:
 
 The validation results demonstrate that combining survey and administrative data through principled statistical methods can achieve:
 - Improved income distribution representation
-- Better alignment with program participation totals  
+- Better alignment with program participation totals
 - Maintained demographic and geographic detail
 - Suitable accuracy for policy simulation
 

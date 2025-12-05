@@ -125,7 +125,9 @@ class MatrixTracer:
                     "geographic_id": target.get("geographic_id", "unknown"),
                     "target_value": target["value"],
                     "stratum_id": target.get("stratum_id"),
-                    "stratum_group_id": target.get("stratum_group_id", "unknown"),
+                    "stratum_group_id": target.get(
+                        "stratum_group_id", "unknown"
+                    ),
                 }
             )
 
@@ -170,7 +172,9 @@ class MatrixTracer:
             "household": col_info,
         }
 
-    def get_household_column_positions(self, original_hh_id: int) -> Dict[str, int]:
+    def get_household_column_positions(
+        self, original_hh_id: int
+    ) -> Dict[str, int]:
         """
         Get all column positions for a household across all geographies.
 
@@ -250,7 +254,9 @@ class MatrixTracer:
         stratum_summary = (
             self.row_catalog.groupby("stratum_group_id")
             .agg({"row_index": "count", "variable": lambda x: len(set(x))})
-            .rename(columns={"row_index": "n_targets", "variable": "n_unique_vars"})
+            .rename(
+                columns={"row_index": "n_targets", "variable": "n_unique_vars"}
+            )
         )
         print(stratum_summary.to_string())
 

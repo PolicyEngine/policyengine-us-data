@@ -187,6 +187,7 @@ def create_stratified_cps_dataset(
     # Generate output path if not provided
     if output_path is None:
         from policyengine_us_data.storage import STORAGE_FOLDER
+
         output_path = str(STORAGE_FOLDER / "stratified_extended_cps_2023.h5")
 
     # Save to h5 file
@@ -195,7 +196,9 @@ def create_stratified_cps_dataset(
 
     # Only save input variables (not calculated/derived variables)
     input_vars = set(stratified_sim.input_variables)
-    print(f"Found {len(input_vars)} input variables (excluding calculated variables)")
+    print(
+        f"Found {len(input_vars)} input variables (excluding calculated variables)"
+    )
 
     for variable in stratified_sim.tax_benefit_system.variables:
         if variable not in input_vars:

@@ -756,6 +756,7 @@ MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
 
 if __name__ == "__main__":
     import os
+
     geo_stacking = os.environ.get("GEO_STACKING") == "true"
 
     if geo_stacking:

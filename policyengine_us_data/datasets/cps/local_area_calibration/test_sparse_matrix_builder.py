@@ -61,8 +61,12 @@ import pandas as pd
 from typing import List
 
 from policyengine_us import Microsimulation
-from policyengine_us_data.datasets.cps.local_area_calibration.sparse_matrix_builder import SparseMatrixBuilder
-from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import get_calculated_variables
+from policyengine_us_data.datasets.cps.local_area_calibration.sparse_matrix_builder import (
+    SparseMatrixBuilder,
+)
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+    get_calculated_variables,
+)
 
 
 def test_column_indexing(X_sparse, tracer, test_cds) -> bool:
@@ -77,8 +81,8 @@ def test_column_indexing(X_sparse, tracer, test_cds) -> bool:
     errors = []
 
     test_cases = []
-    for cd_idx in [0, len(test_cds)//2, len(test_cds)-1]:
-        for hh_idx in [0, 100, n_hh-1]:
+    for cd_idx in [0, len(test_cds) // 2, len(test_cds) - 1]:
+        for hh_idx in [0, 100, n_hh - 1]:
             test_cases.append((cd_idx, hh_idx))
 
     for cd_idx, hh_idx in test_cases:
@@ -89,18 +93,20 @@ def test_column_indexing(X_sparse, tracer, test_cds) -> bool:
         positions = tracer.get_household_column_positions(hh_id)
         pos_col = positions[cd]
 
-        if col_info['cd_geoid'] != cd:
+        if col_info["cd_geoid"] != cd:
             errors.append(f"CD mismatch at col {expected_col}")
-        if col_info['household_index'] != hh_idx:
+        if col_info["household_index"] != hh_idx:
             errors.append(f"HH index mismatch at col {expected_col}")
-        if col_info['household_id'] != hh_id:
+        if col_info["household_id"] != hh_id:
             errors.append(f"HH ID mismatch at col {expected_col}")
         if pos_col != expected_col:
             errors.append(f"Position mismatch for hh {hh_id}, cd {cd}")
 
     expected_cols = len(test_cds) * n_hh
     if X_sparse.shape[1] != expected_cols:
-        errors.append(f"Matrix width mismatch: expected {expected_cols}, got {X_sparse.shape[1]}")
+        errors.append(
+            f"Matrix width mismatch: expected {expected_cols}, got {X_sparse.shape[1]}"
+        )
 
     if errors:
         print("X Column indexing FAILED:")
@@ -108,12 +114,22 @@ def test_column_indexing(X_sparse, tracer, test_cds) -> bool:
             print(f"  {e}")
         return False
 
-    print(f"[PASS] Column indexing: {len(test_cases)} cases, {len(test_cds)} CDs x {n_hh} households")
+    print(
+        f"[PASS] Column indexing: {len(test_cases)} cases, {len(test_cds)} CDs x {n_hh} households"
+    )
     return True
 
 
-def test_same_state_matches_original(X_sparse, targets_df, tracer, sim, test_cds,
-                                      dataset_path, n_samples=200, seed=42) -> bool:
+def test_same_state_matches_original(
+    X_sparse,
+    targets_df,
+    tracer,
+    sim,
+    test_cds,
+    dataset_path,
+    n_samples=200,
+    seed=42,
+) -> bool:
     """
     Test 2: Same-state non-zero cells must match fresh same-state simulation.
 
@@ -127,10 +143,13 @@ def test_same_state_matches_original(X_sparse, targets_df, tracer, sim, test_cds
     hh_states = sim.calculate("state_fips", map_to="household").values
 
     state_sims = {}
+
     def get_state_sim(state):
         if state not in state_sims:
             s = Microsimulation(dataset=dataset_path)
-            s.set_input("state_fips", 2023, np.full(n_hh, state, dtype=np.int32))
+            s.set_input(
+                "state_fips", 2023, np.full(n_hh, state, dtype=np.int32)
+            )
             for var in get_calculated_variables(s):
                 s.delete_arrays(var)
             state_sims[state] = s
@@ -153,7 +172,11 @@ def test_same_state_matches_original(X_sparse, targets_df, tracer, sim, test_cds
         print("[WARN] No same-state non-zero cells found")
         return True
 
-    sample_idx = rng.choice(same_state_indices, min(n_samples, len(same_state_indices)), replace=False)
+    sample_idx = rng.choice(
+        same_state_indices,
+        min(n_samples, len(same_state_indices)),
+        replace=False,
+    )
     errors = []
 
     for idx in sample_idx:
@@ -163,31 +186,48 @@ def test_same_state_matches_original(X_sparse, targets_df, tracer, sim, test_cds
         hh_idx = col_idx % n_hh
         cd = test_cds[cd_idx]
         dest_state = int(cd) // 100
-        variable = targets_df.iloc[row_idx]['variable']
+        variable = targets_df.iloc[row_idx]["variable"]
         actual = float(X_sparse[row_idx, col_idx])
         state_sim = get_state_sim(dest_state)
-        expected = float(state_sim.calculate(variable, map_to='household').values[hh_idx])
+        expected = float(
+            state_sim.calculate(variable, map_to="household").values[hh_idx]
+        )
 
         if not np.isclose(actual, expected, atol=0.5):
-            errors.append({
-                'hh_id': hh_ids[hh_idx],
-                'variable': variable,
-                'actual': actual,
-                'expected': expected
-            })
+            errors.append(
+                {
+                    "hh_id": hh_ids[hh_idx],
+                    "variable": variable,
+                    "actual": actual,
+                    "expected": expected,
+                }
+            )
 
     if errors:
-        print(f"X Same-state verification FAILED: {len(errors)}/{len(sample_idx)} mismatches")
+        print(
+            f"X Same-state verification FAILED: {len(errors)}/{len(sample_idx)} mismatches"
+        )
         for e in errors[:5]:
-            print(f"  hh={e['hh_id']}, var={e['variable']}: {e['actual']:.2f} vs {e['expected']:.2f}")
+            print(
+                f"  hh={e['hh_id']}, var={e['variable']}: {e['actual']:.2f} vs {e['expected']:.2f}"
+            )
         return False
 
-    print(f"[PASS] Same-state: {len(sample_idx)}/{len(sample_idx)} match fresh same-state simulation")
+    print(
+        f"[PASS] Same-state: {len(sample_idx)}/{len(sample_idx)} match fresh same-state simulation"
+    )
     return True
 
 
-def test_cross_state_matches_swapped_sim(X_sparse, targets_df, tracer, test_cds,
-                                          dataset_path, n_samples=200, seed=42) -> bool:
+def test_cross_state_matches_swapped_sim(
+    X_sparse,
+    targets_df,
+    tracer,
+    test_cds,
+    dataset_path,
+    n_samples=200,
+    seed=42,
+) -> bool:
     """
     Test 3: Cross-state non-zero cells must match state-swapped simulation.
 
@@ -201,10 +241,13 @@ def test_cross_state_matches_swapped_sim(X_sparse, targets_df, tracer, test_cds,
     hh_states = sim_orig.calculate("state_fips", map_to="household").values
 
     state_sims = {}
+
     def get_state_sim(state):
         if state not in state_sims:
             s = Microsimulation(dataset=dataset_path)
-            s.set_input("state_fips", 2023, np.full(n_hh, state, dtype=np.int32))
+            s.set_input(
+                "state_fips", 2023, np.full(n_hh, state, dtype=np.int32)
+            )
             for var in get_calculated_variables(s):
                 s.delete_arrays(var)
             state_sims[state] = s
@@ -227,7 +270,11 @@ def test_cross_state_matches_swapped_sim(X_sparse, targets_df, tracer, test_cds,
         print("[WARN] No cross-state non-zero cells found")
         return True
 
-    sample_idx = rng.choice(cross_state_indices, min(n_samples, len(cross_state_indices)), replace=False)
+    sample_idx = rng.choice(
+        cross_state_indices,
+        min(n_samples, len(cross_state_indices)),
+        replace=False,
+    )
     errors = []
 
     for idx in sample_idx:
@@ -237,33 +284,44 @@ def test_cross_state_matches_swapped_sim(X_sparse, targets_df, tracer, test_cds,
         hh_idx = col_idx % n_hh
         cd = test_cds[cd_idx]
         dest_state = int(cd) // 100
-        variable = targets_df.iloc[row_idx]['variable']
+        variable = targets_df.iloc[row_idx]["variable"]
         actual = float(X_sparse[row_idx, col_idx])
         state_sim = get_state_sim(dest_state)
-        expected = float(state_sim.calculate(variable, map_to='household').values[hh_idx])
+        expected = float(
+            state_sim.calculate(variable, map_to="household").values[hh_idx]
+        )
 
         if not np.isclose(actual, expected, atol=0.5):
-            errors.append({
-                'hh_id': hh_ids[hh_idx],
-                'orig_state': int(hh_states[hh_idx]),
-                'dest_state': dest_state,
-                'variable': variable,
-                'actual': actual,
-                'expected': expected
-            })
+            errors.append(
+                {
+                    "hh_id": hh_ids[hh_idx],
+                    "orig_state": int(hh_states[hh_idx]),
+                    "dest_state": dest_state,
+                    "variable": variable,
+                    "actual": actual,
+                    "expected": expected,
+                }
+            )
 
     if errors:
-        print(f"X Cross-state verification FAILED: {len(errors)}/{len(sample_idx)} mismatches")
+        print(
+            f"X Cross-state verification FAILED: {len(errors)}/{len(sample_idx)} mismatches"
+        )
         for e in errors[:5]:
-            print(f"  hh={e['hh_id']}, {e['orig_state']}->{e['dest_state']}: {e['actual']:.2f} vs {e['expected']:.2f}")
+            print(
+                f"  hh={e['hh_id']}, {e['orig_state']}->{e['dest_state']}: {e['actual']:.2f} vs {e['expected']:.2f}"
+            )
         return False
 
-    print(f"[PASS] Cross-state: {len(sample_idx)}/{len(sample_idx)} match state-swapped simulation")
+    print(
+        f"[PASS] Cross-state: {len(sample_idx)}/{len(sample_idx)} match state-swapped simulation"
+    )
     return True
 
 
-def test_state_level_zero_masking(X_sparse, targets_df, tracer, test_cds,
-                                   n_samples=100, seed=42) -> bool:
+def test_state_level_zero_masking(
+    X_sparse, targets_df, tracer, test_cds, n_samples=100, seed=42
+) -> bool:
     """
     Test 4: State-level targets have zeros for wrong-state CD columns.
 
@@ -275,8 +333,8 @@ def test_state_level_zero_masking(X_sparse, targets_df, tracer, test_cds,
 
     state_targets = []
     for row_idx in range(len(targets_df)):
-        geo_id = targets_df.iloc[row_idx].get('geographic_id', 'US')
-        if geo_id != 'US':
+        geo_id = targets_df.iloc[row_idx].get("geographic_id", "US")
+        if geo_id != "US":
             try:
                 val = int(geo_id)
                 if val < 100:
@@ -290,16 +348,23 @@ def test_state_level_zero_masking(X_sparse, targets_df, tracer, test_cds,
 
     errors = []
     checked = 0
-    sample_targets = rng.choice(len(state_targets), min(20, len(state_targets)), replace=False)
+    sample_targets = rng.choice(
+        len(state_targets), min(20, len(state_targets)), replace=False
+    )
 
     for idx in sample_targets:
         row_idx, target_state = state_targets[idx]
-        other_state_cds = [(i, cd) for i, cd in enumerate(test_cds)
-                          if int(cd) // 100 != target_state]
+        other_state_cds = [
+            (i, cd)
+            for i, cd in enumerate(test_cds)
+            if int(cd) // 100 != target_state
+        ]
         if not other_state_cds:
             continue
 
-        sample_cds = rng.choice(len(other_state_cds), min(5, len(other_state_cds)), replace=False)
+        sample_cds = rng.choice(
+            len(other_state_cds), min(5, len(other_state_cds)), replace=False
+        )
         for cd_sample_idx in sample_cds:
             cd_idx, cd = other_state_cds[cd_sample_idx]
             sample_hh = rng.choice(n_hh, min(5, n_hh), replace=False)
@@ -308,17 +373,25 @@ def test_state_level_zero_masking(X_sparse, targets_df, tracer, test_cds,
                 actual = X_sparse[row_idx, col_idx]
                 checked += 1
                 if actual != 0:
-                    errors.append({'row': row_idx, 'cd': cd, 'value': float(actual)})
+                    errors.append(
+                        {"row": row_idx, "cd": cd, "value": float(actual)}
+                    )
 
     if errors:
-        print(f"X State-level masking FAILED: {len(errors)}/{checked} should be zero")
+        print(
+            f"X State-level masking FAILED: {len(errors)}/{checked} should be zero"
+        )
         return False
 
-    print(f"[PASS] State-level masking: {checked}/{checked} wrong-state cells are zero")
+    print(
+        f"[PASS] State-level masking: {checked}/{checked} wrong-state cells are zero"
+    )
     return True
 
 
-def test_cd_level_zero_masking(X_sparse, targets_df, tracer, test_cds, seed=42) -> bool:
+def test_cd_level_zero_masking(
+    X_sparse, targets_df, tracer, test_cds, seed=42
+) -> bool:
     """
     Test 5: CD-level targets have zeros for other CDs, even same-state.
 
@@ -333,21 +406,28 @@ def test_cd_level_zero_masking(X_sparse, targets_df, tracer, test_cds, seed=42) 
 
     cd_targets_with_same_state = []
     for row_idx in range(len(targets_df)):
-        geo_id = targets_df.iloc[row_idx].get('geographic_id', 'US')
-        if geo_id != 'US':
+        geo_id = targets_df.iloc[row_idx].get("geographic_id", "US")
+        if geo_id != "US":
             try:
                 val = int(geo_id)
                 if val >= 100:
                     target_state = val // 100
-                    same_state_other_cds = [cd for cd in test_cds
-                                            if int(cd) // 100 == target_state and cd != geo_id]
+                    same_state_other_cds = [
+                        cd
+                        for cd in test_cds
+                        if int(cd) // 100 == target_state and cd != geo_id
+                    ]
                     if same_state_other_cds:
-                        cd_targets_with_same_state.append((row_idx, geo_id, same_state_other_cds))
+                        cd_targets_with_same_state.append(
+                            (row_idx, geo_id, same_state_other_cds)
+                        )
             except (ValueError, TypeError):
                 pass
 
     if not cd_targets_with_same_state:
-        print("[WARN] No CD-level targets with same-state other CDs in test_cds")
+        print(
+            "[WARN] No CD-level targets with same-state other CDs in test_cds"
+        )
         return True
 
     errors = []
@@ -361,20 +441,33 @@ def test_cd_level_zero_masking(X_sparse, targets_df, tracer, test_cds, seed=42) 
                 actual = X_sparse[row_idx, col_idx]
                 same_state_checks += 1
                 if actual != 0:
-                    errors.append({'target_cd': target_cd, 'other_cd': cd, 'value': float(actual)})
+                    errors.append(
+                        {
+                            "target_cd": target_cd,
+                            "other_cd": cd,
+                            "value": float(actual),
+                        }
+                    )
 
     if errors:
-        print(f"X CD-level masking FAILED: {len(errors)} same-state-different-CD non-zero values")
+        print(
+            f"X CD-level masking FAILED: {len(errors)} same-state-different-CD non-zero values"
+        )
         for e in errors[:5]:
-            print(f"  target={e['target_cd']}, other={e['other_cd']}, value={e['value']}")
+            print(
+                f"  target={e['target_cd']}, other={e['other_cd']}, value={e['value']}"
+            )
         return False
 
-    print(f"[PASS] CD-level masking: {same_state_checks} same-state-different-CD checks, all zero")
+    print(
+        f"[PASS] CD-level masking: {same_state_checks} same-state-different-CD checks, all zero"
+    )
     return True
 
 
-def test_national_no_geo_masking(X_sparse, targets_df, tracer, sim, test_cds,
-                                  dataset_path, seed=42) -> bool:
+def test_national_no_geo_masking(
+    X_sparse, targets_df, tracer, sim, test_cds, dataset_path, seed=42
+) -> bool:
     """
     Test 6: National targets have no geographic masking.
 
@@ -395,32 +488,41 @@ def test_national_no_geo_masking(X_sparse, targets_df, tracer, sim, test_cds,
     n_hh = tracer.n_households
     hh_ids = tracer.original_household_ids
 
-    national_rows = [i for i in range(len(targets_df))
-                    if targets_df.iloc[i].get('geographic_id', 'US') == 'US']
+    national_rows = [
+        i
+        for i in range(len(targets_df))
+        if targets_df.iloc[i].get("geographic_id", "US") == "US"
+    ]
 
     if not national_rows:
         print("[WARN] No national targets found")
         return True
 
     states_in_test = sorted(set(int(cd) // 100 for cd in test_cds))
-    cds_by_state = {state: [cd for cd in test_cds if int(cd) // 100 == state]
-                    for state in states_in_test}
+    cds_by_state = {
+        state: [cd for cd in test_cds if int(cd) // 100 == state]
+        for state in states_in_test
+    }
 
     print(f"  States in test: {states_in_test}")
 
     for row_idx in national_rows:
-        variable = targets_df.iloc[row_idx]['variable']
+        variable = targets_df.iloc[row_idx]["variable"]
 
         # Find households with non-zero values in this national target
         row_data = X_sparse.getrow(row_idx)
         nonzero_cols = row_data.nonzero()[1]
 
         if len(nonzero_cols) == 0:
-            print(f"X National target row {row_idx} ({variable}) has no non-zero values!")
+            print(
+                f"X National target row {row_idx} ({variable}) has no non-zero values!"
+            )
             return False
 
         # Pick a few households that have non-zero values
-        sample_cols = rng.choice(nonzero_cols, min(5, len(nonzero_cols)), replace=False)
+        sample_cols = rng.choice(
+            nonzero_cols, min(5, len(nonzero_cols)), replace=False
+        )
 
         households_checked = 0
         households_with_multi_state_values = 0
@@ -443,14 +545,20 @@ def test_national_no_geo_masking(X_sparse, targets_df, tracer, sim, test_cds,
             if len(values_by_state) > 1:
                 households_with_multi_state_values += 1
 
-        print(f"  Row {row_idx} ({variable}): {households_with_multi_state_values}/{households_checked} "
-              f"households have values in multiple states")
+        print(
+            f"  Row {row_idx} ({variable}): {households_with_multi_state_values}/{households_checked} "
+            f"households have values in multiple states"
+        )
 
-    print(f"[PASS] National targets: no geographic masking, values vary by destination state")
+    print(
+        f"[PASS] National targets: no geographic masking, values vary by destination state"
+    )
     return True
 
 
-def run_all_tests(X_sparse, targets_df, tracer, sim, test_cds, dataset_path) -> bool:
+def run_all_tests(
+    X_sparse, targets_df, tracer, sim, test_cds, dataset_path
+) -> bool:
     """Run all verification tests and return overall pass/fail."""
     print("=" * 70)
     print("SPARSE MATRIX VERIFICATION TESTS")
@@ -462,19 +570,35 @@ def run_all_tests(X_sparse, targets_df, tracer, sim, test_cds, dataset_path) -> 
     results.append(test_column_indexing(X_sparse, tracer, test_cds))
 
     print("\n[Test 2] Same-State Values Match Fresh Sim")
-    results.append(test_same_state_matches_original(X_sparse, targets_df, tracer, sim, test_cds, dataset_path))
+    results.append(
+        test_same_state_matches_original(
+            X_sparse, targets_df, tracer, sim, test_cds, dataset_path
+        )
+    )
 
     print("\n[Test 3] Cross-State Values Match State-Swapped Sim")
-    results.append(test_cross_state_matches_swapped_sim(X_sparse, targets_df, tracer, test_cds, dataset_path))
+    results.append(
+        test_cross_state_matches_swapped_sim(
+            X_sparse, targets_df, tracer, test_cds, dataset_path
+        )
+    )
 
     print("\n[Test 4] State-Level Zero Masking")
-    results.append(test_state_level_zero_masking(X_sparse, targets_df, tracer, test_cds))
+    results.append(
+        test_state_level_zero_masking(X_sparse, targets_df, tracer, test_cds)
+    )
 
     print("\n[Test 5] CD-Level Zero Masking (Same-State-Different-CD)")
-    results.append(test_cd_level_zero_masking(X_sparse, targets_df, tracer, test_cds))
+    results.append(
+        test_cd_level_zero_masking(X_sparse, targets_df, tracer, test_cds)
+    )
 
     print("\n[Test 6] National Targets No Geo Masking")
-    results.append(test_national_no_geo_masking(X_sparse, targets_df, tracer, sim, test_cds, dataset_path))
+    results.append(
+        test_national_no_geo_masking(
+            X_sparse, targets_df, tracer, sim, test_cds, dataset_path
+        )
+    )
 
     print("\n" + "=" * 70)
     passed = sum(results)
@@ -491,7 +615,9 @@ def run_all_tests(X_sparse, targets_df, tracer, sim, test_cds, dataset_path) -> 
 if __name__ == "__main__":
     from sqlalchemy import create_engine, text
     from policyengine_us_data.storage import STORAGE_FOLDER
-    from policyengine_us_data.datasets.cps.local_area_calibration.matrix_tracer import MatrixTracer
+    from policyengine_us_data.datasets.cps.local_area_calibration.matrix_tracer import (
+        MatrixTracer,
+    )
 
     print("Setting up verification tests...")
 
@@ -523,20 +649,24 @@ if __name__ == "__main__":
 
     sim = Microsimulation(dataset=dataset_path)
     builder = SparseMatrixBuilder(
-        db_uri, time_period=2023,
+        db_uri,
+        time_period=2023,
         cds_to_calibrate=test_cds,
-        dataset_path=dataset_path
+        dataset_path=dataset_path,
     )
 
     print("Building sparse matrix...")
     targets_df, X_sparse, household_id_mapping = builder.build_matrix(
-        sim,
-        target_filter={"stratum_group_ids": [4], "variables": ["snap"]}
+        sim, target_filter={"stratum_group_ids": [4], "variables": ["snap"]}
     )
 
-    tracer = MatrixTracer(targets_df, X_sparse, household_id_mapping, test_cds, sim)
+    tracer = MatrixTracer(
+        targets_df, X_sparse, household_id_mapping, test_cds, sim
+    )
 
     print(f"Matrix shape: {X_sparse.shape}, non-zero: {X_sparse.nnz}\n")
 
-    success = run_all_tests(X_sparse, targets_df, tracer, sim, test_cds, dataset_path)
+    success = run_all_tests(
+        X_sparse, targets_df, tracer, sim, test_cds, dataset_path
+    )
     exit(0 if success else 1)

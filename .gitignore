@@ -23,4 +23,5 @@ node_modules
 !soi_targets.csv
 !policyengine_us_data/storage/social_security_aux.csv
 !policyengine_us_data/storage/SSPopJul_TR2024.csv
+!policyengine_us_data/storage/puma_county_crosswalk.csv
 docs/.ipynb_checkpoints/

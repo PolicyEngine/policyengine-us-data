@@ -2,7 +2,7 @@
   changes:
     added:
     - Sparse matrix builder for local area calibration with database-driven constraints
-    - Geo-stacking data pipeline (make data-geo) for congressional district calibration
+    - Local area calibration data pipeline (make data-local-area)
     - ExtendedCPS_2023 and PUF_2023 dataset classes
     - Stratified CPS sampling to preserve high-income households
-    - Matrix verification tests for geo-stacking calibration
+    - Matrix verification tests for local area calibration

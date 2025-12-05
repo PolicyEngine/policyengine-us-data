@@ -2117,14 +2117,13 @@ class Pooled_3_Year_CPS_2023(PooledCPS):
     url = "hf://policyengine/policyengine-us-data/pooled_3_year_cps_2023.h5"
 
 
-geo_stacking = os.environ.get("GEO_STACKING") == "true"
+local_area_calibration = os.environ.get("LOCAL_AREA_CALIBRATION") == "true"
 
 if __name__ == "__main__":
     if test_lite:
-        CPS_2023().generate()
         CPS_2024().generate()
         CPS_2025().generate()
-    elif geo_stacking:
+    elif local_area_calibration:
         CPS_2023_Full().generate()
     else:
         CPS_2021().generate()

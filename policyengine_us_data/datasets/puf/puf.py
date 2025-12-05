@@ -757,9 +757,9 @@ MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
 if __name__ == "__main__":
     import os
 
-    geo_stacking = os.environ.get("GEO_STACKING") == "true"
+    local_area_calibration = os.environ.get("LOCAL_AREA_CALIBRATION") == "true"
 
-    if geo_stacking:
+    if local_area_calibration:
         PUF_2023().generate()
     else:
         PUF_2015().generate()

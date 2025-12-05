@@ -75,17 +75,17 @@ jobs:
           TEST_LITE: ${{ !inputs.upload_data }}
           PYTHON_LOG_LEVEL: INFO
 
-      - name: Build geo-stacking datasets
+      - name: Build datasets for local area calibration
         if: inputs.full_suite
         run: |
-          GEO_STACKING=true python policyengine_us_data/datasets/cps/cps.py
-          GEO_STACKING=true python policyengine_us_data/datasets/puf/puf.py
-          GEO_STACKING_MODE=true python policyengine_us_data/datasets/cps/extended_cps.py
+          LOCAL_AREA_CALIBRATION=true python policyengine_us_data/datasets/cps/cps.py
+          LOCAL_AREA_CALIBRATION=true python policyengine_us_data/datasets/puf/puf.py
+          LOCAL_AREA_CALIBRATION=true python policyengine_us_data/datasets/cps/extended_cps.py
           python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py 10500
 
-      - name: Run sparse matrix builder tests
+      - name: Run local area calibration tests
         if: inputs.full_suite
-        run: pytest policyengine_us_data/datasets/cps/local_area_calibration/test_sparse_matrix_builder.py -v
+        run: pytest policyengine_us_data/tests/test_local_area_calibration/ -v
 
       - name: Save calibration log
         if: inputs.full_suite

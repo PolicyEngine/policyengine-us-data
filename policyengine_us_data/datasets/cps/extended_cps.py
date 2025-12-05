@@ -339,11 +339,11 @@ class ExtendedCPS_2024(ExtendedCPS):
 
 
 if __name__ == "__main__":
-    geo_stacking_mode = (
-        os.environ.get("GEO_STACKING_MODE", "").lower() == "true"
+    local_area_calibration = (
+        os.environ.get("LOCAL_AREA_CALIBRATION", "").lower() == "true"
     )
 
-    if geo_stacking_mode:
+    if local_area_calibration:
         ExtendedCPS_2023().generate()
     else:
         ExtendedCPS_2024().generate()

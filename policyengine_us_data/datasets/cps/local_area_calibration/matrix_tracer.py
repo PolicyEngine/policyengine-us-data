@@ -42,6 +42,10 @@ import numpy as np
 from typing import Dict, List
 from scipy import sparse
 
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+    create_target_groups,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -118,10 +122,17 @@ class MatrixTracer:
         catalog = []
 
         for row_idx, (_, target) in enumerate(self.targets_df.iterrows()):
+            var_name = target["variable"]
+            var_desc = ""
+            if var_name in self.sim.tax_benefit_system.variables:
+                var_obj = self.sim.tax_benefit_system.variables[var_name]
+                var_desc = getattr(var_obj, "label", var_name)
+
             catalog.append(
                 {
                     "row_index": row_idx,
-                    "variable": target["variable"],
+                    "variable": var_name,
+                    "variable_desc": var_desc,
                     "geographic_id": target.get("geographic_id", "unknown"),
                     "target_value": target["value"],
                     "stratum_id": target.get("stratum_id"),
@@ -201,21 +212,24 @@ class MatrixTracer:
 
         return positions
 
-    def print_matrix_structure(self):
+    def print_matrix_structure(self, show_groups=True):
         """Print a comprehensive breakdown of the matrix structure."""
         print("\n" + "=" * 80)
         print("MATRIX STRUCTURE BREAKDOWN")
         print("=" * 80)
 
         print(
-            f"\nMatrix dimensions: {self.matrix.shape[0]} rows x {self.matrix.shape[1]} columns"
+            f"\nMatrix dimensions: {self.matrix.shape[0]} rows x "
+            f"{self.matrix.shape[1]} columns"
         )
         print(f"  Rows = {len(self.row_catalog)} targets")
         print(
-            f"  Columns = {self.n_households} households x {self.n_geographies} CDs"
+            f"  Columns = {self.n_households} households x "
+            f"{self.n_geographies} CDs"
         )
         print(
-            f"           = {self.n_households:,} x {self.n_geographies} = {self.matrix.shape[1]:,}"
+            f"           = {self.n_households:,} x {self.n_geographies} "
+            f"= {self.matrix.shape[1]:,}"
         )
 
         print("\n" + "-" * 80)
@@ -250,6 +264,17 @@ class MatrixTracer:
         print("-" * 80)
 
         print(f"\nTotal targets: {len(self.row_catalog)}")
+
+        # Summarize by geographic level if column exists
+        if "geographic_level" in self.row_catalog.columns:
+            print("\nTargets by geographic level:")
+            geo_level_summary = (
+                self.row_catalog.groupby("geographic_level")
+                .size()
+                .reset_index(name="n_targets")
+            )
+            print(geo_level_summary.to_string(index=False))
+
         print("\nTargets by stratum group:")
         stratum_summary = (
             self.row_catalog.groupby("stratum_group_id")
@@ -259,6 +284,34 @@ class MatrixTracer:
             )
         )
         print(stratum_summary.to_string())
+
+        # Create and display target groups with row indices
+        if show_groups:
+            print("\n" + "-" * 80)
+            print("TARGET GROUPS (for loss calculation)")
+            print("-" * 80)
+
+            target_groups, group_info = create_target_groups(self.targets_df)
+
+            # Store for later use
+            self.target_groups = target_groups
+
+            # Print each group with row indices
+            for group_id, info in enumerate(group_info):
+                group_mask = target_groups == group_id
+                row_indices = np.where(group_mask)[0]
+
+                # Format row indices for display
+                if len(row_indices) > 6:
+                    row_display = (
+                        f"[{row_indices[0]}, {row_indices[1]}, "
+                        f"{row_indices[2]}, ..., {row_indices[-2]}, "
+                        f"{row_indices[-1]}]"
+                    )
+                else:
+                    row_display = str(row_indices.tolist())
+
+                print(f"  {info} - rows {row_display}")
 
         print("\n" + "=" * 80)
 
@@ -275,6 +328,24 @@ class MatrixTracer:
             f"\nRow Catalog (showing first {max_rows} of {len(self.row_catalog)}):"
         )
         print(self.row_catalog.head(max_rows).to_string(index=False))
+
+    def get_group_rows(self, group_id: int) -> pd.DataFrame:
+        """
+        Get all rows belonging to a specific target group.
+
+        Args:
+            group_id: The group ID to filter by
+
+        Returns:
+            DataFrame of row catalog entries for this group
+        """
+        if not hasattr(self, "target_groups"):
+            self.target_groups, self.group_info = create_target_groups(
+                self.targets_df
+            )
+
+        group_mask = self.target_groups == group_id
+        return self.row_catalog[group_mask].copy()
 
     def trace_household_targets(self, original_hh_id: int) -> pd.DataFrame:
         """

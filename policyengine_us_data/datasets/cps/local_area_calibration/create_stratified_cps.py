@@ -19,7 +19,7 @@ from policyengine_core.enums import Enum
 def create_stratified_cps_dataset(
     target_households=30_000,
     high_income_percentile=99,  # Keep ALL households above this percentile
-    base_dataset="hf://policyengine/test/extended_cps_2023.h5",
+    base_dataset=None,
     output_path=None,
 ):
     """
@@ -33,6 +33,12 @@ def create_stratified_cps_dataset(
     print("\n" + "=" * 70)
     print("CREATING STRATIFIED CPS DATASET")
     print("=" * 70)
+
+    # Default to local storage if no base_dataset specified
+    if base_dataset is None:
+        from policyengine_us_data.storage import STORAGE_FOLDER
+
+        base_dataset = str(STORAGE_FOLDER / "extended_cps_2023.h5")
 
     # Load the original simulation
     print("Loading original dataset...")

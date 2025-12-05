@@ -330,7 +330,7 @@ class ExtendedCPS_2023(ExtendedCPS):
 
 
 class ExtendedCPS_2024(ExtendedCPS):
-    cps = CPS_2024_Full
+    cps = CPS_2024
     puf = PUF_2024
     name = "extended_cps_2024"
     label = "Extended CPS (2024)"

@@ -3,6 +3,6 @@
     added:
     - Sparse matrix builder for local area calibration with database-driven constraints
     - Geo-stacking data pipeline (make data-geo) for congressional district calibration
-    - ExtendedCPS_2023, PUF_2023, CPS_2024_Full dataset classes
+    - ExtendedCPS_2023 and PUF_2023 dataset classes
     - Stratified CPS sampling to preserve high-income households
     - Matrix verification tests for geo-stacking calibration

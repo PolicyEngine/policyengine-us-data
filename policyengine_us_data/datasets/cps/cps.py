@@ -2058,6 +2058,15 @@ class CPS_2023_Full(CPS):
     time_period = 2023
 
 
+class CPS_2024_Full(CPS):
+    name = "cps_2024_full"
+    label = "CPS 2024 (full)"
+    raw_cps = CensusCPS_2024
+    previous_year_raw_cps = CensusCPS_2023
+    file_path = STORAGE_FOLDER / "cps_2024_full.h5"
+    time_period = 2024
+
+
 class PooledCPS(Dataset):
     data_format = Dataset.ARRAYS
     input_datasets: list
@@ -2117,10 +2126,15 @@ class Pooled_3_Year_CPS_2023(PooledCPS):
     url = "hf://policyengine/policyengine-us-data/pooled_3_year_cps_2023.h5"
 
 
+geo_stacking = os.environ.get("GEO_STACKING") == "true"
+
 if __name__ == "__main__":
     if test_lite:
+        CPS_2023().generate()
         CPS_2024().generate()
         CPS_2025().generate()
+    elif geo_stacking:
+        CPS_2023_Full().generate()
     else:
         CPS_2021().generate()
         CPS_2022().generate()
@@ -2130,4 +2144,5 @@ if __name__ == "__main__":
         CPS_2021_Full().generate()
         CPS_2022_Full().generate()
         CPS_2023_Full().generate()
+        CPS_2024_Full().generate()
         Pooled_3_Year_CPS_2023().generate()

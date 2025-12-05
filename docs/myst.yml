@@ -24,7 +24,7 @@ project:
     - file: background.md
     - file: data.md
     - file: methodology.md
-    - file: long_term_projections.ipynb
+    - file: long_term_projections.md
     - file: discussion.md
     - file: conclusion.md
     - file: appendix.md

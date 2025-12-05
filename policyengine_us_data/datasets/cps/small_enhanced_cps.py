@@ -22,11 +22,15 @@ def create_small_ecps():
         data[variable] = {}
         for time_period in simulation.get_holder(variable).get_known_periods():
             values = simulation.get_holder(variable).get_array(time_period)
-            values = np.array(values)
             if simulation.tax_benefit_system.variables.get(
                 variable
             ).value_type in (Enum, str):
-                values = values.astype("S")
+                if hasattr(values, "decode_to_str"):
+                    values = values.decode_to_str().astype("S")
+                else:
+                    values = values.astype("S")
+            else:
+                values = np.array(values)
             if values is not None:
                 data[variable][time_period] = values
 

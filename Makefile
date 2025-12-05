@@ -74,6 +74,12 @@ data:
 	mv policyengine_us_data/storage/enhanced_cps_2024.h5 policyengine_us_data/storage/dense_enhanced_cps_2024.h5
 	cp policyengine_us_data/storage/sparse_enhanced_cps_2024.h5 policyengine_us_data/storage/enhanced_cps_2024.h5
 
+data-local-area: data
+	LOCAL_AREA_CALIBRATION=true python policyengine_us_data/datasets/cps/cps.py
+	LOCAL_AREA_CALIBRATION=true python policyengine_us_data/datasets/puf/puf.py
+	LOCAL_AREA_CALIBRATION=true python policyengine_us_data/datasets/cps/extended_cps.py
+	python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py 10500
+
 clean:
 	rm -f policyengine_us_data/storage/*.h5
 	rm -f policyengine_us_data/storage/*.db

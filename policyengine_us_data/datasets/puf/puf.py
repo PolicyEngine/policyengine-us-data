@@ -732,6 +732,13 @@ class PUF_2021(PUF):
     url = "release://policyengine/irs-soi-puf/1.8.0/puf_2021.h5"
 
 
+class PUF_2023(PUF):
+    label = "PUF 2023"
+    name = "puf_2023"
+    time_period = 2023
+    file_path = STORAGE_FOLDER / "puf_2023.h5"
+
+
 class PUF_2024(PUF):
     label = "PUF 2024 (2015-based)"
     name = "puf_2024"
@@ -748,6 +755,13 @@ MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
 }
 
 if __name__ == "__main__":
-    PUF_2015().generate()
-    PUF_2021().generate()
-    PUF_2024().generate()
+    import os
+
+    local_area_calibration = os.environ.get("LOCAL_AREA_CALIBRATION") == "true"
+
+    if local_area_calibration:
+        PUF_2023().generate()
+    else:
+        PUF_2015().generate()
+        PUF_2021().generate()
+        PUF_2024().generate()

@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from scipy import sparse as sp
 from policyengine_us import Microsimulation
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     create_target_groups,
 )
 

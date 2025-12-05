@@ -1,4 +1,4 @@
-# Geo-Stacking Calibration
+# Local Area Calibration
 
 Creates state-level microsimulation datasets with Congressional District (CD) level calibration weights. Takes Current Population Survey (CPS) data, enriches it with Public Use File (PUF) income variables, applies L0 sparse calibration to match ~34k demographic and economic targets across 436 Congressional Districts, and produces optimized datasets for each US state.
 
@@ -202,7 +202,7 @@ count_random_calls when meets_ssi_resource_test is reached â†’ different seed â†
 | `create_stratified_cps.py` | Income-based stratification sampling |
 | `create_calibration_package.py` | Build optimization inputs |
 | `optimize_weights.py` | L0 weight optimization |
-| `create_sparse_cd_stacked.py` | Apply weights, create state files |
+| `stacked_dataset_builder.py` | Apply weights, create state files |
 | `sparse_matrix_builder.py` | Build sparse target matrix |
 | `calibration_utils.py` | Helper functions, CD mappings |
 

@@ -4,14 +4,14 @@ import numpy as np
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.storage import STORAGE_FOLDER
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.metrics_matrix_geo_stacking_sparse import (
+from policyengine_us_data.datasets.cps.local_area_calibration.metrics_matrix_geo_stacking_sparse import (
     SparseGeoStackingMatrixBuilder,
 )
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     create_target_groups,
 )
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.household_tracer import HouseholdTracer
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.create_sparse_cd_stacked import create_sparse_cd_stacked_dataset
+from policyengine_us_data.datasets.cps.local_area_calibration.household_tracer import HouseholdTracer
+from policyengine_us_data.datasets.cps.local_area_calibration.stacked_dataset_builder import create_sparse_cd_stacked_dataset
 
 rng_ben = np.random.default_rng(seed=42)
 

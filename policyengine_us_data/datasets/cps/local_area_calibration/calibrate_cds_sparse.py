@@ -26,16 +26,16 @@ from scipy import sparse as sp
 from l0.calibration import SparseCalibrationWeights
 
 from policyengine_us import Microsimulation
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.metrics_matrix_geo_stacking_sparse import (
+from policyengine_us_data.datasets.cps.local_area_calibration.metrics_matrix_geo_stacking_sparse import (
     SparseGeoStackingMatrixBuilder,
 )
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     create_target_groups,
     download_from_huggingface,
     filter_target_groups,
     get_all_cds_from_database,
 )
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.household_tracer import HouseholdTracer
+from policyengine_us_data.datasets.cps.local_area_calibration.household_tracer import HouseholdTracer
 
 # ============================================================================
 # STEP 1: DATA LOADING AND CD LIST RETRIEVAL

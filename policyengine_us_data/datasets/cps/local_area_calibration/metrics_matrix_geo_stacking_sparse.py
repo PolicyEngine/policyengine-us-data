@@ -16,7 +16,7 @@ from scipy import sparse
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     get_calculated_variables,
 )
 

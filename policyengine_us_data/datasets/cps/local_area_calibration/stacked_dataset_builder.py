@@ -14,7 +14,7 @@ from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 from policyengine_core.enums import Enum
 from sqlalchemy import create_engine, text
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     download_from_huggingface,
     get_cd_index_mapping,
     get_id_range_for_cd,

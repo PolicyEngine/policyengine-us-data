@@ -12,10 +12,10 @@ import numpy as np
 from scipy import sparse as sp
 
 from policyengine_us import Microsimulation
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.metrics_matrix_geo_stacking_sparse import (
+from policyengine_us_data.datasets.cps.local_area_calibration.metrics_matrix_geo_stacking_sparse import (
     SparseGeoStackingMatrixBuilder,
 )
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     create_target_groups,
     filter_target_groups,
 )

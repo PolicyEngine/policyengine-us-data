@@ -16,10 +16,10 @@ from policyengine_us import Microsimulation
 from policyengine_us_data.storage import STORAGE_FOLDER
 from sparse_matrix_builder import SparseMatrixBuilder
 from household_tracer import HouseholdTracer
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     create_target_groups,
 )
-from policyengine_us_data.datasets.cps.geo_stacking_calibration.create_sparse_cd_stacked import (
+from policyengine_us_data.datasets.cps.local_area_calibration.stacked_dataset_builder import (
     create_sparse_cd_stacked_dataset,
 )
 

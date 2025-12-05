@@ -13,51 +13,11 @@ import pandas as pd
 from scipy import sparse
 from sqlalchemy import create_engine, text
 
-
-def get_calculated_variables(sim) -> List[str]:
-    """Return variables with formulas (safe to delete from cache)."""
-    return [name for name, var in sim.tax_benefit_system.variables.items()
-            if var.formulas]
-
-
-def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
-    """Apply constraint operation to values array."""
-    try:
-        parsed = float(val)
-        if parsed.is_integer():
-            parsed = int(parsed)
-    except ValueError:
-        if val == 'True':
-            parsed = True
-        elif val == 'False':
-            parsed = False
-        else:
-            parsed = val
-
-    if op in ('==', '='):
-        return values == parsed
-    if op == '>':
-        return values > parsed
-    if op == '>=':
-        return values >= parsed
-    if op == '<':
-        return values < parsed
-    if op == '<=':
-        return values <= parsed
-    if op == '!=':
-        return values != parsed
-    return np.ones(len(values), dtype=bool)
-
-
-def _get_geo_level(geo_id) -> int:
-    """Return geographic level: 0=National, 1=State, 2=District."""
-    if geo_id == 'US':
-        return 0
-    try:
-        val = int(geo_id)
-        return 1 if val < 100 else 2
-    except (ValueError, TypeError):
-        return 3
+from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+    get_calculated_variables,
+    apply_op,
+    _get_geo_level,
+)
 
 
 class SparseMatrixBuilder:
@@ -135,6 +95,8 @@ class SparseMatrixBuilder:
         state_sim = Microsimulation(dataset=self.dataset_path)
         state_sim.set_input("state_fips", self.time_period,
                            np.full(n_households, state, dtype=np.int32))
+        for var in get_calculated_variables(state_sim):
+            state_sim.delete_arrays(var)
         return state_sim
 
     def build_matrix(self, sim, target_filter: dict) -> Tuple[pd.DataFrame, sparse.csr_matrix, Dict[str, List[str]]]:

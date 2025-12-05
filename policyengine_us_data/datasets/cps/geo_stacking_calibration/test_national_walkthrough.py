@@ -177,7 +177,6 @@ output_file = create_sparse_cd_stacked_dataset(
     cds_to_calibrate,
     dataset_path=str(dataset_uri),
     output_path=output_path,
-    freeze_calculated_vars=False,  # alimony_expense is not state-dependent
 )
 
 # Load and calculate

@@ -117,8 +117,82 @@ Each CD gets a 10,000 ID range to prevent collisions:
 
 SNAP and other state-dependent variables require special handling:
 - Matrix construction pre-calculates values for each state
-- h5 creation must freeze these values using `freeze_calculated_vars=True`
-- This ensures `X_sparse @ w` matches `sim.calculate()`
+- H5 creation reindexes entity IDs (same household in different CDs needs unique IDs)
+- ID reindexing changes `random()` seeds, causing ~10-15% variance in random-dependent variables
+- End-to-end tests use **aggregate tolerance** (~15%) rather than exact matching
+
+### Cache Clearing for State Swaps
+
+When setting `state_fips` to recalculate state-dependent benefits, cached variables must be cleared. This is subtle:
+
+**What to clear** (variables that need recalculation):
+- Variables with `formulas` (traditional calculated variables)
+- Variables with `adds` (sum of other variables, e.g., `snap_unearned_income`)
+- Variables with `subtracts` (difference of variables)
+
+**What NOT to clear** (structural data from H5):
+- ID variables: `person_id`, `household_id`, `tax_unit_id`, `spm_unit_id`, `family_id`, `marital_unit_id`
+- These have formulas that generate sequential IDs (0, 1, 2, ...), but we need the original H5 values
+
+**Why IDs matter**: PolicyEngine's `random()` function uses entity IDs as deterministic seeds:
+```python
+seed = abs(entity_id * 100 + count_random_calls)
+```
+If IDs are regenerated, random-dependent variables produce different results. Three variables use `random()`:
+- `meets_ssi_resource_test` (SSI eligibility)
+- `is_wic_at_nutritional_risk` (WIC eligibility)
+- `would_claim_wic` (WIC takeup)
+
+**Implementation** in `calibration_utils.py` (single source of truth):
+```python
+def get_calculated_variables(sim):
+    exclude_ids = {'person_id', 'household_id', 'tax_unit_id',
+                   'spm_unit_id', 'family_id', 'marital_unit_id'}
+    return [name for name, var in sim.tax_benefit_system.variables.items()
+            if (var.formulas or getattr(var, 'adds', None) or getattr(var, 'subtracts', None))
+            and name not in exclude_ids]
+```
+
+**Why same-state households also get set_input + cache clear**: The matrix builder always creates a fresh simulation, sets `state_fips`, and clears the cache—even when a household stays in its original state. This seems redundant but is intentional:
+
+1. **Consistency**: All matrix values are computed the same way, regardless of whether state changes
+2. **Deterministic random()**: The `random()` function's seed includes `count_random_calls`. Clearing the cache resets this counter to 0, ensuring reproducible results. Without cache clearing, different calculation histories produce different random outcomes.
+3. **Verification**: Tests can verify matrix values by replicating this exact procedure. Comparing against the original simulation (without cache clear) would show ~10-15% mismatches due to different random() counter states—not bugs, just different calculation paths.
+
+```
+Question 1: How are SSI/WIC related to SNAP?
+The connection is through income calculation chains:
+snap
+  └── snap_gross_income
+        └── snap_unearned_income (uses `adds`)
+              └── ssi (SSI benefit amount)
+                    └── is_ssi_eligible
+                          └── meets_ssi_resource_test
+                                └── random()  ← stochastic eligibility
+
+SSI (Supplemental Security Income) counts as unearned income for SNAP. So:
+- random() determines if someone "passes" SSI's resource test (since CPS lacks actual asset data)
+- This affects ssi benefit amount
+- Which feeds into snap_unearned_income
+- Which affects final snap calculation
+
+WIC doesn't directly affect SNAP, but shares similar random-dependent eligibility logic (is_wic_at_nutritional_risk, would_claim_wic).
+Question 2: Why still 13.5% mismatches if we preserved IDs?
+
+The key is the full seed formula:
+seed = abs(entity_id * 100 + count_random_calls)
+                                                                                        
+We preserved entity_id by excluding ID variables from clearing. But count_random_calls tracks how many times random() has been called for that entity during the simulation
+
+When we:                                                                                                                                                                          
+1. Create a fresh simulation
+2. Set state_fips
+3. Clear calculated variables
+4. Call calculate("snap")                                                                                                                                                         
+                                           
+The calculation order may differ from the original simulation's calculation order. Different traversal paths through the variable dependency graph → different
+count_random_calls when meets_ssi_resource_test is reached → different seed → different random result.
+```
 
 ## File Reference
 

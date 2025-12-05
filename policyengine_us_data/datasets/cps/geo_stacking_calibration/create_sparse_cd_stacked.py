@@ -2,15 +2,6 @@
 Create a sparse congressional district-stacked dataset with only non-zero weight households.
 Standalone version that doesn't modify the working state stacking code.
 """
-
-## Testing with this:
-#output_dir = "national"
-#dataset_path_str = "/home/baogorek/devl/stratified_10k.h5"
-#db_path = "/home/baogorek/devl/policyengine-us-data/policyengine_us_data/storage/policy_data.db"
-#weights_path_str = "national/w_cd_20251031_122119.npy"
-#include_full_dataset = True
-## end testing lines --
-
 import sys
 import numpy as np
 import pandas as pd
@@ -28,182 +19,15 @@ from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_util
     get_cd_index_mapping,
     get_id_range_for_cd,
     get_cd_from_id,
-)
-from policyengine_us.variables.household.demographic.geographic.state_name import (
-    StateName,
-)
-from policyengine_us.variables.household.demographic.geographic.state_code import (
-    StateCode,
+    get_all_cds_from_database,
+    get_calculated_variables,
+    STATE_CODES,
+    STATE_FIPS_TO_NAME,
+    STATE_FIPS_TO_CODE,
 )
 from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
     County,
 )
-
-
-# TODO: consolidate mappings
-STATE_CODES = {
-    1: "AL",
-    2: "AK",
-    4: "AZ",
-    5: "AR",
-    6: "CA",
-    8: "CO",
-    9: "CT",
-    10: "DE",
-    11: "DC",
-    12: "FL",
-    13: "GA",
-    15: "HI",
-    16: "ID",
-    17: "IL",
-    18: "IN",
-    19: "IA",
-    20: "KS",
-    21: "KY",
-    22: "LA",
-    23: "ME",
-    24: "MD",
-    25: "MA",
-    26: "MI",
-    27: "MN",
-    28: "MS",
-    29: "MO",
-    30: "MT",
-    31: "NE",
-    32: "NV",
-    33: "NH",
-    34: "NJ",
-    35: "NM",
-    36: "NY",
-    37: "NC",
-    38: "ND",
-    39: "OH",
-    40: "OK",
-    41: "OR",
-    42: "PA",
-    44: "RI",
-    45: "SC",
-    46: "SD",
-    47: "TN",
-    48: "TX",
-    49: "UT",
-    50: "VT",
-    51: "VA",
-    53: "WA",
-    54: "WV",
-    55: "WI",
-    56: "WY",
-}
-
-# State FIPS to StateName and StateCode mappings
-STATE_FIPS_TO_NAME = {
-    1: StateName.AL,
-    2: StateName.AK,
-    4: StateName.AZ,
-    5: StateName.AR,
-    6: StateName.CA,
-    8: StateName.CO,
-    9: StateName.CT,
-    10: StateName.DE,
-    11: StateName.DC,
-    12: StateName.FL,
-    13: StateName.GA,
-    15: StateName.HI,
-    16: StateName.ID,
-    17: StateName.IL,
-    18: StateName.IN,
-    19: StateName.IA,
-    20: StateName.KS,
-    21: StateName.KY,
-    22: StateName.LA,
-    23: StateName.ME,
-    24: StateName.MD,
-    25: StateName.MA,
-    26: StateName.MI,
-    27: StateName.MN,
-    28: StateName.MS,
-    29: StateName.MO,
-    30: StateName.MT,
-    31: StateName.NE,
-    32: StateName.NV,
-    33: StateName.NH,
-    34: StateName.NJ,
-    35: StateName.NM,
-    36: StateName.NY,
-    37: StateName.NC,
-    38: StateName.ND,
-    39: StateName.OH,
-    40: StateName.OK,
-    41: StateName.OR,
-    42: StateName.PA,
-    44: StateName.RI,
-    45: StateName.SC,
-    46: StateName.SD,
-    47: StateName.TN,
-    48: StateName.TX,
-    49: StateName.UT,
-    50: StateName.VT,
-    51: StateName.VA,
-    53: StateName.WA,
-    54: StateName.WV,
-    55: StateName.WI,
-    56: StateName.WY,
-}
-
-# Note that this is not exactly the same as above: StateName vs StateCode
-STATE_FIPS_TO_CODE = {
-    1: StateCode.AL,
-    2: StateCode.AK,
-    4: StateCode.AZ,
-    5: StateCode.AR,
-    6: StateCode.CA,
-    8: StateCode.CO,
-    9: StateCode.CT,
-    10: StateCode.DE,
-    11: StateCode.DC,
-    12: StateCode.FL,
-    13: StateCode.GA,
-    15: StateCode.HI,
-    16: StateCode.ID,
-    17: StateCode.IL,
-    18: StateCode.IN,
-    19: StateCode.IA,
-    20: StateCode.KS,
-    21: StateCode.KY,
-    22: StateCode.LA,
-    23: StateCode.ME,
-    24: StateCode.MD,
-    25: StateCode.MA,
-    26: StateCode.MI,
-    27: StateCode.MN,
-    28: StateCode.MS,
-    29: StateCode.MO,
-    30: StateCode.MT,
-    31: StateCode.NE,
-    32: StateCode.NV,
-    33: StateCode.NH,
-    34: StateCode.NJ,
-    35: StateCode.NM,
-    36: StateCode.NY,
-    37: StateCode.NC,
-    38: StateCode.ND,
-    39: StateCode.OH,
-    40: StateCode.OK,
-    41: StateCode.OR,
-    42: StateCode.PA,
-    44: StateCode.RI,
-    45: StateCode.SC,
-    46: StateCode.SD,
-    47: StateCode.TN,
-    48: StateCode.TX,
-    49: StateCode.UT,
-    50: StateCode.VT,
-    51: StateCode.VA,
-    53: StateCode.WA,
-    54: StateCode.WV,
-    55: StateCode.WI,
-    56: StateCode.WY,
-}
 
 
 def load_cd_county_mappings():
@@ -251,7 +75,6 @@ def create_sparse_cd_stacked_dataset(
     cd_subset=None,
     output_path=None,
     dataset_path=None,
-    freeze_calculated_vars=False,
 ):
     """
     Create a SPARSE congressional district-stacked dataset using DataFrame approach.
@@ -262,8 +85,6 @@ def create_sparse_cd_stacked_dataset(
         cd_subset: Optional list of CD GEOIDs to include (subset of cds_to_calibrate)
         output_path: Where to save the sparse CD-stacked h5 file
         dataset_path: Path to the base .h5 dataset used to create the training matrices
-        freeze_calculated_vars: If True, save calculated variables (like SNAP) to h5 file so they're not recalculated on load.
-                               If False (default), calculated variables are omitted and will be recalculated on load.
     """
 
     # Handle CD subset filtering
@@ -512,30 +333,11 @@ def create_sparse_cd_stacked_dataset(
                          np.full(n_households_orig, cd_geoid_int, dtype=np.int32))
 
         # Delete cached calculated variables to ensure they're recalculated with new state
-        input_variables = set(cd_sim.dataset.variables)
-        all_variables = list(cd_sim.tax_benefit_system.variables.keys())
-        for variable_name in all_variables:
-            if variable_name not in input_variables:
-                try:
-                    cd_sim.delete_arrays(variable_name, time_period)
-                except:
-                    pass
+        for var in get_calculated_variables(cd_sim):
+            cd_sim.delete_arrays(var)
 
         # Now extract the dataframe - calculated vars will use the updated state
         df = cd_sim.to_input_dataframe()
-
-        # If freeze_calculated_vars, add state-dependent calculated variables to dataframe
-        if freeze_calculated_vars:
-            # Only calculate SNAP for now (most critical state-dependent variable)
-            state_dependent_vars = ['snap']
-            for var in state_dependent_vars:
-                try:
-                    # Calculate at person level (df is person-level)
-                    var_values = cd_sim.calculate(var, map_to="person").values
-                    df[f"{var}__{time_period}"] = var_values
-                except Exception as e:
-                    # Skip variables that can't be calculated
-                    pass
 
         assert df.shape[0] == entity_rel.shape[0]  # df is at the person level
 
@@ -623,14 +425,6 @@ def create_sparse_cd_stacked_dataset(
     # Combine all CD DataFrames
     combined_df = pd.concat(cd_dfs, ignore_index=True)
     print(f"Combined DataFrame shape: {combined_df.shape}")
-
-    # Check weights in combined_df before any reindexing
-    hh_weight_col = f"household_weight__{time_period}"
-    person_weight_col = f"person_weight__{time_period}"
-    print(f"\nWeights in combined_df BEFORE reindexing:")
-    print(f"  HH weight sum: {combined_df[hh_weight_col].sum()/1e6:.2f}M")
-    print(f"  Person weight sum: {combined_df[person_weight_col].sum()/1e6:.2f}M")
-    print(f"  Ratio: {combined_df[person_weight_col].sum() / combined_df[hh_weight_col].sum():.2f}")
 
     # REINDEX ALL IDs TO PREVENT OVERFLOW AND HANDLE DUPLICATES
     print("\nReindexing all entity IDs using 25k ranges per CD...")
@@ -860,17 +654,11 @@ def create_sparse_cd_stacked_dataset(
     input_vars = set(sparse_sim.input_variables)
     print(f"Found {len(input_vars)} input variables (excluding calculated variables)")
 
-    # If freeze_calculated_vars, also save specific state-dependent calculated variables
     vars_to_save = input_vars.copy()
 
     # congressional_district_geoid isn't in the original microdata and has no formula,
     # so it's not in input_vars. Since we set it explicitly during stacking, save it.
     vars_to_save.add('congressional_district_geoid')
-
-    if freeze_calculated_vars:
-        state_dependent_vars = {'snap'}
-        vars_to_save.update(state_dependent_vars)
-        print(f"Also freezing {len(state_dependent_vars)} state-dependent calculated variables")
 
     variables_saved = 0
     variables_skipped = 0
@@ -963,25 +751,8 @@ def create_sparse_cd_stacked_dataset(
 
 
 def main(dataset_path, w, db_uri):
-    #dataset_path = Dataset.from_file(dataset_path_str)
-    #w = np.load(weights_path_str)
-    #db_uri = f"sqlite:///{db_path}"
+    cds_to_calibrate = get_all_cds_from_database(db_uri)
 
-    engine = create_engine(db_uri)
-    
-    query = """
-    SELECT DISTINCT sc.value as cd_geoid
-    FROM strata s
-    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-    WHERE s.stratum_group_id = 1
-      AND sc.constraint_variable = "congressional_district_geoid"
-    ORDER BY sc.value
-    """
-    
-    with engine.connect() as conn:
-        result = conn.execute(text(query)).fetchall()
-        cds_to_calibrate = [row[0] for row in result]
-    
     ## Verify dimensions match
     # Note: this is the base dataset that was stacked repeatedly
     assert_sim = Microsimulation(dataset=dataset_path)
@@ -1076,21 +847,9 @@ if __name__ == "__main__":
     # Load weights
     w = np.load(weights_path_str)
     db_uri = f"sqlite:///{db_path}"
-    engine = create_engine(db_uri)
 
     # Get list of CDs from database
-    query = """
-    SELECT DISTINCT sc.value as cd_geoid
-    FROM strata s
-    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-    WHERE s.stratum_group_id = 1
-      AND sc.constraint_variable = "congressional_district_geoid"
-    ORDER BY sc.value
-    """
-    with engine.connect() as conn:
-        result = conn.execute(text(query)).fetchall()
-        cds_to_calibrate = [row[0] for row in result]
-
+    cds_to_calibrate = get_all_cds_from_database(db_uri)
     print(f"Found {len(cds_to_calibrate)} congressional districts")
 
     # Verify dimensions
@@ -1192,5 +951,3 @@ if __name__ == "__main__":
         )
 
     print("\nDone!")
-
-

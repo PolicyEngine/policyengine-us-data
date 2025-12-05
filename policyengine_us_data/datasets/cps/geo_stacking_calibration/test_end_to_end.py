@@ -51,7 +51,6 @@ target_groups, group_info = create_target_groups(targets_df)
 tracer = HouseholdTracer(targets_df, X_sparse, household_id_mapping, cds_to_calibrate, sim)
 
 # Get NC's state SNAP info:
-```
 group_71 = tracer.get_group_rows(71)
 row_loc = group_71.iloc[28]['row_index']  # The row of X_sparse
 row_info = tracer.get_row_info(row_loc)
@@ -79,7 +78,6 @@ output_file = create_sparse_cd_stacked_dataset(
     cds_to_calibrate,
     dataset_path=str(dataset_uri),
     output_path=output_path,
-    freeze_calculated_vars=False,
 )
 
 sim_test = Microsimulation(dataset=output_path)

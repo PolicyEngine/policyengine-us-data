@@ -16,30 +16,12 @@ from scipy import sparse
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
+from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_utils import (
+    get_calculated_variables,
+)
+
 
 logger = logging.getLogger(__name__)
-
-
-def get_calculated_variables(sim):
-    """
-    Identify variables that are calculated (have formulas) rather than input data.
-
-    Args:
-        sim: Microsimulation instance
-
-    Returns:
-        List of variable names that are calculated
-    """
-    calculated_vars = []
-    for var_name, var_def in sim.tax_benefit_system.variables.items():
-        # Has a formula = calculated
-        if var_def.formulas:
-            calculated_vars.append(var_name)
-        # Or is an aggregate/sum of other variables
-        elif (hasattr(var_def, 'adds') and var_def.adds) or \
-             (hasattr(var_def, 'subtracts') and var_def.subtracts):
-            calculated_vars.append(var_name)
-    return calculated_vars
 
 
 def get_us_state_dependent_variables():
@@ -234,10 +216,9 @@ class SparseGeoStackingMatrixBuilder:
             # Set ALL households to this state
             sim.set_input("state_fips", self.time_period,
                          np.full(n_households, state_fips, dtype=np.int32))
-            # you still need to delete all calculated arrays so that the state changes can propogate
-            for computed_variable in sim.tax_benefit_system.variables:
-                if computed_variable not in sim.input_variables:
-                    sim.delete_arrays(computed_variable)
+            # Clear cached calculated variables so state changes propagate
+            for var in get_calculated_variables(sim):
+                sim.delete_arrays(var)
 
             # Calculate each variable for all households in this state
             for var_name in variables_to_calculate:

@@ -33,6 +33,7 @@ from policyengine_us_data.datasets.cps.geo_stacking_calibration.calibration_util
     create_target_groups,
     download_from_huggingface,
     filter_target_groups,
+    get_all_cds_from_database,
 )
 from policyengine_us_data.datasets.cps.geo_stacking_calibration.household_tracer import HouseholdTracer
 
@@ -46,20 +47,7 @@ db_uri = f"sqlite:///{db_path}"
 builder = SparseGeoStackingMatrixBuilder(db_uri, time_period=2023)
 
 # Query all congressional district GEOIDs from database
-engine = create_engine(db_uri)
-query = """
-SELECT DISTINCT sc.value as cd_geoid
-FROM strata s
-JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-WHERE s.stratum_group_id = 1
-  AND sc.constraint_variable = 'congressional_district_geoid'
-ORDER BY sc.value
-"""
-
-with engine.connect() as conn:
-    result = conn.execute(text(query)).fetchall()
-    all_cd_geoids = [row[0] for row in result]
-
+all_cd_geoids = get_all_cds_from_database(db_uri)
 print(f"Found {len(all_cd_geoids)} congressional districts in database")
 
 # For testing, use only 10 CDs (can change to all_cd_geoids for full run)

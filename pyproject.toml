@@ -52,7 +52,7 @@ dev = [
     "tabulate",
     "furo",
     "jupyter-book",
-    "mystmd",
+    "mystmd>=1.7.0",
     "yaml-changelog>=0.1.7",
     "build",
     "tomli",

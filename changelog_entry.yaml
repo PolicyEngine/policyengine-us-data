@@ -1,0 +1,6 @@
+- bump: minor
+  changes:
+    added:
+    - Probabilistic county assignment for CPS households with suppressed county data
+    - PUMA-to-county crosswalk with population-weighted allocation factors
+    - State-to-county crosswalk for CPS probabilistic assignment

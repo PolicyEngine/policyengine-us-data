@@ -634,6 +634,7 @@ def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
     cps["state_fips"] = household.GESTFIPS
     cps["county_fips"] = household.GTCO
     state_county_fips = cps["state_fips"] * 1e3 + cps["county_fips"]
+
     # Assign is_nyc here instead of as a variable formula so that it shows up
     # as toggleable in the webapp.
     # List county FIPS codes for each NYC county/borough.

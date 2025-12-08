@@ -631,36 +631,8 @@ def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
 
 
 def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
-    from policyengine_us_data.geography.puma_county_crosswalk import (
-        assign_county_from_state,
-    )
-
-    cps["state_fips"] = household.GESTFIPS.values
-
-    # CPS county codes (GTCO) are often 0 when suppressed for confidentiality.
-    # For households with missing county (GTCO == 0), we probabilistically
-    # assign a county based on state-level population weights.
-    raw_county = household.GTCO.values
-    missing_county_mask = raw_county == 0
-
-    if missing_county_mask.any():
-        logging.info(
-            f"Imputing county for {missing_county_mask.sum()} households "
-            f"({100 * missing_county_mask.mean():.1f}%) with missing GTCO"
-        )
-        # Use a fixed seed for reproducibility
-        random_state = np.random.RandomState(seed=42)
-        imputed_counties = assign_county_from_state(
-            cps["state_fips"][missing_county_mask],
-            random_state=random_state,
-        )
-        # Combine: use raw county where available, imputed where missing
-        county_fips = raw_county.copy()
-        county_fips[missing_county_mask] = imputed_counties
-        cps["county_fips"] = county_fips
-    else:
-        cps["county_fips"] = raw_county
-
+    cps["state_fips"] = household.GESTFIPS
+    cps["county_fips"] = household.GTCO
     state_county_fips = cps["state_fips"] * 1e3 + cps["county_fips"]
 
     # Assign is_nyc here instead of as a variable formula so that it shows up

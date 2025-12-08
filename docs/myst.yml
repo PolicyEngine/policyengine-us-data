@@ -2,11 +2,13 @@ version: 1
 project:
   title: PolicyEngine US Data
   authors:
-    - name: 
+    - name:
         given: PolicyEngine
         family: Team
   copyright: '2024'
   github: policyengine/policyengine-us-data
+  execute:
+    enabled: false
   jupyter:
     myst:
       enable_extensions:

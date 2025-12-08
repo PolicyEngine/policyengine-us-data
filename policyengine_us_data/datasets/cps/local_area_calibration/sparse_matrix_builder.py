@@ -6,12 +6,15 @@ are evaluated as masks. Geographic constraints work because we SET state_fips
 before evaluating constraints.
 """
 
+import logging
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from scipy import sparse
 from sqlalchemy import create_engine, text
+
+logger = logging.getLogger(__name__)
 
 from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     get_calculated_variables,
@@ -155,6 +158,8 @@ class SparseMatrixBuilder:
 
         X = sparse.lil_matrix((n_targets, n_cols), dtype=np.float32)
 
+        # Group CDs by state. CD GEOIDs follow format SSCCC where SS is state
+        # FIPS (2 digits) and CCC is CD number (2-3 digits), so state = CD // 100
         cds_by_state = defaultdict(list)
         for cd_idx, cd in enumerate(self.cds_to_calibrate):
             state = int(cd) // 100
@@ -201,8 +206,13 @@ class SparseMatrixBuilder:
                                 mask &= apply_op(
                                     values, c["operation"], c["value"]
                                 )
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                # Variable may not exist or may not be
+                                # calculable at household level - skip
+                                logger.debug(
+                                    f"Could not evaluate constraint "
+                                    f"{c['variable']}: {e}"
+                                )
 
                     if not mask.any():
                         continue

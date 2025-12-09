@@ -101,7 +101,7 @@ class ACS(Dataset):
         time_period: int,
     ) -> None:
         from policyengine_us_data.utils.spm import (
-            calculate_spm_thresholds_national,
+            calculate_spm_thresholds_by_puma,
             map_tenure_acs_to_spm,
         )
 
@@ -133,12 +133,17 @@ class ACS(Dataset):
         # Map ACS tenure to SPM tenure codes
         tenure_codes = map_tenure_acs_to_spm(household_indexed["TEN"].values)
 
-        # Calculate SPM thresholds using national-level values
-        # (ACS doesn't have Census-provided geographic adjustments)
-        acs["spm_unit_spm_threshold"] = calculate_spm_thresholds_national(
+        # Get geographic identifiers for PUMA-level adjustments
+        state_fips = household_indexed["ST"].values.astype(int)
+        puma_codes = household_indexed["PUMA"].values.astype(int)
+
+        # Calculate SPM thresholds using PUMA-level geographic adjustments
+        acs["spm_unit_spm_threshold"] = calculate_spm_thresholds_by_puma(
             num_adults=num_adults,
             num_children=num_children,
             tenure_codes=tenure_codes,
+            state_fips=state_fips,
+            puma_codes=puma_codes,
             year=time_period,
         )
 

@@ -11,9 +11,7 @@ from policyengine_us_data.datasets.cps.local_area_calibration.stacked_dataset_bu
     create_sparse_cd_stacked_dataset,
 )
 
-FIXTURE_PATH = (
-    "policyengine_us_data/tests/test_local_area_calibration/test_fixture_50hh.h5"
-)
+FIXTURE_PATH = "policyengine_us_data/tests/test_local_area_calibration/test_fixture_50hh.h5"
 TEST_CDS = ["3701", "201"]  # NC-01 and AK at-large
 SEED = 42
 
@@ -151,7 +149,9 @@ class TestStackedDatasetBuilder:
                     "_AK"
                 ), f"AK county should end with _AK: {county}"
 
-    def test_household_count_matches_weights(self, stacked_result, test_weights):
+    def test_household_count_matches_weights(
+        self, stacked_result, test_weights
+    ):
         """Number of output households should match non-zero weights."""
         hh_df = stacked_result["hh_df"]
         expected_households = (test_weights > 0).sum()

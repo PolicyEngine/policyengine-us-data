@@ -397,7 +397,7 @@ def get_cd_index_mapping(db_uri: str = None):
     from policyengine_us_data.storage import STORAGE_FOLDER
 
     if db_uri is None:
-        db_path = STORAGE_FOLDER / "calibration_targets" / "policy_data.db"
+        db_path = STORAGE_FOLDER / "calibration" / "policy_data.db"
         db_uri = f"sqlite:///{db_path}"
 
     engine = create_engine(db_uri)

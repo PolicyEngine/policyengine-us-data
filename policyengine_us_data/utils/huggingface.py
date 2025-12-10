@@ -65,7 +65,6 @@ def download_calibration_inputs(
 
     paths = {}
     for key, hf_path in files.items():
-        local_path = output_path / Path(hf_path).name
         hf_hub_download(
             repo_id=repo,
             filename=hf_path,
@@ -74,6 +73,8 @@ def download_calibration_inputs(
             revision=version,
             token=TOKEN,
         )
+        # hf_hub_download preserves directory structure
+        local_path = output_path / hf_path
         paths[key] = local_path
         print(f"Downloaded {hf_path} to {local_path}")
 

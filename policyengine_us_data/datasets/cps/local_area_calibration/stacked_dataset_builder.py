@@ -447,7 +447,9 @@ def create_sparse_cd_stacked_dataset(
             )
 
         # Create sequential IDs for this CD
-        new_person_ids = np.arange(start_id, start_id + n_persons_in_cd)
+        new_person_ids = np.arange(
+            start_id, start_id + n_persons_in_cd, dtype=np.int32
+        )
 
         # Assign all at once using loc
         combined_df.loc[cd_mask, person_id_col] = new_person_ids

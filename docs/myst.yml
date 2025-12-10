@@ -26,7 +26,6 @@ project:
     - file: methodology.md
     - file: long_term_projections.md
     - file: local_area_calibration_setup.ipynb
-    - file: long_term_projections.ipynb
     - file: discussion.md
     - file: conclusion.md
     - file: appendix.md

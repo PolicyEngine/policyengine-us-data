@@ -37,11 +37,17 @@ def create_sparse_cd_stacked_dataset(
     Create a SPARSE congressional district-stacked dataset using DataFrame approach.
 
     Args:
-        w: Calibrated weight vector from L0 calibration (length = n_households * n_cds)
-        cds_to_calibrate: List of CD GEOID codes used in calibration
-        cd_subset: Optional list of CD GEOIDs to include (subset of cds_to_calibrate)
-        output_path: Where to save the sparse CD-stacked h5 file
-        dataset_path: Path to the base .h5 dataset used to create the training matrices
+        w: Calibrated weight vector from L0 calibration. Shape is (n_cds * n_households,),
+           reshaped internally to (n_cds, n_households) using cds_to_calibrate ordering.
+        cds_to_calibrate: Ordered list of CD GEOID codes that defines the row ordering
+           of the weight matrix. Required to correctly index into w for any cd_subset.
+        cd_subset: Optional list of CD GEOIDs to include in output (must be subset of
+           cds_to_calibrate). If None, includes all CDs.
+        output_path: Where to save the sparse CD-stacked .h5 file.
+        dataset_path: Path to the base .h5 dataset used during calibration.
+
+    Returns:
+        output_path: Path to the saved .h5 file.
     """
 
     # Handle CD subset filtering

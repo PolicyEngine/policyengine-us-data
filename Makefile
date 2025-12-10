@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data clean build paper clean-paper presentations
+.PHONY: all format test install download upload docker documentation data data-local-area publish-local-area clean build paper clean-paper presentations
 
 all: data test
 
@@ -79,6 +79,9 @@ data-local-area: data
 	LOCAL_AREA_CALIBRATION=true python policyengine_us_data/datasets/puf/puf.py
 	LOCAL_AREA_CALIBRATION=true python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py 10500
+
+publish-local-area:
+	python policyengine_us_data/datasets/cps/local_area_calibration/publish_local_area.py
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

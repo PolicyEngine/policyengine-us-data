@@ -25,7 +25,6 @@ class ACS(Dataset):
         self.add_id_variables(acs, person, household)
         self.add_person_variables(acs, person, household)
         self.add_household_variables(acs, household)
-        self.add_spm_variables(acs, person, household, self.time_period)
 
         acs.close()
         raw_data.close()
@@ -94,54 +93,9 @@ class ACS(Dataset):
         )
 
     @staticmethod
-    def add_spm_variables(
-        acs: h5py.File,
-        person: DataFrame,
-        household: DataFrame,
-        time_period: int,
-    ) -> None:
-        from policyengine_us_data.utils.spm import (
-            calculate_spm_thresholds_national,
-            map_tenure_acs_to_spm,
-        )
-
-        # In ACS, SPM unit = household
-        # Calculate number of adults (18+) and children (<18) per household
-        person_with_hh = person.copy()
-        person_with_hh["is_adult"] = person_with_hh["AGEP"] >= 18
-        person_with_hh["is_child"] = person_with_hh["AGEP"] < 18
-
-        hh_counts = (
-            person_with_hh.groupby("household_id")
-            .agg({"is_adult": "sum", "is_child": "sum"})
-            .rename(
-                columns={"is_adult": "num_adults", "is_child": "num_children"}
-            )
-        )
-
-        # Ensure household is indexed properly
-        household_indexed = household.set_index("household_id")
-
-        # Get counts aligned with household order
-        num_adults = hh_counts.loc[
-            household_indexed.index, "num_adults"
-        ].values
-        num_children = hh_counts.loc[
-            household_indexed.index, "num_children"
-        ].values
-
-        # Map ACS tenure to SPM tenure codes
-        tenure_codes = map_tenure_acs_to_spm(household_indexed["TEN"].values)
-
-        # Calculate SPM thresholds using national-level values (no geographic
-        # adjustment). Geographic adjustments will be applied later in the
-        # pipeline when households are assigned to specific areas.
-        acs["spm_unit_spm_threshold"] = calculate_spm_thresholds_national(
-            num_adults=num_adults,
-            num_children=num_children,
-            tenure_codes=tenure_codes,
-            year=time_period,
-        )
+    def add_spm_variables(acs: h5py.File, spm_unit: DataFrame) -> None:
+        acs["spm_unit_net_income_reported"] = spm_unit.SPM_RESOURCES
+        acs["spm_unit_spm_threshold"] = spm_unit.SPM_POVTHRESHOLD
 
     @staticmethod
     def add_household_variables(acs: h5py.File, household: DataFrame) -> None:

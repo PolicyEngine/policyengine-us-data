@@ -78,7 +78,7 @@ class CPS(Dataset):
             undocumented_students_target=0.21 * 1.9e6,
         )
         logging.info("Adding family variables")
-        add_spm_variables(cps, spm_unit, self.time_period)
+        add_spm_variables(self, cps, spm_unit)
         logging.info("Adding household variables")
         add_household_variables(cps, household)
         logging.info("Adding rent")
@@ -602,11 +602,7 @@ def add_personal_income_variables(
         cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
 
 
-def add_spm_variables(
-    cps: h5py.File,
-    spm_unit: DataFrame,
-    time_period: int,
-) -> None:
+def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     from policyengine_us_data.utils.spm import (
         calculate_spm_thresholds_with_geoadj,
     )
@@ -639,7 +635,7 @@ def add_spm_variables(
         num_children=spm_unit["SPM_NUMKIDS"].values,
         tenure_codes=spm_unit["SPM_TENMORTSTATUS"].values,
         geoadj=spm_unit["SPM_GEOADJ"].values,
-        year=time_period,
+        year=self.time_period,
     )
 
     cps["reduced_price_school_meals_reported"] = (

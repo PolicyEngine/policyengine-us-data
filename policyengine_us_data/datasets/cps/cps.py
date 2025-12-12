@@ -1410,6 +1410,9 @@ def add_ssn_card_type(
         len(person), "LEGAL_PERMANENT_RESIDENT", dtype="U32"
     )
 
+    # Set citizens (SSN card type 1) to CITIZEN status
+    immigration_status[ssn_card_type == 1] = "CITIZEN"
+
     # 1. Undocumented: SSN card type 0 who arrived 1982 or later
     arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
     undoc_mask = (ssn_card_type == 0) & (~arrived_before_1982)
@@ -1459,7 +1462,8 @@ def add_ssn_card_type(
     immigration_status[mask] = "TPS"
 
     # Final write (all values now in ImmigrationStatus Enum)
-    cps["immigration_status"] = immigration_status.astype("S")
+    # Save as immigration_status_str since that's what PolicyEngine expects
+    cps["immigration_status_str"] = immigration_status.astype("S")
     # ============================================================================
     # CONVERT TO STRING LABELS AND STORE
     # ============================================================================

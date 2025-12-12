@@ -566,7 +566,7 @@ def create_sparse_cd_stacked_dataset(
 
     # Only save input variables (not calculated/derived variables)
     # Calculated variables like state_name, state_code will be recalculated on load
-    input_vars = set(sparse_sim.input_variables)
+    input_vars = set(base_sim.input_variables)
     print(
         f"Found {len(input_vars)} input variables (excluding calculated variables)"
     )

@@ -201,7 +201,7 @@ def create_stratified_cps_dataset(
     data = {}
 
     # Only save input variables (not calculated/derived variables)
-    input_vars = set(stratified_sim.input_variables)
+    input_vars = set(sim.input_variables)
     print(
         f"Found {len(input_vars)} input variables (excluding calculated variables)"
     )

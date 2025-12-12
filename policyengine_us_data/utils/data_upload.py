@@ -116,3 +116,54 @@ def upload_files_to_gcs(
         logging.info(
             f"Set metadata for {file_path.name} in GCS bucket {gcs_bucket_name}."
         )
+
+
+def upload_local_area_file(
+    file_path: str,
+    subdirectory: str,
+    gcs_bucket_name: str = "policyengine-us-data",
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    version: str = None,
+):
+    """
+    Upload a single local area H5 file to a subdirectory (states/ or districts/).
+
+    Uploads to both GCS and Hugging Face with the file placed in the specified
+    subdirectory.
+    """
+    if version is None:
+        version = metadata.version("policyengine-us-data")
+
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise ValueError(f"File {file_path} does not exist.")
+
+    # Upload to GCS with subdirectory
+    credentials, project_id = google.auth.default()
+    storage_client = storage.Client(
+        credentials=credentials, project=project_id
+    )
+    bucket = storage_client.bucket(gcs_bucket_name)
+
+    blob_name = f"{subdirectory}/{file_path.name}"
+    blob = bucket.blob(blob_name)
+    blob.upload_from_filename(file_path)
+    blob.metadata = {"version": version}
+    blob.patch()
+    logging.info(f"Uploaded {blob_name} to GCS bucket {gcs_bucket_name}.")
+
+    # Upload to Hugging Face with subdirectory
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    api = HfApi()
+    api.upload_file(
+        path_or_fileobj=str(file_path),
+        path_in_repo=f"{subdirectory}/{file_path.name}",
+        repo_id=hf_repo_name,
+        repo_type=hf_repo_type,
+        token=token,
+        commit_message=f"Upload {subdirectory}/{file_path.name} for version {version}",
+    )
+    logging.info(
+        f"Uploaded {subdirectory}/{file_path.name} to Hugging Face {hf_repo_name}."
+    )

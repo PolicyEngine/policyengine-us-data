@@ -19,7 +19,7 @@ from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils 
 
 @pytest.fixture(scope="module")
 def db_uri():
-    db_path = STORAGE_FOLDER / "policy_data.db"
+    db_path = STORAGE_FOLDER / "calibration" / "policy_data.db"
     return f"sqlite:///{db_path}"
 
 

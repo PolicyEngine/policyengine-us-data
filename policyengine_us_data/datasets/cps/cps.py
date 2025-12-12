@@ -625,6 +625,18 @@ def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
         if asec_variable in spm_unit.columns:
             cps[openfisca_variable] = spm_unit[asec_variable]
 
+    if "SPM_TENMORTSTATUS" in spm_unit.columns:
+        tenure_map = {
+            1: "OWNER_WITH_MORTGAGE",
+            2: "OWNER_WITHOUT_MORTGAGE",
+            3: "RENTER",
+        }
+        cps["spm_unit_tenure_type"] = (
+            spm_unit.SPM_TENMORTSTATUS.map(tenure_map)
+            .fillna("RENTER")
+            .astype("S")
+        )
+
     cps["reduced_price_school_meals_reported"] = (
         cps["free_school_meals_reported"] * 0
     )

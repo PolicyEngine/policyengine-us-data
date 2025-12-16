@@ -537,12 +537,12 @@ for year_idx in range(n_years):
         if USE_SS:
             ss_achieved = np.sum(ss_values * w_new)
             print(
-                f"  [DEBUG {year}] SS achieved: ${ss_achieved/1e9:.1f}B (error: {(ss_achieved - ss_target)/ss_target*100:.1f}%)"
+                f"  [DEBUG {year}] SS achieved: ${ss_achieved/1e9:.1f}B (error: ${abs(ss_achieved - ss_target)/1e6:.1f}M, {(ss_achieved - ss_target)/ss_target*100:.3f}%)"
             )
         if USE_PAYROLL:
             payroll_achieved = np.sum(payroll_values * w_new)
             print(
-                f"  [DEBUG {year}] Payroll achieved: ${payroll_achieved/1e9:.1f}B (error: {(payroll_achieved - payroll_target)/payroll_target*100:.1f}%)"
+                f"  [DEBUG {year}] Payroll achieved: ${payroll_achieved/1e9:.1f}B (error: ${abs(payroll_achieved - payroll_target)/1e6:.1f}M, {(payroll_achieved - payroll_target)/payroll_target*100:.3f}%)"
             )
         if USE_H6_REFORM and h6_revenue_target is not None:
             h6_revenue_achieved = np.sum(h6_income_values * w_new)
@@ -554,16 +554,16 @@ for year_idx in range(n_years):
                 else 0
             )
             print(
-                f"  [DEBUG {year}] H6 achieved revenue: ${h6_revenue_achieved/1e9:.3f}B (error: {error_pct:.1f}%)"
+                f"  [DEBUG {year}] H6 achieved revenue: ${h6_revenue_achieved/1e9:.3f}B (error: ${abs(h6_revenue_achieved - h6_revenue_target)/1e6:.1f}M, {error_pct:.3f}%)"
             )
         if USE_TOB:
             oasdi_achieved = np.sum(oasdi_tob_values * w_new)
             hi_achieved = np.sum(hi_tob_values * w_new)
             print(
-                f"  [DEBUG {year}] OASDI TOB achieved: ${oasdi_achieved/1e9:.1f}B (error: {(oasdi_achieved - oasdi_tob_target)/oasdi_tob_target*100:.1f}%)"
+                f"  [DEBUG {year}] OASDI TOB achieved: ${oasdi_achieved/1e9:.1f}B (error: ${abs(oasdi_achieved - oasdi_tob_target)/1e6:.1f}M, {(oasdi_achieved - oasdi_tob_target)/oasdi_tob_target*100:.3f}%)"
             )
             print(
-                f"  [DEBUG {year}] HI TOB achieved: ${hi_achieved/1e9:.1f}B (error: {(hi_achieved - hi_tob_target)/hi_tob_target*100:.1f}%)"
+                f"  [DEBUG {year}] HI TOB achieved: ${hi_achieved/1e9:.1f}B (error: ${abs(hi_achieved - hi_tob_target)/1e6:.1f}M, {(hi_achieved - hi_tob_target)/hi_tob_target*100:.3f}%)"
             )
 
     weights_matrix[:, year_idx] = w_new

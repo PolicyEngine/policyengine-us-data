@@ -24,6 +24,7 @@ node_modules
 !soi_targets.csv
 !policyengine_us_data/storage/social_security_aux.csv
 !policyengine_us_data/storage/SSPopJul_TR2024.csv
+!policyengine_us_data/storage/national_and_district_rents_2023.csv
 docs/.ipynb_checkpoints/
 
 ## Test fixtures

@@ -2,9 +2,13 @@
 Shared utilities for calibration scripts.
 """
 
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
+
+# TODO: Add spm-calculator to PyPI dependencies when available
+from spm_calculator import SPMCalculator, spm_equivalence_scale
+from spm_calculator.geoadj import calculate_geoadj_from_rent
 
 from policyengine_us.variables.household.demographic.geographic.state_name import (
     StateName,
@@ -175,6 +179,19 @@ STATE_FIPS_TO_CODE = {
     54: StateCode.WV,
     55: StateCode.WI,
     56: StateCode.WY,
+}
+
+# SPM Tenure Type Mappings
+SPM_TENURE_STRING_TO_CODE = {
+    "OWNER_WITH_MORTGAGE": 1,
+    "OWNER_WITHOUT_MORTGAGE": 2,
+    "RENTER": 3,
+}
+
+SPM_TENURE_CODE_TO_CALC = {
+    1: "owner_with_mortgage",
+    2: "owner_without_mortgage",
+    3: "renter",
 }
 
 
@@ -416,3 +433,93 @@ def get_cd_index_mapping(db_uri: str = None):
     cd_to_index = {cd: idx for idx, cd in enumerate(cds_ordered)}
     index_to_cd = {idx: cd for idx, cd in enumerate(cds_ordered)}
     return cd_to_index, index_to_cd, cds_ordered
+
+
+def load_cd_geoadj_values(
+    cds_to_calibrate: List[str],
+) -> Dict[str, float]:
+    """
+    Load geographic adjustment factors from rent data CSV.
+    Uses median 2BR rent by CD vs national median to compute geoadj.
+    """
+    from policyengine_us_data.storage import STORAGE_FOLDER
+
+    csv_path = STORAGE_FOLDER / "national_and_district_rents_2023.csv"
+    rent_df = pd.read_csv(csv_path, dtype={"cd_id": str})
+
+    # Filter to numeric cd_id only (excludes "09ZZ" style undefined districts)
+    rent_df = rent_df[rent_df["cd_id"].str.match(r"^\d+$")]
+
+    # Convert zero-padded cd_id to match code format (e.g., "0101" -> "101")
+    rent_df["cd_geoid"] = rent_df["cd_id"].apply(lambda x: str(int(x)))
+
+    # Filter to only CDs we're calibrating
+    rent_df = rent_df[rent_df["cd_geoid"].isin(cds_to_calibrate)]
+
+    geoadj_dict = {}
+    for _, row in rent_df.iterrows():
+        geoadj = calculate_geoadj_from_rent(
+            local_rent=row["median_2br_rent"],
+            national_rent=row["national_median_2br_rent"],
+        )
+        geoadj_dict[row["cd_geoid"]] = geoadj
+
+    return geoadj_dict
+
+
+def calculate_spm_thresholds_for_cd(
+    sim,
+    time_period: int,
+    geoadj: float,
+    year: int,
+) -> np.ndarray:
+    """
+    Calculate SPM thresholds for all SPM units using CD-specific geo-adjustment.
+    """
+    spm_unit_ids_person = sim.calculate("spm_unit_id", map_to="person").values
+    ages = sim.calculate("age", map_to="person").values
+
+    df = pd.DataFrame({
+        "spm_unit_id": spm_unit_ids_person,
+        "is_adult": ages >= 18,
+        "is_child": ages < 18,
+    })
+
+    agg = df.groupby("spm_unit_id").agg(
+        num_adults=("is_adult", "sum"),
+        num_children=("is_child", "sum"),
+    ).reset_index()
+
+    tenure_types = sim.calculate(
+        "spm_unit_tenure_type", map_to="spm_unit"
+    ).values
+    spm_unit_ids_unit = sim.calculate("spm_unit_id", map_to="spm_unit").values
+
+    tenure_df = pd.DataFrame({
+        "spm_unit_id": spm_unit_ids_unit,
+        "tenure_type": tenure_types,
+    })
+
+    merged = agg.merge(tenure_df, on="spm_unit_id", how="left")
+    merged["tenure_code"] = merged["tenure_type"].map(
+        SPM_TENURE_STRING_TO_CODE
+    ).fillna(3).astype(int)
+
+    calc = SPMCalculator(year=year)
+    base_thresholds = calc.get_base_thresholds()
+
+    n = len(merged)
+    thresholds = np.zeros(n, dtype=np.float32)
+
+    for i in range(n):
+        tenure_str = SPM_TENURE_CODE_TO_CALC.get(
+            int(merged.iloc[i]["tenure_code"]), "renter"
+        )
+        base = base_thresholds[tenure_str]
+        equiv_scale = spm_equivalence_scale(
+            int(merged.iloc[i]["num_adults"]),
+            int(merged.iloc[i]["num_children"]),
+        )
+        thresholds[i] = base * equiv_scale * geoadj
+
+    return thresholds

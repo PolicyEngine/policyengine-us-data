@@ -17,6 +17,8 @@ from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils 
     STATE_CODES,
     STATE_FIPS_TO_NAME,
     STATE_FIPS_TO_CODE,
+    load_cd_geoadj_values,
+    calculate_spm_thresholds_for_cd,
 )
 from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
     County,
@@ -127,6 +129,8 @@ def create_sparse_cd_stacked_dataset(
     total_weight_in_W = np.sum(W)
     print(f"Total active household-CD pairs: {total_active_weights:,}")
     print(f"Total weight in W matrix: {total_weight_in_W:,.0f}")
+
+    cd_geoadj_values = load_cd_geoadj_values(cds_to_calibrate)
 
     # Collect DataFrames for each CD
     cd_dfs = []
@@ -286,6 +290,14 @@ def create_sparse_cd_stacked_dataset(
             cd_geoid=cd_geoid, n_households=n_households_orig, seed=42 + idx
         )
         cd_sim.set_input("county", time_period, county_indices)
+
+        geoadj = cd_geoadj_values[cd_geoid]
+        new_spm_thresholds = calculate_spm_thresholds_for_cd(
+            cd_sim, time_period, geoadj, year=time_period
+        )
+        cd_sim.set_input(
+            "spm_unit_spm_threshold", time_period, new_spm_thresholds
+        )
 
         # Delete cached calculated variables to ensure they're recalculated
         # with new state and county. Exclude 'county' itself since we just set it.
@@ -579,6 +591,9 @@ def create_sparse_cd_stacked_dataset(
 
     # county is set explicitly with assign_counties_for_cd, must be saved
     vars_to_save.add("county")
+
+    # spm_unit_spm_threshold is recalculated with CD-specific geo-adjustment
+    vars_to_save.add("spm_unit_spm_threshold")
 
     variables_saved = 0
     variables_skipped = 0

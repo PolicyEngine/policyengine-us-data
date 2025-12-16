@@ -68,13 +68,19 @@ python run_household_projection.py 2100 --greg --use-ss
 
 ### Data Sources
 
-All data from **SSA 2024 Trustee Report**:
+**SSA 2025 OASDI Trustees Report**
+- URL: https://www.ssa.gov/OACT/TR/2025/
+- File: `SingleYearTRTables_TR2025.xlsx`
+- Tables: IV.B2 (OASDI TOB % of taxable payroll), VI.G6 (taxable payroll in billions), VI.G9 (OASDI costs)
 
+**CMS 2025 Medicare Trustees Report**
+- URL: https://www.cms.gov/data-research/statistics-trends-and-reports/trustees-report-trust-funds
+- File: `tr2025-tables-figures.zip` → CSV folder → "Medicare Sources of Non-Interest Income..."
+- Column: Tax on Benefits (values in millions, 2024-2099)
+
+**Local files** (in `policyengine_us_data/storage/`):
 - `SSPopJul_TR2024.csv` - Population projections 2025-2100 by single year of age
 - `social_security_aux.csv` - OASDI costs, taxable payroll, and TOB revenue projections 2025-2100
-  - Extracted from `SingleYearTRTables_TR2025.xlsx` Table VI.G9 using `extract_ssa_costs.py`
-
-Files located in: `policyengine_us_data/storage/`
 
 ---
 

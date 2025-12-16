@@ -105,7 +105,7 @@ def load_oasdi_tob_projections(year):
     df = pd.read_csv(csv_path)
 
     row = df[df["year"] == year]
-    nominal_billions = row["oadsi_tob_billions_nominal_usd"].values[0]
+    nominal_billions = row["oasdi_tob_billions_nominal_usd"].values[0]
     return nominal_billions * 1e9
 
 

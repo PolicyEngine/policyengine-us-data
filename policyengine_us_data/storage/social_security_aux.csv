@@ -1,4 +1,4 @@
-year,oasdi_cost_in_billion_2025_usd,cpi_w_intermediate,oasdi_cost_in_billion_nominal_usd,taxable_payroll_in_billion_nominal_usd,h6_income_rate_change,oadsi_tob_pct_of_taxable_payroll,oadsi_tob_billions_nominal_usd,hi_tob_billions_nominal_usd
+year,oasdi_cost_in_billion_2025_usd,cpi_w_intermediate,oasdi_cost_in_billion_nominal_usd,taxable_payroll_in_billion_nominal_usd,h6_income_rate_change,oasdi_tob_pct_of_taxable_payroll,oasdi_tob_billions_nominal_usd,hi_tob_billions_nominal_usd
 2025,1609,100,1609,10621,0,0.57,60.5397,40.655
 2026,1660,102.49,1701.334,11129,0,0.69,76.7901,52.199
 2027,1715,104.95,1799.8925,11627,0,0.71,82.5517,60.569

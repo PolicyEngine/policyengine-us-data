@@ -441,7 +441,10 @@ for year_idx in range(n_years):
 
         # Only calculate H6 reform impacts if the target ratio is non-zero
         # (Reform has no effect before 2045, so skip computation for efficiency)
-        if h6_target_ratio != 0:
+        if h6_target_ratio == 0:
+            if year in display_years:
+                print(f"  [DEBUG {year}] H6 reform not active until 2045")
+        else:
             # Create and apply H6 reform
             h6_reform = create_h6_reform()
             reform_sim = Microsimulation(

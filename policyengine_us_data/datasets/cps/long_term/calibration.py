@@ -85,6 +85,10 @@ def calibrate_greg(
     payroll_target=None,
     h6_income_values=None,
     h6_revenue_target=None,
+    oasdi_tob_values=None,
+    oasdi_tob_target=None,
+    hi_tob_values=None,
+    hi_tob_target=None,
     n_ages=86,
 ):
     """
@@ -101,6 +105,10 @@ def calibrate_greg(
         payroll_target: Optional taxable payroll target total
         h6_income_values: Optional H6 reform income values per household
         h6_revenue_target: Optional H6 reform total revenue impact target
+        oasdi_tob_values: Optional OASDI TOB revenue values per household
+        oasdi_tob_target: Optional OASDI TOB revenue target total
+        hi_tob_values: Optional HI TOB revenue values per household
+        hi_tob_target: Optional HI TOB revenue target total
         n_ages: Number of age groups
 
     Returns:
@@ -116,6 +124,8 @@ def calibrate_greg(
         (ss_values is not None and ss_target is not None)
         or (payroll_values is not None and payroll_target is not None)
         or (h6_income_values is not None and h6_revenue_target is not None)
+        or (oasdi_tob_values is not None and oasdi_tob_target is not None)
+        or (hi_tob_values is not None and hi_tob_target is not None)
     )
 
     if needs_aux_df:
@@ -134,6 +144,14 @@ def calibrate_greg(
         if h6_income_values is not None and h6_revenue_target is not None:
             aux_df["h6_revenue"] = h6_income_values
             controls["h6_revenue"] = h6_revenue_target
+
+        if oasdi_tob_values is not None and oasdi_tob_target is not None:
+            aux_df["oasdi_tob"] = oasdi_tob_values
+            controls["oasdi_tob"] = oasdi_tob_target
+
+        if hi_tob_values is not None and hi_tob_target is not None:
+            aux_df["hi_tob"] = hi_tob_values
+            controls["hi_tob"] = hi_tob_target
 
         aux_vars = aux_df
     else:
@@ -160,6 +178,10 @@ def calibrate_weights(
     payroll_target=None,
     h6_income_values=None,
     h6_revenue_target=None,
+    oasdi_tob_values=None,
+    oasdi_tob_target=None,
+    hi_tob_values=None,
+    hi_tob_target=None,
     n_ages=86,
     max_iters=100,
     tol=1e-6,
@@ -180,6 +202,10 @@ def calibrate_weights(
         payroll_target: Optional payroll target (for GREG with payroll)
         h6_income_values: Optional H6 reform income values per household
         h6_revenue_target: Optional H6 reform total revenue impact target
+        oasdi_tob_values: Optional OASDI TOB revenue values per household
+        oasdi_tob_target: Optional OASDI TOB revenue target total
+        hi_tob_values: Optional HI TOB revenue values per household
+        hi_tob_target: Optional HI TOB revenue target total
         n_ages: Number of age groups
         max_iters: Max iterations for IPF
         tol: Convergence tolerance for IPF
@@ -204,6 +230,10 @@ def calibrate_weights(
                 payroll_target,
                 h6_income_values,
                 h6_revenue_target,
+                oasdi_tob_values,
+                oasdi_tob_target,
+                hi_tob_values,
+                hi_tob_target,
                 n_ages,
             )
         except Exception as e:

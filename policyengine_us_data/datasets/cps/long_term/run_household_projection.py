@@ -3,7 +3,7 @@ Household-level projection pathway for income tax revenue 2025-2100.
 
 
 Usage:
-    python run_household_projection.py [START_YEAR] [END_YEAR] [--greg] [--use-ss] [--use-payroll] [--use-h6-reform] [--save-h5]
+    python run_household_projection.py [START_YEAR] [END_YEAR] [--greg] [--use-ss] [--use-payroll] [--use-h6-reform] [--use-tob] [--save-h5]
 
     START_YEAR: Optional starting year (default: 2025)
     END_YEAR: Optional ending year (default: 2035)
@@ -11,11 +11,12 @@ Usage:
     --use-ss: Include Social Security benefit totals as calibration target (requires --greg)
     --use-payroll: Include taxable payroll totals as calibration target (requires --greg)
     --use-h6-reform: Include H6 reform income impact ratio as calibration target (requires --greg)
+    --use-tob: Include TOB (Taxation of Benefits) revenue as calibration target (requires --greg)
     --save-h5: Save year-specific .h5 files with calibrated weights to ./projected_datasets/
 
 Examples:
     python run_household_projection.py 2045 2045 --greg --use-ss  # single year
-    python run_household_projection.py 2025 2100 --greg --use-ss --use-payroll --use-h6-reform --save-h5
+    python run_household_projection.py 2025 2100 --greg --use-ss --use-payroll --use-tob --save-h5
 """
 
 import sys
@@ -256,6 +257,16 @@ if USE_H6_REFORM:
         USE_GREG = True
     from ssa_data import load_h6_income_rate_change
 
+USE_TOB = "--use-tob" in sys.argv
+if USE_TOB:
+    sys.argv.remove("--use-tob")
+    if not USE_GREG:
+        print(
+            "Warning: --use-tob requires --greg, enabling GREG automatically"
+        )
+        USE_GREG = True
+    from ssa_data import load_oasdi_tob_projections, load_hi_tob_projections
+
 SAVE_H5 = "--save-h5" in sys.argv
 if SAVE_H5:
     sys.argv.remove("--save-h5")
@@ -286,6 +297,8 @@ if USE_PAYROLL:
     print(f"  Including taxable payroll constraint: Yes")
 if USE_H6_REFORM:
     print(f"  Including H6 reform income impact constraint: Yes")
+if USE_TOB:
+    print(f"  Including TOB revenue constraint: Yes")
 if SAVE_H5:
     print(f"  Saving year-specific .h5 files: Yes (to {OUTPUT_DIR}/)")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -464,6 +477,33 @@ for year_idx in range(n_years):
             del reform_sim
             gc.collect()
 
+    oasdi_tob_values = None
+    oasdi_tob_target = None
+    hi_tob_values = None
+    hi_tob_target = None
+    if USE_TOB:
+        oasdi_tob_hh = sim.calculate(
+            "tob_revenue_oasdi", period=year, map_to="household"
+        )
+        oasdi_tob_values = oasdi_tob_hh.values
+        oasdi_tob_target = load_oasdi_tob_projections(year)
+
+        hi_tob_hh = sim.calculate(
+            "tob_revenue_medicare_hi", period=year, map_to="household"
+        )
+        hi_tob_values = hi_tob_hh.values
+        hi_tob_target = load_hi_tob_projections(year)
+
+        if year in display_years:
+            oasdi_baseline = np.sum(oasdi_tob_values * baseline_weights)
+            hi_baseline = np.sum(hi_tob_values * baseline_weights)
+            print(
+                f"  [DEBUG {year}] OASDI TOB baseline: ${oasdi_baseline/1e9:.1f}B, target: ${oasdi_tob_target/1e9:.1f}B"
+            )
+            print(
+                f"  [DEBUG {year}] HI TOB baseline: ${hi_baseline/1e9:.1f}B, target: ${hi_tob_target/1e9:.1f}B"
+            )
+
     y_target = target_matrix[:, year_idx]
 
     w_new, iterations = calibrate_weights(
@@ -478,13 +518,19 @@ for year_idx in range(n_years):
         payroll_target=payroll_target,
         h6_income_values=h6_income_values,
         h6_revenue_target=h6_revenue_target,
+        oasdi_tob_values=oasdi_tob_values,
+        oasdi_tob_target=oasdi_tob_target,
+        hi_tob_values=hi_tob_values,
+        hi_tob_target=hi_tob_target,
         n_ages=n_ages,
         max_iters=100,
         tol=1e-6,
         verbose=False,
     )
 
-    if year in display_years and (USE_SS or USE_PAYROLL or USE_H6_REFORM):
+    if year in display_years and (
+        USE_SS or USE_PAYROLL or USE_H6_REFORM or USE_TOB
+    ):
         if USE_SS:
             ss_achieved = np.sum(ss_values * w_new)
             print(
@@ -506,6 +552,15 @@ for year_idx in range(n_years):
             )
             print(
                 f"  [DEBUG {year}] H6 achieved revenue: ${h6_revenue_achieved/1e9:.3f}B (error: {error_pct:.1f}%)"
+            )
+        if USE_TOB:
+            oasdi_achieved = np.sum(oasdi_tob_values * w_new)
+            hi_achieved = np.sum(hi_tob_values * w_new)
+            print(
+                f"  [DEBUG {year}] OASDI TOB achieved: ${oasdi_achieved/1e9:.1f}B (error: {(oasdi_achieved - oasdi_tob_target)/oasdi_tob_target*100:.1f}%)"
+            )
+            print(
+                f"  [DEBUG {year}] HI TOB achieved: ${hi_achieved/1e9:.1f}B (error: {(hi_achieved - hi_tob_target)/hi_tob_target*100:.1f}%)"
             )
 
     weights_matrix[:, year_idx] = w_new

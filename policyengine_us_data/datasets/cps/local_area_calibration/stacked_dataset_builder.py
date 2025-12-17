@@ -27,6 +27,35 @@ from policyengine_us_data.datasets.cps.local_area_calibration.county_assignment 
     assign_counties_for_cd,
 )
 
+NYC_COUNTIES = {
+    "QUEENS_COUNTY_NY",
+    "BRONX_COUNTY_NY",
+    "RICHMOND_COUNTY_NY",
+    "NEW_YORK_COUNTY_NY",
+    "KINGS_COUNTY_NY",
+}
+
+NYC_CDS = [
+    "3603",
+    "3605",
+    "3606",
+    "3607",
+    "3608",
+    "3609",
+    "3610",
+    "3611",
+    "3612",
+    "3613",
+    "3614",
+    "3615",
+    "3616",
+]
+
+
+def get_county_name(county_index: int) -> str:
+    """Convert county enum index back to name."""
+    return County._member_names_[county_index]
+
 
 def create_sparse_cd_stacked_dataset(
     w,
@@ -34,6 +63,7 @@ def create_sparse_cd_stacked_dataset(
     cd_subset=None,
     output_path=None,
     dataset_path=None,
+    county_filter=None,
 ):
     """
     Create a SPARSE congressional district-stacked dataset using DataFrame approach.
@@ -47,6 +77,8 @@ def create_sparse_cd_stacked_dataset(
            cds_to_calibrate). If None, includes all CDs.
         output_path: Where to save the sparse CD-stacked .h5 file.
         dataset_path: Path to the base .h5 dataset used during calibration.
+        county_filter: Optional set of county names to filter to. Only households
+           assigned to these counties will be included. Used for city-level datasets.
 
     Returns:
         output_path: Path to the saved .h5 file.
@@ -290,6 +322,19 @@ def create_sparse_cd_stacked_dataset(
             cd_geoid=cd_geoid, n_households=n_households_orig, seed=42 + idx
         )
         cd_sim.set_input("county", time_period, county_indices)
+
+        # Filter to only households assigned to specified counties (e.g., NYC)
+        if county_filter is not None:
+            filtered_household_ids = set()
+            for hh_idx in active_household_indices:
+                county_name = get_county_name(county_indices[hh_idx])
+                if county_name in county_filter:
+                    filtered_household_ids.add(household_ids[hh_idx])
+
+            active_household_ids = filtered_household_ids
+
+            if len(active_household_ids) == 0:
+                continue
 
         geoadj = cd_geoadj_values[cd_geoid]
         new_spm_thresholds = calculate_spm_thresholds_for_cd(
@@ -713,9 +758,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--mode",
-        choices=["national", "states", "cds", "single-cd", "single-state"],
+        choices=[
+            "national",
+            "states",
+            "cds",
+            "single-cd",
+            "single-state",
+            "nyc",
+        ],
         default="national",
-        help="Output mode: national (one file), states (per-state files), cds (per-CD files), single-cd (one CD), single-state (one state)",
+        help="Output mode: national (one file), states (per-state files), cds (per-CD files), single-cd (one CD), single-state (one state), nyc (NYC only)",
     )
     parser.add_argument(
         "--cd",
@@ -847,6 +899,27 @@ if __name__ == "__main__":
             cd_subset=cd_subset,
             dataset_path=dataset_path_str,
             output_path=output_path,
+        )
+
+    elif mode == "nyc":
+        cd_subset = [cd for cd in cds_to_calibrate if cd in NYC_CDS]
+        if not cd_subset:
+            raise ValueError("No NYC-related CDs found in calibrated CDs list")
+
+        output_path = f"{output_dir}/NYC.h5"
+        print(
+            f"\nCreating NYC dataset with {len(cd_subset)} CDs: {output_path}"
+        )
+        print(f"  CDs: {', '.join(cd_subset)}")
+        print("  Filtering to NYC counties only")
+
+        create_sparse_cd_stacked_dataset(
+            w,
+            cds_to_calibrate,
+            cd_subset=cd_subset,
+            dataset_path=dataset_path_str,
+            output_path=output_path,
+            county_filter=NYC_COUNTIES,
         )
 
     print("\nDone!")

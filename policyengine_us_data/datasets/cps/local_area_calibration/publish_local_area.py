@@ -17,6 +17,8 @@ from policyengine_us_data.utils.huggingface import download_calibration_inputs
 from policyengine_us_data.utils.data_upload import upload_local_area_file
 from policyengine_us_data.datasets.cps.local_area_calibration.stacked_dataset_builder import (
     create_sparse_cd_stacked_dataset,
+    NYC_COUNTIES,
+    NYC_CDS,
 )
 from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     get_all_cds_from_database,
@@ -25,6 +27,7 @@ from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils 
 
 CHECKPOINT_FILE = Path("completed_states.txt")
 CHECKPOINT_FILE_DISTRICTS = Path("completed_districts.txt")
+CHECKPOINT_FILE_CITIES = Path("completed_cities.txt")
 WORK_DIR = Path("local_area_build")
 
 
@@ -52,6 +55,19 @@ def load_completed_districts() -> set:
 def record_completed_district(district_name: str):
     with open(CHECKPOINT_FILE_DISTRICTS, "a") as f:
         f.write(f"{district_name}\n")
+
+
+def load_completed_cities() -> set:
+    if CHECKPOINT_FILE_CITIES.exists():
+        content = CHECKPOINT_FILE_CITIES.read_text().strip()
+        if content:
+            return set(content.split("\n"))
+    return set()
+
+
+def record_completed_city(city_name: str):
+    with open(CHECKPOINT_FILE_CITIES, "a") as f:
+        f.write(f"{city_name}\n")
 
 
 def build_and_upload_states(
@@ -157,6 +173,55 @@ def build_and_upload_districts(
             raise
 
 
+def build_and_upload_cities(
+    weights_path: Path,
+    dataset_path: Path,
+    db_path: Path,
+    output_dir: Path,
+    completed_cities: set,
+):
+    """Build and upload city H5 files with checkpointing."""
+    db_uri = f"sqlite:///{db_path}"
+    cds_to_calibrate = get_all_cds_from_database(db_uri)
+    w = np.load(weights_path)
+
+    cities_dir = output_dir / "cities"
+    cities_dir.mkdir(parents=True, exist_ok=True)
+
+    # NYC
+    if "NYC" in completed_cities:
+        print("Skipping NYC (already completed)")
+    else:
+        cd_subset = [cd for cd in cds_to_calibrate if cd in NYC_CDS]
+        if not cd_subset:
+            print("No NYC-related CDs found, skipping")
+        else:
+            output_path = cities_dir / "NYC.h5"
+            print(f"\n{'='*60}")
+            print(f"Building NYC ({len(cd_subset)} CDs)")
+            print(f"{'='*60}")
+
+            try:
+                create_sparse_cd_stacked_dataset(
+                    w,
+                    cds_to_calibrate,
+                    cd_subset=cd_subset,
+                    dataset_path=str(dataset_path),
+                    output_path=str(output_path),
+                    county_filter=NYC_COUNTIES,
+                )
+
+                print("Uploading NYC.h5...")
+                upload_local_area_file(str(output_path), "cities")
+
+                record_completed_city("NYC")
+                print("Completed NYC")
+
+            except Exception as e:
+                print(f"ERROR building NYC: {e}")
+                raise
+
+
 def main():
     import argparse
 
@@ -177,6 +242,11 @@ def main():
         "--districts-only",
         action="store_true",
         help="Only build and upload district files",
+    )
+    parser.add_argument(
+        "--cities-only",
+        action="store_true",
+        help="Only build and upload city files (e.g., NYC)",
     )
     parser.add_argument(
         "--weights-path",
@@ -227,7 +297,26 @@ def main():
     n_hh = sim.calculate("household_id", map_to="household").shape[0]
     print(f"\nBase dataset has {n_hh:,} households")
 
-    if not args.districts_only:
+    # Determine what to build based on flags
+    build_states = not args.districts_only and not args.cities_only
+    build_districts = not args.states_only and not args.cities_only
+    build_cities = not args.states_only and not args.districts_only
+
+    # If a specific *-only flag is set, only build that type
+    if args.states_only:
+        build_states = True
+        build_districts = False
+        build_cities = False
+    elif args.districts_only:
+        build_states = False
+        build_districts = True
+        build_cities = False
+    elif args.cities_only:
+        build_states = False
+        build_districts = False
+        build_cities = True
+
+    if build_states:
         print("\n" + "=" * 60)
         print("BUILDING STATE FILES")
         print("=" * 60)
@@ -241,7 +330,7 @@ def main():
             completed_states,
         )
 
-    if not args.states_only:
+    if build_districts:
         print("\n" + "=" * 60)
         print("BUILDING DISTRICT FILES")
         print("=" * 60)
@@ -253,6 +342,20 @@ def main():
             inputs["database"],
             WORK_DIR,
             completed_districts,
+        )
+
+    if build_cities:
+        print("\n" + "=" * 60)
+        print("BUILDING CITY FILES")
+        print("=" * 60)
+        completed_cities = load_completed_cities()
+        print(f"Already completed: {len(completed_cities)} cities")
+        build_and_upload_cities(
+            inputs["weights"],
+            inputs["dataset"],
+            inputs["database"],
+            WORK_DIR,
+            completed_cities,
         )
 
     print("\n" + "=" * 60)

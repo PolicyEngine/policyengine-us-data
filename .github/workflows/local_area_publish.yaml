@@ -50,6 +50,7 @@ jobs:
         run: |
           gsutil cp gs://policyengine-us-data/checkpoints/completed_states.txt . || true
           gsutil cp gs://policyengine-us-data/checkpoints/completed_districts.txt . || true
+          gsutil cp gs://policyengine-us-data/checkpoints/completed_cities.txt . || true
 
       - name: Build and publish local area H5 files
         run: make publish-local-area
@@ -59,9 +60,11 @@ jobs:
         run: |
           gsutil cp completed_states.txt gs://policyengine-us-data/checkpoints/ || true
           gsutil cp completed_districts.txt gs://policyengine-us-data/checkpoints/ || true
+          gsutil cp completed_cities.txt gs://policyengine-us-data/checkpoints/ || true
 
       - name: Clean up checkpoints on success
         if: success()
         run: |
           gsutil rm gs://policyengine-us-data/checkpoints/completed_states.txt || true
           gsutil rm gs://policyengine-us-data/checkpoints/completed_districts.txt || true
+          gsutil rm gs://policyengine-us-data/checkpoints/completed_cities.txt || true

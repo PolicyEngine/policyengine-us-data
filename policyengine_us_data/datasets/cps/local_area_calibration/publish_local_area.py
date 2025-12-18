@@ -14,7 +14,10 @@ from pathlib import Path
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
-from policyengine_us_data.utils.data_upload import upload_local_area_file
+from policyengine_us_data.utils.data_upload import (
+    upload_local_area_file,
+    upload_local_area_batch_to_hf,
+)
 from policyengine_us_data.datasets.cps.local_area_calibration.stacked_dataset_builder import (
     create_sparse_cd_stacked_dataset,
     NYC_COUNTIES,
@@ -76,6 +79,7 @@ def build_and_upload_states(
     db_path: Path,
     output_dir: Path,
     completed_states: set,
+    hf_batch_size: int = 10,
 ):
     """Build and upload state H5 files with checkpointing."""
     db_uri = f"sqlite:///{db_path}"
@@ -84,6 +88,8 @@ def build_and_upload_states(
 
     states_dir = output_dir / "states"
     states_dir.mkdir(parents=True, exist_ok=True)
+
+    hf_queue = []  # Queue for batched HuggingFace uploads
 
     for state_fips, state_code in STATE_CODES.items():
         if state_code in completed_states:
@@ -111,15 +117,33 @@ def build_and_upload_states(
                 output_path=str(output_path),
             )
 
-            print(f"Uploading {state_code}.h5...")
-            upload_local_area_file(str(output_path), "states")
+            print(f"Uploading {state_code}.h5 to GCP...")
+            upload_local_area_file(str(output_path), "states", skip_hf=True)
+
+            # Queue for batched HuggingFace upload
+            hf_queue.append((str(output_path), "states"))
 
             record_completed_state(state_code)
             print(f"Completed {state_code}")
 
+            # Flush HF queue every batch_size files
+            if len(hf_queue) >= hf_batch_size:
+                print(
+                    f"\nUploading batch of {len(hf_queue)} files to HuggingFace..."
+                )
+                upload_local_area_batch_to_hf(hf_queue)
+                hf_queue = []
+
         except Exception as e:
             print(f"ERROR building {state_code}: {e}")
             raise
+
+    # Flush remaining files to HuggingFace
+    if hf_queue:
+        print(
+            f"\nUploading final batch of {len(hf_queue)} files to HuggingFace..."
+        )
+        upload_local_area_batch_to_hf(hf_queue)
 
 
 def build_and_upload_districts(
@@ -128,6 +152,7 @@ def build_and_upload_districts(
     db_path: Path,
     output_dir: Path,
     completed_districts: set,
+    hf_batch_size: int = 10,
 ):
     """Build and upload district H5 files with checkpointing."""
     db_uri = f"sqlite:///{db_path}"
@@ -136,6 +161,8 @@ def build_and_upload_districts(
 
     districts_dir = output_dir / "districts"
     districts_dir.mkdir(parents=True, exist_ok=True)
+
+    hf_queue = []  # Queue for batched HuggingFace uploads
 
     for i, cd_geoid in enumerate(cds_to_calibrate):
         cd_int = int(cd_geoid)
@@ -162,15 +189,33 @@ def build_and_upload_districts(
                 output_path=str(output_path),
             )
 
-            print(f"Uploading {friendly_name}.h5...")
-            upload_local_area_file(str(output_path), "districts")
+            print(f"Uploading {friendly_name}.h5 to GCP...")
+            upload_local_area_file(str(output_path), "districts", skip_hf=True)
+
+            # Queue for batched HuggingFace upload
+            hf_queue.append((str(output_path), "districts"))
 
             record_completed_district(friendly_name)
             print(f"Completed {friendly_name}")
 
+            # Flush HF queue every batch_size files
+            if len(hf_queue) >= hf_batch_size:
+                print(
+                    f"\nUploading batch of {len(hf_queue)} files to HuggingFace..."
+                )
+                upload_local_area_batch_to_hf(hf_queue)
+                hf_queue = []
+
         except Exception as e:
             print(f"ERROR building {friendly_name}: {e}")
             raise
+
+    # Flush remaining files to HuggingFace
+    if hf_queue:
+        print(
+            f"\nUploading final batch of {len(hf_queue)} files to HuggingFace..."
+        )
+        upload_local_area_batch_to_hf(hf_queue)
 
 
 def build_and_upload_cities(
@@ -179,6 +224,7 @@ def build_and_upload_cities(
     db_path: Path,
     output_dir: Path,
     completed_cities: set,
+    hf_batch_size: int = 10,
 ):
     """Build and upload city H5 files with checkpointing."""
     db_uri = f"sqlite:///{db_path}"
@@ -187,6 +233,8 @@ def build_and_upload_cities(
 
     cities_dir = output_dir / "cities"
     cities_dir.mkdir(parents=True, exist_ok=True)
+
+    hf_queue = []  # Queue for batched HuggingFace uploads
 
     # NYC
     if "NYC" in completed_cities:
@@ -211,8 +259,13 @@ def build_and_upload_cities(
                     county_filter=NYC_COUNTIES,
                 )
 
-                print("Uploading NYC.h5...")
-                upload_local_area_file(str(output_path), "cities")
+                print("Uploading NYC.h5 to GCP...")
+                upload_local_area_file(
+                    str(output_path), "cities", skip_hf=True
+                )
+
+                # Queue for batched HuggingFace upload
+                hf_queue.append((str(output_path), "cities"))
 
                 record_completed_city("NYC")
                 print("Completed NYC")
@@ -220,6 +273,13 @@ def build_and_upload_cities(
             except Exception as e:
                 print(f"ERROR building NYC: {e}")
                 raise
+
+    # Flush remaining files to HuggingFace
+    if hf_queue:
+        print(
+            f"\nUploading batch of {len(hf_queue)} city files to HuggingFace..."
+        )
+        upload_local_area_batch_to_hf(hf_queue)
 
 
 def main():

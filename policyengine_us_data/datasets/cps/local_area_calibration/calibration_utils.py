@@ -453,16 +453,34 @@ def load_cd_geoadj_values(
     # Convert zero-padded cd_id to match code format (e.g., "0101" -> "101")
     rent_df["cd_geoid"] = rent_df["cd_id"].apply(lambda x: str(int(x)))
 
-    # Filter to only CDs we're calibrating
-    rent_df = rent_df[rent_df["cd_geoid"].isin(cds_to_calibrate)]
-
-    geoadj_dict = {}
+    # Build lookup from rent data
+    rent_lookup = {}
     for _, row in rent_df.iterrows():
         geoadj = calculate_geoadj_from_rent(
             local_rent=row["median_2br_rent"],
             national_rent=row["national_median_2br_rent"],
         )
-        geoadj_dict[row["cd_geoid"]] = geoadj
+        rent_lookup[row["cd_geoid"]] = geoadj
+
+    # Map each CD to calibrate to its geoadj value
+    # Handle at-large districts: database uses XX01, rent CSV uses XX00
+    geoadj_dict = {}
+    for cd in cds_to_calibrate:
+        if cd in rent_lookup:
+            geoadj_dict[cd] = rent_lookup[cd]
+        else:
+            # Try at-large mapping: XX01 -> XX00
+            cd_int = int(cd)
+            state_fips = cd_int // 100
+            district = cd_int % 100
+            if district == 1:
+                at_large_cd = str(state_fips * 100)  # XX00
+                if at_large_cd in rent_lookup:
+                    geoadj_dict[cd] = rent_lookup[at_large_cd]
+                    continue
+            # Fallback to national average (geoadj = 1.0)
+            print(f"Warning: No rent data for CD {cd}, using geoadj=1.0")
+            geoadj_dict[cd] = 1.0
 
     return geoadj_dict
 
@@ -479,31 +497,42 @@ def calculate_spm_thresholds_for_cd(
     spm_unit_ids_person = sim.calculate("spm_unit_id", map_to="person").values
     ages = sim.calculate("age", map_to="person").values
 
-    df = pd.DataFrame({
-        "spm_unit_id": spm_unit_ids_person,
-        "is_adult": ages >= 18,
-        "is_child": ages < 18,
-    })
+    df = pd.DataFrame(
+        {
+            "spm_unit_id": spm_unit_ids_person,
+            "is_adult": ages >= 18,
+            "is_child": ages < 18,
+        }
+    )
 
-    agg = df.groupby("spm_unit_id").agg(
-        num_adults=("is_adult", "sum"),
-        num_children=("is_child", "sum"),
-    ).reset_index()
+    agg = (
+        df.groupby("spm_unit_id")
+        .agg(
+            num_adults=("is_adult", "sum"),
+            num_children=("is_child", "sum"),
+        )
+        .reset_index()
+    )
 
     tenure_types = sim.calculate(
         "spm_unit_tenure_type", map_to="spm_unit"
     ).values
     spm_unit_ids_unit = sim.calculate("spm_unit_id", map_to="spm_unit").values
 
-    tenure_df = pd.DataFrame({
-        "spm_unit_id": spm_unit_ids_unit,
-        "tenure_type": tenure_types,
-    })
+    tenure_df = pd.DataFrame(
+        {
+            "spm_unit_id": spm_unit_ids_unit,
+            "tenure_type": tenure_types,
+        }
+    )
 
     merged = agg.merge(tenure_df, on="spm_unit_id", how="left")
-    merged["tenure_code"] = merged["tenure_type"].map(
-        SPM_TENURE_STRING_TO_CODE
-    ).fillna(3).astype(int)
+    merged["tenure_code"] = (
+        merged["tenure_type"]
+        .map(SPM_TENURE_STRING_TO_CODE)
+        .fillna(3)
+        .astype(int)
+    )
 
     calc = SPMCalculator(year=year)
     base_thresholds = calc.get_base_thresholds()

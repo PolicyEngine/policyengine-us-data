@@ -14,6 +14,9 @@ import h5py
 from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 from policyengine_core.enums import Enum
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+    get_pseudo_input_variables,
+)
 
 
 def create_stratified_cps_dataset(
@@ -202,9 +205,17 @@ def create_stratified_cps_dataset(
 
     # Only save input variables (not calculated/derived variables)
     input_vars = set(sim.input_variables)
-    print(
-        f"Found {len(input_vars)} input variables (excluding calculated variables)"
-    )
+
+    # Filter out pseudo-inputs: variables with adds/subtracts that aggregate
+    # formula-based components. These have stale values that corrupt calculations.
+    pseudo_inputs = get_pseudo_input_variables(sim)
+    if pseudo_inputs:
+        print(f"Excluding {len(pseudo_inputs)} pseudo-input variables:")
+        for var in sorted(pseudo_inputs):
+            print(f"  - {var}")
+        input_vars = input_vars - pseudo_inputs
+
+    print(f"Found {len(input_vars)} input variables to save")
 
     for variable in stratified_sim.tax_benefit_system.variables:
         if variable not in input_vars:

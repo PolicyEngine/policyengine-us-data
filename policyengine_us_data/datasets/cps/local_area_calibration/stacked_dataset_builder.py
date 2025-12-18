@@ -14,6 +14,7 @@ from policyengine_core.enums import Enum
 from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     get_all_cds_from_database,
     get_calculated_variables,
+    get_pseudo_input_variables,
     STATE_CODES,
     STATE_FIPS_TO_NAME,
     STATE_FIPS_TO_CODE,
@@ -624,11 +625,17 @@ def create_sparse_cd_stacked_dataset(
     # Only save input variables (not calculated/derived variables)
     # Calculated variables like state_name, state_code will be recalculated on load
     input_vars = set(base_sim.input_variables)
-    print(
-        f"Found {len(input_vars)} input variables (excluding calculated variables)"
-    )
 
-    vars_to_save = input_vars.copy()
+    # Filter out pseudo-inputs: variables with adds/subtracts that aggregate
+    # formula-based components. These have stale values that corrupt calculations.
+    pseudo_inputs = get_pseudo_input_variables(base_sim)
+    if pseudo_inputs:
+        print(f"Excluding {len(pseudo_inputs)} pseudo-input variables:")
+        for var in sorted(pseudo_inputs):
+            print(f"  - {var}")
+
+    vars_to_save = input_vars - pseudo_inputs
+    print(f"Found {len(vars_to_save)} input variables to save")
 
     # congressional_district_geoid isn't in the original microdata and has no formula,
     # so it's not in input_vars. Since we set it explicitly during stacking, save it.

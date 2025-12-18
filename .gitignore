@@ -27,5 +27,8 @@ node_modules
 !policyengine_us_data/storage/national_and_district_rents_2023.csv
 docs/.ipynb_checkpoints/
 
+## Batch processing checkpoints
+completed_*.txt
+
 ## Test fixtures
 !policyengine_us_data/tests/test_local_area_calibration/test_fixture_50hh.h5

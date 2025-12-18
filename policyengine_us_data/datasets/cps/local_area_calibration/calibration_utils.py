@@ -229,6 +229,45 @@ def get_calculated_variables(sim) -> List[str]:
     ]
 
 
+def get_pseudo_input_variables(sim) -> set:
+    """
+    Identify pseudo-input variables that should NOT be saved to H5 files.
+
+    A pseudo-input is a variable that:
+    - Appears in sim.input_variables (has stored values)
+    - Has 'adds' or 'subtracts' attribute
+    - At least one component has a formula (is calculated)
+
+    These variables have stale pre-computed values that corrupt calculations
+    when reloaded, because the stored value overrides the formula.
+    """
+    tbs = sim.tax_benefit_system
+    pseudo_inputs = set()
+
+    for var_name in sim.input_variables:
+        var = tbs.variables.get(var_name)
+        if not var:
+            continue
+
+        adds = getattr(var, "adds", None)
+        if adds and isinstance(adds, list):
+            for component in adds:
+                comp_var = tbs.variables.get(component)
+                if comp_var and len(getattr(comp_var, "formulas", {})) > 0:
+                    pseudo_inputs.add(var_name)
+                    break
+
+        subtracts = getattr(var, "subtracts", None)
+        if subtracts and isinstance(subtracts, list):
+            for component in subtracts:
+                comp_var = tbs.variables.get(component)
+                if comp_var and len(getattr(comp_var, "formulas", {})) > 0:
+                    pseudo_inputs.add(var_name)
+                    break
+
+    return pseudo_inputs
+
+
 def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
     """Apply constraint operation to values array."""
     try:

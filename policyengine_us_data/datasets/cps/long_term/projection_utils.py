@@ -41,6 +41,32 @@ def build_household_age_matrix(sim, n_ages=86):
     return X, household_ids_unique, hh_id_to_idx
 
 
+def get_pseudo_input_variables(sim):
+    """
+    Identify variables that appear as inputs but aggregate calculated values.
+
+    These variables have 'adds' attribute but no formula, yet their components
+    ARE calculated. Storing them leads to stale values corrupting calculations.
+    """
+    tbs = sim.tax_benefit_system
+    pseudo_inputs = set()
+
+    for var_name in sim.input_variables:
+        var = tbs.variables.get(var_name)
+        if not var:
+            continue
+        adds = getattr(var, "adds", None)
+        if not adds or not isinstance(adds, list):
+            continue
+        for component in adds:
+            comp_var = tbs.variables.get(component)
+            if comp_var and len(getattr(comp_var, "formulas", {})) > 0:
+                pseudo_inputs.add(var_name)
+                break
+
+    return pseudo_inputs
+
+
 def create_household_year_h5(
     year, household_weights, base_dataset_path, output_dir
 ):
@@ -65,6 +91,16 @@ def create_household_year_h5(
     base_period = int(sim.default_calculation_period)
 
     df = sim.to_input_dataframe()
+
+    # Remove pseudo-input variables (aggregates of calculated values)
+    pseudo_inputs = get_pseudo_input_variables(sim)
+    cols_to_drop = [
+        f"{var}__{base_period}"
+        for var in pseudo_inputs
+        if f"{var}__{base_period}" in df.columns
+    ]
+    if cols_to_drop:
+        df.drop(columns=cols_to_drop, inplace=True)
 
     household_ids = sim.calculate("household_id", map_to="household").values
     person_household_id = df[f"person_household_id__{base_period}"]

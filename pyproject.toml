@@ -42,6 +42,7 @@ dependencies = [
     "sqlalchemy>=2.0.41",
     "sqlmodel>=0.0.24",
     "xlrd>=2.0.2",
+    "spm-calculator>=0.1.0",
 ]
 
 [project.optional-dependencies]

@@ -78,7 +78,7 @@ class CPS(Dataset):
             undocumented_students_target=0.21 * 1.9e6,
         )
         logging.info("Adding family variables")
-        add_spm_variables(cps, spm_unit)
+        add_spm_variables(self, cps, spm_unit)
         logging.info("Adding household variables")
         add_household_variables(cps, household)
         logging.info("Adding rent")
@@ -602,7 +602,11 @@ def add_personal_income_variables(
         cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
 
 
-def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
+def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
+    from policyengine_us_data.utils.spm import (
+        calculate_spm_thresholds_with_geoadj,
+    )
+
     SPM_RENAMES = dict(
         spm_unit_total_income_reported="SPM_TOTVAL",
         snap_reported="SPM_SNAPSUB",
@@ -616,7 +620,6 @@ def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
         # State tax includes refundable credits.
         spm_unit_state_tax_reported="SPM_STTAX",
         spm_unit_capped_work_childcare_expenses="SPM_CAPWKCCXPNS",
-        spm_unit_spm_threshold="SPM_POVTHRESHOLD",
         spm_unit_net_income_reported="SPM_RESOURCES",
         spm_unit_pre_subsidy_childcare_expenses="SPM_CHILDCAREXPNS",
     )
@@ -624,6 +627,16 @@ def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
     for openfisca_variable, asec_variable in SPM_RENAMES.items():
         if asec_variable in spm_unit.columns:
             cps[openfisca_variable] = spm_unit[asec_variable]
+
+    # Calculate SPM thresholds using spm-calculator with Census-provided
+    # geographic adjustment factors (SPM_GEOADJ)
+    cps["spm_unit_spm_threshold"] = calculate_spm_thresholds_with_geoadj(
+        num_adults=spm_unit["SPM_NUMADULTS"].values,
+        num_children=spm_unit["SPM_NUMKIDS"].values,
+        tenure_codes=spm_unit["SPM_TENMORTSTATUS"].values,
+        geoadj=spm_unit["SPM_GEOADJ"].values,
+        year=self.time_period,
+    )
 
     cps["reduced_price_school_meals_reported"] = (
         cps["free_school_meals_reported"] * 0

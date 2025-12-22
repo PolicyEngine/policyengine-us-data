@@ -275,8 +275,13 @@ START_YEAR = int(sys.argv[1]) if len(sys.argv) > 1 else 2025
 END_YEAR = int(sys.argv[2]) if len(sys.argv) > 2 else 2035
 
 if USE_GREG:
-    from samplics.weighting import SampleWeight
-
+    try:
+        from samplics.weighting import SampleWeight
+    except ImportError:
+        raise ImportError(
+            "samplics is required for GREG calibration. "
+            "Install with: pip install policyengine-us-data[calibration]"
+        )
     calibrator = SampleWeight()
 else:
     calibrator = None
@@ -530,6 +535,21 @@ for year_idx in range(n_years):
         tol=1e-6,
         verbose=False,
     )
+
+    if year in display_years and USE_GREG:
+        neg_mask = w_new < 0
+        n_neg = neg_mask.sum()
+        if n_neg > 0:
+            pct_neg = 100 * n_neg / len(w_new)
+            max_neg = np.abs(w_new[neg_mask]).max()
+            print(
+                f"  [DEBUG {year}] Negative weights: {n_neg} ({pct_neg:.2f}%), "
+                f"largest: {max_neg:,.0f}"
+            )
+        else:
+            print(
+                f"  [DEBUG {year}] Negative weights: 0 (all weights non-negative)"
+            )
 
     if year in display_years and (
         USE_SS or USE_PAYROLL or USE_H6_REFORM or USE_TOB

@@ -6,10 +6,10 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
-# TODO: Add spm-calculator to PyPI dependencies when available
 from spm_calculator import SPMCalculator, spm_equivalence_scale
 from spm_calculator.geoadj import calculate_geoadj_from_rent
 
+from policyengine_us_data.utils.spm import TENURE_CODE_MAP
 from policyengine_us.variables.household.demographic.geographic.state_name import (
     StateName,
 )
@@ -186,12 +186,6 @@ SPM_TENURE_STRING_TO_CODE = {
     "OWNER_WITH_MORTGAGE": 1,
     "OWNER_WITHOUT_MORTGAGE": 2,
     "RENTER": 3,
-}
-
-SPM_TENURE_CODE_TO_CALC = {
-    1: "owner_with_mortgage",
-    2: "owner_without_mortgage",
-    3: "renter",
 }
 
 
@@ -580,7 +574,7 @@ def calculate_spm_thresholds_for_cd(
     thresholds = np.zeros(n, dtype=np.float32)
 
     for i in range(n):
-        tenure_str = SPM_TENURE_CODE_TO_CALC.get(
+        tenure_str = TENURE_CODE_MAP.get(
             int(merged.iloc[i]["tenure_code"]), "renter"
         )
         base = base_thresholds[tenure_str]

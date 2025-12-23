@@ -6,8 +6,8 @@
 Run projections using `run_household_projection.py`:
 
 ```bash
-# Recommended: GREG with all three constraint types
-python run_household_projection.py 2100 --greg --use-ss --use-payroll --save-h5
+# Recommended: GREG with all constraint types
+python run_household_projection.py 2100 --greg --use-ss --use-payroll --use-tob --save-h5
 
 # IPF with only age distribution constraints (faster, less accurate)
 python run_household_projection.py 2050
@@ -21,6 +21,7 @@ python run_household_projection.py 2100 --greg --use-ss
 - `--greg`: Use GREG calibration instead of IPF
 - `--use-ss`: Include Social Security benefit totals as calibration target (requires `--greg`)
 - `--use-payroll`: Include taxable payroll totals as calibration target (requires `--greg`)
+- `--use-tob`: Include TOB (Taxation of Benefits) revenue as calibration target (requires `--greg`)
 - `--save-h5`: Save year-specific .h5 files to `./projected_datasets/` directory
 
 **Estimated runtime:** ~2 minutes/year without `--save-h5`, ~3 minutes/year with `--save-h5`
@@ -36,7 +37,7 @@ python run_household_projection.py 2100 --greg --use-ss
 
 **GREG (Generalized Regression Estimator)**
 - Solves for weights matching multiple constraints simultaneously
-- Can enforce age distribution + Social Security benefits + taxable payroll
+- Can enforce age distribution + Social Security benefits + taxable payroll + TOB revenue
 - One-shot solution using `samplics` package
 - **Recommended** for accurate long-term projections
 
@@ -57,17 +58,29 @@ python run_household_projection.py 2100 --greg --use-ss
    - Calculated as: `taxable_earnings_for_social_security` + `social_security_taxable_self_employment_income`
    - Source: SSA Trustee Report 2024 (`social_security_aux.csv`)
 
+4. **TOB Revenue** (`--use-tob`, GREG only)
+   - Taxation of Benefits revenue for OASDI and Medicare HI trust funds
+   - OASDI: `tob_revenue_oasdi` (tier 1 taxation, 0-50% of benefits)
+   - HI: `tob_revenue_medicare_hi` (tier 2 taxation, 50-85% of benefits)
+   - Source: SSA Trustee Report 2024 (`social_security_aux.csv`)
+
 ---
 
 ### Data Sources
 
-All data from **SSA 2024 Trustee Report**:
+**SSA 2025 OASDI Trustees Report**
+- URL: https://www.ssa.gov/OACT/TR/2025/
+- File: `SingleYearTRTables_TR2025.xlsx`
+- Tables: IV.B2 (OASDI TOB % of taxable payroll), VI.G6 (taxable payroll in billions), VI.G9 (OASDI costs)
 
+**CMS 2025 Medicare Trustees Report**
+- URL: https://www.cms.gov/data-research/statistics-trends-and-reports/trustees-report-trust-funds
+- File: `tr2025-tables-figures.zip` → CSV folder → "Medicare Sources of Non-Interest Income..."
+- Column: Tax on Benefits (values in millions, 2024-2099)
+
+**Local files** (in `policyengine_us_data/storage/`):
 - `SSPopJul_TR2024.csv` - Population projections 2025-2100 by single year of age
-- `social_security_aux.csv` - OASDI costs and taxable payroll projections 2025-2100
-  - Extracted from `SingleYearTRTables_TR2025.xlsx` Table VI.G9 using `extract_ssa_costs.py`
-
-Files located in: `policyengine_us_data/storage/`
+- `social_security_aux.csv` - OASDI costs, taxable payroll, and TOB revenue projections 2025-2100
 
 ---
 

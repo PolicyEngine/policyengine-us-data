@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.50.0] - 2025-12-23 15:15:35
+
+### Added
+
+- Added --use-tob flag for TOB (Taxation of Benefits) revenue calibration targeting OASDI and HI trust fund revenue
+
+## [1.49.0] - 2025-12-19 17:56:53
+
+### Added
+
+- SPM threshold calculation using policyengine/spm-calculator package
+- New utility module (policyengine_us_data/utils/spm.py) for SPM calculations
+
+### Changed
+
+- CPS datasets now calculate SPM thresholds using spm-calculator with Census-provided geographic adjustments
+- ACS datasets now calculate SPM thresholds using spm-calculator with national-level thresholds
+
 ## [1.48.0] - 2025-12-08 19:52:21
 
 ### Added
@@ -767,6 +785,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.50.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.49.0...1.50.0
+[1.49.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.48.0...1.49.0
 [1.48.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.47.1...1.48.0
 [1.47.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.47.0...1.47.1
 [1.47.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.46.1...1.47.0

@@ -89,3 +89,39 @@ def load_h6_income_rate_change(year):
     row = df[df["year"] == year]
     # CSV stores as percentage (e.g., -0.18), convert to decimal
     return row["h6_income_rate_change"].values[0] / 100
+
+
+def load_oasdi_tob_projections(year):
+    """
+    Load OASDI TOB (Taxation of Benefits) revenue target for a given year.
+
+    Args:
+        year: Year to load OASDI TOB revenue for
+
+    Returns:
+        Total OASDI TOB revenue in nominal dollars
+    """
+    csv_path = STORAGE_FOLDER / "social_security_aux.csv"
+    df = pd.read_csv(csv_path)
+
+    row = df[df["year"] == year]
+    nominal_billions = row["oasdi_tob_billions_nominal_usd"].values[0]
+    return nominal_billions * 1e9
+
+
+def load_hi_tob_projections(year):
+    """
+    Load HI (Medicare) TOB revenue target for a given year.
+
+    Args:
+        year: Year to load HI TOB revenue for
+
+    Returns:
+        Total HI TOB revenue in nominal dollars
+    """
+    csv_path = STORAGE_FOLDER / "social_security_aux.csv"
+    df = pd.read_csv(csv_path)
+
+    row = df[df["year"] == year]
+    nominal_billions = row["hi_tob_billions_nominal_usd"].values[0]
+    return nominal_billions * 1e9

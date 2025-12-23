@@ -33,13 +33,15 @@ for state_fips in range(1, 57):
         if resp.status_code == 200:
             data = resp.json()
             for row in data[1:]:
-                all_rows.append({
-                    "state_fips": row[2],
-                    "district": row[3],
-                    "cd_id": row[2] + row[3],
-                    "name": row[1],
-                    "median_2br_rent": float(row[0]) if row[0] else None,
-                })
+                all_rows.append(
+                    {
+                        "state_fips": row[2],
+                        "district": row[3],
+                        "cd_id": row[2] + row[3],
+                        "name": row[1],
+                        "median_2br_rent": float(row[0]) if row[0] else None,
+                    }
+                )
     except Exception as e:
         pass
 

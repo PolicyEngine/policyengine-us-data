@@ -46,6 +46,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+calibration = [
+    "samplics",
+]
 dev = [
     "black",
     "pytest",

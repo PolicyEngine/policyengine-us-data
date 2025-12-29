@@ -43,7 +43,7 @@ jobs:
           service_account: "policyengine-research@policyengine-research.iam.gserviceaccount.com"
 
       - name: Install package
-        run: uv pip install -e .[dev] --system
+        run: uv sync --dev
 
       - name: Download checkpoint (if exists)
         continue-on-error: true

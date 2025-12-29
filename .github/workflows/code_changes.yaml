@@ -39,7 +39,7 @@ jobs:
       - name: Install package
         run: uv sync --dev
       - name: Build package
-        run: python -m build
+        run: uv run python -m build
       - name: Publish a Python distribution to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:

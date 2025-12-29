@@ -53,7 +53,7 @@ jobs:
           gsutil cp gs://policyengine-us-data/checkpoints/completed_cities.txt . || true
 
       - name: Build and publish local area H5 files
-        run: make publish-local-area
+        run: uv run make publish-local-area
 
       - name: Upload checkpoint
         if: always()

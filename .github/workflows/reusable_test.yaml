@@ -61,7 +61,7 @@ jobs:
 
       - name: Download data inputs
         if: inputs.full_suite
-        run: make download
+        run: uv run make download
 
       # Temporarily disabled - database target causing issues
       # - name: Create and load calibration targets database 
@@ -70,7 +70,7 @@ jobs:
 
       - name: Build datasets
         if: inputs.full_suite
-        run: make data
+        run: uv run make data
         env:
           TEST_LITE: ${{ !inputs.upload_data }}
           PYTHON_LOG_LEVEL: INFO
@@ -78,14 +78,14 @@ jobs:
       - name: Build datasets for local area calibration
         if: inputs.full_suite
         run: |
-          LOCAL_AREA_CALIBRATION=true python policyengine_us_data/datasets/cps/cps.py
-          LOCAL_AREA_CALIBRATION=true python policyengine_us_data/datasets/puf/puf.py
-          LOCAL_AREA_CALIBRATION=true python policyengine_us_data/datasets/cps/extended_cps.py
-          python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py 10500
+          LOCAL_AREA_CALIBRATION=true uv run python policyengine_us_data/datasets/cps/cps.py
+          LOCAL_AREA_CALIBRATION=true uv run python policyengine_us_data/datasets/puf/puf.py
+          LOCAL_AREA_CALIBRATION=true uv run python policyengine_us_data/datasets/cps/extended_cps.py
+          uv run python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py 10500
 
       - name: Run local area calibration tests
         if: inputs.full_suite
-        run: pytest policyengine_us_data/tests/test_local_area_calibration/ -v
+        run: uv run pytest policyengine_us_data/tests/test_local_area_calibration/ -v
 
       - name: Save calibration log
         if: inputs.full_suite
@@ -95,14 +95,14 @@ jobs:
           path: calibration_log.csv
 
       - name: Run tests
-        run: pytest
+        run: uv run pytest
 
       - name: Upload data
         if: inputs.upload_data
-        run: make upload
+        run: uv run make upload
 
       - name: Test documentation builds
-        run: make documentation
+        run: uv run make documentation
         env:
           BASE_URL: ${{ inputs.deploy_docs && '/policyengine-us-data' || '' }}
 

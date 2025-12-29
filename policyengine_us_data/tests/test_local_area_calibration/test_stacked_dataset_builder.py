@@ -11,7 +11,7 @@ from policyengine_us_data.datasets.cps.local_area_calibration.stacked_dataset_bu
     create_sparse_cd_stacked_dataset,
 )
 
-FIXTURE_PATH = "policyengine_us_data/tests/test_local_area_calibration/test_fixture_50hh.h5"
+FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "test_fixture_50hh.h5")
 TEST_CDS = ["3701", "201"]  # NC-01 and AK at-large
 SEED = 42
 

@@ -548,7 +548,9 @@ def create_sparse_cd_stacked_dataset(
     print(f"  Final households: {total_households:,}")
     print(f"  Final tax units: {combined_df[person_tax_unit_col].nunique():,}")
     print(f"  Final SPM units: {combined_df[person_spm_unit_col].nunique():,}")
-    print(f"  Final marital units: {combined_df[person_marital_unit_col].nunique():,}")
+    print(
+        f"  Final marital units: {combined_df[person_marital_unit_col].nunique():,}"
+    )
     print(f"  Final families: {combined_df[person_family_col].nunique():,}")
 
     # Check weights in combined_df AFTER reindexing

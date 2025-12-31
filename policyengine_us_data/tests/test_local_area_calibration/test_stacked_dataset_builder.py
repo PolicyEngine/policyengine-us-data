@@ -247,7 +247,9 @@ class TestEntityReindexing:
         n_cds = len(TEST_CDS)
 
         family_ids = sim.calculate("family_id", map_to="family").values
-        household_ids = sim.calculate("household_id", map_to="household").values
+        household_ids = sim.calculate(
+            "household_id", map_to="household"
+        ).values
 
         # Should have n_overlap * n_cds unique families (one per HH-CD pair)
         expected_families = n_overlap * n_cds

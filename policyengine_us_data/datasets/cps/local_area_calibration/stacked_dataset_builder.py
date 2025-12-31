@@ -191,7 +191,13 @@ def create_sparse_cd_stacked_dataset(
             household_ids[hh_idx] for hh_idx in active_household_indices
         )
 
-        # Fresh simulation
+        # Fresh simulation per CD is necessary because:
+        # 1. Each CD needs different state_fips, county, and CD values set
+        # 2. Calculated variables (SNAP, Medicaid, etc.) must be invalidated
+        #    and recalculated with the new geographic inputs
+        # 3. Reusing a simulation would retain stale cached calculations
+        # Memory impact: ~50MB per simulation, but allows correct state-specific
+        # benefit calculations. Total memory scales with CD count in cd_subset.
         cd_sim = Microsimulation(dataset=dataset_path)
 
         # First, create hh_df with CALIBRATED weights from the W matrix
@@ -405,6 +411,8 @@ def create_sparse_cd_stacked_dataset(
     person_spm_unit_col = f"person_spm_unit_id__{time_period}"
     marital_unit_id_col = f"marital_unit_id__{time_period}"
     person_marital_unit_col = f"person_marital_unit_id__{time_period}"
+    family_id_col = f"family_id__{time_period}"
+    person_family_col = f"person_family_id__{time_period}"
     cd_geoid_col = f"congressional_district_geoid__{time_period}"
 
     # Build CD index mapping from cds_to_calibrate (avoids database dependency)
@@ -512,70 +520,25 @@ def create_sparse_cd_stacked_dataset(
         # Assign all at once using loc
         combined_df.loc[cd_mask, person_id_col] = new_person_ids
 
-    # Tax units - preserve structure within households
-    print("  Reindexing tax units...")
-    # Group by household first, then handle tax units within each household
-    new_tax_id = 0
-    for hh_id in combined_df[hh_id_col].unique():
-        hh_mask = combined_df[hh_id_col] == hh_id
-        hh_df = combined_df[hh_mask]
+    # Reindex sub-household entities using vectorized groupby().ngroup()
+    # This assigns unique IDs to each (household_id, original_entity_id) pair,
+    # which correctly handles the same original household appearing in multiple CDs
+    entity_configs = [
+        ("tax units", person_tax_unit_col, tax_unit_id_col),
+        ("SPM units", person_spm_unit_col, spm_unit_id_col),
+        ("marital units", person_marital_unit_col, marital_unit_id_col),
+        ("families", person_family_col, family_id_col),
+    ]
 
-        # Get unique tax units within this household
-        unique_tax_in_hh = hh_df[person_tax_unit_col].unique()
-
-        # Create mapping for this household's tax units
-        for old_tax in unique_tax_in_hh:
-            # Update all persons with this tax unit ID in this household
-            mask = (combined_df[hh_id_col] == hh_id) & (
-                combined_df[person_tax_unit_col] == old_tax
-            )
-            combined_df.loc[mask, person_tax_unit_col] = new_tax_id
-            # Also update tax_unit_id if it exists in the DataFrame
-            if tax_unit_id_col in combined_df.columns:
-                combined_df.loc[mask, tax_unit_id_col] = new_tax_id
-            new_tax_id += 1
-
-    # SPM units - preserve structure within households
-    print("  Reindexing SPM units...")
-    new_spm_id = 0
-    for hh_id in combined_df[hh_id_col].unique():
-        hh_mask = combined_df[hh_id_col] == hh_id
-        hh_df = combined_df[hh_mask]
-
-        # Get unique SPM units within this household
-        unique_spm_in_hh = hh_df[person_spm_unit_col].unique()
-
-        for old_spm in unique_spm_in_hh:
-            # Update all persons with this SPM unit ID in this household
-            mask = (combined_df[hh_id_col] == hh_id) & (
-                combined_df[person_spm_unit_col] == old_spm
-            )
-            combined_df.loc[mask, person_spm_unit_col] = new_spm_id
-            # Also update spm_unit_id if it exists
-            if spm_unit_id_col in combined_df.columns:
-                combined_df.loc[mask, spm_unit_id_col] = new_spm_id
-            new_spm_id += 1
-
-    # Marital units - preserve structure within households
-    print("  Reindexing marital units...")
-    new_marital_id = 0
-    for hh_id in combined_df[hh_id_col].unique():
-        hh_mask = combined_df[hh_id_col] == hh_id
-        hh_df = combined_df[hh_mask]
-
-        # Get unique marital units within this household
-        unique_marital_in_hh = hh_df[person_marital_unit_col].unique()
-
-        for old_marital in unique_marital_in_hh:
-            # Update all persons with this marital unit ID in this household
-            mask = (combined_df[hh_id_col] == hh_id) & (
-                combined_df[person_marital_unit_col] == old_marital
-            )
-            combined_df.loc[mask, person_marital_unit_col] = new_marital_id
-            # Also update marital_unit_id if it exists
-            if marital_unit_id_col in combined_df.columns:
-                combined_df.loc[mask, marital_unit_id_col] = new_marital_id
-            new_marital_id += 1
+    for entity_name, person_col, entity_col in entity_configs:
+        print(f"  Reindexing {entity_name}...")
+        # Group by (household_id, original_entity_id) and assign unique group numbers
+        new_ids = combined_df.groupby(
+            [hh_id_col, person_col], sort=False
+        ).ngroup()
+        combined_df[person_col] = new_ids
+        if entity_col in combined_df.columns:
+            combined_df[entity_col] = new_ids
 
     # Clean up temporary columns
     temp_cols = [col for col in combined_df.columns if col.startswith("_")]
@@ -583,9 +546,10 @@ def create_sparse_cd_stacked_dataset(
 
     print(f"  Final persons: {len(combined_df):,}")
     print(f"  Final households: {total_households:,}")
-    print(f"  Final tax units: {new_tax_id:,}")
-    print(f"  Final SPM units: {new_spm_id:,}")
-    print(f"  Final marital units: {new_marital_id:,}")
+    print(f"  Final tax units: {combined_df[person_tax_unit_col].nunique():,}")
+    print(f"  Final SPM units: {combined_df[person_spm_unit_col].nunique():,}")
+    print(f"  Final marital units: {combined_df[person_marital_unit_col].nunique():,}")
+    print(f"  Final families: {combined_df[person_family_col].nunique():,}")
 
     # Check weights in combined_df AFTER reindexing
     print(f"\nWeights in combined_df AFTER reindexing:")

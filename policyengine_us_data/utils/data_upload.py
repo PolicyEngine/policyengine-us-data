@@ -116,3 +116,111 @@ def upload_files_to_gcs(
         logging.info(
             f"Set metadata for {file_path.name} in GCS bucket {gcs_bucket_name}."
         )
+
+
+def upload_local_area_file(
+    file_path: str,
+    subdirectory: str,
+    gcs_bucket_name: str = "policyengine-us-data",
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    version: str = None,
+    skip_hf: bool = False,
+):
+    """
+    Upload a single local area H5 file to a subdirectory (states/ or districts/).
+
+    Uploads to both GCS and Hugging Face with the file placed in the specified
+    subdirectory.
+
+    Args:
+        skip_hf: If True, skip HuggingFace upload (for batched uploads later)
+    """
+    if version is None:
+        version = metadata.version("policyengine-us-data")
+
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise ValueError(f"File {file_path} does not exist.")
+
+    # Upload to GCS with subdirectory
+    credentials, project_id = google.auth.default()
+    storage_client = storage.Client(
+        credentials=credentials, project=project_id
+    )
+    bucket = storage_client.bucket(gcs_bucket_name)
+
+    blob_name = f"{subdirectory}/{file_path.name}"
+    blob = bucket.blob(blob_name)
+    blob.upload_from_filename(file_path)
+    blob.metadata = {"version": version}
+    blob.patch()
+    logging.info(f"Uploaded {blob_name} to GCS bucket {gcs_bucket_name}.")
+
+    if skip_hf:
+        return
+
+    # Upload to Hugging Face with subdirectory
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    api = HfApi()
+    api.upload_file(
+        path_or_fileobj=str(file_path),
+        path_in_repo=f"{subdirectory}/{file_path.name}",
+        repo_id=hf_repo_name,
+        repo_type=hf_repo_type,
+        token=token,
+        commit_message=f"Upload {subdirectory}/{file_path.name} for version {version}",
+    )
+    logging.info(
+        f"Uploaded {subdirectory}/{file_path.name} to Hugging Face {hf_repo_name}."
+    )
+
+
+def upload_local_area_batch_to_hf(
+    files_with_subdirs: List[tuple],
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    version: str = None,
+):
+    """
+    Upload multiple local area files to HuggingFace in a single commit.
+
+    Args:
+        files_with_subdirs: List of (file_path, subdirectory) tuples
+        hf_repo_name: HuggingFace repository name
+        hf_repo_type: Repository type
+        version: Version string for commit message
+    """
+    if version is None:
+        version = metadata.version("policyengine-us-data")
+
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    api = HfApi()
+
+    operations = []
+    for file_path, subdirectory in files_with_subdirs:
+        file_path = Path(file_path)
+        if not file_path.exists():
+            logging.warning(f"File {file_path} does not exist, skipping.")
+            continue
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=f"{subdirectory}/{file_path.name}",
+                path_or_fileobj=str(file_path),
+            )
+        )
+
+    if not operations:
+        logging.warning("No files to upload to HuggingFace.")
+        return
+
+    api.create_commit(
+        token=token,
+        repo_id=hf_repo_name,
+        operations=operations,
+        repo_type=hf_repo_type,
+        commit_message=f"Upload {len(operations)} local area files for version {version}",
+    )
+    logging.info(
+        f"Uploaded {len(operations)} files to Hugging Face {hf_repo_name} in single commit."
+    )

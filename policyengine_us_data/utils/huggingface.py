@@ -34,3 +34,48 @@ def upload(local_file_path: str, repo: str, repo_file_path: str):
         repo_type="model",
         token=TOKEN,
     )
+
+
+def download_calibration_inputs(
+    output_dir: str,
+    repo: str = "policyengine/policyengine-us-data",
+    version: str = None,
+) -> dict:
+    """
+    Download calibration inputs from Hugging Face.
+
+    Args:
+        output_dir: Local directory to download files to
+        repo: Hugging Face repository ID
+        version: Optional revision (commit, tag, or branch)
+
+    Returns:
+        dict with keys 'weights', 'dataset', 'database' mapping to local paths
+    """
+    from pathlib import Path
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    files = {
+        "weights": "calibration/w_district_calibration.npy",
+        "dataset": "calibration/stratified_extended_cps.h5",
+        "database": "calibration/policy_data.db",
+    }
+
+    paths = {}
+    for key, hf_path in files.items():
+        hf_hub_download(
+            repo_id=repo,
+            filename=hf_path,
+            local_dir=str(output_path),
+            repo_type="model",
+            revision=version,
+            token=TOKEN,
+        )
+        # hf_hub_download preserves directory structure
+        local_path = output_path / hf_path
+        paths[key] = local_path
+        print(f"Downloaded {hf_path} to {local_path}")
+
+    return paths

@@ -2,9 +2,191 @@
 Shared utilities for calibration scripts.
 """
 
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
+
+from spm_calculator import SPMCalculator, spm_equivalence_scale
+from spm_calculator.geoadj import calculate_geoadj_from_rent
+
+from policyengine_us_data.utils.spm import TENURE_CODE_MAP
+from policyengine_us.variables.household.demographic.geographic.state_name import (
+    StateName,
+)
+from policyengine_us.variables.household.demographic.geographic.state_code import (
+    StateCode,
+)
+
+
+# State/Geographic Mappings
+STATE_CODES = {
+    1: "AL",
+    2: "AK",
+    4: "AZ",
+    5: "AR",
+    6: "CA",
+    8: "CO",
+    9: "CT",
+    10: "DE",
+    11: "DC",
+    12: "FL",
+    13: "GA",
+    15: "HI",
+    16: "ID",
+    17: "IL",
+    18: "IN",
+    19: "IA",
+    20: "KS",
+    21: "KY",
+    22: "LA",
+    23: "ME",
+    24: "MD",
+    25: "MA",
+    26: "MI",
+    27: "MN",
+    28: "MS",
+    29: "MO",
+    30: "MT",
+    31: "NE",
+    32: "NV",
+    33: "NH",
+    34: "NJ",
+    35: "NM",
+    36: "NY",
+    37: "NC",
+    38: "ND",
+    39: "OH",
+    40: "OK",
+    41: "OR",
+    42: "PA",
+    44: "RI",
+    45: "SC",
+    46: "SD",
+    47: "TN",
+    48: "TX",
+    49: "UT",
+    50: "VT",
+    51: "VA",
+    53: "WA",
+    54: "WV",
+    55: "WI",
+    56: "WY",
+}
+
+STATE_FIPS_TO_NAME = {
+    1: StateName.AL,
+    2: StateName.AK,
+    4: StateName.AZ,
+    5: StateName.AR,
+    6: StateName.CA,
+    8: StateName.CO,
+    9: StateName.CT,
+    10: StateName.DE,
+    11: StateName.DC,
+    12: StateName.FL,
+    13: StateName.GA,
+    15: StateName.HI,
+    16: StateName.ID,
+    17: StateName.IL,
+    18: StateName.IN,
+    19: StateName.IA,
+    20: StateName.KS,
+    21: StateName.KY,
+    22: StateName.LA,
+    23: StateName.ME,
+    24: StateName.MD,
+    25: StateName.MA,
+    26: StateName.MI,
+    27: StateName.MN,
+    28: StateName.MS,
+    29: StateName.MO,
+    30: StateName.MT,
+    31: StateName.NE,
+    32: StateName.NV,
+    33: StateName.NH,
+    34: StateName.NJ,
+    35: StateName.NM,
+    36: StateName.NY,
+    37: StateName.NC,
+    38: StateName.ND,
+    39: StateName.OH,
+    40: StateName.OK,
+    41: StateName.OR,
+    42: StateName.PA,
+    44: StateName.RI,
+    45: StateName.SC,
+    46: StateName.SD,
+    47: StateName.TN,
+    48: StateName.TX,
+    49: StateName.UT,
+    50: StateName.VT,
+    51: StateName.VA,
+    53: StateName.WA,
+    54: StateName.WV,
+    55: StateName.WI,
+    56: StateName.WY,
+}
+
+STATE_FIPS_TO_CODE = {
+    1: StateCode.AL,
+    2: StateCode.AK,
+    4: StateCode.AZ,
+    5: StateCode.AR,
+    6: StateCode.CA,
+    8: StateCode.CO,
+    9: StateCode.CT,
+    10: StateCode.DE,
+    11: StateCode.DC,
+    12: StateCode.FL,
+    13: StateCode.GA,
+    15: StateCode.HI,
+    16: StateCode.ID,
+    17: StateCode.IL,
+    18: StateCode.IN,
+    19: StateCode.IA,
+    20: StateCode.KS,
+    21: StateCode.KY,
+    22: StateCode.LA,
+    23: StateCode.ME,
+    24: StateCode.MD,
+    25: StateCode.MA,
+    26: StateCode.MI,
+    27: StateCode.MN,
+    28: StateCode.MS,
+    29: StateCode.MO,
+    30: StateCode.MT,
+    31: StateCode.NE,
+    32: StateCode.NV,
+    33: StateCode.NH,
+    34: StateCode.NJ,
+    35: StateCode.NM,
+    36: StateCode.NY,
+    37: StateCode.NC,
+    38: StateCode.ND,
+    39: StateCode.OH,
+    40: StateCode.OK,
+    41: StateCode.OR,
+    42: StateCode.PA,
+    44: StateCode.RI,
+    45: StateCode.SC,
+    46: StateCode.SD,
+    47: StateCode.TN,
+    48: StateCode.TX,
+    49: StateCode.UT,
+    50: StateCode.VT,
+    51: StateCode.VA,
+    53: StateCode.WA,
+    54: StateCode.WV,
+    55: StateCode.WI,
+    56: StateCode.WY,
+}
+
+# SPM Tenure Type Mappings
+SPM_TENURE_STRING_TO_CODE = {
+    "OWNER_WITH_MORTGAGE": 1,
+    "OWNER_WITHOUT_MORTGAGE": 2,
+    "RENTER": 3,
+}
 
 
 def get_calculated_variables(sim) -> List[str]:
@@ -39,6 +221,45 @@ def get_calculated_variables(sim) -> List[str]:
         )
         and name not in exclude_ids
     ]
+
+
+def get_pseudo_input_variables(sim) -> set:
+    """
+    Identify pseudo-input variables that should NOT be saved to H5 files.
+
+    A pseudo-input is a variable that:
+    - Appears in sim.input_variables (has stored values)
+    - Has 'adds' or 'subtracts' attribute
+    - At least one component has a formula (is calculated)
+
+    These variables have stale pre-computed values that corrupt calculations
+    when reloaded, because the stored value overrides the formula.
+    """
+    tbs = sim.tax_benefit_system
+    pseudo_inputs = set()
+
+    for var_name in sim.input_variables:
+        var = tbs.variables.get(var_name)
+        if not var:
+            continue
+
+        adds = getattr(var, "adds", None)
+        if adds and isinstance(adds, list):
+            for component in adds:
+                comp_var = tbs.variables.get(component)
+                if comp_var and len(getattr(comp_var, "formulas", {})) > 0:
+                    pseudo_inputs.add(var_name)
+                    break
+
+        subtracts = getattr(var, "subtracts", None)
+        if subtracts and isinstance(subtracts, list):
+            for component in subtracts:
+                comp_var = tbs.variables.get(component)
+                if comp_var and len(getattr(comp_var, "formulas", {})) > 0:
+                    pseudo_inputs.add(var_name)
+                    break
+
+    return pseudo_inputs
 
 
 def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
@@ -183,3 +404,184 @@ def create_target_groups(
     print("=" * 40)
 
     return target_groups, group_info
+
+
+def get_all_cds_from_database(db_uri: str) -> List[str]:
+    """
+    Get ordered list of all CD GEOIDs from database.
+
+    Args:
+        db_uri: SQLAlchemy database URI (e.g., "sqlite:///path/to/db")
+
+    Returns:
+        List of CD GEOID strings ordered by value
+    """
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine(db_uri)
+    query = """
+    SELECT DISTINCT sc.value as cd_geoid
+    FROM strata s
+    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+    WHERE s.stratum_group_id = 1
+      AND sc.constraint_variable = 'congressional_district_geoid'
+    ORDER BY sc.value
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text(query)).fetchall()
+        return [row[0] for row in result]
+
+
+def get_cd_index_mapping(db_uri: str = None):
+    """
+    Get the canonical CD GEOID to index mapping.
+
+    Args:
+        db_uri: SQLAlchemy database URI. If None, uses default db location.
+
+    Returns:
+        tuple: (cd_to_index dict, index_to_cd dict, cds_ordered list)
+    """
+    from sqlalchemy import create_engine, text
+    from pathlib import Path
+    from policyengine_us_data.storage import STORAGE_FOLDER
+
+    if db_uri is None:
+        db_path = STORAGE_FOLDER / "calibration" / "policy_data.db"
+        db_uri = f"sqlite:///{db_path}"
+
+    engine = create_engine(db_uri)
+    query = """
+    SELECT DISTINCT sc.value as cd_geoid
+    FROM strata s
+    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+    WHERE s.stratum_group_id = 1
+      AND sc.constraint_variable = "congressional_district_geoid"
+    ORDER BY sc.value
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text(query)).fetchall()
+        cds_ordered = [row[0] for row in result]
+
+    cd_to_index = {cd: idx for idx, cd in enumerate(cds_ordered)}
+    index_to_cd = {idx: cd for idx, cd in enumerate(cds_ordered)}
+    return cd_to_index, index_to_cd, cds_ordered
+
+
+def load_cd_geoadj_values(
+    cds_to_calibrate: List[str],
+) -> Dict[str, float]:
+    """
+    Load geographic adjustment factors from rent data CSV.
+    Uses median 2BR rent by CD vs national median to compute geoadj.
+    """
+    from policyengine_us_data.storage import STORAGE_FOLDER
+
+    csv_path = STORAGE_FOLDER / "national_and_district_rents_2023.csv"
+    rent_df = pd.read_csv(csv_path, dtype={"cd_id": str})
+
+    # Filter to numeric cd_id only (excludes "09ZZ" style undefined districts)
+    rent_df = rent_df[rent_df["cd_id"].str.match(r"^\d+$")]
+
+    # Convert zero-padded cd_id to match code format (e.g., "0101" -> "101")
+    rent_df["cd_geoid"] = rent_df["cd_id"].apply(lambda x: str(int(x)))
+
+    # Build lookup from rent data
+    rent_lookup = {}
+    for _, row in rent_df.iterrows():
+        geoadj = calculate_geoadj_from_rent(
+            local_rent=row["median_2br_rent"],
+            national_rent=row["national_median_2br_rent"],
+        )
+        rent_lookup[row["cd_geoid"]] = geoadj
+
+    # Map each CD to calibrate to its geoadj value
+    # Handle at-large districts: database uses XX01, rent CSV uses XX00
+    geoadj_dict = {}
+    for cd in cds_to_calibrate:
+        if cd in rent_lookup:
+            geoadj_dict[cd] = rent_lookup[cd]
+        else:
+            # Try at-large mapping: XX01 -> XX00
+            cd_int = int(cd)
+            state_fips = cd_int // 100
+            district = cd_int % 100
+            if district == 1:
+                at_large_cd = str(state_fips * 100)  # XX00
+                if at_large_cd in rent_lookup:
+                    geoadj_dict[cd] = rent_lookup[at_large_cd]
+                    continue
+            # Fallback to national average (geoadj = 1.0)
+            print(f"Warning: No rent data for CD {cd}, using geoadj=1.0")
+            geoadj_dict[cd] = 1.0
+
+    return geoadj_dict
+
+
+def calculate_spm_thresholds_for_cd(
+    sim,
+    time_period: int,
+    geoadj: float,
+    year: int,
+) -> np.ndarray:
+    """
+    Calculate SPM thresholds for all SPM units using CD-specific geo-adjustment.
+    """
+    spm_unit_ids_person = sim.calculate("spm_unit_id", map_to="person").values
+    ages = sim.calculate("age", map_to="person").values
+
+    df = pd.DataFrame(
+        {
+            "spm_unit_id": spm_unit_ids_person,
+            "is_adult": ages >= 18,
+            "is_child": ages < 18,
+        }
+    )
+
+    agg = (
+        df.groupby("spm_unit_id")
+        .agg(
+            num_adults=("is_adult", "sum"),
+            num_children=("is_child", "sum"),
+        )
+        .reset_index()
+    )
+
+    tenure_types = sim.calculate(
+        "spm_unit_tenure_type", map_to="spm_unit"
+    ).values
+    spm_unit_ids_unit = sim.calculate("spm_unit_id", map_to="spm_unit").values
+
+    tenure_df = pd.DataFrame(
+        {
+            "spm_unit_id": spm_unit_ids_unit,
+            "tenure_type": tenure_types,
+        }
+    )
+
+    merged = agg.merge(tenure_df, on="spm_unit_id", how="left")
+    merged["tenure_code"] = (
+        merged["tenure_type"]
+        .map(SPM_TENURE_STRING_TO_CODE)
+        .fillna(3)
+        .astype(int)
+    )
+
+    calc = SPMCalculator(year=year)
+    base_thresholds = calc.get_base_thresholds()
+
+    n = len(merged)
+    thresholds = np.zeros(n, dtype=np.float32)
+
+    for i in range(n):
+        tenure_str = TENURE_CODE_MAP.get(
+            int(merged.iloc[i]["tenure_code"]), "renter"
+        )
+        base = base_thresholds[tenure_str]
+        equiv_scale = spm_equivalence_scale(
+            int(merged.iloc[i]["num_adults"]),
+            int(merged.iloc[i]["num_children"]),
+        )
+        thresholds[i] = base * equiv_scale * geoadj
+
+    return thresholds

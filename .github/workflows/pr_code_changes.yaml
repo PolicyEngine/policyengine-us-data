@@ -30,8 +30,28 @@ jobs:
           fi
           echo "✅ PR is from the correct repository"
 
-  Lint:
+  check-lock-freshness:
+    name: Check uv.lock freshness
+    runs-on: ubuntu-latest
     needs: check-fork
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Check lock file is up-to-date
+        run: |
+          uv lock --upgrade
+          git diff --exit-code uv.lock || {
+            echo "::error::uv.lock is outdated. Run 'uv lock --upgrade' and commit the changes."
+            exit 1
+          }
+
+  Lint:
+    needs: [check-fork, check-lock-freshness]
     uses: ./.github/workflows/reusable_lint.yaml
 
   SmokeTestForMultipleVersions:

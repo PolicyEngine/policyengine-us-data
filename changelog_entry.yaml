@@ -1,0 +1,10 @@
+- bump: minor
+  changes:
+    added:
+    - Sparse matrix builder for local area calibration with database-driven constraints
+    - Local area calibration data pipeline (make data-local-area)
+    - ExtendedCPS_2023 and PUF_2023 dataset classes
+    - Stratified CPS sampling to preserve high-income households
+    - Matrix verification tests for local area calibration
+    - Population-weighted P(county|CD) distributions from Census block data
+    - County assignment module for stacked dataset builder

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.51.0] - 2026-01-01 17:39:26
+
+### Added
+
+- Sparse matrix builder for local area calibration with database-driven constraints
+- Local area calibration data pipeline (make data-local-area)
+- ExtendedCPS_2023 and PUF_2023 dataset classes
+- Stratified CPS sampling to preserve high-income households
+- Matrix verification tests for local area calibration
+- Population-weighted P(county|CD) distributions from Census block data
+- County assignment module for stacked dataset builder
+
 ## [1.50.0] - 2025-12-23 15:15:35
 
 ### Added
@@ -785,6 +797,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.51.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.50.0...1.51.0
 [1.50.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.49.0...1.50.0
 [1.49.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.48.0...1.49.0
 [1.48.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.47.1...1.48.0

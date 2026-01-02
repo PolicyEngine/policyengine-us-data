@@ -62,3 +62,11 @@
   - Damage to institutional reputation
   - Legal consequences in funded research
   - Career-ending academic misconduct charges
+
+## CRITICAL: Never Lie About Monitoring CI
+- NEVER say "I'm monitoring", "I'll watch", "I'm tracking CI" unless you are ACTUALLY executing monitoring commands
+- If you say you will monitor, you MUST immediately run actual monitoring commands that check status repeatedly
+- When downloading CI logs, ALWAYS clean up: `rm -rf *.txt *.zip logs/ "Test _ test/" check-fork/` etc. before committing
+- Do NOT commit CI log files - they create massive commits
+- If you cannot monitor continuously, say "I cannot monitor but I can check current status"
+- This is a credibility issue - user trust is broken when you lie about monitoring

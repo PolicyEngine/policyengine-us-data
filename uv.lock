@@ -1854,7 +1854,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us-data"
-version = "1.50.0"
+version = "1.51.0"
 source = { editable = "." }
 dependencies = [
     { name = "google-auth" },
@@ -1884,6 +1884,8 @@ dependencies = [
 calibration = [
     { name = "samplics" },
 ]
+
+[package.dev-dependencies]
 dev = [
     { name = "black" },
     { name = "build" },
@@ -1900,23 +1902,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "black", marker = "extra == 'dev'" },
-    { name = "build", marker = "extra == 'dev'" },
-    { name = "furo", marker = "extra == 'dev'" },
     { name = "google-auth", specifier = ">=2.0.0" },
     { name = "google-cloud-storage", specifier = ">=2.0.0" },
-    { name = "itables", marker = "extra == 'dev'" },
-    { name = "jupyter-book", marker = "extra == 'dev'" },
     { name = "microdf-python", specifier = ">=1.0.0" },
     { name = "microimpute", specifier = ">=1.1.4" },
-    { name = "mystmd", marker = "extra == 'dev'", specifier = ">=1.7.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pip-system-certs", specifier = ">=3.0" },
     { name = "policyengine-core", specifier = ">=3.19.0" },
     { name = "policyengine-us", specifier = ">=1.353.0" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "quantile-forest", marker = "extra == 'dev'" },
     { name = "requests", specifier = ">=2.25.0" },
     { name = "samplics", marker = "extra == 'calibration'" },
     { name = "scipy", specifier = ">=1.15.3" },
@@ -1926,15 +1920,27 @@ requires-dist = [
     { name = "sqlmodel", specifier = ">=0.0.24" },
     { name = "statsmodels", specifier = ">=0.14.5" },
     { name = "tables", specifier = ">=3.10.2" },
-    { name = "tabulate", marker = "extra == 'dev'" },
-    { name = "tomli", marker = "extra == 'dev'" },
     { name = "torch", specifier = ">=2.7.1" },
     { name = "tqdm", specifier = ">=4.60.0" },
     { name = "us", specifier = ">=2.0.0" },
     { name = "xlrd", specifier = ">=2.0.2" },
-    { name = "yaml-changelog", marker = "extra == 'dev'", specifier = ">=0.1.7" },
 ]
-provides-extras = ["calibration", "dev"]
+provides-extras = ["calibration"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black" },
+    { name = "build" },
+    { name = "furo" },
+    { name = "itables" },
+    { name = "jupyter-book" },
+    { name = "mystmd", specifier = ">=1.7.0" },
+    { name = "pytest" },
+    { name = "quantile-forest" },
+    { name = "tabulate" },
+    { name = "tomli" },
+    { name = "yaml-changelog", specifier = ">=0.1.7" },
+]
 
 [[package]]
 name = "prometheus-client"

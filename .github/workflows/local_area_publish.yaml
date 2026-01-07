@@ -6,6 +6,7 @@ on:
     paths:
       - 'policyengine_us_data/datasets/cps/local_area_calibration/**'
       - '.github/workflows/local_area_publish.yaml'
+      - 'modal_app/**'
   repository_dispatch:
     types: [calibration-updated]
   workflow_dispatch:
@@ -17,54 +18,25 @@ on:
 
 jobs:
   publish-local-area:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     env:
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: "projects/322898545428/locations/global/workloadIdentityPools/policyengine-research-id-pool/providers/prod-github-provider"
-          service_account: "policyengine-research@policyengine-research.iam.gserviceaccount.com"
+      - name: Install Modal CLI
+        run: pip install modal
 
-      - name: Install package
-        run: uv sync --dev
-
-      - name: Download checkpoint (if exists)
-        continue-on-error: true
-        run: |
-          gsutil cp gs://policyengine-us-data/checkpoints/completed_states.txt . || true
-          gsutil cp gs://policyengine-us-data/checkpoints/completed_districts.txt . || true
-          gsutil cp gs://policyengine-us-data/checkpoints/completed_cities.txt . || true
-
-      - name: Build and publish local area H5 files
-        run: uv run make publish-local-area
-
-      - name: Upload checkpoint
-        if: always()
-        run: |
-          gsutil cp completed_states.txt gs://policyengine-us-data/checkpoints/ || true
-          gsutil cp completed_districts.txt gs://policyengine-us-data/checkpoints/ || true
-          gsutil cp completed_cities.txt gs://policyengine-us-data/checkpoints/ || true
-
-      - name: Clean up checkpoints on success
-        if: success()
-        run: |
-          gsutil rm gs://policyengine-us-data/checkpoints/completed_states.txt || true
-          gsutil rm gs://policyengine-us-data/checkpoints/completed_districts.txt || true
-          gsutil rm gs://policyengine-us-data/checkpoints/completed_cities.txt || true
+      - name: Run local area publishing on Modal
+        run: modal run modal_app/local_area.py --branch=${{ github.ref_name }}

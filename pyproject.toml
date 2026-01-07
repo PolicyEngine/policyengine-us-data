@@ -48,6 +48,8 @@ dependencies = [
 calibration = [
     "samplics",
 ]
+
+[dependency-groups]
 dev = [
     "black",
     "pytest",

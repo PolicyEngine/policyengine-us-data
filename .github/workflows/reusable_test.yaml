@@ -64,9 +64,9 @@ jobs:
         if: inputs.full_suite
         run: |
           modal run modal_app/data_build.py \
-            --upload=${{ inputs.upload_data }} \
+            ${{ inputs.upload_data && '--upload' || '--no-upload' }} \
             --branch=${{ github.ref_name }} \
-            --test-lite=${{ !inputs.upload_data }}
+            ${{ inputs.upload_data && '--no-test-lite' || '--test-lite' }}
 
       - name: Install package
         run: uv sync --dev

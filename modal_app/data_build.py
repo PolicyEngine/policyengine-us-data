@@ -115,9 +115,9 @@ def build_datasets(
         check=True,
     )
 
-    # Build local area calibration datasets
+    # Build local area calibration datasets (without TEST_LITE - must match full dataset)
     print("Building local area calibration datasets...")
-    local_area_env = env.copy()
+    local_area_env = os.environ.copy()
     local_area_env["LOCAL_AREA_CALIBRATION"] = "true"
 
     subprocess.run(
@@ -142,7 +142,7 @@ def build_datasets(
             "10500",
         ],
         check=True,
-        env=env,
+        env=local_area_env,
     )
 
     # Run local area calibration tests
@@ -154,7 +154,7 @@ def build_datasets(
             "-v",
         ],
         check=True,
-        env=env,
+        env=local_area_env,
     )
 
     # Run main test suite

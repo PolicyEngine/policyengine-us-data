@@ -34,6 +34,7 @@ image = (
         "sqlmodel>=0.0.24",
         "xlrd>=2.0.2",
         "huggingface_hub",
+        "pytest",
     )
 )
 
@@ -70,12 +71,13 @@ def build_datasets(
     os.chdir("/root")
     subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
     os.chdir("policyengine-us-data")
-    subprocess.run(["pip", "install", "-e", "."], check=True)
+    subprocess.run(["pip", "install", "-e", ".[dev]"], check=True)
 
     env = os.environ.copy()
     if test_lite:
         env["TEST_LITE"] = "true"
 
+    # Download prerequisites
     subprocess.run(
         [
             "python",
@@ -85,6 +87,7 @@ def build_datasets(
         env=env,
     )
 
+    # Build main datasets
     scripts = [
         "policyengine_us_data/utils/uprating.py",
         "policyengine_us_data/datasets/acs/acs.py",
@@ -112,6 +115,53 @@ def build_datasets(
         check=True,
     )
 
+    # Build local area calibration datasets
+    print("Building local area calibration datasets...")
+    local_area_env = env.copy()
+    local_area_env["LOCAL_AREA_CALIBRATION"] = "true"
+
+    subprocess.run(
+        ["python", "policyengine_us_data/datasets/cps/cps.py"],
+        check=True,
+        env=local_area_env,
+    )
+    subprocess.run(
+        ["python", "policyengine_us_data/datasets/puf/puf.py"],
+        check=True,
+        env=local_area_env,
+    )
+    subprocess.run(
+        ["python", "policyengine_us_data/datasets/cps/extended_cps.py"],
+        check=True,
+        env=local_area_env,
+    )
+    subprocess.run(
+        [
+            "python",
+            "policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py",
+            "10500",
+        ],
+        check=True,
+        env=env,
+    )
+
+    # Run local area calibration tests
+    print("Running local area calibration tests...")
+    subprocess.run(
+        [
+            "pytest",
+            "policyengine_us_data/tests/test_local_area_calibration/",
+            "-v",
+        ],
+        check=True,
+        env=env,
+    )
+
+    # Run main test suite
+    print("Running main test suite...")
+    subprocess.run(["pytest"], check=True, env=env)
+
+    # Upload if requested
     if upload:
         subprocess.run(
             [
@@ -122,7 +172,7 @@ def build_datasets(
             env=env,
         )
 
-    return "Data build completed successfully"
+    return "Data build and tests completed successfully"
 
 
 @app.local_entrypoint()

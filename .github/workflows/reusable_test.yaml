@@ -60,7 +60,7 @@ jobs:
         if: inputs.full_suite
         run: pip install modal
 
-      - name: Run data build on Modal
+      - name: Run data build and tests on Modal
         if: inputs.full_suite
         run: |
           modal run modal_app/data_build.py \
@@ -71,7 +71,8 @@ jobs:
       - name: Install package
         run: uv sync --dev
 
-      - name: Run tests
+      - name: Run basic tests
+        if: ${{ !inputs.full_suite }}
         run: uv run pytest
 
       - name: Test documentation builds

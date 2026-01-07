@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-    - Fixed Publish workflow by migrating dev dependencies to PEP 735 dependency-groups

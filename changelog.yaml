@@ -671,3 +671,8 @@
     - Population-weighted P(county|CD) distributions from Census block data
     - County assignment module for stacked dataset builder
   date: 2026-01-01 17:39:26
+- bump: patch
+  changes:
+    fixed:
+    - Fixed Publish workflow by migrating dev dependencies to PEP 735 dependency-groups
+  date: 2026-01-07 01:05:49

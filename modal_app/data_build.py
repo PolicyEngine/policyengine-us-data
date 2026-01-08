@@ -7,10 +7,6 @@ app = modal.App("policyengine-us-data")
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
-data_volume = modal.Volume.from_name(
-    "policyengine-data", create_if_missing=True
-)
-
 image = (
     modal.Image.debian_slim(python_version="3.13")
     .apt_install("git")
@@ -56,7 +52,6 @@ def setup_gcp_credentials():
 @app.function(
     image=image,
     secrets=[hf_secret, gcp_secret],
-    volumes={"/data": data_volume},
     memory=32768,
     cpu=8.0,
     timeout=14400,

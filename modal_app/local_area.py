@@ -7,10 +7,6 @@ app = modal.App("policyengine-us-data-local-area")
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
-data_volume = modal.Volume.from_name(
-    "policyengine-data", create_if_missing=True
-)
-
 image = (
     modal.Image.debian_slim(python_version="3.13")
     .apt_install("git")
@@ -55,10 +51,9 @@ def setup_gcp_credentials():
 @app.function(
     image=image,
     secrets=[hf_secret, gcp_secret],
-    volumes={"/data": data_volume},
     memory=8192,
     cpu=4.0,
-    timeout=86400,
+    timeout=86400,  # 24h: processes 50 states + 435 districts with checkpointing
 )
 def publish_all_local_areas(branch: str = "main"):
     setup_gcp_credentials()

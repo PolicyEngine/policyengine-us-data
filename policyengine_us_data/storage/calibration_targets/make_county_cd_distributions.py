@@ -141,6 +141,13 @@ def build_county_cd_distributions():
     cd_totals = cd_county_pop.groupby("cd_geoid")["POP20"].transform("sum")
     cd_county_pop["probability"] = cd_county_pop["POP20"] / cd_totals
 
+    # Step 5b: Filter out zero-probability entries (unpopulated county-CD pairs)
+    pre_filter_count = len(cd_county_pop)
+    cd_county_pop = cd_county_pop[cd_county_pop["probability"] > 0]
+    filtered_count = pre_filter_count - len(cd_county_pop)
+    if filtered_count > 0:
+        print(f"  Filtered out {filtered_count} zero-probability entries")
+
     # Step 6: Map county FIPS to enum names
     print("\nMapping county FIPS to enum names...")
     fips_to_enum = build_county_fips_to_enum_mapping()

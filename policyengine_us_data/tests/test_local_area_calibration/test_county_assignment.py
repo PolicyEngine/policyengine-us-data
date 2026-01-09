@@ -10,6 +10,9 @@ from policyengine_us_data.datasets.cps.local_area_calibration.county_assignment 
     assign_counties_for_cd,
     get_county_index,
     _build_state_counties,
+    get_county_filter_probability,
+    get_filtered_county_distribution,
+    INVALID_COUNTY_NAMES,
 )
 
 
@@ -112,3 +115,85 @@ class TestStateCuntiesMapping:
         ]
         for county in nyc_counties:
             assert county in ny_counties, f"Missing NYC county: {county}"
+
+
+class TestInvalidCountyExclusion:
+    """Test that invalid counties are properly excluded."""
+
+    def test_delaware_has_exactly_3_counties(self):
+        """Delaware should have exactly 3 counties (no DORCHESTER)."""
+        state_counties = _build_state_counties()
+        de_counties = state_counties.get("DE", [])
+
+        assert len(de_counties) == 3
+        assert "DORCHESTER_COUNTY_DE" not in de_counties
+
+        expected = {
+            "KENT_COUNTY_DE",
+            "NEW_CASTLE_COUNTY_DE",
+            "SUSSEX_COUNTY_DE",
+        }
+        assert set(de_counties) == expected
+
+    def test_invalid_county_names_excluded(self):
+        """All entries in INVALID_COUNTY_NAMES should be excluded."""
+        state_counties = _build_state_counties()
+        all_counties = set()
+        for counties in state_counties.values():
+            all_counties.update(counties)
+
+        for invalid in INVALID_COUNTY_NAMES:
+            assert invalid not in all_counties, f"{invalid} should be excluded"
+
+    def test_suffolk_county_ct_excluded(self):
+        """Suffolk County, CT should be excluded (doesn't exist)."""
+        state_counties = _build_state_counties()
+        ct_counties = state_counties.get("CT", [])
+        assert "SUFFOLK_COUNTY_CT" not in ct_counties
+
+
+class TestCountyFilterProbability:
+    """Test probability calculations for city datasets."""
+
+    NYC_COUNTIES = {
+        "QUEENS_COUNTY_NY",
+        "BRONX_COUNTY_NY",
+        "RICHMOND_COUNTY_NY",
+        "NEW_YORK_COUNTY_NY",
+        "KINGS_COUNTY_NY",
+    }
+
+    def test_fully_nyc_cd_has_probability_one(self):
+        """NY-05 (fully in NYC) should have P(NYC|CD) = 1.0."""
+        prob = get_county_filter_probability("3605", self.NYC_COUNTIES)
+        assert prob == pytest.approx(1.0, abs=0.001)
+
+    def test_mixed_cd_has_partial_probability(self):
+        """NY-03 (mixed NYC/suburbs) should have 0 < P(NYC|CD) < 1."""
+        prob = get_county_filter_probability("3603", self.NYC_COUNTIES)
+        assert 0 < prob < 1
+        # Should be approximately 24% based on Census data
+        assert prob == pytest.approx(0.24, abs=0.05)
+
+    def test_non_nyc_cd_has_zero_probability(self):
+        """Non-NY CD should have P(NYC|CD) = 0."""
+        # CA-12 (San Francisco)
+        prob = get_county_filter_probability("612", self.NYC_COUNTIES)
+        assert prob == 0.0
+
+    def test_filtered_distribution_sums_to_one(self):
+        """Filtered distribution should sum to 1.0."""
+        dist = get_filtered_county_distribution("3603", self.NYC_COUNTIES)
+        if dist:  # Only if CD has overlap
+            assert sum(dist.values()) == pytest.approx(1.0)
+
+    def test_filtered_distribution_only_target_counties(self):
+        """Filtered distribution should only contain target counties."""
+        dist = get_filtered_county_distribution("3603", self.NYC_COUNTIES)
+        for county in dist:
+            assert county in self.NYC_COUNTIES
+
+    def test_filtered_distribution_empty_for_no_overlap(self):
+        """Non-overlapping CD should return empty distribution."""
+        dist = get_filtered_county_distribution("612", self.NYC_COUNTIES)
+        assert dist == {}

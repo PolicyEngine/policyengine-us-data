@@ -26,6 +26,8 @@ from policyengine_us.variables.household.demographic.geographic.county.county_en
 )
 from policyengine_us_data.datasets.cps.local_area_calibration.county_assignment import (
     assign_counties_for_cd,
+    get_county_filter_probability,
+    get_filtered_county_distribution,
 )
 
 NYC_COUNTIES = {
@@ -208,7 +210,16 @@ def create_sparse_cd_stacked_dataset(
         # Get this CD's calibrated weights from the weight matrix
         calibrated_weights_for_cd = W[
             cd_idx, :
-        ]  # Get this CD's row from weight matrix
+        ].copy()  # Get this CD's row from weight matrix
+
+        # For city datasets: scale weights by P(target|CD)
+        # This preserves the representative sample while adjusting for target population
+        if county_filter is not None:
+            p_target = get_county_filter_probability(cd_geoid, county_filter)
+            if p_target == 0:
+                # CD has no overlap with target area, skip entirely
+                continue
+            calibrated_weights_for_cd = calibrated_weights_for_cd * p_target
 
         # Map the calibrated weights to household IDs
         hh_weight_values = []
@@ -325,23 +336,31 @@ def create_sparse_cd_stacked_dataset(
         )
 
         # Set county for this CD
-        county_indices = assign_counties_for_cd(
-            cd_geoid=cd_geoid, n_households=n_households_orig, seed=42 + idx
-        )
+        # For city datasets: use only target counties (normalized distribution)
+        if county_filter is not None:
+            filtered_dist = get_filtered_county_distribution(
+                cd_geoid, county_filter
+            )
+            if not filtered_dist:
+                # Should not happen if we already checked p_target > 0
+                continue
+            county_indices = assign_counties_for_cd(
+                cd_geoid=cd_geoid,
+                n_households=n_households_orig,
+                seed=42 + idx,
+                distributions={cd_geoid: filtered_dist},
+            )
+        else:
+            county_indices = assign_counties_for_cd(
+                cd_geoid=cd_geoid,
+                n_households=n_households_orig,
+                seed=42 + idx,
+            )
         cd_sim.set_input("county", time_period, county_indices)
 
-        # Filter to only households assigned to specified counties (e.g., NYC)
-        if county_filter is not None:
-            filtered_household_ids = set()
-            for hh_idx in active_household_indices:
-                county_name = get_county_name(county_indices[hh_idx])
-                if county_name in county_filter:
-                    filtered_household_ids.add(household_ids[hh_idx])
-
-            active_household_ids = filtered_household_ids
-
-            if len(active_household_ids) == 0:
-                continue
+        # Note: We no longer use binary filtering for county_filter.
+        # Instead, weights are scaled by P(target|CD) and all households
+        # are included to avoid sample selection bias.
 
         geoadj = cd_geoadj_values[cd_geoid]
         new_spm_thresholds = calculate_spm_thresholds_for_cd(

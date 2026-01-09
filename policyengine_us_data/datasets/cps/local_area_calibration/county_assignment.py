@@ -20,11 +20,87 @@ from policyengine_us.variables.household.demographic.geographic.county.county_en
 from policyengine_us_data.storage import STORAGE_FOLDER
 
 
+# Invalid county entries in policyengine-us County enum.
+# These are counties assigned to wrong states, non-existent combinations,
+# or encoding mismatches. Validated against Census 2020 county reference.
+# See audit_county_enum.py for details.
+# TODO: Remove this workaround when fixed upstream in policyengine-us
+INVALID_COUNTY_NAMES = {
+    "APACHE_COUNTY_NM",
+    "APACHE_COUNTY_UT",
+    "ATCHISON_COUNTY_IA",
+    "BAYAMÓN_MUNICIPIO_PR",
+    "BENEWAH_COUNTY_WA",
+    "BONNEVILLE_COUNTY_WY",
+    "CARTER_COUNTY_SD",
+    "CLARK_COUNTY_IA",
+    "CLINTON_COUNTY_TN",
+    "COLBERT_COUNTY_MS",
+    "CUSTER_COUNTY_WY",
+    "DECATUR_COUNTY_NE",
+    "DESHA_COUNTY_MS",
+    "DORCHESTER_COUNTY_DE",
+    "DOÑA_ANA_COUNTY_NM",
+    "DOÑA_ANA_COUNTY_TX",
+    "EMMONS_COUNTY_SD",
+    "FULTON_COUNTY_TN",
+    "GREGORY_COUNTY_NE",
+    "GUÁNICA_MUNICIPIO_PR",
+    "HARDING_COUNTY_ND",
+    "INYO_COUNTY_NV",
+    "JEFFERSON_COUNTY_VA",
+    "JEWELL_COUNTY_NE",
+    "JUANA_DÍAZ_MUNICIPIO_PR",
+    "KIMBALL_COUNTY_WY",
+    "KOSSUTH_COUNTY_MN",
+    "LARIMER_COUNTY_WY",
+    "LAS_MARÍAS_MUNICIPIO_PR",
+    "LEE_COUNTY_TN",
+    "LE_FLORE_COUNTY_AR",
+    "LOÍZA_MUNICIPIO_PR",
+    "MANATÍ_MUNICIPIO_PR",
+    "MARSHALL_COUNTY_ND",
+    "MAYAGÜEZ_MUNICIPIO_PR",
+    "MCDOWELL_COUNTY_VA",
+    "MCKENZIE_COUNTY_MT",
+    "MCKINLEY_COUNTY_AZ",
+    "MILLER_COUNTY_TX",
+    "NEW_CASTLE_COUNTY_MD",
+    "OGLALA_LAKOTA_COUNTY_NE",
+    "OLDHAM_COUNTY_NM",
+    "O_BRIEN_COUNTY_IA",
+    "PEND_OREILLE_COUNTY_ID",
+    "PERKINS_COUNTY_ND",
+    "PEÑUELAS_MUNICIPIO_PR",
+    "PRINCE_GEORGE_S_COUNTY_MD",
+    "QUEEN_ANNE_S_COUNTY_MD",
+    "RICHLAND_COUNTY_SD",
+    "RIO_ARRIBA_COUNTY_CO",
+    "ROBERTS_COUNTY_MN",
+    "ROCK_COUNTY_SD",
+    "RÍO_GRANDE_MUNICIPIO_PR",
+    "SAN_GERMÁN_MUNICIPIO_PR",
+    "SAN_JUAN_COUNTY_AZ",
+    "SCOTLAND_COUNTY_IA",
+    "SHERMAN_COUNTY_OK",
+    "SIOUX_COUNTY_SD",
+    "ST_MARY_S_COUNTY_MD",
+    "SUFFOLK_COUNTY_CT",
+    "SUMMIT_COUNTY_WY",
+    "TIPTON_COUNTY_AR",
+    "TODD_COUNTY_NE",
+    "TROUP_COUNTY_AL",
+    "WHITE_PINE_COUNTY_UT",
+}
+
+
 def _build_state_counties() -> Dict[str, List[str]]:
     """Build mapping from state code to list of county enum names."""
     state_counties = {}
     for name in County._member_names_:
         if name == "UNKNOWN":
+            continue
+        if name in INVALID_COUNTY_NAMES:
             continue
         state_code = name.split("_")[-1]
         if state_code not in state_counties:
@@ -123,3 +199,66 @@ def assign_counties_for_cd(
     weights = list(dist.values())
     selected = random.choices(counties, weights=weights, k=n_households)
     return np.array([get_county_index(c) for c in selected], dtype=np.int32)
+
+
+def get_county_filter_probability(
+    cd_geoid: str,
+    county_filter: set,
+) -> float:
+    """
+    Calculate P(county in filter | CD).
+
+    Returns the probability that a household in this CD would be in the
+    target area (e.g., NYC). Used for weight scaling when building
+    city-level datasets.
+
+    Args:
+        cd_geoid: Congressional district geoid (e.g., "3610")
+        county_filter: Set of county names that define the target area
+
+    Returns:
+        Probability between 0 and 1
+    """
+    cd_key = str(int(cd_geoid))
+
+    if cd_key in _CD_COUNTY_DISTRIBUTIONS:
+        dist = _CD_COUNTY_DISTRIBUTIONS[cd_key]
+    else:
+        dist = _generate_uniform_distribution(cd_key)
+
+    return sum(
+        prob for county, prob in dist.items() if county in county_filter
+    )
+
+
+def get_filtered_county_distribution(
+    cd_geoid: str,
+    county_filter: set,
+) -> Dict[str, float]:
+    """
+    Get normalized distribution over target counties only.
+
+    Used when building city-level datasets to assign only valid counties
+    while maintaining relative proportions within the target area.
+
+    Args:
+        cd_geoid: Congressional district geoid (e.g., "3610")
+        county_filter: Set of county names that define the target area
+
+    Returns:
+        Dictionary mapping county names to normalized probabilities.
+        Empty dict if CD has no overlap with target area.
+    """
+    cd_key = str(int(cd_geoid))
+
+    if cd_key in _CD_COUNTY_DISTRIBUTIONS:
+        dist = _CD_COUNTY_DISTRIBUTIONS[cd_key]
+    else:
+        dist = _generate_uniform_distribution(cd_key)
+
+    filtered = {c: p for c, p in dist.items() if c in county_filter}
+    total = sum(filtered.values())
+
+    if total > 0:
+        return {c: p / total for c, p in filtered.items()}
+    return {}

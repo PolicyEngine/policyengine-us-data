@@ -44,9 +44,8 @@ jobs:
         uses: astral-sh/setup-uv@v5
       - name: Check lock file is up-to-date
         run: |
-          uv lock --upgrade
-          git diff --exit-code uv.lock || {
-            echo "::error::uv.lock is outdated. Run 'uv lock --upgrade' and commit the changes."
+          uv lock --locked || {
+            echo "::error::uv.lock is outdated. Run 'uv lock' and commit the changes."
             exit 1
           }
 

@@ -1,0 +1,7 @@
+- bump: minor
+  changes:
+    added:
+    - Modal integration for CI/CD workflows, replacing self-hosted GCP runners
+    changed:
+    - Updated reusable_test.yaml to trigger data builds on Modal
+    - Updated local_area_publish.yaml to run on Modal

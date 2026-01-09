@@ -23,16 +23,22 @@ on:
         required: false
       POLICYENGINE_US_DATA_GITHUB_TOKEN:
         required: false
+      MODAL_TOKEN_ID:
+        required: false
+      MODAL_TOKEN_SECRET:
+        required: false
 
 jobs:
   test:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required for GitHub Pages deploy
-      id-token: write  # Required for GCP auth
+      contents: write
+      id-token: write
     env:
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
       POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -50,56 +56,24 @@ jobs:
         with:
           node-version: '24'
 
-      - uses: "google-github-actions/auth@v2"
-        if: inputs.upload_data
-        with:
-          workload_identity_provider: "projects/322898545428/locations/global/workloadIdentityPools/policyengine-research-id-pool/providers/prod-github-provider"
-          service_account: "policyengine-research@policyengine-research.iam.gserviceaccount.com"
+      - name: Install Modal CLI
+        if: inputs.full_suite
+        run: pip install modal
+
+      - name: Run data build and tests on Modal
+        if: inputs.full_suite
+        run: |
+          modal run modal_app/data_build.py \
+            ${{ inputs.upload_data && '--upload' || '--no-upload' }} \
+            --branch=${{ github.head_ref || github.ref_name }} \
+            ${{ inputs.upload_data && '--no-test-lite' || '--test-lite' }}
 
       - name: Install package
         run: uv sync --dev
 
-      - name: Download data inputs
-        if: inputs.full_suite
-        run: uv run make download
-
-      # Temporarily disabled - database target causing issues
-      # - name: Create and load calibration targets database 
-      #   if: inputs.full_suite
-      #   run: make database
-
-      - name: Build datasets
-        if: inputs.full_suite
-        run: uv run make data
-        env:
-          TEST_LITE: ${{ !inputs.upload_data }}
-          PYTHON_LOG_LEVEL: INFO
-
-      - name: Build datasets for local area calibration
-        if: inputs.full_suite
-        run: |
-          LOCAL_AREA_CALIBRATION=true uv run python policyengine_us_data/datasets/cps/cps.py
-          LOCAL_AREA_CALIBRATION=true uv run python policyengine_us_data/datasets/puf/puf.py
-          LOCAL_AREA_CALIBRATION=true uv run python policyengine_us_data/datasets/cps/extended_cps.py
-          uv run python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py 10500
-
-      - name: Run local area calibration tests
-        if: inputs.full_suite
-        run: uv run pytest policyengine_us_data/tests/test_local_area_calibration/ -v
-
-      - name: Save calibration log
-        if: inputs.full_suite
-        uses: actions/upload-artifact@v4
-        with:
-          name: calibration_log.csv
-          path: calibration_log.csv
-
-      - name: Run tests
+      - name: Run basic tests
+        if: ${{ !inputs.full_suite }}
         run: uv run pytest
-
-      - name: Upload data
-        if: inputs.upload_data
-        run: uv run make upload
 
       - name: Test documentation builds
         run: uv run make documentation

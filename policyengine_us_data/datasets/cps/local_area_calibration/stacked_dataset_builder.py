@@ -67,6 +67,7 @@ def create_sparse_cd_stacked_dataset(
     output_path=None,
     dataset_path=None,
     county_filter=None,
+    seed: int = 42,
 ):
     """
     Create a SPARSE congressional district-stacked dataset using DataFrame approach.
@@ -82,6 +83,8 @@ def create_sparse_cd_stacked_dataset(
         dataset_path: Path to the base .h5 dataset used during calibration.
         county_filter: Optional set of county names to filter to. Only households
            assigned to these counties will be included. Used for city-level datasets.
+        seed: Base random seed for county assignment. Each CD gets seed + int(cd_geoid)
+           for deterministic, order-independent results. Default 42.
 
     Returns:
         output_path: Path to the saved .h5 file.
@@ -347,14 +350,14 @@ def create_sparse_cd_stacked_dataset(
             county_indices = assign_counties_for_cd(
                 cd_geoid=cd_geoid,
                 n_households=n_households_orig,
-                seed=42 + idx,
+                seed=seed + int(cd_geoid),
                 distributions={cd_geoid: filtered_dist},
             )
         else:
             county_indices = assign_counties_for_cd(
                 cd_geoid=cd_geoid,
                 n_households=n_households_orig,
-                seed=42 + idx,
+                seed=seed + int(cd_geoid),
             )
         cd_sim.set_input("county", time_period, county_indices)
 

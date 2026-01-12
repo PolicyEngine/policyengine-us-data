@@ -12,7 +12,6 @@ from policyengine_us_data.datasets.cps.local_area_calibration.county_assignment 
     _build_state_counties,
     get_county_filter_probability,
     get_filtered_county_distribution,
-    INVALID_COUNTY_NAMES,
 )
 
 
@@ -134,16 +133,6 @@ class TestInvalidCountyExclusion:
             "SUSSEX_COUNTY_DE",
         }
         assert set(de_counties) == expected
-
-    def test_invalid_county_names_excluded(self):
-        """All entries in INVALID_COUNTY_NAMES should be excluded."""
-        state_counties = _build_state_counties()
-        all_counties = set()
-        for counties in state_counties.values():
-            all_counties.update(counties)
-
-        for invalid in INVALID_COUNTY_NAMES:
-            assert invalid not in all_counties, f"{invalid} should be excluded"
 
     def test_suffolk_county_ct_excluded(self):
         """Suffolk County, CT should be excluded (doesn't exist)."""

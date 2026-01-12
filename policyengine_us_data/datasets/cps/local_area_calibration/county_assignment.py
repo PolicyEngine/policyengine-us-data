@@ -20,72 +20,11 @@ from policyengine_us.variables.household.demographic.geographic.county.county_en
 from policyengine_us_data.storage import STORAGE_FOLDER
 
 
-# Invalid county entries in policyengine-us County enum.
-# These are counties assigned to wrong states or non-existent combinations.
-# Validated against Census 2020 county reference. See audit_county_enum.py.
-# TODO: Remove this workaround when fixed upstream in policyengine-us
-INVALID_COUNTY_NAMES = {
-    "APACHE_COUNTY_NM",
-    "APACHE_COUNTY_UT",
-    "ATCHISON_COUNTY_IA",
-    "BENEWAH_COUNTY_WA",
-    "BONNEVILLE_COUNTY_WY",
-    "CARTER_COUNTY_SD",
-    "CLARK_COUNTY_IA",
-    "CLINTON_COUNTY_TN",
-    "COLBERT_COUNTY_MS",
-    "CUSTER_COUNTY_WY",
-    "DECATUR_COUNTY_NE",
-    "DESHA_COUNTY_MS",
-    "DORCHESTER_COUNTY_DE",
-    "DOÑA_ANA_COUNTY_TX",
-    "EMMONS_COUNTY_SD",
-    "FULTON_COUNTY_TN",
-    "GREGORY_COUNTY_NE",
-    "HARDING_COUNTY_ND",
-    "INYO_COUNTY_NV",
-    "JEFFERSON_COUNTY_VA",
-    "JEWELL_COUNTY_NE",
-    "KIMBALL_COUNTY_WY",
-    "KOSSUTH_COUNTY_MN",
-    "LARIMER_COUNTY_WY",
-    "LEE_COUNTY_TN",
-    "LE_FLORE_COUNTY_AR",
-    "MARSHALL_COUNTY_ND",
-    "MCDOWELL_COUNTY_VA",
-    "MCKENZIE_COUNTY_MT",
-    "MCKINLEY_COUNTY_AZ",
-    "MILLER_COUNTY_TX",
-    "NEW_CASTLE_COUNTY_MD",
-    "OGLALA_LAKOTA_COUNTY_NE",
-    "OLDHAM_COUNTY_NM",
-    "O_BRIEN_COUNTY_IA",
-    "PEND_OREILLE_COUNTY_ID",
-    "PERKINS_COUNTY_ND",
-    "RICHLAND_COUNTY_SD",
-    "RIO_ARRIBA_COUNTY_CO",
-    "ROBERTS_COUNTY_MN",
-    "ROCK_COUNTY_SD",
-    "SAN_JUAN_COUNTY_AZ",
-    "SCOTLAND_COUNTY_IA",
-    "SHERMAN_COUNTY_OK",
-    "SIOUX_COUNTY_SD",
-    "SUFFOLK_COUNTY_CT",
-    "SUMMIT_COUNTY_WY",
-    "TIPTON_COUNTY_AR",
-    "TODD_COUNTY_NE",
-    "TROUP_COUNTY_AL",
-    "WHITE_PINE_COUNTY_UT",
-}
-
-
 def _build_state_counties() -> Dict[str, List[str]]:
     """Build mapping from state code to list of county enum names."""
     state_counties = {}
     for name in County._member_names_:
         if name == "UNKNOWN":
-            continue
-        if name in INVALID_COUNTY_NAMES:
             continue
         state_code = name.split("_")[-1]
         if state_code not in state_counties:

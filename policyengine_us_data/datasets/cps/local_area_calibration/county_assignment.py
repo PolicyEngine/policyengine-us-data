@@ -123,3 +123,66 @@ def assign_counties_for_cd(
     weights = list(dist.values())
     selected = random.choices(counties, weights=weights, k=n_households)
     return np.array([get_county_index(c) for c in selected], dtype=np.int32)
+
+
+def get_county_filter_probability(
+    cd_geoid: str,
+    county_filter: set,
+) -> float:
+    """
+    Calculate P(county in filter | CD).
+
+    Returns the probability that a household in this CD would be in the
+    target area (e.g., NYC). Used for weight scaling when building
+    city-level datasets.
+
+    Args:
+        cd_geoid: Congressional district geoid (e.g., "3610")
+        county_filter: Set of county names that define the target area
+
+    Returns:
+        Probability between 0 and 1
+    """
+    cd_key = str(int(cd_geoid))
+
+    if cd_key in _CD_COUNTY_DISTRIBUTIONS:
+        dist = _CD_COUNTY_DISTRIBUTIONS[cd_key]
+    else:
+        dist = _generate_uniform_distribution(cd_key)
+
+    return sum(
+        prob for county, prob in dist.items() if county in county_filter
+    )
+
+
+def get_filtered_county_distribution(
+    cd_geoid: str,
+    county_filter: set,
+) -> Dict[str, float]:
+    """
+    Get normalized distribution over target counties only.
+
+    Used when building city-level datasets to assign only valid counties
+    while maintaining relative proportions within the target area.
+
+    Args:
+        cd_geoid: Congressional district geoid (e.g., "3610")
+        county_filter: Set of county names that define the target area
+
+    Returns:
+        Dictionary mapping county names to normalized probabilities.
+        Empty dict if CD has no overlap with target area.
+    """
+    cd_key = str(int(cd_geoid))
+
+    if cd_key in _CD_COUNTY_DISTRIBUTIONS:
+        dist = _CD_COUNTY_DISTRIBUTIONS[cd_key]
+    else:
+        dist = _generate_uniform_distribution(cd_key)
+
+    filtered = {c: p for c, p in dist.items() if c in county_filter}
+    total = sum(filtered.values())
+
+    if total > 0:
+        return {c: p / total for c, p in filtered.items()}
+    return {}

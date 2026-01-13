@@ -10,28 +10,7 @@ gcp_secret = modal.Secret.from_name("gcp-credentials")
 image = (
     modal.Image.debian_slim(python_version="3.13")
     .apt_install("git")
-    .pip_install(
-        "policyengine-us>=1.353.0",
-        "policyengine-core>=3.19.0",
-        "pandas>=2.3.1",
-        "requests>=2.25.0",
-        "tqdm>=4.60.0",
-        "microdf_python>=1.0.0",
-        "microimpute>=1.1.4",
-        "google-cloud-storage>=2.0.0",
-        "google-auth>=2.0.0",
-        "scipy>=1.15.3",
-        "statsmodels>=0.14.5",
-        "openpyxl>=3.1.5",
-        "tables>=3.10.2",
-        "torch>=2.7.1",
-        "us>=2.0.0",
-        "sqlalchemy>=2.0.41",
-        "sqlmodel>=0.0.24",
-        "xlrd>=2.0.2",
-        "huggingface_hub",
-        "pytest",
-    )
+    .pip_install("uv")
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
@@ -66,7 +45,8 @@ def build_datasets(
     os.chdir("/root")
     subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
     os.chdir("policyengine-us-data")
-    subprocess.run(["pip", "install", "-e", ".[dev]"], check=True)
+    # Use uv sync to install exact versions from uv.lock
+    subprocess.run(["uv", "sync", "--locked"], check=True)
 
     env = os.environ.copy()
     if test_lite:
@@ -75,6 +55,8 @@ def build_datasets(
     # Download prerequisites
     subprocess.run(
         [
+            "uv",
+            "run",
             "python",
             "policyengine_us_data/storage/download_private_prerequisites.py",
         ],
@@ -95,7 +77,7 @@ def build_datasets(
     ]
     for script in scripts:
         print(f"Running {script}...")
-        subprocess.run(["python", script], check=True, env=env)
+        subprocess.run(["uv", "run", "python", script], check=True, env=env)
 
     os.rename(
         "policyengine_us_data/storage/enhanced_cps_2024.h5",
@@ -116,22 +98,29 @@ def build_datasets(
     local_area_env["LOCAL_AREA_CALIBRATION"] = "true"
 
     subprocess.run(
-        ["python", "policyengine_us_data/datasets/cps/cps.py"],
+        ["uv", "run", "python", "policyengine_us_data/datasets/cps/cps.py"],
         check=True,
         env=local_area_env,
     )
     subprocess.run(
-        ["python", "policyengine_us_data/datasets/puf/puf.py"],
-        check=True,
-        env=local_area_env,
-    )
-    subprocess.run(
-        ["python", "policyengine_us_data/datasets/cps/extended_cps.py"],
+        ["uv", "run", "python", "policyengine_us_data/datasets/puf/puf.py"],
         check=True,
         env=local_area_env,
     )
     subprocess.run(
         [
+            "uv",
+            "run",
+            "python",
+            "policyengine_us_data/datasets/cps/extended_cps.py",
+        ],
+        check=True,
+        env=local_area_env,
+    )
+    subprocess.run(
+        [
+            "uv",
+            "run",
             "python",
             "policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py",
             "10500",
@@ -144,6 +133,8 @@ def build_datasets(
     print("Running local area calibration tests...")
     subprocess.run(
         [
+            "uv",
+            "run",
             "pytest",
             "policyengine_us_data/tests/test_local_area_calibration/",
             "-v",
@@ -154,12 +145,14 @@ def build_datasets(
 
     # Run main test suite
     print("Running main test suite...")
-    subprocess.run(["pytest"], check=True, env=env)
+    subprocess.run(["uv", "run", "pytest"], check=True, env=env)
 
     # Upload if requested
     if upload:
         subprocess.run(
             [
+                "uv",
+                "run",
                 "python",
                 "policyengine_us_data/storage/upload_completed_datasets.py",
             ],

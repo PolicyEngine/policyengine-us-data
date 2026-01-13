@@ -10,27 +10,7 @@ gcp_secret = modal.Secret.from_name("gcp-credentials")
 image = (
     modal.Image.debian_slim(python_version="3.13")
     .apt_install("git")
-    .pip_install(
-        "policyengine-us>=1.353.0",
-        "policyengine-core>=3.19.0",
-        "pandas>=2.3.1",
-        "requests>=2.25.0",
-        "tqdm>=4.60.0",
-        "microdf_python>=1.0.0",
-        "microimpute>=1.1.4",
-        "google-cloud-storage>=2.0.0",
-        "google-auth>=2.0.0",
-        "scipy>=1.15.3",
-        "statsmodels>=0.14.5",
-        "openpyxl>=3.1.5",
-        "tables>=3.10.2",
-        "torch>=2.7.1",
-        "us>=2.0.0",
-        "sqlalchemy>=2.0.41",
-        "sqlmodel>=0.0.24",
-        "xlrd>=2.0.2",
-        "huggingface_hub",
-    )
+    .pip_install("uv")
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
@@ -61,10 +41,13 @@ def publish_all_local_areas(branch: str = "main"):
     os.chdir("/root")
     subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
     os.chdir("policyengine-us-data")
-    subprocess.run(["pip", "install", "-e", "."], check=True)
+    # Use uv sync to install exact versions from uv.lock
+    subprocess.run(["uv", "sync", "--locked"], check=True)
 
     subprocess.run(
         [
+            "uv",
+            "run",
             "python",
             "policyengine_us_data/datasets/cps/local_area_calibration/publish_local_area.py",
         ],

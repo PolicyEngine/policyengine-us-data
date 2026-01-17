@@ -28,7 +28,7 @@ def fit_weights(branch: str = "main", epochs: int = 200) -> bytes:
     subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
     os.chdir("policyengine-us-data")
 
-    subprocess.run(["uv", "sync", "--locked", "--extra", "l0"], check=True)
+    subprocess.run(["uv", "sync", "--extra", "l0"], check=True)
 
     script_path = (
         "policyengine_us_data/datasets/cps/"

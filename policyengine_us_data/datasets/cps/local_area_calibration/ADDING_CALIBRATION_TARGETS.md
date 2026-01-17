@@ -239,3 +239,52 @@ For most new targets:
 3. Run and verify with `MatrixTracer`
 
 No code changes to `sparse_matrix_builder.py` needed unless you have special aggregation or constraint requirements.
+
+## Running Weight Calibration on Modal (GPU)
+
+The `fit_calibration_weights.py` script can be run on Modal with GPU acceleration using `modal_app/fit_weights.py`.
+
+### Basic Usage
+
+```bash
+# Default: T4 GPU, 200 epochs
+modal run modal_app/fit_weights.py --branch main --epochs 200
+
+# Specify GPU type
+modal run modal_app/fit_weights.py --branch main --epochs 2000 --gpu A100-40GB
+```
+
+### GPU Benchmarks (200 epochs, 2 target groups, Jan 2026)
+
+| GPU | Time | Cost | Notes |
+|-----|------|------|-------|
+| T4 | 16m 4s | $0.16 | Best for small test runs |
+| A100-40GB | 9m 5s | $0.32 | ~44% faster |
+| A100-80GB | 10m 28s | $0.44 | Slower than 40GB (variance?) |
+
+### Key Findings
+
+1. **Memory bandwidth matters for sparse operations**: The P100 (not available on Modal) outperforms T4 by ~2x on Kaggle due to HBM2 memory (~732 GB/s) vs GDDR6 (~320 GB/s).
+
+2. **Significant overhead at low epochs**: With only 200 epochs, much of the runtime is fixed overhead:
+   - Git clone and `uv sync` (~2-3 min)
+   - HuggingFace data download (~1 min)
+   - Loading Microsimulation and building sparse matrix (~3-4 min, CPU-bound)
+
+3. **GPU choice depends on epoch count**:
+   - **< 500 epochs**: Use T4 (cheapest, overhead dominates)
+   - **500-2000 epochs**: A100-40GB may break even
+   - **> 2000 epochs**: A100 likely more cost-effective as training dominates
+
+4. **Available Modal GPUs** (by memory bandwidth):
+   - T4: 320 GB/s, $0.000164/sec
+   - L4: 300 GB/s, $0.000222/sec
+   - A10: 600 GB/s, $0.000306/sec
+   - L40S: 864 GB/s, $0.000542/sec
+   - A100-40GB: 1,555 GB/s, $0.000583/sec
+   - A100-80GB: 2,039 GB/s, $0.000694/sec
+   - H100: 3,350 GB/s, $0.001097/sec
+
+### Output
+
+Weights are saved locally to `calibration_weights.npy` (configurable via `--output` flag).

@@ -20,7 +20,7 @@ REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
     secrets=[hf_secret],
     memory=32768,
     cpu=4.0,
-    gpu="T4",
+    gpu="A100-40GB",
     timeout=14400,
 )
 def fit_weights(branch: str = "main", epochs: int = 200) -> bytes:

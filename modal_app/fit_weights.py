@@ -30,6 +30,35 @@ def fit_weights(branch: str = "main", epochs: int = 200) -> bytes:
 
     subprocess.run(["uv", "sync", "--extra", "l0"], check=True)
 
+    # Download calibration inputs from HuggingFace
+    print("Downloading calibration inputs from HuggingFace...")
+    download_result = subprocess.run(
+        [
+            "uv", "run", "python", "-c",
+            "from policyengine_us_data.utils.huggingface import "
+            "download_calibration_inputs; "
+            "paths = download_calibration_inputs('/root/calibration_data'); "
+            "print(f\"DB: {paths['database']}\"); "
+            "print(f\"DATASET: {paths['dataset']}\")"
+        ],
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
+    print(download_result.stdout)
+    if download_result.stderr:
+        print("Download STDERR:", download_result.stderr)
+    if download_result.returncode != 0:
+        raise RuntimeError(f"Download failed: {download_result.returncode}")
+
+    # Parse paths from output
+    db_path = dataset_path = None
+    for line in download_result.stdout.split('\n'):
+        if line.startswith('DB:'):
+            db_path = line.split('DB:')[1].strip()
+        elif line.startswith('DATASET:'):
+            dataset_path = line.split('DATASET:')[1].strip()
+
     script_path = (
         "policyengine_us_data/datasets/cps/"
         "local_area_calibration/fit_calibration_weights.py"
@@ -39,6 +68,8 @@ def fit_weights(branch: str = "main", epochs: int = 200) -> bytes:
             "uv", "run", "python", script_path,
             "--device", "cuda",
             "--epochs", str(epochs),
+            "--db-path", db_path,
+            "--dataset-path", dataset_path,
         ],
         capture_output=True,
         text=True,

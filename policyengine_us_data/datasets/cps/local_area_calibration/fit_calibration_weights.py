@@ -21,6 +21,14 @@ parser.add_argument(
     "--epochs", type=int, default=100,
     help="Total epochs for training"
 )
+parser.add_argument(
+    "--db-path", default=None,
+    help="Path to policy_data.db (default: STORAGE_FOLDER/calibration/policy_data.db)"
+)
+parser.add_argument(
+    "--dataset-path", default=None,
+    help="Path to stratified CPS h5 file"
+)
 args = parser.parse_args()
 
 import numpy as np
@@ -56,10 +64,19 @@ LAMBDA_L2 = 1e-8
 LEARNING_RATE = 0.15
 
 # Data paths
-db_path = STORAGE_FOLDER / "calibration" / "policy_data.db"
+if args.db_path:
+    db_path = Path(args.db_path)
+else:
+    db_path = STORAGE_FOLDER / "calibration" / "policy_data.db"
 db_uri = f"sqlite:///{db_path}"
-dataset_path = STORAGE_FOLDER / "stratified_extended_cps_2023.h5"
+
+if args.dataset_path:
+    dataset_path = Path(args.dataset_path)
+else:
+    dataset_path = STORAGE_FOLDER / "stratified_extended_cps_2023.h5"
+
 output_dir = STORAGE_FOLDER / "calibration"
+output_dir.mkdir(parents=True, exist_ok=True)
 time_period = 2023
 
 # Get all CDs from database

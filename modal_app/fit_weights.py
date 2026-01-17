@@ -40,7 +40,6 @@ def fit_weights(branch: str = "main", epochs: int = 200) -> bytes:
             "--device", "cuda",
             "--epochs", str(epochs),
         ],
-        check=True,
         capture_output=True,
         text=True,
         env=os.environ.copy(),
@@ -48,6 +47,8 @@ def fit_weights(branch: str = "main", epochs: int = 200) -> bytes:
     print(result.stdout)
     if result.stderr:
         print("STDERR:", result.stderr)
+    if result.returncode != 0:
+        raise RuntimeError(f"Script failed with code {result.returncode}")
 
     output_line = [
         line for line in result.stdout.split('\n') if 'OUTPUT_PATH:' in line

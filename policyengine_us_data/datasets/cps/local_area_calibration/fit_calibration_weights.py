@@ -3,6 +3,7 @@ Fit calibration weights using L0-regularized optimization.
 Prototype script for weight calibration using the l0-python package.
 """
 
+import argparse
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,17 @@ from pathlib import Path
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
+parser = argparse.ArgumentParser(description="Fit calibration weights")
+parser.add_argument(
+    "--device", default="cpu", choices=["cpu", "cuda"],
+    help="Device for training (cpu or cuda)"
+)
+parser.add_argument(
+    "--epochs", type=int, default=100,
+    help="Total epochs for training"
+)
+args = parser.parse_args()
 
 import numpy as np
 from policyengine_us import Microsimulation
@@ -28,8 +40,8 @@ except ImportError:
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
-DEVICE = "cpu"  # Use "cuda" for GPU runs on Modal
-TOTAL_EPOCHS = 100  # Reduced for testing; use 5000+ for production
+DEVICE = args.device
+TOTAL_EPOCHS = args.epochs
 EPOCHS_PER_CHUNK = 50
 
 # Hyperparameters
@@ -182,6 +194,7 @@ print(f"Non-zero weights: {(w > 0).sum():,}")
 output_path = output_dir / f"calibration_weights_{timestamp}.npy"
 np.save(output_path, w)
 print(f"\nWeights saved to: {output_path}")
+print(f"OUTPUT_PATH:{output_path}")
 
 # ============================================================================
 # STEP 6: VERIFY PREDICTIONS

@@ -32,12 +32,14 @@ parser.add_argument(
 args = parser.parse_args()
 
 import numpy as np
+import pandas as pd
 from policyengine_us import Microsimulation
 from policyengine_us_data.storage import STORAGE_FOLDER
 from sparse_matrix_builder import SparseMatrixBuilder
 from calibration_utils import get_all_cds_from_database
 
 try:
+    import torch
     from l0.calibration import SparseCalibrationWeights
 except ImportError:
     raise ImportError(
@@ -158,7 +160,7 @@ model = SparseCalibrationWeights(
 # STEP 4: TRAIN IN CHUNKS
 # ============================================================================
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-sparsity_log = []
+calibration_log = pd.DataFrame()
 
 for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
     chunk_epochs = min(EPOCHS_PER_CHUNK, TOTAL_EPOCHS - chunk_start)
@@ -179,28 +181,25 @@ for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
         verbose_freq=chunk_epochs,
     )
 
-    active_info = model.get_active_weights()
-    active_count = active_info["count"]
-    total_count = X_sparse.shape[1]
-    sparsity_pct = 100 * (1 - active_count / total_count)
+    with torch.no_grad():
+        predictions = model.predict(X_sparse).cpu().numpy()
 
-    sparsity_log.append(
-        {
-            "epoch": current_epoch,
-            "active_weights": active_count,
-            "total_weights": total_count,
-            "sparsity_pct": sparsity_pct,
-        }
-    )
-
-    print(f"  Active weights: {active_count:,} / {total_count:,}")
-    print(f"  Sparsity: {sparsity_pct:.2f}%")
+    chunk_df = pd.DataFrame({
+        "target_name": target_names,
+        "estimate": predictions,
+        "target": targets,
+    })
+    chunk_df["epoch"] = current_epoch
+    chunk_df["error"] = chunk_df.estimate - chunk_df.target
+    chunk_df["rel_error"] = chunk_df.error / chunk_df.target
+    chunk_df["abs_error"] = chunk_df.error.abs()
+    chunk_df["rel_abs_error"] = chunk_df.rel_error.abs()
+    chunk_df["loss"] = chunk_df.rel_abs_error ** 2
+    calibration_log = pd.concat([calibration_log, chunk_df], ignore_index=True)
 
 # ============================================================================
 # STEP 5: EXTRACT AND SAVE WEIGHTS
 # ============================================================================
-import torch
-
 with torch.no_grad():
     w = model.get_weights(deterministic=True).cpu().numpy()
 
@@ -212,6 +211,11 @@ output_path = output_dir / f"calibration_weights_{timestamp}.npy"
 np.save(output_path, w)
 print(f"\nWeights saved to: {output_path}")
 print(f"OUTPUT_PATH:{output_path}")
+
+log_path = output_dir / f"calibration_log_{timestamp}.csv"
+calibration_log.to_csv(log_path, index=False)
+print(f"Calibration log saved to: {log_path}")
+print(f"LOG_PATH:{log_path}")
 
 # ============================================================================
 # STEP 6: VERIFY PREDICTIONS

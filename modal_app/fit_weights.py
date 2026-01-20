@@ -15,7 +15,7 @@ image = (
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 
 
-def _fit_weights_impl(branch: str, epochs: int) -> bytes:
+def _fit_weights_impl(branch: str, epochs: int) -> dict:
     """Shared implementation for weight fitting."""
     os.chdir("/root")
     subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
@@ -72,20 +72,30 @@ def _fit_weights_impl(branch: str, epochs: int) -> bytes:
     if result.returncode != 0:
         raise RuntimeError(f"Script failed with code {result.returncode}")
 
-    output_line = [
-        line for line in result.stdout.split('\n') if 'OUTPUT_PATH:' in line
-    ][0]
-    output_path = output_line.split('OUTPUT_PATH:')[1].strip()
+    output_path = None
+    log_path = None
+    for line in result.stdout.split('\n'):
+        if 'OUTPUT_PATH:' in line:
+            output_path = line.split('OUTPUT_PATH:')[1].strip()
+        elif 'LOG_PATH:' in line:
+            log_path = line.split('LOG_PATH:')[1].strip()
 
     with open(output_path, 'rb') as f:
-        return f.read()
+        weights_bytes = f.read()
+
+    log_bytes = None
+    if log_path:
+        with open(log_path, 'rb') as f:
+            log_bytes = f.read()
+
+    return {"weights": weights_bytes, "log": log_bytes}
 
 
 @app.function(
     image=image, secrets=[hf_secret], memory=32768, cpu=4.0,
     gpu="T4", timeout=14400,
 )
-def fit_weights_t4(branch: str = "main", epochs: int = 200) -> bytes:
+def fit_weights_t4(branch: str = "main", epochs: int = 200) -> dict:
     return _fit_weights_impl(branch, epochs)
 
 
@@ -93,7 +103,7 @@ def fit_weights_t4(branch: str = "main", epochs: int = 200) -> bytes:
     image=image, secrets=[hf_secret], memory=32768, cpu=4.0,
     gpu="A10", timeout=14400,
 )
-def fit_weights_a10(branch: str = "main", epochs: int = 200) -> bytes:
+def fit_weights_a10(branch: str = "main", epochs: int = 200) -> dict:
     return _fit_weights_impl(branch, epochs)
 
 
@@ -101,7 +111,7 @@ def fit_weights_a10(branch: str = "main", epochs: int = 200) -> bytes:
     image=image, secrets=[hf_secret], memory=32768, cpu=4.0,
     gpu="A100-40GB", timeout=14400,
 )
-def fit_weights_a100_40(branch: str = "main", epochs: int = 200) -> bytes:
+def fit_weights_a100_40(branch: str = "main", epochs: int = 200) -> dict:
     return _fit_weights_impl(branch, epochs)
 
 
@@ -109,7 +119,7 @@ def fit_weights_a100_40(branch: str = "main", epochs: int = 200) -> bytes:
     image=image, secrets=[hf_secret], memory=32768, cpu=4.0,
     gpu="A100-80GB", timeout=14400,
 )
-def fit_weights_a100_80(branch: str = "main", epochs: int = 200) -> bytes:
+def fit_weights_a100_80(branch: str = "main", epochs: int = 200) -> dict:
     return _fit_weights_impl(branch, epochs)
 
 
@@ -117,7 +127,7 @@ def fit_weights_a100_80(branch: str = "main", epochs: int = 200) -> bytes:
     image=image, secrets=[hf_secret], memory=32768, cpu=4.0,
     gpu="H100", timeout=14400,
 )
-def fit_weights_h100(branch: str = "main", epochs: int = 200) -> bytes:
+def fit_weights_h100(branch: str = "main", epochs: int = 200) -> dict:
     return _fit_weights_impl(branch, epochs)
 
 
@@ -135,7 +145,8 @@ def main(
     branch: str = "main",
     epochs: int = 200,
     gpu: str = "T4",
-    output: str = "calibration_weights.npy"
+    output: str = "calibration_weights.npy",
+    log_output: str = "calibration_log.csv"
 ):
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
@@ -144,8 +155,13 @@ def main(
 
     print(f"Running with GPU: {gpu}, epochs: {epochs}, branch: {branch}")
     func = GPU_FUNCTIONS[gpu]
-    weights_bytes = func.remote(branch=branch, epochs=epochs)
+    result = func.remote(branch=branch, epochs=epochs)
 
     with open(output, 'wb') as f:
-        f.write(weights_bytes)
+        f.write(result["weights"])
     print(f"Weights saved to: {output}")
+
+    if result["log"]:
+        with open(log_output, 'wb') as f:
+            f.write(result["log"])
+        print(f"Calibration log saved to: {log_output}")

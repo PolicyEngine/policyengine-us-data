@@ -199,20 +199,12 @@ class SparseMatrixBuilder:
                             ):
                                 mask[:] = False
                         else:
-                            try:
-                                values = state_sim.calculate(
-                                    c["variable"], map_to="household"
-                                ).values
-                                mask &= apply_op(
-                                    values, c["operation"], c["value"]
-                                )
-                            except Exception as e:
-                                # Variable may not exist or may not be
-                                # calculable at household level - skip
-                                logger.debug(
-                                    f"Could not evaluate constraint "
-                                    f"{c['variable']}: {e}"
-                                )
+                            values = state_sim.calculate(
+                                c["variable"], map_to="household"
+                            ).values
+                            mask &= apply_op(
+                                values, c["operation"], c["value"]
+                            )
 
                     if not mask.any():
                         continue

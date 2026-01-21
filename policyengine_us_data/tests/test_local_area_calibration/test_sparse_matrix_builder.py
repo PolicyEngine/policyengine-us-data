@@ -35,7 +35,6 @@ from policyengine_us_data.datasets.cps.local_area_calibration.sparse_matrix_buil
     SparseMatrixBuilder,
 )
 
-
 # =============================================================================
 # CONFIGURATION - Update these lists as new variables are added
 # =============================================================================

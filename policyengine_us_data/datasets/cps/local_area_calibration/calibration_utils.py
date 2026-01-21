@@ -17,7 +17,6 @@ from policyengine_us.variables.household.demographic.geographic.state_code impor
     StateCode,
 )
 
-
 # State/Geographic Mappings
 STATE_CODES = {
     1: "AL",

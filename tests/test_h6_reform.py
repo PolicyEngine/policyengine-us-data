@@ -11,7 +11,6 @@ policyengine imports (which need heavy dependencies like torch).
 
 import pytest
 
-
 # Constants from the H6 reform implementation
 HI_SINGLE = 34_000
 HI_JOINT = 44_000

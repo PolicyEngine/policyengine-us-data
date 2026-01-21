@@ -46,7 +46,6 @@ from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils 
     create_target_groups,
 )
 
-
 logger = logging.getLogger(__name__)
 
 

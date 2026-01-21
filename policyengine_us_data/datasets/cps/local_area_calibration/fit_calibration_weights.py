@@ -52,7 +52,7 @@ except ImportError:
 # ============================================================================
 DEVICE = args.device
 TOTAL_EPOCHS = args.epochs
-EPOCHS_PER_CHUNK = 50
+EPOCHS_PER_CHUNK = 500  # TODO: need a better way to set this. Remember it can blow up the Vercel app
 
 # Hyperparameters
 BETA = 0.35
@@ -62,7 +62,7 @@ INIT_KEEP_PROB = 0.999
 LOG_WEIGHT_JITTER_SD = 0.05
 LOG_ALPHA_JITTER_SD = 0.01
 LAMBDA_L0 = 1e-8
-LAMBDA_L2 = 1e-8
+LAMBDA_L2 = 1e-12
 LEARNING_RATE = 0.15
 
 # Data paths

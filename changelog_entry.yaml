@@ -1,4 +1,0 @@
-- bump: minor
-  changes:
-    added:
-      - tests to verify SparseMatrixBuilder correctly calculates variables and constraints into the calibration matrix.

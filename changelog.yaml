@@ -676,3 +676,9 @@
     fixed:
     - Fixed Publish workflow by migrating dev dependencies to PEP 735 dependency-groups
   date: 2026-01-07 01:05:49
+- bump: minor
+  changes:
+    added:
+    - tests to verify SparseMatrixBuilder correctly calculates variables and constraints
+      into the calibration matrix.
+  date: 2026-01-22 20:50:13

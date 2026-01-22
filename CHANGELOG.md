@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.52.0] - 2026-01-22 20:50:13
+
+### Added
+
+- tests to verify SparseMatrixBuilder correctly calculates variables and constraints into the calibration matrix.
+
 ## [1.51.1] - 2026-01-07 01:05:49
 
 ### Fixed
@@ -803,6 +809,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.52.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.51.1...1.52.0
 [1.51.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.51.0...1.51.1
 [1.51.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.50.0...1.51.0
 [1.50.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.49.0...1.50.0

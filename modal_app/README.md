@@ -11,7 +11,7 @@ Run calibration weight fitting on Modal's cloud GPUs.
 ## Usage
 
 ```bash
-modal run modal_app/fit_weights.py --branch <branch> --epochs <n> --gpu <type>
+modal run modal_app/remote_calibration_runner.py --branch <branch> --epochs <n> --gpu <type>
 ```
 
 ### Arguments
@@ -27,7 +27,7 @@ modal run modal_app/fit_weights.py --branch <branch> --epochs <n> --gpu <type>
 ### Example
 
 ```bash
-modal run modal_app/fit_weights.py --branch health-insurance-premiums --epochs 100 --gpu T4
+modal run modal_app/remote_calibration_runner.py --branch health-insurance-premiums --epochs 100 --gpu T4
 ```
 
 ## Output Files

@@ -1,4 +1,4 @@
-- bump: patch
+- bump: minor
   changes:
-    fixed:
-    - Versioning workflow checkout for push events
+    added:
+      - tests to verify SparseMatrixBuilder correctly calculates variables and constraints into the calibration matrix.

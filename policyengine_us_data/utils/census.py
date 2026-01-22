@@ -4,7 +4,6 @@ import requests
 import pandas as pd
 import numpy as np
 
-
 STATE_NAME_TO_FIPS = {
     "Alabama": "01",
     "Alaska": "02",

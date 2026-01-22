@@ -15,7 +15,6 @@ from policyengine_us_data.utils.uprating import (
 from microimpute.models.qrf import QRF
 import logging
 
-
 test_lite = os.environ.get("TEST_LITE") == "true"
 print(f"TEST_LITE == {test_lite}")
 

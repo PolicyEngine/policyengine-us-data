@@ -9,7 +9,6 @@ import sqlite3
 import pandas as pd
 from policyengine_us.system import system
 
-
 conn = sqlite3.connect("policyengine_us_data/storage/policy_data.db")
 
 stratum_constraints_df = pd.read_sql("SELECT * FROM stratum_constraints", conn)

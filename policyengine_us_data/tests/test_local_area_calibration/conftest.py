@@ -1,4 +1,7 @@
-"""Shared fixtures for local area calibration tests."""
+"""Shared fixtures for local area calibration tests.
+
+Importantly, this file determines which variables will be included in the sparse matrix and calibrating routine.
+"""
 
 import pytest
 import numpy as np
@@ -16,6 +19,36 @@ from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils 
     get_calculated_variables,
 )
 
+# Variables to test for state-level value matching (CI uses subset for speed)
+# Format: (variable_name, rtol)
+#     variable_name as per the targets in policy_data.db
+#     rtol is relative tolerance for comparison
+VARIABLES_TO_TEST = [
+    ("snap", 1e-2),
+    ("income_tax", 1e-2),
+    ("eitc", 1e-2),
+]
+
+# CI filter config - minimal subset for fast CI runs
+# Tests 3 representative variables covering benefits, taxes, and credits
+COMBINED_FILTER_CONFIG = {
+    "stratum_group_ids": [
+        4,  # SNAP targets
+        117,  # Income tax targets
+    ],
+    "variables": [
+        "snap",
+        "income_tax",
+        "eitc",
+    ],
+}
+
+# Maximum allowed mismatch rate for state-level value comparison
+MAX_MISMATCH_RATE = 0.02
+
+# Number of samples for cell-level verification tests
+N_VERIFICATION_SAMPLES = 500
+
 
 @pytest.fixture(scope="module")
 def db_uri():
@@ -30,7 +63,7 @@ def dataset_path():
 
 @pytest.fixture(scope="module")
 def test_cds(db_uri):
-    """CDs from NC, HI, MT, AK (manageable size, multiple same-state CDs)."""
+    """CDs from NC, HI, MT, AK (manageable size for CI, multiple same-state CDs)."""
     engine = create_engine(db_uri)
     query = """
     SELECT DISTINCT sc.value as cd_geoid
@@ -58,7 +91,7 @@ def sim(dataset_path):
 
 @pytest.fixture(scope="module")
 def matrix_data(db_uri, dataset_path, test_cds, sim):
-    """Build sparse matrix, return (targets_df, X_sparse, household_id_mapping)."""
+    """Build sparse matrix with all configured variables."""
     builder = SparseMatrixBuilder(
         db_uri,
         time_period=2023,
@@ -66,7 +99,7 @@ def matrix_data(db_uri, dataset_path, test_cds, sim):
         dataset_path=dataset_path,
     )
     targets_df, X_sparse, household_id_mapping = builder.build_matrix(
-        sim, target_filter={"stratum_group_ids": [4], "variables": ["snap"]}
+        sim, target_filter=COMBINED_FILTER_CONFIG
     )
     return targets_df, X_sparse, household_id_mapping
 

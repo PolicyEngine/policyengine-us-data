@@ -9,7 +9,6 @@ from policyengine_us_data.storage.calibration_targets.pull_age_targets import (
     STATE_NAME_TO_ABBREV,
 )
 
-
 STATE_NAME_TO_FIPS = {
     "Alabama": "01",
     "Alaska": "02",

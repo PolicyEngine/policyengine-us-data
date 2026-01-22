@@ -10,7 +10,6 @@ from policyengine_us_data.geography.county_fips import (
     LOCAL_FOLDER,
 )
 
-
 # Sample data that mimics the format from census.gov
 SAMPLE_CENSUS_DATA = """STATE|STATEFP|COUNTYFP|COUNTYNAME
 AL|01|001|Autauga County

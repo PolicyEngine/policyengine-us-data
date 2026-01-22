@@ -24,7 +24,6 @@ from policyengine_us_data.storage.calibration_targets.make_district_mapping impo
     get_district_mapping,
 )
 
-
 """See the 22incddocguide.docx manual from the IRS SOI"""
 # Let's make this work with strict inequalities
 # Language in the doc: '$10,000 under $25,000'

@@ -38,6 +38,105 @@ class SparseMatrixBuilder:
         self.time_period = time_period
         self.cds_to_calibrate = cds_to_calibrate
         self.dataset_path = dataset_path
+        self._entity_rel_cache = None
+
+    def _build_entity_relationship(self, sim) -> pd.DataFrame:
+        """
+        Build entity relationship DataFrame mapping persons to all entity IDs.
+
+        This is used to evaluate constraints at the person level and then
+        aggregate to household level, handling variables defined at different
+        entity levels (person, tax_unit, household, spm_unit).
+
+        Returns:
+            DataFrame with person_id, household_id, tax_unit_id, spm_unit_id
+        """
+        if self._entity_rel_cache is not None:
+            return self._entity_rel_cache
+
+        self._entity_rel_cache = pd.DataFrame(
+            {
+                "person_id": sim.calculate(
+                    "person_id", map_to="person"
+                ).values,
+                "household_id": sim.calculate(
+                    "household_id", map_to="person"
+                ).values,
+                "tax_unit_id": sim.calculate(
+                    "tax_unit_id", map_to="person"
+                ).values,
+                "spm_unit_id": sim.calculate(
+                    "spm_unit_id", map_to="person"
+                ).values,
+            }
+        )
+        return self._entity_rel_cache
+
+    def _evaluate_constraints_entity_aware(
+        self, state_sim, constraints: List[dict], n_households: int
+    ) -> np.ndarray:
+        """
+        Evaluate non-geographic constraints at person level, aggregate to
+        household level using .any().
+
+        This properly handles constraints on variables defined at different
+        entity levels (e.g., tax_unit_is_filer at tax_unit level). Instead of
+        summing values at household level (which would give 2, 3, etc. for
+        households with multiple tax units), we evaluate at person level and
+        use .any() aggregation ("does this household have at least one person
+        satisfying all constraints?").
+
+        Args:
+            state_sim: Microsimulation with state_fips set
+            constraints: List of constraint dicts with variable, operation,
+                value keys (geographic constraints should be pre-filtered)
+            n_households: Number of households
+
+        Returns:
+            Boolean mask array of length n_households
+        """
+        if not constraints:
+            return np.ones(n_households, dtype=bool)
+
+        entity_rel = self._build_entity_relationship(state_sim)
+        n_persons = len(entity_rel)
+
+        person_mask = np.ones(n_persons, dtype=bool)
+
+        for c in constraints:
+            var = c["variable"]
+            op = c["operation"]
+            val = c["value"]
+
+            # Calculate constraint variable at person level
+            constraint_values = state_sim.calculate(
+                var, map_to="person"
+            ).values
+
+            # Apply operation at person level
+            person_mask &= apply_op(constraint_values, op, val)
+
+        # Aggregate to household level using .any()
+        # "At least one person in this household satisfies ALL constraints"
+        entity_rel_with_mask = entity_rel.copy()
+        entity_rel_with_mask["satisfies"] = person_mask
+
+        household_mask_series = entity_rel_with_mask.groupby("household_id")[
+            "satisfies"
+        ].any()
+
+        # Ensure we return a mask aligned with household order
+        household_ids = state_sim.calculate(
+            "household_id", map_to="household"
+        ).values
+        household_mask = np.array(
+            [
+                household_mask_series.get(hh_id, False)
+                for hh_id in household_ids
+            ]
+        )
+
+        return household_mask
 
     def _query_targets(self, target_filter: dict) -> pd.DataFrame:
         """Query targets based on filter criteria using OR logic."""
@@ -166,6 +265,9 @@ class SparseMatrixBuilder:
             cds_by_state[state].append((cd_idx, cd))
 
         for state, cd_list in cds_by_state.items():
+            # Clear entity relationship cache when creating new simulation
+            self._entity_rel_cache = None
+
             if self.dataset_path:
                 state_sim = self._create_state_sim(state, n_households)
             else:
@@ -184,35 +286,43 @@ class SparseMatrixBuilder:
                 for row_idx, (_, target) in enumerate(targets_df.iterrows()):
                     constraints = self._get_constraints(target["stratum_id"])
 
-                    mask = np.ones(n_households, dtype=bool)
+                    geo_constraints = []
+                    non_geo_constraints = []
                     for c in constraints:
+                        if c["variable"] in (
+                            "state_fips",
+                            "congressional_district_geoid",
+                        ):
+                            geo_constraints.append(c)
+                        else:
+                            non_geo_constraints.append(c)
+
+                    # Check geographic constraints first (quick fail)
+                    geo_mask = np.ones(n_households, dtype=bool)
+                    for c in geo_constraints:
                         if c["variable"] == "congressional_district_geoid":
                             if (
                                 c["operation"] in ("==", "=")
                                 and c["value"] != cd
                             ):
-                                mask[:] = False
+                                geo_mask[:] = False
                         elif c["variable"] == "state_fips":
                             if (
                                 c["operation"] in ("==", "=")
                                 and int(c["value"]) != state
                             ):
-                                mask[:] = False
-                        else:
-                            try:
-                                values = state_sim.calculate(
-                                    c["variable"], map_to="household"
-                                ).values
-                                mask &= apply_op(
-                                    values, c["operation"], c["value"]
-                                )
-                            except Exception as e:
-                                # Variable may not exist or may not be
-                                # calculable at household level - skip
-                                logger.debug(
-                                    f"Could not evaluate constraint "
-                                    f"{c['variable']}: {e}"
-                                )
+                                geo_mask[:] = False
+
+                    if not geo_mask.any():
+                        continue
+
+                    # Evaluate non-geographic constraints at entity level
+                    entity_mask = self._evaluate_constraints_entity_aware(
+                        state_sim, non_geo_constraints, n_households
+                    )
+
+                    # Combine geographic and entity-aware masks
+                    mask = geo_mask & entity_mask
 
                     if not mask.any():
                         continue

@@ -17,7 +17,6 @@ from policyengine_us.variables.household.demographic.geographic.state_code impor
     StateCode,
 )
 
-
 # State/Geographic Mappings
 STATE_CODES = {
     1: "AL",
@@ -193,15 +192,21 @@ def get_calculated_variables(sim) -> List[str]:
     """
     Return variables that should be cleared for state-swap recalculation.
 
-    Includes variables with formulas, adds, or subtracts.
+    Includes variables with formulas, or adds/subtracts that are lists.
 
-    Excludes ID variables (person_id, household_id, etc.) because:
-    1. They have formulas that generate sequential IDs (0, 1, 2, ...)
-    2. We need the original H5 values, not regenerated sequences
-    3. PolicyEngine's random() function uses entity IDs as seeds:
-       seed = abs(entity_id * 100 + count_random_calls)
-       If IDs change, random-dependent variables (SSI resource test,
-       WIC nutritional risk, WIC takeup) produce different results.
+    Excludes:
+    1. ID variables (person_id, household_id, etc.) - needed for random seeds
+    2. Variables with string adds/subtracts (parameter paths) - these are
+       pseudo-inputs stored in H5 that would recalculate differently using
+       parameter lookups. Examples: pre_tax_contributions.
+    3. Variables in input_variables (have stored H5 values) even if they
+       have formulas - the stored values represent original survey data
+       that should be preserved. Examples: cdcc_relevant_expenses, rent.
+
+    The exclusions are critical because:
+    - The H5 file stores pre-computed values from original CPS processing
+    - If deleted, recalculation produces different values, corrupting
+      downstream calculations like income_tax
     """
     exclude_ids = {
         "person_id",
@@ -211,16 +216,36 @@ def get_calculated_variables(sim) -> List[str]:
         "family_id",
         "marital_unit_id",
     }
-    return [
-        name
-        for name, var in sim.tax_benefit_system.variables.items()
-        if (
-            var.formulas
-            or getattr(var, "adds", None)
-            or getattr(var, "subtracts", None)
-        )
-        and name not in exclude_ids
-    ]
+
+    # Get stored input variables to exclude
+    input_vars = set(sim.input_variables)
+
+    result = []
+    for name, var in sim.tax_benefit_system.variables.items():
+        if name in exclude_ids:
+            continue
+
+        # Exclude variables that have stored values (input_variables)
+        # These represent original survey data that should be preserved
+        if name in input_vars:
+            continue
+
+        # Include if has formulas
+        if var.formulas:
+            result.append(name)
+            continue
+
+        # Include if adds/subtracts is a list (explicit component aggregation)
+        # Exclude if adds/subtracts is a string (parameter path - pseudo-input)
+        adds = getattr(var, "adds", None)
+        subtracts = getattr(var, "subtracts", None)
+
+        if adds and isinstance(adds, list):
+            result.append(name)
+        elif subtracts and isinstance(subtracts, list):
+            result.append(name)
+
+    return result
 
 
 def get_pseudo_input_variables(sim) -> set:

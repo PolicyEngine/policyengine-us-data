@@ -3,7 +3,6 @@
 import numpy as np
 from spm_calculator import SPMCalculator, spm_equivalence_scale
 
-
 TENURE_CODE_MAP = {
     1: "owner_with_mortgage",
     2: "owner_without_mortgage",

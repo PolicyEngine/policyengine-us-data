@@ -11,7 +11,6 @@ from policyengine_us_data.db.create_database_tables import (
 )
 from policyengine_us_data.utils.census import get_census_docs, pull_acs_table
 
-
 LABEL_TO_SHORT = {
     "Estimate!!Total!!Total population!!AGE!!Under 5 years": "0-4",
     "Estimate!!Total!!Total population!!AGE!!5 to 9 years": "5-9",

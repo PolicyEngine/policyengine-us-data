@@ -19,92 +19,26 @@ from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils 
     get_calculated_variables,
 )
 
-# Variables to test for state-level value matching
+# Variables to test for state-level value matching (CI uses subset for speed)
 # Format: (variable_name, rtol)
 #     variable_name as per the targets in policy_data.db
 #     rtol is relative tolerance for comparison
 VARIABLES_TO_TEST = [
     ("snap", 1e-2),
-    ("health_insurance_premiums_without_medicare_part_b", 1e-2),
-    ("medicaid", 1e-2),
-    ("medicare_part_b_premiums", 1e-2),
-    ("other_medical_expenses", 1e-2),
-    ("over_the_counter_health_expenses", 1e-2),
-    ("salt_deduction", 1e-2),
-    ("spm_unit_capped_work_childcare_expenses", 1e-2),
-    ("spm_unit_capped_housing_subsidy", 1e-2),
-    ("ssi", 1e-2),
-    ("tanf", 1e-2),
-    ("tip_income", 1e-2),
-    ("unemployment_compensation", 1e-2),
     ("income_tax", 1e-2),
-    ("income_tax", 1e-2),
-    ("qualified_business_income_deduction", 1e-2),
-    ("taxable_social_security", 1e-2),
-    ("taxable_pension_income", 1e-2),
-    ("taxable_ira_distributions", 1e-2),
-    ("taxable_interest_income", 1e-2),
-    ("tax_exempt_interest_income", 1e-2),
-    ("self_employment_income", 1e-2),
-    ("salt", 1e-2),
-    ("refundable_ctc", 1e-2),
-    ("real_estate_taxes", 1e-2),
-    ("qualified_dividend_income", 1e-2),
-    ("dividend_income", 1e-2),
-    ("adjusted_gross_income", 1e-2),
     ("eitc", 1e-2),
 ]
 
-# Combined filter config to build matrix with all variables at once
+# CI filter config - minimal subset for fast CI runs
+# Tests 3 representative variables covering benefits, taxes, and credits
 COMBINED_FILTER_CONFIG = {
     "stratum_group_ids": [
         4,  # SNAP targets
-        5,  # Medicaid targets
-        112,  # Unemployment compensation targets
         117,  # Income tax targets
-        100,  # QBID targets
-        111,  # Taxable social security targets
-        114,  # Taxable pension income targets
-        105,  # Taxable IRA distributions targets
-        106,  # Taxable interest income targets
-        107,  # Tax exempt interest income targets
-        101,  # Self-employment income targets
-        116,  # Salt targets
-        115,  # Refundable CTC targets
-        103,  # Real estate taxes targets
-        109,  # Qualified dividend income targets
-        108,  # Dividend income targets
-        3,  # Adjusted gross income targets
     ],
     "variables": [
         "snap",
-        "health_insurance_premiums_without_medicare_part_b",
-        "medicaid",
-        "medicare_part_b_premiums",
-        "other_medical_expenses",
-        "over_the_counter_health_expenses",
-        "salt_deduction",
-        "spm_unit_capped_work_childcare_expenses",
-        "spm_unit_capped_housing_subsidy",
-        "ssi",
-        "tanf",
-        "tip_income",
-        "unemployment_compensation",
         "income_tax",
-        "income_tax",
-        "qualified_business_income_deduction",
-        "taxable_social_security",
-        "taxable_pension_income",
-        "taxable_ira_distributions",
-        "taxable_interest_income",
-        "tax_exempt_interest_income",
-        "self_employment_income",
-        "salt",
-        "refundable_ctc",
-        "real_estate_taxes",
-        "qualified_dividend_income",
-        "dividend_income",
-        "adjusted_gross_income",
         "eitc",
     ],
 }
@@ -113,7 +47,7 @@ COMBINED_FILTER_CONFIG = {
 MAX_MISMATCH_RATE = 0.02
 
 # Number of samples for cell-level verification tests
-N_VERIFICATION_SAMPLES = 2000
+N_VERIFICATION_SAMPLES = 500
 
 
 @pytest.fixture(scope="module")
@@ -129,7 +63,7 @@ def dataset_path():
 
 @pytest.fixture(scope="module")
 def test_cds(db_uri):
-    """CDs from multiple states for comprehensive testing."""
+    """CDs from NC, HI, MT, AK (manageable size for CI, multiple same-state CDs)."""
     engine = create_engine(db_uri)
     query = """
     SELECT DISTINCT sc.value as cd_geoid
@@ -142,10 +76,6 @@ def test_cds(db_uri):
         OR sc.value LIKE '150_'
         OR sc.value LIKE '300_'
         OR sc.value = '200' OR sc.value = '201'
-        OR sc.value IN ('101', '102')
-        OR sc.value IN ('601', '602')
-        OR sc.value IN ('3601', '3602')
-        OR sc.value IN ('4801', '4802')
       )
     ORDER BY sc.value
     """

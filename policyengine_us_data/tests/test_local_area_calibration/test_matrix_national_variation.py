@@ -177,7 +177,7 @@ class TestNationalLevelContributions:
             min_states = stats_df["n_states"].min()
 
             # Check: on average, contributions should come from multiple states
-            # (at least 2, since we have CDs from 6 different states)
+            # (at least 2, since we have CDs from 4 different states)
             passed = avg_states >= 2 and min_states >= 1
 
             results.append(

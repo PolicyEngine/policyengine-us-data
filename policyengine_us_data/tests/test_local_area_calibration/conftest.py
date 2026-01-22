@@ -37,6 +37,22 @@ VARIABLES_TO_TEST = [
     ("tanf", 1e-2),
     ("tip_income", 1e-2),
     ("unemployment_compensation", 1e-2),
+    ("income_tax", 1e-2),
+    ("income_tax", 1e-2),
+    ("qualified_business_income_deduction", 1e-2),
+    ("taxable_social_security", 1e-2),
+    ("taxable_pension_income", 1e-2),
+    ("taxable_ira_distributions", 1e-2),
+    ("taxable_interest_income", 1e-2),
+    ("tax_exempt_interest_income", 1e-2),
+    ("self_employment_income", 1e-2),
+    ("salt", 1e-2),
+    ("refundable_ctc", 1e-2),
+    ("real_estate_taxes", 1e-2),
+    ("qualified_dividend_income", 1e-2),
+    ("dividend_income", 1e-2),
+    ("adjusted_gross_income", 1e-2),
+    ("eitc", 1e-2),
 ]
 
 # Combined filter config to build matrix with all variables at once
@@ -45,6 +61,20 @@ COMBINED_FILTER_CONFIG = {
         4,  # SNAP targets
         5,  # Medicaid targets
         112,  # Unemployment compensation targets
+        117,  # Income tax targets
+        100,  # QBID targets
+        111,  # Taxable social security targets
+        114,  # Taxable pension income targets
+        105,  # Taxable IRA distributions targets
+        106,  # Taxable interest income targets
+        107,  # Tax exempt interest income targets
+        101,  # Self-employment income targets
+        116,  # Salt targets
+        115,  # Refundable CTC targets
+        103,  # Real estate taxes targets
+        109,  # Qualified dividend income targets
+        108,  # Dividend income targets
+        3,  # Adjusted gross income targets
     ],
     "variables": [
         "snap",
@@ -60,6 +90,22 @@ COMBINED_FILTER_CONFIG = {
         "tanf",
         "tip_income",
         "unemployment_compensation",
+        "income_tax",
+        "income_tax",
+        "qualified_business_income_deduction",
+        "taxable_social_security",
+        "taxable_pension_income",
+        "taxable_ira_distributions",
+        "taxable_interest_income",
+        "tax_exempt_interest_income",
+        "self_employment_income",
+        "salt",
+        "refundable_ctc",
+        "real_estate_taxes",
+        "qualified_dividend_income",
+        "dividend_income",
+        "adjusted_gross_income",
+        "eitc",
     ],
 }
 
@@ -67,7 +113,7 @@ COMBINED_FILTER_CONFIG = {
 MAX_MISMATCH_RATE = 0.02
 
 # Number of samples for cell-level verification tests
-N_VERIFICATION_SAMPLES = 200
+N_VERIFICATION_SAMPLES = 2000
 
 
 @pytest.fixture(scope="module")

@@ -1086,6 +1086,20 @@ wheels = [
 ]
 
 [[package]]
+name = "l0-python"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cf/6b/4a9ca6d1eb9828c526947fffb2ee2a1d02eec330f04cd53af301a05fde0a/l0_python-0.5.0.tar.gz", hash = "sha256:9b6b1751e142702e21ed866e40d8ab47304a26a5455998620a0eb798f4c7f599", size = 36320, upload-time = "2026-01-21T13:55:53.365Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/80/33ccae8af3fe55a81d33569d9241a29cecde17ab34fdff214804e81fa353/l0_python-0.5.0-py3-none-any.whl", hash = "sha256:9c8f4532426b927a97f4722b1c5114147adb09365100623effb49c0021345881", size = 23590, upload-time = "2026-01-21T13:55:52.406Z" },
+]
+
+[[package]]
 name = "lark"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1874,6 +1888,9 @@ dependencies = [
 calibration = [
     { name = "samplics" },
 ]
+l0 = [
+    { name = "l0-python" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1894,6 +1911,7 @@ dev = [
 requires-dist = [
     { name = "google-auth", specifier = ">=2.0.0" },
     { name = "google-cloud-storage", specifier = ">=2.0.0" },
+    { name = "l0-python", marker = "extra == 'l0'" },
     { name = "microdf-python", specifier = ">=1.0.0" },
     { name = "microimpute", specifier = ">=1.1.4" },
     { name = "openpyxl", specifier = ">=3.1.5" },
@@ -1915,7 +1933,7 @@ requires-dist = [
     { name = "us", specifier = ">=2.0.0" },
     { name = "xlrd", specifier = ">=2.0.2" },
 ]
-provides-extras = ["calibration"]
+provides-extras = ["calibration", "l0"]
 
 [package.metadata.requires-dev]
 dev = [

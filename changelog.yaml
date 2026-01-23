@@ -682,3 +682,8 @@
     - tests to verify SparseMatrixBuilder correctly calculates variables and constraints
       into the calibration matrix.
   date: 2026-01-22 20:50:13
+- bump: minor
+  changes:
+    changed:
+    - Added policyengine-claude plugin auto-install configuration.
+  date: 2026-01-23 20:51:58

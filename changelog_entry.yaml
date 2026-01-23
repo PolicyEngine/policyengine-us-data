@@ -3,3 +3,5 @@
     added:
     - Support for health_insurance_premiums_without_medicare_part_b in local area calibration
     - Test coverage for sparse matrix builder with person-level targets
+    fixed:
+    - Versioning workflow now runs uv lock after version bump to keep uv.lock in sync

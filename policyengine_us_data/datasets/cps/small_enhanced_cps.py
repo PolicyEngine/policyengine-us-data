@@ -50,7 +50,7 @@ def create_sparse_ecps():
 
     ecps = EnhancedCPS_2024()
     h5 = ecps.load()
-    sparse_weights = h5["household_sparse_weight"][str(time_period)][:]
+    sparse_weights = h5["household_weight"][str(time_period)][:]
     hh_ids = h5["household_id"][str(time_period)][:]
 
     template_sim = Microsimulation(
@@ -102,7 +102,7 @@ def create_sparse_ecps():
             if len(data[variable]) == 0:
                 del data[variable]
 
-    with h5py.File(STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5", "w") as f:
+    with h5py.File(STORAGE_FOLDER / "enhanced_cps_2024.h5", "w") as f:
         for variable, periods in data.items():
             grp = f.create_group(variable)
             for period, values in periods.items():

@@ -3,5 +3,9 @@
     added:
     - Support for health_insurance_premiums_without_medicare_part_b in local area calibration
     - Test coverage for sparse matrix builder with person-level targets
+    changed:
+    - Removed dense reweighting path from enhanced CPS; only sparse (L0) weights are produced
+    - Eliminated TEST_LITE and LOCAL_AREA_CALIBRATION flags; all datasets generated unconditionally
+    - Merged data-local-area Makefile target into data target
     fixed:
     - Versioning workflow now runs uv lock after version bump to keep uv.lock in sync

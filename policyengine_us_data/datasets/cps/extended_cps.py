@@ -4,7 +4,6 @@ from typing import Type
 from policyengine_us_data.datasets.cps.cps import *
 from policyengine_us_data.datasets.puf import *
 import pandas as pd
-import os
 from microimpute.models.qrf import QRF
 import time
 import logging
@@ -339,11 +338,5 @@ class ExtendedCPS_2024(ExtendedCPS):
 
 
 if __name__ == "__main__":
-    local_area_calibration = (
-        os.environ.get("LOCAL_AREA_CALIBRATION", "").lower() == "true"
-    )
-
-    if local_area_calibration:
-        ExtendedCPS_2023().generate()
-    else:
-        ExtendedCPS_2024().generate()
+    ExtendedCPS_2023().generate()
+    ExtendedCPS_2024().generate()

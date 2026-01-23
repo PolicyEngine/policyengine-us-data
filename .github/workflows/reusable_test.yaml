@@ -65,8 +65,7 @@ jobs:
         run: |
           modal run modal_app/data_build.py \
             ${{ inputs.upload_data && '--upload' || '--no-upload' }} \
-            --branch=${{ github.head_ref || github.ref_name }} \
-            ${{ inputs.upload_data && '--no-test-lite' || '--test-lite' }}
+            --branch=${{ github.head_ref || github.ref_name }}
 
       - name: Install package
         run: uv sync --dev

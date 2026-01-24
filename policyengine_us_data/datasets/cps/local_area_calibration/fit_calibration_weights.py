@@ -14,20 +14,21 @@ logging.basicConfig(
 
 parser = argparse.ArgumentParser(description="Fit calibration weights")
 parser.add_argument(
-    "--device", default="cpu", choices=["cpu", "cuda"],
-    help="Device for training (cpu or cuda)"
+    "--device",
+    default="cpu",
+    choices=["cpu", "cuda"],
+    help="Device for training (cpu or cuda)",
 )
 parser.add_argument(
-    "--epochs", type=int, default=100,
-    help="Total epochs for training"
+    "--epochs", type=int, default=100, help="Total epochs for training"
 )
 parser.add_argument(
-    "--db-path", default=None,
-    help="Path to policy_data.db (default: STORAGE_FOLDER/calibration/policy_data.db)"
+    "--db-path",
+    default=None,
+    help="Path to policy_data.db (default: STORAGE_FOLDER/calibration/policy_data.db)",
 )
 parser.add_argument(
-    "--dataset-path", default=None,
-    help="Path to stratified CPS h5 file"
+    "--dataset-path", default=None, help="Path to stratified CPS h5 file"
 )
 args = parser.parse_args()
 
@@ -184,17 +185,19 @@ for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
     with torch.no_grad():
         predictions = model.predict(X_sparse).cpu().numpy()
 
-    chunk_df = pd.DataFrame({
-        "target_name": target_names,
-        "estimate": predictions,
-        "target": targets,
-    })
+    chunk_df = pd.DataFrame(
+        {
+            "target_name": target_names,
+            "estimate": predictions,
+            "target": targets,
+        }
+    )
     chunk_df["epoch"] = current_epoch
     chunk_df["error"] = chunk_df.estimate - chunk_df.target
     chunk_df["rel_error"] = chunk_df.error / chunk_df.target
     chunk_df["abs_error"] = chunk_df.error.abs()
     chunk_df["rel_abs_error"] = chunk_df.rel_error.abs()
-    chunk_df["loss"] = chunk_df.rel_abs_error ** 2
+    chunk_df["loss"] = chunk_df.rel_abs_error**2
     calibration_log = pd.concat([calibration_log, chunk_df], ignore_index=True)
 
 # ============================================================================

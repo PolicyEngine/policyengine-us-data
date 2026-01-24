@@ -78,9 +78,13 @@ def create_stratified_cps_dataset(
     n_middle = n_households_orig - n_top - n_bottom_25
 
     print(f"\nStratum sizes:")
-    print(f"  Top {100 - high_income_percentile}% (AGI >= ${high_income_threshold:,.0f}): {n_top:,}")
+    print(
+        f"  Top {100 - high_income_percentile}% (AGI >= ${high_income_threshold:,.0f}): {n_top:,}"
+    )
     print(f"  Middle 25-{high_income_percentile}%: {n_middle:,}")
-    print(f"  Bottom 25% (AGI < ${bottom_25_pct_threshold:,.0f}): {n_bottom_25:,}")
+    print(
+        f"  Bottom 25% (AGI < ${bottom_25_pct_threshold:,.0f}): {n_bottom_25:,}"
+    )
 
     # Calculate sampling rates
     # Keep ALL top earners, distribute remaining quota between middle and bottom
@@ -131,7 +135,9 @@ def create_stratified_cps_dataset(
     # Top earners - keep all
     top_mask = agi >= high_income_threshold
     selected_mask[top_mask] = True
-    print(f"  Top {100 - high_income_percentile}%: selected {np.sum(top_mask):,}")
+    print(
+        f"  Top {100 - high_income_percentile}%: selected {np.sum(top_mask):,}"
+    )
 
     # Bottom 25%
     bottom_mask = agi < bottom_25_pct_threshold
@@ -140,11 +146,17 @@ def create_stratified_cps_dataset(
     if r_bottom >= 1.0:
         selected_mask[bottom_indices] = True
     elif n_select_bottom > 0:
-        selected_bottom = np.random.choice(bottom_indices, n_select_bottom, replace=False)
+        selected_bottom = np.random.choice(
+            bottom_indices, n_select_bottom, replace=False
+        )
         selected_mask[selected_bottom] = True
     else:
-        print(f"  WARNING: Bottom 25% selection rounded to 0 (rate={r_bottom:.4f}, n={len(bottom_indices)})")
-    print(f"  Bottom 25%: selected {np.sum(selected_mask & bottom_mask):,} / {len(bottom_indices):,}")
+        print(
+            f"  WARNING: Bottom 25% selection rounded to 0 (rate={r_bottom:.4f}, n={len(bottom_indices)})"
+        )
+    print(
+        f"  Bottom 25%: selected {np.sum(selected_mask & bottom_mask):,} / {len(bottom_indices):,}"
+    )
 
     # Middle
     middle_mask = ~top_mask & ~bottom_mask
@@ -153,17 +165,27 @@ def create_stratified_cps_dataset(
     if r_middle >= 1.0:
         selected_mask[middle_indices] = True
     elif n_select_middle > 0:
-        selected_middle = np.random.choice(middle_indices, n_select_middle, replace=False)
+        selected_middle = np.random.choice(
+            middle_indices, n_select_middle, replace=False
+        )
         selected_mask[selected_middle] = True
     else:
-        print(f"  WARNING: Middle selection rounded to 0 (rate={r_middle:.4f}, n={len(middle_indices)})")
-    print(f"  Middle 25-{high_income_percentile}%: selected {np.sum(selected_mask & middle_mask):,} / {len(middle_indices):,}")
+        print(
+            f"  WARNING: Middle selection rounded to 0 (rate={r_middle:.4f}, n={len(middle_indices)})"
+        )
+    print(
+        f"  Middle 25-{high_income_percentile}%: selected {np.sum(selected_mask & middle_mask):,} / {len(middle_indices):,}"
+    )
 
     n_selected = np.sum(selected_mask)
-    print(f"\nTotal selected: {n_selected:,} households ({n_selected/n_households_orig:.1%} of original)")
+    print(
+        f"\nTotal selected: {n_selected:,} households ({n_selected/n_households_orig:.1%} of original)"
+    )
 
     # Verify high earners are preserved
-    print(f"\nHigh earners (>=${high_income_threshold:,.0f}): {np.sum(selected_mask & top_mask):,} / {n_top:,} (100%)")
+    print(
+        f"\nHigh earners (>=${high_income_threshold:,.0f}): {np.sum(selected_mask & top_mask):,} / {n_top:,} (100%)"
+    )
 
     # Get the selected household IDs
     selected_household_ids = set(household_ids[selected_mask])
@@ -328,8 +350,12 @@ if __name__ == "__main__":
 
     print(f"\nDone! Created: {output_file}")
     print("\nUsage:")
-    print("  python create_stratified_cps.py [target] [--top=99] [--oversample-poor] [--seed=N]")
+    print(
+        "  python create_stratified_cps.py [target] [--top=99] [--oversample-poor] [--seed=N]"
+    )
     print("\nExamples:")
     print("  python create_stratified_cps.py 30000")
-    print("  python create_stratified_cps.py 50000 --top=99.5 --oversample-poor")
+    print(
+        "  python create_stratified_cps.py 50000 --top=99.5 --oversample-poor"
+    )
     print("  python create_stratified_cps.py 30000 --seed=123  # reproducible")

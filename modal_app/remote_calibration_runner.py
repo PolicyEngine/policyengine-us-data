@@ -26,12 +26,15 @@ def _fit_weights_impl(branch: str, epochs: int) -> dict:
     print("Downloading calibration inputs from HuggingFace...")
     download_result = subprocess.run(
         [
-            "uv", "run", "python", "-c",
+            "uv",
+            "run",
+            "python",
+            "-c",
             "from policyengine_us_data.utils.huggingface import "
             "download_calibration_inputs; "
             "paths = download_calibration_inputs('/root/calibration_data'); "
             "print(f\"DB: {paths['database']}\"); "
-            "print(f\"DATASET: {paths['dataset']}\")"
+            "print(f\"DATASET: {paths['dataset']}\")",
         ],
         capture_output=True,
         text=True,
@@ -44,11 +47,11 @@ def _fit_weights_impl(branch: str, epochs: int) -> dict:
         raise RuntimeError(f"Download failed: {download_result.returncode}")
 
     db_path = dataset_path = None
-    for line in download_result.stdout.split('\n'):
-        if line.startswith('DB:'):
-            db_path = line.split('DB:')[1].strip()
-        elif line.startswith('DATASET:'):
-            dataset_path = line.split('DATASET:')[1].strip()
+    for line in download_result.stdout.split("\n"):
+        if line.startswith("DB:"):
+            db_path = line.split("DB:")[1].strip()
+        elif line.startswith("DATASET:"):
+            dataset_path = line.split("DATASET:")[1].strip()
 
     script_path = (
         "policyengine_us_data/datasets/cps/"
@@ -56,11 +59,18 @@ def _fit_weights_impl(branch: str, epochs: int) -> dict:
     )
     result = subprocess.run(
         [
-            "uv", "run", "python", script_path,
-            "--device", "cuda",
-            "--epochs", str(epochs),
-            "--db-path", db_path,
-            "--dataset-path", dataset_path,
+            "uv",
+            "run",
+            "python",
+            script_path,
+            "--device",
+            "cuda",
+            "--epochs",
+            str(epochs),
+            "--db-path",
+            db_path,
+            "--dataset-path",
+            dataset_path,
         ],
         capture_output=True,
         text=True,
@@ -74,58 +84,78 @@ def _fit_weights_impl(branch: str, epochs: int) -> dict:
 
     output_path = None
     log_path = None
-    for line in result.stdout.split('\n'):
-        if 'OUTPUT_PATH:' in line:
-            output_path = line.split('OUTPUT_PATH:')[1].strip()
-        elif 'LOG_PATH:' in line:
-            log_path = line.split('LOG_PATH:')[1].strip()
+    for line in result.stdout.split("\n"):
+        if "OUTPUT_PATH:" in line:
+            output_path = line.split("OUTPUT_PATH:")[1].strip()
+        elif "LOG_PATH:" in line:
+            log_path = line.split("LOG_PATH:")[1].strip()
 
-    with open(output_path, 'rb') as f:
+    with open(output_path, "rb") as f:
         weights_bytes = f.read()
 
     log_bytes = None
     if log_path:
-        with open(log_path, 'rb') as f:
+        with open(log_path, "rb") as f:
             log_bytes = f.read()
 
     return {"weights": weights_bytes, "log": log_bytes}
 
 
 @app.function(
-    image=image, secrets=[hf_secret], memory=32768, cpu=4.0,
-    gpu="T4", timeout=14400,
+    image=image,
+    secrets=[hf_secret],
+    memory=32768,
+    cpu=4.0,
+    gpu="T4",
+    timeout=14400,
 )
 def fit_weights_t4(branch: str = "main", epochs: int = 200) -> dict:
     return _fit_weights_impl(branch, epochs)
 
 
 @app.function(
-    image=image, secrets=[hf_secret], memory=32768, cpu=4.0,
-    gpu="A10", timeout=14400,
+    image=image,
+    secrets=[hf_secret],
+    memory=32768,
+    cpu=4.0,
+    gpu="A10",
+    timeout=14400,
 )
 def fit_weights_a10(branch: str = "main", epochs: int = 200) -> dict:
     return _fit_weights_impl(branch, epochs)
 
 
 @app.function(
-    image=image, secrets=[hf_secret], memory=32768, cpu=4.0,
-    gpu="A100-40GB", timeout=14400,
+    image=image,
+    secrets=[hf_secret],
+    memory=32768,
+    cpu=4.0,
+    gpu="A100-40GB",
+    timeout=14400,
 )
 def fit_weights_a100_40(branch: str = "main", epochs: int = 200) -> dict:
     return _fit_weights_impl(branch, epochs)
 
 
 @app.function(
-    image=image, secrets=[hf_secret], memory=32768, cpu=4.0,
-    gpu="A100-80GB", timeout=14400,
+    image=image,
+    secrets=[hf_secret],
+    memory=32768,
+    cpu=4.0,
+    gpu="A100-80GB",
+    timeout=14400,
 )
 def fit_weights_a100_80(branch: str = "main", epochs: int = 200) -> dict:
     return _fit_weights_impl(branch, epochs)
 
 
 @app.function(
-    image=image, secrets=[hf_secret], memory=32768, cpu=4.0,
-    gpu="H100", timeout=14400,
+    image=image,
+    secrets=[hf_secret],
+    memory=32768,
+    cpu=4.0,
+    gpu="H100",
+    timeout=14400,
 )
 def fit_weights_h100(branch: str = "main", epochs: int = 200) -> dict:
     return _fit_weights_impl(branch, epochs)
@@ -146,7 +176,7 @@ def main(
     epochs: int = 200,
     gpu: str = "T4",
     output: str = "calibration_weights.npy",
-    log_output: str = "calibration_log.csv"
+    log_output: str = "calibration_log.csv",
 ):
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
@@ -157,11 +187,11 @@ def main(
     func = GPU_FUNCTIONS[gpu]
     result = func.remote(branch=branch, epochs=epochs)
 
-    with open(output, 'wb') as f:
+    with open(output, "wb") as f:
         f.write(result["weights"])
     print(f"Weights saved to: {output}")
 
     if result["log"]:
-        with open(log_output, 'wb') as f:
+        with open(log_output, "wb") as f:
             f.write(result["log"])
         print(f"Calibration log saved to: {log_output}")

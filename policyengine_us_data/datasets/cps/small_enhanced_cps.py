@@ -52,13 +52,15 @@ def create_sparse_ecps():
     h5 = ecps.load()
     sparse_weights = h5["household_weight"][str(time_period)][:]
     hh_ids = h5["household_id"][str(time_period)][:]
+    h5.close()
 
     template_sim = Microsimulation(
         dataset=EnhancedCPS_2024,
     )
     template_sim.set_input("household_weight", time_period, sparse_weights)
 
-    df = template_sim.to_input_dataframe()  # Not at household level
+    df = template_sim.to_input_dataframe()
+    del template_sim
 
     household_weight_column = f"household_weight__{time_period}"
     df_household_id_column = f"household_id__{time_period}"

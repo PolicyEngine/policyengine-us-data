@@ -22,11 +22,11 @@ classifiers = [
 ]
 dependencies = [
     "policyengine-us>=1.353.0",
-    "policyengine-core>=3.19.0",
+    "policyengine-core>=3.23.6",
     "pandas>=2.3.1",
     "requests>=2.25.0",
     "tqdm>=4.60.0",
-    "microdf_python>=1.0.0",
+    "microdf_python>=1.2.1",
     "setuptools>=60",
     "microimpute>=1.1.4",
     "pip-system-certs>=3.0",

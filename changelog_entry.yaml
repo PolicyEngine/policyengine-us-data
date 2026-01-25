@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+      - partnership_se_income variable from Schedule K-1 Box 14 (k1bx14p + k1bx14s), representing partnership income subject to self-employment tax.

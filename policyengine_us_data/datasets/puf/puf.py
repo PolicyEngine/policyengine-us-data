@@ -381,7 +381,13 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["unreported_payroll_tax"] = puf.E09800
     # Ignore f2441 (AMT form attached)
     # Ignore cmbtp (estimate of AMT income not in AGI)
-    # Ignore k1bx14s and k1bx14p (partner self-employment income included in partnership and S-corp income)
+
+    # Partnership self-employment income from Schedule K-1 Box 14
+    # This is the portion of partnership income subject to SE tax (general partners only)
+    # k1bx14p = taxpayer, k1bx14s = spouse
+    k1bx14p = puf["k1bx14p"] if "k1bx14p" in puf.columns else 0
+    k1bx14s = puf["k1bx14s"] if "k1bx14s" in puf.columns else 0
+    puf["partnership_se_income"] = k1bx14p + k1bx14s
 
     # --- Qualified Business Income Deduction (QBID) simulation ---
     w2, ubia = simulate_w2_and_ubia_from_puf(puf, seed=42)
@@ -491,6 +497,7 @@ FINANCIAL_SUBSET = [
     "business_is_sstb",
     "deductible_mortgage_interest",
     "partnership_s_corp_income",
+    "partnership_se_income",
     "qualified_reit_and_ptp_income",
     "qualified_bdc_income",
 ]
@@ -544,6 +551,13 @@ class PUF(Dataset):
             for variable in system.variables
         }
 
+        # Filter FINANCIAL_SUBSET to only include variables defined in
+        # policyengine-us. This allows us-data to be updated before or after
+        # policyengine-us without breaking.
+        self.available_financial_vars = [
+            v for v in FINANCIAL_SUBSET if v in self.variable_to_entity
+        ]
+
         VARIABLES = [
             "person_id",
             "tax_unit_id",
@@ -563,7 +577,7 @@ class PUF(Dataset):
             "is_tax_unit_head",
             "is_tax_unit_spouse",
             "is_tax_unit_dependent",
-        ] + FINANCIAL_SUBSET
+        ] + self.available_financial_vars
 
         self.holder = {variable: [] for variable in VARIABLES}
 
@@ -607,7 +621,7 @@ class PUF(Dataset):
     def add_tax_unit(self, row, tax_unit_id):
         self.holder["tax_unit_id"].append(tax_unit_id)
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if self.variable_to_entity[key] == "tax_unit":
                 self.holder[key].append(row[key])
 
@@ -649,7 +663,7 @@ class PUF(Dataset):
             row["interest_deduction"]
         )
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if key == "deductible_mortgage_interest":
                 # Skip this one- we are adding it artificially at the filer level.
                 continue
@@ -682,7 +696,7 @@ class PUF(Dataset):
 
         self.holder["deductible_mortgage_interest"].append(0)
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if key == "deductible_mortgage_interest":
                 # Skip this one- we are adding it artificially at the filer level.
                 continue
@@ -706,7 +720,7 @@ class PUF(Dataset):
 
         self.holder["deductible_mortgage_interest"].append(0)
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if key == "deductible_mortgage_interest":
                 # Skip this one- we are adding it artificially at the filer level.
                 continue

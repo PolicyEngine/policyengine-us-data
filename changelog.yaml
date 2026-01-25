@@ -692,3 +692,9 @@
     changed:
     - Bumped policyengine-core minimum version to 3.23.5 for pandas 3.0 compatibility
   date: 2026-01-25 15:48:00
+- bump: minor
+  changes:
+    added:
+    - partnership_se_income variable from Schedule K-1 Box 14 (k1bx14p + k1bx14s),
+      representing partnership income subject to self-employment tax.
+  date: 2026-01-25 17:43:38

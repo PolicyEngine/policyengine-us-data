@@ -551,6 +551,13 @@ class PUF(Dataset):
             for variable in system.variables
         }
 
+        # Filter FINANCIAL_SUBSET to only include variables defined in
+        # policyengine-us. This allows us-data to be updated before or after
+        # policyengine-us without breaking.
+        self.available_financial_vars = [
+            v for v in FINANCIAL_SUBSET if v in self.variable_to_entity
+        ]
+
         VARIABLES = [
             "person_id",
             "tax_unit_id",
@@ -570,7 +577,7 @@ class PUF(Dataset):
             "is_tax_unit_head",
             "is_tax_unit_spouse",
             "is_tax_unit_dependent",
-        ] + FINANCIAL_SUBSET
+        ] + self.available_financial_vars
 
         self.holder = {variable: [] for variable in VARIABLES}
 
@@ -614,7 +621,7 @@ class PUF(Dataset):
     def add_tax_unit(self, row, tax_unit_id):
         self.holder["tax_unit_id"].append(tax_unit_id)
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if self.variable_to_entity[key] == "tax_unit":
                 self.holder[key].append(row[key])
 
@@ -656,7 +663,7 @@ class PUF(Dataset):
             row["interest_deduction"]
         )
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if key == "deductible_mortgage_interest":
                 # Skip this one- we are adding it artificially at the filer level.
                 continue
@@ -689,7 +696,7 @@ class PUF(Dataset):
 
         self.holder["deductible_mortgage_interest"].append(0)
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if key == "deductible_mortgage_interest":
                 # Skip this one- we are adding it artificially at the filer level.
                 continue
@@ -713,7 +720,7 @@ class PUF(Dataset):
 
         self.holder["deductible_mortgage_interest"].append(0)
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if key == "deductible_mortgage_interest":
                 # Skip this one- we are adding it artificially at the filer level.
                 continue

@@ -687,3 +687,8 @@
     changed:
     - Added policyengine-claude plugin auto-install configuration.
   date: 2026-01-23 20:51:58
+- bump: patch
+  changes:
+    changed:
+    - Bumped policyengine-core minimum version to 3.23.5 for pandas 3.0 compatibility
+  date: 2026-01-25 15:48:00

@@ -1,0 +1,5 @@
+- bump: minor
+  changes:
+    added:
+    - weeks_unemployed variable from CPS ASEC LKWEEKS
+    - QRF-based imputation of weeks_unemployed for Extended CPS PUF copy

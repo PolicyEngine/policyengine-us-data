@@ -177,6 +177,54 @@ def test_aca_calibration():
     ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
 
 
+def test_immigration_status_diversity():
+    """Test that immigration statuses show appropriate diversity (not all citizens)."""
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us import Microsimulation
+    import numpy as np
+
+    sim = Microsimulation(dataset=EnhancedCPS_2024)
+
+    # Get immigration status for all persons (already weighted MicroSeries)
+    immigration_status = sim.calculate("immigration_status", 2024)
+
+    # Count different statuses
+    unique_statuses, counts = np.unique(immigration_status, return_counts=True)
+
+    # Calculate percentages using the weights directly
+    total_population = len(immigration_status)
+    status_percentages = {}
+
+    for status, count in zip(unique_statuses, counts):
+        pct = 100 * count / total_population
+        status_percentages[status] = pct
+        print(f"  {status}: {count:,} ({pct:.1f}%)")
+
+    # Test that not everyone is a citizen (would indicate default value being used)
+    citizen_pct = status_percentages.get("CITIZEN", 0)
+
+    # Fail if more than 99% are citizens (indicating the default is being used)
+    assert citizen_pct < 99, (
+        f"Too many citizens ({citizen_pct:.1f}%) - likely using default value. "
+        "Immigration status not being read from data."
+    )
+
+    # Also check that we have a reasonable percentage of citizens (should be 85-90%)
+    assert (
+        80 < citizen_pct < 95
+    ), f"Citizen percentage ({citizen_pct:.1f}%) outside expected range (80-95%)"
+
+    # Check that we have some non-citizens
+    non_citizen_pct = 100 - citizen_pct
+    assert (
+        non_citizen_pct > 5
+    ), f"Too few non-citizens ({non_citizen_pct:.1f}%) - expected at least 5%"
+
+    print(
+        f"Immigration status diversity test passed: {citizen_pct:.1f}% citizens"
+    )
+
+
 def test_medicaid_calibration():
 
     import pandas as pd

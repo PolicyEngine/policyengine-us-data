@@ -385,19 +385,27 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Partnership self-employment income from Schedule K-1 Box 14
     # This is the portion of partnership income subject to SE tax (general partners)
     # Derived from total SE income minus Schedule C and Schedule F income
-    # Based on PSLmodels/taxdata finalprep.py split_earnings_variables logic:
-    #   E30400 = taxpayer's total SE taxable income (Sch C + Sch F + K-1 box 14)
-    #   E30500 = spouse's total SE taxable income
-    #   E00900 = Schedule C net profit/loss
-    #   E02100 = Schedule F farm income
-    # Formula: k1bx14 = E30400 + E30500 - E00900 - E02100
-    total_se_income = puf["E30400"].fillna(0) + puf["E30500"].fillna(0)
+    # Based on Yale Budget Lab's Tax-Data process_puf.R approach:
+    #   E30400 = taxpayer's TAXABLE SE income (already * 0.9235)
+    #   E30500 = spouse's TAXABLE SE income (already * 0.9235)
+    #   E00900 = Schedule C net profit/loss (gross)
+    #   E02100 = Schedule F farm income (gross)
+    # Since E30400/E30500 are post-deduction (taxable), we gross them up
+    # by dividing by 0.9235 before subtracting Sch C/F.
+    # PolicyEngine applies the 0.9235 factor itself in taxable_self_employment_income.
+    SE_DEDUCTION_FACTOR = 0.9235  # 1 - 0.5 * 0.153 (half of SE tax rate)
+    taxable_se = puf["E30400"].fillna(0) + puf["E30500"].fillna(0)
+    gross_se = taxable_se / SE_DEDUCTION_FACTOR
     schedule_c_f_income = puf["E00900"].fillna(0) + puf["E02100"].fillna(0)
-    # Partnership SE is residual; can be negative (losses) unless both components <= 0
+    # Only compute when there's partnership activity (net partnership income != 0)
+    has_partnership = (
+        puf["E25940"].fillna(0)
+        + puf["E25980"].fillna(0)
+        - puf["E25920"].fillna(0)
+        - puf["E25960"].fillna(0)
+    ) != 0
     partnership_se = np.where(
-        np.logical_and(schedule_c_f_income <= 0, total_se_income <= 0),
-        0.0,
-        total_se_income - schedule_c_f_income,
+        has_partnership, gross_se - schedule_c_f_income, 0
     )
     puf["partnership_se_income"] = partnership_se
 

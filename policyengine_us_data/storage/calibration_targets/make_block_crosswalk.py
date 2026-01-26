@@ -22,7 +22,6 @@ import us
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-
 BAF_BASE_URL = "https://www2.census.gov/geo/docs/maps-data/data/baf2020/"
 TRACT_PUMA_URL = "https://www2.census.gov/geo/docs/maps-data/data/rel2020/2020_Census_Tract_to_2020_PUMA.txt"
 

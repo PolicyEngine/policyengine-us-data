@@ -35,7 +35,6 @@ from policyengine_us.variables.household.demographic.geographic.county.county_en
 )
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-
 # === GEOID Parsing Functions ===
 # Block GEOID format: SSCCCTTTTTTBBBB (15 chars)
 # SS = State FIPS (2 digits)

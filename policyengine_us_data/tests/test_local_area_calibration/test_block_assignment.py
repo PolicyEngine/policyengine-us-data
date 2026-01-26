@@ -169,6 +169,7 @@ class TestIntegratedAssignment:
             "place_fips",
             "vtd",
             "puma",
+            "zcta",
             "county_index",
         ]
         for field in expected_fields:
@@ -329,7 +330,7 @@ class TestAllGeographyLookup:
 
         result = get_all_geography_from_block("010010201001000")
 
-        expected_keys = ["sldu", "sldl", "place_fips", "vtd", "puma"]
+        expected_keys = ["sldu", "sldl", "place_fips", "vtd", "puma", "zcta"]
         for key in expected_keys:
             assert key in result, f"Missing key: {key}"
 
@@ -384,3 +385,29 @@ class TestCountyEnumIntegration:
         for idx in result["county_index"]:
             county_name = County._member_names_[idx]
             assert county_name.endswith("_NY")
+
+
+class TestZCTALookup:
+    """Test ZCTA (ZIP Code Tabulation Area) lookup from block."""
+
+    def test_get_zcta_from_block(self):
+        """Verify ZCTA lookup from block GEOID."""
+        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+            get_zcta_from_block,
+        )
+
+        # Alabama block
+        zcta = get_zcta_from_block("010010201001000")
+        # Should return 5-char ZCTA code or None
+        assert zcta is None or (isinstance(zcta, str) and len(zcta) == 5)
+
+    def test_assign_geography_includes_zcta(self):
+        """Verify assign_geography includes ZCTA."""
+        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+            assign_geography_for_cd,
+        )
+
+        result = assign_geography_for_cd("3610", 50, seed=42)
+
+        assert "zcta" in result
+        assert len(result["zcta"]) == 50

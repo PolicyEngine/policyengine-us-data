@@ -11,13 +11,14 @@ geographic variables from a single block GEOID:
 - Place/City (via Census BAF)
 - PUMA (via tract crosswalk)
 - VTD (Voting Tabulation District)
+- ZCTA (ZIP Code Tabulation Area)
 
 The distributions are computed from Census block-level population data and
 stored in storage/block_cd_distributions.csv.gz. Block GEOIDs are 15-digit
 strings in format SSCCCTTTTTTBBBB (state, county, tract, block).
 
 Additional geography lookups use storage/block_crosswalk.csv.gz which maps
-blocks to SLDU, SLDL, Place, VTD, and PUMA.
+blocks to SLDU, SLDL, Place, VTD, PUMA, and ZCTA.
 """
 
 import random
@@ -227,6 +228,17 @@ def get_puma_from_block(block_geoid: str) -> Optional[str]:
     return None
 
 
+def get_zcta_from_block(block_geoid: str) -> Optional[str]:
+    """Get ZCTA (ZIP Code Tabulation Area) from block GEOID."""
+    crosswalk = _load_block_crosswalk()
+    if "zcta" not in crosswalk.columns:
+        return None
+    if block_geoid in crosswalk.index:
+        val = crosswalk.loc[block_geoid, "zcta"]
+        return val if pd.notna(val) else None
+    return None
+
+
 def get_all_geography_from_block(block_geoid: str) -> Dict[str, Optional[str]]:
     """
     Get all geographic variables from a single block GEOID lookup.
@@ -238,13 +250,14 @@ def get_all_geography_from_block(block_geoid: str) -> Dict[str, Optional[str]]:
         block_geoid: 15-digit census block GEOID
 
     Returns:
-        Dict with keys: sldu, sldl, place_fips, vtd, puma
+        Dict with keys: sldu, sldl, place_fips, vtd, puma, zcta
         Values are strings or None if not available.
     """
     crosswalk = _load_block_crosswalk()
+    has_zcta = "zcta" in crosswalk.columns
     if block_geoid in crosswalk.index:
         row = crosswalk.loc[block_geoid]
-        return {
+        result = {
             "sldu": row["sldu"] if pd.notna(row["sldu"]) else None,
             "sldl": row["sldl"] if pd.notna(row["sldl"]) else None,
             "place_fips": (
@@ -252,13 +265,18 @@ def get_all_geography_from_block(block_geoid: str) -> Dict[str, Optional[str]]:
             ),
             "vtd": row["vtd"] if pd.notna(row["vtd"]) else None,
             "puma": row["puma"] if pd.notna(row["puma"]) else None,
+            "zcta": (
+                row["zcta"] if has_zcta and pd.notna(row["zcta"]) else None
+            ),
         }
+        return result
     return {
         "sldu": None,
         "sldl": None,
         "place_fips": None,
         "vtd": None,
         "puma": None,
+        "zcta": None,
     }
 
 
@@ -414,6 +432,7 @@ def assign_geography_for_cd(
         - place_fips: Place/City FIPS (or "" if not in a place)
         - vtd: Voting Tabulation District (or "" if not available)
         - puma: Public Use Microdata Area (or "" if not available)
+        - zcta: ZIP Code Tabulation Area (or "" if not available)
         - county_index: int32 indices into County enum (for backwards compat)
     """
     # Assign blocks first
@@ -442,12 +461,14 @@ def assign_geography_for_cd(
     # Lookup additional geographies from block crosswalk
     # Do batch lookup for efficiency
     crosswalk = _load_block_crosswalk()
+    has_zcta = "zcta" in crosswalk.columns
 
     sldu_list = []
     sldl_list = []
     place_fips_list = []
     vtd_list = []
     puma_list = []
+    zcta_list = []
 
     for b in block_geoids:
         if not crosswalk.empty and b in crosswalk.index:
@@ -459,12 +480,17 @@ def assign_geography_for_cd(
             )
             vtd_list.append(row["vtd"] if pd.notna(row["vtd"]) else "")
             puma_list.append(row["puma"] if pd.notna(row["puma"]) else "")
+            if has_zcta:
+                zcta_list.append(row["zcta"] if pd.notna(row["zcta"]) else "")
+            else:
+                zcta_list.append("")
         else:
             sldu_list.append("")
             sldl_list.append("")
             place_fips_list.append("")
             vtd_list.append("")
             puma_list.append("")
+            zcta_list.append("")
 
     return {
         "block_geoid": block_geoids,
@@ -477,6 +503,7 @@ def assign_geography_for_cd(
         "place_fips": np.array(place_fips_list),
         "vtd": np.array(vtd_list),
         "puma": np.array(puma_list),
+        "zcta": np.array(zcta_list),
         "county_index": county_indices,
     }
 

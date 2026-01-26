@@ -371,6 +371,7 @@ def create_sparse_cd_stacked_dataset(
         cd_sim.set_input("place_fips", time_period, geography["place_fips"])
         cd_sim.set_input("vtd", time_period, geography["vtd"])
         cd_sim.set_input("puma", time_period, geography["puma"])
+        cd_sim.set_input("zcta", time_period, geography["zcta"])
 
         # Note: We no longer use binary filtering for county_filter.
         # Instead, weights are scaled by P(target|CD) and all households
@@ -655,6 +656,7 @@ def create_sparse_cd_stacked_dataset(
     vars_to_save.add("place_fips")
     vars_to_save.add("vtd")
     vars_to_save.add("puma")
+    vars_to_save.add("zcta")
 
     variables_saved = 0
     variables_skipped = 0

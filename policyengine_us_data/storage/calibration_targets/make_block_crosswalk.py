@@ -7,10 +7,12 @@ crosswalk file mapping block GEOID to:
 - SLDL (State Legislative District Lower)
 - Place FIPS (City/CDP)
 - PUMA (via tract lookup)
+- ZCTA (ZIP Code Tabulation Area)
 
 Data sources:
 - BAFs: https://www2.census.gov/geo/docs/maps-data/data/baf2020/
 - Tract-to-PUMA: https://www2.census.gov/geo/docs/maps-data/data/rel2020/
+- ZCTA-to-Block: https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/
 """
 
 import io
@@ -24,6 +26,7 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 
 BAF_BASE_URL = "https://www2.census.gov/geo/docs/maps-data/data/baf2020/"
 TRACT_PUMA_URL = "https://www2.census.gov/geo/docs/maps-data/data/rel2020/2020_Census_Tract_to_2020_PUMA.txt"
+ZCTA_BLOCK_URL = "https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_tabblock20_natl.txt"
 
 
 def download_state_baf(state_fips: str, state_abbr: str) -> dict:
@@ -90,6 +93,31 @@ def download_tract_puma_crosswalk() -> pd.DataFrame:
     return df[["tract_geoid", "puma"]]
 
 
+def download_zcta_crosswalk() -> pd.DataFrame:
+    """
+    Download ZCTA-to-block crosswalk from Census.
+
+    Returns DataFrame mapping block_geoid to zcta (5-digit ZCTA code).
+    Note: Some blocks have no ZCTA (water, uninhabited areas).
+    """
+    print("Downloading ZCTA-to-block crosswalk (~1GB file)...")
+    df = pd.read_csv(
+        ZCTA_BLOCK_URL,
+        sep="|",
+        dtype=str,
+        usecols=["GEOID_ZCTA5_20", "GEOID_TABBLOCK_20"],
+    )
+    df = df.dropna(subset=["GEOID_ZCTA5_20"])
+    df = df[df["GEOID_ZCTA5_20"].str.strip() != ""]
+    df = df.rename(
+        columns={
+            "GEOID_TABBLOCK_20": "block_geoid",
+            "GEOID_ZCTA5_20": "zcta",
+        }
+    )
+    return df[["block_geoid", "zcta"]]
+
+
 def build_block_crosswalk():
     """
     Build comprehensive block-level geographic crosswalk.
@@ -100,6 +128,7 @@ def build_block_crosswalk():
     - sldl (3-char state legislative lower)
     - place_fips (5-char place/city FIPS)
     - puma (5-char PUMA via tract lookup)
+    - zcta (5-char ZIP Code Tabulation Area)
     """
     print("Building comprehensive block geographic crosswalk...")
 
@@ -107,6 +136,11 @@ def build_block_crosswalk():
     print("\nDownloading tract-to-PUMA crosswalk...")
     tract_puma = download_tract_puma_crosswalk()
     print(f"  {len(tract_puma):,} tract-PUMA mappings")
+
+    # Download ZCTA-to-block crosswalk
+    print("\nDownloading ZCTA-to-block crosswalk...")
+    zcta_blocks = download_zcta_crosswalk()
+    print(f"  {len(zcta_blocks):,} block-ZCTA mappings")
 
     # Process each state
     print("\nDownloading Block Assignment Files...")
@@ -178,6 +212,10 @@ def build_block_crosswalk():
     combined = pd.concat(all_blocks, ignore_index=True)
     print(f"  Total blocks: {len(combined):,}")
 
+    # Merge ZCTA (national file, merged after combining states)
+    print("\nMerging ZCTA...")
+    combined = combined.merge(zcta_blocks, on="block_geoid", how="left")
+
     # Save
     output_path = STORAGE_FOLDER / "block_crosswalk.csv.gz"
     combined.to_csv(output_path, index=False, compression="gzip")
@@ -190,6 +228,7 @@ def build_block_crosswalk():
     print(f"  Blocks with SLDL: {combined['sldl'].notna().sum():,}")
     print(f"  Blocks with Place: {combined['place_fips'].notna().sum():,}")
     print(f"  Blocks with PUMA: {combined['puma'].notna().sum():,}")
+    print(f"  Blocks with ZCTA: {combined['zcta'].notna().sum():,}")
 
 
 if __name__ == "__main__":

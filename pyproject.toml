@@ -48,6 +48,9 @@ dependencies = [
 calibration = [
     "samplics",
 ]
+l0 = [
+    "l0-python",
+]
 
 [dependency-groups]
 dev = [

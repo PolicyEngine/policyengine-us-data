@@ -17,7 +17,7 @@ from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
 
 @pytest.fixture(scope="session")
 def data():
-    return Dataset.from_file(STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5")
+    return Dataset.from_file(STORAGE_FOLDER / "enhanced_cps_2024.h5")
 
 
 @pytest.fixture(scope="session")
@@ -93,7 +93,7 @@ def test_sparse_ecps_has_tips(sim):
 
 def test_sparse_ecps_replicates_jct_tax_expenditures():
     calibration_log = pd.read_csv(
-        "calibration_log_sparse.csv",
+        "calibration_log.csv",
     )
 
     jct_rows = calibration_log[

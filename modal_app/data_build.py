@@ -38,7 +38,6 @@ def setup_gcp_credentials():
 def build_datasets(
     upload: bool = False,
     branch: str = "main",
-    test_lite: bool = False,
 ):
     setup_gcp_credentials()
 
@@ -49,8 +48,6 @@ def build_datasets(
     subprocess.run(["uv", "sync", "--locked"], check=True)
 
     env = os.environ.copy()
-    if test_lite:
-        env["TEST_LITE"] = "true"
 
     # Download prerequisites
     subprocess.run(
@@ -79,44 +76,8 @@ def build_datasets(
         print(f"Running {script}...")
         subprocess.run(["uv", "run", "python", script], check=True, env=env)
 
-    os.rename(
-        "policyengine_us_data/storage/enhanced_cps_2024.h5",
-        "policyengine_us_data/storage/dense_enhanced_cps_2024.h5",
-    )
-    subprocess.run(
-        [
-            "cp",
-            "policyengine_us_data/storage/sparse_enhanced_cps_2024.h5",
-            "policyengine_us_data/storage/enhanced_cps_2024.h5",
-        ],
-        check=True,
-    )
-
-    # Build local area calibration datasets (without TEST_LITE - must match full dataset)
-    print("Building local area calibration datasets...")
-    local_area_env = os.environ.copy()
-    local_area_env["LOCAL_AREA_CALIBRATION"] = "true"
-
-    subprocess.run(
-        ["uv", "run", "python", "policyengine_us_data/datasets/cps/cps.py"],
-        check=True,
-        env=local_area_env,
-    )
-    subprocess.run(
-        ["uv", "run", "python", "policyengine_us_data/datasets/puf/puf.py"],
-        check=True,
-        env=local_area_env,
-    )
-    subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "policyengine_us_data/datasets/cps/extended_cps.py",
-        ],
-        check=True,
-        env=local_area_env,
-    )
+    # Build stratified CPS for local area calibration
+    print("Running create_stratified_cps.py...")
     subprocess.run(
         [
             "uv",
@@ -126,7 +87,7 @@ def build_datasets(
             "10500",
         ],
         check=True,
-        env=local_area_env,
+        env=env,
     )
 
     # Run local area calibration tests
@@ -140,7 +101,7 @@ def build_datasets(
             "-v",
         ],
         check=True,
-        env=local_area_env,
+        env=env,
     )
 
     # Run main test suite
@@ -167,11 +128,9 @@ def build_datasets(
 def main(
     upload: bool = False,
     branch: str = "main",
-    test_lite: bool = False,
 ):
     result = build_datasets.remote(
         upload=upload,
         branch=branch,
-        test_lite=test_lite,
     )
     print(result)

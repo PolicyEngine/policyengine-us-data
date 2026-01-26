@@ -1,0 +1,7 @@
+- bump: minor
+  changes:
+    added:
+    - Census block-level geographic assignment for households
+    - Comprehensive geography lookups from block GEOID (SLDU, SLDL, Place, VTD, PUMA)
+    - Block crosswalk file mapping 8.1M blocks to all Census geographies
+    - Block-to-CD distribution file for population-weighted assignment

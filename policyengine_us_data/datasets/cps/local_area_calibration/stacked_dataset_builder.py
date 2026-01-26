@@ -362,6 +362,16 @@ def create_sparse_cd_stacked_dataset(
         # Set county using indices for backwards compatibility with PolicyEngine-US
         cd_sim.set_input("county", time_period, geography["county_index"])
 
+        # Set all other geography variables from block assignment
+        cd_sim.set_input("block_geoid", time_period, geography["block_geoid"])
+        cd_sim.set_input("tract_geoid", time_period, geography["tract_geoid"])
+        cd_sim.set_input("cbsa_code", time_period, geography["cbsa_code"])
+        cd_sim.set_input("sldu", time_period, geography["sldu"])
+        cd_sim.set_input("sldl", time_period, geography["sldl"])
+        cd_sim.set_input("place_fips", time_period, geography["place_fips"])
+        cd_sim.set_input("vtd", time_period, geography["vtd"])
+        cd_sim.set_input("puma", time_period, geography["puma"])
+
         # Note: We no longer use binary filtering for county_filter.
         # Instead, weights are scaled by P(target|CD) and all households
         # are included to avoid sample selection bias.
@@ -635,6 +645,16 @@ def create_sparse_cd_stacked_dataset(
 
     # spm_unit_spm_threshold is recalculated with CD-specific geo-adjustment
     vars_to_save.add("spm_unit_spm_threshold")
+
+    # Add all geography variables set during block assignment
+    vars_to_save.add("block_geoid")
+    vars_to_save.add("tract_geoid")
+    vars_to_save.add("cbsa_code")
+    vars_to_save.add("sldu")
+    vars_to_save.add("sldl")
+    vars_to_save.add("place_fips")
+    vars_to_save.add("vtd")
+    vars_to_save.add("puma")
 
     variables_saved = 0
     variables_skipped = 0

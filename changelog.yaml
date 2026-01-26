@@ -698,3 +698,9 @@
     - partnership_se_income variable from Schedule K-1 Box 14 (k1bx14p + k1bx14s),
       representing partnership income subject to self-employment tax.
   date: 2026-01-25 17:43:38
+- bump: patch
+  changes:
+    fixed:
+    - Derive partnership_se_income from PUF source columns using Yale Budget Lab's
+      gross-up approach instead of looking for non-existent k1bx14 columns.
+  date: 2026-01-26 02:49:11

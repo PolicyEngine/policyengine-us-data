@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-      - Derive partnership_se_income from PUF source columns using Yale Budget Lab's gross-up approach instead of looking for non-existent k1bx14 columns.

@@ -24,10 +24,10 @@ from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils 
 from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
     County,
 )
-from policyengine_us_data.datasets.cps.local_area_calibration.county_assignment import (
-    assign_counties_for_cd,
+from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+    assign_geography_for_cd,
     get_county_filter_probability,
-    get_filtered_county_distribution,
+    get_filtered_block_distribution,
 )
 
 NYC_COUNTIES = {
@@ -338,28 +338,29 @@ def create_sparse_cd_stacked_dataset(
             np.full(n_households_orig, cd_geoid_int, dtype=np.int32),
         )
 
-        # Set county for this CD
-        # For city datasets: use only target counties (normalized distribution)
+        # Assign all geography using census block assignment
+        # For city datasets: use only blocks in target counties
         if county_filter is not None:
-            filtered_dist = get_filtered_county_distribution(
+            filtered_dist = get_filtered_block_distribution(
                 cd_geoid, county_filter
             )
             if not filtered_dist:
                 # Should not happen if we already checked p_target > 0
                 continue
-            county_indices = assign_counties_for_cd(
+            geography = assign_geography_for_cd(
                 cd_geoid=cd_geoid,
                 n_households=n_households_orig,
                 seed=seed + int(cd_geoid),
                 distributions={cd_geoid: filtered_dist},
             )
         else:
-            county_indices = assign_counties_for_cd(
+            geography = assign_geography_for_cd(
                 cd_geoid=cd_geoid,
                 n_households=n_households_orig,
                 seed=seed + int(cd_geoid),
             )
-        cd_sim.set_input("county", time_period, county_indices)
+        # Set county using indices for backwards compatibility with PolicyEngine-US
+        cd_sim.set_input("county", time_period, geography["county_index"])
 
         # Note: We no longer use binary filtering for county_filter.
         # Instead, weights are scaled by P(target|CD) and all households

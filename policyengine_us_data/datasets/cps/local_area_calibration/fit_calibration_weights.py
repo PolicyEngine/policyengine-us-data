@@ -106,7 +106,10 @@ targets_df, X_sparse, household_id_mapping = builder.build_matrix(
     sim,
     target_filter={
         "stratum_group_ids": [4],
-        "variables": ["health_insurance_premiums_without_medicare_part_b"],
+        "variables": [
+            "health_insurance_premiums_without_medicare_part_b",
+            "snap",
+        ],
     },
 )
 

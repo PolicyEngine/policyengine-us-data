@@ -8,5 +8,6 @@
     - Merged data-local-area Makefile target into data target
     removed:
     - Redundant test_sparse_matrix_builder.py (tests consolidated in test_matrix_national_variation.py)
+    - Redundant build_calibration_matrix.py (functionality in fit_calibration_weights.py)
     fixed:
     - Versioning workflow now runs uv lock after version bump to keep uv.lock in sync

@@ -223,6 +223,14 @@ def add_takeup(self):
     data["aca_take_up_seed"] = generator.random(len(data["tax_unit_id"]))
     data["medicaid_take_up_seed"] = generator.random(len(data["person_id"]))
 
+    itemized_medical_deduction_takeup_rate = (
+        parameters.gov.irs.deductions.itemized.medical.takeup
+    )
+    data["takes_up_itemized_medical_deduction"] = (
+        generator.random(len(data["tax_unit_id"]))
+        < itemized_medical_deduction_takeup_rate
+    )
+
     self.save_dataset(data)
 
 

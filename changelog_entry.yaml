@@ -1,0 +1,8 @@
+- bump: minor
+  changes:
+    added:
+    - Census block-level geographic assignment for households in CD-stacked datasets
+    - Comprehensive geography variables in output (block_geoid, tract_geoid, cbsa_code, sldu, sldl, place_fips, vtd, puma, zcta)
+    - Block crosswalk file mapping 8.1M blocks to all Census geographies
+    - Block-to-CD distribution file for population-weighted assignment
+    - ZCTA (ZIP Code Tabulation Area) lookup from census block

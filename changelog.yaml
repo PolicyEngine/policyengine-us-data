@@ -721,3 +721,13 @@
     - Redundant test_sparse_matrix_builder.py (tests consolidated in test_matrix_national_variation.py)
     - Redundant build_calibration_matrix.py (functionality in fit_calibration_weights.py)
   date: 2026-01-26 16:45:05
+- bump: minor
+  changes:
+    added:
+    - Census block-level geographic assignment for households in CD-stacked datasets
+    - Comprehensive geography variables in output (block_geoid, tract_geoid, cbsa_code,
+      sldu, sldl, place_fips, vtd, puma, zcta)
+    - Block crosswalk file mapping 8.1M blocks to all Census geographies
+    - Block-to-CD distribution file for population-weighted assignment
+    - ZCTA (ZIP Code Tabulation Area) lookup from census block
+  date: 2026-01-26 22:41:56

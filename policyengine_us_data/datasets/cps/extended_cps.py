@@ -50,6 +50,7 @@ IMPUTED_VARIABLES = [
     "miscellaneous_income",
     "alimony_expense",
     "farm_income",
+    "partnership_se_income",
     "alimony_income",
     "health_savings_account_ald",
     "non_sch_d_capital_gains",

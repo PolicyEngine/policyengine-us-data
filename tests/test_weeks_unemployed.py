@@ -20,12 +20,10 @@ class TestWeeksUnemployed:
         content = census_cps_path.read_text()
 
         # Check for correct variable
-        assert '"LKWEEKS"' in content, (
-            "LKWEEKS should be in PERSON_COLUMNS"
-        )
-        assert '"WKSUNEM"' not in content, (
-            "WKSUNEM should not be in PERSON_COLUMNS (Census uses LKWEEKS)"
-        )
+        assert '"LKWEEKS"' in content, "LKWEEKS should be in PERSON_COLUMNS"
+        assert (
+            '"WKSUNEM"' not in content
+        ), "WKSUNEM should not be in PERSON_COLUMNS (Census uses LKWEEKS)"
 
     def test_cps_uses_lkweeks(self):
         """Test that cps.py uses LKWEEKS, not WKSUNEM."""
@@ -36,9 +34,7 @@ class TestWeeksUnemployed:
 
         # Check for correct variable reference
         assert "LKWEEKS" in content, "cps.py should reference LKWEEKS"
-        assert "WKSUNEM" not in content, (
-            "cps.py should not reference WKSUNEM"
-        )
+        assert "WKSUNEM" not in content, "cps.py should not reference WKSUNEM"
 
     def test_weeks_unemployed_value_range(self):
         """Test that weeks_unemployed values are in valid range (0-52)."""
@@ -82,9 +78,9 @@ class TestWeeksUnemployed:
         content = ecps_path.read_text()
 
         # Check for weeks_unemployed handling
-        assert "weeks_unemployed" in content, (
-            "extended_cps.py should handle weeks_unemployed"
-        )
-        assert "impute_weeks_unemployed_for_puf" in content, (
-            "Should have imputation function for PUF weeks"
-        )
+        assert (
+            "weeks_unemployed" in content
+        ), "extended_cps.py should handle weeks_unemployed"
+        assert (
+            "impute_weeks_unemployed_for_puf" in content
+        ), "Should have imputation function for PUF weeks"

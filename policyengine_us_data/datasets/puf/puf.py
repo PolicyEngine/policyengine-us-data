@@ -383,11 +383,31 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Ignore cmbtp (estimate of AMT income not in AGI)
 
     # Partnership self-employment income from Schedule K-1 Box 14
-    # This is the portion of partnership income subject to SE tax (general partners only)
-    # k1bx14p = taxpayer, k1bx14s = spouse
-    k1bx14p = puf["k1bx14p"] if "k1bx14p" in puf.columns else 0
-    k1bx14s = puf["k1bx14s"] if "k1bx14s" in puf.columns else 0
-    puf["partnership_se_income"] = k1bx14p + k1bx14s
+    # This is the portion of partnership income subject to SE tax (general partners)
+    # Derived from total SE income minus Schedule C and Schedule F income
+    # Based on Yale Budget Lab's Tax-Data process_puf.R approach:
+    #   E30400 = taxpayer's TAXABLE SE income (already * 0.9235)
+    #   E30500 = spouse's TAXABLE SE income (already * 0.9235)
+    #   E00900 = Schedule C net profit/loss (gross)
+    #   E02100 = Schedule F farm income (gross)
+    # Since E30400/E30500 are post-deduction (taxable), we gross them up
+    # by dividing by 0.9235 before subtracting Sch C/F.
+    # PolicyEngine applies the 0.9235 factor itself in taxable_self_employment_income.
+    SE_DEDUCTION_FACTOR = 0.9235  # 1 - 0.5 * 0.153 (half of SE tax rate)
+    taxable_se = puf["E30400"].fillna(0) + puf["E30500"].fillna(0)
+    gross_se = taxable_se / SE_DEDUCTION_FACTOR
+    schedule_c_f_income = puf["E00900"].fillna(0) + puf["E02100"].fillna(0)
+    # Only compute when there's partnership activity (net partnership income != 0)
+    has_partnership = (
+        puf["E25940"].fillna(0)
+        + puf["E25980"].fillna(0)
+        - puf["E25920"].fillna(0)
+        - puf["E25960"].fillna(0)
+    ) != 0
+    partnership_se = np.where(
+        has_partnership, gross_se - schedule_c_f_income, 0
+    )
+    puf["partnership_se_income"] = partnership_se
 
     # --- Qualified Business Income Deduction (QBID) simulation ---
     w2, ubia = simulate_w2_and_ubia_from_puf(puf, seed=42)

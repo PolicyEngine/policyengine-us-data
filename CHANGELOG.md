@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.55.0] - 2026-01-26 16:45:05
+
+### Added
+
+- Support for health_insurance_premiums_without_medicare_part_b in local area calibration
+
+### Changed
+
+- Removed dense reweighting path from enhanced CPS; only sparse (L0) weights are produced
+- Eliminated TEST_LITE and LOCAL_AREA_CALIBRATION flags; all datasets generated unconditionally
+- Merged data-local-area Makefile target into data target
+
+### Fixed
+
+- Versioning workflow now runs uv lock after version bump to keep uv.lock in sync
+
 ## [1.54.1] - 2026-01-26 02:49:11
 
 ### Fixed
@@ -833,6 +849,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.55.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.54.1...1.55.0
 [1.54.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.54.0...1.54.1
 [1.54.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.53.1...1.54.0
 [1.53.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.53.0...1.53.1

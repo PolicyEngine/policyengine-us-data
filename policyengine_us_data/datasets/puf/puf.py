@@ -383,11 +383,23 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Ignore cmbtp (estimate of AMT income not in AGI)
 
     # Partnership self-employment income from Schedule K-1 Box 14
-    # This is the portion of partnership income subject to SE tax (general partners only)
-    # k1bx14p = taxpayer, k1bx14s = spouse
-    k1bx14p = puf["k1bx14p"] if "k1bx14p" in puf.columns else 0
-    k1bx14s = puf["k1bx14s"] if "k1bx14s" in puf.columns else 0
-    puf["partnership_se_income"] = k1bx14p + k1bx14s
+    # This is the portion of partnership income subject to SE tax (general partners)
+    # Derived from total SE income minus Schedule C and Schedule F income
+    # Based on PSLmodels/taxdata finalprep.py split_earnings_variables logic:
+    #   E30400 = taxpayer's total SE taxable income (Sch C + Sch F + K-1 box 14)
+    #   E30500 = spouse's total SE taxable income
+    #   E00900 = Schedule C net profit/loss
+    #   E02100 = Schedule F farm income
+    # Formula: k1bx14 = E30400 + E30500 - E00900 - E02100
+    total_se_income = puf["E30400"].fillna(0) + puf["E30500"].fillna(0)
+    schedule_c_f_income = puf["E00900"].fillna(0) + puf["E02100"].fillna(0)
+    # Partnership SE is residual; can be negative (losses) unless both components <= 0
+    partnership_se = np.where(
+        np.logical_and(schedule_c_f_income <= 0, total_se_income <= 0),
+        0.0,
+        total_se_income - schedule_c_f_income,
+    )
+    puf["partnership_se_income"] = partnership_se
 
     # --- Qualified Business Income Deduction (QBID) simulation ---
     w2, ubia = simulate_w2_and_ubia_from_puf(puf, seed=42)

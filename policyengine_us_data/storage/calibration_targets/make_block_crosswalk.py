@@ -45,19 +45,27 @@ def download_state_baf(state_fips: str, state_abbr: str) -> dict:
         sldu_file = f"BlockAssign_ST{state_fips}_{state_abbr}_SLDU.txt"
         if sldu_file in z.namelist():
             df = pd.read_csv(z.open(sldu_file), sep="|", dtype=str)
-            results["sldu"] = df.rename(columns={"BLOCKID": "block_geoid", "DISTRICT": "sldu"})
+            results["sldu"] = df.rename(
+                columns={"BLOCKID": "block_geoid", "DISTRICT": "sldu"}
+            )
 
         # SLDL - State Legislative District Lower
         sldl_file = f"BlockAssign_ST{state_fips}_{state_abbr}_SLDL.txt"
         if sldl_file in z.namelist():
             df = pd.read_csv(z.open(sldl_file), sep="|", dtype=str)
-            results["sldl"] = df.rename(columns={"BLOCKID": "block_geoid", "DISTRICT": "sldl"})
+            results["sldl"] = df.rename(
+                columns={"BLOCKID": "block_geoid", "DISTRICT": "sldl"}
+            )
 
         # Place (City/CDP)
-        place_file = f"BlockAssign_ST{state_fips}_{state_abbr}_INCPLACE_CDP.txt"
+        place_file = (
+            f"BlockAssign_ST{state_fips}_{state_abbr}_INCPLACE_CDP.txt"
+        )
         if place_file in z.namelist():
             df = pd.read_csv(z.open(place_file), sep="|", dtype=str)
-            results["place"] = df.rename(columns={"BLOCKID": "block_geoid", "PLACEFP": "place_fips"})
+            results["place"] = df.rename(
+                columns={"BLOCKID": "block_geoid", "PLACEFP": "place_fips"}
+            )
 
         # VTD - Voting Tabulation District
         vtd_file = f"BlockAssign_ST{state_fips}_{state_abbr}_VTD.txt"
@@ -65,7 +73,9 @@ def download_state_baf(state_fips: str, state_abbr: str) -> dict:
             df = pd.read_csv(z.open(vtd_file), sep="|", dtype=str)
             # VTD has COUNTYFP and DISTRICT columns
             df["vtd"] = df["DISTRICT"]
-            results["vtd"] = df[["BLOCKID", "vtd"]].rename(columns={"BLOCKID": "block_geoid"})
+            results["vtd"] = df[["BLOCKID", "vtd"]].rename(
+                columns={"BLOCKID": "block_geoid"}
+            )
 
     return results
 
@@ -104,11 +114,13 @@ def build_block_crosswalk():
     all_blocks = []
 
     states_to_process = [
-        s for s in us.states.STATES_AND_TERRITORIES
+        s
+        for s in us.states.STATES_AND_TERRITORIES
         if not s.is_territory and s.abbr not in ["ZZ"]
     ]
 
     import time
+
     for i, s in enumerate(states_to_process):
         state_fips = s.fips
         print(f"  {s.abbr} ({i + 1}/{len(states_to_process)})")
@@ -123,17 +135,23 @@ def build_block_crosswalk():
 
                     # Merge other geographies
                     if "sldl" in bafs:
-                        df = df.merge(bafs["sldl"], on="block_geoid", how="left")
+                        df = df.merge(
+                            bafs["sldl"], on="block_geoid", how="left"
+                        )
                     else:
                         df["sldl"] = None
 
                     if "place" in bafs:
-                        df = df.merge(bafs["place"], on="block_geoid", how="left")
+                        df = df.merge(
+                            bafs["place"], on="block_geoid", how="left"
+                        )
                     else:
                         df["place_fips"] = None
 
                     if "vtd" in bafs:
-                        df = df.merge(bafs["vtd"], on="block_geoid", how="left")
+                        df = df.merge(
+                            bafs["vtd"], on="block_geoid", how="left"
+                        )
                     else:
                         df["vtd"] = None
 

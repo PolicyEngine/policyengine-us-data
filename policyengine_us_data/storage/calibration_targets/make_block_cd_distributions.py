@@ -47,6 +47,7 @@ def build_block_cd_distributions():
     ]
 
     import time
+
     for i, s in enumerate(states_to_process):
         print(f"  {s.abbr} ({i + 1}/{len(states_to_process)})")
         for attempt in range(3):

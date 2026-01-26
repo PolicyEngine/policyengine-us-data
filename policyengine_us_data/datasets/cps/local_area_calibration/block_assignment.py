@@ -248,7 +248,9 @@ def get_all_geography_from_block(block_geoid: str) -> Dict[str, Optional[str]]:
         return {
             "sldu": row["sldu"] if pd.notna(row["sldu"]) else None,
             "sldl": row["sldl"] if pd.notna(row["sldl"]) else None,
-            "place_fips": row["place_fips"] if pd.notna(row["place_fips"]) else None,
+            "place_fips": (
+                row["place_fips"] if pd.notna(row["place_fips"]) else None
+            ),
             "vtd": row["vtd"] if pd.notna(row["vtd"]) else None,
             "puma": row["puma"] if pd.notna(row["puma"]) else None,
         }
@@ -430,9 +432,7 @@ def assign_geography_for_cd(
     state_fips = np.array([get_state_fips_from_block(b) for b in block_geoids])
 
     # CBSA lookup via county (may be None for rural areas)
-    cbsa_codes = np.array(
-        [get_cbsa_from_county(c) or "" for c in county_fips]
-    )
+    cbsa_codes = np.array([get_cbsa_from_county(c) or "" for c in county_fips])
 
     # County enum indices for backwards compatibility
     county_indices = np.array(
@@ -455,7 +455,9 @@ def assign_geography_for_cd(
             row = crosswalk.loc[b]
             sldu_list.append(row["sldu"] if pd.notna(row["sldu"]) else "")
             sldl_list.append(row["sldl"] if pd.notna(row["sldl"]) else "")
-            place_fips_list.append(row["place_fips"] if pd.notna(row["place_fips"]) else "")
+            place_fips_list.append(
+                row["place_fips"] if pd.notna(row["place_fips"]) else ""
+            )
             vtd_list.append(row["vtd"] if pd.notna(row["vtd"]) else "")
             puma_list.append(row["puma"] if pd.notna(row["puma"]) else "")
         else:

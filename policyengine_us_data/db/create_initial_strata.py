@@ -34,7 +34,9 @@ def main():
         .reset_index(drop=True)
     )
 
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
+    DATABASE_URL = (
+        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    )
     engine = create_engine(DATABASE_URL)
 
     # map the ucgid_str 'code' to auto-generated 'stratum_id'

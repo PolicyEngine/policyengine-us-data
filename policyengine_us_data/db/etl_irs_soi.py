@@ -285,7 +285,9 @@ def transform_soi_data(raw_df):
 def load_soi_data(long_dfs, year):
     """Load a list of databases into the db, critically dependent on order"""
 
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
+    DATABASE_URL = (
+        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    )
     engine = create_engine(DATABASE_URL)
 
     session = Session(engine)

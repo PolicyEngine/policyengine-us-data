@@ -104,7 +104,9 @@ def load_age_data(df_long, geo, year, stratum_lookup=None):
         raise ValueError('geo must be one of "National", "State", "District"')
 
     # Prepare to load data -----------
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
+    DATABASE_URL = (
+        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    )
     engine = create_engine(DATABASE_URL)
 
     if stratum_lookup is None:

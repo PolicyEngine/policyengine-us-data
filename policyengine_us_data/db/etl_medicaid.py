@@ -85,7 +85,9 @@ def transform_medicaid_data(state_admin_df, cd_survey_df, year):
 
 def load_medicaid_data(long_state, long_cd, year):
 
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
+    DATABASE_URL = (
+        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    )
     engine = create_engine(DATABASE_URL)
 
     stratum_lookup = {}

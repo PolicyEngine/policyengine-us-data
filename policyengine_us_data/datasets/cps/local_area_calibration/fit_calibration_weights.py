@@ -76,11 +76,11 @@ db_uri = f"sqlite:///{db_path}"
 if args.dataset_path:
     dataset_path = Path(args.dataset_path)
 else:
-    dataset_path = STORAGE_FOLDER / "stratified_extended_cps_2023.h5"
+    dataset_path = STORAGE_FOLDER / "stratified_extended_cps_2024.h5"
 
 output_dir = STORAGE_FOLDER / "calibration"
 output_dir.mkdir(parents=True, exist_ok=True)
-time_period = 2023
+time_period = 2024
 
 # Get all CDs from database
 cds_to_calibrate = get_all_cds_from_database(db_uri)

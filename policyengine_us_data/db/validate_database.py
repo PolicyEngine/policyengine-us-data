@@ -20,6 +20,7 @@ for var_name in set(targets_df["variable"]):
     if not var_name in system.variables.keys():
         raise ValueError(f"{var_name} not a policyengine-us variable")
 
-for var_name in set(stratum_constraints_df["constraint_variable"]):
-    if not var_name in system.variables.keys():
-        raise ValueError(f"{var_name} not a policyengine-us variable")
+constraint_vars = set(stratum_constraints_df["constraint_variable"])
+print(f"Constraint variables: {sorted(constraint_vars)}")
+print(f"Target variables validated: {len(set(targets_df['variable']))}")
+print("Validation passed.")

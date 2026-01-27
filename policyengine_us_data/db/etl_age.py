@@ -5,11 +5,13 @@ from sqlmodel import Session, create_engine
 from policyengine_us_data.storage import STORAGE_FOLDER
 
 from policyengine_us_data.db.create_database_tables import (
+    SourceType,
     Stratum,
     StratumConstraint,
     Target,
 )
 from policyengine_us_data.utils.census import get_census_docs, pull_acs_table
+from policyengine_us_data.utils.db_metadata import get_or_create_source
 
 LABEL_TO_SHORT = {
     "Estimate!!Total!!Total population!!AGE!!Under 5 years": "0-4",
@@ -81,7 +83,6 @@ def transform_age_data(age_data, docs):
     df_long["age_less_than"] = age_bounds[["lt"]]
     df_long["variable"] = "person_count"
     df_long["reform_id"] = 0
-    df_long["source_id"] = 1
     df_long["active"] = True
 
     return df_long
@@ -117,6 +118,16 @@ def load_age_data(df_long, geo, year, stratum_lookup=None):
         stratum_lookup[geo] = {}
 
     with Session(engine) as session:
+        census_source = get_or_create_source(
+            session,
+            name="Census ACS Table S0101",
+            source_type=SourceType.SURVEY,
+            vintage=f"{year} ACS 5-year estimates",
+            description="American Community Survey Age and Sex demographics",
+            url="https://data.census.gov/",
+            notes="Age distribution in 18 brackets across all geographic levels",
+        )
+
         for _, row in df_long.iterrows():
             # Create the parent Stratum object.
             # We will attach children to it before adding it to the session.
@@ -164,7 +175,7 @@ def load_age_data(df_long, geo, year, stratum_lookup=None):
                     variable=row["variable"],
                     period=year,
                     value=row["value"],
-                    source_id=row["source_id"],
+                    source_id=census_source.source_id,
                     active=row["active"],
                 )
             )

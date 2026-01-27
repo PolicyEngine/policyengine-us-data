@@ -1,3 +1,4 @@
+import logging
 import requests
 
 import pandas as pd
@@ -6,35 +7,58 @@ from sqlmodel import Session, create_engine
 from policyengine_us_data.storage import STORAGE_FOLDER
 
 from policyengine_us_data.db.create_database_tables import (
+    SourceType,
     Stratum,
     StratumConstraint,
     Target,
 )
 from policyengine_us_data.utils.census import STATE_ABBREV_TO_FIPS
+from policyengine_us_data.utils.db_metadata import get_or_create_source
+from policyengine_us_data.utils.raw_cache import (
+    is_cached,
+    cache_path,
+    save_json,
+    load_json,
+    save_bytes,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def extract_medicaid_data(year):
-    base_url = (
-        f"https://api.census.gov/data/{year}/acs/acs1/subject?get=group(S2704)"
-    )
-    url = f"{base_url}&for=congressional+district:*"
-    response = requests.get(url)
-    response.raise_for_status()
-
-    data = response.json()
+    # Census ACS survey data
+    census_cache = f"acs_S2704_district_{year}.json"
+    if is_cached(census_cache):
+        logger.info(f"Using cached {census_cache}")
+        data = load_json(census_cache)
+    else:
+        base_url = f"https://api.census.gov/data/{year}/acs/acs1/subject?get=group(S2704)"
+        url = f"{base_url}&for=congressional+district:*"
+        logger.info(f"Downloading ACS S2704 for {year}")
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        save_json(census_cache, data)
 
     headers = data[0]
     data_rows = data[1:]
     cd_survey_df = pd.DataFrame(data_rows, columns=headers)
 
-    item = "6165f45b-ca93-5bb5-9d06-db29c692a360"
-    response = requests.get(
-        f"https://data.medicaid.gov/api/1/metastore/schemas/dataset/items/{item}?show-reference-ids=false"
-    )
-    metadata = response.json()
-
-    data_url = metadata["distribution"][0]["data"]["downloadURL"]
-    state_admin_df = pd.read_csv(data_url)
+    # CMS Medicaid administrative data
+    cms_cache = f"medicaid_enrollment_{year}.csv"
+    if is_cached(cms_cache):
+        logger.info(f"Using cached {cms_cache}")
+        state_admin_df = pd.read_csv(cache_path(cms_cache))
+    else:
+        item = "6165f45b-ca93-5bb5-9d06-db29c692a360"
+        logger.info("Downloading Medicaid enrollment from CMS")
+        response = requests.get(
+            f"https://data.medicaid.gov/api/1/metastore/schemas/dataset/items/{item}?show-reference-ids=false"
+        )
+        metadata = response.json()
+        data_url = metadata["distribution"][0]["data"]["downloadURL"]
+        state_admin_df = pd.read_csv(data_url)
+        state_admin_df.to_csv(cache_path(cms_cache), index=False)
 
     return cd_survey_df, state_admin_df
 
@@ -93,6 +117,25 @@ def load_medicaid_data(long_state, long_cd, year):
     stratum_lookup = {}
 
     with Session(engine) as session:
+        admin_source = get_or_create_source(
+            session,
+            name="Medicaid T-MSIS",
+            source_type=SourceType.ADMINISTRATIVE,
+            vintage=f"{year} Final Report",
+            description="Medicaid Transformed MSIS administrative enrollment data",
+            url="https://data.medicaid.gov/",
+            notes="State-level Medicaid enrollment from administrative records",
+        )
+        survey_source = get_or_create_source(
+            session,
+            name="Census ACS Table S2704",
+            source_type=SourceType.SURVEY,
+            vintage=f"{year} ACS 1-year estimates",
+            description="American Community Survey health insurance coverage data",
+            url="https://data.census.gov/",
+            notes="Congressional district level Medicaid coverage from ACS",
+        )
+
         # National ----------------
         nat_stratum = Stratum(
             parent_stratum_id=None,
@@ -146,7 +189,7 @@ def load_medicaid_data(long_state, long_cd, year):
                     variable="person_count",
                     period=year,
                     value=row["medicaid_enrollment"],
-                    source_id=2,
+                    source_id=admin_source.source_id,
                     active=True,
                 )
             )
@@ -184,7 +227,7 @@ def load_medicaid_data(long_state, long_cd, year):
                     variable="person_count",
                     period=year,
                     value=row["medicaid_enrollment"],
-                    source_id=2,
+                    source_id=survey_source.source_id,
                     active=True,
                 )
             )

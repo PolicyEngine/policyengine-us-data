@@ -1,3 +1,4 @@
+import logging
 import requests
 import zipfile
 import io
@@ -10,6 +11,7 @@ from sqlmodel import Session, create_engine
 from policyengine_us_data.storage import STORAGE_FOLDER
 
 from policyengine_us_data.db.create_database_tables import (
+    SourceType,
     Stratum,
     StratumConstraint,
     Target,
@@ -18,15 +20,28 @@ from policyengine_us_data.utils.census import (
     pull_acs_table,
     STATE_NAME_TO_FIPS,
 )
+from policyengine_us_data.utils.db_metadata import get_or_create_source
+from policyengine_us_data.utils.raw_cache import (
+    is_cached,
+    cache_path,
+    save_bytes,
+    load_bytes,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def extract_administrative_snap_data(year=2023):
     """
     Downloads and extracts annual state-level SNAP data from the USDA FNS zip file.
     """
+    cache_file = "snap_fy69tocurrent.zip"
+    if is_cached(cache_file):
+        logger.info(f"Using cached {cache_file}")
+        return zipfile.ZipFile(io.BytesIO(load_bytes(cache_file)))
+
     url = "https://www.fns.usda.gov/sites/default/files/resource-files/snap-zip-fy69tocurrent-6.zip"
 
-    # Note: extra complexity in request due to regional restrictions on downloads (e.g., Spain)
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -40,18 +55,17 @@ def extract_administrative_snap_data(year=2023):
         session = requests.Session()
         session.headers.update(headers)
 
-        # Try to visit the main page first to get any necessary cookies
         main_page = "https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap"
         try:
             session.get(main_page, timeout=30)
         except:
-            pass  # Ignore errors on the main page
+            pass
 
+        logger.info("Downloading SNAP data from USDA FNS")
         response = session.get(url, timeout=30, allow_redirects=True)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         print(f"Error downloading file: {e}")
-        # Try alternative URL or method
         try:
             alt_url = "https://www.fns.usda.gov/sites/default/files/resource-files/snap-zip-fy69tocurrent-6.zip"
             response = session.get(alt_url, timeout=30, allow_redirects=True)
@@ -60,6 +74,7 @@ def extract_administrative_snap_data(year=2023):
             print(f"Alternative URL also failed: {e2}")
             return None
 
+    save_bytes(cache_file, response.content)
     return zipfile.ZipFile(io.BytesIO(response.content))
 
 
@@ -154,6 +169,16 @@ def load_administrative_snap_data(df_states, year):
     stratum_lookup = {}
 
     with Session(engine) as session:
+        admin_source = get_or_create_source(
+            session,
+            name="USDA FNS SNAP Data",
+            source_type=SourceType.ADMINISTRATIVE,
+            vintage=f"FY {year}",
+            description="SNAP administrative data from USDA Food and Nutrition Service",
+            url="https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
+            notes="State-level administrative totals for households and costs",
+        )
+
         # National ----------------
         nat_stratum = Stratum(
             parent_stratum_id=None,
@@ -209,7 +234,7 @@ def load_administrative_snap_data(df_states, year):
                     variable="household_count",
                     period=year,
                     value=row["Households"],
-                    source_id=3,
+                    source_id=admin_source.source_id,
                     active=True,
                 )
             )
@@ -218,7 +243,7 @@ def load_administrative_snap_data(df_states, year):
                     variable="snap",
                     period=year,
                     value=row["Cost"],
-                    source_id=3,
+                    source_id=admin_source.source_id,
                     active=True,
                 )
             )
@@ -242,6 +267,16 @@ def load_survey_snap_data(survey_df, year, stratum_lookup=None):
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
+        survey_source = get_or_create_source(
+            session,
+            name="Census ACS Table S2201",
+            source_type=SourceType.SURVEY,
+            vintage=f"{year} ACS 5-year estimates",
+            description="American Community Survey SNAP/Food Stamps data",
+            url="https://data.census.gov/",
+            notes="Congressional district level SNAP household counts from ACS",
+        )
+
         # Create new strata for districts whose households recieve SNAP benefits
         district_df = survey_df.copy()
         for _, row in district_df.iterrows():
@@ -271,7 +306,7 @@ def load_survey_snap_data(survey_df, year, stratum_lookup=None):
                     variable="household_count",
                     period=year,
                     value=row["snap_household_ct"],
-                    source_id=4,
+                    source_id=survey_source.source_id,
                     active=True,
                 )
             )

@@ -1,310 +1,197 @@
-# PolicyEngine US Data - Database Getting Started Guide
-
-## Current Task: Matrix Generation for Calibration Targets
-
-### Objective
-Create a comprehensive matrix of calibration targets with the following requirements:
-1. **Rows grouped by target type** - All age targets together, all income targets together, etc.
-2. **Known counts per group** - Each group has a predictable number of entries (e.g., 18 age groups, 9 income brackets)
-3. **Source selection** - Ability to specify which data source to use when multiple exist
-4. **Geographic filtering** - Ability to select specific geographic levels (national, state, or congressional district)
-
-### Implementation Strategy
-The `stratum_group_id` field now categorizes strata by conceptual type, making matrix generation straightforward:
-- Query by `stratum_group_id` to get all related targets together
-- Each demographic group appears consistently across all 488 geographic areas
-- Join with `sources` table to filter/identify data provenance
-- Use parent-child relationships to navigate geographic hierarchy
-
-### Example Matrix Query
-```sql
--- Generate matrix for a specific geography (e.g., national level)
-SELECT
-    CASE s.stratum_group_id
-        WHEN 2 THEN 'Age'
-        WHEN 3 THEN 'Income'
-        WHEN 4 THEN 'SNAP'
-        WHEN 5 THEN 'Medicaid'
-        WHEN 6 THEN 'EITC'
-    END AS group_name,
-    s.notes AS stratum_description,
-    t.variable,
-    t.value,
-    src.name AS source
-FROM strata s
-JOIN targets t ON s.stratum_id = t.stratum_id
-JOIN sources src ON t.source_id = src.source_id
-WHERE s.parent_stratum_id = 1  -- National level (or any specific geography)
-    AND s.stratum_group_id > 1  -- Exclude geographic strata
-ORDER BY s.stratum_group_id, s.stratum_id;
-```
+# PolicyEngine US Data - Database Guide
 
 ## Overview
-This database uses a hierarchical stratum-based model to organize US demographic and economic data for PolicyEngine calibration. The core concept is that data is organized into "strata" - population subgroups defined by constraints.
 
-## Key Concepts
+This database uses a hierarchical stratum-based model to organize US demographic and economic data for PolicyEngine calibration. Data is organized into "strata" - population subgroups defined by constraints - with calibration targets attached to each stratum.
 
-### Strata Hierarchy
-The database uses a parent-child hierarchy:
-```
-United States (national)
-├── States (51 including DC)
-│   ├── Congressional Districts (436 total)
-│   │   ├── Age groups (18 brackets per geographic area)
-│   │   ├── Income groups (AGI stubs)
-│   │   └── Other demographic strata (EITC recipients, SNAP, Medicaid, etc.)
-```
-
-### Stratum Groups
-The `stratum_group_id` field categorizes strata by their conceptual type:
-- `1`: Geographic boundaries (US, states, congressional districts)
-- `2`: Age-based strata (18 age groups per geography)
-- `3`: Income/AGI-based strata (9 income brackets per geography)
-- `4`: SNAP recipient strata (1 per geography)
-- `5`: Medicaid enrollment strata (1 per geography)
-- `6`: EITC recipient strata (4 groups by qualifying children per geography)
-
-### UCGID Translation
-The Census Bureau uses UCGIDs (Universal Census Geographic IDs) in their API responses:
-- `0100000US`: National level
-- `0400000USXX`: State (XX = state FIPS code)
-- `5001800USXXDD`: Congressional district (XX = state FIPS, DD = district number)
-
-We parse these into our internal model using `state_fips` and `congressional_district_geoid`.
-
-### Constraint Operations
-All constraints use standardized operators:
-- `==`: Equals
-- `!=`: Not equals
-- `>`: Greater than
-- `>=`: Greater than or equal
-- `<`: Less than
-- `<=`: Less than or equal
-
-## Database Structure
-
-### Core Tables
-1. **strata**: Main table for population subgroups
-   - `stratum_id`: Primary key
-   - `parent_stratum_id`: Links to parent in hierarchy
-   - `stratum_group_id`: Conceptual category (1=Geographic, 2=Age, 3=Income, 4=SNAP, 5=Medicaid, 6=EITC)
-   - `definition_hash`: Unique hash of constraints for deduplication
-
-2. **stratum_constraints**: Defines rules for each stratum
-   - `constraint_variable`: Variable name (e.g., "age", "state_fips")
-   - `operation`: Comparison operator (==, >, <, etc.)
-   - `value`: Constraint value
-
-3. **targets**: Stores actual data values
-   - `variable`: PolicyEngine US variable name
-   - `period`: Year
-   - `value`: Numerical value
-   - `source_id`: Foreign key to sources table
-   - `active`: Boolean flag for active/inactive targets
-   - `tolerance`: Allowed relative error percentage
-
-### Metadata Tables
-4. **sources**: Data source metadata
-   - `source_id`: Primary key (auto-generated)
-   - `name`: Source name (e.g., "IRS Statistics of Income")
-   - `type`: SourceType enum (administrative, survey, hardcoded)
-   - `vintage`: Year or version of data
-   - `description`: Detailed description
-   - `url`: Reference URL
-   - `notes`: Additional notes
-
-5. **variable_groups**: Logical groupings of related variables
-   - `group_id`: Primary key (auto-generated)
-   - `name`: Unique group name (e.g., "age_distribution", "snap_recipients")
-   - `category`: High-level category (demographic, benefit, tax, income, expense)
-   - `is_histogram`: Whether this represents a distribution
-   - `is_exclusive`: Whether variables are mutually exclusive
-   - `aggregation_method`: How to aggregate (sum, weighted_avg, etc.)
-   - `display_order`: Order for display in matrices/reports
-   - `description`: What this group represents
-
-6. **variable_metadata**: Display information for variables
-   - `metadata_id`: Primary key
-   - `variable`: PolicyEngine variable name
-   - `group_id`: Foreign key to variable_groups
-   - `display_name`: Human-readable name
-   - `display_order`: Order within group
-   - `units`: Units of measurement (dollars, count, percent)
-   - `is_primary`: Whether this is a primary vs derived variable
-   - `notes`: Additional notes
+The database is a **compiled artifact**: built locally from government data sources, validated, and promoted to HuggingFace for consumption by downstream pipelines.
 
 ## Building the Database
 
-### Step 1: Create Tables
+### Quick Start
 ```bash
 source ~/envs/sep/bin/activate
-cd policyengine_us_data/db
-python create_database_tables.py
+cd ~/devl/sep/policyengine-us-data
+
+make database           # Build (uses cached downloads if available)
+make database-refresh   # Force re-download all sources and rebuild
+make promote-database   # Copy DB + raw inputs to HuggingFace clone
 ```
 
-### Step 2: Create Geographic Hierarchy
+### Pipeline Stages
+
+`make database` runs these scripts sequentially:
+
+| # | Script | Network? | What it does |
+|---|--------|----------|--------------|
+| 1 | `create_database_tables.py` | No | Creates empty SQLite schema (7 tables) |
+| 2 | `create_initial_strata.py` | Census ACS 5-year | Builds geographic hierarchy: US > 51 states > 436 CDs |
+| 3 | `etl_national_targets.py` | No | Loads ~40 hardcoded national targets (CBO, Treasury, CMS) |
+| 4 | `etl_age.py` | Census ACS 1-year | Age distribution: 18 bins x 488 geographies |
+| 5 | `etl_medicaid.py` | Census ACS + CMS | Medicaid enrollment (admin state-level, survey district-level) |
+| 6 | `etl_snap.py` | USDA FNS + Census ACS | SNAP participation (admin state-level, survey district-level) |
+| 7 | `etl_irs_soi.py` | IRS | Tax variables, EITC by child count, AGI brackets |
+| 8 | `validate_database.py` | No | Checks all target variables exist in policyengine-us |
+
+### Raw Input Caching
+
+All network downloads are cached in `storage/calibration/raw_inputs/`. On subsequent runs, cached files are used instead of hitting external APIs. This decouples extraction from transformation so you can iterate on ETL logic without network access.
+
+Set `PE_REFRESH_RAW=1` to force re-download:
 ```bash
-python create_initial_strata.py
+PE_REFRESH_RAW=1 make database
 ```
-Creates: 1 national + 51 state + 436 congressional district strata
 
-### Step 3: Load Data (in order)
+### Promotion to HuggingFace
+
+After building and validating:
 ```bash
-# National hardcoded targets
-python etl_national_targets.py
-
-# Age demographics (Census ACS)
-python etl_age.py
-
-# Economic data (IRS SOI)
-python etl_irs_soi.py
-
-# Benefits data
-python etl_medicaid.py
-python etl_snap.py
+make promote-database
+cd ~/devl/huggingface/policyengine-us-data
+git add calibration/policy_data.db calibration/raw_inputs/
+git commit -m "Update policy_data.db - <description>"
+git push
 ```
 
-### Step 4: Validate
+This copies both the database and the raw inputs that built it, preserving provenance in the HF repo's git history.
+
+### Recovery
+
+If a step fails mid-pipeline, delete the database and re-run. With cached downloads this takes ~10-15 minutes:
 ```bash
-python validate_database.py
+rm -f policyengine_us_data/storage/calibration/policy_data.db
+make database
 ```
 
-Expected output:
-- 488 geographic strata
-- 8,784 age strata (18 age groups × 488 areas)
-- All strata have unique definition hashes
+## Database Schema
 
-## Common Utility Functions
+### Core Tables
 
-Located in `policyengine_us_data/utils/db.py`:
+**strata** - Population subgroups
+- `stratum_id`: Auto-generated primary key
+- `parent_stratum_id`: Links to parent in hierarchy
+- `stratum_group_id`: Conceptual category (see below)
+- `definition_hash`: SHA-256 of constraints for deduplication
 
-- `get_stratum_by_id(session, id)`: Retrieve stratum by ID
-- `get_simple_stratum_by_ucgid(session, ucgid)`: Get stratum by UCGID
-- `get_root_strata(session)`: Get root strata
-- `get_stratum_children(session, id)`: Get child strata
-- `get_stratum_parent(session, id)`: Get parent stratum
+**stratum_constraints** - Rules defining each stratum
+- `constraint_variable`: Variable name (e.g., `age`, `state_fips`)
+- `operation`: Comparison operator (`==`, `!=`, `>`, `>=`, `<`, `<=`)
+- `value`: String-encoded value
 
-Located in `policyengine_us_data/utils/db_metadata.py`:
+**targets** - Calibration data values
+- `variable`: PolicyEngine US variable name (e.g., `eitc`, `income_tax`)
+- `period`: Year
+- `value`: Numerical value
+- `source_id`: Foreign key to sources table
+- `active`: Boolean flag
 
-- `get_or_create_source(session, ...)`: Get or create a data source
-- `get_or_create_variable_group(session, ...)`: Get or create a variable group
-- `get_or_create_variable_metadata(session, ...)`: Get or create variable metadata
+### Metadata Tables
 
-## ETL Script Pattern
+**sources** - Data provenance (e.g., "Census ACS", "IRS SOI", "CBO")
 
-Each ETL script follows this pattern:
+**variable_groups** - Logical groupings (e.g., "age_distribution", "snap_recipients")
 
-1. **Extract**: Pull data from source (Census API, IRS files, etc.)
-2. **Transform**:
-   - Parse UCGIDs to get geographic info
-   - Map to existing geographic strata
-   - Create demographic strata as children
-3. **Load**:
-   - Check for existing strata to avoid duplicates
-   - Add constraints and targets
-   - Commit to database
+**variable_metadata** - Display info for variables (display name, units, ordering)
 
-## Important Notes
+## Key Concepts
 
-### Avoiding Duplicates
-Always check if a stratum exists before creating:
-```python
-existing_stratum = session.exec(
-    select(Stratum).where(
-        Stratum.parent_stratum_id == parent_id,
-        Stratum.stratum_group_id == group_id,
-        Stratum.notes == note
-    )
-).first()
+### Stratum Groups
+
+The `stratum_group_id` field categorizes strata:
+
+| ID | Category | Description |
+|----|----------|-------------|
+| 0 | Uncategorized | Legacy strata not yet assigned a group |
+| 1 | Geographic | US, states, congressional districts |
+| 2 | Age | 18 age brackets per geography |
+| 3 | Income/AGI | 9 income brackets per geography |
+| 4 | SNAP | SNAP recipient strata |
+| 5 | Medicaid | Medicaid enrollment strata |
+| 6 | EITC | EITC recipients by qualifying children |
+
+### Geographic Hierarchy
+
+```
+United States (no constraints)
+  ├── Alabama (state_fips == 1)
+  │   ├── AL-01 (congressional_district_geoid == 101)
+  │   ├── AL-02 (congressional_district_geoid == 102)
+  │   └── ...
+  ├── Alaska (state_fips == 2)
+  │   └── AK-01 (congressional_district_geoid == 201)
+  └── ...
 ```
 
-### Geographic Constraints
-- National strata: No geographic constraints needed
-- State strata: `state_fips` constraint
-- District strata: `congressional_district_geoid` constraint
+Geographic strata use `state_fips` and `congressional_district_geoid` constraints (not UCGIDs). The `parse_ucgid()` and `get_geographic_strata()` functions in `utils/db.py` bridge between Census UCGID strings and these internal identifiers.
 
-### Congressional District Normalization
-- District 00 → 01 (at-large districts)
-- DC district 98 → 01 (delegate district)
+### UCGID Translation
 
-### IRS AGI Ranges
-AGI stubs use >= for lower bound, < for upper bound:
-- Stub 3: $10,000 <= AGI < $25,000
-- Stub 4: $25,000 <= AGI < $50,000
-- etc.
+Census Bureau API responses use UCGIDs (Universal Census Geographic IDs):
+- `0100000US` = National
+- `0400000USXX` = State (XX = state FIPS)
+- `5001800USXXDD` = Congressional district (XX = state FIPS, DD = district number)
 
-## Troubleshooting
+ETL scripts that pull Census data receive UCGIDs and create their own domain-specific strata with `ucgid_str` constraints. The geographic hierarchy strata (stratum_group_id=1) use `state_fips`/`congressional_district_geoid` instead.
 
-### "WARNING: Expected 8784 age strata, found 16104"
-**Status: RESOLVED**
+### Constraint Operations
 
-The validation script was incorrectly counting all demographic strata (stratum_group_id = 0) as age strata. After implementing the new stratum_group_id scheme (1=Geographic, 2=Age, 3=Income, etc.), the validation correctly identifies 8,784 age strata.
+All constraints use standardized operators validated by the `ConstraintOperation` enum:
+`==`, `!=`, `>`, `>=`, `<`, `<=`
 
-### Fixed: Synthetic Variable Names
-Previously, the IRS SOI ETL was creating invalid variable names like `eitc_tax_unit_count` that don't exist in PolicyEngine. Now correctly uses `tax_unit_count` with appropriate stratum constraints to indicate what's being counted.
+Note: Some legacy ETL scripts use string operations like `"in"`, `"equals"`, `"greater_than"`. These coexist in the database but new code should use the standardized operators.
 
-### UCGID strings in notes
-Legacy UCGID references have been replaced with human-readable identifiers:
-- "US" for national
-- "State FIPS X" for states
-- "CD XXXX" for congressional districts
+### Constraint Value Types
 
-### Mixed operation types
-All operations now use standardized symbols (==, >, <, etc.) validated by ConstraintOperation enum.
+The `value` column stores all values as strings. Downstream code deserializes:
+- Numeric strings -> int/float (age, income)
+- `"True"`/`"False"` -> booleans (medicaid_enrolled)
+- Other strings stay as strings (state_fips with leading zeros)
 
-## Database Location
-`policyengine_us_data/storage/calibration/policy_data.db`
+## Important Warnings
 
-## Example SQLite Queries with Metadata Features
+### stratum_id != FIPS Code
 
-### Compare Administrative vs Survey Data for SNAP
+The `stratum_id` is auto-generated and has **no relationship** to FIPS codes:
+- California: stratum_id=6, state_fips="06" (coincidental!)
+- North Carolina: stratum_id=35, state_fips="37" (no match)
+
+Always look up strata by constraint values:
 ```sql
-SELECT
-    s.type AS source_type,
-    s.name AS source_name,
-    st.notes AS location,
-    t.value AS household_count
-FROM targets t
-JOIN sources s ON t.source_id = s.source_id
-JOIN strata st ON t.stratum_id = st.stratum_id
-WHERE t.variable = 'household_count'
-    AND st.notes LIKE '%SNAP%'
-ORDER BY s.type, st.notes;
-```
-
-### Get All Variables in a Group with Their Metadata
-```sql
-SELECT
-    vm.display_name,
-    vm.variable,
-    vm.units,
-    vm.display_order,
-    vg.description AS group_description
-FROM variable_metadata vm
-JOIN variable_groups vg ON vm.group_id = vg.group_id
-WHERE vg.name = 'eitc_recipients'
-ORDER BY vm.display_order;
-```
-
-### Query by Stratum Group
-```sql
--- Get all age-related strata and their targets
-SELECT
-    s.stratum_id,
-    s.notes,
-    t.variable,
-    t.value,
-    src.name AS source
+SELECT s.stratum_id, s.notes
 FROM strata s
-JOIN targets t ON s.stratum_id = t.stratum_id
-JOIN sources src ON t.source_id = src.source_id
-WHERE s.stratum_group_id = 2  -- Age strata
-LIMIT 20;
+JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+WHERE sc.constraint_variable = 'state_fips'
+  AND sc.value = '37';
+```
 
--- Count strata by group
+## Utility Functions
+
+**`policyengine_us_data/utils/db.py`**:
+- `get_stratum_by_id(session, id)` - Retrieve stratum by primary key
+- `get_simple_stratum_by_ucgid(session, ucgid)` - Find stratum with single ucgid_str constraint
+- `get_root_strata(session)` - Get strata with no parent
+- `get_stratum_children(session, id)` / `get_stratum_parent(session, id)` - Navigate hierarchy
+- `parse_ucgid(ucgid_str)` - Parse UCGID to type/state_fips/district info
+- `get_geographic_strata(session)` - Map of all geographic strata by type
+
+**`policyengine_us_data/utils/db_metadata.py`**:
+- `get_or_create_source(session, ...)` - Upsert data source metadata
+- `get_or_create_variable_group(session, ...)` - Upsert variable group
+- `get_or_create_variable_metadata(session, ...)` - Upsert variable display info
+
+**`policyengine_us_data/utils/raw_cache.py`**:
+- `is_cached(filename)` - Check if a raw input is cached
+- `save_json(filename, data)` / `load_json(filename)` - Cache JSON data
+- `save_bytes(filename, data)` / `load_bytes(filename)` - Cache binary data
+
+## Example Queries
+
+### Count strata by group
+```sql
 SELECT
     stratum_group_id,
     CASE stratum_group_id
+        WHEN 0 THEN 'Uncategorized'
         WHEN 1 THEN 'Geographic'
         WHEN 2 THEN 'Age'
         WHEN 3 THEN 'Income/AGI'
@@ -318,47 +205,34 @@ GROUP BY stratum_group_id
 ORDER BY stratum_group_id;
 ```
 
-## Key Improvements
-1. Removed UCGID as a constraint variable (legacy Census concept)
-2. Standardized constraint operations with validation
-3. Consolidated duplicate code (parse_ucgid, get_geographic_strata)
-4. Fixed epsilon hack in IRS AGI ranges
-5. Added proper duplicate checking in age ETL
-6. Improved human-readable notes without UCGID strings
-7. Added metadata tables for sources, variable groups, and variable metadata
-8. Fixed synthetic variable name bug (e.g., eitc_tax_unit_count → tax_unit_count)
-9. Auto-generated source IDs instead of hardcoding
-10. Proper categorization of admin vs survey data for same concepts
-11. Implemented conceptual stratum_group_id scheme for better organization and querying
-
-## Known Issues / TODOs
-
-### IMPORTANT: stratum_id vs state_fips Codes
-**WARNING**: The `stratum_id` is an auto-generated sequential ID and has NO relationship to FIPS codes, despite some confusing coincidences:
-- California: stratum_id = 6, state_fips = "06" (coincidental match!)
-- North Carolina: stratum_id = 35, state_fips = "37" (no match)
-- Ohio: stratum_id = 37, state_fips = "39" (no match)
-
-When querying for states, ALWAYS use the `state_fips` constraint value, never assume stratum_id matches FIPS.
-
-Example of correct lookup:
+### Get targets for a specific state
 ```sql
--- Find North Carolina's stratum_id by FIPS code
-SELECT s.stratum_id, s.notes
-FROM strata s
+SELECT t.variable, t.value, t.period, s.notes
+FROM targets t
+JOIN strata s ON t.stratum_id = s.stratum_id
 JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
 WHERE sc.constraint_variable = 'state_fips'
-  AND sc.value = '37';  -- Returns stratum_id = 35
+  AND sc.value = '37'
+ORDER BY t.variable;
 ```
 
-### Type Conversion for Constraint Values
-**DESIGN DECISION**: The `value` column in `stratum_constraints` must store heterogeneous data types as strings. The calibration code deserializes these:
-- Numeric strings → int/float (for age, income constraints)
-- "True"/"False" → Python booleans (for medicaid_enrolled, snap_enrolled)
-- Other strings remain strings (for state_fips, which may have leading zeros)
+### Compare admin vs survey data sources
+```sql
+SELECT
+    src.type AS source_type,
+    src.name AS source_name,
+    st.notes AS location,
+    t.value
+FROM targets t
+JOIN sources src ON t.source_id = src.source_id
+JOIN strata st ON t.stratum_id = st.stratum_id
+WHERE t.variable = 'household_count'
+    AND st.notes LIKE '%SNAP%'
+ORDER BY src.type, st.notes;
+```
 
-### Medicaid Data Structure
-- Medicaid uses `person_count` variable (not `medicaid`) because it's structured as a histogram with constraints
-- State-level targets use administrative data (T-MSIS source)
-- Congressional district level uses survey data (ACS source)
-- No national Medicaid target exists (intentionally, to avoid double-counting when using state-level data)
+## Database Location
+
+`policyengine_us_data/storage/calibration/policy_data.db`
+
+Downloaded from HuggingFace by `download_private_prerequisites.py` and `download_calibration_inputs()` in `utils/huggingface.py`.

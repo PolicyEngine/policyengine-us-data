@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 import numpy as np
@@ -6,18 +7,29 @@ import pandas as pd
 from sqlmodel import Session, create_engine
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.raw_cache import (
+    is_cached,
+    cache_path,
+    save_bytes,
+)
+
+logger = logging.getLogger(__name__)
 
 from policyengine_us_data.db.create_database_tables import (
+    SourceType,
     Stratum,
     StratumConstraint,
     Target,
 )
+from policyengine_us_data.utils.db_metadata import get_or_create_source
 from policyengine_us_data.utils.db import (
     get_stratum_by_id,
     get_simple_stratum_by_ucgid,
     get_root_strata,
     get_stratum_children,
     get_stratum_parent,
+    parse_ucgid,
+    get_geographic_strata,
 )
 from policyengine_us_data.utils.census import TERRITORY_UCGIDS
 from policyengine_us_data.storage.calibration_targets.make_district_mapping import (
@@ -149,7 +161,19 @@ def extract_soi_data() -> pd.DataFrame:
     In the file below, "22" is 2022, "in" is individual returns,
     "cd" is congressional districts
     """
-    return pd.read_csv("https://www.irs.gov/pub/irs-soi/22incd.csv")
+    import requests
+
+    cache_file = "irs_soi_22incd.csv"
+    if is_cached(cache_file):
+        logger.info(f"Using cached {cache_file}")
+        return pd.read_csv(cache_path(cache_file))
+
+    url = "https://www.irs.gov/pub/irs-soi/22incd.csv"
+    logger.info(f"Downloading IRS SOI data from {url}")
+    response = requests.get(url)
+    response.raise_for_status()
+    save_bytes(cache_file, response.content)
+    return pd.read_csv(cache_path(cache_file))
 
 
 def transform_soi_data(raw_df):
@@ -282,6 +306,20 @@ def transform_soi_data(raw_df):
     return converted
 
 
+def _lookup_geo_stratum(session, ucgid_str, geo_map):
+    """Look up a geographic stratum by ucgid string."""
+    info = parse_ucgid(ucgid_str)
+    if info["type"] == "national":
+        sid = geo_map["national"]
+    elif info["type"] == "state":
+        sid = geo_map["state"].get(info["state_fips"])
+    elif info["type"] == "district":
+        sid = geo_map["district"].get(info["congressional_district_geoid"])
+    else:
+        return None
+    return get_stratum_by_id(session, sid) if sid else None
+
+
 def load_soi_data(long_dfs, year):
     """Load a list of databases into the db, critically dependent on order"""
 
@@ -291,6 +329,18 @@ def load_soi_data(long_dfs, year):
     engine = create_engine(DATABASE_URL)
 
     session = Session(engine)
+
+    irs_source = get_or_create_source(
+        session,
+        name="IRS Statistics of Income",
+        source_type=SourceType.ADMINISTRATIVE,
+        vintage=f"{year} Tax Year",
+        description="IRS Statistics of Income administrative tax data",
+        url="https://www.irs.gov/statistics",
+        notes="Tax return data by congressional district, state, and national levels",
+    )
+
+    geo_map = get_geographic_strata(session)
 
     # Load EITC data --------------------------------------------------------
     eitc_data = {
@@ -355,7 +405,7 @@ def load_soi_data(long_dfs, year):
                     variable="eitc",
                     period=year,
                     value=eitc_amount_i.iloc[i][["target_value"]].values[0],
-                    source_id=5,
+                    source_id=irs_source.source_id,
                     active=True,
                 )
             ]
@@ -387,8 +437,8 @@ def load_soi_data(long_dfs, year):
         for i in range(count_j.shape[0]):
             ucgid_i = count_j[["ucgid_str"]].iloc[i].values[0]
 
-            # Reusing an existing stratum this time, since there is no breakdown
-            stratum = get_simple_stratum_by_ucgid(session, ucgid_i)
+            # Reusing an existing geographic stratum
+            stratum = _lookup_geo_stratum(session, ucgid_i, geo_map)
             amount_value = amount_j.iloc[i][["target_value"]].values[0]
 
             stratum.targets_rel.append(
@@ -396,7 +446,7 @@ def load_soi_data(long_dfs, year):
                     variable=amount_variable_name,
                     period=year,
                     value=amount_value,
-                    source_id=5,
+                    source_id=irs_source.source_id,
                     active=True,
                 )
             )
@@ -412,7 +462,7 @@ def load_soi_data(long_dfs, year):
 
     for i in range(agi_values.shape[0]):
         ucgid_i = agi_values[["ucgid_str"]].iloc[i].values[0]
-        stratum = get_simple_stratum_by_ucgid(session, ucgid_i)
+        stratum = _lookup_geo_stratum(session, ucgid_i, geo_map)
         stratum.targets_rel.append(
             Target(
                 variable="adjusted_gross_income",
@@ -513,7 +563,7 @@ def load_soi_data(long_dfs, year):
                     variable="person_count",
                     period=year,
                     value=person_count,
-                    source_id=5,
+                    source_id=irs_source.source_id,
                     active=True,
                 )
             )

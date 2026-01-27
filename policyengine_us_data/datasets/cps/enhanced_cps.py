@@ -15,7 +15,6 @@ from typing import Type
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS_2024,
-    CPS_2019,
     CPS_2024,
 )
 import logging
@@ -138,50 +137,6 @@ def reweight(
     )
 
     return final_weights_sparse
-
-
-def train_previous_year_income_model():
-    from policyengine_us import Microsimulation
-
-    sim = Microsimulation(dataset=CPS_2019)
-
-    sim.subsample(10_000)
-
-    VARIABLES = [
-        "previous_year_income_available",
-        "employment_income",
-        "self_employment_income",
-        "age",
-        "is_male",
-        "spm_unit_state_fips",
-        "dividend_income",
-        "interest_income",
-        "social_security",
-        "capital_gains",
-        "is_disabled",
-        "is_blind",
-        "is_married",
-        "tax_unit_children",
-        "pension_income",
-    ]
-
-    OUTPUTS = [
-        "employment_income_last_year",
-        "self_employment_income_last_year",
-    ]
-
-    df = sim.calculate_dataframe(VARIABLES + OUTPUTS, 2019, map_to="person")
-    df_train = df[df.previous_year_income_available]
-
-    from policyengine_us_data.utils import QRF
-
-    income_last_year = QRF()
-    X = df_train[VARIABLES[1:]]
-    y = df_train[OUTPUTS]
-
-    income_last_year.fit(X, y)
-
-    return income_last_year
 
 
 class EnhancedCPS(Dataset):

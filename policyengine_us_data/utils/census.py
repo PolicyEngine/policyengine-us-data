@@ -1,8 +1,17 @@
+import logging
 import pathlib
 import requests
 
 import pandas as pd
 import numpy as np
+
+from policyengine_us_data.utils.raw_cache import (
+    is_cached,
+    save_json,
+    load_json,
+)
+
+logger = logging.getLogger(__name__)
 
 STATE_NAME_TO_FIPS = {
     "Alabama": "01",
@@ -126,13 +135,17 @@ def get_census_docs(year):
     docs_url = (
         f"https://api.census.gov/data/{year}/acs/acs1/subject/variables.json"
     )
-    # NOTE: The URL for detail tables, should we ever need it is:
-    # "https://api.census.gov/data/2023/acs/acs1/variables.json"
+    cache_file = f"census_docs_{year}.json"
+    if is_cached(cache_file):
+        logger.info(f"Using cached {cache_file}")
+        return load_json(cache_file)
 
+    logger.info(f"Downloading census docs for {year}")
     docs_response = requests.get(docs_url)
     docs_response.raise_for_status()
-
-    return docs_response.json()
+    data = docs_response.json()
+    save_json(cache_file, data)
+    return data
 
 
 def pull_acs_table(group: str, geo: str, year: int) -> pd.DataFrame:
@@ -141,6 +154,13 @@ def pull_acs_table(group: str, geo: str, year: int) -> pd.DataFrame:
     "geo": 'National' | 'State' | 'District'
     "year": e.g., 2023
     """
+    cache_file = f"acs_{group}_{geo.lower()}_{year}.json"
+    if is_cached(cache_file):
+        logger.info(f"Using cached {cache_file}")
+        data = load_json(cache_file)
+        headers, rows = data[0], data[1:]
+        return pd.DataFrame(rows, columns=headers)
+
     base = f"https://api.census.gov/data/{year}/acs/acs1"
 
     if group[0] == "S":
@@ -153,7 +173,9 @@ def pull_acs_table(group: str, geo: str, year: int) -> pd.DataFrame:
 
     url = f"{base}?get=group({group})&for={geo_q}"
 
+    logger.info(f"Downloading ACS table {group} ({geo}) for {year}")
     data = requests.get(url).json()
+    save_json(cache_file, data)
     headers, rows = data[0], data[1:]
     df = pd.DataFrame(rows, columns=headers)
     return df

@@ -30,7 +30,7 @@ make promote-database   # Copy DB + raw inputs to HuggingFace clone
 | 4 | `etl_age.py` | Census ACS 1-year | Age distribution: 18 bins x 488 geographies |
 | 5 | `etl_medicaid.py` | Census ACS + CMS | Medicaid enrollment (admin state-level, survey district-level) |
 | 6 | `etl_snap.py` | USDA FNS + Census ACS | SNAP participation (admin state-level, survey district-level) |
-| 7 | `etl_irs_soi.py` | IRS | Tax variables, EITC by child count, AGI brackets |
+| 7 | `etl_irs_soi.py` | IRS | Tax variables, EITC by child count, AGI brackets, conditional strata |
 | 8 | `validate_database.py` | No | Checks all target variables exist in policyengine-us |
 
 ### Raw Input Caching
@@ -103,11 +103,27 @@ The `stratum_group_id` field categorizes strata:
 |----|----------|-------------|
 | 0 | Uncategorized | Legacy strata not yet assigned a group |
 | 1 | Geographic | US, states, congressional districts |
-| 2 | Age | 18 age brackets per geography |
+| 2 | Age/Filer population | Age brackets, tax filer intermediate strata |
 | 3 | Income/AGI | 9 income brackets per geography |
 | 4 | SNAP | SNAP recipient strata |
 | 5 | Medicaid | Medicaid enrollment strata |
 | 6 | EITC | EITC recipients by qualifying children |
+| 100-118 | IRS Conditional | Each IRS variable paired with conditional count constraints |
+
+### Conditional Strata (IRS SOI)
+
+IRS variables use a "filer population" intermediate layer and conditional strata:
+
+```
+Geographic stratum (group_id=1)
+  └── Tax Filer stratum (group_id=2, constraint: tax_unit_is_filer==1)
+       ├── AGI bracket strata (group_id=3, constraint: AGI range)
+       ├── EITC by child count (group_id=6, constraint: eitc_child_count)
+       └── IRS variable strata (group_id=100+, constraint: variable > 0)
+            - Targets: tax_unit_count + variable amount
+```
+
+Each IRS variable (e.g., `rental_income`, `self_employment_income`) gets its own stratum_group_id (100+) with a constraint requiring that variable > 0. This captures both the count of filers with that income type and the total amount.
 
 ### Geographic Hierarchy
 
@@ -138,8 +154,6 @@ ETL scripts that pull Census data receive UCGIDs and create their own domain-spe
 All constraints use standardized operators validated by the `ConstraintOperation` enum:
 `==`, `!=`, `>`, `>=`, `<`, `<=`
 
-Note: Some legacy ETL scripts use string operations like `"in"`, `"equals"`, `"greater_than"`. These coexist in the database but new code should use the standardized operators.
-
 ### Constraint Value Types
 
 The `value` column stores all values as strings. Downstream code deserializes:
@@ -163,6 +177,10 @@ JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
 WHERE sc.constraint_variable = 'state_fips'
   AND sc.value = '37';
 ```
+
+### IRS SOI A59664 Data Issue
+
+The IRS SOI column A59664 (EITC with 3+ children amount) is reported in dollars, not thousands like all other monetary columns. The ETL code detects and compensates for this. See `IRS_SOI_DATA_ISSUE.md` for details.
 
 ## Utility Functions
 
@@ -193,7 +211,7 @@ SELECT
     CASE stratum_group_id
         WHEN 0 THEN 'Uncategorized'
         WHEN 1 THEN 'Geographic'
-        WHEN 2 THEN 'Age'
+        WHEN 2 THEN 'Age/Filer'
         WHEN 3 THEN 'Income/AGI'
         WHEN 4 THEN 'SNAP'
         WHEN 5 THEN 'Medicaid'

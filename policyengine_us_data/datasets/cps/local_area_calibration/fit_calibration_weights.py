@@ -112,11 +112,20 @@ targets_df, X_sparse, household_id_mapping = builder.build_matrix(
             "state_income_tax",  # Census STC state income tax collections
         ],
     },
+    deduplicate=True,
+    dedup_mode="within_geography",
 )
 
-print(f"Matrix shape: {X_sparse.shape}")
-print(f"Targets: {len(targets_df)}")
+# Print concept and deduplication summaries
+builder.print_concept_summary()
+builder.print_dedup_summary()
 
+print(f"\nMatrix shape: {X_sparse.shape}")
+print(f"Targets after deduplication: {len(targets_df)}")
+
+# ============================================================================
+# STEP 2: FILTER TO ACHIEVABLE TARGETS
+# ============================================================================
 # Filter to achievable targets (rows with non-zero data)
 row_sums = np.array(X_sparse.sum(axis=1)).flatten()
 achievable_mask = row_sums > 0
@@ -129,7 +138,7 @@ print(f"Impossible targets (filtered out): {n_impossible}")
 targets_df = targets_df[achievable_mask].reset_index(drop=True)
 X_sparse = X_sparse[achievable_mask, :]
 
-print(f"Filtered matrix shape: {X_sparse.shape}")
+print(f"Final matrix shape: {X_sparse.shape}")
 
 # Extract target vector and names
 targets = targets_df["value"].values
@@ -139,14 +148,14 @@ target_names = [
 ]
 
 # ============================================================================
-# STEP 2: INITIALIZE WEIGHTS
+# STEP 3: INITIALIZE WEIGHTS
 # ============================================================================
 initial_weights = np.ones(X_sparse.shape[1]) * 100
 print(f"\nInitial weights shape: {initial_weights.shape}")
 print(f"Initial weights sum: {initial_weights.sum():,.0f}")
 
 # ============================================================================
-# STEP 3: CREATE MODEL
+# STEP 4: CREATE MODEL
 # ============================================================================
 print("\nCreating SparseCalibrationWeights model...")
 model = SparseCalibrationWeights(
@@ -162,7 +171,7 @@ model = SparseCalibrationWeights(
 )
 
 # ============================================================================
-# STEP 4: TRAIN IN CHUNKS
+# STEP 5: TRAIN IN CHUNKS
 # ============================================================================
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 calibration_log = pd.DataFrame()
@@ -205,7 +214,7 @@ for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
     calibration_log = pd.concat([calibration_log, chunk_df], ignore_index=True)
 
 # ============================================================================
-# STEP 5: EXTRACT AND SAVE WEIGHTS
+# STEP 6: EXTRACT AND SAVE WEIGHTS
 # ============================================================================
 with torch.no_grad():
     w = model.get_weights(deterministic=True).cpu().numpy()
@@ -225,7 +234,7 @@ print(f"Calibration log saved to: {log_path}")
 print(f"LOG_PATH:{log_path}")
 
 # ============================================================================
-# STEP 6: VERIFY PREDICTIONS
+# STEP 7: VERIFY PREDICTIONS
 # ============================================================================
 print("\n" + "=" * 60)
 print("PREDICTION VERIFICATION")

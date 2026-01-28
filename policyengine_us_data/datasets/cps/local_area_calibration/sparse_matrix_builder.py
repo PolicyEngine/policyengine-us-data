@@ -157,6 +157,117 @@ class SparseMatrixBuilder:
 
         return household_mask
 
+    def _calculate_target_values_entity_aware(
+        self,
+        state_sim,
+        target_variable: str,
+        non_geo_constraints: List[dict],
+        geo_mask: np.ndarray,
+        n_households: int,
+    ) -> np.ndarray:
+        """
+        Calculate target values at household level, handling count targets.
+
+        For count targets (*_count): Count entities per household satisfying
+            constraints
+        For value targets: Sum values at household level (existing behavior)
+
+        Args:
+            state_sim: Microsimulation with state_fips set
+            target_variable: The target variable name (e.g., "snap",
+                "person_count")
+            non_geo_constraints: List of constraint dicts (geographic
+                constraints should be pre-filtered)
+            geo_mask: Boolean mask array for geographic filtering (household
+                level)
+            n_households: Number of households
+
+        Returns:
+            Float array of target values at household level
+        """
+        is_count_target = target_variable.endswith("_count")
+
+        if not is_count_target:
+            # Value target: use existing entity-aware constraint evaluation
+            entity_mask = self._evaluate_constraints_entity_aware(
+                state_sim, non_geo_constraints, n_households
+            )
+            mask = geo_mask & entity_mask
+
+            target_values = state_sim.calculate(
+                target_variable, map_to="household"
+            ).values
+            return (target_values * mask).astype(np.float32)
+
+        # Count target: need to count entities satisfying constraints
+        entity_rel = self._build_entity_relationship(state_sim)
+        n_persons = len(entity_rel)
+
+        # Evaluate constraints at person level (don't aggregate to HH yet)
+        person_mask = np.ones(n_persons, dtype=bool)
+        for c in non_geo_constraints:
+            constraint_values = state_sim.calculate(
+                c["variable"], map_to="person"
+            ).values
+            person_mask &= apply_op(
+                constraint_values, c["operation"], c["value"]
+            )
+
+        # Get target entity from variable definition
+        target_entity = state_sim.tax_benefit_system.variables[
+            target_variable
+        ].entity.key
+
+        household_ids = state_sim.calculate(
+            "household_id", map_to="household"
+        ).values
+        geo_mask_map = dict(zip(household_ids, geo_mask))
+
+        if target_entity == "household":
+            # household_count: 1 per qualifying household
+            if non_geo_constraints:
+                entity_mask = self._evaluate_constraints_entity_aware(
+                    state_sim, non_geo_constraints, n_households
+                )
+                return (geo_mask & entity_mask).astype(np.float32)
+            return geo_mask.astype(np.float32)
+
+        if target_entity == "person":
+            # Count persons satisfying constraints per household
+            entity_rel["satisfies"] = person_mask
+            entity_rel["geo_ok"] = entity_rel["household_id"].map(geo_mask_map)
+            filtered = entity_rel[
+                entity_rel["satisfies"] & entity_rel["geo_ok"]
+            ]
+            counts = filtered.groupby("household_id")["person_id"].nunique()
+        else:
+            # For tax_unit, spm_unit: aggregate person mask to entity, then
+            # count
+            entity_id_col = f"{target_entity}_id"
+            entity_rel["satisfies"] = person_mask
+            entity_satisfies = entity_rel.groupby(entity_id_col)[
+                "satisfies"
+            ].any()
+
+            entity_rel_unique = entity_rel[
+                ["household_id", entity_id_col]
+            ].drop_duplicates()
+            entity_rel_unique["entity_ok"] = entity_rel_unique[
+                entity_id_col
+            ].map(entity_satisfies)
+            entity_rel_unique["geo_ok"] = entity_rel_unique[
+                "household_id"
+            ].map(geo_mask_map)
+            filtered = entity_rel_unique[
+                entity_rel_unique["entity_ok"] & entity_rel_unique["geo_ok"]
+            ]
+            counts = filtered.groupby("household_id")[entity_id_col].nunique()
+
+        # Build result aligned with household order
+        return np.array(
+            [counts.get(hh_id, 0) for hh_id in household_ids], dtype=np.float32
+        )
+
     def _query_targets(self, target_filter: dict) -> pd.DataFrame:
         """Query targets based on filter criteria using OR logic."""
         or_conditions = []
@@ -586,23 +697,19 @@ class SparseMatrixBuilder:
                     if not geo_mask.any():
                         continue
 
-                    # Evaluate non-geographic constraints at entity level
-                    entity_mask = self._evaluate_constraints_entity_aware(
-                        state_sim, non_geo_constraints, n_households
+                    # Calculate target values with entity-aware handling
+                    # This properly handles count targets (*_count) by counting
+                    # entities rather than summing values
+                    masked_values = self._calculate_target_values_entity_aware(
+                        state_sim,
+                        target["variable"],
+                        non_geo_constraints,
+                        geo_mask,
+                        n_households,
                     )
 
-                    # Combine geographic and entity-aware masks
-                    mask = geo_mask & entity_mask
-
-                    if not mask.any():
+                    if not masked_values.any():
                         continue
-
-                    target_values = state_sim.calculate(
-                        target["variable"],
-                        self.time_period,
-                        map_to="household",
-                    ).values
-                    masked_values = (target_values * mask).astype(np.float32)
 
                     nonzero = np.where(masked_values != 0)[0]
                     if len(nonzero) > 0:

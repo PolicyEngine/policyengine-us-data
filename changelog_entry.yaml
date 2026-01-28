@@ -2,3 +2,4 @@
   changes:
     added:
     - Deduplication logic in SparseMatrixBuilder (option to remove duplicate targets or select most specific geographic level).
+    - Entity aware target calculations for correct entity counts.

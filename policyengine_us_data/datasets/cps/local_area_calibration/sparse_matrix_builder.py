@@ -289,11 +289,10 @@ class SparseMatrixBuilder:
             or_conditions.append(f"t.stratum_id IN ({ids})")
 
         if not or_conditions:
-            raise ValueError(
-                "target_filter must specify at least one filter criterion"
-            )
-
-        where_clause = " OR ".join(f"({c})" for c in or_conditions)
+            # No filter criteria: fetch all targets
+            where_clause = "1=1"
+        else:
+            where_clause = " OR ".join(f"({c})" for c in or_conditions)
 
         query = f"""
         SELECT t.target_id, t.stratum_id, t.variable, t.value, t.period,
@@ -587,6 +586,7 @@ class SparseMatrixBuilder:
             target_filter: Dict specifying which targets to include
                 - {"stratum_group_ids": [4]} for SNAP targets
                 - {"target_ids": [123, 456]} for specific targets
+                - an empty dict {} will fetch all targets
             deduplicate: If True, deduplicate targets by concept before
                 building the matrix (default True)
             dedup_mode: Deduplication mode - "within_geography" (default)

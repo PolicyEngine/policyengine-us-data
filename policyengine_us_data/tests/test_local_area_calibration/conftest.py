@@ -23,6 +23,11 @@ from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils 
 # Format: (variable_name, rtol)
 #     variable_name as per the targets in policy_data.db
 #     rtol is relative tolerance for comparison
+#
+# NOTE: Count targets (person_count, tax_unit_count) are excluded because
+# they have constraints (e.g., age>=5|age<18) that make the X_sparse values
+# different from raw sim.calculate() values. Count targets are tested
+# separately in test_count_targets.py with controlled mock data.
 VARIABLES_TO_TEST = [
     ("snap", 1e-2),
     ("income_tax", 1e-2),

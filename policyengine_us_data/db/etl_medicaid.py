@@ -88,13 +88,51 @@ def transform_administrative_medicaid_data(state_admin_df, year):
             "Reporting Period",
             "Total Medicaid Enrollment",
         ],
-    ]
+    ].copy()
 
     state_df["FIPS"] = state_df["State Abbreviation"].map(STATE_ABBREV_TO_FIPS)
 
     state_df = state_df.rename(
         columns={"Total Medicaid Enrollment": "medicaid_enrollment"}
     )
+
+    # Handle states with 0 or NaN enrollment by using most recent non-zero value
+    # This addresses data quality issues where some states have missing Dec data
+    problem_states = state_df[
+        (state_df["medicaid_enrollment"] == 0)
+        | (state_df["medicaid_enrollment"].isna())
+    ]["State Abbreviation"].tolist()
+
+    if problem_states:
+        print(
+            f"Warning: States with 0/NaN enrollment in {reporting_period}: {problem_states}"
+        )
+        print("Attempting to use most recent non-zero values...")
+
+        for state_abbrev in problem_states:
+            # Find most recent non-zero final report for this state
+            state_history = state_admin_df[
+                (state_admin_df["State Abbreviation"] == state_abbrev)
+                & (state_admin_df["Final Report"] == "Y")
+                & (state_admin_df["Total Medicaid Enrollment"] > 0)
+                & (state_admin_df["Reporting Period"] < reporting_period)
+            ].sort_values("Reporting Period", ascending=False)
+
+            if not state_history.empty:
+                fallback_value = state_history.iloc[0][
+                    "Total Medicaid Enrollment"
+                ]
+                fallback_period = state_history.iloc[0]["Reporting Period"]
+                print(
+                    f"  {state_abbrev}: Using {fallback_value:,.0f} from period {fallback_period}"
+                )
+                state_df.loc[
+                    state_df["State Abbreviation"] == state_abbrev,
+                    "medicaid_enrollment",
+                ] = fallback_value
+            else:
+                print(f"  {state_abbrev}: No historical data found, keeping 0")
+
     state_df["ucgid_str"] = "0400000US" + state_df["FIPS"].astype(str)
 
     return state_df[["ucgid_str", "medicaid_enrollment"]]

@@ -54,6 +54,7 @@ documentation-dev:
 	myst start
 
 database:
+	rm -f policyengine_us_data/storage/calibration/policy_data.db
 	python policyengine_us_data/db/create_database_tables.py
 	python policyengine_us_data/db/create_initial_strata.py
 	python policyengine_us_data/db/etl_national_targets.py
@@ -64,6 +65,7 @@ database:
 	python policyengine_us_data/db/validate_database.py
 
 database-refresh:
+	rm -f policyengine_us_data/storage/calibration/policy_data.db
 	rm -rf policyengine_us_data/storage/calibration/raw_inputs/
 	$(MAKE) database
 

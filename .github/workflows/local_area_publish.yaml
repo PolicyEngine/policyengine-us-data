@@ -10,11 +10,22 @@ on:
   repository_dispatch:
     types: [calibration-updated]
   workflow_dispatch:
+    inputs:
+      num_workers:
+        description: 'Number of parallel workers'
+        required: false
+        default: '8'
+        type: string
+      skip_upload:
+        description: 'Skip upload (build only)'
+        required: false
+        default: false
+        type: boolean
 
 # Trigger strategy:
 # 1. Automatic: Code changes to local_area_calibration/ pushed to main
 # 2. repository_dispatch: Calibration workflow triggers after uploading new weights
-# 3. workflow_dispatch: Manual trigger when you update weights/data on HF yourself
+# 3. workflow_dispatch: Manual trigger with optional parameters
 
 jobs:
   publish-local-area:
@@ -39,4 +50,16 @@ jobs:
         run: pip install modal
 
       - name: Run local area publishing on Modal
-        run: modal run modal_app/local_area.py --branch=${{ github.head_ref || github.ref_name }}
+        run: |
+          NUM_WORKERS="${{ github.event.inputs.num_workers || '8' }}"
+          SKIP_UPLOAD="${{ github.event.inputs.skip_upload || 'false' }}"
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+
+          CMD="modal run modal_app/local_area.py --branch=${BRANCH} --num-workers=${NUM_WORKERS}"
+
+          if [ "$SKIP_UPLOAD" = "true" ]; then
+            CMD="${CMD} --skip-upload"
+          fi
+
+          echo "Running: $CMD"
+          $CMD

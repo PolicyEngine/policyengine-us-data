@@ -95,11 +95,13 @@ def main():
 
         except Exception as e:
             results["failed"].append(f"{item_type}:{item_id}")
-            results["errors"].append({
-                "item": f"{item_type}:{item_id}",
-                "error": str(e),
-                "traceback": traceback.format_exc(),
-            })
+            results["errors"].append(
+                {
+                    "item": f"{item_type}:{item_id}",
+                    "error": str(e),
+                    "traceback": traceback.format_exc(),
+                }
+            )
             print(f"FAILED {item_type}:{item_id}: {e}", file=sys.stderr)
 
     print(json.dumps(results))

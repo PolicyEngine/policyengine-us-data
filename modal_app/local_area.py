@@ -361,8 +361,12 @@ def coordinate_publish(
     calibration_dir.mkdir(parents=True, exist_ok=True)
 
     # hf_hub_download preserves directory structure, so files are in calibration/ subdir
-    weights_path = calibration_dir / "calibration" / "w_district_calibration.npy"
-    dataset_path = calibration_dir / "calibration" / "stratified_extended_cps.h5"
+    weights_path = (
+        calibration_dir / "calibration" / "w_district_calibration.npy"
+    )
+    dataset_path = (
+        calibration_dir / "calibration" / "stratified_extended_cps.h5"
+    )
     db_path = calibration_dir / "calibration" / "policy_data.db"
 
     if not all(p.exists() for p in [weights_path, dataset_path, db_path]):

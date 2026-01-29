@@ -14,3 +14,6 @@
     added:
     - Added CPS_2024_Full class for full-sample 2024 CPS generation
     - Added raw_cache utility for Census data caching
+    - Added atomic parallel local area H5 publishing with Modal Volume staging
+    - Added manifest validation with SHA256 checksums for versioned uploads
+    - Added HuggingFace retry logic with exponential backoff to fix timeout errors

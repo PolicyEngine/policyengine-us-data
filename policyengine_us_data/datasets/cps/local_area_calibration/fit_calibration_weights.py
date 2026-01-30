@@ -105,10 +105,11 @@ builder = SparseMatrixBuilder(
 targets_df, X_sparse, household_id_mapping = builder.build_matrix(
     sim,
     target_filter={
-        "stratum_group_ids": [4],
+        "stratum_group_ids": [4, 5],  # 4=SNAP households, 5=state income tax
         "variables": [
             "health_insurance_premiums_without_medicare_part_b",
             "snap",
+            "state_income_tax",  # Census STC state income tax collections
         ],
     },
 )

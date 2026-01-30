@@ -260,7 +260,14 @@ print(json.dumps(manifest))
     timeout=14400,
 )
 def atomic_upload(branch: str, version: str, manifest: Dict) -> str:
-    """Upload all files from staging to GCS and HF atomically."""
+    """
+    Upload files using staging approach for atomic deployment.
+
+    1. Upload to GCS (direct, overwrites existing)
+    2. Upload to HuggingFace staging/ folder
+    3. Atomically promote staging/ to production paths
+    4. Clean up staging/
+    """
     setup_gcp_credentials()
     setup_repo(branch)
 
@@ -277,9 +284,10 @@ import json
 from pathlib import Path
 from policyengine_us_data.utils.manifest import verify_manifest
 from policyengine_us_data.utils.data_upload import (
-    upload_versioned_files_to_gcs,
-    upload_versioned_files_to_hf,
-    upload_manifest_and_latest,
+    upload_local_area_file,
+    upload_to_staging_hf,
+    promote_staging_to_production_hf,
+    cleanup_staging_hf,
 )
 
 manifest = json.loads('''{manifest_json}''')
@@ -298,27 +306,40 @@ if not verification["valid"]:
 print(f"Verified {{verification['verified']}} files")
 
 files_with_paths = []
+rel_paths = []
 for rel_path in manifest["files"].keys():
     local_path = version_dir / rel_path
     files_with_paths.append((local_path, rel_path))
+    rel_paths.append(rel_path)
 
+# Upload to GCS (direct to production paths)
 print(f"Uploading {{len(files_with_paths)}} files to GCS...")
-gcs_count = upload_versioned_files_to_gcs(files_with_paths, version)
+gcs_count = 0
+for local_path, rel_path in files_with_paths:
+    subdirectory = str(Path(rel_path).parent)
+    upload_local_area_file(
+        str(local_path),
+        subdirectory,
+        version=version,
+        skip_hf=True,
+    )
+    gcs_count += 1
 print(f"Uploaded {{gcs_count}} files to GCS")
 
-print(f"Uploading {{len(files_with_paths)}} files to HuggingFace...")
-batch_size = 50
-hf_total = 0
-for i in range(0, len(files_with_paths), batch_size):
-    batch = files_with_paths[i : i + batch_size]
-    hf_count = upload_versioned_files_to_hf(batch, version)
-    hf_total += hf_count
-    print(f"  Batch {{i // batch_size + 1}}: uploaded {{hf_count}} files")
+# Upload to HuggingFace staging/
+print(f"Uploading {{len(files_with_paths)}} files to HuggingFace staging/...")
+hf_count = upload_to_staging_hf(files_with_paths, version)
+print(f"Uploaded {{hf_count}} files to HuggingFace staging/")
 
-print(f"Uploaded {{hf_total}} files to HuggingFace")
+# Atomically promote staging to production
+print("Promoting staging/ to production (atomic commit)...")
+promoted = promote_staging_to_production_hf(rel_paths, version)
+print(f"Promoted {{promoted}} files to production")
 
-print("Updating manifest and latest.json...")
-upload_manifest_and_latest(manifest, version)
+# Clean up staging
+print("Cleaning up staging/...")
+cleaned = cleanup_staging_hf(rel_paths, version)
+print(f"Cleaned up {{cleaned}} files from staging/")
 
 print(f"Successfully published version {{version}}")
 """,

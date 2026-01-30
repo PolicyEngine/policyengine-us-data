@@ -110,7 +110,7 @@ class SparseMatrixBuilder:
 
             # Calculate constraint variable at person level
             constraint_values = state_sim.calculate(
-                var, map_to="person"
+                var, self.time_period, map_to="person"
             ).values
 
             # Apply operation at person level
@@ -328,7 +328,9 @@ class SparseMatrixBuilder:
                         continue
 
                     target_values = state_sim.calculate(
-                        target["variable"], map_to="household"
+                        target["variable"],
+                        self.time_period,
+                        map_to="household",
                     ).values
                     masked_values = (target_values * mask).astype(np.float32)
 

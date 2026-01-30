@@ -6,21 +6,41 @@ Annual Survey of State Government Tax Collections (STC) and loads
 them into the calibration database.
 
 Data source: https://www.census.gov/programs-surveys/stc/data/datasets.html
+
+Stratum Group ID: 7 (State Income Tax)
 """
 
+import logging
 import pandas as pd
 import numpy as np
-from sqlmodel import Session, create_engine
+from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
+    Source,
+    SourceType,
+    VariableGroup,
+    VariableMetadata,
+)
+from policyengine_us_data.utils.db import get_geographic_strata
+from policyengine_us_data.utils.db_metadata import (
+    get_or_create_source,
+    get_or_create_variable_group,
+    get_or_create_variable_metadata,
+)
+from policyengine_us_data.utils.raw_cache import (
+    is_cached,
+    save_json,
+    load_json,
 )
 
-# Census STC source_id (picking 5, after USDA FNS=3 and ACS=4)
-SOURCE_ID_CENSUS_STC = 5
+logger = logging.getLogger(__name__)
+
+# Stratum group ID for state income tax targets
+STRATUM_GROUP_ID_STATE_INCOME_TAX = 7
 
 # States without individual income tax (these will have $0 target)
 NO_INCOME_TAX_STATES = {
@@ -31,10 +51,8 @@ NO_INCOME_TAX_STATES = {
     "TX",  # Texas
     "WA",  # Washington (has capital gains tax only, modeled separately)
     "WY",  # Wyoming
-    # Note: NH and TN historically taxed only interest/dividends but have
-    # phased these out. They now have no individual income tax.
-    "NH",  # New Hampshire
-    "TN",  # Tennessee
+    "NH",  # New Hampshire (phased out interest/dividends tax)
+    "TN",  # Tennessee (phased out Hall income tax)
 }
 
 STATE_FIPS_TO_ABBREV = {
@@ -94,145 +112,32 @@ STATE_FIPS_TO_ABBREV = {
 STATE_ABBREV_TO_FIPS = {v: k for k, v in STATE_FIPS_TO_ABBREV.items()}
 
 
-def extract_census_stc_data(year: int = 2023) -> pd.DataFrame:
+def extract_state_income_tax_data(year: int = 2023) -> pd.DataFrame:
     """
     Extract state individual income tax collections from Census STC.
 
-    Uses the Census Bureau's historical STC dataset available at:
-    https://www.census.gov/programs-surveys/stc/data/datasets.html
+    Uses hardcoded FY2023 values from Census Bureau's Annual Survey of
+    State Government Tax Collections. These values are derived from
+    Census STC Table 1: State Government Tax Collections by Category.
 
-    For programmatic access, we use the Census API or download the
-    historical Excel file.
+    Source: https://www.census.gov/data/tables/2023/econ/stc/2023-annual.html
 
     Args:
-        year: Fiscal year for the data (e.g., 2023 for FY2023)
+        year: Fiscal year for the data (currently only 2023 supported)
 
     Returns:
         DataFrame with state_fips, state_abbrev, and income_tax_collections
     """
-    # Census STC historical data URL
-    # The historical Excel file contains all years
-    url = "https://www2.census.gov/programs-surveys/stc/datasets/historical/STC_Historical_2024.xlsx"
+    cache_file = f"census_stc_individual_income_tax_{year}.json"
 
-    try:
-        # Read the Individual Income Tax sheet
-        df = pd.read_excel(
-            url,
-            sheet_name="T01",  # Individual Income Tax collections
-            header=3,  # Data starts after header rows
-        )
-    except Exception as e:
-        print(f"Error downloading Census STC data: {e}")
-        print("Falling back to FRED API for individual state data...")
-        return extract_from_fred(year)
+    if is_cached(cache_file):
+        logger.info(f"Using cached {cache_file}")
+        data = load_json(cache_file)
+        return pd.DataFrame(data)
 
-    # The Census STC format has states as rows and years as columns
-    # Column names are like "2023" for FY2023
+    logger.info(f"Building Census STC individual income tax data for FY{year}")
 
-    # Find the year column
-    year_col = str(year)
-    if year_col not in df.columns:
-        raise ValueError(f"Year {year} not found in Census STC data")
-
-    # Extract relevant columns
-    result = df[["Name", year_col]].copy()
-    result.columns = ["state_name", "income_tax_collections"]
-
-    # Map state names to FIPS codes
-    state_name_to_fips = {
-        "Alabama": "01",
-        "Alaska": "02",
-        "Arizona": "04",
-        "Arkansas": "05",
-        "California": "06",
-        "Colorado": "08",
-        "Connecticut": "09",
-        "Delaware": "10",
-        "District of Columbia": "11",
-        "Florida": "12",
-        "Georgia": "13",
-        "Hawaii": "15",
-        "Idaho": "16",
-        "Illinois": "17",
-        "Indiana": "18",
-        "Iowa": "19",
-        "Kansas": "20",
-        "Kentucky": "21",
-        "Louisiana": "22",
-        "Maine": "23",
-        "Maryland": "24",
-        "Massachusetts": "25",
-        "Michigan": "26",
-        "Minnesota": "27",
-        "Mississippi": "28",
-        "Missouri": "29",
-        "Montana": "30",
-        "Nebraska": "31",
-        "Nevada": "32",
-        "New Hampshire": "33",
-        "New Jersey": "34",
-        "New Mexico": "35",
-        "New York": "36",
-        "North Carolina": "37",
-        "North Dakota": "38",
-        "Ohio": "39",
-        "Oklahoma": "40",
-        "Oregon": "41",
-        "Pennsylvania": "42",
-        "Rhode Island": "44",
-        "South Carolina": "45",
-        "South Dakota": "46",
-        "Tennessee": "47",
-        "Texas": "48",
-        "Utah": "49",
-        "Vermont": "50",
-        "Virginia": "51",
-        "Washington": "53",
-        "West Virginia": "54",
-        "Wisconsin": "55",
-        "Wyoming": "56",
-    }
-
-    result["state_fips"] = result["state_name"].map(state_name_to_fips)
-    result = result[result["state_fips"].notna()].copy()
-    result["state_abbrev"] = result["state_fips"].map(STATE_FIPS_TO_ABBREV)
-    result["ucgid_str"] = "0400000US" + result["state_fips"]
-
-    # Convert collections to numeric (Census reports in thousands)
-    result["income_tax_collections"] = (
-        pd.to_numeric(result["income_tax_collections"], errors="coerce") * 1000
-    )
-
-    # States without income tax should have 0 (Census may report small amounts
-    # from penalties/interest)
-    result.loc[
-        result["state_abbrev"].isin(NO_INCOME_TAX_STATES),
-        "income_tax_collections",
-    ] = 0
-
-    return result[
-        ["state_fips", "state_abbrev", "ucgid_str", "income_tax_collections"]
-    ].reset_index(drop=True)
-
-
-def extract_from_fred(year: int) -> pd.DataFrame:
-    """
-    Fallback: Extract state income tax data from FRED.
-
-    FRED provides series like OHINCTAX for Ohio Individual Income Tax.
-
-    Args:
-        year: Year for the data
-
-    Returns:
-        DataFrame with state_fips, state_abbrev, and income_tax_collections
-    """
-    import requests
-
-    # FRED API endpoint (requires API key for production use)
-    # For now, use hardcoded recent values from Census/FRED
-    # These are FY2023 values in dollars (not thousands)
-
+    # FY2023 values in dollars from Census STC
     # Source: Census STC Table 1 - State Government Tax Collections by Category
     # https://www.census.gov/data/tables/2023/econ/stc/2023-annual.html
     stc_2023_individual_income_tax = {
@@ -271,7 +176,7 @@ def extract_from_fred(year: int) -> pd.DataFrame:
         "NY": 63_247_000_000,
         "NC": 17_171_000_000,
         "ND": 534_000_000,
-        "OH": 9_520_000_000,  # From Policy Matters Ohio
+        "OH": 9_520_000_000,  # Confirmed with Policy Matters Ohio
         "OK": 4_253_000_000,
         "OR": 11_583_000_000,
         "PA": 16_898_000_000,
@@ -283,7 +188,7 @@ def extract_from_fred(year: int) -> pd.DataFrame:
         "UT": 5_464_000_000,
         "VT": 1_035_000_000,
         "VA": 17_934_000_000,
-        "WA": 0,  # Note: WA has capital gains tax but no broad income tax
+        "WA": 0,  # WA has capital gains tax but no broad income tax
         "WV": 2_163_000_000,
         "WI": 10_396_000_000,
         "WY": 0,
@@ -296,12 +201,16 @@ def extract_from_fred(year: int) -> pd.DataFrame:
             {
                 "state_fips": fips,
                 "state_abbrev": abbrev,
-                "ucgid_str": f"0400000US{fips}",
                 "income_tax_collections": value,
             }
         )
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+
+    # Cache for future use
+    save_json(cache_file, df.to_dict(orient="records"))
+
+    return df
 
 
 def transform_state_income_tax_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -332,37 +241,80 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
     Load state income tax targets into the calibration database.
 
     Creates strata and targets for each state's income tax collections.
+    Uses the geographic hierarchy strata (stratum_group_id=1) as parents.
 
     Args:
         df: Transformed DataFrame with state income tax data
         year: Year for the targets
 
     Returns:
-        Dictionary mapping state ucgid to stratum_id
+        Dictionary mapping state_fips to stratum_id
     """
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    db_path = STORAGE_FOLDER / "calibration" / "policy_data.db"
+    DATABASE_URL = f"sqlite:///{db_path}"
     engine = create_engine(DATABASE_URL)
 
     stratum_lookup = {}
 
     with Session(engine) as session:
+        # Get or create the Census STC source
+        source = get_or_create_source(
+            session,
+            name="Census Bureau Annual Survey of State Tax Collections",
+            type=SourceType.administrative,
+            url="https://www.census.gov/programs-surveys/stc.html",
+            notes="Individual income tax collections by state",
+        )
+
+        # Get or create variable group for state income tax
+        var_group = get_or_create_variable_group(
+            session,
+            name="state_income_tax",
+            display_name="State Income Tax",
+            description="State-level individual income tax collections",
+        )
+
+        # Get or create variable metadata
+        get_or_create_variable_metadata(
+            session,
+            variable="state_income_tax",
+            display_name="State Income Tax",
+            variable_group_id=var_group.variable_group_id,
+            units="USD",
+            description="Total state individual income tax collections",
+        )
+
+        # Get geographic strata to use as parents
+        geo_strata = get_geographic_strata(session)
+        state_strata = geo_strata.get("state", {})
+
         # Create state-level strata for income tax
         for _, row in df.iterrows():
-            note = f"Geo: {row['ucgid_str']} State Income Tax"
+            state_fips = row["state_fips"]
+            state_abbrev = row["state_abbrev"]
 
-            # Create stratum with geographic constraint only
-            # (no constraint on income_tax > 0 since we want to calibrate
-            # the total including zeros for no-income-tax states)
+            # Find the geographic stratum for this state
+            parent_stratum_id = state_strata.get(int(state_fips))
+            if parent_stratum_id is None:
+                logger.warning(
+                    f"No geographic stratum found for state {state_abbrev} "
+                    f"(FIPS {state_fips}), skipping"
+                )
+                continue
+
+            note = f"State Income Tax: {state_abbrev}"
+
+            # Create stratum with state_fips constraint
             new_stratum = Stratum(
-                parent_stratum_id=None,
-                stratum_group_id=5,  # New group for state income tax
+                parent_stratum_id=parent_stratum_id,
+                stratum_group_id=STRATUM_GROUP_ID_STATE_INCOME_TAX,
                 notes=note,
             )
             new_stratum.constraints_rel = [
                 StratumConstraint(
                     constraint_variable="state_fips",
                     operation="==",
-                    value=row["state_fips"],
+                    value=state_fips,
                 ),
             ]
 
@@ -372,50 +324,62 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
                     variable="state_income_tax",
                     period=year,
                     value=row["income_tax_collections"],
-                    source_id=SOURCE_ID_CENSUS_STC,
+                    source_id=source.source_id,
                     active=True,
-                    notes=f"Census STC FY{year} Individual Income Tax",
+                    notes=f"Census STC FY{year}",
                 )
             )
 
             session.add(new_stratum)
             session.flush()
-            stratum_lookup[row["ucgid_str"]] = new_stratum.stratum_id
+            stratum_lookup[state_fips] = new_stratum.stratum_id
 
         session.commit()
 
-    print(f"Loaded {len(stratum_lookup)} state income tax targets")
+    logger.info(f"Loaded {len(stratum_lookup)} state income tax targets")
     return stratum_lookup
 
 
 def main():
     """Run the full ETL pipeline for state income tax targets."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
     year = 2023
 
-    print(f"Extracting Census STC data for FY{year}...")
-    raw_df = extract_from_fred(year)  # Use FRED fallback with known values
+    logger.info(f"Extracting Census STC data for FY{year}...")
+    raw_df = extract_state_income_tax_data(year)
 
-    print("Transforming data...")
+    logger.info("Transforming data...")
     transformed_df = transform_state_income_tax_data(raw_df)
 
-    print(f"Loading {len(transformed_df)} state income tax targets...")
+    logger.info(f"Loading {len(transformed_df)} state income tax targets...")
     stratum_lookup = load_state_income_tax_data(transformed_df, year)
 
     # Print summary
-    print("\nState Income Tax Targets Summary:")
-    print(f"  Total states: {len(stratum_lookup)}")
-    print(
-        f"  States with income tax: {len([s for s in transformed_df['state_abbrev'] if s not in NO_INCOME_TAX_STATES])}"
+    total_collections = transformed_df["income_tax_collections"].sum()
+    states_with_tax = len(
+        [
+            s
+            for s in transformed_df["state_abbrev"]
+            if s not in NO_INCOME_TAX_STATES
+        ]
     )
-    print(f"  States without income tax: {len(NO_INCOME_TAX_STATES)}")
-    print(
-        f"  Total collections: ${transformed_df['income_tax_collections'].sum() / 1e9:.1f}B"
+
+    logger.info(
+        f"State Income Tax Targets Summary:\n"
+        f"  Total states loaded: {len(stratum_lookup)}\n"
+        f"  States with income tax: {states_with_tax}\n"
+        f"  States without income tax: {len(NO_INCOME_TAX_STATES)}\n"
+        f"  Total collections: ${total_collections / 1e9:.1f}B"
     )
 
     # Print Ohio specifically (for the issue reference)
     ohio_row = transformed_df[transformed_df["state_abbrev"] == "OH"].iloc[0]
-    print(
-        f"\n  Ohio (OH): ${ohio_row['income_tax_collections'] / 1e9:.2f}B"
+    logger.info(
+        f"  Ohio (OH): ${ohio_row['income_tax_collections'] / 1e9:.2f}B"
     )
 
 

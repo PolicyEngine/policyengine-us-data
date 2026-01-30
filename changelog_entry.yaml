@@ -24,5 +24,6 @@
     - Added stratum_group_id migration utilities
     - Added db_metadata utilities for source and variable group management
     - Added DATABASE_GUIDE.md with comprehensive calibration database documentation
+    - Added state income tax calibration targets from Census STC FY2023 data
     fixed:
     - Fixed cross-state recalculation in sparse matrix builder by adding time_period to calculate() calls

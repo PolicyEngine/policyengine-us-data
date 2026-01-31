@@ -9,9 +9,10 @@ from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
-# CPS-derived statistics
-# Medical expenses, sum of spm thresholds
-# Child support expenses
+# National calibration targets consumed by build_loss_matrix().
+# These are duplicated in db/etl_national_targets.py which loads them
+# into policy_data.db.  A future PR should wire build_loss_matrix()
+# to read from the database so this dict can be deleted.  See PR #488.
 
 HARD_CODED_TOTALS = {
     "health_insurance_premiums_without_medicare_part_b": 385e9,

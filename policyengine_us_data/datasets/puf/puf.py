@@ -168,8 +168,15 @@ def impute_pension_contributions_to_puf(puf_df):
 
     cps = Microsimulation(dataset=CPS_2021)
     cps.subsample(10_000)
+
+    predictors = [
+        "employment_income",
+        "age",
+        "is_male",
+    ]
+
     cps_df = cps.calculate_dataframe(
-        ["employment_income", "household_weight", "pre_tax_contributions"]
+        predictors + ["household_weight", "pre_tax_contributions"]
     )
 
     from microimpute.models.qrf import QRF
@@ -177,16 +184,16 @@ def impute_pension_contributions_to_puf(puf_df):
     qrf = QRF()
 
     # Combine predictors and target into single DataFrame for models.QRF
-    cps_train = cps_df[["employment_income", "pre_tax_contributions"]]
+    cps_train = cps_df[predictors + ["pre_tax_contributions"]]
 
     fitted_model = qrf.fit(
         X_train=cps_train,
-        predictors=["employment_income"],
+        predictors=predictors,
         imputed_variables=["pre_tax_contributions"],
     )
 
     # Predict using the fitted model
-    predictions = fitted_model.predict(X_test=puf_df[["employment_income"]])
+    predictions = fitted_model.predict(X_test=puf_df[predictors])
 
     return predictions["pre_tax_contributions"]
 
@@ -559,8 +566,11 @@ class PUF(Dataset):
         original_recid = puf.RECID.values.copy()
         puf = preprocess_puf(puf)
         puf = impute_missing_demographics(puf, demographics)
+        # Derive age and is_male for pension imputation predictors
+        puf["age"] = puf["AGERANGE"].apply(decode_age_filer)
+        puf["is_male"] = (puf["GENDER"] == 1).astype(float)
         puf["pre_tax_contributions"] = impute_pension_contributions_to_puf(
-            puf[["employment_income"]]
+            puf[["employment_income", "age", "is_male"]]
         )
 
         # Sort in original PUF order

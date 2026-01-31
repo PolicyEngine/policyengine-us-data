@@ -782,3 +782,8 @@
     - Update taxable pension fraction from 1.0 to 0.590 based on SOI 2015 Table 1.4
     - Add age and is_male as QRF predictors for pension contribution imputation
   date: 2026-01-31 19:54:59
+- bump: minor
+  changes:
+    changed:
+    - Use income_tax_positive instead of income_tax for CBO calibration target
+  date: 2026-01-31 19:57:29

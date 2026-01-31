@@ -787,3 +787,8 @@
     changed:
     - Use income_tax_positive instead of income_tax for CBO calibration target
   date: 2026-01-31 19:57:29
+- bump: minor
+  changes:
+    added:
+    - Add state income tax calibration targets from Census STC FY2023 data
+  date: 2026-01-31 20:18:58

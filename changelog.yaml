@@ -761,3 +761,9 @@
     - Removed dead train_previous_year_income_model function
     - Removed unused dataset exports from __init__.py
   date: 2026-01-31 03:18:20
+- bump: minor
+  changes:
+    added:
+    - weeks_unemployed variable from CPS ASEC LKWEEKS
+    - QRF-based imputation of weeks_unemployed for Extended CPS PUF copy
+  date: 2026-01-31 19:53:18

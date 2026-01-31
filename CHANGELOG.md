@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.58.0] - 2026-01-31 19:53:18
+
+### Added
+
+- weeks_unemployed variable from CPS ASEC LKWEEKS
+- QRF-based imputation of weeks_unemployed for Extended CPS PUF copy
+
 ## [1.57.0] - 2026-01-31 03:18:20
 
 ### Added
@@ -887,6 +894,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.58.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.57.0...1.58.0
 [1.57.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.56.0...1.57.0
 [1.56.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.55.0...1.56.0
 [1.55.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.54.1...1.55.0

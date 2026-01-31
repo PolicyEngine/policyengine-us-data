@@ -7,8 +7,8 @@ taxable_interest_fraction: 0.680
 # SOI 2018 data
 qualified_dividend_fraction: 0.448
 
-# no SOI data, so arbitrary assumption
-taxable_pension_fraction: 1.0
+# SOI 2015 data (Table 1.4: taxable / total pension income)
+taxable_pension_fraction: 0.590
 taxable_401k_distribution_fraction: 1.0
 taxable_403b_distribution_fraction: 1.0
 taxable_ira_distribution_fraction: 1.0

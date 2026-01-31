@@ -35,6 +35,29 @@ HARD_CODED_TOTALS = {
     # Wages and salaries grew 32% from 2018 to 2023: https://fred.stlouisfed.org/graph/?g=1J0CC
     # Assume 40% through 2024
     "tip_income": 38e9 * 1.4,
+    # SSA benefit-type totals for 2024, derived from:
+    # - Total OASDI: $1,452B (CBO projection)
+    # - OASI trust fund: $1,227.4B in 2023
+    #   https://www.ssa.gov/OACT/STATS/table4a3.html
+    # - DI trust fund: $151.9B in 2023
+    #   https://www.ssa.gov/OACT/STATS/table4a3.html
+    # - SSA 2024 fact sheet type shares: retired+deps=78.5%,
+    #   survivors=11.0%, disabled+deps=10.5%
+    #   https://www.ssa.gov/OACT/FACTS/
+    # - SSA Annual Statistical Supplement Table 5.A1
+    #   https://www.ssa.gov/policy/docs/statcomps/supplement/2024/5a.html
+    "social_security_retirement": 1_060e9,  # ~73% of total
+    "social_security_disability": 148e9,  # ~10.2% (disabled workers)
+    "social_security_survivors": 160e9,  # ~11.0% (widows, children of deceased)
+    "social_security_dependents": 84e9,  # ~5.8% (spouses/children of retired+disabled)
+    # IRA contribution totals from IRS SOI IRA accumulation tables.
+    # Tax year 2022: ~5M taxpayers x $4,510 avg = ~$22.5B traditional;
+    # ~10M taxpayers x $3,482 avg = ~$34.8B Roth.
+    # Uprated ~12% to 2024 for limit increases ($6k->$7k) and
+    # wage growth.
+    # https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
+    "traditional_ira_contributions": 25e9,
+    "roth_ira_contributions": 39e9,
 }
 
 

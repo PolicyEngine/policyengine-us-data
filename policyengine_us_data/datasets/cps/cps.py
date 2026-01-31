@@ -405,22 +405,64 @@ def add_personal_income_variables(
         1 - p["qualified_dividend_fraction"]
     )
     cps["rental_income"] = person.RNT_VAL
-    # Assign Social Security retirement benefits if at least 62.
-    MINIMUM_RETIREMENT_AGE = 62
+
+    # Classify Social Security income using CPS ASEC source codes
+    # (SS_SC1 and SS_SC2). Source code values:
+    #   1 = Retired
+    #   2 = Disabled (adult or child)
+    #   3 = Widowed
+    #   4 = Spouse
+    #   5 = Surviving child
+    #   6 = Dependent child
+    #   7 = On behalf of surviving/dependent/disabled child(ren)
+    #   8 = Other
+    is_retirement = (person.SS_SC1 == 1) | (person.SS_SC2 == 1)
+    is_disability = (person.SS_SC1 == 2) | (person.SS_SC2 == 2)
+    is_survivor = np.isin(person.SS_SC1, [3, 5]) | np.isin(
+        person.SS_SC2, [3, 5]
+    )
+    is_dependent = np.isin(person.SS_SC1, [4, 6, 7]) | np.isin(
+        person.SS_SC2, [4, 6, 7]
+    )
+
+    # Primary classification: assign full SS_VAL to the highest-
+    # priority category when someone has multiple source codes.
     cps["social_security_retirement"] = np.where(
-        person.A_AGE >= MINIMUM_RETIREMENT_AGE, person.SS_VAL, 0
+        is_retirement, person.SS_VAL, 0
     )
-    # Otherwise assign them to Social Security disability benefits.
-    cps["social_security_disability"] = (
-        person.SS_VAL - cps["social_security_retirement"]
+    cps["social_security_disability"] = np.where(
+        is_disability & ~is_retirement, person.SS_VAL, 0
     )
-    # Provide placeholders for other Social Security inputs to avoid creating
-    # NaNs as they're uprated.
-    cps["social_security_dependents"] = np.zeros_like(
-        cps["social_security_retirement"]
+    cps["social_security_survivors"] = np.where(
+        is_survivor & ~is_retirement & ~is_disability,
+        person.SS_VAL,
+        0,
     )
-    cps["social_security_survivors"] = np.zeros_like(
-        cps["social_security_retirement"]
+    cps["social_security_dependents"] = np.where(
+        is_dependent & ~is_retirement & ~is_disability & ~is_survivor,
+        person.SS_VAL,
+        0,
+    )
+
+    # Fallback for records with SS income but no informative source
+    # code: use the age-62 heuristic (retirement vs. disability).
+    MINIMUM_RETIREMENT_AGE = 62
+    unclassified = (
+        (person.SS_VAL > 0)
+        & ~is_retirement
+        & ~is_disability
+        & ~is_survivor
+        & ~is_dependent
+    )
+    cps["social_security_retirement"] += np.where(
+        unclassified & (person.A_AGE >= MINIMUM_RETIREMENT_AGE),
+        person.SS_VAL,
+        0,
+    )
+    cps["social_security_disability"] += np.where(
+        unclassified & (person.A_AGE < MINIMUM_RETIREMENT_AGE),
+        person.SS_VAL,
+        0,
     )
     cps["unemployment_compensation"] = person.UC_VAL
     # Weeks looking for work during the year (Census variable LKWEEKS)
@@ -496,11 +538,56 @@ def add_personal_income_variables(
     # Disregard reported pension contributions from people who report neither wage and salary
     # nor self-employment income.
     # Assume no 403(b) or 457 contributions for now.
-    LIMIT_401K_2022 = 20_500
-    LIMIT_401K_CATCH_UP_2022 = 6_500
-    LIMIT_IRA_2022 = 6_000
-    LIMIT_IRA_CATCH_UP_2022 = 1_000
-    CATCH_UP_AGE_2022 = 50
+    # IRS retirement contribution limits by year.
+    RETIREMENT_LIMITS = {
+        2020: {
+            "401k": 19_500,
+            "401k_catch_up": 6_500,
+            "ira": 6_000,
+            "ira_catch_up": 1_000,
+        },
+        2021: {
+            "401k": 19_500,
+            "401k_catch_up": 6_500,
+            "ira": 6_000,
+            "ira_catch_up": 1_000,
+        },
+        2022: {
+            "401k": 20_500,
+            "401k_catch_up": 6_500,
+            "ira": 6_000,
+            "ira_catch_up": 1_000,
+        },
+        2023: {
+            "401k": 22_500,
+            "401k_catch_up": 7_500,
+            "ira": 6_500,
+            "ira_catch_up": 1_000,
+        },
+        2024: {
+            "401k": 23_000,
+            "401k_catch_up": 7_500,
+            "ira": 7_000,
+            "ira_catch_up": 1_000,
+        },
+        2025: {
+            "401k": 23_500,
+            "401k_catch_up": 7_500,
+            "ira": 7_000,
+            "ira_catch_up": 1_000,
+        },
+    }
+    # Clamp to the nearest available year for out-of-range values.
+    clamped_year = max(
+        min(year, max(RETIREMENT_LIMITS)),
+        min(RETIREMENT_LIMITS),
+    )
+    limits = RETIREMENT_LIMITS[clamped_year]
+    LIMIT_401K = limits["401k"]
+    LIMIT_401K_CATCH_UP = limits["401k_catch_up"]
+    LIMIT_IRA = limits["ira"]
+    LIMIT_IRA_CATCH_UP = limits["ira_catch_up"]
+    CATCH_UP_AGE = 50
     retirement_contributions = person.RETCB_VAL
     cps["self_employed_pension_contributions"] = np.where(
         person.SEMP_VAL > 0, retirement_contributions, 0
@@ -510,9 +597,9 @@ def add_personal_income_variables(
         0,
     )
     # Compute the 401(k) limit for the person's age.
-    catch_up_eligible = person.A_AGE >= CATCH_UP_AGE_2022
-    limit_401k = LIMIT_401K_2022 + catch_up_eligible * LIMIT_401K_CATCH_UP_2022
-    limit_ira = LIMIT_IRA_2022 + catch_up_eligible * LIMIT_IRA_CATCH_UP_2022
+    catch_up_eligible = person.A_AGE >= CATCH_UP_AGE
+    limit_401k = LIMIT_401K + catch_up_eligible * LIMIT_401K_CATCH_UP
+    limit_ira = LIMIT_IRA + catch_up_eligible * LIMIT_IRA_CATCH_UP
     cps["traditional_401k_contributions"] = np.where(
         person.WSAL_VAL > 0,
         np.minimum(remaining_retirement_contributions, limit_401k),

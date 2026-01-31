@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.59.0] - 2026-01-31 19:54:59
+
+### Added
+
+- SSA benefit-type calibration targets for social_security_retirement, social_security_disability, social_security_survivors, and social_security_dependents
+- IRA contribution calibration targets for traditional_ira_contributions and roth_ira_contributions from IRS SOI data
+
+### Changed
+
+- Use CPS ASEC RESNSS1/RESNSS2 source codes to classify Social Security income into retirement, disability, survivors, and dependents (replacing age-62 heuristic)
+- Parameterize retirement contribution limits by year (2020-2025) instead of hardcoded 2022 values
+- Update taxable pension fraction from 1.0 to 0.590 based on SOI 2015 Table 1.4
+- Add age and is_male as QRF predictors for pension contribution imputation
+
 ## [1.58.0] - 2026-01-31 19:53:18
 
 ### Added
@@ -894,6 +908,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.59.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.58.0...1.59.0
 [1.58.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.57.0...1.58.0
 [1.57.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.56.0...1.57.0
 [1.56.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.55.0...1.56.0

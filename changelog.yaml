@@ -767,3 +767,18 @@
     - weeks_unemployed variable from CPS ASEC LKWEEKS
     - QRF-based imputation of weeks_unemployed for Extended CPS PUF copy
   date: 2026-01-31 19:53:18
+- bump: minor
+  changes:
+    added:
+    - SSA benefit-type calibration targets for social_security_retirement, social_security_disability,
+      social_security_survivors, and social_security_dependents
+    - IRA contribution calibration targets for traditional_ira_contributions and roth_ira_contributions
+      from IRS SOI data
+    changed:
+    - Use CPS ASEC RESNSS1/RESNSS2 source codes to classify Social Security income
+      into retirement, disability, survivors, and dependents (replacing age-62 heuristic)
+    - Parameterize retirement contribution limits by year (2020-2025) instead of hardcoded
+      2022 values
+    - Update taxable pension fraction from 1.0 to 0.590 based on SOI 2015 Table 1.4
+    - Add age and is_male as QRF predictors for pension contribution imputation
+  date: 2026-01-31 19:54:59

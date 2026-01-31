@@ -32,20 +32,11 @@ class CPS(Dataset):
             frac (float, optional): Fraction of the dataset to keep. Defaults to 1. Example: To downsample to 25% of dataset,
                 set frac=0.25.
         """
-
         if self.raw_cps is None:
-            # Extrapolate from previous year
-            if self.time_period == 2025:
-                cps_2024 = CPS_2024(require=True)
-                arrays = cps_2024.load_dataset()
-                arrays = uprate_cps_data(arrays, 2024, self.time_period)
-            else:
-                # Default to CPS 2023 for backward compatibility
-                cps_2023 = CPS_2023(require=True)
-                arrays = cps_2023.load_dataset()
-                arrays = uprate_cps_data(arrays, 2023, self.time_period)
-            self.save_dataset(arrays)
-            return
+            raise ValueError(
+                f"Cannot generate {self.name}: raw_cps is not defined. "
+                "For future years, use PolicyEngine's uprating at simulation time."
+            )
 
         raw_data = self.raw_cps(require=True).load()
         cps = {}
@@ -2039,14 +2030,6 @@ class CPS_2024(CPS):
     file_path = STORAGE_FOLDER / "cps_2024.h5"
     time_period = 2024
     frac = 0.5
-
-
-class CPS_2025(CPS):
-    name = "cps_2025"
-    label = "CPS 2025 (2024-based)"
-    file_path = STORAGE_FOLDER / "cps_2025.h5"
-    time_period = 2025
-    frac = 1
 
 
 class CPS_2024_Full(CPS):

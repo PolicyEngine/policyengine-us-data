@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.57.0] - 2026-01-31 03:18:20
+
+### Added
+
+- Added CPS_2024_Full class for full-sample 2024 CPS generation
+- Added raw_cache utility for Census data caching
+- Added atomic parallel local area H5 publishing with Modal Volume staging
+- Added manifest validation with SHA256 checksums
+- Added HuggingFace retry logic with exponential backoff to fix timeout errors
+- Added staging folder approach for atomic HuggingFace deployments
+- Added national targets ETL for CBO projections and tax expenditure data
+- Added database hierarchy validation script
+- Added stratum_group_id migration utilities
+- Added db_metadata utilities for source and variable group management
+- Added DATABASE_GUIDE.md with comprehensive calibration database documentation
+
+### Changed
+
+- Migrated data pipeline from CPS 2023 to CPS 2024 (March 2025 ASEC)
+- Updated ExtendedCPS_2024 to use new CPS_2024_Full (full sample)
+- Updated local area calibration to use 2024 extended CPS data
+- Updated database ETL scripts for strata, IRS SOI, Medicaid, and SNAP
+- Expanded IRS SOI ETL with detailed income brackets and filing status breakdowns
+
+### Fixed
+
+- Fixed cross-state recalculation in sparse matrix builder by adding time_period to calculate() calls
+
 ## [1.56.0] - 2026-01-26 22:41:56
 
 ### Added
@@ -859,6 +887,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.57.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.56.0...1.57.0
 [1.56.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.55.0...1.56.0
 [1.55.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.54.1...1.55.0
 [1.54.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.54.0...1.54.1

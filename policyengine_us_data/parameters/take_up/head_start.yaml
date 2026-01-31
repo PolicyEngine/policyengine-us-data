@@ -1,0 +1,10 @@
+description: Percentage of eligible children who enroll in Head Start.
+metadata:
+  label: Head Start take-up rate
+  unit: /1
+  reference:
+    - title: NIEER State(s) of Head Start and Early Head Start Report
+      href: https://nieer.org/research-library/states-head-start-early-head-start
+values:
+  2020-09-01: 0.40
+  2021-09-01: 0.30

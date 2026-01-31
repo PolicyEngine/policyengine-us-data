@@ -191,6 +191,51 @@ def extract_national_targets():
             "notes": "Social security tips uprated 40% to account for underreporting",
             "year": HARDCODED_YEAR,
         },
+        # SSA benefit-type totals derived from trust fund data and
+        # SSA fact sheet type shares
+        {
+            "variable": "social_security_retirement",
+            "value": 1_060e9,
+            "source": "https://www.ssa.gov/OACT/STATS/table4a3.html",
+            "notes": "~73% of total OASDI ($1,452B CBO projection)",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "variable": "social_security_disability",
+            "value": 148e9,
+            "source": "https://www.ssa.gov/OACT/STATS/table4a3.html",
+            "notes": "~10.2% of total OASDI (disabled workers)",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "variable": "social_security_survivors",
+            "value": 160e9,
+            "source": "https://www.ssa.gov/OACT/FACTS/",
+            "notes": "~11.0% of total OASDI (widows, children of deceased)",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "variable": "social_security_dependents",
+            "value": 84e9,
+            "source": "https://www.ssa.gov/OACT/FACTS/",
+            "notes": "~5.8% of total OASDI (spouses/children of retired+disabled)",
+            "year": HARDCODED_YEAR,
+        },
+        # IRA contribution totals from IRS SOI accumulation tables
+        {
+            "variable": "traditional_ira_contributions",
+            "value": 25e9,
+            "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
+            "notes": "Tax year 2022 (~5M x $4,510 avg) uprated ~12% to 2024",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "variable": "roth_ira_contributions",
+            "value": 39e9,
+            "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
+            "notes": "Tax year 2022 (~10M x $3,482 avg) uprated ~12% to 2024",
+            "year": HARDCODED_YEAR,
+        },
     ]
 
     # Conditional count targets - these need strata with constraints

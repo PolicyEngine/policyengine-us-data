@@ -260,19 +260,29 @@ def extract_national_targets():
     # CBO projection targets - get for a specific year
     CBO_YEAR = 2023  # Year the CBO projections are for
     cbo_vars = [
-        "income_tax",
+        # Note: income_tax_positive matches CBO's receipts definition
+        # where refundable credit payments in excess of liability are
+        # classified as outlays, not negative receipts. See:
+        # https://www.cbo.gov/publication/43767
+        "income_tax_positive",
         "snap",
         "social_security",
         "ssi",
         "unemployment_compensation",
     ]
 
+    # Mapping from target variable to CBO parameter name (when different)
+    cbo_param_name_map = {
+        "income_tax_positive": "income_tax",  # CBO param is income_tax
+    }
+
     cbo_targets = []
     for variable_name in cbo_vars:
+        param_name = cbo_param_name_map.get(variable_name, variable_name)
         try:
             value = sim.tax_benefit_system.parameters(
                 CBO_YEAR
-            ).calibration.gov.cbo._children[variable_name]
+            ).calibration.gov.cbo._children[param_name]
             cbo_targets.append(
                 {
                     "variable": variable_name,
@@ -284,7 +294,8 @@ def extract_national_targets():
             )
         except (KeyError, AttributeError) as e:
             print(
-                f"Warning: Could not extract CBO parameter for {variable_name}: {e}"
+                f"Warning: Could not extract CBO parameter for "
+                f"{variable_name} (param: {param_name}): {e}"
             )
 
     # Treasury/JCT targets (EITC) - get for a specific year
@@ -334,12 +345,17 @@ def transform_national_targets(raw_targets):
     """
 
     # Process direct sum targets (non-tax items and some CBO items)
-    # Note: income_tax from CBO and eitc from Treasury need filer constraint
+    # Note: income_tax_positive from CBO and eitc from Treasury need
+    # filer constraint
     cbo_non_tax = [
-        t for t in raw_targets["cbo_targets"] if t["variable"] != "income_tax"
+        t
+        for t in raw_targets["cbo_targets"]
+        if t["variable"] != "income_tax_positive"
     ]
     cbo_tax = [
-        t for t in raw_targets["cbo_targets"] if t["variable"] == "income_tax"
+        t
+        for t in raw_targets["cbo_targets"]
+        if t["variable"] == "income_tax_positive"
     ]
 
     all_direct_targets = raw_targets["direct_sum_targets"] + cbo_non_tax

@@ -406,8 +406,8 @@ def add_personal_income_variables(
     )
     cps["rental_income"] = person.RNT_VAL
 
-    # Classify Social Security income using CPS ASEC source codes
-    # (SS_SC1 and SS_SC2). Source code values:
+    # Classify Social Security income using CPS ASEC reason codes
+    # (RESNSS1 and RESNSS2). Reason code values:
     #   1 = Retired
     #   2 = Disabled (adult or child)
     #   3 = Widowed
@@ -416,13 +416,13 @@ def add_personal_income_variables(
     #   6 = Dependent child
     #   7 = On behalf of surviving/dependent/disabled child(ren)
     #   8 = Other
-    is_retirement = (person.SS_SC1 == 1) | (person.SS_SC2 == 1)
-    is_disability = (person.SS_SC1 == 2) | (person.SS_SC2 == 2)
-    is_survivor = np.isin(person.SS_SC1, [3, 5]) | np.isin(
-        person.SS_SC2, [3, 5]
+    is_retirement = (person.RESNSS1 == 1) | (person.RESNSS2 == 1)
+    is_disability = (person.RESNSS1 == 2) | (person.RESNSS2 == 2)
+    is_survivor = np.isin(person.RESNSS1, [3, 5]) | np.isin(
+        person.RESNSS2, [3, 5]
     )
-    is_dependent = np.isin(person.SS_SC1, [4, 6, 7]) | np.isin(
-        person.SS_SC2, [4, 6, 7]
+    is_dependent = np.isin(person.RESNSS1, [4, 6, 7]) | np.isin(
+        person.RESNSS2, [4, 6, 7]
     )
 
     # Primary classification: assign full SS_VAL to the highest-

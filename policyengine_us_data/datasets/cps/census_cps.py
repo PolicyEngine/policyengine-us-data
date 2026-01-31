@@ -324,8 +324,6 @@ PERSON_COLUMNS = [
     "PEIO1COW",
     "A_MJOCC",
     "SS_YN",
-    "SS_SC1",
-    "SS_SC2",
     "PEAFEVER",
     "SSI_YN",
     "RESNSSI1",

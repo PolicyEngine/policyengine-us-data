@@ -261,7 +261,7 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
         source = get_or_create_source(
             session,
             name="Census Bureau Annual Survey of State Tax Collections",
-            type=SourceType.administrative,
+            source_type=SourceType.ADMINISTRATIVE,
             url="https://www.census.gov/programs-surveys/stc.html",
             notes="Individual income tax collections by state",
         )
@@ -270,7 +270,7 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
         var_group = get_or_create_variable_group(
             session,
             name="state_income_tax",
-            display_name="State Income Tax",
+            category="taxes",
             description="State-level individual income tax collections",
         )
 
@@ -278,10 +278,10 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
         get_or_create_variable_metadata(
             session,
             variable="state_income_tax",
+            group=var_group,
             display_name="State Income Tax",
-            variable_group_id=var_group.variable_group_id,
             units="USD",
-            description="Total state individual income tax collections",
+            notes="Total state individual income tax collections",
         )
 
         # Get geographic strata to use as parents

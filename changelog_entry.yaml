@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    fixed:
+    - Fix etl_state_income_tax.py API mismatches with db_metadata utility functions

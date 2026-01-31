@@ -261,6 +261,7 @@ PERSON_COLUMNS = [
     "RNT_VAL",
     "SS_VAL",
     "UC_VAL",
+    "LKWEEKS",  # Weeks looking for work during the year (Census variable)
     "ANN_VAL",
     "PNSN_VAL",
     "OI_OFF",

@@ -176,6 +176,12 @@ class ExtendedCPS(Dataset):
         data = cps_sim.dataset.load_dataset()
         new_data = {}
 
+        # Pre-compute weeks_unemployed imputation for PUF copy
+        # Preserve relationship between UC and weeks from CPS
+        puf_weeks_unemployed = impute_weeks_unemployed_for_puf(
+            cps_sim, y_full_imputations
+        )
+
         for variable in list(data) + IMPUTED_VARIABLES:
             variable_metadata = cps_sim.tax_benefit_system.variables.get(
                 variable
@@ -206,6 +212,9 @@ class ExtendedCPS(Dataset):
                 values = np.concatenate([values, values + values.max()])
             elif "_weight" in variable:
                 values = np.concatenate([values, values * 0])
+            elif variable == "weeks_unemployed":
+                # Use imputed weeks for PUF copy to preserve UC relationship
+                values = np.concatenate([values, puf_weeks_unemployed])
             else:
                 values = np.concatenate([values, values])
             new_data[variable] = {
@@ -318,6 +327,106 @@ def impute_income_variables(
     )
 
     return result
+
+
+def impute_weeks_unemployed_for_puf(cps_sim, puf_imputations):
+    """
+    Impute weeks_unemployed for the PUF copy using QRF from CPS data.
+
+    Uses microimpute's Quantile Random Forest to impute weeks_unemployed
+    for PUF records based on CPS data, preserving the joint distribution
+    of weeks with UC, age, and other predictors.
+
+    This is the reverse of the income imputation (CPS → PUF instead of
+    PUF → CPS) because weeks_unemployed exists in CPS but not in PUF.
+    """
+    # Get CPS weeks
+    try:
+        cps_weeks = cps_sim.calculate("weeks_unemployed").values
+    except (ValueError, KeyError):
+        logging.warning(
+            "weeks_unemployed not available in CPS, "
+            "returning zeros for PUF copy"
+        )
+        n_persons = len(puf_imputations.index)
+        return np.zeros(n_persons)
+
+    # Predictors available in both CPS and imputed PUF data
+    WEEKS_PREDICTORS = [
+        "age",
+        "is_male",
+        "tax_unit_is_joint",
+        "is_tax_unit_head",
+        "is_tax_unit_spouse",
+        "is_tax_unit_dependent",
+    ]
+
+    # Build training data from CPS
+    X_train = cps_sim.calculate_dataframe(WEEKS_PREDICTORS)
+    X_train["weeks_unemployed"] = cps_weeks
+
+    # Add UC as predictor if available in imputations (strong predictor)
+    if "taxable_unemployment_compensation" in puf_imputations.columns:
+        cps_uc = cps_sim.calculate("unemployment_compensation").values
+        X_train["unemployment_compensation"] = cps_uc
+        WEEKS_PREDICTORS = WEEKS_PREDICTORS + ["unemployment_compensation"]
+
+    # Build test data for PUF copy
+    # Use CPS sim to get demographics (same as CPS portion)
+    X_test = cps_sim.calculate_dataframe(
+        [p for p in WEEKS_PREDICTORS if p != "unemployment_compensation"]
+    )
+
+    # Add imputed UC if available
+    if "taxable_unemployment_compensation" in puf_imputations.columns:
+        X_test["unemployment_compensation"] = puf_imputations[
+            "taxable_unemployment_compensation"
+        ].values
+
+    logging.info(
+        f"Imputing weeks_unemployed using QRF with "
+        f"predictors: {WEEKS_PREDICTORS}"
+    )
+
+    # Use QRF to impute weeks
+    qrf = QRF(
+        log_level="INFO",
+        memory_efficient=True,
+    )
+
+    # Sample training data for efficiency
+    sample_size = min(5000, len(X_train))
+    if len(X_train) > sample_size:
+        X_train_sampled = X_train.sample(n=sample_size, random_state=42)
+    else:
+        X_train_sampled = X_train
+
+    fitted_model = qrf.fit(
+        X_train=X_train_sampled,
+        predictors=WEEKS_PREDICTORS,
+        imputed_variables=["weeks_unemployed"],
+        n_jobs=1,
+    )
+
+    predictions = fitted_model.predict(X_test=X_test)
+    imputed_weeks = predictions["weeks_unemployed"].values
+
+    # Enforce constraints: 0-52 weeks, 0 if no UC
+    imputed_weeks = np.clip(imputed_weeks, 0, 52)
+    if "unemployment_compensation" in X_test.columns:
+        imputed_weeks = np.where(
+            X_test["unemployment_compensation"].values > 0,
+            imputed_weeks,
+            0,
+        )
+
+    logging.info(
+        f"Imputed weeks_unemployed for PUF: "
+        f"{(imputed_weeks > 0).sum()} with weeks > 0, "
+        f"mean = {imputed_weeks[imputed_weeks > 0].mean():.1f} weeks"
+    )
+
+    return imputed_weeks
 
 
 class ExtendedCPS_2024(ExtendedCPS):

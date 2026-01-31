@@ -423,6 +423,10 @@ def add_personal_income_variables(
         cps["social_security_retirement"]
     )
     cps["unemployment_compensation"] = person.UC_VAL
+    # Weeks looking for work during the year (Census variable LKWEEKS)
+    # LKWEEKS: -1 = NIU (Not In Universe), 0 = not looking, 1-52 = weeks
+    weeks_raw = person.LKWEEKS
+    cps["weeks_unemployed"] = np.where(weeks_raw == -1, 0, weeks_raw)
     # Add pensions and annuities.
     cps_pensions = person.PNSN_VAL + person.ANN_VAL
     # Assume a constant fraction of pension income is taxable.

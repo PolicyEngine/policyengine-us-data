@@ -1,12 +1,31 @@
-from typing import List
-from huggingface_hub import HfApi, CommitOperationAdd
+from typing import List, Dict, Optional, Tuple
+from huggingface_hub import (
+    HfApi,
+    CommitOperationAdd,
+    CommitOperationCopy,
+    CommitOperationDelete,
+)
 from huggingface_hub.errors import RevisionNotFoundError
 from google.cloud import storage
 from pathlib import Path
 from importlib import metadata
 import google.auth
+import httpx
+import json
 import logging
 import os
+
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log,
+)
+
+DEFAULT_HF_TIMEOUT = 300
+MAX_RETRIES = 5
+RETRY_BASE_WAIT = 30
 
 
 def upload_data_files(
@@ -224,3 +243,195 @@ def upload_local_area_batch_to_hf(
     logging.info(
         f"Uploaded {len(operations)} files to Hugging Face {hf_repo_name} in single commit."
     )
+
+
+@retry(
+    stop=stop_after_attempt(MAX_RETRIES),
+    wait=wait_exponential(multiplier=RETRY_BASE_WAIT, min=30, max=300),
+    retry=retry_if_exception_type(
+        (
+            httpx.ReadTimeout,
+            httpx.ConnectTimeout,
+            httpx.RemoteProtocolError,
+            ConnectionError,
+        )
+    ),
+    before_sleep=before_sleep_log(logging.getLogger(), logging.WARNING),
+)
+def hf_create_commit_with_retry(
+    api: HfApi,
+    operations: List[CommitOperationAdd],
+    repo_id: str,
+    repo_type: str,
+    token: str,
+    commit_message: str,
+):
+    """
+    Create HuggingFace commit with retry logic for timeout errors.
+
+    Uses exponential backoff: 30s, 60s, 120s, 240s, 300s (capped)
+    """
+    return api.create_commit(
+        token=token,
+        repo_id=repo_id,
+        operations=operations,
+        repo_type=repo_type,
+        commit_message=commit_message,
+    )
+
+
+def upload_to_staging_hf(
+    files_with_paths: List[Tuple[Path, str]],
+    version: str,
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    batch_size: int = 50,
+) -> int:
+    """
+    Upload files to staging/ paths in HuggingFace.
+
+    Args:
+        files_with_paths: List of (local_path, relative_path) tuples
+            relative_path is like "states/AL.h5"
+        version: Version string for commit message
+        hf_repo_name: HuggingFace repository name
+        hf_repo_type: Repository type
+        batch_size: Number of files per commit batch
+
+    Returns:
+        Number of files uploaded
+    """
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    api = HfApi()
+
+    total_uploaded = 0
+    for i in range(0, len(files_with_paths), batch_size):
+        batch = files_with_paths[i : i + batch_size]
+        operations = []
+        for local_path, rel_path in batch:
+            local_path = Path(local_path)
+            if not local_path.exists():
+                logging.warning(f"File {local_path} does not exist, skipping.")
+                continue
+            operations.append(
+                CommitOperationAdd(
+                    path_in_repo=f"staging/{rel_path}",
+                    path_or_fileobj=str(local_path),
+                )
+            )
+
+        if not operations:
+            continue
+
+        hf_create_commit_with_retry(
+            api=api,
+            operations=operations,
+            repo_id=hf_repo_name,
+            repo_type=hf_repo_type,
+            token=token,
+            commit_message=f"Upload batch {i // batch_size + 1} to staging for version {version}",
+        )
+        total_uploaded += len(operations)
+        logging.info(
+            f"Uploaded batch {i // batch_size + 1}: {len(operations)} files to staging/"
+        )
+
+    logging.info(
+        f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace"
+    )
+    return total_uploaded
+
+
+def promote_staging_to_production_hf(
+    files: List[str],
+    version: str,
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+) -> int:
+    """
+    Atomically promote files from staging/ to production paths.
+
+    This creates a single commit that copies each file from staging/{path}
+    to {path}, effectively replacing the production files atomically.
+
+    Args:
+        files: List of relative paths (e.g., "states/AL.h5")
+        version: Version string for commit message
+        hf_repo_name: HuggingFace repository
+        hf_repo_type: Repository type
+
+    Returns:
+        Number of files promoted
+    """
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    api = HfApi()
+
+    operations = []
+    for rel_path in files:
+        staging_path = f"staging/{rel_path}"
+        operations.append(
+            CommitOperationCopy(
+                src_path_in_repo=staging_path,
+                path_in_repo=rel_path,
+            )
+        )
+
+    if not operations:
+        logging.warning("No files to promote.")
+        return 0
+
+    hf_create_commit_with_retry(
+        api=api,
+        operations=operations,
+        repo_id=hf_repo_name,
+        repo_type=hf_repo_type,
+        token=token,
+        commit_message=f"Promote {len(files)} files from staging to production for version {version}",
+    )
+
+    logging.info(
+        f"Promoted {len(files)} files from staging/ to production in one commit"
+    )
+    return len(files)
+
+
+def cleanup_staging_hf(
+    files: List[str],
+    version: str,
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+) -> int:
+    """
+    Clean up staging folder after successful promotion.
+
+    Args:
+        files: List of relative paths (e.g., "states/AL.h5")
+        version: Version string for commit message
+        hf_repo_name: HuggingFace repository
+        hf_repo_type: Repository type
+
+    Returns:
+        Number of files deleted
+    """
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    api = HfApi()
+
+    operations = []
+    for rel_path in files:
+        staging_path = f"staging/{rel_path}"
+        operations.append(CommitOperationDelete(path_in_repo=staging_path))
+
+    if not operations:
+        return 0
+
+    hf_create_commit_with_retry(
+        api=api,
+        operations=operations,
+        repo_id=hf_repo_name,
+        repo_type=hf_repo_type,
+        token=token,
+        commit_message=f"Clean up staging after version {version} promotion",
+    )
+
+    logging.info(f"Cleaned up {len(files)} files from staging/")
+    return len(files)

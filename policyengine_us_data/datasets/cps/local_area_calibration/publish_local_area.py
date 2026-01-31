@@ -11,6 +11,7 @@ Usage:
 import os
 import numpy as np
 from pathlib import Path
+from typing import List, Optional, Set
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
@@ -71,6 +72,165 @@ def load_completed_cities() -> set:
 def record_completed_city(city_name: str):
     with open(CHECKPOINT_FILE_CITIES, "a") as f:
         f.write(f"{city_name}\n")
+
+
+def build_state_h5(
+    state_code: str,
+    weights: np.ndarray,
+    cds_to_calibrate: List[str],
+    dataset_path: Path,
+    output_dir: Path,
+) -> Optional[Path]:
+    """
+    Build a single state H5 file (build only, no upload).
+
+    Args:
+        state_code: Two-letter state code (e.g., "AL", "CA")
+        weights: Calibrated weight vector
+        cds_to_calibrate: Full list of CD GEOIDs from calibration
+        dataset_path: Path to base dataset H5 file
+        output_dir: Output directory for H5 file
+
+    Returns:
+        Path to output H5 file if successful, None if no CDs found
+    """
+    state_fips = None
+    for fips, code in STATE_CODES.items():
+        if code == state_code:
+            state_fips = fips
+            break
+
+    if state_fips is None:
+        print(f"Unknown state code: {state_code}")
+        return None
+
+    cd_subset = [cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips]
+    if not cd_subset:
+        print(f"No CDs found for {state_code}, skipping")
+        return None
+
+    states_dir = output_dir / "states"
+    states_dir.mkdir(parents=True, exist_ok=True)
+    output_path = states_dir / f"{state_code}.h5"
+
+    print(f"\n{'='*60}")
+    print(f"Building {state_code} ({len(cd_subset)} CDs)")
+    print(f"{'='*60}")
+
+    create_sparse_cd_stacked_dataset(
+        weights,
+        cds_to_calibrate,
+        cd_subset=cd_subset,
+        dataset_path=str(dataset_path),
+        output_path=str(output_path),
+    )
+
+    return output_path
+
+
+def build_district_h5(
+    cd_geoid: str,
+    weights: np.ndarray,
+    cds_to_calibrate: List[str],
+    dataset_path: Path,
+    output_dir: Path,
+) -> Path:
+    """
+    Build a single district H5 file (build only, no upload).
+
+    Args:
+        cd_geoid: Congressional district GEOID (e.g., "0101" for AL-01)
+        weights: Calibrated weight vector
+        cds_to_calibrate: Full list of CD GEOIDs from calibration
+        dataset_path: Path to base dataset H5 file
+        output_dir: Output directory for H5 file
+
+    Returns:
+        Path to output H5 file
+    """
+    cd_int = int(cd_geoid)
+    state_fips = cd_int // 100
+    district_num = cd_int % 100
+    state_code = STATE_CODES.get(state_fips, str(state_fips))
+    friendly_name = f"{state_code}-{district_num:02d}"
+
+    districts_dir = output_dir / "districts"
+    districts_dir.mkdir(parents=True, exist_ok=True)
+    output_path = districts_dir / f"{friendly_name}.h5"
+
+    print(f"\n{'='*60}")
+    print(f"Building {friendly_name}")
+    print(f"{'='*60}")
+
+    create_sparse_cd_stacked_dataset(
+        weights,
+        cds_to_calibrate,
+        cd_subset=[cd_geoid],
+        dataset_path=str(dataset_path),
+        output_path=str(output_path),
+    )
+
+    return output_path
+
+
+def build_city_h5(
+    city_name: str,
+    weights: np.ndarray,
+    cds_to_calibrate: List[str],
+    dataset_path: Path,
+    output_dir: Path,
+) -> Optional[Path]:
+    """
+    Build a city H5 file (build only, no upload).
+
+    Currently supports NYC only.
+
+    Args:
+        city_name: City name (currently only "NYC" supported)
+        weights: Calibrated weight vector
+        cds_to_calibrate: Full list of CD GEOIDs from calibration
+        dataset_path: Path to base dataset H5 file
+        output_dir: Output directory for H5 file
+
+    Returns:
+        Path to output H5 file if successful, None otherwise
+    """
+    if city_name != "NYC":
+        print(f"Unsupported city: {city_name}")
+        return None
+
+    cd_subset = [cd for cd in cds_to_calibrate if cd in NYC_CDS]
+    if not cd_subset:
+        print("No NYC-related CDs found, skipping")
+        return None
+
+    cities_dir = output_dir / "cities"
+    cities_dir.mkdir(parents=True, exist_ok=True)
+    output_path = cities_dir / "NYC.h5"
+
+    print(f"\n{'='*60}")
+    print(f"Building NYC ({len(cd_subset)} CDs)")
+    print(f"{'='*60}")
+
+    create_sparse_cd_stacked_dataset(
+        weights,
+        cds_to_calibrate,
+        cd_subset=cd_subset,
+        dataset_path=str(dataset_path),
+        output_path=str(output_path),
+        county_filter=NYC_COUNTIES,
+    )
+
+    return output_path
+
+
+def get_district_friendly_name(cd_geoid: str) -> str:
+    """Convert GEOID to friendly name (e.g., '0101' -> 'AL-01')."""
+    cd_int = int(cd_geoid)
+    state_fips = cd_int // 100
+    district_num = cd_int % 100
+    state_code = STATE_CODES.get(state_fips, str(state_fips))
+    return f"{state_code}-{district_num:02d}"
 
 
 def build_and_upload_states(

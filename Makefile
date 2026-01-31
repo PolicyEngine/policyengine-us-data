@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data publish-local-area clean build paper clean-paper presentations
+.PHONY: all format test install download upload docker documentation data publish-local-area clean build paper clean-paper presentations database database-refresh promote-database
 
 all: data test
 
@@ -54,13 +54,28 @@ documentation-dev:
 	myst start
 
 database:
+	rm -f policyengine_us_data/storage/calibration/policy_data.db
 	python policyengine_us_data/db/create_database_tables.py
 	python policyengine_us_data/db/create_initial_strata.py
+	python policyengine_us_data/db/etl_national_targets.py
 	python policyengine_us_data/db/etl_age.py
 	python policyengine_us_data/db/etl_medicaid.py
 	python policyengine_us_data/db/etl_snap.py
 	python policyengine_us_data/db/etl_irs_soi.py
 	python policyengine_us_data/db/validate_database.py
+
+database-refresh:
+	rm -f policyengine_us_data/storage/calibration/policy_data.db
+	rm -rf policyengine_us_data/storage/calibration/raw_inputs/
+	$(MAKE) database
+
+promote-database:
+	cp policyengine_us_data/storage/calibration/policy_data.db \
+		$(HOME)/devl/huggingface/policyengine-us-data/calibration/policy_data.db
+	rm -rf $(HOME)/devl/huggingface/policyengine-us-data/calibration/raw_inputs
+	cp -r policyengine_us_data/storage/calibration/raw_inputs \
+		$(HOME)/devl/huggingface/policyengine-us-data/calibration/raw_inputs
+	@echo "Copied DB and raw_inputs to HF clone. Now cd to HF repo, commit, and push."
 
 data: download
 	python policyengine_us_data/utils/uprating.py

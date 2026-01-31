@@ -320,17 +320,8 @@ def impute_income_variables(
     return result
 
 
-class ExtendedCPS_2023(ExtendedCPS):
-    cps = CPS_2023_Full
-    puf = PUF_2023
-    name = "extended_cps_2023"
-    label = "Extended CPS (2023)"
-    file_path = STORAGE_FOLDER / "extended_cps_2023.h5"
-    time_period = 2023
-
-
 class ExtendedCPS_2024(ExtendedCPS):
-    cps = CPS_2024
+    cps = CPS_2024_Full
     puf = PUF_2024
     name = "extended_cps_2024"
     label = "Extended CPS (2024)"
@@ -339,5 +330,4 @@ class ExtendedCPS_2024(ExtendedCPS):
 
 
 if __name__ == "__main__":
-    ExtendedCPS_2023().generate()
     ExtendedCPS_2024().generate()

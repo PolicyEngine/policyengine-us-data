@@ -1,5 +1,5 @@
 """
-Create a stratified sample of extended_cps_2023.h5 that preserves high-income households
+Create a stratified sample of extended_cps_2024.h5 that preserves high-income households
 while maintaining diversity in lower income strata for poverty analysis.
 
 Strategy:
@@ -35,7 +35,7 @@ def create_stratified_cps_dataset(
         high_income_percentile: Keep ALL households above this AGI percentile (e.g., 99 or 99.5)
         oversample_poor: If True, boost sampling rate for bottom 25% by 1.5x
         seed: Random seed for reproducibility (default: None for random)
-        base_dataset: Path to source h5 file (default: extended_cps_2023.h5)
+        base_dataset: Path to source h5 file (default: extended_cps_2024.h5)
         output_path: Where to save the stratified h5 file
     """
     print("\n" + "=" * 70)
@@ -46,7 +46,7 @@ def create_stratified_cps_dataset(
     if base_dataset is None:
         from policyengine_us_data.storage import STORAGE_FOLDER
 
-        base_dataset = str(STORAGE_FOLDER / "extended_cps_2023.h5")
+        base_dataset = str(STORAGE_FOLDER / "extended_cps_2024.h5")
 
     # Load the original simulation
     print("Loading original dataset...")
@@ -217,7 +217,7 @@ def create_stratified_cps_dataset(
     if output_path is None:
         from policyengine_us_data.storage import STORAGE_FOLDER
 
-        output_path = str(STORAGE_FOLDER / "stratified_extended_cps_2023.h5")
+        output_path = str(STORAGE_FOLDER / "stratified_extended_cps_2024.h5")
 
     # Save to h5 file
     print(f"\nSaving to {output_path}...")

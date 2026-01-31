@@ -27,6 +27,9 @@ node_modules
 !policyengine_us_data/storage/national_and_district_rents_2023.csv
 docs/.ipynb_checkpoints/
 
+## Raw input cache for database pipeline
+policyengine_us_data/storage/calibration/raw_inputs/
+
 ## Batch processing checkpoints
 completed_*.txt
 

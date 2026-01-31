@@ -32,20 +32,11 @@ class CPS(Dataset):
             frac (float, optional): Fraction of the dataset to keep. Defaults to 1. Example: To downsample to 25% of dataset,
                 set frac=0.25.
         """
-
         if self.raw_cps is None:
-            # Extrapolate from previous year
-            if self.time_period == 2025:
-                cps_2024 = CPS_2024(require=True)
-                arrays = cps_2024.load_dataset()
-                arrays = uprate_cps_data(arrays, 2024, self.time_period)
-            else:
-                # Default to CPS 2023 for backward compatibility
-                cps_2023 = CPS_2023(require=True)
-                arrays = cps_2023.load_dataset()
-                arrays = uprate_cps_data(arrays, 2023, self.time_period)
-            self.save_dataset(arrays)
-            return
+            raise ValueError(
+                f"Cannot generate {self.name}: raw_cps is not defined. "
+                "For future years, use PolicyEngine's uprating at simulation time."
+            )
 
         raw_data = self.raw_cps(require=True).load()
         cps = {}
@@ -2041,110 +2032,14 @@ class CPS_2024(CPS):
     frac = 0.5
 
 
-class CPS_2025(CPS):
-    name = "cps_2025"
-    label = "CPS 2025 (2024-based)"
-    file_path = STORAGE_FOLDER / "cps_2025.h5"
-    time_period = 2025
-    frac = 1
-
-
-# The below datasets are a very naïve way of preventing downsampling in the
-# Pooled 3-Year CPS. They should be replaced by a more sustainable approach.
-# If these are still here on July 1, 2025, please open an issue and raise at standup.
-class CPS_2021_Full(CPS):
-    name = "cps_2021_full"
-    label = "CPS 2021 (full)"
-    raw_cps = CensusCPS_2021
-    previous_year_raw_cps = CensusCPS_2020
-    file_path = STORAGE_FOLDER / "cps_2021_full.h5"
-    time_period = 2021
-
-
-class CPS_2022_Full(CPS):
-    name = "cps_2022_full"
-    label = "CPS 2022 (full)"
-    raw_cps = CensusCPS_2022
-    previous_year_raw_cps = CensusCPS_2021
-    file_path = STORAGE_FOLDER / "cps_2022_full.h5"
-    time_period = 2022
-
-
-class CPS_2023_Full(CPS):
-    name = "cps_2023_full"
-    label = "CPS 2023 (full)"
-    raw_cps = CensusCPS_2023
-    previous_year_raw_cps = CensusCPS_2022
-    file_path = STORAGE_FOLDER / "cps_2023_full.h5"
-    time_period = 2023
-
-
-class PooledCPS(Dataset):
-    data_format = Dataset.ARRAYS
-    input_datasets: list
-    time_period: int
-
-    def generate(self):
-        data = [
-            input_dataset(require=True).load_dataset()
-            for input_dataset in self.input_datasets
-        ]
-        time_periods = [dataset.time_period for dataset in self.input_datasets]
-        data = [
-            uprate_cps_data(data, time_period, self.time_period)
-            for data, time_period in zip(data, time_periods)
-        ]
-
-        new_data = {}
-
-        for i in range(len(data)):
-            for variable in data[i]:
-                data_values = data[i][variable]
-                if variable not in new_data:
-                    new_data[variable] = data_values
-                elif "_id" in variable:
-                    previous_max = new_data[variable].max()
-                    new_data[variable] = np.concatenate(
-                        [
-                            new_data[variable],
-                            data_values + previous_max,
-                        ]
-                    )
-                else:
-                    new_data[variable] = np.concatenate(
-                        [
-                            new_data[variable],
-                            data_values,
-                        ]
-                    )
-
-        new_data["household_weight"] = new_data["household_weight"] / len(
-            self.input_datasets
-        )
-
-        self.save_dataset(new_data)
-
-
-class Pooled_3_Year_CPS_2023(PooledCPS):
-    label = "CPS 2023 (3-year pooled)"
-    name = "pooled_3_year_cps_2023"
-    file_path = STORAGE_FOLDER / "pooled_3_year_cps_2023.h5"
-    input_datasets = [
-        CPS_2021_Full,
-        CPS_2022_Full,
-        CPS_2023_Full,
-    ]
-    time_period = 2023
-    url = "hf://policyengine/policyengine-us-data/pooled_3_year_cps_2023.h5"
+class CPS_2024_Full(CPS):
+    name = "cps_2024_full"
+    label = "CPS 2024 (full)"
+    raw_cps = CensusCPS_2024
+    previous_year_raw_cps = CensusCPS_2023
+    file_path = STORAGE_FOLDER / "cps_2024_full.h5"
+    time_period = 2024
 
 
 if __name__ == "__main__":
-    CPS_2021().generate()
-    CPS_2022().generate()
-    CPS_2023().generate()
-    CPS_2024().generate()
-    CPS_2025().generate()
-    CPS_2021_Full().generate()
-    CPS_2022_Full().generate()
-    CPS_2023_Full().generate()
-    Pooled_3_Year_CPS_2023().generate()
+    CPS_2024_Full().generate()

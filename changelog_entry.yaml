@@ -1,0 +1,28 @@
+- bump: minor
+  changes:
+    changed:
+    - Migrated data pipeline from CPS 2023 to CPS 2024 (March 2025 ASEC)
+    - Updated ExtendedCPS_2024 to use new CPS_2024_Full (full sample)
+    - Updated local area calibration to use 2024 extended CPS data
+    - Updated database ETL scripts for strata, IRS SOI, Medicaid, and SNAP
+    - Expanded IRS SOI ETL with detailed income brackets and filing status breakdowns
+    removed:
+    - Removed CPS_2021_Full, CPS_2022_Full, CPS_2023_Full classes
+    - Removed PooledCPS and Pooled_3_Year_CPS_2023
+    - Removed ExtendedCPS_2023
+    - Removed dead train_previous_year_income_model function
+    - Removed unused dataset exports from __init__.py
+    added:
+    - Added CPS_2024_Full class for full-sample 2024 CPS generation
+    - Added raw_cache utility for Census data caching
+    - Added atomic parallel local area H5 publishing with Modal Volume staging
+    - Added manifest validation with SHA256 checksums
+    - Added HuggingFace retry logic with exponential backoff to fix timeout errors
+    - Added staging folder approach for atomic HuggingFace deployments
+    - Added national targets ETL for CBO projections and tax expenditure data
+    - Added database hierarchy validation script
+    - Added stratum_group_id migration utilities
+    - Added db_metadata utilities for source and variable group management
+    - Added DATABASE_GUIDE.md with comprehensive calibration database documentation
+    fixed:
+    - Fixed cross-state recalculation in sparse matrix builder by adding time_period to calculate() calls

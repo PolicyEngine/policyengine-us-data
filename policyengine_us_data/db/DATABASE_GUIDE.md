@@ -30,8 +30,9 @@ make promote-database   # Copy DB + raw inputs to HuggingFace clone
 | 4 | `etl_age.py` | Census ACS 1-year | Age distribution: 18 bins x 488 geographies |
 | 5 | `etl_medicaid.py` | Census ACS + CMS | Medicaid enrollment (admin state-level, survey district-level) |
 | 6 | `etl_snap.py` | USDA FNS + Census ACS | SNAP participation (admin state-level, survey district-level) |
-| 7 | `etl_irs_soi.py` | IRS | Tax variables, EITC by child count, AGI brackets, conditional strata |
-| 8 | `validate_database.py` | No | Checks all target variables exist in policyengine-us |
+| 7 | `etl_state_income_tax.py` | No | State income tax collections (Census STC FY2023, hardcoded) |
+| 8 | `etl_irs_soi.py` | IRS | Tax variables, EITC by child count, AGI brackets, conditional strata |
+| 9 | `validate_database.py` | No | Checks all target variables exist in policyengine-us |
 
 ### Raw Input Caching
 
@@ -108,6 +109,7 @@ The `stratum_group_id` field categorizes strata:
 | 4 | SNAP | SNAP recipient strata |
 | 5 | Medicaid | Medicaid enrollment strata |
 | 6 | EITC | EITC recipients by qualifying children |
+| 7 | State Income Tax | State-level income tax collections (Census STC) |
 | 100-118 | IRS Conditional | Each IRS variable paired with conditional count constraints |
 
 ### Conditional Strata (IRS SOI)
@@ -216,6 +218,7 @@ SELECT
         WHEN 4 THEN 'SNAP'
         WHEN 5 THEN 'Medicaid'
         WHEN 6 THEN 'EITC'
+        WHEN 7 THEN 'State Income Tax'
     END AS group_name,
     COUNT(*) AS stratum_count
 FROM strata

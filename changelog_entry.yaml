@@ -26,3 +26,4 @@
     - Added DATABASE_GUIDE.md with comprehensive calibration database documentation
     fixed:
     - Fixed cross-state recalculation in sparse matrix builder by adding time_period to calculate() calls
+    - Fixed federal income tax calibration to use income_tax_positive (matches CBO receipts definition)

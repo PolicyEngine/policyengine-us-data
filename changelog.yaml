@@ -798,3 +798,8 @@
     - cps_2024.h5 to HuggingFace upload list so the raw (unenhanced) 2024 CPS dataset
       is published
   date: 2026-02-01 04:24:23
+- bump: patch
+  changes:
+    fixed:
+    - Fix etl_state_income_tax.py API mismatches with db_metadata utility functions
+  date: 2026-02-01 20:58:21

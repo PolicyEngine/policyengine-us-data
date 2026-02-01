@@ -22,7 +22,6 @@ import os
 from pathlib import Path
 import logging
 
-
 try:
     import torch
 except ImportError:

@@ -9,7 +9,6 @@ from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
-
 # CPS-derived statistics
 # Medical expenses, sum of spm thresholds
 # Child support expenses

@@ -15,7 +15,6 @@ from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
 
-
 rng = np.random.default_rng(seed=64)
 
 # Get Qualified Business Income simulation parameters ---

@@ -15,7 +15,6 @@ from policyengine_us.system import system
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",

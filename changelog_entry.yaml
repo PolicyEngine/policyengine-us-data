@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    added:
+    - cps_2024.h5 to HuggingFace upload list so the raw (unenhanced) 2024 CPS dataset is published

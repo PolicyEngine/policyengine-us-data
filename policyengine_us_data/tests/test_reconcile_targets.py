@@ -42,12 +42,31 @@ def _make_stratum(session, ucgid, extra_constraints=None):
     return s
 
 
+EXPECTED_VARIABLES = [
+    "income_tax",
+    "snap",
+    "unemployment_compensation",
+    "eitc",
+    "adjusted_gross_income",
+    "taxable_social_security",
+    "taxable_pension_income",
+    "net_capital_gain",
+    "qualified_dividend_income",
+    "taxable_interest_income",
+    "tax_exempt_interest_income",
+    "tax_unit_partnership_s_corp_income",
+    "dividend_income",
+]
+
+
 def test_authoritative_targets_are_positive():
-    """Smoke test: policyengine-us parameters return positive values."""
+    """All mapped variables return positive 2024 values."""
     targets = _get_authoritative_targets(TARGET_YEAR)
-    assert len(targets) >= 4
-    for name, value in targets.items():
-        assert value > 0, f"{name} should be positive, got {value}"
+    for name in EXPECTED_VARIABLES:
+        assert name in targets, f"'{name}' missing from target map"
+        assert (
+            targets[name] > 0
+        ), f"{name} should be positive, got {targets[name]}"
 
 
 def test_compute_state_aggregate(engine):

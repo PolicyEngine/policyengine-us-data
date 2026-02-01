@@ -37,8 +37,10 @@ TARGET_YEAR = 2024
 def _get_authoritative_targets(year: int) -> Dict[str, float]:
     """Read national targets from policyengine-us parameters.
 
-    Uses the same parameter paths as loss.py ``build_loss_matrix``
-    to ensure the database stays consistent with calibration.
+    Covers every database variable for which a 2024 parameter exists
+    in the policyengine-us calibration tree.  The dict keys are the
+    *database* variable names (as written by the ETL scripts); the
+    values are the authoritative national totals for *year*.
 
     Args:
         year: The simulation year.
@@ -49,18 +51,45 @@ def _get_authoritative_targets(year: int) -> Dict[str, float]:
     p = system.parameters(year)
 
     cbo = p.calibration.gov.cbo
+    cbo_inc = cbo.income_by_source
+    soi = p.calibration.gov.irs.soi
+
     targets: Dict[str, float] = {
-        # CBO budget projections (loss.py lines 201-220)
+        # ---- CBO budget projections ----
         "income_tax": cbo._children["income_tax"],
         "snap": cbo._children["snap"],
         "unemployment_compensation": cbo._children[
             "unemployment_compensation"
         ],
-        # Treasury EITC spending (loss.py lines 262-268)
+        # ---- Treasury ----
         "eitc": (
             system.parameters.calibration.gov.treasury.tax_expenditures.eitc(
                 year
             )
+        ),
+        # ---- CBO income-by-source (DB vars from IRS SOI ETL) ----
+        "adjusted_gross_income": cbo_inc._children["adjusted_gross_income"],
+        "taxable_social_security": cbo_inc._children[
+            "taxable_social_security"
+        ],
+        "taxable_pension_income": cbo_inc._children["taxable_pension_income"],
+        "net_capital_gain": cbo_inc._children["net_capital_gain"],
+        # ---- IRS SOI calibration parameters ----
+        "qualified_dividend_income": soi._children[
+            "qualified_dividend_income"
+        ],
+        "taxable_interest_income": soi._children["taxable_interest_income"],
+        "tax_exempt_interest_income": soi._children[
+            "tax_exempt_interest_income"
+        ],
+        # DB name differs from param name
+        "tax_unit_partnership_s_corp_income": soi._children[
+            "partnership_s_corp_income"
+        ],
+        # ordinary dividends = qualified + non-qualified
+        "dividend_income": (
+            soi._children["qualified_dividend_income"]
+            + soi._children["non_qualified_dividend_income"]
         ),
     }
     return targets

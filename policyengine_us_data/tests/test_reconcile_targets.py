@@ -42,35 +42,39 @@ def _make_stratum(session, ucgid, extra_constraints=None):
     return s
 
 
-EXPECTED_VARIABLES = [
-    "income_tax",
-    "snap",
-    "unemployment_compensation",
-    "eitc",
-    "adjusted_gross_income",
-    "taxable_social_security",
-    "taxable_pension_income",
-    "net_capital_gain",
-    "qualified_dividend_income",
-    "taxable_interest_income",
-    "tax_exempt_interest_income",
-    "tax_unit_partnership_s_corp_income",
-    "dividend_income",
+# Expected (variable, source_id) pairs in the authoritative map.
+EXPECTED_TARGETS = [
+    ("income_tax", 5),
+    ("snap", 3),
+    ("unemployment_compensation", 5),
+    ("eitc", 5),
+    ("adjusted_gross_income", 5),
+    ("taxable_social_security", 5),
+    ("taxable_pension_income", 5),
+    ("net_capital_gain", 5),
+    ("qualified_dividend_income", 5),
+    ("taxable_interest_income", 5),
+    ("tax_exempt_interest_income", 5),
+    ("tax_unit_partnership_s_corp_income", 5),
+    ("dividend_income", 5),
+    ("person_count", 1),
+    ("person_count", 2),
+    ("person_count", 5),
 ]
 
 
 def test_authoritative_targets_are_positive():
-    """All mapped variables return positive 2024 values."""
+    """All mapped (variable, source_id) pairs return positive values."""
     targets = _get_authoritative_targets(TARGET_YEAR)
-    for name in EXPECTED_VARIABLES:
-        assert name in targets, f"'{name}' missing from target map"
+    for key in EXPECTED_TARGETS:
+        assert key in targets, f"{key} missing from target map"
         assert (
-            targets[name] > 0
-        ), f"{name} should be positive, got {targets[name]}"
+            targets[key] > 0
+        ), f"{key} should be positive, got {targets[key]}"
 
 
 def test_compute_state_aggregate(engine):
-    """State-level targets are summed; national/district are excluded."""
+    """State-level targets are summed; national/district excluded."""
     with Session(engine) as session:
         # National target (should NOT count)
         nat = _make_stratum(session, "0100000US")
@@ -79,6 +83,7 @@ def test_compute_state_aggregate(engine):
                 variable="income_tax",
                 period=2022,
                 value=999e9,
+                source_id=5,
                 active=True,
             )
         ]
@@ -91,6 +96,7 @@ def test_compute_state_aggregate(engine):
                     variable="income_tax",
                     period=2022,
                     value=val,
+                    source_id=5,
                     active=True,
                 )
             ]
@@ -102,19 +108,82 @@ def test_compute_state_aggregate(engine):
                 variable="income_tax",
                 period=2022,
                 value=30e9,
+                source_id=5,
                 active=True,
             )
         ]
 
         session.commit()
 
-        total, count = _compute_state_aggregate(session, "income_tax")
+        total, count = _compute_state_aggregate(
+            session, "income_tax", source_id=5
+        )
         assert count == 2
         assert total == pytest.approx(200e9)
 
 
+def test_compute_state_aggregate_filters_by_source(engine):
+    """Same variable with different source_ids are counted separately."""
+    with Session(engine) as session:
+        # Use different states to avoid definition_hash collision.
+        # person_count from census age ETL (source_id=1)
+        st1 = _make_stratum(session, "0400000US01")
+        st1.targets_rel = [
+            Target(
+                variable="person_count",
+                period=2023,
+                value=5_000_000,
+                source_id=1,
+                active=True,
+            )
+        ]
+
+        # person_count from medicaid ETL (source_id=2)
+        st2 = _make_stratum(session, "0400000US06")
+        st2.targets_rel = [
+            Target(
+                variable="person_count",
+                period=2023,
+                value=1_200_000,
+                source_id=2,
+                active=True,
+            )
+        ]
+
+        # person_count from IRS SOI ETL (source_id=5)
+        st3 = _make_stratum(session, "0400000US48")
+        st3.targets_rel = [
+            Target(
+                variable="person_count",
+                period=2022,
+                value=2_500_000,
+                source_id=5,
+                active=True,
+            )
+        ]
+
+        session.commit()
+
+        total_age, count_age = _compute_state_aggregate(
+            session, "person_count", source_id=1
+        )
+        total_med, count_med = _compute_state_aggregate(
+            session, "person_count", source_id=2
+        )
+        total_soi, count_soi = _compute_state_aggregate(
+            session, "person_count", source_id=5
+        )
+
+        assert count_age == 1
+        assert total_age == pytest.approx(5_000_000)
+        assert count_med == 1
+        assert total_med == pytest.approx(1_200_000)
+        assert count_soi == 1
+        assert total_soi == pytest.approx(2_500_000)
+
+
 def test_scale_targets(engine):
-    """All targets for a variable are scaled and period updated."""
+    """Targets for a variable+source are scaled; period updated."""
     with Session(engine) as session:
         nat = _make_stratum(session, "0100000US")
         nat.targets_rel = [
@@ -122,6 +191,7 @@ def test_scale_targets(engine):
                 variable="eitc",
                 period=2022,
                 value=100e9,
+                source_id=5,
                 active=True,
             )
         ]
@@ -131,12 +201,19 @@ def test_scale_targets(engine):
                 variable="eitc",
                 period=2022,
                 value=40e9,
+                source_id=5,
                 active=True,
             )
         ]
         session.commit()
 
-        n = _scale_targets(session, "eitc", 1.5, 2024)
+        n = _scale_targets(
+            session,
+            "eitc",
+            source_id=5,
+            scale_factor=1.5,
+            target_year=2024,
+        )
         session.commit()
 
         assert n == 2
@@ -152,10 +229,62 @@ def test_scale_targets(engine):
             ]
 
 
+def test_scale_targets_isolates_sources(engine):
+    """Scaling one source_id does not touch another source_id."""
+    with Session(engine) as session:
+        # Use separate strata to avoid unique-constraint collision
+        # on (variable, period, stratum_id, reform_id).
+        st1 = _make_stratum(session, "0400000US06")
+        st1.targets_rel = [
+            Target(
+                variable="person_count",
+                period=2023,
+                value=39_000_000,
+                source_id=1,
+                active=True,
+            ),
+        ]
+        st2 = _make_stratum(session, "0400000US48")
+        st2.targets_rel = [
+            Target(
+                variable="person_count",
+                period=2023,
+                value=14_000_000,
+                source_id=2,
+                active=True,
+            ),
+        ]
+        session.commit()
+
+        # Scale only census age targets (source_id=1)
+        _scale_targets(
+            session,
+            "person_count",
+            source_id=1,
+            scale_factor=1.1,
+            target_year=2024,
+        )
+        session.commit()
+
+        targets = session.exec(
+            __import__("sqlmodel")
+            .select(Target)
+            .where(Target.variable == "person_count")
+        ).all()
+
+        by_source = {t.source_id: t for t in targets}
+        # source_id=1 was scaled
+        assert by_source[1].value == pytest.approx(39_000_000 * 1.1)
+        assert by_source[1].period == 2024
+        # source_id=2 was NOT touched
+        assert by_source[2].value == pytest.approx(14_000_000)
+        assert by_source[2].period == 2023
+
+
 def test_reconcile_targets_scales_correctly(engine):
     """End-to-end: reconciliation scales DB to match parameters."""
     auth = _get_authoritative_targets(TARGET_YEAR)
-    income_tax_target = auth["income_tax"]
+    income_tax_target = auth[("income_tax", 5)]
 
     with Session(engine) as session:
         # Seed with a known state aggregate that differs from target
@@ -174,6 +303,7 @@ def test_reconcile_targets_scales_correctly(engine):
                     variable="income_tax",
                     period=2022,
                     value=val,
+                    source_id=5,
                     active=True,
                 )
             ]
@@ -181,7 +311,9 @@ def test_reconcile_targets_scales_correctly(engine):
 
         factors = reconcile_targets(session, TARGET_YEAR)
 
-        assert "income_tax" in factors
+        assert ("income_tax", 5) in factors
         # After reconciliation state sum should match the target
-        new_total, _ = _compute_state_aggregate(session, "income_tax")
+        new_total, _ = _compute_state_aggregate(
+            session, "income_tax", source_id=5
+        )
         assert new_total == pytest.approx(income_tax_target, rel=1e-6)

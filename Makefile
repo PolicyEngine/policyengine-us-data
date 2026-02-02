@@ -60,6 +60,7 @@ database:
 	python policyengine_us_data/db/etl_medicaid.py
 	python policyengine_us_data/db/etl_snap.py
 	python policyengine_us_data/db/etl_irs_soi.py
+	python policyengine_us_data/db/scale_irs_soi_to_cbo.py
 	python policyengine_us_data/db/validate_database.py
 
 data:

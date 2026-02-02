@@ -184,7 +184,7 @@ def load_age_data(df_long, geo, year, stratum_lookup=None):
 if __name__ == "__main__":
 
     # --- ETL: Extract, Transform, Load ----
-    year = 2023
+    year = 2024
 
     # ---- Extract ----------
     docs = get_census_docs(year)

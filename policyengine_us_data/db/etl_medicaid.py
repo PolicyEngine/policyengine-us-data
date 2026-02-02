@@ -194,7 +194,7 @@ def load_medicaid_data(long_state, long_cd, year):
 
 if __name__ == "__main__":
 
-    year = 2023
+    year = 2024
 
     # Extract ------------------------------
     cd_survey_df, state_admin_df = extract_medicaid_data(year)

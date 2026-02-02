@@ -20,7 +20,7 @@ from policyengine_us_data.utils.census import (
 )
 
 
-def extract_administrative_snap_data(year=2023):
+def extract_administrative_snap_data(year=2024):
     """
     Downloads and extracts annual state-level SNAP data from the USDA FNS zip file.
     """
@@ -280,7 +280,7 @@ def load_survey_snap_data(survey_df, year, stratum_lookup=None):
 
 
 def main():
-    year = 2023
+    year = 2024
 
     # Extract ---------
     zip_file_admin = extract_administrative_snap_data()

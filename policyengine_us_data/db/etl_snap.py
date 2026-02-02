@@ -152,9 +152,10 @@ def transform_survey_snap_data(raw_df):
         {"GEO_ID": "ucgid_str", "S2201_C03_001E": "snap_household_ct"}, axis=1
     )[
         ~df["GEO_ID"].isin(
-            [  # Puerto Rico's state and district
+            [  # Puerto Rico's state and district (118th and 119th Congress)
                 "0400000US72",
                 "5001800US7298",
+                "5001900US7298",
             ]
         )
     ]

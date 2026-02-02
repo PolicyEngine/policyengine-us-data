@@ -82,7 +82,10 @@ def parse_ucgid(ucgid_str: str) -> Dict:
     elif ucgid_str.startswith("0400000US"):
         state_fips = int(ucgid_str[9:])
         return {"type": "state", "state_fips": state_fips}
-    elif ucgid_str.startswith("5001800US"):
+    elif ucgid_str.startswith("5001800US") or ucgid_str.startswith(
+        "5001900US"
+    ):
+        # 5001800US = 118th Congress, 5001900US = 119th Congress
         state_and_district = ucgid_str[9:]
         state_fips = int(state_and_district[:2])
         district_number = int(state_and_district[2:])

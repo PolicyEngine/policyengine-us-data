@@ -1793,6 +1793,50 @@ class SparseGeoStackingMatrixBuilder:
                 },
             )
 
+    def get_state_medicaid_enrollment(self, state_fips: str) -> pd.DataFrame:
+        """Get state-level Medicaid enrollment target (administrative data)."""
+        query = """
+        WITH medicaid_targets AS (
+            SELECT
+                t.target_id,
+                t.stratum_id,
+                t.variable,
+                t.value,
+                t.active,
+                t.tolerance,
+                t.period
+            FROM targets t
+            JOIN strata s ON t.stratum_id = s.stratum_id
+            JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
+            WHERE s.stratum_group_id = 5  -- Medicaid
+              AND t.variable = 'person_count'
+              AND sc.constraint_variable = 'state_fips'
+              AND sc.value = :state_fips
+        ),
+        best_period AS (
+            SELECT
+                CASE
+                    WHEN MAX(CASE WHEN period <= :target_year THEN period END) IS NOT NULL
+                    THEN MAX(CASE WHEN period <= :target_year THEN period END)
+                    ELSE MIN(period)
+                END as selected_period
+            FROM medicaid_targets
+        )
+        SELECT mt.*
+        FROM medicaid_targets mt
+        JOIN best_period bp ON mt.period = bp.selected_period
+        """
+
+        with self.engine.connect() as conn:
+            return pd.read_sql(
+                query,
+                conn,
+                params={
+                    "state_fips": state_fips,
+                    "target_year": self.time_period,
+                },
+            )
+
     def get_state_fips_for_cd(self, cd_geoid: str) -> str:
         """Extract state FIPS from CD GEOID."""
         # CD GEOIDs are formatted as state_fips + district_number
@@ -2265,9 +2309,11 @@ class SparseGeoStackingMatrixBuilder:
                         f"{hh_id}_{prefix}{geo_id}" for hh_id in household_ids
                     ]
 
-        # If building for congressional districts, add state-level SNAP costs
+        # If building for congressional districts, add state-level SNAP costs and Medicaid enrollment
         state_snap_targets_list = []
         state_snap_matrices = []
+        state_medicaid_targets_list = []
+        state_medicaid_matrices = []
         if geographic_level == "congressional_district":
             # Identify unique states from the CDs
             unique_states = set()
@@ -2331,9 +2377,9 @@ class SparseGeoStackingMatrixBuilder:
                         )
 
                         # Create a mapping of household indices to SNAP values
-                        snap_value_map = dict(
-                            zip(nonzero_indices, nonzero_values)
-                        )
+                        # In geo-stacking, ALL households can contribute to any state
+                        # (weights determine contribution, not original household location)
+                        snap_value_map = dict(zip(nonzero_indices, nonzero_values))
 
                         # Place SNAP values in ALL CD columns that belong to this state
                         # This creates the proper geo-stacking structure where state-level targets
@@ -2358,6 +2404,98 @@ class SparseGeoStackingMatrixBuilder:
             # Add state SNAP targets to all_targets
             if state_snap_targets_list:
                 all_targets.append(pd.DataFrame(state_snap_targets_list))
+
+            # Get Medicaid enrollment target for each state
+            # NOTE: medicaid_enrolled depends on state policy (expansion vs non-expansion),
+            # so we need to swap state_fips and recalculate for each state.
+            logger.info(f"Processing state Medicaid targets for {len(unique_states)} states...")
+            states_with_targets = 0
+            states_with_enrollees = 0
+            for state_fips in sorted(unique_states):
+                medicaid_df = self.get_state_medicaid_enrollment(state_fips)
+                if not medicaid_df.empty:
+                    states_with_targets += 1
+                    # Swap state_fips to this target state and clear caches
+                    # so medicaid_enrolled is calculated with state-specific policy
+                    sim.set_input("state_fips", self.time_period,
+                                 np.full(n_households, int(state_fips), dtype=np.int32))
+                    for var in get_calculated_variables(sim):
+                        sim.delete_arrays(var)
+
+                    for _, target in medicaid_df.iterrows():
+                        period = target.get("period", self.time_period)
+                        factor, uprating_type = self._get_uprating_info(
+                            target["variable"], period
+                        )
+
+                        # Build matrix row first - count medicaid_enrolled persons per household
+                        constraints = self.get_constraints_for_stratum(
+                            target["stratum_id"]
+                        )
+
+                        row_data = []
+                        row_indices = []
+
+                        # Calculate medicaid_enrolled values with state-specific policy
+                        # (state_fips was swapped above, so calculation uses correct state rules)
+                        nonzero_indices, nonzero_values = (
+                            self.apply_constraints_to_sim_sparse(
+                                sim, constraints, "medicaid_enrolled",
+                                target_state_fips=int(state_fips)
+                            )
+                        )
+
+                        # In geo-stacking, ALL households can contribute to any state
+                        # (weights determine contribution, not original household location)
+                        medicaid_value_map = dict(zip(nonzero_indices, nonzero_values))
+
+                        # Place values in ALL CD columns belonging to this state
+                        for cd_idx, cd_id in enumerate(geographic_ids):
+                            cd_state_fips = self.get_state_fips_from_cd(cd_id)
+                            if cd_state_fips == state_fips:
+                                col_offset = cd_idx * n_households
+                                for hh_idx, med_val in medicaid_value_map.items():
+                                    row_indices.append(col_offset + hh_idx)
+                                    row_data.append(med_val)
+
+                        # Only add target and matrix row together to keep them in sync
+                        if row_data:
+                            states_with_enrollees += 1
+                            state_medicaid_targets_list.append(
+                                {
+                                    "target_id": target["target_id"],
+                                    "stratum_id": target["stratum_id"],
+                                    "value": target["value"] * factor,
+                                    "original_value": target["value"],
+                                    "variable": "person_count",
+                                    "variable_desc": "medicaid_enrollment_state",
+                                    "geographic_id": state_fips,
+                                    "stratum_group_id": "state_medicaid_enrollment",
+                                    "period": period,
+                                    "uprating_factor": factor,
+                                    "reconciliation_factor": 1.0,
+                                    "undercount_pct": 0.0,
+                                }
+                            )
+                            row_matrix = sparse.csr_matrix(
+                                (row_data, ([0] * len(row_data), row_indices)),
+                                shape=(1, total_cols),
+                            )
+                            state_medicaid_matrices.append(row_matrix)
+                        else:
+                            logger.warning(
+                                f"State {state_fips}: No medicaid_enrolled households in sample "
+                                f"(target: {target['value']:,.0f}). Skipping target."
+                            )
+
+            logger.info(f"State Medicaid summary: {states_with_targets} states with targets, "
+                       f"{states_with_enrollees} states with enrollees, "
+                       f"{len(state_medicaid_targets_list)} targets added, "
+                       f"{len(state_medicaid_matrices)} matrix rows added")
+
+            # Add state Medicaid targets to all_targets
+            if state_medicaid_targets_list:
+                all_targets.append(pd.DataFrame(state_medicaid_targets_list))
 
         # Add national targets to the list once
         if national_targets_list:
@@ -2391,6 +2529,11 @@ class SparseGeoStackingMatrixBuilder:
         if state_snap_matrices:
             stacked_state_snap = sparse.vstack(state_snap_matrices)
             matrix_parts.append(stacked_state_snap)
+
+        # Add state Medicaid matrices if we have them (for CD calibration)
+        if state_medicaid_matrices:
+            stacked_state_medicaid = sparse.vstack(state_medicaid_matrices)
+            matrix_parts.append(stacked_state_medicaid)
 
         # Combine all parts
         combined_matrix = sparse.vstack(matrix_parts)

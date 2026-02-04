@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+    - Parallelized data build in Modal for data_build.py.

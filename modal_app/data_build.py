@@ -28,6 +28,7 @@ REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 VOLUME_MOUNT = "/checkpoints"
 
 # Script to output file mapping for checkpointing
+# Values can be a single file path (str) or a list of file paths
 SCRIPT_OUTPUTS = {
     "policyengine_us_data/utils/uprating.py": (
         "policyengine_us_data/storage/uprating_factors.csv"
@@ -47,9 +48,11 @@ SCRIPT_OUTPUTS = {
     "policyengine_us_data/datasets/cps/extended_cps.py": (
         "policyengine_us_data/storage/extended_cps_2024.h5"
     ),
-    "policyengine_us_data/datasets/cps/enhanced_cps.py": (
-        "policyengine_us_data/storage/enhanced_cps_2024.h5"
-    ),
+    # enhanced_cps.py produces both the dataset and calibration log
+    "policyengine_us_data/datasets/cps/enhanced_cps.py": [
+        "policyengine_us_data/storage/enhanced_cps_2024.h5",
+        "calibration_log.csv",
+    ],
     "policyengine_us_data/datasets/cps/"
     "local_area_calibration/create_stratified_cps.py": (
         "policyengine_us_data/storage/stratified_extended_cps_2024.h5"
@@ -161,7 +164,7 @@ def run_script(
 
 def run_script_with_checkpoint(
     script_path: str,
-    output_file: str,
+    output_files: str | list[str],
     branch: str,
     volume: modal.Volume,
     args: Optional[list] = None,
@@ -171,7 +174,8 @@ def run_script_with_checkpoint(
 
     Args:
         script_path: Path to the Python script to run.
-        output_file: Path to the output file produced by the script.
+        output_files: Path(s) to output file(s) produced by the script.
+            Can be a single string or a list of strings.
         branch: Git branch name for checkpoint scoping.
         volume: Modal volume for checkpointing.
         args: Optional list of command-line arguments.
@@ -180,16 +184,26 @@ def run_script_with_checkpoint(
     Returns:
         The script_path that was executed.
     """
-    # Try to restore from checkpoint first
-    if restore_from_checkpoint(branch, output_file):
+    # Normalize to list
+    if isinstance(output_files, str):
+        output_files = [output_files]
+
+    # Check if ALL outputs are checkpointed
+    all_checkpointed = all(is_checkpointed(branch, f) for f in output_files)
+
+    if all_checkpointed:
+        # Restore all files from checkpoint
+        for output_file in output_files:
+            restore_from_checkpoint(branch, output_file)
         print(f"Skipping {script_path} (restored from checkpoint)")
         return script_path
 
     # Run the script
     run_script(script_path, args=args, env=env)
 
-    # Checkpoint the output
-    save_checkpoint(branch, output_file, volume)
+    # Checkpoint all outputs
+    for output_file in output_files:
+        save_checkpoint(branch, output_file, volume)
 
     return script_path
 

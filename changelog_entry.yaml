@@ -1,4 +1,7 @@
 - bump: minor
   changes:
     added:
-    - Parallelized data build in Modal for data_build.py.
+    - Parallelization of data building steps.
+    - Checkpointing mechanism to resume data builds and testing modules from last successful step in Modal runs.
+    changed:
+    - Removed duplicate run of test_local_area_calibration tests.

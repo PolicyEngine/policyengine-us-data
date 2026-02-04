@@ -1,5 +1,8 @@
 import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
+
 import modal
 
 app = modal.App("policyengine-us-data")
@@ -28,6 +31,33 @@ def setup_gcp_credentials():
     return None
 
 
+def run_script(
+    script_path: str,
+    args: Optional[list] = None,
+    env: Optional[dict] = None,
+) -> str:
+    """Run a script with uv and return its path for logging.
+
+    Args:
+        script_path: Path to the Python script to run.
+        args: Optional list of command-line arguments.
+        env: Optional environment variables dict.
+
+    Returns:
+        The script_path that was executed.
+
+    Raises:
+        subprocess.CalledProcessError: If the script fails.
+    """
+    cmd = ["uv", "run", "python", script_path]
+    if args:
+        cmd.extend(args)
+    print(f"Starting {script_path}...")
+    subprocess.run(cmd, check=True, env=env or os.environ.copy())
+    print(f"Completed {script_path}")
+    return script_path
+
+
 @app.function(
     image=image,
     secrets=[hf_secret, gcp_secret],
@@ -38,6 +68,7 @@ def setup_gcp_credentials():
 def build_datasets(
     upload: bool = False,
     branch: str = "main",
+    sequential: bool = False,
 ):
     setup_gcp_credentials()
 
@@ -50,45 +81,100 @@ def build_datasets(
     env = os.environ.copy()
 
     # Download prerequisites
-    subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "policyengine_us_data/storage/download_private_prerequisites.py",
-        ],
-        check=True,
+    run_script(
+        "policyengine_us_data/storage/download_private_prerequisites.py",
         env=env,
     )
 
-    # Build main datasets
-    scripts = [
-        "policyengine_us_data/utils/uprating.py",
-        "policyengine_us_data/datasets/acs/acs.py",
-        "policyengine_us_data/datasets/cps/cps.py",
-        "policyengine_us_data/datasets/puf/irs_puf.py",
-        "policyengine_us_data/datasets/puf/puf.py",
-        "policyengine_us_data/datasets/cps/extended_cps.py",
-        "policyengine_us_data/datasets/cps/enhanced_cps.py",
-        "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
-    ]
-    for script in scripts:
-        print(f"Running {script}...")
-        subprocess.run(["uv", "run", "python", script], check=True, env=env)
+    if sequential:
+        # Original sequential execution for backward compatibility
+        scripts = [
+            "policyengine_us_data/utils/uprating.py",
+            "policyengine_us_data/datasets/acs/acs.py",
+            "policyengine_us_data/datasets/cps/cps.py",
+            "policyengine_us_data/datasets/puf/irs_puf.py",
+            "policyengine_us_data/datasets/puf/puf.py",
+            "policyengine_us_data/datasets/cps/extended_cps.py",
+            "policyengine_us_data/datasets/cps/enhanced_cps.py",
+            "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+        ]
+        for script in scripts:
+            run_script(script, env=env)
 
-    # Build stratified CPS for local area calibration
-    print("Running create_stratified_cps.py...")
-    subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py",
-            "10500",
-        ],
-        check=True,
-        env=env,
-    )
+        # Build stratified CPS
+        run_script(
+            "policyengine_us_data/datasets/cps/"
+            "local_area_calibration/create_stratified_cps.py",
+            args=["10500"],
+            env=env,
+        )
+    else:
+        # Parallel execution based on dependency groups
+        # GROUP 1: Independent scripts - run in parallel
+        print("=== Phase 1: Building independent datasets (parallel) ===")
+        group1 = [
+            "policyengine_us_data/utils/uprating.py",
+            "policyengine_us_data/datasets/acs/acs.py",
+            "policyengine_us_data/datasets/puf/irs_puf.py",
+        ]
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {
+                executor.submit(run_script, s, env=env): s for s in group1
+            }
+            for future in as_completed(futures):
+                future.result()  # Raises if script failed
+
+        # GROUP 2: Depends on Group 1 - run in parallel
+        # cps.py needs acs, puf.py needs irs_puf + uprating
+        print("=== Phase 2: Building CPS and PUF (parallel) ===")
+        group2 = [
+            "policyengine_us_data/datasets/cps/cps.py",
+            "policyengine_us_data/datasets/puf/puf.py",
+        ]
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {
+                executor.submit(run_script, s, env=env): s for s in group2
+            }
+            for future in as_completed(futures):
+                future.result()
+
+        # SEQUENTIAL: Extended CPS (needs both cps and puf)
+        print("=== Phase 3: Building extended CPS ===")
+        run_script(
+            "policyengine_us_data/datasets/cps/extended_cps.py",
+            env=env,
+        )
+
+        # GROUP 3: After extended_cps - run in parallel
+        # enhanced_cps and stratified_cps both depend on extended_cps
+        print(
+            "=== Phase 4: Building enhanced and stratified CPS (parallel)"
+            " ==="
+        )
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(
+                    run_script,
+                    "policyengine_us_data/datasets/cps/enhanced_cps.py",
+                    env=env,
+                ),
+                executor.submit(
+                    run_script,
+                    "policyengine_us_data/datasets/cps/"
+                    "local_area_calibration/create_stratified_cps.py",
+                    args=["10500"],
+                    env=env,
+                ),
+            ]
+            for future in as_completed(futures):
+                future.result()
+
+        # SEQUENTIAL: Small enhanced CPS (needs enhanced_cps)
+        print("=== Phase 5: Building small enhanced CPS ===")
+        run_script(
+            "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+            env=env,
+        )
 
     # Run local area calibration tests
     print("Running local area calibration tests...")
@@ -128,9 +214,11 @@ def build_datasets(
 def main(
     upload: bool = False,
     branch: str = "main",
+    sequential: bool = False,
 ):
     result = build_datasets.remote(
         upload=upload,
         branch=branch,
+        sequential=sequential,
     )
     print(result)

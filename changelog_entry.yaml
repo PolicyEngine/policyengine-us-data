@@ -2,3 +2,4 @@
   changes:
     added:
     - 4k district and county representative test dataset.
+    - Parallelized data build in Modal for data_build.py.

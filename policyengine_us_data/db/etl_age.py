@@ -8,7 +8,6 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
-    SourceType,
 )
 from policyengine_us_data.utils.census import get_census_docs, pull_acs_table
 from policyengine_us_data.utils.db import parse_ucgid, get_geographic_strata
@@ -16,6 +15,10 @@ from policyengine_us_data.utils.db_metadata import (
     get_or_create_source,
     get_or_create_variable_group,
     get_or_create_variable_metadata,
+)
+from policyengine_us_data.utils.constraint_validation import (
+    Constraint,
+    ensure_consistent_constraint_set,
 )
 
 LABEL_TO_SHORT = {
@@ -116,7 +119,7 @@ def load_age_data(df_long, geo, year):
         census_source = get_or_create_source(
             session,
             name="Census ACS Table S0101",
-            source_type=SourceType.SURVEY,
+            source_type="survey",
             vintage=f"{year} ACS 5-year estimates",
             description="American Community Survey Age and Sex demographics",
             url="https://data.census.gov/",
@@ -219,22 +222,22 @@ def load_age_data(df_long, geo, year):
                 notes=note,
             )
 
-            # Create constraints including both age and geographic for uniqueness
-            new_stratum.constraints_rel = []
+            # Build constraint list for validation
+            constraint_list = []
 
             # Add geographic constraints based on level
             if geo_info["type"] == "state":
-                new_stratum.constraints_rel.append(
-                    StratumConstraint(
-                        constraint_variable="state_fips",
+                constraint_list.append(
+                    Constraint(
+                        variable="state_fips",
                         operation="==",
                         value=str(geo_info["state_fips"]),
                     )
                 )
             elif geo_info["type"] == "district":
-                new_stratum.constraints_rel.append(
-                    StratumConstraint(
-                        constraint_variable="congressional_district_geoid",
+                constraint_list.append(
+                    Constraint(
+                        variable="congressional_district_geoid",
                         operation="==",
                         value=str(geo_info["congressional_district_geoid"]),
                     )
@@ -242,9 +245,9 @@ def load_age_data(df_long, geo, year):
             # For national level, no geographic constraint needed
 
             # Add age constraints
-            new_stratum.constraints_rel.append(
-                StratumConstraint(
-                    constraint_variable="age",
+            constraint_list.append(
+                Constraint(
+                    variable="age",
                     operation=">",
                     value=str(row["age_greater_than"]),
                 )
@@ -252,13 +255,24 @@ def load_age_data(df_long, geo, year):
 
             age_lt_value = row["age_less_than"]
             if not np.isinf(age_lt_value):
-                new_stratum.constraints_rel.append(
-                    StratumConstraint(
-                        constraint_variable="age",
+                constraint_list.append(
+                    Constraint(
+                        variable="age",
                         operation="<",
                         value=str(row["age_less_than"]),
                     )
                 )
+
+            # Validate constraints before adding
+            ensure_consistent_constraint_set(constraint_list)
+            new_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable=c.variable,
+                    operation=c.operation,
+                    value=c.value,
+                )
+                for c in constraint_list
+            ]
 
             # Create the Target and link it to the parent.
             new_stratum.targets_rel.append(

@@ -7,7 +7,6 @@ from typing import Optional
 from sqlmodel import Session, select
 from policyengine_us_data.db.create_database_tables import (
     Source,
-    SourceType,
     VariableGroup,
     VariableMetadata,
 )
@@ -16,7 +15,7 @@ from policyengine_us_data.db.create_database_tables import (
 def get_or_create_source(
     session: Session,
     name: str,
-    source_type: SourceType,
+    source_type: str,
     vintage: Optional[str] = None,
     description: Optional[str] = None,
     url: Optional[str] = None,

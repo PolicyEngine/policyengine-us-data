@@ -6,10 +6,13 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
-    SourceType,
 )
 from policyengine_us_data.utils.db_metadata import (
     get_or_create_source,
+)
+from policyengine_us_data.utils.constraint_validation import (
+    Constraint,
+    ensure_consistent_constraint_set,
 )
 
 
@@ -305,11 +308,12 @@ def extract_national_targets():
     # CBO projection targets - get for a specific year
     CBO_YEAR = 2023  # Year the CBO projections are for
     cbo_vars = [
-        # Note: income_tax_positive matches CBO's receipts definition
-        # where refundable credit payments in excess of liability are
+        # Note: For income_tax, CBO's receipts definition counts only positive
+        # values - refundable credit payments in excess of liability are
         # classified as outlays, not negative receipts. See:
         # https://www.cbo.gov/publication/43767
-        "income_tax_positive",
+        # We handle this by adding a constraint (income_tax >= 0) when loading.
+        "income_tax",
         "snap",
         "social_security",
         "ssi",
@@ -318,7 +322,7 @@ def extract_national_targets():
 
     # Mapping from target variable to CBO parameter name (when different)
     cbo_param_name_map = {
-        "income_tax_positive": "income_tax",  # CBO param is income_tax
+        # No mapping needed - income_tax matches CBO param name
     }
 
     cbo_targets = []
@@ -390,17 +394,11 @@ def transform_national_targets(raw_targets):
     """
 
     # Process direct sum targets (non-tax items and some CBO items)
-    # Note: income_tax_positive from CBO and eitc from Treasury need
-    # filer constraint
     cbo_non_tax = [
-        t
-        for t in raw_targets["cbo_targets"]
-        if t["variable"] != "income_tax_positive"
+        t for t in raw_targets["cbo_targets"] if t["variable"] != "income_tax"
     ]
     cbo_tax = [
-        t
-        for t in raw_targets["cbo_targets"]
-        if t["variable"] == "income_tax_positive"
+        t for t in raw_targets["cbo_targets"] if t["variable"] == "income_tax"
     ]
 
     all_direct_targets = raw_targets["direct_sum_targets"] + cbo_non_tax
@@ -455,7 +453,7 @@ def load_national_targets(
         calibration_source = get_or_create_source(
             session,
             name="PolicyEngine Calibration Targets",
-            source_type=SourceType.HARDCODED,
+            source_type="hardcoded",
             vintage="Mixed (2023-2024)",
             description="National calibration targets from various authoritative sources",
             url=None,
@@ -535,12 +533,22 @@ def load_national_targets(
                     stratum_group_id=2,  # Filer population group
                     notes="United States - Tax Filers",
                 )
-                national_filer_stratum.constraints_rel = [
-                    StratumConstraint(
-                        constraint_variable="tax_unit_is_filer",
+                # Validate constraints before adding
+                filer_constraints = [
+                    Constraint(
+                        variable="tax_unit_is_filer",
                         operation="==",
                         value="1",
                     )
+                ]
+                ensure_consistent_constraint_set(filer_constraints)
+                national_filer_stratum.constraints_rel = [
+                    StratumConstraint(
+                        constraint_variable=c.variable,
+                        operation=c.operation,
+                        value=c.value,
+                    )
+                    for c in filer_constraints
                 ]
                 session.add(national_filer_stratum)
                 session.flush()
@@ -549,12 +557,67 @@ def load_national_targets(
             # Add tax-related targets to filer stratum
             for _, target_data in tax_filer_df.iterrows():
                 target_year = target_data["year"]
+                variable_name = target_data["variable"]
+
+                # NOTE: For income_tax, we need a special stratum with income_tax >= 0
+                # constraint to match CBO's receipts definition (only positive
+                # values count as receipts; negative values from refundable
+                # credits are classified as outlays). See:
+                # https://www.cbo.gov/publication/43767
+                # (unless income_tax_positive is added to policyengine-us)
+                if variable_name == "income_tax":
+                    # Get or create stratum for positive income tax
+                    positive_income_tax_stratum = (
+                        session.query(Stratum)
+                        .filter(
+                            Stratum.parent_stratum_id
+                            == national_filer_stratum.stratum_id,
+                            Stratum.notes
+                            == "United States - Tax Filers with Positive Income Tax",
+                        )
+                        .first()
+                    )
+
+                    if not positive_income_tax_stratum:
+                        positive_income_tax_stratum = Stratum(
+                            parent_stratum_id=national_filer_stratum.stratum_id,
+                            stratum_group_id=2,  # Filer population group
+                            notes="United States - Tax Filers with Positive Income Tax",
+                        )
+                        # Validate constraints before adding
+                        pos_tax_constraints = [
+                            Constraint(
+                                variable="income_tax",
+                                operation=">=",
+                                value="0",
+                            )
+                        ]
+                        ensure_consistent_constraint_set(pos_tax_constraints)
+                        positive_income_tax_stratum.constraints_rel = [
+                            StratumConstraint(
+                                constraint_variable=c.variable,
+                                operation=c.operation,
+                                value=c.value,
+                            )
+                            for c in pos_tax_constraints
+                        ]
+                        session.add(positive_income_tax_stratum)
+                        session.flush()
+                        print(
+                            "Created positive income tax stratum "
+                            "(income_tax >= 0 constraint for CBO definition)"
+                        )
+
+                    target_stratum = positive_income_tax_stratum
+                else:
+                    target_stratum = national_filer_stratum
+
                 # Check if target already exists
                 existing_target = (
                     session.query(Target)
                     .filter(
-                        Target.stratum_id == national_filer_stratum.stratum_id,
-                        Target.variable == target_data["variable"],
+                        Target.stratum_id == target_stratum.stratum_id,
+                        Target.variable == variable_name,
                         Target.period == target_year,
                     )
                     .first()
@@ -573,12 +636,12 @@ def load_national_targets(
                     # Update existing target
                     existing_target.value = target_data["value"]
                     existing_target.notes = combined_notes
-                    print(f"Updated filer target: {target_data['variable']}")
+                    print(f"Updated filer target: {variable_name}")
                 else:
                     # Create new target
                     target = Target(
-                        stratum_id=national_filer_stratum.stratum_id,
-                        variable=target_data["variable"],
+                        stratum_id=target_stratum.stratum_id,
+                        variable=variable_name,
                         period=target_year,
                         value=target_data["value"],
                         source_id=calibration_source.source_id,
@@ -586,7 +649,7 @@ def load_national_targets(
                         notes=combined_notes,
                     )
                     session.add(target)
-                    print(f"Added filer target: {target_data['variable']}")
+                    print(f"Added filer target: {variable_name}")
 
         # Process conditional count targets (enrollment counts)
         for cond_target in conditional_targets:
@@ -610,7 +673,7 @@ def load_national_targets(
             elif constraint_var == "ssn_card_type":
                 stratum_group_id = 7  # SSN card type group
                 stratum_notes = "National Undocumented Population"
-                constraint_operation = "="
+                constraint_operation = "=="
                 constraint_value = cond_target.get("constraint_value", "NONE")
             else:
                 stratum_notes = f"National {constraint_var} Recipients"
@@ -664,13 +727,22 @@ def load_national_targets(
                     notes=stratum_notes,
                 )
 
-                # Add constraint
-                new_stratum.constraints_rel = [
-                    StratumConstraint(
-                        constraint_variable=constraint_var,
+                # Validate constraints before adding
+                cond_constraints = [
+                    Constraint(
+                        variable=constraint_var,
                         operation=constraint_operation,
                         value=constraint_value,
                     )
+                ]
+                ensure_consistent_constraint_set(cond_constraints)
+                new_stratum.constraints_rel = [
+                    StratumConstraint(
+                        constraint_variable=c.variable,
+                        operation=c.operation,
+                        value=c.value,
+                    )
+                    for c in cond_constraints
                 ]
 
                 # Add target

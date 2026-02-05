@@ -15,6 +15,10 @@ from policyengine_us_data.utils.raw_cache import (
     save_json,
     load_json,
 )
+from policyengine_us_data.utils.constraint_validation import (
+    Constraint,
+    ensure_consistent_constraint_set,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -163,12 +167,22 @@ def main():
                 notes=state_name,
                 stratum_group_id=1,
             )
-            state_stratum.constraints_rel = [
-                StratumConstraint(
-                    constraint_variable="state_fips",
+            # Validate constraints before adding
+            state_constraints = [
+                Constraint(
+                    variable="state_fips",
                     operation="==",
                     value=str(state_fips),
                 )
+            ]
+            ensure_consistent_constraint_set(state_constraints)
+            state_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable=c.variable,
+                    operation=c.operation,
+                    value=c.value,
+                )
+                for c in state_constraints
             ]
             session.add(state_stratum)
             session.flush()
@@ -185,12 +199,22 @@ def main():
                 notes=f"{name} (CD GEOID {cd_geoid})",
                 stratum_group_id=1,
             )
-            cd_stratum.constraints_rel = [
-                StratumConstraint(
-                    constraint_variable="congressional_district_geoid",
+            # Validate constraints before adding
+            cd_constraints = [
+                Constraint(
+                    variable="congressional_district_geoid",
                     operation="==",
                     value=str(cd_geoid),
                 )
+            ]
+            ensure_consistent_constraint_set(cd_constraints)
+            cd_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable=c.variable,
+                    operation=c.operation,
+                    value=c.value,
+                )
+                for c in cd_constraints
             ]
             session.add(cd_stratum)
 

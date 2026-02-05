@@ -1,9 +1,8 @@
 import logging
 import hashlib
 from typing import List, Optional
-from enum import Enum
 
-from sqlalchemy import event, UniqueConstraint
+from sqlalchemy import event, UniqueConstraint, text
 from sqlalchemy.orm.attributes import get_history
 from sqlmodel import (
     Field,
@@ -11,8 +10,6 @@ from sqlmodel import (
     SQLModel,
     create_engine,
 )
-from pydantic import validator
-from policyengine_us.system import system
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
@@ -24,21 +21,29 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# An Enum type to ensure the variable exists in policyengine-us
-USVariable = Enum(
-    "USVariable", {name: name for name in system.variables.keys()}, type=str
-)
+class FieldValidValues(SQLModel, table=True):
+    """Valid values for semantic fields in the database.
 
+    This table serves as the source of truth for what values are allowed
+    in specific fields throughout the database. SQL triggers enforce that
+    values inserted or updated match entries in this table.
+    """
 
-class ConstraintOperation(str, Enum):
-    """Allowed operations for stratum constraints."""
+    __tablename__ = "field_valid_values"
 
-    EQ = "=="  # Equals
-    NE = "!="  # Not equals
-    GT = ">"  # Greater than
-    GE = ">="  # Greater than or equal
-    LT = "<"  # Less than
-    LE = "<="  # Less than or equal
+    field_name: str = Field(
+        primary_key=True,
+        description="The field/column being validated "
+        "(e.g., 'operation', 'variable')",
+    )
+    valid_value: str = Field(
+        primary_key=True,
+        description="A valid value for this field",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Human-readable description of this value",
+    )
 
 
 class Stratum(SQLModel, table=True):
@@ -117,16 +122,6 @@ class StratumConstraint(SQLModel, table=True):
 
     strata_rel: Stratum = Relationship(back_populates="constraints_rel")
 
-    @validator("operation")
-    def validate_operation(cls, v):
-        """Validate that the operation is one of the allowed values."""
-        allowed_ops = [op.value for op in ConstraintOperation]
-        if v not in allowed_ops:
-            raise ValueError(
-                f"Invalid operation '{v}'. Must be one of: {', '.join(allowed_ops)}"
-            )
-        return v
-
 
 class Target(SQLModel, table=True):
     """Stores the data values for a specific stratum."""
@@ -143,7 +138,7 @@ class Target(SQLModel, table=True):
     )
 
     target_id: Optional[int] = Field(default=None, primary_key=True)
-    variable: USVariable = Field(
+    variable: str = Field(
         description="A variable defined in policyengine-us (e.g., 'income_tax')."
     )
     period: int = Field(
@@ -179,18 +174,6 @@ class Target(SQLModel, table=True):
     source_rel: Optional["Source"] = Relationship()
 
 
-class SourceType(str, Enum):
-    """Types of data sources."""
-
-    ADMINISTRATIVE = "administrative"
-    SURVEY = "survey"
-    SYNTHETIC = "synthetic"
-    DERIVED = "derived"
-    HARDCODED = (
-        "hardcoded"  # Values from various sources, hardcoded into the system
-    )
-
-
 class Source(SQLModel, table=True):
     """Metadata about data sources."""
 
@@ -208,7 +191,7 @@ class Source(SQLModel, table=True):
         description="Name of the data source (e.g., 'IRS SOI', 'Census ACS').",
         index=True,
     )
-    type: SourceType = Field(
+    type: str = Field(
         description="Type of data source (administrative, survey, etc.)."
     )
     description: Optional[str] = Field(
@@ -344,6 +327,177 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
     target.definition_hash = h.hexdigest()
 
 
+def create_validation_triggers(engine):
+    """Create SQL triggers to enforce field validation on INSERT and UPDATE.
+
+    These triggers check that values in semantic fields match entries in the
+    field_valid_values table before allowing the operation to proceed.
+
+    Args:
+        engine: SQLAlchemy Engine instance connected to the database.
+    """
+    with engine.connect() as conn:
+        # ============================================
+        # Triggers for stratum_constraints table
+        # ============================================
+
+        # INSERT trigger
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS validate_stratum_constraints_insert
+            BEFORE INSERT ON stratum_constraints
+            BEGIN
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'operation'
+                        AND valid_value = NEW.operation
+                    )
+                    THEN RAISE(ABORT, 'Invalid operation value')
+                END;
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'constraint_variable'
+                        AND valid_value = NEW.constraint_variable
+                    )
+                    THEN RAISE(ABORT, 'Invalid constraint_variable value')
+                END;
+            END;
+        """))
+
+        # UPDATE trigger
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS validate_stratum_constraints_update
+            BEFORE UPDATE ON stratum_constraints
+            BEGIN
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'operation'
+                        AND valid_value = NEW.operation
+                    )
+                    THEN RAISE(ABORT, 'Invalid operation value')
+                END;
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'constraint_variable'
+                        AND valid_value = NEW.constraint_variable
+                    )
+                    THEN RAISE(ABORT, 'Invalid constraint_variable value')
+                END;
+            END;
+        """))
+
+        # ============================================
+        # Triggers for targets table
+        # ============================================
+
+        # INSERT trigger
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS validate_targets_insert
+            BEFORE INSERT ON targets
+            BEGIN
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'active'
+                        AND valid_value = CAST(NEW.active AS TEXT)
+                    )
+                    THEN RAISE(ABORT, 'Invalid active value')
+                END;
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'period'
+                        AND valid_value = CAST(NEW.period AS TEXT)
+                    )
+                    THEN RAISE(ABORT, 'Invalid period value')
+                END;
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'variable'
+                        AND valid_value = NEW.variable
+                    )
+                    THEN RAISE(ABORT, 'Invalid variable value')
+                END;
+            END;
+        """))
+
+        # UPDATE trigger
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS validate_targets_update
+            BEFORE UPDATE ON targets
+            BEGIN
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'active'
+                        AND valid_value = CAST(NEW.active AS TEXT)
+                    )
+                    THEN RAISE(ABORT, 'Invalid active value')
+                END;
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'period'
+                        AND valid_value = CAST(NEW.period AS TEXT)
+                    )
+                    THEN RAISE(ABORT, 'Invalid period value')
+                END;
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'variable'
+                        AND valid_value = NEW.variable
+                    )
+                    THEN RAISE(ABORT, 'Invalid variable value')
+                END;
+            END;
+        """))
+
+        # ============================================
+        # Triggers for sources table
+        # ============================================
+
+        # INSERT trigger
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS validate_sources_insert
+            BEFORE INSERT ON sources
+            BEGIN
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'type'
+                        AND valid_value = NEW.type
+                    )
+                    THEN RAISE(ABORT, 'Invalid source type value')
+                END;
+            END;
+        """))
+
+        # UPDATE trigger
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS validate_sources_update
+            BEFORE UPDATE ON sources
+            BEGIN
+                SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM field_valid_values
+                        WHERE field_name = 'type'
+                        AND valid_value = NEW.type
+                    )
+                    THEN RAISE(ABORT, 'Invalid source type value')
+                END;
+            END;
+        """))
+
+        conn.commit()
+
+    logger.info("Validation triggers created successfully")
+
+
 def create_database(
     db_uri: str = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}",
 ):
@@ -358,6 +512,9 @@ def create_database(
     """
     engine = create_engine(db_uri)
     SQLModel.metadata.create_all(engine)
+
+    create_validation_triggers(engine)
+
     logger.info(f"Database and tables created successfully at {db_uri}")
     return engine
 

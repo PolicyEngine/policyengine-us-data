@@ -11,12 +11,19 @@ from policyengine_us_data.db.create_database_tables import (
     Target,
     create_database,
 )
+from policyengine_us_data.db.create_field_valid_values import (
+    populate_field_valid_values,
+)
 
 
 @pytest.fixture
 def engine(tmp_path):
     db_uri = f"sqlite:///{tmp_path/'test.db'}"
-    return create_database(db_uri)
+    eng = create_database(db_uri)
+    # Populate field_valid_values for trigger validation
+    with Session(eng) as session:
+        populate_field_valid_values(session)
+    return eng
 
 
 # TODO: Re-enable this test once database issues are resolved in PR #437
@@ -28,15 +35,15 @@ def test_stratum_hash_and_relationships(engine):
         stratum = Stratum(notes="test", stratum_group_id=0)
         stratum.constraints_rel = [
             StratumConstraint(
-                constraint_variable="ucgid_str",
-                operation="equals",
-                value="0400000US30",
+                constraint_variable="state_fips",
+                operation="==",
+                value="30",
             ),
             StratumConstraint(
-                constraint_variable="age", operation="greater_than", value="20"
+                constraint_variable="age", operation=">", value="20"
             ),
             StratumConstraint(
-                constraint_variable="age", operation="less_than", value="65"
+                constraint_variable="age", operation="<", value="65"
             ),
         ]
         stratum.targets_rel = [
@@ -48,9 +55,9 @@ def test_stratum_hash_and_relationships(engine):
             "\n".join(
                 sorted(
                     [
-                        "ucgid_str|equals|0400000US30",
-                        "age|greater_than|20",
-                        "age|less_than|65",
+                        "state_fips|==|30",
+                        "age|>|20",
+                        "age|<|65",
                     ]
                 )
             ).encode("utf-8")
@@ -66,9 +73,9 @@ def test_unique_definition_hash(engine):
         s1 = Stratum(stratum_group_id=0)
         s1.constraints_rel = [
             StratumConstraint(
-                constraint_variable="ucgid_str",
-                operation="equals",
-                value="0400000US30",
+                constraint_variable="state_fips",
+                operation="==",
+                value="30",
             )
         ]
         session.add(s1)
@@ -76,9 +83,9 @@ def test_unique_definition_hash(engine):
         s2 = Stratum(stratum_group_id=0)
         s2.constraints_rel = [
             StratumConstraint(
-                constraint_variable="ucgid_str",
-                operation="equals",
-                value="0400000US30",
+                constraint_variable="state_fips",
+                operation="==",
+                value="30",
             )
         ]
         session.add(s2)

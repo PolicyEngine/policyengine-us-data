@@ -8,7 +8,6 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
-    SourceType,
 )
 from policyengine_us_data.utils.census import get_census_docs, pull_acs_table
 from policyengine_us_data.utils.db import parse_ucgid, get_geographic_strata
@@ -116,7 +115,7 @@ def load_age_data(df_long, geo, year):
         census_source = get_or_create_source(
             session,
             name="Census ACS Table S0101",
-            source_type=SourceType.SURVEY,
+            source_type="survey",
             vintage=f"{year} ACS 5-year estimates",
             description="American Community Survey Age and Sex demographics",
             url="https://data.census.gov/",

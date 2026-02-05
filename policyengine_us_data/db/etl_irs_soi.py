@@ -19,7 +19,6 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
-    SourceType,
 )
 from policyengine_us_data.utils.db import (
     get_stratum_by_id,
@@ -394,7 +393,7 @@ def load_soi_data(long_dfs, year):
     irs_source = get_or_create_source(
         session,
         name="IRS Statistics of Income",
-        source_type=SourceType.ADMINISTRATIVE,
+        source_type="administrative",
         vintage=f"{year} Tax Year",
         description="IRS Statistics of Income administrative tax data",
         url="https://www.irs.gov/statistics",

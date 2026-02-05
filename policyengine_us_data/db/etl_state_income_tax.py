@@ -21,7 +21,6 @@ from policyengine_us_data.db.create_database_tables import (
     StratumConstraint,
     Target,
     Source,
-    SourceType,
     VariableGroup,
     VariableMetadata,
 )
@@ -261,7 +260,7 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
         source = get_or_create_source(
             session,
             name="Census Bureau Annual Survey of State Tax Collections",
-            source_type=SourceType.ADMINISTRATIVE,
+            source_type="administrative",
             url="https://www.census.gov/programs-surveys/stc.html",
             notes="Individual income tax collections by state",
         )

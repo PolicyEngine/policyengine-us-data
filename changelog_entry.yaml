@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+    - field_valid_values table in the targets database as source of truth for semantic or external target information.

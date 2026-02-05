@@ -24,15 +24,16 @@ make promote-database   # Copy DB + raw inputs to HuggingFace clone
 
 | # | Script | Network? | What it does |
 |---|--------|----------|--------------|
-| 1 | `create_database_tables.py` | No | Creates empty SQLite schema (7 tables) |
-| 2 | `create_initial_strata.py` | Census ACS 5-year | Builds geographic hierarchy: US > 51 states > 436 CDs |
-| 3 | `etl_national_targets.py` | No | Loads ~40 hardcoded national targets (CBO, Treasury, CMS) |
-| 4 | `etl_age.py` | Census ACS 1-year | Age distribution: 18 bins x 488 geographies |
-| 5 | `etl_medicaid.py` | Census ACS + CMS | Medicaid enrollment (admin state-level, survey district-level) |
-| 6 | `etl_snap.py` | USDA FNS + Census ACS | SNAP participation (admin state-level, survey district-level) |
-| 7 | `etl_state_income_tax.py` | No | State income tax collections (Census STC FY2023, hardcoded) |
-| 8 | `etl_irs_soi.py` | IRS | Tax variables, EITC by child count, AGI brackets, conditional strata |
-| 9 | `validate_database.py` | No | Checks all target variables exist in policyengine-us |
+| 1 | `create_database_tables.py` | No | Creates SQLite schema (8 tables) + validation triggers |
+| 2 | `create_field_valid_values.py` | No | Populates field_valid_values with allowed values |
+| 3 | `create_initial_strata.py` | Census ACS 5-year | Builds geographic hierarchy: US > 51 states > 436 CDs |
+| 4 | `etl_national_targets.py` | No | Loads ~40 hardcoded national targets (CBO, Treasury, CMS) |
+| 5 | `etl_age.py` | Census ACS 1-year | Age distribution: 18 bins x 488 geographies |
+| 6 | `etl_medicaid.py` | Census ACS + CMS | Medicaid enrollment (admin state-level, survey district-level) |
+| 7 | `etl_snap.py` | USDA FNS + Census ACS | SNAP participation (admin state-level, survey district-level) |
+| 8 | `etl_state_income_tax.py` | No | State income tax collections (Census STC FY2023, hardcoded) |
+| 9 | `etl_irs_soi.py` | IRS | Tax variables, EITC by child count, AGI brackets, conditional strata |
+| 10 | `validate_database.py` | No | Checks all target variables exist in policyengine-us |
 
 ### Raw Input Caching
 
@@ -94,6 +95,36 @@ make database
 
 **variable_metadata** - Display info for variables (display name, units, ordering)
 
+### Validation Table
+
+**field_valid_values** - Centralized registry of valid values for semantic fields
+
+This table is the source of truth for what values are allowed in specific fields throughout
+the database. Expecifically those that deal with semantic external information rather than designing relationships inherent to teh database itself. SQL triggers enforce validation on INSERT and UPDATE operations.
+
+| Field Validated | Table | Valid Values |
+|-----------------|-------|--------------|
+| `operation` | stratum_constraints | `==`, `!=`, `>`, `>=`, `<`, `<=` |
+| `constraint_variable` | stratum_constraints | All policyengine-us variables |
+| `active` | targets | `0`, `1` |
+| `period` | targets | `2022`, `2023`, `2024`, `2025` |
+| `variable` | targets | All policyengine-us variables |
+| `type` | sources | `administrative`, `survey`, `synthetic`, `derived`, `hardcoded` |
+
+**Triggers**: `validate_stratum_constraints_insert`, `validate_stratum_constraints_update`,
+`validate_targets_insert`, `validate_targets_update`, `validate_sources_insert`, `validate_sources_update`
+
+To add a new valid value (e.g., a new year):
+```sql
+INSERT INTO field_valid_values (field_name, valid_value, description)
+VALUES ('period', '2026', NULL);
+```
+
+To check what values are valid for a field:
+```sql
+SELECT valid_value, description FROM field_valid_values WHERE field_name = 'operation';
+```
+
 ## Key Concepts
 
 ### Stratum Groups
@@ -153,7 +184,7 @@ ETL scripts that pull Census data receive UCGIDs and create their own domain-spe
 
 ### Constraint Operations
 
-All constraints use standardized operators validated by the `ConstraintOperation` enum:
+All constraints use standardized operators validated by the `field_valid_values` table:
 `==`, `!=`, `>`, `>=`, `<`, `<=`
 
 ### Constraint Value Types

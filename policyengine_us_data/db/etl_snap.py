@@ -15,7 +15,6 @@ from policyengine_us_data.db.create_database_tables import (
     StratumConstraint,
     Target,
     Source,
-    SourceType,
     VariableGroup,
     VariableMetadata,
 )
@@ -169,7 +168,7 @@ def load_administrative_snap_data(df_states, year):
         admin_source = get_or_create_source(
             session,
             name="USDA FNS SNAP Data",
-            source_type=SourceType.ADMINISTRATIVE,
+            source_type="administrative",
             vintage=f"FY {year}",
             description="SNAP administrative data from USDA Food and Nutrition Service",
             url="https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
@@ -305,7 +304,7 @@ def load_survey_snap_data(survey_df, year, snap_stratum_lookup):
         survey_source = get_or_create_source(
             session,
             name="Census ACS Table S2201",
-            source_type=SourceType.SURVEY,
+            source_type="survey",
             vintage=f"{year} ACS 5-year estimates",
             description="American Community Survey SNAP/Food Stamps data",
             url="https://data.census.gov/",

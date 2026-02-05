@@ -329,8 +329,12 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
     cbo_vars = [
         # Note: For income_tax, CBO's receipts definition counts only positive
         # values - refundable credit payments in excess of liability are
+        # Note: For income_tax, CBO's receipts definition counts only positive
+        # values - refundable credit payments in excess of liability are
         # classified as outlays, not negative receipts. See:
         # https://www.cbo.gov/publication/43767
+        # We handle this by adding a constraint (income_tax >= 0) when loading.
+        "income_tax",
         # We handle this by adding a constraint (income_tax >= 0) when loading.
         "income_tax",
         "snap",
@@ -341,6 +345,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
 
     # Mapping from target variable to CBO parameter name (when different)
     cbo_param_name_map = {
+        # No mapping needed - income_tax matches CBO param name
         # No mapping needed - income_tax matches CBO param name
     }
 
@@ -415,8 +420,10 @@ def transform_national_targets(raw_targets):
     # Process direct sum targets (non-tax items and some CBO items)
     cbo_non_tax = [
         t for t in raw_targets["cbo_targets"] if t["variable"] != "income_tax"
+        t for t in raw_targets["cbo_targets"] if t["variable"] != "income_tax"
     ]
     cbo_tax = [
+        t for t in raw_targets["cbo_targets"] if t["variable"] == "income_tax"
         t for t in raw_targets["cbo_targets"] if t["variable"] == "income_tax"
     ]
 
@@ -472,6 +479,7 @@ def load_national_targets(
         calibration_source = get_or_create_source(
             session,
             name="PolicyEngine Calibration Targets",
+            source_type="hardcoded",
             source_type="hardcoded",
             vintage="Mixed (2023-2024)",
             description="National calibration targets from various authoritative sources",
@@ -603,22 +611,12 @@ def load_national_targets(
                             stratum_group_id=2,  # Filer population group
                             notes="United States - Tax Filers with Positive Income Tax",
                         )
-                        # Validate constraints before adding
-                        pos_tax_constraints = [
-                            Constraint(
-                                variable="income_tax",
+                        positive_income_tax_stratum.constraints_rel = [
+                            StratumConstraint(
+                                constraint_variable="income_tax",
                                 operation=">=",
                                 value="0",
                             )
-                        ]
-                        ensure_consistent_constraint_set(pos_tax_constraints)
-                        positive_income_tax_stratum.constraints_rel = [
-                            StratumConstraint(
-                                constraint_variable=c.variable,
-                                operation=c.operation,
-                                value=c.value,
-                            )
-                            for c in pos_tax_constraints
                         ]
                         session.add(positive_income_tax_stratum)
                         session.flush()
@@ -635,6 +633,8 @@ def load_national_targets(
                 existing_target = (
                     session.query(Target)
                     .filter(
+                        Target.stratum_id == target_stratum.stratum_id,
+                        Target.variable == variable_name,
                         Target.stratum_id == target_stratum.stratum_id,
                         Target.variable == variable_name,
                         Target.period == target_year,
@@ -656,9 +656,12 @@ def load_national_targets(
                     existing_target.value = target_data["value"]
                     existing_target.notes = combined_notes
                     print(f"Updated filer target: {variable_name}")
+                    print(f"Updated filer target: {variable_name}")
                 else:
                     # Create new target
                     target = Target(
+                        stratum_id=target_stratum.stratum_id,
+                        variable=variable_name,
                         stratum_id=target_stratum.stratum_id,
                         variable=variable_name,
                         period=target_year,
@@ -668,6 +671,7 @@ def load_national_targets(
                         notes=combined_notes,
                     )
                     session.add(target)
+                    print(f"Added filer target: {variable_name}")
                     print(f"Added filer target: {variable_name}")
 
         # Process conditional count targets (enrollment counts)
@@ -692,6 +696,7 @@ def load_national_targets(
             elif constraint_var == "ssn_card_type":
                 stratum_group_id = 7  # SSN card type group
                 stratum_notes = "National Undocumented Population"
+                constraint_operation = "=="
                 constraint_operation = "=="
                 constraint_value = cond_target.get("constraint_value", "NONE")
             else:

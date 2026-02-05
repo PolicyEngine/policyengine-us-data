@@ -35,6 +35,10 @@ from policyengine_us_data.utils.raw_cache import (
     save_json,
     load_json,
 )
+from policyengine_us_data.utils.constraint_validation import (
+    Constraint,
+    ensure_consistent_constraint_set,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -309,12 +313,22 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
                 stratum_group_id=STRATUM_GROUP_ID_STATE_INCOME_TAX,
                 notes=note,
             )
-            new_stratum.constraints_rel = [
-                StratumConstraint(
-                    constraint_variable="state_fips",
+            # Validate constraints before adding
+            state_tax_constraints = [
+                Constraint(
+                    variable="state_fips",
                     operation="==",
                     value=state_fips,
                 ),
+            ]
+            ensure_consistent_constraint_set(state_tax_constraints)
+            new_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable=c.variable,
+                    operation=c.operation,
+                    value=c.value,
+                )
+                for c in state_tax_constraints
             ]
 
             # Add target for state_income_tax total

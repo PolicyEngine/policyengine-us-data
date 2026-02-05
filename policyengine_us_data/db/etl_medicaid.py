@@ -29,6 +29,10 @@ from policyengine_us_data.utils.raw_cache import (
     load_json,
     save_bytes,
 )
+from policyengine_us_data.utils.constraint_validation import (
+    Constraint,
+    ensure_consistent_constraint_set,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -217,12 +221,20 @@ def load_medicaid_data(long_state, long_cd, year):
             stratum_group_id=5,  # Medicaid strata group
             notes="National Medicaid Enrolled",
         )
+        # Validate constraints before adding
+        nat_medicaid_constraints = [
+            Constraint(
+                variable="medicaid_enrolled", operation="==", value="True"
+            ),
+        ]
+        ensure_consistent_constraint_set(nat_medicaid_constraints)
         nat_stratum.constraints_rel = [
             StratumConstraint(
-                constraint_variable="medicaid_enrolled",
-                operation="==",
-                value="True",
-            ),
+                constraint_variable=c.variable,
+                operation=c.operation,
+                value=c.value,
+            )
+            for c in nat_medicaid_constraints
         ]
         # No target at the national level is provided at this time.
 
@@ -249,17 +261,25 @@ def load_medicaid_data(long_state, long_cd, year):
                 stratum_group_id=5,  # Medicaid strata group
                 notes=note,
             )
-            new_stratum.constraints_rel = [
-                StratumConstraint(
-                    constraint_variable="state_fips",
+            # Validate constraints before adding
+            state_medicaid_constraints = [
+                Constraint(
+                    variable="state_fips",
                     operation="==",
                     value=str(state_fips),
                 ),
-                StratumConstraint(
-                    constraint_variable="medicaid_enrolled",
-                    operation="==",
-                    value="True",
+                Constraint(
+                    variable="medicaid_enrolled", operation="==", value="True"
                 ),
+            ]
+            ensure_consistent_constraint_set(state_medicaid_constraints)
+            new_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable=c.variable,
+                    operation=c.operation,
+                    value=c.value,
+                )
+                for c in state_medicaid_constraints
             ]
             new_stratum.targets_rel.append(
                 Target(
@@ -296,17 +316,25 @@ def load_medicaid_data(long_state, long_cd, year):
                 stratum_group_id=5,  # Medicaid strata group
                 notes=note,
             )
-            new_stratum.constraints_rel = [
-                StratumConstraint(
-                    constraint_variable="congressional_district_geoid",
+            # Validate constraints before adding
+            cd_medicaid_constraints = [
+                Constraint(
+                    variable="congressional_district_geoid",
                     operation="==",
                     value=str(cd_geoid),
                 ),
-                StratumConstraint(
-                    constraint_variable="medicaid_enrolled",
-                    operation="==",
-                    value="True",
+                Constraint(
+                    variable="medicaid_enrolled", operation="==", value="True"
                 ),
+            ]
+            ensure_consistent_constraint_set(cd_medicaid_constraints)
+            new_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable=c.variable,
+                    operation=c.operation,
+                    value=c.value,
+                )
+                for c in cd_medicaid_constraints
             ]
             new_stratum.targets_rel.append(
                 Target(

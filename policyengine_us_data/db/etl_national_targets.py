@@ -10,6 +10,10 @@ from policyengine_us_data.db.create_database_tables import (
 from policyengine_us_data.utils.db_metadata import (
     get_or_create_source,
 )
+from policyengine_us_data.utils.constraint_validation import (
+    Constraint,
+    ensure_consistent_constraint_set,
+)
 
 
 def extract_national_targets():
@@ -529,12 +533,22 @@ def load_national_targets(
                     stratum_group_id=2,  # Filer population group
                     notes="United States - Tax Filers",
                 )
-                national_filer_stratum.constraints_rel = [
-                    StratumConstraint(
-                        constraint_variable="tax_unit_is_filer",
+                # Validate constraints before adding
+                filer_constraints = [
+                    Constraint(
+                        variable="tax_unit_is_filer",
                         operation="==",
                         value="1",
                     )
+                ]
+                ensure_consistent_constraint_set(filer_constraints)
+                national_filer_stratum.constraints_rel = [
+                    StratumConstraint(
+                        constraint_variable=c.variable,
+                        operation=c.operation,
+                        value=c.value,
+                    )
+                    for c in filer_constraints
                 ]
                 session.add(national_filer_stratum)
                 session.flush()
@@ -570,12 +584,22 @@ def load_national_targets(
                             stratum_group_id=2,  # Filer population group
                             notes="United States - Tax Filers with Positive Income Tax",
                         )
-                        positive_income_tax_stratum.constraints_rel = [
-                            StratumConstraint(
-                                constraint_variable="income_tax",
+                        # Validate constraints before adding
+                        pos_tax_constraints = [
+                            Constraint(
+                                variable="income_tax",
                                 operation=">=",
                                 value="0",
                             )
+                        ]
+                        ensure_consistent_constraint_set(pos_tax_constraints)
+                        positive_income_tax_stratum.constraints_rel = [
+                            StratumConstraint(
+                                constraint_variable=c.variable,
+                                operation=c.operation,
+                                value=c.value,
+                            )
+                            for c in pos_tax_constraints
                         ]
                         session.add(positive_income_tax_stratum)
                         session.flush()
@@ -703,13 +727,22 @@ def load_national_targets(
                     notes=stratum_notes,
                 )
 
-                # Add constraint
-                new_stratum.constraints_rel = [
-                    StratumConstraint(
-                        constraint_variable=constraint_var,
+                # Validate constraints before adding
+                cond_constraints = [
+                    Constraint(
+                        variable=constraint_var,
                         operation=constraint_operation,
                         value=constraint_value,
                     )
+                ]
+                ensure_consistent_constraint_set(cond_constraints)
+                new_stratum.constraints_rel = [
+                    StratumConstraint(
+                        constraint_variable=c.variable,
+                        operation=c.operation,
+                        value=c.value,
+                    )
+                    for c in cond_constraints
                 ]
 
                 # Add target

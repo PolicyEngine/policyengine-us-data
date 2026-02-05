@@ -34,6 +34,10 @@ from policyengine_us_data.utils.raw_cache import (
     save_bytes,
     load_bytes,
 )
+from policyengine_us_data.utils.constraint_validation import (
+    Constraint,
+    ensure_consistent_constraint_set,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -218,12 +222,18 @@ def load_administrative_snap_data(df_states, year):
             stratum_group_id=4,  # SNAP strata group
             notes="National Received SNAP Benefits",
         )
+        # Validate constraints before adding
+        nat_constraints = [
+            Constraint(variable="snap", operation=">", value="0"),
+        ]
+        ensure_consistent_constraint_set(nat_constraints)
         nat_stratum.constraints_rel = [
             StratumConstraint(
-                constraint_variable="snap",
-                operation=">",
-                value="0",
-            ),
+                constraint_variable=c.variable,
+                operation=c.operation,
+                value=c.value,
+            )
+            for c in nat_constraints
         ]
         # No target at the national level is provided at this time. Keeping it
         # so that the state strata can have a parent stratum
@@ -248,17 +258,23 @@ def load_administrative_snap_data(df_states, year):
                 stratum_group_id=4,  # SNAP strata group
                 notes=note,
             )
-            new_stratum.constraints_rel = [
-                StratumConstraint(
-                    constraint_variable="state_fips",
+            # Validate constraints before adding
+            state_snap_constraints = [
+                Constraint(
+                    variable="state_fips",
                     operation="==",
                     value=str(state_fips),
                 ),
+                Constraint(variable="snap", operation=">", value="0"),
+            ]
+            ensure_consistent_constraint_set(state_snap_constraints)
+            new_stratum.constraints_rel = [
                 StratumConstraint(
-                    constraint_variable="snap",
-                    operation=">",
-                    value="0",
-                ),
+                    constraint_variable=c.variable,
+                    operation=c.operation,
+                    value=c.value,
+                )
+                for c in state_snap_constraints
             ]
             # Two targets now. Same data source. Same stratum
             new_stratum.targets_rel.append(
@@ -332,17 +348,23 @@ def load_survey_snap_data(survey_df, year, snap_stratum_lookup):
                 notes=note,
             )
 
-            new_stratum.constraints_rel = [
-                StratumConstraint(
-                    constraint_variable="congressional_district_geoid",
+            # Validate constraints before adding
+            cd_snap_constraints = [
+                Constraint(
+                    variable="congressional_district_geoid",
                     operation="==",
                     value=str(cd_geoid),
                 ),
+                Constraint(variable="snap", operation=">", value="0"),
+            ]
+            ensure_consistent_constraint_set(cd_snap_constraints)
+            new_stratum.constraints_rel = [
                 StratumConstraint(
-                    constraint_variable="snap",
-                    operation=">",
-                    value="0",
-                ),
+                    constraint_variable=c.variable,
+                    operation=c.operation,
+                    value=c.value,
+                )
+                for c in cd_snap_constraints
             ]
             new_stratum.targets_rel.append(
                 Target(

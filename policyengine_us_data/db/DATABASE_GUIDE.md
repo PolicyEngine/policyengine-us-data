@@ -187,6 +187,60 @@ ETL scripts that pull Census data receive UCGIDs and create their own domain-spe
 All constraints use standardized operators validated by the `field_valid_values` table:
 `==`, `!=`, `>`, `>=`, `<`, `<=`
 
+### Constraint Validation
+
+ETL scripts validate constraint sets before inserting them into the database using `ensure_consistent_constraint_set()` from `policyengine_us_data.utils.constraint_validation`. This prevents logically inconsistent constraints from being stored.
+
+**Validation Rules:**
+
+1. **Operation Compatibility** (per constraint_variable):
+
+| Operation | Can combine with | Rationale |
+|-----------|-----------------|-----------|
+| `==` | Nothing (must be alone) | Equality is absolute |
+| `!=` | Nothing (must be alone) | Exclusion is absolute |
+| `>` | `<` or `<=` only | Forms valid range |
+| `>=` | `<` or `<=` only | Forms valid range |
+| `<` | `>` or `>=` only | Forms valid range |
+| `<=` | `>` or `>=` only | Forms valid range |
+
+**Invalid combinations:**
+- `>` with `>=` (redundant/conflicting lower bounds)
+- `<` with `<=` (redundant/conflicting upper bounds)
+- `==` with anything else
+- `!=` with anything else
+
+2. **Value Checks** (if operations are compatible):
+- No empty ranges: lower bound must be < upper bound
+- For equal bounds, both must be inclusive (`>=` and `<=`) to be valid
+
+**Usage in ETL:**
+```python
+from policyengine_us_data.utils.constraint_validation import (
+    Constraint,
+    ensure_consistent_constraint_set,
+)
+
+# Build constraint list
+constraint_list = [
+    Constraint(variable="age", operation=">=", value="25"),
+    Constraint(variable="age", operation="<", value="30"),
+]
+
+# Validate before creating StratumConstraint objects
+ensure_consistent_constraint_set(constraint_list)
+
+# Now safe to add to stratum
+stratum.constraints_rel = [
+    StratumConstraint(
+        constraint_variable=c.variable,
+        operation=c.operation,
+        value=c.value,
+    )
+    for c in constraint_list
+]
+```
+
 ### Constraint Value Types
 
 The `value` column stores all values as strings. Downstream code deserializes:

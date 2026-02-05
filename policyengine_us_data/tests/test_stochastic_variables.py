@@ -1,110 +1,135 @@
-"""Tests for stochastic variable generation in the data package.
-
-These tests verify that:
-1. Take-up rate parameters load correctly
-2. Seeded RNG produces deterministic results
-3. Take-up rates produce plausible proportions
-"""
+"""Tests for stochastic variable generation in the data package."""
 
 import pytest
 import numpy as np
 from policyengine_us_data.parameters import load_take_up_rate
+from policyengine_us_data.utils.randomness import (
+    _stable_string_hash,
+    seeded_rng,
+)
 
 
 class TestTakeUpRateParameters:
-    """Test that take-up rate parameters load correctly."""
 
     def test_eitc_rate_loads(self):
-        """EITC take-up rates should load and be plausible."""
         rates = load_take_up_rate("eitc", 2022)
-        # EITC rates are by number of children: 0, 1, 2, 3+
-        assert isinstance(rates, dict) or isinstance(rates, float)
-        if isinstance(rates, dict):
-            for key, rate in rates.items():
-                assert 0 < rate <= 1
+        assert isinstance(rates, dict)
+        for key, rate in rates.items():
+            assert 0 < rate <= 1
 
     def test_snap_rate_loads(self):
-        """SNAP take-up rate should load and be plausible."""
         rate = load_take_up_rate("snap", 2022)
         assert 0 < rate <= 1
 
-    def test_medicaid_rate_loads(self):
-        """Medicaid take-up rate should load and be plausible."""
-        rate = load_take_up_rate("medicaid", 2022)
-        assert 0 < rate <= 1
+    def test_medicaid_rate_loads_state_specific(self):
+        rates = load_take_up_rate("medicaid", 2022)
+        assert isinstance(rates, dict)
+        assert len(rates) == 51  # 50 states + DC
+        for state, rate in rates.items():
+            assert 0 < rate <= 1, f"{state}: {rate}"
+        assert rates["UT"] == 0.53
+        assert rates["CO"] == 0.99
 
     def test_aca_rate_loads(self):
-        """ACA take-up rate should load and be plausible."""
         rate = load_take_up_rate("aca", 2022)
         assert 0 < rate <= 1
 
     def test_head_start_rate_loads(self):
-        """Head Start take-up rate should load and be plausible."""
         rate = load_take_up_rate("head_start", 2022)
         assert 0 < rate <= 1
 
     def test_early_head_start_rate_loads(self):
-        """Early Head Start take-up rate should load and be plausible."""
         rate = load_take_up_rate("early_head_start", 2022)
         assert 0 < rate <= 1
 
     def test_dc_ptc_rate_loads(self):
-        """DC PTC take-up rate should load and be plausible."""
         rate = load_take_up_rate("dc_ptc", 2022)
         assert 0 < rate <= 1
 
+    def test_ssi_pass_rate_loads(self):
+        rate = load_take_up_rate("ssi_pass_rate", 2022)
+        assert rate == 0.4
 
-class TestSeededRandomness:
-    """Test that stochastic generation is deterministic."""
 
-    def test_same_seed_produces_same_results(self):
-        """Using the same seed should produce identical results."""
-        seed = 0
-        n = 1_000
+class TestStableStringHash:
 
-        generator1 = np.random.default_rng(seed=seed)
-        result1 = generator1.random(n)
+    def test_deterministic(self):
+        h1 = _stable_string_hash("takes_up_snap_if_eligible")
+        h2 = _stable_string_hash("takes_up_snap_if_eligible")
+        assert h1 == h2
 
-        generator2 = np.random.default_rng(seed=seed)
-        result2 = generator2.random(n)
+    def test_different_strings_differ(self):
+        h1 = _stable_string_hash("takes_up_snap_if_eligible")
+        h2 = _stable_string_hash("takes_up_aca_if_eligible")
+        assert h1 != h2
 
+    def test_returns_uint64(self):
+        h = _stable_string_hash("test")
+        assert h.dtype == np.uint64
+
+
+class TestSeededRng:
+
+    def test_same_name_same_results(self):
+        rng1 = seeded_rng("takes_up_snap_if_eligible")
+        result1 = rng1.random(1000)
+        rng2 = seeded_rng("takes_up_snap_if_eligible")
+        result2 = rng2.random(1000)
         np.testing.assert_array_equal(result1, result2)
 
-    def test_different_seeds_produce_different_results(self):
-        """Different seeds should produce different results."""
-        n = 1_000
-
-        generator1 = np.random.default_rng(seed=0)
-        result1 = generator1.random(n)
-
-        generator2 = np.random.default_rng(seed=1)
-        result2 = generator2.random(n)
-
+    def test_different_names_different_results(self):
+        rng1 = seeded_rng("takes_up_snap_if_eligible")
+        result1 = rng1.random(1000)
+        rng2 = seeded_rng("takes_up_aca_if_eligible")
+        result2 = rng2.random(1000)
         assert not np.array_equal(result1, result2)
+
+    def test_order_independence(self):
+        """Generating variables in different order produces same values."""
+        # Order A: SNAP then ACA
+        rng_snap_a = seeded_rng("takes_up_snap_if_eligible")
+        snap_a = rng_snap_a.random(1000)
+        rng_aca_a = seeded_rng("takes_up_aca_if_eligible")
+        aca_a = rng_aca_a.random(1000)
+
+        # Order B: ACA then SNAP
+        rng_aca_b = seeded_rng("takes_up_aca_if_eligible")
+        aca_b = rng_aca_b.random(1000)
+        rng_snap_b = seeded_rng("takes_up_snap_if_eligible")
+        snap_b = rng_snap_b.random(1000)
+
+        np.testing.assert_array_equal(snap_a, snap_b)
+        np.testing.assert_array_equal(aca_a, aca_b)
 
 
 class TestTakeUpProportions:
-    """Test that take-up rates produce plausible proportions."""
 
     def test_take_up_produces_expected_proportion(self):
-        """Simulated take-up should match the rate approximately."""
         rate = 0.7
         n = 10_000
-        generator = np.random.default_rng(seed=42)
-
-        take_up = generator.random(n) < rate
-        actual_proportion = take_up.mean()
-
-        # Should be within 5 percentage points of the rate
-        assert abs(actual_proportion - rate) < 0.05
+        rng = seeded_rng("test_variable")
+        take_up = rng.random(n) < rate
+        assert abs(take_up.mean() - rate) < 0.05
 
     def test_boolean_generation(self):
-        """Take-up decisions should be boolean."""
-        rate = 0.5
-        n = 100
-        generator = np.random.default_rng(seed=42)
-
-        take_up = generator.random(n) < rate
-
+        rng = seeded_rng("test_bool")
+        take_up = rng.random(100) < 0.5
         assert take_up.dtype == bool
         assert set(take_up).issubset({True, False})
+
+    def test_wic_draws_are_float(self):
+        rng = seeded_rng("wic_takeup_draw")
+        draws = rng.random(1000).astype(np.float32)
+        assert draws.dtype == np.float32
+        assert np.all(draws >= 0)
+        assert np.all(draws < 1)
+
+    def test_state_specific_medicaid_proportions(self):
+        rates = load_take_up_rate("medicaid", 2022)
+        rng = seeded_rng("takes_up_medicaid_if_eligible")
+        n = 50_000
+        draws = rng.random(n)
+        # Test a few states
+        for state, expected_rate in [("UT", 0.53), ("CO", 0.99)]:
+            take_up = draws[:10_000] < expected_rate
+            assert abs(take_up.mean() - expected_rate) < 0.05

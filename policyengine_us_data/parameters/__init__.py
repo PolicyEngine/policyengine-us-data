@@ -11,7 +11,7 @@ from pathlib import Path
 PARAMETERS_DIR = Path(__file__).parent
 
 
-def load_take_up_rate(variable_name: str, year: int = 2018) -> float:
+def load_take_up_rate(variable_name: str, year: int = 2018):
     """Load take-up rate from YAML parameter files.
 
     Args:
@@ -19,28 +19,30 @@ def load_take_up_rate(variable_name: str, year: int = 2018) -> float:
         year: Year for which to get the rate
 
     Returns:
-        Take-up rate as a float between 0 and 1
+        float, dict (EITC rates_by_children), or dict (Medicaid
+        rates_by_state)
     """
     yaml_path = PARAMETERS_DIR / "take_up" / f"{variable_name}.yaml"
 
     with open(yaml_path) as f:
         data = yaml.safe_load(f)
 
-    # Handle EITC special case (has rates_by_children instead of values)
+    # EITC: rates by number of children
     if "rates_by_children" in data:
-        return data["rates_by_children"]  # Return the dict
+        return data["rates_by_children"]
 
-    # Find the applicable value for the year
+    # Medicaid: state-specific rates
+    if "rates_by_state" in data:
+        return data["rates_by_state"]
+
+    # Standard time-series values
     values = data["values"]
     applicable_value = None
 
     for date_key, value in sorted(values.items()):
-        # Handle both string and datetime.date objects from YAML
         if hasattr(date_key, "year"):
-            # It's a datetime.date object
             date_year = date_key.year
         else:
-            # It's a string
             date_year = int(date_key.split("-")[0])
 
         if date_year <= year:

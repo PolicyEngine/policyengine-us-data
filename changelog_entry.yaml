@@ -2,3 +2,4 @@
   changes:
     added:
     - field_valid_values table in the targets database as source of truth for semantic or external target information.
+    - constraint_validation.py to ensure constraint operations result in consistent and valid sets of constraints for a given stratum.

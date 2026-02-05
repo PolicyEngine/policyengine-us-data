@@ -611,12 +611,22 @@ def load_national_targets(
                             stratum_group_id=2,  # Filer population group
                             notes="United States - Tax Filers with Positive Income Tax",
                         )
-                        positive_income_tax_stratum.constraints_rel = [
-                            StratumConstraint(
-                                constraint_variable="income_tax",
+                        # Validate constraints before adding
+                        pos_tax_constraints = [
+                            Constraint(
+                                variable="income_tax",
                                 operation=">=",
                                 value="0",
                             )
+                        ]
+                        ensure_consistent_constraint_set(pos_tax_constraints)
+                        positive_income_tax_stratum.constraints_rel = [
+                            StratumConstraint(
+                                constraint_variable=c.variable,
+                                operation=c.operation,
+                                value=c.value,
+                            )
+                            for c in pos_tax_constraints
                         ]
                         session.add(positive_income_tax_stratum)
                         session.flush()

@@ -30,17 +30,10 @@ from policyengine_us_data.utils.census import TERRITORY_UCGIDS
 from policyengine_us_data.storage.calibration_targets.make_district_mapping import (
     get_district_mapping,
 )
-from policyengine_us_data.utils.raw_cache import (
-    is_cached,
-    cache_path,
-    save_bytes,
+from policyengine_us_data.utils.constraint_validation import (
+    Constraint,
+    ensure_consistent_constraint_set,
 )
-
-logger = logging.getLogger(__name__)
-
-
-# IRS SOI data is typically available ~2 years after the tax year
-IRS_SOI_LAG_YEARS = 2
 
 """See the 22incddocguide.docx manual from the IRS SOI"""
 # Language in the doc: '$10,000 under $25,000' means >= $10,000 and < $25,000

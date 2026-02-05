@@ -1,4 +1,11 @@
 - bump: minor
   changes:
     added:
-      - Move all randomness to data package for deterministic country package. Take-up decisions for SNAP, Medicaid, ACA, EITC, DC PTC, Head Start, and Early Head Start are now generated stochastically during dataset creation using take-up rates from YAML parameter files.
+      - Name-based seeding (seeded_rng) for order-independent reproducibility
+      - State-specific Medicaid takeup rates (53%-99% range, 51 jurisdictions)
+      - SSI resource test pass rate parameter (0.4)
+      - WIC takeup and nutritional risk draw variables (float)
+      - meets_ssi_resource_test boolean generation
+    changed:
+      - Replaced shared RNG (seed=100) with per-variable name-based seeding
+      - Medicaid takeup now uses state-specific rates instead of uniform 93%

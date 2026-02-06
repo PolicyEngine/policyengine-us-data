@@ -35,6 +35,20 @@ def load_take_up_rate(variable_name: str, year: int = 2018):
     if "rates_by_state" in data:
         return data["rates_by_state"]
 
+    # WIC-style: rates by category (each category has a time series)
+    if "rates_by_category" in data:
+        result = {}
+        for category, time_series in data["rates_by_category"].items():
+            applicable_value = None
+            for y, value in sorted(time_series.items()):
+                if int(y) <= year:
+                    applicable_value = value
+                else:
+                    break
+            if applicable_value is not None:
+                result[category] = applicable_value
+        return result
+
     # Standard time-series values
     values = data["values"]
     applicable_value = None

@@ -1,0 +1,13 @@
+rates_by_category:
+  PREGNANT:
+    1980: 0.913
+  POSTPARTUM:
+    1980: 0.933
+  BREASTFEEDING:
+    1980: 0.889
+  INFANT:
+    1980: 0.95
+  CHILD:
+    1980: 0.752
+  NONE:
+    1980: 0

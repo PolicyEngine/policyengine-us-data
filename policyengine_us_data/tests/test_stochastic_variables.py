@@ -117,12 +117,31 @@ class TestTakeUpProportions:
         assert take_up.dtype == bool
         assert set(take_up).issubset({True, False})
 
-    def test_wic_draws_are_float(self):
-        rng = seeded_rng("wic_takeup_draw")
-        draws = rng.random(1000).astype(np.float32)
-        assert draws.dtype == np.float32
-        assert np.all(draws >= 0)
-        assert np.all(draws < 1)
+    def test_wic_takeup_rates_load(self):
+        rates = load_take_up_rate("wic_takeup", 2022)
+        assert isinstance(rates, dict)
+        assert rates["PREGNANT"] == 0.456
+        assert rates["INFANT"] == 0.784
+        assert rates["NONE"] == 0
+
+    def test_wic_nutritional_risk_rates_load(self):
+        rates = load_take_up_rate("wic_nutritional_risk", 2022)
+        assert isinstance(rates, dict)
+        assert rates["INFANT"] == 0.95
+        assert rates["CHILD"] == 0.752
+        assert rates["NONE"] == 0
+
+    def test_wic_category_specific_proportions(self):
+        rates = load_take_up_rate("wic_takeup", 2022)
+        n = 10_000
+        rng = seeded_rng("would_claim_wic")
+        draws = rng.random(n)
+        for category, expected_rate in [
+            ("INFANT", 0.784),
+            ("CHILD", 0.46),
+        ]:
+            take_up = draws[:n] < expected_rate
+            assert abs(take_up.mean() - expected_rate) < 0.05
 
     def test_state_specific_medicaid_proportions(self):
         rates = load_take_up_rate("medicaid", 2022)

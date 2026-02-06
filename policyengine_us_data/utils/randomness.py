@@ -23,7 +23,8 @@ def _stable_string_hash(s: str) -> np.uint64:
     return h
 
 
-def seeded_rng(variable_name: str) -> np.random.Generator:
+def seeded_rng(variable_name: str, salt: str = None) -> np.random.Generator:
     """Create a per-variable RNG seeded by variable name hash."""
-    seed = int(_stable_string_hash(variable_name)) % (2**63)
+    key = variable_name if salt is None else f"{variable_name}:{salt}"
+    seed = int(_stable_string_hash(key)) % (2**63)
     return np.random.default_rng(seed=seed)

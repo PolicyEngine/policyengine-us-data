@@ -268,13 +268,24 @@ def add_takeup(self):
     rng = seeded_rng("meets_ssi_resource_test")
     data["meets_ssi_resource_test"] = rng.random(n_persons) < ssi_pass_rate
 
-    # WIC draws (country package compares against category-specific rates)
-    rng = seeded_rng("wic_takeup_draw")
-    data["wic_takeup_draw"] = rng.random(n_persons).astype(np.float32)
+    # WIC: resolve draws to bools using category-specific rates
+    wic_categories = baseline.calculate("wic_category_str").values
+    wic_takeup_rates = load_take_up_rate("wic_takeup", self.time_period)
+    wic_takeup_rate_by_person = np.array(
+        [wic_takeup_rates.get(c, 0) for c in wic_categories]
+    )
+    rng = seeded_rng("would_claim_wic")
+    data["would_claim_wic"] = rng.random(n_persons) < wic_takeup_rate_by_person
 
-    rng = seeded_rng("wic_nutritional_risk_draw")
-    data["wic_nutritional_risk_draw"] = rng.random(n_persons).astype(
-        np.float32
+    wic_risk_rates = load_take_up_rate(
+        "wic_nutritional_risk", self.time_period
+    )
+    wic_risk_rate_by_person = np.array(
+        [wic_risk_rates.get(c, 0) for c in wic_categories]
+    )
+    rng = seeded_rng("wic_nutritional_risk_imputed")
+    data["wic_nutritional_risk_imputed"] = (
+        rng.random(n_persons) < wic_risk_rate_by_person
     )
 
     self.save_dataset(data)

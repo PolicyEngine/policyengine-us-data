@@ -277,16 +277,17 @@ def add_takeup(self):
     rng = seeded_rng("would_claim_wic")
     data["would_claim_wic"] = rng.random(n_persons) < wic_takeup_rate_by_person
 
+    # WIC nutritional risk — fully resolved
     wic_risk_rates = load_take_up_rate(
         "wic_nutritional_risk", self.time_period
     )
     wic_risk_rate_by_person = np.array(
         [wic_risk_rates.get(c, 0) for c in wic_categories]
     )
-    rng = seeded_rng("wic_nutritional_risk_imputed")
-    data["wic_nutritional_risk_imputed"] = (
-        rng.random(n_persons) < wic_risk_rate_by_person
-    )
+    receives_wic = baseline.calculate("receives_wic").values
+    rng = seeded_rng("is_wic_at_nutritional_risk")
+    imputed_risk = rng.random(n_persons) < wic_risk_rate_by_person
+    data["is_wic_at_nutritional_risk"] = receives_wic | imputed_risk
 
     self.save_dataset(data)
 

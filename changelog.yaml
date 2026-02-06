@@ -803,3 +803,9 @@
     fixed:
     - Fix etl_state_income_tax.py API mismatches with db_metadata utility functions
   date: 2026-02-01 20:58:21
+- bump: minor
+  changes:
+    added:
+    - Add ACA Premium Tax Credit (PTC) targets from IRS SOI CD-level data (N85530/A85530)
+      at national, state, and congressional district levels
+  date: 2026-02-06 12:00:00

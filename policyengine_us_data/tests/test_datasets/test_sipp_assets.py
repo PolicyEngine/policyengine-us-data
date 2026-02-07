@@ -14,6 +14,27 @@ Policy models (policyengine-us) define which assets count for SSI, TANF, etc.
 import pytest
 
 
+def _has_asset_variables():
+    """Check if policyengine-us has the required asset variables."""
+    try:
+        from policyengine_us import CountryTaxBenefitSystem
+
+        system = CountryTaxBenefitSystem()
+        return all(
+            var in system.variables
+            for var in ["bank_account_assets", "stock_assets", "bond_assets"]
+        )
+    except Exception:
+        return False
+
+
+# Skip all tests in this module if asset variables not available
+pytestmark = pytest.mark.skipif(
+    not _has_asset_variables(),
+    reason="Asset variables not yet available in policyengine-us",
+)
+
+
 def test_ecps_has_liquid_assets():
     """Test that liquid asset categories are imputed and within bounds.
 

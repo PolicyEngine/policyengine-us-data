@@ -803,3 +803,15 @@
     fixed:
     - Fix etl_state_income_tax.py API mismatches with db_metadata utility functions
   date: 2026-02-01 20:58:21
+- bump: minor
+  changes:
+    added:
+    - Name-based seeding (seeded_rng) for order-independent reproducibility
+    - State-specific Medicaid takeup rates (53%-99% range, 51 jurisdictions)
+    - SSI resource test pass rate parameter (0.4)
+    - WIC takeup and nutritional risk draw variables (float)
+    - meets_ssi_resource_test boolean generation
+    changed:
+    - Replaced shared RNG (seed=100) with per-variable name-based seeding
+    - Medicaid takeup now uses state-specific rates instead of uniform 93%
+  date: 2026-02-07 00:24:23

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.62.0] - 2026-02-07 00:24:23
+
+### Added
+
+- Name-based seeding (seeded_rng) for order-independent reproducibility
+- State-specific Medicaid takeup rates (53%-99% range, 51 jurisdictions)
+- SSI resource test pass rate parameter (0.4)
+- WIC takeup and nutritional risk draw variables (float)
+- meets_ssi_resource_test boolean generation
+
+### Changed
+
+- Replaced shared RNG (seed=100) with per-variable name-based seeding
+- Medicaid takeup now uses state-specific rates instead of uniform 93%
+
 ## [1.61.2] - 2026-02-01 20:58:21
 
 ### Fixed
@@ -932,6 +947,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.62.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.61.2...1.62.0
 [1.61.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.61.1...1.61.2
 [1.61.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.61.0...1.61.1
 [1.61.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.60.0...1.61.0

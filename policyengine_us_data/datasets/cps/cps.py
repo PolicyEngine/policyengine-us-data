@@ -289,29 +289,14 @@ def add_takeup(self):
     imputed_risk = rng.random(n_persons) < wic_risk_rate_by_person
     data["is_wic_at_nutritional_risk"] = receives_wic | imputed_risk
 
-    # Tax filing behavior assignment
-    #
-    # Some people file taxes even when not strictly required:
-    # 1. Those eligible for refundable credits (know they'll get money back)
-    # 2. Those who file voluntarily for other reasons (state requirements,
-    #    documentation, habit)
-    #
-    # We use EITC take-up as a proxy for refund-seeking behavior, since
-    # EITC recipients know they'll get money back and will file.
-
-    # People who take up EITC are likely filing for a refund
-    # Use a high probability (95%) since some may not know about it
-    rng = seeded_rng("would_file_for_refund")
-    data["would_file_for_refund"] = data["takes_up_eitc"] & (
-        rng.random(n_tax_units) < 0.95
-    )
-
-    # Voluntary filers: file for other reasons (state requirements,
-    # documentation, habit). Apply only to those not already filing for
-    # refund. ~3% of remaining tax units file voluntarily.
-    voluntary_filing_rate = 0.03
+    # Voluntary tax filing: some people file even when not required and not
+    # seeking a refund. EITC take-up already captures refund-seeking behavior
+    # (if you take up EITC, you file). This variable captures people who file
+    # for other reasons: state requirements, documentation, habit.
+    # ~5% of tax units who don't take up EITC still file voluntarily.
+    voluntary_filing_rate = 0.05
     rng = seeded_rng("would_file_taxes_voluntarily")
-    data["would_file_taxes_voluntarily"] = ~data["would_file_for_refund"] & (
+    data["would_file_taxes_voluntarily"] = ~data["takes_up_eitc"] & (
         rng.random(n_tax_units) < voluntary_filing_rate
     )
 

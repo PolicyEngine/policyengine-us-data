@@ -211,7 +211,7 @@ def add_takeup(self):
     early_head_start_rate = load_take_up_rate(
         "early_head_start", self.time_period
     )
-    ssi_pass_rate = load_take_up_rate("ssi_pass_rate", self.time_period)
+    ssi_rate = load_take_up_rate("ssi", self.time_period)
 
     # EITC: varies by number of children
     eitc_child_count = baseline.calculate("eitc_child_count").values
@@ -264,9 +264,9 @@ def add_takeup(self):
         rng.random(n_persons) < early_head_start_rate
     )
 
-    # SSI resource test
-    rng = seeded_rng("meets_ssi_resource_test")
-    data["meets_ssi_resource_test"] = rng.random(n_persons) < ssi_pass_rate
+    # SSI
+    rng = seeded_rng("takes_up_ssi_if_eligible")
+    data["takes_up_ssi_if_eligible"] = rng.random(n_persons) < ssi_rate
 
     # WIC: resolve draws to bools using category-specific rates
     wic_categories = baseline.calculate("wic_category_str").values
@@ -1761,10 +1761,19 @@ def add_tips(self, cps: h5py.File):
             "employment_income",
             "age",
             "household_weight",
+            "is_female",
         ],
         2025,
     )
     cps = pd.DataFrame(cps)
+
+    # Get is_married from raw CPS data (A_MARITL codes: 1,2 = married)
+    # Note: is_married in policyengine-us is Family-level, but we need
+    # person-level for imputation models
+    raw_data = self.raw_cps(require=True).load()
+    raw_person = raw_data["person"]
+    cps["is_married"] = raw_person.A_MARITL.isin([1, 2]).values
+    raw_data.close()
 
     cps["is_under_18"] = cps.age < 18
     cps["is_under_6"] = cps.age < 6
@@ -1792,6 +1801,27 @@ def add_tips(self, cps: h5py.File):
         X_test=cps,
         mean_quantile=0.5,
     ).tip_income.values
+
+    # Impute liquid assets from SIPP (bank accounts, stocks, bonds)
+
+    from policyengine_us_data.datasets.sipp import get_asset_model
+
+    asset_model = get_asset_model()
+
+    asset_predictions = asset_model.predict(
+        X_test=cps,
+        mean_quantile=0.5,
+    )
+    cps["bank_account_assets"] = asset_predictions.bank_account_assets.values
+    cps["stock_assets"] = asset_predictions.stock_assets.values
+    cps["bond_assets"] = asset_predictions.bond_assets.values
+
+    # Drop temporary columns used only for imputation
+    # is_married is person-level here but policyengine-us defines it at Family
+    # level, so we must not save it
+    cps = cps.drop(
+        columns=["is_married", "is_under_18", "is_under_6"], errors="ignore"
+    )
 
     self.save_dataset(cps)
 

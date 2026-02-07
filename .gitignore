@@ -35,3 +35,4 @@ completed_*.txt
 
 ## Test fixtures
 !policyengine_us_data/tests/test_local_area_calibration/test_fixture_50hh.h5
+oregon_ctc_analysis.py

@@ -289,13 +289,29 @@ def add_takeup(self):
     imputed_risk = rng.random(n_persons) < wic_risk_rate_by_person
     data["is_wic_at_nutritional_risk"] = receives_wic | imputed_risk
 
-    # Voluntary tax filing: some people file even when not required and
-    # not getting a refund. SOI shows ~21M filers with AGI < $10k, many
-    # of whom file voluntarily. Estimate ~5% of tax units file voluntarily
-    # (state requirements, documentation, habit).
-    voluntary_filing_rate = 0.05
+    # Tax filing behavior assignment
+    #
+    # Some people file taxes even when not strictly required:
+    # 1. Those eligible for refundable credits (know they'll get money back)
+    # 2. Those who file voluntarily for other reasons (state requirements,
+    #    documentation, habit)
+    #
+    # We use EITC take-up as a proxy for refund-seeking behavior, since
+    # EITC recipients know they'll get money back and will file.
+
+    # People who take up EITC are likely filing for a refund
+    # Use a high probability (95%) since some may not know about it
+    rng = seeded_rng("would_file_for_refund")
+    data["would_file_for_refund"] = data["takes_up_eitc"] & (
+        rng.random(n_tax_units) < 0.95
+    )
+
+    # Voluntary filers: file for other reasons (state requirements,
+    # documentation, habit). Apply only to those not already filing for
+    # refund. ~3% of remaining tax units file voluntarily.
+    voluntary_filing_rate = 0.03
     rng = seeded_rng("would_file_taxes_voluntarily")
-    data["would_file_taxes_voluntarily"] = (
+    data["would_file_taxes_voluntarily"] = ~data["would_file_for_refund"] & (
         rng.random(n_tax_units) < voluntary_filing_rate
     )
 

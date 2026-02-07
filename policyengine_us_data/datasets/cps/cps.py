@@ -1761,6 +1761,8 @@ def add_tips(self, cps: h5py.File):
             "employment_income",
             "age",
             "household_weight",
+            "is_female",
+            "is_married",
         ],
         2025,
     )
@@ -1798,12 +1800,6 @@ def add_tips(self, cps: h5py.File):
     from policyengine_us_data.datasets.sipp import get_asset_model
 
     asset_model = get_asset_model()
-
-    # Prepare predictors that match the asset model
-    cps["is_female"] = cps.get("is_female", cps["sex"] == 2)
-    cps["is_married"] = cps.get(
-        "is_married", cps["marital_status"].isin([1, 2])
-    )
 
     asset_predictions = asset_model.predict(
         X_test=cps,

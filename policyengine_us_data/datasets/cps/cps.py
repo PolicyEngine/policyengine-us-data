@@ -1816,6 +1816,13 @@ def add_tips(self, cps: h5py.File):
     cps["stock_assets"] = asset_predictions.stock_assets.values
     cps["bond_assets"] = asset_predictions.bond_assets.values
 
+    # Drop temporary columns used only for imputation
+    # is_married is person-level here but policyengine-us defines it at Family
+    # level, so we must not save it
+    cps = cps.drop(
+        columns=["is_married", "is_under_18", "is_under_6"], errors="ignore"
+    )
+
     self.save_dataset(cps)
 
 

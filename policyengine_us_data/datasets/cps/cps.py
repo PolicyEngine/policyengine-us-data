@@ -14,6 +14,8 @@ from policyengine_us_data.utils.uprating import (
 )
 from microimpute.models.qrf import QRF
 import logging
+from policyengine_us_data.parameters import load_take_up_rate
+from policyengine_us_data.utils.randomness import seeded_rng
 
 
 class CPS(Dataset):
@@ -191,28 +193,101 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
 def add_takeup(self):
     data = self.load_dataset()
 
-    from policyengine_us import system, Microsimulation
+    from policyengine_us import Microsimulation
 
     baseline = Microsimulation(dataset=self)
-    parameters = baseline.tax_benefit_system.parameters(self.time_period)
 
-    generator = np.random.default_rng(seed=100)
+    n_persons = len(data["person_id"])
+    n_tax_units = len(data["tax_unit_id"])
+    n_spm_units = len(data["spm_unit_id"])
 
-    eitc_takeup_rates = parameters.gov.irs.credits.eitc.takeup
+    # Load take-up rates
+    eitc_rates_by_children = load_take_up_rate("eitc", self.time_period)
+    dc_ptc_rate = load_take_up_rate("dc_ptc", self.time_period)
+    snap_rate = load_take_up_rate("snap", self.time_period)
+    aca_rate = load_take_up_rate("aca", self.time_period)
+    medicaid_rates_by_state = load_take_up_rate("medicaid", self.time_period)
+    head_start_rate = load_take_up_rate("head_start", self.time_period)
+    early_head_start_rate = load_take_up_rate(
+        "early_head_start", self.time_period
+    )
+    ssi_pass_rate = load_take_up_rate("ssi_pass_rate", self.time_period)
+
+    # EITC: varies by number of children
     eitc_child_count = baseline.calculate("eitc_child_count").values
-    eitc_takeup_rate = eitc_takeup_rates.calc(eitc_child_count)
-    data["takes_up_eitc"] = (
-        generator.random(len(data["tax_unit_id"])) < eitc_takeup_rate
+    eitc_takeup_rate = np.array(
+        [
+            eitc_rates_by_children.get(min(int(c), 3), 0.85)
+            for c in eitc_child_count
+        ]
     )
-    dc_ptc_takeup_rate = parameters.gov.states.dc.tax.income.credits.ptc.takeup
-    data["takes_up_dc_ptc"] = (
-        generator.random(len(data["tax_unit_id"])) < dc_ptc_takeup_rate
-    )
-    generator = np.random.default_rng(seed=100)
+    rng = seeded_rng("takes_up_eitc")
+    data["takes_up_eitc"] = rng.random(n_tax_units) < eitc_takeup_rate
 
-    data["snap_take_up_seed"] = generator.random(len(data["spm_unit_id"]))
-    data["aca_take_up_seed"] = generator.random(len(data["tax_unit_id"]))
-    data["medicaid_take_up_seed"] = generator.random(len(data["person_id"]))
+    # DC Property Tax Credit
+    rng = seeded_rng("takes_up_dc_ptc")
+    data["takes_up_dc_ptc"] = rng.random(n_tax_units) < dc_ptc_rate
+
+    # SNAP
+    rng = seeded_rng("takes_up_snap_if_eligible")
+    data["takes_up_snap_if_eligible"] = rng.random(n_spm_units) < snap_rate
+
+    # ACA
+    rng = seeded_rng("takes_up_aca_if_eligible")
+    data["takes_up_aca_if_eligible"] = rng.random(n_tax_units) < aca_rate
+
+    # Medicaid: state-specific rates
+    state_codes = baseline.calculate("state_code_str").values
+    hh_ids = data["household_id"]
+    person_hh_ids = data["person_household_id"]
+    hh_to_state = dict(zip(hh_ids, state_codes))
+    person_states = np.array(
+        [hh_to_state.get(hh_id, "CA") for hh_id in person_hh_ids]
+    )
+    medicaid_rate_by_person = np.array(
+        [medicaid_rates_by_state.get(s, 0.93) for s in person_states]
+    )
+    rng = seeded_rng("takes_up_medicaid_if_eligible")
+    data["takes_up_medicaid_if_eligible"] = (
+        rng.random(n_persons) < medicaid_rate_by_person
+    )
+
+    # Head Start
+    rng = seeded_rng("takes_up_head_start_if_eligible")
+    data["takes_up_head_start_if_eligible"] = (
+        rng.random(n_persons) < head_start_rate
+    )
+
+    # Early Head Start
+    rng = seeded_rng("takes_up_early_head_start_if_eligible")
+    data["takes_up_early_head_start_if_eligible"] = (
+        rng.random(n_persons) < early_head_start_rate
+    )
+
+    # SSI resource test
+    rng = seeded_rng("meets_ssi_resource_test")
+    data["meets_ssi_resource_test"] = rng.random(n_persons) < ssi_pass_rate
+
+    # WIC: resolve draws to bools using category-specific rates
+    wic_categories = baseline.calculate("wic_category_str").values
+    wic_takeup_rates = load_take_up_rate("wic_takeup", self.time_period)
+    wic_takeup_rate_by_person = np.array(
+        [wic_takeup_rates.get(c, 0) for c in wic_categories]
+    )
+    rng = seeded_rng("would_claim_wic")
+    data["would_claim_wic"] = rng.random(n_persons) < wic_takeup_rate_by_person
+
+    # WIC nutritional risk — fully resolved
+    wic_risk_rates = load_take_up_rate(
+        "wic_nutritional_risk", self.time_period
+    )
+    wic_risk_rate_by_person = np.array(
+        [wic_risk_rates.get(c, 0) for c in wic_categories]
+    )
+    receives_wic = baseline.calculate("receives_wic").values
+    rng = seeded_rng("is_wic_at_nutritional_risk")
+    imputed_risk = rng.random(n_persons) < wic_risk_rate_by_person
+    data["is_wic_at_nutritional_risk"] = receives_wic | imputed_risk
 
     self.save_dataset(data)
 

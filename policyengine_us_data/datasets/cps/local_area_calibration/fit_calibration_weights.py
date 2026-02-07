@@ -110,6 +110,7 @@ targets_df, X_sparse, household_id_mapping = builder.build_matrix(
             "health_insurance_premiums_without_medicare_part_b",
             "snap",
             "state_income_tax",  # Census STC state income tax collections
+            "aca_ptc",  # ACA Premium Tax Credit from IRS SOI
         ],
     },
 )

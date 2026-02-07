@@ -281,6 +281,7 @@ def transform_soi_data(raw_df):
         dict(code="18425", name="salt", breakdown=None),
         dict(code="06500", name="income_tax", breakdown=None),
         dict(code="05800", name="income_tax_before_credits", breakdown=None),
+        dict(code="85530", name="aca_ptc", breakdown=None),
     ]
 
     # National ---------------
@@ -564,6 +565,28 @@ def load_soi_data(long_dfs, year):
         display_name="Income Tax",
         display_order=1,
         units="dollars",
+    )
+
+    # ACA Premium Tax Credit
+    ptc_group = get_or_create_variable_group(
+        session,
+        name="aca_ptc_recipients",
+        category="tax",
+        is_histogram=False,
+        is_exclusive=False,
+        aggregation_method="sum",
+        display_order=9,
+        description="ACA Premium Tax Credit recipients and amounts",
+    )
+
+    get_or_create_variable_metadata(
+        session,
+        variable="aca_ptc",
+        group=ptc_group,
+        display_name="Premium Tax Credit",
+        display_order=1,
+        units="dollars",
+        notes="ACA Premium Tax Credit amount from IRS SOI",
     )
 
     # Fetch existing geographic strata

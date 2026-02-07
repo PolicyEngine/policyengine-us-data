@@ -2,5 +2,7 @@
   changes:
     added:
       - Add liquid asset imputation from SIPP (bank accounts, stocks, bonds) for SSI and means-tested program modeling
+      - Add SSI takeup rate parameter and takes_up_ssi_if_eligible draw
     removed:
       - Remove random SSI resource test placeholder (now calculated from imputed assets in policyengine-us)
+      - Remove ssi_pass_rate parameter (replaced by ssi takeup rate)

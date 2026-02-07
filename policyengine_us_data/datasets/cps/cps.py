@@ -289,6 +289,16 @@ def add_takeup(self):
     imputed_risk = rng.random(n_persons) < wic_risk_rate_by_person
     data["is_wic_at_nutritional_risk"] = receives_wic | imputed_risk
 
+    # Voluntary tax filing: some people file even when not required and
+    # not getting a refund. SOI shows ~21M filers with AGI < $10k, many
+    # of whom file voluntarily. Estimate ~5% of tax units file voluntarily
+    # (state requirements, documentation, habit).
+    voluntary_filing_rate = 0.05
+    rng = seeded_rng("would_file_taxes_voluntarily")
+    data["would_file_taxes_voluntarily"] = (
+        rng.random(n_tax_units) < voluntary_filing_rate
+    )
+
     self.save_dataset(data)
 
 

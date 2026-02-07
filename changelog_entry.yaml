@@ -1,3 +1,6 @@
 - date: 2026-02-02
   type: fixed
   description: Fix stale calibration targets by deriving time_period from dataset across all ETL scripts, using income_tax_positive for CBO calibration, and adding 119th Congress district code support for consistent redistricting alignment
+- date: 2026-02-07
+  type: added
+  description: Add ACA Premium Tax Credit targets from IRS SOI data (cherry-picked from PR #508)

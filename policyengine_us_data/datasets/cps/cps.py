@@ -1793,6 +1793,26 @@ def add_tips(self, cps: h5py.File):
         mean_quantile=0.5,
     ).tip_income.values
 
+    # Impute liquid assets from SIPP (bank accounts, stocks, bonds)
+
+    from policyengine_us_data.datasets.sipp import get_asset_model
+
+    asset_model = get_asset_model()
+
+    # Prepare predictors that match the asset model
+    cps["is_female"] = cps.get("is_female", cps["sex"] == 2)
+    cps["is_married"] = cps.get(
+        "is_married", cps["marital_status"].isin([1, 2])
+    )
+
+    asset_predictions = asset_model.predict(
+        X_test=cps,
+        mean_quantile=0.5,
+    )
+    cps["bank_account_assets"] = asset_predictions.bank_account_assets.values
+    cps["stock_assets"] = asset_predictions.stock_assets.values
+    cps["bond_assets"] = asset_predictions.bond_assets.values
+
     self.save_dataset(cps)
 
 

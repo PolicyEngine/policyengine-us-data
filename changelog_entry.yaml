@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+      - Add liquid asset imputation from SIPP (bank accounts, stocks, bonds) for SSI and means-tested program modeling

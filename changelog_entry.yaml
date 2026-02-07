@@ -2,3 +2,5 @@
   changes:
     added:
       - Add liquid asset imputation from SIPP (bank accounts, stocks, bonds) for SSI and means-tested program modeling
+    removed:
+      - Remove random SSI resource test placeholder (now calculated from imputed assets in policyengine-us)

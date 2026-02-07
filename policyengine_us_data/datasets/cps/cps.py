@@ -211,7 +211,6 @@ def add_takeup(self):
     early_head_start_rate = load_take_up_rate(
         "early_head_start", self.time_period
     )
-    ssi_pass_rate = load_take_up_rate("ssi_pass_rate", self.time_period)
 
     # EITC: varies by number of children
     eitc_child_count = baseline.calculate("eitc_child_count").values
@@ -263,10 +262,6 @@ def add_takeup(self):
     data["takes_up_early_head_start_if_eligible"] = (
         rng.random(n_persons) < early_head_start_rate
     )
-
-    # SSI resource test
-    rng = seeded_rng("meets_ssi_resource_test")
-    data["meets_ssi_resource_test"] = rng.random(n_persons) < ssi_pass_rate
 
     # WIC: resolve draws to bools using category-specific rates
     wic_categories = baseline.calculate("wic_category_str").values

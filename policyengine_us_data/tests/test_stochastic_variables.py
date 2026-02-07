@@ -46,9 +46,9 @@ class TestTakeUpRateParameters:
         rate = load_take_up_rate("dc_ptc", 2022)
         assert 0 < rate <= 1
 
-    def test_ssi_pass_rate_loads(self):
-        rate = load_take_up_rate("ssi_pass_rate", 2022)
-        assert rate == 0.4
+    def test_ssi_takeup_rate_loads(self):
+        rate = load_take_up_rate("ssi", 2022)
+        assert rate == 0.50
 
 
 class TestStableStringHash:

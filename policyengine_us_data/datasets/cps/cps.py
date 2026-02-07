@@ -1762,11 +1762,18 @@ def add_tips(self, cps: h5py.File):
             "age",
             "household_weight",
             "is_female",
-            "is_married",
         ],
         2025,
     )
     cps = pd.DataFrame(cps)
+
+    # Get is_married from raw CPS data (A_MARITL codes: 1,2 = married)
+    # Note: is_married in policyengine-us is Family-level, but we need
+    # person-level for imputation models
+    raw_data = self.raw_cps(require=True).load()
+    raw_person = raw_data["person"]
+    cps["is_married"] = raw_person.A_MARITL.isin([1, 2]).values
+    raw_data.close()
 
     cps["is_under_18"] = cps.age < 18
     cps["is_under_6"] = cps.age < 6

@@ -330,6 +330,39 @@ def build_loss_matrix(dataset: type, time_period):
         )
         targets_array.append(row["eitc_total"] * eitc_spending_uprating)
 
+    # Tax filer counts by AGI band (SOI Table 1.1)
+    # This calibrates total filers (not just taxable returns) including
+    # low-AGI filers who are important for income distribution accuracy
+    SOI_FILER_COUNTS_2015 = {
+        # (agi_lower, agi_upper): total_returns
+        (-np.inf, 0): 2_072_066,
+        (0, 5_000): 10_134_703,
+        (5_000, 10_000): 11_398_595,
+        (10_000, 25_000): 23_447_927,
+        (25_000, 50_000): 23_727_745,
+        (50_000, 100_000): 32_801_908,
+        (100_000, np.inf): 25_120_985,
+    }
+
+    # Get AGI and filer status at tax unit level, mapped to household
+    agi_tu = sim.calculate("adjusted_gross_income").values
+    is_filer_tu = sim.calculate("tax_unit_is_filer").values > 0
+
+    for (
+        agi_lower,
+        agi_upper,
+    ), filer_count_2015 in SOI_FILER_COUNTS_2015.items():
+        in_band = (agi_tu >= agi_lower) & (agi_tu < agi_upper)
+        label = f"nation/soi/filer_count/agi_{fmt(agi_lower)}_{fmt(agi_upper)}"
+        loss_matrix[label] = sim.map_result(
+            (is_filer_tu & in_band).astype(float),
+            "tax_unit",
+            "household",
+        )
+        # Uprate from 2015 to current year using population growth
+        uprated_target = filer_count_2015 * population_uprating
+        targets_array.append(uprated_target)
+
     # Hard-coded totals
     for variable_name, target in HARD_CODED_TOTALS.items():
         label = f"nation/census/{variable_name}"

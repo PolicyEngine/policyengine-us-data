@@ -943,9 +943,7 @@ class TestEnhancedCPSIntegration:
         mock_calc_result = MagicMock(values=mock_weights)
         mock_calc_result.__len__ = lambda self: len(mock_weights)
         mock_sim.calculate.return_value = mock_calc_result
-        mock_sim.dataset.load_dataset.return_value = {
-            "household_weight": {}
-        }
+        mock_sim.dataset.load_dataset.return_value = {"household_weight": {}}
 
         with (
             patch(

@@ -13,7 +13,6 @@ from policyengine_us_data.db.create_database_tables import (
     Target,
 )
 
-
 # ------------------------------------------------------------------
 # Format AGI bounds (mirrors loss.py ``fmt``)
 # ------------------------------------------------------------------

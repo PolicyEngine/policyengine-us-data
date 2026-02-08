@@ -25,7 +25,6 @@ from policyengine_us_data.calibration.national_matrix_builder import (
     SPM_UNIT_VARIABLES,
 )
 
-
 # -------------------------------------------------------------------
 # Helper: build a mock Microsimulation with controllable data
 # -------------------------------------------------------------------

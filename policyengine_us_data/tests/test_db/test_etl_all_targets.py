@@ -34,7 +34,6 @@ from policyengine_us_data.db.etl_all_targets import (
 )
 from policyengine_us_data.storage import CALIBRATION_FOLDER
 
-
 # ------------------------------------------------------------------ #
 #  Fixtures                                                           #
 # ------------------------------------------------------------------ #

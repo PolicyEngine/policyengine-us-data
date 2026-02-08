@@ -37,7 +37,7 @@ jobs:
 
       - name: Promote staged files to production
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          BRANCH="${{ github.event.inputs.branch }}"
+          VERSION=$(echo "${{ github.event.inputs.version }}" | xargs)
+          BRANCH=$(echo "${{ github.event.inputs.branch }}" | xargs)
           echo "Promoting version ${VERSION} from branch ${BRANCH}"
           modal run modal_app/local_area.py::main_promote --version="${VERSION}" --branch="${BRANCH}"

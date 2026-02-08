@@ -289,6 +289,17 @@ def add_takeup(self):
     imputed_risk = rng.random(n_persons) < wic_risk_rate_by_person
     data["is_wic_at_nutritional_risk"] = receives_wic | imputed_risk
 
+    # Voluntary tax filing: some people file even when not required and not
+    # seeking a refund. EITC take-up already captures refund-seeking behavior
+    # (if you take up EITC, you file). This variable captures people who file
+    # for other reasons: state requirements, documentation, habit.
+    # ~5% of tax units who don't take up EITC still file voluntarily.
+    voluntary_filing_rate = 0.05
+    rng = seeded_rng("would_file_taxes_voluntarily")
+    data["would_file_taxes_voluntarily"] = ~data["takes_up_eitc"] & (
+        rng.random(n_tax_units) < voluntary_filing_rate
+    )
+
     self.save_dataset(data)
 
 

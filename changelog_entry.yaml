@@ -1,0 +1,6 @@
+- bump: minor
+  changes:
+    added:
+    - Added two-pass geographic target reconciliation to ETL pipeline, ensuring state targets sum to national and CD targets sum to state.
+    - Added raw_value column to Target model to preserve original source values before reconciliation.
+    - Added geographic reconciliation validation to validate_database.py.

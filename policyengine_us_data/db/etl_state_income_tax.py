@@ -10,12 +10,15 @@ Data source: https://www.census.gov/programs-surveys/stc/data/datasets.html
 Stratum Group ID: 7 (State Income Tax)
 """
 
+import argparse
 import logging
 import pandas as pd
 import numpy as np
 from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+
+DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -261,7 +264,7 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
         source = get_or_create_source(
             session,
             name="Census Bureau Annual Survey of State Tax Collections",
-            type=SourceType.administrative,
+            source_type=SourceType.ADMINISTRATIVE,
             url="https://www.census.gov/programs-surveys/stc.html",
             notes="Individual income tax collections by state",
         )
@@ -270,7 +273,7 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
         var_group = get_or_create_variable_group(
             session,
             name="state_income_tax",
-            display_name="State Income Tax",
+            category="taxes",
             description="State-level individual income tax collections",
         )
 
@@ -278,10 +281,10 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
         get_or_create_variable_metadata(
             session,
             variable="state_income_tax",
+            group=var_group,
             display_name="State Income Tax",
-            variable_group_id=var_group.variable_group_id,
             units="USD",
-            description="Total state individual income tax collections",
+            notes="Total state individual income tax collections",
         )
 
         # Get geographic strata to use as parents
@@ -342,12 +345,32 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
 
 def main():
     """Run the full ETL pipeline for state income tax targets."""
+    parser = argparse.ArgumentParser(
+        description="ETL for state income tax calibration targets"
+    )
+    parser.add_argument(
+        "--dataset",
+        default=DEFAULT_DATASET,
+        help=(
+            "Source dataset (local path or HuggingFace URL). "
+            "The year for targets is derived from the dataset's "
+            "default_calculation_period. Default: %(default)s"
+        ),
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    year = 2023
+    # Derive year from dataset
+    from policyengine_us import Microsimulation
+
+    logger.info(f"Loading dataset: {args.dataset}")
+    sim = Microsimulation(dataset=args.dataset)
+    year = int(sim.default_calculation_period)
+    logger.info(f"Derived year from dataset: {year}")
 
     logger.info(f"Extracting Census STC data for FY{year}...")
     raw_df = extract_state_income_tax_data(year)

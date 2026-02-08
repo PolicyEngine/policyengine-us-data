@@ -792,3 +792,48 @@
     added:
     - Add state income tax calibration targets from Census STC FY2023 data
   date: 2026-01-31 20:18:58
+- bump: patch
+  changes:
+    added:
+    - cps_2024.h5 to HuggingFace upload list so the raw (unenhanced) 2024 CPS dataset
+      is published
+  date: 2026-02-01 04:24:23
+- bump: patch
+  changes:
+    fixed:
+    - Fix etl_state_income_tax.py API mismatches with db_metadata utility functions
+  date: 2026-02-01 20:58:21
+- bump: minor
+  changes:
+    added:
+    - Name-based seeding (seeded_rng) for order-independent reproducibility
+    - State-specific Medicaid takeup rates (53%-99% range, 51 jurisdictions)
+    - SSI resource test pass rate parameter (0.4)
+    - WIC takeup and nutritional risk draw variables (float)
+    - meets_ssi_resource_test boolean generation
+    changed:
+    - Replaced shared RNG (seed=100) with per-variable name-based seeding
+    - Medicaid takeup now uses state-specific rates instead of uniform 93%
+  date: 2026-02-07 00:24:23
+- bump: minor
+  changes:
+    added:
+    - Add liquid asset imputation from SIPP (bank accounts, stocks, bonds) for SSI
+      and means-tested program modeling
+    - Add SSI takeup rate parameter and takes_up_ssi_if_eligible draw
+    removed:
+    - Remove random SSI resource test placeholder (now calculated from imputed assets
+      in policyengine-us)
+    - Remove ssi_pass_rate parameter (replaced by ssi takeup rate)
+  date: 2026-02-07 19:46:46
+- bump: patch
+  changes:
+    fixed:
+    - Immigration status mapping.
+  date: 2026-02-08 02:59:10
+- bump: minor
+  changes:
+    added:
+    - Add voluntary tax filer variable and filer count calibration targets by AGI
+      band.
+  date: 2026-02-08 04:15:49

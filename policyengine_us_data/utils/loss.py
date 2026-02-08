@@ -220,26 +220,35 @@ def build_loss_matrix(dataset: type, time_period):
         targets_array.append(populations[year])
 
     # CBO projections
+    # Note: income_tax_positive matches CBO's receipts definition where
+    # refundable credit payments in excess of liability are classified as
+    # outlays, not negative receipts. See: https://www.cbo.gov/publication/43767
 
-    PROGRAMS = [
-        "income_tax",
+    CBO_PROGRAMS = [
+        "income_tax_positive",
         "snap",
         "social_security",
         "ssi",
         "unemployment_compensation",
     ]
 
-    for variable_name in PROGRAMS:
+    # Mapping from variable name to CBO parameter name (when different)
+    CBO_PARAM_NAME_MAP = {
+        "income_tax_positive": "income_tax",
+    }
+
+    for variable_name in CBO_PROGRAMS:
         label = f"nation/cbo/{variable_name}"
         loss_matrix[label] = sim.calculate(
             variable_name, map_to="household"
         ).values
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
+        param_name = CBO_PARAM_NAME_MAP.get(variable_name, variable_name)
         targets_array.append(
             sim.tax_benefit_system.parameters(
                 time_period
-            ).calibration.gov.cbo._children[variable_name]
+            ).calibration.gov.cbo._children[param_name]
         )
 
     # 1. Medicaid Spending

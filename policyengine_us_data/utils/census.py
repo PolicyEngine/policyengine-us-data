@@ -123,11 +123,18 @@ STATE_ABBREV_TO_FIPS = {
 
 TERRITORY_UCGIDS = {
     "0400000US72",  # Puerto Rico (state level)
+    # 118th Congress codes
     "5001800US7298",  # Puerto Rico
     "5001800US6098",  # American Samoa
     "5001800US6698",  # Guam
     "5001800US6998",  # Northern Mariana Islands
     "5001800US7898",  # U.S. Virgin Islands
+    # 119th Congress codes
+    "5001900US7298",  # Puerto Rico
+    "5001900US6098",  # American Samoa
+    "5001900US6698",  # Guam
+    "5001900US6998",  # Northern Mariana Islands
+    "5001900US7898",  # U.S. Virgin Islands
 }
 
 

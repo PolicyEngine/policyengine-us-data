@@ -1,8 +1,12 @@
+import argparse
+
 import pandas as pd
 import numpy as np
 from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+
+DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
 
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
@@ -69,9 +73,12 @@ def transform_age_data(age_data, docs):
     df = df.rename({"GEO_ID": "ucgid_str"}, axis=1)
     df_data = df.rename(columns=rename_mapping)[["ucgid_str"] + list(AGE_COLS)]
 
-    # Filter out Puerto Rico's district and state records, if needed
+    # Filter out Puerto Rico's district and state records
+    # 5001800US7298 = 118th Congress, 5001900US7298 = 119th Congress
     df_geos = df_data[
-        ~df_data["ucgid_str"].isin(["5001800US7298", "0400000US72"])
+        ~df_data["ucgid_str"].isin(
+            ["5001800US7298", "5001900US7298", "0400000US72"]
+        )
     ].copy()
 
     df = df_geos[["ucgid_str"] + AGE_COLS]
@@ -293,10 +300,30 @@ def load_age_data(df_long, geo, year):
         session.commit()
 
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(
+        description="ETL for age calibration targets"
+    )
+    parser.add_argument(
+        "--dataset",
+        default=DEFAULT_DATASET,
+        help=(
+            "Source dataset (local path or HuggingFace URL). "
+            "The year for Census API calls is derived from the dataset's "
+            "default_calculation_period. Default: %(default)s"
+        ),
+    )
+    args = parser.parse_args()
+
+    # Derive year from dataset
+    from policyengine_us import Microsimulation
+
+    print(f"Loading dataset: {args.dataset}")
+    sim = Microsimulation(dataset=args.dataset)
+    year = int(sim.default_calculation_period)
+    print(f"Derived year from dataset: {year}")
 
     # --- ETL: Extract, Transform, Load ----
-    year = 2023
 
     # ---- Extract ----------
     docs = get_census_docs(year)
@@ -315,3 +342,7 @@ if __name__ == "__main__":
     load_age_data(long_national_df, "National", year)
     load_age_data(long_state_df, "State", year)
     load_age_data(long_district_df, "District", year)
+
+
+if __name__ == "__main__":
+    main()

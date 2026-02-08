@@ -141,7 +141,7 @@ The `stratum_group_id` field categorizes strata:
 | 5 | Medicaid | Medicaid enrollment strata |
 | 6 | EITC | EITC recipients by qualifying children |
 | 7 | State Income Tax | State-level income tax collections (Census STC) |
-| 100-118 | IRS Conditional | Each IRS variable paired with conditional count constraints |
+| 100-119 | IRS Conditional | Each IRS variable paired with conditional count constraints (includes ACA PTC at 119) |
 
 ### Conditional Strata (IRS SOI)
 

@@ -1,3 +1,4 @@
+import argparse
 import logging
 from typing import Dict
 
@@ -6,6 +7,8 @@ import pandas as pd
 from sqlmodel import Session, create_engine
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+
+DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -72,6 +75,28 @@ def fetch_congressional_districts(year):
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Create initial geographic strata for calibration"
+    )
+    parser.add_argument(
+        "--dataset",
+        default=DEFAULT_DATASET,
+        help=(
+            "Source dataset (local path or HuggingFace URL). "
+            "The year for Census API calls is derived from the dataset's "
+            "default_calculation_period. Default: %(default)s"
+        ),
+    )
+    args = parser.parse_args()
+
+    # Derive year from dataset
+    from policyengine_us import Microsimulation
+
+    print(f"Loading dataset: {args.dataset}")
+    sim = Microsimulation(dataset=args.dataset)
+    year = int(sim.default_calculation_period)
+    print(f"Derived year from dataset: {year}")
+
     # State FIPS to name/abbreviation mapping
     STATE_NAMES = {
         1: "Alabama (AL)",
@@ -127,8 +152,7 @@ def main():
         56: "Wyoming (WY)",
     }
 
-    # Fetch congressional district data for year 2023
-    year = 2023
+    # Fetch congressional district data
     cd_df = fetch_congressional_districts(year)
 
     DATABASE_URL = (

@@ -14,10 +14,8 @@ from policyengine_us_data.utils.uprating import (
 )
 from microimpute.models.qrf import QRF
 import logging
-
-
-test_lite = os.environ.get("TEST_LITE") == "true"
-print(f"TEST_LITE == {test_lite}")
+from policyengine_us_data.parameters import load_take_up_rate
+from policyengine_us_data.utils.randomness import seeded_rng
 
 
 class CPS(Dataset):
@@ -36,20 +34,11 @@ class CPS(Dataset):
             frac (float, optional): Fraction of the dataset to keep. Defaults to 1. Example: To downsample to 25% of dataset,
                 set frac=0.25.
         """
-
         if self.raw_cps is None:
-            # Extrapolate from previous year
-            if self.time_period == 2025:
-                cps_2024 = CPS_2024(require=True)
-                arrays = cps_2024.load_dataset()
-                arrays = uprate_cps_data(arrays, 2024, self.time_period)
-            else:
-                # Default to CPS 2023 for backward compatibility
-                cps_2023 = CPS_2023(require=True)
-                arrays = cps_2023.load_dataset()
-                arrays = uprate_cps_data(arrays, 2023, self.time_period)
-            self.save_dataset(arrays)
-            return
+            raise ValueError(
+                f"Cannot generate {self.name}: raw_cps is not defined. "
+                "For future years, use PolicyEngine's uprating at simulation time."
+            )
 
         raw_data = self.raw_cps(require=True).load()
         cps = {}
@@ -78,7 +67,7 @@ class CPS(Dataset):
             undocumented_students_target=0.21 * 1.9e6,
         )
         logging.info("Adding family variables")
-        add_spm_variables(cps, spm_unit)
+        add_spm_variables(self, cps, spm_unit)
         logging.info("Adding household variables")
         add_household_variables(cps, household)
         logging.info("Adding rent")
@@ -204,28 +193,101 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
 def add_takeup(self):
     data = self.load_dataset()
 
-    from policyengine_us import system, Microsimulation
+    from policyengine_us import Microsimulation
 
     baseline = Microsimulation(dataset=self)
-    parameters = baseline.tax_benefit_system.parameters(self.time_period)
 
-    generator = np.random.default_rng(seed=100)
+    n_persons = len(data["person_id"])
+    n_tax_units = len(data["tax_unit_id"])
+    n_spm_units = len(data["spm_unit_id"])
 
-    eitc_takeup_rates = parameters.gov.irs.credits.eitc.takeup
+    # Load take-up rates
+    eitc_rates_by_children = load_take_up_rate("eitc", self.time_period)
+    dc_ptc_rate = load_take_up_rate("dc_ptc", self.time_period)
+    snap_rate = load_take_up_rate("snap", self.time_period)
+    aca_rate = load_take_up_rate("aca", self.time_period)
+    medicaid_rates_by_state = load_take_up_rate("medicaid", self.time_period)
+    head_start_rate = load_take_up_rate("head_start", self.time_period)
+    early_head_start_rate = load_take_up_rate(
+        "early_head_start", self.time_period
+    )
+    ssi_rate = load_take_up_rate("ssi", self.time_period)
+
+    # EITC: varies by number of children
     eitc_child_count = baseline.calculate("eitc_child_count").values
-    eitc_takeup_rate = eitc_takeup_rates.calc(eitc_child_count)
-    data["takes_up_eitc"] = (
-        generator.random(len(data["tax_unit_id"])) < eitc_takeup_rate
+    eitc_takeup_rate = np.array(
+        [
+            eitc_rates_by_children.get(min(int(c), 3), 0.85)
+            for c in eitc_child_count
+        ]
     )
-    dc_ptc_takeup_rate = parameters.gov.states.dc.tax.income.credits.ptc.takeup
-    data["takes_up_dc_ptc"] = (
-        generator.random(len(data["tax_unit_id"])) < dc_ptc_takeup_rate
-    )
-    generator = np.random.default_rng(seed=100)
+    rng = seeded_rng("takes_up_eitc")
+    data["takes_up_eitc"] = rng.random(n_tax_units) < eitc_takeup_rate
 
-    data["snap_take_up_seed"] = generator.random(len(data["spm_unit_id"]))
-    data["aca_take_up_seed"] = generator.random(len(data["tax_unit_id"]))
-    data["medicaid_take_up_seed"] = generator.random(len(data["person_id"]))
+    # DC Property Tax Credit
+    rng = seeded_rng("takes_up_dc_ptc")
+    data["takes_up_dc_ptc"] = rng.random(n_tax_units) < dc_ptc_rate
+
+    # SNAP
+    rng = seeded_rng("takes_up_snap_if_eligible")
+    data["takes_up_snap_if_eligible"] = rng.random(n_spm_units) < snap_rate
+
+    # ACA
+    rng = seeded_rng("takes_up_aca_if_eligible")
+    data["takes_up_aca_if_eligible"] = rng.random(n_tax_units) < aca_rate
+
+    # Medicaid: state-specific rates
+    state_codes = baseline.calculate("state_code_str").values
+    hh_ids = data["household_id"]
+    person_hh_ids = data["person_household_id"]
+    hh_to_state = dict(zip(hh_ids, state_codes))
+    person_states = np.array(
+        [hh_to_state.get(hh_id, "CA") for hh_id in person_hh_ids]
+    )
+    medicaid_rate_by_person = np.array(
+        [medicaid_rates_by_state.get(s, 0.93) for s in person_states]
+    )
+    rng = seeded_rng("takes_up_medicaid_if_eligible")
+    data["takes_up_medicaid_if_eligible"] = (
+        rng.random(n_persons) < medicaid_rate_by_person
+    )
+
+    # Head Start
+    rng = seeded_rng("takes_up_head_start_if_eligible")
+    data["takes_up_head_start_if_eligible"] = (
+        rng.random(n_persons) < head_start_rate
+    )
+
+    # Early Head Start
+    rng = seeded_rng("takes_up_early_head_start_if_eligible")
+    data["takes_up_early_head_start_if_eligible"] = (
+        rng.random(n_persons) < early_head_start_rate
+    )
+
+    # SSI
+    rng = seeded_rng("takes_up_ssi_if_eligible")
+    data["takes_up_ssi_if_eligible"] = rng.random(n_persons) < ssi_rate
+
+    # WIC: resolve draws to bools using category-specific rates
+    wic_categories = baseline.calculate("wic_category_str").values
+    wic_takeup_rates = load_take_up_rate("wic_takeup", self.time_period)
+    wic_takeup_rate_by_person = np.array(
+        [wic_takeup_rates.get(c, 0) for c in wic_categories]
+    )
+    rng = seeded_rng("would_claim_wic")
+    data["would_claim_wic"] = rng.random(n_persons) < wic_takeup_rate_by_person
+
+    # WIC nutritional risk — fully resolved
+    wic_risk_rates = load_take_up_rate(
+        "wic_nutritional_risk", self.time_period
+    )
+    wic_risk_rate_by_person = np.array(
+        [wic_risk_rates.get(c, 0) for c in wic_categories]
+    )
+    receives_wic = baseline.calculate("receives_wic").values
+    rng = seeded_rng("is_wic_at_nutritional_risk")
+    imputed_risk = rng.random(n_persons) < wic_risk_rate_by_person
+    data["is_wic_at_nutritional_risk"] = receives_wic | imputed_risk
 
     self.save_dataset(data)
 
@@ -418,24 +480,70 @@ def add_personal_income_variables(
         1 - p["qualified_dividend_fraction"]
     )
     cps["rental_income"] = person.RNT_VAL
-    # Assign Social Security retirement benefits if at least 62.
-    MINIMUM_RETIREMENT_AGE = 62
+
+    # Classify Social Security income using CPS ASEC reason codes
+    # (RESNSS1 and RESNSS2). Reason code values:
+    #   1 = Retired
+    #   2 = Disabled (adult or child)
+    #   3 = Widowed
+    #   4 = Spouse
+    #   5 = Surviving child
+    #   6 = Dependent child
+    #   7 = On behalf of surviving/dependent/disabled child(ren)
+    #   8 = Other
+    is_retirement = (person.RESNSS1 == 1) | (person.RESNSS2 == 1)
+    is_disability = (person.RESNSS1 == 2) | (person.RESNSS2 == 2)
+    is_survivor = np.isin(person.RESNSS1, [3, 5]) | np.isin(
+        person.RESNSS2, [3, 5]
+    )
+    is_dependent = np.isin(person.RESNSS1, [4, 6, 7]) | np.isin(
+        person.RESNSS2, [4, 6, 7]
+    )
+
+    # Primary classification: assign full SS_VAL to the highest-
+    # priority category when someone has multiple source codes.
     cps["social_security_retirement"] = np.where(
-        person.A_AGE >= MINIMUM_RETIREMENT_AGE, person.SS_VAL, 0
+        is_retirement, person.SS_VAL, 0
     )
-    # Otherwise assign them to Social Security disability benefits.
-    cps["social_security_disability"] = (
-        person.SS_VAL - cps["social_security_retirement"]
+    cps["social_security_disability"] = np.where(
+        is_disability & ~is_retirement, person.SS_VAL, 0
     )
-    # Provide placeholders for other Social Security inputs to avoid creating
-    # NaNs as they're uprated.
-    cps["social_security_dependents"] = np.zeros_like(
-        cps["social_security_retirement"]
+    cps["social_security_survivors"] = np.where(
+        is_survivor & ~is_retirement & ~is_disability,
+        person.SS_VAL,
+        0,
     )
-    cps["social_security_survivors"] = np.zeros_like(
-        cps["social_security_retirement"]
+    cps["social_security_dependents"] = np.where(
+        is_dependent & ~is_retirement & ~is_disability & ~is_survivor,
+        person.SS_VAL,
+        0,
+    )
+
+    # Fallback for records with SS income but no informative source
+    # code: use the age-62 heuristic (retirement vs. disability).
+    MINIMUM_RETIREMENT_AGE = 62
+    unclassified = (
+        (person.SS_VAL > 0)
+        & ~is_retirement
+        & ~is_disability
+        & ~is_survivor
+        & ~is_dependent
+    )
+    cps["social_security_retirement"] += np.where(
+        unclassified & (person.A_AGE >= MINIMUM_RETIREMENT_AGE),
+        person.SS_VAL,
+        0,
+    )
+    cps["social_security_disability"] += np.where(
+        unclassified & (person.A_AGE < MINIMUM_RETIREMENT_AGE),
+        person.SS_VAL,
+        0,
     )
     cps["unemployment_compensation"] = person.UC_VAL
+    # Weeks looking for work during the year (Census variable LKWEEKS)
+    # LKWEEKS: -1 = NIU (Not In Universe), 0 = not looking, 1-52 = weeks
+    weeks_raw = person.LKWEEKS
+    cps["weeks_unemployed"] = np.where(weeks_raw == -1, 0, weeks_raw)
     # Add pensions and annuities.
     cps_pensions = person.PNSN_VAL + person.ANN_VAL
     # Assume a constant fraction of pension income is taxable.
@@ -505,11 +613,56 @@ def add_personal_income_variables(
     # Disregard reported pension contributions from people who report neither wage and salary
     # nor self-employment income.
     # Assume no 403(b) or 457 contributions for now.
-    LIMIT_401K_2022 = 20_500
-    LIMIT_401K_CATCH_UP_2022 = 6_500
-    LIMIT_IRA_2022 = 6_000
-    LIMIT_IRA_CATCH_UP_2022 = 1_000
-    CATCH_UP_AGE_2022 = 50
+    # IRS retirement contribution limits by year.
+    RETIREMENT_LIMITS = {
+        2020: {
+            "401k": 19_500,
+            "401k_catch_up": 6_500,
+            "ira": 6_000,
+            "ira_catch_up": 1_000,
+        },
+        2021: {
+            "401k": 19_500,
+            "401k_catch_up": 6_500,
+            "ira": 6_000,
+            "ira_catch_up": 1_000,
+        },
+        2022: {
+            "401k": 20_500,
+            "401k_catch_up": 6_500,
+            "ira": 6_000,
+            "ira_catch_up": 1_000,
+        },
+        2023: {
+            "401k": 22_500,
+            "401k_catch_up": 7_500,
+            "ira": 6_500,
+            "ira_catch_up": 1_000,
+        },
+        2024: {
+            "401k": 23_000,
+            "401k_catch_up": 7_500,
+            "ira": 7_000,
+            "ira_catch_up": 1_000,
+        },
+        2025: {
+            "401k": 23_500,
+            "401k_catch_up": 7_500,
+            "ira": 7_000,
+            "ira_catch_up": 1_000,
+        },
+    }
+    # Clamp to the nearest available year for out-of-range values.
+    clamped_year = max(
+        min(year, max(RETIREMENT_LIMITS)),
+        min(RETIREMENT_LIMITS),
+    )
+    limits = RETIREMENT_LIMITS[clamped_year]
+    LIMIT_401K = limits["401k"]
+    LIMIT_401K_CATCH_UP = limits["401k_catch_up"]
+    LIMIT_IRA = limits["ira"]
+    LIMIT_IRA_CATCH_UP = limits["ira_catch_up"]
+    CATCH_UP_AGE = 50
     retirement_contributions = person.RETCB_VAL
     cps["self_employed_pension_contributions"] = np.where(
         person.SEMP_VAL > 0, retirement_contributions, 0
@@ -519,9 +672,9 @@ def add_personal_income_variables(
         0,
     )
     # Compute the 401(k) limit for the person's age.
-    catch_up_eligible = person.A_AGE >= CATCH_UP_AGE_2022
-    limit_401k = LIMIT_401K_2022 + catch_up_eligible * LIMIT_401K_CATCH_UP_2022
-    limit_ira = LIMIT_IRA_2022 + catch_up_eligible * LIMIT_IRA_CATCH_UP_2022
+    catch_up_eligible = person.A_AGE >= CATCH_UP_AGE
+    limit_401k = LIMIT_401K + catch_up_eligible * LIMIT_401K_CATCH_UP
+    limit_ira = LIMIT_IRA + catch_up_eligible * LIMIT_IRA_CATCH_UP
     cps["traditional_401k_contributions"] = np.where(
         person.WSAL_VAL > 0,
         np.minimum(remaining_retirement_contributions, limit_401k),
@@ -602,7 +755,11 @@ def add_personal_income_variables(
         cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
 
 
-def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
+def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
+    from policyengine_us_data.utils.spm import (
+        calculate_spm_thresholds_with_geoadj,
+    )
+
     SPM_RENAMES = dict(
         spm_unit_total_income_reported="SPM_TOTVAL",
         snap_reported="SPM_SNAPSUB",
@@ -616,7 +773,6 @@ def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
         # State tax includes refundable credits.
         spm_unit_state_tax_reported="SPM_STTAX",
         spm_unit_capped_work_childcare_expenses="SPM_CAPWKCCXPNS",
-        spm_unit_spm_threshold="SPM_POVTHRESHOLD",
         spm_unit_net_income_reported="SPM_RESOURCES",
         spm_unit_pre_subsidy_childcare_expenses="SPM_CHILDCAREXPNS",
     )
@@ -624,6 +780,28 @@ def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
     for openfisca_variable, asec_variable in SPM_RENAMES.items():
         if asec_variable in spm_unit.columns:
             cps[openfisca_variable] = spm_unit[asec_variable]
+
+    # Calculate SPM thresholds using spm-calculator with Census-provided
+    # geographic adjustment factors (SPM_GEOADJ)
+    cps["spm_unit_spm_threshold"] = calculate_spm_thresholds_with_geoadj(
+        num_adults=spm_unit["SPM_NUMADULTS"].values,
+        num_children=spm_unit["SPM_NUMKIDS"].values,
+        tenure_codes=spm_unit["SPM_TENMORTSTATUS"].values,
+        geoadj=spm_unit["SPM_GEOADJ"].values,
+        year=self.time_period,
+    )
+
+    if "SPM_TENMORTSTATUS" in spm_unit.columns:
+        tenure_map = {
+            1: "OWNER_WITH_MORTGAGE",
+            2: "OWNER_WITHOUT_MORTGAGE",
+            3: "RENTER",
+        }
+        cps["spm_unit_tenure_type"] = (
+            spm_unit.SPM_TENMORTSTATUS.map(tenure_map)
+            .fillna("RENTER")
+            .astype("S")
+        )
 
     cps["reduced_price_school_meals_reported"] = (
         cps["free_school_meals_reported"] * 0
@@ -1587,10 +1765,19 @@ def add_tips(self, cps: h5py.File):
             "employment_income",
             "age",
             "household_weight",
+            "is_female",
         ],
         2025,
     )
     cps = pd.DataFrame(cps)
+
+    # Get is_married from raw CPS data (A_MARITL codes: 1,2 = married)
+    # Note: is_married in policyengine-us is Family-level, but we need
+    # person-level for imputation models
+    raw_data = self.raw_cps(require=True).load()
+    raw_person = raw_data["person"]
+    cps["is_married"] = raw_person.A_MARITL.isin([1, 2]).values
+    raw_data.close()
 
     cps["is_under_18"] = cps.age < 18
     cps["is_under_6"] = cps.age < 6
@@ -1618,6 +1805,27 @@ def add_tips(self, cps: h5py.File):
         X_test=cps,
         mean_quantile=0.5,
     ).tip_income.values
+
+    # Impute liquid assets from SIPP (bank accounts, stocks, bonds)
+
+    from policyengine_us_data.datasets.sipp import get_asset_model
+
+    asset_model = get_asset_model()
+
+    asset_predictions = asset_model.predict(
+        X_test=cps,
+        mean_quantile=0.5,
+    )
+    cps["bank_account_assets"] = asset_predictions.bank_account_assets.values
+    cps["stock_assets"] = asset_predictions.stock_assets.values
+    cps["bond_assets"] = asset_predictions.bond_assets.values
+
+    # Drop temporary columns used only for imputation
+    # is_married is person-level here but policyengine-us defines it at Family
+    # level, so we must not save it
+    cps = cps.drop(
+        columns=["is_married", "is_under_18", "is_under_6"], errors="ignore"
+    )
 
     self.save_dataset(cps)
 
@@ -2024,114 +2232,14 @@ class CPS_2024(CPS):
     frac = 0.5
 
 
-class CPS_2025(CPS):
-    name = "cps_2025"
-    label = "CPS 2025 (2024-based)"
-    file_path = STORAGE_FOLDER / "cps_2025.h5"
-    time_period = 2025
-    frac = 1
-
-
-# The below datasets are a very naïve way of preventing downsampling in the
-# Pooled 3-Year CPS. They should be replaced by a more sustainable approach.
-# If these are still here on July 1, 2025, please open an issue and raise at standup.
-class CPS_2021_Full(CPS):
-    name = "cps_2021_full"
-    label = "CPS 2021 (full)"
-    raw_cps = CensusCPS_2021
-    previous_year_raw_cps = CensusCPS_2020
-    file_path = STORAGE_FOLDER / "cps_2021_full.h5"
-    time_period = 2021
-
-
-class CPS_2022_Full(CPS):
-    name = "cps_2022_full"
-    label = "CPS 2022 (full)"
-    raw_cps = CensusCPS_2022
-    previous_year_raw_cps = CensusCPS_2021
-    file_path = STORAGE_FOLDER / "cps_2022_full.h5"
-    time_period = 2022
-
-
-class CPS_2023_Full(CPS):
-    name = "cps_2023_full"
-    label = "CPS 2023 (full)"
-    raw_cps = CensusCPS_2023
-    previous_year_raw_cps = CensusCPS_2022
-    file_path = STORAGE_FOLDER / "cps_2023_full.h5"
-    time_period = 2023
-
-
-class PooledCPS(Dataset):
-    data_format = Dataset.ARRAYS
-    input_datasets: list
-    time_period: int
-
-    def generate(self):
-        data = [
-            input_dataset(require=True).load_dataset()
-            for input_dataset in self.input_datasets
-        ]
-        time_periods = [dataset.time_period for dataset in self.input_datasets]
-        data = [
-            uprate_cps_data(data, time_period, self.time_period)
-            for data, time_period in zip(data, time_periods)
-        ]
-
-        new_data = {}
-
-        for i in range(len(data)):
-            for variable in data[i]:
-                data_values = data[i][variable]
-                if variable not in new_data:
-                    new_data[variable] = data_values
-                elif "_id" in variable:
-                    previous_max = new_data[variable].max()
-                    new_data[variable] = np.concatenate(
-                        [
-                            new_data[variable],
-                            data_values + previous_max,
-                        ]
-                    )
-                else:
-                    new_data[variable] = np.concatenate(
-                        [
-                            new_data[variable],
-                            data_values,
-                        ]
-                    )
-
-        new_data["household_weight"] = new_data["household_weight"] / len(
-            self.input_datasets
-        )
-
-        self.save_dataset(new_data)
-
-
-class Pooled_3_Year_CPS_2023(PooledCPS):
-    label = "CPS 2023 (3-year pooled)"
-    name = "pooled_3_year_cps_2023"
-    file_path = STORAGE_FOLDER / "pooled_3_year_cps_2023.h5"
-    input_datasets = [
-        CPS_2021_Full,
-        CPS_2022_Full,
-        CPS_2023_Full,
-    ]
-    time_period = 2023
-    url = "hf://policyengine/policyengine-us-data/pooled_3_year_cps_2023.h5"
+class CPS_2024_Full(CPS):
+    name = "cps_2024_full"
+    label = "CPS 2024 (full)"
+    raw_cps = CensusCPS_2024
+    previous_year_raw_cps = CensusCPS_2023
+    file_path = STORAGE_FOLDER / "cps_2024_full.h5"
+    time_period = 2024
 
 
 if __name__ == "__main__":
-    if test_lite:
-        CPS_2024().generate()
-        CPS_2025().generate()
-    else:
-        CPS_2021().generate()
-        CPS_2022().generate()
-        CPS_2023().generate()
-        CPS_2024().generate()
-        CPS_2025().generate()
-        CPS_2021_Full().generate()
-        CPS_2022_Full().generate()
-        CPS_2023_Full().generate()
-        Pooled_3_Year_CPS_2023().generate()
+    CPS_2024_Full().generate()

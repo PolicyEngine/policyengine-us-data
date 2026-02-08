@@ -1,0 +1,12 @@
+description: The share of eligible individuals who claim the EITC (by number of children).
+metadata:
+  label: EITC take-up rate by number of children
+  reference:
+    - title: National Taxpayer Advocate Special Report to Congress 2020 | IRS
+      href: https://www.taxpayeradvocate.irs.gov/wp-content/uploads/2020/08/JRC20_Volume3.pdf#page=62
+# Maps number of children to take-up rate
+rates_by_children:
+  0: 0.65
+  1: 0.86
+  2: 0.85
+  3: 0.85  # Assume same as 2

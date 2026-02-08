@@ -8,26 +8,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "policyengine_us_data"
-version = "1.46.0"
+version = "1.63.0"
 description = "A package to create representative microdata for the US."
 readme = "README.md"
 authors = [
     {name = "PolicyEngine", email = "hello@policyengine.org"},
 ]
 license = {file = "LICENSE"}
-requires-python = ">=3.11, <3.14.0"
+requires-python = ">=3.12, <3.14.0"
 classifiers = [
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "policyengine-us>=1.353.0",
-    "policyengine-core>=3.19.0",
+    "policyengine-us>=1.516.0",
+    "policyengine-core>=3.23.6",
     "pandas>=2.3.1",
     "requests>=2.25.0",
     "tqdm>=4.60.0",
-    "microdf_python>=1.0.0",
+    "microdf_python>=1.2.1",
     "setuptools>=60",
     "microimpute>=1.1.4",
     "pip-system-certs>=3.0",
@@ -42,9 +41,19 @@ dependencies = [
     "sqlalchemy>=2.0.41",
     "sqlmodel>=0.0.24",
     "xlrd>=2.0.2",
+    "spm-calculator>=0.1.0",
+    "tenacity>=8.0.0",
 ]
 
 [project.optional-dependencies]
+calibration = [
+    "samplics",
+]
+l0 = [
+    "l0-python",
+]
+
+[dependency-groups]
 dev = [
     "black",
     "pytest",
@@ -52,7 +61,7 @@ dev = [
     "tabulate",
     "furo",
     "jupyter-book",
-    "mystmd",
+    "mystmd>=1.7.0",
     "yaml-changelog>=0.1.7",
     "build",
     "tomli",

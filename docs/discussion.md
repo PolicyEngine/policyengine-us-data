@@ -8,7 +8,7 @@ We examine the strengths, limitations, and potential applications of the Enhance
 
 The Enhanced CPS uniquely combines:
 - Demographic detail from the CPS including state identifiers
-- Tax precision from IRS administrative data  
+- Tax precision from IRS administrative data
 - Calibration to contemporary official statistics
 - Open-source availability for research use
 
@@ -22,11 +22,11 @@ The use of Quantile Regression Forests for imputation represents an advance over
 - Maintains realistic variable correlations
 - Allows uncertainty quantification
 
-The large-scale calibration to 7,000+ targets ensures consistency with administrative benchmarks across multiple dimensions simultaneously.
+The large-scale calibration to 2,813 targets ensures consistency with administrative benchmarks across multiple dimensions simultaneously.
 
 ### Practical Advantages
 
-For policy analysis, the dataset offers state-level geographic detail enabling subnational analysis, household structure for distributional studies, tax detail for revenue estimation, program participation for benefit analysis, and recent data calibrated to current totals.
+For policy analysis, the dataset offers several key features: state-level geographic detail for subnational analysis, household structure for distributional studies, tax detail for revenue estimation, program participation for benefit analysis, and calibration to current administrative totals.
 
 ## Limitations
 
@@ -44,7 +44,7 @@ These assumptions may not hold perfectly, particularly for subpopulations that t
 
 ### Calibration Trade-offs
 
-With 7,000+ targets, perfect fit to all benchmarks is impossible. The optimization must balance competing objectives across target types, the relative importance of different statistics, stability of resulting weights, and preservation of household relationships.
+With 2,813 targets, perfect fit to all benchmarks is impossible. The optimization must balance competing objectives across target types, the relative importance of different statistics, stability of resulting weights, and preservation of household relationships.
 
 Users should consult validation metrics for targets most relevant to their analysis.
 

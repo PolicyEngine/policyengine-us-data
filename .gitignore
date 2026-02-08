@@ -2,6 +2,7 @@
 **/__pycache__
 **/.DS_STORE
 **/*.h5
+**/*.npy
 **/*.csv
 **/_build
 **/*.pkl
@@ -21,3 +22,17 @@ node_modules
 !age_state.csv
 !agi_state.csv
 !soi_targets.csv
+!policyengine_us_data/storage/social_security_aux.csv
+!policyengine_us_data/storage/SSPopJul_TR2024.csv
+!policyengine_us_data/storage/national_and_district_rents_2023.csv
+docs/.ipynb_checkpoints/
+
+## Raw input cache for database pipeline
+policyengine_us_data/storage/calibration/raw_inputs/
+
+## Batch processing checkpoints
+completed_*.txt
+
+## Test fixtures
+!policyengine_us_data/tests/test_local_area_calibration/test_fixture_50hh.h5
+oregon_ctc_analysis.py

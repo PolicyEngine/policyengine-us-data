@@ -1,16 +1,26 @@
+import argparse
+
 import pandas as pd
 import numpy as np
-from sqlmodel import Session, create_engine
+from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+
+DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
 
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
+    SourceType,
 )
 from policyengine_us_data.utils.census import get_census_docs, pull_acs_table
-
+from policyengine_us_data.utils.db import parse_ucgid, get_geographic_strata
+from policyengine_us_data.utils.db_metadata import (
+    get_or_create_source,
+    get_or_create_variable_group,
+    get_or_create_variable_metadata,
+)
 
 LABEL_TO_SHORT = {
     "Estimate!!Total!!Total population!!AGE!!Under 5 years": "0-4",
@@ -60,9 +70,12 @@ def transform_age_data(age_data, docs):
     df = df.rename({"GEO_ID": "ucgid_str"}, axis=1)
     df_data = df.rename(columns=rename_mapping)[["ucgid_str"] + list(AGE_COLS)]
 
-    # Filter out Puerto Rico's district and state records, if needed
+    # Filter out Puerto Rico's district and state records
+    # 5001800US7298 = 118th Congress, 5001900US7298 = 119th Congress
     df_geos = df_data[
-        ~df_data["ucgid_str"].isin(["5001800US7298", "0400000US72"])
+        ~df_data["ucgid_str"].isin(
+            ["5001800US7298", "5001900US7298", "0400000US72"]
+        )
     ].copy()
 
     df = df_geos[["ucgid_str"] + AGE_COLS]
@@ -82,17 +95,12 @@ def transform_age_data(age_data, docs):
     df_long["age_less_than"] = age_bounds[["lt"]]
     df_long["variable"] = "person_count"
     df_long["reform_id"] = 0
-    df_long["source_id"] = 1
     df_long["active"] = True
 
     return df_long
 
 
-def get_parent_geo(geo):
-    return {"National": None, "State": "National", "District": "State"}[geo]
-
-
-def load_age_data(df_long, geo, year, stratum_lookup=None):
+def load_age_data(df_long, geo, year):
 
     # Quick data quality check before loading ----
     if geo == "National":
@@ -105,54 +113,156 @@ def load_age_data(df_long, geo, year, stratum_lookup=None):
         raise ValueError('geo must be one of "National", "State", "District"')
 
     # Prepare to load data -----------
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
+    DATABASE_URL = (
+        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    )
     engine = create_engine(DATABASE_URL)
 
-    if stratum_lookup is None:
-        if geo != "National":
-            raise ValueError("Include stratum_lookup unless National geo")
-        stratum_lookup = {"National": {}}
-    else:
-        stratum_lookup[geo] = {}
-
     with Session(engine) as session:
+        # Get or create the Census ACS source
+        census_source = get_or_create_source(
+            session,
+            name="Census ACS Table S0101",
+            source_type=SourceType.SURVEY,
+            vintage=f"{year} ACS 5-year estimates",
+            description="American Community Survey Age and Sex demographics",
+            url="https://data.census.gov/",
+            notes="Age distribution in 18 brackets across all geographic levels",
+        )
+
+        # Get or create the age distribution variable group
+        age_group = get_or_create_variable_group(
+            session,
+            name="age_distribution",
+            category="demographic",
+            is_histogram=True,
+            is_exclusive=True,
+            aggregation_method="sum",
+            display_order=1,
+            description="Age distribution in 18 brackets (0-4, 5-9, ..., 85+)",
+        )
+
+        # Create variable metadata for person_count
+        get_or_create_variable_metadata(
+            session,
+            variable="person_count",
+            group=age_group,
+            display_name="Population Count",
+            display_order=1,
+            units="count",
+            notes="Number of people in age bracket",
+        )
+
+        # Fetch existing geographic strata
+        geo_strata = get_geographic_strata(session)
+
         for _, row in df_long.iterrows():
-            # Create the parent Stratum object.
-            # We will attach children to it before adding it to the session.
-            note = f"Age: {row['age_range']}, Geo: {row['ucgid_str']}"
-            parent_geo = get_parent_geo(geo)
-            parent_stratum_id = (
-                stratum_lookup[parent_geo][row["age_range"]]
-                if parent_geo
-                else None
-            )
+            # Parse the UCGID to determine geographic info
+            geo_info = parse_ucgid(row["ucgid_str"])
+
+            # Determine parent stratum based on geographic level
+            if geo_info["type"] == "national":
+                parent_stratum_id = geo_strata["national"]
+            elif geo_info["type"] == "state":
+                parent_stratum_id = geo_strata["state"][geo_info["state_fips"]]
+            elif geo_info["type"] == "district":
+                parent_stratum_id = geo_strata["district"][
+                    geo_info["congressional_district_geoid"]
+                ]
+            else:
+                raise ValueError(f"Unknown geography type: {geo_info['type']}")
+
+            # Create the age stratum as a child of the geographic stratum
+            # Build a proper geographic identifier for the notes
+            if geo_info["type"] == "national":
+                geo_desc = "US"
+            elif geo_info["type"] == "state":
+                geo_desc = f"State FIPS {geo_info['state_fips']}"
+            elif geo_info["type"] == "district":
+                geo_desc = f"CD {geo_info['congressional_district_geoid']}"
+            else:
+                geo_desc = "Unknown"
+
+            note = f"Age: {row['age_range']}, {geo_desc}"
+
+            # Check if this age stratum already exists
+            existing_stratum = session.exec(
+                select(Stratum).where(
+                    Stratum.parent_stratum_id == parent_stratum_id,
+                    Stratum.stratum_group_id == 2,  # Age strata group
+                    Stratum.notes == note,
+                )
+            ).first()
+
+            if existing_stratum:
+                # Update the existing stratum's target instead of creating a duplicate
+                existing_target = session.exec(
+                    select(Target).where(
+                        Target.stratum_id == existing_stratum.stratum_id,
+                        Target.variable == row["variable"],
+                        Target.period == year,
+                    )
+                ).first()
+
+                if existing_target:
+                    # Update existing target
+                    existing_target.value = row["value"]
+                else:
+                    # Add new target to existing stratum
+                    new_target = Target(
+                        stratum_id=existing_stratum.stratum_id,
+                        variable=row["variable"],
+                        period=year,
+                        value=row["value"],
+                        source_id=census_source.source_id,
+                        active=row["active"],
+                    )
+                    session.add(new_target)
+                continue  # Skip creating a new stratum
 
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=0,
+                stratum_group_id=2,  # Age strata group
                 notes=note,
             )
 
-            # Create constraints and link them to the parent's relationship attribute.
-            new_stratum.constraints_rel = [
-                StratumConstraint(
-                    constraint_variable="ucgid_str",
-                    operation="in",
-                    value=row["ucgid_str"],
-                ),
+            # Create constraints including both age and geographic for uniqueness
+            new_stratum.constraints_rel = []
+
+            # Add geographic constraints based on level
+            if geo_info["type"] == "state":
+                new_stratum.constraints_rel.append(
+                    StratumConstraint(
+                        constraint_variable="state_fips",
+                        operation="==",
+                        value=str(geo_info["state_fips"]),
+                    )
+                )
+            elif geo_info["type"] == "district":
+                new_stratum.constraints_rel.append(
+                    StratumConstraint(
+                        constraint_variable="congressional_district_geoid",
+                        operation="==",
+                        value=str(geo_info["congressional_district_geoid"]),
+                    )
+                )
+            # For national level, no geographic constraint needed
+
+            # Add age constraints
+            new_stratum.constraints_rel.append(
                 StratumConstraint(
                     constraint_variable="age",
-                    operation="greater_than",
+                    operation=">",
                     value=str(row["age_greater_than"]),
-                ),
-            ]
+                )
+            )
 
             age_lt_value = row["age_less_than"]
             if not np.isinf(age_lt_value):
                 new_stratum.constraints_rel.append(
                     StratumConstraint(
                         constraint_variable="age",
-                        operation="less_than",
+                        operation="<",
                         value=str(row["age_less_than"]),
                     )
                 )
@@ -163,7 +273,7 @@ def load_age_data(df_long, geo, year, stratum_lookup=None):
                     variable=row["variable"],
                     period=year,
                     value=row["value"],
-                    source_id=row["source_id"],
+                    source_id=census_source.source_id,
                     active=row["active"],
                 )
             )
@@ -172,20 +282,34 @@ def load_age_data(df_long, geo, year, stratum_lookup=None):
             # The 'cascade' setting will handle the children automatically.
             session.add(new_stratum)
 
-            # Flush to get the id
-            session.flush()
-            stratum_lookup[geo][row["age_range"]] = new_stratum.stratum_id
-
         # Commit all the new objects at once.
         session.commit()
 
-    return stratum_lookup
 
+def main():
+    parser = argparse.ArgumentParser(
+        description="ETL for age calibration targets"
+    )
+    parser.add_argument(
+        "--dataset",
+        default=DEFAULT_DATASET,
+        help=(
+            "Source dataset (local path or HuggingFace URL). "
+            "The year for Census API calls is derived from the dataset's "
+            "default_calculation_period. Default: %(default)s"
+        ),
+    )
+    args = parser.parse_args()
 
-if __name__ == "__main__":
+    # Derive year from dataset
+    from policyengine_us import Microsimulation
+
+    print(f"Loading dataset: {args.dataset}")
+    sim = Microsimulation(dataset=args.dataset)
+    year = int(sim.default_calculation_period)
+    print(f"Derived year from dataset: {year}")
 
     # --- ETL: Extract, Transform, Load ----
-    year = 2023
 
     # ---- Extract ----------
     docs = get_census_docs(year)
@@ -199,8 +323,12 @@ if __name__ == "__main__":
     long_district_df = transform_age_data(district_df, docs)
 
     # --- Load --------
-    national_strata_lku = load_age_data(long_national_df, "National", year)
-    state_strata_lku = load_age_data(
-        long_state_df, "State", year, national_strata_lku
-    )
-    load_age_data(long_district_df, "District", year, state_strata_lku)
+    # Note: The geographic strata must already exist in the database
+    # (created by create_initial_strata.py)
+    load_age_data(long_national_df, "National", year)
+    load_age_data(long_state_df, "State", year)
+    load_age_data(long_district_df, "District", year)
+
+
+if __name__ == "__main__":
+    main()

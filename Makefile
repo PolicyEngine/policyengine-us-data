@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data clean build paper clean-paper presentations
+.PHONY: all format test install download upload docker documentation data publish-local-area clean build paper clean-paper presentations database database-refresh promote-database
 
 all: data test
 
@@ -33,7 +33,7 @@ documentation:
 	rm -rf _build .jupyter_cache && \
 	rm -f _toc.yml && \
 	myst clean && \
-	timeout 10 myst build --html || true
+	myst build --html
 	cd docs && test -d _build/html && touch _build/html/.nojekyll || true
 
 documentation-build:
@@ -44,7 +44,7 @@ documentation-build:
 	myst build --html
 
 documentation-serve:
-	cd docs/_build/html && python3 -m http.server 8080
+	cd docs/_build/site && python3 -m http.server 8080
 
 documentation-dev:
 	cd docs && \
@@ -54,15 +54,31 @@ documentation-dev:
 	myst start
 
 database:
+	rm -f policyengine_us_data/storage/calibration/policy_data.db
 	python policyengine_us_data/db/create_database_tables.py
 	python policyengine_us_data/db/create_initial_strata.py
+	python policyengine_us_data/db/etl_national_targets.py
 	python policyengine_us_data/db/etl_age.py
 	python policyengine_us_data/db/etl_medicaid.py
 	python policyengine_us_data/db/etl_snap.py
+	python policyengine_us_data/db/etl_state_income_tax.py
 	python policyengine_us_data/db/etl_irs_soi.py
 	python policyengine_us_data/db/validate_database.py
 
-data:
+database-refresh:
+	rm -f policyengine_us_data/storage/calibration/policy_data.db
+	rm -rf policyengine_us_data/storage/calibration/raw_inputs/
+	$(MAKE) database
+
+promote-database:
+	cp policyengine_us_data/storage/calibration/policy_data.db \
+		$(HOME)/devl/huggingface/policyengine-us-data/calibration/policy_data.db
+	rm -rf $(HOME)/devl/huggingface/policyengine-us-data/calibration/raw_inputs
+	cp -r policyengine_us_data/storage/calibration/raw_inputs \
+		$(HOME)/devl/huggingface/policyengine-us-data/calibration/raw_inputs
+	@echo "Copied DB and raw_inputs to HF clone. Now cd to HF repo, commit, and push."
+
+data: download
 	python policyengine_us_data/utils/uprating.py
 	python policyengine_us_data/datasets/acs/acs.py
 	python policyengine_us_data/datasets/cps/cps.py
@@ -71,8 +87,10 @@ data:
 	python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
-	mv policyengine_us_data/storage/enhanced_cps_2024.h5 policyengine_us_data/storage/dense_enhanced_cps_2024.h5
-	cp policyengine_us_data/storage/sparse_enhanced_cps_2024.h5 policyengine_us_data/storage/enhanced_cps_2024.h5
+	python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py 12000 --top=99.5 --seed=3526
+
+publish-local-area:
+	python policyengine_us_data/datasets/cps/local_area_calibration/publish_local_area.py
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

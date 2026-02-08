@@ -1,0 +1,43 @@
+name: Promote Local Area H5 Files
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to promote (e.g. 1.23.0)'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to use for repo setup'
+        required: false
+        default: 'main'
+        type: string
+
+jobs:
+  promote-local-area:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Modal CLI
+        run: pip install modal
+
+      - name: Promote staged files to production
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          BRANCH="${{ github.event.inputs.branch }}"
+          echo "Promoting version ${VERSION} from branch ${BRANCH}"
+          modal run modal_app/local_area.py::main_promote --version="${VERSION}" --branch="${BRANCH}"

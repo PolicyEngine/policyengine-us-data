@@ -5,6 +5,243 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.63.0] - 2026-02-07 19:46:46
+
+### Added
+
+- Add liquid asset imputation from SIPP (bank accounts, stocks, bonds) for SSI and means-tested program modeling
+- Add SSI takeup rate parameter and takes_up_ssi_if_eligible draw
+
+## [1.62.0] - 2026-02-07 00:24:23
+
+### Added
+
+- Name-based seeding (seeded_rng) for order-independent reproducibility
+- State-specific Medicaid takeup rates (53%-99% range, 51 jurisdictions)
+- SSI resource test pass rate parameter (0.4)
+- WIC takeup and nutritional risk draw variables (float)
+- meets_ssi_resource_test boolean generation
+
+### Changed
+
+- Replaced shared RNG (seed=100) with per-variable name-based seeding
+- Medicaid takeup now uses state-specific rates instead of uniform 93%
+
+## [1.61.2] - 2026-02-01 20:58:21
+
+### Fixed
+
+- Fix etl_state_income_tax.py API mismatches with db_metadata utility functions
+
+## [1.61.1] - 2026-02-01 04:24:23
+
+### Added
+
+- cps_2024.h5 to HuggingFace upload list so the raw (unenhanced) 2024 CPS dataset is published
+
+## [1.61.0] - 2026-01-31 20:18:58
+
+### Added
+
+- Add state income tax calibration targets from Census STC FY2023 data
+
+## [1.60.0] - 2026-01-31 19:57:29
+
+### Changed
+
+- Use income_tax_positive instead of income_tax for CBO calibration target
+
+## [1.59.0] - 2026-01-31 19:54:59
+
+### Added
+
+- SSA benefit-type calibration targets for social_security_retirement, social_security_disability, social_security_survivors, and social_security_dependents
+- IRA contribution calibration targets for traditional_ira_contributions and roth_ira_contributions from IRS SOI data
+
+### Changed
+
+- Use CPS ASEC RESNSS1/RESNSS2 source codes to classify Social Security income into retirement, disability, survivors, and dependents (replacing age-62 heuristic)
+- Parameterize retirement contribution limits by year (2020-2025) instead of hardcoded 2022 values
+- Update taxable pension fraction from 1.0 to 0.590 based on SOI 2015 Table 1.4
+- Add age and is_male as QRF predictors for pension contribution imputation
+
+## [1.58.0] - 2026-01-31 19:53:18
+
+### Added
+
+- weeks_unemployed variable from CPS ASEC LKWEEKS
+- QRF-based imputation of weeks_unemployed for Extended CPS PUF copy
+
+## [1.57.0] - 2026-01-31 03:18:20
+
+### Added
+
+- Added CPS_2024_Full class for full-sample 2024 CPS generation
+- Added raw_cache utility for Census data caching
+- Added atomic parallel local area H5 publishing with Modal Volume staging
+- Added manifest validation with SHA256 checksums
+- Added HuggingFace retry logic with exponential backoff to fix timeout errors
+- Added staging folder approach for atomic HuggingFace deployments
+- Added national targets ETL for CBO projections and tax expenditure data
+- Added database hierarchy validation script
+- Added stratum_group_id migration utilities
+- Added db_metadata utilities for source and variable group management
+- Added DATABASE_GUIDE.md with comprehensive calibration database documentation
+
+### Changed
+
+- Migrated data pipeline from CPS 2023 to CPS 2024 (March 2025 ASEC)
+- Updated ExtendedCPS_2024 to use new CPS_2024_Full (full sample)
+- Updated local area calibration to use 2024 extended CPS data
+- Updated database ETL scripts for strata, IRS SOI, Medicaid, and SNAP
+- Expanded IRS SOI ETL with detailed income brackets and filing status breakdowns
+
+### Fixed
+
+- Fixed cross-state recalculation in sparse matrix builder by adding time_period to calculate() calls
+
+## [1.56.0] - 2026-01-26 22:41:56
+
+### Added
+
+- Census block-level geographic assignment for households in CD-stacked datasets
+- Comprehensive geography variables in output (block_geoid, tract_geoid, cbsa_code, sldu, sldl, place_fips, vtd, puma, zcta)
+- Block crosswalk file mapping 8.1M blocks to all Census geographies
+- Block-to-CD distribution file for population-weighted assignment
+- ZCTA (ZIP Code Tabulation Area) lookup from census block
+
+## [1.55.0] - 2026-01-26 16:45:05
+
+### Added
+
+- Support for health_insurance_premiums_without_medicare_part_b in local area calibration
+
+### Changed
+
+- Removed dense reweighting path from enhanced CPS; only sparse (L0) weights are produced
+- Eliminated TEST_LITE and LOCAL_AREA_CALIBRATION flags; all datasets generated unconditionally
+- Merged data-local-area Makefile target into data target
+
+### Fixed
+
+- Versioning workflow now runs uv lock after version bump to keep uv.lock in sync
+
+## [1.54.1] - 2026-01-26 02:49:11
+
+### Fixed
+
+- Derive partnership_se_income from PUF source columns using Yale Budget Lab's gross-up approach instead of looking for non-existent k1bx14 columns.
+
+## [1.54.0] - 2026-01-25 17:43:38
+
+### Added
+
+- partnership_se_income variable from Schedule K-1 Box 14 (k1bx14p + k1bx14s), representing partnership income subject to self-employment tax.
+
+## [1.53.1] - 2026-01-25 15:48:00
+
+### Changed
+
+- Bumped policyengine-core minimum version to 3.23.5 for pandas 3.0 compatibility
+
+## [1.53.0] - 2026-01-23 20:51:58
+
+### Changed
+
+- Added policyengine-claude plugin auto-install configuration.
+
+## [1.52.0] - 2026-01-22 20:50:13
+
+### Added
+
+- tests to verify SparseMatrixBuilder correctly calculates variables and constraints into the calibration matrix.
+
+## [1.51.1] - 2026-01-07 01:05:49
+
+### Fixed
+
+- Fixed Publish workflow by migrating dev dependencies to PEP 735 dependency-groups
+
+## [1.51.0] - 2026-01-01 17:39:26
+
+### Added
+
+- Sparse matrix builder for local area calibration with database-driven constraints
+- Local area calibration data pipeline (make data-local-area)
+- ExtendedCPS_2023 and PUF_2023 dataset classes
+- Stratified CPS sampling to preserve high-income households
+- Matrix verification tests for local area calibration
+- Population-weighted P(county|CD) distributions from Census block data
+- County assignment module for stacked dataset builder
+
+## [1.50.0] - 2025-12-23 15:15:35
+
+### Added
+
+- Added --use-tob flag for TOB (Taxation of Benefits) revenue calibration targeting OASDI and HI trust fund revenue
+
+## [1.49.0] - 2025-12-19 17:56:53
+
+### Added
+
+- SPM threshold calculation using policyengine/spm-calculator package
+- New utility module (policyengine_us_data/utils/spm.py) for SPM calculations
+
+### Changed
+
+- CPS datasets now calculate SPM thresholds using spm-calculator with Census-provided geographic adjustments
+- ACS datasets now calculate SPM thresholds using spm-calculator with national-level thresholds
+
+## [1.48.0] - 2025-12-08 19:52:21
+
+### Added
+
+- Sparse matrix builder for local area calibration with database-driven constraints
+- Local area calibration data pipeline (make data-local-area)
+- ExtendedCPS_2023 and PUF_2023 dataset classes
+- Stratified CPS sampling to preserve high-income households
+- Matrix verification tests for local area calibration
+
+## [1.47.1] - 2025-12-03 23:00:20
+
+### Added
+
+- Node.js 24 LTS setup to CI workflow for MyST builds
+- H6 Social Security reform calibration for long-term projections (phases out OASDI taxation 2045-2054)
+- H6 threshold crossover handling when OASDI thresholds exceed HI thresholds
+- start_year parameter to run_household_projection.py CLI
+- docs/README.md documenting MyST build output pitfall
+
+### Fixed
+
+- GitHub Pages documentation deployment (was deploying wrong directory causing blank pages)
+- Removed timeout and error suppression from documentation build
+
+## [1.47.0] - 2025-11-20 02:54:32
+
+### Added
+
+- Additional calibration based on SSA Trustees data that extends projections until 2100
+- Manual trigger capability for documentation deployment workflow
+- Documentation for SSA data sources in storage README
+
+### Changed
+
+- Renamed long-term projections notebook to clarify PWBM comparison scope (2025-2100)
+
+### Fixed
+
+- GitHub Pages documentation deployment path
+- Corrected number of imputed variables from 72 to 67 in documentation
+- Corrected calibration target count from 7,000+ to 2,813 across all docs
+- Removed inaccurate "two-stage" terminology in methodology descriptions
+
+## [1.46.1] - 2025-11-12 20:08:59
+
+### Changed
+
+- GitHub Actions workflow now uses self-hosted GCP runner to handle memory-intensive dataset builds
+
 ## [1.46.0] - 2025-09-10 20:30:41
 
 ### Added
@@ -717,6 +954,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.63.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.62.0...1.63.0
+[1.62.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.61.2...1.62.0
+[1.61.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.61.1...1.61.2
+[1.61.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.61.0...1.61.1
+[1.61.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.60.0...1.61.0
+[1.60.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.59.0...1.60.0
+[1.59.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.58.0...1.59.0
+[1.58.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.57.0...1.58.0
+[1.57.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.56.0...1.57.0
+[1.56.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.55.0...1.56.0
+[1.55.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.54.1...1.55.0
+[1.54.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.54.0...1.54.1
+[1.54.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.53.1...1.54.0
+[1.53.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.53.0...1.53.1
+[1.53.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.52.0...1.53.0
+[1.52.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.51.1...1.52.0
+[1.51.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.51.0...1.51.1
+[1.51.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.50.0...1.51.0
+[1.50.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.49.0...1.50.0
+[1.49.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.48.0...1.49.0
+[1.48.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.47.1...1.48.0
+[1.47.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.47.0...1.47.1
+[1.47.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.46.1...1.47.0
+[1.46.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.46.0...1.46.1
 [1.46.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.45.0...1.46.0
 [1.45.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.44.2...1.45.0
 [1.44.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.44.1...1.44.2

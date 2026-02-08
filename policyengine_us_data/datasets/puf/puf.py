@@ -15,7 +15,6 @@ from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
 
-
 rng = np.random.default_rng(seed=64)
 
 # Get Qualified Business Income simulation parameters ---
@@ -169,8 +168,15 @@ def impute_pension_contributions_to_puf(puf_df):
 
     cps = Microsimulation(dataset=CPS_2021)
     cps.subsample(10_000)
+
+    predictors = [
+        "employment_income",
+        "age",
+        "is_male",
+    ]
+
     cps_df = cps.calculate_dataframe(
-        ["employment_income", "household_weight", "pre_tax_contributions"]
+        predictors + ["household_weight", "pre_tax_contributions"]
     )
 
     from microimpute.models.qrf import QRF
@@ -178,16 +184,16 @@ def impute_pension_contributions_to_puf(puf_df):
     qrf = QRF()
 
     # Combine predictors and target into single DataFrame for models.QRF
-    cps_train = cps_df[["employment_income", "pre_tax_contributions"]]
+    cps_train = cps_df[predictors + ["pre_tax_contributions"]]
 
     fitted_model = qrf.fit(
         X_train=cps_train,
-        predictors=["employment_income"],
+        predictors=predictors,
         imputed_variables=["pre_tax_contributions"],
     )
 
     # Predict using the fitted model
-    predictions = fitted_model.predict(X_test=puf_df[["employment_income"]])
+    predictions = fitted_model.predict(X_test=puf_df[predictors])
 
     return predictions["pre_tax_contributions"]
 
@@ -382,7 +388,33 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["unreported_payroll_tax"] = puf.E09800
     # Ignore f2441 (AMT form attached)
     # Ignore cmbtp (estimate of AMT income not in AGI)
-    # Ignore k1bx14s and k1bx14p (partner self-employment income included in partnership and S-corp income)
+
+    # Partnership self-employment income from Schedule K-1 Box 14
+    # This is the portion of partnership income subject to SE tax (general partners)
+    # Derived from total SE income minus Schedule C and Schedule F income
+    # Based on Yale Budget Lab's Tax-Data process_puf.R approach:
+    #   E30400 = taxpayer's TAXABLE SE income (already * 0.9235)
+    #   E30500 = spouse's TAXABLE SE income (already * 0.9235)
+    #   E00900 = Schedule C net profit/loss (gross)
+    #   E02100 = Schedule F farm income (gross)
+    # Since E30400/E30500 are post-deduction (taxable), we gross them up
+    # by dividing by 0.9235 before subtracting Sch C/F.
+    # PolicyEngine applies the 0.9235 factor itself in taxable_self_employment_income.
+    SE_DEDUCTION_FACTOR = 0.9235  # 1 - 0.5 * 0.153 (half of SE tax rate)
+    taxable_se = puf["E30400"].fillna(0) + puf["E30500"].fillna(0)
+    gross_se = taxable_se / SE_DEDUCTION_FACTOR
+    schedule_c_f_income = puf["E00900"].fillna(0) + puf["E02100"].fillna(0)
+    # Only compute when there's partnership activity (net partnership income != 0)
+    has_partnership = (
+        puf["E25940"].fillna(0)
+        + puf["E25980"].fillna(0)
+        - puf["E25920"].fillna(0)
+        - puf["E25960"].fillna(0)
+    ) != 0
+    partnership_se = np.where(
+        has_partnership, gross_se - schedule_c_f_income, 0
+    )
+    puf["partnership_se_income"] = partnership_se
 
     # --- Qualified Business Income Deduction (QBID) simulation ---
     w2, ubia = simulate_w2_and_ubia_from_puf(puf, seed=42)
@@ -492,6 +524,7 @@ FINANCIAL_SUBSET = [
     "business_is_sstb",
     "deductible_mortgage_interest",
     "partnership_s_corp_income",
+    "partnership_se_income",
     "qualified_reit_and_ptp_income",
     "qualified_bdc_income",
 ]
@@ -533,8 +566,11 @@ class PUF(Dataset):
         original_recid = puf.RECID.values.copy()
         puf = preprocess_puf(puf)
         puf = impute_missing_demographics(puf, demographics)
+        # Derive age and is_male for pension imputation predictors
+        puf["age"] = puf["AGERANGE"].apply(decode_age_filer)
+        puf["is_male"] = (puf["GENDER"] == 1).astype(float)
         puf["pre_tax_contributions"] = impute_pension_contributions_to_puf(
-            puf[["employment_income"]]
+            puf[["employment_income", "age", "is_male"]]
         )
 
         # Sort in original PUF order
@@ -544,6 +580,13 @@ class PUF(Dataset):
             variable: system.variables[variable].entity.key
             for variable in system.variables
         }
+
+        # Filter FINANCIAL_SUBSET to only include variables defined in
+        # policyengine-us. This allows us-data to be updated before or after
+        # policyengine-us without breaking.
+        self.available_financial_vars = [
+            v for v in FINANCIAL_SUBSET if v in self.variable_to_entity
+        ]
 
         VARIABLES = [
             "person_id",
@@ -564,7 +607,7 @@ class PUF(Dataset):
             "is_tax_unit_head",
             "is_tax_unit_spouse",
             "is_tax_unit_dependent",
-        ] + FINANCIAL_SUBSET
+        ] + self.available_financial_vars
 
         self.holder = {variable: [] for variable in VARIABLES}
 
@@ -608,7 +651,7 @@ class PUF(Dataset):
     def add_tax_unit(self, row, tax_unit_id):
         self.holder["tax_unit_id"].append(tax_unit_id)
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if self.variable_to_entity[key] == "tax_unit":
                 self.holder[key].append(row[key])
 
@@ -650,7 +693,7 @@ class PUF(Dataset):
             row["interest_deduction"]
         )
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if key == "deductible_mortgage_interest":
                 # Skip this one- we are adding it artificially at the filer level.
                 continue
@@ -683,7 +726,7 @@ class PUF(Dataset):
 
         self.holder["deductible_mortgage_interest"].append(0)
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if key == "deductible_mortgage_interest":
                 # Skip this one- we are adding it artificially at the filer level.
                 continue
@@ -707,7 +750,7 @@ class PUF(Dataset):
 
         self.holder["deductible_mortgage_interest"].append(0)
 
-        for key in FINANCIAL_SUBSET:
+        for key in self.available_financial_vars:
             if key == "deductible_mortgage_interest":
                 # Skip this one- we are adding it artificially at the filer level.
                 continue
@@ -732,6 +775,13 @@ class PUF_2021(PUF):
     url = "release://policyengine/irs-soi-puf/1.8.0/puf_2021.h5"
 
 
+class PUF_2023(PUF):
+    label = "PUF 2023"
+    name = "puf_2023"
+    time_period = 2023
+    file_path = STORAGE_FOLDER / "puf_2023.h5"
+
+
 class PUF_2024(PUF):
     label = "PUF 2024 (2015-based)"
     name = "puf_2024"
@@ -750,4 +800,5 @@ MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
 if __name__ == "__main__":
     PUF_2015().generate()
     PUF_2021().generate()
+    PUF_2023().generate()
     PUF_2024().generate()

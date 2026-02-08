@@ -1,0 +1,9 @@
+description: Percentage of eligible SSI recipients who claim SSI.
+metadata:
+  label: SSI takeup rate
+  unit: /1
+  reference:
+    - title: Urban Institute - SSI Participation Rates for Adults 65+
+      href: https://www.urban.org/research/publication/estimation-national-state-and-substate-program-participation-rates-adults-65
+values:
+  2018-01-01: 0.50

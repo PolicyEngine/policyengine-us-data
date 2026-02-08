@@ -1,0 +1,75 @@
+name: Publish Local Area H5 Files
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'policyengine_us_data/datasets/cps/local_area_calibration/**'
+      - '.github/workflows/local_area_publish.yaml'
+      - 'modal_app/**'
+  repository_dispatch:
+    types: [calibration-updated]
+  workflow_dispatch:
+    inputs:
+      num_workers:
+        description: 'Number of parallel workers'
+        required: false
+        default: '8'
+        type: string
+      skip_upload:
+        description: 'Skip upload (build only)'
+        required: false
+        default: false
+        type: boolean
+
+# Trigger strategy:
+# 1. Automatic: Code changes to local_area_calibration/ pushed to main
+# 2. repository_dispatch: Calibration workflow triggers after uploading new weights
+# 3. workflow_dispatch: Manual trigger with optional parameters
+
+jobs:
+  publish-local-area:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Modal CLI
+        run: pip install modal
+
+      - name: Run local area build and stage on Modal
+        run: |
+          NUM_WORKERS="${{ github.event.inputs.num_workers || '8' }}"
+          SKIP_UPLOAD="${{ github.event.inputs.skip_upload || 'false' }}"
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+
+          CMD="modal run modal_app/local_area.py --branch=${BRANCH} --num-workers=${NUM_WORKERS}"
+
+          if [ "$SKIP_UPLOAD" = "true" ]; then
+            CMD="${CMD} --skip-upload"
+          fi
+
+          echo "Running: $CMD"
+          $CMD
+
+      - name: Post-build summary
+        if: success()
+        run: |
+          echo "## Build + Stage Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Files have been uploaded to GCS and staged on HuggingFace." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next step: Promote to production" >> $GITHUB_STEP_SUMMARY
+          echo "Trigger the **Promote Local Area H5 Files** workflow with the version from the build output." >> $GITHUB_STEP_SUMMARY

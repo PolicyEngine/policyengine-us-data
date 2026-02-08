@@ -1,8 +1,7 @@
 from policyengine_us_data.datasets import (
     EnhancedCPS_2024,
-    Pooled_3_Year_CPS_2023,
-    CPS_2023,
 )
+from policyengine_us_data.datasets.cps.cps import CPS_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.data_upload import upload_data_files
 from google.cloud import storage
@@ -12,10 +11,9 @@ import google.auth
 def upload_datasets():
     dataset_files = [
         EnhancedCPS_2024.file_path,
-        Pooled_3_Year_CPS_2023.file_path,
-        CPS_2023.file_path,
+        CPS_2024.file_path,
         STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
-        # STORAGE_FOLDER / "policy_data.db",
+        STORAGE_FOLDER / "calibration" / "policy_data.db",
     ]
 
     # Filter to only existing files

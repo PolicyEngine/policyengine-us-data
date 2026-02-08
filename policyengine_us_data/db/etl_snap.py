@@ -1,3 +1,5 @@
+import argparse
+import logging
 import requests
 import zipfile
 import io
@@ -5,28 +7,52 @@ import io
 import pandas as pd
 import numpy as np
 import us
-from sqlmodel import Session, create_engine
+from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+
+DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
 
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
+    Source,
+    SourceType,
+    VariableGroup,
+    VariableMetadata,
 )
 from policyengine_us_data.utils.census import (
     pull_acs_table,
     STATE_NAME_TO_FIPS,
 )
+from policyengine_us_data.utils.db import parse_ucgid, get_geographic_strata
+from policyengine_us_data.utils.db_metadata import (
+    get_or_create_source,
+    get_or_create_variable_group,
+    get_or_create_variable_metadata,
+)
+from policyengine_us_data.utils.raw_cache import (
+    is_cached,
+    cache_path,
+    save_bytes,
+    load_bytes,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def extract_administrative_snap_data(year=2023):
     """
     Downloads and extracts annual state-level SNAP data from the USDA FNS zip file.
     """
+    cache_file = "snap_fy69tocurrent.zip"
+    if is_cached(cache_file):
+        logger.info(f"Using cached {cache_file}")
+        return zipfile.ZipFile(io.BytesIO(load_bytes(cache_file)))
+
     url = "https://www.fns.usda.gov/sites/default/files/resource-files/snap-zip-fy69tocurrent-6.zip"
 
-    # Note: extra complexity in request due to regional restrictions on downloads (e.g., Spain)
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -36,30 +62,20 @@ def extract_administrative_snap_data(year=2023):
         "Upgrade-Insecure-Requests": "1",
     }
 
+    session = requests.Session()
+    session.headers.update(headers)
+
     try:
-        session = requests.Session()
-        session.headers.update(headers)
+        session.get(
+            "https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
+            timeout=30,
+        )
+    except Exception:
+        pass
 
-        # Try to visit the main page first to get any necessary cookies
-        main_page = "https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap"
-        try:
-            session.get(main_page, timeout=30)
-        except:
-            pass  # Ignore errors on the main page
-
-        response = session.get(url, timeout=30, allow_redirects=True)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        print(f"Error downloading file: {e}")
-        # Try alternative URL or method
-        try:
-            alt_url = "https://www.fns.usda.gov/sites/default/files/resource-files/snap-zip-fy69tocurrent-6.zip"
-            response = session.get(alt_url, timeout=30, allow_redirects=True)
-            response.raise_for_status()
-        except requests.exceptions.RequestException as e2:
-            print(f"Alternative URL also failed: {e2}")
-            return None
-
+    response = session.get(url, timeout=30, allow_redirects=True)
+    response.raise_for_status()
+    save_bytes(cache_file, response.content)
     return zipfile.ZipFile(io.BytesIO(response.content))
 
 
@@ -136,9 +152,10 @@ def transform_survey_snap_data(raw_df):
         {"GEO_ID": "ucgid_str", "S2201_C03_001E": "snap_household_ct"}, axis=1
     )[
         ~df["GEO_ID"].isin(
-            [  # Puerto Rico's state and district
+            [  # Puerto Rico's state and district (118th and 119th Congress)
                 "0400000US72",
                 "5001800US7298",
+                "5001900US7298",
             ]
         )
     ]
@@ -146,27 +163,70 @@ def transform_survey_snap_data(raw_df):
 
 def load_administrative_snap_data(df_states, year):
 
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
+    DATABASE_URL = (
+        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    )
     engine = create_engine(DATABASE_URL)
 
-    stratum_lookup = {}
-
     with Session(engine) as session:
+        # Get or create the administrative source
+        admin_source = get_or_create_source(
+            session,
+            name="USDA FNS SNAP Data",
+            source_type=SourceType.ADMINISTRATIVE,
+            vintage=f"FY {year}",
+            description="SNAP administrative data from USDA Food and Nutrition Service",
+            url="https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
+            notes="State-level administrative totals for households and costs",
+        )
+
+        # Get or create the SNAP variable group
+        snap_group = get_or_create_variable_group(
+            session,
+            name="snap_recipients",
+            category="benefit",
+            is_histogram=False,
+            is_exclusive=False,
+            aggregation_method="sum",
+            display_order=2,
+            description="SNAP (food stamps) recipient counts and benefits",
+        )
+
+        # Get or create variable metadata
+        get_or_create_variable_metadata(
+            session,
+            variable="snap",
+            group=snap_group,
+            display_name="SNAP Benefits",
+            display_order=1,
+            units="dollars",
+            notes="Annual SNAP benefit costs",
+        )
+
+        get_or_create_variable_metadata(
+            session,
+            variable="household_count",
+            group=snap_group,
+            display_name="SNAP Household Count",
+            display_order=2,
+            units="count",
+            notes="Number of households receiving SNAP",
+        )
+
+        # Fetch existing geographic strata
+        geo_strata = get_geographic_strata(session)
+
         # National ----------------
+        # Create a SNAP stratum as child of the national geographic stratum
         nat_stratum = Stratum(
-            parent_stratum_id=None,
-            stratum_group_id=0,
-            notes="Geo: 0100000US Received SNAP Benefits",
+            parent_stratum_id=geo_strata["national"],
+            stratum_group_id=4,  # SNAP strata group
+            notes="National Received SNAP Benefits",
         )
         nat_stratum.constraints_rel = [
             StratumConstraint(
-                constraint_variable="ucgid_str",
-                operation="in",
-                value="0100000US",
-            ),
-            StratumConstraint(
                 constraint_variable="snap",
-                operation="greater_than",
+                operation=">",
                 value="0",
             ),
         ]
@@ -175,29 +235,33 @@ def load_administrative_snap_data(df_states, year):
 
         session.add(nat_stratum)
         session.flush()
-        stratum_lookup["National"] = nat_stratum.stratum_id
+        snap_stratum_lookup = {"national": nat_stratum.stratum_id, "state": {}}
 
         # State -------------------
-        stratum_lookup["State"] = {}
         for _, row in df_states.iterrows():
+            # Parse the UCGID to get state_fips
+            geo_info = parse_ucgid(row["ucgid_str"])
+            state_fips = geo_info["state_fips"]
 
-            note = f"Geo: {row['ucgid_str']} Received SNAP Benefits"
-            parent_stratum_id = nat_stratum.stratum_id
+            # Get the parent geographic stratum
+            parent_stratum_id = geo_strata["state"][state_fips]
+
+            note = f"State FIPS {state_fips} Received SNAP Benefits"
 
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=0,
+                stratum_group_id=4,  # SNAP strata group
                 notes=note,
             )
             new_stratum.constraints_rel = [
                 StratumConstraint(
-                    constraint_variable="ucgid_str",
-                    operation="in",
-                    value=row["ucgid_str"],
+                    constraint_variable="state_fips",
+                    operation="==",
+                    value=str(state_fips),
                 ),
                 StratumConstraint(
                     constraint_variable="snap",
-                    operation="greater_than",
+                    operation=">",
                     value="0",
                 ),
             ]
@@ -207,7 +271,7 @@ def load_administrative_snap_data(df_states, year):
                     variable="household_count",
                     period=year,
                     value=row["Households"],
-                    source_id=3,
+                    source_id=admin_source.source_id,
                     active=True,
                 )
             )
@@ -216,49 +280,72 @@ def load_administrative_snap_data(df_states, year):
                     variable="snap",
                     period=year,
                     value=row["Cost"],
-                    source_id=3,
+                    source_id=admin_source.source_id,
                     active=True,
                 )
             )
             session.add(new_stratum)
             session.flush()
-            stratum_lookup["State"][row["ucgid_str"]] = new_stratum.stratum_id
+            snap_stratum_lookup["state"][state_fips] = new_stratum.stratum_id
 
         session.commit()
-    return stratum_lookup
+    return snap_stratum_lookup
 
 
-def load_survey_snap_data(survey_df, year, stratum_lookup=None):
-    """Use an already defined stratum_lookup to load the survey SNAP data"""
+def load_survey_snap_data(survey_df, year, snap_stratum_lookup):
+    """Use an already defined snap_stratum_lookup to load the survey SNAP data
 
-    if stratum_lookup is None:
-        raise ValueError("stratum_lookup must be provided")
+    Note: snap_stratum_lookup should contain the SNAP strata created by
+    load_administrative_snap_data, so we don't recreate them.
+    """
 
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'policy_data.db'}"
+    DATABASE_URL = (
+        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    )
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
+        # Get or create the survey source
+        survey_source = get_or_create_source(
+            session,
+            name="Census ACS Table S2201",
+            source_type=SourceType.SURVEY,
+            vintage=f"{year} ACS 5-year estimates",
+            description="American Community Survey SNAP/Food Stamps data",
+            url="https://data.census.gov/",
+            notes="Congressional district level SNAP household counts from ACS",
+        )
+
+        # Fetch existing geographic strata
+        geo_strata = get_geographic_strata(session)
+
         # Create new strata for districts whose households recieve SNAP benefits
         district_df = survey_df.copy()
         for _, row in district_df.iterrows():
-            note = f"Geo: {row['ucgid_str']} Received SNAP Benefits"
-            state_ucgid_str = "0400000US" + row["ucgid_str"][9:11]
-            state_stratum_id = stratum_lookup["State"][state_ucgid_str]
+            # Parse the UCGID to get district info
+            geo_info = parse_ucgid(row["ucgid_str"])
+            cd_geoid = geo_info["congressional_district_geoid"]
+
+            # Get the parent geographic stratum
+            parent_stratum_id = geo_strata["district"][cd_geoid]
+
+            note = f"Congressional District {cd_geoid} Received SNAP Benefits"
+
             new_stratum = Stratum(
-                parent_stratum_id=state_stratum_id,
-                stratum_group_id=0,
+                parent_stratum_id=parent_stratum_id,
+                stratum_group_id=4,  # SNAP strata group
                 notes=note,
             )
 
             new_stratum.constraints_rel = [
                 StratumConstraint(
-                    constraint_variable="ucgid_str",
-                    operation="in",
-                    value=row["ucgid_str"],
+                    constraint_variable="congressional_district_geoid",
+                    operation="==",
+                    value=str(cd_geoid),
                 ),
                 StratumConstraint(
                     constraint_variable="snap",
-                    operation="greater_than",
+                    operation=">",
                     value="0",
                 ),
             ]
@@ -267,7 +354,7 @@ def load_survey_snap_data(survey_df, year, stratum_lookup=None):
                     variable="household_count",
                     period=year,
                     value=row["snap_household_ct"],
-                    source_id=4,
+                    source_id=survey_source.source_id,
                     active=True,
                 )
             )
@@ -276,11 +363,31 @@ def load_survey_snap_data(survey_df, year, stratum_lookup=None):
 
         session.commit()
 
-    return stratum_lookup
+    return snap_stratum_lookup
 
 
 def main():
-    year = 2023
+    parser = argparse.ArgumentParser(
+        description="ETL for SNAP calibration targets"
+    )
+    parser.add_argument(
+        "--dataset",
+        default=DEFAULT_DATASET,
+        help=(
+            "Source dataset (local path or HuggingFace URL). "
+            "The year for targets is derived from the dataset's "
+            "default_calculation_period. Default: %(default)s"
+        ),
+    )
+    args = parser.parse_args()
+
+    # Derive year from dataset
+    from policyengine_us import Microsimulation
+
+    print(f"Loading dataset: {args.dataset}")
+    sim = Microsimulation(dataset=args.dataset)
+    year = int(sim.default_calculation_period)
+    print(f"Derived year from dataset: {year}")
 
     # Extract ---------
     zip_file_admin = extract_administrative_snap_data()
@@ -291,8 +398,8 @@ def main():
     district_survey_df = transform_survey_snap_data(raw_survey_df)
 
     # Load -----------
-    stratum_lookup = load_administrative_snap_data(state_admin_df, year)
-    load_survey_snap_data(district_survey_df, year, stratum_lookup)
+    snap_stratum_lookup = load_administrative_snap_data(state_admin_df, year)
+    load_survey_snap_data(district_survey_df, year, snap_stratum_lookup)
 
 
 if __name__ == "__main__":

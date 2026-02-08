@@ -27,6 +27,7 @@ from typing import Optional, Tuple
 
 import h5py
 import numpy as np
+import scipy.sparse
 
 logging.basicConfig(
     level=logging.INFO,
@@ -136,19 +137,30 @@ def build_calibration_inputs(
         - target_names: list of str
     """
     if db_path is not None:
-        # TODO: Wire up NationalMatrixBuilder when it exists.
-        # For now, fall through to legacy path with a warning.
-        logger.warning(
-            "NationalMatrixBuilder not yet implemented. "
-            "Falling back to legacy build_loss_matrix."
+        from policyengine_us import Microsimulation
+        from policyengine_us_data.calibration.national_matrix_builder import (
+            NationalMatrixBuilder,
+        )
+
+        db_uri = f"sqlite:///{db_path}"
+        builder = NationalMatrixBuilder(db_uri=db_uri, time_period=time_period)
+
+        sim = Microsimulation(dataset=dataset_class)
+        sim.default_calculation_period = time_period
+
+        matrix, targets, names = builder.build_matrix(
+            sim=sim, dataset_class=dataset_class
+        )
+        return (
+            matrix.astype(np.float32),
+            targets.astype(np.float64),
+            names,
         )
 
     # Legacy path: use build_loss_matrix from utils/loss.py
     from policyengine_us_data.utils.loss import build_loss_matrix
 
-    loss_matrix, targets_array = build_loss_matrix(
-        dataset_class, time_period
-    )
+    loss_matrix, targets_array = build_loss_matrix(dataset_class, time_period)
 
     # Filter near-zero targets (not useful for calibration)
     keep_mask = ~np.isclose(targets_array, 0.0, atol=0.1)
@@ -196,10 +208,7 @@ def compute_diagnostics(
 
     # Sort by absolute relative error descending
     sorted_idx = np.argsort(-abs_rel_errors)
-    worst = [
-        (names[i], float(rel_errors[i]))
-        for i in sorted_idx[:n_worst]
-    ]
+    worst = [(names[i], float(rel_errors[i])) for i in sorted_idx[:n_worst]]
 
     return {
         "pct_within_10": float(within),
@@ -265,7 +274,8 @@ def fit_national_weights(
     # Transpose to (n_targets, n_households) for l0-python:
     #   M @ w = y_hat
     #   (n_targets, n_households) @ (n_households,) = (n_targets,)
-    M = matrix.T
+    # l0-python expects a scipy sparse matrix, not dense numpy.
+    M = scipy.sparse.csr_matrix(matrix.T)
 
     model = SparseCalibrationWeights(
         n_features=n_households,
@@ -295,9 +305,7 @@ def fit_national_weights(
     import torch
 
     with torch.no_grad():
-        weights = (
-            model.get_weights(deterministic=True).cpu().numpy()
-        )
+        weights = model.get_weights(deterministic=True).cpu().numpy()
 
     logger.info(
         f"Calibration complete. "
@@ -307,9 +315,7 @@ def fit_national_weights(
     return weights
 
 
-def save_weights_to_h5(
-    h5_path: str, weights: np.ndarray, year: int = 2024
-):
+def save_weights_to_h5(h5_path: str, weights: np.ndarray, year: int = 2024):
     """
     Save calibrated weights into an existing h5 dataset file.
 
@@ -334,9 +340,7 @@ def run_validation(weights, matrix, targets, names):
     estimates = weights @ matrix
 
     diag = compute_diagnostics(targets, estimates, names)
-    logger.info(
-        f"Targets within 10%%: {diag['pct_within_10']:.1f}%%"
-    )
+    logger.info(f"Targets within 10%%: {diag['pct_within_10']:.1f}%%")
     logger.info("Worst targets:")
     for name, rel_err in diag["worst_targets"][:10]:
         logger.info(f"  {name:60s} {rel_err:+.2%}")
@@ -363,12 +367,8 @@ def main(argv=None):
     )
     from policyengine_us_data.storage import STORAGE_FOLDER
 
-    dataset_path = args.dataset or str(
-        STORAGE_FOLDER / "extended_cps_2024.h5"
-    )
-    output_path = args.output or str(
-        STORAGE_FOLDER / "enhanced_cps_2024.h5"
-    )
+    dataset_path = args.dataset or str(STORAGE_FOLDER / "extended_cps_2024.h5")
+    output_path = args.output or str(STORAGE_FOLDER / "enhanced_cps_2024.h5")
 
     logger.info(f"Loading dataset from {dataset_path}")
     sim = Microsimulation(dataset=dataset_path)

@@ -53,14 +53,10 @@ def _make_mock_sim(n_households=5, n_persons=10):
     person_medicaid = np.array(
         [100, 0, 200, 0, 0, 0, 300, 0, 0, 0], dtype=float
     )
-    person_state_fips = np.array(
-        [6, 6, 6, 6, 36, 36, 36, 36, 6, 6], dtype=int
-    )
+    person_state_fips = np.array([6, 6, 6, 6, 36, 36, 36, 36, 6, 6], dtype=int)
     # Tax-unit-level data (5 tax units)
     tu_is_filer = np.array([1, 1, 0, 1, 1], dtype=float)
-    tu_agi = np.array(
-        [75000, 120000, 30000, 60000, 200000], dtype=float
-    )
+    tu_agi = np.array([75000, 120000, 30000, 60000, 200000], dtype=float)
     tu_income_tax_positive = np.array(
         [8000, 15000, 0, 5000, 40000], dtype=float
     )
@@ -75,9 +71,7 @@ def _make_mock_sim(n_households=5, n_persons=10):
     # Map tax_unit vars to person level
     person_is_filer = tu_is_filer[person_tu_ids]
     person_agi = tu_agi[person_tu_ids]
-    person_income_tax_positive = tu_income_tax_positive[
-        person_tu_ids
-    ]
+    person_income_tax_positive = tu_income_tax_positive[person_tu_ids]
 
     def calculate_side_effect(var, period=None, map_to=None):
         """Mock sim.calculate() returning appropriate arrays."""
@@ -96,13 +90,9 @@ def _make_mock_sim(n_households=5, n_persons=10):
                 "income_tax_positive": person_income_tax_positive,
                 "person_count": np.ones(n_persons, dtype=float),
                 "snap": hh_snap[person_hh_ids].astype(float),
-                "net_worth": hh_net_worth[person_hh_ids].astype(
-                    float
-                ),
+                "net_worth": hh_net_worth[person_hh_ids].astype(float),
             }
-            result.values = mapping.get(
-                var, np.zeros(n_persons, dtype=float)
-            )
+            result.values = mapping.get(var, np.zeros(n_persons, dtype=float))
         elif map_to == "household":
             mapping = {
                 "household_id": hh_ids,
@@ -118,9 +108,7 @@ def _make_mock_sim(n_households=5, n_persons=10):
                     dtype=float,
                 ),
                 "tax_unit_is_filer": tu_is_filer,
-                "state_fips": np.array(
-                    [6, 6, 36, 36, 6], dtype=int
-                ),
+                "state_fips": np.array([6, 6, 36, 36, 6], dtype=int),
             }
             result.values = mapping.get(
                 var, np.zeros(n_households, dtype=float)
@@ -132,30 +120,20 @@ def _make_mock_sim(n_households=5, n_persons=10):
                 "adjusted_gross_income": tu_agi,
                 "income_tax_positive": tu_income_tax_positive,
             }
-            result.values = mapping.get(
-                var, np.zeros(5, dtype=float)
-            )
+            result.values = mapping.get(var, np.zeros(5, dtype=float))
 
         return result
 
     sim.calculate = calculate_side_effect
 
-    def map_result_side_effect(
-        values, from_entity, to_entity, how=None
-    ):
+    def map_result_side_effect(values, from_entity, to_entity, how=None):
         """Mock sim.map_result() for person->household sum."""
-        if (
-            from_entity == "person"
-            and to_entity == "household"
-        ):
+        if from_entity == "person" and to_entity == "household":
             result = np.zeros(n_households, dtype=float)
             for i in range(n_persons):
                 result[person_hh_ids[i]] += float(values[i])
             return result
-        elif (
-            from_entity == "tax_unit"
-            and to_entity == "household"
-        ):
+        elif from_entity == "tax_unit" and to_entity == "household":
             return np.array(values, dtype=float)[:n_households]
         return values
 
@@ -423,18 +401,18 @@ class TestModuleConstants:
 
 
 class TestQueryAllTargets:
-    """Test _query_all_targets reads the right rows."""
+    """Test _query_active_targets reads the right rows."""
 
     def test_returns_all_active_targets(self, mock_db):
         builder = _builder_with_engine(mock_db)
-        df = builder._query_all_targets()
+        df = builder._query_active_targets()
 
         # 6 active targets were inserted (no inactive)
         assert len(df) == 6
 
     def test_excludes_inactive_targets(self, mock_db_with_inactive):
         builder = _builder_with_engine(mock_db_with_inactive)
-        df = builder._query_all_targets()
+        df = builder._query_active_targets()
 
         # Still 6 active targets; the inactive "ssi" should be excluded
         assert len(df) == 6
@@ -442,7 +420,7 @@ class TestQueryAllTargets:
 
     def test_required_columns_present(self, mock_db):
         builder = _builder_with_engine(mock_db)
-        df = builder._query_all_targets()
+        df = builder._query_active_targets()
 
         for col in [
             "target_id",
@@ -455,36 +433,30 @@ class TestQueryAllTargets:
 
     def test_empty_db_returns_empty(self, empty_db):
         builder = _builder_with_engine(empty_db)
-        df = builder._query_all_targets()
+        df = builder._query_active_targets()
         assert len(df) == 0
 
 
 class TestGetConstraints:
-    """Test _get_constraints retrieves constraint rows."""
+    """Test _get_all_constraints retrieves constraint rows."""
 
     def test_no_constraints_for_national(self, mock_db):
         builder = _builder_with_engine(mock_db)
-        targets_df = builder._query_all_targets()
+        targets_df = builder._query_active_targets()
 
         # National medicaid has stratum with no constraints
-        national_row = targets_df[
-            targets_df["variable"] == "medicaid"
-        ].iloc[0]
-        constraints = builder._get_constraints(
-            national_row["stratum_id"]
-        )
+        national_row = targets_df[targets_df["variable"] == "medicaid"].iloc[0]
+        constraints = builder._get_all_constraints(national_row["stratum_id"])
         assert constraints == []
 
     def test_single_constraint_filer(self, mock_db):
         builder = _builder_with_engine(mock_db)
-        targets_df = builder._query_all_targets()
+        targets_df = builder._query_active_targets()
 
         filer_row = targets_df[
             targets_df["variable"] == "income_tax_positive"
         ].iloc[0]
-        constraints = builder._get_constraints(
-            filer_row["stratum_id"]
-        )
+        constraints = builder._get_all_constraints(filer_row["stratum_id"])
         assert len(constraints) == 1
         assert constraints[0]["variable"] == "tax_unit_is_filer"
         assert constraints[0]["operation"] == "=="
@@ -492,16 +464,14 @@ class TestGetConstraints:
 
     def test_multiple_constraints_agi_band(self, mock_db):
         builder = _builder_with_engine(mock_db)
-        targets_df = builder._query_all_targets()
+        targets_df = builder._query_active_targets()
 
         # person_count target with AGI band constraints
         agi_row = targets_df[
             (targets_df["variable"] == "person_count")
             & (targets_df["value"] == 32_801_908)
         ].iloc[0]
-        constraints = builder._get_constraints(
-            agi_row["stratum_id"]
-        )
+        constraints = builder._get_all_constraints(agi_row["stratum_id"])
         assert len(constraints) == 3
 
         var_names = {c["variable"] for c in constraints}
@@ -510,7 +480,7 @@ class TestGetConstraints:
 
     def test_nonexistent_stratum_returns_empty(self, mock_db):
         builder = _builder_with_engine(mock_db)
-        constraints = builder._get_constraints(99999)
+        constraints = builder._get_all_constraints(99999)
         assert constraints == []
 
 
@@ -523,19 +493,13 @@ class TestEvaluateConstraints:
     """Test _evaluate_constraints mask computation."""
 
     def test_empty_constraints_returns_all_true(self, mock_sim):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
-        mask = builder._evaluate_constraints(
-            mock_sim, [], n_households=5
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
+        mask = builder._evaluate_constraints(mock_sim, [], n_households=5)
         assert mask.shape == (5,)
         assert np.all(mask)
 
     def test_filer_constraint_mask(self, mock_sim):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         constraints = [
             {
                 "variable": "tax_unit_is_filer",
@@ -556,9 +520,7 @@ class TestEvaluateConstraints:
         assert mask[4] is np.True_
 
     def test_compound_constraints_agi_band(self, mock_sim):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         constraints = [
             {
                 "variable": "tax_unit_is_filer",
@@ -589,9 +551,7 @@ class TestEvaluateConstraints:
         assert mask[4] is np.False_  # AGI too high
 
     def test_geographic_constraint(self, mock_sim):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         constraints = [
             {
                 "variable": "state_fips",
@@ -620,9 +580,7 @@ class TestEntityRelationshipCache:
     """Test that entity relationship is built once and cached."""
 
     def test_cache_is_populated_on_first_call(self, mock_sim):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         assert builder._entity_rel_cache is None
 
         df = builder._build_entity_relationship(mock_sim)
@@ -630,9 +588,7 @@ class TestEntityRelationshipCache:
         assert len(df) == 10  # n_persons
 
     def test_cache_is_reused(self, mock_sim):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
 
         df1 = builder._build_entity_relationship(mock_sim)
         df2 = builder._build_entity_relationship(mock_sim)
@@ -641,9 +597,7 @@ class TestEntityRelationshipCache:
         assert df1 is df2
 
     def test_entity_rel_has_required_columns(self, mock_sim):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         df = builder._build_entity_relationship(mock_sim)
         for col in [
             "person_id",
@@ -664,9 +618,7 @@ class TestComputeTargetColumn:
 
     def test_sum_variable_no_constraints(self, mock_sim):
         """Unconstrained sum variable returns raw household values."""
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         col = builder._compute_target_column(
             mock_sim, "medicaid", [], n_households=5
         )
@@ -675,9 +627,7 @@ class TestComputeTargetColumn:
 
     def test_sum_variable_with_constraint(self, mock_sim):
         """Constrained sum variable zeros out non-matching."""
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         constraints = [
             {
                 "variable": "state_fips",
@@ -695,9 +645,7 @@ class TestComputeTargetColumn:
 
     def test_person_count_no_constraints(self, mock_sim):
         """person_count with no constraints counts all persons."""
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         col = builder._compute_target_column(
             mock_sim, "person_count", [], n_households=5
         )
@@ -708,9 +656,7 @@ class TestComputeTargetColumn:
     def test_person_count_with_constraints(self, mock_sim):
         """person_count with medicaid > 0 counts qualifying persons
         per household."""
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         constraints = [
             {
                 "variable": "medicaid",
@@ -728,9 +674,7 @@ class TestComputeTargetColumn:
 
     def test_tax_unit_count_returns_mask(self, mock_sim):
         """tax_unit_count returns the household-level mask as float."""
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         constraints = [
             {
                 "variable": "tax_unit_is_filer",
@@ -750,9 +694,7 @@ class TestComputeTargetColumn:
 
     def test_column_dtype_is_float64(self, mock_sim):
         """All columns should be float64."""
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         col = builder._compute_target_column(
             mock_sim, "medicaid", [], n_households=5
         )
@@ -768,19 +710,13 @@ class TestMakeTargetName:
     """Test _make_target_name label generation."""
 
     def test_national_unconstrained(self):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
-        name = builder._make_target_name(
-            "medicaid", [], "United States"
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
+        name = builder._make_target_name("medicaid", [], "United States")
         assert "national" in name
         assert "medicaid" in name
 
     def test_geographic_constraint_in_name(self):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         constraints = [
             {
                 "variable": "state_fips",
@@ -788,18 +724,14 @@ class TestMakeTargetName:
                 "value": "6",
             }
         ]
-        name = builder._make_target_name(
-            "snap", constraints, "California"
-        )
+        name = builder._make_target_name("snap", constraints, "California")
         assert "state_6" in name
         assert "snap" in name
         # Should NOT have "national" prefix
         assert "national" not in name
 
     def test_non_geo_constraints_in_brackets(self):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         constraints = [
             {
                 "variable": "tax_unit_is_filer",
@@ -818,9 +750,7 @@ class TestMakeTargetName:
         assert "tax_unit_is_filer" in name
 
     def test_mixed_geo_and_non_geo(self):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         constraints = [
             {
                 "variable": "state_fips",
@@ -833,17 +763,13 @@ class TestMakeTargetName:
                 "value": "1",
             },
         ]
-        name = builder._make_target_name(
-            "eitc", constraints, "CA filers"
-        )
+        name = builder._make_target_name("eitc", constraints, "CA filers")
         assert "state_6" in name
         assert "eitc" in name
         assert "tax_unit_is_filer" in name
 
     def test_congressional_district_geo(self):
-        builder = NationalMatrixBuilder(
-            db_uri="sqlite://", time_period=2024
-        )
+        builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
         constraints = [
             {
                 "variable": "congressional_district_geoid",
@@ -851,9 +777,7 @@ class TestMakeTargetName:
                 "value": "0601",
             },
         ]
-        name = builder._make_target_name(
-            "snap", constraints, "CD 0601"
-        )
+        name = builder._make_target_name("snap", constraints, "CD 0601")
         assert "cd_0601" in name
 
 
@@ -915,9 +839,7 @@ class TestBuildMatrix:
         assert matrix.dtype == np.float64
         assert targets.dtype == np.float64
 
-    def test_unconstrained_medicaid_column(
-        self, mock_db, mock_sim
-    ):
+    def test_unconstrained_medicaid_column(self, mock_db, mock_sim):
         """National medicaid column = raw household medicaid."""
         builder = _builder_with_engine(mock_db)
         matrix, targets, names = builder.build_matrix(mock_sim)
@@ -928,12 +850,8 @@ class TestBuildMatrix:
             for i, n in enumerate(names)
             if "medicaid" in n and "person_count" not in n
         )
-        expected = np.array(
-            [100, 200, 0, 300, 0], dtype=float
-        )
-        np.testing.assert_array_almost_equal(
-            matrix[:, idx], expected
-        )
+        expected = np.array([100, 200, 0, 300, 0], dtype=float)
+        np.testing.assert_array_almost_equal(matrix[:, idx], expected)
         assert targets[idx] == pytest.approx(871.7e9)
 
     def test_filer_masked_income_tax(self, mock_db, mock_sim):
@@ -942,9 +860,7 @@ class TestBuildMatrix:
         matrix, _, names = builder.build_matrix(mock_sim)
 
         idx = next(
-            i
-            for i, n in enumerate(names)
-            if "income_tax_positive" in n
+            i for i, n in enumerate(names) if "income_tax_positive" in n
         )
         col = matrix[:, idx]
         # hh2 is non-filer -> 0
@@ -964,8 +880,7 @@ class TestBuildMatrix:
         idx = next(
             i
             for i, n in enumerate(names)
-            if "person_count" in n
-            and targets[i] == pytest.approx(32_801_908)
+            if "person_count" in n and targets[i] == pytest.approx(32_801_908)
         )
         col = matrix[:, idx]
         # hh0 (AGI 75k, filer) -> in band, 2 persons qualifying
@@ -985,8 +900,7 @@ class TestBuildMatrix:
         idx = next(
             i
             for i, n in enumerate(names)
-            if "person_count" in n
-            and targets[i] == pytest.approx(72_429_055)
+            if "person_count" in n and targets[i] == pytest.approx(72_429_055)
         )
         col = matrix[:, idx]
         # person_medicaid = [100,0, 200,0, 0,0, 300,0, 0,0]
@@ -1002,9 +916,7 @@ class TestBuildMatrix:
         builder = _builder_with_engine(mock_db)
         matrix, _, names = builder.build_matrix(mock_sim)
 
-        idx = next(
-            i for i, n in enumerate(names) if "snap" in n
-        )
+        idx = next(i for i, n in enumerate(names) if "snap" in n)
         col = matrix[:, idx]
         # CA mask = [T, T, F, F, T]
         # hh_snap = [0, 5000, 0, 3000, 0]
@@ -1067,15 +979,11 @@ class TestEdgeCases:
         SQLModel.metadata.create_all(engine)
 
         with Session(engine) as session:
-            source = Source(
-                name="Test", type=SourceType.HARDCODED
-            )
+            source = Source(name="Test", type=SourceType.HARDCODED)
             session.add(source)
             session.flush()
 
-            stratum = Stratum(
-                stratum_group_id=0, notes="US"
-            )
+            stratum = Stratum(stratum_group_id=0, notes="US")
             stratum.constraints_rel = []
             session.add(stratum)
             session.flush()
@@ -1106,15 +1014,11 @@ class TestEdgeCases:
         SQLModel.metadata.create_all(engine)
 
         with Session(engine) as session:
-            source = Source(
-                name="Test", type=SourceType.HARDCODED
-            )
+            source = Source(name="Test", type=SourceType.HARDCODED)
             session.add(source)
             session.flush()
 
-            stratum = Stratum(
-                stratum_group_id=0, notes="Impossible"
-            )
+            stratum = Stratum(stratum_group_id=0, notes="Impossible")
             stratum.constraints_rel = [
                 StratumConstraint(
                     constraint_variable="state_fips",
@@ -1141,9 +1045,7 @@ class TestEdgeCases:
         matrix, _, _ = builder.build_matrix(mock_sim)
 
         # All values in the column should be 0
-        np.testing.assert_array_equal(
-            matrix[:, 0], np.zeros(5)
-        )
+        np.testing.assert_array_equal(matrix[:, 0], np.zeros(5))
 
     def test_large_target_value_preserved(self, mock_sim):
         """Very large target values are not corrupted."""
@@ -1153,15 +1055,11 @@ class TestEdgeCases:
         big_value = 1.5e15
 
         with Session(engine) as session:
-            source = Source(
-                name="Test", type=SourceType.HARDCODED
-            )
+            source = Source(name="Test", type=SourceType.HARDCODED)
             session.add(source)
             session.flush()
 
-            stratum = Stratum(
-                stratum_group_id=0, notes="US"
-            )
+            stratum = Stratum(stratum_group_id=0, notes="US")
             stratum.constraints_rel = []
             session.add(stratum)
             session.flush()
@@ -1182,21 +1080,18 @@ class TestEdgeCases:
         _, targets, _ = builder.build_matrix(mock_sim)
         assert targets[0] == pytest.approx(big_value)
 
-    def test_zero_target_value_preserved(self, mock_sim):
-        """A target with value=0 is preserved in the output."""
+    def test_zero_target_value_filtered_out(self, mock_sim):
+        """A target with value=0 is filtered out (not useful for
+        calibration), raising ValueError when it's the only target."""
         engine = create_engine("sqlite:///:memory:")
         SQLModel.metadata.create_all(engine)
 
         with Session(engine) as session:
-            source = Source(
-                name="Test", type=SourceType.HARDCODED
-            )
+            source = Source(name="Test", type=SourceType.HARDCODED)
             session.add(source)
             session.flush()
 
-            stratum = Stratum(
-                stratum_group_id=0, notes="US"
-            )
+            stratum = Stratum(stratum_group_id=0, notes="US")
             stratum.constraints_rel = []
             session.add(stratum)
             session.flush()
@@ -1214,8 +1109,8 @@ class TestEdgeCases:
             session.commit()
 
         builder = _builder_with_engine(engine)
-        _, targets, _ = builder.build_matrix(mock_sim)
-        assert targets[0] == pytest.approx(0.0)
+        with pytest.raises(ValueError, match="zero or null"):
+            builder.build_matrix(mock_sim)
 
     def test_multiple_targets_same_stratum(self, mock_sim):
         """Multiple targets sharing one stratum produce separate
@@ -1224,15 +1119,11 @@ class TestEdgeCases:
         SQLModel.metadata.create_all(engine)
 
         with Session(engine) as session:
-            source = Source(
-                name="Test", type=SourceType.HARDCODED
-            )
+            source = Source(name="Test", type=SourceType.HARDCODED)
             session.add(source)
             session.flush()
 
-            stratum = Stratum(
-                stratum_group_id=0, notes="US"
-            )
+            stratum = Stratum(stratum_group_id=0, notes="US")
             stratum.constraints_rel = []
             session.add(stratum)
             session.flush()
@@ -1281,9 +1172,7 @@ class TestApplyOp:
 
         vals = np.array([1, 2, 3, 4, 5])
         result = apply_op(vals, "==", "3")
-        expected = np.array(
-            [False, False, True, False, False]
-        )
+        expected = np.array([False, False, True, False, False])
         np.testing.assert_array_equal(result, expected)
 
     def test_greater_than(self):
@@ -1293,9 +1182,7 @@ class TestApplyOp:
 
         vals = np.array([1, 2, 3, 4, 5])
         result = apply_op(vals, ">", "3")
-        expected = np.array(
-            [False, False, False, True, True]
-        )
+        expected = np.array([False, False, False, True, True])
         np.testing.assert_array_equal(result, expected)
 
     def test_less_than(self):
@@ -1305,9 +1192,7 @@ class TestApplyOp:
 
         vals = np.array([1, 2, 3, 4, 5])
         result = apply_op(vals, "<", "3")
-        expected = np.array(
-            [True, True, False, False, False]
-        )
+        expected = np.array([True, True, False, False, False])
         np.testing.assert_array_equal(result, expected)
 
     def test_gte(self):
@@ -1317,9 +1202,7 @@ class TestApplyOp:
 
         vals = np.array([1, 2, 3, 4, 5])
         result = apply_op(vals, ">=", "3")
-        expected = np.array(
-            [False, False, True, True, True]
-        )
+        expected = np.array([False, False, True, True, True])
         np.testing.assert_array_equal(result, expected)
 
     def test_lte(self):
@@ -1329,9 +1212,7 @@ class TestApplyOp:
 
         vals = np.array([1, 2, 3, 4, 5])
         result = apply_op(vals, "<=", "3")
-        expected = np.array(
-            [True, True, True, False, False]
-        )
+        expected = np.array([True, True, True, False, False])
         np.testing.assert_array_equal(result, expected)
 
     def test_not_equal(self):
@@ -1341,9 +1222,7 @@ class TestApplyOp:
 
         vals = np.array([1, 2, 3, 4, 5])
         result = apply_op(vals, "!=", "3")
-        expected = np.array(
-            [True, True, False, True, True]
-        )
+        expected = np.array([True, True, False, True, True])
         np.testing.assert_array_equal(result, expected)
 
     def test_float_value_parsing(self):

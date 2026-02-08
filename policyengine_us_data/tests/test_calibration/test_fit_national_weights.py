@@ -30,9 +30,7 @@ class TestImports:
             fit_national_weights,
         )
 
-        assert hasattr(
-            fit_national_weights, "fit_national_weights"
-        )
+        assert hasattr(fit_national_weights, "fit_national_weights")
 
     def test_public_functions_exist(self):
         from policyengine_us_data.calibration import (
@@ -98,9 +96,7 @@ class TestInitializeWeights:
             initialize_weights,
         )
 
-        original = np.array(
-            [100.0, 200.0, 50.0, 0.5, 300.0]
-        )
+        original = np.array([100.0, 200.0, 50.0, 0.5, 300.0])
         result = initialize_weights(original)
         assert result.shape == original.shape
 
@@ -142,9 +138,7 @@ class TestInitializeWeights:
         original = np.array([100.0, 0.0, -5.0])
         original_copy = original.copy()
         initialize_weights(original)
-        np.testing.assert_array_equal(
-            original, original_copy
-        )
+        np.testing.assert_array_equal(original, original_copy)
 
     def test_all_zero_weights(self):
         from policyengine_us_data.calibration.fit_national_weights import (
@@ -194,9 +188,7 @@ class TestBuildCalibrationInputs:
 
     def _mock_legacy_loss_matrix(self, n_hh=100, n_targets=50):
         """Create a mock loss matrix and targets array."""
-        data = np.random.rand(n_hh, n_targets).astype(
-            np.float32
-        )
+        data = np.random.rand(n_hh, n_targets).astype(np.float32)
         cols = [f"target_{i}" for i in range(n_targets)]
         return pd.DataFrame(data, columns=cols)
 
@@ -230,9 +222,7 @@ class TestBuildCalibrationInputs:
             build_calibration_inputs,
         )
 
-        mock_loss_matrix = self._mock_legacy_loss_matrix(
-            n_hh=10, n_targets=5
-        )
+        mock_loss_matrix = self._mock_legacy_loss_matrix(n_hh=10, n_targets=5)
         mock_targets = np.array([1e9, 2e9, 3e9, 4e9, 5e9])
 
         with patch(
@@ -252,9 +242,7 @@ class TestBuildCalibrationInputs:
             build_calibration_inputs,
         )
 
-        mock_loss_matrix = self._mock_legacy_loss_matrix(
-            n_hh=10, n_targets=5
-        )
+        mock_loss_matrix = self._mock_legacy_loss_matrix(n_hh=10, n_targets=5)
         mock_targets = np.array([1e9, 2e9, 3e9, 4e9, 5e9])
 
         with patch(
@@ -278,9 +266,7 @@ class TestBuildCalibrationInputs:
         cols = [f"target_{i}" for i in range(5)]
         mock_loss_matrix = pd.DataFrame(data, columns=cols)
         # Target at index 2 is near-zero
-        mock_targets = np.array(
-            [1e9, 2e9, 0.01, 3e9, 4e9]
-        )
+        mock_targets = np.array([1e9, 2e9, 0.01, 3e9, 4e9])
 
         with patch(
             "policyengine_us_data.utils.loss.build_loss_matrix",
@@ -326,9 +312,7 @@ class TestBuildCalibrationInputs:
             build_calibration_inputs,
         )
 
-        mock_loss_matrix = self._mock_legacy_loss_matrix(
-            n_hh=50, n_targets=20
-        )
+        mock_loss_matrix = self._mock_legacy_loss_matrix(n_hh=50, n_targets=20)
         mock_targets = np.random.rand(20) * 1e9
 
         with patch(
@@ -350,9 +334,7 @@ class TestBuildCalibrationInputs:
             build_calibration_inputs,
         )
 
-        mock_loss_matrix = self._mock_legacy_loss_matrix(
-            n_hh=10, n_targets=3
-        )
+        mock_loss_matrix = self._mock_legacy_loss_matrix(n_hh=10, n_targets=3)
         mock_targets = np.array([1e9, 2e9, 3e9])
 
         with patch(
@@ -383,12 +365,8 @@ class TestComputeDiagnostics:
             compute_diagnostics,
         )
 
-        targets = np.array(
-            [1000.0, 2000.0, 3000.0, 4000.0]
-        )
-        estimates = np.array(
-            [1050.0, 1500.0, 3100.0, 4000.0]
-        )
+        targets = np.array([1000.0, 2000.0, 3000.0, 4000.0])
+        estimates = np.array([1050.0, 1500.0, 3100.0, 4000.0])
         names = ["pop", "income", "snap", "ssi"]
 
         diag = compute_diagnostics(targets, estimates, names)
@@ -448,9 +426,7 @@ class TestComputeDiagnostics:
         names = ["a", "b"]
 
         # With 20% threshold, both should be within
-        diag = compute_diagnostics(
-            targets, estimates, names, threshold=0.20
-        )
+        diag = compute_diagnostics(targets, estimates, names, threshold=0.20)
         assert diag["pct_within_10"] == pytest.approx(100.0)
 
     def test_custom_n_worst(self):
@@ -462,9 +438,7 @@ class TestComputeDiagnostics:
         estimates = np.arange(50, dtype=float) * 100
         names = [f"t_{i}" for i in range(50)]
 
-        diag = compute_diagnostics(
-            targets, estimates, names, n_worst=5
-        )
+        diag = compute_diagnostics(targets, estimates, names, n_worst=5)
         assert len(diag["worst_targets"]) == 5
 
     def test_near_zero_targets_handled(self):
@@ -479,9 +453,7 @@ class TestComputeDiagnostics:
 
         diag = compute_diagnostics(targets, estimates, names)
         assert not np.isnan(diag["pct_within_10"])
-        assert not any(
-            np.isnan(err) for _, err in diag["worst_targets"]
-        )
+        assert not any(np.isnan(err) for _, err in diag["worst_targets"])
 
     def test_single_target(self):
         from policyengine_us_data.calibration.fit_national_weights import (
@@ -514,9 +486,7 @@ class TestFitNationalWeights:
         mock_model.get_weights.return_value = MagicMock(
             cpu=MagicMock(
                 return_value=MagicMock(
-                    numpy=MagicMock(
-                        return_value=return_weights
-                    )
+                    numpy=MagicMock(return_value=return_weights)
                 )
             )
         )
@@ -536,13 +506,8 @@ class TestFitNationalWeights:
 
         n_households = 50
         n_targets = 10
-        matrix = np.random.rand(
-            n_households, n_targets
-        ).astype(np.float32)
-        targets = (
-            np.random.rand(n_targets).astype(np.float32)
-            * 1e6
-        )
+        matrix = np.random.rand(n_households, n_targets).astype(np.float32)
+        targets = np.random.rand(n_targets).astype(np.float32) * 1e6
         initial_weights = np.ones(n_households) * 100.0
 
         mock_l0_module, _ = self._mock_l0(n_households)
@@ -597,9 +562,7 @@ class TestFitNationalWeights:
             )
 
         # Verify SparseCalibrationWeights constructor was called
-        constructor = (
-            mock_l0_module.SparseCalibrationWeights
-        )
+        constructor = mock_l0_module.SparseCalibrationWeights
         assert constructor.called
         call_kwargs = constructor.call_args[1]
         assert call_kwargs["n_features"] == n
@@ -701,9 +664,7 @@ class TestFitNationalWeights:
                 epochs=1,
             )
 
-        mock_model.get_weights.assert_called_once_with(
-            deterministic=True
-        )
+        mock_model.get_weights.assert_called_once_with(deterministic=True)
 
 
 # -------------------------------------------------------------------
@@ -722,24 +683,16 @@ class TestSaveWeights:
         n = 100
         weights = np.random.rand(n) * 200
 
-        with tempfile.NamedTemporaryFile(
-            suffix=".h5"
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".h5") as tmp:
             with h5py.File(tmp.name, "w") as f:
-                f.create_dataset(
-                    "household_weight/2024", data=np.ones(n)
-                )
-                f.create_dataset(
-                    "person_id/2024", data=np.arange(n)
-                )
+                f.create_dataset("household_weight/2024", data=np.ones(n))
+                f.create_dataset("person_id/2024", data=np.arange(n))
 
             save_weights_to_h5(tmp.name, weights, year=2024)
 
             with h5py.File(tmp.name, "r") as f:
                 saved = f["household_weight/2024"][:]
-                np.testing.assert_array_almost_equal(
-                    saved, weights
-                )
+                np.testing.assert_array_almost_equal(saved, weights)
 
     def test_save_preserves_other_data(self):
         from policyengine_us_data.calibration.fit_national_weights import (
@@ -750,16 +703,10 @@ class TestSaveWeights:
         weights = np.random.rand(n) * 200
         other_data = np.arange(n)
 
-        with tempfile.NamedTemporaryFile(
-            suffix=".h5"
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".h5") as tmp:
             with h5py.File(tmp.name, "w") as f:
-                f.create_dataset(
-                    "household_weight/2024", data=np.ones(n)
-                )
-                f.create_dataset(
-                    "person_id/2024", data=other_data
-                )
+                f.create_dataset("household_weight/2024", data=np.ones(n))
+                f.create_dataset("person_id/2024", data=other_data)
 
             save_weights_to_h5(tmp.name, weights, year=2024)
 
@@ -778,14 +725,10 @@ class TestSaveWeights:
         n = 30
         weights = np.random.rand(n) * 100
 
-        with tempfile.NamedTemporaryFile(
-            suffix=".h5"
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".h5") as tmp:
             # Create an h5 file with only other data
             with h5py.File(tmp.name, "w") as f:
-                f.create_dataset(
-                    "person_id/2024", data=np.arange(n)
-                )
+                f.create_dataset("person_id/2024", data=np.arange(n))
 
             save_weights_to_h5(tmp.name, weights, year=2024)
 
@@ -806,18 +749,14 @@ class TestSaveWeights:
         weights_2024 = np.ones(n) * 100
         weights_2025 = np.ones(n) * 200
 
-        with tempfile.NamedTemporaryFile(
-            suffix=".h5"
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".h5") as tmp:
             with h5py.File(tmp.name, "w") as f:
                 f.create_dataset(
                     "household_weight/2024",
                     data=weights_2024,
                 )
 
-            save_weights_to_h5(
-                tmp.name, weights_2025, year=2025
-            )
+            save_weights_to_h5(tmp.name, weights_2025, year=2025)
 
             with h5py.File(tmp.name, "r") as f:
                 np.testing.assert_array_almost_equal(
@@ -840,18 +779,14 @@ class TestSaveWeights:
         old_weights = np.ones(n) * 50
         new_weights = np.ones(n) * 150
 
-        with tempfile.NamedTemporaryFile(
-            suffix=".h5"
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".h5") as tmp:
             with h5py.File(tmp.name, "w") as f:
                 f.create_dataset(
                     "household_weight/2024",
                     data=old_weights,
                 )
 
-            save_weights_to_h5(
-                tmp.name, new_weights, year=2024
-            )
+            save_weights_to_h5(tmp.name, new_weights, year=2024)
 
             with h5py.File(tmp.name, "r") as f:
                 np.testing.assert_array_almost_equal(
@@ -1003,12 +938,8 @@ class TestEnhancedCPSIntegration:
         calibrated = np.ones(n_hh) * 95
 
         mock_sim = MagicMock()
-        mock_sim.calculate.return_value = MagicMock(
-            values=mock_weights
-        )
-        mock_sim.dataset.load_dataset.return_value = {
-            "household_weight": {}
-        }
+        mock_sim.calculate.return_value = MagicMock(values=mock_weights)
+        mock_sim.dataset.load_dataset.return_value = {"household_weight": {}}
 
         with (
             patch(

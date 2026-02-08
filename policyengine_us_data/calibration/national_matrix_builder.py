@@ -34,6 +34,18 @@ COUNT_VARIABLES = {
     "person_count",
     "tax_unit_count",
     "household_count",
+    "spm_unit_count",
+}
+
+# Variables evaluated at person level (need person-to-household
+# aggregation even for non-count targets).
+PERSON_LEVEL_VARIABLES = {
+    "person_count",
+}
+
+# Variables evaluated at SPM unit level.
+SPM_UNIT_VARIABLES = {
+    "spm_unit_count",
 }
 
 # Mapping from reform_id -> deduction variable to neutralize.
@@ -105,9 +117,7 @@ class NationalMatrixBuilder:
         with self.engine.connect() as conn:
             return pd.read_sql(query, conn)
 
-    def _get_stratum_constraints(
-        self, stratum_id: int
-    ) -> List[dict]:
+    def _get_stratum_constraints(self, stratum_id: int) -> List[dict]:
         """Get the direct constraints for a single stratum.
 
         Args:
@@ -130,9 +140,7 @@ class NationalMatrixBuilder:
             )
         return df.to_dict("records")
 
-    def _get_parent_stratum_id(
-        self, stratum_id: int
-    ) -> Optional[int]:
+    def _get_parent_stratum_id(self, stratum_id: int) -> Optional[int]:
         """Return the parent_stratum_id for a stratum, or None."""
         query = """
         SELECT parent_stratum_id
@@ -148,9 +156,7 @@ class NationalMatrixBuilder:
             return None
         return row[0]
 
-    def _get_all_constraints(
-        self, stratum_id: int
-    ) -> List[dict]:
+    def _get_all_constraints(self, stratum_id: int) -> List[dict]:
         """Get constraints for a stratum *and* all its ancestors.
 
         Walks up the ``parent_stratum_id`` chain, collecting
@@ -283,11 +289,9 @@ class NationalMatrixBuilder:
         entity_rel_with_mask = entity_rel.copy()
         entity_rel_with_mask["satisfies"] = person_mask
 
-        household_mask_series = (
-            entity_rel_with_mask.groupby("household_id")[
-                "satisfies"
-            ].any()
-        )
+        household_mask_series = entity_rel_with_mask.groupby("household_id")[
+            "satisfies"
+        ].any()
 
         household_ids = sim.calculate(
             "household_id", map_to="household"
@@ -353,9 +357,7 @@ class NationalMatrixBuilder:
                     )
                     return np.zeros(n_households, dtype=np.float64)
 
-                person_mask &= apply_op(
-                    vals, c["operation"], c["value"]
-                )
+                person_mask &= apply_op(vals, c["operation"], c["value"])
 
             values = sim.map_result(
                 person_mask.astype(float), "person", "household"
@@ -369,22 +371,16 @@ class NationalMatrixBuilder:
             # target we need the *number* of qualifying tax units per
             # household.  In practice most constraints produce a
             # 0/1-per-household result.
-            mask = self._evaluate_constraints(
-                sim, constraints, n_households
-            )
+            mask = self._evaluate_constraints(sim, constraints, n_households)
             return mask.astype(np.float64)
 
         if is_count and variable == "household_count":
-            mask = self._evaluate_constraints(
-                sim, constraints, n_households
-            )
+            mask = self._evaluate_constraints(sim, constraints, n_households)
             return mask.astype(np.float64)
 
         # Non-count variable: compute value at household level and
         # apply the constraint mask.
-        mask = self._evaluate_constraints(
-            sim, constraints, n_households
-        )
+        mask = self._evaluate_constraints(sim, constraints, n_households)
 
         try:
             values = sim.calculate(
@@ -454,9 +450,7 @@ class NationalMatrixBuilder:
         dataset_arg = dataset_class
         if dataset_arg is None:
             # Fall back to whatever the baseline sim was loaded with.
-            dataset_arg = getattr(
-                sim_baseline, "dataset", None
-            )
+            dataset_arg = getattr(sim_baseline, "dataset", None)
 
         sim_reform = Microsimulation(
             dataset=dataset_arg, reform=RepealDeduction
@@ -532,8 +526,7 @@ class NationalMatrixBuilder:
         ]
         if non_geo:
             constraint_strs = [
-                f"{c['variable']}{c['operation']}{c['value']}"
-                for c in non_geo
+                f"{c['variable']}{c['operation']}{c['value']}" for c in non_geo
             ]
             parts.append("[" + ",".join(constraint_strs) + "]")
 
@@ -589,14 +582,10 @@ class NationalMatrixBuilder:
         n_households = len(household_ids)
 
         targets_df = self._query_active_targets()
-        logger.info(
-            "Loaded %d active targets from database", len(targets_df)
-        )
+        logger.info("Loaded %d active targets from database", len(targets_df))
 
         if targets_df.empty:
-            raise ValueError(
-                "No active targets found in database"
-            )
+            raise ValueError("No active targets found in database")
 
         # Filter out targets with zero or null value.
         targets_df = targets_df[
@@ -610,9 +599,7 @@ class NationalMatrixBuilder:
         )
 
         if targets_df.empty:
-            raise ValueError(
-                "All targets have zero or null values"
-            )
+            raise ValueError("All targets have zero or null values")
 
         # Cache constraints per stratum to avoid repeated DB queries.
         constraint_cache: Dict[int, List[dict]] = {}
@@ -638,8 +625,8 @@ class NationalMatrixBuilder:
 
             # Resolve full constraint chain.
             if stratum_id not in constraint_cache:
-                constraint_cache[stratum_id] = (
-                    self._get_all_constraints(stratum_id)
+                constraint_cache[stratum_id] = self._get_all_constraints(
+                    stratum_id
                 )
             constraints = constraint_cache[stratum_id]
 
@@ -672,8 +659,7 @@ class NationalMatrixBuilder:
             else:
                 # -- Baseline target -----------------------------------
                 logger.debug(
-                    "Building target: %s (target_id=%s, "
-                    "stratum_id=%s)",
+                    "Building target: %s (target_id=%s, " "stratum_id=%s)",
                     variable,
                     row["target_id"],
                     stratum_id,
@@ -705,8 +691,7 @@ class NationalMatrixBuilder:
 
         if n_targets == 0:
             raise ValueError(
-                "No targets could be computed "
-                "(all were skipped or errored)"
+                "No targets could be computed " "(all were skipped or errored)"
             )
 
         # Stack columns into (n_households, n_targets) matrix.

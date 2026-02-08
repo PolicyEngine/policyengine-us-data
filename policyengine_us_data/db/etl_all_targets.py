@@ -112,9 +112,7 @@ def _fmt(x):
 
 def extract_census_age_populations(time_period: int):
     """Return list of 86 dicts with keys ``age`` and ``value``."""
-    populations = pd.read_csv(
-        CALIBRATION_FOLDER / "np2023_d5_mid.csv"
-    )
+    populations = pd.read_csv(CALIBRATION_FOLDER / "np2023_d5_mid.csv")
     populations = populations[
         (populations.SEX == 0) & (populations.RACE_HISP == 0)
     ]
@@ -122,9 +120,7 @@ def extract_census_age_populations(time_period: int):
     year_pops = (
         populations.groupby("YEAR").sum()[pop_cols].T[time_period].values
     )
-    return [
-        {"age": i, "value": float(year_pops[i])} for i in range(86)
-    ]
+    return [{"age": i, "value": float(year_pops[i])} for i in range(86)]
 
 
 def extract_eitc_by_child_count():
@@ -165,9 +161,7 @@ def extract_healthcare_by_age():
     for _, row in df.iterrows():
         age_lower = int(row["age_10_year_lower_bound"])
         expenses = {c: float(row[c]) for c in expense_cols}
-        records.append(
-            {"age_lower": age_lower, "expenses": expenses}
-        )
+        records.append({"age_lower": age_lower, "expenses": expenses})
     return records
 
 
@@ -177,15 +171,9 @@ def extract_spm_threshold_agi():
     return [
         {
             "decile": int(row["decile"]),
-            "lower_spm_threshold": float(
-                row["lower_spm_threshold"]
-            ),
-            "upper_spm_threshold": float(
-                row["upper_spm_threshold"]
-            ),
-            "adjusted_gross_income": float(
-                row["adjusted_gross_income"]
-            ),
+            "lower_spm_threshold": float(row["lower_spm_threshold"]),
+            "upper_spm_threshold": float(row["upper_spm_threshold"]),
+            "adjusted_gross_income": float(row["adjusted_gross_income"]),
             "count": float(row["count"]),
         }
         for _, row in df.iterrows()
@@ -224,9 +212,7 @@ def extract_tax_expenditure_targets():
 
 
 def extract_state_real_estate_taxes():
-    df = pd.read_csv(
-        CALIBRATION_FOLDER / "real_estate_taxes_by_state_acs.csv"
-    )
+    df = pd.read_csv(CALIBRATION_FOLDER / "real_estate_taxes_by_state_acs.csv")
     state_sum = df["real_estate_taxes_bn"].sum() * 1e9
     scale = HARD_CODED_NATIONAL_TOTAL / state_sum
     return [
@@ -244,9 +230,7 @@ def extract_state_aca():
     )
     # Monthly to yearly, then scale to national target
     df["spending_annual"] = df["spending"] * 12
-    spending_scale = (
-        ACA_SPENDING_2024 / df["spending_annual"].sum()
-    )
+    spending_scale = ACA_SPENDING_2024 / df["spending_annual"].sum()
     df["spending_scaled"] = df["spending_annual"] * spending_scale
     return [
         {
@@ -259,9 +243,7 @@ def extract_state_aca():
 
 
 def extract_state_medicaid_enrollment():
-    df = pd.read_csv(
-        CALIBRATION_FOLDER / "medicaid_enrollment_2024.csv"
-    )
+    df = pd.read_csv(CALIBRATION_FOLDER / "medicaid_enrollment_2024.csv")
     return [
         {
             "state": row["state"],
@@ -394,9 +376,7 @@ def _get_or_create_stratum(
         stratum_group_id=stratum_group_id,
         notes=notes,
     )
-    stratum.constraints_rel = [
-        StratumConstraint(**c) for c in all_constraints
-    ]
+    stratum.constraints_rel = [StratumConstraint(**c) for c in all_constraints]
     session.add(stratum)
     session.flush()
     return stratum
@@ -618,9 +598,7 @@ def load_all_targets(
                     },
                 ],
                 stratum_group_id=13,
-                notes=(
-                    f"Healthcare age {age_lo}-{age_lo + 9}"
-                ),
+                notes=(f"Healthcare age {age_lo}-{age_lo + 9}"),
                 category_tag="healthcare",
             )
             for var_name, amount in rec["expenses"].items():
@@ -632,8 +610,7 @@ def load_all_targets(
                     amount,
                     sid,
                     notes=(
-                        f"Healthcare {var_name} "
-                        f"age {age_lo}-{age_lo + 9}"
+                        f"Healthcare {var_name} " f"age {age_lo}-{age_lo + 9}"
                     ),
                 )
 
@@ -646,16 +623,12 @@ def load_all_targets(
                 parent_id=root_stratum_id,
                 constraints=[
                     {
-                        "constraint_variable": (
-                            "spm_unit_spm_threshold"
-                        ),
+                        "constraint_variable": ("spm_unit_spm_threshold"),
                         "operation": ">=",
                         "value": str(rec["lower_spm_threshold"]),
                     },
                     {
-                        "constraint_variable": (
-                            "spm_unit_spm_threshold"
-                        ),
+                        "constraint_variable": ("spm_unit_spm_threshold"),
                         "operation": "<",
                         "value": str(rec["upper_spm_threshold"]),
                     },
@@ -689,9 +662,7 @@ def load_all_targets(
             parent_id=root_stratum_id,
             constraints=[
                 {
-                    "constraint_variable": (
-                        "household_market_income"
-                    ),
+                    "constraint_variable": ("household_market_income"),
                     "operation": "<",
                     "value": "0",
                 },
@@ -1034,10 +1005,7 @@ def load_all_targets(
                 time_period,
                 rec["value"],
                 sid,
-                notes=(
-                    f"State AGI {gn} "
-                    f"{lo}-{hi} {rec['variable']}"
-                ),
+                notes=(f"State AGI {gn} " f"{lo}-{hi} {rec['variable']}"),
             )
 
         # -- 16. SOI filing-status x AGI bin targets ---------------
@@ -1060,16 +1028,12 @@ def load_all_targets(
                         "value": "1",
                     },
                     {
-                        "constraint_variable": (
-                            "adjusted_gross_income"
-                        ),
+                        "constraint_variable": ("adjusted_gross_income"),
                         "operation": ">=",
                         "value": str(lo),
                     },
                     {
-                        "constraint_variable": (
-                            "adjusted_gross_income"
-                        ),
+                        "constraint_variable": ("adjusted_gross_income"),
                         "operation": "<",
                         "value": str(hi),
                     },
@@ -1091,8 +1055,7 @@ def load_all_targets(
                     )
 
                 stratum_notes = (
-                    f"SOI filing-status {fs} "
-                    f"AGI {_fmt(lo)}-{_fmt(hi)}"
+                    f"SOI filing-status {fs} " f"AGI {_fmt(lo)}-{_fmt(hi)}"
                 )
                 stratum = _get_or_create_stratum(
                     session,
@@ -1158,10 +1121,9 @@ def main():
 
     db_path = STORAGE_FOLDER / "calibration" / "policy_data.db"
     engine = create_engine(f"sqlite:///{db_path}")
-    SQLModel.metadata.create_all(engine)
+    from sqlmodel import SQLModel
 
-    # Find or create root stratum
-    from sqlmodel import SQLModel as _SM
+    SQLModel.metadata.create_all(engine)
 
     with Session(engine) as sess:
         root = sess.exec(

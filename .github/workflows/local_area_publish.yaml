@@ -21,6 +21,11 @@ on:
         required: false
         default: false
         type: boolean
+      force_rebuild:
+        description: 'Clear cached files and rebuild everything from scratch'
+        required: false
+        default: true
+        type: boolean
 
 # Trigger strategy:
 # 1. Automatic: Code changes to local_area_calibration/ pushed to main
@@ -53,12 +58,17 @@ jobs:
         run: |
           NUM_WORKERS="${{ github.event.inputs.num_workers || '8' }}"
           SKIP_UPLOAD="${{ github.event.inputs.skip_upload || 'false' }}"
+          FORCE_REBUILD="${{ github.event.inputs.force_rebuild || 'true' }}"
           BRANCH="${{ github.head_ref || github.ref_name }}"
 
           CMD="modal run modal_app/local_area.py::main --branch=${BRANCH} --num-workers=${NUM_WORKERS}"
 
           if [ "$SKIP_UPLOAD" = "true" ]; then
             CMD="${CMD} --skip-upload"
+          fi
+
+          if [ "$FORCE_REBUILD" = "true" ]; then
+            CMD="${CMD} --force-rebuild"
           fi
 
           echo "Running: $CMD"

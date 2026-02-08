@@ -419,8 +419,11 @@ def coordinate_publish(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
+    force_rebuild: bool = False,
 ) -> str:
     """Coordinate the full publishing workflow."""
+    import shutil
+
     setup_gcp_credentials()
     setup_repo(branch)
 
@@ -430,9 +433,21 @@ def coordinate_publish(
 
     staging_dir = Path(VOLUME_MOUNT)
     version_dir = staging_dir / version
+
+    if force_rebuild and version_dir.exists():
+        print(f"Force rebuild: clearing {version_dir}")
+        shutil.rmtree(version_dir)
+        staging_volume.commit()
+
     version_dir.mkdir(parents=True, exist_ok=True)
 
     calibration_dir = staging_dir / "calibration_inputs"
+
+    if force_rebuild and calibration_dir.exists():
+        print(f"Force rebuild: clearing cached calibration inputs")
+        shutil.rmtree(calibration_dir)
+        staging_volume.commit()
+
     calibration_dir.mkdir(parents=True, exist_ok=True)
 
     # hf_hub_download preserves directory structure, so files are in calibration/ subdir
@@ -625,12 +640,14 @@ def main(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
+    force_rebuild: bool = False,
 ):
     """Local entrypoint for Modal CLI."""
     result = coordinate_publish.remote(
         branch=branch,
         num_workers=num_workers,
         skip_upload=skip_upload,
+        force_rebuild=force_rebuild,
     )
     print(result)
 

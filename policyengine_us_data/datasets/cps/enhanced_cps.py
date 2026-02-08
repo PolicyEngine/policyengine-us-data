@@ -42,7 +42,9 @@ def reweight(
     nation_normalisation_factor = is_national * (1 / is_national.sum())
     state_normalisation_factor = ~is_national * (1 / (~is_national).sum())
     normalisation_factor = np.where(
-        is_national, nation_normalisation_factor, state_normalisation_factor
+        is_national,
+        nation_normalisation_factor,
+        state_normalisation_factor,
     )
     normalisation_factor = torch.tensor(
         normalisation_factor, dtype=torch.float32
@@ -70,23 +72,29 @@ def reweight(
         return rel_error_normalized.mean()
 
     logging.info(
-        f"Sparse optimization using seed {seed}, temp {temperature} "
-        + f"init_mean {init_mean}, l0_lambda {l0_lambda}"
+        f"Sparse optimization using seed {seed}, "
+        f"temp {temperature} "
+        f"init_mean {init_mean}, l0_lambda {l0_lambda}"
     )
     set_seeds(seed)
 
     weights = torch.tensor(
-        np.log(original_weights), requires_grad=True, dtype=torch.float32
+        np.log(original_weights),
+        requires_grad=True,
+        dtype=torch.float32,
     )
     gates = HardConcrete(
-        len(original_weights), init_mean=init_mean, temperature=temperature
+        len(original_weights),
+        init_mean=init_mean,
+        temperature=temperature,
     )
-    # NOTE: Results are pretty sensitve to learning rates
-    # optimizer breaks down somewhere near .005, does better at above .1
+    # NOTE: Results are pretty sensitive to learning rates
+    # optimizer breaks down near .005, does better above .1
     optimizer = torch.optim.Adam([weights] + list(gates.parameters()), lr=0.2)
     start_loss = None
 
-    iterator = trange(epochs * 2)  # lower learning rate, harder optimization
+    # lower learning rate, harder optimization
+    iterator = trange(epochs * 2)
     performance = pd.DataFrame()
     for i in iterator:
         optimizer.zero_grad()
@@ -120,7 +128,10 @@ def reweight(
         loss_rel_change = (l.item() - start_loss) / start_loss
         l.backward()
         iterator.set_postfix(
-            {"loss": l.item(), "loss_rel_change": loss_rel_change}
+            {
+                "loss": l.item(),
+                "loss_rel_change": loss_rel_change,
+            }
         )
         optimizer.step()
         if log_path is not None:
@@ -145,6 +156,50 @@ class EnhancedCPS(Dataset):
     start_year: int
     end_year: int
 
+    #: When True, use NationalMatrixBuilder + l0-python for
+    #: calibration.  When False, use the legacy reweight() path.
+    use_db: bool = False
+
+    def reweight_l0(self, db_path=None, lambda_l0=1e-6, epochs=1000):
+        """Reweight using L0 calibration from DB targets.
+
+        Args:
+            db_path: Path to policy_data.db. If None, falls back
+                to legacy build_loss_matrix targets.
+            lambda_l0: L0 regularization strength.
+            epochs: Number of training epochs.
+        """
+        from policyengine_us import Microsimulation
+        from policyengine_us_data.calibration.fit_national_weights import (
+            build_calibration_inputs,
+            fit_national_weights,
+            initialize_weights,
+            save_weights_to_h5,
+        )
+
+        sim = Microsimulation(dataset=self.input_dataset)
+        data = sim.dataset.load_dataset()
+        original_weights = sim.calculate("household_weight").values
+
+        for year in range(self.start_year, self.end_year + 1):
+            matrix, targets, names = build_calibration_inputs(
+                dataset_class=self.input_dataset,
+                time_period=year,
+                db_path=db_path,
+                sim=sim,
+            )
+            init_weights = initialize_weights(original_weights)
+            calibrated = fit_national_weights(
+                matrix=matrix,
+                targets=targets,
+                initial_weights=init_weights,
+                epochs=epochs,
+                lambda_l0=lambda_l0,
+            )
+            data["household_weight"][year] = calibrated
+
+        self.save_dataset(data)
+
     def generate(self):
         from policyengine_us import Microsimulation
 
@@ -156,52 +211,129 @@ class EnhancedCPS(Dataset):
             1, 0.1, len(original_weights)
         )
 
-        bad_targets = [
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "state/RI/adjusted_gross_income/amount/-inf_1",
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "state/RI/adjusted_gross_income/amount/-inf_1",
-            "nation/irs/exempt interest/count/AGI in -inf-inf/taxable/All",
-        ]
-
-        # Run the optimization procedure to get (close to) minimum loss weights
         for year in range(self.start_year, self.end_year + 1):
-            loss_matrix, targets_array = build_loss_matrix(
-                self.input_dataset, year
-            )
-            zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
-            bad_mask = loss_matrix.columns.isin(bad_targets)
-            keep_mask_bool = ~(zero_mask | bad_mask)
-            keep_idx = np.where(keep_mask_bool)[0]
-            loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
-            targets_array_clean = targets_array[keep_idx]
-            assert loss_matrix_clean.shape[1] == targets_array_clean.size
-
-            optimised_weights = reweight(
-                original_weights,
-                loss_matrix_clean,
-                targets_array_clean,
-                log_path="calibration_log.csv",
-                epochs=200,
-                seed=1456,
-            )
+            if self.use_db:
+                optimised_weights = self._generate_db(
+                    sim, original_weights, year
+                )
+            else:
+                optimised_weights = self._generate_legacy(
+                    original_weights, year
+                )
             data["household_weight"][year] = optimised_weights
 
         self.save_dataset(data)
+
+    # ----------------------------------------------------------
+    # DB-driven calibration (NationalMatrixBuilder + l0-python)
+    # ----------------------------------------------------------
+
+    def _generate_db(self, sim, original_weights, year):
+        """Run DB-driven national calibration for one year.
+
+        Reads active targets from policy_data.db via
+        NationalMatrixBuilder, then fits weights using
+        l0-python's SparseCalibrationWeights.
+
+        Args:
+            sim: Microsimulation instance.
+            original_weights: Jittered household weights.
+            year: Tax year to calibrate.
+
+        Returns:
+            Optimised weight array (n_households,).
+        """
+        from policyengine_us_data.calibration.fit_national_weights import (
+            build_calibration_inputs,
+            fit_national_weights,
+            initialize_weights,
+        )
+
+        db_path = STORAGE_FOLDER / "calibration" / "policy_data.db"
+        matrix, targets, names = build_calibration_inputs(
+            dataset_class=self.input_dataset,
+            time_period=year,
+            db_path=str(db_path),
+            sim=sim,
+        )
+
+        init_weights = initialize_weights(original_weights)
+        optimised_weights = fit_national_weights(
+            matrix=matrix,
+            targets=targets,
+            initial_weights=init_weights,
+            epochs=500,
+        )
+
+        logging.info(
+            f"DB calibration for {year}: "
+            f"{len(targets)} targets, "
+            f"{(optimised_weights > 0).sum():,} non-zero weights"
+        )
+        return optimised_weights
+
+    # ----------------------------------------------------------
+    # Legacy calibration (build_loss_matrix + HardConcrete)
+    # ----------------------------------------------------------
+
+    def _generate_legacy(self, original_weights, year):
+        """Run legacy national calibration for one year.
+
+        Uses build_loss_matrix() and the HardConcrete-based
+        reweight() function with the hardcoded bad_targets list.
+
+        Args:
+            original_weights: Jittered household weights.
+            year: Tax year to calibrate.
+
+        Returns:
+            Optimised weight array (n_households,).
+        """
+        bad_targets = [
+            "nation/irs/adjusted gross income/total/"
+            "AGI in 10k-15k/taxable/Head of Household",
+            "nation/irs/adjusted gross income/total/"
+            "AGI in 15k-20k/taxable/Head of Household",
+            "nation/irs/adjusted gross income/total/"
+            "AGI in 10k-15k/taxable/"
+            "Married Filing Jointly/Surviving Spouse",
+            "nation/irs/adjusted gross income/total/"
+            "AGI in 15k-20k/taxable/"
+            "Married Filing Jointly/Surviving Spouse",
+            "nation/irs/count/count/"
+            "AGI in 10k-15k/taxable/Head of Household",
+            "nation/irs/count/count/"
+            "AGI in 15k-20k/taxable/Head of Household",
+            "nation/irs/count/count/"
+            "AGI in 10k-15k/taxable/"
+            "Married Filing Jointly/Surviving Spouse",
+            "nation/irs/count/count/"
+            "AGI in 15k-20k/taxable/"
+            "Married Filing Jointly/Surviving Spouse",
+            "state/RI/adjusted_gross_income/amount/-inf_1",
+            "nation/irs/exempt interest/count/" "AGI in -inf-inf/taxable/All",
+        ]
+
+        loss_matrix, targets_array = build_loss_matrix(
+            self.input_dataset, year
+        )
+        zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
+        bad_mask = loss_matrix.columns.isin(bad_targets)
+        keep_mask_bool = ~(zero_mask | bad_mask)
+        keep_idx = np.where(keep_mask_bool)[0]
+        loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
+        targets_array_clean = targets_array[keep_idx]
+        assert loss_matrix_clean.shape[1] == targets_array_clean.size
+
+        optimised_weights = reweight(
+            original_weights,
+            loss_matrix_clean,
+            targets_array_clean,
+            log_path="calibration_log.csv",
+            epochs=200,
+            seed=1456,
+        )
+        return optimised_weights
 
 
 class ReweightedCPS_2024(Dataset):
@@ -240,7 +372,7 @@ class EnhancedCPS_2024(EnhancedCPS):
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
     file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"
-    url = "hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5"
+    url = "hf://policyengine/policyengine-us-data/" "enhanced_cps_2024.h5"
 
 
 if __name__ == "__main__":

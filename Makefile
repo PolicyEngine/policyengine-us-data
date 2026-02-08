@@ -63,6 +63,7 @@ database:
 	python policyengine_us_data/db/etl_snap.py
 	python policyengine_us_data/db/etl_state_income_tax.py
 	python policyengine_us_data/db/etl_irs_soi.py
+	python policyengine_us_data/db/reconcile_targets.py
 	python policyengine_us_data/db/validate_database.py
 
 database-refresh:

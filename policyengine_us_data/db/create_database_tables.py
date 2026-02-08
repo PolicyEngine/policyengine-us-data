@@ -155,7 +155,12 @@ class Target(SQLModel, table=True):
         description="Identifier for a policy reform scenario (0 for baseline).",
     )
     value: Optional[float] = Field(
-        default=None, description="The numerical value of the target variable."
+        default=None,
+        description="The numerical value of the target variable.",
+    )
+    raw_value: Optional[float] = Field(
+        default=None,
+        description="Original value from the data source, before reconciliation.",
     )
     source_id: Optional[int] = Field(
         default=None,

@@ -49,7 +49,7 @@ jobs:
       - name: Install Modal CLI
         run: pip install modal
 
-      - name: Run local area publishing on Modal
+      - name: Run local area build and stage on Modal
         run: |
           NUM_WORKERS="${{ github.event.inputs.num_workers || '8' }}"
           SKIP_UPLOAD="${{ github.event.inputs.skip_upload || 'false' }}"
@@ -63,3 +63,13 @@ jobs:
 
           echo "Running: $CMD"
           $CMD
+
+      - name: Post-build summary
+        if: success()
+        run: |
+          echo "## Build + Stage Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Files have been uploaded to GCS and staged on HuggingFace." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next step: Promote to production" >> $GITHUB_STEP_SUMMARY
+          echo "Trigger the **Promote Local Area H5 Files** workflow with the version from the build output." >> $GITHUB_STEP_SUMMARY

@@ -87,7 +87,7 @@ data: download
 	python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
-	python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py 10500
+	python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py 12000 --top=99.5 --seed=3526
 
 publish-local-area:
 	python policyengine_us_data/datasets/cps/local_area_calibration/publish_local_area.py

@@ -259,14 +259,11 @@ print(json.dumps(manifest))
     memory=8192,
     timeout=14400,
 )
-def atomic_upload(branch: str, version: str, manifest: Dict) -> str:
+def upload_to_staging(branch: str, version: str, manifest: Dict) -> str:
     """
-    Upload files using staging approach for atomic deployment.
+    Upload files to GCS (production) and HuggingFace (staging only).
 
-    1. Upload to GCS (direct, overwrites existing)
-    2. Upload to HuggingFace staging/ folder
-    3. Atomically promote staging/ to production paths
-    4. Clean up staging/
+    Promote must be run separately via promote_publish.
     """
     setup_gcp_credentials()
     setup_repo(branch)
@@ -286,8 +283,6 @@ from policyengine_us_data.utils.manifest import verify_manifest
 from policyengine_us_data.utils.data_upload import (
     upload_local_area_file,
     upload_to_staging_hf,
-    promote_staging_to_production_hf,
-    cleanup_staging_hf,
 )
 
 manifest = json.loads('''{manifest_json}''')
@@ -306,11 +301,9 @@ if not verification["valid"]:
 print(f"Verified {{verification['verified']}} files")
 
 files_with_paths = []
-rel_paths = []
 for rel_path in manifest["files"].keys():
     local_path = version_dir / rel_path
     files_with_paths.append((local_path, rel_path))
-    rel_paths.append(rel_path)
 
 # Upload to GCS (direct to production paths)
 print(f"Uploading {{len(files_with_paths)}} files to GCS...")
@@ -331,12 +324,73 @@ print(f"Uploading {{len(files_with_paths)}} files to HuggingFace staging/...")
 hf_count = upload_to_staging_hf(files_with_paths, version)
 print(f"Uploaded {{hf_count}} files to HuggingFace staging/")
 
-# Atomically promote staging to production
-print("Promoting staging/ to production (atomic commit)...")
+print(f"Staged version {{version}} for promotion")
+""",
+        ],
+        text=True,
+        env=os.environ.copy(),
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Upload failed: {result.stderr}")
+
+    return (
+        f"Staged version {version} with {len(manifest['files'])} files. "
+        f"Run promote workflow to publish to HuggingFace production."
+    )
+
+
+@app.function(
+    image=image,
+    secrets=[hf_secret],
+    volumes={VOLUME_MOUNT: staging_volume},
+    memory=4096,
+    timeout=3600,
+)
+def promote_publish(branch: str = "main", version: str = "") -> str:
+    """
+    Promote staged files from HF staging/ to production paths, then cleanup.
+
+    Reads the manifest from the Modal staging volume to determine which
+    files to promote.
+    """
+    setup_repo(branch)
+
+    staging_dir = Path(VOLUME_MOUNT)
+    staging_volume.reload()
+
+    manifest_path = staging_dir / version / "manifest.json"
+    if not manifest_path.exists():
+        raise RuntimeError(
+            f"No manifest found at {manifest_path}. "
+            f"Run build+stage workflow first."
+        )
+
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+
+    rel_paths_json = json.dumps(list(manifest["files"].keys()))
+
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
+import json
+from policyengine_us_data.utils.data_upload import (
+    promote_staging_to_production_hf,
+    cleanup_staging_hf,
+)
+
+rel_paths = json.loads('''{rel_paths_json}''')
+version = "{version}"
+
+print(f"Promoting {{len(rel_paths)}} files from staging/ to production...")
 promoted = promote_staging_to_production_hf(rel_paths, version)
 print(f"Promoted {{promoted}} files to production")
 
-# Clean up staging
 print("Cleaning up staging/...")
 cleaned = cleanup_staging_hf(rel_paths, version)
 print(f"Cleaned up {{cleaned}} files from staging/")
@@ -349,9 +403,9 @@ print(f"Successfully published version {{version}}")
     )
 
     if result.returncode != 0:
-        raise RuntimeError(f"Upload failed: {result.stderr}")
+        raise RuntimeError(f"Promote failed: {result.stderr}")
 
-    return f"Successfully published version {version} with {len(manifest['files'])} files"
+    return f"Successfully promoted version {version} with {len(manifest['files'])} files"
 
 
 @app.function(
@@ -544,10 +598,24 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
             f"WARNING: Expected {expected_total} files, found {actual_total}"
         )
 
-    print("\nStarting atomic upload...")
-    result = atomic_upload.remote(
+    print("\nStarting upload to staging...")
+    result = upload_to_staging.remote(
         branch=branch, version=version, manifest=manifest
     )
+    print(result)
+
+    print("\n" + "=" * 60)
+    print("BUILD + STAGE COMPLETE")
+    print("=" * 60)
+    print(
+        f"To promote to HuggingFace production, run the "
+        f"'Promote Local Area H5 Files' workflow with version={version}"
+    )
+    print(
+        "Or run manually: modal run modal_app/local_area.py::main_promote "
+        f"--version={version}"
+    )
+    print("=" * 60)
 
     return result
 
@@ -564,4 +632,16 @@ def main(
         num_workers=num_workers,
         skip_upload=skip_upload,
     )
+    print(result)
+
+
+@app.local_entrypoint()
+def main_promote(
+    version: str = "",
+    branch: str = "main",
+):
+    """Promote staged files to HuggingFace production."""
+    if not version:
+        raise ValueError("--version is required")
+    result = promote_publish.remote(branch=branch, version=version)
     print(result)

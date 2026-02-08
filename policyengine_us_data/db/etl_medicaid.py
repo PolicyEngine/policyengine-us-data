@@ -1,3 +1,4 @@
+import argparse
 import logging
 
 import requests
@@ -6,6 +7,8 @@ import numpy as np
 from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+
+DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
 
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
@@ -325,7 +328,27 @@ def load_medicaid_data(long_state, long_cd, year):
 
 
 def main():
-    year = 2024
+    parser = argparse.ArgumentParser(
+        description="ETL for Medicaid calibration targets"
+    )
+    parser.add_argument(
+        "--dataset",
+        default=DEFAULT_DATASET,
+        help=(
+            "Source dataset (local path or HuggingFace URL). "
+            "The year for targets is derived from the dataset's "
+            "default_calculation_period. Default: %(default)s"
+        ),
+    )
+    args = parser.parse_args()
+
+    # Derive year from dataset
+    from policyengine_us import Microsimulation
+
+    print(f"Loading dataset: {args.dataset}")
+    sim = Microsimulation(dataset=args.dataset)
+    year = int(sim.default_calculation_period)
+    print(f"Derived year from dataset: {year}")
 
     # Extract ------------------------------
     state_admin_df = extract_administrative_medicaid_data(year)

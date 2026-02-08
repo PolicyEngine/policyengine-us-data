@@ -362,6 +362,9 @@ def promote_staging_to_production_hf(
 
     Returns:
         Number of files promoted
+
+    Raises:
+        RuntimeError: If the commit was a no-op (HEAD unchanged)
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
@@ -380,7 +383,13 @@ def promote_staging_to_production_hf(
         logging.warning("No files to promote.")
         return 0
 
-    hf_create_commit_with_retry(
+    head_before = api.repo_info(
+        repo_id=hf_repo_name,
+        repo_type=hf_repo_type,
+        token=token,
+    ).sha
+
+    result = hf_create_commit_with_retry(
         api=api,
         operations=operations,
         repo_id=hf_repo_name,
@@ -388,6 +397,12 @@ def promote_staging_to_production_hf(
         token=token,
         commit_message=f"Promote {len(files)} files from staging to production for version {version}",
     )
+
+    if result.oid == head_before:
+        raise RuntimeError(
+            f"Promote commit was a no-op: HEAD stayed at {head_before}. "
+            f"Staging files may be identical to production."
+        )
 
     logging.info(
         f"Promoted {len(files)} files from staging/ to production in one commit"
@@ -412,6 +427,9 @@ def cleanup_staging_hf(
 
     Returns:
         Number of files deleted
+
+    Raises:
+        RuntimeError: If the cleanup commit was a no-op (HEAD unchanged)
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
@@ -424,7 +442,13 @@ def cleanup_staging_hf(
     if not operations:
         return 0
 
-    hf_create_commit_with_retry(
+    head_before = api.repo_info(
+        repo_id=hf_repo_name,
+        repo_type=hf_repo_type,
+        token=token,
+    ).sha
+
+    result = hf_create_commit_with_retry(
         api=api,
         operations=operations,
         repo_id=hf_repo_name,
@@ -432,6 +456,12 @@ def cleanup_staging_hf(
         token=token,
         commit_message=f"Clean up staging after version {version} promotion",
     )
+
+    if result.oid == head_before:
+        raise RuntimeError(
+            f"Cleanup commit was a no-op: HEAD stayed at {head_before}. "
+            f"Staging files may not exist."
+        )
 
     logging.info(f"Cleaned up {len(files)} files from staging/")
     return len(files)

@@ -41,11 +41,18 @@ AGI_BOUNDS = {
 NON_VOTING_STATES = {"US", "AS", "GU", "MP", "PR", "VI", "OA"}
 NON_VOTING_GEO_IDS = {
     "0400000US72",  # Puerto Rico (state level)
+    # 118th Congress codes
     "5001800US7298",  # Puerto Rico
     "5001800US6098",  # American Samoa
     "5001800US6698",  # Guam
     "5001800US6998",  # Northern Mariana Islands
     "5001800US7898",  # U.S. Virgin Islands
+    # 119th Congress codes
+    "5001900US7298",  # Puerto Rico
+    "5001900US6098",  # American Samoa
+    "5001900US6698",  # Guam
+    "5001900US6998",  # Northern Mariana Islands
+    "5001900US7898",  # U.S. Virgin Islands
 }
 
 # after skipping the first 7 rows, the national SOI file has targets as row indices [COUNT_INDEX, AMOUNT_INDEX]

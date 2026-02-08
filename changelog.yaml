@@ -831,3 +831,9 @@
     fixed:
     - Immigration status mapping.
   date: 2026-02-08 02:59:10
+- bump: minor
+  changes:
+    added:
+    - Add voluntary tax filer variable and filer count calibration targets by AGI
+      band.
+  date: 2026-02-08 04:15:49

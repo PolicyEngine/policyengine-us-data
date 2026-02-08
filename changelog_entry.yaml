@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+      - Add voluntary tax filer variable and filer count calibration targets by AGI band.

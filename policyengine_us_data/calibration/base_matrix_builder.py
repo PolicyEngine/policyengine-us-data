@@ -138,9 +138,9 @@ class BaseMatrixBuilder:
         entity_rel_with_mask = entity_rel.copy()
         entity_rel_with_mask["satisfies"] = person_mask
 
-        household_mask_series = entity_rel_with_mask.groupby(
-            "household_id"
-        )["satisfies"].any()
+        household_mask_series = entity_rel_with_mask.groupby("household_id")[
+            "satisfies"
+        ].any()
 
         household_ids = sim.calculate(
             "household_id", map_to="household"

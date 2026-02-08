@@ -142,27 +142,36 @@ def build_calibration_inputs(
         - target_names: list of str
     """
     if db_path is not None:
-        from policyengine_us_data.calibration.national_matrix_builder import (
-            NationalMatrixBuilder,
-        )
+        try:
+            from policyengine_us_data.calibration.national_matrix_builder import (
+                NationalMatrixBuilder,
+            )
 
-        db_uri = f"sqlite:///{db_path}"
-        builder = NationalMatrixBuilder(db_uri=db_uri, time_period=time_period)
+            db_uri = f"sqlite:///{db_path}"
+            builder = NationalMatrixBuilder(
+                db_uri=db_uri, time_period=time_period
+            )
 
-        if sim is None:
-            from policyengine_us import Microsimulation
+            if sim is None:
+                from policyengine_us import Microsimulation
 
-            sim = Microsimulation(dataset=dataset_class)
-        sim.default_calculation_period = time_period
+                sim = Microsimulation(dataset=dataset_class)
+            sim.default_calculation_period = time_period
 
-        matrix, targets, names = builder.build_matrix(
-            sim=sim, dataset_class=dataset_class
-        )
-        return (
-            matrix.astype(np.float32),
-            targets.astype(np.float64),
-            names,
-        )
+            matrix, targets, names = builder.build_matrix(
+                sim=sim, dataset_class=dataset_class
+            )
+            return (
+                matrix.astype(np.float32),
+                targets.astype(np.float64),
+                names,
+            )
+        except Exception as exc:
+            logger.warning(
+                "DB calibration failed (%s), "
+                "falling back to legacy build_loss_matrix",
+                exc,
+            )
 
     # Legacy path: use build_loss_matrix from utils/loss.py
     from policyengine_us_data.utils.loss import build_loss_matrix

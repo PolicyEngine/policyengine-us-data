@@ -229,11 +229,6 @@ def _seed_db(engine, include_inactive=False, include_geo=True):
         )
         agi_stratum.constraints_rel = [
             StratumConstraint(
-                constraint_variable="tax_unit_is_filer",
-                operation="==",
-                value="1",
-            ),
-            StratumConstraint(
                 constraint_variable="adjusted_gross_income",
                 operation=">=",
                 value="50000",
@@ -494,7 +489,9 @@ class TestEvaluateConstraints:
 
     def test_empty_constraints_returns_all_true(self, mock_sim):
         builder = NationalMatrixBuilder(db_uri="sqlite://", time_period=2024)
-        mask = builder._evaluate_constraints(mock_sim, [], n_households=5)
+        mask = builder._evaluate_constraints_entity_aware(
+            mock_sim, [], n_households=5
+        )
         assert mask.shape == (5,)
         assert np.all(mask)
 
@@ -507,7 +504,7 @@ class TestEvaluateConstraints:
                 "value": "1",
             }
         ]
-        mask = builder._evaluate_constraints(
+        mask = builder._evaluate_constraints_entity_aware(
             mock_sim, constraints, n_households=5
         )
         # tu_is_filer = [1, 1, 0, 1, 1]
@@ -538,7 +535,7 @@ class TestEvaluateConstraints:
                 "value": "100000",
             },
         ]
-        mask = builder._evaluate_constraints(
+        mask = builder._evaluate_constraints_entity_aware(
             mock_sim, constraints, n_households=5
         )
         # AGI: [75k, 120k, 30k, 60k, 200k]
@@ -559,7 +556,7 @@ class TestEvaluateConstraints:
                 "value": "6",
             }
         ]
-        mask = builder._evaluate_constraints(
+        mask = builder._evaluate_constraints_entity_aware(
             mock_sim, constraints, n_households=5
         )
         # person_state_fips = [6,6, 6,6, 36,36, 36,36, 6,6]

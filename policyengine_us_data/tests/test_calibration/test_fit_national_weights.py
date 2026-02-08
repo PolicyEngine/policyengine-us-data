@@ -26,15 +26,18 @@ class TestImports:
     """Test that the module can be imported."""
 
     def test_module_imports(self):
-        from policyengine_us_data.calibration import (
-            fit_national_weights,
-        )
+        import importlib
 
-        assert hasattr(fit_national_weights, "fit_national_weights")
+        mod = importlib.import_module(
+            "policyengine_us_data.calibration.fit_national_weights"
+        )
+        assert hasattr(mod, "fit_national_weights")
 
     def test_public_functions_exist(self):
-        from policyengine_us_data.calibration import (
-            fit_national_weights as mod,
+        import importlib
+
+        mod = importlib.import_module(
+            "policyengine_us_data.calibration.fit_national_weights"
         )
 
         for name in [
@@ -943,8 +946,7 @@ class TestEnhancedCPSIntegration:
 
         with (
             patch(
-                "policyengine_us_data.datasets.cps."
-                "enhanced_cps.Microsimulation",
+                "policyengine_us.Microsimulation",
                 return_value=mock_sim,
             ),
             patch(

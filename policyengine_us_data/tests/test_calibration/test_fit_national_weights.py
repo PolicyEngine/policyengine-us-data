@@ -905,15 +905,15 @@ class TestCLI:
 
 
 # -------------------------------------------------------------------
-# Integration test: EnhancedCPS.reweight_l0 interface
+# Integration test: EnhancedCPS.generate interface
 # -------------------------------------------------------------------
 
 
 class TestEnhancedCPSIntegration:
-    """Test that EnhancedCPS.reweight_l0 calls the right functions."""
+    """Test that EnhancedCPS.generate calls the calibration pipeline."""
 
-    def test_reweight_l0_calls_pipeline(self):
-        """EnhancedCPS.reweight_l0 invokes
+    def test_generate_calls_pipeline(self):
+        """EnhancedCPS.generate invokes
         build_calibration_inputs, initialize_weights,
         and fit_national_weights in sequence."""
         from policyengine_us_data.datasets.cps.enhanced_cps import (
@@ -940,8 +940,12 @@ class TestEnhancedCPSIntegration:
         calibrated = np.ones(n_hh) * 95
 
         mock_sim = MagicMock()
-        mock_sim.calculate.return_value = MagicMock(values=mock_weights)
-        mock_sim.dataset.load_dataset.return_value = {"household_weight": {}}
+        mock_calc_result = MagicMock(values=mock_weights)
+        mock_calc_result.__len__ = lambda self: len(mock_weights)
+        mock_sim.calculate.return_value = mock_calc_result
+        mock_sim.dataset.load_dataset.return_value = {
+            "household_weight": {}
+        }
 
         with (
             patch(
@@ -972,17 +976,12 @@ class TestEnhancedCPSIntegration:
             ) as mock_fit,
             patch.object(instance, "save_dataset"),
         ):
-            instance.reweight_l0(
-                db_path="/tmp/fake.db",
-                lambda_l0=1e-5,
-                epochs=100,
-            )
+            instance.generate()
 
             mock_build.assert_called_once()
             mock_init.assert_called_once()
             mock_fit.assert_called_once()
 
-            # Check fit was called with the right epochs
+            # Check fit was called with 500 epochs (default)
             fit_kwargs = mock_fit.call_args[1]
-            assert fit_kwargs["epochs"] == 100
-            assert fit_kwargs["lambda_l0"] == 1e-5
+            assert fit_kwargs["epochs"] == 500

@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch
 
 import h5py
 import numpy as np
-import pandas as pd
 import pytest
 
 # -------------------------------------------------------------------
@@ -186,37 +185,7 @@ class TestInitializeWeights:
 
 
 class TestBuildCalibrationInputs:
-    """Test building the calibration matrix and targets."""
-
-    def _mock_legacy_loss_matrix(self, n_hh=100, n_targets=50):
-        """Create a mock loss matrix and targets array."""
-        data = np.random.rand(n_hh, n_targets).astype(np.float32)
-        cols = [f"target_{i}" for i in range(n_targets)]
-        return pd.DataFrame(data, columns=cols)
-
-    def test_fallback_to_legacy_loss_matrix(self):
-        """When no DB path given, falls back to
-        build_loss_matrix."""
-        from policyengine_us_data.calibration.fit_national_weights import (
-            build_calibration_inputs,
-        )
-
-        mock_loss_matrix = self._mock_legacy_loss_matrix()
-        mock_targets = np.random.rand(50) * 1e9
-
-        with patch(
-            "policyengine_us_data.utils.loss.build_loss_matrix",
-            return_value=(mock_loss_matrix, mock_targets),
-        ):
-            matrix, targets, names = build_calibration_inputs(
-                dataset_class=MagicMock,
-                time_period=2024,
-                db_path=None,
-            )
-
-        assert matrix.shape[1] == 50
-        assert len(targets) == 50
-        assert len(names) == 50
+    """Test building the calibration matrix and targets via DB."""
 
     def test_returns_float32_matrix(self):
         """Matrix should be float32 for memory efficiency."""
@@ -224,16 +193,30 @@ class TestBuildCalibrationInputs:
             build_calibration_inputs,
         )
 
-        mock_loss_matrix = self._mock_legacy_loss_matrix(n_hh=10, n_targets=5)
+        n_hh, n_targets = 10, 5
+        mock_matrix = np.random.rand(n_hh, n_targets).astype(np.float64)
         mock_targets = np.array([1e9, 2e9, 3e9, 4e9, 5e9])
+        mock_names = [f"t_{i}" for i in range(n_targets)]
+
+        mock_builder = MagicMock()
+        mock_builder.build_matrix.return_value = (
+            mock_matrix,
+            mock_targets,
+            mock_names,
+        )
+
+        mock_sim = MagicMock()
 
         with patch(
-            "policyengine_us_data.utils.loss.build_loss_matrix",
-            return_value=(mock_loss_matrix, mock_targets),
+            "policyengine_us_data.calibration."
+            "national_matrix_builder.NationalMatrixBuilder",
+            return_value=mock_builder,
         ):
             matrix, _, _ = build_calibration_inputs(
                 dataset_class=MagicMock,
                 time_period=2024,
+                db_path="/fake/db.sqlite",
+                sim=mock_sim,
             )
 
         assert matrix.dtype == np.float32
@@ -244,69 +227,67 @@ class TestBuildCalibrationInputs:
             build_calibration_inputs,
         )
 
-        mock_loss_matrix = self._mock_legacy_loss_matrix(n_hh=10, n_targets=5)
+        n_hh, n_targets = 10, 5
+        mock_matrix = np.random.rand(n_hh, n_targets)
         mock_targets = np.array([1e9, 2e9, 3e9, 4e9, 5e9])
+        mock_names = [f"t_{i}" for i in range(n_targets)]
+
+        mock_builder = MagicMock()
+        mock_builder.build_matrix.return_value = (
+            mock_matrix,
+            mock_targets,
+            mock_names,
+        )
+        mock_sim = MagicMock()
 
         with patch(
-            "policyengine_us_data.utils.loss.build_loss_matrix",
-            return_value=(mock_loss_matrix, mock_targets),
+            "policyengine_us_data.calibration."
+            "national_matrix_builder.NationalMatrixBuilder",
+            return_value=mock_builder,
         ):
             _, targets, _ = build_calibration_inputs(
                 dataset_class=MagicMock,
                 time_period=2024,
+                db_path="/fake/db.sqlite",
+                sim=mock_sim,
             )
 
         assert targets.dtype == np.float64
 
-    def test_filters_zero_targets(self):
-        """Targets with value ~0 should be filtered out."""
+    def test_passes_geo_level(self):
+        """geo_level is forwarded to build_matrix."""
         from policyengine_us_data.calibration.fit_national_weights import (
             build_calibration_inputs,
         )
 
-        data = np.random.rand(100, 5).astype(np.float32)
-        cols = [f"target_{i}" for i in range(5)]
-        mock_loss_matrix = pd.DataFrame(data, columns=cols)
-        # Target at index 2 is near-zero
-        mock_targets = np.array([1e9, 2e9, 0.01, 3e9, 4e9])
+        n_hh, n_targets = 10, 3
+        mock_matrix = np.random.rand(n_hh, n_targets)
+        mock_targets = np.random.rand(n_targets) * 1e9
+        mock_names = [f"t_{i}" for i in range(n_targets)]
 
-        with patch(
-            "policyengine_us_data.utils.loss.build_loss_matrix",
-            return_value=(mock_loss_matrix, mock_targets),
-        ):
-            matrix, targets, names = build_calibration_inputs(
-                dataset_class=MagicMock,
-                time_period=2024,
-                db_path=None,
-            )
-
-        # Near-zero target should be removed
-        assert len(targets) == 4
-        assert matrix.shape[1] == 4
-        assert len(names) == 4
-
-    def test_all_zero_targets_filtered(self):
-        """If all targets are near-zero, result should be empty."""
-        from policyengine_us_data.calibration.fit_national_weights import (
-            build_calibration_inputs,
+        mock_builder = MagicMock()
+        mock_builder.build_matrix.return_value = (
+            mock_matrix,
+            mock_targets,
+            mock_names,
         )
-
-        data = np.random.rand(10, 3).astype(np.float32)
-        cols = ["a", "b", "c"]
-        mock_loss_matrix = pd.DataFrame(data, columns=cols)
-        mock_targets = np.array([0.0, 0.05, 0.001])
+        mock_sim = MagicMock()
 
         with patch(
-            "policyengine_us_data.utils.loss.build_loss_matrix",
-            return_value=(mock_loss_matrix, mock_targets),
+            "policyengine_us_data.calibration."
+            "national_matrix_builder.NationalMatrixBuilder",
+            return_value=mock_builder,
         ):
-            matrix, targets, names = build_calibration_inputs(
+            build_calibration_inputs(
                 dataset_class=MagicMock,
                 time_period=2024,
+                db_path="/fake/db.sqlite",
+                sim=mock_sim,
+                geo_level="national",
             )
 
-        assert matrix.shape[1] == 0
-        assert len(targets) == 0
+        call_kwargs = mock_builder.build_matrix.call_args[1]
+        assert call_kwargs["geo_level"] == "national"
 
     def test_matrix_and_targets_consistent_shape(self):
         """Matrix columns must equal targets length."""
@@ -314,44 +295,33 @@ class TestBuildCalibrationInputs:
             build_calibration_inputs,
         )
 
-        mock_loss_matrix = self._mock_legacy_loss_matrix(n_hh=50, n_targets=20)
-        mock_targets = np.random.rand(20) * 1e9
+        n_hh, n_targets = 50, 20
+        mock_matrix = np.random.rand(n_hh, n_targets)
+        mock_targets = np.random.rand(n_targets) * 1e9
+        mock_names = [f"t_{i}" for i in range(n_targets)]
+
+        mock_builder = MagicMock()
+        mock_builder.build_matrix.return_value = (
+            mock_matrix,
+            mock_targets,
+            mock_names,
+        )
+        mock_sim = MagicMock()
 
         with patch(
-            "policyengine_us_data.utils.loss.build_loss_matrix",
-            return_value=(mock_loss_matrix, mock_targets),
+            "policyengine_us_data.calibration."
+            "national_matrix_builder.NationalMatrixBuilder",
+            return_value=mock_builder,
         ):
             matrix, targets, names = build_calibration_inputs(
                 dataset_class=MagicMock,
                 time_period=2024,
+                db_path="/fake/db.sqlite",
+                sim=mock_sim,
             )
 
         assert matrix.shape[1] == len(targets)
         assert matrix.shape[1] == len(names)
-
-    def test_db_path_with_warning(self):
-        """When db_path is given but NationalMatrixBuilder is not
-        wired up, falls back with warning."""
-        from policyengine_us_data.calibration.fit_national_weights import (
-            build_calibration_inputs,
-        )
-
-        mock_loss_matrix = self._mock_legacy_loss_matrix(n_hh=10, n_targets=3)
-        mock_targets = np.array([1e9, 2e9, 3e9])
-
-        with patch(
-            "policyengine_us_data.utils.loss.build_loss_matrix",
-            return_value=(mock_loss_matrix, mock_targets),
-        ):
-            # Should not raise, just warn and fall through
-            matrix, targets, names = build_calibration_inputs(
-                dataset_class=MagicMock,
-                time_period=2024,
-                db_path="/fake/path/db.sqlite",
-            )
-
-        assert matrix.shape[0] == 10
-        assert len(targets) == 3
 
 
 # -------------------------------------------------------------------
@@ -856,6 +826,7 @@ class TestCLI:
         assert args.dataset is None
         assert args.db_path is None
         assert args.output is None
+        assert args.geo_level == "all"
 
     def test_parse_args_custom(self):
         from policyengine_us_data.calibration.fit_national_weights import (

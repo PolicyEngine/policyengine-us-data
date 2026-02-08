@@ -59,8 +59,13 @@ def parse_args(argv=None):
     parser.add_argument(
         "--db-path",
         default=None,
-        help="Path to policy_data.db "
-        "(default: use legacy build_loss_matrix)",
+        help="Path to policy_data.db",
+    )
+    parser.add_argument(
+        "--geo-level",
+        default="all",
+        choices=["national", "state", "cd", "all"],
+        help="Geographic level filter (default: all)",
     )
     parser.add_argument(
         "--output",
@@ -111,6 +116,7 @@ def build_calibration_inputs(
     time_period: int,
     db_path: str,
     sim=None,
+    geo_level: str = "all",
 ) -> Tuple[np.ndarray, np.ndarray, list]:
     """
     Build calibration matrix and targets from the database.
@@ -122,6 +128,8 @@ def build_calibration_inputs(
         time_period: Tax year for calibration.
         db_path: Path to policy_data.db.
         sim: Optional pre-built Microsimulation instance.
+        geo_level: Geographic filter -- ``"national"``,
+            ``"state"``, ``"cd"``, or ``"all"`` (default).
 
     Returns:
         Tuple of (matrix, targets, target_names) where:
@@ -143,7 +151,7 @@ def build_calibration_inputs(
     sim.default_calculation_period = time_period
 
     matrix, targets, names = builder.build_matrix(
-        sim=sim, dataset_class=dataset_class
+        sim=sim, dataset_class=dataset_class, geo_level=geo_level
     )
     return (
         matrix.astype(np.float32),
@@ -362,6 +370,7 @@ def main(argv=None):
         dataset_class=ExtendedCPS_2024,
         time_period=2024,
         db_path=args.db_path,
+        geo_level=args.geo_level,
     )
 
     logger.info(

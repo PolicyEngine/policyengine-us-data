@@ -90,8 +90,43 @@ class NationalMatrixBuilder(BaseMatrixBuilder):
     # Database queries
     # ------------------------------------------------------------------
 
-    def _query_active_targets(self) -> pd.DataFrame:
-        """Query all active, non-zero targets.
+    # Geographic constraint variables used to classify targets.
+    _GEO_STATE_VARS = {"state_fips", "state_code"}
+    _GEO_CD_VARS = {"congressional_district_geoid"}
+
+    def _classify_target_geo(self, stratum_id: int) -> str:
+        """Return geographic level of a target: 'national', 'state',
+        or 'cd'.
+
+        Walks the stratum chain and checks constraints at each level.
+        """
+        visited: set = set()
+        current_id = stratum_id
+
+        while current_id is not None and current_id not in visited:
+            visited.add(current_id)
+            constraints = self._get_stratum_constraints(current_id)
+            for c in constraints:
+                if c["variable"] in self._GEO_CD_VARS:
+                    return "cd"
+                if c["variable"] in self._GEO_STATE_VARS:
+                    return "state"
+            current_id = self._get_parent_stratum_id(current_id)
+
+        return "national"
+
+    def _query_active_targets(
+        self,
+        geo_level: str = "all",
+    ) -> pd.DataFrame:
+        """Query active, non-zero targets, optionally filtered by
+        geographic level.
+
+        Args:
+            geo_level: One of ``"national"``, ``"state"``,
+                ``"cd"``, or ``"all"`` (default).  When set to a
+                specific level, only targets whose stratum chain
+                resolves to that geographic level are returned.
 
         Returns:
             DataFrame with columns: target_id, stratum_id, variable,
@@ -115,7 +150,27 @@ class NationalMatrixBuilder(BaseMatrixBuilder):
         ORDER BY t.target_id
         """
         with self.engine.connect() as conn:
-            return pd.read_sql(query, conn)
+            df = pd.read_sql(query, conn)
+
+        if geo_level == "all":
+            return df
+
+        # Classify each target by its geographic level.
+        geo_cache: dict = {}
+        levels = []
+        for stratum_id in df["stratum_id"]:
+            sid = int(stratum_id)
+            if sid not in geo_cache:
+                geo_cache[sid] = self._classify_target_geo(sid)
+            levels.append(geo_cache[sid])
+
+        df["_geo_level"] = levels
+        df = (
+            df[df["_geo_level"] == geo_level]
+            .drop(columns=["_geo_level"])
+            .reset_index(drop=True)
+        )
+        return df
 
     def _get_parent_stratum_id(self, stratum_id: int) -> Optional[int]:
         """Return the parent_stratum_id for a stratum, or None."""
@@ -412,6 +467,7 @@ class NationalMatrixBuilder(BaseMatrixBuilder):
         sim,
         include_tax_expenditures: bool = True,
         dataset_class=None,
+        geo_level: str = "all",
     ) -> Tuple[np.ndarray, np.ndarray, List[str]]:
         """Build the national calibration matrix from DB targets.
 
@@ -437,6 +493,8 @@ class NationalMatrixBuilder(BaseMatrixBuilder):
             dataset_class: Dataset class (or path) required for
                 tax expenditure counterfactual simulations.  Ignored
                 when ``include_tax_expenditures`` is ``False``.
+            geo_level: Geographic filter -- ``"national"``,
+                ``"state"``, ``"cd"``, or ``"all"`` (default).
 
         Returns:
             Tuple of ``(loss_matrix, targets, target_names)`` where:
@@ -452,8 +510,12 @@ class NationalMatrixBuilder(BaseMatrixBuilder):
         ).values
         n_households = len(household_ids)
 
-        targets_df = self._query_active_targets()
-        logger.info("Loaded %d active targets from database", len(targets_df))
+        targets_df = self._query_active_targets(geo_level=geo_level)
+        logger.info(
+            "Loaded %d active targets from database (geo_level=%s)",
+            len(targets_df),
+            geo_level,
+        )
 
         if targets_df.empty:
             raise ValueError("No active targets found in database")

@@ -20,8 +20,11 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
+from policyengine_us_data.calibration.base_matrix_builder import (
+    BaseMatrixBuilder,
+)
 from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     apply_op,
 )
@@ -62,7 +65,7 @@ REFORM_ID_NEUTRALIZE: Dict[int, None] = {
 _SYNTHETIC_CONSTRAINT_VARS = {"target_category"}
 
 
-class NationalMatrixBuilder:
+class NationalMatrixBuilder(BaseMatrixBuilder):
     """Build a dense calibration matrix for national reweighting.
 
     Reads all active targets from the database, evaluates their
@@ -81,10 +84,7 @@ class NationalMatrixBuilder:
         db_uri: str,
         time_period: int,
     ):
-        self.db_uri = db_uri
-        self.engine = create_engine(db_uri)
-        self.time_period = time_period
-        self._entity_rel_cache: Optional[pd.DataFrame] = None
+        super().__init__(db_uri, time_period)
 
     # ------------------------------------------------------------------
     # Database queries

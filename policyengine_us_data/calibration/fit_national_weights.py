@@ -117,6 +117,7 @@ def build_calibration_inputs(
     dataset_class,
     time_period: int,
     db_path: Optional[str] = None,
+    sim=None,
 ) -> Tuple[np.ndarray, np.ndarray, list]:
     """
     Build calibration matrix and targets.
@@ -129,6 +130,10 @@ def build_calibration_inputs(
         dataset_class: The input dataset class (e.g., ExtendedCPS_2024).
         time_period: Tax year for calibration.
         db_path: Path to policy_data.db, or None for legacy mode.
+        sim: Optional pre-built Microsimulation instance. When
+            provided *and* db_path is not None, this sim is passed
+            directly to NationalMatrixBuilder.build_matrix()
+            instead of creating a new Microsimulation.
 
     Returns:
         Tuple of (matrix, targets, target_names) where:
@@ -137,7 +142,6 @@ def build_calibration_inputs(
         - target_names: list of str
     """
     if db_path is not None:
-        from policyengine_us import Microsimulation
         from policyengine_us_data.calibration.national_matrix_builder import (
             NationalMatrixBuilder,
         )
@@ -145,7 +149,10 @@ def build_calibration_inputs(
         db_uri = f"sqlite:///{db_path}"
         builder = NationalMatrixBuilder(db_uri=db_uri, time_period=time_period)
 
-        sim = Microsimulation(dataset=dataset_class)
+        if sim is None:
+            from policyengine_us import Microsimulation
+
+            sim = Microsimulation(dataset=dataset_class)
         sim.default_calculation_period = time_period
 
         matrix, targets, names = builder.build_matrix(

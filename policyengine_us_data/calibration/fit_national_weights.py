@@ -1,15 +1,8 @@
 """
 National L0 calibration for Enhanced CPS.
 
-Replaces the legacy reweight() function in enhanced_cps.py with
 L0-regularized optimization via l0-python's SparseCalibrationWeights.
-
-Supports two modes:
-- **DB mode** (db_path provided): reads active targets from
-  policy_data.db via NationalMatrixBuilder. The DB ``active`` flag
-  replaces the legacy ``bad_targets`` list.
-- **Legacy mode** (db_path=None): falls back to build_loss_matrix()
-  from utils/loss.py for backward compatibility.
+Reads active targets from policy_data.db via NationalMatrixBuilder.
 
 Usage:
     python -m policyengine_us_data.calibration.fit_national_weights \\
@@ -23,7 +16,7 @@ Usage:
 import argparse
 import logging
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 import h5py
 import numpy as np
@@ -116,24 +109,19 @@ def initialize_weights(original_weights: np.ndarray) -> np.ndarray:
 def build_calibration_inputs(
     dataset_class,
     time_period: int,
-    db_path: Optional[str] = None,
+    db_path: str,
     sim=None,
 ) -> Tuple[np.ndarray, np.ndarray, list]:
     """
-    Build calibration matrix and targets.
+    Build calibration matrix and targets from the database.
 
-    If db_path is provided, reads targets from policy_data.db via
-    NationalMatrixBuilder. Otherwise, falls back to the legacy
-    build_loss_matrix from utils/loss.py.
+    Reads targets from policy_data.db via NationalMatrixBuilder.
 
     Args:
         dataset_class: The input dataset class (e.g., ExtendedCPS_2024).
         time_period: Tax year for calibration.
-        db_path: Path to policy_data.db, or None for legacy mode.
-        sim: Optional pre-built Microsimulation instance. When
-            provided *and* db_path is not None, this sim is passed
-            directly to NationalMatrixBuilder.build_matrix()
-            instead of creating a new Microsimulation.
+        db_path: Path to policy_data.db.
+        sim: Optional pre-built Microsimulation instance.
 
     Returns:
         Tuple of (matrix, targets, target_names) where:
@@ -141,53 +129,27 @@ def build_calibration_inputs(
         - targets: shape (n_targets,) float64
         - target_names: list of str
     """
-    if db_path is not None:
-        try:
-            from policyengine_us_data.calibration.national_matrix_builder import (
-                NationalMatrixBuilder,
-            )
+    from policyengine_us_data.calibration.national_matrix_builder import (
+        NationalMatrixBuilder,
+    )
 
-            db_uri = f"sqlite:///{db_path}"
-            builder = NationalMatrixBuilder(
-                db_uri=db_uri, time_period=time_period
-            )
+    db_uri = f"sqlite:///{db_path}"
+    builder = NationalMatrixBuilder(db_uri=db_uri, time_period=time_period)
 
-            if sim is None:
-                from policyengine_us import Microsimulation
+    if sim is None:
+        from policyengine_us import Microsimulation
 
-                sim = Microsimulation(dataset=dataset_class)
-            sim.default_calculation_period = time_period
+        sim = Microsimulation(dataset=dataset_class)
+    sim.default_calculation_period = time_period
 
-            matrix, targets, names = builder.build_matrix(
-                sim=sim, dataset_class=dataset_class
-            )
-            return (
-                matrix.astype(np.float32),
-                targets.astype(np.float64),
-                names,
-            )
-        except Exception as exc:
-            logger.warning(
-                "DB calibration failed (%s), "
-                "falling back to legacy build_loss_matrix",
-                exc,
-            )
-
-    # Legacy path: use build_loss_matrix from utils/loss.py
-    from policyengine_us_data.utils.loss import build_loss_matrix
-
-    loss_matrix, targets_array = build_loss_matrix(dataset_class, time_period)
-
-    # Filter near-zero targets (not useful for calibration)
-    keep_mask = ~np.isclose(targets_array, 0.0, atol=0.1)
-    targets_array = targets_array[keep_mask]
-    loss_matrix = loss_matrix.iloc[:, keep_mask]
-
-    matrix = loss_matrix.values.astype(np.float32)
-    targets = targets_array.astype(np.float64)
-    names = list(loss_matrix.columns)
-
-    return matrix, targets, names
+    matrix, targets, names = builder.build_matrix(
+        sim=sim, dataset_class=dataset_class
+    )
+    return (
+        matrix.astype(np.float32),
+        targets.astype(np.float64),
+        names,
+    )
 
 
 def compute_diagnostics(

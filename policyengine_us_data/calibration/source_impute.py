@@ -181,6 +181,17 @@ def _build_cps_receiver(
     return df
 
 
+def _get_variable_entity(variable_name: str) -> str:
+    """Return the entity key ('person', 'household', etc.) for a PE variable."""
+    from policyengine_us import CountryTaxBenefitSystem
+
+    tbs = CountryTaxBenefitSystem()
+    var = tbs.variables.get(variable_name)
+    if var is None:
+        return "person"  # Default to person if unknown
+    return var.entity.key
+
+
 def _person_state_fips(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
@@ -782,8 +793,32 @@ def _impute_scf(
     )
     preds = fitted.predict(X_test=cps_df)
 
+    # SCF variables (net_worth, auto_loan_*) are household-level,
+    # but QRF predicts at person level.  Aggregate back to household
+    # by taking the first person's value in each household.
+    hh_ids = data["household_id"][time_period]
+    person_hh_ids = data.get("person_household_id", {}).get(time_period)
+
     for var in available_vars:
-        data[var] = {time_period: preds[var].values}
+        person_vals = preds[var].values
+        entity = _get_variable_entity(var)
+        if entity == "household" and person_hh_ids is not None:
+            # Map person-level predictions to household level
+            hh_vals = np.zeros(len(hh_ids), dtype=np.float32)
+            hh_to_idx = {int(hid): i for i, hid in enumerate(hh_ids)}
+            seen = set()
+            for p_idx, p_hh in enumerate(person_hh_ids):
+                hh_key = int(p_hh)
+                if hh_key not in seen:
+                    seen.add(hh_key)
+                    hh_vals[hh_to_idx[hh_key]] = person_vals[p_idx]
+            data[var] = {time_period: hh_vals}
+            logger.info(
+                "  %s: person(%d) -> household(%d)",
+                var, len(person_vals), len(hh_vals),
+            )
+        else:
+            data[var] = {time_period: person_vals}
 
     del fitted, preds
     gc.collect()

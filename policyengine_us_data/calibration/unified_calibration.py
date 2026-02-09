@@ -5,11 +5,14 @@ New pipeline flow:
     1. Load raw CPS (~55K households)
     2. Clone 10x (v1) / 100x (v2)
     3. Assign random geography (census block -> state, county, CD)
-    4. PUF clone (2x) - one half gets PUF vars imputed
-    5. QRF imputation with state as predictor
-    6. PE simulation (via matrix builder)
-    7. Build unified sparse calibration matrix
-    8. L0-regularized optimization -> calibrated weights
+    4. QRF imputation: all vars with state as predictor
+       a. ACS -> rent, real_estate_taxes
+       b. SIPP -> tip_income, bank/stock/bond_assets
+       c. SCF -> net_worth, auto_loan_balance/interest
+       d. PUF clone (2x) -> 67 tax variables
+    5. PE simulation (via matrix builder)
+    6. Build unified sparse calibration matrix
+    7. L0-regularized optimization -> calibrated weights
 
 Two presets control output size via L0 regularization:
 - local: L0=1e-8, ~3-4M records (for local area dataset)
@@ -129,6 +132,11 @@ def parse_args(argv=None):
         action="store_true",
         help="Skip PUF clone + QRF (use raw CPS as-is)",
     )
+    parser.add_argument(
+        "--skip-source-impute",
+        action="store_true",
+        help="Skip ACS/SIPP/SCF re-imputation with state",
+    )
     return parser.parse_args(argv)
 
 
@@ -138,11 +146,12 @@ def _build_puf_cloned_dataset(
     state_fips: np.ndarray,
     time_period: int = 2024,
     skip_qrf: bool = False,
+    skip_source_impute: bool = False,
 ) -> str:
     """Build a PUF-cloned dataset from raw CPS.
 
-    Loads the CPS dataset, runs PUF clone + QRF imputation
-    (with state as predictor), and saves the expanded h5 file.
+    Loads the CPS dataset, runs source imputations (ACS/SIPP/SCF)
+    with state as predictor, then PUF clone + QRF imputation.
 
     Args:
         dataset_path: Path to raw CPS h5 file.
@@ -151,6 +160,7 @@ def _build_puf_cloned_dataset(
             assignment, for the base n_records only).
         time_period: Tax year.
         skip_qrf: Skip QRF imputation (for testing).
+        skip_source_impute: Skip ACS/SIPP/SCF imputations.
 
     Returns:
         Path to the PUF-cloned h5 file.
@@ -172,6 +182,19 @@ def _build_puf_cloned_dataset(
     for var in data:
         values = data[var][...]
         data_dict[var] = {time_period: values}
+
+    # Source imputations (ACS/SIPP/SCF) with state as predictor
+    if not skip_source_impute:
+        from policyengine_us_data.calibration.source_impute import (
+            impute_source_variables,
+        )
+
+        data_dict = impute_source_variables(
+            data=data_dict,
+            state_fips=state_fips,
+            time_period=time_period,
+            dataset_path=dataset_path,
+        )
 
     # Determine PUF dataset
     puf_dataset = puf_dataset_path if not skip_qrf else None
@@ -213,15 +236,17 @@ def run_calibration(
     seed: int = 42,
     puf_dataset_path: str = None,
     skip_puf: bool = False,
+    skip_source_impute: bool = False,
 ) -> np.ndarray:
     """Run unified calibration pipeline.
 
     New pipeline:
         1. Load raw CPS -> get n_records
         2. Clone n_clones x, assign geography
-        3. PUF clone (2x) + QRF impute with state
-        4. Build sparse calibration matrix
-        5. L0 calibration
+        3. Source imputations (ACS/SIPP/SCF) with state
+        4. PUF clone (2x) + QRF impute with state
+        5. Build sparse calibration matrix
+        6. L0 calibration
 
     Args:
         dataset_path: Path to raw CPS h5 file.
@@ -233,6 +258,7 @@ def run_calibration(
         seed: Random seed.
         puf_dataset_path: Path to PUF h5 for QRF training.
         skip_puf: Skip PUF clone step.
+        skip_source_impute: Skip ACS/SIPP/SCF imputations.
 
     Returns:
         Calibrated weight array of shape
@@ -279,6 +305,7 @@ def run_calibration(
             state_fips=base_states,
             time_period=2024,
             skip_qrf=puf_dataset_path is None,
+            skip_source_impute=skip_source_impute,
         )
 
         # Double geography to match PUF-cloned records
@@ -293,10 +320,50 @@ def run_calibration(
             n_records_for_matrix * n_clones,
         )
     else:
-        dataset_for_matrix = dataset_path
+        # Even without PUF, run source imputations if requested
+        if not skip_source_impute:
+            from policyengine_us import Microsimulation
+
+            from policyengine_us_data.calibration.source_impute import (
+                impute_source_variables,
+            )
+
+            sim = Microsimulation(dataset=dataset_path)
+            raw_data = sim.dataset.load_dataset()
+            data_dict = {}
+            for var in raw_data:
+                data_dict[var] = {2024: raw_data[var][...]}
+            del sim
+
+            base_states = geography.state_fips[:n_records]
+            data_dict = impute_source_variables(
+                data=data_dict,
+                state_fips=base_states,
+                time_period=2024,
+                dataset_path=dataset_path,
+            )
+
+            # Save updated dataset
+            import h5py
+
+            source_path = str(
+                Path(dataset_path).parent
+                / f"source_imputed_{Path(dataset_path).stem}.h5"
+            )
+            with h5py.File(source_path, "w") as f:
+                for var, time_dict in data_dict.items():
+                    for tp, values in time_dict.items():
+                        f.create_dataset(f"{var}/{tp}", data=values)
+            dataset_for_matrix = source_path
+            logger.info(
+                "Source-imputed dataset saved to %s",
+                source_path,
+            )
+        else:
+            dataset_for_matrix = dataset_path
         n_records_for_matrix = n_records
 
-    # Step 4: Build sparse calibration matrix
+    # Step 5: Build sparse calibration matrix
     db_uri = f"sqlite:///{db_path}"
     builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
     targets_df, X_sparse, target_names = builder.build_matrix(
@@ -413,6 +480,7 @@ def main(argv=None):
         seed=args.seed,
         puf_dataset_path=puf_dataset_path,
         skip_puf=args.skip_puf,
+        skip_source_impute=args.skip_source_impute,
     )
 
     np.save(output_path, weights)

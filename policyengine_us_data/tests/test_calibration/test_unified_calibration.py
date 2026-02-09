@@ -341,6 +341,7 @@ class TestRunCalibration:
                 lambda_l0=1e-8,
                 epochs=5,
                 skip_puf=True,
+                skip_source_impute=True,
             )
 
         assert isinstance(weights, np.ndarray)
@@ -420,6 +421,7 @@ class TestRunCalibration:
                 lambda_l0=1e-8,
                 epochs=5,
                 skip_puf=True,
+                skip_source_impute=True,
             )
 
         # model.fit should have been called with only 2
@@ -479,6 +481,7 @@ class TestRunCalibration:
                 epochs=5,
                 seed=123,
                 skip_puf=True,
+                skip_source_impute=True,
             )
 
         mock_assign.assert_called_once_with(
@@ -552,6 +555,7 @@ class TestRunCalibration:
                     lambda_l0=1e-8,
                     epochs=5,
                     skip_puf=True,
+                    skip_source_impute=True,
                 )
 
 

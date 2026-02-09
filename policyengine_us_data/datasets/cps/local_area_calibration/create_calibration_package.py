@@ -58,7 +58,7 @@ def create_calibration_package(
 
     # Step 1: Load data and get CD list
     db_uri = f"sqlite:///{db_path}"
-    builder = SparseGeoStackingMatrixBuilder(db_uri, time_period=2023)
+    builder = SparseGeoStackingMatrixBuilder(db_uri, time_period=2024)
 
     engine = create_engine(db_uri)
     query = """
@@ -121,6 +121,35 @@ def create_calibration_package(
         targets_df, X_sparse, target_groups = filter_target_groups(
             targets_df, X_sparse, target_groups, groups_to_exclude
         )
+
+    # Diagnostic: Show included groups
+    included_groups = np.unique(target_groups)
+    logging.info(
+        f"After filtering: {len(included_groups)} groups, {len(targets_df)} targets"
+    )
+
+    # Show all group info for included groups
+    logging.info("Included target groups:")
+    for info in group_info:
+        group_id = int(info.split(":")[0].replace("Group ", ""))
+        if group_id in included_groups:
+            logging.info(f"  ✓ {info}")
+
+    # Specific check for AGI/income distribution (group 31)
+    agi_targets = targets_df[
+        targets_df["variable_desc"].str.contains(
+            "income|agi|Income|AGI", case=False, na=False
+        )
+    ]
+    if not agi_targets.empty:
+        logging.info(f"AGI/Income targets found: {len(agi_targets)} targets")
+        sample_agi = agi_targets.head(3)
+        for _, row in sample_agi.iterrows():
+            logging.info(
+                f"  Sample: {row['geographic_id']} - {row['variable_desc']}: {row['value']:,.0f}"
+            )
+    else:
+        logging.warning("No AGI/income targets found in matrix!")
 
     targets = targets_df.value.values
 
@@ -298,33 +327,35 @@ def main():
 
     args = parser.parse_args()
 
-    # Default groups to exclude (from original script)
+    # Groups to exclude - updated 2026-02-07
+    # Total groups: 61 (0-60)
+    # National (0-33), State (34-35), District (36-60)
     groups_to_exclude = [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        8,
-        12,
-        10,
-        15,
-        17,
-        18,
-        21,
-        34,
-        35,
-        36,
-        37,
-        31,
-        56,
-        42,
-        64,
-        46,
-        68,
-        47,
-        69,
+        # === National level exclusions ===
+        0,  # National Alimony Expense
+        1,  # National Alimony Income
+        2,  # National Charitable Deduction
+        3,  # National Child Support Expense
+        4,  # National Child Support Received
+        # 5 - National EITC - INCLUDED (CBO target)
+        8,  # National Interest Deduction
+        10,  # National Medical Expense Deduction
+        12,  # National Net Worth
+        15,  # National Person Count (also excludes aca_ptc recipients)
+        17,  # National Real Estate Taxes
+        18,  # National Rent
+        23,  # National Social Security Dependents (not modeled)
+        26,  # National Social Security Survivors (not modeled)
+        # === District level exclusions ===
+        36,  # District ACA PTC (not ready yet)
+        39,  # District EITC (use National CBO instead)
+        42,  # District Income Tax Before Credits
+        43,  # District Medical Expense Deduction
+        44,  # District Net Capital Gains
+        50,  # District Rental Income
+        54,  # District Tax Unit Count
+        55,  # District Tax Unit Partnership S Corp Income
+        59,  # District Taxable Social Security
     ]
 
     results = create_calibration_package(

@@ -542,14 +542,9 @@ class TestMakeTargetName:
 class TestMatrixShape:
     """Verify the output matrix has the correct shape."""
 
-    @patch(
-        "policyengine_us_data.calibration.unified_matrix_builder"
-        ".get_calculated_variables",
-        return_value=[],
-    )
     @patch("policyengine_us.Microsimulation")
     def test_matrix_shape(
-        self, MockMicrosim, mock_get_calc_vars, mock_db, mock_sim
+        self, MockMicrosim, mock_db, mock_sim
     ):
         """Matrix shape is (n_targets, n_records * n_clones)."""
         MockMicrosim.return_value = mock_sim
@@ -579,14 +574,9 @@ class TestStateTargetFillsOnlyStateColumns:
     """State-level target should only have nonzero values in columns
     assigned to that state."""
 
-    @patch(
-        "policyengine_us_data.calibration.unified_matrix_builder"
-        ".get_calculated_variables",
-        return_value=[],
-    )
     @patch("policyengine_us.Microsimulation")
     def test_state_target_fills_only_state_columns(
-        self, MockMicrosim, mock_get_calc_vars, mock_db, mock_sim
+        self, MockMicrosim, mock_db, mock_sim
     ):
         MockMicrosim.return_value = mock_sim
 
@@ -636,14 +626,9 @@ class TestStateTargetFillsOnlyStateColumns:
 class TestCdTargetFillsOnlyCdColumns:
     """CD-level target should only fill columns assigned to that CD."""
 
-    @patch(
-        "policyengine_us_data.calibration.unified_matrix_builder"
-        ".get_calculated_variables",
-        return_value=[],
-    )
     @patch("policyengine_us.Microsimulation")
     def test_cd_target_fills_only_cd_columns(
-        self, MockMicrosim, mock_get_calc_vars, mock_db, mock_sim
+        self, MockMicrosim, mock_db, mock_sim
     ):
         MockMicrosim.return_value = mock_sim
 
@@ -692,14 +677,9 @@ class TestCdTargetFillsOnlyCdColumns:
 class TestNationalTargetFillsAllColumns:
     """National target fills columns across all states."""
 
-    @patch(
-        "policyengine_us_data.calibration.unified_matrix_builder"
-        ".get_calculated_variables",
-        return_value=[],
-    )
     @patch("policyengine_us.Microsimulation")
     def test_national_target_fills_all_columns(
-        self, MockMicrosim, mock_get_calc_vars, mock_db, mock_sim
+        self, MockMicrosim, mock_db, mock_sim
     ):
         MockMicrosim.return_value = mock_sim
 
@@ -745,14 +725,9 @@ class TestNationalTargetFillsAllColumns:
 class TestColumnValuesUseCorrectRecord:
     """Column i should use values from record i % n_records."""
 
-    @patch(
-        "policyengine_us_data.calibration.unified_matrix_builder"
-        ".get_calculated_variables",
-        return_value=[],
-    )
     @patch("policyengine_us.Microsimulation")
     def test_column_values_use_correct_record(
-        self, MockMicrosim, mock_get_calc_vars, mock_db, mock_sim
+        self, MockMicrosim, mock_db, mock_sim
     ):
         MockMicrosim.return_value = mock_sim
 
@@ -798,16 +773,10 @@ class TestColumnValuesUseCorrectRecord:
 class TestConstraintMaskApplied:
     """Non-geographic constraints filter which records contribute."""
 
-    @patch(
-        "policyengine_us_data.calibration.unified_matrix_builder"
-        ".get_calculated_variables",
-        return_value=[],
-    )
     @patch("policyengine_us.Microsimulation")
     def test_constraint_mask_applied(
         self,
         MockMicrosim,
-        mock_get_calc_vars,
         constrained_db,
         mock_sim,
     ):
@@ -855,14 +824,9 @@ class TestConstraintMaskApplied:
 class TestCountVariableHandling:
     """Count variables should produce 1.0 per qualifying household."""
 
-    @patch(
-        "policyengine_us_data.calibration.unified_matrix_builder"
-        ".get_calculated_variables",
-        return_value=[],
-    )
     @patch("policyengine_us.Microsimulation")
     def test_household_count_is_one_per_household(
-        self, MockMicrosim, mock_get_calc_vars, mock_db, mock_sim
+        self, MockMicrosim, mock_db, mock_sim
     ):
         MockMicrosim.return_value = mock_sim
 
@@ -967,3 +931,64 @@ class TestGetAllConstraints:
         var_names = {c["variable"] for c in constraints}
         assert "congressional_district_geoid" in var_names
         assert "state_fips" in var_names
+
+
+class TestExtendedCPSHasNoCalculatedVars:
+    """The extended CPS h5 should contain only input variables.
+
+    The unified calibration pipeline assigns new geography and
+    then invokes PE to compute all derived variables from
+    scratch.  If the h5 ever starts including calculated
+    variables, stale values could silently leak into
+    calibration results.  This test guards against that.
+    """
+
+    def test_no_purely_calculated_vars_in_h5(self):
+        """No purely calculated variables in extended CPS h5.
+
+        The h5 may contain variables that have both set_input
+        AND formulas (e.g. imputed credits, in_nyc).  Those
+        are fine — PE uses the stored value.  But purely
+        calculated variables (formulas, no set_input) would
+        mean stale cached values could leak into calibration
+        after geography reassignment.
+        """
+        import h5py
+        from pathlib import Path
+
+        h5_path = Path(
+            "policyengine_us_data/storage/extended_cps_2024.h5"
+        )
+        if not h5_path.exists():
+            pytest.skip("extended_cps_2024.h5 not available")
+
+        from policyengine_us import Microsimulation
+
+        sim = Microsimulation(dataset=str(h5_path))
+
+        with h5py.File(h5_path, "r") as f:
+            h5_vars = set(f.keys())
+
+        # Flag vars that have formulas but NO set_input —
+        # those are purely calculated and should not be
+        # stored in the h5.
+        purely_calc = set()
+        for var_name in h5_vars:
+            if var_name not in sim.tax_benefit_system.variables:
+                continue
+            var = sim.tax_benefit_system.variables[var_name]
+            has_formula = (
+                hasattr(var, "formulas") and len(var.formulas) > 0
+            )
+            has_set_input = (
+                hasattr(var, "set_input") and var.set_input is not None
+            )
+            if has_formula and not has_set_input:
+                purely_calc.add(var_name)
+
+        assert purely_calc == set(), (
+            f"Extended CPS h5 contains {len(purely_calc)} "
+            f"purely calculated variables (formula, no "
+            f"set_input) that should not be stored: "
+            f"{sorted(purely_calc)}"
+        )

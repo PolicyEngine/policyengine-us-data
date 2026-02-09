@@ -22,9 +22,6 @@ from sqlalchemy import text
 from policyengine_us_data.calibration.base_matrix_builder import (
     BaseMatrixBuilder,
 )
-from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
-    get_calculated_variables,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -298,10 +295,14 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
             county_fips,
         )
 
-        # Clear calculated variables so they recompute with
-        # new geography.
-        for var in get_calculated_variables(sim):
-            sim.delete_arrays(var)
+        # The h5 contains mostly true input variables.  A few
+        # vars (like in_nyc) have set_input values from the
+        # original CPS geography AND formulas that derive from
+        # county/state.  Clear those so PE recomputes them
+        # from the newly assigned geography.
+        _GEO_DERIVED_VARS = {"in_nyc"}
+        for var_name in _GEO_DERIVED_VARS:
+            sim.delete_arrays(var_name)
 
         # Calculate all target variables.
         var_values: Dict[str, np.ndarray] = {}

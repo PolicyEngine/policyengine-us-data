@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from sqlmodel import Session, select
@@ -42,6 +43,16 @@ def etl_argparser(
         extra_args_fn(parser)
 
     args = parser.parse_args()
+
+    if (
+        not args.dataset.startswith("hf://")
+        and not Path(args.dataset).exists()
+    ):
+        raise FileNotFoundError(
+            f"Dataset not found: {args.dataset}\n"
+            f"Either build it locally (`make data`) or pass a "
+            f"HuggingFace URL via --dataset hf://policyengine/..."
+        )
 
     from policyengine_us import Microsimulation
 

@@ -938,20 +938,52 @@ class TestExtendedCPSHasNoCalculatedVars:
 
     The unified calibration pipeline assigns new geography and
     then invokes PE to compute all derived variables from
-    scratch.  If the h5 ever starts including calculated
-    variables, stale values could silently leak into
-    calibration results.  This test guards against that.
+    scratch.  If the h5 includes variables with PE formulas,
+    those stored values could conflict with what PE would
+    compute fresh.  This test ensures the h5 only stores
+    true survey inputs.
     """
 
-    def test_no_purely_calculated_vars_in_h5(self):
-        """No purely calculated variables in extended CPS h5.
+    # Variables that have PE formulas but are stored in the
+    # h5 as survey-reported or imputed input values.  These
+    # are acceptable because PE's set_input mechanism means
+    # the stored value takes precedence over the formula.
+    # Each entry should have a comment explaining why it's
+    # allowed.
+    _ALLOWED_FORMULA_VARS = {
+        # CPS/PUF-reported values with PE fallback formulas
+        "employment_income",
+        "self_employment_income",
+        "weekly_hours_worked",
+        # PUF-imputed tax credits (PE has formulas but we
+        # trust the imputed values from the tax model)
+        "american_opportunity_credit",
+        "foreign_tax_credit",
+        "savers_credit",
+        "energy_efficient_home_improvement_credit",
+        "cdcc_relevant_expenses",
+        "taxable_unemployment_compensation",
+        # Derived from other h5 inputs, not geography
+        "rent",
+        "person_id",
+        "employment_income_last_year",
+        "immigration_status",
+    }
 
-        The h5 may contain variables that have both set_input
-        AND formulas (e.g. imputed credits, in_nyc).  Those
-        are fine — PE uses the stored value.  But purely
-        calculated variables (formulas, no set_input) would
-        mean stale cached values could leak into calibration
-        after geography reassignment.
+    @pytest.mark.xfail(
+        reason="in_nyc should be removed from extended CPS h5",
+        strict=True,
+    )
+    def test_no_formula_vars_in_h5(self):
+        """H5 should not contain PE formula variables.
+
+        Any variable with a PE formula that's stored in
+        the h5 risks providing stale values (especially
+        after geography reassignment).  Only explicitly
+        allowed exceptions are permitted.
+
+        Currently xfail because in_nyc is in the h5 and
+        needs to be removed from the dataset build.
         """
         import h5py
         from pathlib import Path
@@ -969,26 +1001,22 @@ class TestExtendedCPSHasNoCalculatedVars:
         with h5py.File(h5_path, "r") as f:
             h5_vars = set(f.keys())
 
-        # Flag vars that have formulas but NO set_input —
-        # those are purely calculated and should not be
-        # stored in the h5.
-        purely_calc = set()
+        unexpected = set()
         for var_name in h5_vars:
             if var_name not in sim.tax_benefit_system.variables:
                 continue
             var = sim.tax_benefit_system.variables[var_name]
             has_formula = (
-                hasattr(var, "formulas") and len(var.formulas) > 0
+                hasattr(var, "formulas")
+                and len(var.formulas) > 0
             )
-            has_set_input = (
-                hasattr(var, "set_input") and var.set_input is not None
-            )
-            if has_formula and not has_set_input:
-                purely_calc.add(var_name)
+            if has_formula and var_name not in self._ALLOWED_FORMULA_VARS:
+                unexpected.add(var_name)
 
-        assert purely_calc == set(), (
-            f"Extended CPS h5 contains {len(purely_calc)} "
-            f"purely calculated variables (formula, no "
-            f"set_input) that should not be stored: "
-            f"{sorted(purely_calc)}"
+        assert unexpected == set(), (
+            f"Extended CPS h5 contains {len(unexpected)} "
+            f"variable(s) with PE formulas that are not in "
+            f"the allowlist. Either remove them from the "
+            f"h5 or add to _ALLOWED_FORMULA_VARS with a "
+            f"justification: {sorted(unexpected)}"
         )

@@ -295,15 +295,6 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
             county_fips,
         )
 
-        # The h5 contains mostly true input variables.  A few
-        # vars (like in_nyc) have set_input values from the
-        # original CPS geography AND formulas that derive from
-        # county/state.  Clear those so PE recomputes them
-        # from the newly assigned geography.
-        _GEO_DERIVED_VARS = {"in_nyc"}
-        for var_name in _GEO_DERIVED_VARS:
-            sim.delete_arrays(var_name)
-
         # Calculate all target variables.
         var_values: Dict[str, np.ndarray] = {}
         for var in variables:

@@ -2,8 +2,9 @@
 Unified sparse matrix builder for calibration.
 
 Builds a sparse calibration matrix for cloned+geography-assigned CPS
-records. Processes state-by-state for memory efficiency, reusing
-base record calculations for all clones assigned to each state.
+records. Processes clone-by-clone: for each clone, sets each
+record's state_fips to its assigned value, simulates, and extracts
+variable values. Every simulation result is used.
 
 Matrix shape: (n_targets, n_records * n_clones)
 Column ordering: index i = clone_idx * n_records + record_idx
@@ -47,9 +48,11 @@ COUNT_VARIABLES = {
 class UnifiedMatrixBuilder(BaseMatrixBuilder):
     """Build sparse calibration matrix for cloned CPS records.
 
-    Each column represents one cloned record with assigned
-    geography.  Geographic constraints are checked against the
-    assignment, not against simulation state.
+    Processes clone-by-clone: each clone's 111K records get their
+    assigned geography, are simulated, and the results fill the
+    corresponding columns.  This ensures state-dependent variables
+    (state income tax, state benefits) are correct for the assigned
+    geography.
 
     Args:
         db_uri: SQLAlchemy-style database URI.
@@ -168,39 +171,6 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
         return "national", None
 
     # ------------------------------------------------------------------
-    # State simulation factory
-    # ------------------------------------------------------------------
-
-    def _create_state_sim(
-        self,
-        state_fips: int,
-        dataset_path: str,
-        n_records: int,
-    ):
-        """Create simulation with all records set to given state.
-
-        Args:
-            state_fips: State FIPS code.
-            dataset_path: Path to the base extended CPS h5 file.
-            n_records: Number of base household records.
-
-        Returns:
-            Microsimulation instance with state overridden and
-            calculated variables cleared for recalculation.
-        """
-        from policyengine_us import Microsimulation
-
-        sim = Microsimulation(dataset=dataset_path)
-        sim.set_input(
-            "state_fips",
-            self.time_period,
-            np.full(n_records, state_fips, dtype=np.int32),
-        )
-        for var in get_calculated_variables(sim):
-            sim.delete_arrays(var)
-        return sim
-
-    # ------------------------------------------------------------------
     # Target name generation
     # ------------------------------------------------------------------
 
@@ -262,6 +232,94 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
         return "/".join(parts)
 
     # ------------------------------------------------------------------
+    # Clone simulation
+    # ------------------------------------------------------------------
+
+    def _simulate_clone(
+        self,
+        dataset_path: str,
+        clone_block_geoid: np.ndarray,
+        clone_cd_geoid: np.ndarray,
+        clone_state_fips: np.ndarray,
+        n_records: int,
+        variables: set,
+        constraint_keys: set,
+    ) -> Tuple[Dict[str, np.ndarray], "Microsimulation"]:
+        """Simulate one clone with assigned geography.
+
+        Loads the base dataset, overrides all geographic inputs
+        derived from the assigned census block, clears calculated
+        variables, and computes all needed target/constraint
+        variables.
+
+        Args:
+            dataset_path: Path to the base extended CPS h5 file.
+            clone_block_geoid: Block GEOID (15-char str) for each
+                record, shape ``(n_records,)``.
+            clone_cd_geoid: Congressional district GEOID for each
+                record, shape ``(n_records,)``.
+            clone_state_fips: State FIPS for each record,
+                shape ``(n_records,)``.
+            n_records: Number of base records.
+            variables: Set of target variable names to compute.
+            constraint_keys: Set of constraint variable names
+                needed for mask evaluation.
+
+        Returns:
+            Tuple of ``(var_values, sim)`` where var_values maps
+            variable name to household-level float32 array.
+        """
+        from policyengine_us import Microsimulation
+
+        sim = Microsimulation(dataset=dataset_path)
+        sim.default_calculation_period = self.time_period
+
+        # Override all geography from assigned census block.
+        sim.set_input(
+            "block_geoid",
+            self.time_period,
+            clone_block_geoid,
+        )
+        sim.set_input(
+            "state_fips",
+            self.time_period,
+            clone_state_fips.astype(np.int32),
+        )
+        sim.set_input(
+            "congressional_district_geoid",
+            self.time_period,
+            clone_cd_geoid.astype(np.int64),
+        )
+        # County FIPS = first 5 chars of block GEOID.
+        county_fips = np.array([b[:5] for b in clone_block_geoid])
+        sim.set_input(
+            "county_fips",
+            self.time_period,
+            county_fips,
+        )
+
+        # Clear calculated variables so they recompute with
+        # new geography.
+        for var in get_calculated_variables(sim):
+            sim.delete_arrays(var)
+
+        # Calculate all target variables.
+        var_values: Dict[str, np.ndarray] = {}
+        for var in variables:
+            if var in COUNT_VARIABLES:
+                continue
+            try:
+                var_values[var] = sim.calculate(
+                    var,
+                    self.time_period,
+                    map_to="household",
+                ).values.astype(np.float32)
+            except Exception as exc:
+                logger.warning("Cannot calculate '%s': %s", var, exc)
+
+        return var_values, sim
+
+    # ------------------------------------------------------------------
     # Main build method
     # ------------------------------------------------------------------
 
@@ -271,6 +329,12 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
         geography,
     ) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
         """Build sparse calibration matrix.
+
+        Processes clone-by-clone: for each clone, sets geography
+        on the base records, simulates, and fills the
+        corresponding matrix columns. This ensures
+        state-dependent variables are calculated correctly for
+        each record's assigned geography.
 
         Args:
             dataset_path: Path to the base extended CPS h5 file.
@@ -291,24 +355,17 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
         n_clones = geography.n_clones
         n_total = n_records * n_clones
 
-        # Build index structures: state -> column indices,
-        # CD -> column indices.
-        state_to_cols: Dict[int, list] = defaultdict(list)
-        cd_to_cols: Dict[str, list] = defaultdict(list)
+        # Build column index structures from geography.
+        state_to_cols: Dict[int, np.ndarray] = {}
+        cd_to_cols: Dict[str, np.ndarray] = {}
 
+        state_col_lists: Dict[int, list] = defaultdict(list)
+        cd_col_lists: Dict[str, list] = defaultdict(list)
         for col in range(n_total):
-            s = int(geography.state_fips[col])
-            cd = str(geography.cd_geoid[col])
-            state_to_cols[s].append(col)
-            cd_to_cols[cd].append(col)
-
-        # Convert to numpy arrays for vectorized indexing.
-        state_to_cols_np: Dict[int, np.ndarray] = {
-            s: np.array(cols) for s, cols in state_to_cols.items()
-        }
-        cd_to_cols_np: Dict[str, np.ndarray] = {
-            cd: np.array(cols) for cd, cols in cd_to_cols.items()
-        }
+            state_col_lists[int(geography.state_fips[col])].append(col)
+            cd_col_lists[str(geography.cd_geoid[col])].append(col)
+        state_to_cols = {s: np.array(c) for s, c in state_col_lists.items()}
+        cd_to_cols = {cd: np.array(c) for cd, c in cd_col_lists.items()}
 
         # Query targets from database.
         targets_df = self._query_active_targets()
@@ -323,10 +380,8 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
             n_clones,
         )
 
-        # Pre-process: resolve constraints, classify geo, build
-        # names, separate geo/non-geo constraints.
+        # Pre-process targets: resolve constraints, classify geo.
         constraint_cache: Dict[int, List[dict]] = {}
-        target_constraints: List[List[dict]] = []
         target_geo_info: List[Tuple[str, Optional[str]]] = []
         target_names: List[str] = []
         non_geo_constraints_list: List[List[dict]] = []
@@ -336,7 +391,6 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
             if sid not in constraint_cache:
                 constraint_cache[sid] = self._get_all_constraints(sid)
             constraints = constraint_cache[sid]
-            target_constraints.append(constraints)
 
             geo_level, geo_id = self._classify_constraint_geo(constraints)
             target_geo_info.append((geo_level, geo_id))
@@ -354,75 +408,118 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                 )
             )
 
-        # Initialize sparse matrix in LIL format for efficient
-        # row-by-row construction.
+        # Collect all variables and constraint variables needed.
+        unique_variables = set(targets_df["variable"].values)
+        constraint_vars = set()
+        for non_geo in non_geo_constraints_list:
+            for c in non_geo:
+                constraint_vars.add(c["variable"])
+
+        # Initialize sparse matrix in LIL format.
         X = sparse.lil_matrix((n_targets, n_total), dtype=np.float32)
 
-        # Process state-by-state.
-        unique_states = sorted(state_to_cols_np.keys())
-        for state in unique_states:
-            logger.info("Processing state %d...", state)
-            # Clear entity relationship cache for new sim.
+        # Process clone-by-clone.
+        for clone_idx in range(n_clones):
+            col_start = clone_idx * n_records
+            col_end = col_start + n_records
+
+            # Geography for this clone's records.
+            clone_blocks = geography.block_geoid[col_start:col_end]
+            clone_cds = geography.cd_geoid[col_start:col_end]
+            clone_states = geography.state_fips[col_start:col_end]
+
+            logger.info(
+                "Processing clone %d / %d "
+                "(cols %d-%d, %d unique states)...",
+                clone_idx + 1,
+                n_clones,
+                col_start,
+                col_end - 1,
+                len(np.unique(clone_states)),
+            )
+
+            # Simulate this clone with full geography.
             self._entity_rel_cache = None
+            var_values, sim = self._simulate_clone(
+                dataset_path=dataset_path,
+                clone_block_geoid=clone_blocks,
+                clone_cd_geoid=clone_cds,
+                clone_state_fips=clone_states,
+                n_records=n_records,
+                variables=unique_variables,
+                constraint_keys=constraint_vars,
+            )
 
-            state_sim = self._create_state_sim(state, dataset_path, n_records)
-            state_cols = state_to_cols_np[state]
+            # Pre-compute constraint masks for this clone.
+            mask_cache: Dict[tuple, np.ndarray] = {}
 
+            def _get_mask(
+                constraints_list: List[dict],
+            ) -> np.ndarray:
+                key = tuple(
+                    (c["variable"], c["operation"], c["value"])
+                    for c in sorted(
+                        constraints_list,
+                        key=lambda c: c["variable"],
+                    )
+                )
+                if key not in mask_cache:
+                    mask_cache[key] = self._evaluate_constraints_entity_aware(
+                        sim, constraints_list, n_records
+                    )
+                return mask_cache[key]
+
+            # Fill matrix for each target.
             for row_idx in range(n_targets):
-                target = targets_df.iloc[row_idx]
+                variable = str(targets_df.iloc[row_idx]["variable"])
                 geo_level, geo_id = target_geo_info[row_idx]
                 non_geo = non_geo_constraints_list[row_idx]
-                variable = str(target["variable"])
 
-                # Determine which columns this target applies to
-                # within this state's columns.
+                # Determine which records in this clone match
+                # the target's geography.
                 if geo_level == "cd":
-                    if geo_id not in cd_to_cols_np:
+                    if geo_id not in cd_to_cols:
                         continue
-                    cd_cols = cd_to_cols_np[geo_id]
-                    target_cols = np.intersect1d(cd_cols, state_cols)
+                    cd_cols = cd_to_cols[geo_id]
+                    # Intersect with this clone's columns.
+                    clone_target_cols = cd_cols[
+                        (cd_cols >= col_start) & (cd_cols < col_end)
+                    ]
                 elif geo_level == "state":
-                    if int(geo_id) != state:
+                    state_key = int(geo_id)
+                    if state_key not in state_to_cols:
                         continue
-                    target_cols = state_cols
+                    s_cols = state_to_cols[state_key]
+                    clone_target_cols = s_cols[
+                        (s_cols >= col_start) & (s_cols < col_end)
+                    ]
                 else:
-                    # National: all columns in this state.
-                    target_cols = state_cols
+                    # National: all records in this clone.
+                    clone_target_cols = np.arange(col_start, col_end)
 
-                if len(target_cols) == 0:
+                if len(clone_target_cols) == 0:
                     continue
 
-                # Evaluate non-geographic constraints.
-                mask = self._evaluate_constraints_entity_aware(
-                    state_sim, non_geo, n_records
-                )
+                # Get constraint mask.
+                mask = _get_mask(non_geo)
 
-                # Calculate target variable values.
-                try:
-                    if variable in COUNT_VARIABLES:
-                        values = mask.astype(np.float32)
-                    else:
-                        values = state_sim.calculate(
-                            variable,
-                            self.time_period,
-                            map_to="household",
-                        ).values.astype(np.float32)
-                        values = values * mask
-                except Exception as exc:
-                    logger.warning(
-                        "Cannot calculate '%s': %s",
-                        variable,
-                        exc,
-                    )
+                # Get variable values.
+                if variable in COUNT_VARIABLES:
+                    values = mask.astype(np.float32)
+                elif variable in var_values:
+                    values = var_values[variable] * mask
+                else:
                     continue
 
-                # Fill matrix columns: column i uses values
-                # from record i % n_records.
-                rec_idx = target_cols % n_records
+                # Map columns to base record indices.
+                rec_idx = clone_target_cols % n_records
                 vals = values[rec_idx]
                 nonzero = vals != 0
                 if nonzero.any():
-                    X[row_idx, target_cols[nonzero]] = vals[nonzero]
+                    X[
+                        row_idx,
+                        clone_target_cols[nonzero],
+                    ] = vals[nonzero]
 
         X_csr = X.tocsr()
         logger.info(

@@ -39,17 +39,29 @@ class MockGeography:
     Attributes:
         n_records: Number of base records (households).
         n_clones: Number of clones.
+        block_geoid: Array of length n_records * n_clones with
+            15-char census block GEOID strings.
         state_fips: Array of length n_records * n_clones with
             state FIPS for each column.
         cd_geoid: Array of length n_records * n_clones with CD
             GEOID strings for each column.
     """
 
-    def __init__(self, n_records, n_clones, state_fips, cd_geoid):
+    def __init__(
+        self, n_records, n_clones, state_fips, cd_geoid, block_geoid=None
+    ):
         self.n_records = n_records
         self.n_clones = n_clones
         self.state_fips = np.asarray(state_fips)
         self.cd_geoid = np.asarray(cd_geoid, dtype=object)
+        if block_geoid is not None:
+            self.block_geoid = np.asarray(block_geoid, dtype=object)
+        else:
+            # Generate synthetic block GEOIDs from state_fips
+            self.block_geoid = np.array(
+                [f"{int(s):02d}0010001001001" for s in self.state_fips],
+                dtype=object,
+            )
 
 
 # -------------------------------------------------------------------

@@ -423,9 +423,11 @@ def main(argv=None):
         result = fit_one_l0(
             X_sparse=X_sparse,
             targets=targets,
+            target_names=target_names,
             lambda_l0=l0_val,
             epochs=args.epochs,
             device=args.device,
+            output_dir=output_dir,
         )
         results.append(result)
         logger.info(

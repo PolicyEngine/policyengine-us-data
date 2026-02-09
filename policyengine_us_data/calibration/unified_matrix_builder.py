@@ -327,20 +327,24 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
         self,
         dataset_path: str,
         geography,
+        cache_dir: Optional[str] = None,
     ) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
         """Build sparse calibration matrix.
 
-        Processes clone-by-clone: for each clone, sets geography
-        on the base records, simulates, and fills the
-        corresponding matrix columns. This ensures
-        state-dependent variables are calculated correctly for
-        each record's assigned geography.
+        Two-phase build: (1) simulate each clone and save
+        COO entries to disk, (2) assemble the full sparse
+        matrix from cached files. This keeps memory low during
+        simulation and allows resuming if interrupted.
 
         Args:
             dataset_path: Path to the base extended CPS h5 file.
             geography: Geography assignment object with
-                ``state_fips``, ``cd_geoid`` arrays and
-                ``n_records``, ``n_clones`` attributes.
+                ``state_fips``, ``cd_geoid``, ``block_geoid``
+                arrays and ``n_records``, ``n_clones``
+                attributes.
+            cache_dir: Directory for per-clone COO caches.
+                If ``None``, COO data is held in memory
+                (suitable for tests only).
 
         Returns:
             Tuple of ``(targets_df, X_sparse, target_names)``
@@ -415,18 +419,40 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
             for c in non_geo:
                 constraint_vars.add(c["variable"])
 
-        # Initialize sparse matrix in LIL format.
-        X = sparse.lil_matrix((n_targets, n_total), dtype=np.float32)
+        # Two-phase build: save COO entries per clone to disk,
+        # then assemble in one pass.  This keeps memory low during
+        # the expensive simulation phase and allows resume if the
+        # process is interrupted.
+        from pathlib import Path
 
-        # Process clone-by-clone.
+        clone_dir = Path(cache_dir) if cache_dir else None
+        if clone_dir:
+            clone_dir.mkdir(parents=True, exist_ok=True)
+
+        # Phase 1: simulate each clone, save COO entries.
         for clone_idx in range(n_clones):
+            # Skip if already saved to disk.
+            if clone_dir:
+                coo_path = clone_dir / f"clone_{clone_idx:04d}.npz"
+                if coo_path.exists():
+                    logger.info(
+                        "Clone %d / %d already cached, "
+                        "skipping.",
+                        clone_idx + 1,
+                        n_clones,
+                    )
+                    continue
+
             col_start = clone_idx * n_records
             col_end = col_start + n_records
 
-            # Geography for this clone's records.
-            clone_blocks = geography.block_geoid[col_start:col_end]
+            clone_blocks = geography.block_geoid[
+                col_start:col_end
+            ]
             clone_cds = geography.cd_geoid[col_start:col_end]
-            clone_states = geography.state_fips[col_start:col_end]
+            clone_states = geography.state_fips[
+                col_start:col_end
+            ]
 
             logger.info(
                 "Processing clone %d / %d "
@@ -438,7 +464,6 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                 len(np.unique(clone_states)),
             )
 
-            # Simulate this clone with full geography.
             self._entity_rel_cache = None
             var_values, sim = self._simulate_clone(
                 dataset_path=dataset_path,
@@ -450,7 +475,6 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                 constraint_keys=constraint_vars,
             )
 
-            # Pre-compute constraint masks for this clone.
             mask_cache: Dict[tuple, np.ndarray] = {}
 
             def _get_mask(
@@ -464,26 +488,32 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                     )
                 )
                 if key not in mask_cache:
-                    mask_cache[key] = self._evaluate_constraints_entity_aware(
-                        sim, constraints_list, n_records
+                    mask_cache[key] = (
+                        self._evaluate_constraints_entity_aware(
+                            sim, constraints_list, n_records
+                        )
                     )
                 return mask_cache[key]
 
-            # Fill matrix for each target.
+            # Collect COO entries for this clone.
+            rows_list: list = []
+            cols_list: list = []
+            vals_list: list = []
+
             for row_idx in range(n_targets):
-                variable = str(targets_df.iloc[row_idx]["variable"])
+                variable = str(
+                    targets_df.iloc[row_idx]["variable"]
+                )
                 geo_level, geo_id = target_geo_info[row_idx]
                 non_geo = non_geo_constraints_list[row_idx]
 
-                # Determine which records in this clone match
-                # the target's geography.
                 if geo_level == "cd":
                     if geo_id not in cd_to_cols:
                         continue
                     cd_cols = cd_to_cols[geo_id]
-                    # Intersect with this clone's columns.
                     clone_target_cols = cd_cols[
-                        (cd_cols >= col_start) & (cd_cols < col_end)
+                        (cd_cols >= col_start)
+                        & (cd_cols < col_end)
                     ]
                 elif geo_level == "state":
                     state_key = int(geo_id)
@@ -491,19 +521,19 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                         continue
                     s_cols = state_to_cols[state_key]
                     clone_target_cols = s_cols[
-                        (s_cols >= col_start) & (s_cols < col_end)
+                        (s_cols >= col_start)
+                        & (s_cols < col_end)
                     ]
                 else:
-                    # National: all records in this clone.
-                    clone_target_cols = np.arange(col_start, col_end)
+                    clone_target_cols = np.arange(
+                        col_start, col_end
+                    )
 
                 if len(clone_target_cols) == 0:
                     continue
 
-                # Get constraint mask.
                 mask = _get_mask(non_geo)
 
-                # Get variable values.
                 if variable in COUNT_VARIABLES:
                     values = mask.astype(np.float32)
                 elif variable in var_values:
@@ -511,19 +541,88 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                 else:
                     continue
 
-                # Map columns to base record indices.
                 rec_idx = clone_target_cols % n_records
                 vals = values[rec_idx]
                 nonzero = vals != 0
                 if nonzero.any():
-                    X[
-                        row_idx,
-                        clone_target_cols[nonzero],
-                    ] = vals[nonzero]
+                    rows_list.append(
+                        np.full(
+                            nonzero.sum(),
+                            row_idx,
+                            dtype=np.int32,
+                        )
+                    )
+                    cols_list.append(
+                        clone_target_cols[nonzero].astype(
+                            np.int32
+                        )
+                    )
+                    vals_list.append(vals[nonzero])
 
-        X_csr = X.tocsr()
+            # Save COO entries for this clone.
+            if rows_list:
+                clone_rows = np.concatenate(rows_list)
+                clone_cols = np.concatenate(cols_list)
+                clone_vals = np.concatenate(vals_list)
+            else:
+                clone_rows = np.array([], dtype=np.int32)
+                clone_cols = np.array([], dtype=np.int32)
+                clone_vals = np.array([], dtype=np.float32)
+
+            if clone_dir:
+                np.savez_compressed(
+                    str(coo_path),
+                    rows=clone_rows,
+                    cols=clone_cols,
+                    vals=clone_vals,
+                )
+                logger.info(
+                    "Clone %d: saved %d nonzero entries "
+                    "to %s",
+                    clone_idx + 1,
+                    len(clone_vals),
+                    coo_path.name,
+                )
+                # Free memory.
+                del var_values, sim
+                del rows_list, cols_list, vals_list
+            else:
+                # No cache dir: accumulate in memory
+                # (for tests).
+                if not hasattr(self, "_coo_parts"):
+                    self._coo_parts = ([], [], [])
+                self._coo_parts[0].append(clone_rows)
+                self._coo_parts[1].append(clone_cols)
+                self._coo_parts[2].append(clone_vals)
+
+        # Phase 2: assemble sparse matrix from COO files.
+        logger.info("Assembling sparse matrix from %d clones...", n_clones)
+
+        if clone_dir:
+            all_rows, all_cols, all_vals = [], [], []
+            for clone_idx in range(n_clones):
+                coo_path = clone_dir / f"clone_{clone_idx:04d}.npz"
+                data = np.load(str(coo_path))
+                all_rows.append(data["rows"])
+                all_cols.append(data["cols"])
+                all_vals.append(data["vals"])
+            rows = np.concatenate(all_rows)
+            cols = np.concatenate(all_cols)
+            vals = np.concatenate(all_vals)
+        else:
+            rows = np.concatenate(self._coo_parts[0])
+            cols = np.concatenate(self._coo_parts[1])
+            vals = np.concatenate(self._coo_parts[2])
+            del self._coo_parts
+
+        X_csr = sparse.csr_matrix(
+            (vals, (rows, cols)),
+            shape=(n_targets, n_total),
+            dtype=np.float32,
+        )
         logger.info(
-            "Matrix built: %d targets x %d columns, " "%d nonzero entries",
+            "Matrix built: %d targets x %d columns, "
+            "%d nonzero entries",
             X_csr.shape[0],
             X_csr.shape[1],
             X_csr.nnz,

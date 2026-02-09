@@ -165,6 +165,7 @@ def puf_clone_dataset(
     time_period: int = 2024,
     puf_dataset=None,
     skip_qrf: bool = False,
+    dataset_path: Optional[str] = None,
 ) -> Dict[str, Dict[int, np.ndarray]]:
     """Clone CPS data 2x and impute PUF variables on one half.
 
@@ -179,6 +180,8 @@ def puf_clone_dataset(
         puf_dataset: PUF dataset class or path for QRF training.
             If None, skips QRF (same as skip_qrf=True).
         skip_qrf: If True, skip QRF imputation (for testing).
+        dataset_path: Path to CPS h5 file (needed for QRF to
+            compute demographic predictors via Microsimulation).
 
     Returns:
         New data dict with doubled records.
@@ -203,8 +206,37 @@ def puf_clone_dataset(
     y_override = None
     if not skip_qrf and puf_dataset is not None:
         y_full, y_override = _run_qrf_imputation(
-            data, state_fips, time_period, puf_dataset
+            data,
+            state_fips,
+            time_period,
+            puf_dataset,
+            dataset_path=dataset_path,
         )
+
+    # Load a Microsimulation for entity-level mapping of imputed
+    # variables (QRF imputes at person level, but many PUF vars
+    # belong to tax_unit entity)
+    cps_sim = None
+    tbs = None
+    if (y_full or y_override) and dataset_path is not None:
+        from policyengine_us import Microsimulation
+
+        cps_sim = Microsimulation(dataset=dataset_path)
+        tbs = cps_sim.tax_benefit_system
+
+    def _map_to_entity(pred_values, variable_name):
+        """Map person-level predictions to the correct entity."""
+        if cps_sim is None or tbs is None:
+            return pred_values
+        var_meta = tbs.variables.get(variable_name)
+        if var_meta is None:
+            return pred_values
+        entity = var_meta.entity.key
+        if entity != "person":
+            return cps_sim.populations[entity].value_from_first_person(
+                pred_values
+            )
+        return pred_values
 
     # Build doubled dataset
     new_data = {}
@@ -212,10 +244,10 @@ def puf_clone_dataset(
         values = time_dict[time_period]
 
         if variable in OVERRIDDEN_IMPUTED_VARIABLES and y_override:
-            pred = y_override[variable]
+            pred = _map_to_entity(y_override[variable], variable)
             new_data[variable] = {time_period: np.concatenate([pred, pred])}
         elif variable in IMPUTED_VARIABLES and y_full:
-            pred = y_full[variable]
+            pred = _map_to_entity(y_full[variable], variable)
             new_data[variable] = {time_period: np.concatenate([values, pred])}
         elif variable == "person_id":
             new_data[variable] = {
@@ -243,9 +275,12 @@ def puf_clone_dataset(
     if y_full:
         for var in IMPUTED_VARIABLES:
             if var not in data:
-                pred = y_full[var]
+                pred = _map_to_entity(y_full[var], var)
                 orig = np.zeros_like(pred)
                 new_data[var] = {time_period: np.concatenate([orig, pred])}
+
+    if cps_sim is not None:
+        del cps_sim
 
     logger.info(
         "PUF clone complete: %d -> %d households",
@@ -260,6 +295,7 @@ def _run_qrf_imputation(
     state_fips: np.ndarray,
     time_period: int,
     puf_dataset,
+    dataset_path: Optional[str] = None,
 ) -> tuple:
     """Run QRF imputation for PUF variables.
 
@@ -271,6 +307,8 @@ def _run_qrf_imputation(
         state_fips: State FIPS per household.
         time_period: Tax year.
         puf_dataset: PUF dataset class or path.
+        dataset_path: Path to CPS h5 file for computing
+            demographic predictors via Microsimulation.
 
     Returns:
         Tuple of (y_full_imputations, y_override_imputations)
@@ -308,11 +346,21 @@ def _run_qrf_imputation(
     )
     X_train_override["state_fips"] = puf_state_fips.astype(np.float32)
 
-    # Build CPS test DataFrame
-    # We need a Microsimulation to calculate demographics
-    # For now, extract from data dict
-    person_count = len(data["person_id"][time_period])
+    # Build CPS test DataFrame using Microsimulation to compute
+    # demographic predictors (many are calculated, not stored)
     n_hh = len(data["household_id"][time_period])
+    person_count = len(data["person_id"][time_period])
+
+    if dataset_path is not None:
+        cps_sim = Microsimulation(dataset=dataset_path)
+        X_test = cps_sim.calculate_dataframe(demo_preds)
+        del cps_sim
+    else:
+        # Fallback: extract from data dict (only stored vars)
+        X_test = pd.DataFrame()
+        for pred in demo_preds:
+            if pred in data:
+                X_test[pred] = data[pred][time_period].astype(np.float32)
 
     # Map household state_fips to person level
     hh_ids_person = data.get("person_household_id", {}).get(time_period)
@@ -327,11 +375,6 @@ def _run_qrf_imputation(
             state_fips,
             person_count // n_hh,
         )
-
-    X_test = pd.DataFrame()
-    for pred in demo_preds:
-        if pred in data:
-            X_test[pred] = data[pred][time_period].astype(np.float32)
     X_test["state_fips"] = person_states.astype(np.float32)
 
     predictors = DEMOGRAPHIC_PREDICTORS

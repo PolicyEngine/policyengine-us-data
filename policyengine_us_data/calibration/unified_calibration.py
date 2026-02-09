@@ -183,6 +183,7 @@ def _build_puf_cloned_dataset(
         time_period=time_period,
         puf_dataset=puf_dataset,
         skip_qrf=skip_qrf,
+        dataset_path=dataset_path,
     )
 
     # Save expanded dataset

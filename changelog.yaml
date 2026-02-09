@@ -837,3 +837,14 @@
     - Add voluntary tax filer variable and filer count calibration targets by AGI
       band.
   date: 2026-02-08 04:15:49
+- bump: patch
+  changes:
+    added:
+    - promote-dataset Makefile target
+    - Year-mismatch warning in national targets ETL
+    - Congress-session constants and warning in SOI district puller
+    changed:
+    - Switch DEFAULT_DATASET to local storage path for database ETL scripts
+    - Extract shared etl_argparser() to reduce boilerplate across 7 ETL scripts
+    - Delete dead get_pseudo_input_variables() function
+  date: 2026-02-09 17:47:49

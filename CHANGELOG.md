@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.64.1] - 2026-02-09 17:47:49
+
+### Added
+
+- promote-dataset Makefile target
+- Year-mismatch warning in national targets ETL
+- Congress-session constants and warning in SOI district puller
+
+### Changed
+
+- Switch DEFAULT_DATASET to local storage path for database ETL scripts
+- Extract shared etl_argparser() to reduce boilerplate across 7 ETL scripts
+- Delete dead get_pseudo_input_variables() function
+
 ## [1.64.0] - 2026-02-08 04:15:49
 
 ### Added
@@ -966,6 +980,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.64.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.64.0...1.64.1
 [1.64.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.63.1...1.64.0
 [1.63.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.63.0...1.63.1
 [1.63.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.62.0...1.63.0

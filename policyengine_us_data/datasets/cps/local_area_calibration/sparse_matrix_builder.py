@@ -12,8 +12,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from scipy import sparse
-from dataclasses import dataclass
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
 
@@ -21,19 +20,7 @@ from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils 
     get_calculated_variables,
     apply_op,
     _get_geo_level,
-    build_concept_id,
-    extract_constraints_from_row,
 )
-
-
-@dataclass
-class ConceptDuplicateWarning:
-    """Warning when multiple values exist for the same concept."""
-
-    concept_id: str
-    duplicates: List[dict]
-    selected: dict
-    reason: str
 
 
 class SparseMatrixBuilder:
@@ -52,12 +39,6 @@ class SparseMatrixBuilder:
         self.cds_to_calibrate = cds_to_calibrate
         self.dataset_path = dataset_path
         self._entity_rel_cache = None
-
-        # Populated after build_matrix() with deduplicate=True
-        self.concept_summary: Optional[pd.DataFrame] = None
-        self.dedup_warnings: List[ConceptDuplicateWarning] = []
-        self.targets_before_dedup: Optional[pd.DataFrame] = None
-        self.targets_after_dedup: Optional[pd.DataFrame] = None
 
     def _build_entity_relationship(self, sim) -> pd.DataFrame:
         """
@@ -269,7 +250,11 @@ class SparseMatrixBuilder:
         )
 
     def _query_targets(self, target_filter: dict) -> pd.DataFrame:
-        """Query targets based on filter criteria using OR logic."""
+        """Query targets, selecting best period per (stratum_id, variable).
+
+        Best period: most recent period <= self.time_period, or closest
+        future period if none exists.
+        """
         or_conditions = []
 
         if "stratum_group_ids" in target_filter:
@@ -289,22 +274,43 @@ class SparseMatrixBuilder:
             or_conditions.append(f"t.stratum_id IN ({ids})")
 
         if not or_conditions:
-            # No filter criteria: fetch all targets
             where_clause = "1=1"
         else:
             where_clause = " OR ".join(f"({c})" for c in or_conditions)
 
         query = f"""
-        SELECT t.target_id, t.stratum_id, t.variable, t.value, t.period,
-               s.stratum_group_id
-        FROM targets t
-        JOIN strata s ON t.stratum_id = s.stratum_id
-        WHERE {where_clause}
-        ORDER BY t.target_id
+        WITH filtered_targets AS (
+            SELECT t.target_id, t.stratum_id, t.variable, t.value,
+                   t.period, s.stratum_group_id
+            FROM targets t
+            JOIN strata s ON t.stratum_id = s.stratum_id
+            WHERE {where_clause}
+        ),
+        best_periods AS (
+            SELECT stratum_id, variable,
+                CASE
+                    WHEN MAX(CASE WHEN period <= :time_period
+                             THEN period END) IS NOT NULL
+                    THEN MAX(CASE WHEN period <= :time_period
+                             THEN period END)
+                    ELSE MIN(period)
+                END as best_period
+            FROM filtered_targets
+            GROUP BY stratum_id, variable
+        )
+        SELECT ft.*
+        FROM filtered_targets ft
+        JOIN best_periods bp
+            ON ft.stratum_id = bp.stratum_id
+            AND ft.variable = bp.variable
+            AND ft.period = bp.best_period
+        ORDER BY ft.target_id
         """
 
         with self.engine.connect() as conn:
-            return pd.read_sql(query, conn)
+            return pd.read_sql(
+                query, conn, params={"time_period": self.time_period}
+            )
 
     def _get_constraints(self, stratum_id: int) -> List[dict]:
         """Get all constraints for a stratum (including geographic)."""
@@ -327,234 +333,103 @@ class SparseMatrixBuilder:
                 return c["value"]
         return "US"
 
-    def _get_constraint_info(self, stratum_id: int) -> str:
-        """Build pipe-separated constraint string for concept identification."""
-        constraints = self._get_constraints(stratum_id)
-        parts = []
-        for c in constraints:
-            op = "==" if c["operation"] == "=" else c["operation"]
-            parts.append(f"{c['variable']}{op}{c['value']}")
-        return "|".join(parts) if parts else None
+    def _calculate_uprating_factors(self, params) -> dict:
+        """Calculate CPI and population uprating factors for all periods."""
+        factors = {}
 
-    def _deduplicate_targets(
+        query = "SELECT DISTINCT period FROM targets WHERE period IS NOT NULL ORDER BY period"
+        with self.engine.connect() as conn:
+            result = conn.execute(text(query))
+            years_needed = [row[0] for row in result]
+
+        logger.info(
+            f"Calculating uprating factors for years "
+            f"{years_needed} to {self.time_period}"
+        )
+
+        for from_year in years_needed:
+            if from_year == self.time_period:
+                factors[(from_year, "cpi")] = 1.0
+                factors[(from_year, "pop")] = 1.0
+                continue
+
+            try:
+                cpi_from = params.gov.bls.cpi.cpi_u(from_year)
+                cpi_to = params.gov.bls.cpi.cpi_u(self.time_period)
+                factors[(from_year, "cpi")] = float(cpi_to / cpi_from)
+            except Exception as e:
+                logger.warning(
+                    f"Could not calculate CPI factor for " f"{from_year}: {e}"
+                )
+                factors[(from_year, "cpi")] = 1.0
+
+            try:
+                pop_from = params.calibration.gov.census.populations.total(
+                    from_year
+                )
+                pop_to = params.calibration.gov.census.populations.total(
+                    self.time_period
+                )
+                factors[(from_year, "pop")] = float(pop_to / pop_from)
+            except Exception as e:
+                logger.warning(
+                    f"Could not calculate population factor for "
+                    f"{from_year}: {e}"
+                )
+                factors[(from_year, "pop")] = 1.0
+
+        for (year, type_), factor in sorted(factors.items()):
+            if factor != 1.0:
+                logger.info(
+                    f"  {year} -> {self.time_period} "
+                    f"({type_}): {factor:.4f}"
+                )
+
+        return factors
+
+    def _get_uprating_info(
         self,
-        targets_df: pd.DataFrame,
-        mode: str = "within_geography",
-        priority_column: str = "geo_priority",
-    ) -> pd.DataFrame:
-        """
-        Deduplicate targets by concept before matrix building.
+        variable: str,
+        period: int,
+        factors: dict,
+    ) -> Tuple[float, str]:
+        """Get uprating factor and type for a variable at a given period."""
+        if period == self.time_period:
+            return 1.0, "none"
 
-        Stores results in instance attributes for later inspection:
-        - self.concept_summary: DataFrame summarizing concepts
-        - self.dedup_warnings: List of ConceptDuplicateWarning
-        - self.targets_before_dedup: Original targets DataFrame
-        - self.targets_after_dedup: Deduplicated targets DataFrame
+        count_indicators = [
+            "count",
+            "person",
+            "people",
+            "households",
+            "tax_units",
+        ]
+        is_count = any(ind in variable.lower() for ind in count_indicators)
+        uprating_type = "pop" if is_count else "cpi"
 
-        Args:
-            targets_df: DataFrame with target rows including geographic_id
-                and constraint_info columns
-            mode: Deduplication mode ("within_geography" or
-                "hierarchical_fallback")
-            priority_column: Column to sort by when selecting among
-                duplicates. Lower values = higher priority.
+        factor = factors.get((period, uprating_type), 1.0)
+        return factor, uprating_type
 
-        Returns:
-            Deduplicated DataFrame with reset index
-        """
-        df = targets_df.copy()
-
-        # Add geo_priority if not present (CD=1, State=2, National=3)
-        if priority_column not in df.columns:
-            df["geo_priority"] = df["geographic_id"].apply(
-                lambda g: 3 if g == "US" else (1 if int(g) >= 100 else 2)
-            )
-            priority_column = "geo_priority"
-
-        # Build concept_id for each row
-        df["_concept_id"] = df.apply(
-            lambda row: build_concept_id(
-                row["variable"],
-                extract_constraints_from_row(row, exclude_geo=True),
-            ),
-            axis=1,
-        )
-
-        # Store concept summary
-        self.concept_summary = df.groupby("_concept_id").agg(
-            count=("_concept_id", "size"),
-            variable=("variable", "first"),
-            geos=("geographic_id", lambda x: list(x.unique())),
-        )
-
-        # Store original for comparison
-        self.targets_before_dedup = df.copy()
-
-        # Determine deduplication key based on mode
-        if mode == "within_geography":
-            if "geographic_id" not in df.columns:
-                raise ValueError(
-                    "Mode 'within_geography' requires 'geographic_id' column"
-                )
-            dedupe_key = ["_concept_id", "geographic_id"]
-        elif mode == "hierarchical_fallback":
-            dedupe_key = ["_concept_id"]
-        else:
-            raise ValueError(
-                f"Unknown mode '{mode}'. Use 'within_geography' or "
-                "'hierarchical_fallback'"
-            )
-
-        # Find and process duplicates
-        warnings = []
-        duplicate_mask = df.duplicated(subset=dedupe_key, keep=False)
-        duplicates_df = df[duplicate_mask]
-
-        if len(duplicates_df) > 0:
-            for key_vals, group in duplicates_df.groupby(dedupe_key):
-                if len(group) <= 1:
-                    continue
-
-                dup_list = []
-                for _, dup_row in group.iterrows():
-                    dup_list.append(
-                        {
-                            "geographic_id": dup_row.get("geographic_id", "?"),
-                            "source": dup_row.get("source_name", "?"),
-                            "period": dup_row.get("period", "?"),
-                            "value": dup_row.get("value", "?"),
-                            "stratum_id": dup_row.get("stratum_id", "?"),
-                        }
-                    )
-
-                sorted_group = group.sort_values(priority_column)
-                selected_row = sorted_group.iloc[0]
-                selected = {
-                    "geographic_id": selected_row.get("geographic_id", "?"),
-                    "source": selected_row.get("source_name", "?"),
-                    "period": selected_row.get("period", "?"),
-                    "value": selected_row.get("value", "?"),
-                }
-
-                concept_id = (
-                    key_vals if isinstance(key_vals, str) else key_vals[0]
-                )
-                warnings.append(
-                    ConceptDuplicateWarning(
-                        concept_id=concept_id,
-                        duplicates=dup_list,
-                        selected=selected,
-                        reason=f"Selected by lowest {priority_column}",
-                    )
-                )
-
-        self.dedup_warnings = warnings
-
-        # Deduplicate: sort by key + priority, keep first per key
-        sort_cols = (
-            dedupe_key + [priority_column]
-            if priority_column in df.columns
-            else dedupe_key
-        )
-        df_sorted = df.sort_values(sort_cols)
-        df_deduped = df_sorted.drop_duplicates(subset=dedupe_key, keep="first")
-
-        # Clean up temporary column
-        df_deduped = df_deduped.drop(columns=["_concept_id"])
-
-        self.targets_after_dedup = df_deduped.copy()
-
-        return df_deduped.reset_index(drop=True)
-
-    def print_concept_summary(self) -> None:
-        """
-        Print detailed concept summary from the last build_matrix() call.
-
-        Call this after build_matrix() to see what concepts were found.
-        """
-        if self.concept_summary is None:
-            print("No concept summary available. Run build_matrix() first.")
+    def print_uprating_summary(self, targets_df: pd.DataFrame) -> None:
+        """Print summary of uprating applied to targets."""
+        uprated = targets_df[targets_df["uprating_factor"] != 1.0]
+        if len(uprated) == 0:
+            print("No targets were uprated.")
             return
 
         print("\n" + "=" * 60)
-        print("CONCEPT SUMMARY")
+        print("UPRATING SUMMARY")
         print("=" * 60)
+        print(f"Uprated {len(uprated)} of {len(targets_df)} targets")
 
-        n_targets = (
-            len(self.targets_before_dedup)
-            if self.targets_before_dedup is not None
-            else 0
-        )
+        period_counts = uprated["period"].value_counts().sort_index()
+        for period, count in period_counts.items():
+            print(f"  Period {period}: {count} targets")
+
+        factors = uprated["uprating_factor"]
         print(
-            f"Found {len(self.concept_summary)} unique concepts "
-            f"from {n_targets} targets:\n"
+            f"  Factor range: [{factors.min():.4f}, " f"{factors.max():.4f}]"
         )
-
-        for concept_id, row in self.concept_summary.iterrows():
-            n_geos = len(row["geos"])
-            print(f"  {concept_id}")
-            print(
-                f"    Variable: {row['variable']}, "
-                f"Targets: {row['count']}, Geographies: {n_geos}"
-            )
-
-    def print_dedup_summary(self) -> None:
-        """
-        Print deduplication summary from the last build_matrix() call.
-
-        Call this after build_matrix() to see what duplicates were removed.
-        """
-        if self.targets_before_dedup is None:
-            print("No dedup summary available. Run build_matrix() first.")
-            return
-
-        print("\n" + "=" * 60)
-        print("DEDUPLICATION SUMMARY")
-        print("=" * 60)
-
-        before = len(self.targets_before_dedup)
-        after = (
-            len(self.targets_after_dedup)
-            if self.targets_after_dedup is not None
-            else 0
-        )
-        removed = before - after
-
-        print(f"Total targets queried: {before}")
-        print(f"Targets after deduplication: {after}")
-        print(f"Duplicates removed: {removed}")
-
-        if self.dedup_warnings:
-            print(f"\nDuplicate groups resolved ({len(self.dedup_warnings)}):")
-            for w in self.dedup_warnings:
-                print(f"\n  Concept: {w.concept_id}")
-                sel_val = w.selected["value"]
-                sel_val_str = (
-                    f"{sel_val:,.0f}"
-                    if isinstance(sel_val, (int, float))
-                    else str(sel_val)
-                )
-                print(
-                    f"    Selected: geo={w.selected['geographic_id']}, "
-                    f"value={sel_val_str}"
-                )
-                print(f"    Removed ({len(w.duplicates) - 1}):")
-                for dup in w.duplicates:
-                    if (
-                        dup["value"] != w.selected["value"]
-                        or dup["geographic_id"] != w.selected["geographic_id"]
-                    ):
-                        dup_val = dup["value"]
-                        dup_val_str = (
-                            f"{dup_val:,.0f}"
-                            if isinstance(dup_val, (int, float))
-                            else str(dup_val)
-                        )
-                        print(
-                            f"      - geo={dup['geographic_id']}, "
-                            f"value={dup_val_str}, "
-                            f"source={dup.get('source', '?')}"
-                        )
 
     def _create_state_sim(self, state: int, n_households: int):
         """Create a fresh simulation with state_fips set to given state."""
@@ -574,8 +449,6 @@ class SparseMatrixBuilder:
         self,
         sim,
         target_filter: dict,
-        deduplicate: bool = True,
-        dedup_mode: str = "within_geography",
     ) -> Tuple[pd.DataFrame, sparse.csr_matrix, Dict[str, List[str]]]:
         """
         Build sparse calibration matrix.
@@ -587,18 +460,9 @@ class SparseMatrixBuilder:
                 - {"stratum_group_ids": [4]} for SNAP targets
                 - {"target_ids": [123, 456]} for specific targets
                 - an empty dict {} will fetch all targets
-            deduplicate: If True, deduplicate targets by concept before
-                building the matrix (default True)
-            dedup_mode: Deduplication mode - "within_geography" (default)
-                removes duplicates with same concept AND geography, or
-                "hierarchical_fallback" keeps most specific geography
-                per concept
 
         Returns:
             Tuple of (targets_df, X_sparse, household_id_mapping)
-
-        After calling this method, you can use print_concept_summary() and
-        print_dedup_summary() to see details about concepts and deduplication.
         """
         household_ids = sim.calculate(
             "household_id", map_to="household"
@@ -615,13 +479,20 @@ class SparseMatrixBuilder:
         targets_df["geographic_id"] = targets_df["stratum_id"].apply(
             self._get_geographic_id
         )
-        targets_df["constraint_info"] = targets_df["stratum_id"].apply(
-            self._get_constraint_info
-        )
 
-        # Deduplicate targets by concept before building matrix
-        if deduplicate:
-            targets_df = self._deduplicate_targets(targets_df, mode=dedup_mode)
+        # Uprate targets from their original period to self.time_period
+        params = sim.tax_benefit_system.parameters
+        uprating_factors = self._calculate_uprating_factors(params)
+        targets_df["original_value"] = targets_df["value"].copy()
+        targets_df["uprating_factor"] = targets_df.apply(
+            lambda row: self._get_uprating_info(
+                row["variable"], row["period"], uprating_factors
+            )[0],
+            axis=1,
+        )
+        targets_df["value"] = (
+            targets_df["original_value"] * targets_df["uprating_factor"]
+        )
 
         n_targets = len(targets_df)
 

@@ -321,7 +321,7 @@ def _run_qrf_imputation(
 
     # Load PUF
     puf_sim = Microsimulation(dataset=puf_dataset)
-    puf_sim.subsample(10_000)
+    # Use all PUF records for QRF training (no subsample)
 
     # Assign random states to PUF training records
     from policyengine_us_data.calibration.clone_and_assign import (
@@ -404,7 +404,6 @@ def _batch_qrf(
     predictors: List[str],
     output_vars: List[str],
     batch_size: int = 10,
-    sample_size: int = 5000,
 ) -> Dict[str, np.ndarray]:
     """Run QRF in batches to control memory.
 
@@ -414,7 +413,6 @@ def _batch_qrf(
         predictors: Predictor column names.
         output_vars: Output variable names to impute.
         batch_size: Variables per batch.
-        sample_size: Max training samples.
 
     Returns:
         Dict mapping variable name to imputed values.
@@ -431,12 +429,6 @@ def _batch_qrf(
             missing[:5],
         )
 
-    # Sample training data
-    if len(X_train) > sample_size:
-        X_train_sampled = X_train.sample(n=sample_size, random_state=42)
-    else:
-        X_train_sampled = X_train
-
     result = {}
 
     for batch_start in range(0, len(available), batch_size):
@@ -452,7 +444,7 @@ def _batch_qrf(
             cleanup_interval=5,
         )
 
-        batch_X_train = X_train_sampled[predictors + batch_vars].copy()
+        batch_X_train = X_train[predictors + batch_vars].copy()
 
         fitted = qrf.fit(
             X_train=batch_X_train,

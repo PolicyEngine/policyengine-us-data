@@ -138,6 +138,49 @@ def impute_source_variables(
     return data
 
 
+def _build_cps_receiver(
+    data: Dict[str, Dict[int, np.ndarray]],
+    time_period: int,
+    dataset_path: Optional[str],
+    pe_variables: list,
+) -> pd.DataFrame:
+    """Build CPS receiver DataFrame from Microsimulation.
+
+    Uses Microsimulation for standard PE variables, falls back
+    to data dict for variables not in the PE tax-benefit system.
+
+    Args:
+        data: CPS data dict.
+        time_period: Tax year.
+        dataset_path: Path to CPS h5 for Microsimulation.
+        pe_variables: List of PE variable names to compute.
+
+    Returns:
+        DataFrame with requested columns.
+    """
+    if dataset_path is not None:
+        from policyengine_us import Microsimulation
+
+        sim = Microsimulation(dataset=dataset_path)
+        # Only request variables that exist in PE
+        tbs = sim.tax_benefit_system
+        valid_vars = [v for v in pe_variables if v in tbs.variables]
+        if valid_vars:
+            df = sim.calculate_dataframe(valid_vars)
+        else:
+            df = pd.DataFrame(index=range(len(data["person_id"][time_period])))
+        del sim
+    else:
+        df = pd.DataFrame()
+
+    # Add any remaining variables from data dict
+    for var in pe_variables:
+        if var not in df.columns and var in data:
+            df[var] = data[var][time_period].astype(np.float32)
+
+    return df
+
+
 def _person_state_fips(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
@@ -394,15 +437,26 @@ def _impute_sipp(
     tip_train["state_fips"] = donor_states[tip_state_idx].astype(np.float32)
 
     # Build CPS receiver for tips
-    if dataset_path is not None:
-        cps_sim = Microsimulation(dataset=dataset_path)
-        cps_tip_df = cps_sim.calculate_dataframe(SIPP_TIPS_PREDICTORS)
-        del cps_sim
+    # count_under_18/6 aren't PE variables — compute from data
+    cps_tip_df = _build_cps_receiver(
+        data, time_period, dataset_path, ["employment_income", "age"]
+    )
+    # Compute household child counts from ages
+    person_ages = data["age"][time_period]
+    hh_ids_person = data.get("person_household_id", {}).get(time_period)
+    if hh_ids_person is not None:
+        age_df = pd.DataFrame({"hh": hh_ids_person, "age": person_ages})
+        under_18 = age_df.groupby("hh")["age"].apply(lambda x: (x < 18).sum())
+        under_6 = age_df.groupby("hh")["age"].apply(lambda x: (x < 6).sum())
+        cps_tip_df["count_under_18"] = under_18.loc[
+            hh_ids_person
+        ].values.astype(np.float32)
+        cps_tip_df["count_under_6"] = under_6.loc[hh_ids_person].values.astype(
+            np.float32
+        )
     else:
-        cps_tip_df = pd.DataFrame()
-        for pred in SIPP_TIPS_PREDICTORS:
-            if pred in data:
-                cps_tip_df[pred] = data[pred][time_period].astype(np.float32)
+        cps_tip_df["count_under_18"] = 0.0
+        cps_tip_df["count_under_6"] = 0.0
 
     person_states = _person_state_fips(data, state_fips, time_period)
     cps_tip_df["state_fips"] = person_states.astype(np.float32)
@@ -509,17 +563,34 @@ def _impute_sipp(
         )
 
         # Build CPS receiver for assets
-        if dataset_path is not None:
-            cps_sim = Microsimulation(dataset=dataset_path)
-            cps_asset_df = cps_sim.calculate_dataframe(SIPP_ASSETS_PREDICTORS)
-            del cps_sim
+        # is_female, is_married, count_under_18 need special
+        # handling — is_male is PE, is_married is Family-level
+        cps_asset_df = _build_cps_receiver(
+            data,
+            time_period,
+            dataset_path,
+            ["employment_income", "age", "is_male"],
+        )
+        # is_female = NOT is_male
+        if "is_male" in cps_asset_df.columns:
+            cps_asset_df["is_female"] = (
+                ~cps_asset_df["is_male"].astype(bool)
+            ).astype(np.float32)
         else:
-            cps_asset_df = pd.DataFrame()
-            for pred in SIPP_ASSETS_PREDICTORS:
-                if pred in data:
-                    cps_asset_df[pred] = data[pred][time_period].astype(
-                        np.float32
-                    )
+            cps_asset_df["is_female"] = 0.0
+        # is_married from marital_unit membership
+        if "is_married" in data:
+            cps_asset_df["is_married"] = data["is_married"][
+                time_period
+            ].astype(np.float32)
+        else:
+            cps_asset_df["is_married"] = 0.0
+        # count_under_18
+        cps_asset_df["count_under_18"] = (
+            cps_tip_df["count_under_18"]
+            if "count_under_18" in cps_tip_df.columns
+            else 0.0
+        )
 
         cps_asset_df["state_fips"] = person_states.astype(np.float32)
 
@@ -634,17 +705,62 @@ def _impute_scf(
     donor = donor.dropna(subset=scf_predictors)
     donor = donor.sample(frac=0.5, random_state=42).reset_index(drop=True)
 
-    # Build CPS receiver
-    if dataset_path is not None:
-        cps_sim = Microsimulation(dataset=dataset_path)
-        base_preds = [p for p in SCF_PREDICTORS if p != "state_fips"]
-        cps_df = cps_sim.calculate_dataframe(base_preds)
-        del cps_sim
+    # Build CPS receiver — many predictors are derived
+    # Use PE Microsimulation for what it knows, derive the rest
+    pe_vars = [
+        "age",
+        "is_male",
+        "employment_income",
+    ]
+    cps_df = _build_cps_receiver(data, time_period, dataset_path, pe_vars)
+
+    # Derive is_female from is_male
+    if "is_male" in cps_df.columns:
+        cps_df["is_female"] = (~cps_df["is_male"].astype(bool)).astype(
+            np.float32
+        )
     else:
-        cps_df = pd.DataFrame()
-        for pred in SCF_PREDICTORS:
-            if pred in data and pred != "state_fips":
-                cps_df[pred] = data[pred][time_period].astype(np.float32)
+        cps_df["is_female"] = 0.0
+
+    # Derived predictors from data dict
+    for var in [
+        "cps_race",
+        "is_married",
+        "own_children_in_household",
+    ]:
+        if var in data:
+            cps_df[var] = data[var][time_period].astype(np.float32)
+        else:
+            cps_df[var] = 0.0
+
+    # Composite income predictors (matching cps.py SCF logic)
+    for var in [
+        "taxable_interest_income",
+        "tax_exempt_interest_income",
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+    ]:
+        if var in data:
+            cps_df[var] = data[var][time_period].astype(np.float32)
+    cps_df["interest_dividend_income"] = (
+        cps_df.get("taxable_interest_income", 0)
+        + cps_df.get("tax_exempt_interest_income", 0)
+        + cps_df.get("qualified_dividend_income", 0)
+        + cps_df.get("non_qualified_dividend_income", 0)
+    ).astype(np.float32)
+
+    for var in [
+        "tax_exempt_private_pension_income",
+        "taxable_private_pension_income",
+        "social_security_retirement",
+    ]:
+        if var in data:
+            cps_df[var] = data[var][time_period].astype(np.float32)
+    cps_df["social_security_pension_income"] = (
+        cps_df.get("tax_exempt_private_pension_income", 0)
+        + cps_df.get("taxable_private_pension_income", 0)
+        + cps_df.get("social_security_retirement", 0)
+    ).astype(np.float32)
 
     person_states = _person_state_fips(data, state_fips, time_period)
     cps_df["state_fips"] = person_states.astype(np.float32)

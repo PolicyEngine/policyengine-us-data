@@ -226,6 +226,111 @@ def _build_puf_cloned_dataset(
     return output_path
 
 
+def log_achievable_targets(X_sparse) -> None:
+    """Log how many targets are achievable vs impossible.
+
+    Impossible targets have all-zero rows in the matrix — no
+    record can contribute. They stay in the matrix as constant
+    error terms so metrics reflect the true picture.
+
+    Args:
+        X_sparse: Sparse calibration matrix (targets x records).
+    """
+    row_sums = np.array(X_sparse.sum(axis=1)).flatten()
+    achievable = row_sums > 0
+    n_impossible = (~achievable).sum()
+    logger.info(
+        "Achievable: %d / %d targets (%d impossible, kept)",
+        achievable.sum(),
+        len(achievable),
+        n_impossible,
+    )
+
+
+def fit_l0_weights(
+    X_sparse,
+    targets: np.ndarray,
+    lambda_l0: float,
+    epochs: int = DEFAULT_EPOCHS,
+    device: str = "cpu",
+    verbose_freq: int = None,
+) -> np.ndarray:
+    """Fit L0-regularized calibration weights.
+
+    Args:
+        X_sparse: Sparse matrix (targets x records).
+        targets: Target values array.
+        lambda_l0: L0 regularization strength.
+        epochs: Training epochs.
+        device: Torch device.
+        verbose_freq: How often to print progress. Defaults to
+            every 10% of epochs.
+
+    Returns:
+        Weight array of shape (n_records,).
+    """
+    try:
+        from l0.calibration import SparseCalibrationWeights
+    except ImportError:
+        raise ImportError(
+            "l0-python required. Install: pip install l0-python"
+        )
+
+    import torch
+
+    n_total = X_sparse.shape[1]
+    initial_weights = np.ones(n_total) * 100
+
+    logger.info(
+        "Starting L0 calibration: %d targets, %d features, "
+        "lambda_l0=%.1e, epochs=%d",
+        X_sparse.shape[0],
+        n_total,
+        lambda_l0,
+        epochs,
+    )
+
+    model = SparseCalibrationWeights(
+        n_features=n_total,
+        beta=BETA,
+        gamma=GAMMA,
+        zeta=ZETA,
+        init_keep_prob=INIT_KEEP_PROB,
+        init_weights=initial_weights,
+        log_weight_jitter_sd=LOG_WEIGHT_JITTER_SD,
+        log_alpha_jitter_sd=LOG_ALPHA_JITTER_SD,
+        device=device,
+    )
+
+    if verbose_freq is None:
+        verbose_freq = max(1, epochs // 10)
+
+    model.fit(
+        M=X_sparse,
+        y=targets,
+        target_groups=None,
+        lambda_l0=lambda_l0,
+        lambda_l2=LAMBDA_L2,
+        lr=LEARNING_RATE,
+        epochs=epochs,
+        loss_type="relative",
+        verbose=True,
+        verbose_freq=verbose_freq,
+    )
+
+    with torch.no_grad():
+        weights = model.get_weights(deterministic=True).cpu().numpy()
+
+    n_nonzero = (weights > 0).sum()
+    logger.info(
+        "Calibration complete. Non-zero: %d / %d (%.1f%% sparsity)",
+        n_nonzero,
+        n_total,
+        (1 - n_nonzero / n_total) * 100,
+    )
+    return weights
+
+
 def run_calibration(
     dataset_path: str,
     db_path: str,
@@ -371,73 +476,17 @@ def run_calibration(
         geography=geography,
     )
 
-    # Step 5: Filter to achievable targets
-    row_sums = np.array(X_sparse.sum(axis=1)).flatten()
-    achievable = row_sums > 0
-    n_achievable = achievable.sum()
-    n_impossible = (~achievable).sum()
-    logger.info(
-        "Achievable: %d, Impossible (removed): %d",
-        n_achievable,
-        n_impossible,
-    )
-    X_sparse = X_sparse[achievable, :]
-    targets = targets_df[achievable]["value"].values
-    target_names = [n for n, a in zip(target_names, achievable) if a]
+    # Step 5: Report achievable vs impossible targets (keep all)
+    targets = targets_df["value"].values
+    log_achievable_targets(X_sparse)
 
     # Step 6: Run L0 calibration
-    try:
-        from l0.calibration import SparseCalibrationWeights
-    except ImportError:
-        raise ImportError("l0-python required. Install: pip install l0-python")
-
-    import torch
-
-    n_total = X_sparse.shape[1]
-    initial_weights = np.ones(n_total) * 100
-    logger.info(
-        "Starting L0 calibration: %d targets, %d features, "
-        "lambda_l0=%.1e, epochs=%d",
-        X_sparse.shape[0],
-        n_total,
-        lambda_l0,
-        epochs,
-    )
-
-    model = SparseCalibrationWeights(
-        n_features=n_total,
-        beta=BETA,
-        gamma=GAMMA,
-        zeta=ZETA,
-        init_keep_prob=INIT_KEEP_PROB,
-        init_weights=initial_weights,
-        log_weight_jitter_sd=LOG_WEIGHT_JITTER_SD,
-        log_alpha_jitter_sd=LOG_ALPHA_JITTER_SD,
-        device=device,
-    )
-
-    model.fit(
-        M=X_sparse,
-        y=targets,
-        target_groups=None,
+    weights = fit_l0_weights(
+        X_sparse=X_sparse,
+        targets=targets,
         lambda_l0=lambda_l0,
-        lambda_l2=LAMBDA_L2,
-        lr=LEARNING_RATE,
         epochs=epochs,
-        loss_type="relative",
-        verbose=True,
-        verbose_freq=max(1, epochs // 10),
-    )
-
-    with torch.no_grad():
-        weights = model.get_weights(deterministic=True).cpu().numpy()
-
-    n_nonzero = (weights > 0).sum()
-    logger.info(
-        "Calibration complete. Non-zero: %d / %d " "(%.1f%% sparsity)",
-        n_nonzero,
-        n_total,
-        (1 - n_nonzero / n_total) * 100,
+        device=device,
     )
     return weights
 

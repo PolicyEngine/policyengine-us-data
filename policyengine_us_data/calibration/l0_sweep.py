@@ -23,6 +23,11 @@ import numpy as np
 import pandas as pd
 import scipy.sparse
 
+from policyengine_us_data.calibration.unified_calibration import (
+    fit_l0_weights,
+    log_achievable_targets,
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -50,15 +55,6 @@ DEFAULT_L0_VALUES = [
     1e-2,
 ]
 
-# Hyperparameters (matching unified_calibration.py)
-BETA = 0.35
-GAMMA = -0.1
-ZETA = 1.1
-INIT_KEEP_PROB = 0.999
-LOG_WEIGHT_JITTER_SD = 0.05
-LOG_ALPHA_JITTER_SD = 0.01
-LAMBDA_L2 = 1e-12
-LEARNING_RATE = 0.15
 DEFAULT_EPOCHS = 200
 DEFAULT_N_CLONES = 130
 
@@ -130,17 +126,8 @@ def build_and_save_matrix(
         cache_dir=clone_cache_dir,
     )
 
-    # Filter achievable
-    row_sums = np.array(X_sparse.sum(axis=1)).flatten()
-    achievable = row_sums > 0
-    logger.info(
-        "Achievable: %d / %d targets",
-        achievable.sum(),
-        len(achievable),
-    )
-    X_sparse = X_sparse[achievable, :]
-    targets = targets_df[achievable]["value"].values
-    target_names = [n for n, a in zip(target_names, achievable) if a]
+    log_achievable_targets(X_sparse)
+    targets = targets_df["value"].values
 
     # Save
     scipy.sparse.save_npz(str(matrix_path), X_sparse)
@@ -166,41 +153,17 @@ def fit_one_l0(
     Returns:
         Summary dict for the results CSV.
     """
-    from l0.calibration import SparseCalibrationWeights
-
-    import torch
-
     n_total = X_sparse.shape[1]
-    initial_weights = np.ones(n_total) * 100
 
     t0 = time.time()
-    model = SparseCalibrationWeights(
-        n_features=n_total,
-        beta=BETA,
-        gamma=GAMMA,
-        zeta=ZETA,
-        init_keep_prob=INIT_KEEP_PROB,
-        init_weights=initial_weights,
-        log_weight_jitter_sd=LOG_WEIGHT_JITTER_SD,
-        log_alpha_jitter_sd=LOG_ALPHA_JITTER_SD,
-        device=device,
-    )
-
-    model.fit(
-        M=X_sparse,
-        y=targets,
-        target_groups=None,
+    weights = fit_l0_weights(
+        X_sparse=X_sparse,
+        targets=targets,
         lambda_l0=lambda_l0,
-        lambda_l2=LAMBDA_L2,
-        lr=LEARNING_RATE,
         epochs=epochs,
-        loss_type="relative",
-        verbose=True,
+        device=device,
         verbose_freq=max(1, epochs // 5),
     )
-
-    with torch.no_grad():
-        weights = model.get_weights(deterministic=True).cpu().numpy()
 
     n_nonzero = int((weights > 0).sum())
     total_weight = float(weights.sum())

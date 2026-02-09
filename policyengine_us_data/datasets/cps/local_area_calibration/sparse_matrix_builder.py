@@ -9,21 +9,23 @@ before evaluating constraints.
 import logging
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
 from scipy import sparse
-from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
 
+from policyengine_us_data.calibration.base_matrix_builder import (
+    BaseMatrixBuilder,
+)
 from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     get_calculated_variables,
-    apply_op,
     _get_geo_level,
 )
 
 
-class SparseMatrixBuilder:
+class SparseMatrixBuilder(BaseMatrixBuilder):
     """Build sparse calibration matrices for geo-stacking."""
 
     def __init__(
@@ -33,110 +35,9 @@ class SparseMatrixBuilder:
         cds_to_calibrate: List[str],
         dataset_path: Optional[str] = None,
     ):
-        self.db_uri = db_uri
-        self.engine = create_engine(db_uri)
-        self.time_period = time_period
+        super().__init__(db_uri, time_period)
         self.cds_to_calibrate = cds_to_calibrate
         self.dataset_path = dataset_path
-        self._entity_rel_cache = None
-
-    def _build_entity_relationship(self, sim) -> pd.DataFrame:
-        """
-        Build entity relationship DataFrame mapping persons to all entity IDs.
-
-        This is used to evaluate constraints at the person level and then
-        aggregate to household level, handling variables defined at different
-        entity levels (person, tax_unit, household, spm_unit).
-
-        Returns:
-            DataFrame with person_id, household_id, tax_unit_id, spm_unit_id
-        """
-        if self._entity_rel_cache is not None:
-            return self._entity_rel_cache
-
-        self._entity_rel_cache = pd.DataFrame(
-            {
-                "person_id": sim.calculate(
-                    "person_id", map_to="person"
-                ).values,
-                "household_id": sim.calculate(
-                    "household_id", map_to="person"
-                ).values,
-                "tax_unit_id": sim.calculate(
-                    "tax_unit_id", map_to="person"
-                ).values,
-                "spm_unit_id": sim.calculate(
-                    "spm_unit_id", map_to="person"
-                ).values,
-            }
-        )
-        return self._entity_rel_cache
-
-    def _evaluate_constraints_entity_aware(
-        self, state_sim, constraints: List[dict], n_households: int
-    ) -> np.ndarray:
-        """
-        Evaluate non-geographic constraints at person level, aggregate to
-        household level using .any().
-
-        This properly handles constraints on variables defined at different
-        entity levels (e.g., tax_unit_is_filer at tax_unit level). Instead of
-        summing values at household level (which would give 2, 3, etc. for
-        households with multiple tax units), we evaluate at person level and
-        use .any() aggregation ("does this household have at least one person
-        satisfying all constraints?").
-
-        Args:
-            state_sim: Microsimulation with state_fips set
-            constraints: List of constraint dicts with variable, operation,
-                value keys (geographic constraints should be pre-filtered)
-            n_households: Number of households
-
-        Returns:
-            Boolean mask array of length n_households
-        """
-        if not constraints:
-            return np.ones(n_households, dtype=bool)
-
-        entity_rel = self._build_entity_relationship(state_sim)
-        n_persons = len(entity_rel)
-
-        person_mask = np.ones(n_persons, dtype=bool)
-
-        for c in constraints:
-            var = c["variable"]
-            op = c["operation"]
-            val = c["value"]
-
-            # Calculate constraint variable at person level
-            constraint_values = state_sim.calculate(
-                var, self.time_period, map_to="person"
-            ).values
-
-            # Apply operation at person level
-            person_mask &= apply_op(constraint_values, op, val)
-
-        # Aggregate to household level using .any()
-        # "At least one person in this household satisfies ALL constraints"
-        entity_rel_with_mask = entity_rel.copy()
-        entity_rel_with_mask["satisfies"] = person_mask
-
-        household_mask_series = entity_rel_with_mask.groupby("household_id")[
-            "satisfies"
-        ].any()
-
-        # Ensure we return a mask aligned with household order
-        household_ids = state_sim.calculate(
-            "household_id", map_to="household"
-        ).values
-        household_mask = np.array(
-            [
-                household_mask_series.get(hh_id, False)
-                for hh_id in household_ids
-            ]
-        )
-
-        return household_mask
 
     def _query_targets(self, target_filter: dict) -> pd.DataFrame:
         """Query targets based on filter criteria using OR logic."""
@@ -177,20 +78,9 @@ class SparseMatrixBuilder:
         with self.engine.connect() as conn:
             return pd.read_sql(query, conn)
 
-    def _get_constraints(self, stratum_id: int) -> List[dict]:
-        """Get all constraints for a stratum (including geographic)."""
-        query = """
-        SELECT constraint_variable as variable, operation, value
-        FROM stratum_constraints
-        WHERE stratum_id = :stratum_id
-        """
-        with self.engine.connect() as conn:
-            df = pd.read_sql(query, conn, params={"stratum_id": stratum_id})
-        return df.to_dict("records")
-
     def _get_geographic_id(self, stratum_id: int) -> str:
         """Extract geographic_id from constraints for targets_df."""
-        constraints = self._get_constraints(stratum_id)
+        constraints = self._get_stratum_constraints(stratum_id)
         for c in constraints:
             if c["variable"] == "state_fips":
                 return c["value"]
@@ -284,7 +174,9 @@ class SparseMatrixBuilder:
                 col_start = cd_idx * n_households
 
                 for row_idx, (_, target) in enumerate(targets_df.iterrows()):
-                    constraints = self._get_constraints(target["stratum_id"])
+                    constraints = self._get_stratum_constraints(
+                        target["stratum_id"]
+                    )
 
                     geo_constraints = []
                     non_geo_constraints = []

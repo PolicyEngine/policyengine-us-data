@@ -123,9 +123,11 @@ def build_and_save_matrix(
     # Build matrix
     db_uri = f"sqlite:///{db_path}"
     builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    clone_cache_dir = str(output_dir / "clones")
     targets_df, X_sparse, target_names = builder.build_matrix(
         dataset_path=dataset_path,
         geography=geography,
+        cache_dir=clone_cache_dir,
     )
 
     # Filter achievable

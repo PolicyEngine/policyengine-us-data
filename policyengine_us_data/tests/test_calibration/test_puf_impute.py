@@ -15,7 +15,6 @@ from policyengine_us_data.calibration.puf_impute import (
     IMPUTED_VARIABLES,
 )
 
-
 # ------------------------------------------------------------------
 # Mock helpers
 # ------------------------------------------------------------------

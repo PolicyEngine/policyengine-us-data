@@ -27,7 +27,6 @@ from policyengine_us_data.calibration.unified_matrix_builder import (
     _GEO_VARS,
 )
 
-
 # -------------------------------------------------------------------
 # Helper: lightweight GeographyAssignment stand-in
 # -------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import argparse
+import warnings
 
 from sqlmodel import Session, create_engine
 import pandas as pd
@@ -9,6 +9,10 @@ from policyengine_us_data.db.create_database_tables import (
     StratumConstraint,
     Target,
 )
+from policyengine_us_data.utils.db import (
+    DEFAULT_DATASET,
+    etl_argparser,
+)
 from policyengine_us_data.utils.db_metadata import (
     get_or_create_source,
 )
@@ -16,8 +20,6 @@ from policyengine_us_data.utils.constraint_validation import (
     Constraint,
     ensure_consistent_constraint_set,
 )
-
-DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
 
 
 def extract_national_targets(dataset: str = DEFAULT_DATASET):
@@ -49,7 +51,16 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
     time_period = int(sim.default_calculation_period)
     print(f"Derived time_period from dataset: {time_period}")
 
-    # Direct sum targets - use the time_period derived from the dataset
+    # Hardcoded dollar targets are specific to 2024 and should be
+    # labeled as such.  Only CBO/Treasury parameter lookups use the
+    # dynamic time_period derived from the dataset.
+    HARDCODED_YEAR = 2024
+    if time_period != HARDCODED_YEAR:
+        warnings.warn(
+            f"Dataset year ({time_period}) != HARDCODED_YEAR "
+            f"({HARDCODED_YEAR}). Hardcoded dollar targets may "
+            f"be stale and need re-sourcing."
+        )
 
     # Separate tax-related targets that need filer constraint
     tax_filer_targets = [
@@ -58,35 +69,35 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "value": 21.247e9,
             "source": "Joint Committee on Taxation",
             "notes": "SALT deduction tax expenditure",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "medical_expense_deduction",
             "value": 11.4e9,
             "source": "Joint Committee on Taxation",
             "notes": "Medical expense deduction tax expenditure",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "charitable_deduction",
             "value": 65.301e9,
             "source": "Joint Committee on Taxation",
             "notes": "Charitable deduction tax expenditure",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "interest_deduction",
             "value": 24.8e9,
             "source": "Joint Committee on Taxation",
             "notes": "Mortgage interest deduction tax expenditure",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "qualified_business_income_deduction",
             "value": 63.1e9,
             "source": "Joint Committee on Taxation",
             "notes": "QBI deduction tax expenditure",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
     ]
 
@@ -96,112 +107,112 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "value": 13e9,
             "source": "Survey-reported (post-TCJA grandfathered)",
             "notes": "Alimony received - survey reported, not tax-filer restricted",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "alimony_expense",
             "value": 13e9,
             "source": "Survey-reported (post-TCJA grandfathered)",
             "notes": "Alimony paid - survey reported, not tax-filer restricted",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "medicaid",
             "value": 871.7e9,
             "source": "https://www.cms.gov/files/document/highlights.pdf",
             "notes": "CMS 2023 highlights document - total Medicaid spending",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "net_worth",
             "value": 160e12,
             "source": "Federal Reserve SCF",
             "notes": "Total household net worth",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "health_insurance_premiums_without_medicare_part_b",
             "value": 385e9,
             "source": "MEPS/NHEA",
             "notes": "Health insurance premiums excluding Medicare Part B",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "other_medical_expenses",
             "value": 278e9,
             "source": "MEPS/NHEA",
             "notes": "Out-of-pocket medical expenses",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "medicare_part_b_premiums",
             "value": 112e9,
             "source": "CMS Medicare data",
             "notes": "Medicare Part B premium payments",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "over_the_counter_health_expenses",
             "value": 72e9,
             "source": "Consumer Expenditure Survey",
             "notes": "OTC health products and supplies",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "child_support_expense",
             "value": 33e9,
             "source": "Census Bureau",
             "notes": "Child support payments",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "child_support_received",
             "value": 33e9,
             "source": "Census Bureau",
             "notes": "Child support received",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "spm_unit_capped_work_childcare_expenses",
             "value": 348e9,
             "source": "Census Bureau SPM",
             "notes": "Work and childcare expenses for SPM",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "spm_unit_capped_housing_subsidy",
             "value": 35e9,
             "source": "HUD/Census",
             "notes": "Housing subsidies",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "tanf",
             "value": 9e9,
             "source": "HHS/ACF",
             "notes": "TANF cash assistance",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "real_estate_taxes",
             "value": 500e9,
             "source": "Census Bureau",
             "notes": "Property taxes paid",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "rent",
             "value": 735e9,
             "source": "Census Bureau/BLS",
             "notes": "Rental payments",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "tip_income",
             "value": 53.2e9,
             "source": "IRS Form W-2 Box 7 statistics",
             "notes": "Social security tips uprated 40% to account for underreporting",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         # SSA benefit-type totals derived from trust fund data and
         # SSA fact sheet type shares
@@ -210,28 +221,28 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "value": 1_060e9,
             "source": "https://www.ssa.gov/OACT/STATS/table4a3.html",
             "notes": "~73% of total OASDI ($1,452B CBO projection)",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "social_security_disability",
             "value": 148e9,
             "source": "https://www.ssa.gov/OACT/STATS/table4a3.html",
             "notes": "~10.2% of total OASDI (disabled workers)",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "social_security_survivors",
             "value": 160e9,
             "source": "https://www.ssa.gov/OACT/FACTS/",
             "notes": "~11.0% of total OASDI (widows, children of deceased)",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "social_security_dependents",
             "value": 84e9,
             "source": "https://www.ssa.gov/OACT/FACTS/",
             "notes": "~5.8% of total OASDI (spouses/children of retired+disabled)",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         # IRA contribution totals from IRS SOI accumulation tables
         {
@@ -239,14 +250,14 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "value": 25e9,
             "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
             "notes": "Tax year 2022 (~5M x $4,510 avg) uprated ~12% to 2024",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "variable": "roth_ira_contributions",
             "value": 39e9,
             "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
             "notes": "Tax year 2022 (~10M x $3,482 avg) uprated ~12% to 2024",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
     ]
 
@@ -259,7 +270,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "person_count": 72_429_055,
             "source": "CMS/HHS administrative data",
             "notes": "Medicaid enrollment count",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
         {
             "constraint_variable": "aca_ptc",
@@ -267,7 +278,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "person_count": 19_743_689,
             "source": "CMS marketplace data",
             "notes": "ACA Premium Tax Credit recipients",
-            "year": time_period,
+            "year": HARDCODED_YEAR,
         },
     ]
 
@@ -787,19 +798,7 @@ def load_national_targets(
 
 def main():
     """Main ETL pipeline for national targets."""
-    parser = argparse.ArgumentParser(
-        description="ETL for national calibration targets"
-    )
-    parser.add_argument(
-        "--dataset",
-        default=DEFAULT_DATASET,
-        help=(
-            "Source dataset (local path or HuggingFace URL). "
-            "The time_period for targets is derived from the dataset's "
-            "default_calculation_period. Default: %(default)s"
-        ),
-    )
-    args = parser.parse_args()
+    args, _ = etl_argparser("ETL for national calibration targets")
 
     # Extract
     print("Extracting national targets...")

@@ -1,4 +1,3 @@
-import argparse
 import logging
 import requests
 import zipfile
@@ -10,9 +9,6 @@ import us
 from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
-
-DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
-
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -25,7 +21,11 @@ from policyengine_us_data.utils.census import (
     pull_acs_table,
     STATE_NAME_TO_FIPS,
 )
-from policyengine_us_data.utils.db import parse_ucgid, get_geographic_strata
+from policyengine_us_data.utils.db import (
+    parse_ucgid,
+    get_geographic_strata,
+    etl_argparser,
+)
 from policyengine_us_data.utils.db_metadata import (
     get_or_create_source,
     get_or_create_variable_group,
@@ -388,27 +388,7 @@ def load_survey_snap_data(survey_df, year, snap_stratum_lookup):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="ETL for SNAP calibration targets"
-    )
-    parser.add_argument(
-        "--dataset",
-        default=DEFAULT_DATASET,
-        help=(
-            "Source dataset (local path or HuggingFace URL). "
-            "The year for targets is derived from the dataset's "
-            "default_calculation_period. Default: %(default)s"
-        ),
-    )
-    args = parser.parse_args()
-
-    # Derive year from dataset
-    from policyengine_us import Microsimulation
-
-    print(f"Loading dataset: {args.dataset}")
-    sim = Microsimulation(dataset=args.dataset)
-    year = int(sim.default_calculation_period)
-    print(f"Derived year from dataset: {year}")
+    _, year = etl_argparser("ETL for SNAP calibration targets")
 
     # Extract ---------
     zip_file_admin = extract_administrative_snap_data()

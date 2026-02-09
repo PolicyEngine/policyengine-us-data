@@ -1,4 +1,3 @@
-import argparse
 import logging
 from typing import Optional
 
@@ -8,19 +7,6 @@ import pandas as pd
 from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
-
-DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
-
-# IRS SOI data is typically available ~2 years after the tax year
-IRS_SOI_LAG_YEARS = 2
-from policyengine_us_data.utils.raw_cache import (
-    is_cached,
-    cache_path,
-    save_bytes,
-)
-
-logger = logging.getLogger(__name__)
-
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -33,6 +19,7 @@ from policyengine_us_data.utils.db import (
     get_stratum_parent,
     parse_ucgid,
     get_geographic_strata,
+    etl_argparser,
 )
 from policyengine_us_data.utils.db_metadata import (
     get_or_create_source,
@@ -43,10 +30,17 @@ from policyengine_us_data.utils.census import TERRITORY_UCGIDS
 from policyengine_us_data.storage.calibration_targets.make_district_mapping import (
     get_district_mapping,
 )
-from policyengine_us_data.utils.constraint_validation import (
-    Constraint,
-    ensure_consistent_constraint_set,
+from policyengine_us_data.utils.raw_cache import (
+    is_cached,
+    cache_path,
+    save_bytes,
 )
+
+logger = logging.getLogger(__name__)
+
+
+# IRS SOI data is typically available ~2 years after the tax year
+IRS_SOI_LAG_YEARS = 2
 
 """See the 22incddocguide.docx manual from the IRS SOI"""
 # Language in the doc: '$10,000 under $25,000' means >= $10,000 and < $25,000
@@ -1316,40 +1310,23 @@ def load_soi_data(long_dfs, year):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="ETL for IRS SOI calibration targets"
-    )
-    parser.add_argument(
-        "--dataset",
-        default=DEFAULT_DATASET,
-        help=(
-            "Source dataset (local path or HuggingFace URL). "
-            "The year for IRS SOI data is derived from the dataset's "
-            "default_calculation_period minus IRS_SOI_LAG_YEARS. "
-            "Default: %(default)s"
-        ),
-    )
-    parser.add_argument(
-        "--lag",
-        type=int,
-        default=IRS_SOI_LAG_YEARS,
-        help=(
-            "Years to subtract from dataset year for IRS SOI data "
-            "(default: %(default)s, since IRS data is ~2 years behind)"
-        ),
-    )
-    args = parser.parse_args()
+    def add_lag_arg(parser):
+        parser.add_argument(
+            "--lag",
+            type=int,
+            default=IRS_SOI_LAG_YEARS,
+            help=(
+                "Years to subtract from dataset year for IRS SOI data "
+                "(default: %(default)s, since IRS data is ~2 years behind)"
+            ),
+        )
 
-    # Derive year from dataset with lag applied
-    from policyengine_us import Microsimulation
-
-    print(f"Loading dataset: {args.dataset}")
-    sim = Microsimulation(dataset=args.dataset)
-    dataset_year = int(sim.default_calculation_period)
+    args, dataset_year = etl_argparser(
+        "ETL for IRS SOI calibration targets",
+        extra_args_fn=add_lag_arg,
+    )
     year = dataset_year - args.lag
-    print(
-        f"Dataset year: {dataset_year}, IRS SOI year: {year} (lag={args.lag})"
-    )
+    print(f"IRS SOI year: {year} (lag={args.lag})")
 
     # Extract -----------------------
     raw_df = extract_soi_data()

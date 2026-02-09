@@ -1,4 +1,3 @@
-import argparse
 import logging
 from typing import Dict
 
@@ -7,12 +6,11 @@ import pandas as pd
 from sqlmodel import Session, create_engine
 
 from policyengine_us_data.storage import STORAGE_FOLDER
-
-DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
 )
+from policyengine_us_data.utils.db import etl_argparser
 from policyengine_us_data.utils.raw_cache import (
     is_cached,
     save_json,
@@ -75,27 +73,7 @@ def fetch_congressional_districts(year):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Create initial geographic strata for calibration"
-    )
-    parser.add_argument(
-        "--dataset",
-        default=DEFAULT_DATASET,
-        help=(
-            "Source dataset (local path or HuggingFace URL). "
-            "The year for Census API calls is derived from the dataset's "
-            "default_calculation_period. Default: %(default)s"
-        ),
-    )
-    args = parser.parse_args()
-
-    # Derive year from dataset
-    from policyengine_us import Microsimulation
-
-    print(f"Loading dataset: {args.dataset}")
-    sim = Microsimulation(dataset=args.dataset)
-    year = int(sim.default_calculation_period)
-    print(f"Derived year from dataset: {year}")
+    _, year = etl_argparser("Create initial geographic strata for calibration")
 
     # State FIPS to name/abbreviation mapping
     STATE_NAMES = {

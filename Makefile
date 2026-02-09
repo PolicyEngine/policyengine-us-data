@@ -1,4 +1,6 @@
-.PHONY: all format test install download upload docker documentation data publish-local-area clean build paper clean-paper presentations database database-refresh promote-database
+.PHONY: all format test install download upload docker documentation data publish-local-area clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
+
+HF_CLONE_DIR = $(HOME)/devl/huggingface/policyengine-us-data
 
 all: data test
 
@@ -73,11 +75,16 @@ database-refresh:
 
 promote-database:
 	cp policyengine_us_data/storage/calibration/policy_data.db \
-		$(HOME)/devl/huggingface/policyengine-us-data/calibration/policy_data.db
-	rm -rf $(HOME)/devl/huggingface/policyengine-us-data/calibration/raw_inputs
+		$(HF_CLONE_DIR)/calibration/policy_data.db
+	rm -rf $(HF_CLONE_DIR)/calibration/raw_inputs
 	cp -r policyengine_us_data/storage/calibration/raw_inputs \
-		$(HOME)/devl/huggingface/policyengine-us-data/calibration/raw_inputs
+		$(HF_CLONE_DIR)/calibration/raw_inputs
 	@echo "Copied DB and raw_inputs to HF clone. Now cd to HF repo, commit, and push."
+
+promote-dataset:
+	cp policyengine_us_data/storage/stratified_extended_cps_2024.h5 \
+		$(HF_CLONE_DIR)/calibration/stratified_extended_cps.h5
+	@echo "Copied dataset to HF clone. Now cd to HF repo, commit, and push."
 
 data: download
 	python policyengine_us_data/utils/uprating.py
@@ -88,6 +95,10 @@ data: download
 	python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
+	# 12000: number of households our GPUs can handle (found via trial and error).
+	# --top=99.5: include only top 0.5% (vs default 1%) to preserve
+	#   representation of lower-income households.
+	# --seed=3526: reproducible stratified sampling.
 	python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py 12000 --top=99.5 --seed=3526
 
 publish-local-area:

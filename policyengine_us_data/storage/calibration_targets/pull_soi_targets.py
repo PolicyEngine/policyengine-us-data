@@ -38,6 +38,9 @@ AGI_BOUNDS = {
     "$500,000 or more": (500_000, np.inf),
 }
 
+SOI_CONGRESS_PREFIX = "5001800US"  # 118th Congress
+SOI_DISTRICT_TAX_YEAR = 2022
+
 NON_VOTING_STATES = {"US", "AS", "GU", "MP", "PR", "VI", "OA"}
 NON_VOTING_GEO_IDS = {
     "0400000US72",  # Puerto Rico (state level)
@@ -249,7 +252,15 @@ def pull_district_soi_variable(
     df["CONG_DISTRICT"] = (
         df["CONG_DISTRICT"].astype(int).astype(str).str.zfill(2)
     )
-    df["GEO_ID"] = "5001800US" + df["STATEFIPS"] + df["CONG_DISTRICT"]
+    if SOI_DISTRICT_TAX_YEAR >= 2024:
+        raise RuntimeError(
+            f"SOI tax year {SOI_DISTRICT_TAX_YEAR} may need "
+            f"119th Congress districts (5001900US). Update "
+            f"SOI_CONGRESS_PREFIX and remove this check "
+            f"once verified."
+        )
+
+    df["GEO_ID"] = SOI_CONGRESS_PREFIX + df["STATEFIPS"] + df["CONG_DISTRICT"]
     df = df[~df["GEO_ID"].isin(NON_VOTING_GEO_IDS)]
 
     at_large_states = (

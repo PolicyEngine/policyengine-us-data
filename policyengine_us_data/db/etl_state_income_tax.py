@@ -10,15 +10,12 @@ Data source: https://www.census.gov/programs-surveys/stc/data/datasets.html
 Stratum Group ID: 7 (State Income Tax)
 """
 
-import argparse
 import logging
 import pandas as pd
 import numpy as np
 from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
-
-DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -28,7 +25,7 @@ from policyengine_us_data.db.create_database_tables import (
     VariableGroup,
     VariableMetadata,
 )
-from policyengine_us_data.utils.db import get_geographic_strata
+from policyengine_us_data.utils.db import get_geographic_strata, etl_argparser
 from policyengine_us_data.utils.db_metadata import (
     get_or_create_source,
     get_or_create_variable_group,
@@ -41,6 +38,7 @@ from policyengine_us_data.utils.raw_cache import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 # Stratum group ID for state income tax targets
 STRATUM_GROUP_ID_STATE_INCOME_TAX = 7
@@ -345,32 +343,11 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
 
 def main():
     """Run the full ETL pipeline for state income tax targets."""
-    parser = argparse.ArgumentParser(
-        description="ETL for state income tax calibration targets"
-    )
-    parser.add_argument(
-        "--dataset",
-        default=DEFAULT_DATASET,
-        help=(
-            "Source dataset (local path or HuggingFace URL). "
-            "The year for targets is derived from the dataset's "
-            "default_calculation_period. Default: %(default)s"
-        ),
-    )
-    args = parser.parse_args()
-
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-
-    # Derive year from dataset
-    from policyengine_us import Microsimulation
-
-    logger.info(f"Loading dataset: {args.dataset}")
-    sim = Microsimulation(dataset=args.dataset)
-    year = int(sim.default_calculation_period)
-    logger.info(f"Derived year from dataset: {year}")
+    _, year = etl_argparser("ETL for state income tax calibration targets")
 
     logger.info(f"Extracting Census STC data for FY{year}...")
     raw_df = extract_state_income_tax_data(year)

@@ -112,16 +112,12 @@ targets_df, X_sparse, household_id_mapping = builder.build_matrix(
             "state_income_tax",  # Census STC state income tax collections
         ],
     },
-    deduplicate=True,
-    dedup_mode="within_geography",
 )
 
-# Print concept and deduplication summaries
-builder.print_concept_summary()
-builder.print_dedup_summary()
+builder.print_uprating_summary(targets_df)
 
 print(f"\nMatrix shape: {X_sparse.shape}")
-print(f"Targets after deduplication: {len(targets_df)}")
+print(f"Targets: {len(targets_df)}")
 
 # ============================================================================
 # STEP 2: FILTER TO ACHIEVABLE TARGETS

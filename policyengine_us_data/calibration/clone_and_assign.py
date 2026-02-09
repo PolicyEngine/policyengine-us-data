@@ -1,4 +1,4 @@
-"""Clone extended CPS records and assign random geography."""
+"""Clone CPS records and assign random geography."""
 
 import logging
 from functools import lru_cache
@@ -64,7 +64,7 @@ def load_global_block_distribution():
 
 def assign_random_geography(
     n_records: int,
-    n_clones: int = 130,
+    n_clones: int = 10,
     seed: int = 42,
 ) -> GeographyAssignment:
     """Assign random census block geography to cloned
@@ -78,7 +78,7 @@ def assign_random_geography(
     Args:
         n_records: Number of households in the base CPS
             dataset.
-        n_clones: Number of clones (default 130).
+        n_clones: Number of clones (default 10).
         seed: Random seed for reproducibility.
 
     Returns:
@@ -96,5 +96,55 @@ def assign_random_geography(
         cd_geoid=cds[indices],
         state_fips=states[indices],
         n_records=n_records,
+        n_clones=n_clones,
+    )
+
+
+def double_geography_for_puf(
+    geography: GeographyAssignment,
+) -> GeographyAssignment:
+    """Double geography arrays for PUF clone step.
+
+    After PUF cloning doubles the base records, the geography
+    assignment must also double: each record and its PUF copy
+    share the same geographic assignment.
+
+    The output has n_records = 2 * geography.n_records, with
+    the first half being the CPS records and the second half
+    being the PUF copies.
+
+    Args:
+        geography: Original geography assignment.
+
+    Returns:
+        New GeographyAssignment with doubled n_records.
+    """
+    n_old = geography.n_records
+    n_new = n_old * 2
+    n_clones = geography.n_clones
+
+    # For each clone, interleave: [CPS records, PUF records]
+    # Original layout: clone0_rec0..rec_N, clone1_rec0..rec_N, ...
+    # New layout: clone0_cps0..N_puf0..N, clone1_cps0..N_puf0..N
+    new_blocks = []
+    new_cds = []
+    new_states = []
+
+    for c in range(n_clones):
+        start = c * n_old
+        end = start + n_old
+        clone_blocks = geography.block_geoid[start:end]
+        clone_cds = geography.cd_geoid[start:end]
+        clone_states = geography.state_fips[start:end]
+        # CPS half + PUF half (same geography)
+        new_blocks.append(np.concatenate([clone_blocks, clone_blocks]))
+        new_cds.append(np.concatenate([clone_cds, clone_cds]))
+        new_states.append(np.concatenate([clone_states, clone_states]))
+
+    return GeographyAssignment(
+        block_geoid=np.concatenate(new_blocks),
+        cd_geoid=np.concatenate(new_cds),
+        state_fips=np.concatenate(new_states),
+        n_records=n_new,
         n_clones=n_clones,
     )

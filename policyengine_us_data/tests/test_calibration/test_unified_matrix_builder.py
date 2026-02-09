@@ -543,9 +543,7 @@ class TestMatrixShape:
     """Verify the output matrix has the correct shape."""
 
     @patch("policyengine_us.Microsimulation")
-    def test_matrix_shape(
-        self, MockMicrosim, mock_db, mock_sim
-    ):
+    def test_matrix_shape(self, MockMicrosim, mock_db, mock_sim):
         """Matrix shape is (n_targets, n_records * n_clones)."""
         MockMicrosim.return_value = mock_sim
 
@@ -988,9 +986,7 @@ class TestExtendedCPSHasNoCalculatedVars:
         import h5py
         from pathlib import Path
 
-        h5_path = Path(
-            "policyengine_us_data/storage/extended_cps_2024.h5"
-        )
+        h5_path = Path("policyengine_us_data/storage/extended_cps_2024.h5")
         if not h5_path.exists():
             pytest.skip("extended_cps_2024.h5 not available")
 
@@ -1006,10 +1002,7 @@ class TestExtendedCPSHasNoCalculatedVars:
             if var_name not in sim.tax_benefit_system.variables:
                 continue
             var = sim.tax_benefit_system.variables[var_name]
-            has_formula = (
-                hasattr(var, "formulas")
-                and len(var.formulas) > 0
-            )
+            has_formula = hasattr(var, "formulas") and len(var.formulas) > 0
             if has_formula and var_name not in self._ALLOWED_FORMULA_VARS:
                 unexpected.add(var_name)
 

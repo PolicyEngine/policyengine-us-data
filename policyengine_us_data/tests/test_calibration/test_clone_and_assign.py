@@ -14,6 +14,7 @@ from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
     load_global_block_distribution,
     assign_random_geography,
+    double_geography_for_puf,
 )
 
 # ------------------------------------------------------------------
@@ -292,3 +293,66 @@ class TestAssignRandomGeography:
         ):
             with pytest.raises(FileNotFoundError):
                 load_global_block_distribution.__wrapped__()
+
+
+class TestDoubleGeographyForPuf:
+    """Tests for double_geography_for_puf."""
+
+    def test_doubles_n_records(self):
+        """n_records doubles, n_clones stays the same."""
+        geo = GeographyAssignment(
+            block_geoid=np.array(["010010001001001", "020010001001001"] * 3),
+            cd_geoid=np.array(["101", "202"] * 3),
+            state_fips=np.array([1, 2] * 3),
+            n_records=2,
+            n_clones=3,
+        )
+        result = double_geography_for_puf(geo)
+        assert result.n_records == 4
+        assert result.n_clones == 3
+        assert len(result.block_geoid) == 12  # 4 * 3
+
+    def test_array_length(self):
+        """Output arrays have length n_records * 2 * n_clones."""
+        geo = GeographyAssignment(
+            block_geoid=np.array(["010010001001001"] * 15),
+            cd_geoid=np.array(["101"] * 15),
+            state_fips=np.array([1] * 15),
+            n_records=5,
+            n_clones=3,
+        )
+        result = double_geography_for_puf(geo)
+        assert len(result.block_geoid) == 30
+        assert len(result.cd_geoid) == 30
+        assert len(result.state_fips) == 30
+
+    def test_puf_half_matches_cps_half(self):
+        """Each clone's PUF half has same geography as CPS half."""
+        geo = GeographyAssignment(
+            block_geoid=np.array(
+                [
+                    "010010001001001",
+                    "020010001001001",
+                    "360100001001001",
+                    "060100001001001",
+                    "480100001001001",
+                    "120100001001001",
+                ]
+            ),
+            cd_geoid=np.array(["101", "202", "1036", "653", "4831", "1227"]),
+            state_fips=np.array([1, 2, 36, 6, 48, 12]),
+            n_records=3,
+            n_clones=2,
+        )
+        result = double_geography_for_puf(geo)
+        n_new = result.n_records  # 6
+
+        for c in range(result.n_clones):
+            start = c * n_new
+            mid = start + n_new // 2
+            end = start + n_new
+            # CPS half
+            cps_states = result.state_fips[start:mid]
+            # PUF half
+            puf_states = result.state_fips[mid:end]
+            np.testing.assert_array_equal(cps_states, puf_states)

@@ -265,6 +265,7 @@ def _setup_module_mocks(
     # Mock clone_and_assign module
     mock_clone_mod = MagicMock()
     mock_clone_mod.assign_random_geography = MagicMock(return_value=mock_geo)
+    mock_clone_mod.double_geography_for_puf = MagicMock(return_value=mock_geo)
 
     # Mock unified_matrix_builder module
     mock_builder_mod = MagicMock()
@@ -340,6 +341,7 @@ class TestRunCalibration:
                 n_clones=n_clones,
                 lambda_l0=1e-8,
                 epochs=5,
+                skip_puf=True,
             )
 
         assert isinstance(weights, np.ndarray)
@@ -418,6 +420,7 @@ class TestRunCalibration:
                 n_clones=n_clones,
                 lambda_l0=1e-8,
                 epochs=5,
+                skip_puf=True,
             )
 
         # model.fit should have been called with only 2
@@ -476,6 +479,7 @@ class TestRunCalibration:
                 lambda_l0=1e-8,
                 epochs=5,
                 seed=123,
+                skip_puf=True,
             )
 
         mock_assign.assert_called_once_with(
@@ -513,6 +517,9 @@ class TestRunCalibration:
         mock_clone_mod.assign_random_geography = MagicMock(
             return_value=mock_geo
         )
+        mock_clone_mod.double_geography_for_puf = MagicMock(
+            return_value=mock_geo
+        )
 
         # Mock unified_matrix_builder module
         mock_builder_mod = MagicMock()
@@ -545,6 +552,7 @@ class TestRunCalibration:
                     n_clones=n_clones,
                     lambda_l0=1e-8,
                     epochs=5,
+                    skip_puf=True,
                 )
 
 
@@ -594,4 +602,4 @@ class TestConstants:
         )
 
         assert DEFAULT_EPOCHS == 100
-        assert DEFAULT_N_CLONES == 130
+        assert DEFAULT_N_CLONES == 10

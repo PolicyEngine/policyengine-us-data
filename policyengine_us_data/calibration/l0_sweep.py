@@ -200,11 +200,7 @@ def fit_one_l0(
     )
 
     with torch.no_grad():
-        weights = (
-            model.get_weights(deterministic=True)
-            .cpu()
-            .numpy()
-        )
+        weights = model.get_weights(deterministic=True).cpu().numpy()
 
     n_nonzero = int((weights > 0).sum())
     total_weight = float(weights.sum())
@@ -236,21 +232,13 @@ def fit_one_l0(
             "abs_rel_error": abs_rel_errors,
         }
     )
-    diag_path = (
-        output_dir / f"diagnostics_l0_{l0_tag}.csv"
-    )
+    diag_path = output_dir / f"diagnostics_l0_{l0_tag}.csv"
     diag_df.to_csv(diag_path, index=False)
 
     # Summary metrics.
-    pct_within_5 = float(
-        np.mean(abs_rel_errors <= 0.05) * 100
-    )
-    pct_within_10 = float(
-        np.mean(abs_rel_errors <= 0.10) * 100
-    )
-    pct_within_25 = float(
-        np.mean(abs_rel_errors <= 0.25) * 100
-    )
+    pct_within_5 = float(np.mean(abs_rel_errors <= 0.05) * 100)
+    pct_within_10 = float(np.mean(abs_rel_errors <= 0.10) * 100)
+    pct_within_25 = float(np.mean(abs_rel_errors <= 0.25) * 100)
     median_rel_error = float(np.median(abs_rel_errors))
     mean_rel_error = float(np.mean(abs_rel_errors))
     max_rel_error = float(np.max(abs_rel_errors))

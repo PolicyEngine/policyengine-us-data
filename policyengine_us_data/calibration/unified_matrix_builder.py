@@ -428,8 +428,7 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                 coo_path = clone_dir / f"clone_{clone_idx:04d}.npz"
                 if coo_path.exists():
                     logger.info(
-                        "Clone %d / %d already cached, "
-                        "skipping.",
+                        "Clone %d / %d already cached, " "skipping.",
                         clone_idx + 1,
                         n_clones,
                     )
@@ -438,13 +437,9 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
             col_start = clone_idx * n_records
             col_end = col_start + n_records
 
-            clone_blocks = geography.block_geoid[
-                col_start:col_end
-            ]
+            clone_blocks = geography.block_geoid[col_start:col_end]
             clone_cds = geography.cd_geoid[col_start:col_end]
-            clone_states = geography.state_fips[
-                col_start:col_end
-            ]
+            clone_states = geography.state_fips[col_start:col_end]
 
             logger.info(
                 "Processing clone %d / %d "
@@ -480,10 +475,8 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                     )
                 )
                 if key not in mask_cache:
-                    mask_cache[key] = (
-                        self._evaluate_constraints_entity_aware(
-                            sim, constraints_list, n_records
-                        )
+                    mask_cache[key] = self._evaluate_constraints_entity_aware(
+                        sim, constraints_list, n_records
                     )
                 return mask_cache[key]
 
@@ -493,9 +486,7 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
             vals_list: list = []
 
             for row_idx in range(n_targets):
-                variable = str(
-                    targets_df.iloc[row_idx]["variable"]
-                )
+                variable = str(targets_df.iloc[row_idx]["variable"])
                 geo_level, geo_id = target_geo_info[row_idx]
                 non_geo = non_geo_constraints_list[row_idx]
 
@@ -504,8 +495,7 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                         continue
                     cd_cols = cd_to_cols[geo_id]
                     clone_target_cols = cd_cols[
-                        (cd_cols >= col_start)
-                        & (cd_cols < col_end)
+                        (cd_cols >= col_start) & (cd_cols < col_end)
                     ]
                 elif geo_level == "state":
                     state_key = int(geo_id)
@@ -513,13 +503,10 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                         continue
                     s_cols = state_to_cols[state_key]
                     clone_target_cols = s_cols[
-                        (s_cols >= col_start)
-                        & (s_cols < col_end)
+                        (s_cols >= col_start) & (s_cols < col_end)
                     ]
                 else:
-                    clone_target_cols = np.arange(
-                        col_start, col_end
-                    )
+                    clone_target_cols = np.arange(col_start, col_end)
 
                 if len(clone_target_cols) == 0:
                     continue
@@ -545,9 +532,7 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                         )
                     )
                     cols_list.append(
-                        clone_target_cols[nonzero].astype(
-                            np.int32
-                        )
+                        clone_target_cols[nonzero].astype(np.int32)
                     )
                     vals_list.append(vals[nonzero])
 
@@ -569,8 +554,7 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                     vals=clone_vals,
                 )
                 logger.info(
-                    "Clone %d: saved %d nonzero entries "
-                    "to %s",
+                    "Clone %d: saved %d nonzero entries " "to %s",
                     clone_idx + 1,
                     len(clone_vals),
                     coo_path.name,
@@ -613,8 +597,7 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
             dtype=np.float32,
         )
         logger.info(
-            "Matrix built: %d targets x %d columns, "
-            "%d nonzero entries",
+            "Matrix built: %d targets x %d columns, " "%d nonzero entries",
             X_csr.shape[0],
             X_csr.shape[1],
             X_csr.nnz,

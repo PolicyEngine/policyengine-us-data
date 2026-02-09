@@ -1,4 +1,6 @@
-from typing import Dict, List, Optional
+import argparse
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 from sqlmodel import Session, select
 import sqlalchemy as sa
@@ -7,6 +9,59 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
 )
+from policyengine_us_data.storage import STORAGE_FOLDER
+
+DEFAULT_DATASET = str(STORAGE_FOLDER / "stratified_extended_cps_2024.h5")
+
+
+def etl_argparser(
+    description: str,
+    extra_args_fn=None,
+) -> Tuple[argparse.Namespace, int]:
+    """Shared argument parsing and dataset-year derivation for ETL scripts.
+
+    Args:
+        description: Description for the argparse help text.
+        extra_args_fn: Optional callable that receives the parser to add
+            extra arguments before parsing.
+
+    Returns:
+        (args, year) where *year* is derived from the dataset's
+        ``default_calculation_period``.
+    """
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument(
+        "--dataset",
+        default=DEFAULT_DATASET,
+        help=(
+            "Source dataset (local path or HuggingFace URL). "
+            "The year is derived from the dataset's "
+            "default_calculation_period. Default: %(default)s"
+        ),
+    )
+    if extra_args_fn is not None:
+        extra_args_fn(parser)
+
+    args = parser.parse_args()
+
+    if (
+        not args.dataset.startswith("hf://")
+        and not Path(args.dataset).exists()
+    ):
+        raise FileNotFoundError(
+            f"Dataset not found: {args.dataset}\n"
+            f"Either build it locally (`make data`) or pass a "
+            f"HuggingFace URL via --dataset hf://policyengine/..."
+        )
+
+    from policyengine_us import Microsimulation
+
+    print(f"Loading dataset: {args.dataset}")
+    sim = Microsimulation(dataset=args.dataset)
+    year = int(sim.default_calculation_period)
+    print(f"Derived year from dataset: {year}")
+
+    return args, year
 
 
 def get_stratum_by_id(session: Session, stratum_id: int) -> Optional[Stratum]:

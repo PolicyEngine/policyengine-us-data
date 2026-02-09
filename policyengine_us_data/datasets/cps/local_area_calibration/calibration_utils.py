@@ -248,30 +248,6 @@ def get_calculated_variables(sim) -> List[str]:
     return result
 
 
-def get_pseudo_input_variables(sim) -> set:
-    """
-    Identify pseudo-input variables that should NOT be saved to H5 files.
-
-    NOTE: This function currently returns an empty set. The original logic
-    excluded variables with 'adds' or 'subtracts' attributes, but analysis
-    showed that in CPS data, these variables contain authoritative stored
-    data that does NOT match their component variables:
-
-    - pre_tax_contributions: components are all 0, aggregate has imputed values
-    - tax_exempt_pension_income: aggregate has 135M, components only 20M
-    - taxable_pension_income: aggregate has 82M, components only 29M
-    - interest_deduction: aggregate has 41M, components are 0
-
-    The 'adds' attribute defines how to CALCULATE these values, but in CPS
-    data the stored values are the authoritative source. Excluding them and
-    recalculating from components produces incorrect results.
-
-    For geo-stacking, entity ID reindexing preserves within-entity
-    relationships, so aggregation within a person or tax_unit remains valid.
-    """
-    return set()
-
-
 def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
     """Apply constraint operation to values array."""
     try:

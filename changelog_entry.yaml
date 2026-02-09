@@ -1,0 +1,10 @@
+- bump: patch
+  changes:
+    changed:
+    - Switch DEFAULT_DATASET to local storage path for database ETL scripts
+    - Extract shared etl_argparser() to reduce boilerplate across 7 ETL scripts
+    - Delete dead get_pseudo_input_variables() function
+    added:
+    - promote-dataset Makefile target
+    - Year-mismatch warning in national targets ETL
+    - Congress-session constants and warning in SOI district puller

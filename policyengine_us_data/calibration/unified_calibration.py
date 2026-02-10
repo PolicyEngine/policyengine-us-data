@@ -28,14 +28,22 @@ Usage:
 """
 
 import argparse
+import builtins
 import logging
+import sys
 from pathlib import Path
 
 import numpy as np
 
+# Force line-buffered stdout so epoch logs appear
+# immediately under nohup/redirect.
+if not sys.stdout.isatty():
+    sys.stdout.reconfigure(line_buffering=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
+    stream=sys.stderr,
 )
 logger = logging.getLogger(__name__)
 
@@ -136,6 +144,16 @@ def parse_args(argv=None):
         "--skip-source-impute",
         action="store_true",
         help="Skip ACS/SIPP/SCF re-imputation with state",
+    )
+    parser.add_argument(
+        "--stratum-groups",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated stratum group IDs to calibrate "
+            "(e.g. '1,2,3'). Default: all targets with "
+            "calibrate=1 in DB."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -269,10 +287,15 @@ def fit_l0_weights(
     Returns:
         Weight array of shape (n_records,).
     """
+    import sys
+    import time
+
     try:
         from l0.calibration import SparseCalibrationWeights
     except ImportError:
-        raise ImportError("l0-python required. Install: pip install l0-python")
+        raise ImportError(
+            "l0-python required. Install: pip install l0-python"
+        )
 
     import torch
 
@@ -303,17 +326,38 @@ def fit_l0_weights(
     if verbose_freq is None:
         verbose_freq = max(1, epochs // 10)
 
-    model.fit(
-        M=X_sparse,
-        y=targets,
-        target_groups=None,
-        lambda_l0=lambda_l0,
-        lambda_l2=LAMBDA_L2,
-        lr=LEARNING_RATE,
-        epochs=epochs,
-        loss_type="relative",
-        verbose=True,
-        verbose_freq=verbose_freq,
+    # Monkey-patch print to flush + log, so epoch output
+    # isn't lost to stdout buffering under nohup/redirect.
+    _builtin_print = builtins.print
+
+    def _flushed_print(*args, **kwargs):
+        _builtin_print(*args, **kwargs)
+        sys.stdout.flush()
+
+    builtins.print = _flushed_print
+
+    t_fit_start = time.time()
+    try:
+        model.fit(
+            M=X_sparse,
+            y=targets,
+            target_groups=None,
+            lambda_l0=lambda_l0,
+            lambda_l2=LAMBDA_L2,
+            lr=LEARNING_RATE,
+            epochs=epochs,
+            loss_type="relative",
+            verbose=True,
+            verbose_freq=verbose_freq,
+        )
+    finally:
+        builtins.print = _builtin_print
+
+    t_fit_end = time.time()
+    logger.info(
+        "L0 optimization finished in %.1f min (%.1f sec/epoch)",
+        (t_fit_end - t_fit_start) / 60,
+        (t_fit_end - t_fit_start) / epochs,
     )
 
     with torch.no_grad():
@@ -340,7 +384,8 @@ def run_calibration(
     puf_dataset_path: str = None,
     skip_puf: bool = False,
     skip_source_impute: bool = False,
-) -> np.ndarray:
+    stratum_group_ids: list = None,
+):
     """Run unified calibration pipeline.
 
     New pipeline:
@@ -362,11 +407,16 @@ def run_calibration(
         puf_dataset_path: Path to PUF h5 for QRF training.
         skip_puf: Skip PUF clone step.
         skip_source_impute: Skip ACS/SIPP/SCF imputations.
+        stratum_group_ids: Only calibrate to targets in
+            these stratum groups. None means all targets
+            with ``calibrate = 1``.
 
     Returns:
-        Calibrated weight array of shape
-        (n_records * n_clones,).
+        Tuple of (weights, targets_df, X_sparse,
+        target_names).
     """
+    import time
+
     from policyengine_us import Microsimulation
 
     from policyengine_us_data.calibration.clone_and_assign import (
@@ -377,10 +427,14 @@ def run_calibration(
         UnifiedMatrixBuilder,
     )
 
+    t0 = time.time()
+
     # Step 1: Load raw CPS and get record count
     logger.info("Loading dataset from %s", dataset_path)
     sim = Microsimulation(dataset=dataset_path)
-    n_records = len(sim.calculate("household_id", map_to="household").values)
+    n_records = len(
+        sim.calculate("household_id", map_to="household").values
+    )
     logger.info("Loaded %d households", n_records)
     del sim
 
@@ -395,6 +449,9 @@ def run_calibration(
         n_records=n_records,
         n_clones=n_clones,
         seed=seed,
+    )
+    logger.info(
+        "Geography assigned in %.1f sec", time.time() - t0
     )
 
     # Step 3: PUF clone (2x) + QRF imputation
@@ -467,14 +524,23 @@ def run_calibration(
         n_records_for_matrix = n_records
 
     # Step 5: Build sparse calibration matrix
+    t_matrix_start = time.time()
     db_uri = f"sqlite:///{db_path}"
-    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    builder = UnifiedMatrixBuilder(
+        db_uri=db_uri, time_period=2024
+    )
     targets_df, X_sparse, target_names = builder.build_matrix(
         dataset_path=dataset_for_matrix,
         geography=geography,
+        stratum_group_ids=stratum_group_ids,
+    )
+    t_matrix_end = time.time()
+    logger.info(
+        "Matrix build completed in %.1f min",
+        (t_matrix_end - t_matrix_start) / 60,
     )
 
-    # Step 5: Report achievable vs impossible targets (keep all)
+    # Report achievable vs impossible targets (keep all)
     targets = targets_df["value"].values
     log_achievable_targets(X_sparse)
 
@@ -486,7 +552,56 @@ def run_calibration(
         epochs=epochs,
         device=device,
     )
-    return weights
+
+    logger.info(
+        "Total pipeline time: %.1f min",
+        (time.time() - t0) / 60,
+    )
+    return weights, targets_df, X_sparse, target_names
+
+
+def compute_diagnostics(
+    weights: np.ndarray,
+    X_sparse,
+    targets_df,
+    target_names: list,
+) -> "pd.DataFrame":
+    """Compute per-target diagnostics from calibrated weights.
+
+    Args:
+        weights: Calibrated weight array.
+        X_sparse: Sparse matrix (targets x records).
+        targets_df: DataFrame with target values.
+        target_names: List of target name strings.
+
+    Returns:
+        DataFrame with columns: target, true_value, estimate,
+        rel_error, abs_rel_error, achievable.
+    """
+    import pandas as pd
+
+    estimates = X_sparse.dot(weights)
+    true_values = targets_df["value"].values
+    row_sums = np.array(X_sparse.sum(axis=1)).flatten()
+
+    rel_errors = np.where(
+        np.abs(true_values) > 0,
+        (estimates - true_values) / np.abs(true_values),
+        0.0,
+    )
+    abs_rel_errors = np.abs(rel_errors)
+    achievable = row_sums > 0
+
+    return pd.DataFrame(
+        {
+            "target": target_names,
+            "true_value": true_values,
+            "estimate": estimates,
+            "rel_error": rel_errors,
+            "abs_rel_error": abs_rel_errors,
+            "achievable": achievable,
+        }
+    )
 
 
 def main(argv=None):
@@ -495,12 +610,21 @@ def main(argv=None):
     Args:
         argv: Optional list of argument strings.
     """
+    import json
+    import time
+
+    import pandas as pd
+
     args = parse_args(argv)
 
     from policyengine_us_data.storage import STORAGE_FOLDER
 
-    dataset_path = args.dataset or str(STORAGE_FOLDER / "cps_2024_full.h5")
-    puf_dataset_path = args.puf_dataset or str(STORAGE_FOLDER / "puf_2024.h5")
+    dataset_path = args.dataset or str(
+        STORAGE_FOLDER / "cps_2024_full.h5"
+    )
+    puf_dataset_path = args.puf_dataset or str(
+        STORAGE_FOLDER / "puf_2024.h5"
+    )
     db_path = args.db_path or str(
         STORAGE_FOLDER / "calibration" / "policy_data.db"
     )
@@ -517,7 +641,20 @@ def main(argv=None):
         lambda_l0 = PRESETS["local"]
         logger.info("No preset/lambda specified, using 'local'")
 
-    weights = run_calibration(
+    # Parse stratum group filter
+    stratum_group_ids = None
+    if args.stratum_groups:
+        stratum_group_ids = [
+            int(x.strip()) for x in args.stratum_groups.split(",")
+        ]
+        logger.info(
+            "Filtering to stratum groups: %s",
+            stratum_group_ids,
+        )
+
+    t_start = time.time()
+
+    weights, targets_df, X_sparse, target_names = run_calibration(
         dataset_path=dataset_path,
         db_path=db_path,
         n_clones=args.n_clones,
@@ -528,10 +665,70 @@ def main(argv=None):
         puf_dataset_path=puf_dataset_path,
         skip_puf=args.skip_puf,
         skip_source_impute=args.skip_source_impute,
+        stratum_group_ids=stratum_group_ids,
     )
 
+    t_calibration = time.time()
+
+    # Save weights
     np.save(output_path, weights)
     logger.info("Weights saved to %s", output_path)
+
+    # Save per-target diagnostics
+    output_dir = Path(output_path).parent
+    diag_df = compute_diagnostics(
+        weights, X_sparse, targets_df, target_names
+    )
+    diag_path = output_dir / "unified_diagnostics.csv"
+    diag_df.to_csv(diag_path, index=False)
+
+    ach = diag_df[diag_df.achievable]
+    err_pct = ach.abs_rel_error * 100
+    logger.info(
+        "Diagnostics saved to %s: %d targets, "
+        "mean_error=%.1f%%, median=%.1f%%, "
+        "within_10%%=%.1f%%, within_25%%=%.1f%%",
+        diag_path,
+        len(ach),
+        err_pct.mean(),
+        err_pct.median(),
+        (err_pct < 10).mean() * 100,
+        (err_pct < 25).mean() * 100,
+    )
+
+    # Save run config
+    t_end = time.time()
+    run_config = {
+        "dataset": dataset_path,
+        "db_path": db_path,
+        "n_clones": args.n_clones,
+        "lambda_l0": lambda_l0,
+        "epochs": args.epochs,
+        "device": args.device,
+        "seed": args.seed,
+        "skip_puf": args.skip_puf,
+        "skip_source_impute": args.skip_source_impute,
+        "stratum_group_ids": stratum_group_ids,
+        "n_targets": len(targets_df),
+        "n_achievable": int(diag_df.achievable.sum()),
+        "n_impossible": int((~diag_df.achievable).sum()),
+        "n_records": X_sparse.shape[1],
+        "n_nonzero_matrix": int(X_sparse.nnz),
+        "weight_sum": float(weights.sum()),
+        "weight_nonzero": int((weights > 0).sum()),
+        "mean_error_pct": float(err_pct.mean()),
+        "median_error_pct": float(err_pct.median()),
+        "within_10_pct": float((err_pct < 10).mean() * 100),
+        "within_25_pct": float((err_pct < 25).mean() * 100),
+        "elapsed_seconds": round(t_end - t_start, 1),
+        "calibration_seconds": round(
+            t_calibration - t_start, 1
+        ),
+    }
+    config_path = output_dir / "unified_run_config.json"
+    with open(config_path, "w") as f:
+        json.dump(run_config, f, indent=2)
+    logger.info("Run config saved to %s", config_path)
 
 
 if __name__ == "__main__":

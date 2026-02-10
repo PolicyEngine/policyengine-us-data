@@ -63,15 +63,36 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
     # Database queries
     # ------------------------------------------------------------------
 
-    def _query_active_targets(self) -> pd.DataFrame:
-        """Query all active, non-zero targets.
+    def _query_active_targets(
+        self,
+        calibrate_only: bool = True,
+        stratum_group_ids: List[int] = None,
+    ) -> pd.DataFrame:
+        """Query active targets for calibration.
+
+        Args:
+            calibrate_only: If True, only include targets with
+                ``calibrate = 1``. Set False to include all
+                active targets (e.g. for diagnostics).
+            stratum_group_ids: If provided, only include targets
+                whose stratum belongs to one of these group IDs.
 
         Returns:
             DataFrame with columns: target_id, stratum_id,
             variable, value, period, reform_id, tolerance,
             stratum_group_id, stratum_notes, target_notes.
         """
-        query = """
+        conditions = ["t.active = 1"]
+        if calibrate_only:
+            conditions.append("t.calibrate = 1")
+        if stratum_group_ids:
+            ids_str = ",".join(str(i) for i in stratum_group_ids)
+            conditions.append(
+                f"s.stratum_group_id IN ({ids_str})"
+            )
+        where_clause = " AND ".join(conditions)
+
+        query = f"""
         SELECT t.target_id,
                t.stratum_id,
                t.variable,
@@ -84,7 +105,7 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                s.notes   AS stratum_notes
         FROM targets t
         JOIN strata s ON t.stratum_id = s.stratum_id
-        WHERE t.active = 1
+        WHERE {where_clause}
         ORDER BY t.target_id
         """
         with self.engine.connect() as conn:
@@ -320,6 +341,8 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
         dataset_path: str,
         geography,
         cache_dir: Optional[str] = None,
+        calibrate_only: bool = True,
+        stratum_group_ids: List[int] = None,
     ) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
         """Build sparse calibration matrix.
 
@@ -336,6 +359,10 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
                 attributes.
             cache_dir: Directory for per-clone COO caches.
                 If ``None``, COO data is held in memory
+            calibrate_only: Only include targets with
+                ``calibrate = 1``.
+            stratum_group_ids: Only include targets from
+                these stratum groups.
                 (suitable for tests only).
 
         Returns:
@@ -364,7 +391,10 @@ class UnifiedMatrixBuilder(BaseMatrixBuilder):
         cd_to_cols = {cd: np.array(c) for cd, c in cd_col_lists.items()}
 
         # Query targets from database.
-        targets_df = self._query_active_targets()
+        targets_df = self._query_active_targets(
+            calibrate_only=calibrate_only,
+            stratum_group_ids=stratum_group_ids,
+        )
         n_targets = len(targets_df)
 
         logger.info(

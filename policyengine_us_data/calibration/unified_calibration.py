@@ -35,8 +35,10 @@ from pathlib import Path
 
 import numpy as np
 
-# Force line-buffered stdout so epoch logs appear
+# Force line-buffered stdout/stderr so logs appear
 # immediately under nohup/redirect.
+if not sys.stderr.isatty():
+    sys.stderr.reconfigure(line_buffering=True)
 if not sys.stdout.isatty():
     sys.stdout.reconfigure(line_buffering=True)
 

@@ -6,7 +6,6 @@ This thin wrapper delegates to focused ETL modules:
                          income, infant, net worth, Medicaid,
                          SOI filing-status)
   - etl_healthcare_spending (healthcare by age band)
-  - etl_spm_threshold      (AGI by SPM threshold decile)
   - etl_tax_expenditure     (SALT, medical, charitable, interest, QBI)
   - etl_state_targets       (state pop, real estate taxes, ACA,
                               10-yr age, state AGI)
@@ -30,9 +29,8 @@ from policyengine_us_data.db.etl_misc_national import (
 from policyengine_us_data.db.etl_healthcare_spending import (
     load_healthcare_spending,
 )
-from policyengine_us_data.db.etl_spm_threshold import (
-    load_spm_threshold,
-)
+# SPM threshold decile targets removed -- we now calculate SPM
+# thresholds by metro area, making these obsolete.
 from policyengine_us_data.db.etl_tax_expenditure import (
     load_tax_expenditure,
 )
@@ -53,9 +51,6 @@ from policyengine_us_data.db.etl_misc_national import (  # noqa: F401
 )
 from policyengine_us_data.db.etl_healthcare_spending import (  # noqa: F401
     extract_healthcare_by_age,
-)
-from policyengine_us_data.db.etl_spm_threshold import (  # noqa: F401
-    extract_spm_threshold_agi,
 )
 from policyengine_us_data.db.etl_tax_expenditure import (  # noqa: F401
     extract_tax_expenditure_targets,
@@ -107,7 +102,6 @@ def load_all_targets(
     """
     load_misc_national(engine, time_period, root_stratum_id)
     load_healthcare_spending(engine, time_period, root_stratum_id)
-    load_spm_threshold(engine, time_period, root_stratum_id)
     load_tax_expenditure(engine, time_period, root_stratum_id)
     load_state_targets(engine, time_period, root_stratum_id)
     logger.info("All legacy targets loaded successfully.")

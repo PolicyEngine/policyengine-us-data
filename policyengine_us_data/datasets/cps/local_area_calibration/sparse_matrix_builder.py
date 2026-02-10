@@ -254,7 +254,18 @@ class SparseMatrixBuilder:
 
         Best period: most recent period <= self.time_period, or closest
         future period if none exists.
+
+        Supports two query paths:
+        - domain_variables: queries the target_overview view (returns
+          geo_level, geographic_id, domain_variable columns directly)
+        - stratum_group_ids/variables/target_ids/stratum_ids: queries
+          targets JOIN strata (legacy path)
         """
+        use_overview = "domain_variables" in target_filter
+
+        if use_overview:
+            return self._query_targets_overview(target_filter)
+
         or_conditions = []
 
         if "stratum_group_ids" in target_filter:
@@ -284,6 +295,70 @@ class SparseMatrixBuilder:
                    t.period, s.stratum_group_id
             FROM targets t
             JOIN strata s ON t.stratum_id = s.stratum_id
+            WHERE {where_clause}
+        ),
+        best_periods AS (
+            SELECT stratum_id, variable,
+                CASE
+                    WHEN MAX(CASE WHEN period <= :time_period
+                             THEN period END) IS NOT NULL
+                    THEN MAX(CASE WHEN period <= :time_period
+                             THEN period END)
+                    ELSE MIN(period)
+                END as best_period
+            FROM filtered_targets
+            GROUP BY stratum_id, variable
+        )
+        SELECT ft.*
+        FROM filtered_targets ft
+        JOIN best_periods bp
+            ON ft.stratum_id = bp.stratum_id
+            AND ft.variable = bp.variable
+            AND ft.period = bp.best_period
+        ORDER BY ft.target_id
+        """
+
+        with self.engine.connect() as conn:
+            return pd.read_sql(
+                query, conn, params={"time_period": self.time_period}
+            )
+
+    def _query_targets_overview(self, target_filter: dict) -> pd.DataFrame:
+        """Query targets via target_overview view.
+
+        Returns DataFrame with geo_level, geographic_id, and
+        domain_variable columns populated directly from the view.
+        """
+        or_conditions = []
+
+        if "domain_variables" in target_filter:
+            dvs = target_filter["domain_variables"]
+            placeholders = ",".join(f"'{dv}'" for dv in dvs)
+            or_conditions.append(f"tv.domain_variable IN ({placeholders})")
+
+        if "variables" in target_filter:
+            vars_str = ",".join(f"'{v}'" for v in target_filter["variables"])
+            or_conditions.append(f"tv.variable IN ({vars_str})")
+
+        if "target_ids" in target_filter:
+            ids = ",".join(map(str, target_filter["target_ids"]))
+            or_conditions.append(f"tv.target_id IN ({ids})")
+
+        if "stratum_ids" in target_filter:
+            ids = ",".join(map(str, target_filter["stratum_ids"]))
+            or_conditions.append(f"tv.stratum_id IN ({ids})")
+
+        if not or_conditions:
+            where_clause = "1=1"
+        else:
+            where_clause = " OR ".join(f"({c})" for c in or_conditions)
+
+        query = f"""
+        WITH filtered_targets AS (
+            SELECT tv.target_id, tv.stratum_id, tv.variable, tv.value,
+                   tv.period, tv.geo_level, tv.geographic_id,
+                   tv.domain_variable
+            FROM target_overview tv
             WHERE {where_clause}
         ),
         best_periods AS (
@@ -410,6 +485,153 @@ class SparseMatrixBuilder:
         factor = factors.get((period, uprating_type), 1.0)
         return factor, uprating_type
 
+    def _get_state_uprating_factors(
+        self,
+        domain: str,
+        targets_df: pd.DataFrame,
+        national_factors: dict,
+    ) -> Dict[int, Dict[str, float]]:
+        """Get per-state uprating factors for a hierarchical domain.
+
+        For now returns uniform national CPI/pop factors for every
+        state. Designed as the single point to swap in real
+        state-level data later.
+
+        Returns:
+            {state_fips: {variable: factor}} for each state in the
+            domain's state-level targets.
+        """
+        state_rows = targets_df[
+            (targets_df["domain_variable"] == domain)
+            & (targets_df["geo_level"] == "state")
+        ]
+        state_fips_list = state_rows["geographic_id"].unique()
+        variables = state_rows["variable"].unique()
+
+        result = {}
+        for sf in state_fips_list:
+            state_int = int(sf)
+            var_factors = {}
+            for var in variables:
+                row = state_rows[
+                    (state_rows["geographic_id"] == sf)
+                    & (state_rows["variable"] == var)
+                ]
+                if row.empty:
+                    var_factors[var] = 1.0
+                    continue
+                period = row.iloc[0]["period"]
+                factor, _ = self._get_uprating_info(
+                    var, period, national_factors
+                )
+                var_factors[var] = factor
+            result[state_int] = var_factors
+
+        return result
+
+    def _apply_hierarchical_uprating(
+        self,
+        targets_df: pd.DataFrame,
+        hierarchical_domains: List[str],
+        national_factors: dict,
+    ) -> pd.DataFrame:
+        """Apply state-level uprating and reconcile CDs to state totals.
+
+        For each hierarchical domain:
+        1. Uprate state-level targets using per-state factors
+        2. Reconcile CD targets so they sum to uprated state totals
+        3. Drop national and state rows that were used for
+           reconciliation (keep rows like CMS person_count that are
+           at period == self.time_period)
+
+        Returns modified targets_df with only CD-level rows for
+        hierarchical domains.
+        """
+        df = targets_df.copy()
+        df["state_uprating_factor"] = np.nan
+        df["reconciliation_factor"] = np.nan
+
+        rows_to_drop = []
+
+        for domain in hierarchical_domains:
+            domain_mask = df["domain_variable"] == domain
+
+            state_factors = self._get_state_uprating_factors(
+                domain, df, national_factors
+            )
+
+            # Uprate state rows
+            state_mask = domain_mask & (df["geo_level"] == "state")
+            for idx in df[state_mask].index:
+                row = df.loc[idx]
+                sf = int(row["geographic_id"])
+                var = row["variable"]
+                factor = state_factors.get(sf, {}).get(var, 1.0)
+                df.at[idx, "value"] = row["original_value"] * factor
+                df.at[idx, "state_uprating_factor"] = factor
+
+            # Reconcile CDs to uprated state totals
+            district_mask = domain_mask & (df["geo_level"] == "district")
+            for sf, var_factors in state_factors.items():
+                for var in var_factors:
+                    # Get uprated state total
+                    state_row = df[
+                        state_mask
+                        & (df["geographic_id"] == str(sf))
+                        & (df["variable"] == var)
+                    ]
+                    if state_row.empty:
+                        continue
+                    uprated_state_total = state_row.iloc[0]["value"]
+
+                    # Get CD rows for this state+variable
+                    # Safe int conversion: non-numeric IDs (e.g. "US")
+                    # return False
+                    def _cd_in_state(g, s=sf):
+                        try:
+                            return int(g) // 100 == s
+                        except (ValueError, TypeError):
+                            return False
+
+                    cd_mask = (
+                        district_mask
+                        & (df["variable"] == var)
+                        & df["geographic_id"].apply(_cd_in_state)
+                    )
+                    cd_rows = df[cd_mask]
+                    if cd_rows.empty:
+                        continue
+
+                    cd_original_sum = cd_rows["original_value"].sum()
+                    if cd_original_sum == 0:
+                        continue
+
+                    recon_factor = uprated_state_total / cd_original_sum
+                    for cd_idx in cd_rows.index:
+                        df.at[cd_idx, "value"] = (
+                            df.at[cd_idx, "original_value"] * recon_factor
+                        )
+                        df.at[cd_idx, "reconciliation_factor"] = recon_factor
+
+            # Determine which national/state rows to drop:
+            # Drop rows used for reconciliation (period != time_period)
+            # Keep rows like CMS person_count (period == time_period)
+            national_mask = domain_mask & (df["geo_level"] == "national")
+            for idx in df[national_mask | state_mask].index:
+                row = df.loc[idx]
+                if row["period"] != self.time_period:
+                    rows_to_drop.append(idx)
+
+        if rows_to_drop:
+            n_dropped = len(rows_to_drop)
+            logger.info(
+                f"Hierarchical uprating: dropping {n_dropped} "
+                f"national/state rows used for reconciliation"
+            )
+            df = df.drop(index=rows_to_drop).reset_index(drop=True)
+
+        return df
+
     def print_uprating_summary(self, targets_df: pd.DataFrame) -> None:
         """Print summary of uprating applied to targets."""
         uprated = targets_df[targets_df["uprating_factor"] != 1.0]
@@ -449,6 +671,7 @@ class SparseMatrixBuilder:
         self,
         sim,
         target_filter: dict,
+        hierarchical_domains: Optional[List[str]] = None,
     ) -> Tuple[pd.DataFrame, sparse.csr_matrix, Dict[str, List[str]]]:
         """
         Build sparse calibration matrix.
@@ -458,8 +681,12 @@ class SparseMatrixBuilder:
                 as template)
             target_filter: Dict specifying which targets to include
                 - {"stratum_group_ids": [4]} for SNAP targets
+                - {"domain_variables": ["aca_ptc"]} via target_overview
                 - {"target_ids": [123, 456]} for specific targets
                 - an empty dict {} will fetch all targets
+            hierarchical_domains: Optional list of domain_variable
+                names for state-level uprating + CD reconciliation.
+                Requires domain_variables in target_filter.
 
         Returns:
             Tuple of (targets_df, X_sparse, household_id_mapping)
@@ -476,9 +703,11 @@ class SparseMatrixBuilder:
         if len(targets_df) == 0:
             raise ValueError("No targets found matching filter")
 
-        targets_df["geographic_id"] = targets_df["stratum_id"].apply(
-            self._get_geographic_id
-        )
+        use_overview = "domain_variables" in target_filter
+        if not use_overview:
+            targets_df["geographic_id"] = targets_df["stratum_id"].apply(
+                self._get_geographic_id
+            )
 
         # Uprate targets from their original period to self.time_period
         params = sim.tax_benefit_system.parameters
@@ -493,6 +722,12 @@ class SparseMatrixBuilder:
         targets_df["value"] = (
             targets_df["original_value"] * targets_df["uprating_factor"]
         )
+
+        # Hierarchical uprating: state-level uprating + CD reconciliation
+        if hierarchical_domains:
+            targets_df = self._apply_hierarchical_uprating(
+                targets_df, hierarchical_domains, uprating_factors
+            )
 
         n_targets = len(targets_df)
 

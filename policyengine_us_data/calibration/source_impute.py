@@ -815,7 +815,9 @@ def _impute_scf(
             data[var] = {time_period: hh_vals}
             logger.info(
                 "  %s: person(%d) -> household(%d)",
-                var, len(person_vals), len(hh_vals),
+                var,
+                len(person_vals),
+                len(hh_vals),
             )
         else:
             data[var] = {time_period: person_vals}

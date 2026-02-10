@@ -272,9 +272,7 @@ def fit_l0_weights(
     try:
         from l0.calibration import SparseCalibrationWeights
     except ImportError:
-        raise ImportError(
-            "l0-python required. Install: pip install l0-python"
-        )
+        raise ImportError("l0-python required. Install: pip install l0-python")
 
     import torch
 

@@ -433,7 +433,7 @@ def load_misc_national(engine, time_period, root_stratum_id):
                         "value": str(hi),
                     },
                     {
-                        "constraint_variable": "total_income_tax",
+                        "constraint_variable": "income_tax",
                         "operation": ">",
                         "value": "0",
                     },

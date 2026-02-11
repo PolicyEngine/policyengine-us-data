@@ -426,9 +426,7 @@ class SparseMatrixBuilder:
             {state_fips_int: {"tax_unit_count": vol_mult,
                               "aca_ptc": vol_mult * val_mult}}
         """
-        csv_path = (
-            STORAGE_FOLDER / "aca_ptc_multipliers_2022_2024.csv"
-        )
+        csv_path = STORAGE_FOLDER / "aca_ptc_multipliers_2022_2024.csv"
         df = pd.read_csv(csv_path)
         result = {}
         for _, row in df.iterrows():

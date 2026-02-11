@@ -274,26 +274,24 @@ class TestHierarchicalUprating(unittest.TestCase):
         return builder, df, factors
 
     def test_cd_sums_match_uprated_state_totals(self):
-        """After reconciliation, CD sums must equal uprated state."""
+        """After reconciliation, CD sums must equal state * UF."""
         builder, df, factors = self._get_targets_with_uprating(
             cpi_factor=1.1, pop_factor=1.02
         )
-        # Before hierarchical: store expected state totals
-        state_ca_aca = 6000.0 * 1.1
-        state_nc_aca = 4000.0 * 1.1
-        state_ca_tu = 300.0 * 1.02
-        state_nc_tu = 200.0 * 1.02
 
         result = builder._apply_hierarchical_uprating(df, ["aca_ptc"], factors)
 
-        # Only district rows should remain for aca_ptc domain
-        # (plus CMS person_count at national)
-        for var, state_fips, expected_total in [
-            ("aca_ptc", 6, state_ca_aca),
-            ("aca_ptc", 37, state_nc_aca),
-            ("tax_unit_count", 6, state_ca_tu),
-            ("tax_unit_count", 37, state_nc_tu),
+        # Get the CSV-based uprating factors used
+        csv_factors = builder._load_aca_ptc_factors()
+
+        # Expected: state_original * csv_factor
+        for var, state_fips, state_original in [
+            ("aca_ptc", 6, 6000.0),
+            ("aca_ptc", 37, 4000.0),
+            ("tax_unit_count", 6, 300.0),
+            ("tax_unit_count", 37, 200.0),
         ]:
+            expected_total = state_original * csv_factors[state_fips][var]
             cd_rows = result[
                 (result["variable"] == var)
                 & (result["geo_level"] == "district")
@@ -337,8 +335,8 @@ class TestHierarchicalUprating(unittest.TestCase):
         self.assertEqual(len(cms), 1)
         self.assertAlmostEqual(cms.iloc[0]["value"], 19743689.0, places=0)
 
-    def test_reconciliation_factor_column(self):
-        """Diagnostic reconciliation_factor column is populated."""
+    def test_hif_and_uprating_columns(self):
+        """Diagnostic hif and state_uprating_factor columns populated."""
         builder, df, factors = self._get_targets_with_uprating(cpi_factor=1.1)
         result = builder._apply_hierarchical_uprating(df, ["aca_ptc"], factors)
 
@@ -346,14 +344,17 @@ class TestHierarchicalUprating(unittest.TestCase):
             (result["variable"] == "aca_ptc")
             & (result["geo_level"] == "district")
         ]
-        self.assertTrue(cd_aca["reconciliation_factor"].notna().all())
+        self.assertTrue(cd_aca["hif"].notna().all())
+        self.assertTrue(cd_aca["state_uprating_factor"].notna().all())
 
-    def test_uniform_reconciliation_with_uniform_uprating(self):
-        """With uniform national factors, recon factor == CPI factor."""
-        cpi_factor = 1.15
-        builder, df, factors = self._get_targets_with_uprating(
-            cpi_factor=cpi_factor
-        )
+    def test_hif_is_one_when_cds_sum_to_state(self):
+        """HIF == 1.0 when CDs already sum to state total.
+
+        The uprating factor now comes from the CSV (state-specific),
+        not from national CPI, so we just check HIF and that a
+        nonzero uprating factor is set.
+        """
+        builder, df, factors = self._get_targets_with_uprating(cpi_factor=1.15)
         result = builder._apply_hierarchical_uprating(df, ["aca_ptc"], factors)
 
         cd_aca = result[
@@ -362,12 +363,20 @@ class TestHierarchicalUprating(unittest.TestCase):
         ]
         for _, row in cd_aca.iterrows():
             self.assertAlmostEqual(
-                row["reconciliation_factor"],
-                cpi_factor,
+                row["hif"],
+                1.0,
                 places=6,
                 msg=(
-                    f"CD {row['geographic_id']} recon factor "
-                    f"should equal CPI factor"
+                    f"CD {row['geographic_id']} HIF "
+                    f"should be 1.0 (CDs sum to state)"
+                ),
+            )
+            self.assertGreater(
+                row["state_uprating_factor"],
+                0,
+                msg=(
+                    f"CD {row['geographic_id']} should "
+                    f"have a positive uprating factor"
                 ),
             )
 
@@ -418,7 +427,8 @@ class TestGetStateUpratingFactors(unittest.TestCase):
     def tearDownClass(cls):
         os.unlink(cls.db_path)
 
-    def test_returns_uniform_factors(self):
+    def test_aca_ptc_uses_csv_factors(self):
+        """aca_ptc domain loads real state-level factors from CSV."""
         builder = SparseMatrixBuilder(
             db_uri=self.db_uri,
             time_period=2024,
@@ -435,17 +445,75 @@ class TestGetStateUpratingFactors(unittest.TestCase):
             "aca_ptc", df, national_factors
         )
 
-        # Should have factors for state 6 (CA) and 37 (NC)
         self.assertIn(6, result)
         self.assertIn(37, result)
 
-        # aca_ptc is dollar -> CPI factor
-        self.assertAlmostEqual(result[6]["aca_ptc"], 1.08)
-        self.assertAlmostEqual(result[37]["aca_ptc"], 1.08)
+        # CA: vol_mult ~1.0554, val_mult ~1.1460
+        # aca_ptc factor = vol_mult * val_mult
+        self.assertAlmostEqual(
+            result[6]["aca_ptc"],
+            1.0554375137756227 * 1.1459694989106755,
+            places=5,
+        )
+        # tax_unit_count factor = vol_mult only
+        self.assertAlmostEqual(
+            result[6]["tax_unit_count"], 1.0554375137756227, places=5
+        )
 
-        # tax_unit_count is count -> pop factor
-        self.assertAlmostEqual(result[6]["tax_unit_count"], 1.015)
-        self.assertAlmostEqual(result[37]["tax_unit_count"], 1.015)
+        # NC: vol_mult ~1.4784, val_mult ~0.9571
+        self.assertAlmostEqual(
+            result[37]["aca_ptc"],
+            1.4784049241899557 * 0.9571183533447685,
+            places=5,
+        )
+        self.assertAlmostEqual(
+            result[37]["tax_unit_count"], 1.4784049241899557, places=5
+        )
+
+    def test_non_aca_domain_uses_national_factors(self):
+        """Non-aca_ptc domains fall back to national CPI/pop factors."""
+        builder = SparseMatrixBuilder(
+            db_uri=self.db_uri,
+            time_period=2024,
+            cds_to_calibrate=["601"],
+        )
+        # Build a fake targets_df with domain="snap"
+        df = pd.DataFrame(
+            [
+                {
+                    "domain_variable": "snap",
+                    "geo_level": "state",
+                    "geographic_id": "6",
+                    "variable": "snap",
+                    "period": 2022,
+                    "value": 1000.0,
+                    "original_value": 1000.0,
+                },
+                {
+                    "domain_variable": "snap",
+                    "geo_level": "state",
+                    "geographic_id": "6",
+                    "variable": "household_count",
+                    "period": 2022,
+                    "value": 500.0,
+                    "original_value": 500.0,
+                },
+            ]
+        )
+        national_factors = {
+            (2022, "cpi"): 1.08,
+            (2022, "pop"): 1.015,
+        }
+
+        result = builder._get_state_uprating_factors(
+            "snap", df, national_factors
+        )
+
+        self.assertIn(6, result)
+        # snap is dollar -> CPI
+        self.assertAlmostEqual(result[6]["snap"], 1.08)
+        # household_count -> pop
+        self.assertAlmostEqual(result[6]["household_count"], 1.015)
 
 
 if __name__ == "__main__":

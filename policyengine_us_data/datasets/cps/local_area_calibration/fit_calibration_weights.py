@@ -36,8 +36,15 @@ import numpy as np
 import pandas as pd
 from policyengine_us import Microsimulation
 from policyengine_us_data.storage import STORAGE_FOLDER
-from sparse_matrix_builder import SparseMatrixBuilder
-from calibration_utils import get_all_cds_from_database
+from policyengine_us_data.datasets.cps.local_area_calibration.sparse_matrix_builder import (
+    SparseMatrixBuilder,
+)
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+    get_all_cds_from_database,
+)
+from policyengine_us_data.datasets.cps.local_area_calibration.matrix_tracer import (
+    MatrixTracer,
+)
 
 try:
     import torch
@@ -54,6 +61,13 @@ except ImportError:
 DEVICE = args.device
 TOTAL_EPOCHS = args.epochs
 EPOCHS_PER_CHUNK = 500  # TODO: need a better way to set this. Remember it can blow up the Vercel app
+
+# Groups to exclude from the matrix (by group ID from tracer output).
+# Set to [] to keep all groups. Review tracer.print_matrix_structure()
+# output to decide. E.g., drop state-level rows that are linearly
+# redundant with reconciled district rows — or keep them to steer
+# the optimizer.
+GROUPS_TO_EXCLUDE = [1]  # drop state SNAP HH counts (redundant with Group 4)
 
 # Hyperparameters
 BETA = 0.35
@@ -107,17 +121,38 @@ targets_df, X_sparse, household_id_mapping = builder.build_matrix(
     target_filter={
         "domain_variables": ["aca_ptc", "snap"],
     },
-    hierarchical_domains=["aca_ptc"],
+    hierarchical_domains=["aca_ptc", "snap"],
 )
 
 builder.print_uprating_summary(targets_df)
+
+tracer = MatrixTracer(
+    targets_df, X_sparse, household_id_mapping, cds_to_calibrate, sim
+)
+tracer.print_matrix_structure()
 
 print(f"\nMatrix shape: {X_sparse.shape}")
 print(f"Targets: {len(targets_df)}")
 
 # ============================================================================
-# STEP 2: FILTER TO ACHIEVABLE TARGETS
+# STEP 2: FILTER GROUPS AND ACHIEVABLE TARGETS
 # ============================================================================
+if GROUPS_TO_EXCLUDE:
+    keep_mask = ~np.isin(tracer.target_groups, GROUPS_TO_EXCLUDE)
+    n_dropped = (~keep_mask).sum()
+    print("\n" + "=" * 60)
+    print("GROUP EXCLUSION")
+    print("=" * 60)
+    print(
+        f"Excluding groups {GROUPS_TO_EXCLUDE}: "
+        f"dropping {n_dropped} of {len(targets_df)} rows"
+    )
+    targets_df = targets_df[keep_mask].reset_index(drop=True)
+    X_sparse = X_sparse[keep_mask, :]
+    print(f"Matrix after exclusion: {X_sparse.shape}")
+else:
+    print("\nNo groups excluded (GROUPS_TO_EXCLUDE is empty)")
+
 # Filter to achievable targets (rows with non-zero data)
 row_sums = np.array(X_sparse.sum(axis=1)).flatten()
 achievable_mask = row_sums > 0

@@ -339,16 +339,26 @@ def create_target_groups(
         level_name = geo_level_names.get(level, f"Level {level}")
         print(f"\n{level_name} targets:")
 
-        # Get unique variables at this level
+        # Get unique (domain_variable, variable) pairs at this level
         level_df = targets_df[level_mask & ~processed_mask]
-        unique_vars = sorted(level_df["variable"].unique())
+        has_domain = "domain_variable" in level_df.columns
+        if has_domain:
+            pairs = sorted(
+                level_df[["domain_variable", "variable"]]
+                .drop_duplicates()
+                .itertuples(index=False, name=None)
+            )
+        else:
+            pairs = [(None, v) for v in sorted(level_df["variable"].unique())]
 
-        for var_name in unique_vars:
+        for domain_var, var_name in pairs:
             var_mask = (
                 (targets_df["variable"] == var_name)
                 & level_mask
                 & ~processed_mask
             )
+            if has_domain and domain_var is not None:
+                var_mask &= targets_df["domain_variable"] == domain_var
 
             if not var_mask.any():
                 continue
@@ -360,18 +370,13 @@ def create_target_groups(
             target_groups[var_mask] = group_id
             processed_mask |= var_mask
 
-            # Create descriptive label
-            domain_var = (
-                matching.get("domain_variable", pd.Series([None])).iloc[0]
-                if "domain_variable" in matching.columns
-                else None
-            )
-            if var_name == "household_count" and domain_var == "snap":
-                label = "SNAP Household Count"
-            elif var_name == "snap":
-                label = "Snap"
+            # Create descriptive label using domain_variable for context
+            var_label = var_name.replace("_", " ").title()
+            if domain_var and domain_var != var_name:
+                domain_label = domain_var.replace("_", " ").upper()
+                label = f"{domain_label} {var_label}"
             else:
-                label = var_name.replace("_", " ").title()
+                label = var_label
 
             # Format output based on level and count
             if n_targets == 1:

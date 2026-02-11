@@ -16,6 +16,8 @@ from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
 
+from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.census import STATE_NAME_TO_FIPS
 from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     get_calculated_variables,
     apply_op,
@@ -417,6 +419,29 @@ class SparseMatrixBuilder:
         factor = factors.get((period, uprating_type), 1.0)
         return factor, uprating_type
 
+    def _load_aca_ptc_factors(self) -> Dict[int, Dict[str, float]]:
+        """Load state-level ACA PTC uprating factors from CSV.
+
+        Returns:
+            {state_fips_int: {"tax_unit_count": vol_mult,
+                              "aca_ptc": vol_mult * val_mult}}
+        """
+        csv_path = (
+            STORAGE_FOLDER / "aca_ptc_multipliers_2022_2024.csv"
+        )
+        df = pd.read_csv(csv_path)
+        result = {}
+        for _, row in df.iterrows():
+            fips_str = STATE_NAME_TO_FIPS.get(row["state"])
+            if fips_str is None:
+                continue
+            fips_int = int(fips_str)
+            result[fips_int] = {
+                "tax_unit_count": row["vol_mult"],
+                "aca_ptc": row["vol_mult"] * row["val_mult"],
+            }
+        return result
+
     def _get_state_uprating_factors(
         self,
         domain: str,
@@ -425,9 +450,9 @@ class SparseMatrixBuilder:
     ) -> Dict[int, Dict[str, float]]:
         """Get per-state uprating factors for a hierarchical domain.
 
-        For now returns uniform national CPI/pop factors for every
-        state. Designed as the single point to swap in real
-        state-level data later.
+        For aca_ptc: loads real state-level enrollment/APTC factors
+        from CSV. For other domains: returns uniform national CPI/pop
+        factors.
 
         Returns:
             {state_fips: {variable: factor}} for each state in the
@@ -440,24 +465,54 @@ class SparseMatrixBuilder:
         state_fips_list = state_rows["geographic_id"].unique()
         variables = state_rows["variable"].unique()
 
+        if domain == "aca_ptc":
+            csv_factors = self._load_aca_ptc_factors()
+            logger.info(
+                f"  [{domain}] Using CSV state-level factors "
+                f"({len(csv_factors)} states)"
+            )
+        else:
+            csv_factors = None
+            logger.info(f"  [{domain}] Using national CPI/pop factors")
+
         result = {}
+        n_csv = 0
+        n_fallback = 0
         for sf in state_fips_list:
             state_int = int(sf)
             var_factors = {}
-            for var in variables:
-                row = state_rows[
-                    (state_rows["geographic_id"] == sf)
-                    & (state_rows["variable"] == var)
-                ]
-                if row.empty:
-                    var_factors[var] = 1.0
-                    continue
-                period = row.iloc[0]["period"]
-                factor, _ = self._get_uprating_info(
-                    var, period, national_factors
-                )
-                var_factors[var] = factor
+
+            if csv_factors and state_int in csv_factors:
+                n_csv += 1
+                for var in variables:
+                    var_factors[var] = csv_factors[state_int].get(var, 1.0)
+            else:
+                n_fallback += 1
+                for var in variables:
+                    row = state_rows[
+                        (state_rows["geographic_id"] == sf)
+                        & (state_rows["variable"] == var)
+                    ]
+                    if row.empty:
+                        var_factors[var] = 1.0
+                        continue
+                    period = row.iloc[0]["period"]
+                    factor, _ = self._get_uprating_info(
+                        var, period, national_factors
+                    )
+                    var_factors[var] = factor
+
             result[state_int] = var_factors
+
+        if csv_factors:
+            all_factors = [f for vf in result.values() for f in vf.values()]
+            logger.info(
+                f"    {n_csv} states from CSV, "
+                f"{n_fallback} national fallback"
+            )
+            for var in variables:
+                vf = [result[s][var] for s in result]
+                logger.info(f"    {var}: [{min(vf):.4f}, {max(vf):.4f}]")
 
         return result
 
@@ -469,19 +524,23 @@ class SparseMatrixBuilder:
     ) -> pd.DataFrame:
         """Apply state-level uprating and reconcile CDs to state totals.
 
-        For each hierarchical domain:
-        1. Uprate state-level targets using per-state factors
-        2. Reconcile CD targets so they sum to uprated state totals
-        3. Drop national and state rows that were used for
-           reconciliation (keep rows like CMS person_count that are
-           at period == self.time_period)
+        Two separable factors per CD row:
+        - hif (hierarchy inconsistency factor): base-year correction
+          so that sum(CDs) == state total in the source data.
+          hif = state_original / sum(cd_originals). Pure geometry,
+          no time dimension.
+        - uprating_factor: state-specific (or national fallback)
+          scaling from base year to target year. Pure time, no
+          geography correction.
 
-        Returns modified targets_df with only CD-level rows for
-        hierarchical domains.
+        Final CD value = original_value * hif * uprating_factor.
+
+        Also drops national/state rows used for reconciliation
+        (keeps rows like CMS person_count at period == time_period).
         """
         df = targets_df.copy()
+        df["hif"] = np.nan
         df["state_uprating_factor"] = np.nan
-        df["reconciliation_factor"] = np.nan
 
         rows_to_drop = []
 
@@ -492,21 +551,11 @@ class SparseMatrixBuilder:
                 domain, df, national_factors
             )
 
-            # Uprate state rows
             state_mask = domain_mask & (df["geo_level"] == "state")
-            for idx in df[state_mask].index:
-                row = df.loc[idx]
-                sf = int(row["geographic_id"])
-                var = row["variable"]
-                factor = state_factors.get(sf, {}).get(var, 1.0)
-                df.at[idx, "value"] = row["original_value"] * factor
-                df.at[idx, "state_uprating_factor"] = factor
-
-            # Reconcile CDs to uprated state totals
             district_mask = domain_mask & (df["geo_level"] == "district")
+
             for sf, var_factors in state_factors.items():
-                for var in var_factors:
-                    # Get uprated state total
+                for var, uf in var_factors.items():
                     state_row = df[
                         state_mask
                         & (df["geographic_id"] == str(sf))
@@ -514,11 +563,8 @@ class SparseMatrixBuilder:
                     ]
                     if state_row.empty:
                         continue
-                    uprated_state_total = state_row.iloc[0]["value"]
+                    state_original = state_row.iloc[0]["original_value"]
 
-                    # Get CD rows for this state+variable
-                    # Safe int conversion: non-numeric IDs (e.g. "US")
-                    # return False
                     def _cd_in_state(g, s=sf):
                         try:
                             return int(g) // 100 == s
@@ -538,15 +584,30 @@ class SparseMatrixBuilder:
                     if cd_original_sum == 0:
                         continue
 
-                    recon_factor = uprated_state_total / cd_original_sum
-                    for cd_idx in cd_rows.index:
-                        df.at[cd_idx, "value"] = (
-                            df.at[cd_idx, "original_value"] * recon_factor
-                        )
-                        df.at[cd_idx, "reconciliation_factor"] = recon_factor
+                    hif = state_original / cd_original_sum
 
-            # Determine which national/state rows to drop:
-            # Drop rows used for reconciliation (period != time_period)
+                    for cd_idx in cd_rows.index:
+                        df.at[cd_idx, "hif"] = hif
+                        df.at[cd_idx, "state_uprating_factor"] = uf
+                        df.at[cd_idx, "value"] = (
+                            df.at[cd_idx, "original_value"] * hif * uf
+                        )
+
+            # Log HIF and UF summary for this domain
+            cd_domain = df[district_mask & df["hif"].notna()]
+            if not cd_domain.empty:
+                for var in cd_domain["variable"].unique():
+                    vrows = cd_domain[cd_domain["variable"] == var]
+                    hifs = vrows["hif"]
+                    ufs = vrows["state_uprating_factor"]
+                    logger.info(
+                        f"  [{domain}] {var}: "
+                        f"{len(vrows)} CDs, "
+                        f"HIF=[{hifs.min():.4f}, {hifs.max():.4f}], "
+                        f"UF=[{ufs.min():.4f}, {ufs.max():.4f}]"
+                    )
+
+            # Drop national/state rows used for reconciliation
             # Keep rows like CMS person_count (period == time_period)
             national_mask = domain_mask & (df["geo_level"] == "national")
             for idx in df[national_mask | state_mask].index:
@@ -555,18 +616,39 @@ class SparseMatrixBuilder:
                     rows_to_drop.append(idx)
 
         if rows_to_drop:
-            n_dropped = len(rows_to_drop)
+            dropped = df.loc[rows_to_drop]
             logger.info(
-                f"Hierarchical uprating: dropping {n_dropped} "
-                f"national/state rows used for reconciliation"
+                f"Hierarchical uprating: dropping "
+                f"{len(rows_to_drop)} national/state rows "
+                f"(used only for reconciliation)"
             )
+            for domain in hierarchical_domains:
+                d = dropped[dropped["domain_variable"] == domain]
+                if d.empty:
+                    continue
+                by_level = d["geo_level"].value_counts().to_dict()
+                parts = [f"{n} {lvl}" for lvl, n in sorted(by_level.items())]
+                logger.info(f"    {domain}: {', '.join(parts)}")
             df = df.drop(index=rows_to_drop).reset_index(drop=True)
+
+        df["target_period"] = self.time_period
 
         return df
 
     def print_uprating_summary(self, targets_df: pd.DataFrame) -> None:
         """Print summary of uprating applied to targets."""
-        uprated = targets_df[targets_df["uprating_factor"] != 1.0]
+        has_state_uf = "state_uprating_factor" in targets_df.columns
+
+        # Effective factor: use state_uprating_factor where set,
+        # otherwise fall back to uprating_factor
+        if has_state_uf:
+            eff = targets_df["state_uprating_factor"].fillna(
+                targets_df["uprating_factor"]
+            )
+        else:
+            eff = targets_df["uprating_factor"]
+
+        uprated = targets_df[eff != 1.0]
         if len(uprated) == 0:
             print("No targets were uprated.")
             return
@@ -580,7 +662,7 @@ class SparseMatrixBuilder:
         for period, count in period_counts.items():
             print(f"  Period {period}: {count} targets")
 
-        factors = uprated["uprating_factor"]
+        factors = eff[eff != 1.0]
         print(
             f"  Factor range: [{factors.min():.4f}, " f"{factors.max():.4f}]"
         )

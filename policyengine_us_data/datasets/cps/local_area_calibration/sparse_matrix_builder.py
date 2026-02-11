@@ -250,78 +250,15 @@ class SparseMatrixBuilder:
         )
 
     def _query_targets(self, target_filter: dict) -> pd.DataFrame:
-        """Query targets, selecting best period per (stratum_id, variable).
+        """Query targets via target_overview view.
 
         Best period: most recent period <= self.time_period, or closest
         future period if none exists.
 
-        Supports two query paths:
-        - domain_variables: queries the target_overview view (returns
-          geo_level, geographic_id, domain_variable columns directly)
-        - stratum_group_ids/variables/target_ids/stratum_ids: queries
-          targets JOIN strata (legacy path)
+        Supports filters: domain_variables, variables, target_ids,
+        stratum_ids.
         """
-        use_overview = "domain_variables" in target_filter
-
-        if use_overview:
-            return self._query_targets_overview(target_filter)
-
-        or_conditions = []
-
-        if "stratum_group_ids" in target_filter:
-            ids = ",".join(map(str, target_filter["stratum_group_ids"]))
-            or_conditions.append(f"s.stratum_group_id IN ({ids})")
-
-        if "variables" in target_filter:
-            vars_str = ",".join(f"'{v}'" for v in target_filter["variables"])
-            or_conditions.append(f"t.variable IN ({vars_str})")
-
-        if "target_ids" in target_filter:
-            ids = ",".join(map(str, target_filter["target_ids"]))
-            or_conditions.append(f"t.target_id IN ({ids})")
-
-        if "stratum_ids" in target_filter:
-            ids = ",".join(map(str, target_filter["stratum_ids"]))
-            or_conditions.append(f"t.stratum_id IN ({ids})")
-
-        if not or_conditions:
-            where_clause = "1=1"
-        else:
-            where_clause = " OR ".join(f"({c})" for c in or_conditions)
-
-        query = f"""
-        WITH filtered_targets AS (
-            SELECT t.target_id, t.stratum_id, t.variable, t.value,
-                   t.period, s.stratum_group_id
-            FROM targets t
-            JOIN strata s ON t.stratum_id = s.stratum_id
-            WHERE {where_clause}
-        ),
-        best_periods AS (
-            SELECT stratum_id, variable,
-                CASE
-                    WHEN MAX(CASE WHEN period <= :time_period
-                             THEN period END) IS NOT NULL
-                    THEN MAX(CASE WHEN period <= :time_period
-                             THEN period END)
-                    ELSE MIN(period)
-                END as best_period
-            FROM filtered_targets
-            GROUP BY stratum_id, variable
-        )
-        SELECT ft.*
-        FROM filtered_targets ft
-        JOIN best_periods bp
-            ON ft.stratum_id = bp.stratum_id
-            AND ft.variable = bp.variable
-            AND ft.period = bp.best_period
-        ORDER BY ft.target_id
-        """
-
-        with self.engine.connect() as conn:
-            return pd.read_sql(
-                query, conn, params={"time_period": self.time_period}
-            )
+        return self._query_targets_overview(target_filter)
 
     def _query_targets_overview(self, target_filter: dict) -> pd.DataFrame:
         """Query targets via target_overview view.
@@ -680,7 +617,6 @@ class SparseMatrixBuilder:
             sim: Microsimulation instance (used for household_ids, or
                 as template)
             target_filter: Dict specifying which targets to include
-                - {"stratum_group_ids": [4]} for SNAP targets
                 - {"domain_variables": ["aca_ptc"]} via target_overview
                 - {"target_ids": [123, 456]} for specific targets
                 - an empty dict {} will fetch all targets
@@ -702,12 +638,6 @@ class SparseMatrixBuilder:
 
         if len(targets_df) == 0:
             raise ValueError("No targets found matching filter")
-
-        use_overview = "domain_variables" in target_filter
-        if not use_overview:
-            targets_df["geographic_id"] = targets_df["stratum_id"].apply(
-                self._get_geographic_id
-            )
 
         # Uprate targets from their original period to self.time_period
         params = sim.tax_benefit_system.parameters

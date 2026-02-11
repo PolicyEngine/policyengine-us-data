@@ -27,18 +27,7 @@ class TestPeriodSelectionAndUprating(unittest.TestCase):
 
         with engine.connect() as conn:
             conn.execute(
-                text(
-                    "CREATE TABLE stratum_groups ("
-                    "stratum_group_id INTEGER PRIMARY KEY, "
-                    "name TEXT)"
-                )
-            )
-            conn.execute(
-                text(
-                    "CREATE TABLE strata ("
-                    "stratum_id INTEGER PRIMARY KEY, "
-                    "stratum_group_id INTEGER)"
-                )
+                text("CREATE TABLE strata (" "stratum_id INTEGER PRIMARY KEY)")
             )
             conn.execute(
                 text(
@@ -60,6 +49,59 @@ class TestPeriodSelectionAndUprating(unittest.TestCase):
                     "period INTEGER)"
                 )
             )
+
+            # Create the target_overview view (matches production schema)
+            conn.execute(text("""
+                CREATE VIEW target_overview AS
+                SELECT
+                    t.target_id,
+                    t.stratum_id,
+                    t.variable,
+                    t.value,
+                    t.period,
+                    1 as active,
+                    CASE
+                        WHEN MAX(CASE
+                            WHEN sc.constraint_variable
+                                = 'congressional_district_geoid'
+                                THEN 1
+                            WHEN sc.constraint_variable = 'ucgid_str'
+                                AND length(sc.value) = 13 THEN 1
+                            ELSE 0 END) = 1 THEN 'district'
+                        WHEN MAX(CASE
+                            WHEN sc.constraint_variable = 'state_fips'
+                                THEN 1
+                            WHEN sc.constraint_variable = 'ucgid_str'
+                                AND length(sc.value) = 11 THEN 1
+                            ELSE 0 END) = 1 THEN 'state'
+                        ELSE 'national'
+                    END AS geo_level,
+                    COALESCE(
+                        MAX(CASE
+                            WHEN sc.constraint_variable
+                                = 'congressional_district_geoid'
+                            THEN sc.value END),
+                        MAX(CASE
+                            WHEN sc.constraint_variable = 'state_fips'
+                            THEN sc.value END),
+                        MAX(CASE
+                            WHEN sc.constraint_variable = 'ucgid_str'
+                            THEN sc.value END),
+                        'US'
+                    ) AS geographic_id,
+                    GROUP_CONCAT(DISTINCT CASE
+                        WHEN sc.constraint_variable NOT IN (
+                            'state_fips',
+                            'congressional_district_geoid',
+                            'tax_unit_is_filer', 'ucgid_str'
+                        ) THEN sc.constraint_variable
+                    END) AS domain_variable
+                FROM targets t
+                LEFT JOIN stratum_constraints sc
+                    ON t.stratum_id = sc.stratum_id
+                GROUP BY t.target_id, t.stratum_id, t.variable,
+                         t.value, t.period
+                """))
             conn.commit()
 
     @classmethod
@@ -72,22 +114,15 @@ class TestPeriodSelectionAndUprating(unittest.TestCase):
             conn.execute(text("DELETE FROM targets"))
             conn.execute(text("DELETE FROM stratum_constraints"))
             conn.execute(text("DELETE FROM strata"))
-            conn.execute(text("DELETE FROM stratum_groups"))
             conn.commit()
 
     def _insert_test_data(self, strata, constraints, targets):
         engine = create_engine(self.db_uri)
         with engine.connect() as conn:
-            conn.execute(
-                text(
-                    "INSERT OR IGNORE INTO stratum_groups "
-                    "VALUES (1, 'test')"
-                )
-            )
             for stratum_id, group_id in strata:
                 conn.execute(
-                    text("INSERT INTO strata VALUES (:sid, :gid)"),
-                    {"sid": stratum_id, "gid": group_id},
+                    text("INSERT INTO strata VALUES (:sid)"),
+                    {"sid": stratum_id},
                 )
             for i, (stratum_id, var, op, val) in enumerate(constraints):
                 conn.execute(
@@ -146,7 +181,7 @@ class TestPeriodSelectionAndUprating(unittest.TestCase):
             ],
         )
         builder = self._make_builder(time_period=2024)
-        df = builder._query_targets({"stratum_group_ids": [1]})
+        df = builder._query_targets({"stratum_ids": [1]})
         self.assertEqual(len(df), 1)
         self.assertEqual(df.iloc[0]["period"], 2022)
         self.assertEqual(df.iloc[0]["value"], 1000)
@@ -163,7 +198,7 @@ class TestPeriodSelectionAndUprating(unittest.TestCase):
             ],
         )
         builder = self._make_builder(time_period=2024)
-        df = builder._query_targets({"stratum_group_ids": [1]})
+        df = builder._query_targets({"stratum_ids": [1]})
         self.assertEqual(len(df), 1)
         self.assertEqual(df.iloc[0]["period"], 2026)
 
@@ -181,7 +216,7 @@ class TestPeriodSelectionAndUprating(unittest.TestCase):
             ],
         )
         builder = self._make_builder(time_period=2024)
-        df = builder._query_targets({"stratum_group_ids": [1]})
+        df = builder._query_targets({"stratum_ids": [1]})
         self.assertEqual(len(df), 1)
         self.assertEqual(df.iloc[0]["period"], 2024)
         self.assertEqual(df.iloc[0]["value"], 1500)
@@ -202,7 +237,7 @@ class TestPeriodSelectionAndUprating(unittest.TestCase):
             ],
         )
         builder = self._make_builder(time_period=2024)
-        df = builder._query_targets({"stratum_group_ids": [1]})
+        df = builder._query_targets({"stratum_ids": [1, 2]})
         self.assertEqual(len(df), 2)
         snap_row = df[df["variable"] == "snap"].iloc[0]
         self.assertEqual(snap_row["period"], 2024)

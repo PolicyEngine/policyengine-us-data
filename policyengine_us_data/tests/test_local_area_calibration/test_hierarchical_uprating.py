@@ -20,18 +20,7 @@ def _create_test_db(db_path):
 
     with engine.connect() as conn:
         conn.execute(
-            text(
-                "CREATE TABLE stratum_groups ("
-                "stratum_group_id INTEGER PRIMARY KEY, "
-                "name TEXT)"
-            )
-        )
-        conn.execute(
-            text(
-                "CREATE TABLE strata ("
-                "stratum_id INTEGER PRIMARY KEY, "
-                "stratum_group_id INTEGER)"
-            )
+            text("CREATE TABLE strata (" "stratum_id INTEGER PRIMARY KEY)")
         )
         conn.execute(
             text(
@@ -122,28 +111,14 @@ def _insert_aca_ptc_data(engine):
     One CMS national person_count at period=2024.
     """
     with engine.connect() as conn:
-        conn.execute(
-            text("INSERT INTO stratum_groups VALUES " "(1, 'aca_ptc')")
-        )
-
         # Strata: national(1), state CA(2), state NC(3),
         # CDs: 601(4), 602(5), 603(6), 3701(7), 3702(8)
         # CMS national(9)
-        strata = [
-            (1, 1),
-            (2, 1),
-            (3, 1),
-            (4, 1),
-            (5, 1),
-            (6, 1),
-            (7, 1),
-            (8, 1),
-            (9, 1),
-        ]
-        for sid, gid in strata:
+        strata = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+        for sid in strata:
             conn.execute(
-                text("INSERT INTO strata VALUES (:sid, :gid)"),
-                {"sid": sid, "gid": gid},
+                text("INSERT INTO strata VALUES (:sid)"),
+                {"sid": sid},
             )
 
         # Constraints

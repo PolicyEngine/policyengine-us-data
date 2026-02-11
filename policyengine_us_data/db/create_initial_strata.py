@@ -144,7 +144,6 @@ def main():
         us_stratum = Stratum(
             parent_stratum_id=None,
             notes="United States",
-            stratum_group_id=1,
         )
         us_stratum.constraints_rel = []  # No constraints for national level
         session.add(us_stratum)
@@ -163,7 +162,6 @@ def main():
             state_stratum = Stratum(
                 parent_stratum_id=us_stratum_id,
                 notes=state_name,
-                stratum_group_id=1,
             )
             state_stratum.constraints_rel = [
                 StratumConstraint(
@@ -185,7 +183,6 @@ def main():
             cd_stratum = Stratum(
                 parent_stratum_id=state_stratum_ids[state_fips],
                 notes=f"{name} (CD GEOID {cd_geoid})",
-                stratum_group_id=1,
             )
             cd_stratum.constraints_rel = [
                 StratumConstraint(

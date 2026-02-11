@@ -174,8 +174,22 @@ def get_geographic_strata(session: Session) -> Dict:
         "district": {},
     }
 
-    stmt = select(Stratum).where(Stratum.stratum_group_id == 1)
-    geographic_strata = session.exec(stmt).unique().all()
+    # Geographic strata: those with only geographic constraints
+    # (state_fips, congressional_district_geoid) or no constraints at all
+    all_strata = session.exec(select(Stratum)).unique().all()
+    geographic_strata = []
+    for stratum in all_strata:
+        constraints = session.exec(
+            select(StratumConstraint).where(
+                StratumConstraint.stratum_id == stratum.stratum_id
+            )
+        ).all()
+        constraint_vars = {c.constraint_variable for c in constraints}
+        if constraint_vars <= {
+            "state_fips",
+            "congressional_district_geoid",
+        }:
+            geographic_strata.append(stratum)
 
     for stratum in geographic_strata:
         constraints = session.exec(

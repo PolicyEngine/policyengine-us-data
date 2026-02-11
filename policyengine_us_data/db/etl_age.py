@@ -7,18 +7,12 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
-    SourceType,
 )
 from policyengine_us_data.utils.census import get_census_docs, pull_acs_table
 from policyengine_us_data.utils.db import (
     parse_ucgid,
     get_geographic_strata,
     etl_argparser,
-)
-from policyengine_us_data.utils.db_metadata import (
-    get_or_create_source,
-    get_or_create_variable_group,
-    get_or_create_variable_metadata,
 )
 
 LABEL_TO_SHORT = {
@@ -118,40 +112,6 @@ def load_age_data(df_long, geo, year):
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
-        # Get or create the Census ACS source
-        census_source = get_or_create_source(
-            session,
-            name="Census ACS Table S0101",
-            source_type=SourceType.SURVEY,
-            vintage=f"{year} ACS 5-year estimates",
-            description="American Community Survey Age and Sex demographics",
-            url="https://data.census.gov/",
-            notes="Age distribution in 18 brackets across all geographic levels",
-        )
-
-        # Get or create the age distribution variable group
-        age_group = get_or_create_variable_group(
-            session,
-            name="age_distribution",
-            category="demographic",
-            is_histogram=True,
-            is_exclusive=True,
-            aggregation_method="sum",
-            display_order=1,
-            description="Age distribution in 18 brackets (0-4, 5-9, ..., 85+)",
-        )
-
-        # Create variable metadata for person_count
-        get_or_create_variable_metadata(
-            session,
-            variable="person_count",
-            group=age_group,
-            display_name="Population Count",
-            display_order=1,
-            units="count",
-            notes="Number of people in age bracket",
-        )
-
         # Fetch existing geographic strata
         geo_strata = get_geographic_strata(session)
 
@@ -188,7 +148,6 @@ def load_age_data(df_long, geo, year):
             existing_stratum = session.exec(
                 select(Stratum).where(
                     Stratum.parent_stratum_id == parent_stratum_id,
-                    Stratum.stratum_group_id == 2,  # Age strata group
                     Stratum.notes == note,
                 )
             ).first()
@@ -213,7 +172,6 @@ def load_age_data(df_long, geo, year):
                         variable=row["variable"],
                         period=year,
                         value=row["value"],
-                        source_id=census_source.source_id,
                         active=row["active"],
                     )
                     session.add(new_target)
@@ -221,7 +179,6 @@ def load_age_data(df_long, geo, year):
 
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=2,  # Age strata group
                 notes=note,
             )
 
@@ -272,7 +229,6 @@ def load_age_data(df_long, geo, year):
                     variable=row["variable"],
                     period=year,
                     value=row["value"],
-                    source_id=census_source.source_id,
                     active=row["active"],
                 )
             )

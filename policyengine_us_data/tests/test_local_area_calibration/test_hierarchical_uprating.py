@@ -11,6 +11,9 @@ from sqlalchemy import create_engine, text
 from policyengine_us_data.datasets.cps.local_area_calibration.sparse_matrix_builder import (
     SparseMatrixBuilder,
 )
+from policyengine_us_data.db.create_database_tables import (
+    TARGET_OVERVIEW_VIEW,
+)
 
 
 def _create_test_db(db_path):
@@ -44,58 +47,7 @@ def _create_test_db(db_path):
             )
         )
 
-        # Create the target_overview view (matches production schema)
-        conn.execute(text("""
-            CREATE VIEW target_overview AS
-            SELECT
-                t.target_id,
-                t.stratum_id,
-                t.variable,
-                t.value,
-                t.period,
-                t.active,
-                CASE
-                    WHEN MAX(CASE
-                        WHEN sc.constraint_variable
-                            = 'congressional_district_geoid'
-                            THEN 1
-                        WHEN sc.constraint_variable = 'ucgid_str'
-                            AND length(sc.value) = 13 THEN 1
-                        ELSE 0 END) = 1 THEN 'district'
-                    WHEN MAX(CASE
-                        WHEN sc.constraint_variable = 'state_fips'
-                            THEN 1
-                        WHEN sc.constraint_variable = 'ucgid_str'
-                            AND length(sc.value) = 11 THEN 1
-                        ELSE 0 END) = 1 THEN 'state'
-                    ELSE 'national'
-                END AS geo_level,
-                COALESCE(
-                    MAX(CASE
-                        WHEN sc.constraint_variable
-                            = 'congressional_district_geoid'
-                        THEN sc.value END),
-                    MAX(CASE
-                        WHEN sc.constraint_variable = 'state_fips'
-                        THEN sc.value END),
-                    MAX(CASE
-                        WHEN sc.constraint_variable = 'ucgid_str'
-                        THEN sc.value END),
-                    'US'
-                ) AS geographic_id,
-                GROUP_CONCAT(DISTINCT CASE
-                    WHEN sc.constraint_variable NOT IN (
-                        'state_fips',
-                        'congressional_district_geoid',
-                        'tax_unit_is_filer', 'ucgid_str'
-                    ) THEN sc.constraint_variable
-                END) AS domain_variable
-            FROM targets t
-            LEFT JOIN stratum_constraints sc
-                ON t.stratum_id = sc.stratum_id
-            GROUP BY t.target_id, t.stratum_id, t.variable,
-                     t.value, t.period, t.active
-            """))
+        conn.execute(text(TARGET_OVERVIEW_VIEW))
         conn.commit()
 
     return db_uri, engine
@@ -219,7 +171,7 @@ def _insert_aca_ptc_data(engine):
 
 
 class TestQueryTargetsOverview(unittest.TestCase):
-    """Test _query_targets_overview path."""
+    """Test _query_targets with target_overview view."""
 
     @classmethod
     def setUpClass(cls):

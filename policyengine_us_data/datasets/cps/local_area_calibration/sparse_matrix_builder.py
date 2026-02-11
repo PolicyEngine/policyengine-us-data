@@ -255,16 +255,11 @@ class SparseMatrixBuilder:
         Best period: most recent period <= self.time_period, or closest
         future period if none exists.
 
+        Returns DataFrame with geo_level, geographic_id, and
+        domain_variable columns.
+
         Supports filters: domain_variables, variables, target_ids,
         stratum_ids.
-        """
-        return self._query_targets_overview(target_filter)
-
-    def _query_targets_overview(self, target_filter: dict) -> pd.DataFrame:
-        """Query targets via target_overview view.
-
-        Returns DataFrame with geo_level, geographic_id, and
-        domain_variable columns populated directly from the view.
         """
         or_conditions = []
 

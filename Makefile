@@ -1,6 +1,6 @@
 .PHONY: all format test install download upload docker documentation data publish-local-area clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
 
-HF_CLONE_DIR = $(HOME)/devl/huggingface/policyengine-us-data
+HF_CLONE_DIR ?= $(HOME)/huggingface/policyengine-us-data
 
 all: data test
 
@@ -73,6 +73,7 @@ database-refresh:
 	$(MAKE) database
 
 promote-database:
+	sqlite3 policyengine_us_data/storage/calibration/policy_data.db "PRAGMA wal_checkpoint(TRUNCATE);"
 	cp policyengine_us_data/storage/calibration/policy_data.db \
 		$(HF_CLONE_DIR)/calibration/policy_data.db
 	rm -rf $(HF_CLONE_DIR)/calibration/raw_inputs

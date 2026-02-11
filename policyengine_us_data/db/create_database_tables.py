@@ -344,6 +344,67 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
     target.definition_hash = h.hexdigest()
 
 
+STRATUM_DOMAIN_VIEW = """\
+CREATE VIEW IF NOT EXISTS stratum_domain AS
+SELECT DISTINCT
+    sc.stratum_id,
+    sc.constraint_variable AS domain_variable
+FROM stratum_constraints sc
+WHERE sc.constraint_variable NOT IN (
+    'state_fips', 'congressional_district_geoid',
+    'tax_unit_is_filer', 'ucgid_str'
+);
+"""
+
+TARGET_OVERVIEW_VIEW = """\
+CREATE VIEW IF NOT EXISTS target_overview AS
+SELECT
+    t.target_id,
+    t.stratum_id,
+    t.variable,
+    t.value,
+    t.period,
+    t.active,
+    CASE
+        WHEN MAX(CASE
+            WHEN sc.constraint_variable = 'congressional_district_geoid'
+                THEN 1
+            WHEN sc.constraint_variable = 'ucgid_str'
+                AND length(sc.value) = 13 THEN 1
+            ELSE 0 END) = 1 THEN 'district'
+        WHEN MAX(CASE
+            WHEN sc.constraint_variable = 'state_fips' THEN 1
+            WHEN sc.constraint_variable = 'ucgid_str'
+                AND length(sc.value) = 11 THEN 1
+            ELSE 0 END) = 1 THEN 'state'
+        ELSE 'national'
+    END AS geo_level,
+    COALESCE(
+        MAX(CASE
+            WHEN sc.constraint_variable
+                = 'congressional_district_geoid'
+            THEN sc.value END),
+        MAX(CASE
+            WHEN sc.constraint_variable = 'state_fips'
+            THEN sc.value END),
+        MAX(CASE
+            WHEN sc.constraint_variable = 'ucgid_str'
+            THEN sc.value END),
+        'US'
+    ) AS geographic_id,
+    GROUP_CONCAT(DISTINCT CASE
+        WHEN sc.constraint_variable NOT IN (
+            'state_fips', 'congressional_district_geoid',
+            'tax_unit_is_filer', 'ucgid_str'
+        ) THEN sc.constraint_variable
+    END) AS domain_variable
+FROM targets t
+LEFT JOIN stratum_constraints sc ON t.stratum_id = sc.stratum_id
+GROUP BY t.target_id, t.stratum_id, t.variable,
+         t.value, t.period, t.active;
+"""
+
+
 def create_database(
     db_uri: str = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}",
 ):
@@ -358,6 +419,14 @@ def create_database(
     """
     engine = create_engine(db_uri)
     SQLModel.metadata.create_all(engine)
+
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        conn.execute(text(STRATUM_DOMAIN_VIEW))
+        conn.execute(text(TARGET_OVERVIEW_VIEW))
+        conn.commit()
+
     logger.info(f"Database and tables created successfully at {db_uri}")
     return engine
 

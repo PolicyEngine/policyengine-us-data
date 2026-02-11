@@ -4,5 +4,6 @@
     - Entity aware target calculations for correct entity counts.
     - Selection of targets closest to calibration time period and uprating logic for cohesive and comprehensive time-perdiod coverage.
     - stratum_domain and target_overview views for easier target inspection and debugging.
+    - test_schema_views_and_lookups.py for testing the new views and lookups.
     removed:
     - Redundant database fields and tables (variable_groups, variable_metadata,sources, source_id, stratum_group_id).

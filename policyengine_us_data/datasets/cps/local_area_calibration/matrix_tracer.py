@@ -135,8 +135,8 @@ class MatrixTracer:
                     "geographic_id": target.get("geographic_id", "unknown"),
                     "target_value": target["value"],
                     "stratum_id": target.get("stratum_id"),
-                    "stratum_group_id": target.get(
-                        "stratum_group_id", "unknown"
+                    "domain_variable": target.get(
+                        "domain_variable", "unknown"
                     ),
                 }
             )
@@ -274,15 +274,15 @@ class MatrixTracer:
             )
             print(geo_level_summary.to_string(index=False))
 
-        print("\nTargets by stratum group:")
-        stratum_summary = (
-            self.row_catalog.groupby("stratum_group_id")
+        print("\nTargets by domain variable:")
+        domain_summary = (
+            self.row_catalog.groupby("domain_variable")
             .agg({"row_index": "count", "variable": lambda x: len(set(x))})
             .rename(
                 columns={"row_index": "n_targets", "variable": "n_unique_vars"}
             )
         )
-        print(stratum_summary.to_string())
+        print(domain_summary.to_string())
 
         # Create and display target groups with row indices
         if show_groups:
@@ -366,7 +366,7 @@ class MatrixTracer:
                 "variable": target["variable"],
                 "target_value": target["value"],
                 "geographic_id": target.get("geographic_id", "unknown"),
-                "stratum_group_id": target.get("stratum_group_id", "unknown"),
+                "domain_variable": target.get("domain_variable", "unknown"),
             }
 
             # Extract values for this target across all geographies

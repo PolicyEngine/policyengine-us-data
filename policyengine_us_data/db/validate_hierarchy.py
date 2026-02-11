@@ -23,9 +23,7 @@ def validate_geographic_hierarchy(session):
 
     # Check US stratum exists and has no parent
     us_stratum = session.exec(
-        select(Stratum).where(
-            Stratum.stratum_group_id == 1, Stratum.parent_stratum_id == None
-        )
+        select(Stratum).where(Stratum.parent_stratum_id == None)
     ).first()
 
     if not us_stratum:
@@ -51,17 +49,26 @@ def validate_geographic_hierarchy(session):
         else:
             print("✓ US stratum has no constraints (correct)")
 
-    # Check states
-    states = (
+    # States: children of US with state_fips constraint
+    us_children = (
         session.exec(
             select(Stratum).where(
-                Stratum.stratum_group_id == 1,
                 Stratum.parent_stratum_id == us_stratum.stratum_id,
             )
         )
         .unique()
         .all()
     )
+    states = []
+    for child in us_children:
+        constraints = session.exec(
+            select(StratumConstraint).where(
+                StratumConstraint.stratum_id == child.stratum_id
+            )
+        ).all()
+        constraint_vars = {c.constraint_variable for c in constraints}
+        if constraint_vars == {"state_fips"}:
+            states.append(child)
 
     print(f"\n✓ Found {len(states)} state strata")
     if len(states) != 51:  # 50 states + DC
@@ -94,20 +101,23 @@ def validate_geographic_hierarchy(session):
     # Check congressional districts
     print("\nChecking Congressional Districts...")
 
-    # Count total CDs (including delegate districts)
-    all_cds = (
-        session.exec(
-            select(Stratum).where(
-                Stratum.stratum_group_id == 1,
-                (
-                    Stratum.notes.like("%Congressional District%")
-                    | Stratum.notes.like("%Delegate District%")
-                ),
+    # CDs: strata with only geographic constraints including
+    # congressional_district_geoid
+    all_strata = session.exec(select(Stratum)).unique().all()
+    all_cds = []
+    for s in all_strata:
+        constraints = session.exec(
+            select(StratumConstraint).where(
+                StratumConstraint.stratum_id == s.stratum_id
             )
-        )
-        .unique()
-        .all()
-    )
+        ).all()
+        constraint_vars = {c.constraint_variable for c in constraints}
+        if (
+            "congressional_district_geoid" in constraint_vars
+            and constraint_vars
+            <= {"state_fips", "congressional_district_geoid"}
+        ):
+            all_cds.append(s)
 
     print(f"✓ Found {len(all_cds)} congressional/delegate districts")
     if len(all_cds) != 436:
@@ -124,17 +134,28 @@ def validate_geographic_hierarchy(session):
 
     if wyoming_id:
         # Check Wyoming's congressional district
-        wyoming_cds = (
+        wyoming_children = (
             session.exec(
                 select(Stratum).where(
-                    Stratum.stratum_group_id == 1,
                     Stratum.parent_stratum_id == wyoming_id,
-                    Stratum.notes.like("%Congressional%"),
                 )
             )
             .unique()
             .all()
         )
+        wyoming_cds = []
+        for child in wyoming_children:
+            constraints = session.exec(
+                select(StratumConstraint).where(
+                    StratumConstraint.stratum_id == child.stratum_id
+                )
+            ).all()
+            cvars = {c.constraint_variable for c in constraints}
+            if "congressional_district_geoid" in cvars and cvars <= {
+                "state_fips",
+                "congressional_district_geoid",
+            }:
+                wyoming_cds.append(child)
 
         if len(wyoming_cds) != 1:
             errors.append(
@@ -147,7 +168,6 @@ def validate_geographic_hierarchy(session):
         wrong_parent_cds = (
             session.exec(
                 select(Stratum).where(
-                    Stratum.stratum_group_id == 1,
                     Stratum.parent_stratum_id == wyoming_id,
                     ~Stratum.notes.like("%Wyoming%"),
                     Stratum.notes.like("%Congressional%"),
@@ -180,68 +200,102 @@ def validate_demographic_strata(session):
 
     errors = []
 
-    # Group names for the new scheme
-    group_names = {
-        2: ("Age", 18),
-        3: ("Income/AGI", 9),
-        4: ("SNAP", 1),
-        5: ("Medicaid", 1),
-        6: ("EITC", 4),
+    from sqlalchemy import text
+
+    # Expected strata per geographic area for each domain variable.
+    # Most domains have strata at all 488 geo areas (1 national + 51 states + 436 CDs).
+    # medicaid_enrolled is state-level only (51 states)
+    # because CD-level survey data is disabled pending 119th Congress
+    # district code remapping (see etl_medicaid.py TODO).
+    # the national medicaid target actually uses the `medicaid` (expense) variable
+    expected_counts = {
+        "age": 18 * 488,
+        "adjusted_gross_income": 9 * 488,
+        "snap": 1 * 488,
+        "medicaid_enrolled": 1 * 51,
+        "eitc_child_count": 4 * 488,
     }
 
-    # Validate each demographic group
-    for group_id, (name, expected_per_geo) in group_names.items():
-        strata = (
-            session.exec(
-                select(Stratum).where(Stratum.stratum_group_id == group_id)
-            )
-            .unique()
-            .all()
+    # Use stratum_domain view to get actual counts
+    result = session.execute(
+        text(
+            "SELECT domain_variable, "
+            "COUNT(DISTINCT stratum_id) as cnt "
+            "FROM stratum_domain GROUP BY domain_variable"
         )
+    ).fetchall()
 
-        expected_total = expected_per_geo * 488  # 488 geographic areas
-        print(f"\n{name} strata (group {group_id}):")
-        print(f"  Found: {len(strata)}")
-        print(
-            f"  Expected: {expected_total} ({expected_per_geo} × 488 geographic areas)"
-        )
+    domain_counts = {row[0]: row[1] for row in result}
 
-        if len(strata) != expected_total:
+    print(f"\nDomain variables found via stratum_domain view:")
+    for domain, count in sorted(domain_counts.items()):
+        print(f"  {domain}: {count} strata")
+
+    # Validate expected counts for known domains
+    for domain, expected_total in expected_counts.items():
+        actual = domain_counts.get(domain, 0)
+        if actual == expected_total:
+            print(f"✓ {domain}: {actual} strata")
+        elif actual == 0:
             errors.append(
-                f"WARNING: {name} has {len(strata)} strata, expected {expected_total}"
+                f"ERROR: {domain} has no strata, " f"expected {expected_total}"
             )
+        else:
+            errors.append(
+                f"WARNING: {domain} has {actual} strata, "
+                f"expected {expected_total}"
+            )
+
+    # Identify geographic strata (those with only geographic
+    # constraints or no constraints) for parent validation
+    geo_stratum_ids = set()
+    all_strata = session.exec(select(Stratum)).unique().all()
+    for s in all_strata:
+        constraints = session.exec(
+            select(StratumConstraint).where(
+                StratumConstraint.stratum_id == s.stratum_id
+            )
+        ).all()
+        cvars = {c.constraint_variable for c in constraints}
+        if cvars <= {
+            "state_fips",
+            "congressional_district_geoid",
+        }:
+            geo_stratum_ids.add(s.stratum_id)
 
     # Check parent relationships for a sample of demographic strata
     print("\nChecking parent relationships (sample):")
-    sample_strata = (
-        session.exec(
-            select(Stratum).where(
-                Stratum.stratum_group_id > 1
-            )  # All demographic groups
-        )
-        .unique()
-        .all()[:100]
-    )  # Take first 100
+    domain_stratum_ids = session.execute(
+        text("SELECT DISTINCT stratum_id FROM stratum_domain")
+    ).fetchall()
+    domain_ids = [row[0] for row in domain_stratum_ids]
+
+    sample_strata = [session.get(Stratum, sid) for sid in domain_ids[:100]]
 
     correct_parents = 0
     wrong_parents = 0
     no_parents = 0
 
     for stratum in sample_strata:
+        if stratum is None:
+            continue
         if stratum.parent_stratum_id:
-            parent = session.get(Stratum, stratum.parent_stratum_id)
-            if parent and parent.stratum_group_id == 1:  # Geographic parent
+            if stratum.parent_stratum_id in geo_stratum_ids:
                 correct_parents += 1
             else:
                 wrong_parents += 1
                 errors.append(
-                    f"ERROR: Stratum {stratum.stratum_id} has non-geographic parent"
+                    f"ERROR: Stratum {stratum.stratum_id} "
+                    f"has non-geographic parent "
+                    f"{stratum.parent_stratum_id}"
                 )
         else:
             no_parents += 1
-            errors.append(f"ERROR: Stratum {stratum.stratum_id} has no parent")
+            errors.append(
+                f"ERROR: Stratum {stratum.stratum_id} " f"has no parent"
+            )
 
-    print(f"  Sample of {len(sample_strata)} demographic strata:")
+    print(f"  Sample of {len(sample_strata)} " f"demographic strata:")
     print(f"    - With geographic parent: {correct_parents}")
     print(f"    - With wrong parent: {wrong_parents}")
     print(f"    - With no parent: {no_parents}")

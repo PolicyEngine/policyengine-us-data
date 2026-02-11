@@ -303,7 +303,7 @@ def create_target_groups(
     ----------
     targets_df : pd.DataFrame
         DataFrame containing target metadata with columns:
-        - stratum_group_id: Identifier for the type of target
+        - domain_variable: Domain variable from stratum constraints
         - geographic_id: Geographic identifier (US, state FIPS, CD GEOID)
         - variable: Variable name
         - value: Target value
@@ -361,8 +361,12 @@ def create_target_groups(
             processed_mask |= var_mask
 
             # Create descriptive label
-            stratum_group = matching["stratum_group_id"].iloc[0]
-            if var_name == "household_count" and stratum_group == 4:
+            domain_var = (
+                matching.get("domain_variable", pd.Series([None])).iloc[0]
+                if "domain_variable" in matching.columns
+                else None
+            )
+            if var_name == "household_count" and domain_var == "snap":
                 label = "SNAP Household Count"
             elif var_name == "snap":
                 label = "Snap"
@@ -407,10 +411,8 @@ def get_all_cds_from_database(db_uri: str) -> List[str]:
     engine = create_engine(db_uri)
     query = """
     SELECT DISTINCT sc.value as cd_geoid
-    FROM strata s
-    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-    WHERE s.stratum_group_id = 1
-      AND sc.constraint_variable = 'congressional_district_geoid'
+    FROM stratum_constraints sc
+    WHERE sc.constraint_variable = 'congressional_district_geoid'
     ORDER BY sc.value
     """
     with engine.connect() as conn:
@@ -439,10 +441,8 @@ def get_cd_index_mapping(db_uri: str = None):
     engine = create_engine(db_uri)
     query = """
     SELECT DISTINCT sc.value as cd_geoid
-    FROM strata s
-    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-    WHERE s.stratum_group_id = 1
-      AND sc.constraint_variable = "congressional_district_geoid"
+    FROM stratum_constraints sc
+    WHERE sc.constraint_variable = 'congressional_district_geoid'
     ORDER BY sc.value
     """
     with engine.connect() as conn:

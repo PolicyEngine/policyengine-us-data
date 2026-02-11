@@ -11,7 +11,6 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
-    SourceType,
 )
 from policyengine_us_data.utils.db import (
     get_stratum_by_id,
@@ -21,11 +20,6 @@ from policyengine_us_data.utils.db import (
     parse_ucgid,
     get_geographic_strata,
     etl_argparser,
-)
-from policyengine_us_data.utils.db_metadata import (
-    get_or_create_source,
-    get_or_create_variable_group,
-    get_or_create_variable_metadata,
 )
 from policyengine_us_data.utils.census import TERRITORY_UCGIDS
 from policyengine_us_data.storage.calibration_targets.make_district_mapping import (
@@ -395,204 +389,6 @@ def load_soi_data(long_dfs, year):
 
     session = Session(engine)
 
-    # Get or create the IRS SOI source
-    irs_source = get_or_create_source(
-        session,
-        name="IRS Statistics of Income",
-        source_type=SourceType.ADMINISTRATIVE,
-        vintage=f"{year} Tax Year",
-        description="IRS Statistics of Income administrative tax data",
-        url="https://www.irs.gov/statistics",
-        notes="Tax return data by congressional district, state, and national levels",
-    )
-
-    # Create variable groups
-    agi_group = get_or_create_variable_group(
-        session,
-        name="agi_distribution",
-        category="income",
-        is_histogram=True,
-        is_exclusive=True,
-        aggregation_method="sum",
-        display_order=4,
-        description="Adjusted Gross Income distribution by IRS income stubs",
-    )
-
-    eitc_group = get_or_create_variable_group(
-        session,
-        name="eitc_recipients",
-        category="tax",
-        is_histogram=False,
-        is_exclusive=False,
-        aggregation_method="sum",
-        display_order=5,
-        description="Earned Income Tax Credit by number of qualifying children",
-    )
-
-    ctc_group = get_or_create_variable_group(
-        session,
-        name="ctc_recipients",
-        category="tax",
-        is_histogram=False,
-        is_exclusive=False,
-        aggregation_method="sum",
-        display_order=6,
-        description="Child Tax Credit recipients and amounts",
-    )
-
-    income_components_group = get_or_create_variable_group(
-        session,
-        name="income_components",
-        category="income",
-        is_histogram=False,
-        is_exclusive=False,
-        aggregation_method="sum",
-        display_order=7,
-        description="Components of income (interest, dividends, capital gains, etc.)",
-    )
-
-    deductions_group = get_or_create_variable_group(
-        session,
-        name="tax_deductions",
-        category="tax",
-        is_histogram=False,
-        is_exclusive=False,
-        aggregation_method="sum",
-        display_order=8,
-        description="Tax deductions (SALT, medical, real estate, etc.)",
-    )
-
-    # Create variable metadata
-    # EITC - both amount and count use same variable with different constraints
-    get_or_create_variable_metadata(
-        session,
-        variable="eitc",
-        group=eitc_group,
-        display_name="EITC Amount",
-        display_order=1,
-        units="dollars",
-        notes="EITC amounts by number of qualifying children",
-    )
-
-    # For counts, tax_unit_count is used with appropriate constraints
-    get_or_create_variable_metadata(
-        session,
-        variable="tax_unit_count",
-        group=None,  # This spans multiple groups based on constraints
-        display_name="Tax Unit Count",
-        display_order=100,
-        units="count",
-        notes="Number of tax units - meaning depends on stratum constraints",
-    )
-
-    # CTC
-    get_or_create_variable_metadata(
-        session,
-        variable="refundable_ctc",
-        group=ctc_group,
-        display_name="Refundable CTC",
-        display_order=1,
-        units="dollars",
-    )
-
-    # AGI and related
-    get_or_create_variable_metadata(
-        session,
-        variable="adjusted_gross_income",
-        group=agi_group,
-        display_name="Adjusted Gross Income",
-        display_order=1,
-        units="dollars",
-    )
-
-    get_or_create_variable_metadata(
-        session,
-        variable="person_count",
-        group=agi_group,
-        display_name="Person Count",
-        display_order=3,
-        units="count",
-        notes="Number of people in tax units by AGI bracket",
-    )
-
-    # Income components
-    income_vars = [
-        ("taxable_interest_income", "Taxable Interest", 1),
-        ("tax_exempt_interest_income", "Tax-Exempt Interest", 2),
-        ("dividend_income", "Ordinary Dividends", 3),
-        ("qualified_dividend_income", "Qualified Dividends", 4),
-        ("net_capital_gain", "Net Capital Gain", 5),
-        ("taxable_ira_distributions", "Taxable IRA Distributions", 6),
-        ("taxable_pension_income", "Taxable Pensions", 7),
-        ("taxable_social_security", "Taxable Social Security", 8),
-        ("unemployment_compensation", "Unemployment Compensation", 9),
-        (
-            "tax_unit_partnership_s_corp_income",
-            "Partnership/S-Corp Income",
-            10,
-        ),
-    ]
-
-    for var_name, display_name, order in income_vars:
-        get_or_create_variable_metadata(
-            session,
-            variable=var_name,
-            group=income_components_group,
-            display_name=display_name,
-            display_order=order,
-            units="dollars",
-        )
-
-    # Deductions
-    deduction_vars = [
-        ("salt", "State and Local Taxes", 1),
-        ("real_estate_taxes", "Real Estate Taxes", 2),
-        ("medical_expense_deduction", "Medical Expenses", 3),
-        ("qualified_business_income_deduction", "QBI Deduction", 4),
-    ]
-
-    for var_name, display_name, order in deduction_vars:
-        get_or_create_variable_metadata(
-            session,
-            variable=var_name,
-            group=deductions_group,
-            display_name=display_name,
-            display_order=order,
-            units="dollars",
-        )
-
-    # Income tax
-    get_or_create_variable_metadata(
-        session,
-        variable="income_tax",
-        group=None,  # Could create a tax_liability group if needed
-        display_name="Income Tax",
-        display_order=1,
-        units="dollars",
-    )
-
-    # ACA Premium Tax Credit
-    ptc_group = get_or_create_variable_group(
-        session,
-        name="aca_ptc_recipients",
-        category="tax",
-        is_histogram=False,
-        is_exclusive=False,
-        aggregation_method="sum",
-        display_order=9,
-        description="ACA Premium Tax Credit recipients and amounts",
-    )
-
-    get_or_create_variable_metadata(
-        session,
-        variable="aca_ptc",
-        group=ptc_group,
-        display_name="Premium Tax Credit",
-        display_order=1,
-        units="dollars",
-        notes="ACA Premium Tax Credit amount from IRS SOI",
-    )
-
     # Fetch existing geographic strata
     geo_strata = get_geographic_strata(session)
 
@@ -613,7 +409,6 @@ def load_soi_data(long_dfs, year):
     if not national_filer_stratum:
         national_filer_stratum = Stratum(
             parent_stratum_id=geo_strata["national"],
-            stratum_group_id=2,  # Filer population group
             notes="United States - Tax Filers",
         )
         national_filer_stratum.constraints_rel = [
@@ -643,7 +438,6 @@ def load_soi_data(long_dfs, year):
         if not state_filer_stratum:
             state_filer_stratum = Stratum(
                 parent_stratum_id=state_geo_stratum_id,
-                stratum_group_id=2,  # Filer population group
                 notes=f"State FIPS {state_fips} - Tax Filers",
             )
             state_filer_stratum.constraints_rel = [
@@ -681,7 +475,6 @@ def load_soi_data(long_dfs, year):
         if not district_filer_stratum:
             district_filer_stratum = Stratum(
                 parent_stratum_id=district_geo_stratum_id,
-                stratum_group_id=2,  # Filer population group
                 notes=f"Congressional District {district_geoid} - Tax Filers",
             )
             district_filer_stratum.constraints_rel = [
@@ -771,7 +564,6 @@ def load_soi_data(long_dfs, year):
                 session.query(Stratum)
                 .filter(
                     Stratum.parent_stratum_id == parent_stratum_id,
-                    Stratum.stratum_group_id == 6,
                     Stratum.notes == note,
                 )
                 .first()
@@ -782,7 +574,6 @@ def load_soi_data(long_dfs, year):
             else:
                 new_stratum = Stratum(
                     parent_stratum_id=parent_stratum_id,
-                    stratum_group_id=6,  # EITC strata group
                     notes=note,
                 )
 
@@ -828,14 +619,13 @@ def load_soi_data(long_dfs, year):
 
                 if existing_target:
                     existing_target.value = value
-                    existing_target.source_id = irs_source.source_id
+
                 else:
                     new_stratum.targets_rel.append(
                         Target(
                             variable=variable,
                             period=year,
                             value=value,
-                            source_id=irs_source.source_id,
                             active=True,
                         )
                     )
@@ -865,9 +655,6 @@ def load_soi_data(long_dfs, year):
         == "adjusted_gross_income"
         and long_dfs[i][["breakdown_variable"]].values[0] == "one"
     ][0]
-    # IRS variables start at stratum_group_id 100
-    irs_group_id_start = 100
-
     for j in range(8, first_agi_index, 2):
         count_j, amount_j = long_dfs[j], long_dfs[j + 1]
         count_variable_name = count_j.iloc[0][["target_variable"]].values[
@@ -875,11 +662,8 @@ def load_soi_data(long_dfs, year):
         ]  # Should be tax_unit_count
         amount_variable_name = amount_j.iloc[0][["target_variable"]].values[0]
 
-        # Assign a unique stratum_group_id for this IRS variable
-        stratum_group_id = irs_group_id_start + (j - 8) // 2
-
         print(
-            f"Loading count and amount data for IRS SOI data on {amount_variable_name} (group_id={stratum_group_id})"
+            f"Loading count and amount data for IRS SOI data on {amount_variable_name}"
         )
 
         for i in range(count_j.shape[0]):
@@ -912,7 +696,7 @@ def load_soi_data(long_dfs, year):
                 session.query(Stratum)
                 .filter(
                     Stratum.parent_stratum_id == parent_stratum_id,
-                    Stratum.stratum_group_id == stratum_group_id,
+                    Stratum.notes == note,
                 )
                 .first()
             )
@@ -923,7 +707,6 @@ def load_soi_data(long_dfs, year):
                 # Create new child stratum with constraint
                 child_stratum = Stratum(
                     parent_stratum_id=parent_stratum_id,
-                    stratum_group_id=stratum_group_id,
                     notes=note,
                 )
 
@@ -986,14 +769,13 @@ def load_soi_data(long_dfs, year):
 
                 if existing_target:
                     existing_target.value = value
-                    existing_target.source_id = irs_source.source_id
+
                 else:
                     child_stratum.targets_rel.append(
                         Target(
                             variable=variable,
                             period=year,
                             value=value,
-                            source_id=irs_source.source_id,
                             active=True,
                         )
                     )
@@ -1041,14 +823,12 @@ def load_soi_data(long_dfs, year):
             existing_target.value = agi_values.iloc[i][
                 ["target_value"]
             ].values[0]
-            existing_target.source_id = irs_source.source_id
         else:
             stratum.targets_rel.append(
                 Target(
                     variable="adjusted_gross_income",
                     period=year,
                     value=agi_values.iloc[i][["target_value"]].values[0],
-                    source_id=irs_source.source_id,
                     active=True,
                 )
             )
@@ -1075,7 +855,6 @@ def load_soi_data(long_dfs, year):
             session.query(Stratum)
             .filter(
                 Stratum.parent_stratum_id == filer_strata["national"],
-                Stratum.stratum_group_id == 3,
                 Stratum.notes == note,
             )
             .first()
@@ -1084,7 +863,6 @@ def load_soi_data(long_dfs, year):
         if not nat_stratum:
             nat_stratum = Stratum(
                 parent_stratum_id=filer_strata["national"],
-                stratum_group_id=3,  # Income/AGI strata group
                 notes=note,
             )
             nat_stratum.constraints_rel.extend(
@@ -1161,7 +939,6 @@ def load_soi_data(long_dfs, year):
                 session.query(Stratum)
                 .filter(
                     Stratum.parent_stratum_id == parent_stratum_id,
-                    Stratum.stratum_group_id == 3,
                     Stratum.notes == note,
                 )
                 .first()
@@ -1172,7 +949,6 @@ def load_soi_data(long_dfs, year):
             else:
                 new_stratum = Stratum(
                     parent_stratum_id=parent_stratum_id,
-                    stratum_group_id=3,  # Income/AGI strata group
                     notes=note,
                 )
                 new_stratum.constraints_rel = constraints
@@ -1206,14 +982,12 @@ def load_soi_data(long_dfs, year):
 
             if existing_target:
                 existing_target.value = person_count
-                existing_target.source_id = irs_source.source_id
             else:
                 new_stratum.targets_rel.append(
                     Target(
                         variable="person_count",
                         period=year,
                         value=person_count,
-                        source_id=irs_source.source_id,
                         active=True,
                     )
                 )

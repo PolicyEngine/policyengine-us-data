@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.67.0] - 2026-02-12 18:56:57
+
+### Added
+
+- field_valid_values table in database as a source of truth for fields that have semantic meaning external to the database hierarchy (variable, constraint_variable, period, operation, active).
+- Event listeners that raise an error if inconsistent operations or parent-child relationships are attempted to be inserted into the database.
+- Source field in target table.
+
 ## [1.66.0] - 2026-02-12 16:29:45
 
 ### Added
@@ -1005,6 +1013,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.67.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.66.0...1.67.0
 [1.66.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.65.0...1.66.0
 [1.65.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.64.1...1.65.0
 [1.64.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.64.0...1.64.1

@@ -877,3 +877,13 @@
       list.
     - Added thread-safe locking around volume.commit() for parallel checkpoint safety.
   date: 2026-02-12 16:29:45
+- bump: minor
+  changes:
+    added:
+    - field_valid_values table in database as a source of truth for fields that have
+      semantic meaning external to the database hierarchy (variable, constraint_variable,
+      period, operation, active).
+    - Event listeners that raise an error if inconsistent operations or parent-child
+      relationships are attempted to be inserted into the database.
+    - Source field in target table.
+  date: 2026-02-12 18:56:57

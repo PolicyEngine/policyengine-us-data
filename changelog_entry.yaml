@@ -1,0 +1,10 @@
+- bump: minor
+  changes:
+    added:
+    - Parallelization of data building steps.
+    - Checkpointing mechanism to resume data builds and testing modules from last successful step in Modal runs.
+    changed:
+    - Removed duplicate run of test_local_area_calibration tests.
+    - Baked correct defaults into create_stratified_cps.py, removing hardcoded args from Makefile and Modal build.
+    - DRYed up sequential build path to iterate SCRIPT_OUTPUTS instead of a redundant list.
+    - Added thread-safe locking around volume.commit() for parallel checkpoint safety.

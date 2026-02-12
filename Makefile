@@ -95,11 +95,7 @@ data: download
 	python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
-	# 12000: number of households our GPUs can handle (found via trial and error).
-	# --top=99.5: include only top 0.5% (vs default 1%) to preserve
-	#   representation of lower-income households.
-	# --seed=3526: reproducible stratified sampling.
-	python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py 12000 --top=99.5 --seed=3526
+	python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py
 
 publish-local-area:
 	python policyengine_us_data/datasets/cps/local_area_calibration/publish_local_area.py

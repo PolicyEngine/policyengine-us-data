@@ -307,10 +307,10 @@ def create_stratified_cps_dataset(
 if __name__ == "__main__":
     import sys
 
-    target = 30_000
-    high_pct = 99
+    target = 12_000
+    high_pct = 99.5
     oversample = False
-    seed = None
+    seed = 3526
 
     for arg in sys.argv[1:]:
         if arg == "--oversample-poor":

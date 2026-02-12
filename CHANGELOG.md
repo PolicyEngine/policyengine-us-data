@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.65.0] - 2026-02-12 04:48:34
+
+### Added
+
+- Entity aware target calculations for correct entity counts.
+- Selection of targets closest to calibration time period and uprating logic for cohesive and comprehensive time-period coverage.
+- Hierarchical state-level uprating with CD reconciliation via hierarchy inconsistency factors (HIFs) and state-specific uprating factors (e.g., CMS/KFF ACA PTC multipliers).
+- stratum_domain and target_overview views for easier target inspection and debugging.
+- test_schema_views_and_lookups.py for testing the new views and lookups.
+- Calibration matrix diagnostic notebook (docs/calibration_matrix.ipynb).
+
 ## [1.64.1] - 2026-02-09 17:47:49
 
 ### Added
@@ -980,6 +991,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.65.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.64.1...1.65.0
 [1.64.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.64.0...1.64.1
 [1.64.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.63.1...1.64.0
 [1.63.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.63.0...1.63.1

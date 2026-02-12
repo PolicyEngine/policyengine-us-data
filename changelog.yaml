@@ -848,3 +848,18 @@
     - Extract shared etl_argparser() to reduce boilerplate across 7 ETL scripts
     - Delete dead get_pseudo_input_variables() function
   date: 2026-02-09 17:47:49
+- bump: minor
+  changes:
+    added:
+    - Entity aware target calculations for correct entity counts.
+    - Selection of targets closest to calibration time period and uprating logic for
+      cohesive and comprehensive time-period coverage.
+    - Hierarchical state-level uprating with CD reconciliation via hierarchy inconsistency
+      factors (HIFs) and state-specific uprating factors (e.g., CMS/KFF ACA PTC multipliers).
+    - stratum_domain and target_overview views for easier target inspection and debugging.
+    - test_schema_views_and_lookups.py for testing the new views and lookups.
+    - Calibration matrix diagnostic notebook (docs/calibration_matrix.ipynb).
+    removed:
+    - Redundant database fields and tables (variable_groups, variable_metadata,sources,
+      source_id, stratum_group_id).
+  date: 2026-02-12 04:48:34

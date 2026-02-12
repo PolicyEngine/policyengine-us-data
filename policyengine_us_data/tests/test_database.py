@@ -1,5 +1,4 @@
 import hashlib
-from enum import Enum
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -29,14 +28,18 @@ def test_stratum_hash_and_relationships(engine):
         stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="equals",
+                operation="==",
                 value="0400000US30",
             ),
             StratumConstraint(
-                constraint_variable="age", operation="greater_than", value="20"
+                constraint_variable="age",
+                operation=">",
+                value="20",
             ),
             StratumConstraint(
-                constraint_variable="age", operation="less_than", value="65"
+                constraint_variable="age",
+                operation="<",
+                value="65",
             ),
         ]
         stratum.targets_rel = [
@@ -48,9 +51,9 @@ def test_stratum_hash_and_relationships(engine):
             "\n".join(
                 sorted(
                     [
-                        "ucgid_str|equals|0400000US30",
-                        "age|greater_than|20",
-                        "age|less_than|65",
+                        "ucgid_str|==|0400000US30",
+                        "age|>|20",
+                        "age|<|65",
                     ]
                 )
             ).encode("utf-8")
@@ -67,7 +70,7 @@ def test_unique_definition_hash(engine):
         s1.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="equals",
+                operation="==",
                 value="0400000US30",
             )
         ]
@@ -77,7 +80,7 @@ def test_unique_definition_hash(engine):
         s2.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="equals",
+                operation="==",
                 value="0400000US30",
             )
         ]

@@ -1,9 +1,8 @@
 import logging
 import hashlib
 from typing import List, Optional
-from enum import Enum
 
-from sqlalchemy import event, UniqueConstraint
+from sqlalchemy import event, text, UniqueConstraint
 from sqlalchemy.orm.attributes import get_history
 from sqlmodel import (
     Field,
@@ -11,10 +10,12 @@ from sqlmodel import (
     SQLModel,
     create_engine,
 )
-from pydantic import validator
-from policyengine_us.system import system
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.db.create_field_valid_values import (
+    populate_field_valid_values,
+    FieldValidValues,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,23 +23,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-
-# An Enum type to ensure the variable exists in policyengine-us
-USVariable = Enum(
-    "USVariable", {name: name for name in system.variables.keys()}, type=str
-)
-
-
-class ConstraintOperation(str, Enum):
-    """Allowed operations for stratum constraints."""
-
-    EQ = "=="  # Equals
-    NE = "!="  # Not equals
-    GT = ">"  # Greater than
-    GE = ">="  # Greater than or equal
-    LT = "<"  # Less than
-    LE = "<="  # Less than or equal
 
 
 class Stratum(SQLModel, table=True):
@@ -114,16 +98,6 @@ class StratumConstraint(SQLModel, table=True):
 
     strata_rel: Stratum = Relationship(back_populates="constraints_rel")
 
-    @validator("operation")
-    def validate_operation(cls, v):
-        """Validate that the operation is one of the allowed values."""
-        allowed_ops = [op.value for op in ConstraintOperation]
-        if v not in allowed_ops:
-            raise ValueError(
-                f"Invalid operation '{v}'. Must be one of: {', '.join(allowed_ops)}"
-            )
-        return v
-
 
 class Target(SQLModel, table=True):
     """Stores the data values for a specific stratum."""
@@ -140,7 +114,7 @@ class Target(SQLModel, table=True):
     )
 
     target_id: Optional[int] = Field(default=None, primary_key=True)
-    variable: USVariable = Field(
+    variable: str = Field(
         description="A variable defined in policyengine-us (e.g., 'income_tax')."
     )
     period: int = Field(
@@ -208,6 +182,28 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
     target.definition_hash = h.hexdigest()
 
 
+@event.listens_for(Stratum, "before_insert")
+@event.listens_for(Stratum, "before_update")
+def validate_stratum_constraints(mapper, connection, target: Stratum):
+    """Validate constraint consistency before saving a Stratum."""
+    if not target.constraints_rel:
+        return
+    from policyengine_us_data.utils.constraint_validation import (
+        Constraint,
+        ensure_consistent_constraint_set,
+    )
+
+    constraints = [
+        Constraint(
+            variable=c.constraint_variable,
+            operation=c.operation,
+            value=c.value,
+        )
+        for c in target.constraints_rel
+    ]
+    ensure_consistent_constraint_set(constraints)
+
+
 STRATUM_DOMAIN_VIEW = """\
 CREATE VIEW IF NOT EXISTS stratum_domain AS
 SELECT DISTINCT
@@ -269,6 +265,119 @@ GROUP BY t.target_id, t.stratum_id, t.variable,
 """
 
 
+def create_validation_triggers(engine) -> None:
+    """Create SQL triggers that validate fields against field_valid_values.
+
+    Args:
+        engine: SQLAlchemy Engine instance.
+    """
+    triggers = [
+        # --- stratum_constraints triggers ---
+        """\
+CREATE TRIGGER IF NOT EXISTS validate_stratum_constraints_insert
+BEFORE INSERT ON stratum_constraints
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'operation'
+              AND valid_value = NEW.operation) = 0
+        THEN RAISE(ABORT,
+             'Invalid operation value for stratum_constraints')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'constraint_variable'
+              AND valid_value = NEW.constraint_variable) = 0
+        THEN RAISE(ABORT,
+             'Invalid constraint_variable for stratum_constraints')
+    END;
+END;""",
+        """\
+CREATE TRIGGER IF NOT EXISTS validate_stratum_constraints_update
+BEFORE UPDATE ON stratum_constraints
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'operation'
+              AND valid_value = NEW.operation) = 0
+        THEN RAISE(ABORT,
+             'Invalid operation value for stratum_constraints')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'constraint_variable'
+              AND valid_value = NEW.constraint_variable) = 0
+        THEN RAISE(ABORT,
+             'Invalid constraint_variable for stratum_constraints')
+    END;
+END;""",
+        # --- targets triggers ---
+        """\
+CREATE TRIGGER IF NOT EXISTS validate_targets_insert
+BEFORE INSERT ON targets
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'active'
+              AND valid_value = CAST(NEW.active AS TEXT)) = 0
+        THEN RAISE(ABORT,
+             'Invalid active value for targets')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'period'
+              AND valid_value = CAST(NEW.period AS TEXT)) = 0
+        THEN RAISE(ABORT,
+             'Invalid period value for targets')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'variable'
+              AND valid_value = NEW.variable) = 0
+        THEN RAISE(ABORT,
+             'Invalid variable value for targets')
+    END;
+END;""",
+        """\
+CREATE TRIGGER IF NOT EXISTS validate_targets_update
+BEFORE UPDATE ON targets
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'active'
+              AND valid_value = CAST(NEW.active AS TEXT)) = 0
+        THEN RAISE(ABORT,
+             'Invalid active value for targets')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'period'
+              AND valid_value = CAST(NEW.period AS TEXT)) = 0
+        THEN RAISE(ABORT,
+             'Invalid period value for targets')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'variable'
+              AND valid_value = NEW.variable) = 0
+        THEN RAISE(ABORT,
+             'Invalid variable value for targets')
+    END;
+END;""",
+    ]
+
+    with engine.connect() as conn:
+        for trigger_sql in triggers:
+            conn.execute(text(trigger_sql))
+        conn.commit()
+
+    logger.info("Validation triggers created successfully")
+
+
 def create_database(
     db_uri: str = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}",
 ):
@@ -284,8 +393,16 @@ def create_database(
     engine = create_engine(db_uri)
     SQLModel.metadata.create_all(engine)
 
-    from sqlalchemy import text
+    # Populate field_valid_values (must come before triggers)
+    from sqlmodel import Session
 
+    with Session(engine) as session:
+        populate_field_valid_values(session)
+
+    # Create validation triggers
+    create_validation_triggers(engine)
+
+    # Create SQL views
     with engine.connect() as conn:
         conn.execute(text(STRATUM_DOMAIN_VIEW))
         conn.execute(text(TARGET_OVERVIEW_VIEW))

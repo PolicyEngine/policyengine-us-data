@@ -87,3 +87,87 @@ def test_unique_definition_hash(engine):
         session.add(s2)
         with pytest.raises(IntegrityError):
             session.commit()
+
+
+def test_valid_parent_child_constraints(engine):
+    with Session(engine) as session:
+        parent = Stratum()
+        parent.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            )
+        ]
+        session.add(parent)
+        session.commit()
+        session.refresh(parent)
+
+        child = Stratum(parent_stratum_id=parent.stratum_id)
+        child.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            ),
+            StratumConstraint(
+                constraint_variable="age",
+                operation=">",
+                value="24",
+            ),
+        ]
+        session.add(child)
+        session.commit()
+
+        retrieved = session.get(Stratum, child.stratum_id)
+        assert retrieved.parent_stratum_id == parent.stratum_id
+        assert len(retrieved.constraints_rel) == 2
+
+
+def test_invalid_parent_child_constraints(engine):
+    with Session(engine) as session:
+        parent = Stratum()
+        parent.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            )
+        ]
+        session.add(parent)
+        session.commit()
+        session.refresh(parent)
+
+        child = Stratum(parent_stratum_id=parent.stratum_id)
+        child.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="30",
+            ),
+        ]
+        session.add(child)
+        with pytest.raises(ValueError, match="parent constraint"):
+            session.commit()
+
+
+def test_parent_with_no_constraints(engine):
+    with Session(engine) as session:
+        parent = Stratum()
+        session.add(parent)
+        session.commit()
+        session.refresh(parent)
+
+        child = Stratum(parent_stratum_id=parent.stratum_id)
+        child.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="age",
+                operation=">",
+                value="24",
+            ),
+        ]
+        session.add(child)
+        session.commit()
+
+        retrieved = session.get(Stratum, child.stratum_id)
+        assert retrieved.parent_stratum_id == parent.stratum_id

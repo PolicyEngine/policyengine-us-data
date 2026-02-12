@@ -204,6 +204,38 @@ def validate_stratum_constraints(mapper, connection, target: Stratum):
     ensure_consistent_constraint_set(constraints)
 
 
+@event.listens_for(Stratum, "before_insert")
+@event.listens_for(Stratum, "before_update")
+def validate_parent_child_constraints(mapper, connection, target: Stratum):
+    """Ensure child strata include all parent constraints."""
+    if target.parent_stratum_id is None:
+        return
+
+    parent_rows = connection.execute(
+        text(
+            "SELECT constraint_variable, operation, value "
+            "FROM stratum_constraints "
+            "WHERE stratum_id = :pid"
+        ),
+        {"pid": target.parent_stratum_id},
+    ).fetchall()
+
+    if not parent_rows:
+        return
+
+    child_set = {
+        (c.constraint_variable, c.operation, c.value)
+        for c in target.constraints_rel
+    }
+
+    for var, op, val in parent_rows:
+        if (var, op, val) not in child_set:
+            raise ValueError(
+                f"Child stratum must include parent constraint "
+                f"({var} {op} {val})"
+            )
+
+
 STRATUM_DOMAIN_VIEW = """\
 CREATE VIEW IF NOT EXISTS stratum_domain AS
 SELECT DISTINCT

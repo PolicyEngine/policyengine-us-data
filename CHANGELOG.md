@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.66.0] - 2026-02-12 16:29:45
+
+### Added
+
+- Parallelization of data building steps.
+- Checkpointing mechanism to resume data builds and testing modules from last successful step in Modal runs.
+
+### Changed
+
+- Removed duplicate run of test_local_area_calibration tests.
+- Baked correct defaults into create_stratified_cps.py, removing hardcoded args from Makefile and Modal build.
+- DRYed up sequential build path to iterate SCRIPT_OUTPUTS instead of a redundant list.
+- Added thread-safe locking around volume.commit() for parallel checkpoint safety.
+
 ## [1.65.0] - 2026-02-12 04:48:34
 
 ### Added
@@ -991,6 +1005,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.66.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.65.0...1.66.0
 [1.65.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.64.1...1.65.0
 [1.64.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.64.0...1.64.1
 [1.64.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.63.1...1.64.0

@@ -863,3 +863,17 @@
     - Redundant database fields and tables (variable_groups, variable_metadata,sources,
       source_id, stratum_group_id).
   date: 2026-02-12 04:48:34
+- bump: minor
+  changes:
+    added:
+    - Parallelization of data building steps.
+    - Checkpointing mechanism to resume data builds and testing modules from last
+      successful step in Modal runs.
+    changed:
+    - Removed duplicate run of test_local_area_calibration tests.
+    - Baked correct defaults into create_stratified_cps.py, removing hardcoded args
+      from Makefile and Modal build.
+    - DRYed up sequential build path to iterate SCRIPT_OUTPUTS instead of a redundant
+      list.
+    - Added thread-safe locking around volume.commit() for parallel checkpoint safety.
+  date: 2026-02-12 16:29:45

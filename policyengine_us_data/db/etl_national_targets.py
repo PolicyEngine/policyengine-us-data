@@ -599,7 +599,7 @@ def load_national_targets(
                 constraint_value = "0"
             elif constraint_var == "ssn_card_type":
                 stratum_notes = "National Undocumented Population"
-                constraint_operation = "="
+                constraint_operation = "=="
                 constraint_value = cond_target.get("constraint_value", "NONE")
             else:
                 stratum_notes = f"National {constraint_var} Recipients"

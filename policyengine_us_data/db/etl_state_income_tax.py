@@ -285,6 +285,7 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
                     period=year,
                     value=row["income_tax_collections"],
                     active=True,
+                    source="Census STC",
                     notes=f"Census STC FY{year}",
                 )
             )

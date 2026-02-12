@@ -217,6 +217,7 @@ def load_medicaid_data(long_state, long_cd, year):
                     period=year,
                     value=row["medicaid_enrollment"],
                     active=True,
+                    source="CMS Medicaid",
                 )
             )
             session.add(new_stratum)
@@ -262,6 +263,7 @@ def load_medicaid_data(long_state, long_cd, year):
                     period=year,
                     value=row["medicaid_enrollment"],
                     active=True,
+                    source="Census ACS S2704",
                 )
             )
             session.add(new_stratum)

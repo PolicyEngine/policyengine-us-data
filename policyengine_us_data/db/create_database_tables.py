@@ -136,6 +136,10 @@ class Target(SQLModel, table=True):
         default=None,
         description="Allowed relative error as a percent (e.g., 25 for 25%).",
     )
+    source: Optional[str] = Field(
+        default=None,
+        description="Data source identifier.",
+    )
     notes: Optional[str] = Field(
         default=None,
         description="Optional descriptive notes about the target row.",
@@ -204,6 +208,54 @@ def validate_stratum_constraints(mapper, connection, target: Stratum):
     ensure_consistent_constraint_set(constraints)
 
 
+GEOGRAPHIC_CONSTRAINT_VARIABLES = {
+    "state_fips",
+    "congressional_district_geoid",
+}
+
+
+def _validate_geographic_consistency(parent_rows, child_constraints):
+    """Validate that child geography is contained within parent geography.
+
+    Args:
+        parent_rows: List of (constraint_variable, operation, value) tuples.
+        child_constraints: List of StratumConstraint objects.
+
+    Raises:
+        ValueError: If the child's geography is inconsistent with
+            the parent's.
+    """
+    parent_dict = {var: val for var, _, val in parent_rows}
+    child_dict = {c.constraint_variable: c.value for c in child_constraints}
+
+    # Shared geographic variables must have identical values.
+    # Compare as integers to handle zero-padding differences
+    # (e.g., state_fips "1" vs "01").
+    for var in GEOGRAPHIC_CONSTRAINT_VARIABLES:
+        if var in parent_dict and var in child_dict:
+            if int(parent_dict[var]) != int(child_dict[var]):
+                raise ValueError(
+                    f"Geographic inconsistency: child has "
+                    f"{var} = {child_dict[var]} but parent "
+                    f"has {var} = {parent_dict[var]}"
+                )
+
+    # CD must belong to the parent state.
+    if (
+        "state_fips" in parent_dict
+        and "congressional_district_geoid" in child_dict
+    ):
+        parent_state = int(parent_dict["state_fips"])
+        child_cd = int(child_dict["congressional_district_geoid"])
+        cd_state = child_cd // 100
+        if cd_state != parent_state:
+            raise ValueError(
+                f"Geographic inconsistency: CD {child_cd} belongs "
+                f"to state {cd_state}, not parent state "
+                f"{parent_state}"
+            )
+
+
 @event.listens_for(Stratum, "before_insert")
 @event.listens_for(Stratum, "before_update")
 def validate_parent_child_constraints(mapper, connection, target: Stratum):
@@ -223,17 +275,40 @@ def validate_parent_child_constraints(mapper, connection, target: Stratum):
     if not parent_rows:
         return
 
+    parent_vars = {var for var, _, _ in parent_rows}
+    child_vars = {c.constraint_variable for c in target.constraints_rel}
+
+    # Geographic hierarchy: validate containment instead of
+    # requiring literal constraint inheritance.
+    if (
+        parent_vars <= GEOGRAPHIC_CONSTRAINT_VARIABLES
+        and child_vars <= GEOGRAPHIC_CONSTRAINT_VARIABLES
+    ):
+        _validate_geographic_consistency(parent_rows, target.constraints_rel)
+        return
+
     child_set = {
         (c.constraint_variable, c.operation, c.value)
         for c in target.constraints_rel
     }
 
     for var, op, val in parent_rows:
-        if (var, op, val) not in child_set:
-            raise ValueError(
-                f"Child stratum must include parent constraint "
-                f"({var} {op} {val})"
-            )
+        if (var, op, val) in child_set:
+            continue
+        # Geographic values may differ only by zero-padding
+        # (e.g., "1" vs "01"); compare as integers.
+        if var in GEOGRAPHIC_CONSTRAINT_VARIABLES:
+            child_vals = {
+                c.value
+                for c in target.constraints_rel
+                if c.constraint_variable == var and c.operation == op
+            }
+            if any(int(cv) == int(val) for cv in child_vals):
+                continue
+        raise ValueError(
+            f"Child stratum must include parent constraint "
+            f"({var} {op} {val})"
+        )
 
 
 STRATUM_DOMAIN_VIEW = """\
@@ -372,6 +447,14 @@ BEGIN
         THEN RAISE(ABORT,
              'Invalid variable value for targets')
     END;
+    SELECT CASE
+        WHEN NEW.source IS NOT NULL
+        AND (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'source'
+              AND valid_value = NEW.source) = 0
+        THEN RAISE(ABORT,
+             'Invalid source value for targets')
+    END;
 END;""",
         """\
 CREATE TRIGGER IF NOT EXISTS validate_targets_update
@@ -398,6 +481,14 @@ BEGIN
               AND valid_value = NEW.variable) = 0
         THEN RAISE(ABORT,
              'Invalid variable value for targets')
+    END;
+    SELECT CASE
+        WHEN NEW.source IS NOT NULL
+        AND (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'source'
+              AND valid_value = NEW.source) = 0
+        THEN RAISE(ABORT,
+             'Invalid source value for targets')
     END;
 END;""",
     ]

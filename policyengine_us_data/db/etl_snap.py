@@ -217,6 +217,7 @@ def load_administrative_snap_data(df_states, year):
                     period=year,
                     value=row["Households"],
                     active=True,
+                    source="USDA FNS SNAP",
                 )
             )
             new_stratum.targets_rel.append(
@@ -225,6 +226,7 @@ def load_administrative_snap_data(df_states, year):
                     period=year,
                     value=row["Cost"],
                     active=True,
+                    source="USDA FNS SNAP",
                 )
             )
             session.add(new_stratum)
@@ -286,6 +288,7 @@ def load_survey_snap_data(survey_df, year, snap_stratum_lookup):
                     period=year,
                     value=row["snap_household_ct"],
                     active=True,
+                    source="Census ACS S2201",
                 )
             )
             session.add(new_stratum)

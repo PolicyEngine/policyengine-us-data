@@ -627,6 +627,7 @@ def load_soi_data(long_dfs, year):
                             period=year,
                             value=value,
                             active=True,
+                            source="IRS SOI",
                         )
                     )
 
@@ -777,6 +778,7 @@ def load_soi_data(long_dfs, year):
                             period=year,
                             value=value,
                             active=True,
+                            source="IRS SOI",
                         )
                     )
 
@@ -830,6 +832,7 @@ def load_soi_data(long_dfs, year):
                     period=year,
                     value=agi_values.iloc[i][["target_value"]].values[0],
                     active=True,
+                    source="IRS SOI",
                 )
             )
         session.add(stratum)
@@ -989,6 +992,7 @@ def load_soi_data(long_dfs, year):
                         period=year,
                         value=person_count,
                         active=True,
+                        source="IRS SOI",
                     )
                 )
 

@@ -147,7 +147,140 @@ def test_invalid_parent_child_constraints(engine):
             ),
         ]
         session.add(child)
-        with pytest.raises(ValueError, match="parent constraint"):
+        with pytest.raises(ValueError, match="Geographic inconsistency"):
+            session.commit()
+
+
+def test_target_with_valid_source(engine):
+    with Session(engine) as session:
+        stratum = Stratum()
+        stratum.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            )
+        ]
+        stratum.targets_rel = [
+            Target(
+                variable="person_count",
+                period=2023,
+                value=100.0,
+                source="IRS SOI",
+            )
+        ]
+        session.add(stratum)
+        session.commit()
+        session.refresh(stratum)
+
+        retrieved = session.get(Target, stratum.targets_rel[0].target_id)
+        assert retrieved.source == "IRS SOI"
+
+
+def test_target_with_invalid_source(engine):
+    with Session(engine) as session:
+        stratum = Stratum()
+        stratum.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            )
+        ]
+        stratum.targets_rel = [
+            Target(
+                variable="person_count",
+                period=2023,
+                value=100.0,
+                source="made_up",
+            )
+        ]
+        session.add(stratum)
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+
+def test_target_with_null_source(engine):
+    with Session(engine) as session:
+        stratum = Stratum()
+        stratum.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            )
+        ]
+        stratum.targets_rel = [
+            Target(
+                variable="person_count",
+                period=2023,
+                value=100.0,
+                source=None,
+            )
+        ]
+        session.add(stratum)
+        session.commit()
+        session.refresh(stratum)
+
+        retrieved = session.get(Target, stratum.targets_rel[0].target_id)
+        assert retrieved.source is None
+
+
+def test_valid_geographic_hierarchy(engine):
+    """CD under its correct state should succeed."""
+    with Session(engine) as session:
+        state = Stratum()
+        state.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="6",
+            )
+        ]
+        session.add(state)
+        session.commit()
+        session.refresh(state)
+
+        cd = Stratum(parent_stratum_id=state.stratum_id)
+        cd.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="congressional_district_geoid",
+                operation="==",
+                value="601",
+            )
+        ]
+        session.add(cd)
+        session.commit()
+
+        retrieved = session.get(Stratum, cd.stratum_id)
+        assert retrieved.parent_stratum_id == state.stratum_id
+
+
+def test_invalid_geographic_hierarchy(engine):
+    """CD under the wrong state should raise."""
+    with Session(engine) as session:
+        state = Stratum()
+        state.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="6",
+            )
+        ]
+        session.add(state)
+        session.commit()
+        session.refresh(state)
+
+        cd = Stratum(parent_stratum_id=state.stratum_id)
+        cd.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="congressional_district_geoid",
+                operation="==",
+                value="101",
+            )
+        ]
+        session.add(cd)
+        with pytest.raises(ValueError, match="Geographic inconsistency"):
             session.commit()
 
 

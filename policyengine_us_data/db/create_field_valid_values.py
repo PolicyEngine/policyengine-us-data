@@ -65,10 +65,22 @@ def populate_field_valid_values(session: Session) -> None:
         ("period", "2025", None),
     ]
 
+    # Static values for source field
+    source_values = [
+        ("source", "Census ACS S0101", "survey"),
+        ("source", "IRS SOI", "administrative"),
+        ("source", "CMS Medicaid", "administrative"),
+        ("source", "Census ACS S2704", "survey"),
+        ("source", "USDA FNS SNAP", "administrative"),
+        ("source", "Census ACS S2201", "survey"),
+        ("source", "Census STC", "administrative"),
+        ("source", "PolicyEngine", "hardcoded"),
+    ]
+
     # Add all static values
     static_count = 0
     for field_name, valid_value, description in (
-        operation_values + active_values + period_values
+        operation_values + active_values + period_values + source_values
     ):
         session.add(
             FieldValidValues(

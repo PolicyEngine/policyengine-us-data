@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
@@ -26,6 +27,7 @@ image = (
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 VOLUME_MOUNT = "/checkpoints"
+_volume_lock = threading.Lock()
 
 # Script to output file mapping for checkpointing
 # Values can be a single file path (str) or a list of file paths
@@ -122,7 +124,8 @@ def save_checkpoint(
         checkpoint_path = get_checkpoint_path(branch, output_file)
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(local_path, checkpoint_path)
-        volume.commit()
+        with _volume_lock:
+            volume.commit()
         print(f"Checkpointed: {output_file}")
 
 
@@ -304,71 +307,12 @@ def build_datasets(
     )
 
     if sequential:
-        # Sequential execution with checkpointing
-        scripts_with_outputs = [
-            (
-                "policyengine_us_data/utils/uprating.py",
-                SCRIPT_OUTPUTS["policyengine_us_data/utils/uprating.py"],
-                None,
-            ),
-            (
-                "policyengine_us_data/datasets/acs/acs.py",
-                SCRIPT_OUTPUTS["policyengine_us_data/datasets/acs/acs.py"],
-                None,
-            ),
-            (
-                "policyengine_us_data/datasets/cps/cps.py",
-                SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/cps.py"],
-                None,
-            ),
-            (
-                "policyengine_us_data/datasets/puf/irs_puf.py",
-                SCRIPT_OUTPUTS["policyengine_us_data/datasets/puf/irs_puf.py"],
-                None,
-            ),
-            (
-                "policyengine_us_data/datasets/puf/puf.py",
-                SCRIPT_OUTPUTS["policyengine_us_data/datasets/puf/puf.py"],
-                None,
-            ),
-            (
-                "policyengine_us_data/datasets/cps/extended_cps.py",
-                SCRIPT_OUTPUTS[
-                    "policyengine_us_data/datasets/cps/extended_cps.py"
-                ],
-                None,
-            ),
-            (
-                "policyengine_us_data/datasets/cps/enhanced_cps.py",
-                SCRIPT_OUTPUTS[
-                    "policyengine_us_data/datasets/cps/enhanced_cps.py"
-                ],
-                None,
-            ),
-            (
-                "policyengine_us_data/datasets/cps/"
-                "local_area_calibration/create_stratified_cps.py",
-                SCRIPT_OUTPUTS[
-                    "policyengine_us_data/datasets/cps/"
-                    "local_area_calibration/create_stratified_cps.py"
-                ],
-                ["10500"],
-            ),
-            (
-                "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
-                SCRIPT_OUTPUTS[
-                    "policyengine_us_data/datasets/cps/small_enhanced_cps.py"
-                ],
-                None,
-            ),
-        ]
-        for script, output, args in scripts_with_outputs:
+        for script, output in SCRIPT_OUTPUTS.items():
             run_script_with_checkpoint(
                 script,
                 output,
                 branch,
                 checkpoint_volume,
-                args=args,
                 env=env,
             )
     else:
@@ -472,7 +416,6 @@ def build_datasets(
                     ],
                     branch,
                     checkpoint_volume,
-                    args=["10500"],
                     env=env,
                 ),
             ]

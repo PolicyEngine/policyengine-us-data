@@ -1,9 +1,8 @@
 import logging
 import hashlib
 from typing import List, Optional
-from enum import Enum
 
-from sqlalchemy import event, UniqueConstraint
+from sqlalchemy import event, text, UniqueConstraint
 from sqlalchemy.orm.attributes import get_history
 from sqlmodel import (
     Field,
@@ -11,10 +10,12 @@ from sqlmodel import (
     SQLModel,
     create_engine,
 )
-from pydantic import validator
-from policyengine_us.system import system
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.db.create_field_valid_values import (
+    populate_field_valid_values,
+    FieldValidValues,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,23 +23,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-
-# An Enum type to ensure the variable exists in policyengine-us
-USVariable = Enum(
-    "USVariable", {name: name for name in system.variables.keys()}, type=str
-)
-
-
-class ConstraintOperation(str, Enum):
-    """Allowed operations for stratum constraints."""
-
-    EQ = "=="  # Equals
-    NE = "!="  # Not equals
-    GT = ">"  # Greater than
-    GE = ">="  # Greater than or equal
-    LT = "<"  # Less than
-    LE = "<="  # Less than or equal
 
 
 class Stratum(SQLModel, table=True):
@@ -114,16 +98,6 @@ class StratumConstraint(SQLModel, table=True):
 
     strata_rel: Stratum = Relationship(back_populates="constraints_rel")
 
-    @validator("operation")
-    def validate_operation(cls, v):
-        """Validate that the operation is one of the allowed values."""
-        allowed_ops = [op.value for op in ConstraintOperation]
-        if v not in allowed_ops:
-            raise ValueError(
-                f"Invalid operation '{v}'. Must be one of: {', '.join(allowed_ops)}"
-            )
-        return v
-
 
 class Target(SQLModel, table=True):
     """Stores the data values for a specific stratum."""
@@ -140,7 +114,7 @@ class Target(SQLModel, table=True):
     )
 
     target_id: Optional[int] = Field(default=None, primary_key=True)
-    variable: USVariable = Field(
+    variable: str = Field(
         description="A variable defined in policyengine-us (e.g., 'income_tax')."
     )
     period: int = Field(
@@ -161,6 +135,10 @@ class Target(SQLModel, table=True):
     tolerance: Optional[float] = Field(
         default=None,
         description="Allowed relative error as a percent (e.g., 25 for 25%).",
+    )
+    source: Optional[str] = Field(
+        default=None,
+        description="Data source identifier.",
     )
     notes: Optional[str] = Field(
         default=None,
@@ -206,6 +184,131 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
     fingerprint_text = parent_str + "\n" + "\n".join(constraint_strings)
     h = hashlib.sha256(fingerprint_text.encode("utf-8"))
     target.definition_hash = h.hexdigest()
+
+
+@event.listens_for(Stratum, "before_insert")
+@event.listens_for(Stratum, "before_update")
+def validate_stratum_constraints(mapper, connection, target: Stratum):
+    """Validate constraint consistency before saving a Stratum."""
+    if not target.constraints_rel:
+        return
+    from policyengine_us_data.utils.constraint_validation import (
+        Constraint,
+        ensure_consistent_constraint_set,
+    )
+
+    constraints = [
+        Constraint(
+            variable=c.constraint_variable,
+            operation=c.operation,
+            value=c.value,
+        )
+        for c in target.constraints_rel
+    ]
+    ensure_consistent_constraint_set(constraints)
+
+
+GEOGRAPHIC_CONSTRAINT_VARIABLES = {
+    "state_fips",
+    "congressional_district_geoid",
+}
+
+
+def _validate_geographic_consistency(parent_rows, child_constraints):
+    """Validate that child geography is contained within parent geography.
+
+    Args:
+        parent_rows: List of (constraint_variable, operation, value) tuples.
+        child_constraints: List of StratumConstraint objects.
+
+    Raises:
+        ValueError: If the child's geography is inconsistent with
+            the parent's.
+    """
+    parent_dict = {var: val for var, _, val in parent_rows}
+    child_dict = {c.constraint_variable: c.value for c in child_constraints}
+
+    # Shared geographic variables must have identical values.
+    # Compare as integers to handle zero-padding differences
+    # (e.g., state_fips "1" vs "01").
+    for var in GEOGRAPHIC_CONSTRAINT_VARIABLES:
+        if var in parent_dict and var in child_dict:
+            if int(parent_dict[var]) != int(child_dict[var]):
+                raise ValueError(
+                    f"Geographic inconsistency: child has "
+                    f"{var} = {child_dict[var]} but parent "
+                    f"has {var} = {parent_dict[var]}"
+                )
+
+    # CD must belong to the parent state.
+    if (
+        "state_fips" in parent_dict
+        and "congressional_district_geoid" in child_dict
+    ):
+        parent_state = int(parent_dict["state_fips"])
+        child_cd = int(child_dict["congressional_district_geoid"])
+        cd_state = child_cd // 100
+        if cd_state != parent_state:
+            raise ValueError(
+                f"Geographic inconsistency: CD {child_cd} belongs "
+                f"to state {cd_state}, not parent state "
+                f"{parent_state}"
+            )
+
+
+@event.listens_for(Stratum, "before_insert")
+@event.listens_for(Stratum, "before_update")
+def validate_parent_child_constraints(mapper, connection, target: Stratum):
+    """Ensure child strata include all parent constraints."""
+    if target.parent_stratum_id is None:
+        return
+
+    parent_rows = connection.execute(
+        text(
+            "SELECT constraint_variable, operation, value "
+            "FROM stratum_constraints "
+            "WHERE stratum_id = :pid"
+        ),
+        {"pid": target.parent_stratum_id},
+    ).fetchall()
+
+    if not parent_rows:
+        return
+
+    parent_vars = {var for var, _, _ in parent_rows}
+    child_vars = {c.constraint_variable for c in target.constraints_rel}
+
+    # Geographic hierarchy: validate containment instead of
+    # requiring literal constraint inheritance.
+    if (
+        parent_vars <= GEOGRAPHIC_CONSTRAINT_VARIABLES
+        and child_vars <= GEOGRAPHIC_CONSTRAINT_VARIABLES
+    ):
+        _validate_geographic_consistency(parent_rows, target.constraints_rel)
+        return
+
+    child_set = {
+        (c.constraint_variable, c.operation, c.value)
+        for c in target.constraints_rel
+    }
+
+    for var, op, val in parent_rows:
+        if (var, op, val) in child_set:
+            continue
+        # Geographic values may differ only by zero-padding
+        # (e.g., "1" vs "01"); compare as integers.
+        if var in GEOGRAPHIC_CONSTRAINT_VARIABLES:
+            child_vals = {
+                c.value
+                for c in target.constraints_rel
+                if c.constraint_variable == var and c.operation == op
+            }
+            if any(int(cv) == int(val) for cv in child_vals):
+                continue
+        raise ValueError(
+            f"Child stratum must include parent constraint "
+            f"({var} {op} {val})"
+        )
 
 
 STRATUM_DOMAIN_VIEW = """\
@@ -269,6 +372,135 @@ GROUP BY t.target_id, t.stratum_id, t.variable,
 """
 
 
+def create_validation_triggers(engine) -> None:
+    """Create SQL triggers that validate fields against field_valid_values.
+
+    Args:
+        engine: SQLAlchemy Engine instance.
+    """
+    triggers = [
+        # --- stratum_constraints triggers ---
+        """\
+CREATE TRIGGER IF NOT EXISTS validate_stratum_constraints_insert
+BEFORE INSERT ON stratum_constraints
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'operation'
+              AND valid_value = NEW.operation) = 0
+        THEN RAISE(ABORT,
+             'Invalid operation value for stratum_constraints')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'constraint_variable'
+              AND valid_value = NEW.constraint_variable) = 0
+        THEN RAISE(ABORT,
+             'Invalid constraint_variable for stratum_constraints')
+    END;
+END;""",
+        """\
+CREATE TRIGGER IF NOT EXISTS validate_stratum_constraints_update
+BEFORE UPDATE ON stratum_constraints
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'operation'
+              AND valid_value = NEW.operation) = 0
+        THEN RAISE(ABORT,
+             'Invalid operation value for stratum_constraints')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'constraint_variable'
+              AND valid_value = NEW.constraint_variable) = 0
+        THEN RAISE(ABORT,
+             'Invalid constraint_variable for stratum_constraints')
+    END;
+END;""",
+        # --- targets triggers ---
+        """\
+CREATE TRIGGER IF NOT EXISTS validate_targets_insert
+BEFORE INSERT ON targets
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'active'
+              AND valid_value = CAST(NEW.active AS TEXT)) = 0
+        THEN RAISE(ABORT,
+             'Invalid active value for targets')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'period'
+              AND valid_value = CAST(NEW.period AS TEXT)) = 0
+        THEN RAISE(ABORT,
+             'Invalid period value for targets')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'variable'
+              AND valid_value = NEW.variable) = 0
+        THEN RAISE(ABORT,
+             'Invalid variable value for targets')
+    END;
+    SELECT CASE
+        WHEN NEW.source IS NOT NULL
+        AND (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'source'
+              AND valid_value = NEW.source) = 0
+        THEN RAISE(ABORT,
+             'Invalid source value for targets')
+    END;
+END;""",
+        """\
+CREATE TRIGGER IF NOT EXISTS validate_targets_update
+BEFORE UPDATE ON targets
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'active'
+              AND valid_value = CAST(NEW.active AS TEXT)) = 0
+        THEN RAISE(ABORT,
+             'Invalid active value for targets')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'period'
+              AND valid_value = CAST(NEW.period AS TEXT)) = 0
+        THEN RAISE(ABORT,
+             'Invalid period value for targets')
+    END;
+    SELECT CASE
+        WHEN (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'variable'
+              AND valid_value = NEW.variable) = 0
+        THEN RAISE(ABORT,
+             'Invalid variable value for targets')
+    END;
+    SELECT CASE
+        WHEN NEW.source IS NOT NULL
+        AND (SELECT COUNT(*) FROM field_valid_values
+              WHERE field_name = 'source'
+              AND valid_value = NEW.source) = 0
+        THEN RAISE(ABORT,
+             'Invalid source value for targets')
+    END;
+END;""",
+    ]
+
+    with engine.connect() as conn:
+        for trigger_sql in triggers:
+            conn.execute(text(trigger_sql))
+        conn.commit()
+
+    logger.info("Validation triggers created successfully")
+
+
 def create_database(
     db_uri: str = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}",
 ):
@@ -284,8 +516,16 @@ def create_database(
     engine = create_engine(db_uri)
     SQLModel.metadata.create_all(engine)
 
-    from sqlalchemy import text
+    # Populate field_valid_values (must come before triggers)
+    from sqlmodel import Session
 
+    with Session(engine) as session:
+        populate_field_valid_values(session)
+
+    # Create validation triggers
+    create_validation_triggers(engine)
+
+    # Create SQL views
     with engine.connect() as conn:
         conn.execute(text(STRATUM_DOMAIN_VIEW))
         conn.execute(text(TARGET_OVERVIEW_VIEW))

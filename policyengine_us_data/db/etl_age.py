@@ -173,6 +173,7 @@ def load_age_data(df_long, geo, year):
                         period=year,
                         value=row["value"],
                         active=row["active"],
+                        source="Census ACS S0101",
                     )
                     session.add(new_target)
                 continue  # Skip creating a new stratum
@@ -230,6 +231,7 @@ def load_age_data(df_long, geo, year):
                     period=year,
                     value=row["value"],
                     active=row["active"],
+                    source="Census ACS S0101",
                 )
             )
 

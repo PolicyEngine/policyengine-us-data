@@ -499,6 +499,7 @@ def load_national_targets(
                 # Update existing target
                 existing_target.value = target_data["value"]
                 existing_target.notes = combined_notes
+                existing_target.source = "PolicyEngine"
                 print(f"Updated target: {target_data['variable']}")
             else:
                 # Create new target
@@ -508,6 +509,7 @@ def load_national_targets(
                     period=target_year,
                     value=target_data["value"],
                     active=True,
+                    source="PolicyEngine",
                     notes=combined_notes,
                 )
                 session.add(target)
@@ -569,6 +571,7 @@ def load_national_targets(
                     # Update existing target
                     existing_target.value = target_data["value"]
                     existing_target.notes = combined_notes
+                    existing_target.source = "PolicyEngine"
                     print(f"Updated filer target: {target_data['variable']}")
                 else:
                     # Create new target
@@ -578,6 +581,7 @@ def load_national_targets(
                         period=target_year,
                         value=target_data["value"],
                         active=True,
+                        source="PolicyEngine",
                         notes=combined_notes,
                     )
                     session.add(target)
@@ -630,6 +634,7 @@ def load_national_targets(
 
                 if existing_target:
                     existing_target.value = cond_target["person_count"]
+                    existing_target.source = "PolicyEngine"
                     print(f"Updated enrollment target for {constraint_var}")
                 else:
                     # Add new target to existing stratum
@@ -639,6 +644,7 @@ def load_national_targets(
                         period=target_year,
                         value=cond_target["person_count"],
                         active=True,
+                        source="PolicyEngine",
                         notes=f"{cond_target['notes']} | Source: {cond_target['source']}",
                     )
                     session.add(new_target)
@@ -666,6 +672,7 @@ def load_national_targets(
                         period=target_year,
                         value=cond_target["person_count"],
                         active=True,
+                        source="PolicyEngine",
                         notes=f"{cond_target['notes']} | Source: {cond_target['source']}",
                     )
                 ]

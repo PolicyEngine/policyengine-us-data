@@ -1,5 +1,4 @@
 import hashlib
-from enum import Enum
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -29,14 +28,18 @@ def test_stratum_hash_and_relationships(engine):
         stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="equals",
+                operation="==",
                 value="0400000US30",
             ),
             StratumConstraint(
-                constraint_variable="age", operation="greater_than", value="20"
+                constraint_variable="age",
+                operation=">",
+                value="20",
             ),
             StratumConstraint(
-                constraint_variable="age", operation="less_than", value="65"
+                constraint_variable="age",
+                operation="<",
+                value="65",
             ),
         ]
         stratum.targets_rel = [
@@ -48,9 +51,9 @@ def test_stratum_hash_and_relationships(engine):
             "\n".join(
                 sorted(
                     [
-                        "ucgid_str|equals|0400000US30",
-                        "age|greater_than|20",
-                        "age|less_than|65",
+                        "ucgid_str|==|0400000US30",
+                        "age|>|20",
+                        "age|<|65",
                     ]
                 )
             ).encode("utf-8")
@@ -67,7 +70,7 @@ def test_unique_definition_hash(engine):
         s1.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="equals",
+                operation="==",
                 value="0400000US30",
             )
         ]
@@ -77,10 +80,227 @@ def test_unique_definition_hash(engine):
         s2.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
-                operation="equals",
+                operation="==",
                 value="0400000US30",
             )
         ]
         session.add(s2)
         with pytest.raises(IntegrityError):
             session.commit()
+
+
+def test_valid_parent_child_constraints(engine):
+    with Session(engine) as session:
+        parent = Stratum()
+        parent.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            )
+        ]
+        session.add(parent)
+        session.commit()
+        session.refresh(parent)
+
+        child = Stratum(parent_stratum_id=parent.stratum_id)
+        child.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            ),
+            StratumConstraint(
+                constraint_variable="age",
+                operation=">",
+                value="24",
+            ),
+        ]
+        session.add(child)
+        session.commit()
+
+        retrieved = session.get(Stratum, child.stratum_id)
+        assert retrieved.parent_stratum_id == parent.stratum_id
+        assert len(retrieved.constraints_rel) == 2
+
+
+def test_invalid_parent_child_constraints(engine):
+    with Session(engine) as session:
+        parent = Stratum()
+        parent.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            )
+        ]
+        session.add(parent)
+        session.commit()
+        session.refresh(parent)
+
+        child = Stratum(parent_stratum_id=parent.stratum_id)
+        child.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="30",
+            ),
+        ]
+        session.add(child)
+        with pytest.raises(ValueError, match="Geographic inconsistency"):
+            session.commit()
+
+
+def test_target_with_valid_source(engine):
+    with Session(engine) as session:
+        stratum = Stratum()
+        stratum.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            )
+        ]
+        stratum.targets_rel = [
+            Target(
+                variable="person_count",
+                period=2023,
+                value=100.0,
+                source="IRS SOI",
+            )
+        ]
+        session.add(stratum)
+        session.commit()
+        session.refresh(stratum)
+
+        retrieved = session.get(Target, stratum.targets_rel[0].target_id)
+        assert retrieved.source == "IRS SOI"
+
+
+def test_target_with_invalid_source(engine):
+    with Session(engine) as session:
+        stratum = Stratum()
+        stratum.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            )
+        ]
+        stratum.targets_rel = [
+            Target(
+                variable="person_count",
+                period=2023,
+                value=100.0,
+                source="made_up",
+            )
+        ]
+        session.add(stratum)
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+
+def test_target_with_null_source(engine):
+    with Session(engine) as session:
+        stratum = Stratum()
+        stratum.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="06",
+            )
+        ]
+        stratum.targets_rel = [
+            Target(
+                variable="person_count",
+                period=2023,
+                value=100.0,
+                source=None,
+            )
+        ]
+        session.add(stratum)
+        session.commit()
+        session.refresh(stratum)
+
+        retrieved = session.get(Target, stratum.targets_rel[0].target_id)
+        assert retrieved.source is None
+
+
+def test_valid_geographic_hierarchy(engine):
+    """CD under its correct state should succeed."""
+    with Session(engine) as session:
+        state = Stratum()
+        state.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="6",
+            )
+        ]
+        session.add(state)
+        session.commit()
+        session.refresh(state)
+
+        cd = Stratum(parent_stratum_id=state.stratum_id)
+        cd.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="congressional_district_geoid",
+                operation="==",
+                value="601",
+            )
+        ]
+        session.add(cd)
+        session.commit()
+
+        retrieved = session.get(Stratum, cd.stratum_id)
+        assert retrieved.parent_stratum_id == state.stratum_id
+
+
+def test_invalid_geographic_hierarchy(engine):
+    """CD under the wrong state should raise."""
+    with Session(engine) as session:
+        state = Stratum()
+        state.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="6",
+            )
+        ]
+        session.add(state)
+        session.commit()
+        session.refresh(state)
+
+        cd = Stratum(parent_stratum_id=state.stratum_id)
+        cd.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="congressional_district_geoid",
+                operation="==",
+                value="101",
+            )
+        ]
+        session.add(cd)
+        with pytest.raises(ValueError, match="Geographic inconsistency"):
+            session.commit()
+
+
+def test_parent_with_no_constraints(engine):
+    with Session(engine) as session:
+        parent = Stratum()
+        session.add(parent)
+        session.commit()
+        session.refresh(parent)
+
+        child = Stratum(parent_stratum_id=parent.stratum_id)
+        child.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="age",
+                operation=">",
+                value="24",
+            ),
+        ]
+        session.add(child)
+        session.commit()
+
+        retrieved = session.get(Stratum, child.stratum_id)
+        assert retrieved.parent_stratum_id == parent.stratum_id

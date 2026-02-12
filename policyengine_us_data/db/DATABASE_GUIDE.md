@@ -82,7 +82,9 @@ make database
 - `variable`: PolicyEngine US variable name (e.g., `eitc`, `income_tax`)
 - `period`: Year
 - `value`: Numerical value
+- `source`: Data source identifier (optional, e.g., `IRS SOI`, `Census ACS S0101`)
 - `active`: Boolean flag
+- Unique constraint on `(variable, period, stratum_id, reform_id)` prevents duplicate targets regardless of source
 
 ### SQL Views
 
@@ -101,6 +103,35 @@ WHERE domain_variable = 'snap' AND geo_level = 'state';
 -- Returns: target_id, stratum_id, variable, value, period,
 --          active, geo_level, geographic_id, domain_variable
 ```
+
+### Field Valid Values and Validation
+
+**field_valid_values** - Lookup table that defines which values are allowed for specific fields. SQL triggers on `stratum_constraints` and `targets` check incoming rows against this table and reject invalid values with `RAISE(ABORT)`.
+
+Validated fields:
+
+| Field | Table | Examples | How populated |
+|-------|-------|----------|---------------|
+| `operation` | stratum_constraints | `==`, `>`, `<=` | Static list in `create_field_valid_values.py` |
+| `constraint_variable` | stratum_constraints | `age`, `state_fips` | Dynamic from `policyengine-us` variables + extras |
+| `variable` | targets | `eitc`, `person_count` | Dynamic from `policyengine-us` variables |
+| `active` | targets | `0`, `1` | Static list |
+| `period` | targets | `2022`, `2023`, `2024`, `2025` | Static list |
+| `source` | targets | `IRS SOI`, `Census ACS S0101` | Static list (see below) |
+
+**Adding new values**: If you introduce a new data source, time period, or constraint operation, you must register it in `create_field_valid_values.py` before any ETL script can use it. Otherwise the SQL trigger will reject the row at insert time. PolicyEngine variables are registered automatically at database creation time.
+
+### Data Integrity Enforcement
+
+The database enforces consistency through three mechanisms in `create_database_tables.py`:
+
+**1. SQL trigger validation** - Before every INSERT/UPDATE on `targets` and `stratum_constraints`, triggers verify that field values exist in `field_valid_values`. Invalid values are rejected immediately. The `source` field is optional (NULL allowed), but if set, must match a registered value.
+
+**2. Constraint consistency** - A SQLAlchemy `before_insert`/`before_update` listener on `Stratum` calls `ensure_consistent_constraint_set()` to verify that a stratum's constraints are logically compatible (e.g., no contradictory bounds like `age > 50` and `age < 30` on the same stratum).
+
+**3. Parent-child constraint inheritance** - A SQLAlchemy listener ensures child strata include all parent constraints. This prevents a child from claiming to be in a different geographic or demographic scope than its parent. Two cases:
+- **Geographic-to-geographic** (e.g., state to CD): Instead of requiring literal constraint duplication, the validator checks geographic containment. A CD's `congressional_district_geoid` must encode the parent's `state_fips` (i.e., `geoid // 100 == state_fips`). Geographic variables are compared as integers to handle zero-padding differences (`"1"` vs `"01"`).
+- **Demographic children** (e.g., state to age group): The child must include all parent constraints verbatim (e.g., a child under `state_fips == 6` must also have `state_fips == 6` in its own constraints).
 
 ## Key Concepts
 

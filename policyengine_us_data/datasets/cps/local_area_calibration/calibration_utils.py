@@ -303,7 +303,7 @@ def create_target_groups(
     ----------
     targets_df : pd.DataFrame
         DataFrame containing target metadata with columns:
-        - stratum_group_id: Identifier for the type of target
+        - domain_variable: Domain variable from stratum constraints
         - geographic_id: Geographic identifier (US, state FIPS, CD GEOID)
         - variable: Variable name
         - value: Target value
@@ -339,16 +339,26 @@ def create_target_groups(
         level_name = geo_level_names.get(level, f"Level {level}")
         print(f"\n{level_name} targets:")
 
-        # Get unique variables at this level
+        # Get unique (domain_variable, variable) pairs at this level
         level_df = targets_df[level_mask & ~processed_mask]
-        unique_vars = sorted(level_df["variable"].unique())
+        has_domain = "domain_variable" in level_df.columns
+        if has_domain:
+            pairs = sorted(
+                level_df[["domain_variable", "variable"]]
+                .drop_duplicates()
+                .itertuples(index=False, name=None)
+            )
+        else:
+            pairs = [(None, v) for v in sorted(level_df["variable"].unique())]
 
-        for var_name in unique_vars:
+        for domain_var, var_name in pairs:
             var_mask = (
                 (targets_df["variable"] == var_name)
                 & level_mask
                 & ~processed_mask
             )
+            if has_domain and domain_var is not None:
+                var_mask &= targets_df["domain_variable"] == domain_var
 
             if not var_mask.any():
                 continue
@@ -360,14 +370,13 @@ def create_target_groups(
             target_groups[var_mask] = group_id
             processed_mask |= var_mask
 
-            # Create descriptive label
-            stratum_group = matching["stratum_group_id"].iloc[0]
-            if var_name == "household_count" and stratum_group == 4:
-                label = "SNAP Household Count"
-            elif var_name == "snap":
-                label = "Snap"
+            # Create descriptive label using domain_variable for context
+            var_label = var_name.replace("_", " ").title()
+            if domain_var and domain_var != var_name:
+                domain_label = domain_var.replace("_", " ").upper()
+                label = f"{domain_label} {var_label}"
             else:
-                label = var_name.replace("_", " ").title()
+                label = var_label
 
             # Format output based on level and count
             if n_targets == 1:
@@ -407,10 +416,8 @@ def get_all_cds_from_database(db_uri: str) -> List[str]:
     engine = create_engine(db_uri)
     query = """
     SELECT DISTINCT sc.value as cd_geoid
-    FROM strata s
-    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-    WHERE s.stratum_group_id = 1
-      AND sc.constraint_variable = 'congressional_district_geoid'
+    FROM stratum_constraints sc
+    WHERE sc.constraint_variable = 'congressional_district_geoid'
     ORDER BY sc.value
     """
     with engine.connect() as conn:
@@ -439,10 +446,8 @@ def get_cd_index_mapping(db_uri: str = None):
     engine = create_engine(db_uri)
     query = """
     SELECT DISTINCT sc.value as cd_geoid
-    FROM strata s
-    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-    WHERE s.stratum_group_id = 1
-      AND sc.constraint_variable = "congressional_district_geoid"
+    FROM stratum_constraints sc
+    WHERE sc.constraint_variable = 'congressional_district_geoid'
     ORDER BY sc.value
     """
     with engine.connect() as conn:

@@ -16,6 +16,8 @@ from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
 
+from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.census import STATE_NAME_TO_FIPS
 from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     get_calculated_variables,
     apply_op,
@@ -138,44 +140,186 @@ class SparseMatrixBuilder:
 
         return household_mask
 
+    def _calculate_target_values_entity_aware(
+        self,
+        state_sim,
+        target_variable: str,
+        non_geo_constraints: List[dict],
+        geo_mask: np.ndarray,
+        n_households: int,
+    ) -> np.ndarray:
+        """
+        Calculate target values at household level, handling count targets.
+
+        For count targets (*_count): Count entities per household satisfying
+            constraints
+        For value targets: Sum values at household level (existing behavior)
+
+        Args:
+            state_sim: Microsimulation with state_fips set
+            target_variable: The target variable name (e.g., "snap",
+                "person_count")
+            non_geo_constraints: List of constraint dicts (geographic
+                constraints should be pre-filtered)
+            geo_mask: Boolean mask array for geographic filtering (household
+                level)
+            n_households: Number of households
+
+        Returns:
+            Float array of target values at household level
+        """
+        is_count_target = target_variable.endswith("_count")
+
+        if not is_count_target:
+            # Value target: use existing entity-aware constraint evaluation
+            entity_mask = self._evaluate_constraints_entity_aware(
+                state_sim, non_geo_constraints, n_households
+            )
+            mask = geo_mask & entity_mask
+
+            target_values = state_sim.calculate(
+                target_variable, map_to="household"
+            ).values
+            return (target_values * mask).astype(np.float32)
+
+        # Count target: need to count entities satisfying constraints
+        entity_rel = self._build_entity_relationship(state_sim)
+        n_persons = len(entity_rel)
+
+        # Evaluate constraints at person level (don't aggregate to HH yet)
+        person_mask = np.ones(n_persons, dtype=bool)
+        for c in non_geo_constraints:
+            constraint_values = state_sim.calculate(
+                c["variable"], map_to="person"
+            ).values
+            person_mask &= apply_op(
+                constraint_values, c["operation"], c["value"]
+            )
+
+        # Get target entity from variable definition
+        target_entity = state_sim.tax_benefit_system.variables[
+            target_variable
+        ].entity.key
+
+        household_ids = state_sim.calculate(
+            "household_id", map_to="household"
+        ).values
+        geo_mask_map = dict(zip(household_ids, geo_mask))
+
+        if target_entity == "household":
+            # household_count: 1 per qualifying household
+            if non_geo_constraints:
+                entity_mask = self._evaluate_constraints_entity_aware(
+                    state_sim, non_geo_constraints, n_households
+                )
+                return (geo_mask & entity_mask).astype(np.float32)
+            return geo_mask.astype(np.float32)
+
+        if target_entity == "person":
+            # Count persons satisfying constraints per household
+            entity_rel["satisfies"] = person_mask
+            entity_rel["geo_ok"] = entity_rel["household_id"].map(geo_mask_map)
+            filtered = entity_rel[
+                entity_rel["satisfies"] & entity_rel["geo_ok"]
+            ]
+            counts = filtered.groupby("household_id")["person_id"].nunique()
+        else:
+            # For tax_unit, spm_unit: aggregate person mask to entity, then
+            # count
+            entity_id_col = f"{target_entity}_id"
+            entity_rel["satisfies"] = person_mask
+            entity_satisfies = entity_rel.groupby(entity_id_col)[
+                "satisfies"
+            ].any()
+
+            entity_rel_unique = entity_rel[
+                ["household_id", entity_id_col]
+            ].drop_duplicates()
+            entity_rel_unique["entity_ok"] = entity_rel_unique[
+                entity_id_col
+            ].map(entity_satisfies)
+            entity_rel_unique["geo_ok"] = entity_rel_unique[
+                "household_id"
+            ].map(geo_mask_map)
+            filtered = entity_rel_unique[
+                entity_rel_unique["entity_ok"] & entity_rel_unique["geo_ok"]
+            ]
+            counts = filtered.groupby("household_id")[entity_id_col].nunique()
+
+        # Build result aligned with household order
+        return np.array(
+            [counts.get(hh_id, 0) for hh_id in household_ids], dtype=np.float32
+        )
+
     def _query_targets(self, target_filter: dict) -> pd.DataFrame:
-        """Query targets based on filter criteria using OR logic."""
+        """Query targets via target_overview view.
+
+        Best period: most recent period <= self.time_period, or closest
+        future period if none exists.
+
+        Returns DataFrame with geo_level, geographic_id, and
+        domain_variable columns.
+
+        Supports filters: domain_variables, variables, target_ids,
+        stratum_ids.
+        """
         or_conditions = []
 
-        if "stratum_group_ids" in target_filter:
-            ids = ",".join(map(str, target_filter["stratum_group_ids"]))
-            or_conditions.append(f"s.stratum_group_id IN ({ids})")
+        if "domain_variables" in target_filter:
+            dvs = target_filter["domain_variables"]
+            placeholders = ",".join(f"'{dv}'" for dv in dvs)
+            or_conditions.append(f"tv.domain_variable IN ({placeholders})")
 
         if "variables" in target_filter:
             vars_str = ",".join(f"'{v}'" for v in target_filter["variables"])
-            or_conditions.append(f"t.variable IN ({vars_str})")
+            or_conditions.append(f"tv.variable IN ({vars_str})")
 
         if "target_ids" in target_filter:
             ids = ",".join(map(str, target_filter["target_ids"]))
-            or_conditions.append(f"t.target_id IN ({ids})")
+            or_conditions.append(f"tv.target_id IN ({ids})")
 
         if "stratum_ids" in target_filter:
             ids = ",".join(map(str, target_filter["stratum_ids"]))
-            or_conditions.append(f"t.stratum_id IN ({ids})")
+            or_conditions.append(f"tv.stratum_id IN ({ids})")
 
         if not or_conditions:
-            raise ValueError(
-                "target_filter must specify at least one filter criterion"
-            )
-
-        where_clause = " OR ".join(f"({c})" for c in or_conditions)
+            where_clause = "1=1"
+        else:
+            where_clause = " OR ".join(f"({c})" for c in or_conditions)
 
         query = f"""
-        SELECT t.target_id, t.stratum_id, t.variable, t.value, t.period,
-               s.stratum_group_id
-        FROM targets t
-        JOIN strata s ON t.stratum_id = s.stratum_id
-        WHERE {where_clause}
-        ORDER BY t.target_id
+        WITH filtered_targets AS (
+            SELECT tv.target_id, tv.stratum_id, tv.variable, tv.value,
+                   tv.period, tv.geo_level, tv.geographic_id,
+                   tv.domain_variable
+            FROM target_overview tv
+            WHERE {where_clause}
+        ),
+        best_periods AS (
+            SELECT stratum_id, variable,
+                CASE
+                    WHEN MAX(CASE WHEN period <= :time_period
+                             THEN period END) IS NOT NULL
+                    THEN MAX(CASE WHEN period <= :time_period
+                             THEN period END)
+                    ELSE MIN(period)
+                END as best_period
+            FROM filtered_targets
+            GROUP BY stratum_id, variable
+        )
+        SELECT ft.*
+        FROM filtered_targets ft
+        JOIN best_periods bp
+            ON ft.stratum_id = bp.stratum_id
+            AND ft.variable = bp.variable
+            AND ft.period = bp.best_period
+        ORDER BY ft.target_id
         """
 
         with self.engine.connect() as conn:
-            return pd.read_sql(query, conn)
+            return pd.read_sql(
+                query, conn, params={"time_period": self.time_period}
+            )
 
     def _get_constraints(self, stratum_id: int) -> List[dict]:
         """Get all constraints for a stratum (including geographic)."""
@@ -198,6 +342,329 @@ class SparseMatrixBuilder:
                 return c["value"]
         return "US"
 
+    def _calculate_uprating_factors(self, params) -> dict:
+        """Calculate CPI and population uprating factors for all periods."""
+        factors = {}
+
+        query = "SELECT DISTINCT period FROM targets WHERE period IS NOT NULL ORDER BY period"
+        with self.engine.connect() as conn:
+            result = conn.execute(text(query))
+            years_needed = [row[0] for row in result]
+
+        logger.info(
+            f"Calculating uprating factors for years "
+            f"{years_needed} to {self.time_period}"
+        )
+
+        for from_year in years_needed:
+            if from_year == self.time_period:
+                factors[(from_year, "cpi")] = 1.0
+                factors[(from_year, "pop")] = 1.0
+                continue
+
+            try:
+                cpi_from = params.gov.bls.cpi.cpi_u(from_year)
+                cpi_to = params.gov.bls.cpi.cpi_u(self.time_period)
+                factors[(from_year, "cpi")] = float(cpi_to / cpi_from)
+            except Exception as e:
+                logger.warning(
+                    f"Could not calculate CPI factor for " f"{from_year}: {e}"
+                )
+                factors[(from_year, "cpi")] = 1.0
+
+            try:
+                pop_from = params.calibration.gov.census.populations.total(
+                    from_year
+                )
+                pop_to = params.calibration.gov.census.populations.total(
+                    self.time_period
+                )
+                factors[(from_year, "pop")] = float(pop_to / pop_from)
+            except Exception as e:
+                logger.warning(
+                    f"Could not calculate population factor for "
+                    f"{from_year}: {e}"
+                )
+                factors[(from_year, "pop")] = 1.0
+
+        for (year, type_), factor in sorted(factors.items()):
+            if factor != 1.0:
+                logger.info(
+                    f"  {year} -> {self.time_period} "
+                    f"({type_}): {factor:.4f}"
+                )
+
+        return factors
+
+    def _get_uprating_info(
+        self,
+        variable: str,
+        period: int,
+        factors: dict,
+    ) -> Tuple[float, str]:
+        """Get uprating factor and type for a variable at a given period."""
+        if period == self.time_period:
+            return 1.0, "none"
+
+        count_indicators = [
+            "count",
+            "person",
+            "people",
+            "households",
+            "tax_units",
+        ]
+        is_count = any(ind in variable.lower() for ind in count_indicators)
+        uprating_type = "pop" if is_count else "cpi"
+
+        factor = factors.get((period, uprating_type), 1.0)
+        return factor, uprating_type
+
+    def _load_aca_ptc_factors(self) -> Dict[int, Dict[str, float]]:
+        """Load state-level ACA PTC uprating factors from CSV.
+
+        Returns:
+            {state_fips_int: {"tax_unit_count": vol_mult,
+                              "aca_ptc": vol_mult * val_mult}}
+        """
+        csv_path = STORAGE_FOLDER / "aca_ptc_multipliers_2022_2024.csv"
+        df = pd.read_csv(csv_path)
+        result = {}
+        for _, row in df.iterrows():
+            fips_str = STATE_NAME_TO_FIPS.get(row["state"])
+            if fips_str is None:
+                continue
+            fips_int = int(fips_str)
+            result[fips_int] = {
+                "tax_unit_count": row["vol_mult"],
+                "aca_ptc": row["vol_mult"] * row["val_mult"],
+            }
+        return result
+
+    def _get_state_uprating_factors(
+        self,
+        domain: str,
+        targets_df: pd.DataFrame,
+        national_factors: dict,
+    ) -> Dict[int, Dict[str, float]]:
+        """Get per-state uprating factors for a hierarchical domain.
+
+        For aca_ptc: loads real state-level enrollment/APTC factors
+        from CSV. For other domains: returns uniform national CPI/pop
+        factors.
+
+        Returns:
+            {state_fips: {variable: factor}} for each state in the
+            domain's state-level targets.
+        """
+        state_rows = targets_df[
+            (targets_df["domain_variable"] == domain)
+            & (targets_df["geo_level"] == "state")
+        ]
+        state_fips_list = state_rows["geographic_id"].unique()
+        variables = state_rows["variable"].unique()
+
+        if domain == "aca_ptc":
+            csv_factors = self._load_aca_ptc_factors()
+            logger.info(
+                f"  [{domain}] Using CSV state-level factors "
+                f"({len(csv_factors)} states)"
+            )
+        else:
+            csv_factors = None
+            logger.info(f"  [{domain}] Using national CPI/pop factors")
+
+        result = {}
+        n_csv = 0
+        n_fallback = 0
+        for sf in state_fips_list:
+            state_int = int(sf)
+            var_factors = {}
+
+            if csv_factors and state_int in csv_factors:
+                n_csv += 1
+                for var in variables:
+                    var_factors[var] = csv_factors[state_int].get(var, 1.0)
+            else:
+                n_fallback += 1
+                for var in variables:
+                    row = state_rows[
+                        (state_rows["geographic_id"] == sf)
+                        & (state_rows["variable"] == var)
+                    ]
+                    if row.empty:
+                        var_factors[var] = 1.0
+                        continue
+                    period = row.iloc[0]["period"]
+                    factor, _ = self._get_uprating_info(
+                        var, period, national_factors
+                    )
+                    var_factors[var] = factor
+
+            result[state_int] = var_factors
+
+        if csv_factors:
+            all_factors = [f for vf in result.values() for f in vf.values()]
+            logger.info(
+                f"    {n_csv} states from CSV, "
+                f"{n_fallback} national fallback"
+            )
+            for var in variables:
+                vf = [result[s][var] for s in result]
+                logger.info(f"    {var}: [{min(vf):.4f}, {max(vf):.4f}]")
+
+        return result
+
+    def _apply_hierarchical_uprating(
+        self,
+        targets_df: pd.DataFrame,
+        hierarchical_domains: List[str],
+        national_factors: dict,
+    ) -> pd.DataFrame:
+        """Apply state-level uprating and reconcile CDs to state totals.
+
+        Two separable factors per CD row:
+        - hif (hierarchy inconsistency factor): base-year correction
+          so that sum(CDs) == state total in the source data.
+          hif = state_original / sum(cd_originals). Pure geometry,
+          no time dimension.
+        - uprating_factor: state-specific (or national fallback)
+          scaling from base year to target year. Pure time, no
+          geography correction.
+
+        Final CD value = original_value * hif * uprating_factor.
+
+        Also drops national/state rows used for reconciliation
+        (keeps rows like CMS person_count at period == time_period).
+        """
+        df = targets_df.copy()
+        df["hif"] = np.nan
+        df["state_uprating_factor"] = np.nan
+
+        rows_to_drop = []
+
+        for domain in hierarchical_domains:
+            domain_mask = df["domain_variable"] == domain
+
+            state_factors = self._get_state_uprating_factors(
+                domain, df, national_factors
+            )
+
+            state_mask = domain_mask & (df["geo_level"] == "state")
+            district_mask = domain_mask & (df["geo_level"] == "district")
+
+            for sf, var_factors in state_factors.items():
+                for var, uf in var_factors.items():
+                    state_row = df[
+                        state_mask
+                        & (df["geographic_id"] == str(sf))
+                        & (df["variable"] == var)
+                    ]
+                    if state_row.empty:
+                        continue
+                    state_original = state_row.iloc[0]["original_value"]
+
+                    def _cd_in_state(g, s=sf):
+                        try:
+                            return int(g) // 100 == s
+                        except (ValueError, TypeError):
+                            return False
+
+                    cd_mask = (
+                        district_mask
+                        & (df["variable"] == var)
+                        & df["geographic_id"].apply(_cd_in_state)
+                    )
+                    cd_rows = df[cd_mask]
+                    if cd_rows.empty:
+                        continue
+
+                    cd_original_sum = cd_rows["original_value"].sum()
+                    if cd_original_sum == 0:
+                        continue
+
+                    hif = state_original / cd_original_sum
+
+                    for cd_idx in cd_rows.index:
+                        df.at[cd_idx, "hif"] = hif
+                        df.at[cd_idx, "state_uprating_factor"] = uf
+                        df.at[cd_idx, "value"] = (
+                            df.at[cd_idx, "original_value"] * hif * uf
+                        )
+
+            # Log HIF and UF summary for this domain
+            cd_domain = df[district_mask & df["hif"].notna()]
+            if not cd_domain.empty:
+                for var in cd_domain["variable"].unique():
+                    vrows = cd_domain[cd_domain["variable"] == var]
+                    hifs = vrows["hif"]
+                    ufs = vrows["state_uprating_factor"]
+                    logger.info(
+                        f"  [{domain}] {var}: "
+                        f"{len(vrows)} CDs, "
+                        f"HIF=[{hifs.min():.4f}, {hifs.max():.4f}], "
+                        f"UF=[{ufs.min():.4f}, {ufs.max():.4f}]"
+                    )
+
+            # Drop national/state rows used for reconciliation
+            # Keep rows like CMS person_count (period == time_period)
+            national_mask = domain_mask & (df["geo_level"] == "national")
+            for idx in df[national_mask | state_mask].index:
+                row = df.loc[idx]
+                if row["period"] != self.time_period:
+                    rows_to_drop.append(idx)
+
+        if rows_to_drop:
+            dropped = df.loc[rows_to_drop]
+            logger.info(
+                f"Hierarchical uprating: dropping "
+                f"{len(rows_to_drop)} national/state rows "
+                f"(used only for reconciliation)"
+            )
+            for domain in hierarchical_domains:
+                d = dropped[dropped["domain_variable"] == domain]
+                if d.empty:
+                    continue
+                by_level = d["geo_level"].value_counts().to_dict()
+                parts = [f"{n} {lvl}" for lvl, n in sorted(by_level.items())]
+                logger.info(f"    {domain}: {', '.join(parts)}")
+            df = df.drop(index=rows_to_drop).reset_index(drop=True)
+
+        df["target_period"] = self.time_period
+
+        return df
+
+    def print_uprating_summary(self, targets_df: pd.DataFrame) -> None:
+        """Print summary of uprating applied to targets."""
+        has_state_uf = "state_uprating_factor" in targets_df.columns
+
+        # Effective factor: use state_uprating_factor where set,
+        # otherwise fall back to uprating_factor
+        if has_state_uf:
+            eff = targets_df["state_uprating_factor"].fillna(
+                targets_df["uprating_factor"]
+            )
+        else:
+            eff = targets_df["uprating_factor"]
+
+        uprated = targets_df[eff != 1.0]
+        if len(uprated) == 0:
+            print("No targets were uprated.")
+            return
+
+        print("\n" + "=" * 60)
+        print("UPRATING SUMMARY")
+        print("=" * 60)
+        print(f"Uprated {len(uprated)} of {len(targets_df)} targets")
+
+        period_counts = uprated["period"].value_counts().sort_index()
+        for period, count in period_counts.items():
+            print(f"  Period {period}: {count} targets")
+
+        factors = eff[eff != 1.0]
+        print(
+            f"  Factor range: [{factors.min():.4f}, " f"{factors.max():.4f}]"
+        )
+
     def _create_state_sim(self, state: int, n_households: int):
         """Create a fresh simulation with state_fips set to given state."""
         from policyengine_us import Microsimulation
@@ -213,16 +680,24 @@ class SparseMatrixBuilder:
         return state_sim
 
     def build_matrix(
-        self, sim, target_filter: dict
+        self,
+        sim,
+        target_filter: dict,
+        hierarchical_domains: Optional[List[str]] = None,
     ) -> Tuple[pd.DataFrame, sparse.csr_matrix, Dict[str, List[str]]]:
         """
         Build sparse calibration matrix.
 
         Args:
-            sim: Microsimulation instance (used for household_ids, or as template)
+            sim: Microsimulation instance (used for household_ids, or
+                as template)
             target_filter: Dict specifying which targets to include
-                - {"stratum_group_ids": [4]} for SNAP targets
+                - {"domain_variables": ["aca_ptc"]} via target_overview
                 - {"target_ids": [123, 456]} for specific targets
+                - an empty dict {} will fetch all targets
+            hierarchical_domains: Optional list of domain_variable
+                names for state-level uprating + CD reconciliation.
+                Requires domain_variables in target_filter.
 
         Returns:
             Tuple of (targets_df, X_sparse, household_id_mapping)
@@ -235,16 +710,33 @@ class SparseMatrixBuilder:
         n_cols = n_households * n_cds
 
         targets_df = self._query_targets(target_filter)
-        n_targets = len(targets_df)
 
-        if n_targets == 0:
+        if len(targets_df) == 0:
             raise ValueError("No targets found matching filter")
 
-        targets_df["geographic_id"] = targets_df["stratum_id"].apply(
-            self._get_geographic_id
+        # Uprate targets from their original period to self.time_period
+        params = sim.tax_benefit_system.parameters
+        uprating_factors = self._calculate_uprating_factors(params)
+        targets_df["original_value"] = targets_df["value"].copy()
+        targets_df["uprating_factor"] = targets_df.apply(
+            lambda row: self._get_uprating_info(
+                row["variable"], row["period"], uprating_factors
+            )[0],
+            axis=1,
+        )
+        targets_df["value"] = (
+            targets_df["original_value"] * targets_df["uprating_factor"]
         )
 
-        # Sort by (geo_level, variable, geographic_id) for contiguous group rows
+        # Hierarchical uprating: state-level uprating + CD reconciliation
+        if hierarchical_domains:
+            targets_df = self._apply_hierarchical_uprating(
+                targets_df, hierarchical_domains, uprating_factors
+            )
+
+        n_targets = len(targets_df)
+
+        # Sort by (geo_level, variable, geographic_id) for contiguous group
         targets_df["_geo_level"] = targets_df["geographic_id"].apply(
             _get_geo_level
         )
@@ -316,23 +808,19 @@ class SparseMatrixBuilder:
                     if not geo_mask.any():
                         continue
 
-                    # Evaluate non-geographic constraints at entity level
-                    entity_mask = self._evaluate_constraints_entity_aware(
-                        state_sim, non_geo_constraints, n_households
+                    # Calculate target values with entity-aware handling
+                    # This properly handles count targets (*_count) by counting
+                    # entities rather than summing values
+                    masked_values = self._calculate_target_values_entity_aware(
+                        state_sim,
+                        target["variable"],
+                        non_geo_constraints,
+                        geo_mask,
+                        n_households,
                     )
 
-                    # Combine geographic and entity-aware masks
-                    mask = geo_mask & entity_mask
-
-                    if not mask.any():
+                    if not masked_values.any():
                         continue
-
-                    target_values = state_sim.calculate(
-                        target["variable"],
-                        self.time_period,
-                        map_to="household",
-                    ).values
-                    masked_values = (target_values * mask).astype(np.float32)
 
                     nonzero = np.where(masked_values != 0)[0]
                     if len(nonzero) > 0:

@@ -23,6 +23,11 @@ from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils 
 # Format: (variable_name, rtol)
 #     variable_name as per the targets in policy_data.db
 #     rtol is relative tolerance for comparison
+#
+# NOTE: Count targets (person_count, tax_unit_count) are excluded because
+# they have constraints (e.g., age>=5|age<18) that make the X_sparse values
+# different from raw sim.calculate() values. Count targets are tested
+# separately in test_count_targets.py with controlled mock data.
 VARIABLES_TO_TEST = [
     ("snap", 1e-2),
     ("income_tax", 1e-2),
@@ -32,9 +37,8 @@ VARIABLES_TO_TEST = [
 # CI filter config - minimal subset for fast CI runs
 # Tests 3 representative variables covering benefits, taxes, and credits
 COMBINED_FILTER_CONFIG = {
-    "stratum_group_ids": [
-        4,  # SNAP targets
-        117,  # Income tax targets
+    "domain_variables": [
+        "snap",
     ],
     "variables": [
         "snap",
@@ -67,10 +71,8 @@ def test_cds(db_uri):
     engine = create_engine(db_uri)
     query = """
     SELECT DISTINCT sc.value as cd_geoid
-    FROM strata s
-    JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
-    WHERE s.stratum_group_id = 1
-      AND sc.constraint_variable = 'congressional_district_geoid'
+    FROM stratum_constraints sc
+    WHERE sc.constraint_variable = 'congressional_district_geoid'
       AND (
         sc.value LIKE '37__'
         OR sc.value LIKE '150_'

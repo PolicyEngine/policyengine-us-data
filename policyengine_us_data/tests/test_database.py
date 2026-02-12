@@ -25,7 +25,7 @@ def engine(tmp_path):
 )
 def test_stratum_hash_and_relationships(engine):
     with Session(engine) as session:
-        stratum = Stratum(notes="test", stratum_group_id=0)
+        stratum = Stratum(notes="test")
         stratum.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
@@ -63,7 +63,7 @@ def test_stratum_hash_and_relationships(engine):
 
 def test_unique_definition_hash(engine):
     with Session(engine) as session:
-        s1 = Stratum(stratum_group_id=0)
+        s1 = Stratum()
         s1.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",
@@ -73,7 +73,7 @@ def test_unique_definition_hash(engine):
         ]
         session.add(s1)
         session.commit()
-        s2 = Stratum(stratum_group_id=0)
+        s2 = Stratum()
         s2.constraints_rel = [
             StratumConstraint(
                 constraint_variable="ucgid_str",

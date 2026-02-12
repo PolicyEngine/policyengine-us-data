@@ -7,7 +7,6 @@ them into the calibration database.
 
 Data source: https://www.census.gov/programs-surveys/stc/data/datasets.html
 
-Stratum Group ID: 7 (State Income Tax)
 """
 
 import logging
@@ -20,17 +19,8 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
-    Source,
-    SourceType,
-    VariableGroup,
-    VariableMetadata,
 )
 from policyengine_us_data.utils.db import get_geographic_strata, etl_argparser
-from policyengine_us_data.utils.db_metadata import (
-    get_or_create_source,
-    get_or_create_variable_group,
-    get_or_create_variable_metadata,
-)
 from policyengine_us_data.utils.raw_cache import (
     is_cached,
     save_json,
@@ -39,9 +29,6 @@ from policyengine_us_data.utils.raw_cache import (
 
 logger = logging.getLogger(__name__)
 
-
-# Stratum group ID for state income tax targets
-STRATUM_GROUP_ID_STATE_INCOME_TAX = 7
 
 # States without individual income tax (these will have $0 target)
 NO_INCOME_TAX_STATES = {
@@ -242,7 +229,7 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
     Load state income tax targets into the calibration database.
 
     Creates strata and targets for each state's income tax collections.
-    Uses the geographic hierarchy strata (stratum_group_id=1) as parents.
+    Uses the geographic hierarchy strata as parents.
 
     Args:
         df: Transformed DataFrame with state income tax data
@@ -258,33 +245,6 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
     stratum_lookup = {}
 
     with Session(engine) as session:
-        # Get or create the Census STC source
-        source = get_or_create_source(
-            session,
-            name="Census Bureau Annual Survey of State Tax Collections",
-            source_type=SourceType.ADMINISTRATIVE,
-            url="https://www.census.gov/programs-surveys/stc.html",
-            notes="Individual income tax collections by state",
-        )
-
-        # Get or create variable group for state income tax
-        var_group = get_or_create_variable_group(
-            session,
-            name="state_income_tax",
-            category="taxes",
-            description="State-level individual income tax collections",
-        )
-
-        # Get or create variable metadata
-        get_or_create_variable_metadata(
-            session,
-            variable="state_income_tax",
-            group=var_group,
-            display_name="State Income Tax",
-            units="USD",
-            notes="Total state individual income tax collections",
-        )
-
         # Get geographic strata to use as parents
         geo_strata = get_geographic_strata(session)
         state_strata = geo_strata.get("state", {})
@@ -308,7 +268,6 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
             # Create stratum with state_fips constraint
             new_stratum = Stratum(
                 parent_stratum_id=parent_stratum_id,
-                stratum_group_id=STRATUM_GROUP_ID_STATE_INCOME_TAX,
                 notes=note,
             )
             new_stratum.constraints_rel = [
@@ -325,7 +284,6 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
                     variable="state_income_tax",
                     period=year,
                     value=row["income_tax_collections"],
-                    source_id=source.source_id,
                     active=True,
                     notes=f"Census STC FY{year}",
                 )

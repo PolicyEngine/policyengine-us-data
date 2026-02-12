@@ -36,8 +36,15 @@ import numpy as np
 import pandas as pd
 from policyengine_us import Microsimulation
 from policyengine_us_data.storage import STORAGE_FOLDER
-from sparse_matrix_builder import SparseMatrixBuilder
-from calibration_utils import get_all_cds_from_database
+from policyengine_us_data.datasets.cps.local_area_calibration.sparse_matrix_builder import (
+    SparseMatrixBuilder,
+)
+from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+    get_all_cds_from_database,
+)
+from policyengine_us_data.datasets.cps.local_area_calibration.matrix_tracer import (
+    MatrixTracer,
+)
 
 try:
     import torch
@@ -54,6 +61,13 @@ except ImportError:
 DEVICE = args.device
 TOTAL_EPOCHS = args.epochs
 EPOCHS_PER_CHUNK = 500  # TODO: need a better way to set this. Remember it can blow up the Vercel app
+
+# Groups to exclude from the matrix (by group ID from tracer output).
+# Set to [] to keep all groups. Review tracer.print_matrix_structure()
+# output to decide. E.g., drop state-level rows that are linearly
+# redundant with reconciled district rows — or keep them to steer
+# the optimizer.
+GROUPS_TO_EXCLUDE = [1]  # drop state SNAP HH counts (redundant with Group 4)
 
 # Hyperparameters
 BETA = 0.35
@@ -105,17 +119,39 @@ builder = SparseMatrixBuilder(
 targets_df, X_sparse, household_id_mapping = builder.build_matrix(
     sim,
     target_filter={
-        "stratum_group_ids": [4, 7],  # 4=SNAP households, 7=state income tax
-        "variables": [
-            "health_insurance_premiums_without_medicare_part_b",
-            "snap",
-            "state_income_tax",  # Census STC state income tax collections
-        ],
+        "domain_variables": ["aca_ptc", "snap"],
     },
+    hierarchical_domains=["aca_ptc", "snap"],
 )
 
-print(f"Matrix shape: {X_sparse.shape}")
+builder.print_uprating_summary(targets_df)
+
+tracer = MatrixTracer(
+    targets_df, X_sparse, household_id_mapping, cds_to_calibrate, sim
+)
+tracer.print_matrix_structure()
+
+print(f"\nMatrix shape: {X_sparse.shape}")
 print(f"Targets: {len(targets_df)}")
+
+# ============================================================================
+# STEP 2: FILTER GROUPS AND ACHIEVABLE TARGETS
+# ============================================================================
+if GROUPS_TO_EXCLUDE:
+    keep_mask = ~np.isin(tracer.target_groups, GROUPS_TO_EXCLUDE)
+    n_dropped = (~keep_mask).sum()
+    print("\n" + "=" * 60)
+    print("GROUP EXCLUSION")
+    print("=" * 60)
+    print(
+        f"Excluding groups {GROUPS_TO_EXCLUDE}: "
+        f"dropping {n_dropped} of {len(targets_df)} rows"
+    )
+    targets_df = targets_df[keep_mask].reset_index(drop=True)
+    X_sparse = X_sparse[keep_mask, :]
+    print(f"Matrix after exclusion: {X_sparse.shape}")
+else:
+    print("\nNo groups excluded (GROUPS_TO_EXCLUDE is empty)")
 
 # Filter to achievable targets (rows with non-zero data)
 row_sums = np.array(X_sparse.sum(axis=1)).flatten()
@@ -129,7 +165,7 @@ print(f"Impossible targets (filtered out): {n_impossible}")
 targets_df = targets_df[achievable_mask].reset_index(drop=True)
 X_sparse = X_sparse[achievable_mask, :]
 
-print(f"Filtered matrix shape: {X_sparse.shape}")
+print(f"Final matrix shape: {X_sparse.shape}")
 
 # Extract target vector and names
 targets = targets_df["value"].values
@@ -139,14 +175,14 @@ target_names = [
 ]
 
 # ============================================================================
-# STEP 2: INITIALIZE WEIGHTS
+# STEP 3: INITIALIZE WEIGHTS
 # ============================================================================
 initial_weights = np.ones(X_sparse.shape[1]) * 100
 print(f"\nInitial weights shape: {initial_weights.shape}")
 print(f"Initial weights sum: {initial_weights.sum():,.0f}")
 
 # ============================================================================
-# STEP 3: CREATE MODEL
+# STEP 4: CREATE MODEL
 # ============================================================================
 print("\nCreating SparseCalibrationWeights model...")
 model = SparseCalibrationWeights(
@@ -162,7 +198,7 @@ model = SparseCalibrationWeights(
 )
 
 # ============================================================================
-# STEP 4: TRAIN IN CHUNKS
+# STEP 5: TRAIN IN CHUNKS
 # ============================================================================
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 calibration_log = pd.DataFrame()
@@ -205,7 +241,7 @@ for chunk_start in range(0, TOTAL_EPOCHS, EPOCHS_PER_CHUNK):
     calibration_log = pd.concat([calibration_log, chunk_df], ignore_index=True)
 
 # ============================================================================
-# STEP 5: EXTRACT AND SAVE WEIGHTS
+# STEP 6: EXTRACT AND SAVE WEIGHTS
 # ============================================================================
 with torch.no_grad():
     w = model.get_weights(deterministic=True).cpu().numpy()
@@ -225,7 +261,7 @@ print(f"Calibration log saved to: {log_path}")
 print(f"LOG_PATH:{log_path}")
 
 # ============================================================================
-# STEP 6: VERIFY PREDICTIONS
+# STEP 7: VERIFY PREDICTIONS
 # ============================================================================
 print("\n" + "=" * 60)
 print("PREDICTION VERIFICATION")

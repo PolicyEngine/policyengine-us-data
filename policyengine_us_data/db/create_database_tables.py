@@ -66,9 +66,6 @@ class Stratum(SQLModel, table=True):
         index=True,
         description="Identifier for a parent stratum, creating a hierarchy.",
     )
-    stratum_group_id: Optional[int] = Field(
-        default=None, description="Identifier for a group of related strata."
-    )
     notes: Optional[str] = Field(
         default=None, description="Descriptive notes about the stratum."
     )
@@ -157,11 +154,6 @@ class Target(SQLModel, table=True):
     value: Optional[float] = Field(
         default=None, description="The numerical value of the target variable."
     )
-    source_id: Optional[int] = Field(
-        default=None,
-        foreign_key="sources.source_id",
-        description="Identifier for the data source.",
-    )
     active: bool = Field(
         default=True,
         description="Flag to indicate if the record is currently active.",
@@ -176,134 +168,6 @@ class Target(SQLModel, table=True):
     )
 
     strata_rel: Stratum = Relationship(back_populates="targets_rel")
-    source_rel: Optional["Source"] = Relationship()
-
-
-class SourceType(str, Enum):
-    """Types of data sources."""
-
-    ADMINISTRATIVE = "administrative"
-    SURVEY = "survey"
-    SYNTHETIC = "synthetic"
-    DERIVED = "derived"
-    HARDCODED = (
-        "hardcoded"  # Values from various sources, hardcoded into the system
-    )
-
-
-class Source(SQLModel, table=True):
-    """Metadata about data sources."""
-
-    __tablename__ = "sources"
-    __table_args__ = (
-        UniqueConstraint("name", "vintage", name="uq_source_name_vintage"),
-    )
-
-    source_id: Optional[int] = Field(
-        default=None,
-        primary_key=True,
-        description="Unique identifier for the data source.",
-    )
-    name: str = Field(
-        description="Name of the data source (e.g., 'IRS SOI', 'Census ACS').",
-        index=True,
-    )
-    type: SourceType = Field(
-        description="Type of data source (administrative, survey, etc.)."
-    )
-    description: Optional[str] = Field(
-        default=None, description="Detailed description of the data source."
-    )
-    url: Optional[str] = Field(
-        default=None,
-        description="URL or reference to the original data source.",
-    )
-    vintage: Optional[str] = Field(
-        default=None, description="Version or release date of the data source."
-    )
-    notes: Optional[str] = Field(
-        default=None, description="Additional notes about the source."
-    )
-
-
-class VariableGroup(SQLModel, table=True):
-    """Groups of related variables that form logical units."""
-
-    __tablename__ = "variable_groups"
-
-    group_id: Optional[int] = Field(
-        default=None,
-        primary_key=True,
-        description="Unique identifier for the variable group.",
-    )
-    name: str = Field(
-        description="Name of the variable group (e.g., 'age_distribution', 'snap_recipients').",
-        index=True,
-        unique=True,
-    )
-    category: str = Field(
-        description="High-level category (e.g., 'demographic', 'benefit', 'tax', 'income').",
-        index=True,
-    )
-    is_histogram: bool = Field(
-        default=False,
-        description="Whether this group represents a histogram/distribution.",
-    )
-    is_exclusive: bool = Field(
-        default=False,
-        description="Whether variables in this group are mutually exclusive.",
-    )
-    aggregation_method: Optional[str] = Field(
-        default=None,
-        description="How to aggregate variables in this group (sum, weighted_avg, etc.).",
-    )
-    display_order: Optional[int] = Field(
-        default=None,
-        description="Order for displaying this group in matrices/reports.",
-    )
-    description: Optional[str] = Field(
-        default=None, description="Description of what this group represents."
-    )
-
-
-class VariableMetadata(SQLModel, table=True):
-    """Maps PolicyEngine variables to their groups and provides metadata."""
-
-    __tablename__ = "variable_metadata"
-    __table_args__ = (
-        UniqueConstraint("variable", name="uq_variable_metadata_variable"),
-    )
-
-    metadata_id: Optional[int] = Field(default=None, primary_key=True)
-    variable: str = Field(
-        description="PolicyEngine variable name.", index=True
-    )
-    group_id: Optional[int] = Field(
-        default=None,
-        foreign_key="variable_groups.group_id",
-        description="ID of the variable group this belongs to.",
-    )
-    display_name: Optional[str] = Field(
-        default=None,
-        description="Human-readable name for display in matrices.",
-    )
-    display_order: Optional[int] = Field(
-        default=None,
-        description="Order within its group for display purposes.",
-    )
-    units: Optional[str] = Field(
-        default=None,
-        description="Units of measurement (dollars, count, percent, etc.).",
-    )
-    is_primary: bool = Field(
-        default=True,
-        description="Whether this is a primary variable vs derived/auxiliary.",
-    )
-    notes: Optional[str] = Field(
-        default=None, description="Additional notes about the variable."
-    )
-
-    group_rel: Optional[VariableGroup] = Relationship()
 
 
 # This SQLAlchemy event listener works directly with the SQLModel class
@@ -344,6 +208,67 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
     target.definition_hash = h.hexdigest()
 
 
+STRATUM_DOMAIN_VIEW = """\
+CREATE VIEW IF NOT EXISTS stratum_domain AS
+SELECT DISTINCT
+    sc.stratum_id,
+    sc.constraint_variable AS domain_variable
+FROM stratum_constraints sc
+WHERE sc.constraint_variable NOT IN (
+    'state_fips', 'congressional_district_geoid',
+    'tax_unit_is_filer', 'ucgid_str'
+);
+"""
+
+TARGET_OVERVIEW_VIEW = """\
+CREATE VIEW IF NOT EXISTS target_overview AS
+SELECT
+    t.target_id,
+    t.stratum_id,
+    t.variable,
+    t.value,
+    t.period,
+    t.active,
+    CASE
+        WHEN MAX(CASE
+            WHEN sc.constraint_variable = 'congressional_district_geoid'
+                THEN 1
+            WHEN sc.constraint_variable = 'ucgid_str'
+                AND length(sc.value) = 13 THEN 1
+            ELSE 0 END) = 1 THEN 'district'
+        WHEN MAX(CASE
+            WHEN sc.constraint_variable = 'state_fips' THEN 1
+            WHEN sc.constraint_variable = 'ucgid_str'
+                AND length(sc.value) = 11 THEN 1
+            ELSE 0 END) = 1 THEN 'state'
+        ELSE 'national'
+    END AS geo_level,
+    COALESCE(
+        MAX(CASE
+            WHEN sc.constraint_variable
+                = 'congressional_district_geoid'
+            THEN sc.value END),
+        MAX(CASE
+            WHEN sc.constraint_variable = 'state_fips'
+            THEN sc.value END),
+        MAX(CASE
+            WHEN sc.constraint_variable = 'ucgid_str'
+            THEN sc.value END),
+        'US'
+    ) AS geographic_id,
+    GROUP_CONCAT(DISTINCT CASE
+        WHEN sc.constraint_variable NOT IN (
+            'state_fips', 'congressional_district_geoid',
+            'tax_unit_is_filer', 'ucgid_str'
+        ) THEN sc.constraint_variable
+    END) AS domain_variable
+FROM targets t
+LEFT JOIN stratum_constraints sc ON t.stratum_id = sc.stratum_id
+GROUP BY t.target_id, t.stratum_id, t.variable,
+         t.value, t.period, t.active;
+"""
+
+
 def create_database(
     db_uri: str = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}",
 ):
@@ -358,6 +283,14 @@ def create_database(
     """
     engine = create_engine(db_uri)
     SQLModel.metadata.create_all(engine)
+
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        conn.execute(text(STRATUM_DOMAIN_VIEW))
+        conn.execute(text(TARGET_OVERVIEW_VIEW))
+        conn.commit()
+
     logger.info(f"Database and tables created successfully at {db_uri}")
     return engine
 

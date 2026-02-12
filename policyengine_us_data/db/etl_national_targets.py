@@ -8,14 +8,10 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
-    SourceType,
 )
 from policyengine_us_data.utils.db import (
     DEFAULT_DATASET,
     etl_argparser,
-)
-from policyengine_us_data.utils.db_metadata import (
-    get_or_create_source,
 )
 
 
@@ -263,7 +259,6 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
     conditional_count_targets = [
         {
             "constraint_variable": "medicaid",
-            "stratum_group_id": 5,  # Medicaid strata group
             "person_count": 72_429_055,
             "source": "CMS/HHS administrative data",
             "notes": "Medicaid enrollment count",
@@ -271,7 +266,6 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         },
         {
             "constraint_variable": "aca_ptc",
-            "stratum_group_id": None,  # Will use a generic stratum or create new group
             "person_count": 19_743_689,
             "source": "CMS marketplace data",
             "notes": "ACA Premium Tax Credit recipients",
@@ -285,7 +279,6 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         {
             "constraint_variable": "ssn_card_type",
             "constraint_value": "NONE",  # Need to specify the value we're checking for
-            "stratum_group_id": 7,  # New group for SSN card type
             "person_count": 11.0e6,
             "source": "DHS Office of Homeland Security Statistics",
             "notes": "Undocumented population estimate for Jan 1, 2022",
@@ -294,7 +287,6 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         {
             "constraint_variable": "ssn_card_type",
             "constraint_value": "NONE",
-            "stratum_group_id": 7,
             "person_count": 12.2e6,
             "source": "Center for Migration Studies ACS-based residual estimate",
             "notes": "Undocumented population estimate (published May 2025)",
@@ -303,7 +295,6 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         {
             "constraint_variable": "ssn_card_type",
             "constraint_value": "NONE",
-            "stratum_group_id": 7,
             "person_count": 13.0e6,
             "source": "Reuters synthesis of experts",
             "notes": "Undocumented population central estimate (~13-14 million)",
@@ -312,7 +303,6 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         {
             "constraint_variable": "ssn_card_type",
             "constraint_value": "NONE",
-            "stratum_group_id": 7,
             "person_count": 13.0e6,
             "source": "Reuters synthesis of experts",
             "notes": "Same midpoint carried forward - CBP data show 95% drop in border apprehensions",
@@ -470,17 +460,6 @@ def load_national_targets(
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
-        # Get or create the calibration source
-        calibration_source = get_or_create_source(
-            session,
-            name="PolicyEngine Calibration Targets",
-            source_type=SourceType.HARDCODED,
-            vintage="Mixed (2023-2024)",
-            description="National calibration targets from various authoritative sources",
-            url=None,
-            notes="Aggregated from CMS, IRS, CBO, Treasury, and other federal sources",
-        )
-
         # Get the national stratum
         us_stratum = (
             session.query(Stratum)
@@ -528,7 +507,6 @@ def load_national_targets(
                     variable=target_data["variable"],
                     period=target_year,
                     value=target_data["value"],
-                    source_id=calibration_source.source_id,
                     active=True,
                     notes=combined_notes,
                 )
@@ -551,7 +529,6 @@ def load_national_targets(
                 # Create national filer stratum
                 national_filer_stratum = Stratum(
                     parent_stratum_id=us_stratum.stratum_id,
-                    stratum_group_id=2,  # Filer population group
                     notes="United States - Tax Filers",
                 )
                 national_filer_stratum.constraints_rel = [
@@ -600,7 +577,6 @@ def load_national_targets(
                         variable=target_data["variable"],
                         period=target_year,
                         value=target_data["value"],
-                        source_id=calibration_source.source_id,
                         active=True,
                         notes=combined_notes,
                     )
@@ -610,24 +586,18 @@ def load_national_targets(
         # Process conditional count targets (enrollment counts)
         for cond_target in conditional_targets:
             constraint_var = cond_target["constraint_variable"]
-            stratum_group_id = cond_target.get("stratum_group_id")
             target_year = cond_target["year"]
 
-            # Determine stratum group ID and constraint details
+            # Determine constraint details
             if constraint_var == "medicaid":
-                stratum_group_id = 5  # Medicaid strata group
                 stratum_notes = "National Medicaid Enrollment"
                 constraint_operation = ">"
                 constraint_value = "0"
             elif constraint_var == "aca_ptc":
-                stratum_group_id = (
-                    6  # EITC group or could create new ACA group
-                )
                 stratum_notes = "National ACA Premium Tax Credit Recipients"
                 constraint_operation = ">"
                 constraint_value = "0"
             elif constraint_var == "ssn_card_type":
-                stratum_group_id = 7  # SSN card type group
                 stratum_notes = "National Undocumented Population"
                 constraint_operation = "="
                 constraint_value = cond_target.get("constraint_value", "NONE")
@@ -641,7 +611,6 @@ def load_national_targets(
                 session.query(Stratum)
                 .filter(
                     Stratum.parent_stratum_id == us_stratum.stratum_id,
-                    Stratum.stratum_group_id == stratum_group_id,
                     Stratum.notes == stratum_notes,
                 )
                 .first()
@@ -669,7 +638,6 @@ def load_national_targets(
                         variable="person_count",
                         period=target_year,
                         value=cond_target["person_count"],
-                        source_id=calibration_source.source_id,
                         active=True,
                         notes=f"{cond_target['notes']} | Source: {cond_target['source']}",
                     )
@@ -679,7 +647,6 @@ def load_national_targets(
                 # Create new stratum with constraint
                 new_stratum = Stratum(
                     parent_stratum_id=us_stratum.stratum_id,
-                    stratum_group_id=stratum_group_id,
                     notes=stratum_notes,
                 )
 
@@ -698,7 +665,6 @@ def load_national_targets(
                         variable="person_count",
                         period=target_year,
                         value=cond_target["person_count"],
-                        source_id=calibration_source.source_id,
                         active=True,
                         notes=f"{cond_target['notes']} | Source: {cond_target['source']}",
                     )

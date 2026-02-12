@@ -24,7 +24,7 @@ make promote-database   # Copy DB + raw inputs to HuggingFace clone
 
 | # | Script | Network? | What it does |
 |---|--------|----------|--------------|
-| 1 | `create_database_tables.py` | No | Creates empty SQLite schema (7 tables) |
+| 1 | `create_database_tables.py` | No | Creates empty SQLite schema (3 tables + 2 views) |
 | 2 | `create_initial_strata.py` | Census ACS 5-year | Builds geographic hierarchy: US > 51 states > 436 CDs |
 | 3 | `etl_national_targets.py` | No | Loads ~40 hardcoded national targets (CBO, Treasury, CMS) |
 | 4 | `etl_age.py` | Census ACS 1-year | Age distribution: 18 bins x 488 geographies |
@@ -71,7 +71,6 @@ make database
 **strata** - Population subgroups
 - `stratum_id`: Auto-generated primary key
 - `parent_stratum_id`: Links to parent in hierarchy
-- `stratum_group_id`: Conceptual category (see below)
 - `definition_hash`: SHA-256 of constraints for deduplication
 
 **stratum_constraints** - Rules defining each stratum
@@ -83,49 +82,58 @@ make database
 - `variable`: PolicyEngine US variable name (e.g., `eitc`, `income_tax`)
 - `period`: Year
 - `value`: Numerical value
-- `source_id`: Foreign key to sources table
 - `active`: Boolean flag
 
-### Metadata Tables
+### SQL Views
 
-**sources** - Data provenance (e.g., "Census ACS", "IRS SOI", "CBO")
+**stratum_domain** - Derives the "domain variable" for each stratum by looking at its non-geographic constraints. Geographic constraints (`state_fips`, `congressional_district_geoid`, `tax_unit_is_filer`, `ucgid_str`) are excluded.
 
-**variable_groups** - Logical groupings (e.g., "age_distribution", "snap_recipients")
+```sql
+SELECT * FROM stratum_domain WHERE stratum_id = 123;
+-- Returns: stratum_id=123, domain_variable='age'
+```
 
-**variable_metadata** - Display info for variables (display name, units, ordering)
+**target_overview** - Flattened view of all targets with geographic level, geographic ID, and domain variable derived from constraints. This is the primary query path for calibration code.
+
+```sql
+SELECT * FROM target_overview
+WHERE domain_variable = 'snap' AND geo_level = 'state';
+-- Returns: target_id, stratum_id, variable, value, period,
+--          active, geo_level, geographic_id, domain_variable
+```
 
 ## Key Concepts
 
-### Stratum Groups
+### Stratum Domains (replacing stratum_group_id)
 
-The `stratum_group_id` field categorizes strata:
+Strata are categorized by their **constraints**, not by a separate group ID field. The `stratum_domain` view derives each stratum's domain from its non-geographic constraints:
 
-| ID | Category | Description |
-|----|----------|-------------|
-| 0 | Uncategorized | Legacy strata not yet assigned a group |
-| 1 | Geographic | US, states, congressional districts |
-| 2 | Age/Filer population | Age brackets, tax filer intermediate strata |
-| 3 | Income/AGI | 9 income brackets per geography |
-| 4 | SNAP | SNAP recipient strata |
-| 5 | Medicaid | Medicaid enrollment strata |
-| 6 | EITC | EITC recipients by qualifying children |
-| 7 | State Income Tax | State-level income tax collections (Census STC) |
-| 100-119 | IRS Conditional | Each IRS variable paired with conditional count constraints (includes ACA PTC at 119) |
+| Domain Variable | Description |
+|----------------|-------------|
+| *(none)* | Geographic strata (US, states, congressional districts) |
+| `age` | Age distribution brackets |
+| `adjusted_gross_income` | Income/AGI brackets |
+| `snap` | SNAP recipient strata |
+| `medicaid_enrolled` | Medicaid enrollment strata |
+| `eitc_child_count` | EITC recipients by qualifying children |
+| `state_income_tax` | State-level income tax collections |
+| `aca_ptc` | ACA Premium Tax Credit strata |
+| Various IRS variables | Each IRS variable with conditional count constraints |
 
 ### Conditional Strata (IRS SOI)
 
 IRS variables use a "filer population" intermediate layer and conditional strata:
 
 ```
-Geographic stratum (group_id=1)
-  └── Tax Filer stratum (group_id=2, constraint: tax_unit_is_filer==1)
-       ├── AGI bracket strata (group_id=3, constraint: AGI range)
-       ├── EITC by child count (group_id=6, constraint: eitc_child_count)
-       └── IRS variable strata (group_id=100+, constraint: variable > 0)
+Geographic stratum (no domain constraints)
+  └── Tax Filer stratum (constraint: tax_unit_is_filer==1)
+       ├── AGI bracket strata (constraint: adjusted_gross_income range)
+       ├── EITC by child count (constraint: eitc_child_count)
+       └── IRS variable strata (constraint: variable > 0)
             - Targets: tax_unit_count + variable amount
 ```
 
-Each IRS variable (e.g., `rental_income`, `self_employment_income`) gets its own stratum_group_id (100+) with a constraint requiring that variable > 0. This captures both the count of filers with that income type and the total amount.
+Each IRS variable (e.g., `rental_income`, `self_employment_income`) gets its own stratum with a constraint requiring that variable > 0. This captures both the count of filers with that income type and the total amount.
 
 ### Geographic Hierarchy
 
@@ -149,7 +157,7 @@ Census Bureau API responses use UCGIDs (Universal Census Geographic IDs):
 - `0400000USXX` = State (XX = state FIPS)
 - `5001800USXXDD` = Congressional district (XX = state FIPS, DD = district number)
 
-ETL scripts that pull Census data receive UCGIDs and create their own domain-specific strata with `ucgid_str` constraints. The geographic hierarchy strata (stratum_group_id=1) use `state_fips`/`congressional_district_geoid` instead.
+ETL scripts that pull Census data receive UCGIDs and create their own domain-specific strata with `ucgid_str` constraints. The geographic hierarchy strata use `state_fips`/`congressional_district_geoid` instead.
 
 ### Constraint Operations
 
@@ -194,11 +202,6 @@ The IRS SOI column A59664 (EITC with 3+ children amount) is reported in dollars,
 - `parse_ucgid(ucgid_str)` - Parse UCGID to type/state_fips/district info
 - `get_geographic_strata(session)` - Map of all geographic strata by type
 
-**`policyengine_us_data/utils/db_metadata.py`**:
-- `get_or_create_source(session, ...)` - Upsert data source metadata
-- `get_or_create_variable_group(session, ...)` - Upsert variable group
-- `get_or_create_variable_metadata(session, ...)` - Upsert variable display info
-
 **`policyengine_us_data/utils/raw_cache.py`**:
 - `is_cached(filename)` - Check if a raw input is cached
 - `save_json(filename, data)` / `load_json(filename)` - Cache JSON data
@@ -206,27 +209,27 @@ The IRS SOI column A59664 (EITC with 3+ children amount) is reported in dollars,
 
 ## Example Queries
 
-### Count strata by group
+### Count strata by domain
 ```sql
 SELECT
-    stratum_group_id,
-    CASE stratum_group_id
-        WHEN 0 THEN 'Uncategorized'
-        WHEN 1 THEN 'Geographic'
-        WHEN 2 THEN 'Age/Filer'
-        WHEN 3 THEN 'Income/AGI'
-        WHEN 4 THEN 'SNAP'
-        WHEN 5 THEN 'Medicaid'
-        WHEN 6 THEN 'EITC'
-        WHEN 7 THEN 'State Income Tax'
-    END AS group_name,
-    COUNT(*) AS stratum_count
-FROM strata
-GROUP BY stratum_group_id
-ORDER BY stratum_group_id;
+    COALESCE(sd.domain_variable, '(geographic)') AS domain,
+    COUNT(DISTINCT s.stratum_id) AS stratum_count
+FROM strata s
+LEFT JOIN stratum_domain sd ON s.stratum_id = sd.stratum_id
+GROUP BY domain
+ORDER BY domain;
 ```
 
-### Get targets for a specific state
+### Get targets for a specific state via target_overview
+```sql
+SELECT variable, value, period, geo_level, geographic_id, domain_variable
+FROM target_overview
+WHERE geographic_id = '37'
+  AND geo_level = 'state'
+ORDER BY variable;
+```
+
+### Get targets for a specific state (join-based)
 ```sql
 SELECT t.variable, t.value, t.period, s.notes
 FROM targets t
@@ -237,19 +240,13 @@ WHERE sc.constraint_variable = 'state_fips'
 ORDER BY t.variable;
 ```
 
-### Compare admin vs survey data sources
+### Get all SNAP targets at district level
 ```sql
-SELECT
-    src.type AS source_type,
-    src.name AS source_name,
-    st.notes AS location,
-    t.value
-FROM targets t
-JOIN sources src ON t.source_id = src.source_id
-JOIN strata st ON t.stratum_id = st.stratum_id
-WHERE t.variable = 'household_count'
-    AND st.notes LIKE '%SNAP%'
-ORDER BY src.type, st.notes;
+SELECT variable, value, geographic_id, period
+FROM target_overview
+WHERE domain_variable = 'snap'
+  AND geo_level = 'district'
+ORDER BY geographic_id;
 ```
 
 ## Database Location

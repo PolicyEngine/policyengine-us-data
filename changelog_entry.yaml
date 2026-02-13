@@ -1,0 +1,11 @@
+- bump: minor
+  changes:
+    added:
+    - Census-block-first calibration pipeline (calibration/ package) ported from PR #516
+    - Clone-and-assign module for population-weighted census block sampling
+    - Unified matrix builder with clone-by-clone simulation, COO caching, and target_overview-based querying
+    - Unified calibration CLI with L0 optimization and seeded takeup re-randomization
+    - 28 new tests for the calibration pipeline
+    removed:
+    - SparseMatrixBuilder, MatrixTracer, and fit_calibration_weights (replaced by unified pipeline)
+    - 8 old SparseMatrixBuilder-dependent tests (replaced by new test_calibration suite)

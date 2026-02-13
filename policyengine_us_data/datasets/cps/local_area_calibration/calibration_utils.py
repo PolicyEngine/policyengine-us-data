@@ -277,7 +277,7 @@ def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
     return np.ones(len(values), dtype=bool)
 
 
-def _get_geo_level(geo_id) -> int:
+def get_geo_level(geo_id) -> int:
     """Return geographic level: 0=National, 1=State, 2=District."""
     if geo_id == "US":
         return 0
@@ -324,9 +324,7 @@ def create_target_groups(
 
     # Add geo_level column for sorting
     targets_df = targets_df.copy()
-    targets_df["_geo_level"] = targets_df["geographic_id"].apply(
-        _get_geo_level
-    )
+    targets_df["_geo_level"] = targets_df["geographic_id"].apply(get_geo_level)
 
     geo_level_names = {0: "National", 1: "State", 2: "District"}
 
@@ -426,7 +424,7 @@ def drop_target_groups(
     Returns:
         (filtered_targets_df, filtered_X_sparse)
     """
-    geo_levels = targets_df["geographic_id"].apply(_get_geo_level)
+    geo_levels = targets_df["geographic_id"].apply(get_geo_level)
     name_to_level = {v: k for k, v in _GEO_LEVEL_NAMES.items()}
     drop_ids = set()
 

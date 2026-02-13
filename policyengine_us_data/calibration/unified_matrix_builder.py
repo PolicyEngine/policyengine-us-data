@@ -24,7 +24,7 @@ from policyengine_us_data.utils.census import STATE_NAME_TO_FIPS
 from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
     get_calculated_variables,
     apply_op,
-    _get_geo_level,
+    get_geo_level,
 )
 
 logger = logging.getLogger(__name__)
@@ -642,6 +642,7 @@ class UnifiedMatrixBuilder:
         n_records = geography.n_records
         n_clones = geography.n_clones
         n_total = n_records * n_clones
+        self._coo_parts = ([], [], [])
 
         # 1. Query and uprate targets
         targets_df = self._query_targets(target_filter or {})
@@ -674,7 +675,7 @@ class UnifiedMatrixBuilder:
 
         # 2. Sort targets by geographic level
         targets_df["_geo_level"] = targets_df["geographic_id"].apply(
-            _get_geo_level
+            get_geo_level
         )
         targets_df = targets_df.sort_values(
             ["_geo_level", "variable", "geographic_id"]
@@ -866,8 +867,6 @@ class UnifiedMatrixBuilder:
                 )
                 del var_values, clone_sim
             else:
-                if not hasattr(self, "_coo_parts"):
-                    self._coo_parts = ([], [], [])
                 self._coo_parts[0].append(cr)
                 self._coo_parts[1].append(cc)
                 self._coo_parts[2].append(cv)

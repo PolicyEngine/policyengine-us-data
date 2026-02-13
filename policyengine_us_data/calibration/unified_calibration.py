@@ -30,14 +30,6 @@ from pathlib import Path
 
 import numpy as np
 
-try:
-    if not sys.stderr.isatty():
-        sys.stderr.reconfigure(line_buffering=True)
-    if not sys.stdout.isatty():
-        sys.stdout.reconfigure(line_buffering=True)
-except AttributeError:
-    pass
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -140,10 +132,7 @@ def rerandomize_takeup(
         entity_level = spec["entity"]
         rate_key = spec["rate_key"]
 
-        if rate_key == "voluntary_filing":
-            rate_or_dict = 0.05
-        else:
-            rate_or_dict = load_take_up_rate(rate_key, time_period)
+        rate_or_dict = load_take_up_rate(rate_key, time_period)
 
         is_state_specific = isinstance(rate_or_dict, dict)
 
@@ -538,6 +527,14 @@ def main(argv=None):
 
     import pandas as pd
 
+    try:
+        if not sys.stderr.isatty():
+            sys.stderr.reconfigure(line_buffering=True)
+        if not sys.stdout.isatty():
+            sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:
+        pass
+
     args = parse_args(argv)
 
     from policyengine_us_data.storage import STORAGE_FOLDER
@@ -589,6 +586,7 @@ def main(argv=None):
     # Save weights
     np.save(output_path, weights)
     logger.info("Weights saved to %s", output_path)
+    print(f"OUTPUT_PATH:{output_path}")
 
     # Save diagnostics
     output_dir = Path(output_path).parent
@@ -632,6 +630,7 @@ def main(argv=None):
     with open(config_path, "w") as f:
         json.dump(run_config, f, indent=2)
     logger.info("Config saved to %s", config_path)
+    print(f"LOG_PATH:{diag_path}")
 
 
 if __name__ == "__main__":

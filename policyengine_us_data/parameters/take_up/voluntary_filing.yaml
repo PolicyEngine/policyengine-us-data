@@ -1,0 +1,6 @@
+description: Percentage of tax units (not taking up EITC) who file taxes voluntarily.
+metadata:
+  label: Voluntary filing rate
+  unit: /1
+values:
+  2018-01-01: 0.05

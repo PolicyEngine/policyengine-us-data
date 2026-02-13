@@ -6,6 +6,10 @@
     - Unified matrix builder with clone-by-clone simulation, COO caching, and target_overview-based querying
     - Unified calibration CLI with L0 optimization and seeded takeup re-randomization
     - 28 new tests for the calibration pipeline
+    changed:
+    - Rewrote local_area_calibration_setup.ipynb for clone-based pipeline
+    fixed:
+    - Fix Jupyter import error in unified_calibration.py (OutStream.reconfigure)
     removed:
     - SparseMatrixBuilder, MatrixTracer, and fit_calibration_weights (replaced by unified pipeline)
     - 8 old SparseMatrixBuilder-dependent tests (replaced by new test_calibration suite)

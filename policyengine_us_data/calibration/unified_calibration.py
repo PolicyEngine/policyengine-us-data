@@ -30,10 +30,13 @@ from pathlib import Path
 
 import numpy as np
 
-if not sys.stderr.isatty():
-    sys.stderr.reconfigure(line_buffering=True)
-if not sys.stdout.isatty():
-    sys.stdout.reconfigure(line_buffering=True)
+try:
+    if not sys.stderr.isatty():
+        sys.stderr.reconfigure(line_buffering=True)
+    if not sys.stdout.isatty():
+        sys.stdout.reconfigure(line_buffering=True)
+except AttributeError:
+    pass
 
 logging.basicConfig(
     level=logging.INFO,

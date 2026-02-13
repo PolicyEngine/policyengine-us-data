@@ -207,6 +207,7 @@ def add_takeup(self):
     snap_rate = load_take_up_rate("snap", self.time_period)
     aca_rate = load_take_up_rate("aca", self.time_period)
     medicaid_rates_by_state = load_take_up_rate("medicaid", self.time_period)
+    tanf_rates_by_state = load_take_up_rate("tanf", self.time_period)
     head_start_rate = load_take_up_rate("head_start", self.time_period)
     early_head_start_rate = load_take_up_rate(
         "early_head_start", self.time_period
@@ -232,15 +233,35 @@ def add_takeup(self):
     rng = seeded_rng("takes_up_snap_if_eligible")
     data["takes_up_snap_if_eligible"] = rng.random(n_spm_units) < snap_rate
 
+    # TANF: state-specific rates at SPM unit level
+    state_codes = baseline.calculate("state_code_str").values
+    hh_ids = data["household_id"]
+    person_hh_ids = data["person_household_id"]
+    hh_to_state = dict(zip(hh_ids, state_codes))
+    spm_unit_ids = data["spm_unit_id"]
+    person_spm_unit_ids = data["person_spm_unit_id"]
+    # Map each SPM unit to its state via its first member's household
+    spm_to_state = {}
+    for person_idx, spm_id in enumerate(person_spm_unit_ids):
+        if spm_id not in spm_to_state:
+            hh_id = person_hh_ids[person_idx]
+            spm_to_state[spm_id] = hh_to_state.get(hh_id, "CA")
+    tanf_rate_by_spm = np.array(
+        [
+            tanf_rates_by_state.get(spm_to_state.get(spm_id, "CA"), 0.21)
+            for spm_id in spm_unit_ids
+        ]
+    )
+    rng = seeded_rng("takes_up_tanf_if_eligible")
+    data["takes_up_tanf_if_eligible"] = (
+        rng.random(n_spm_units) < tanf_rate_by_spm
+    )
+
     # ACA
     rng = seeded_rng("takes_up_aca_if_eligible")
     data["takes_up_aca_if_eligible"] = rng.random(n_tax_units) < aca_rate
 
     # Medicaid: state-specific rates
-    state_codes = baseline.calculate("state_code_str").values
-    hh_ids = data["household_id"]
-    person_hh_ids = data["person_household_id"]
-    hh_to_state = dict(zip(hh_ids, state_codes))
     person_states = np.array(
         [hh_to_state.get(hh_id, "CA") for hh_id in person_hh_ids]
     )

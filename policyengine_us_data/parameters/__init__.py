@@ -19,7 +19,7 @@ def load_take_up_rate(variable_name: str, year: int = 2018):
         year: Year for which to get the rate
 
     Returns:
-        float, dict (EITC rates_by_children), or dict (Medicaid
+        float, dict (EITC rates_by_children), or dict (Medicaid/TANF
         rates_by_state)
     """
     yaml_path = PARAMETERS_DIR / "take_up" / f"{variable_name}.yaml"
@@ -31,7 +31,7 @@ def load_take_up_rate(variable_name: str, year: int = 2018):
     if "rates_by_children" in data:
         return data["rates_by_children"]
 
-    # Medicaid: state-specific rates
+    # State-specific rates (Medicaid, TANF, etc.)
     if "rates_by_state" in data:
         return data["rates_by_state"]
 

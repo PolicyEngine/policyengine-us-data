@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+    - Add state-level TANF takeup rates and assign takeup during CPS microdata construction.

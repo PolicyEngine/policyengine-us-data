@@ -1,0 +1,12 @@
+- bump: minor
+  changes:
+    added:
+    - PUF clone + QRF imputation module (puf_impute.py) with state_fips predictor, fixing $5.8M AGI ceiling from subsample bug (issue #530)
+    - ACS/SIPP/SCF geographic re-imputation module (source_impute.py) with state predictor
+    - PUF and source impute integration into unified calibration pipeline (--puf-dataset, --skip-puf, --skip-source-impute flags)
+    - 21 new tests for puf_impute and source_impute modules
+    changed:
+    - Refactored extended_cps.py to delegate to puf_impute.puf_clone_dataset() (443 -> 75 lines)
+    - unified_calibration.py pipeline now supports optional source imputation and PUF cloning steps
+    fixed:
+    - QRF training now uses ALL PUF records instead of subsample(10_000), removing hard AGI ceiling at ~$6.26M

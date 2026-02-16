@@ -1,22 +1,12 @@
 - bump: minor
   changes:
     added:
-    - Census-block-first calibration pipeline (calibration/ package) ported from PR #516
-    - Clone-and-assign module for population-weighted census block sampling
-    - Unified matrix builder with clone-by-clone simulation, COO caching, and target_overview-based querying
-    - Unified calibration CLI with L0 optimization and seeded takeup re-randomization
-    - 28 new tests for the calibration pipeline
-    - Integration test for build_matrix geographic masking (national/state/CD)
-    - Tests for drop_target_groups utility
-    - voluntary_filing.yaml takeup rate parameter
+    - PUF clone + QRF imputation module (puf_impute.py) with state_fips predictor, fixing $5.8M AGI ceiling from subsample bug (issue #530)
+    - ACS/SIPP/SCF geographic re-imputation module (source_impute.py) with state predictor
+    - PUF and source impute integration into unified calibration pipeline (--puf-dataset, --skip-puf, --skip-source-impute flags)
+    - 21 new tests for puf_impute and source_impute modules
     changed:
-    - Rewrote local_area_calibration_setup.ipynb for clone-based pipeline
-    - Renamed _get_geo_level to get_geo_level (now cross-module public API)
+    - Refactored extended_cps.py to delegate to puf_impute.puf_clone_dataset() (443 -> 75 lines)
+    - unified_calibration.py pipeline now supports optional source imputation and PUF cloning steps
     fixed:
-    - Fix Jupyter import error in unified_calibration.py (OutStream.reconfigure moved to main)
-    - Fix modal_app/remote_calibration_runner.py referencing deleted fit_calibration_weights.py
-    - Fix _coo_parts stale state bug on build_matrix re-call after failure
-    - Remove hardcoded voluntary_filing rate in favor of YAML parameter
-    removed:
-    - SparseMatrixBuilder, MatrixTracer, and fit_calibration_weights (replaced by unified pipeline)
-    - 8 old SparseMatrixBuilder-dependent tests (replaced by new test_calibration suite)
+    - QRF training now uses ALL PUF records instead of subsample(10_000), removing hard AGI ceiling at ~$6.26M

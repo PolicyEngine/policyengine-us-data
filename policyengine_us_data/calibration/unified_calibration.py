@@ -446,7 +446,11 @@ def _build_puf_cloned_dataset(
 
     data_dict = {}
     for var in data:
-        data_dict[var] = {time_period: data[var][...]}
+        if isinstance(data[var], dict):
+            vals = list(data[var].values())
+            data_dict[var] = {time_period: vals[0]}
+        else:
+            data_dict[var] = {time_period: np.array(data[var])}
 
     if not skip_source_impute:
         from policyengine_us_data.calibration.source_impute import (

@@ -22,6 +22,9 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+PUF_SUBSAMPLE_TARGET = 20_000
+PUF_TOP_PERCENTILE = 99.5
+
 DEMOGRAPHIC_PREDICTORS = [
     "age",
     "is_male",
@@ -394,9 +397,9 @@ def _run_qrf_imputation(
 ) -> tuple:
     """Run QRF imputation for PUF variables.
 
-    Trains QRF on ALL PUF records (no subsample) with random
-    state assignment, and predicts on CPS data using
-    demographics + state_fips.
+    Stratified-subsamples PUF records (top 0.5% by AGI kept,
+    rest randomly sampled to ~20K total) with random state
+    assignment, trains QRF, and predicts on CPS data.
 
     Args:
         data: CPS data dict.
@@ -427,6 +430,10 @@ def _run_qrf_imputation(
     puf_state_indices = rng.choice(len(puf_states), size=n_puf, p=block_probs)
     puf_state_fips = puf_states[puf_state_indices]
 
+    puf_agi = puf_sim.calculate(
+        "adjusted_gross_income", map_to="person"
+    ).values
+
     demo_preds = [p for p in DEMOGRAPHIC_PREDICTORS if p != "state_fips"]
 
     X_train_full = puf_sim.calculate_dataframe(demo_preds + IMPUTED_VARIABLES)
@@ -438,6 +445,18 @@ def _run_qrf_imputation(
     X_train_override["state_fips"] = puf_state_fips.astype(np.float32)
 
     del puf_sim
+
+    sub_idx = _stratified_subsample_index(puf_agi)
+    logger.info(
+        "Stratified PUF subsample: %d -> %d records "
+        "(top %.1f%% preserved, AGI threshold $%,.0f)",
+        len(puf_agi),
+        len(sub_idx),
+        100 - PUF_TOP_PERCENTILE,
+        np.percentile(puf_agi, PUF_TOP_PERCENTILE),
+    )
+    X_train_full = X_train_full.iloc[sub_idx].reset_index(drop=True)
+    X_train_override = X_train_override.iloc[sub_idx].reset_index(drop=True)
 
     n_hh = len(data["household_id"][time_period])
     person_count = len(data["person_id"][time_period])
@@ -483,6 +502,39 @@ def _run_qrf_imputation(
     )
 
     return y_full, y_override
+
+
+def _stratified_subsample_index(
+    income: np.ndarray,
+    target_n: int = PUF_SUBSAMPLE_TARGET,
+    top_pct: float = PUF_TOP_PERCENTILE,
+    seed: int = 42,
+) -> np.ndarray:
+    """Return indices for stratified subsample preserving top earners.
+
+    Keeps ALL records above the top_pct percentile of income,
+    then randomly samples the rest to reach target_n total.
+    """
+    n = len(income)
+    if n <= target_n:
+        return np.arange(n)
+
+    threshold = np.percentile(income, top_pct)
+    top_idx = np.where(income >= threshold)[0]
+    bottom_idx = np.where(income < threshold)[0]
+
+    remaining_quota = max(0, target_n - len(top_idx))
+    rng = np.random.default_rng(seed=seed)
+    if remaining_quota >= len(bottom_idx):
+        selected_bottom = bottom_idx
+    else:
+        selected_bottom = rng.choice(
+            bottom_idx, size=remaining_quota, replace=False
+        )
+
+    selected = np.concatenate([top_idx, selected_bottom])
+    selected.sort()
+    return selected
 
 
 def _batch_qrf(

@@ -327,7 +327,7 @@ def _impute_sipp(
     time_period: int,
     dataset_path: Optional[str] = None,
 ) -> Dict[str, Dict[int, np.ndarray]]:
-    """Impute tip_income and liquid assets from SIPP with state.
+    """Impute tip_income and liquid assets from SIPP.
 
     Args:
         data: CPS data dict.
@@ -341,11 +341,6 @@ def _impute_sipp(
     from microimpute.models.qrf import QRF
     from policyengine_us import Microsimulation
 
-    from policyengine_us_data.calibration.clone_and_assign import (
-        load_global_block_distribution,
-    )
-
-    _, _, donor_states, block_probs = load_global_block_distribution()
     rng = np.random.default_rng(seed=88)
 
     from policyengine_us_data.storage import STORAGE_FOLDER
@@ -404,11 +399,6 @@ def _impute_sipp(
         )
     ]
 
-    tip_state_idx = rng.choice(
-        len(donor_states), size=len(tip_train), p=block_probs
-    )
-    tip_train["state_fips"] = donor_states[tip_state_idx].astype(np.float32)
-
     cps_tip_df = _build_cps_receiver(
         data, time_period, dataset_path, ["employment_income", "age"]
     )
@@ -428,10 +418,7 @@ def _impute_sipp(
         cps_tip_df["count_under_18"] = 0.0
         cps_tip_df["count_under_6"] = 0.0
 
-    person_states = _person_state_fips(data, state_fips, time_period)
-    cps_tip_df["state_fips"] = person_states.astype(np.float32)
-
-    tip_predictors = SIPP_TIPS_PREDICTORS + ["state_fips"]
+    tip_predictors = SIPP_TIPS_PREDICTORS
     qrf = QRF()
     logger.info(
         "SIPP tips QRF: %d train, %d test",
@@ -520,15 +507,6 @@ def _impute_sipp(
             )
         ]
 
-        asset_state_idx = rng.choice(
-            len(donor_states),
-            size=len(asset_train),
-            p=block_probs,
-        )
-        asset_train["state_fips"] = donor_states[asset_state_idx].astype(
-            np.float32
-        )
-
         cps_asset_df = _build_cps_receiver(
             data,
             time_period,
@@ -553,9 +531,7 @@ def _impute_sipp(
             else 0.0
         )
 
-        cps_asset_df["state_fips"] = person_states.astype(np.float32)
-
-        asset_predictors = SIPP_ASSETS_PREDICTORS + ["state_fips"]
+        asset_predictors = SIPP_ASSETS_PREDICTORS
         asset_vars = [
             "bank_account_assets",
             "stock_assets",
@@ -598,7 +574,7 @@ def _impute_scf(
     time_period: int,
     dataset_path: Optional[str] = None,
 ) -> Dict[str, Dict[int, np.ndarray]]:
-    """Impute net_worth and auto_loan from SCF with state.
+    """Impute net_worth and auto_loan from SCF.
 
     Args:
         data: CPS data dict.
@@ -611,25 +587,13 @@ def _impute_scf(
     """
     from microimpute.models.qrf import QRF
     from policyengine_us import Microsimulation
-
-    from policyengine_us_data.calibration.clone_and_assign import (
-        load_global_block_distribution,
-    )
     from policyengine_us_data.datasets.scf.scf import SCF_2022
-
-    _, _, donor_states, block_probs = load_global_block_distribution()
-    rng = np.random.default_rng(seed=77)
 
     scf_dataset = SCF_2022()
     scf_data = scf_dataset.load_dataset()
     scf_df = pd.DataFrame({key: scf_data[key] for key in scf_data.keys()})
 
-    scf_state_idx = rng.choice(
-        len(donor_states), size=len(scf_df), p=block_probs
-    )
-    scf_df["state_fips"] = donor_states[scf_state_idx].astype(np.float32)
-
-    scf_predictors = SCF_PREDICTORS + ["state_fips"]
+    scf_predictors = SCF_PREDICTORS
 
     available_preds = [p for p in scf_predictors if p in scf_df.columns]
     missing_preds = [p for p in scf_predictors if p not in scf_df.columns]
@@ -705,9 +669,6 @@ def _impute_scf(
         + cps_df.get("taxable_private_pension_income", 0)
         + cps_df.get("social_security_retirement", 0)
     ).astype(np.float32)
-
-    person_states = _person_state_fips(data, state_fips, time_period)
-    cps_df["state_fips"] = person_states.astype(np.float32)
 
     qrf = QRF()
     logger.info(

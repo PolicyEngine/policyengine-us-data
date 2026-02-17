@@ -53,10 +53,7 @@ def _fit_weights_impl(branch: str, epochs: int) -> dict:
         elif line.startswith("DATASET:"):
             dataset_path = line.split("DATASET:")[1].strip()
 
-    script_path = (
-        "policyengine_us_data/datasets/cps/"
-        "local_area_calibration/fit_calibration_weights.py"
-    )
+    script_path = "policyengine_us_data/calibration/unified_calibration.py"
     result = subprocess.run(
         [
             "uv",
@@ -69,7 +66,7 @@ def _fit_weights_impl(branch: str, epochs: int) -> dict:
             str(epochs),
             "--db-path",
             db_path,
-            "--dataset-path",
+            "--dataset",
             dataset_path,
         ],
         capture_output=True,

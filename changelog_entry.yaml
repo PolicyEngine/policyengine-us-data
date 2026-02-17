@@ -1,0 +1,22 @@
+- bump: minor
+  changes:
+    added:
+    - Census-block-first calibration pipeline (calibration/ package) ported from PR #516
+    - Clone-and-assign module for population-weighted census block sampling
+    - Unified matrix builder with clone-by-clone simulation, COO caching, and target_overview-based querying
+    - Unified calibration CLI with L0 optimization and seeded takeup re-randomization
+    - 28 new tests for the calibration pipeline
+    - Integration test for build_matrix geographic masking (national/state/CD)
+    - Tests for drop_target_groups utility
+    - voluntary_filing.yaml takeup rate parameter
+    changed:
+    - Rewrote local_area_calibration_setup.ipynb for clone-based pipeline
+    - Renamed _get_geo_level to get_geo_level (now cross-module public API)
+    fixed:
+    - Fix Jupyter import error in unified_calibration.py (OutStream.reconfigure moved to main)
+    - Fix modal_app/remote_calibration_runner.py referencing deleted fit_calibration_weights.py
+    - Fix _coo_parts stale state bug on build_matrix re-call after failure
+    - Remove hardcoded voluntary_filing rate in favor of YAML parameter
+    removed:
+    - SparseMatrixBuilder, MatrixTracer, and fit_calibration_weights (replaced by unified pipeline)
+    - 8 old SparseMatrixBuilder-dependent tests (replaced by new test_calibration suite)

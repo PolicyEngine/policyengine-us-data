@@ -277,7 +277,7 @@ def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
     return np.ones(len(values), dtype=bool)
 
 
-def _get_geo_level(geo_id) -> int:
+def get_geo_level(geo_id) -> int:
     """Return geographic level: 0=National, 1=State, 2=District."""
     if geo_id == "US":
         return 0
@@ -324,9 +324,7 @@ def create_target_groups(
 
     # Add geo_level column for sorting
     targets_df = targets_df.copy()
-    targets_df["_geo_level"] = targets_df["geographic_id"].apply(
-        _get_geo_level
-    )
+    targets_df["_geo_level"] = targets_df["geographic_id"].apply(get_geo_level)
 
     geo_level_names = {0: "National", 1: "State", 2: "District"}
 
@@ -399,6 +397,70 @@ def create_target_groups(
     print("=" * 40)
 
     return target_groups, group_info
+
+
+_GEO_LEVEL_NAMES = {0: "National", 1: "State", 2: "District"}
+
+
+def drop_target_groups(
+    targets_df: pd.DataFrame,
+    X_sparse,
+    target_groups: np.ndarray,
+    group_info: List[str],
+    drop_specs: List[Tuple[str, str]],
+) -> Tuple[pd.DataFrame, "sparse.csr_matrix"]:
+    """Drop target groups by (label_substring, geo_level_name).
+
+    Args:
+        targets_df: Target metadata from build_matrix.
+        X_sparse: Sparse calibration matrix (n_targets x n_cols).
+        target_groups: Group ID per row from create_target_groups.
+        group_info: Group descriptions from create_target_groups.
+        drop_specs: List of (label_substring, geo_level_name)
+            tuples. geo_level_name is "National", "State", or
+            "District". label_substring is matched case-insensitive
+            against group descriptions.
+
+    Returns:
+        (filtered_targets_df, filtered_X_sparse)
+    """
+    geo_levels = targets_df["geographic_id"].apply(get_geo_level)
+    name_to_level = {v: k for k, v in _GEO_LEVEL_NAMES.items()}
+    drop_ids = set()
+
+    for label_substr, geo_name in drop_specs:
+        level = name_to_level[geo_name]
+        matched = False
+        for gid, info in enumerate(group_info):
+            group_mask = target_groups == gid
+            group_geo = geo_levels[group_mask]
+            if not (group_geo == level).all():
+                continue
+            if label_substr.lower() in info.lower():
+                drop_ids.add(gid)
+                matched = True
+        if not matched:
+            print(
+                f"  WARNING: no match for " f"({label_substr!r}, {geo_name!r})"
+            )
+
+    keep_mask = ~np.isin(target_groups, list(drop_ids))
+
+    print(f"Matrix before: {X_sparse.shape[0]} rows")
+    for gid in sorted(drop_ids):
+        n = (target_groups == gid).sum()
+        print(f"  DROPPING {group_info[gid]} ({n} rows)")
+    print()
+
+    kept_ids = sorted(set(range(len(group_info))) - drop_ids)
+    for gid in kept_ids:
+        n = (target_groups == gid).sum()
+        print(f"  KEEPING  {group_info[gid]} ({n} rows)")
+
+    X_out = X_sparse[keep_mask, :]
+    targets_out = targets_df[keep_mask].reset_index(drop=True)
+    print(f"\nMatrix after: {X_out.shape[0]} rows")
+    return targets_out, X_out
 
 
 def get_all_cds_from_database(db_uri: str) -> List[str]:

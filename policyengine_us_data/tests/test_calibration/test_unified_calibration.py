@@ -85,3 +85,63 @@ class TestSimpleTakeupConfig:
         )
 
         assert len(SIMPLE_TAKEUP_VARS) == 8
+
+
+class TestParseArgsNewFlags:
+    """Verify new CLI flags are parsed correctly."""
+
+    def test_target_config_flag(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            parse_args,
+        )
+
+        args = parse_args(["--target-config", "config.yaml"])
+        assert args.target_config == "config.yaml"
+
+    def test_build_only_flag(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            parse_args,
+        )
+
+        args = parse_args(["--build-only"])
+        assert args.build_only is True
+
+    def test_package_path_flag(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            parse_args,
+        )
+
+        args = parse_args(["--package-path", "pkg.pkl"])
+        assert args.package_path == "pkg.pkl"
+
+    def test_hyperparams_flags(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            parse_args,
+        )
+
+        args = parse_args(
+            [
+                "--beta",
+                "0.65",
+                "--lambda-l2",
+                "1e-8",
+                "--learning-rate",
+                "0.2",
+            ]
+        )
+        assert args.beta == 0.65
+        assert args.lambda_l2 == 1e-8
+        assert args.learning_rate == 0.2
+
+    def test_hyperparams_defaults(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            BETA,
+            LAMBDA_L2,
+            LEARNING_RATE,
+            parse_args,
+        )
+
+        args = parse_args([])
+        assert args.beta == BETA
+        assert args.lambda_l2 == LAMBDA_L2
+        assert args.learning_rate == LEARNING_RATE

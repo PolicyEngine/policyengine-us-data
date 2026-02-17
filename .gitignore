@@ -30,8 +30,8 @@ docs/.ipynb_checkpoints/
 ## ACA PTC state-level uprating factors
 !policyengine_us_data/storage/aca_ptc_multipliers_2022_2024.csv
 
-## Raw input cache for database pipeline
-policyengine_us_data/storage/calibration/raw_inputs/
+## Calibration run outputs (weights, diagnostics, packages, config)
+policyengine_us_data/storage/calibration/
 
 ## Batch processing checkpoints
 completed_*.txt

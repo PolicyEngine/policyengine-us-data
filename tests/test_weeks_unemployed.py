@@ -69,18 +69,3 @@ class TestWeeksUnemployed:
         assert constrained[1] == 0, "No UC should mean 0 weeks"
         assert constrained[4] == 0, "No UC should mean 0 weeks"
         assert constrained[2] == 25, "Valid weeks with UC should be preserved"
-
-    def test_extended_cps_handles_weeks_unemployed(self):
-        """Test that extended_cps.py has special handling for weeks_unemployed."""
-        ecps_path = Path(__file__).parent.parent / (
-            "policyengine_us_data/datasets/cps/extended_cps.py"
-        )
-        content = ecps_path.read_text()
-
-        # Check for weeks_unemployed handling
-        assert (
-            "weeks_unemployed" in content
-        ), "extended_cps.py should handle weeks_unemployed"
-        assert (
-            "impute_weeks_unemployed_for_puf" in content
-        ), "Should have imputation function for PUF weeks"

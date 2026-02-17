@@ -15,7 +15,39 @@ image = (
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 
 
-def _fit_weights_impl(branch: str, epochs: int) -> dict:
+def _run_streaming(cmd, env=None, label=""):
+    """Run a subprocess, streaming output line-by-line.
+
+    Returns (returncode, captured_stdout_lines).
+    """
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        env=env,
+    )
+    lines = []
+    for line in proc.stdout:
+        line = line.rstrip("\n")
+        if label:
+            print(f"[{label}] {line}", flush=True)
+        else:
+            print(line, flush=True)
+        lines.append(line)
+    proc.wait()
+    return proc.returncode, lines
+
+
+def _fit_weights_impl(
+    branch: str,
+    epochs: int,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
     """Shared implementation for weight fitting."""
     os.chdir("/root")
     subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
@@ -23,8 +55,8 @@ def _fit_weights_impl(branch: str, epochs: int) -> dict:
 
     subprocess.run(["uv", "sync", "--extra", "l0"], check=True)
 
-    print("Downloading calibration inputs from HuggingFace...")
-    download_result = subprocess.run(
+    print("Downloading calibration inputs from HuggingFace...", flush=True)
+    dl_rc, dl_lines = _run_streaming(
         [
             "uv",
             "run",
@@ -36,52 +68,54 @@ def _fit_weights_impl(branch: str, epochs: int) -> dict:
             "print(f\"DB: {paths['database']}\"); "
             "print(f\"DATASET: {paths['dataset']}\")",
         ],
-        capture_output=True,
-        text=True,
         env=os.environ.copy(),
+        label="download",
     )
-    print(download_result.stdout)
-    if download_result.stderr:
-        print("Download STDERR:", download_result.stderr)
-    if download_result.returncode != 0:
-        raise RuntimeError(f"Download failed: {download_result.returncode}")
+    if dl_rc != 0:
+        raise RuntimeError(f"Download failed with code {dl_rc}")
 
     db_path = dataset_path = None
-    for line in download_result.stdout.split("\n"):
-        if line.startswith("DB:"):
+    for line in dl_lines:
+        if "DB:" in line:
             db_path = line.split("DB:")[1].strip()
-        elif line.startswith("DATASET:"):
+        elif "DATASET:" in line:
             dataset_path = line.split("DATASET:")[1].strip()
 
     script_path = "policyengine_us_data/calibration/unified_calibration.py"
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            script_path,
-            "--device",
-            "cuda",
-            "--epochs",
-            str(epochs),
-            "--db-path",
-            db_path,
-            "--dataset",
-            dataset_path,
-        ],
-        capture_output=True,
-        text=True,
+    cmd = [
+        "uv",
+        "run",
+        "python",
+        script_path,
+        "--device",
+        "cuda",
+        "--epochs",
+        str(epochs),
+        "--db-path",
+        db_path,
+        "--dataset",
+        dataset_path,
+    ]
+    if target_config:
+        cmd.extend(["--target-config", target_config])
+    if beta is not None:
+        cmd.extend(["--beta", str(beta)])
+    if lambda_l2 is not None:
+        cmd.extend(["--lambda-l2", str(lambda_l2)])
+    if learning_rate is not None:
+        cmd.extend(["--learning-rate", str(learning_rate)])
+
+    cal_rc, cal_lines = _run_streaming(
+        cmd,
         env=os.environ.copy(),
+        label="calibrate",
     )
-    print(result.stdout)
-    if result.stderr:
-        print("STDERR:", result.stderr)
-    if result.returncode != 0:
-        raise RuntimeError(f"Script failed with code {result.returncode}")
+    if cal_rc != 0:
+        raise RuntimeError(f"Script failed with code {cal_rc}")
 
     output_path = None
     log_path = None
-    for line in result.stdout.split("\n"):
+    for line in cal_lines:
         if "OUTPUT_PATH:" in line:
             output_path = line.split("OUTPUT_PATH:")[1].strip()
         elif "LOG_PATH:" in line:
@@ -106,8 +140,17 @@ def _fit_weights_impl(branch: str, epochs: int) -> dict:
     gpu="T4",
     timeout=14400,
 )
-def fit_weights_t4(branch: str = "main", epochs: int = 200) -> dict:
-    return _fit_weights_impl(branch, epochs)
+def fit_weights_t4(
+    branch: str = "main",
+    epochs: int = 200,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
+    return _fit_weights_impl(
+        branch, epochs, target_config, beta, lambda_l2, learning_rate
+    )
 
 
 @app.function(
@@ -118,8 +161,17 @@ def fit_weights_t4(branch: str = "main", epochs: int = 200) -> dict:
     gpu="A10",
     timeout=14400,
 )
-def fit_weights_a10(branch: str = "main", epochs: int = 200) -> dict:
-    return _fit_weights_impl(branch, epochs)
+def fit_weights_a10(
+    branch: str = "main",
+    epochs: int = 200,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
+    return _fit_weights_impl(
+        branch, epochs, target_config, beta, lambda_l2, learning_rate
+    )
 
 
 @app.function(
@@ -130,8 +182,17 @@ def fit_weights_a10(branch: str = "main", epochs: int = 200) -> dict:
     gpu="A100-40GB",
     timeout=14400,
 )
-def fit_weights_a100_40(branch: str = "main", epochs: int = 200) -> dict:
-    return _fit_weights_impl(branch, epochs)
+def fit_weights_a100_40(
+    branch: str = "main",
+    epochs: int = 200,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
+    return _fit_weights_impl(
+        branch, epochs, target_config, beta, lambda_l2, learning_rate
+    )
 
 
 @app.function(
@@ -142,8 +203,17 @@ def fit_weights_a100_40(branch: str = "main", epochs: int = 200) -> dict:
     gpu="A100-80GB",
     timeout=14400,
 )
-def fit_weights_a100_80(branch: str = "main", epochs: int = 200) -> dict:
-    return _fit_weights_impl(branch, epochs)
+def fit_weights_a100_80(
+    branch: str = "main",
+    epochs: int = 200,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
+    return _fit_weights_impl(
+        branch, epochs, target_config, beta, lambda_l2, learning_rate
+    )
 
 
 @app.function(
@@ -154,8 +224,17 @@ def fit_weights_a100_80(branch: str = "main", epochs: int = 200) -> dict:
     gpu="H100",
     timeout=14400,
 )
-def fit_weights_h100(branch: str = "main", epochs: int = 200) -> dict:
-    return _fit_weights_impl(branch, epochs)
+def fit_weights_h100(
+    branch: str = "main",
+    epochs: int = 200,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
+    return _fit_weights_impl(
+        branch, epochs, target_config, beta, lambda_l2, learning_rate
+    )
 
 
 GPU_FUNCTIONS = {
@@ -174,6 +253,10 @@ def main(
     gpu: str = "T4",
     output: str = "calibration_weights.npy",
     log_output: str = "calibration_log.csv",
+    target_config: str = None,
+    beta: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
 ):
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
@@ -182,7 +265,14 @@ def main(
 
     print(f"Running with GPU: {gpu}, epochs: {epochs}, branch: {branch}")
     func = GPU_FUNCTIONS[gpu]
-    result = func.remote(branch=branch, epochs=epochs)
+    result = func.remote(
+        branch=branch,
+        epochs=epochs,
+        target_config=target_config,
+        beta=beta,
+        lambda_l2=lambda_l2,
+        learning_rate=learning_rate,
+    )
 
     with open(output, "wb") as f:
         f.write(result["weights"])

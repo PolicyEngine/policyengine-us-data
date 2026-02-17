@@ -271,7 +271,173 @@ def parse_args(argv=None):
         action="store_true",
         help="Skip ACS/SIPP/SCF re-imputation with state",
     )
+    parser.add_argument(
+        "--target-config",
+        default=None,
+        help="Path to target exclusion YAML config",
+    )
+    parser.add_argument(
+        "--build-only",
+        action="store_true",
+        help="Build matrix + save package, skip fitting",
+    )
+    parser.add_argument(
+        "--package-path",
+        default=None,
+        help="Load pre-built calibration package (skip matrix build)",
+    )
+    parser.add_argument(
+        "--package-output",
+        default=None,
+        help="Where to save calibration package",
+    )
+    parser.add_argument(
+        "--beta",
+        type=float,
+        default=BETA,
+        help=f"L0 gate temperature (default: {BETA})",
+    )
+    parser.add_argument(
+        "--lambda-l2",
+        type=float,
+        default=LAMBDA_L2,
+        help=f"L2 regularization (default: {LAMBDA_L2})",
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=LEARNING_RATE,
+        help=f"Learning rate (default: {LEARNING_RATE})",
+    )
     return parser.parse_args(argv)
+
+
+def load_target_config(path: str) -> dict:
+    """Load target exclusion config from YAML.
+
+    Args:
+        path: Path to YAML config file.
+
+    Returns:
+        Parsed config dict with 'exclude' list.
+    """
+    import yaml
+
+    with open(path) as f:
+        config = yaml.safe_load(f)
+    if config is None:
+        config = {}
+    if "exclude" not in config:
+        config["exclude"] = []
+    return config
+
+
+def apply_target_config(
+    targets_df: "pd.DataFrame",
+    X_sparse,
+    target_names: list,
+    config: dict,
+) -> tuple:
+    """Filter targets based on exclusion config.
+
+    Each exclude rule matches rows where variable and geo_level
+    both match. Optionally matches domain_variable too.
+
+    Args:
+        targets_df: DataFrame with target rows.
+        X_sparse: Sparse matrix (targets x records).
+        target_names: List of target name strings.
+        config: Config dict with 'exclude' list.
+
+    Returns:
+        (filtered_targets_df, filtered_X_sparse, filtered_names)
+    """
+    import pandas as pd
+
+    exclude_rules = config.get("exclude", [])
+    if not exclude_rules:
+        return targets_df, X_sparse, target_names
+
+    n_before = len(targets_df)
+    keep_mask = np.ones(n_before, dtype=bool)
+
+    for rule in exclude_rules:
+        var = rule["variable"]
+        geo = rule["geo_level"]
+        rule_mask = (targets_df["variable"] == var) & (
+            targets_df["geo_level"] == geo
+        )
+        if "domain_variable" in rule:
+            rule_mask = rule_mask & (
+                targets_df["domain_variable"] == rule["domain_variable"]
+            )
+        keep_mask &= ~rule_mask
+
+    n_dropped = n_before - keep_mask.sum()
+    logger.info(
+        "Target config: kept %d / %d targets (dropped %d)",
+        keep_mask.sum(),
+        n_before,
+        n_dropped,
+    )
+
+    idx = np.where(keep_mask)[0]
+    filtered_df = targets_df.iloc[idx].reset_index(drop=True)
+    filtered_X = X_sparse[idx, :]
+    filtered_names = [target_names[i] for i in idx]
+
+    return filtered_df, filtered_X, filtered_names
+
+
+def save_calibration_package(
+    path: str,
+    X_sparse,
+    targets_df: "pd.DataFrame",
+    target_names: list,
+    metadata: dict,
+) -> None:
+    """Save calibration package to pickle.
+
+    Args:
+        path: Output file path.
+        X_sparse: Sparse matrix.
+        targets_df: Targets DataFrame.
+        target_names: Target name list.
+        metadata: Run metadata dict.
+    """
+    import pickle
+
+    package = {
+        "X_sparse": X_sparse,
+        "targets_df": targets_df,
+        "target_names": target_names,
+        "metadata": metadata,
+    }
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        pickle.dump(package, f, protocol=pickle.HIGHEST_PROTOCOL)
+    logger.info("Calibration package saved to %s", path)
+
+
+def load_calibration_package(path: str) -> dict:
+    """Load calibration package from pickle.
+
+    Args:
+        path: Path to package file.
+
+    Returns:
+        Dict with X_sparse, targets_df, target_names, metadata.
+    """
+    import pickle
+
+    with open(path, "rb") as f:
+        package = pickle.load(f)
+    logger.info(
+        "Loaded package: %d targets, %d records",
+        package["X_sparse"].shape[0],
+        package["X_sparse"].shape[1],
+    )
+    return package
 
 
 def fit_l0_weights(
@@ -281,6 +447,9 @@ def fit_l0_weights(
     epochs: int = DEFAULT_EPOCHS,
     device: str = "cpu",
     verbose_freq: Optional[int] = None,
+    beta: float = BETA,
+    lambda_l2: float = LAMBDA_L2,
+    learning_rate: float = LEARNING_RATE,
 ) -> np.ndarray:
     """Fit L0-regularized calibration weights.
 
@@ -291,6 +460,9 @@ def fit_l0_weights(
         epochs: Training epochs.
         device: Torch device.
         verbose_freq: Print frequency. Defaults to 10%.
+        beta: L0 gate temperature.
+        lambda_l2: L2 regularization strength.
+        learning_rate: Optimizer learning rate.
 
     Returns:
         Weight array of shape (n_records,).
@@ -309,16 +481,20 @@ def fit_l0_weights(
 
     logger.info(
         "L0 calibration: %d targets, %d features, "
-        "lambda_l0=%.1e, epochs=%d",
+        "lambda_l0=%.1e, beta=%.2f, lambda_l2=%.1e, "
+        "lr=%.3f, epochs=%d",
         X_sparse.shape[0],
         n_total,
         lambda_l0,
+        beta,
+        lambda_l2,
+        learning_rate,
         epochs,
     )
 
     model = SparseCalibrationWeights(
         n_features=n_total,
-        beta=BETA,
+        beta=beta,
         gamma=GAMMA,
         zeta=ZETA,
         init_keep_prob=INIT_KEEP_PROB,
@@ -346,8 +522,8 @@ def fit_l0_weights(
             y=targets,
             target_groups=None,
             lambda_l0=lambda_l0,
-            lambda_l2=LAMBDA_L2,
-            lr=LEARNING_RATE,
+            lambda_l2=lambda_l2,
+            lr=learning_rate,
             epochs=epochs,
             loss_type="relative",
             verbose=True,
@@ -501,6 +677,13 @@ def run_calibration(
     puf_dataset_path: str = None,
     skip_puf: bool = False,
     skip_source_impute: bool = False,
+    target_config: dict = None,
+    build_only: bool = False,
+    package_path: str = None,
+    package_output_path: str = None,
+    beta: float = BETA,
+    lambda_l2: float = LAMBDA_L2,
+    learning_rate: float = LEARNING_RATE,
 ):
     """Run unified calibration pipeline.
 
@@ -519,11 +702,50 @@ def run_calibration(
         puf_dataset_path: Path to PUF h5 for QRF training.
         skip_puf: Skip PUF clone step.
         skip_source_impute: Skip ACS/SIPP/SCF imputations.
+        target_config: Parsed target config dict.
+        build_only: If True, save package and skip fitting.
+        package_path: Load pre-built package (skip build).
+        package_output_path: Where to save calibration package.
+        beta: L0 gate temperature.
+        lambda_l2: L2 regularization strength.
+        learning_rate: Optimizer learning rate.
 
     Returns:
         (weights, targets_df, X_sparse, target_names)
+        weights is None when build_only=True.
     """
     import time
+
+    t0 = time.time()
+
+    # Early exit: load pre-built package
+    if package_path is not None:
+        package = load_calibration_package(package_path)
+        targets_df = package["targets_df"]
+        X_sparse = package["X_sparse"]
+        target_names = package["target_names"]
+
+        if target_config:
+            targets_df, X_sparse, target_names = apply_target_config(
+                targets_df, X_sparse, target_names, target_config
+            )
+
+        targets = targets_df["value"].values
+        weights = fit_l0_weights(
+            X_sparse=X_sparse,
+            targets=targets,
+            lambda_l0=lambda_l0,
+            epochs=epochs,
+            device=device,
+            beta=beta,
+            lambda_l2=lambda_l2,
+            learning_rate=learning_rate,
+        )
+        logger.info(
+            "Total pipeline (from package): %.1f min",
+            (time.time() - t0) / 60,
+        )
+        return weights, targets_df, X_sparse, target_names
 
     from policyengine_us import Microsimulation
 
@@ -534,8 +756,6 @@ def run_calibration(
     from policyengine_us_data.calibration.unified_matrix_builder import (
         UnifiedMatrixBuilder,
     )
-
-    t0 = time.time()
 
     # Step 1: Load dataset
     logger.info("Loading dataset from %s", dataset_path)
@@ -669,6 +889,37 @@ def run_calibration(
         X_sparse.nnz,
     )
 
+    # Step 6b: Apply target config filtering
+    if target_config:
+        targets_df, X_sparse, target_names = apply_target_config(
+            targets_df, X_sparse, target_names, target_config
+        )
+
+    # Step 6c: Save calibration package
+    if package_output_path:
+        import datetime
+
+        metadata = {
+            "dataset_path": dataset_path,
+            "db_path": db_path,
+            "n_clones": n_clones,
+            "n_records": X_sparse.shape[1],
+            "seed": seed,
+            "created_at": datetime.datetime.now().isoformat(),
+            "target_config": target_config,
+        }
+        save_calibration_package(
+            package_output_path,
+            X_sparse,
+            targets_df,
+            target_names,
+            metadata,
+        )
+
+    if build_only:
+        logger.info("Build-only mode: skipping fitting")
+        return None, targets_df, X_sparse, target_names
+
     # Step 7: L0 calibration
     targets = targets_df["value"].values
 
@@ -686,6 +937,9 @@ def run_calibration(
         lambda_l0=lambda_l0,
         epochs=epochs,
         device=device,
+        beta=beta,
+        lambda_l2=lambda_l2,
+        learning_rate=learning_rate,
     )
 
     logger.info(
@@ -744,6 +998,17 @@ def main(argv=None):
 
     t_start = time.time()
 
+    puf_dataset_path = getattr(args, "puf_dataset", None)
+
+    target_config = None
+    if args.target_config:
+        target_config = load_target_config(args.target_config)
+
+    package_output_path = args.package_output
+    if args.build_only and not package_output_path:
+        package_output_path = str(
+            STORAGE_FOLDER / "calibration" / "calibration_package.pkl"
+        )
     weights, targets_df, X_sparse, target_names = run_calibration(
         dataset_path=dataset_path,
         db_path=db_path,
@@ -755,10 +1020,21 @@ def main(argv=None):
         domain_variables=domain_variables,
         hierarchical_domains=hierarchical_domains,
         skip_takeup_rerandomize=args.skip_takeup_rerandomize,
-        puf_dataset_path=args.puf_dataset,
-        skip_puf=args.skip_puf,
-        skip_source_impute=args.skip_source_impute,
+        puf_dataset_path=puf_dataset_path,
+        skip_puf=getattr(args, "skip_puf", False),
+        skip_source_impute=getattr(args, "skip_source_impute", False),
+        target_config=target_config,
+        build_only=args.build_only,
+        package_path=args.package_path,
+        package_output_path=package_output_path,
+        beta=args.beta,
+        lambda_l2=args.lambda_l2,
+        learning_rate=args.learning_rate,
     )
+
+    if weights is None:
+        logger.info("Build-only complete. Package saved.")
+        return
 
     # Save weights
     np.save(output_path, weights)
@@ -794,11 +1070,15 @@ def main(argv=None):
         "skip_source_impute": args.skip_source_impute,
         "n_clones": args.n_clones,
         "lambda_l0": lambda_l0,
+        "beta": args.beta,
+        "lambda_l2": args.lambda_l2,
+        "learning_rate": args.learning_rate,
         "epochs": args.epochs,
         "device": args.device,
         "seed": args.seed,
         "domain_variables": domain_variables,
         "hierarchical_domains": hierarchical_domains,
+        "target_config": args.target_config,
         "n_targets": len(targets_df),
         "n_records": X_sparse.shape[1],
         "weight_sum": float(weights.sum()),

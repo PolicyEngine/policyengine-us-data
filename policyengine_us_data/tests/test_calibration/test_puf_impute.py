@@ -9,9 +9,12 @@ import pytest
 
 from policyengine_us_data.calibration.puf_impute import (
     puf_clone_dataset,
+    _stratified_subsample_index,
     DEMOGRAPHIC_PREDICTORS,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
+    PUF_SUBSAMPLE_TARGET,
+    PUF_TOP_PERCENTILE,
 )
 
 
@@ -132,3 +135,46 @@ class TestPufCloneDataset:
     def test_overridden_subset_of_imputed(self):
         for var in OVERRIDDEN_IMPUTED_VARIABLES:
             assert var in IMPUTED_VARIABLES
+
+
+class TestStratifiedSubsample:
+    def test_noop_when_small(self):
+        income = np.random.default_rng(0).normal(50000, 20000, size=100)
+        idx = _stratified_subsample_index(income, target_n=200)
+        assert len(idx) == 100
+
+    def test_reduces_to_target(self):
+        rng = np.random.default_rng(0)
+        income = np.concatenate(
+            [
+                rng.normal(50000, 20000, size=50_000),
+                rng.uniform(500_000, 5_000_000, size=250),
+            ]
+        )
+        idx = _stratified_subsample_index(
+            income, target_n=10_000, top_pct=99.5
+        )
+        assert len(idx) == 10_000
+
+    def test_preserves_top_earners(self):
+        rng = np.random.default_rng(0)
+        income = np.concatenate(
+            [
+                rng.normal(50000, 20000, size=50_000),
+                rng.uniform(500_000, 5_000_000, size=250),
+            ]
+        )
+        threshold = np.percentile(income, 99.5)
+        n_top = (income >= threshold).sum()
+
+        idx = _stratified_subsample_index(
+            income, target_n=10_000, top_pct=99.5
+        )
+        selected_income = income[idx]
+        n_top_selected = (selected_income >= threshold).sum()
+        assert n_top_selected == n_top
+
+    def test_indices_sorted(self):
+        income = np.random.default_rng(0).normal(50000, 20000, size=50_000)
+        idx = _stratified_subsample_index(income, target_n=10_000)
+        assert np.all(idx[1:] >= idx[:-1])

@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.68.0] - 2026-02-17 15:26:04
+
+### Added
+
+- Census-block-first calibration pipeline (calibration/ package) ported from PR
+- Clone-and-assign module for population-weighted census block sampling
+- Unified matrix builder with clone-by-clone simulation, COO caching, and target_overview-based querying
+- Unified calibration CLI with L0 optimization and seeded takeup re-randomization
+- 28 new tests for the calibration pipeline
+- Integration test for build_matrix geographic masking (national/state/CD)
+- Tests for drop_target_groups utility
+- voluntary_filing.yaml takeup rate parameter
+
+### Changed
+
+- Rewrote local_area_calibration_setup.ipynb for clone-based pipeline
+- Renamed _get_geo_level to get_geo_level (now cross-module public API)
+
+### Fixed
+
+- Fix Jupyter import error in unified_calibration.py (OutStream.reconfigure moved to main)
+- Fix modal_app/remote_calibration_runner.py referencing deleted fit_calibration_weights.py
+- Fix _coo_parts stale state bug on build_matrix re-call after failure
+- Remove hardcoded voluntary_filing rate in favor of YAML parameter
+
 ## [1.67.0] - 2026-02-12 18:56:57
 
 ### Added
@@ -1013,6 +1038,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.68.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.67.0...1.68.0
 [1.67.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.66.0...1.67.0
 [1.66.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.65.0...1.66.0
 [1.65.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.64.1...1.65.0

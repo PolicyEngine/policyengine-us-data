@@ -535,6 +535,7 @@ def fit_l0_weights(
         and target_names is not None
     )
     if enable_logging:
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
         with open(log_path, "w") as f:
             f.write(
                 "target_name,estimate,target,epoch,"

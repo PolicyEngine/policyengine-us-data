@@ -48,7 +48,9 @@ def _clone_and_install(branch: str):
     subprocess.run(["uv", "sync", "--extra", "l0"], check=True)
 
 
-def _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate):
+def _append_hyperparams(
+    cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq=None
+):
     """Append optional hyperparameter flags to a command list."""
     if beta is not None:
         cmd.extend(["--beta", str(beta)])
@@ -58,15 +60,20 @@ def _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate):
         cmd.extend(["--lambda-l2", str(lambda_l2)])
     if learning_rate is not None:
         cmd.extend(["--learning-rate", str(learning_rate)])
+    if log_freq is not None:
+        cmd.extend(["--log-freq", str(log_freq)])
 
 
 def _collect_outputs(cal_lines):
     """Extract weights and log bytes from calibration output lines."""
     output_path = None
     log_path = None
+    cal_log_path = None
     for line in cal_lines:
         if "OUTPUT_PATH:" in line:
             output_path = line.split("OUTPUT_PATH:")[1].strip()
+        elif "CAL_LOG_PATH:" in line:
+            cal_log_path = line.split("CAL_LOG_PATH:")[1].strip()
         elif "LOG_PATH:" in line:
             log_path = line.split("LOG_PATH:")[1].strip()
 
@@ -78,7 +85,16 @@ def _collect_outputs(cal_lines):
         with open(log_path, "rb") as f:
             log_bytes = f.read()
 
-    return {"weights": weights_bytes, "log": log_bytes}
+    cal_log_bytes = None
+    if cal_log_path:
+        with open(cal_log_path, "rb") as f:
+            cal_log_bytes = f.read()
+
+    return {
+        "weights": weights_bytes,
+        "log": log_bytes,
+        "cal_log": cal_log_bytes,
+    }
 
 
 def _fit_weights_impl(
@@ -89,6 +105,7 @@ def _fit_weights_impl(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     """Full pipeline: download data, build matrix, fit weights."""
     _clone_and_install(branch)
@@ -136,7 +153,7 @@ def _fit_weights_impl(
     ]
     if target_config:
         cmd.extend(["--target-config", target_config])
-    _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate)
+    _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq)
 
     cal_rc, cal_lines = _run_streaming(
         cmd,
@@ -158,6 +175,7 @@ def _fit_from_package_impl(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     """Fit weights from a pre-built calibration package."""
     _clone_and_install(branch)
@@ -186,7 +204,7 @@ def _fit_from_package_impl(
     ]
     if target_config:
         cmd.extend(["--target-config", target_config])
-    _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate)
+    _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq)
 
     cal_rc, cal_lines = _run_streaming(
         cmd,
@@ -218,10 +236,11 @@ def fit_weights_t4(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     return _fit_weights_impl(
         branch, epochs, target_config, beta, lambda_l0, lambda_l2,
-        learning_rate,
+        learning_rate, log_freq,
     )
 
 
@@ -241,10 +260,11 @@ def fit_weights_a10(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     return _fit_weights_impl(
         branch, epochs, target_config, beta, lambda_l0, lambda_l2,
-        learning_rate,
+        learning_rate, log_freq,
     )
 
 
@@ -264,10 +284,11 @@ def fit_weights_a100_40(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     return _fit_weights_impl(
         branch, epochs, target_config, beta, lambda_l0, lambda_l2,
-        learning_rate,
+        learning_rate, log_freq,
     )
 
 
@@ -287,10 +308,11 @@ def fit_weights_a100_80(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     return _fit_weights_impl(
         branch, epochs, target_config, beta, lambda_l0, lambda_l2,
-        learning_rate,
+        learning_rate, log_freq,
     )
 
 
@@ -310,10 +332,11 @@ def fit_weights_h100(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     return _fit_weights_impl(
         branch, epochs, target_config, beta, lambda_l0, lambda_l2,
-        learning_rate,
+        learning_rate, log_freq,
     )
 
 
@@ -345,10 +368,11 @@ def fit_from_package_t4(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     return _fit_from_package_impl(
         package_bytes, branch, epochs, target_config, beta,
-        lambda_l0, lambda_l2, learning_rate,
+        lambda_l0, lambda_l2, learning_rate, log_freq,
     )
 
 
@@ -368,10 +392,11 @@ def fit_from_package_a10(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     return _fit_from_package_impl(
         package_bytes, branch, epochs, target_config, beta,
-        lambda_l0, lambda_l2, learning_rate,
+        lambda_l0, lambda_l2, learning_rate, log_freq,
     )
 
 
@@ -391,10 +416,11 @@ def fit_from_package_a100_40(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     return _fit_from_package_impl(
         package_bytes, branch, epochs, target_config, beta,
-        lambda_l0, lambda_l2, learning_rate,
+        lambda_l0, lambda_l2, learning_rate, log_freq,
     )
 
 
@@ -414,10 +440,11 @@ def fit_from_package_a100_80(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     return _fit_from_package_impl(
         package_bytes, branch, epochs, target_config, beta,
-        lambda_l0, lambda_l2, learning_rate,
+        lambda_l0, lambda_l2, learning_rate, log_freq,
     )
 
 
@@ -437,10 +464,11 @@ def fit_from_package_h100(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
 ) -> dict:
     return _fit_from_package_impl(
         package_bytes, branch, epochs, target_config, beta,
-        lambda_l0, lambda_l2, learning_rate,
+        lambda_l0, lambda_l2, learning_rate, log_freq,
     )
 
 
@@ -465,6 +493,7 @@ def main(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    log_freq: int = None,
     package_path: str = None,
 ):
     if gpu not in GPU_FUNCTIONS:
@@ -492,6 +521,7 @@ def main(
             lambda_l0=lambda_l0,
             lambda_l2=lambda_l2,
             learning_rate=learning_rate,
+            log_freq=log_freq,
         )
     else:
         print(
@@ -508,6 +538,7 @@ def main(
             lambda_l0=lambda_l0,
             lambda_l2=lambda_l2,
             learning_rate=learning_rate,
+            log_freq=log_freq,
         )
 
     with open(output, "wb") as f:
@@ -517,4 +548,10 @@ def main(
     if result["log"]:
         with open(log_output, "wb") as f:
             f.write(result["log"])
-        print(f"Calibration log saved to: {log_output}")
+        print(f"Diagnostics log saved to: {log_output}")
+
+    if result.get("cal_log"):
+        cal_log_output = "calibration_epoch_log.csv"
+        with open(cal_log_output, "wb") as f:
+            f.write(result["cal_log"])
+        print(f"Calibration epoch log saved to: {cal_log_output}")

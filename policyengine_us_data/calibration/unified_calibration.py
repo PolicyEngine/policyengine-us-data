@@ -309,6 +309,13 @@ def parse_args(argv=None):
         default=LEARNING_RATE,
         help=f"Learning rate (default: {LEARNING_RATE})",
     )
+    parser.add_argument(
+        "--log-freq",
+        type=int,
+        default=None,
+        help="Epochs between per-target CSV log entries. "
+        "Omit to disable epoch logging.",
+    )
     return parser.parse_args(argv)
 
 
@@ -450,6 +457,9 @@ def fit_l0_weights(
     beta: float = BETA,
     lambda_l2: float = LAMBDA_L2,
     learning_rate: float = LEARNING_RATE,
+    log_freq: int = None,
+    log_path: str = None,
+    target_names: list = None,
 ) -> np.ndarray:
     """Fit L0-regularized calibration weights.
 
@@ -463,6 +473,10 @@ def fit_l0_weights(
         beta: L0 gate temperature.
         lambda_l2: L2 regularization strength.
         learning_rate: Optimizer learning rate.
+        log_freq: Epochs between per-target CSV logs.
+            None disables logging.
+        log_path: Path for the per-target calibration log CSV.
+        target_names: Human-readable target names for the log.
 
     Returns:
         Weight array of shape (n_records,).
@@ -515,22 +529,91 @@ def fit_l0_weights(
 
     builtins.print = _flushed_print
 
-    t0 = time.time()
-    try:
-        model.fit(
-            M=X_sparse,
-            y=targets,
-            target_groups=None,
-            lambda_l0=lambda_l0,
-            lambda_l2=lambda_l2,
-            lr=learning_rate,
-            epochs=epochs,
-            loss_type="relative",
-            verbose=True,
-            verbose_freq=verbose_freq,
+    enable_logging = (
+        log_freq is not None
+        and log_path is not None
+        and target_names is not None
+    )
+    if enable_logging:
+        with open(log_path, "w") as f:
+            f.write(
+                "target_name,estimate,target,epoch,"
+                "error,rel_error,abs_error,rel_abs_error,loss\n"
+            )
+        logger.info(
+            "Epoch logging enabled: freq=%d, path=%s",
+            log_freq,
+            log_path,
         )
-    finally:
-        builtins.print = _builtin_print
+
+    t0 = time.time()
+    if enable_logging:
+        epochs_done = 0
+        while epochs_done < epochs:
+            chunk = min(log_freq, epochs - epochs_done)
+            try:
+                model.fit(
+                    M=X_sparse,
+                    y=targets,
+                    target_groups=None,
+                    lambda_l0=lambda_l0,
+                    lambda_l2=lambda_l2,
+                    lr=learning_rate,
+                    epochs=chunk,
+                    loss_type="relative",
+                    verbose=True,
+                    verbose_freq=verbose_freq,
+                )
+            finally:
+                builtins.print = _builtin_print
+
+            epochs_done += chunk
+
+            with torch.no_grad():
+                y_pred = model.predict(X_sparse).cpu().numpy()
+
+            with open(log_path, "a") as f:
+                for i in range(len(targets)):
+                    est = y_pred[i]
+                    tgt = targets[i]
+                    err = est - tgt
+                    rel_err = err / tgt if tgt != 0 else 0
+                    abs_err = abs(err)
+                    rel_abs = abs(rel_err)
+                    loss = rel_err**2
+                    f.write(
+                        f'"{target_names[i]}",'
+                        f"{est},{tgt},{epochs_done},"
+                        f"{err},{rel_err},{abs_err},"
+                        f"{rel_abs},{loss}\n"
+                    )
+
+            logger.info(
+                "Logged %d targets at epoch %d",
+                len(targets),
+                epochs_done,
+            )
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            builtins.print = _flushed_print
+    else:
+        try:
+            model.fit(
+                M=X_sparse,
+                y=targets,
+                target_groups=None,
+                lambda_l0=lambda_l0,
+                lambda_l2=lambda_l2,
+                lr=learning_rate,
+                epochs=epochs,
+                loss_type="relative",
+                verbose=True,
+                verbose_freq=verbose_freq,
+            )
+        finally:
+            builtins.print = _builtin_print
 
     elapsed = time.time() - t0
     logger.info(
@@ -684,6 +767,8 @@ def run_calibration(
     beta: float = BETA,
     lambda_l2: float = LAMBDA_L2,
     learning_rate: float = LEARNING_RATE,
+    log_freq: int = None,
+    log_path: str = None,
 ):
     """Run unified calibration pipeline.
 
@@ -709,6 +794,8 @@ def run_calibration(
         beta: L0 gate temperature.
         lambda_l2: L2 regularization strength.
         learning_rate: Optimizer learning rate.
+        log_freq: Epochs between per-target CSV logs.
+        log_path: Path for per-target calibration log CSV.
 
     Returns:
         (weights, targets_df, X_sparse, target_names)
@@ -740,6 +827,9 @@ def run_calibration(
             beta=beta,
             lambda_l2=lambda_l2,
             learning_rate=learning_rate,
+            log_freq=log_freq,
+            log_path=log_path,
+            target_names=target_names,
         )
         logger.info(
             "Total pipeline (from package): %.1f min",
@@ -944,6 +1034,9 @@ def run_calibration(
         beta=beta,
         lambda_l2=lambda_l2,
         learning_rate=learning_rate,
+        log_freq=log_freq,
+        log_path=log_path,
+        target_names=target_names,
     )
 
     logger.info(
@@ -1013,6 +1106,11 @@ def main(argv=None):
         package_output_path = str(
             STORAGE_FOLDER / "calibration" / "calibration_package.pkl"
         )
+
+    output_dir = Path(output_path).parent
+    cal_log_path = None
+    if args.log_freq is not None:
+        cal_log_path = str(output_dir / "calibration_log.csv")
     weights, targets_df, X_sparse, target_names = run_calibration(
         dataset_path=dataset_path,
         db_path=db_path,
@@ -1034,6 +1132,8 @@ def main(argv=None):
         beta=args.beta,
         lambda_l2=args.lambda_l2,
         learning_rate=args.learning_rate,
+        log_freq=args.log_freq,
+        log_path=cal_log_path,
     )
 
     if weights is None:
@@ -1041,6 +1141,7 @@ def main(argv=None):
         return
 
     # Save weights
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     np.save(output_path, weights)
     logger.info("Weights saved to %s", output_path)
     print(f"OUTPUT_PATH:{output_path}")
@@ -1095,6 +1196,8 @@ def main(argv=None):
         json.dump(run_config, f, indent=2)
     logger.info("Config saved to %s", config_path)
     print(f"LOG_PATH:{diag_path}")
+    if cal_log_path:
+        print(f"CAL_LOG_PATH:{cal_log_path}")
 
 
 if __name__ == "__main__":

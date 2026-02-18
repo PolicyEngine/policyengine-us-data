@@ -156,13 +156,9 @@ def test_aca_calibration():
     aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
 
     TOLERANCE = 0.70
-    SKIP_STATES = {"DC"}
     failed = False
     for _, row in targets.iterrows():
         state = row["state"]
-        if state in SKIP_STATES:
-            print(f"{state}: skipped (no CPS households)")
-            continue
         target_spending = row["spending"]
         simulated = aca_ptc[state_code_hh == state].sum()
 
@@ -248,13 +244,9 @@ def test_medicaid_calibration():
     )
 
     TOLERANCE = 0.45
-    SKIP_STATES = {"DC"}
     failed = False
     for _, row in targets.iterrows():
         state = row["state"]
-        if state in SKIP_STATES:
-            print(f"{state}: skipped (no CPS households)")
-            continue
         target_enrollment = row["enrollment"]
         simulated = medicaid_enrolled[state_code_hh == state].sum()
 

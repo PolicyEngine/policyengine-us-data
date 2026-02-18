@@ -88,6 +88,159 @@ class UnifiedMatrixBuilder:
         return self._entity_rel_cache
 
     # ---------------------------------------------------------------
+    # Per-state precomputation
+    # ---------------------------------------------------------------
+
+    def _build_state_values(
+        self,
+        sim,
+        target_vars: set,
+        constraint_vars: set,
+        geography,
+    ) -> dict:
+        """Precompute variable values for all households under
+        each state's rules.
+
+        Runs 51 state simulations on one sim object, storing
+        household-level target values and person-level constraint
+        values for each state.
+
+        Args:
+            sim: Microsimulation instance.
+            target_vars: Set of target variable names.
+            constraint_vars: Set of constraint variable names.
+            geography: GeographyAssignment with state_fips.
+
+        Returns:
+            {state_fips: {'hh': {var: array}, 'person': {var: array}}}
+        """
+        unique_states = sorted(set(int(s) for s in geography.state_fips))
+        n_hh = geography.n_records
+
+        logger.info(
+            "Per-state precomputation: %d states, "
+            "%d hh vars, %d constraint vars",
+            len(unique_states),
+            len([v for v in target_vars if not v.endswith("_count")]),
+            len(constraint_vars),
+        )
+
+        state_values = {}
+        for i, state in enumerate(unique_states):
+            sim.set_input(
+                "state_fips",
+                self.time_period,
+                np.full(n_hh, state, dtype=np.int32),
+            )
+            for var in get_calculated_variables(sim):
+                sim.delete_arrays(var)
+
+            hh = {}
+            for var in target_vars:
+                if var.endswith("_count"):
+                    continue
+                try:
+                    hh[var] = sim.calculate(
+                        var,
+                        self.time_period,
+                        map_to="household",
+                    ).values.astype(np.float32)
+                except Exception as exc:
+                    logger.warning(
+                        "Cannot calculate '%s' for state %d: %s",
+                        var,
+                        state,
+                        exc,
+                    )
+
+            person = {}
+            for var in constraint_vars:
+                try:
+                    person[var] = sim.calculate(
+                        var,
+                        self.time_period,
+                        map_to="person",
+                    ).values.astype(np.float32)
+                except Exception as exc:
+                    logger.warning(
+                        "Cannot calculate constraint '%s' " "for state %d: %s",
+                        var,
+                        state,
+                        exc,
+                    )
+
+            state_values[state] = {"hh": hh, "person": person}
+            if (i + 1) % 10 == 0 or i == 0:
+                logger.info(
+                    "State %d/%d complete",
+                    i + 1,
+                    len(unique_states),
+                )
+
+        logger.info(
+            "Per-state precomputation done: %d states",
+            len(state_values),
+        )
+        return state_values
+
+    def _assemble_clone_values(
+        self,
+        state_values: dict,
+        clone_states: np.ndarray,
+        person_hh_indices: np.ndarray,
+        target_vars: set,
+        constraint_vars: set,
+    ) -> tuple:
+        """Assemble per-clone values from state precomputation.
+
+        Uses numpy fancy indexing to select each record's values
+        from the precomputed state arrays based on its assigned
+        state.
+
+        Args:
+            state_values: Output of _build_state_values.
+            clone_states: State FIPS per record for this clone.
+            person_hh_indices: Maps person index to household
+                index (0..n_records-1).
+            target_vars: Set of target variable names.
+            constraint_vars: Set of constraint variable names.
+
+        Returns:
+            (hh_vars, person_vars) where hh_vars maps variable
+            name to household-level float32 array and person_vars
+            maps constraint variable name to person-level array.
+        """
+        n_records = len(clone_states)
+        n_persons = len(person_hh_indices)
+        person_states = clone_states[person_hh_indices]
+        unique_clone_states = np.unique(clone_states)
+
+        hh_vars = {}
+        for var in target_vars:
+            if var.endswith("_count"):
+                continue
+            if var not in state_values[unique_clone_states[0]]["hh"]:
+                continue
+            arr = np.empty(n_records, dtype=np.float32)
+            for state in unique_clone_states:
+                mask = clone_states == state
+                arr[mask] = state_values[int(state)]["hh"][var][mask]
+            hh_vars[var] = arr
+
+        unique_person_states = np.unique(person_states)
+        person_vars = {}
+        for var in constraint_vars:
+            if var not in state_values[unique_clone_states[0]]["person"]:
+                continue
+            arr = np.empty(n_persons, dtype=np.float32)
+            for state in unique_person_states:
+                mask = person_states == state
+                arr[mask] = state_values[int(state)]["person"][var][mask]
+            person_vars[var] = arr
+
+        return hh_vars, person_vars
+
+    # ---------------------------------------------------------------
     # Constraint evaluation
     # ---------------------------------------------------------------
 
@@ -129,6 +282,38 @@ class UnifiedMatrixBuilder:
         household_ids = sim.calculate(
             "household_id", map_to="household"
         ).values
+        return np.array([hh_mask.get(hid, False) for hid in household_ids])
+
+    def _evaluate_constraints_from_values(
+        self,
+        constraints: List[dict],
+        person_vars: Dict[str, np.ndarray],
+        entity_rel: pd.DataFrame,
+        household_ids: np.ndarray,
+        n_households: int,
+    ) -> np.ndarray:
+        """Evaluate constraints from precomputed person-level
+        values, aggregate to household level via .any()."""
+        if not constraints:
+            return np.ones(n_households, dtype=bool)
+
+        n_persons = len(entity_rel)
+        person_mask = np.ones(n_persons, dtype=bool)
+
+        for c in constraints:
+            var = c["variable"]
+            if var not in person_vars:
+                logger.warning(
+                    "Constraint var '%s' not in precomputed " "person_vars",
+                    var,
+                )
+                return np.zeros(n_households, dtype=bool)
+            vals = person_vars[var]
+            person_mask &= apply_op(vals, c["operation"], c["value"])
+
+        df = entity_rel.copy()
+        df["satisfies"] = person_mask
+        hh_mask = df.groupby("household_id")["satisfies"].any()
         return np.array([hh_mask.get(hid, False) for hid in household_ids])
 
     # ---------------------------------------------------------------
@@ -545,6 +730,85 @@ class UnifiedMatrixBuilder:
             dtype=np.float32,
         )
 
+    def _calculate_target_values_from_values(
+        self,
+        target_variable: str,
+        non_geo_constraints: List[dict],
+        n_households: int,
+        hh_vars: Dict[str, np.ndarray],
+        person_vars: Dict[str, np.ndarray],
+        entity_rel: pd.DataFrame,
+        household_ids: np.ndarray,
+        tax_benefit_system,
+    ) -> np.ndarray:
+        """Calculate per-household target values from precomputed
+        arrays.
+
+        Same logic as _calculate_target_values but reads from
+        hh_vars/person_vars instead of calling sim.calculate().
+        """
+        is_count = target_variable.endswith("_count")
+
+        if not is_count:
+            mask = self._evaluate_constraints_from_values(
+                non_geo_constraints,
+                person_vars,
+                entity_rel,
+                household_ids,
+                n_households,
+            )
+            vals = hh_vars.get(target_variable)
+            if vals is None:
+                return np.zeros(n_households, dtype=np.float32)
+            return (vals * mask).astype(np.float32)
+
+        # Count target: entity-aware counting
+        n_persons = len(entity_rel)
+        person_mask = np.ones(n_persons, dtype=bool)
+
+        for c in non_geo_constraints:
+            var = c["variable"]
+            if var not in person_vars:
+                return np.zeros(n_households, dtype=np.float32)
+            cv = person_vars[var]
+            person_mask &= apply_op(cv, c["operation"], c["value"])
+
+        target_entity = tax_benefit_system.variables[
+            target_variable
+        ].entity.key
+
+        if target_entity == "household":
+            if non_geo_constraints:
+                mask = self._evaluate_constraints_from_values(
+                    non_geo_constraints,
+                    person_vars,
+                    entity_rel,
+                    household_ids,
+                    n_households,
+                )
+                return mask.astype(np.float32)
+            return np.ones(n_households, dtype=np.float32)
+
+        if target_entity == "person":
+            er = entity_rel.copy()
+            er["satisfies"] = person_mask
+            filtered = er[er["satisfies"]]
+            counts = filtered.groupby("household_id")["person_id"].nunique()
+        else:
+            eid_col = f"{target_entity}_id"
+            er = entity_rel.copy()
+            er["satisfies"] = person_mask
+            entity_ok = er.groupby(eid_col)["satisfies"].any()
+            unique = er[["household_id", eid_col]].drop_duplicates()
+            unique["entity_ok"] = unique[eid_col].map(entity_ok)
+            filtered = unique[unique["entity_ok"]]
+            counts = filtered.groupby("household_id")[eid_col].nunique()
+
+        return np.array(
+            [counts.get(hid, 0) for hid in household_ids],
+            dtype=np.float32,
+        )
+
     # ---------------------------------------------------------------
     # Clone simulation
     # ---------------------------------------------------------------
@@ -720,14 +984,39 @@ class UnifiedMatrixBuilder:
 
         unique_variables = set(targets_df["variable"].values)
 
-        # 5. Clone loop
+        # 5a. Collect unique constraint variables
+        unique_constraint_vars = set()
+        for constraints in non_geo_constraints_list:
+            for c in constraints:
+                unique_constraint_vars.add(c["variable"])
+
+        # 5b. Per-state precomputation (51 sims on one object)
+        self._entity_rel_cache = None
+        state_values = self._build_state_values(
+            sim,
+            unique_variables,
+            unique_constraint_vars,
+            geography,
+        )
+
+        # 5c. State-independent structures (computed once)
+        entity_rel = self._build_entity_relationship(sim)
+        household_ids = sim.calculate(
+            "household_id", map_to="household"
+        ).values
+        person_hh_ids = sim.calculate("household_id", map_to="person").values
+        hh_id_to_idx = {int(hid): idx for idx, hid in enumerate(household_ids)}
+        person_hh_indices = np.array(
+            [hh_id_to_idx[int(hid)] for hid in person_hh_ids]
+        )
+        tax_benefit_system = sim.tax_benefit_system
+
+        # 5d. Clone loop
         from pathlib import Path
 
         clone_dir = Path(cache_dir) if cache_dir else None
         if clone_dir:
             clone_dir.mkdir(parents=True, exist_ok=True)
-
-        self._entity_rel_cache = None
 
         for clone_idx in range(n_clones):
             if clone_dir:
@@ -744,21 +1033,23 @@ class UnifiedMatrixBuilder:
             col_end = col_start + n_records
             clone_states = geography.state_fips[col_start:col_end]
 
-            logger.info(
-                "Processing clone %d/%d " "(cols %d-%d, %d unique states)...",
-                clone_idx + 1,
-                n_clones,
-                col_start,
-                col_end - 1,
-                len(np.unique(clone_states)),
-            )
+            if (clone_idx + 1) % 50 == 0 or clone_idx == 0:
+                logger.info(
+                    "Assembling clone %d/%d "
+                    "(cols %d-%d, %d unique states)...",
+                    clone_idx + 1,
+                    n_clones,
+                    col_start,
+                    col_end - 1,
+                    len(np.unique(clone_states)),
+                )
 
-            var_values, clone_sim = self._simulate_clone(
+            hh_vars, person_vars = self._assemble_clone_values(
+                state_values,
                 clone_states,
-                n_records,
+                person_hh_indices,
                 unique_variables,
-                sim_modifier=sim_modifier,
-                clone_idx=clone_idx,
+                unique_constraint_vars,
             )
 
             mask_cache: Dict[tuple, np.ndarray] = {}
@@ -809,26 +1100,34 @@ class UnifiedMatrixBuilder:
                 if variable.endswith("_count"):
                     vkey = (variable, constraint_key)
                     if vkey not in count_cache:
-                        count_cache[vkey] = self._calculate_target_values(
-                            clone_sim,
-                            variable,
-                            non_geo,
-                            n_records,
+                        count_cache[vkey] = (
+                            self._calculate_target_values_from_values(
+                                variable,
+                                non_geo,
+                                n_records,
+                                hh_vars,
+                                person_vars,
+                                entity_rel,
+                                household_ids,
+                                tax_benefit_system,
+                            )
                         )
                     values = count_cache[vkey]
                 else:
-                    if variable not in var_values:
+                    if variable not in hh_vars:
                         continue
                     if constraint_key not in mask_cache:
                         mask_cache[constraint_key] = (
-                            self._evaluate_constraints_entity_aware(
-                                clone_sim,
+                            self._evaluate_constraints_from_values(
                                 non_geo,
+                                person_vars,
+                                entity_rel,
+                                household_ids,
                                 n_records,
                             )
                         )
                     mask = mask_cache[constraint_key]
-                    values = var_values[variable] * mask
+                    values = hh_vars[variable] * mask
 
                 vals = values[rec_indices]
                 nonzero = vals != 0
@@ -860,12 +1159,13 @@ class UnifiedMatrixBuilder:
                     cols=cc,
                     vals=cv,
                 )
-                logger.info(
-                    "Clone %d: %d nonzero entries saved.",
-                    clone_idx + 1,
-                    len(cv),
-                )
-                del var_values, clone_sim
+                if (clone_idx + 1) % 50 == 0:
+                    logger.info(
+                        "Clone %d: %d nonzero entries saved.",
+                        clone_idx + 1,
+                        len(cv),
+                    )
+                del hh_vars, person_vars
             else:
                 self._coo_parts[0].append(cr)
                 self._coo_parts[1].append(cc)

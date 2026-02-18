@@ -555,6 +555,7 @@ class UnifiedMatrixBuilder:
         n_records: int,
         variables: set,
         sim_modifier=None,
+        post_sim_modifier=None,
         clone_idx: int = 0,
     ) -> Tuple[Dict[str, np.ndarray], object]:
         """Simulate one clone with assigned geography.
@@ -566,9 +567,14 @@ class UnifiedMatrixBuilder:
             variables: Target variable names to compute.
             sim_modifier: Optional callback(sim, clone_idx)
                 called after state_fips is set but before
-                cache clearing. Used for takeup
+                cache clearing. Used for simple takeup
                 re-randomization.
-            clone_idx: Clone index passed to sim_modifier.
+            post_sim_modifier: Optional callback(sim, clone_idx)
+                called after the first cache clear. Used for
+                category-dependent takeup re-randomization
+                that needs sim-calculated category variables.
+                Triggers a second cache clear afterwards.
+            clone_idx: Clone index passed to modifiers.
 
         Returns:
             (var_values, sim) where var_values maps variable
@@ -586,6 +592,13 @@ class UnifiedMatrixBuilder:
             sim_modifier(sim, clone_idx)
         for var in get_calculated_variables(sim):
             sim.delete_arrays(var)
+
+        # Two-pass: category-dependent takeup needs fresh
+        # category variables, then a second cache clear
+        if post_sim_modifier is not None:
+            post_sim_modifier(sim, clone_idx)
+            for var in get_calculated_variables(sim):
+                sim.delete_arrays(var)
 
         var_values: Dict[str, np.ndarray] = {}
         for var in variables:
@@ -614,6 +627,7 @@ class UnifiedMatrixBuilder:
         hierarchical_domains: Optional[List[str]] = None,
         cache_dir: Optional[str] = None,
         sim_modifier=None,
+        post_sim_modifier=None,
     ) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
         """Build sparse calibration matrix.
 
@@ -633,8 +647,11 @@ class UnifiedMatrixBuilder:
                 If None, COO data held in memory.
             sim_modifier: Optional callback(sim, clone_idx)
                 called per clone after state_fips is set but
-                before cache clearing. Use for takeup
+                before cache clearing. Use for simple takeup
                 re-randomization.
+            post_sim_modifier: Optional callback(sim, clone_idx)
+                called after the first cache clear for
+                category-dependent takeup re-randomization.
 
         Returns:
             (targets_df, X_sparse, target_names)
@@ -758,6 +775,7 @@ class UnifiedMatrixBuilder:
                 n_records,
                 unique_variables,
                 sim_modifier=sim_modifier,
+                post_sim_modifier=post_sim_modifier,
                 clone_idx=clone_idx,
             )
 

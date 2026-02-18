@@ -100,6 +100,58 @@ SIMPLE_TAKEUP_VARS = [
 ]
 
 
+def _eitc_category_mapper(categories, rates):
+    """Map eitc_child_count to per-entity takeup rates.
+
+    Rates loaded from parameters/take_up/eitc.yaml via
+    load_take_up_rate(). Clamps child count to max key in
+    rate dict (matches cps.py EITC logic).
+
+    Args:
+        categories: Array of child counts per tax unit.
+        rates: Dict mapping child count -> takeup rate.
+
+    Returns:
+        Array of per-entity takeup rates.
+    """
+    max_key = max(rates.keys())
+    return np.array([rates[min(int(c), max_key)] for c in categories])
+
+
+def _wic_category_mapper(categories, rates):
+    """Map wic_category_str to per-entity takeup rates.
+
+    Rates loaded from parameters/take_up/wic_takeup.yaml via
+    load_take_up_rate(). Unknown categories default to 0.
+
+    Args:
+        categories: Array of WIC category strings per person.
+        rates: Dict mapping category string -> takeup rate.
+
+    Returns:
+        Array of per-entity takeup rates.
+    """
+    return np.array([rates.get(c, 0) for c in categories])
+
+
+CATEGORY_TAKEUP_VARS = [
+    {
+        "variable": "takes_up_eitc",
+        "entity": "tax_unit",
+        "rate_key": "eitc",
+        "category_variable": "eitc_child_count",
+        "category_mapper": _eitc_category_mapper,
+    },
+    {
+        "variable": "would_claim_wic",
+        "entity": "person",
+        "rate_key": "wic_takeup",
+        "category_variable": "wic_category_str",
+        "category_mapper": _wic_category_mapper,
+    },
+]
+
+
 def rerandomize_takeup(
     sim,
     clone_block_geoids: np.ndarray,
@@ -176,6 +228,76 @@ def rerandomize_takeup(
                 rates[mask] = rate_or_dict
 
         new_values = draws < rates
+        sim.set_input(var_name, time_period, new_values)
+
+
+def rerandomize_category_takeup(
+    sim,
+    clone_block_geoids: np.ndarray,
+    time_period: int,
+) -> None:
+    """Re-randomize category-dependent takeup variables.
+
+    Called post-simulation (after cache clear) so that category
+    variables like eitc_child_count and wic_category_str are
+    computed fresh using the clone's geography.
+
+    For each entry in CATEGORY_TAKEUP_VARS:
+    1. Load rates from YAML via load_take_up_rate()
+    2. Calculate the category variable from the sim
+    3. Map categories to per-entity rates via the mapper
+    4. Draw per-block seeded random values
+    5. Compare draws < rates to get new boolean takeup
+
+    Args:
+        sim: Microsimulation instance (post cache-clear).
+        clone_block_geoids: Block GEOIDs per household.
+        time_period: Tax year.
+    """
+    from policyengine_us_data.parameters import (
+        load_take_up_rate,
+    )
+    from policyengine_us_data.utils.randomness import (
+        seeded_rng,
+    )
+
+    hh_ids = sim.calculate("household_id", map_to="household").values
+    hh_to_block = dict(zip(hh_ids, clone_block_geoids))
+
+    for spec in CATEGORY_TAKEUP_VARS:
+        var_name = spec["variable"]
+        entity_level = spec["entity"]
+        rate_key = spec["rate_key"]
+        cat_var = spec["category_variable"]
+        mapper = spec["category_mapper"]
+
+        rates_dict = load_take_up_rate(rate_key, time_period)
+
+        # Calculate category variable (uses fresh sim state)
+        categories = sim.calculate(cat_var, map_to=entity_level).values
+
+        # Map categories to per-entity rates
+        per_entity_rates = mapper(categories, rates_dict)
+
+        # Map entities to blocks via household
+        entity_hh_ids = sim.calculate(
+            "household_id", map_to=entity_level
+        ).values
+        n_entities = len(entity_hh_ids)
+
+        entity_blocks = np.array(
+            [hh_to_block.get(hid, "0") for hid in entity_hh_ids]
+        )
+
+        draws = np.zeros(n_entities, dtype=np.float64)
+        unique_blocks = np.unique(entity_blocks)
+        for block in unique_blocks:
+            mask = entity_blocks == block
+            n_in_block = mask.sum()
+            rng = seeded_rng(var_name, salt=str(block))
+            draws[mask] = rng.random(n_in_block)
+
+        new_values = draws < per_entity_rates
         sim.set_input(var_name, time_period, new_values)
 
 
@@ -849,6 +971,7 @@ def run_calibration(
 
     # Step 4: Build sim_modifier for takeup rerandomization
     sim_modifier = None
+    post_sim_modifier = None
     if not skip_takeup_rerandomize:
         time_period = 2024
 
@@ -858,6 +981,12 @@ def run_calibration(
             blocks = geography.block_geoid[col_start:col_end]
             states = geography.state_fips[col_start:col_end]
             rerandomize_takeup(s, blocks, states, time_period)
+
+        def post_sim_modifier(s, clone_idx):
+            col_start = clone_idx * n_records
+            col_end = col_start + n_records
+            blocks = geography.block_geoid[col_start:col_end]
+            rerandomize_category_takeup(s, blocks, time_period)
 
     # Step 5: Build target filter
     target_filter = {}
@@ -878,6 +1007,7 @@ def run_calibration(
         target_filter=target_filter,
         hierarchical_domains=hierarchical_domains,
         sim_modifier=sim_modifier,
+        post_sim_modifier=post_sim_modifier,
     )
 
     builder.print_uprating_summary(targets_df)

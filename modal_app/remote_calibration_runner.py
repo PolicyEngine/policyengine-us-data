@@ -489,7 +489,7 @@ def main(
     epochs: int = 200,
     gpu: str = "T4",
     output: str = "calibration_weights.npy",
-    log_output: str = "calibration_log.csv",
+    log_output: str = "unified_diagnostics.csv",
     target_config: str = None,
     beta: float = None,
     lambda_l0: float = None,
@@ -553,7 +553,7 @@ def main(
         print(f"Diagnostics log saved to: {log_output}")
 
     if result.get("cal_log"):
-        cal_log_output = "calibration_epoch_log.csv"
+        cal_log_output = "calibration_log.csv"
         with open(cal_log_output, "wb") as f:
             f.write(result["cal_log"])
-        print(f"Calibration epoch log saved to: {cal_log_output}")
+        print(f"Calibration log saved to: {cal_log_output}")

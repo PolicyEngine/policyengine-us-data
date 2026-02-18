@@ -563,7 +563,7 @@ def fit_l0_weights(
                     epochs=chunk,
                     loss_type="relative",
                     verbose=True,
-                    verbose_freq=verbose_freq,
+                    verbose_freq=chunk,
                 )
             finally:
                 builtins.print = _builtin_print

@@ -45,6 +45,7 @@ def _fit_weights_impl(
     epochs: int,
     target_config: str = None,
     beta: float = None,
+    lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
 ) -> dict:
@@ -100,6 +101,8 @@ def _fit_weights_impl(
         cmd.extend(["--target-config", target_config])
     if beta is not None:
         cmd.extend(["--beta", str(beta)])
+    if lambda_l0 is not None:
+        cmd.extend(["--lambda-l0", str(lambda_l0)])
     if lambda_l2 is not None:
         cmd.extend(["--lambda-l2", str(lambda_l2)])
     if learning_rate is not None:
@@ -145,11 +148,13 @@ def fit_weights_t4(
     epochs: int = 200,
     target_config: str = None,
     beta: float = None,
+    lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
 ) -> dict:
     return _fit_weights_impl(
-        branch, epochs, target_config, beta, lambda_l2, learning_rate
+        branch, epochs, target_config, beta, lambda_l0, lambda_l2,
+        learning_rate,
     )
 
 
@@ -166,11 +171,13 @@ def fit_weights_a10(
     epochs: int = 200,
     target_config: str = None,
     beta: float = None,
+    lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
 ) -> dict:
     return _fit_weights_impl(
-        branch, epochs, target_config, beta, lambda_l2, learning_rate
+        branch, epochs, target_config, beta, lambda_l0, lambda_l2,
+        learning_rate,
     )
 
 
@@ -187,11 +194,13 @@ def fit_weights_a100_40(
     epochs: int = 200,
     target_config: str = None,
     beta: float = None,
+    lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
 ) -> dict:
     return _fit_weights_impl(
-        branch, epochs, target_config, beta, lambda_l2, learning_rate
+        branch, epochs, target_config, beta, lambda_l0, lambda_l2,
+        learning_rate,
     )
 
 
@@ -208,11 +217,13 @@ def fit_weights_a100_80(
     epochs: int = 200,
     target_config: str = None,
     beta: float = None,
+    lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
 ) -> dict:
     return _fit_weights_impl(
-        branch, epochs, target_config, beta, lambda_l2, learning_rate
+        branch, epochs, target_config, beta, lambda_l0, lambda_l2,
+        learning_rate,
     )
 
 
@@ -229,11 +240,13 @@ def fit_weights_h100(
     epochs: int = 200,
     target_config: str = None,
     beta: float = None,
+    lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
 ) -> dict:
     return _fit_weights_impl(
-        branch, epochs, target_config, beta, lambda_l2, learning_rate
+        branch, epochs, target_config, beta, lambda_l0, lambda_l2,
+        learning_rate,
     )
 
 
@@ -255,6 +268,7 @@ def main(
     log_output: str = "calibration_log.csv",
     target_config: str = None,
     beta: float = None,
+    lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
 ):
@@ -270,6 +284,7 @@ def main(
         epochs=epochs,
         target_config=target_config,
         beta=beta,
+        lambda_l0=lambda_l0,
         lambda_l2=lambda_l2,
         learning_rate=learning_rate,
     )

@@ -814,7 +814,11 @@ def run_calibration(
         raw_data = source_sim.dataset.load_dataset()
         data_dict = {}
         for var in raw_data:
-            data_dict[var] = {2024: raw_data[var][...]}
+            val = raw_data[var]
+            if isinstance(val, dict):
+                data_dict[var] = val
+            else:
+                data_dict[var] = {2024: val[...]}
         del source_sim
 
         from policyengine_us_data.calibration.source_impute import (

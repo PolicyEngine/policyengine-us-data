@@ -40,6 +40,47 @@ def _run_streaming(cmd, env=None, label=""):
     return proc.returncode, lines
 
 
+def _clone_and_install(branch: str):
+    """Clone the repo and install dependencies."""
+    os.chdir("/root")
+    subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
+    os.chdir("policyengine-us-data")
+    subprocess.run(["uv", "sync", "--extra", "l0"], check=True)
+
+
+def _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate):
+    """Append optional hyperparameter flags to a command list."""
+    if beta is not None:
+        cmd.extend(["--beta", str(beta)])
+    if lambda_l0 is not None:
+        cmd.extend(["--lambda-l0", str(lambda_l0)])
+    if lambda_l2 is not None:
+        cmd.extend(["--lambda-l2", str(lambda_l2)])
+    if learning_rate is not None:
+        cmd.extend(["--learning-rate", str(learning_rate)])
+
+
+def _collect_outputs(cal_lines):
+    """Extract weights and log bytes from calibration output lines."""
+    output_path = None
+    log_path = None
+    for line in cal_lines:
+        if "OUTPUT_PATH:" in line:
+            output_path = line.split("OUTPUT_PATH:")[1].strip()
+        elif "LOG_PATH:" in line:
+            log_path = line.split("LOG_PATH:")[1].strip()
+
+    with open(output_path, "rb") as f:
+        weights_bytes = f.read()
+
+    log_bytes = None
+    if log_path:
+        with open(log_path, "rb") as f:
+            log_bytes = f.read()
+
+    return {"weights": weights_bytes, "log": log_bytes}
+
+
 def _fit_weights_impl(
     branch: str,
     epochs: int,
@@ -49,12 +90,8 @@ def _fit_weights_impl(
     lambda_l2: float = None,
     learning_rate: float = None,
 ) -> dict:
-    """Shared implementation for weight fitting."""
-    os.chdir("/root")
-    subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
-    os.chdir("policyengine-us-data")
-
-    subprocess.run(["uv", "sync", "--extra", "l0"], check=True)
+    """Full pipeline: download data, build matrix, fit weights."""
+    _clone_and_install(branch)
 
     print("Downloading calibration inputs from HuggingFace...", flush=True)
     dl_rc, dl_lines = _run_streaming(
@@ -99,14 +136,7 @@ def _fit_weights_impl(
     ]
     if target_config:
         cmd.extend(["--target-config", target_config])
-    if beta is not None:
-        cmd.extend(["--beta", str(beta)])
-    if lambda_l0 is not None:
-        cmd.extend(["--lambda-l0", str(lambda_l0)])
-    if lambda_l2 is not None:
-        cmd.extend(["--lambda-l2", str(lambda_l2)])
-    if learning_rate is not None:
-        cmd.extend(["--learning-rate", str(learning_rate)])
+    _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate)
 
     cal_rc, cal_lines = _run_streaming(
         cmd,
@@ -116,23 +146,60 @@ def _fit_weights_impl(
     if cal_rc != 0:
         raise RuntimeError(f"Script failed with code {cal_rc}")
 
-    output_path = None
-    log_path = None
-    for line in cal_lines:
-        if "OUTPUT_PATH:" in line:
-            output_path = line.split("OUTPUT_PATH:")[1].strip()
-        elif "LOG_PATH:" in line:
-            log_path = line.split("LOG_PATH:")[1].strip()
+    return _collect_outputs(cal_lines)
 
-    with open(output_path, "rb") as f:
-        weights_bytes = f.read()
 
-    log_bytes = None
-    if log_path:
-        with open(log_path, "rb") as f:
-            log_bytes = f.read()
+def _fit_from_package_impl(
+    package_bytes: bytes,
+    branch: str,
+    epochs: int,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l0: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
+    """Fit weights from a pre-built calibration package."""
+    _clone_and_install(branch)
 
-    return {"weights": weights_bytes, "log": log_bytes}
+    pkg_path = "/root/calibration_package.pkl"
+    with open(pkg_path, "wb") as f:
+        f.write(package_bytes)
+    print(
+        f"Wrote calibration package ({len(package_bytes)} bytes) "
+        f"to {pkg_path}",
+        flush=True,
+    )
+
+    script_path = "policyengine_us_data/calibration/unified_calibration.py"
+    cmd = [
+        "uv",
+        "run",
+        "python",
+        script_path,
+        "--device",
+        "cuda",
+        "--epochs",
+        str(epochs),
+        "--package-path",
+        pkg_path,
+    ]
+    if target_config:
+        cmd.extend(["--target-config", target_config])
+    _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate)
+
+    cal_rc, cal_lines = _run_streaming(
+        cmd,
+        env=os.environ.copy(),
+        label="calibrate",
+    )
+    if cal_rc != 0:
+        raise RuntimeError(f"Script failed with code {cal_rc}")
+
+    return _collect_outputs(cal_lines)
+
+
+# --- Full pipeline GPU functions ---
 
 
 @app.function(
@@ -259,6 +326,133 @@ GPU_FUNCTIONS = {
 }
 
 
+# --- Package-path GPU functions ---
+
+
+@app.function(
+    image=image,
+    memory=32768,
+    cpu=4.0,
+    gpu="T4",
+    timeout=14400,
+)
+def fit_from_package_t4(
+    package_bytes: bytes,
+    branch: str = "main",
+    epochs: int = 200,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l0: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
+    return _fit_from_package_impl(
+        package_bytes, branch, epochs, target_config, beta,
+        lambda_l0, lambda_l2, learning_rate,
+    )
+
+
+@app.function(
+    image=image,
+    memory=32768,
+    cpu=4.0,
+    gpu="A10",
+    timeout=14400,
+)
+def fit_from_package_a10(
+    package_bytes: bytes,
+    branch: str = "main",
+    epochs: int = 200,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l0: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
+    return _fit_from_package_impl(
+        package_bytes, branch, epochs, target_config, beta,
+        lambda_l0, lambda_l2, learning_rate,
+    )
+
+
+@app.function(
+    image=image,
+    memory=32768,
+    cpu=4.0,
+    gpu="A100-40GB",
+    timeout=14400,
+)
+def fit_from_package_a100_40(
+    package_bytes: bytes,
+    branch: str = "main",
+    epochs: int = 200,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l0: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
+    return _fit_from_package_impl(
+        package_bytes, branch, epochs, target_config, beta,
+        lambda_l0, lambda_l2, learning_rate,
+    )
+
+
+@app.function(
+    image=image,
+    memory=32768,
+    cpu=4.0,
+    gpu="A100-80GB",
+    timeout=14400,
+)
+def fit_from_package_a100_80(
+    package_bytes: bytes,
+    branch: str = "main",
+    epochs: int = 200,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l0: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
+    return _fit_from_package_impl(
+        package_bytes, branch, epochs, target_config, beta,
+        lambda_l0, lambda_l2, learning_rate,
+    )
+
+
+@app.function(
+    image=image,
+    memory=32768,
+    cpu=4.0,
+    gpu="H100",
+    timeout=14400,
+)
+def fit_from_package_h100(
+    package_bytes: bytes,
+    branch: str = "main",
+    epochs: int = 200,
+    target_config: str = None,
+    beta: float = None,
+    lambda_l0: float = None,
+    lambda_l2: float = None,
+    learning_rate: float = None,
+) -> dict:
+    return _fit_from_package_impl(
+        package_bytes, branch, epochs, target_config, beta,
+        lambda_l0, lambda_l2, learning_rate,
+    )
+
+
+PACKAGE_GPU_FUNCTIONS = {
+    "T4": fit_from_package_t4,
+    "A10": fit_from_package_a10,
+    "A100-40GB": fit_from_package_a100_40,
+    "A100-80GB": fit_from_package_a100_80,
+    "H100": fit_from_package_h100,
+}
+
+
 @app.local_entrypoint()
 def main(
     branch: str = "main",
@@ -271,23 +465,50 @@ def main(
     lambda_l0: float = None,
     lambda_l2: float = None,
     learning_rate: float = None,
+    package_path: str = None,
 ):
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
-            f"Unknown GPU: {gpu}. Choose from: {list(GPU_FUNCTIONS.keys())}"
+            f"Unknown GPU: {gpu}. "
+            f"Choose from: {list(GPU_FUNCTIONS.keys())}"
         )
 
-    print(f"Running with GPU: {gpu}, epochs: {epochs}, branch: {branch}")
-    func = GPU_FUNCTIONS[gpu]
-    result = func.remote(
-        branch=branch,
-        epochs=epochs,
-        target_config=target_config,
-        beta=beta,
-        lambda_l0=lambda_l0,
-        lambda_l2=lambda_l2,
-        learning_rate=learning_rate,
-    )
+    if package_path:
+        print(f"Reading package from {package_path}...", flush=True)
+        with open(package_path, "rb") as f:
+            package_bytes = f.read()
+        print(
+            f"Uploading package ({len(package_bytes)} bytes) "
+            f"to {gpu} on Modal...",
+            flush=True,
+        )
+        func = PACKAGE_GPU_FUNCTIONS[gpu]
+        result = func.remote(
+            package_bytes=package_bytes,
+            branch=branch,
+            epochs=epochs,
+            target_config=target_config,
+            beta=beta,
+            lambda_l0=lambda_l0,
+            lambda_l2=lambda_l2,
+            learning_rate=learning_rate,
+        )
+    else:
+        print(
+            f"Running full pipeline with GPU: {gpu}, "
+            f"epochs: {epochs}, branch: {branch}",
+            flush=True,
+        )
+        func = GPU_FUNCTIONS[gpu]
+        result = func.remote(
+            branch=branch,
+            epochs=epochs,
+            target_config=target_config,
+            beta=beta,
+            lambda_l0=lambda_l0,
+            lambda_l2=lambda_l2,
+            learning_rate=learning_rate,
+        )
 
     with open(output, "wb") as f:
         f.write(result["weights"])

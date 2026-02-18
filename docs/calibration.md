@@ -58,7 +58,7 @@ This saves `storage/calibration/calibration_package.pkl` (default location). Use
 ```bash
 python -m policyengine_us_data.calibration.unified_calibration \
   --package-path storage/calibration/calibration_package.pkl \
-  --epochs 500 \
+  --epochs 1000 \
   --lambda-l0 1e-8 \
   --beta 0.65 \
   --lambda-l2 1e-8 \
@@ -82,16 +82,35 @@ This lets you experiment with which targets to include without rebuilding the ma
 
 ### 4. Running on Modal (GPU cloud)
 
+**Full pipeline** (builds matrix from scratch on Modal):
+
 ```bash
 modal run modal_app/remote_calibration_runner.py \
-  --branch puf-impute-fix-530 \
-  --gpu A10 \
-  --epochs 500 \
-  --target-config policyengine_us_data/calibration/target_config.yaml \
-  --beta 0.65
+  --branch calibration-pipeline-improvements \
+  --gpu T4 \
+  --epochs 1000 \
+  --beta 0.65 \
+  --lambda-l0 1e-8 \
+  --lambda-l2 1e-8 \
+  --target-config policyengine_us_data/calibration/target_config.yaml
 ```
 
 The target config YAML is read from the cloned repo inside the container, so it must be committed to the branch you specify.
+
+**From a pre-built package** (uploads local package, skips matrix build):
+
+```bash
+modal run modal_app/remote_calibration_runner.py \
+  --package-path policyengine_us_data/storage/calibration/calibration_package.pkl \
+  --branch calibration-pipeline-improvements \
+  --gpu T4 \
+  --epochs 1000 \
+  --beta 0.65 \
+  --lambda-l0 1e-8 \
+  --lambda-l2 1e-8
+```
+
+This reads the `.pkl` locally, uploads it to the Modal container, and runs only the fitting phase. Much faster since it skips the HuggingFace download and matrix build.
 
 ### 5. Portable fitting (Kaggle, Colab, etc.)
 

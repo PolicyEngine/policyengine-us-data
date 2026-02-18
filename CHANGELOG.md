@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.69.0] - 2026-02-18 21:11:01
+
+### Added
+
+- PUF clone + QRF imputation module (puf_impute.py) with state_fips predictor and stratified subsample preserving top 0.5% by AGI
+- ACS re-imputation module (source_impute.py) with state predictor; SIPP/SCF imputation without state (surveys lack state identifiers)
+- PUF and source impute integration into unified calibration pipeline (--puf-dataset, --skip-puf, --skip-source-impute flags)
+- 21 new tests for puf_impute and source_impute modules
+- DC_STATEHOOD=1 environment variable set in storage/__init__.py to ensure DC is included in state-based processing
+
+### Changed
+
+- Refactored extended_cps.py to delegate to puf_impute.puf_clone_dataset() (443 -> 75 lines)
+- PUF QRF training uses stratified subsample (20K target) instead of random subsample(10_000), force-including high-income tail
+- unified_calibration.py pipeline now supports optional source imputation and PUF cloning steps
+
 ## [1.68.0] - 2026-02-17 15:26:04
 
 ### Added
@@ -1038,6 +1054,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.69.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.68.0...1.69.0
 [1.68.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.67.0...1.68.0
 [1.67.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.66.0...1.67.0
 [1.66.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.65.0...1.66.0

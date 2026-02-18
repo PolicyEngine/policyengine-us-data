@@ -206,6 +206,8 @@ def _fit_from_package_impl(
         cmd.extend(["--target-config", target_config])
     _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq)
 
+    print(f"Running command: {' '.join(cmd)}", flush=True)
+
     cal_rc, cal_lines = _run_streaming(
         cmd,
         env=os.environ.copy(),

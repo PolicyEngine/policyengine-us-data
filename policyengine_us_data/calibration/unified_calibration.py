@@ -1062,6 +1062,7 @@ def main(argv=None):
         pass
 
     args = parse_args(argv)
+    logger.info("CLI args: %s", vars(args))
 
     from policyengine_us_data.storage import STORAGE_FOLDER
 

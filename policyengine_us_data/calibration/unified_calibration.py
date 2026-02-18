@@ -55,7 +55,7 @@ LOG_ALPHA_JITTER_SD = 0.01
 LAMBDA_L2 = 1e-12
 LEARNING_RATE = 0.15
 DEFAULT_EPOCHS = 100
-DEFAULT_N_CLONES = 10
+DEFAULT_N_CLONES = 436
 
 SIMPLE_TAKEUP_VARS = [
     {
@@ -940,17 +940,11 @@ def run_calibration(
             source_path,
         )
 
-    # Step 4: Build sim_modifier for takeup rerandomization
+    # Step 4: Takeup re-randomization skipped for per-state
+    # precomputation approach. Each clone's variation comes from
+    # geographic reassignment (different state -> different rules).
+    # Takeup re-randomization can be added as post-processing later.
     sim_modifier = None
-    if not skip_takeup_rerandomize:
-        time_period = 2024
-
-        def sim_modifier(s, clone_idx):
-            col_start = clone_idx * n_records
-            col_end = col_start + n_records
-            blocks = geography.block_geoid[col_start:col_end]
-            states = geography.state_fips[col_start:col_end]
-            rerandomize_takeup(s, blocks, states, time_period)
 
     # Step 5: Build target filter
     target_filter = {}

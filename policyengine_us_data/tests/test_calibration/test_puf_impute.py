@@ -126,8 +126,10 @@ class TestPufCloneDataset:
         n = len(ages) // 2
         np.testing.assert_array_equal(ages[:n], ages[n:])
 
-    def test_demographic_predictors_includes_state(self):
-        assert "state_fips" in DEMOGRAPHIC_PREDICTORS
+    def test_demographic_predictors_excludes_state(self):
+        # PUF has no state identifier, so state_fips must not
+        # be a predictor for PUF imputation.
+        assert "state_fips" not in DEMOGRAPHIC_PREDICTORS
 
     def test_imputed_variables_not_empty(self):
         assert len(IMPUTED_VARIABLES) > 0

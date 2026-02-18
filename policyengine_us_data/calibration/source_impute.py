@@ -1,14 +1,16 @@
-"""Non-PUF QRF imputations with state_fips as predictor.
+"""Non-PUF QRF imputations from donor surveys.
 
-Re-imputes variables from ACS, SIPP, and SCF donor surveys
-with state_fips included as a QRF predictor. This runs after
-geography assignment so imputations reflect assigned state.
+Re-imputes variables from ACS, SIPP, and SCF donor surveys.
+Only ACS includes state_fips as a QRF predictor (ACS has state
+identifiers). SIPP and SCF lack state data, so their imputations
+use only demographic and financial predictors.
 
 Sources and variables:
-    ACS  -> rent, real_estate_taxes
+    ACS  -> rent, real_estate_taxes  (with state predictor)
     SIPP -> tip_income, bank_account_assets, stock_assets,
-            bond_assets
+            bond_assets  (no state predictor)
     SCF  -> net_worth, auto_loan_balance, auto_loan_interest
+            (no state predictor)
 
 Usage in unified calibration pipeline:
     1. Load raw CPS
@@ -88,6 +90,27 @@ SCF_PREDICTORS = [
 ]
 
 
+TENURE_TYPE_MAP = {
+    "OWNED_WITH_MORTGAGE": 1,
+    "OWNED_OUTRIGHT": 1,
+    "RENTED": 2,
+    "NONE": 0,
+}
+
+
+def _encode_tenure_type(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert tenure_type enum strings to numeric codes."""
+    if "tenure_type" in df.columns:
+        df["tenure_type"] = (
+            df["tenure_type"]
+            .astype(str)
+            .map(TENURE_TYPE_MAP)
+            .fillna(0)
+            .astype(np.float32)
+        )
+    return df
+
+
 def impute_source_variables(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
@@ -97,10 +120,11 @@ def impute_source_variables(
     skip_sipp: bool = False,
     skip_scf: bool = False,
 ) -> Dict[str, Dict[int, np.ndarray]]:
-    """Re-impute ACS/SIPP/SCF variables with state as predictor.
+    """Re-impute ACS/SIPP/SCF variables from donor surveys.
 
-    Overwrites existing imputed values in data with new values
-    that use assigned state_fips as a QRF predictor.
+    Overwrites existing imputed values in data. ACS uses
+    state_fips as a QRF predictor; SIPP and SCF use only
+    demographic and financial predictors (no state data).
 
     Args:
         data: CPS dataset dict {variable: {time_period: array}}.
@@ -123,11 +147,11 @@ def impute_source_variables(
         data = _impute_acs(data, state_fips, time_period, dataset_path)
 
     if not skip_sipp:
-        logger.info("Imputing SIPP variables with state predictor")
+        logger.info("Imputing SIPP variables")
         data = _impute_sipp(data, state_fips, time_period, dataset_path)
 
     if not skip_scf:
-        logger.info("Imputing SCF variables with state predictor")
+        logger.info("Imputing SCF variables")
         data = _impute_scf(data, state_fips, time_period, dataset_path)
 
     return data
@@ -204,9 +228,14 @@ def _person_state_fips(
         return np.array(
             [state_fips[hh_to_idx[int(hh_id)]] for hh_id in hh_ids_person]
         )
+    # Fallback: distribute persons across households as evenly
+    # as possible (first households get any remainder).
     n_hh = len(data["household_id"][time_period])
     n_persons = len(data["person_id"][time_period])
-    return np.repeat(state_fips, n_persons // n_hh)
+    base, remainder = divmod(n_persons, n_hh)
+    counts = np.full(n_hh, base, dtype=int)
+    counts[:remainder] += 1
+    return np.repeat(state_fips, counts)
 
 
 def _impute_acs(
@@ -240,21 +269,7 @@ def _impute_acs(
     ).values.astype(np.float32)
 
     train_df = acs_df[acs_df.is_household_head].sample(10_000, random_state=42)
-    if "tenure_type" in train_df.columns:
-        train_df["tenure_type"] = (
-            train_df["tenure_type"]
-            .astype(str)
-            .map(
-                {
-                    "OWNED_WITH_MORTGAGE": 1,
-                    "OWNED_OUTRIGHT": 1,
-                    "RENTED": 2,
-                    "NONE": 0,
-                }
-            )
-            .fillna(0)
-            .astype(np.float32)
-        )
+    train_df = _encode_tenure_type(train_df)
     del acs
 
     if dataset_path is not None:
@@ -267,21 +282,7 @@ def _impute_acs(
             if pred in data:
                 cps_df[pred] = data[pred][time_period].astype(np.float32)
 
-    if "tenure_type" in cps_df.columns:
-        cps_df["tenure_type"] = (
-            cps_df["tenure_type"]
-            .astype(str)
-            .map(
-                {
-                    "OWNED_WITH_MORTGAGE": 1,
-                    "OWNED_OUTRIGHT": 1,
-                    "RENTED": 2,
-                    "NONE": 0,
-                }
-            )
-            .fillna(0)
-            .astype(np.float32)
-        )
+    cps_df = _encode_tenure_type(cps_df)
 
     person_states = _person_state_fips(data, state_fips, time_period)
     cps_df["state_fips"] = person_states.astype(np.float32)
@@ -559,7 +560,7 @@ def _impute_sipp(
 
         logger.info("SIPP asset imputation complete")
 
-    except Exception as e:
+    except (FileNotFoundError, KeyError, ValueError, OSError) as e:
         logger.warning(
             "SIPP asset imputation failed: %s. " "Keeping existing values.",
             e,

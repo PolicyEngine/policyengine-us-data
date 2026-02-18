@@ -746,8 +746,6 @@ def main(argv=None):
 
     t_start = time.time()
 
-    puf_dataset_path = getattr(args, "puf_dataset", None)
-
     weights, targets_df, X_sparse, target_names = run_calibration(
         dataset_path=dataset_path,
         db_path=db_path,
@@ -758,10 +756,10 @@ def main(argv=None):
         seed=args.seed,
         domain_variables=domain_variables,
         hierarchical_domains=hierarchical_domains,
-        skip_takeup_rerandomize=(args.skip_takeup_rerandomize),
-        puf_dataset_path=puf_dataset_path,
-        skip_puf=getattr(args, "skip_puf", False),
-        skip_source_impute=getattr(args, "skip_source_impute", False),
+        skip_takeup_rerandomize=args.skip_takeup_rerandomize,
+        puf_dataset_path=args.puf_dataset,
+        skip_puf=args.skip_puf,
+        skip_source_impute=args.skip_source_impute,
     )
 
     # Save weights
@@ -793,9 +791,9 @@ def main(argv=None):
     run_config = {
         "dataset": dataset_path,
         "db_path": db_path,
-        "puf_dataset": puf_dataset_path,
-        "skip_puf": getattr(args, "skip_puf", False),
-        "skip_source_impute": getattr(args, "skip_source_impute", False),
+        "puf_dataset": args.puf_dataset,
+        "skip_puf": args.skip_puf,
+        "skip_source_impute": args.skip_source_impute,
         "n_clones": args.n_clones,
         "lambda_l0": lambda_l0,
         "epochs": args.epochs,

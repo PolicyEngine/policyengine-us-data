@@ -8,8 +8,12 @@ import pytest
 
 from policyengine_us_data.calibration.source_impute import (
     ACS_IMPUTED_VARIABLES,
+    ACS_PREDICTORS,
     SIPP_IMPUTED_VARIABLES,
+    SIPP_TIPS_PREDICTORS,
+    SIPP_ASSETS_PREDICTORS,
     SCF_IMPUTED_VARIABLES,
+    SCF_PREDICTORS,
     ALL_SOURCE_VARIABLES,
     impute_source_variables,
     _impute_acs,
@@ -73,6 +77,31 @@ class TestConstants:
             + SCF_IMPUTED_VARIABLES
         )
         assert ALL_SOURCE_VARIABLES == expected
+
+
+class TestPredictorLists:
+    def test_acs_uses_state(self):
+        # ACS has state identifiers, so state_fips is added at
+        # call time in _impute_acs (predictors + ["state_fips"]).
+        assert "state_fips" not in ACS_PREDICTORS  # added dynamically
+
+    def test_sipp_tips_has_income(self):
+        assert "employment_income" in SIPP_TIPS_PREDICTORS
+
+    def test_sipp_assets_has_income(self):
+        assert "employment_income" in SIPP_ASSETS_PREDICTORS
+
+    def test_scf_has_income(self):
+        assert "employment_income" in SCF_PREDICTORS
+
+    def test_sipp_and_scf_exclude_state(self):
+        # SIPP and SCF lack state identifiers.
+        for predictor_list in [
+            SIPP_TIPS_PREDICTORS,
+            SIPP_ASSETS_PREDICTORS,
+            SCF_PREDICTORS,
+        ]:
+            assert "state_fips" not in predictor_list
 
 
 class TestImputeSourceVariables:
@@ -146,7 +175,7 @@ class TestPersonStateFips:
         expected = np.array([1, 1, 2, 2, 3])
         np.testing.assert_array_equal(result, expected)
 
-    def test_fallback_repeat(self):
+    def test_fallback_equal_sizes(self):
         data = {
             "household_id": {2024: np.array([10, 20])},
             "person_id": {2024: np.arange(4)},
@@ -156,6 +185,18 @@ class TestPersonStateFips:
         result = _person_state_fips(data, state_fips, 2024)
         expected = np.array([1, 1, 2, 2])
         np.testing.assert_array_equal(result, expected)
+
+    def test_fallback_unequal_sizes(self):
+        # Without person_household_id, the fallback must still
+        # produce the right length (one state per person).
+        data = {
+            "household_id": {2024: np.array([10, 20, 30])},
+            "person_id": {2024: np.arange(5)},
+        }
+        state_fips = np.array([1, 2, 3])
+
+        result = _person_state_fips(data, state_fips, 2024)
+        assert len(result) == 5
 
 
 class TestSubfunctions:

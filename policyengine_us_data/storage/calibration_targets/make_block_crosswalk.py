@@ -150,7 +150,7 @@ def build_block_crosswalk():
         s
         for s in us.states.STATES_AND_TERRITORIES
         if not s.is_territory and s.abbr not in ["ZZ"]
-    ]
+    ] + [us.states.DC]
 
     import time
 

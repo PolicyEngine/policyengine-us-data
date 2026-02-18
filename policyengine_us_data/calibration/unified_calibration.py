@@ -4,10 +4,12 @@ Unified L0 calibration pipeline.
 Pipeline flow:
     1. Load CPS dataset -> get n_records
     2. Clone Nx, assign random geography (census block)
-    3. Re-randomize simple takeup variables per block
-    4. Build sparse calibration matrix (clone-by-clone)
-    5. L0-regularized optimization -> calibrated weights
-    6. Save weights, diagnostics, run config
+    3. (Optional) Source impute ACS/SIPP/SCF vars with state
+    4. (Optional) PUF clone (2x) + QRF impute with state
+    5. Re-randomize simple takeup variables per block
+    6. Build sparse calibration matrix (clone-by-clone)
+    7. L0-regularized optimization -> calibrated weights
+    8. Save weights, diagnostics, run config
 
 Two presets control output size via L0 regularization:
 - local: L0=1e-8, ~3-4M records (for local area dataset)
@@ -19,7 +21,8 @@ Usage:
         --db-path path/to/policy_data.db \\
         --output path/to/weights.npy \\
         --preset local \\
-        --epochs 100
+        --epochs 100 \\
+        --puf-dataset path/to/puf_2024.h5
 """
 
 import argparse
@@ -27,6 +30,7 @@ import builtins
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -122,7 +126,6 @@ def rerandomize_takeup(
         seeded_rng,
     )
 
-    n_households = len(clone_block_geoids)
     hh_ids = sim.calculate("household_id", map_to="household").values
     hh_to_block = dict(zip(hh_ids, clone_block_geoids))
     hh_to_state = dict(zip(hh_ids, clone_state_fips))
@@ -235,23 +238,33 @@ def parse_args(argv=None):
         "--domain-variables",
         type=str,
         default=None,
-        help=(
-            "Comma-separated domain variables for " "target_overview filtering"
-        ),
+        help="Comma-separated domain variables for target_overview filtering",
     )
     parser.add_argument(
         "--hierarchical-domains",
         type=str,
         default=None,
-        help=(
-            "Comma-separated domains for hierarchical "
-            "uprating + CD reconciliation"
-        ),
+        help="Comma-separated domains for hierarchical uprating + CD reconciliation",
     )
     parser.add_argument(
         "--skip-takeup-rerandomize",
         action="store_true",
         help="Skip takeup re-randomization",
+    )
+    parser.add_argument(
+        "--puf-dataset",
+        default=None,
+        help="Path to PUF h5 file for QRF training",
+    )
+    parser.add_argument(
+        "--skip-puf",
+        action="store_true",
+        help="Skip PUF clone + QRF imputation",
+    )
+    parser.add_argument(
+        "--skip-source-impute",
+        action="store_true",
+        help="Skip ACS/SIPP/SCF re-imputation with state",
     )
     return parser.parse_args(argv)
 
@@ -262,7 +275,7 @@ def fit_l0_weights(
     lambda_l0: float,
     epochs: int = DEFAULT_EPOCHS,
     device: str = "cpu",
-    verbose_freq: int = None,
+    verbose_freq: Optional[int] = None,
 ) -> np.ndarray:
     """Fit L0-regularized calibration weights.
 
@@ -282,9 +295,7 @@ def fit_l0_weights(
     try:
         from l0.calibration import SparseCalibrationWeights
     except ImportError:
-        raise ImportError(
-            "l0-python required. " "Install: pip install l0-python"
-        )
+        raise ImportError("l0-python required. Install: pip install l0-python")
 
     import torch
 
@@ -389,6 +400,88 @@ def compute_diagnostics(
     )
 
 
+def _build_puf_cloned_dataset(
+    dataset_path: str,
+    puf_dataset_path: str,
+    state_fips: np.ndarray,
+    time_period: int = 2024,
+    skip_qrf: bool = False,
+    skip_source_impute: bool = False,
+) -> str:
+    """Build a PUF-cloned dataset from raw CPS.
+
+    Loads the CPS, optionally runs source imputations
+    (ACS/SIPP/SCF), then PUF clone + QRF.
+
+    Args:
+        dataset_path: Path to raw CPS h5 file.
+        puf_dataset_path: Path to PUF h5 file.
+        state_fips: State FIPS per household (base records).
+        time_period: Tax year.
+        skip_qrf: Skip QRF imputation.
+        skip_source_impute: Skip ACS/SIPP/SCF imputations.
+
+    Returns:
+        Path to the PUF-cloned h5 file.
+    """
+    import h5py
+
+    from policyengine_us import Microsimulation
+
+    from policyengine_us_data.calibration.puf_impute import (
+        puf_clone_dataset,
+    )
+
+    logger.info("Building PUF-cloned dataset from %s", dataset_path)
+
+    sim = Microsimulation(dataset=dataset_path)
+    data = sim.dataset.load_dataset()
+
+    data_dict = {}
+    for var in data:
+        if isinstance(data[var], dict):
+            vals = list(data[var].values())
+            data_dict[var] = {time_period: vals[0]}
+        else:
+            data_dict[var] = {time_period: np.array(data[var])}
+
+    if not skip_source_impute:
+        from policyengine_us_data.calibration.source_impute import (
+            impute_source_variables,
+        )
+
+        data_dict = impute_source_variables(
+            data=data_dict,
+            state_fips=state_fips,
+            time_period=time_period,
+            dataset_path=dataset_path,
+        )
+
+    puf_dataset = puf_dataset_path if not skip_qrf else None
+
+    new_data = puf_clone_dataset(
+        data=data_dict,
+        state_fips=state_fips,
+        time_period=time_period,
+        puf_dataset=puf_dataset,
+        skip_qrf=skip_qrf,
+        dataset_path=dataset_path,
+    )
+
+    output_path = str(
+        Path(dataset_path).parent / f"puf_cloned_{Path(dataset_path).stem}.h5"
+    )
+
+    with h5py.File(output_path, "w") as f:
+        for var, time_dict in new_data.items():
+            for tp, values in time_dict.items():
+                f.create_dataset(f"{var}/{tp}", data=values)
+
+    del sim
+    logger.info("PUF-cloned dataset saved to %s", output_path)
+    return output_path
+
+
 def run_calibration(
     dataset_path: str,
     db_path: str,
@@ -400,6 +493,9 @@ def run_calibration(
     domain_variables: list = None,
     hierarchical_domains: list = None,
     skip_takeup_rerandomize: bool = False,
+    puf_dataset_path: str = None,
+    skip_puf: bool = False,
+    skip_source_impute: bool = False,
 ):
     """Run unified calibration pipeline.
 
@@ -415,6 +511,9 @@ def run_calibration(
         hierarchical_domains: Domains for hierarchical
             uprating + CD reconciliation.
         skip_takeup_rerandomize: Skip takeup step.
+        puf_dataset_path: Path to PUF h5 for QRF training.
+        skip_puf: Skip PUF clone step.
+        skip_source_impute: Skip ACS/SIPP/SCF imputations.
 
     Returns:
         (weights, targets_df, X_sparse, target_names)
@@ -425,6 +524,7 @@ def run_calibration(
 
     from policyengine_us_data.calibration.clone_and_assign import (
         assign_random_geography,
+        double_geography_for_puf,
     )
     from policyengine_us_data.calibration.unified_matrix_builder import (
         UnifiedMatrixBuilder,
@@ -451,7 +551,76 @@ def run_calibration(
         seed=seed,
     )
 
-    # Step 3: Build sim_modifier for takeup rerandomization
+    # Step 3: Source impute + PUF clone (if requested)
+    dataset_for_matrix = dataset_path
+    if not skip_puf and puf_dataset_path is not None:
+        base_states = geography.state_fips[:n_records]
+
+        puf_cloned_path = _build_puf_cloned_dataset(
+            dataset_path=dataset_path,
+            puf_dataset_path=puf_dataset_path,
+            state_fips=base_states,
+            time_period=2024,
+            skip_qrf=False,
+            skip_source_impute=skip_source_impute,
+        )
+
+        geography = double_geography_for_puf(geography)
+        dataset_for_matrix = puf_cloned_path
+        n_records = n_records * 2
+
+        # Reload sim from PUF-cloned dataset
+        del sim
+        sim = Microsimulation(dataset=puf_cloned_path)
+
+        logger.info(
+            "After PUF clone: %d records x %d clones = %d",
+            n_records,
+            n_clones,
+            n_records * n_clones,
+        )
+    elif not skip_source_impute:
+        # Run source imputations without PUF cloning
+        import h5py
+
+        base_states = geography.state_fips[:n_records]
+
+        source_sim = Microsimulation(dataset=dataset_path)
+        raw_data = source_sim.dataset.load_dataset()
+        data_dict = {}
+        for var in raw_data:
+            data_dict[var] = {2024: raw_data[var][...]}
+        del source_sim
+
+        from policyengine_us_data.calibration.source_impute import (
+            impute_source_variables,
+        )
+
+        data_dict = impute_source_variables(
+            data=data_dict,
+            state_fips=base_states,
+            time_period=2024,
+            dataset_path=dataset_path,
+        )
+
+        source_path = str(
+            Path(dataset_path).parent
+            / f"source_imputed_{Path(dataset_path).stem}.h5"
+        )
+        with h5py.File(source_path, "w") as f:
+            for var, time_dict in data_dict.items():
+                for tp, values in time_dict.items():
+                    f.create_dataset(f"{var}/{tp}", data=values)
+        dataset_for_matrix = source_path
+
+        del sim
+        sim = Microsimulation(dataset=source_path)
+        logger.info(
+            "Source-imputed dataset saved to %s",
+            source_path,
+        )
+
+    # Step 4: Build sim_modifier for takeup rerandomization
     sim_modifier = None
     if not skip_takeup_rerandomize:
         time_period = 2024
@@ -463,18 +632,18 @@ def run_calibration(
             states = geography.state_fips[col_start:col_end]
             rerandomize_takeup(s, blocks, states, time_period)
 
-    # Step 4: Build target filter
+    # Step 5: Build target filter
     target_filter = {}
     if domain_variables:
         target_filter["domain_variables"] = domain_variables
 
-    # Step 5: Build sparse calibration matrix
+    # Step 6: Build sparse calibration matrix
     t_matrix = time.time()
     db_uri = f"sqlite:///{db_path}"
     builder = UnifiedMatrixBuilder(
         db_uri=db_uri,
         time_period=2024,
-        dataset_path=dataset_path,
+        dataset_path=dataset_for_matrix,
     )
     targets_df, X_sparse, target_names = builder.build_matrix(
         geography=geography,
@@ -495,7 +664,7 @@ def run_calibration(
         X_sparse.nnz,
     )
 
-    # Step 6: L0 calibration
+    # Step 7: L0 calibration
     targets = targets_df["value"].values
 
     row_sums = np.array(X_sparse.sum(axis=1)).flatten()
@@ -580,7 +749,10 @@ def main(argv=None):
         seed=args.seed,
         domain_variables=domain_variables,
         hierarchical_domains=hierarchical_domains,
-        skip_takeup_rerandomize=(args.skip_takeup_rerandomize),
+        skip_takeup_rerandomize=args.skip_takeup_rerandomize,
+        puf_dataset_path=args.puf_dataset,
+        skip_puf=args.skip_puf,
+        skip_source_impute=args.skip_source_impute,
     )
 
     # Save weights
@@ -612,6 +784,9 @@ def main(argv=None):
     run_config = {
         "dataset": dataset_path,
         "db_path": db_path,
+        "puf_dataset": args.puf_dataset,
+        "skip_puf": args.skip_puf,
+        "skip_source_impute": args.skip_source_impute,
         "n_clones": args.n_clones,
         "lambda_l0": lambda_l0,
         "epochs": args.epochs,

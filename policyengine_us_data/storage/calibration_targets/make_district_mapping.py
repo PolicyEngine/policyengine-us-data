@@ -116,6 +116,8 @@ def fetch_block_population(state) -> pd.DataFrame:
     )
     st = us.states.lookup(state)
     if st is None:
+        st = getattr(us.states, state.upper(), None)
+    if st is None:
         raise ValueError(f"Unrecognised state name/abbr: {state}")
 
     # Build URL components -----------------------------------------------------

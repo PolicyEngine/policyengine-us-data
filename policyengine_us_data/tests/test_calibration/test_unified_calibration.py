@@ -188,7 +188,7 @@ class TestCategoryTakeupConfig:
             CATEGORY_TAKEUP_VARS,
         )
 
-        assert len(CATEGORY_TAKEUP_VARS) == 2
+        assert len(CATEGORY_TAKEUP_VARS) == 3
 
 
 class TestCategoryMappers:
@@ -334,6 +334,8 @@ class TestRerandomizeCategoryTakeup:
                 "NONE",
             ]
         )
+        # receives_wic: persons 0, 2, 4 receive WIC
+        receives_wic = np.array([True, False, True, False, True, False])
 
         calc_returns = {
             ("household_id", "household"): hh_ids_hh,
@@ -341,6 +343,7 @@ class TestRerandomizeCategoryTakeup:
             ("household_id", "tax_unit"): tu_hh_ids,
             ("wic_category_str", "person"): wic_cats,
             ("household_id", "person"): person_hh_ids,
+            ("receives_wic", "person"): receives_wic,
         }
         return _MockSim(calc_returns), {
             "hh_ids": hh_ids_hh,
@@ -348,11 +351,12 @@ class TestRerandomizeCategoryTakeup:
             "tu_hh_ids": tu_hh_ids,
             "wic_cats": wic_cats,
             "person_hh_ids": person_hh_ids,
+            "receives_wic": receives_wic,
         }
 
-    def test_sets_both_variables(self):
-        """rerandomize_category_takeup sets takes_up_eitc
-        and would_claim_wic."""
+    def test_sets_all_variables(self):
+        """rerandomize_category_takeup sets takes_up_eitc,
+        would_claim_wic, and is_wic_at_nutritional_risk."""
         from policyengine_us_data.calibration.unified_calibration import (
             rerandomize_category_takeup,
         )
@@ -365,10 +369,11 @@ class TestRerandomizeCategoryTakeup:
 
         assert "takes_up_eitc" in sim.inputs_set
         assert "would_claim_wic" in sim.inputs_set
+        assert "is_wic_at_nutritional_risk" in sim.inputs_set
 
     def test_output_shapes_match_entities(self):
         """Output arrays match entity counts: 5 tax units
-        for EITC, 6 persons for WIC."""
+        for EITC, 6 persons for WIC and nutritional risk."""
         from policyengine_us_data.calibration.unified_calibration import (
             rerandomize_category_takeup,
         )
@@ -381,6 +386,9 @@ class TestRerandomizeCategoryTakeup:
             info["child_counts"]
         )
         assert len(sim.inputs_set["would_claim_wic"]) == len(info["wic_cats"])
+        assert len(sim.inputs_set["is_wic_at_nutritional_risk"]) == len(
+            info["wic_cats"]
+        )
 
     def test_outputs_are_boolean(self):
         from policyengine_us_data.calibration.unified_calibration import (
@@ -393,6 +401,7 @@ class TestRerandomizeCategoryTakeup:
 
         assert sim.inputs_set["takes_up_eitc"].dtype == bool
         assert sim.inputs_set["would_claim_wic"].dtype == bool
+        assert sim.inputs_set["is_wic_at_nutritional_risk"].dtype == bool
 
     def test_deterministic_same_blocks(self):
         """Same blocks produce identical takeup values."""
@@ -416,6 +425,10 @@ class TestRerandomizeCategoryTakeup:
             sim1.inputs_set["would_claim_wic"],
             sim2.inputs_set["would_claim_wic"],
         )
+        np.testing.assert_array_equal(
+            sim1.inputs_set["is_wic_at_nutritional_risk"],
+            sim2.inputs_set["is_wic_at_nutritional_risk"],
+        )
 
     def test_different_blocks_differ(self):
         """Different blocks produce different takeup values."""
@@ -437,7 +450,7 @@ class TestRerandomizeCategoryTakeup:
             2024,
         )
 
-        # At least one of the two variables should differ
+        # At least one of the three variables should differ
         eitc_differ = not np.array_equal(
             sim1.inputs_set["takes_up_eitc"],
             sim2.inputs_set["takes_up_eitc"],
@@ -446,7 +459,11 @@ class TestRerandomizeCategoryTakeup:
             sim1.inputs_set["would_claim_wic"],
             sim2.inputs_set["would_claim_wic"],
         )
-        assert eitc_differ or wic_differ
+        risk_differ = not np.array_equal(
+            sim1.inputs_set["is_wic_at_nutritional_risk"],
+            sim2.inputs_set["is_wic_at_nutritional_risk"],
+        )
+        assert eitc_differ or wic_differ or risk_differ
 
     def test_eitc_values_match_manual_calculation(self):
         """Verify takes_up_eitc matches a hand-computed
@@ -549,6 +566,87 @@ class TestRerandomizeCategoryTakeup:
             assert (
                 wic_result[idx] == False
             ), f"Person {idx} (NONE) should not claim WIC"
+
+    def test_nutritional_risk_values_match_manual_calculation(self):
+        """Verify is_wic_at_nutritional_risk matches
+        receives_wic | (draws < rates) using seeded draws."""
+        from policyengine_us_data.calibration.unified_calibration import (
+            _wic_category_mapper,
+            rerandomize_category_takeup,
+        )
+        from policyengine_us_data.parameters import (
+            load_take_up_rate,
+        )
+
+        sim, info = self._build_mock_sim()
+        blocks = np.array(
+            [
+                "010010001001001",
+                "020020002002002",
+                "030030003003003",
+            ]
+        )
+        rerandomize_category_takeup(sim, blocks, 2024)
+
+        # Reproduce manually
+        risk_rates = load_take_up_rate("wic_nutritional_risk", 2024)
+        per_person_rates = _wic_category_mapper(info["wic_cats"], risk_rates)
+
+        hh_to_block = dict(zip(info["hh_ids"], blocks))
+        person_blocks = np.array(
+            [hh_to_block.get(hid, "0") for hid in info["person_hh_ids"]]
+        )
+        draws = np.zeros(len(info["wic_cats"]), dtype=np.float64)
+        for block in np.unique(person_blocks):
+            mask = person_blocks == block
+            rng = seeded_rng("is_wic_at_nutritional_risk", salt=str(block))
+            draws[mask] = rng.random(mask.sum())
+
+        expected = info["receives_wic"] | (draws < per_person_rates)
+        np.testing.assert_array_equal(
+            sim.inputs_set["is_wic_at_nutritional_risk"],
+            expected,
+        )
+
+    def test_receives_wic_guarantees_nutritional_risk(self):
+        """Anyone with receives_wic=True must have
+        is_wic_at_nutritional_risk=True."""
+        from policyengine_us_data.calibration.unified_calibration import (
+            rerandomize_category_takeup,
+        )
+
+        sim, info = self._build_mock_sim()
+        blocks = np.array(["blk_a", "blk_b", "blk_c"])
+        rerandomize_category_takeup(sim, blocks, 2024)
+
+        risk = sim.inputs_set["is_wic_at_nutritional_risk"]
+        for i, recv in enumerate(info["receives_wic"]):
+            if recv:
+                assert risk[i], (
+                    f"Person {i} receives WIC but "
+                    f"is_wic_at_nutritional_risk is False"
+                )
+
+    def test_none_wic_without_receives_never_at_risk(self):
+        """Persons with NONE category who don't receive WIC
+        are never at nutritional risk (rate=0)."""
+        from policyengine_us_data.calibration.unified_calibration import (
+            rerandomize_category_takeup,
+        )
+
+        sim, info = self._build_mock_sim()
+        blocks = np.array(["blk_a", "blk_b", "blk_c"])
+        rerandomize_category_takeup(sim, blocks, 2024)
+
+        risk = sim.inputs_set["is_wic_at_nutritional_risk"]
+        for i, (cat, recv) in enumerate(
+            zip(info["wic_cats"], info["receives_wic"])
+        ):
+            if cat == "NONE" and not recv:
+                assert not risk[i], (
+                    f"Person {i} (NONE, no WIC) should "
+                    f"not be at nutritional risk"
+                )
 
     def test_zero_child_eitc_rate_is_lower(self):
         """Tax units with 0 children should have a lower

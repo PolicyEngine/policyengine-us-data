@@ -149,6 +149,14 @@ CATEGORY_TAKEUP_VARS = [
         "category_variable": "wic_category_str",
         "category_mapper": _wic_category_mapper,
     },
+    {
+        "variable": "is_wic_at_nutritional_risk",
+        "entity": "person",
+        "rate_key": "wic_nutritional_risk",
+        "category_variable": "wic_category_str",
+        "category_mapper": _wic_category_mapper,
+        "base_variable": "receives_wic",
+    },
 ]
 
 
@@ -298,6 +306,14 @@ def rerandomize_category_takeup(
             draws[mask] = rng.random(n_in_block)
 
         new_values = draws < per_entity_rates
+
+        base_var = spec.get("base_variable")
+        if base_var is not None:
+            base_values = sim.calculate(
+                base_var, map_to=entity_level
+            ).values.astype(bool)
+            new_values = base_values | new_values
+
         sim.set_input(var_name, time_period, new_values)
 
 

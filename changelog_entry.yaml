@@ -5,7 +5,7 @@
     - ACS/SIPP/SCF geographic re-imputation module (source_impute.py) with state predictor
     - PUF and source impute integration into unified calibration pipeline (--puf-dataset, --skip-puf, --skip-source-impute flags)
     - 21 new tests for puf_impute and source_impute modules
-    - Category-dependent takeup re-randomization for takes_up_eitc (by child count) and would_claim_wic (by WIC category) during calibration cloning
+    - Category-dependent takeup re-randomization for takes_up_eitc (by child count) and would_claim_wic, and is_wic_at_nutritional_risk (by WIC category) during calibration cloning
     - Two-pass simulation flow in _simulate_clone() with post_sim_modifier for category variables that require sim output
     changed:
     - Refactored extended_cps.py to delegate to puf_impute.puf_clone_dataset() (443 -> 75 lines)

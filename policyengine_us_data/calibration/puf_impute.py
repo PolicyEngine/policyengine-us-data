@@ -1,9 +1,7 @@
 """PUF clone and QRF imputation for calibration pipeline.
 
 Doubles CPS records: one half keeps original values, the other half
-gets PUF tax variables imputed via Quantile Random Forest.  Geography
-(state_fips) is included as a QRF predictor so imputations vary by
-state.
+gets PUF tax variables imputed via Quantile Random Forest.
 
 Usage within the calibration pipeline:
     1. Load raw CPS dataset
@@ -33,7 +31,6 @@ DEMOGRAPHIC_PREDICTORS = [
     "is_tax_unit_head",
     "is_tax_unit_spouse",
     "is_tax_unit_dependent",
-    "state_fips",
 ]
 
 IMPUTED_VARIABLES = [
@@ -201,7 +198,6 @@ def puf_clone_dataset(
     if not skip_qrf and puf_dataset is not None:
         y_full, y_override = _run_qrf_imputation(
             data,
-            state_fips,
             time_period,
             puf_dataset,
             dataset_path=dataset_path,
@@ -390,7 +386,6 @@ def _impute_weeks_unemployed(
 
 def _run_qrf_imputation(
     data: Dict[str, Dict[int, np.ndarray]],
-    state_fips: np.ndarray,
     time_period: int,
     puf_dataset,
     dataset_path: Optional[str] = None,
@@ -398,12 +393,11 @@ def _run_qrf_imputation(
     """Run QRF imputation for PUF variables.
 
     Stratified-subsamples PUF records (top 0.5% by AGI kept,
-    rest randomly sampled to ~20K total) with random state
-    assignment, trains QRF, and predicts on CPS data.
+    rest randomly sampled to ~20K total), trains QRF, and
+    predicts on CPS data.
 
     Args:
         data: CPS data dict.
-        state_fips: State FIPS per household.
         time_period: Tax year.
         puf_dataset: PUF dataset class or path.
         dataset_path: Path to CPS h5 for computing
@@ -416,33 +410,21 @@ def _run_qrf_imputation(
     from microimpute.models.qrf import QRF
     from policyengine_us import Microsimulation
 
-    logger.info("Running QRF imputation with state predictor")
+    logger.info("Running QRF imputation")
 
     puf_sim = Microsimulation(dataset=puf_dataset)
-
-    from policyengine_us_data.calibration.clone_and_assign import (
-        load_global_block_distribution,
-    )
-
-    _, _, puf_states, block_probs = load_global_block_distribution()
-    rng = np.random.default_rng(seed=99)
-    n_puf = len(puf_sim.calculate("person_id", map_to="person").values)
-    puf_state_indices = rng.choice(len(puf_states), size=n_puf, p=block_probs)
-    puf_state_fips = puf_states[puf_state_indices]
 
     puf_agi = puf_sim.calculate(
         "adjusted_gross_income", map_to="person"
     ).values
 
-    demo_preds = [p for p in DEMOGRAPHIC_PREDICTORS if p != "state_fips"]
-
-    X_train_full = puf_sim.calculate_dataframe(demo_preds + IMPUTED_VARIABLES)
-    X_train_full["state_fips"] = puf_state_fips.astype(np.float32)
+    X_train_full = puf_sim.calculate_dataframe(
+        DEMOGRAPHIC_PREDICTORS + IMPUTED_VARIABLES
+    )
 
     X_train_override = puf_sim.calculate_dataframe(
-        demo_preds + OVERRIDDEN_IMPUTED_VARIABLES
+        DEMOGRAPHIC_PREDICTORS + OVERRIDDEN_IMPUTED_VARIABLES
     )
-    X_train_override["state_fips"] = puf_state_fips.astype(np.float32)
 
     del puf_sim
 
@@ -458,37 +440,20 @@ def _run_qrf_imputation(
     X_train_full = X_train_full.iloc[sub_idx].reset_index(drop=True)
     X_train_override = X_train_override.iloc[sub_idx].reset_index(drop=True)
 
-    n_hh = len(data["household_id"][time_period])
-    person_count = len(data["person_id"][time_period])
-
     if dataset_path is not None:
         cps_sim = Microsimulation(dataset=dataset_path)
-        X_test = cps_sim.calculate_dataframe(demo_preds)
+        X_test = cps_sim.calculate_dataframe(DEMOGRAPHIC_PREDICTORS)
         del cps_sim
     else:
         X_test = pd.DataFrame()
-        for pred in demo_preds:
+        for pred in DEMOGRAPHIC_PREDICTORS:
             if pred in data:
                 X_test[pred] = data[pred][time_period].astype(np.float32)
 
-    hh_ids_person = data.get("person_household_id", {}).get(time_period)
-    if hh_ids_person is not None:
-        hh_ids = data["household_id"][time_period]
-        hh_to_idx = {int(hh_id): i for i, hh_id in enumerate(hh_ids)}
-        person_states = np.array(
-            [state_fips[hh_to_idx[int(hh_id)]] for hh_id in hh_ids_person]
-        )
-    else:
-        person_states = np.repeat(
-            state_fips,
-            person_count // n_hh,
-        )
-    X_test["state_fips"] = person_states.astype(np.float32)
-
-    predictors = DEMOGRAPHIC_PREDICTORS
-
     logger.info("Imputing %d PUF variables (full)", len(IMPUTED_VARIABLES))
-    y_full = _batch_qrf(X_train_full, X_test, predictors, IMPUTED_VARIABLES)
+    y_full = _batch_qrf(
+        X_train_full, X_test, DEMOGRAPHIC_PREDICTORS, IMPUTED_VARIABLES
+    )
 
     logger.info(
         "Imputing %d PUF variables (override)",
@@ -497,7 +462,7 @@ def _run_qrf_imputation(
     y_override = _batch_qrf(
         X_train_override,
         X_test,
-        predictors,
+        DEMOGRAPHIC_PREDICTORS,
         OVERRIDDEN_IMPUTED_VARIABLES,
     )
 

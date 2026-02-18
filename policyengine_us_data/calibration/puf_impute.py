@@ -12,7 +12,6 @@ Usage within the calibration pipeline:
 
 import gc
 import logging
-import time
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -241,10 +240,6 @@ def puf_clone_dataset(
         elif variable in IMPUTED_VARIABLES and y_full:
             pred = _map_to_entity(y_full[variable], variable)
             new_data[variable] = {time_period: np.concatenate([values, pred])}
-        elif variable == "person_id":
-            new_data[variable] = {
-                time_period: np.concatenate([values, values + values.max()])
-            }
         elif "_id" in variable:
             new_data[variable] = {
                 time_period: np.concatenate([values, values + values.max()])
@@ -346,9 +341,8 @@ def _impute_weeks_unemployed(
     del cps_sim
 
     qrf = QRF(log_level="INFO", memory_efficient=True)
-    sample_size = min(5000, len(X_train))
-    if len(X_train) > sample_size:
-        X_train_sampled = X_train.sample(n=sample_size, random_state=42)
+    if len(X_train) > 5000:
+        X_train_sampled = X_train.sample(n=5000, random_state=42)
     else:
         X_train_sampled = X_train
 
@@ -370,7 +364,7 @@ def _impute_weeks_unemployed(
         )
 
     logger.info(
-        "Imputed weeks_unemployed for PUF: " "%d with weeks > 0, mean = %.1f",
+        "Imputed weeks_unemployed for PUF: %d with weeks > 0, mean = %.1f",
         (imputed_weeks > 0).sum(),
         (
             imputed_weeks[imputed_weeks > 0].mean()
@@ -536,8 +530,7 @@ def _batch_qrf(
     result = {}
 
     for batch_start in range(0, len(available), batch_size):
-        batch_end = min(batch_start + batch_size, len(available))
-        batch_vars = available[batch_start:batch_end]
+        batch_vars = available[batch_start : batch_start + batch_size]
 
         gc.collect()
 

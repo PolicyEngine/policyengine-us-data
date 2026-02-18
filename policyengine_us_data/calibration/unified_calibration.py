@@ -30,6 +30,7 @@ import builtins
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -125,7 +126,6 @@ def rerandomize_takeup(
         seeded_rng,
     )
 
-    n_households = len(clone_block_geoids)
     hh_ids = sim.calculate("household_id", map_to="household").values
     hh_to_block = dict(zip(hh_ids, clone_block_geoids))
     hh_to_state = dict(zip(hh_ids, clone_state_fips))
@@ -238,18 +238,13 @@ def parse_args(argv=None):
         "--domain-variables",
         type=str,
         default=None,
-        help=(
-            "Comma-separated domain variables for " "target_overview filtering"
-        ),
+        help="Comma-separated domain variables for target_overview filtering",
     )
     parser.add_argument(
         "--hierarchical-domains",
         type=str,
         default=None,
-        help=(
-            "Comma-separated domains for hierarchical "
-            "uprating + CD reconciliation"
-        ),
+        help="Comma-separated domains for hierarchical uprating + CD reconciliation",
     )
     parser.add_argument(
         "--skip-takeup-rerandomize",
@@ -280,7 +275,7 @@ def fit_l0_weights(
     lambda_l0: float,
     epochs: int = DEFAULT_EPOCHS,
     device: str = "cpu",
-    verbose_freq: int = None,
+    verbose_freq: Optional[int] = None,
 ) -> np.ndarray:
     """Fit L0-regularized calibration weights.
 
@@ -300,9 +295,7 @@ def fit_l0_weights(
     try:
         from l0.calibration import SparseCalibrationWeights
     except ImportError:
-        raise ImportError(
-            "l0-python required. " "Install: pip install l0-python"
-        )
+        raise ImportError("l0-python required. Install: pip install l0-python")
 
     import torch
 

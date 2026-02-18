@@ -5,16 +5,13 @@ so tests don't require real CPS/PUF datasets.
 """
 
 import numpy as np
-import pytest
 
 from policyengine_us_data.calibration.puf_impute import (
-    puf_clone_dataset,
-    _stratified_subsample_index,
     DEMOGRAPHIC_PREDICTORS,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
-    PUF_SUBSAMPLE_TARGET,
-    PUF_TOP_PERCENTILE,
+    _stratified_subsample_index,
+    puf_clone_dataset,
 )
 
 

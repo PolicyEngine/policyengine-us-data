@@ -339,13 +339,12 @@ def _impute_sipp(
     Returns:
         Updated data dict.
     """
+    from huggingface_hub import hf_hub_download
     from microimpute.models.qrf import QRF
-    from policyengine_us import Microsimulation
-
-    rng = np.random.default_rng(seed=88)
 
     from policyengine_us_data.storage import STORAGE_FOLDER
-    from huggingface_hub import hf_hub_download
+
+    rng = np.random.default_rng(seed=88)
 
     hf_hub_download(
         repo_id="PolicyEngine/policyengine-us-data",
@@ -419,7 +418,6 @@ def _impute_sipp(
         cps_tip_df["count_under_18"] = 0.0
         cps_tip_df["count_under_6"] = 0.0
 
-    tip_predictors = SIPP_TIPS_PREDICTORS
     qrf = QRF()
     logger.info(
         "SIPP tips QRF: %d train, %d test",
@@ -428,7 +426,7 @@ def _impute_sipp(
     )
     fitted = qrf.fit(
         X_train=tip_train,
-        predictors=tip_predictors,
+        predictors=SIPP_TIPS_PREDICTORS,
         imputed_variables=["tip_income"],
     )
     tip_preds = fitted.predict(X_test=cps_tip_df)
@@ -532,7 +530,6 @@ def _impute_sipp(
             else 0.0
         )
 
-        asset_predictors = SIPP_ASSETS_PREDICTORS
         asset_vars = [
             "bank_account_assets",
             "stock_assets",
@@ -546,7 +543,7 @@ def _impute_sipp(
         )
         fitted = qrf.fit(
             X_train=asset_train,
-            predictors=asset_predictors,
+            predictors=SIPP_ASSETS_PREDICTORS,
             imputed_variables=asset_vars,
         )
         asset_preds = fitted.predict(X_test=cps_asset_df)
@@ -562,7 +559,7 @@ def _impute_sipp(
 
     except (FileNotFoundError, KeyError, ValueError, OSError) as e:
         logger.warning(
-            "SIPP asset imputation failed: %s. " "Keeping existing values.",
+            "SIPP asset imputation failed: %s. Keeping existing values.",
             e,
         )
 
@@ -587,12 +584,12 @@ def _impute_scf(
         Updated data dict.
     """
     from microimpute.models.qrf import QRF
-    from policyengine_us import Microsimulation
+
     from policyengine_us_data.datasets.scf.scf import SCF_2022
 
     scf_dataset = SCF_2022()
     scf_data = scf_dataset.load_dataset()
-    scf_df = pd.DataFrame({key: scf_data[key] for key in scf_data.keys()})
+    scf_df = pd.DataFrame(dict(scf_data))
 
     scf_predictors = SCF_PREDICTORS
 
@@ -602,11 +599,10 @@ def _impute_scf(
         logger.warning("SCF missing predictors: %s", missing_preds)
         scf_predictors = available_preds
 
-    scf_vars = SCF_IMPUTED_VARIABLES
     if "networth" in scf_df.columns and "net_worth" not in scf_df.columns:
         scf_df["net_worth"] = scf_df["networth"]
 
-    available_vars = [v for v in scf_vars if v in scf_df.columns]
+    available_vars = [v for v in SCF_IMPUTED_VARIABLES if v in scf_df.columns]
     if not available_vars:
         logger.warning("No SCF imputed variables available. Skipping.")
         return data

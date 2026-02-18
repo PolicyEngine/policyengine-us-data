@@ -4,22 +4,21 @@ Uses skip flags to avoid loading real donor data.
 """
 
 import numpy as np
-import pytest
 
 from policyengine_us_data.calibration.source_impute import (
     ACS_IMPUTED_VARIABLES,
     ACS_PREDICTORS,
-    SIPP_IMPUTED_VARIABLES,
-    SIPP_TIPS_PREDICTORS,
-    SIPP_ASSETS_PREDICTORS,
+    ALL_SOURCE_VARIABLES,
     SCF_IMPUTED_VARIABLES,
     SCF_PREDICTORS,
-    ALL_SOURCE_VARIABLES,
-    impute_source_variables,
+    SIPP_ASSETS_PREDICTORS,
+    SIPP_IMPUTED_VARIABLES,
+    SIPP_TIPS_PREDICTORS,
     _impute_acs,
-    _impute_sipp,
     _impute_scf,
+    _impute_sipp,
     _person_state_fips,
+    impute_source_variables,
 )
 
 

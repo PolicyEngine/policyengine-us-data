@@ -1,12 +1,12 @@
 import logging
+from typing import Type
 
 import numpy as np
 from policyengine_core.data import Dataset
-from typing import Type
 
+from policyengine_us_data.datasets.cps.cps import *  # noqa: F403
+from policyengine_us_data.datasets.puf import *  # noqa: F403
 from policyengine_us_data.storage import STORAGE_FOLDER
-from policyengine_us_data.datasets.cps.cps import *
-from policyengine_us_data.datasets.puf import *
 
 logger = logging.getLogger(__name__)
 

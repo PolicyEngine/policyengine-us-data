@@ -1,0 +1,71 @@
+description: >-
+  Percentage of eligible TANF families who receive TANF cash assistance.
+  Priors derived from ACF FY2023 TANF caseload data divided by Census
+  ACS 2023 families in poverty, scaled up ~2x to approximate takeup
+  among eligible families (since eligible families are roughly half of
+  families in poverty due to asset tests, work requirements, and time
+  limits). These priors will be adjusted during calibration against the
+  $9B national cash assistance target.
+metadata:
+  label: TANF takeup rate
+  unit: /1
+  period: year
+  breakdown:
+    - state_code
+  reference:
+    - title: ACF FY2023 TANF Caseload Data
+      href: https://acf.gov/ofa/data/tanf-caseload-data-2023
+    - title: Census Bureau 2023 ACS 1-Year Estimates (Table S1702)
+      href: https://data.census.gov/table/ACSST1Y2023.S1702
+rates_by_state:
+  AK: 0.18
+  AL: 0.10
+  AR: 0.03
+  AZ: 0.08
+  CA: 0.91
+  CO: 0.33
+  CT: 0.21
+  DC: 0.54
+  DE: 0.37
+  FL: 0.21
+  GA: 0.05
+  HI: 0.36
+  IA: 0.21
+  ID: 0.12
+  IL: 0.11
+  IN: 0.08
+  KS: 0.14
+  KY: 0.22
+  LA: 0.08
+  MA: 0.83
+  MD: 0.45
+  ME: 0.38
+  MI: 0.11
+  MN: 0.46
+  MO: 0.10
+  MS: 0.04
+  MT: 0.23
+  NC: 0.10
+  ND: 0.14
+  NE: 0.24
+  NH: 0.45
+  NJ: 0.19
+  NM: 0.32
+  NV: 0.24
+  NY: 0.52
+  OH: 0.39
+  OK: 0.09
+  OR: 0.62
+  PA: 0.29
+  RI: 0.42
+  SC: 0.12
+  SD: 0.40
+  TN: 0.22
+  TX: 0.04
+  UT: 0.13
+  VA: 0.36
+  VT: 0.43
+  WA: 0.66
+  WI: 0.37
+  WV: 0.26
+  WY: 0.15

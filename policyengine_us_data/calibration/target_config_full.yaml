@@ -1,0 +1,51 @@
+# Target exclusion config for unified calibration.
+# Each entry excludes targets matching (variable, geo_level).
+# Derived from junkyard's 22 excluded target groups.
+
+exclude:
+  # National exclusions
+  - variable: alimony_expense
+    geo_level: national
+  - variable: alimony_income
+    geo_level: national
+  - variable: charitable_deduction
+    geo_level: national
+  - variable: child_support_expense
+    geo_level: national
+  - variable: child_support_received
+    geo_level: national
+  - variable: interest_deduction
+    geo_level: national
+  - variable: medical_expense_deduction
+    geo_level: national
+  - variable: net_worth
+    geo_level: national
+  - variable: person_count
+    geo_level: national
+  - variable: real_estate_taxes
+    geo_level: national
+  - variable: rent
+    geo_level: national
+  - variable: social_security_dependents
+    geo_level: national
+  - variable: social_security_survivors
+    geo_level: national
+  # District exclusions
+  - variable: aca_ptc
+    geo_level: district
+  - variable: eitc
+    geo_level: district
+  - variable: income_tax_before_credits
+    geo_level: district
+  - variable: medical_expense_deduction
+    geo_level: district
+  - variable: net_capital_gains
+    geo_level: district
+  - variable: rental_income
+    geo_level: district
+  - variable: tax_unit_count
+    geo_level: district
+  - variable: tax_unit_partnership_s_corp_income
+    geo_level: district
+  - variable: taxable_social_security
+    geo_level: district

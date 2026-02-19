@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.69.2] - 2026-02-19 13:41:26
+
+### Changed
+
+- Bump policyengine-us to 1.570.7 to include TANF formula fixes and takes_up_tanf_if_eligible variable for calibration.
+
 ## [1.69.1] - 2026-02-19 06:08:37
 
 ### Added
@@ -1060,6 +1066,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.69.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.69.1...1.69.2
 [1.69.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.69.0...1.69.1
 [1.69.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.68.0...1.69.0
 [1.68.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.67.0...1.68.0

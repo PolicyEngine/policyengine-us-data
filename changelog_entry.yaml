@@ -1,4 +1,0 @@
-- bump: patch
-  changes:
-    fixed:
-      - Add TANF takeup (22%) assignment to CPS data pipeline so takes_up_tanf_if_eligible is persisted in the dataset.

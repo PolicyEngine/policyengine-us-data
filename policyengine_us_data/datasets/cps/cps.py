@@ -268,6 +268,11 @@ def add_takeup(self):
     rng = seeded_rng("takes_up_ssi_if_eligible")
     data["takes_up_ssi_if_eligible"] = rng.random(n_persons) < ssi_rate
 
+    # TANF
+    tanf_rate = load_take_up_rate("tanf", self.time_period)
+    rng = seeded_rng("takes_up_tanf_if_eligible")
+    data["takes_up_tanf_if_eligible"] = rng.random(n_spm_units) < tanf_rate
+
     # WIC: resolve draws to bools using category-specific rates
     wic_categories = baseline.calculate("wic_category_str").values
     wic_takeup_rates = load_take_up_rate("wic_takeup", self.time_period)

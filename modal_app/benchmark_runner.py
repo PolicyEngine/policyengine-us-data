@@ -1,16 +1,16 @@
 """Modal wrapper to run QRF subsample benchmark on a 32 GB container.
 
-Clones the repo, builds (or restores) PUF and CPS datasets, then
-runs validation/benchmark_qrf_subsample.py with the requested sizes.
+Clones the repo, builds PUF and CPS datasets, then runs
+validation/benchmark_qrf_subsample.py. Uses the same datasets
+as the production pipeline (PUF_2024 + CPS_2024_Full).
 
 Usage:
     modal run modal_app/benchmark_runner.py \
         --branch maria/qrf_investigation \
-        --sizes 20000 40000 60000 80000 100000
+        --sizes 20000,40000,60000,80000,100000
 """
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -22,11 +22,6 @@ app = modal.App("policyengine-benchmark-qrf")
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
-checkpoint_volume = modal.Volume.from_name(
-    "data-build-checkpoints",
-    create_if_missing=True,
-)
-
 image = (
     modal.Image.debian_slim(python_version="3.13")
     .apt_install("git")
@@ -34,34 +29,6 @@ image = (
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
-VOLUME_MOUNT = "/checkpoints"
-
-STORAGE = "policyengine_us_data/storage"
-PUF_H5 = f"{STORAGE}/puf_2024.h5"
-CPS_H5 = f"{STORAGE}/cps_2024.h5"
-
-# Scripts needed to build PUF and CPS from scratch, in order.
-BUILD_PREREQS = [
-    f"{STORAGE}/download_private_prerequisites.py",
-    "policyengine_us_data/utils/uprating.py",
-    "policyengine_us_data/datasets/acs/acs.py",
-    "policyengine_us_data/datasets/puf/irs_puf.py",
-    "policyengine_us_data/datasets/cps/cps.py",
-    "policyengine_us_data/datasets/puf/puf.py",
-]
-
-# Map build scripts to their output files for checkpointing.
-SCRIPT_OUTPUTS = {
-    "policyengine_us_data/utils/uprating.py": (
-        f"{STORAGE}/uprating_factors.csv"
-    ),
-    "policyengine_us_data/datasets/acs/acs.py": (f"{STORAGE}/acs_2022.h5"),
-    "policyengine_us_data/datasets/puf/irs_puf.py": (
-        f"{STORAGE}/irs_puf_2015.h5"
-    ),
-    "policyengine_us_data/datasets/cps/cps.py": CPS_H5,
-    "policyengine_us_data/datasets/puf/puf.py": PUF_H5,
-}
 
 
 def setup_gcp_credentials():
@@ -73,18 +40,6 @@ def setup_gcp_credentials():
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
 
 
-def restore_checkpoint(branch: str, output_file: str) -> bool:
-    """Restore a file from the checkpoint volume if available."""
-    cp = Path(VOLUME_MOUNT) / branch / Path(output_file).name
-    if cp.exists() and cp.stat().st_size > 0:
-        local = Path(output_file)
-        local.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(cp, local)
-        print(f"Restored from checkpoint: {output_file}")
-        return True
-    return False
-
-
 def run_script(script_path: str, env: Optional[dict] = None):
     cmd = ["uv", "run", "python", script_path]
     print(f"Running {script_path}...")
@@ -92,30 +47,29 @@ def run_script(script_path: str, env: Optional[dict] = None):
     print(f"Completed {script_path}")
 
 
-def ensure_datasets(branch: str, env: dict):
-    """Build or restore PUF and CPS datasets."""
-    checkpoint_volume.reload()
+def build_datasets(env: dict):
+    """Build PUF and CPS datasets from scratch.
 
-    # Check if both final datasets are already checkpointed
-    puf_ok = restore_checkpoint(branch, PUF_H5)
-    cps_ok = restore_checkpoint(branch, CPS_H5)
-    if puf_ok and cps_ok:
-        print("Both datasets restored from checkpoints.")
-        return
-
-    # Need to build -- restore any intermediate checkpoints
-    # then run missing build steps
-    for script in BUILD_PREREQS:
-        output = SCRIPT_OUTPUTS.get(script)
-        if output and restore_checkpoint(branch, output):
-            continue
+    Runs the same prerequisite scripts as the production
+    data build pipeline. The generated h5 files land in
+    STORAGE_FOLDER (resolved from the installed package).
+    """
+    storage = "policyengine_us_data/storage"
+    scripts = [
+        f"{storage}/download_private_prerequisites.py",
+        "policyengine_us_data/utils/uprating.py",
+        "policyengine_us_data/datasets/acs/acs.py",
+        "policyengine_us_data/datasets/puf/irs_puf.py",
+        "policyengine_us_data/datasets/cps/cps.py",
+        "policyengine_us_data/datasets/puf/puf.py",
+    ]
+    for script in scripts:
         run_script(script, env=env)
 
 
 @app.function(
     image=image,
     secrets=[hf_secret, gcp_secret],
-    volumes={VOLUME_MOUNT: checkpoint_volume},
     memory=32768,
     cpu=8.0,
     timeout=14400,
@@ -140,34 +94,24 @@ def run_benchmark(
     env = os.environ.copy()
 
     os.chdir("/root")
-    subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
+    subprocess.run(
+        ["git", "clone", "-b", branch, REPO_URL],
+        check=True,
+    )
     os.chdir("policyengine-us-data")
     subprocess.run(["uv", "sync", "--locked"], check=True)
 
-    ensure_datasets(branch, env)
+    # Build prerequisite datasets
+    build_datasets(env)
 
-    # Resolve absolute paths to the h5 files
-    puf_path = str(Path.cwd() / PUF_H5)
-    cps_path = str(Path.cwd() / CPS_H5)
-
-    if not Path(puf_path).exists():
-        raise FileNotFoundError(f"PUF dataset not found: {puf_path}")
-    if not Path(cps_path).exists():
-        raise FileNotFoundError(f"CPS dataset not found: {cps_path}")
-
-    # Run the benchmark
-    sizes_str = " ".join(str(s) for s in sizes)
+    # Run the benchmark (defaults to PUF_2024 + CPS_2024_Full,
+    # the same datasets the production pipeline uses)
     output_csv = "validation/outputs/subsample_benchmark.csv"
-
     cmd = [
         "uv",
         "run",
         "python",
         "validation/benchmark_qrf_subsample.py",
-        "--puf-dataset",
-        puf_path,
-        "--cps-dataset",
-        cps_path,
         "--sizes",
         *[str(s) for s in sizes],
         "--output",

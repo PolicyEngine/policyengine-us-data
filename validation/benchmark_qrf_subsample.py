@@ -4,11 +4,14 @@ Sweeps PUF subsample sizes to find the practical upper bound
 for GitHub Actions (~7 GB RAM). Reuses _stratified_subsample_index
 and _batch_qrf from puf_impute.py directly.
 
+Uses the same datasets as the production imputation pipeline
+(ExtendedCPS_2024): PUF_2024 for training, CPS_2024_Full for
+test demographics.
+
 Usage:
     python validation/benchmark_qrf_subsample.py \
         --sizes 20000 40000 60000 80000 100000 \
-        --output validation/outputs/subsample_benchmark.csv \
-        --puf-dataset <path> --cps-dataset <path>
+        --output validation/outputs/subsample_benchmark.csv
 """
 
 import argparse
@@ -155,12 +158,18 @@ def compute_accuracy_metrics(
     return metrics
 
 
-def load_datasets(puf_path: str, cps_path: str) -> tuple:
+def load_datasets(puf_dataset=None, cps_dataset=None) -> tuple:
     """Load PUF and CPS datasets via Microsimulation.
 
+    Defaults to the same datasets used by the production
+    imputation pipeline (ExtendedCPS_2024): PUF_2024 for
+    training and CPS_2024_Full for test demographics.
+
     Args:
-        puf_path: Path to PUF dataset (h5 or class name).
-        cps_path: Path to CPS dataset (h5 or class name).
+        puf_dataset: PUF dataset class or h5 path.
+            Defaults to PUF_2024.
+        cps_dataset: CPS dataset class or h5 path.
+            Defaults to CPS_2024_Full.
 
     Returns:
         Tuple of (X_train_full, X_test, puf_agi,
@@ -168,8 +177,21 @@ def load_datasets(puf_path: str, cps_path: str) -> tuple:
     """
     from policyengine_us import Microsimulation
 
-    logger.info("Loading PUF dataset: %s", puf_path)
-    puf_sim = Microsimulation(dataset=puf_path)
+    if puf_dataset is None:
+        from policyengine_us_data.datasets.puf.puf import (
+            PUF_2024,
+        )
+
+        puf_dataset = PUF_2024
+    if cps_dataset is None:
+        from policyengine_us_data.datasets.cps.cps import (
+            CPS_2024_Full,
+        )
+
+        cps_dataset = CPS_2024_Full
+
+    logger.info("Loading PUF dataset: %s", puf_dataset)
+    puf_sim = Microsimulation(dataset=puf_dataset)
     puf_agi = puf_sim.calculate(
         "adjusted_gross_income", map_to="person"
     ).values
@@ -181,8 +203,8 @@ def load_datasets(puf_path: str, cps_path: str) -> tuple:
     ].copy()
     del puf_sim
 
-    logger.info("Loading CPS dataset: %s", cps_path)
-    cps_sim = Microsimulation(dataset=cps_path)
+    logger.info("Loading CPS dataset: %s", cps_dataset)
+    cps_sim = Microsimulation(dataset=cps_dataset)
     X_test = cps_sim.calculate_dataframe(DEMOGRAPHIC_PREDICTORS)
     del cps_sim
 
@@ -260,23 +282,25 @@ def benchmark_single_size(
 
 def run_benchmark(
     sizes: List[int],
-    puf_path: str,
-    cps_path: str,
     output_path: str,
+    puf_dataset=None,
+    cps_dataset=None,
 ) -> pd.DataFrame:
     """Run the full benchmark sweep.
 
     Args:
         sizes: List of subsample sizes to test.
-        puf_path: Path to PUF dataset.
-        cps_path: Path to CPS dataset.
         output_path: Path for CSV output.
+        puf_dataset: PUF dataset class or h5 path.
+            Defaults to PUF_2024.
+        cps_dataset: CPS dataset class or h5 path.
+            Defaults to CPS_2024_Full.
 
     Returns:
         DataFrame with benchmark results.
     """
     X_train_full, X_test, puf_agi, puf_reference = load_datasets(
-        puf_path, cps_path
+        puf_dataset=puf_dataset, cps_dataset=cps_dataset
     )
 
     logger.info(
@@ -413,13 +437,13 @@ def main() -> None:
     )
     parser.add_argument(
         "--puf-dataset",
-        required=True,
-        help="Path to PUF dataset (h5 file or class)",
+        default=None,
+        help="Path to PUF h5 file (default: PUF_2024)",
     )
     parser.add_argument(
         "--cps-dataset",
-        required=True,
-        help="Path to CPS dataset (h5 file or class)",
+        default=None,
+        help="Path to CPS h5 file (default: CPS_2024_Full)",
     )
     parser.add_argument(
         "--verbose",
@@ -438,9 +462,9 @@ def main() -> None:
 
     results = run_benchmark(
         sizes=args.sizes,
-        puf_path=args.puf_dataset,
-        cps_path=args.cps_dataset,
         output_path=args.output,
+        puf_dataset=args.puf_dataset,
+        cps_dataset=args.cps_dataset,
     )
 
     print_summary(results)

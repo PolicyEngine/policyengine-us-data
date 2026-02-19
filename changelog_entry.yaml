@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    added:
+      - Add TANF takeup rate parameter (22%) and register takes_up_tanf_if_eligible in the calibration pipeline's SIMPLE_TAKEUP_VARS.

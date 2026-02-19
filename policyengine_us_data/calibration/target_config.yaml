@@ -1,51 +1,176 @@
-# Target exclusion config for unified calibration.
-# Each entry excludes targets matching (variable, geo_level).
-# Derived from junkyard's 22 excluded target groups.
+# Target exclusion config: AGE DEMOGRAPHICS ONLY
+# Keeps only person_count targets with age domain (~8,766 targets).
+# Full config backed up to target_config_full.yaml.
 
 exclude:
-  # National exclusions
-  - variable: alimony_expense
-    geo_level: national
-  - variable: alimony_income
-    geo_level: national
-  - variable: charitable_deduction
-    geo_level: national
-  - variable: child_support_expense
-    geo_level: national
-  - variable: child_support_received
-    geo_level: national
-  - variable: interest_deduction
-    geo_level: national
-  - variable: medical_expense_deduction
-    geo_level: national
-  - variable: net_worth
-    geo_level: national
-  - variable: person_count
-    geo_level: national
-  - variable: real_estate_taxes
-    geo_level: national
-  - variable: rent
-    geo_level: national
-  - variable: social_security_dependents
-    geo_level: national
-  - variable: social_security_survivors
-    geo_level: national
-  # District exclusions
+  # --- All non-person_count variables ---
   - variable: aca_ptc
+    geo_level: national
+  - variable: aca_ptc
+    geo_level: state
+  - variable: adjusted_gross_income
+    geo_level: national
+  - variable: adjusted_gross_income
+    geo_level: state
+  - variable: adjusted_gross_income
+    geo_level: district
+  - variable: dividend_income
+    geo_level: national
+  - variable: dividend_income
+    geo_level: state
+  - variable: dividend_income
     geo_level: district
   - variable: eitc
+    geo_level: national
+  - variable: eitc
+    geo_level: state
+  - variable: health_insurance_premiums_without_medicare_part_b
+    geo_level: national
+  - variable: household_count
+    geo_level: state
+  - variable: household_count
+    geo_level: district
+  - variable: income_tax
+    geo_level: national
+  - variable: income_tax
+    geo_level: state
+  - variable: income_tax
     geo_level: district
   - variable: income_tax_before_credits
-    geo_level: district
+    geo_level: national
+  - variable: income_tax_before_credits
+    geo_level: state
+  - variable: income_tax_positive
+    geo_level: national
+  - variable: medicaid
+    geo_level: national
   - variable: medical_expense_deduction
-    geo_level: district
+    geo_level: state
+  - variable: medicare_part_b_premiums
+    geo_level: national
   - variable: net_capital_gains
+    geo_level: national
+  - variable: net_capital_gains
+    geo_level: state
+  - variable: other_medical_expenses
+    geo_level: national
+  - variable: over_the_counter_health_expenses
+    geo_level: national
+  - variable: qualified_business_income_deduction
+    geo_level: national
+  - variable: qualified_business_income_deduction
+    geo_level: state
+  - variable: qualified_business_income_deduction
+    geo_level: district
+  - variable: qualified_dividend_income
+    geo_level: national
+  - variable: qualified_dividend_income
+    geo_level: state
+  - variable: qualified_dividend_income
+    geo_level: district
+  - variable: real_estate_taxes
+    geo_level: state
+  - variable: real_estate_taxes
+    geo_level: district
+  - variable: refundable_ctc
+    geo_level: national
+  - variable: refundable_ctc
+    geo_level: state
+  - variable: refundable_ctc
     geo_level: district
   - variable: rental_income
+    geo_level: national
+  - variable: rental_income
+    geo_level: state
+  - variable: roth_ira_contributions
+    geo_level: national
+  - variable: salt
+    geo_level: national
+  - variable: salt
+    geo_level: state
+  - variable: salt
+    geo_level: district
+  - variable: salt_deduction
+    geo_level: national
+  - variable: self_employment_income
+    geo_level: national
+  - variable: self_employment_income
+    geo_level: state
+  - variable: self_employment_income
+    geo_level: district
+  - variable: snap
+    geo_level: national
+  - variable: snap
+    geo_level: state
+  - variable: social_security
+    geo_level: national
+  - variable: social_security_disability
+    geo_level: national
+  - variable: social_security_retirement
+    geo_level: national
+  - variable: spm_unit_capped_housing_subsidy
+    geo_level: national
+  - variable: spm_unit_capped_work_childcare_expenses
+    geo_level: national
+  - variable: ssi
+    geo_level: national
+  - variable: state_income_tax
+    geo_level: state
+  - variable: tanf
+    geo_level: national
+  - variable: tax_exempt_interest_income
+    geo_level: national
+  - variable: tax_exempt_interest_income
+    geo_level: state
+  - variable: tax_exempt_interest_income
     geo_level: district
   - variable: tax_unit_count
-    geo_level: district
+    geo_level: national
+  - variable: tax_unit_count
+    geo_level: state
   - variable: tax_unit_partnership_s_corp_income
+    geo_level: national
+  - variable: tax_unit_partnership_s_corp_income
+    geo_level: state
+  - variable: taxable_interest_income
+    geo_level: national
+  - variable: taxable_interest_income
+    geo_level: state
+  - variable: taxable_interest_income
+    geo_level: district
+  - variable: taxable_ira_distributions
+    geo_level: national
+  - variable: taxable_ira_distributions
+    geo_level: state
+  - variable: taxable_ira_distributions
+    geo_level: district
+  - variable: taxable_pension_income
+    geo_level: national
+  - variable: taxable_pension_income
+    geo_level: state
+  - variable: taxable_pension_income
     geo_level: district
   - variable: taxable_social_security
+    geo_level: national
+  - variable: taxable_social_security
+    geo_level: state
+  - variable: tip_income
+    geo_level: national
+  - variable: traditional_ira_contributions
+    geo_level: national
+  - variable: unemployment_compensation
+    geo_level: national
+  - variable: unemployment_compensation
+    geo_level: state
+  - variable: unemployment_compensation
     geo_level: district
+  # --- person_count non-age domains ---
+  - variable: person_count
+    geo_level: state
+    domain_variable: adjusted_gross_income
+  - variable: person_count
+    geo_level: district
+    domain_variable: adjusted_gross_income
+  - variable: person_count
+    geo_level: state
+    domain_variable: medicaid_enrolled

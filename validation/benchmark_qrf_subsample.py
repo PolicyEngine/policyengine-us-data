@@ -280,11 +280,49 @@ def benchmark_single_size(
     return row
 
 
+def _load_checkpoint(checkpoint_dir: str) -> pd.DataFrame:
+    """Load previously completed results from checkpoint dir.
+
+    Args:
+        checkpoint_dir: Directory containing per-size CSVs.
+
+    Returns:
+        DataFrame of completed results (empty if none).
+    """
+    if not os.path.isdir(checkpoint_dir):
+        return pd.DataFrame()
+    csvs = sorted(
+        f
+        for f in os.listdir(checkpoint_dir)
+        if f.startswith("size_") and f.endswith(".csv")
+    )
+    if not csvs:
+        return pd.DataFrame()
+    frames = [pd.read_csv(os.path.join(checkpoint_dir, f)) for f in csvs]
+    return pd.concat(frames, ignore_index=True)
+
+
+def _save_checkpoint(row: Dict[str, object], checkpoint_dir: str) -> None:
+    """Save a single size result to checkpoint dir.
+
+    Args:
+        row: Benchmark result dict for one size.
+        checkpoint_dir: Directory for per-size CSVs.
+    """
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    size = row["target_size"]
+    df = pd.DataFrame([row])
+    path = os.path.join(checkpoint_dir, f"size_{size}.csv")
+    df.to_csv(path, index=False)
+    logger.info("Checkpoint saved: %s", path)
+
+
 def run_benchmark(
     sizes: List[int],
     output_path: str,
     puf_dataset=None,
     cps_dataset=None,
+    checkpoint_dir: str = None,
 ) -> pd.DataFrame:
     """Run the full benchmark sweep.
 
@@ -295,10 +333,25 @@ def run_benchmark(
             Defaults to PUF_2024.
         cps_dataset: CPS dataset class or h5 path.
             Defaults to CPS_2024_Full.
+        checkpoint_dir: Directory for per-size checkpoint
+            CSVs. If set, completed sizes are skipped on
+            restart.
 
     Returns:
         DataFrame with benchmark results.
     """
+    # Load any previously completed results
+    prior = pd.DataFrame()
+    if checkpoint_dir:
+        prior = _load_checkpoint(checkpoint_dir)
+        if len(prior) > 0:
+            done = set(prior["target_size"].astype(int))
+            logger.info(
+                "Checkpoint: %d sizes already done: %s",
+                len(done),
+                sorted(done),
+            )
+
     X_train_full, X_test, puf_agi, puf_reference = load_datasets(
         puf_dataset=puf_dataset, cps_dataset=cps_dataset
     )
@@ -318,6 +371,11 @@ def run_benchmark(
     rows = []
 
     for size in sorted(sizes):
+        # Skip already-checkpointed sizes
+        if len(prior) > 0 and size in prior["target_size"].values:
+            logger.info("Size %d already checkpointed, skipping", size)
+            continue
+
         if size > len(X_train_full):
             logger.warning(
                 "Size %d exceeds PUF records (%d), skipping",
@@ -336,6 +394,10 @@ def run_benchmark(
         )
         rows.append(row)
 
+        # Checkpoint immediately after each size
+        if checkpoint_dir:
+            _save_checkpoint(row, checkpoint_dir)
+
         logger.info(
             "  size=%d  wall=%.1fs  peak_rss=%.0fMB  " "gh_ok=%s",
             row["target_size"],
@@ -344,7 +406,13 @@ def run_benchmark(
             row["fits_gh_actions"],
         )
 
-    results = pd.DataFrame(rows)
+    # Merge prior checkpointed results with new results
+    new_results = pd.DataFrame(rows)
+    if len(prior) > 0:
+        results = pd.concat([prior, new_results], ignore_index=True)
+        results = results.sort_values("target_size").reset_index(drop=True)
+    else:
+        results = new_results
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     results.to_csv(output_path, index=False)
@@ -446,6 +514,12 @@ def main() -> None:
         help="Path to CPS h5 file (default: CPS_2024_Full)",
     )
     parser.add_argument(
+        "--checkpoint-dir",
+        default=None,
+        help="Directory for per-size checkpoints "
+        "(enables resume after preemption)",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose logging",
@@ -465,6 +539,7 @@ def main() -> None:
         output_path=args.output,
         puf_dataset=args.puf_dataset,
         cps_dataset=args.cps_dataset,
+        checkpoint_dir=args.checkpoint_dir,
     )
 
     print_summary(results)

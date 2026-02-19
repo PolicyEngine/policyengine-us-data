@@ -120,10 +120,62 @@ def run_benchmark(
     # Build prerequisite datasets
     build_datasets(env)
 
-    # Run the benchmark (defaults to PUF_2024 + CPS_2024_Full,
-    # the same datasets the production pipeline uses)
+    # Checkpoint dir lives on the volume so it survives
+    # preemption restarts.
+    checkpoint_dir = str(Path(RESULTS_MOUNT) / "checkpoints")
+
+    # Copy any prior checkpoints into the local working tree
+    # so the benchmark script can read them (it runs from the
+    # cloned repo, not the volume mount).
+    local_ckpt = "validation/outputs/checkpoints"
+    if Path(checkpoint_dir).exists():
+        shutil.copytree(checkpoint_dir, local_ckpt)
+        n_prior = len(list(Path(local_ckpt).glob("size_*.csv")))
+        print(f"Restored {n_prior} checkpoints from volume")
+    else:
+        os.makedirs(local_ckpt, exist_ok=True)
+
+    # Run the benchmark one size at a time so we can
+    # checkpoint to the volume between sizes.
     output_csv = "validation/outputs/subsample_benchmark.csv"
-    cmd = [
+    for s in sizes:
+        ckpt_file = Path(local_ckpt) / f"size_{s}.csv"
+        if ckpt_file.exists():
+            print(f"Size {s} already checkpointed, skipping")
+            continue
+
+        cmd = [
+            "uv",
+            "run",
+            "python",
+            "validation/benchmark_qrf_subsample.py",
+            "--sizes",
+            str(s),
+            "--output",
+            output_csv,
+            "--checkpoint-dir",
+            local_ckpt,
+            "--verbose",
+        ]
+        print(f"Running benchmark: size={s}")
+        subprocess.run(cmd, check=True, env=env)
+
+        # Copy checkpoint to volume and commit immediately
+        new_ckpt = Path(local_ckpt) / f"size_{s}.csv"
+        if new_ckpt.exists():
+            os.makedirs(checkpoint_dir, exist_ok=True)
+            shutil.copy2(new_ckpt, checkpoint_dir)
+            # Also copy latest combined CSV
+            if Path(output_csv).exists():
+                shutil.copy2(
+                    output_csv,
+                    Path(RESULTS_MOUNT) / "subsample_benchmark.csv",
+                )
+            results_volume.commit()
+            print(f"Size {s} checkpointed to volume")
+
+    # Final combined CSV from all checkpoints
+    cmd_final = [
         "uv",
         "run",
         "python",
@@ -132,27 +184,28 @@ def run_benchmark(
         *[str(s) for s in sizes],
         "--output",
         output_csv,
+        "--checkpoint-dir",
+        local_ckpt,
         "--verbose",
     ]
-    print(f"Running benchmark: sizes={sizes}")
-    subprocess.run(cmd, check=True, env=env)
+    subprocess.run(cmd_final, check=True, env=env)
 
     # Read results
     csv_text = Path(output_csv).read_text()
     print("\n=== BENCHMARK RESULTS CSV ===")
     print(csv_text)
 
-    # Save results to volume for retrieval
+    # Save final results to volume
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     run_dir = Path(RESULTS_MOUNT) / f"run_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     shutil.copy2(output_csv, run_dir / "subsample_benchmark.csv")
+    shutil.copy2(
+        output_csv,
+        Path(RESULTS_MOUNT) / "subsample_benchmark.csv",
+    )
 
-    # Also save to volume root (latest results, easy to grab)
-    shutil.copy2(output_csv, Path(RESULTS_MOUNT) / "subsample_benchmark.csv")
-
-    # Generate and save a text summary
     summary_lines = [
         f"QRF Subsample Benchmark Results",
         f"Branch: {branch}",

@@ -98,6 +98,11 @@ SIMPLE_TAKEUP_VARS = [
         "entity": "person",
         "rate_key": "medicaid",
     },
+    {
+        "variable": "takes_up_tanf_if_eligible",
+        "entity": "spm_unit",
+        "rate_key": "tanf",
+    },
 ]
 
 

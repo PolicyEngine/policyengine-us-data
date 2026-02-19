@@ -1,53 +1,57 @@
 # Calibration Pipeline User's Manual
 
-The unified calibration pipeline reweights cloned CPS records to match administrative targets using L0-regularized optimization. This guide covers the three main workflows: full pipeline, build-then-fit, and fitting from a saved package.
+The unified calibration pipeline reweights cloned CPS records to match administrative targets using L0-regularized optimization. This guide covers the main workflows: lightweight build-then-fit, full pipeline with PUF, and fitting from a saved package.
 
 ## Quick Start
 
 ```bash
-# Full pipeline (build matrix + fit weights):
-make calibrate
+# Build matrix only from stratified CPS (no PUF, no re-imputation):
+python -m policyengine_us_data.calibration.unified_calibration \
+  --target-config policyengine_us_data/calibration/target_config.yaml \
+  --skip-source-impute \
+  --skip-takeup-rerandomize \
+  --build-only
 
-# Build matrix only (save package for later fitting):
-make calibrate-build
+# Fit weights from a saved package:
+python -m policyengine_us_data.calibration.unified_calibration \
+  --package-path storage/calibration/calibration_package.pkl \
+  --epochs 500 --device cuda
+
+# Full pipeline with PUF (build + fit in one shot):
+make calibrate
 ```
 
 ## Architecture Overview
 
-The pipeline has two expensive phases:
+The pipeline has two phases:
 
-1. **Matrix build** (~30 min with PUF): Clone CPS records, assign geography, optionally PUF-impute, compute all target variable values, assemble a sparse calibration matrix.
+1. **Matrix build**: Clone CPS records, assign geography, compute all target variable values, assemble a sparse calibration matrix. Optionally includes PUF cloning (doubles record count) and source re-imputation.
 2. **Weight fitting** (~5-20 min on GPU): L0-regularized optimization to find household weights that reproduce administrative targets.
 
 The calibration package checkpoint lets you run phase 1 once and iterate on phase 2 with different hyperparameters or target selections---without rebuilding.
 
+### Prerequisites
+
+The matrix build requires two inputs from the data pipeline:
+
+- **Stratified CPS** (`storage/stratified_extended_cps_2024.h5`): ~12K households, built by `make data`. This is the base dataset that gets cloned.
+- **Target database** (`storage/calibration/policy_data.db`): Administrative targets, built by `make database`.
+
+Both must exist before running calibration. The stratified CPS already contains all CPS variables needed for calibration; PUF cloning and source re-imputation are optional enhancements that happen at calibration time.
+
 ## Workflows
 
-### 1. Single-pass (default)
+### 1. Lightweight build-then-fit (recommended for iteration)
 
-Build the matrix and fit weights in one run:
+Build the matrix from the stratified CPS without PUF cloning or re-imputation. This is the fastest way to get a calibration package for experimentation.
 
-```bash
-python -m policyengine_us_data.calibration.unified_calibration \
-  --puf-dataset policyengine_us_data/storage/puf_2024.h5 \
-  --target-config policyengine_us_data/calibration/target_config.yaml \
-  --epochs 200 \
-  --device cuda
-```
-
-Output:
-- `storage/calibration/unified_weights.npy` --- calibrated weight vector
-- `storage/calibration/unified_diagnostics.csv` --- per-target error report
-- `storage/calibration/unified_run_config.json` --- full run configuration
-
-### 2. Build-then-fit (recommended for iteration)
-
-**Step 1: Build the matrix and save a package.**
+**Step 1: Build the matrix (~12K base records x 436 clones = ~5.2M columns).**
 
 ```bash
 python -m policyengine_us_data.calibration.unified_calibration \
-  --puf-dataset policyengine_us_data/storage/puf_2024.h5 \
   --target-config policyengine_us_data/calibration/target_config.yaml \
+  --skip-source-impute \
+  --skip-takeup-rerandomize \
   --build-only
 ```
 
@@ -67,6 +71,42 @@ python -m policyengine_us_data.calibration.unified_calibration \
 
 You can re-run Step 2 as many times as you want with different hyperparameters. The expensive matrix build only happens once.
 
+### 2. Full pipeline with PUF
+
+Adding `--puf-dataset` doubles the record count (~24K base records x 436 clones = ~10.4M columns) by creating PUF-imputed copies of every CPS record. This also triggers source re-imputation unless skipped.
+
+**Single-pass (build + fit):**
+
+```bash
+python -m policyengine_us_data.calibration.unified_calibration \
+  --puf-dataset policyengine_us_data/storage/puf_2024.h5 \
+  --target-config policyengine_us_data/calibration/target_config.yaml \
+  --epochs 200 \
+  --device cuda
+```
+
+Or equivalently: `make calibrate`
+
+Output:
+- `storage/calibration/unified_weights.npy` --- calibrated weight vector
+- `storage/calibration/unified_diagnostics.csv` --- per-target error report
+- `storage/calibration/unified_run_config.json` --- full run configuration
+
+**Build-only (save package for later fitting):**
+
+```bash
+python -m policyengine_us_data.calibration.unified_calibration \
+  --puf-dataset policyengine_us_data/storage/puf_2024.h5 \
+  --target-config policyengine_us_data/calibration/target_config.yaml \
+  --build-only
+```
+
+Or equivalently: `make calibrate-build`
+
+This saves `storage/calibration/calibration_package.pkl` (default location). Use `--package-output` to specify a different path.
+
+Then fit from the package using the same Step 2 command from Workflow 1.
+
 ### 3. Re-filtering a saved package
 
 A saved package contains **all** targets from the database (before target config filtering). You can apply a different target config at fit time:
@@ -82,6 +122,30 @@ This lets you experiment with which targets to include without rebuilding the ma
 
 ### 4. Running on Modal (GPU cloud)
 
+**From a pre-built package via Modal Volume** (recommended):
+
+The calibration package is ~2 GB, too large to pass as a function argument. Upload it to a Modal Volume first, then reference it at runtime.
+
+```bash
+# One-time: create volume and upload package
+modal volume create calibration-data
+modal volume put calibration-data \
+  policyengine_us_data/storage/calibration/calibration_package.pkl \
+  calibration_package.pkl
+
+# Fit weights (reads from volume, no inline upload)
+modal run modal_app/remote_calibration_runner.py \
+  --package-volume \
+  --branch calibration-pipeline-improvements \
+  --gpu T4 \
+  --epochs 1000 \
+  --beta 0.65 \
+  --lambda-l0 1e-8 \
+  --lambda-l2 1e-8
+```
+
+To update the package on the volume after a rebuild, re-run the `modal volume put` command.
+
 **Full pipeline** (builds matrix from scratch on Modal):
 
 ```bash
@@ -96,21 +160,6 @@ modal run modal_app/remote_calibration_runner.py \
 ```
 
 The target config YAML is read from the cloned repo inside the container, so it must be committed to the branch you specify.
-
-**From a pre-built package** (uploads local package, skips matrix build):
-
-```bash
-modal run modal_app/remote_calibration_runner.py \
-  --package-path policyengine_us_data/storage/calibration/calibration_package.pkl \
-  --branch calibration-pipeline-improvements \
-  --gpu T4 \
-  --epochs 1000 \
-  --beta 0.65 \
-  --lambda-l0 1e-8 \
-  --lambda-l2 1e-8
-```
-
-This reads the `.pkl` locally, uploads it to the Modal container, and runs only the fitting phase. Much faster since it skips the HuggingFace download and matrix build.
 
 ### 5. Portable fitting (Kaggle, Colab, etc.)
 
@@ -207,7 +256,7 @@ ORDER BY variable, geo_level;
 | `--lambda-l0` | None | Custom L0 penalty (overrides `--preset`) |
 | `--epochs` | 100 | Training epochs |
 | `--device` | `cpu` | `cpu` or `cuda` |
-| `--n-clones` | 10 | Number of dataset clones |
+| `--n-clones` | 436 | Number of dataset clones |
 | `--seed` | 42 | Random seed for geography assignment |
 
 ### Target selection

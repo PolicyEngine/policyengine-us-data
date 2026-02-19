@@ -1,0 +1,11 @@
+description: Percentage of eligible TANF families who receive TANF cash assistance.
+metadata:
+  label: TANF takeup rate
+  unit: /1
+  reference:
+    - title: HHS ASPE 24th Welfare Indicators Report - TANF Participation Rate
+      href: https://aspe.hhs.gov/reports/welfare-indicators-risk-factors-24th-report-congress
+    - title: Urban Institute TRIM3 - TANF Participation Rates
+      href: https://www.urban.org/research/publication/what-was-tanf-participation-rate-2016
+values:
+  2018-01-01: 0.22

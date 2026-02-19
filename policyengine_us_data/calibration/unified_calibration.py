@@ -28,6 +28,7 @@ Usage:
 import argparse
 import builtins
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -489,6 +490,10 @@ def fit_l0_weights(
         raise ImportError("l0-python required. Install: pip install l0-python")
 
     import torch
+
+    os.environ.setdefault(
+        "PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True"
+    )
 
     n_total = X_sparse.shape[1]
     initial_weights = np.ones(n_total) * 100

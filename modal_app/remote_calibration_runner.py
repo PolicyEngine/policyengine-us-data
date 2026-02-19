@@ -5,6 +5,9 @@ import modal
 app = modal.App("policyengine-us-data-fit-weights")
 
 hf_secret = modal.Secret.from_name("huggingface-token")
+calibration_vol = modal.Volume.from_name(
+    "calibration-data", create_if_missing=True
+)
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -167,9 +170,10 @@ def _fit_weights_impl(
 
 
 def _fit_from_package_impl(
-    package_bytes: bytes,
     branch: str,
     epochs: int,
+    package_bytes: bytes = None,
+    volume_package_path: str = None,
     target_config: str = None,
     beta: float = None,
     lambda_l0: float = None,
@@ -181,13 +185,27 @@ def _fit_from_package_impl(
     _clone_and_install(branch)
 
     pkg_path = "/root/calibration_package.pkl"
-    with open(pkg_path, "wb") as f:
-        f.write(package_bytes)
-    print(
-        f"Wrote calibration package ({len(package_bytes)} bytes) "
-        f"to {pkg_path}",
-        flush=True,
-    )
+    if volume_package_path:
+        import shutil
+
+        shutil.copy(volume_package_path, pkg_path)
+        size = os.path.getsize(pkg_path)
+        print(
+            f"Copied package from volume ({size:,} bytes) to {pkg_path}",
+            flush=True,
+        )
+    elif package_bytes:
+        with open(pkg_path, "wb") as f:
+            f.write(package_bytes)
+        print(
+            f"Wrote calibration package ({len(package_bytes)} bytes) "
+            f"to {pkg_path}",
+            flush=True,
+        )
+    else:
+        raise ValueError(
+            "Either package_bytes or volume_package_path required"
+        )
 
     script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
@@ -360,9 +378,10 @@ GPU_FUNCTIONS = {
     cpu=4.0,
     gpu="T4",
     timeout=14400,
+    volumes={"/calibration-data": calibration_vol},
 )
 def fit_from_package_t4(
-    package_bytes: bytes,
+    package_bytes: bytes = None,
     branch: str = "main",
     epochs: int = 200,
     target_config: str = None,
@@ -371,10 +390,14 @@ def fit_from_package_t4(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
+    volume_package_path: str = None,
 ) -> dict:
     return _fit_from_package_impl(
-        package_bytes, branch, epochs, target_config, beta,
-        lambda_l0, lambda_l2, learning_rate, log_freq,
+        branch, epochs, package_bytes=package_bytes,
+        volume_package_path=volume_package_path,
+        target_config=target_config, beta=beta,
+        lambda_l0=lambda_l0, lambda_l2=lambda_l2,
+        learning_rate=learning_rate, log_freq=log_freq,
     )
 
 
@@ -384,9 +407,10 @@ def fit_from_package_t4(
     cpu=4.0,
     gpu="A10",
     timeout=14400,
+    volumes={"/calibration-data": calibration_vol},
 )
 def fit_from_package_a10(
-    package_bytes: bytes,
+    package_bytes: bytes = None,
     branch: str = "main",
     epochs: int = 200,
     target_config: str = None,
@@ -395,10 +419,14 @@ def fit_from_package_a10(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
+    volume_package_path: str = None,
 ) -> dict:
     return _fit_from_package_impl(
-        package_bytes, branch, epochs, target_config, beta,
-        lambda_l0, lambda_l2, learning_rate, log_freq,
+        branch, epochs, package_bytes=package_bytes,
+        volume_package_path=volume_package_path,
+        target_config=target_config, beta=beta,
+        lambda_l0=lambda_l0, lambda_l2=lambda_l2,
+        learning_rate=learning_rate, log_freq=log_freq,
     )
 
 
@@ -408,9 +436,10 @@ def fit_from_package_a10(
     cpu=4.0,
     gpu="A100-40GB",
     timeout=14400,
+    volumes={"/calibration-data": calibration_vol},
 )
 def fit_from_package_a100_40(
-    package_bytes: bytes,
+    package_bytes: bytes = None,
     branch: str = "main",
     epochs: int = 200,
     target_config: str = None,
@@ -419,10 +448,14 @@ def fit_from_package_a100_40(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
+    volume_package_path: str = None,
 ) -> dict:
     return _fit_from_package_impl(
-        package_bytes, branch, epochs, target_config, beta,
-        lambda_l0, lambda_l2, learning_rate, log_freq,
+        branch, epochs, package_bytes=package_bytes,
+        volume_package_path=volume_package_path,
+        target_config=target_config, beta=beta,
+        lambda_l0=lambda_l0, lambda_l2=lambda_l2,
+        learning_rate=learning_rate, log_freq=log_freq,
     )
 
 
@@ -432,9 +465,10 @@ def fit_from_package_a100_40(
     cpu=4.0,
     gpu="A100-80GB",
     timeout=14400,
+    volumes={"/calibration-data": calibration_vol},
 )
 def fit_from_package_a100_80(
-    package_bytes: bytes,
+    package_bytes: bytes = None,
     branch: str = "main",
     epochs: int = 200,
     target_config: str = None,
@@ -443,10 +477,14 @@ def fit_from_package_a100_80(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
+    volume_package_path: str = None,
 ) -> dict:
     return _fit_from_package_impl(
-        package_bytes, branch, epochs, target_config, beta,
-        lambda_l0, lambda_l2, learning_rate, log_freq,
+        branch, epochs, package_bytes=package_bytes,
+        volume_package_path=volume_package_path,
+        target_config=target_config, beta=beta,
+        lambda_l0=lambda_l0, lambda_l2=lambda_l2,
+        learning_rate=learning_rate, log_freq=log_freq,
     )
 
 
@@ -456,9 +494,10 @@ def fit_from_package_a100_80(
     cpu=4.0,
     gpu="H100",
     timeout=14400,
+    volumes={"/calibration-data": calibration_vol},
 )
 def fit_from_package_h100(
-    package_bytes: bytes,
+    package_bytes: bytes = None,
     branch: str = "main",
     epochs: int = 200,
     target_config: str = None,
@@ -467,10 +506,14 @@ def fit_from_package_h100(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
+    volume_package_path: str = None,
 ) -> dict:
     return _fit_from_package_impl(
-        package_bytes, branch, epochs, target_config, beta,
-        lambda_l0, lambda_l2, learning_rate, log_freq,
+        branch, epochs, package_bytes=package_bytes,
+        volume_package_path=volume_package_path,
+        target_config=target_config, beta=beta,
+        lambda_l0=lambda_l0, lambda_l2=lambda_l2,
+        learning_rate=learning_rate, log_freq=log_freq,
     )
 
 
@@ -481,6 +524,9 @@ PACKAGE_GPU_FUNCTIONS = {
     "A100-80GB": fit_from_package_a100_80,
     "H100": fit_from_package_h100,
 }
+
+
+VOLUME_MOUNT = "/calibration-data"
 
 
 @app.local_entrypoint()
@@ -497,6 +543,7 @@ def main(
     learning_rate: float = None,
     log_freq: int = None,
     package_path: str = None,
+    package_volume: bool = False,
 ):
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
@@ -504,7 +551,25 @@ def main(
             f"Choose from: {list(GPU_FUNCTIONS.keys())}"
         )
 
-    if package_path:
+    if package_volume:
+        vol_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
+        print(
+            f"Using package from Modal volume at {vol_path}",
+            flush=True,
+        )
+        func = PACKAGE_GPU_FUNCTIONS[gpu]
+        result = func.remote(
+            branch=branch,
+            epochs=epochs,
+            target_config=target_config,
+            beta=beta,
+            lambda_l0=lambda_l0,
+            lambda_l2=lambda_l2,
+            learning_rate=learning_rate,
+            log_freq=log_freq,
+            volume_package_path=vol_path,
+        )
+    elif package_path:
         print(f"Reading package from {package_path}...", flush=True)
         with open(package_path, "rb") as f:
             package_bytes = f.read()

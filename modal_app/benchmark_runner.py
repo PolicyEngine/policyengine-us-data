@@ -4,14 +4,23 @@ Clones the repo, builds PUF and CPS datasets, then runs
 validation/benchmark_qrf_subsample.py. Uses the same datasets
 as the production pipeline (PUF_2024 + CPS_2024_Full).
 
+Results are saved to a Modal volume for retrieval after the run.
+
 Usage:
-    modal run modal_app/benchmark_runner.py \
+    modal run --detach modal_app/benchmark_runner.py \
         --branch maria/qrf_investigation \
         --sizes 20000,40000,60000,80000,100000
+
+Retrieve results:
+    modal volume ls benchmark-qrf-results
+    modal volume get benchmark-qrf-results subsample_benchmark.csv
+    modal volume get benchmark-qrf-results summary.txt
 """
 
 import os
+import shutil
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -22,6 +31,11 @@ app = modal.App("policyengine-benchmark-qrf")
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
+results_volume = modal.Volume.from_name(
+    "benchmark-qrf-results",
+    create_if_missing=True,
+)
+
 image = (
     modal.Image.debian_slim(python_version="3.13")
     .apt_install("git")
@@ -29,6 +43,7 @@ image = (
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
+RESULTS_MOUNT = "/results"
 
 
 def setup_gcp_credentials():
@@ -70,6 +85,7 @@ def build_datasets(env: dict):
 @app.function(
     image=image,
     secrets=[hf_secret, gcp_secret],
+    volumes={RESULTS_MOUNT: results_volume},
     memory=32768,
     cpu=8.0,
     timeout=14400,
@@ -121,11 +137,45 @@ def run_benchmark(
     print(f"Running benchmark: sizes={sizes}")
     subprocess.run(cmd, check=True, env=env)
 
-    # Read and return results
-    results = Path(output_csv).read_text()
+    # Read results
+    csv_text = Path(output_csv).read_text()
     print("\n=== BENCHMARK RESULTS CSV ===")
-    print(results)
-    return results
+    print(csv_text)
+
+    # Save results to volume for retrieval
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(RESULTS_MOUNT) / f"run_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    shutil.copy2(output_csv, run_dir / "subsample_benchmark.csv")
+
+    # Also save to volume root (latest results, easy to grab)
+    shutil.copy2(output_csv, Path(RESULTS_MOUNT) / "subsample_benchmark.csv")
+
+    # Generate and save a text summary
+    summary_lines = [
+        f"QRF Subsample Benchmark Results",
+        f"Branch: {branch}",
+        f"Sizes: {sizes}",
+        f"Timestamp: {timestamp}",
+        f"",
+    ]
+    summary_lines.append(csv_text)
+    summary_text = "\n".join(summary_lines)
+
+    (run_dir / "summary.txt").write_text(summary_text)
+    (Path(RESULTS_MOUNT) / "summary.txt").write_text(summary_text)
+
+    results_volume.commit()
+    print(f"\nResults saved to volume 'benchmark-qrf-results'")
+    print(f"  Run dir: run_{timestamp}/")
+    print(f"Retrieve with:")
+    print(
+        f"  modal volume get benchmark-qrf-results " f"subsample_benchmark.csv"
+    )
+    print(f"  modal volume get benchmark-qrf-results summary.txt")
+
+    return csv_text
 
 
 @app.local_entrypoint()

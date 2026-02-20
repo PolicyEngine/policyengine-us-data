@@ -99,12 +99,10 @@ data: download
 
 calibrate: data
 	python -m policyengine_us_data.calibration.unified_calibration \
-		--puf-dataset policyengine_us_data/storage/puf_2024.h5 \
 		--target-config policyengine_us_data/calibration/target_config.yaml
 
 calibrate-build: data
 	python -m policyengine_us_data.calibration.unified_calibration \
-		--puf-dataset policyengine_us_data/storage/puf_2024.h5 \
 		--target-config policyengine_us_data/calibration/target_config.yaml \
 		--build-only
 

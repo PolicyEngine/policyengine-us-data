@@ -43,7 +43,13 @@ include:
     geo_level: state
 
   # === NATIONAL ===
+  - variable: child_support_expense
+    geo_level: national
+  - variable: child_support_received
+    geo_level: national
   - variable: eitc
+    geo_level: national
+  - variable: health_insurance_premiums_without_medicare_part_b
     geo_level: national
   - variable: medicaid
     geo_level: national
@@ -66,6 +72,8 @@ include:
   - variable: ssi
     geo_level: national
   - variable: tanf
+    geo_level: national
+  - variable: rent
     geo_level: national
   - variable: tip_income
     geo_level: national

@@ -5,11 +5,11 @@ Pipeline flow:
     1. Load CPS dataset -> get n_records
     2. Clone Nx, assign random geography (census block)
     3. (Optional) Source impute ACS/SIPP/SCF vars with state
-    4. (Optional) PUF clone (2x) + QRF impute with state
-    5. Re-randomize simple takeup variables per block
-    6. Build sparse calibration matrix (clone-by-clone)
-    7. L0-regularized optimization -> calibrated weights
-    8. Save weights, diagnostics, run config
+    4. Build sparse calibration matrix (clone-by-clone)
+    5. L0-regularized optimization -> calibrated weights
+    6. Save weights, diagnostics, run config
+
+Note: PUF cloning happens upstream in `extended_cps.py`, not here.
 
 Two presets control output size via L0 regularization:
 - local: L0=1e-8, ~3-4M records (for local area dataset)
@@ -22,7 +22,7 @@ Usage:
         --output path/to/weights.npy \\
         --preset local \\
         --epochs 100 \\
-        --puf-dataset path/to/puf_2024.h5
+        --skip-source-impute
 """
 
 import argparse
@@ -256,16 +256,6 @@ def parse_args(argv=None):
         "--skip-takeup-rerandomize",
         action="store_true",
         help="Skip takeup re-randomization",
-    )
-    parser.add_argument(
-        "--puf-dataset",
-        default=None,
-        help="Path to PUF h5 file for QRF training",
-    )
-    parser.add_argument(
-        "--skip-puf",
-        action="store_true",
-        help="Skip PUF clone + QRF imputation",
     )
     parser.add_argument(
         "--skip-source-impute",
@@ -777,88 +767,6 @@ def compute_diagnostics(
     )
 
 
-def _build_puf_cloned_dataset(
-    dataset_path: str,
-    puf_dataset_path: str,
-    state_fips: np.ndarray,
-    time_period: int = 2024,
-    skip_qrf: bool = False,
-    skip_source_impute: bool = False,
-) -> str:
-    """Build a PUF-cloned dataset from raw CPS.
-
-    Loads the CPS, optionally runs source imputations
-    (ACS/SIPP/SCF), then PUF clone + QRF.
-
-    Args:
-        dataset_path: Path to raw CPS h5 file.
-        puf_dataset_path: Path to PUF h5 file.
-        state_fips: State FIPS per household (base records).
-        time_period: Tax year.
-        skip_qrf: Skip QRF imputation.
-        skip_source_impute: Skip ACS/SIPP/SCF imputations.
-
-    Returns:
-        Path to the PUF-cloned h5 file.
-    """
-    import h5py
-
-    from policyengine_us import Microsimulation
-
-    from policyengine_us_data.calibration.puf_impute import (
-        puf_clone_dataset,
-    )
-
-    logger.info("Building PUF-cloned dataset from %s", dataset_path)
-
-    sim = Microsimulation(dataset=dataset_path)
-    data = sim.dataset.load_dataset()
-
-    data_dict = {}
-    for var in data:
-        if isinstance(data[var], dict):
-            vals = list(data[var].values())
-            data_dict[var] = {time_period: vals[0]}
-        else:
-            data_dict[var] = {time_period: np.array(data[var])}
-
-    if not skip_source_impute:
-        from policyengine_us_data.calibration.source_impute import (
-            impute_source_variables,
-        )
-
-        data_dict = impute_source_variables(
-            data=data_dict,
-            state_fips=state_fips,
-            time_period=time_period,
-            dataset_path=dataset_path,
-        )
-
-    puf_dataset = puf_dataset_path if not skip_qrf else None
-
-    new_data = puf_clone_dataset(
-        data=data_dict,
-        state_fips=state_fips,
-        time_period=time_period,
-        puf_dataset=puf_dataset,
-        skip_qrf=skip_qrf,
-        dataset_path=dataset_path,
-    )
-
-    output_path = str(
-        Path(dataset_path).parent / f"puf_cloned_{Path(dataset_path).stem}.h5"
-    )
-
-    with h5py.File(output_path, "w") as f:
-        for var, time_dict in new_data.items():
-            for tp, values in time_dict.items():
-                f.create_dataset(f"{var}/{tp}", data=values)
-
-    del sim
-    logger.info("PUF-cloned dataset saved to %s", output_path)
-    return output_path
-
-
 def run_calibration(
     dataset_path: str,
     db_path: str,
@@ -870,8 +778,6 @@ def run_calibration(
     domain_variables: list = None,
     hierarchical_domains: list = None,
     skip_takeup_rerandomize: bool = False,
-    puf_dataset_path: str = None,
-    skip_puf: bool = False,
     skip_source_impute: bool = False,
     target_config: dict = None,
     build_only: bool = False,
@@ -897,8 +803,6 @@ def run_calibration(
         hierarchical_domains: Domains for hierarchical
             uprating + CD reconciliation.
         skip_takeup_rerandomize: Skip takeup step.
-        puf_dataset_path: Path to PUF h5 for QRF training.
-        skip_puf: Skip PUF clone step.
         skip_source_impute: Skip ACS/SIPP/SCF imputations.
         target_config: Parsed target config dict.
         build_only: If True, save package and skip fitting.
@@ -957,7 +861,6 @@ def run_calibration(
 
     from policyengine_us_data.calibration.clone_and_assign import (
         assign_random_geography,
-        double_geography_for_puf,
     )
     from policyengine_us_data.calibration.unified_matrix_builder import (
         UnifiedMatrixBuilder,
@@ -982,35 +885,9 @@ def run_calibration(
         seed=seed,
     )
 
-    # Step 3: Source impute + PUF clone (if requested)
+    # Step 3: Source imputation (if requested)
     dataset_for_matrix = dataset_path
-    if not skip_puf and puf_dataset_path is not None:
-        base_states = geography.state_fips[:n_records]
-
-        puf_cloned_path = _build_puf_cloned_dataset(
-            dataset_path=dataset_path,
-            puf_dataset_path=puf_dataset_path,
-            state_fips=base_states,
-            time_period=2024,
-            skip_qrf=False,
-            skip_source_impute=skip_source_impute,
-        )
-
-        geography = double_geography_for_puf(geography)
-        dataset_for_matrix = puf_cloned_path
-        n_records = n_records * 2
-
-        # Reload sim from PUF-cloned dataset
-        del sim
-        sim = Microsimulation(dataset=puf_cloned_path)
-
-        logger.info(
-            "After PUF clone: %d records x %d clones = %d",
-            n_records,
-            n_clones,
-            n_records * n_clones,
-        )
-    elif not skip_source_impute:
+    if not skip_source_impute:
         # Run source imputations without PUF cloning
         import h5py
 
@@ -1227,8 +1104,6 @@ def main(argv=None):
 
     t_start = time.time()
 
-    puf_dataset_path = getattr(args, "puf_dataset", None)
-
     target_config = None
     if args.target_config:
         target_config = load_target_config(args.target_config)
@@ -1254,8 +1129,6 @@ def main(argv=None):
         domain_variables=domain_variables,
         hierarchical_domains=hierarchical_domains,
         skip_takeup_rerandomize=args.skip_takeup_rerandomize,
-        puf_dataset_path=puf_dataset_path,
-        skip_puf=getattr(args, "skip_puf", False),
         skip_source_impute=getattr(args, "skip_source_impute", False),
         target_config=target_config,
         build_only=args.build_only,
@@ -1302,8 +1175,6 @@ def main(argv=None):
     run_config = {
         "dataset": dataset_path,
         "db_path": db_path,
-        "puf_dataset": args.puf_dataset,
-        "skip_puf": args.skip_puf,
         "skip_source_impute": args.skip_source_impute,
         "n_clones": args.n_clones,
         "lambda_l0": lambda_l0,

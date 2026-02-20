@@ -645,26 +645,47 @@ def fit_l0_weights(
         epochs_done = 0
         while epochs_done < epochs:
             chunk = min(log_freq, epochs - epochs_done)
-            try:
-                model.fit(
-                    M=X_sparse,
-                    y=targets,
-                    target_groups=None,
-                    lambda_l0=lambda_l0,
-                    lambda_l2=lambda_l2,
-                    lr=learning_rate,
-                    epochs=chunk,
-                    loss_type="relative",
-                    verbose=True,
-                    verbose_freq=chunk,
-                )
-            finally:
-                builtins.print = _builtin_print
+            model.fit(
+                M=X_sparse,
+                y=targets,
+                target_groups=None,
+                lambda_l0=lambda_l0,
+                lambda_l2=lambda_l2,
+                lr=learning_rate,
+                epochs=chunk,
+                loss_type="relative",
+                verbose=False,
+            )
 
             epochs_done += chunk
 
             with torch.no_grad():
                 y_pred = model.predict(X_sparse).cpu().numpy()
+                weights_snap = (
+                    model.get_weights(deterministic=True).cpu().numpy()
+                )
+
+            nz = (weights_snap > 0).sum()
+            sparsity = (1 - nz / n_total) * 100
+
+            rel_errs = np.where(
+                np.abs(targets) > 0,
+                (y_pred - targets) / np.abs(targets),
+                0.0,
+            )
+            mean_err = np.mean(np.abs(rel_errs))
+            max_err = np.max(np.abs(rel_errs))
+            total_loss = np.sum(rel_errs**2)
+
+            print(
+                f"Epoch {epochs_done:4d}: "
+                f"mean_error={mean_err:.4%}, "
+                f"max_error={max_err:.1%}, "
+                f"total_loss={total_loss:.3f}, "
+                f"active={nz}/{n_total} "
+                f"({sparsity:.1f}% sparse)",
+                flush=True,
+            )
 
             with open(log_path, "a") as f:
                 for i in range(len(targets)):
@@ -690,8 +711,6 @@ def fit_l0_weights(
 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-
-            builtins.print = _flushed_print
     else:
         try:
             model.fit(
@@ -1074,15 +1093,9 @@ def run_calibration(
         X_sparse.nnz,
     )
 
-    # Step 6b: Apply target config filtering
-    if target_config:
-        targets_df, X_sparse, target_names = apply_target_config(
-            targets_df, X_sparse, target_names, target_config
-        )
-
-    # Step 6c: Compute initial weights and save calibration package
-    initial_weights = compute_initial_weights(X_sparse, targets_df)
-
+    # Step 6b: Save FULL (unfiltered) calibration package.
+    # Target config is applied at fit time, so the package can be
+    # reused with different configs without rebuilding.
     import datetime
 
     metadata = {
@@ -1092,18 +1105,26 @@ def run_calibration(
         "n_records": X_sparse.shape[1],
         "seed": seed,
         "created_at": datetime.datetime.now().isoformat(),
-        "target_config": target_config,
     }
 
     if package_output_path:
+        full_initial_weights = compute_initial_weights(X_sparse, targets_df)
         save_calibration_package(
             package_output_path,
             X_sparse,
             targets_df,
             target_names,
             metadata,
-            initial_weights=initial_weights,
+            initial_weights=full_initial_weights,
         )
+
+    # Step 6c: Apply target config filtering (for fit or validation)
+    if target_config:
+        targets_df, X_sparse, target_names = apply_target_config(
+            targets_df, X_sparse, target_names, target_config
+        )
+
+    initial_weights = compute_initial_weights(X_sparse, targets_df)
 
     if build_only:
         from policyengine_us_data.calibration.validate_package import (

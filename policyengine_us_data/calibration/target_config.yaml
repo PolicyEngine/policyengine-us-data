@@ -1,55 +1,49 @@
-# Finest-grain target config (~18,434 targets).
-# District-level where available, state/national only where
-# no finer grain exists. Matches junkyard's included groups.
+# Target config curated by achievability analysis.
+# Dropped variables where per-household dollar values in extended CPS
+# are 5-27x too high (needed_w < 2), making them irreconcilable with
+# count targets (needed_w ~26). See achievability_ratio analysis.
+#
+# Dropped district: salt, tax_exempt_interest_income, dividend_income,
+#   income_tax, qualified_dividend_income, taxable_interest_income,
+#   adjusted_gross_income, qualified_business_income_deduction,
+#   taxable_ira_distributions
+# Dropped national: income_tax_positive, traditional_ira_contributions
 
 include:
-  # === DISTRICT (16 variable groups, ~18,312 targets) ===
+  # === DISTRICT — count targets ===
   - variable: person_count
-    geo_level: district
-  - variable: adjusted_gross_income
-    geo_level: district
-  - variable: dividend_income
     geo_level: district
   - variable: household_count
     geo_level: district
-  - variable: income_tax
-    geo_level: district
-  - variable: qualified_business_income_deduction
-    geo_level: district
-  - variable: qualified_dividend_income
-    geo_level: district
+
+  # === DISTRICT — dollar targets (needed_w 7-41, compatible) ===
   - variable: real_estate_taxes
-    geo_level: district
-  - variable: refundable_ctc
-    geo_level: district
-  - variable: salt
     geo_level: district
   - variable: self_employment_income
     geo_level: district
-  - variable: tax_exempt_interest_income
-    geo_level: district
-  - variable: taxable_interest_income
-    geo_level: district
-  - variable: taxable_ira_distributions
-    geo_level: district
   - variable: taxable_pension_income
+    geo_level: district
+  - variable: refundable_ctc
     geo_level: district
   - variable: unemployment_compensation
     geo_level: district
 
-  # === STATE (no district equivalent, 102 targets) ===
+  # === DISTRICT — ACA PTC ===
+  - variable: aca_ptc
+    geo_level: district
+  - variable: tax_unit_count
+    geo_level: district
+    domain_variable: aca_ptc
+
+  # === STATE ===
   - variable: person_count
     geo_level: state
     domain_variable: medicaid_enrolled
   - variable: snap
     geo_level: state
 
-  # === NATIONAL-ONLY (no finer grain, ~20 targets) ===
+  # === NATIONAL ===
   - variable: eitc
-    geo_level: national
-  - variable: health_ins_premiums_without_medicare_b
-    geo_level: national
-  - variable: income_tax_positive
     geo_level: national
   - variable: medicaid
     geo_level: national
@@ -74,6 +68,4 @@ include:
   - variable: tanf
     geo_level: national
   - variable: tip_income
-    geo_level: national
-  - variable: traditional_ira_contributions
     geo_level: national

@@ -340,46 +340,63 @@ def load_target_config(path: str) -> dict:
     return config
 
 
+def _match_rules(targets_df, rules):
+    """Build a boolean mask matching any of the given rules."""
+    mask = np.zeros(len(targets_df), dtype=bool)
+    for rule in rules:
+        rule_mask = targets_df["variable"] == rule["variable"]
+        if "geo_level" in rule:
+            rule_mask = rule_mask & (
+                targets_df["geo_level"] == rule["geo_level"]
+            )
+        if "domain_variable" in rule:
+            rule_mask = rule_mask & (
+                targets_df["domain_variable"]
+                == rule["domain_variable"]
+            )
+        mask |= rule_mask
+    return mask
+
+
 def apply_target_config(
     targets_df: "pd.DataFrame",
     X_sparse,
     target_names: list,
     config: dict,
 ) -> tuple:
-    """Filter targets based on exclusion config.
+    """Filter targets based on include/exclude config.
 
-    Each exclude rule matches rows where variable and geo_level
-    both match. Optionally matches domain_variable too.
+    Use ``include`` to keep only matching targets, or ``exclude``
+    to drop matching targets.  Both support ``variable``,
+    ``geo_level`` (optional), and ``domain_variable`` (optional).
+    If both are present, ``include`` is applied first, then
+    ``exclude`` removes from the included set.
 
     Args:
         targets_df: DataFrame with target rows.
         X_sparse: Sparse matrix (targets x records).
         target_names: List of target name strings.
-        config: Config dict with 'exclude' list.
+        config: Config dict with 'include' and/or 'exclude' list.
 
     Returns:
         (filtered_targets_df, filtered_X_sparse, filtered_names)
     """
-    import pandas as pd
-
+    include_rules = config.get("include", [])
     exclude_rules = config.get("exclude", [])
-    if not exclude_rules:
+
+    if not include_rules and not exclude_rules:
         return targets_df, X_sparse, target_names
 
     n_before = len(targets_df)
-    keep_mask = np.ones(n_before, dtype=bool)
 
-    for rule in exclude_rules:
-        var = rule["variable"]
-        geo = rule["geo_level"]
-        rule_mask = (targets_df["variable"] == var) & (
-            targets_df["geo_level"] == geo
-        )
-        if "domain_variable" in rule:
-            rule_mask = rule_mask & (
-                targets_df["domain_variable"] == rule["domain_variable"]
-            )
-        keep_mask &= ~rule_mask
+    if include_rules:
+        keep_mask = _match_rules(targets_df, include_rules)
+    else:
+        keep_mask = np.ones(n_before, dtype=bool)
+
+    if exclude_rules:
+        drop_mask = _match_rules(targets_df, exclude_rules)
+        keep_mask &= ~drop_mask
 
     n_dropped = n_before - keep_mask.sum()
     logger.info(

@@ -1261,12 +1261,7 @@ def main(argv=None):
     base_n_records = geography_info.get("base_n_records")
 
     if cd_geoid is not None and base_n_records is not None:
-        from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
-            get_all_cds_from_database,
-        )
-
-        db_uri = f"sqlite:///{db_path}"
-        cds_ordered = get_all_cds_from_database(db_uri)
+        cds_ordered = sorted(set(cd_geoid))
         stacked_weights = convert_weights_to_stacked_format(
             weights=weights,
             cd_geoid=cd_geoid,

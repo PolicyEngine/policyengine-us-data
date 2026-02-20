@@ -59,8 +59,6 @@ include:
     geo_level: national
   - variable: over_the_counter_health_expenses
     geo_level: national
-  - variable: roth_ira_contributions
-    geo_level: national
   - variable: social_security
     geo_level: national
   - variable: social_security_disability

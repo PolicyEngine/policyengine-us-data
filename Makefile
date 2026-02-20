@@ -108,6 +108,9 @@ calibrate-build: data
 		--target-config policyengine_us_data/calibration/target_config.yaml \
 		--build-only
 
+validate-package:
+	python -m policyengine_us_data.calibration.validate_package
+
 publish-local-area:
 	python policyengine_us_data/datasets/cps/local_area_calibration/publish_local_area.py
 

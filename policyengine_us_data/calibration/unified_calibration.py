@@ -351,8 +351,7 @@ def _match_rules(targets_df, rules):
             )
         if "domain_variable" in rule:
             rule_mask = rule_mask & (
-                targets_df["domain_variable"]
-                == rule["domain_variable"]
+                targets_df["domain_variable"] == rule["domain_variable"]
             )
         mask |= rule_mask
     return mask
@@ -1006,19 +1005,20 @@ def run_calibration(
             targets_df, X_sparse, target_names, target_config
         )
 
-    # Step 6c: Save calibration package
-    if package_output_path:
-        import datetime
+    # Step 6c: Construct metadata and save calibration package
+    import datetime
 
-        metadata = {
-            "dataset_path": dataset_path,
-            "db_path": db_path,
-            "n_clones": n_clones,
-            "n_records": X_sparse.shape[1],
-            "seed": seed,
-            "created_at": datetime.datetime.now().isoformat(),
-            "target_config": target_config,
-        }
+    metadata = {
+        "dataset_path": dataset_path,
+        "db_path": db_path,
+        "n_clones": n_clones,
+        "n_records": X_sparse.shape[1],
+        "seed": seed,
+        "created_at": datetime.datetime.now().isoformat(),
+        "target_config": target_config,
+    }
+
+    if package_output_path:
         save_calibration_package(
             package_output_path,
             X_sparse,
@@ -1028,7 +1028,19 @@ def run_calibration(
         )
 
     if build_only:
-        logger.info("Build-only mode: skipping fitting")
+        from policyengine_us_data.calibration.validate_package import (
+            validate_package,
+            format_report,
+        )
+
+        package = {
+            "X_sparse": X_sparse,
+            "targets_df": targets_df,
+            "target_names": target_names,
+            "metadata": metadata,
+        }
+        result = validate_package(package)
+        print(format_report(result))
         return None, targets_df, X_sparse, target_names
 
     # Step 7: L0 calibration

@@ -1,4 +1,4 @@
-- bump: patch
+- bump: minor
   changes:
-    fixed:
-      - Add TANF takeup (22%) assignment to CPS data pipeline so takes_up_tanf_if_eligible is persisted in the dataset.
+    enhanced:
+      - Add capital income predictors (interest, dividend, rental income) to SIPP liquid asset imputation model for improved accuracy.

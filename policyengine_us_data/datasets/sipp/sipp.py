@@ -156,6 +156,11 @@ ASSET_COLUMNS = [
     "TVAL_BANK",  # Checking, savings, money market
     "TVAL_STMF",  # Stocks and mutual funds
     "TVAL_BOND",  # Bonds and government securities
+    # Income from assets (monthly, person-level)
+    "TINC_BANK",  # Interest from bank accounts
+    "TINC_STMF",  # Dividends from stocks/mutual funds
+    "TINC_BOND",  # Interest from bonds
+    "TINC_RENT",  # Rental income
     # SSI receipt (for validation)
     "RSSI_YRYN",  # Received SSI in at least one month
 ]
@@ -200,6 +205,14 @@ def train_asset_model():
     df["household_weight"] = df.WPFINWGT
     df["household_id"] = df.SSUID
 
+    # Capital income predictors (annualized from monthly SIPP)
+    # Maps to CPS: interest_income, dividend_income, rental_income
+    df["interest_income"] = (
+        df["TINC_BANK"].fillna(0) + df["TINC_BOND"].fillna(0)
+    ) * 12
+    df["dividend_income"] = df["TINC_STMF"].fillna(0) * 12
+    df["rental_income"] = df["TINC_RENT"].fillna(0) * 12
+
     # Calculate household-level counts
     df["is_under_18"] = df.TAGE < 18
     df["count_under_18"] = (
@@ -210,6 +223,9 @@ def train_asset_model():
         [
             "household_id",
             "employment_income",
+            "interest_income",
+            "dividend_income",
+            "rental_income",
             "bank_account_assets",
             "stock_assets",
             "bond_assets",
@@ -239,6 +255,9 @@ def train_asset_model():
         X_train=sipp,
         predictors=[
             "employment_income",
+            "interest_income",
+            "dividend_income",
+            "rental_income",
             "age",
             "is_female",
             "is_married",

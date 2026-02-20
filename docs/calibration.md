@@ -314,6 +314,25 @@ The package is a pickled Python dict:
 
 The `targets_df` DataFrame has columns: `variable`, `geo_level`, `geographic_id`, `domain_variable`, `value`, and others from the database.
 
+## Validating a Package
+
+Before uploading a package to Modal, validate it:
+
+```bash
+# Default package location
+python -m policyengine_us_data.calibration.validate_package
+
+# Specific package
+python -m policyengine_us_data.calibration.validate_package path/to/calibration_package.pkl
+
+# Strict mode: fail if any target has row_sum/target < 1%
+python -m policyengine_us_data.calibration.validate_package --strict
+```
+
+Exit codes: **0** = pass, **1** = impossible targets, **2** = strict ratio failures.
+
+Validation also runs automatically after `--build-only`.
+
 ## Hyperparameter Tuning Guide
 
 The three key hyperparameters control the tradeoff between target accuracy and sparsity:

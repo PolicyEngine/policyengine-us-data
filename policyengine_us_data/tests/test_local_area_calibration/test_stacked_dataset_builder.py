@@ -12,7 +12,7 @@ from policyengine_us_data.datasets.cps.local_area_calibration.stacked_dataset_bu
 )
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "test_fixture_50hh.h5")
-TEST_CDS = ["3701", "201"]  # NC-01 and AK at-large
+TEST_CDS = ["3701", "200"]  # NC-01 and AK at-large
 SEED = 42
 
 

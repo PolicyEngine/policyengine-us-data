@@ -410,6 +410,7 @@ def save_calibration_package(
     target_names: list,
     metadata: dict,
     initial_weights: np.ndarray = None,
+    cd_geoid: np.ndarray = None,
 ) -> None:
     """Save calibration package to pickle.
 
@@ -420,6 +421,7 @@ def save_calibration_package(
         target_names: Target name list.
         metadata: Run metadata dict.
         initial_weights: Pre-computed initial weight array.
+        cd_geoid: CD GEOID array from geography assignment.
     """
     import pickle
 
@@ -429,6 +431,7 @@ def save_calibration_package(
         "target_names": target_names,
         "metadata": metadata,
         "initial_weights": initial_weights,
+        "cd_geoid": cd_geoid,
     }
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
@@ -738,6 +741,56 @@ def fit_l0_weights(
     return weights
 
 
+def convert_weights_to_stacked_format(
+    weights: np.ndarray,
+    cd_geoid: np.ndarray,
+    base_n_records: int,
+    cds_ordered: list,
+) -> np.ndarray:
+    """Convert column-ordered weights to (n_cds, n_records) stacked format.
+
+    The L0 calibration produces one weight per column, where columns
+    are ordered by clone (column i -> clone i // n_records, record
+    i % n_records) with random CD assignments. This function
+    aggregates weights across clones into the (n_cds, n_records)
+    layout expected by stacked_dataset_builder.
+
+    Args:
+        weights: Raw weight vector from L0 fitting, length
+            n_clones * base_n_records.
+        cd_geoid: CD GEOID per column from geography assignment.
+        base_n_records: Number of base households (before cloning).
+        cds_ordered: Ordered list of CD GEOIDs defining row order.
+
+    Returns:
+        Flat array of length n_cds * base_n_records that reshapes
+        to (n_cds, base_n_records).
+    """
+    n_total = len(weights)
+    n_cds = len(cds_ordered)
+
+    cd_to_idx = {cd: idx for idx, cd in enumerate(cds_ordered)}
+    record_indices = np.arange(n_total) % base_n_records
+    cd_row_indices = np.array([cd_to_idx[cd] for cd in cd_geoid])
+    flat_indices = cd_row_indices * base_n_records + record_indices
+
+    W = np.zeros(n_cds * base_n_records, dtype=np.float64)
+    np.add.at(W, flat_indices, weights)
+
+    assert np.isclose(
+        W.sum(), weights.sum()
+    ), f"Weight sum mismatch: {W.sum()} vs {weights.sum()}"
+    logger.info(
+        "Converted weights to stacked format: "
+        "(%d, %d) = %d elements, sum=%.1f",
+        n_cds,
+        base_n_records,
+        len(W),
+        W.sum(),
+    )
+    return W
+
+
 def compute_diagnostics(
     weights: np.ndarray,
     X_sparse,
@@ -815,8 +868,9 @@ def run_calibration(
         log_path: Path for per-target calibration log CSV.
 
     Returns:
-        (weights, targets_df, X_sparse, target_names)
+        (weights, targets_df, X_sparse, target_names, geography_info)
         weights is None when build_only=True.
+        geography_info is a dict with cd_geoid and base_n_records.
     """
     import time
 
@@ -855,7 +909,17 @@ def run_calibration(
             "Total pipeline (from package): %.1f min",
             (time.time() - t0) / 60,
         )
-        return weights, targets_df, X_sparse, target_names
+        geography_info = {
+            "cd_geoid": package.get("cd_geoid"),
+            "base_n_records": package["metadata"].get("base_n_records"),
+        }
+        return (
+            weights,
+            targets_df,
+            X_sparse,
+            target_names,
+            geography_info,
+        )
 
     from policyengine_us import Microsimulation
 
@@ -980,6 +1044,7 @@ def run_calibration(
         "db_path": db_path,
         "n_clones": n_clones,
         "n_records": X_sparse.shape[1],
+        "base_n_records": n_records,
         "seed": seed,
         "created_at": datetime.datetime.now().isoformat(),
     }
@@ -993,6 +1058,7 @@ def run_calibration(
             target_names,
             metadata,
             initial_weights=full_initial_weights,
+            cd_geoid=geography.cd_geoid,
         )
 
     # Step 6c: Apply target config filtering (for fit or validation)
@@ -1018,7 +1084,17 @@ def run_calibration(
         }
         result = validate_package(package)
         print(format_report(result))
-        return None, targets_df, X_sparse, target_names
+        geography_info = {
+            "cd_geoid": geography.cd_geoid,
+            "base_n_records": n_records,
+        }
+        return (
+            None,
+            targets_df,
+            X_sparse,
+            target_names,
+            geography_info,
+        )
 
     # Step 7: L0 calibration
     targets = targets_df["value"].values
@@ -1051,7 +1127,17 @@ def run_calibration(
         "Total pipeline: %.1f min",
         (time.time() - t0) / 60,
     )
-    return weights, targets_df, X_sparse, target_names
+    geography_info = {
+        "cd_geoid": geography.cd_geoid,
+        "base_n_records": n_records,
+    }
+    return (
+        weights,
+        targets_df,
+        X_sparse,
+        target_names,
+        geography_info,
+    )
 
 
 def main(argv=None):
@@ -1118,7 +1204,13 @@ def main(argv=None):
     cal_log_path = None
     if args.log_freq is not None:
         cal_log_path = str(output_dir / "calibration_log.csv")
-    weights, targets_df, X_sparse, target_names = run_calibration(
+    (
+        weights,
+        targets_df,
+        X_sparse,
+        target_names,
+        geography_info,
+    ) = run_calibration(
         dataset_path=dataset_path,
         db_path=db_path,
         n_clones=args.n_clones,
@@ -1145,13 +1237,7 @@ def main(argv=None):
         logger.info("Build-only complete. Package saved.")
         return
 
-    # Save weights
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    np.save(output_path, weights)
-    logger.info("Weights saved to %s", output_path)
-    print(f"OUTPUT_PATH:{output_path}")
-
-    # Save diagnostics
+    # Diagnostics (raw weights match X_sparse column layout)
     output_dir = Path(output_path).parent
     diag_df = compute_diagnostics(weights, X_sparse, targets_df, target_names)
     diag_path = output_dir / "unified_diagnostics.csv"
@@ -1170,8 +1256,40 @@ def main(argv=None):
         (err_pct < 25).mean() * 100,
     )
 
+    # Convert to stacked format for stacked_dataset_builder
+    cd_geoid = geography_info.get("cd_geoid")
+    base_n_records = geography_info.get("base_n_records")
+
+    if cd_geoid is not None and base_n_records is not None:
+        from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+            get_all_cds_from_database,
+        )
+
+        db_uri = f"sqlite:///{db_path}"
+        cds_ordered = get_all_cds_from_database(db_uri)
+        stacked_weights = convert_weights_to_stacked_format(
+            weights=weights,
+            cd_geoid=cd_geoid,
+            base_n_records=base_n_records,
+            cds_ordered=cds_ordered,
+        )
+    else:
+        logger.warning("No geography info available; saving raw weights")
+        stacked_weights = weights
+
+    # Save weights
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    np.save(output_path, stacked_weights)
+    logger.info("Weights saved to %s", output_path)
+    print(f"OUTPUT_PATH:{output_path}")
+
     # Save run config
     t_end = time.time()
+    weight_format = (
+        "stacked"
+        if cd_geoid is not None and base_n_records is not None
+        else "raw"
+    )
     run_config = {
         "dataset": dataset_path,
         "db_path": db_path,
@@ -1189,8 +1307,9 @@ def main(argv=None):
         "target_config": args.target_config,
         "n_targets": len(targets_df),
         "n_records": X_sparse.shape[1],
-        "weight_sum": float(weights.sum()),
-        "weight_nonzero": int((weights > 0).sum()),
+        "weight_format": weight_format,
+        "weight_sum": float(stacked_weights.sum()),
+        "weight_nonzero": int((stacked_weights > 0).sum()),
         "mean_error_pct": float(err_pct.mean()),
         "elapsed_seconds": round(t_end - t_start, 1),
     }

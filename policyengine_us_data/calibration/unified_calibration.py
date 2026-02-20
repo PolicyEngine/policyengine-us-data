@@ -419,6 +419,7 @@ def save_calibration_package(
     targets_df: "pd.DataFrame",
     target_names: list,
     metadata: dict,
+    initial_weights: np.ndarray = None,
 ) -> None:
     """Save calibration package to pickle.
 
@@ -428,6 +429,7 @@ def save_calibration_package(
         targets_df: Targets DataFrame.
         target_names: Target name list.
         metadata: Run metadata dict.
+        initial_weights: Pre-computed initial weight array.
     """
     import pickle
 
@@ -436,6 +438,7 @@ def save_calibration_package(
         "targets_df": targets_df,
         "target_names": target_names,
         "metadata": metadata,
+        "initial_weights": initial_weights,
     }
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
@@ -464,6 +467,68 @@ def load_calibration_package(path: str) -> dict:
     return package
 
 
+def compute_initial_weights(
+    X_sparse,
+    targets_df: "pd.DataFrame",
+) -> np.ndarray:
+    """Compute population-based initial weights from age targets.
+
+    For each congressional district, sums person_count targets where
+    domain_variable == "age" to get district population, then divides
+    by the number of columns (households) active in that district.
+
+    Args:
+        X_sparse: Sparse matrix (targets x records).
+        targets_df: Targets DataFrame with columns: variable,
+            domain_variable, geo_level, geographic_id, value.
+
+    Returns:
+        Weight array of shape (n_records,).
+    """
+    n_total = X_sparse.shape[1]
+
+    age_mask = (
+        (targets_df["variable"] == "person_count")
+        & (targets_df["domain_variable"] == "age")
+        & (targets_df["geo_level"] == "district")
+    )
+    age_rows = targets_df[age_mask]
+
+    if len(age_rows) == 0:
+        logger.warning(
+            "No person_count/age/district targets found; "
+            "falling back to uniform weights=100"
+        )
+        return np.ones(n_total) * 100
+
+    initial_weights = np.ones(n_total) * 100
+    cd_groups = age_rows.groupby("geographic_id")
+
+    for cd_id, group in cd_groups:
+        cd_pop = group["value"].sum()
+        row_indices = group.index.tolist()
+        col_set = set()
+        for ri in row_indices:
+            row = X_sparse[ri]
+            col_set.update(row.indices)
+        n_cols = len(col_set)
+        if n_cols == 0:
+            continue
+        w = cd_pop / n_cols
+        for c in col_set:
+            initial_weights[c] = w
+
+    n_unique = len(np.unique(initial_weights))
+    logger.info(
+        "Initial weights: min=%.1f, max=%.1f, mean=%.1f, " "%d unique values",
+        initial_weights.min(),
+        initial_weights.max(),
+        initial_weights.mean(),
+        n_unique,
+    )
+    return initial_weights
+
+
 def fit_l0_weights(
     X_sparse,
     targets: np.ndarray,
@@ -477,6 +542,8 @@ def fit_l0_weights(
     log_freq: int = None,
     log_path: str = None,
     target_names: list = None,
+    initial_weights: np.ndarray = None,
+    targets_df: "pd.DataFrame" = None,
 ) -> np.ndarray:
     """Fit L0-regularized calibration weights.
 
@@ -494,6 +561,10 @@ def fit_l0_weights(
             None disables logging.
         log_path: Path for the per-target calibration log CSV.
         target_names: Human-readable target names for the log.
+        initial_weights: Pre-computed initial weights. If None,
+            computed from targets_df age targets.
+        targets_df: Targets DataFrame, used to compute
+            initial_weights when not provided.
 
     Returns:
         Weight array of shape (n_records,).
@@ -512,7 +583,8 @@ def fit_l0_weights(
     )
 
     n_total = X_sparse.shape[1]
-    initial_weights = np.ones(n_total) * 100
+    if initial_weights is None:
+        initial_weights = compute_initial_weights(X_sparse, targets_df)
 
     logger.info(
         "L0 calibration: %d targets, %d features, "
@@ -839,6 +911,7 @@ def run_calibration(
                 targets_df, X_sparse, target_names, target_config
             )
 
+        initial_weights = package.get("initial_weights")
         targets = targets_df["value"].values
         weights = fit_l0_weights(
             X_sparse=X_sparse,
@@ -852,6 +925,8 @@ def run_calibration(
             log_freq=log_freq,
             log_path=log_path,
             target_names=target_names,
+            initial_weights=initial_weights,
+            targets_df=targets_df,
         )
         logger.info(
             "Total pipeline (from package): %.1f min",
@@ -1005,7 +1080,9 @@ def run_calibration(
             targets_df, X_sparse, target_names, target_config
         )
 
-    # Step 6c: Construct metadata and save calibration package
+    # Step 6c: Compute initial weights and save calibration package
+    initial_weights = compute_initial_weights(X_sparse, targets_df)
+
     import datetime
 
     metadata = {
@@ -1025,6 +1102,7 @@ def run_calibration(
             targets_df,
             target_names,
             metadata,
+            initial_weights=initial_weights,
         )
 
     if build_only:
@@ -1038,6 +1116,7 @@ def run_calibration(
             "targets_df": targets_df,
             "target_names": target_names,
             "metadata": metadata,
+            "initial_weights": initial_weights,
         }
         result = validate_package(package)
         print(format_report(result))
@@ -1066,6 +1145,8 @@ def run_calibration(
         log_freq=log_freq,
         log_path=log_path,
         target_names=target_names,
+        initial_weights=initial_weights,
+        targets_df=targets_df,
     )
 
     logger.info(

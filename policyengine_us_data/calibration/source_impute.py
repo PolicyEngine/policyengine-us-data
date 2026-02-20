@@ -72,6 +72,9 @@ SIPP_TIPS_PREDICTORS = [
 
 SIPP_ASSETS_PREDICTORS = [
     "employment_income",
+    "interest_income",
+    "dividend_income",
+    "rental_income",
     "age",
     "is_female",
     "is_married",
@@ -458,6 +461,10 @@ def _impute_sipp(
             "TVAL_BANK",
             "TVAL_STMF",
             "TVAL_BOND",
+            "TINC_BANK",
+            "TINC_STMF",
+            "TINC_BOND",
+            "TINC_RENT",
         ]
         asset_df = pd.read_csv(
             STORAGE_FOLDER / "pu2023.csv",
@@ -473,6 +480,11 @@ def _impute_sipp(
         asset_df["is_female"] = asset_df.ESEX == 2
         asset_df["is_married"] = asset_df.EMS == 1
         asset_df["employment_income"] = asset_df.TPTOTINC * 12
+        asset_df["interest_income"] = (
+            asset_df["TINC_BANK"].fillna(0) + asset_df["TINC_BOND"].fillna(0)
+        ) * 12
+        asset_df["dividend_income"] = asset_df["TINC_STMF"].fillna(0) * 12
+        asset_df["rental_income"] = asset_df["TINC_RENT"].fillna(0) * 12
         asset_df["household_weight"] = asset_df.WPFINWGT
         asset_df["is_under_18"] = asset_df.TAGE < 18
         asset_df["count_under_18"] = (
@@ -484,6 +496,9 @@ def _impute_sipp(
 
         asset_train_cols = [
             "employment_income",
+            "interest_income",
+            "dividend_income",
+            "rental_income",
             "bank_account_assets",
             "stock_assets",
             "bond_assets",
@@ -510,7 +525,14 @@ def _impute_sipp(
             data,
             time_period,
             dataset_path,
-            ["employment_income", "age", "is_male"],
+            [
+                "employment_income",
+                "interest_income",
+                "dividend_income",
+                "rental_income",
+                "age",
+                "is_male",
+            ],
         )
         if "is_male" in cps_asset_df.columns:
             cps_asset_df["is_female"] = (
@@ -529,6 +551,18 @@ def _impute_sipp(
             if "count_under_18" in cps_tip_df.columns
             else 0.0
         )
+        for cap_var in [
+            "interest_income",
+            "dividend_income",
+            "rental_income",
+        ]:
+            if cap_var not in cps_asset_df.columns:
+                if cap_var in data:
+                    cps_asset_df[cap_var] = data[cap_var][time_period].astype(
+                        np.float32
+                    )
+                else:
+                    cps_asset_df[cap_var] = 0.0
 
         asset_vars = [
             "bank_account_assets",

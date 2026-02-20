@@ -548,23 +548,11 @@ def load_cd_geoadj_values(
         )
         rent_lookup[row["cd_geoid"]] = geoadj
 
-    # Map each CD to calibrate to its geoadj value
-    # Handle at-large districts: database uses XX01, rent CSV uses XX00
     geoadj_dict = {}
     for cd in cds_to_calibrate:
         if cd in rent_lookup:
             geoadj_dict[cd] = rent_lookup[cd]
         else:
-            # Try at-large mapping: XX01 -> XX00
-            cd_int = int(cd)
-            state_fips = cd_int // 100
-            district = cd_int % 100
-            if district == 1:
-                at_large_cd = str(state_fips * 100)  # XX00
-                if at_large_cd in rent_lookup:
-                    geoadj_dict[cd] = rent_lookup[at_large_cd]
-                    continue
-            # Fallback to national average (geoadj = 1.0)
             print(f"Warning: No rent data for CD {cd}, using geoadj=1.0")
             geoadj_dict[cd] = 1.0
 

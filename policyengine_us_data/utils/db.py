@@ -144,10 +144,6 @@ def parse_ucgid(ucgid_str: str) -> Dict:
         state_and_district = ucgid_str[9:]
         state_fips = int(state_and_district[:2])
         district_number = int(state_and_district[2:])
-        if district_number == 0 or (
-            state_fips == 11 and district_number == 98
-        ):
-            district_number = 1
         cd_geoid = state_fips * 100 + district_number
         return {
             "type": "district",

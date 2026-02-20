@@ -40,8 +40,9 @@ def fetch_congressional_districts(year):
     df["state_fips"] = df["state"].astype(int)
     df = df[df["state_fips"] <= 56].copy()
     df["district_number"] = df["congressional district"].apply(
-        lambda x: 0 if x in ["ZZ", "98"] else int(x)
+        lambda x: int(x) if x not in ["ZZ"] else -1
     )
+    df = df[df["district_number"] >= 0].copy()
 
     # Filter out statewide summary records for multi-district states
     df["n_districts"] = df.groupby("state_fips")["state_fips"].transform(
@@ -49,8 +50,6 @@ def fetch_congressional_districts(year):
     )
     df = df[(df["n_districts"] == 1) | (df["district_number"] > 0)].copy()
     df = df.drop(columns=["n_districts"])
-
-    df.loc[df["district_number"] == 0, "district_number"] = 1
     df["congressional_district_geoid"] = (
         df["state_fips"] * 100 + df["district_number"]
     )

@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data calibrate publish-local-area clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
+.PHONY: all format test install download upload docker documentation data calibrate calibrate-build publish-local-area clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
 
 HF_CLONE_DIR ?= $(HOME)/huggingface/policyengine-us-data
 
@@ -99,7 +99,15 @@ data: download
 
 calibrate: data
 	python -m policyengine_us_data.calibration.unified_calibration \
-		--puf-dataset policyengine_us_data/storage/puf_2024.h5
+		--target-config policyengine_us_data/calibration/target_config.yaml
+
+calibrate-build: data
+	python -m policyengine_us_data.calibration.unified_calibration \
+		--target-config policyengine_us_data/calibration/target_config.yaml \
+		--build-only
+
+validate-package:
+	python -m policyengine_us_data.calibration.validate_package
 
 publish-local-area:
 	python policyengine_us_data/datasets/cps/local_area_calibration/publish_local_area.py

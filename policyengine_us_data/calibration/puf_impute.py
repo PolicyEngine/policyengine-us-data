@@ -162,6 +162,9 @@ OVERRIDDEN_IMPUTED_VARIABLES = [
 ]
 
 
+MINIMUM_RETIREMENT_AGE = 62
+
+
 def reconcile_ss_subcomponents(
     data: Dict[str, Dict[int, np.ndarray]],
     n_cps: int,
@@ -175,8 +178,8 @@ def reconcile_ss_subcomponents(
     proportionally so they match the new total.
 
     For records where CPS had zero SS but PUF imputes a positive
-    value (new recipients), the full amount is assigned to
-    social_security_retirement.
+    value (new recipients), the age heuristic from CPS construction
+    is used: age >= 62 -> retirement, age < 62 -> disability.
 
     Modifies ``data`` in place. Only the PUF half (indices
     n_cps .. 2*n_cps) is changed.
@@ -193,6 +196,13 @@ def reconcile_ss_subcomponents(
     cps_ss = ss[:n_cps]
     puf_ss = ss[n_cps:]
 
+    # Age for the CPS half (PUF half has same demographics).
+    age = None
+    if "age" in data:
+        age = data["age"][time_period][:n_cps]
+
+    new_recip = (cps_ss == 0) & (puf_ss > 0)
+
     for sub in SS_SUBCOMPONENTS:
         if sub not in data:
             continue
@@ -205,11 +215,29 @@ def reconcile_ss_subcomponents(
         new_puf = ratio * puf_ss
 
         # New recipients: CPS had 0 SS but PUF imputed positive.
-        new_recip = (cps_ss == 0) & (puf_ss > 0)
-        if sub == "social_security_retirement":
-            new_puf = np.where(new_recip, puf_ss, new_puf)
-        else:
-            new_puf = np.where(new_recip, 0.0, new_puf)
+        # Use age heuristic: >= 62 -> retirement, < 62 -> disability.
+        if new_recip.any():
+            if age is not None:
+                if sub == "social_security_retirement":
+                    new_puf = np.where(
+                        new_recip & (age >= MINIMUM_RETIREMENT_AGE),
+                        puf_ss,
+                        new_puf,
+                    )
+                elif sub == "social_security_disability":
+                    new_puf = np.where(
+                        new_recip & (age < MINIMUM_RETIREMENT_AGE),
+                        puf_ss,
+                        new_puf,
+                    )
+                else:
+                    new_puf = np.where(new_recip, 0.0, new_puf)
+            else:
+                # No age data; fall back to retirement.
+                if sub == "social_security_retirement":
+                    new_puf = np.where(new_recip, puf_ss, new_puf)
+                else:
+                    new_puf = np.where(new_recip, 0.0, new_puf)
 
         # PUF imputed zero -> clear sub-component
         new_puf = np.where(puf_ss == 0, 0.0, new_puf)

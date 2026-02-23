@@ -102,6 +102,13 @@ IMPUTED_VARIABLES = [
     "self_employment_income_would_be_qualified",
 ]
 
+SS_SUBCOMPONENTS = [
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_survivors",
+    "social_security_dependents",
+]
+
 OVERRIDDEN_IMPUTED_VARIABLES = [
     "partnership_s_corp_income",
     "interest_deduction",
@@ -153,6 +160,62 @@ OVERRIDDEN_IMPUTED_VARIABLES = [
     "partnership_s_corp_income_would_be_qualified",
     "rental_income_would_be_qualified",
 ]
+
+
+def reconcile_ss_subcomponents(
+    data: Dict[str, Dict[int, np.ndarray]],
+    n_cps: int,
+    time_period: int,
+) -> None:
+    """Rescale SS sub-components so they sum to social_security.
+
+    After PUF imputation replaces social_security on the PUF half,
+    the sub-components (retirement, disability, survivors, dependents)
+    still hold the original CPS values. This function rescales them
+    proportionally so they match the new total.
+
+    For records where CPS had zero SS but PUF imputes a positive
+    value (new recipients), the full amount is assigned to
+    social_security_retirement.
+
+    Modifies ``data`` in place. Only the PUF half (indices
+    n_cps .. 2*n_cps) is changed.
+
+    Args:
+        data: Dataset dict {variable: {time_period: array}}.
+        n_cps: Number of records in the CPS half.
+        time_period: Tax year key into data dicts.
+    """
+    if "social_security" not in data:
+        return
+
+    ss = data["social_security"][time_period]
+    cps_ss = ss[:n_cps]
+    puf_ss = ss[n_cps:]
+
+    for sub in SS_SUBCOMPONENTS:
+        if sub not in data:
+            continue
+        arr = data[sub][time_period]
+        cps_sub = arr[:n_cps]
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = np.where(cps_ss > 0, cps_sub / cps_ss, 0.0)
+
+        new_puf = ratio * puf_ss
+
+        # New recipients: CPS had 0 SS but PUF imputed positive.
+        new_recip = (cps_ss == 0) & (puf_ss > 0)
+        if sub == "social_security_retirement":
+            new_puf = np.where(new_recip, puf_ss, new_puf)
+        else:
+            new_puf = np.where(new_recip, 0.0, new_puf)
+
+        # PUF imputed zero -> clear sub-component
+        new_puf = np.where(puf_ss == 0, 0.0, new_puf)
+
+        arr[n_cps:] = new_puf.astype(arr.dtype)
+        data[sub][time_period] = arr
 
 
 def puf_clone_dataset(
@@ -270,6 +333,9 @@ def puf_clone_dataset(
 
     if cps_sim is not None:
         del cps_sim
+
+    # Ensure SS sub-components match the (possibly imputed) total.
+    reconcile_ss_subcomponents(new_data, person_count, time_period)
 
     logger.info(
         "PUF clone complete: %d -> %d households",

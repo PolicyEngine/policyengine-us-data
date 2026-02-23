@@ -164,6 +164,153 @@ OVERRIDDEN_IMPUTED_VARIABLES = [
 
 MINIMUM_RETIREMENT_AGE = 62
 
+SS_SPLIT_PREDICTORS = [
+    "age",
+    "is_male",
+    "tax_unit_is_joint",
+    "is_tax_unit_head",
+    "is_tax_unit_dependent",
+]
+
+MIN_QRF_TRAINING_RECORDS = 100
+
+
+def _qrf_ss_shares(
+    data: Dict[str, Dict[int, np.ndarray]],
+    n_cps: int,
+    time_period: int,
+    new_recip: np.ndarray,
+) -> Optional[Dict[str, np.ndarray]]:
+    """Predict SS sub-component shares for new recipients via QRF.
+
+    Trains on CPS records that have SS > 0 (where the reason-code
+    split is known), then predicts shares for records where CPS had
+    zero SS but PUF imputed a positive value.
+
+    Args:
+        data: Dataset dict.
+        n_cps: Records in CPS half.
+        time_period: Tax year.
+        new_recip: Boolean mask (length n_cps) for new recipients.
+
+    Returns:
+        Dict mapping sub-component name to predicted share arrays
+        (length = new_recip.sum()), or None if QRF is unavailable
+        or training data is insufficient.
+    """
+    try:
+        from microimpute.models.qrf import QRF
+    except ImportError:
+        return None
+
+    cps_ss = data["social_security"][time_period][:n_cps]
+    has_ss = cps_ss > 0
+
+    if has_ss.sum() < MIN_QRF_TRAINING_RECORDS:
+        return None
+
+    # Build training features from available predictors.
+    predictors = []
+    train_cols = {}
+    test_cols = {}
+    for pred in SS_SPLIT_PREDICTORS:
+        if pred not in data:
+            continue
+        vals = data[pred][time_period][:n_cps]
+        train_cols[pred] = vals[has_ss].astype(np.float32)
+        test_cols[pred] = vals[new_recip].astype(np.float32)
+        predictors.append(pred)
+
+    if not predictors:
+        return None
+
+    X_train = pd.DataFrame(train_cols)
+    X_test = pd.DataFrame(test_cols)
+
+    # Training targets: share going to each sub-component (0 or 1).
+    share_vars = []
+    with np.errstate(divide="ignore", invalid="ignore"):
+        for sub in SS_SUBCOMPONENTS:
+            if sub not in data:
+                continue
+            sub_vals = data[sub][time_period][:n_cps][has_ss]
+            share_name = sub + "_share"
+            X_train[share_name] = np.where(
+                cps_ss[has_ss] > 0,
+                sub_vals / cps_ss[has_ss],
+                0.0,
+            )
+            share_vars.append(share_name)
+
+    if not share_vars:
+        return None
+
+    qrf = QRF(log_level="WARNING", memory_efficient=True)
+    try:
+        fitted = qrf.fit(
+            X_train=X_train[predictors + share_vars],
+            predictors=predictors,
+            imputed_variables=share_vars,
+            n_jobs=1,
+        )
+        predictions = fitted.predict(X_test=X_test)
+    except Exception:
+        logger.warning("QRF SS split failed, falling back to heuristic")
+        return None
+
+    # Clip to [0, 1] and normalise so shares sum to 1.
+    shares = {}
+    total = np.zeros(len(X_test))
+    for sub in SS_SUBCOMPONENTS:
+        key = sub + "_share"
+        if key in predictions.columns:
+            s = np.clip(predictions[key].values, 0, 1)
+            shares[sub] = s
+            total += s
+
+    for sub in shares:
+        shares[sub] = np.where(total > 0, shares[sub] / total, 0.0)
+
+    del fitted, predictions
+    gc.collect()
+
+    logger.info(
+        "QRF SS split: predicted shares for %d new recipients",
+        new_recip.sum(),
+    )
+    return shares
+
+
+def _age_heuristic_ss_shares(
+    data: Dict[str, Dict[int, np.ndarray]],
+    n_cps: int,
+    time_period: int,
+    new_recip: np.ndarray,
+) -> Dict[str, np.ndarray]:
+    """Fallback: assign new recipients by age threshold.
+
+    Age >= 62 -> retirement, < 62 -> disability.
+    If age is unavailable, all go to retirement.
+    """
+    n_new = new_recip.sum()
+    shares = {sub: np.zeros(n_new) for sub in SS_SUBCOMPONENTS}
+
+    age = None
+    if "age" in data:
+        age = data["age"][time_period][:n_cps][new_recip]
+
+    if age is not None:
+        is_old = age >= MINIMUM_RETIREMENT_AGE
+        if "social_security_retirement" in shares:
+            shares["social_security_retirement"] = is_old.astype(np.float64)
+        if "social_security_disability" in shares:
+            shares["social_security_disability"] = (~is_old).astype(np.float64)
+    else:
+        if "social_security_retirement" in shares:
+            shares["social_security_retirement"] = np.ones(n_new)
+
+    return shares
+
 
 def reconcile_ss_subcomponents(
     data: Dict[str, Dict[int, np.ndarray]],
@@ -177,9 +324,10 @@ def reconcile_ss_subcomponents(
     still hold the original CPS values. This function rescales them
     proportionally so they match the new total.
 
-    For records where CPS had zero SS but PUF imputes a positive
-    value (new recipients), the age heuristic from CPS construction
-    is used: age >= 62 -> retirement, age < 62 -> disability.
+    For new recipients (CPS had zero SS, PUF imputed positive), a
+    QRF is trained on CPS records to predict the sub-component split
+    from demographics. Falls back to an age heuristic (>= 62 ->
+    retirement, < 62 -> disability) when QRF is unavailable.
 
     Modifies ``data`` in place. Only the PUF half (indices
     n_cps .. 2*n_cps) is changed.
@@ -196,12 +344,16 @@ def reconcile_ss_subcomponents(
     cps_ss = ss[:n_cps]
     puf_ss = ss[n_cps:]
 
-    # Age for the CPS half (PUF half has same demographics).
-    age = None
-    if "age" in data:
-        age = data["age"][time_period][:n_cps]
-
     new_recip = (cps_ss == 0) & (puf_ss > 0)
+
+    # Predict shares for new recipients (QRF with age fallback).
+    new_shares = None
+    if new_recip.any():
+        new_shares = _qrf_ss_shares(data, n_cps, time_period, new_recip)
+        if new_shares is None:
+            new_shares = _age_heuristic_ss_shares(
+                data, n_cps, time_period, new_recip
+            )
 
     for sub in SS_SUBCOMPONENTS:
         if sub not in data:
@@ -209,37 +361,18 @@ def reconcile_ss_subcomponents(
         arr = data[sub][time_period]
         cps_sub = arr[:n_cps]
 
+        # Existing recipients: proportional rescaling.
         with np.errstate(divide="ignore", invalid="ignore"):
             ratio = np.where(cps_ss > 0, cps_sub / cps_ss, 0.0)
-
         new_puf = ratio * puf_ss
 
-        # New recipients: CPS had 0 SS but PUF imputed positive.
-        # Use age heuristic: >= 62 -> retirement, < 62 -> disability.
-        if new_recip.any():
-            if age is not None:
-                if sub == "social_security_retirement":
-                    new_puf = np.where(
-                        new_recip & (age >= MINIMUM_RETIREMENT_AGE),
-                        puf_ss,
-                        new_puf,
-                    )
-                elif sub == "social_security_disability":
-                    new_puf = np.where(
-                        new_recip & (age < MINIMUM_RETIREMENT_AGE),
-                        puf_ss,
-                        new_puf,
-                    )
-                else:
-                    new_puf = np.where(new_recip, 0.0, new_puf)
-            else:
-                # No age data; fall back to retirement.
-                if sub == "social_security_retirement":
-                    new_puf = np.where(new_recip, puf_ss, new_puf)
-                else:
-                    new_puf = np.where(new_recip, 0.0, new_puf)
+        # New recipients: apply predicted shares.
+        if new_recip.any() and new_shares is not None:
+            share = new_shares.get(sub, np.zeros(new_recip.sum()))
+            puf_new_vals = puf_ss[new_recip] * share
+            new_puf[new_recip] = puf_new_vals
 
-        # PUF imputed zero -> clear sub-component
+        # PUF imputed zero -> clear sub-component.
         new_puf = np.where(puf_ss == 0, 0.0, new_puf)
 
         arr[n_cps:] = new_puf.astype(arr.dtype)

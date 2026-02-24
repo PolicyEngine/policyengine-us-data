@@ -145,6 +145,7 @@ class TestDoubleGeographyForPuf:
         geo = GeographyAssignment(
             block_geoid=np.array(["010010001001001", "020010001001001"] * 3),
             cd_geoid=np.array(["101", "202"] * 3),
+            county_fips=np.array(["01001", "02001"] * 3),
             state_fips=np.array([1, 2] * 3),
             n_records=2,
             n_clones=3,
@@ -167,6 +168,9 @@ class TestDoubleGeographyForPuf:
                 ]
             ),
             cd_geoid=np.array(["101", "202", "1036", "653", "4831", "1227"]),
+            county_fips=np.array(
+                ["01001", "02001", "36010", "06010", "48010", "12010"]
+            ),
             state_fips=np.array([1, 2, 36, 6, 48, 12]),
             n_records=3,
             n_clones=2,

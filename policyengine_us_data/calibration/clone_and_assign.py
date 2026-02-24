@@ -88,7 +88,38 @@ def assign_random_geography(
 
     n_total = n_records * n_clones
     rng = np.random.default_rng(seed)
-    indices = rng.choice(len(blocks), size=n_total, p=probs)
+
+    indices = np.empty(n_total, dtype=np.int64)
+
+    # Clone 0: unrestricted draw
+    indices[:n_records] = rng.choice(len(blocks), size=n_records, p=probs)
+
+    assigned_cds = np.empty((n_clones, n_records), dtype=cds.dtype)
+    assigned_cds[0] = cds[indices[:n_records]]
+
+    for clone_idx in range(1, n_clones):
+        start = clone_idx * n_records
+        clone_indices = rng.choice(len(blocks), size=n_records, p=probs)
+        clone_cds = cds[clone_indices]
+
+        collisions = np.zeros(n_records, dtype=bool)
+        for prev in range(clone_idx):
+            collisions |= clone_cds == assigned_cds[prev]
+
+        for _ in range(50):
+            n_bad = collisions.sum()
+            if n_bad == 0:
+                break
+            clone_indices[collisions] = rng.choice(
+                len(blocks), size=n_bad, p=probs
+            )
+            clone_cds = cds[clone_indices]
+            collisions = np.zeros(n_records, dtype=bool)
+            for prev in range(clone_idx):
+                collisions |= clone_cds == assigned_cds[prev]
+
+        indices[start : start + n_records] = clone_indices
+        assigned_cds[clone_idx] = clone_cds
 
     assigned_blocks = blocks[indices]
     return GeographyAssignment(

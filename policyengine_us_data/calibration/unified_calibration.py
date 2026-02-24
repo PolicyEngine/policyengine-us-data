@@ -35,6 +35,8 @@ from typing import Optional
 
 import numpy as np
 
+from policyengine_us_data.utils.takeup import SIMPLE_TAKEUP_VARS
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -57,54 +59,6 @@ LAMBDA_L2 = 1e-12
 LEARNING_RATE = 0.15
 DEFAULT_EPOCHS = 100
 DEFAULT_N_CLONES = 436
-
-SIMPLE_TAKEUP_VARS = [
-    {
-        "variable": "takes_up_snap_if_eligible",
-        "entity": "spm_unit",
-        "rate_key": "snap",
-    },
-    {
-        "variable": "takes_up_aca_if_eligible",
-        "entity": "tax_unit",
-        "rate_key": "aca",
-    },
-    {
-        "variable": "takes_up_dc_ptc",
-        "entity": "tax_unit",
-        "rate_key": "dc_ptc",
-    },
-    {
-        "variable": "takes_up_head_start_if_eligible",
-        "entity": "person",
-        "rate_key": "head_start",
-    },
-    {
-        "variable": "takes_up_early_head_start_if_eligible",
-        "entity": "person",
-        "rate_key": "early_head_start",
-    },
-    {
-        "variable": "takes_up_ssi_if_eligible",
-        "entity": "person",
-        "rate_key": "ssi",
-    },
-    {
-        "variable": "would_file_taxes_voluntarily",
-        "entity": "tax_unit",
-        "rate_key": "voluntary_filing",
-    },
-    {
-        "variable": "takes_up_medicaid_if_eligible",
-        "entity": "person",
-        "rate_key": "medicaid",
-    },
-    {
-        "variable": "takes_up_tanf_if_eligible",
-        "entity": "spm_unit",
-        "rate_key": "tanf",
-    },
-]
 
 
 def rerandomize_takeup(
@@ -411,6 +365,7 @@ def save_calibration_package(
     metadata: dict,
     initial_weights: np.ndarray = None,
     cd_geoid: np.ndarray = None,
+    block_geoid: np.ndarray = None,
 ) -> None:
     """Save calibration package to pickle.
 
@@ -422,6 +377,7 @@ def save_calibration_package(
         metadata: Run metadata dict.
         initial_weights: Pre-computed initial weight array.
         cd_geoid: CD GEOID array from geography assignment.
+        block_geoid: Block GEOID array from geography assignment.
     """
     import pickle
 
@@ -432,6 +388,7 @@ def save_calibration_package(
         "metadata": metadata,
         "initial_weights": initial_weights,
         "cd_geoid": cd_geoid,
+        "block_geoid": block_geoid,
     }
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
@@ -791,6 +748,59 @@ def convert_weights_to_stacked_format(
     return W
 
 
+def convert_blocks_to_stacked_format(
+    block_geoid: np.ndarray,
+    cd_geoid: np.ndarray,
+    base_n_records: int,
+    cds_ordered: list,
+) -> np.ndarray:
+    """Convert column-ordered block GEOIDs to stacked format.
+
+    Parallel to convert_weights_to_stacked_format. For each
+    (CD, record) slot, stores the block GEOID from the first
+    clone assigned there. Empty string for unfilled slots
+    (records with no clone in that CD).
+
+    Args:
+        block_geoid: Block GEOID per column from geography
+            assignment. Length n_clones * base_n_records.
+        cd_geoid: CD GEOID per column from geography
+            assignment.
+        base_n_records: Number of base households.
+        cds_ordered: Ordered list of CD GEOIDs defining
+            row order.
+
+    Returns:
+        Array of dtype U15, length n_cds * base_n_records,
+        reshapeable to (n_cds, base_n_records).
+    """
+    n_total = len(block_geoid)
+    n_cds = len(cds_ordered)
+
+    cd_to_idx = {cd: idx for idx, cd in enumerate(cds_ordered)}
+    record_indices = np.arange(n_total) % base_n_records
+    cd_row_indices = np.array([cd_to_idx[cd] for cd in cd_geoid])
+    flat_indices = cd_row_indices * base_n_records + record_indices
+
+    B = np.full(n_cds * base_n_records, "", dtype="U15")
+    for i in range(n_total):
+        fi = flat_indices[i]
+        if B[fi] == "":
+            B[fi] = block_geoid[i]
+
+    n_filled = np.count_nonzero(B != "")
+    logger.info(
+        "Converted blocks to stacked format: "
+        "(%d, %d) = %d slots, %d filled (%.1f%%)",
+        n_cds,
+        base_n_records,
+        len(B),
+        n_filled,
+        n_filled / len(B) * 100,
+    )
+    return B
+
+
 def compute_diagnostics(
     weights: np.ndarray,
     X_sparse,
@@ -911,6 +921,7 @@ def run_calibration(
         )
         geography_info = {
             "cd_geoid": package.get("cd_geoid"),
+            "block_geoid": package.get("block_geoid"),
             "base_n_records": package["metadata"].get("base_n_records"),
         }
         return (
@@ -996,10 +1007,6 @@ def run_calibration(
             source_path,
         )
 
-    # Step 4: Takeup re-randomization skipped for per-state
-    # precomputation approach. Each clone's variation comes from
-    # geographic reassignment (different state -> different rules).
-    # Takeup re-randomization can be added as post-processing later.
     sim_modifier = None
 
     # Step 5: Build target filter
@@ -1008,6 +1015,7 @@ def run_calibration(
         target_filter["domain_variables"] = domain_variables
 
     # Step 6: Build sparse calibration matrix
+    do_rerandomize = not skip_takeup_rerandomize
     t_matrix = time.time()
     db_uri = f"sqlite:///{db_path}"
     builder = UnifiedMatrixBuilder(
@@ -1021,6 +1029,7 @@ def run_calibration(
         target_filter=target_filter,
         hierarchical_domains=hierarchical_domains,
         sim_modifier=sim_modifier,
+        rerandomize_takeup=do_rerandomize,
     )
 
     builder.print_uprating_summary(targets_df)
@@ -1059,6 +1068,7 @@ def run_calibration(
             metadata,
             initial_weights=full_initial_weights,
             cd_geoid=geography.cd_geoid,
+            block_geoid=geography.block_geoid,
         )
 
     # Step 6c: Apply target config filtering (for fit or validation)
@@ -1086,6 +1096,7 @@ def run_calibration(
         print(format_report(result))
         geography_info = {
             "cd_geoid": geography.cd_geoid,
+            "block_geoid": geography.block_geoid,
             "base_n_records": n_records,
         }
         return (
@@ -1129,6 +1140,7 @@ def run_calibration(
     )
     geography_info = {
         "cd_geoid": geography.cd_geoid,
+        "block_geoid": geography.block_geoid,
         "base_n_records": n_records,
     }
     return (
@@ -1271,6 +1283,23 @@ def main(argv=None):
     else:
         logger.warning("No geography info available; saving raw weights")
         stacked_weights = weights
+
+    # Save stacked blocks alongside weights
+    block_geoid = geography_info.get("block_geoid")
+    if (
+        block_geoid is not None
+        and cd_geoid is not None
+        and base_n_records is not None
+    ):
+        blocks_stacked = convert_blocks_to_stacked_format(
+            block_geoid=block_geoid,
+            cd_geoid=cd_geoid,
+            base_n_records=base_n_records,
+            cds_ordered=cds_ordered,
+        )
+        blocks_path = output_dir / "stacked_blocks.npy"
+        np.save(str(blocks_path), blocks_stacked)
+        logger.info("Stacked blocks saved to %s", blocks_path)
 
     # Save weights
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)

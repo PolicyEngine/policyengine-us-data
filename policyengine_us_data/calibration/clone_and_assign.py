@@ -23,6 +23,7 @@ class GeographyAssignment:
 
     block_geoid: np.ndarray  # str array, 15-char block GEOIDs
     cd_geoid: np.ndarray  # str array of CD GEOIDs
+    county_fips: np.ndarray  # str array of 5-char county FIPS
     state_fips: np.ndarray  # int array of 2-digit state FIPS
     n_records: int
     n_clones: int
@@ -90,9 +91,11 @@ def assign_random_geography(
     rng = np.random.default_rng(seed)
     indices = rng.choice(len(blocks), size=n_total, p=probs)
 
+    assigned_blocks = blocks[indices]
     return GeographyAssignment(
-        block_geoid=blocks[indices],
+        block_geoid=assigned_blocks,
         cd_geoid=cds[indices],
+        county_fips=np.array([b[:5] for b in assigned_blocks]),
         state_fips=states[indices],
         n_records=n_records,
         n_clones=n_clones,
@@ -124,6 +127,7 @@ def double_geography_for_puf(
 
     new_blocks = []
     new_cds = []
+    new_counties = []
     new_states = []
 
     for c in range(n_clones):
@@ -131,14 +135,17 @@ def double_geography_for_puf(
         end = start + n_old
         clone_blocks = geography.block_geoid[start:end]
         clone_cds = geography.cd_geoid[start:end]
+        clone_counties = geography.county_fips[start:end]
         clone_states = geography.state_fips[start:end]
         new_blocks.append(np.concatenate([clone_blocks, clone_blocks]))
         new_cds.append(np.concatenate([clone_cds, clone_cds]))
+        new_counties.append(np.concatenate([clone_counties, clone_counties]))
         new_states.append(np.concatenate([clone_states, clone_states]))
 
     return GeographyAssignment(
         block_geoid=np.concatenate(new_blocks),
         cd_geoid=np.concatenate(new_cds),
+        county_fips=np.concatenate(new_counties),
         state_fips=np.concatenate(new_states),
         n_records=n_new,
         n_clones=n_clones,

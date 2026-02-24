@@ -783,10 +783,20 @@ def convert_blocks_to_stacked_format(
     flat_indices = cd_row_indices * base_n_records + record_indices
 
     B = np.full(n_cds * base_n_records, "", dtype="U15")
+    n_collisions = 0
     for i in range(n_total):
         fi = flat_indices[i]
         if B[fi] == "":
             B[fi] = block_geoid[i]
+        else:
+            n_collisions += 1
+
+    if n_collisions > 0:
+        logger.warning(
+            "Block collisions: %d slots had multiple clones "
+            "with different blocks.",
+            n_collisions,
+        )
 
     n_filled = np.count_nonzero(B != "")
     logger.info(

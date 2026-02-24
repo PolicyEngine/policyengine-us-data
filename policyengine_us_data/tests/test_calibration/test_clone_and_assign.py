@@ -133,6 +133,22 @@ class TestAssignRandomGeography:
             expected = int(r.block_geoid[i][:2])
             assert r.state_fips[i] == expected
 
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_no_cd_collisions_across_clones(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        r = assign_random_geography(n_records=100, n_clones=3, seed=42)
+        for rec in range(r.n_records):
+            rec_cds = [
+                r.cd_geoid[clone * r.n_records + rec]
+                for clone in range(r.n_clones)
+            ]
+            assert len(rec_cds) == len(
+                set(rec_cds)
+            ), f"Record {rec} has duplicate CDs: {rec_cds}"
+
     def test_missing_file_raises(self, tmp_path):
         fake = tmp_path / "nonexistent"
         fake.mkdir()

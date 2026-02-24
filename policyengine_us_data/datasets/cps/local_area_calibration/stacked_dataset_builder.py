@@ -25,6 +25,7 @@ from policyengine_us.variables.household.demographic.geographic.county.county_en
 )
 from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
     assign_geography_for_cd,
+    derive_geography_from_blocks,
     get_county_filter_probability,
     get_filtered_block_distribution,
 )
@@ -67,6 +68,8 @@ def create_sparse_cd_stacked_dataset(
     dataset_path=None,
     county_filter=None,
     seed: int = 42,
+    rerandomize_takeup: bool = False,
+    calibration_blocks: np.ndarray = None,
 ):
     """
     Create a SPARSE congressional district-stacked dataset using DataFrame approach.
@@ -84,6 +87,10 @@ def create_sparse_cd_stacked_dataset(
            assigned to these counties will be included. Used for city-level datasets.
         seed: Base random seed for county assignment. Each CD gets seed + int(cd_geoid)
            for deterministic, order-independent results. Default 42.
+        calibration_blocks: Optional stacked block GEOID array from calibration.
+           Shape (n_cds * n_households,) indexed by cds_to_calibrate ordering.
+           When provided, geography is derived from these blocks instead of
+           re-drawing, ensuring consistency with calibration matrix.
 
     Returns:
         output_path: Path to the saved .h5 file.
@@ -338,13 +345,33 @@ def create_sparse_cd_stacked_dataset(
         )
 
         # Assign all geography using census block assignment
-        # For city datasets: use only blocks in target counties
-        if county_filter is not None:
+        # When calibration_blocks are provided and no county_filter,
+        # derive geography from the calibration's block assignments
+        # to ensure consistency with the calibration matrix.
+        cal_idx = cds_to_calibrate.index(cd_geoid)
+        cd_blocks = None
+        if calibration_blocks is not None and county_filter is None:
+            cd_blocks = calibration_blocks[
+                cal_idx * n_households_orig : (cal_idx + 1) * n_households_orig
+            ]
+            has_block = cd_blocks != ""
+            if has_block.all():
+                geography = derive_geography_from_blocks(cd_blocks)
+            else:
+                fallback = assign_geography_for_cd(
+                    cd_geoid=cd_geoid,
+                    n_households=n_households_orig,
+                    seed=seed + int(cd_geoid),
+                )
+                cal_geo = derive_geography_from_blocks(cd_blocks[has_block])
+                geography = {k: fallback[k].copy() for k in fallback}
+                for k in cal_geo:
+                    geography[k][has_block] = cal_geo[k]
+        elif county_filter is not None:
             filtered_dist = get_filtered_block_distribution(
                 cd_geoid, county_filter
             )
             if not filtered_dist:
-                # Should not happen if we already checked p_target > 0
                 continue
             geography = assign_geography_for_cd(
                 cd_geoid=cd_geoid,
@@ -389,6 +416,23 @@ def create_sparse_cd_stacked_dataset(
         for var in get_calculated_variables(cd_sim):
             if var != "county":
                 cd_sim.delete_arrays(var)
+
+        if rerandomize_takeup:
+            from policyengine_us_data.utils.takeup import (
+                apply_block_takeup_draws_to_sim,
+            )
+
+            if cd_blocks is not None:
+                # Use raw calibration blocks ("" for inactive) so
+                # entity-per-block counts match the matrix builder
+                apply_block_takeup_draws_to_sim(cd_sim, cd_blocks, time_period)
+            else:
+                apply_block_takeup_draws_to_sim(
+                    cd_sim, geography["block_geoid"], time_period
+                )
+            for var in get_calculated_variables(cd_sim):
+                if var != "county":
+                    cd_sim.delete_arrays(var)
 
         # Now extract the dataframe - calculated vars will use the updated state
         df = cd_sim.to_input_dataframe()
@@ -786,6 +830,16 @@ if __name__ == "__main__":
         type=str,
         help="State code to process, e.g. RI, CA, NC (only used with --mode single-state)",
     )
+    parser.add_argument(
+        "--rerandomize-takeup",
+        action="store_true",
+        help="Re-randomize takeup draws per CD using geo-salted RNG",
+    )
+    parser.add_argument(
+        "--calibration-blocks",
+        default=None,
+        help="Path to stacked_blocks.npy from calibration",
+    )
 
     args = parser.parse_args()
     dataset_path_str = args.dataset_path
@@ -814,6 +868,12 @@ if __name__ == "__main__":
             f"Weight vector length ({len(w):,}) doesn't match expected ({expected_length:,})"
         )
 
+    rerand = args.rerandomize_takeup
+    cal_blocks = None
+    if args.calibration_blocks:
+        cal_blocks = np.load(args.calibration_blocks)
+        print(f"Loaded calibration blocks: {len(cal_blocks):,} entries")
+
     if mode == "national":
         output_path = f"{output_dir}/national.h5"
         print(f"\nCreating national dataset with all CDs: {output_path}")
@@ -822,6 +882,8 @@ if __name__ == "__main__":
             cds_to_calibrate,
             dataset_path=dataset_path_str,
             output_path=output_path,
+            rerandomize_takeup=rerand,
+            calibration_blocks=cal_blocks,
         )
 
     elif mode == "states":
@@ -839,6 +901,8 @@ if __name__ == "__main__":
                 cd_subset=cd_subset,
                 dataset_path=dataset_path_str,
                 output_path=output_path,
+                rerandomize_takeup=rerand,
+                calibration_blocks=cal_blocks,
             )
 
     elif mode == "cds":
@@ -860,6 +924,8 @@ if __name__ == "__main__":
                 cd_subset=[cd_geoid],
                 dataset_path=dataset_path_str,
                 output_path=output_path,
+                rerandomize_takeup=rerand,
+                calibration_blocks=cal_blocks,
             )
 
     elif mode == "single-cd":
@@ -875,6 +941,8 @@ if __name__ == "__main__":
             cd_subset=[args.cd],
             dataset_path=dataset_path_str,
             output_path=output_path,
+            rerandomize_takeup=rerand,
+            calibration_blocks=cal_blocks,
         )
 
     elif mode == "single-state":
@@ -906,6 +974,8 @@ if __name__ == "__main__":
             cd_subset=cd_subset,
             dataset_path=dataset_path_str,
             output_path=output_path,
+            rerandomize_takeup=rerand,
+            calibration_blocks=cal_blocks,
         )
 
     elif mode == "nyc":
@@ -927,6 +997,8 @@ if __name__ == "__main__":
             dataset_path=dataset_path_str,
             output_path=output_path,
             county_filter=NYC_COUNTIES,
+            rerandomize_takeup=rerand,
+            calibration_blocks=cal_blocks,
         )
 
     print("\nDone!")

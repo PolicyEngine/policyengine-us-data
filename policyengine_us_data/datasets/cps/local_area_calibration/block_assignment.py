@@ -100,9 +100,22 @@ def _build_county_fips_to_enum() -> Dict[str, str]:
     return fips_to_enum
 
 
-def get_county_enum_index_from_block(block_geoid: str) -> int:
+def get_county_enum_index_from_fips(county_fips: str) -> int:
+    """Get County enum index from 5-digit county FIPS.
+
+    Args:
+        county_fips: 5-digit county FIPS code (e.g. "37183")
+
+    Returns:
+        Integer index into County enum, or UNKNOWN index if not found
     """
-    Get County enum index from block GEOID.
+    fips_to_enum = _build_county_fips_to_enum()
+    enum_name = fips_to_enum.get(county_fips, "UNKNOWN")
+    return County._member_names_.index(enum_name)
+
+
+def get_county_enum_index_from_block(block_geoid: str) -> int:
+    """Get County enum index from block GEOID.
 
     Args:
         block_geoid: 15-digit census block GEOID
@@ -111,9 +124,7 @@ def get_county_enum_index_from_block(block_geoid: str) -> int:
         Integer index into County enum, or UNKNOWN index if not found
     """
     county_fips = get_county_fips_from_block(block_geoid)
-    fips_to_enum = _build_county_fips_to_enum()
-    enum_name = fips_to_enum.get(county_fips, "UNKNOWN")
-    return County._member_names_.index(enum_name)
+    return get_county_enum_index_from_fips(county_fips)
 
 
 # === CBSA Lookup ===
@@ -451,6 +462,82 @@ def assign_geography_for_cd(
 
     # Lookup additional geographies from block crosswalk
     # Do batch lookup for efficiency
+    crosswalk = _load_block_crosswalk()
+    has_zcta = "zcta" in crosswalk.columns
+
+    sldu_list = []
+    sldl_list = []
+    place_fips_list = []
+    vtd_list = []
+    puma_list = []
+    zcta_list = []
+
+    for b in block_geoids:
+        if not crosswalk.empty and b in crosswalk.index:
+            row = crosswalk.loc[b]
+            sldu_list.append(row["sldu"] if pd.notna(row["sldu"]) else "")
+            sldl_list.append(row["sldl"] if pd.notna(row["sldl"]) else "")
+            place_fips_list.append(
+                row["place_fips"] if pd.notna(row["place_fips"]) else ""
+            )
+            vtd_list.append(row["vtd"] if pd.notna(row["vtd"]) else "")
+            puma_list.append(row["puma"] if pd.notna(row["puma"]) else "")
+            if has_zcta:
+                zcta_list.append(row["zcta"] if pd.notna(row["zcta"]) else "")
+            else:
+                zcta_list.append("")
+        else:
+            sldu_list.append("")
+            sldl_list.append("")
+            place_fips_list.append("")
+            vtd_list.append("")
+            puma_list.append("")
+            zcta_list.append("")
+
+    return {
+        "block_geoid": block_geoids,
+        "county_fips": county_fips,
+        "tract_geoid": tract_geoids,
+        "state_fips": state_fips,
+        "cbsa_code": cbsa_codes,
+        "sldu": np.array(sldu_list),
+        "sldl": np.array(sldl_list),
+        "place_fips": np.array(place_fips_list),
+        "vtd": np.array(vtd_list),
+        "puma": np.array(puma_list),
+        "zcta": np.array(zcta_list),
+        "county_index": county_indices,
+    }
+
+
+def derive_geography_from_blocks(
+    block_geoids: np.ndarray,
+) -> Dict[str, np.ndarray]:
+    """Derive all geography from pre-assigned block GEOIDs.
+
+    Given an array of block GEOIDs (already assigned by
+    calibration), derives county, tract, state, CBSA, SLDU,
+    SLDL, place, VTD, PUMA, ZCTA, and county enum index.
+
+    Args:
+        block_geoids: Array of 15-char block GEOID strings.
+
+    Returns:
+        Dict with same keys as assign_geography_for_cd.
+    """
+    county_fips = np.array(
+        [get_county_fips_from_block(b) for b in block_geoids]
+    )
+    tract_geoids = np.array(
+        [get_tract_geoid_from_block(b) for b in block_geoids]
+    )
+    state_fips = np.array([get_state_fips_from_block(b) for b in block_geoids])
+    cbsa_codes = np.array([get_cbsa_from_county(c) or "" for c in county_fips])
+    county_indices = np.array(
+        [get_county_enum_index_from_block(b) for b in block_geoids],
+        dtype=np.int32,
+    )
+
     crosswalk = _load_block_crosswalk()
     has_zcta = "zcta" in crosswalk.columns
 

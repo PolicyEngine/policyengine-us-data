@@ -63,16 +63,20 @@ HARD_CODED_TOTALS = {
     # target must match the deduction, not total contributions.
     # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
     "traditional_ira_contributions": 13.2e9,
-    # traditional_401k_contributions: BEA/FRED National Income
-    # Accounts. Total DC employer+employee = $815.4B (FRED series
-    # Y351RC1A027NBEA), employer-only = $247.5B (FRED series
-    # W351RC0A144NBEA), employee elective deferrals = $567.9B
-    # (derived). Covers 401(k), 403(b), 457, and TSP. The variable
-    # flows directly into pre_tax_contributions (subtracted from
-    # wages) with no further logic.
+    # traditional_401k_contributions & roth_401k_contributions:
+    # BEA/FRED National Income Accounts. Total DC employer+employee
+    # = $815.4B (Y351RC1A027NBEA), employer-only = $247.5B
+    # (W351RC0A144NBEA), employee elective deferrals = $567.9B.
+    # Split into traditional/Roth using estimated 15% Roth dollar
+    # share (Vanguard How America Saves 2024: 18% participation,
+    # ~15% dollar share; PSCA 67th Annual Survey: 21% participation).
+    # Traditional: $567.9B × 85% = $482.7B
+    # Roth: $567.9B × 15% = $85.2B
     # https://fred.stlouisfed.org/series/Y351RC1A027NBEA
     # https://fred.stlouisfed.org/series/W351RC0A144NBEA
-    "traditional_401k_contributions": 567.9e9,
+    # https://corporate.vanguard.com/content/dam/corp/research/pdf/how_america_saves_report_2024.pdf
+    "traditional_401k_contributions": 482.7e9,
+    "roth_401k_contributions": 85.2e9,
     # self_employed_pension_contribution_ald: IRS SOI Publication
     # 1304, Table 1.4 (TY 2022), "Payments to a Keogh plan" —
     # $29.48B (col 116, row "All returns, total"). Includes
@@ -81,10 +85,11 @@ HARD_CODED_TOTALS = {
     # applies a min(contributions, SE_income) cap.
     # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
     "self_employed_pension_contribution_ald": 29.5e9,
-    # roth_ira_contributions removed: the CPS allocation logic
-    # (cps.py:713-728) allocates traditional IRA first up to the
-    # full IRA limit, leaving roth_ira_contributions structurally
-    # $0 for all records. The target was ineffective. See #553.
+    # roth_ira_contributions: IRS SOI IRA Accumulation Tables 5 & 6
+    # (TY 2022). Total Roth IRA contributions = $35.0B (10.04M
+    # contributors). Direct administrative source.
+    # https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
+    "roth_ira_contributions": 35.0e9,
 }
 
 

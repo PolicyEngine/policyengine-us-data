@@ -247,9 +247,16 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         },
         {
             "variable": "traditional_401k_contributions",
-            "value": 567.9e9,
+            "value": 482.7e9,
             "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
-            "notes": "BEA/FRED total DC ($815.4B) minus employer-only ($247.5B, W351RC0A144NBEA)",
+            "notes": "BEA/FRED employee DC deferrals ($567.9B) x 85% traditional share (Vanguard HAS 2024)",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "variable": "roth_401k_contributions",
+            "value": 85.2e9,
+            "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
+            "notes": "BEA/FRED employee DC deferrals ($567.9B) x 15% Roth share (Vanguard HAS 2024)",
             "year": HARDCODED_YEAR,
         },
         {
@@ -259,8 +266,13 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "notes": "SOI 1304 Table 1.4 (TY 2022) 'Payments to a Keogh plan', col 116",
             "year": HARDCODED_YEAR,
         },
-        # roth_ira_contributions removed — structurally $0 due to
-        # CPS allocation bug (see #553).
+        {
+            "variable": "roth_ira_contributions",
+            "value": 35.0e9,
+            "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
+            "notes": "IRS SOI IRA Accumulation Tables 5 & 6 (TY 2022), 10.04M contributors",
+            "year": HARDCODED_YEAR,
+        },
     ]
 
     # Conditional count targets - these need strata with constraints

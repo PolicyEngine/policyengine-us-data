@@ -274,18 +274,22 @@ def compute_block_takeup_for_entities(
     rate_or_dict,
     entity_blocks: np.ndarray,
     entity_state_fips: np.ndarray,
+    entity_hh_ids: np.ndarray = None,
 ) -> np.ndarray:
     """Compute boolean takeup via block-level seeded draws.
 
-    Each unique block gets its own seeded RNG, producing
-    reproducible draws that work for any aggregation level
-    (CD, state, national).
+    Each unique (block, household) pair gets its own seeded RNG,
+    producing reproducible draws regardless of how many households
+    share the same block across clones.
 
     Args:
         var_name: Takeup variable name.
         rate_or_dict: Scalar rate or {state_code: rate} dict.
         entity_blocks: Block GEOID per entity (str array).
         entity_state_fips: State FIPS per entity (int array).
+        entity_hh_ids: Household ID per entity (int array).
+            When provided, seeds per (block, household) for
+            clone-independent draws.
 
     Returns:
         Boolean array of shape (n_entities,).
@@ -297,11 +301,19 @@ def compute_block_takeup_for_entities(
     for block in np.unique(entity_blocks):
         if block == "":
             continue
-        mask = entity_blocks == block
-        rng = seeded_rng(var_name, salt=str(block))
-        draws[mask] = rng.random(int(mask.sum()))
+        blk_mask = entity_blocks == block
         sf = int(str(block)[:2])
-        rates[mask] = _resolve_rate(rate_or_dict, sf)
+        rate = _resolve_rate(rate_or_dict, sf)
+        rates[blk_mask] = rate
+
+        if entity_hh_ids is not None:
+            for hh_id in np.unique(entity_hh_ids[blk_mask]):
+                hh_mask = blk_mask & (entity_hh_ids == hh_id)
+                rng = seeded_rng(var_name, salt=f"{block}:{int(hh_id)}")
+                draws[hh_mask] = rng.random(int(hh_mask.sum()))
+        else:
+            rng = seeded_rng(var_name, salt=str(block))
+            draws[blk_mask] = rng.random(int(blk_mask.sum()))
 
     return draws < rates
 
@@ -349,6 +361,7 @@ def apply_block_takeup_draws_to_sim(
     sim,
     hh_blocks: np.ndarray,
     time_period: int,
+    takeup_filter: List[str] = None,
 ) -> None:
     """Set all takeup inputs on a sim using block-level draws.
 
@@ -360,24 +373,48 @@ def apply_block_takeup_draws_to_sim(
         sim: Microsimulation instance (state_fips already set).
         hh_blocks: Block GEOID per household (str array).
         time_period: Tax year.
+        takeup_filter: Optional list of takeup variable names
+            to re-randomize. If None, all SIMPLE_TAKEUP_VARS
+            are processed. Use this to match the matrix builder's
+            set of re-randomized variables.
     """
     state_fips_arr = sim.calculate(
         "state_fips", time_period, map_to="household"
     ).values
+    hh_ids = sim.calculate("household_id", map_to="household").values
 
     entity_hh_idx = _build_entity_to_hh_index(sim)
+
+    filter_set = set(takeup_filter) if takeup_filter is not None else None
 
     for spec in SIMPLE_TAKEUP_VARS:
         var_name = spec["variable"]
         entity = spec["entity"]
         rate_key = spec["rate_key"]
 
+        n_ent = len(sim.calculate(f"{entity}_id", map_to=entity).values)
+
+        if filter_set is not None and var_name not in filter_set:
+            # Force non-filtered vars to True to match
+            # the matrix builder's precomputation assumption
+            sim.set_input(
+                var_name,
+                time_period,
+                np.ones(n_ent, dtype=bool),
+            )
+            continue
+
         ent_hh_idx = entity_hh_idx[entity]
         ent_blocks = np.array([str(hh_blocks[h]) for h in ent_hh_idx])
         ent_states = state_fips_arr[ent_hh_idx]
+        ent_hh_ids = hh_ids[ent_hh_idx]
 
         rate_or_dict = load_take_up_rate(rate_key, time_period)
         bools = compute_block_takeup_for_entities(
-            var_name, rate_or_dict, ent_blocks, ent_states
+            var_name,
+            rate_or_dict,
+            ent_blocks,
+            ent_states,
+            ent_hh_ids,
         )
         sim.set_input(var_name, time_period, bools)

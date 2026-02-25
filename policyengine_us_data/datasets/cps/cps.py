@@ -637,18 +637,19 @@ def add_personal_income_variables(
     # They could also include General Assistance.
     cps["tanf_reported"] = person.PAW_VAL
     cps["ssi_reported"] = person.SSI_VAL
-    # Assume all retirement contributions are traditional 401(k) for now.
-    # Procedure for allocating retirement contributions:
-    # 1) If they report any self-employment income, allocate entirely to
-    #    self-employed pension contributions.
-    # 2) If they report any wage and salary income, allocate in this order:
-    #    a) Traditional 401(k) contributions up to to limit
-    #    b) Roth 401(k) contributions up to the limit
-    #    c) IRA contributions up to the limit, split according to administrative fractions
-    #    d) Other retirement contributions
-    # Disregard reported pension contributions from people who report neither wage and salary
-    # nor self-employment income.
-    # Assume no 403(b) or 457 contributions for now.
+    # Allocate CPS RETCB_VAL (a single bundled retirement contribution
+    # total) into account-type-specific variables using a proportional
+    # split based on administrative data.
+    #
+    # RETCB_VAL does not distinguish account type (Census only asks
+    # "how much did you contribute to retirement accounts?").  The old
+    # sequential waterfall gave 401(k) first priority, which consumed
+    # nearly all of RETCB_VAL and left IRA contributions at $0.
+    #
+    # The proportional approach uses BEA/FRED and IRS SOI shares to
+    # split contributions into DC (401k) and IRA pools, then splits
+    # each pool into traditional/Roth using administrative fractions.
+    # See imputation_parameters.yaml for sources.
     from policyengine_us_data.utils.retirement_limits import (
         get_retirement_limits,
     )
@@ -659,53 +660,53 @@ def add_personal_income_variables(
     LIMIT_IRA = limits["ira"]
     LIMIT_IRA_CATCH_UP = limits["ira_catch_up"]
     CATCH_UP_AGE = 50
-    retirement_contributions = person.RETCB_VAL
-    cps["self_employed_pension_contributions"] = np.where(
-        person.SEMP_VAL > 0, retirement_contributions, 0
-    )
-    remaining_retirement_contributions = np.maximum(
-        retirement_contributions - cps["self_employed_pension_contributions"],
-        0,
-    )
-    # Compute the 401(k) limit for the person's age.
     catch_up_eligible = person.A_AGE >= CATCH_UP_AGE
     limit_401k = LIMIT_401K + catch_up_eligible * LIMIT_401K_CATCH_UP
     limit_ira = LIMIT_IRA + catch_up_eligible * LIMIT_IRA_CATCH_UP
-    cps["traditional_401k_contributions"] = np.where(
-        person.WSAL_VAL > 0,
-        np.minimum(remaining_retirement_contributions, limit_401k),
+
+    retirement_contributions = person.RETCB_VAL
+    has_wages = person.WSAL_VAL > 0
+    has_se = person.SEMP_VAL > 0
+    has_earned_income = has_wages | has_se
+
+    # 1) Self-employed pension: cap at min(25% of SE income, dollar
+    #    limit) so dual-income filers keep a remainder for 401(k)/IRA.
+    se_rate = p["se_pension_contribution_rate"]
+    se_dollar_cap = p["se_pension_contribution_dollar_limit"][year]
+    se_pension_cap = np.minimum(person.SEMP_VAL * se_rate, se_dollar_cap)
+    cps["self_employed_pension_contributions"] = np.where(
+        has_se,
+        np.minimum(retirement_contributions, se_pension_cap),
         0,
     )
-    remaining_retirement_contributions = np.maximum(
-        remaining_retirement_contributions
-        - cps["traditional_401k_contributions"],
+    remaining = np.maximum(
+        retirement_contributions - cps["self_employed_pension_contributions"],
         0,
     )
-    cps["roth_401k_contributions"] = np.where(
-        person.WSAL_VAL > 0,
-        np.minimum(remaining_retirement_contributions, limit_401k),
-        0,
-    )
-    remaining_retirement_contributions = np.maximum(
-        remaining_retirement_contributions - cps["roth_401k_contributions"],
-        0,
-    )
-    cps["traditional_ira_contributions"] = np.where(
-        person.WSAL_VAL > 0,
-        np.minimum(remaining_retirement_contributions, limit_ira),
-        0,
-    )
-    remaining_retirement_contributions = np.maximum(
-        remaining_retirement_contributions
-        - cps["traditional_ira_contributions"],
-        0,
-    )
-    roth_ira_limit = limit_ira - cps["traditional_ira_contributions"]
-    cps["roth_ira_contributions"] = np.where(
-        person.WSAL_VAL > 0,
-        np.minimum(remaining_retirement_contributions, roth_ira_limit),
-        0,
-    )
+
+    # 2) Split remainder into DC and IRA pools.
+    # DC (401k) requires an employer, so gated on has_wages.
+    # IRA is available to anyone with earned income (wages or SE).
+    dc_share = p["dc_share_of_retirement_contributions"]
+    roth_dc_share = p["roth_share_of_dc_contributions"]
+    trad_ira_share = p["traditional_share_of_ira_contributions"]
+
+    dc_pool = np.where(has_wages, remaining * dc_share, 0)
+    # IRA gets whatever isn't allocated to DC, for anyone with
+    # earned income (including SE-only filers).
+    ira_pool = np.where(has_earned_income, remaining - dc_pool, 0)
+
+    # DC pool: split into traditional/Roth 401(k), cap at combined
+    # 401(k) limit.
+    dc_capped = np.minimum(dc_pool, limit_401k)
+    cps["traditional_401k_contributions"] = dc_capped * (1 - roth_dc_share)
+    cps["roth_401k_contributions"] = dc_capped * roth_dc_share
+
+    # IRA pool: split into traditional/Roth IRA, cap at combined
+    # IRA limit.
+    ira_capped = np.minimum(ira_pool, limit_ira)
+    cps["traditional_ira_contributions"] = ira_capped * trad_ira_share
+    cps["roth_ira_contributions"] = ira_capped * (1 - trad_ira_share)
     # Allocate capital gains into long-term and short-term based on aggregate split.
     cps["long_term_capital_gains"] = person.CAP_VAL * (
         p["long_term_capgain_fraction"]

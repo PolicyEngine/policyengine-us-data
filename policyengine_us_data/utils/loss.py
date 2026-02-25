@@ -53,14 +53,38 @@ HARD_CODED_TOTALS = {
     "social_security_disability": 148e9,  # ~10.2% (disabled workers)
     "social_security_survivors": 160e9,  # ~11.0% (widows, children of deceased)
     "social_security_dependents": 84e9,  # ~5.8% (spouses/children of retired+disabled)
-    # IRA contribution totals from IRS SOI IRA accumulation tables.
-    # Tax year 2022: ~5M taxpayers x $4,510 avg = ~$22.5B traditional;
-    # ~10M taxpayers x $3,482 avg = ~$34.8B Roth.
-    # Uprated ~12% to 2024 for limit increases ($6k->$7k) and
-    # wage growth.
-    # https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
-    "traditional_ira_contributions": 25e9,
-    "roth_ira_contributions": 39e9,
+    # Retirement contribution calibration targets.
+    #
+    # traditional_ira_contributions: IRS SOI Publication 1304, Table 1.4
+    # (TY 2022), "IRA payments" deduction — $13.17B (col 124, row
+    # "All returns, total"). This is the actual above-the-line
+    # deduction claimed on returns. The variable flows directly into
+    # the ALD with no deductibility logic in policyengine-us, so the
+    # target must match the deduction, not total contributions.
+    # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
+    "traditional_ira_contributions": 13.2e9,
+    # traditional_401k_contributions: BEA/FRED National Income
+    # Accounts. Total DC employer+employee = $815.4B (FRED series
+    # Y351RC1A027NBEA), employer-only = $247.5B (FRED series
+    # W351RC0A144NBEA), employee elective deferrals = $567.9B
+    # (derived). Covers 401(k), 403(b), 457, and TSP. The variable
+    # flows directly into pre_tax_contributions (subtracted from
+    # wages) with no further logic.
+    # https://fred.stlouisfed.org/series/Y351RC1A027NBEA
+    # https://fred.stlouisfed.org/series/W351RC0A144NBEA
+    "traditional_401k_contributions": 567.9e9,
+    # self_employed_pension_contribution_ald: IRS SOI Publication
+    # 1304, Table 1.4 (TY 2022), "Payments to a Keogh plan" —
+    # $29.48B (col 116, row "All returns, total"). Includes
+    # SEP-IRAs, SIMPLE-IRAs, and traditional Keogh/HR-10 plans.
+    # Targeting the ALD (not the input) because policyengine-us
+    # applies a min(contributions, SE_income) cap.
+    # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
+    "self_employed_pension_contribution_ald": 29.5e9,
+    # roth_ira_contributions removed: the CPS allocation logic
+    # (cps.py:713-728) allocates traditional IRA first up to the
+    # full IRA limit, leaving roth_ira_contributions structurally
+    # $0 for all records. The target was ineffective. See #553.
 }
 
 

@@ -237,21 +237,30 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "notes": "~5.8% of total OASDI (spouses/children of retired+disabled)",
             "year": HARDCODED_YEAR,
         },
-        # IRA contribution totals from IRS SOI accumulation tables
+        # Retirement contribution targets — see issue #553
         {
             "variable": "traditional_ira_contributions",
-            "value": 25e9,
-            "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
-            "notes": "Tax year 2022 (~5M x $4,510 avg) uprated ~12% to 2024",
+            "value": 13.2e9,
+            "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
+            "notes": "SOI 1304 Table 1.4 (TY 2022) 'IRA payments' deduction, col 124",
             "year": HARDCODED_YEAR,
         },
         {
-            "variable": "roth_ira_contributions",
-            "value": 39e9,
-            "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
-            "notes": "Tax year 2022 (~10M x $3,482 avg) uprated ~12% to 2024",
+            "variable": "traditional_401k_contributions",
+            "value": 567.9e9,
+            "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
+            "notes": "BEA/FRED total DC ($815.4B) minus employer-only ($247.5B, W351RC0A144NBEA)",
             "year": HARDCODED_YEAR,
         },
+        {
+            "variable": "self_employed_pension_contribution_ald",
+            "value": 29.5e9,
+            "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
+            "notes": "SOI 1304 Table 1.4 (TY 2022) 'Payments to a Keogh plan', col 116",
+            "year": HARDCODED_YEAR,
+        },
+        # roth_ira_contributions removed — structurally $0 due to
+        # CPS allocation bug (see #553).
     ]
 
     # Conditional count targets - these need strata with constraints

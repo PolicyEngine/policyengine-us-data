@@ -70,6 +70,7 @@ def create_sparse_cd_stacked_dataset(
     seed: int = 42,
     rerandomize_takeup: bool = False,
     calibration_blocks: np.ndarray = None,
+    takeup_filter=None,
 ):
     """
     Create a SPARSE congressional district-stacked dataset using DataFrame approach.
@@ -425,10 +426,18 @@ def create_sparse_cd_stacked_dataset(
             if cd_blocks is not None:
                 # Use raw calibration blocks ("" for inactive) so
                 # entity-per-block counts match the matrix builder
-                apply_block_takeup_draws_to_sim(cd_sim, cd_blocks, time_period)
+                apply_block_takeup_draws_to_sim(
+                    cd_sim,
+                    cd_blocks,
+                    time_period,
+                    takeup_filter=takeup_filter,
+                )
             else:
                 apply_block_takeup_draws_to_sim(
-                    cd_sim, geography["block_geoid"], time_period
+                    cd_sim,
+                    geography["block_geoid"],
+                    time_period,
+                    takeup_filter=takeup_filter,
                 )
             for var in get_calculated_variables(cd_sim):
                 if var != "county":

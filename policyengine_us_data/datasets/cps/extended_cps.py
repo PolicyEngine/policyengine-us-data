@@ -50,7 +50,38 @@ class ExtendedCPS(Dataset):
             dataset_path=str(self.cps.file_path),
         )
 
+        new_data = self._drop_formula_variables(new_data)
         self.save_dataset(new_data)
+
+    # Variables with formulas that must still be stored (e.g. IDs
+    # needed by the dataset loader before formulas can run).
+    _KEEP_FORMULA_VARS = {"person_id"}
+
+    @classmethod
+    def _drop_formula_variables(cls, data):
+        """Remove variables that have formulas in policyengine-us.
+
+        The simulation engine recomputes these from their inputs,
+        so storing them wastes space and can mislead validation.
+        """
+        from policyengine_us import CountryTaxBenefitSystem
+
+        tbs = CountryTaxBenefitSystem()
+        formula_vars = {
+            name
+            for name, var in tbs.variables.items()
+            if hasattr(var, "formulas") and len(var.formulas) > 0
+        } - cls._KEEP_FORMULA_VARS
+        dropped = sorted(set(data.keys()) & formula_vars)
+        if dropped:
+            logger.info(
+                "Dropping %d formula variables: %s",
+                len(dropped),
+                dropped,
+            )
+            for var in dropped:
+                del data[var]
+        return data
 
 
 class ExtendedCPS_2024(ExtendedCPS):

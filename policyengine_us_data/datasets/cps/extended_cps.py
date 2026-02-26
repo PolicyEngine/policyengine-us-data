@@ -59,10 +59,11 @@ class ExtendedCPS(Dataset):
 
     @classmethod
     def _drop_formula_variables(cls, data):
-        """Remove variables that have formulas in policyengine-us.
+        """Remove variables that are computed by policyengine-us.
 
-        The simulation engine recomputes these from their inputs,
-        so storing them wastes space and can mislead validation.
+        Variables with formulas, ``adds``, or ``subtracts`` are
+        recomputed by the simulation engine, so storing them wastes
+        space and can mislead validation.
         """
         from policyengine_us import CountryTaxBenefitSystem
 
@@ -70,7 +71,9 @@ class ExtendedCPS(Dataset):
         formula_vars = {
             name
             for name, var in tbs.variables.items()
-            if hasattr(var, "formulas") and len(var.formulas) > 0
+            if (hasattr(var, "formulas") and len(var.formulas) > 0)
+            or getattr(var, "adds", None)
+            or getattr(var, "subtracts", None)
         } - cls._KEEP_FORMULA_VARS
         dropped = sorted(set(data.keys()) & formula_vars)
         if dropped:

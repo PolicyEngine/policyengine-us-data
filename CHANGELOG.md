@@ -1,3 +1,10 @@
+## [1.70.0] - 2026-02-26
+
+### Added
+
+- Add end-to-end test for calibration database build pipeline.
+
+
 ## [1.69.4] - 2026-02-24
 
 ### Changed

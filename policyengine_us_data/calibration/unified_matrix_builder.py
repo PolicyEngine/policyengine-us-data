@@ -96,7 +96,7 @@ class UnifiedMatrixBuilder:
         target_vars: set,
         constraint_vars: set,
         geography,
-        rerandomize_takeup: bool = False,
+        rerandomize_takeup: bool = True,
     ) -> dict:
         """Precompute household/person/entity values per state.
 
@@ -255,7 +255,7 @@ class UnifiedMatrixBuilder:
         sim,
         county_dep_targets: set,
         geography,
-        rerandomize_takeup: bool = False,
+        rerandomize_takeup: bool = True,
         county_level: bool = True,
     ) -> dict:
         """Precompute county-dependent variable values per county.
@@ -1133,7 +1133,7 @@ class UnifiedMatrixBuilder:
         hierarchical_domains: Optional[List[str]] = None,
         cache_dir: Optional[str] = None,
         sim_modifier=None,
-        rerandomize_takeup: bool = False,
+        rerandomize_takeup: bool = True,
         county_level: bool = True,
     ) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
         """Build sparse calibration matrix.

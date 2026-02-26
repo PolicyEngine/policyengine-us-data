@@ -32,7 +32,8 @@ make promote-database   # Copy DB + raw inputs to HuggingFace clone
 | 6 | `etl_snap.py` | USDA FNS + Census ACS | SNAP participation (admin state-level, survey district-level) |
 | 7 | `etl_state_income_tax.py` | No | State income tax collections (Census STC FY2023, hardcoded) |
 | 8 | `etl_irs_soi.py` | IRS | Tax variables, EITC by child count, AGI brackets, conditional strata |
-| 9 | `validate_database.py` | No | Checks all target variables exist in policyengine-us |
+| 9 | `etl_pregnancy.py` | CDC VSRR + Census ACS | Pregnancy prevalence by state (provisional birth counts) |
+| 10 | `validate_database.py` | No | Checks all target variables exist in policyengine-us |
 
 ### Raw Input Caching
 
@@ -146,6 +147,7 @@ Strata are categorized by their **constraints**, not by a separate group ID fiel
 | `adjusted_gross_income` | Income/AGI brackets |
 | `snap` | SNAP recipient strata |
 | `medicaid_enrolled` | Medicaid enrollment strata |
+| `is_pregnant` | Pregnancy prevalence strata |
 | `eitc_child_count` | EITC recipients by qualifying children |
 | `state_income_tax` | State-level income tax collections |
 | `aca_ptc` | ACA Premium Tax Credit strata |

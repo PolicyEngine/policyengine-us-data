@@ -294,6 +294,26 @@ def add_takeup(self):
     imputed_risk = rng.random(n_persons) < wic_risk_rate_by_person
     data["is_wic_at_nutritional_risk"] = receives_wic | imputed_risk
 
+    # Pregnancy: stochastically assign is_pregnant to women 15-44
+    # using CDC/Census-derived state-level pregnancy rates.
+    # CPS does not ask about pregnancy; calibration will fine-tune.
+    from policyengine_us_data.db.etl_pregnancy import (
+        get_state_pregnancy_rates,
+    )
+
+    pregnancy_rates = get_state_pregnancy_rates()
+    national_rate = 0.041  # fallback
+    pregnancy_rate_by_person = np.array(
+        [pregnancy_rates.get(s, national_rate) for s in person_states]
+    )
+    ages = data["age"]
+    is_female = data["is_female"]
+    is_eligible = is_female & (ages >= 15) & (ages <= 44)
+    rng = seeded_rng("is_pregnant")
+    data["is_pregnant"] = is_eligible & (
+        rng.random(n_persons) < pregnancy_rate_by_person
+    )
+
     # Voluntary tax filing: some people file even when not required and not
     # seeking a refund. EITC take-up already captures refund-seeking behavior
     # (if you take up EITC, you file). This variable captures people who file

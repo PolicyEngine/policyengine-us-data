@@ -53,7 +53,7 @@ def load_global_block_distribution():
     df = pd.read_csv(csv_path, dtype={"block_geoid": str})
 
     block_geoids = df["block_geoid"].values
-    cd_geoids = df["cd_geoid"].astype(str).values
+    cd_geoids = np.array(df["cd_geoid"].astype(str).tolist())
     state_fips = np.array([int(b[:2]) for b in block_geoids])
 
     probs = df["probability"].values.astype(np.float64)
@@ -95,7 +95,7 @@ def assign_random_geography(
     # Clone 0: unrestricted draw
     indices[:n_records] = rng.choice(len(blocks), size=n_records, p=probs)
 
-    assigned_cds = np.empty((n_clones, n_records), dtype=cds.dtype)
+    assigned_cds = np.empty((n_clones, n_records), dtype=object)
     assigned_cds[0] = cds[indices[:n_records]]
 
     for clone_idx in range(1, n_clones):

@@ -86,6 +86,7 @@ def main():
         target_filter=target_filter,
         hierarchical_domains=["aca_ptc", "snap"],
         rerandomize_takeup=True,
+        county_level=True,
     )
     print(f"  Matrix shape: {X.shape}")
     print(f"  Targets: {len(targets_df)}")

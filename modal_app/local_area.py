@@ -254,18 +254,18 @@ print(json.dumps(manifest))
 
 @app.function(
     image=image,
-    secrets=[hf_secret, gcp_secret],
+    secrets=[hf_secret],
     volumes={VOLUME_MOUNT: staging_volume},
     memory=8192,
     timeout=14400,
 )
 def upload_to_staging(branch: str, version: str, manifest: Dict) -> str:
     """
-    Upload files to GCS (production) and HuggingFace (staging only).
+    Upload files to HuggingFace staging only.
 
+    GCS is updated during promote_publish, not here.
     Promote must be run separately via promote_publish.
     """
-    setup_gcp_credentials()
     setup_repo(branch)
 
     manifest_json = json.dumps(manifest)
@@ -280,10 +280,7 @@ def upload_to_staging(branch: str, version: str, manifest: Dict) -> str:
 import json
 from pathlib import Path
 from policyengine_us_data.utils.manifest import verify_manifest
-from policyengine_us_data.utils.data_upload import (
-    upload_local_area_file,
-    upload_to_staging_hf,
-)
+from policyengine_us_data.utils.data_upload import upload_to_staging_hf
 
 manifest = json.loads('''{manifest_json}''')
 version = "{version}"
@@ -305,20 +302,6 @@ for rel_path in manifest["files"].keys():
     local_path = version_dir / rel_path
     files_with_paths.append((local_path, rel_path))
 
-# Upload to GCS (direct to production paths)
-print(f"Uploading {{len(files_with_paths)}} files to GCS...")
-gcs_count = 0
-for local_path, rel_path in files_with_paths:
-    subdirectory = str(Path(rel_path).parent)
-    upload_local_area_file(
-        str(local_path),
-        subdirectory,
-        version=version,
-        skip_hf=True,
-    )
-    gcs_count += 1
-print(f"Uploaded {{gcs_count}} files to GCS")
-
 # Upload to HuggingFace staging/
 print(f"Uploading {{len(files_with_paths)}} files to HuggingFace staging/...")
 hf_count = upload_to_staging_hf(files_with_paths, version)
@@ -336,24 +319,26 @@ print(f"Staged version {{version}} for promotion")
 
     return (
         f"Staged version {version} with {len(manifest['files'])} files. "
-        f"Run promote workflow to publish to HuggingFace production."
+        f"Run promote workflow to publish to HuggingFace production and GCS."
     )
 
 
 @app.function(
     image=image,
-    secrets=[hf_secret],
+    secrets=[hf_secret, gcp_secret],
     volumes={VOLUME_MOUNT: staging_volume},
     memory=4096,
     timeout=3600,
 )
 def promote_publish(branch: str = "main", version: str = "") -> str:
     """
-    Promote staged files from HF staging/ to production paths, then cleanup.
+    Promote staged files from HF staging/ to production paths,
+    upload to GCS, then cleanup HF staging.
 
     Reads the manifest from the Modal staging volume to determine which
     files to promote.
     """
+    setup_gcp_credentials()
     setup_repo(branch)
 
     staging_dir = Path(VOLUME_MOUNT)
@@ -379,17 +364,34 @@ def promote_publish(branch: str = "main", version: str = "") -> str:
             "-c",
             f"""
 import json
+from pathlib import Path
 from policyengine_us_data.utils.data_upload import (
     promote_staging_to_production_hf,
     cleanup_staging_hf,
+    upload_local_area_file,
 )
 
 rel_paths = json.loads('''{rel_paths_json}''')
 version = "{version}"
+version_dir = Path("{VOLUME_MOUNT}") / version
 
 print(f"Promoting {{len(rel_paths)}} files from staging/ to production...")
 promoted = promote_staging_to_production_hf(rel_paths, version)
-print(f"Promoted {{promoted}} files to production")
+print(f"Promoted {{promoted}} files to HuggingFace production")
+
+print(f"Uploading {{len(rel_paths)}} files to GCS...")
+gcs_count = 0
+for rel_path in rel_paths:
+    local_path = version_dir / rel_path
+    subdirectory = str(Path(rel_path).parent)
+    upload_local_area_file(
+        str(local_path),
+        subdirectory,
+        version=version,
+        skip_hf=True,
+    )
+    gcs_count += 1
+print(f"Uploaded {{gcs_count}} files to GCS")
 
 print("Cleaning up staging/...")
 cleaned = cleanup_staging_hf(rel_paths, version)

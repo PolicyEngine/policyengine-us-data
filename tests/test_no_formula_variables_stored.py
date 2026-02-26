@@ -61,13 +61,9 @@ def sim():
     return Microsimulation(dataset=ExtendedCPS_2024)
 
 
-def test_no_formula_variables_stored(
-    formula_variables, stored_variables
-):
+def test_no_formula_variables_stored(formula_variables, stored_variables):
     """Variables with formulas should not be stored in the dataset."""
-    overlap = (
-        stored_variables & formula_variables
-    ) - KNOWN_FORMULA_EXCEPTIONS
+    overlap = (stored_variables & formula_variables) - KNOWN_FORMULA_EXCEPTIONS
     if overlap:
         msg = (
             f"These {len(overlap)} variables have formulas in "
@@ -101,9 +97,7 @@ def test_stored_values_match_computed(
                 continue
 
             try:
-                computed = np.array(
-                    sim.calculate(var_name, 2024)
-                )
+                computed = np.array(sim.calculate(var_name, 2024))
             except Exception:
                 continue
 
@@ -137,22 +131,20 @@ def test_ss_subcomponents_sum_to_total(dataset_path):
     """Social Security sub-components should sum to the total."""
     with h5py.File(dataset_path, "r") as f:
         ss_total = f["social_security"]["2024"][...].astype(float)
-        ss_retirement = f["social_security_retirement"]["2024"][
-            ...
-        ].astype(float)
-        ss_disability = f["social_security_disability"]["2024"][
-            ...
-        ].astype(float)
-        ss_survivors = f["social_security_survivors"]["2024"][
-            ...
-        ].astype(float)
-        ss_dependents = f["social_security_dependents"]["2024"][
-            ...
-        ].astype(float)
+        ss_retirement = f["social_security_retirement"]["2024"][...].astype(
+            float
+        )
+        ss_disability = f["social_security_disability"]["2024"][...].astype(
+            float
+        )
+        ss_survivors = f["social_security_survivors"]["2024"][...].astype(
+            float
+        )
+        ss_dependents = f["social_security_dependents"]["2024"][...].astype(
+            float
+        )
 
-    sub_sum = (
-        ss_retirement + ss_disability + ss_survivors + ss_dependents
-    )
+    sub_sum = ss_retirement + ss_disability + ss_survivors + ss_dependents
 
     # Only check records that have any SS income
     has_ss = ss_total > 0

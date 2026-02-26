@@ -995,18 +995,20 @@ def run_calibration(
 
         base_states = geography.state_fips[:n_records]
 
-        source_sim = Microsimulation(dataset=dataset_path)
-        raw_data = source_sim.dataset.load_dataset()
+        raw_data = sim.dataset.load_dataset()
         data_dict = {}
         for var in raw_data:
             val = raw_data[var]
             if isinstance(val, dict):
                 # h5py returns string keys ("2024"); normalize
                 # to int so source_impute lookups work.
-                data_dict[var] = {int(k): v for k, v in val.items()}
+                # Some keys like "ETERNITY" are non-numeric — keep
+                # them as strings.
+                data_dict[var] = {
+                    int(k) if k.isdigit() else k: v for k, v in val.items()
+                }
             else:
                 data_dict[var] = {time_period: val[...]}
-        del source_sim
 
         from policyengine_us_data.calibration.source_impute import (
             impute_source_variables,

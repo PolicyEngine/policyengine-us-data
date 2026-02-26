@@ -168,16 +168,29 @@ CPS_RETIREMENT_VARIABLES = [
     "self_employed_pension_contributions",
 ]
 
-RETIREMENT_PREDICTORS = [
-    "employment_income",
-    "self_employment_income",
+RETIREMENT_DEMOGRAPHIC_PREDICTORS = [
     "age",
     "is_male",
     "tax_unit_is_joint",
+    "tax_unit_count_dependents",
     "is_tax_unit_head",
     "is_tax_unit_spouse",
     "is_tax_unit_dependent",
 ]
+
+# Income predictors sourced from PUF imputations on the test side.
+RETIREMENT_INCOME_PREDICTORS = [
+    "employment_income",
+    "self_employment_income",
+    "taxable_interest_income",
+    "qualified_dividend_income",
+    "taxable_pension_income",
+    "social_security",
+]
+
+RETIREMENT_PREDICTORS = (
+    RETIREMENT_DEMOGRAPHIC_PREDICTORS + RETIREMENT_INCOME_PREDICTORS
+)
 
 
 def _get_retirement_limits(year: int) -> dict:
@@ -709,14 +722,8 @@ def _impute_retirement_contributions(
         return {var: np.zeros(n_persons) for var in CPS_RETIREMENT_VARIABLES}
 
     # Build test data: demographics from CPS sim, income from PUF
-    X_test = cps_sim.calculate_dataframe(
-        [
-            p
-            for p in RETIREMENT_PREDICTORS
-            if p not in ("employment_income", "self_employment_income")
-        ]
-    )
-    for income_var in ("employment_income", "self_employment_income"):
+    X_test = cps_sim.calculate_dataframe(RETIREMENT_DEMOGRAPHIC_PREDICTORS)
+    for income_var in RETIREMENT_INCOME_PREDICTORS:
         if income_var in puf_imputations:
             X_test[income_var] = puf_imputations[income_var]
         else:

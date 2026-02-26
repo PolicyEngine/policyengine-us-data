@@ -17,6 +17,8 @@ from policyengine_us_data.calibration.puf_impute import (
     CPS_RETIREMENT_VARIABLES,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
+    RETIREMENT_DEMOGRAPHIC_PREDICTORS,
+    RETIREMENT_INCOME_PREDICTORS,
     RETIREMENT_PREDICTORS,
     _get_retirement_limits,
     _impute_retirement_contributions,
@@ -79,14 +81,22 @@ def _make_cps_df(n, rng):
     """Build a mock CPS DataFrame with all needed columns."""
     return pd.DataFrame(
         {
+            # Demographics
             "age": rng.integers(18, 80, n).astype(float),
             "is_male": rng.integers(0, 2, n).astype(float),
             "tax_unit_is_joint": rng.integers(0, 2, n).astype(float),
+            "tax_unit_count_dependents": rng.integers(0, 4, n).astype(float),
             "is_tax_unit_head": rng.integers(0, 2, n).astype(float),
             "is_tax_unit_spouse": np.zeros(n),
             "is_tax_unit_dependent": np.zeros(n),
+            # Income predictors
             "employment_income": rng.uniform(0, 100_000, n),
             "self_employment_income": rng.uniform(0, 50_000, n),
+            "taxable_interest_income": rng.uniform(0, 5_000, n),
+            "qualified_dividend_income": rng.uniform(0, 3_000, n),
+            "taxable_pension_income": rng.uniform(0, 20_000, n),
+            "social_security": rng.uniform(0, 15_000, n),
+            # Targets
             "traditional_401k_contributions": rng.uniform(0, 5000, n),
             "roth_401k_contributions": rng.uniform(0, 3000, n),
             "traditional_ira_contributions": rng.uniform(0, 2000, n),
@@ -151,12 +161,25 @@ class TestConstants:
         assert set(CPS_RETIREMENT_VARIABLES) == expected
 
     def test_retirement_predictors_include_income(self):
-        assert "employment_income" in RETIREMENT_PREDICTORS
-        assert "self_employment_income" in RETIREMENT_PREDICTORS
+        for var in RETIREMENT_INCOME_PREDICTORS:
+            assert var in RETIREMENT_PREDICTORS
 
     def test_retirement_predictors_include_demographics(self):
-        for pred in ["age", "is_male", "tax_unit_is_joint"]:
+        for pred in RETIREMENT_DEMOGRAPHIC_PREDICTORS:
             assert pred in RETIREMENT_PREDICTORS
+
+    def test_income_predictors_in_imputed_variables(self):
+        """All income predictors must be available from PUF QRF."""
+        for var in RETIREMENT_INCOME_PREDICTORS:
+            assert (
+                var in IMPUTED_VARIABLES
+            ), f"{var} not in IMPUTED_VARIABLES — won't be in puf_imputations"
+
+    def test_predictors_are_combined_lists(self):
+        expected = (
+            RETIREMENT_DEMOGRAPHIC_PREDICTORS + RETIREMENT_INCOME_PREDICTORS
+        )
+        assert RETIREMENT_PREDICTORS == expected
 
 
 # ── TestGetRetirementLimits ──────────────────────────────────────────
@@ -234,6 +257,18 @@ class TestImputeRetirementContributions:
         self.puf_imputations = {
             "employment_income": emp,
             "self_employment_income": se,
+            "taxable_interest_income": rng.uniform(0, 5_000, self.n).astype(
+                np.float32
+            ),
+            "qualified_dividend_income": rng.uniform(0, 3_000, self.n).astype(
+                np.float32
+            ),
+            "taxable_pension_income": rng.uniform(0, 20_000, self.n).astype(
+                np.float32
+            ),
+            "social_security": rng.uniform(0, 15_000, self.n).astype(
+                np.float32
+            ),
         }
 
         self.cps_df = _make_cps_df(self.n, rng)

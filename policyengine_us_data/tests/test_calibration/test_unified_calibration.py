@@ -350,31 +350,41 @@ class TestBlockTakeupSeeding:
 
 
 class TestAssembleCloneValuesCounty:
-    """Verify _assemble_clone_values uses county precomputation
-    for all target vars and state precomputation for constraints."""
+    """Verify _assemble_clone_values merges state and
+    county values correctly."""
 
-    def test_target_var_uses_county_values(self):
+    def test_county_var_uses_county_values(self):
         from policyengine_us_data.calibration.unified_matrix_builder import (
             UnifiedMatrixBuilder,
         )
 
         n = 4
         state_values = {
-            1: {"person": {}},
-            2: {"person": {}},
+            1: {
+                "hh": {
+                    "aca_ptc": np.array([100] * n, dtype=np.float32),
+                },
+                "person": {},
+                "entity": {},
+            },
+            2: {
+                "hh": {
+                    "aca_ptc": np.array([200] * n, dtype=np.float32),
+                },
+                "person": {},
+                "entity": {},
+            },
         }
         county_values = {
             "01001": {
                 "hh": {
                     "aca_ptc": np.array([111] * n, dtype=np.float32),
-                    "snap": np.array([50] * n, dtype=np.float32),
                 },
                 "entity": {},
             },
             "02001": {
                 "hh": {
                     "aca_ptc": np.array([222] * n, dtype=np.float32),
-                    "snap": np.array([60] * n, dtype=np.float32),
                 },
                 "entity": {},
             },
@@ -386,23 +396,18 @@ class TestAssembleCloneValuesCounty:
         builder = UnifiedMatrixBuilder.__new__(UnifiedMatrixBuilder)
         hh_vars, _ = builder._assemble_clone_values(
             state_values,
-            county_values,
             clone_states,
-            clone_counties,
             person_hh_idx,
-            {"aca_ptc", "snap"},
+            {"aca_ptc"},
             set(),
+            county_values=county_values,
+            clone_counties=clone_counties,
+            county_dependent_vars={"aca_ptc"},
         )
-        np.testing.assert_array_equal(
-            hh_vars["aca_ptc"],
-            np.array([111, 111, 222, 222], dtype=np.float32),
-        )
-        np.testing.assert_array_equal(
-            hh_vars["snap"],
-            np.array([50, 50, 60, 60], dtype=np.float32),
-        )
+        expected = np.array([111, 111, 222, 222], dtype=np.float32)
+        np.testing.assert_array_equal(hh_vars["aca_ptc"], expected)
 
-    def test_constraints_use_state_values(self):
+    def test_non_county_var_uses_state_values(self):
         from policyengine_us_data.calibration.unified_matrix_builder import (
             UnifiedMatrixBuilder,
         )
@@ -410,19 +415,17 @@ class TestAssembleCloneValuesCounty:
         n = 4
         state_values = {
             1: {
-                "person": {"age": np.array([25] * n, dtype=np.float32)},
-            },
-            2: {
-                "person": {"age": np.array([35] * n, dtype=np.float32)},
-            },
-        }
-        county_values = {
-            "01001": {
-                "hh": {"snap": np.array([50] * n, dtype=np.float32)},
+                "hh": {
+                    "snap": np.array([50] * n, dtype=np.float32),
+                },
+                "person": {},
                 "entity": {},
             },
-            "02001": {
-                "hh": {"snap": np.array([60] * n, dtype=np.float32)},
+            2: {
+                "hh": {
+                    "snap": np.array([60] * n, dtype=np.float32),
+                },
+                "person": {},
                 "entity": {},
             },
         }
@@ -431,19 +434,18 @@ class TestAssembleCloneValuesCounty:
         person_hh_idx = np.array([0, 1, 2, 3])
 
         builder = UnifiedMatrixBuilder.__new__(UnifiedMatrixBuilder)
-        _, person_vars = builder._assemble_clone_values(
+        hh_vars, _ = builder._assemble_clone_values(
             state_values,
-            county_values,
             clone_states,
-            clone_counties,
             person_hh_idx,
             {"snap"},
-            {"age"},
+            set(),
+            county_values={},
+            clone_counties=clone_counties,
+            county_dependent_vars={"aca_ptc"},
         )
-        np.testing.assert_array_equal(
-            person_vars["age"],
-            np.array([25, 25, 35, 35], dtype=np.float32),
-        )
+        expected = np.array([50, 50, 60, 60], dtype=np.float32)
+        np.testing.assert_array_equal(hh_vars["snap"], expected)
 
 
 class TestConvertBlocksToStackedFormat:

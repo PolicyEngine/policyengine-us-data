@@ -38,6 +38,10 @@ _GEO_VARS = {
     "congressional_district_geoid",
 }
 
+COUNTY_DEPENDENT_VARS = {
+    "aca_ptc",
+}
+
 
 class UnifiedMatrixBuilder:
     """Build sparse calibration matrix for cloned CPS records.
@@ -94,11 +98,15 @@ class UnifiedMatrixBuilder:
         geography,
         rerandomize_takeup: bool = False,
     ) -> dict:
-        """Precompute person-level constraint values per state.
+        """Precompute household/person/entity values per state.
 
         Creates a fresh Microsimulation per state to prevent
         cross-state cache pollution (stale intermediate values
         from one state leaking into another's calculations).
+
+        County-dependent variables (e.g. aca_ptc) are computed
+        here as a state-level fallback; county-level overrides
+        are applied later via ``_build_county_values``.
 
         Args:
             sim: Microsimulation instance (unused; kept for API
@@ -106,32 +114,49 @@ class UnifiedMatrixBuilder:
             target_vars: Set of target variable names.
             constraint_vars: Set of constraint variable names.
             geography: GeographyAssignment with state_fips.
-            rerandomize_takeup: If True, force takeup to True.
+            rerandomize_takeup: If True, force takeup=True and
+                also store entity-level eligible amounts for
+                takeup-affected targets.
 
         Returns:
-            {state_fips: {'person': {var: array}}}
+            {state_fips: {
+                'hh': {var: array},
+                'person': {var: array},
+                'entity': {var: array}  # only if rerandomize
+            }}
         """
         from policyengine_us import Microsimulation
+        from policyengine_us_data.utils.takeup import (
+            SIMPLE_TAKEUP_VARS,
+            TAKEUP_AFFECTED_TARGETS,
+        )
 
         unique_states = sorted(set(int(s) for s in geography.state_fips))
         n_hh = geography.n_records
 
         logger.info(
             "Per-state precomputation: %d states, "
-            "%d constraint vars (fresh sim per state)",
+            "%d hh vars, %d constraint vars "
+            "(fresh sim per state)",
             len(unique_states),
+            len([v for v in target_vars if not v.endswith("_count")]),
             len(constraint_vars),
         )
+
+        # Identify takeup-affected targets before the state loop
+        affected_targets = {}
+        if rerandomize_takeup:
+            for tvar in target_vars:
+                for key, info in TAKEUP_AFFECTED_TARGETS.items():
+                    if tvar == key or tvar.startswith(key):
+                        affected_targets[tvar] = info
+                        break
 
         state_values = {}
         for i, state in enumerate(unique_states):
             state_sim = Microsimulation(dataset=self.dataset_path)
 
             if rerandomize_takeup:
-                from policyengine_us_data.utils.takeup import (
-                    SIMPLE_TAKEUP_VARS,
-                )
-
                 for spec in SIMPLE_TAKEUP_VARS:
                     entity = spec["entity"]
                     n_ent = len(
@@ -153,6 +178,24 @@ class UnifiedMatrixBuilder:
             for var in get_calculated_variables(state_sim):
                 state_sim.delete_arrays(var)
 
+            hh = {}
+            for var in target_vars:
+                if var.endswith("_count"):
+                    continue
+                try:
+                    hh[var] = state_sim.calculate(
+                        var,
+                        self.time_period,
+                        map_to="household",
+                    ).values.astype(np.float32)
+                except Exception as exc:
+                    logger.warning(
+                        "Cannot calculate '%s' for state %d: %s",
+                        var,
+                        state,
+                        exc,
+                    )
+
             person = {}
             for var in constraint_vars:
                 try:
@@ -169,7 +212,31 @@ class UnifiedMatrixBuilder:
                         exc,
                     )
 
-            state_values[state] = {"person": person}
+            entity_vals = {}
+            if rerandomize_takeup:
+                for tvar, info in affected_targets.items():
+                    entity_level = info["entity"]
+                    try:
+                        entity_vals[tvar] = state_sim.calculate(
+                            tvar,
+                            self.time_period,
+                            map_to=entity_level,
+                        ).values.astype(np.float32)
+                    except Exception as exc:
+                        logger.warning(
+                            "Cannot calculate entity-level "
+                            "'%s' (map_to=%s) for state %d: %s",
+                            tvar,
+                            entity_level,
+                            state,
+                            exc,
+                        )
+
+            state_values[state] = {
+                "hh": hh,
+                "person": person,
+                "entity": entity_vals,
+            }
             if (i + 1) % 10 == 0 or i == 0:
                 logger.info(
                     "State %d/%d complete",
@@ -186,34 +253,38 @@ class UnifiedMatrixBuilder:
     def _build_county_values(
         self,
         sim,
-        target_vars: set,
+        county_dep_targets: set,
         geography,
         rerandomize_takeup: bool = False,
         county_level: bool = True,
     ) -> dict:
-        """Precompute ALL target variable values per county.
+        """Precompute county-dependent variable values per county.
+
+        Only iterates over COUNTY_DEPENDENT_VARS that actually
+        benefit from per-county computation. All other target
+        variables use state-level values from _build_state_values.
 
         Creates a fresh Microsimulation per state group to prevent
         cross-state cache pollution. Counties within the same state
         share a simulation since within-state recalculation is clean
         (only cross-state switches cause pollution).
 
-        When county_level=False, computes values once per state and
-        aliases the result to every county key in that state. This
-        is much faster (~51 state iterations vs ~3143 county
-        iterations) for variables that don't vary by county.
+        When county_level=False, returns an empty dict immediately
+        (all values come from state-level precomputation).
 
         Args:
             sim: Microsimulation instance (unused; kept for API
                 compatibility).
-            target_vars: Set of ALL target variable names.
+            county_dep_targets: Subset of target vars that depend
+                on county (intersection of targets with
+                COUNTY_DEPENDENT_VARS).
             geography: GeographyAssignment with county_fips.
             rerandomize_takeup: If True, force takeup=True and
                 also store entity-level eligible amounts for
                 takeup-affected targets.
-            county_level: If True (default), iterate counties
-                within each state. If False, compute once per
-                state and alias to all counties.
+            county_level: If True, iterate counties within each
+                state. If False, return empty dict (skip county
+                computation entirely).
 
         Returns:
             {county_fips_str: {
@@ -221,6 +292,18 @@ class UnifiedMatrixBuilder:
                 'entity': {var: array}
             }}
         """
+        if not county_level or not county_dep_targets:
+            if not county_level:
+                logger.info(
+                    "County-level computation disabled " "(skip-county mode)"
+                )
+            else:
+                logger.info(
+                    "No county-dependent target vars; "
+                    "skipping county precomputation"
+                )
+            return {}
+
         from policyengine_us import Microsimulation
         from policyengine_us_data.utils.takeup import (
             SIMPLE_TAKEUP_VARS,
@@ -234,26 +317,18 @@ class UnifiedMatrixBuilder:
         for county in unique_counties:
             state_to_counties[int(county[:2])].append(county)
 
-        if county_level:
-            logger.info(
-                "Per-county precomputation: %d counties in %d "
-                "states, %d vars (fresh sim per state)",
-                len(unique_counties),
-                len(state_to_counties),
-                len(target_vars),
-            )
-        else:
-            logger.info(
-                "Per-STATE precomputation (skip-county): %d "
-                "states, %d vars, aliasing to %d county keys",
-                len(state_to_counties),
-                len(target_vars),
-                len(unique_counties),
-            )
+        logger.info(
+            "Per-county precomputation: %d counties in %d "
+            "states, %d county-dependent vars "
+            "(fresh sim per state)",
+            len(unique_counties),
+            len(state_to_counties),
+            len(county_dep_targets),
+        )
 
         affected_targets = {}
         if rerandomize_takeup:
-            for tvar in target_vars:
+            for tvar in county_dep_targets:
                 for key, info in TAKEUP_AFFECTED_TARGETS.items():
                     if tvar == key or tvar.startswith(key):
                         affected_targets[tvar] = info
@@ -284,62 +359,6 @@ class UnifiedMatrixBuilder:
                 np.full(n_hh, state_fips, dtype=np.int32),
             )
 
-            if not county_level:
-                for var in get_calculated_variables(state_sim):
-                    state_sim.delete_arrays(var)
-
-                hh = {}
-                for var in target_vars:
-                    if var.endswith("_count"):
-                        continue
-                    try:
-                        hh[var] = state_sim.calculate(
-                            var,
-                            self.time_period,
-                            map_to="household",
-                        ).values.astype(np.float32)
-                    except Exception as exc:
-                        logger.warning(
-                            "Cannot calculate '%s' for " "state %d: %s",
-                            var,
-                            state_fips,
-                            exc,
-                        )
-
-                entity_vals = {}
-                if rerandomize_takeup:
-                    for tvar, info in affected_targets.items():
-                        entity_level = info["entity"]
-                        try:
-                            entity_vals[tvar] = state_sim.calculate(
-                                tvar,
-                                self.time_period,
-                                map_to=entity_level,
-                            ).values.astype(np.float32)
-                        except Exception as exc:
-                            logger.warning(
-                                "Cannot calculate entity-level "
-                                "'%s' for state %d: %s",
-                                tvar,
-                                state_fips,
-                                exc,
-                            )
-
-                result = {"hh": hh, "entity": entity_vals}
-                for county_fips in counties:
-                    county_values[county_fips] = result
-                    county_count += 1
-
-                logger.info(
-                    "State %d: computed once, aliased to %d "
-                    "counties (%d/%d total)",
-                    state_fips,
-                    len(counties),
-                    county_count,
-                    len(unique_counties),
-                )
-                continue
-
             for county_fips in counties:
                 county_idx = get_county_enum_index_from_fips(county_fips)
                 state_sim.set_input(
@@ -352,7 +371,7 @@ class UnifiedMatrixBuilder:
                         state_sim.delete_arrays(var)
 
                 hh = {}
-                for var in target_vars:
+                for var in county_dep_targets:
                     if var.endswith("_count"):
                         continue
                     try:
@@ -409,29 +428,32 @@ class UnifiedMatrixBuilder:
     def _assemble_clone_values(
         self,
         state_values: dict,
-        county_values: dict,
         clone_states: np.ndarray,
-        clone_counties: np.ndarray,
         person_hh_indices: np.ndarray,
         target_vars: set,
         constraint_vars: set,
+        county_values: dict = None,
+        clone_counties: np.ndarray = None,
+        county_dependent_vars: set = None,
     ) -> tuple:
-        """Assemble per-clone values from county/state precomputation.
+        """Assemble per-clone values from state/county precomputation.
 
-        All target variables come from county_values (which set
-        both state_fips and county consistently). Constraint
-        variables come from state_values.
+        For each target variable, selects values from either
+        county_values (if the var is county-dependent) or
+        state_values (otherwise) using numpy fancy indexing.
 
         Args:
             state_values: Output of _build_state_values.
-            county_values: Output of _build_county_values.
             clone_states: State FIPS per record for this clone.
-            clone_counties: County FIPS per record for this
-                clone (str array).
             person_hh_indices: Maps person index to household
                 index (0..n_records-1).
             target_vars: Set of target variable names.
             constraint_vars: Set of constraint variable names.
+            county_values: Output of _build_county_values.
+            clone_counties: County FIPS per record for this
+                clone (str array).
+            county_dependent_vars: Set of var names that should
+                be looked up by county instead of state.
 
         Returns:
             (hh_vars, person_vars) where hh_vars maps variable
@@ -440,29 +462,47 @@ class UnifiedMatrixBuilder:
         """
         n_records = len(clone_states)
         n_persons = len(person_hh_indices)
+        person_states = clone_states[person_hh_indices]
+        unique_clone_states = np.unique(clone_states)
+        cdv = county_dependent_vars or set()
 
         hh_vars = {}
         for var in target_vars:
             if var.endswith("_count"):
                 continue
-            arr = np.empty(n_records, dtype=np.float32)
-            for county in np.unique(clone_counties):
-                mask = clone_counties == county
-                county_hh = county_values.get(county, {}).get("hh", {})
-                if var in county_hh:
-                    arr[mask] = county_hh[var][mask]
-                else:
+            if var in cdv and county_values and clone_counties is not None:
+                unique_counties = np.unique(clone_counties)
+                first_county = unique_counties[0]
+                if var not in county_values.get(first_county, {}).get(
+                    "hh", {}
+                ):
                     continue
-            hh_vars[var] = arr
+                arr = np.empty(n_records, dtype=np.float32)
+                for county in unique_counties:
+                    mask = clone_counties == county
+                    county_hh = county_values.get(county, {}).get("hh", {})
+                    if var in county_hh:
+                        arr[mask] = county_hh[var][mask]
+                    else:
+                        st = int(county[:2])
+                        arr[mask] = state_values[st]["hh"][var][mask]
+                hh_vars[var] = arr
+            else:
+                if var not in state_values[unique_clone_states[0]]["hh"]:
+                    continue
+                arr = np.empty(n_records, dtype=np.float32)
+                for state in unique_clone_states:
+                    mask = clone_states == state
+                    arr[mask] = state_values[int(state)]["hh"][var][mask]
+                hh_vars[var] = arr
 
-        person_states = clone_states[person_hh_indices]
-        unique_clone_states = np.unique(clone_states)
+        unique_person_states = np.unique(person_states)
         person_vars = {}
         for var in constraint_vars:
             if var not in state_values[unique_clone_states[0]]["person"]:
                 continue
             arr = np.empty(n_persons, dtype=np.float32)
-            for state in np.unique(person_states):
+            for state in unique_person_states:
                 mask = person_states == state
                 arr[mask] = state_values[int(state)]["person"][var][mask]
             person_vars[var] = arr
@@ -1206,7 +1246,7 @@ class UnifiedMatrixBuilder:
             for c in constraints:
                 unique_constraint_vars.add(c["variable"])
 
-        # 5b. Per-state precomputation (constraints + warmup)
+        # 5b. Per-state precomputation (51 sims on one object)
         self._entity_rel_cache = None
         state_values = self._build_state_values(
             sim,
@@ -1216,10 +1256,11 @@ class UnifiedMatrixBuilder:
             rerandomize_takeup=rerandomize_takeup,
         )
 
-        # 5b-county. Per-county precomputation for ALL target vars
+        # 5b-county. Per-county precomputation for county-dependent vars
+        county_dep_targets = unique_variables & COUNTY_DEPENDENT_VARS
         county_values = self._build_county_values(
             sim,
-            unique_variables,
+            county_dep_targets,
             geography,
             rerandomize_takeup=rerandomize_takeup,
             county_level=county_level,
@@ -1340,12 +1381,13 @@ class UnifiedMatrixBuilder:
 
             hh_vars, person_vars = self._assemble_clone_values(
                 state_values,
-                county_values,
                 clone_states,
-                clone_counties,
                 person_hh_indices,
                 unique_variables,
                 unique_constraint_vars,
+                county_values=county_values,
+                clone_counties=clone_counties,
+                county_dependent_vars=county_dep_targets,
             )
 
             # Apply geo-specific entity-level takeup for
@@ -1360,15 +1402,30 @@ class UnifiedMatrixBuilder:
                     ent_hh = entity_hh_idx_map[entity_level]
                     n_ent = len(ent_hh)
 
+                    # Entity-level states from household states
+                    ent_states = clone_states[ent_hh]
+
                     # Assemble entity-level eligible amounts
-                    # from county precomputation
+                    # Use county_values for county-dependent vars
                     ent_eligible = np.zeros(n_ent, dtype=np.float32)
-                    ent_counties = clone_counties[ent_hh]
-                    for cfips in np.unique(ent_counties):
-                        m = ent_counties == cfips
-                        cv = county_values.get(cfips, {}).get("entity", {})
-                        if tvar in cv:
-                            ent_eligible[m] = cv[tvar][m]
+                    if tvar in county_dep_targets and county_values:
+                        ent_counties = clone_counties[ent_hh]
+                        for cfips in np.unique(ent_counties):
+                            m = ent_counties == cfips
+                            cv = county_values.get(cfips, {}).get("entity", {})
+                            if tvar in cv:
+                                ent_eligible[m] = cv[tvar][m]
+                            else:
+                                st = int(cfips[:2])
+                                sv = state_values[st]["entity"]
+                                if tvar in sv:
+                                    ent_eligible[m] = sv[tvar][m]
+                    else:
+                        for st in np.unique(ent_states):
+                            m = ent_states == st
+                            sv = state_values[int(st)]["entity"]
+                            if tvar in sv:
+                                ent_eligible[m] = sv[tvar][m]
 
                     # Entity-level block GEOIDs for takeup draws
                     ent_blocks = np.array(

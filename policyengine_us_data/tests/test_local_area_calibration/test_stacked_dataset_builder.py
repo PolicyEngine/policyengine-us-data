@@ -85,10 +85,10 @@ class TestStackedDatasetBuilder:
         assert len(cds_in_output) == len(TEST_CDS)
 
     def test_output_contains_both_cds(self, stacked_result):
-        """Output should contain both NC-01 (3701) and AK-AL (201)."""
+        """Output should contain both NC-01 (3701) and AK-AL (200)."""
         hh_df = stacked_result["hh_df"]
         cds_in_output = set(hh_df["congressional_district_geoid"].unique())
-        expected = {3701, 201}
+        expected = {3701, 200}
         assert cds_in_output == expected
 
     def test_state_fips_matches_cd(self, stacked_result):

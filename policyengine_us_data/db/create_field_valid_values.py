@@ -74,6 +74,7 @@ def populate_field_valid_values(session: Session) -> None:
         ("source", "USDA FNS SNAP", "administrative"),
         ("source", "Census ACS S2201", "survey"),
         ("source", "Census STC", "administrative"),
+        ("source", "CDC VSRR Natality", "administrative"),
         ("source", "PolicyEngine", "hardcoded"),
     ]
 

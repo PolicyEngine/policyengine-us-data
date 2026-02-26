@@ -30,11 +30,17 @@ def tax_benefit_system():
 
 @pytest.fixture(scope="module")
 def formula_variables(tax_benefit_system):
-    """Return set of variable names that have formulas."""
+    """Return set of variable names computed by policyengine-us.
+
+    Includes variables with explicit formulas as well as those using
+    ``adds`` or ``subtracts`` (which the engine auto-sums at runtime).
+    """
     return {
         name
         for name, var in tax_benefit_system.variables.items()
-        if hasattr(var, "formulas") and len(var.formulas) > 0
+        if (hasattr(var, "formulas") and len(var.formulas) > 0)
+        or getattr(var, "adds", None)
+        or getattr(var, "subtracts", None)
     }
 
 
@@ -61,12 +67,13 @@ def sim():
 
 
 def test_no_formula_variables_stored(formula_variables, stored_variables):
-    """Variables with formulas should not be stored in the dataset."""
+    """Computed variables should not be stored in the dataset."""
     overlap = (stored_variables & formula_variables) - KNOWN_FORMULA_EXCEPTIONS
     if overlap:
         msg = (
-            f"These {len(overlap)} variables have formulas in "
-            f"policyengine-us but are stored in the dataset "
+            f"These {len(overlap)} variables are computed by "
+            f"policyengine-us (formulas/adds/subtracts) but are "
+            f"stored in the dataset "
             f"(stored values will be IGNORED by the simulation):\n"
         )
         for v in sorted(overlap):
@@ -126,10 +133,14 @@ def test_stored_values_match_computed(
         pytest.fail(msg)
 
 
-def test_ss_subcomponents_sum_to_total(dataset_path):
-    """Social Security sub-components should sum to the total."""
+def test_ss_subcomponents_sum_to_computed_total(sim, dataset_path):
+    """Social Security sub-components should sum to the computed total.
+
+    ``social_security`` is computed via ``adds`` in policyengine-us and
+    is NOT stored in the dataset.  We verify that the sub-components
+    stored in the dataset sum to the simulation's computed total.
+    """
     with h5py.File(dataset_path, "r") as f:
-        ss_total = f["social_security"]["2024"][...].astype(float)
         ss_retirement = f["social_security_retirement"]["2024"][...].astype(
             float
         )
@@ -144,26 +155,29 @@ def test_ss_subcomponents_sum_to_total(dataset_path):
         )
 
     sub_sum = ss_retirement + ss_disability + ss_survivors + ss_dependents
+    computed_total = np.array(sim.calculate("social_security", 2024)).astype(
+        float
+    )
 
     # Only check records that have any SS income
-    has_ss = ss_total > 0
+    has_ss = computed_total > 0
     if not np.any(has_ss):
         pytest.skip("No SS recipients in dataset")
 
-    total_ss = np.sum(ss_total[has_ss])
+    total_computed = np.sum(computed_total[has_ss])
     total_sub = np.sum(sub_sum[has_ss])
-    pct_diff = abs(total_ss - total_sub) / total_ss * 100
+    pct_diff = abs(total_computed - total_sub) / total_computed * 100
 
     assert pct_diff < 1, (
-        f"SS sub-components don't sum to total: "
-        f"total=${total_ss:,.0f}, sub_sum=${total_sub:,.0f}, "
+        f"SS sub-components don't sum to computed total: "
+        f"computed=${total_computed:,.0f}, sub_sum=${total_sub:,.0f}, "
         f"diff={pct_diff:.1f}%"
     )
 
     # Per-person check: no person's sub-components should exceed total
-    excess = sub_sum[has_ss] - ss_total[has_ss]
+    excess = sub_sum[has_ss] - computed_total[has_ss]
     n_excess = np.sum(excess > 1)
     assert n_excess == 0, (
         f"{n_excess} people have SS sub-components exceeding "
-        f"their total SS income"
+        f"their computed total SS income"
     )

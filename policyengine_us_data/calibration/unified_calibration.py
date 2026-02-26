@@ -214,6 +214,13 @@ def parse_args(argv=None):
         help="Path to target exclusion YAML config",
     )
     parser.add_argument(
+        "--county-level",
+        action="store_true",
+        help="Iterate per-county (slow, ~3143 counties). "
+        "Default is state-only (~51 states), which is much "
+        "faster for county-invariant target variables.",
+    )
+    parser.add_argument(
         "--build-only",
         action="store_true",
         help="Build matrix + save package, skip fitting",
@@ -844,6 +851,7 @@ def run_calibration(
     hierarchical_domains: list = None,
     skip_takeup_rerandomize: bool = False,
     skip_source_impute: bool = False,
+    skip_county: bool = True,
     target_config: dict = None,
     build_only: bool = False,
     package_path: str = None,
@@ -1031,6 +1039,7 @@ def run_calibration(
         hierarchical_domains=hierarchical_domains,
         sim_modifier=sim_modifier,
         rerandomize_takeup=do_rerandomize,
+        county_level=not skip_county,
     )
 
     builder.print_uprating_summary(targets_df)
@@ -1229,6 +1238,7 @@ def main(argv=None):
         hierarchical_domains=hierarchical_domains,
         skip_takeup_rerandomize=args.skip_takeup_rerandomize,
         skip_source_impute=getattr(args, "skip_source_impute", False),
+        skip_county=not args.county_level,
         target_config=target_config,
         build_only=args.build_only,
         package_path=args.package_path,

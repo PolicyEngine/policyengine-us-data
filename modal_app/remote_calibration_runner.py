@@ -107,6 +107,7 @@ def _fit_weights_impl(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
+    skip_county: bool = True,
 ) -> dict:
     """Full pipeline: download data, build matrix, fit weights."""
     _clone_and_install(branch)
@@ -154,7 +155,11 @@ def _fit_weights_impl(
     ]
     if target_config:
         cmd.extend(["--target-config", target_config])
-    _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq)
+    if skip_county:
+        cmd.append("--skip-county")
+    _append_hyperparams(
+        cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq
+    )
 
     cal_rc, cal_lines = _run_streaming(
         cmd,
@@ -220,7 +225,9 @@ def _fit_from_package_impl(
     ]
     if target_config:
         cmd.extend(["--target-config", target_config])
-    _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq)
+    _append_hyperparams(
+        cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq
+    )
 
     print(f"Running command: {' '.join(cmd)}", flush=True)
 
@@ -255,10 +262,18 @@ def fit_weights_t4(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
+    skip_county: bool = True,
 ) -> dict:
     return _fit_weights_impl(
-        branch, epochs, target_config, beta, lambda_l0, lambda_l2,
-        learning_rate, log_freq,
+        branch,
+        epochs,
+        target_config,
+        beta,
+        lambda_l0,
+        lambda_l2,
+        learning_rate,
+        log_freq,
+        skip_county=skip_county,
     )
 
 
@@ -279,10 +294,18 @@ def fit_weights_a10(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
+    skip_county: bool = True,
 ) -> dict:
     return _fit_weights_impl(
-        branch, epochs, target_config, beta, lambda_l0, lambda_l2,
-        learning_rate, log_freq,
+        branch,
+        epochs,
+        target_config,
+        beta,
+        lambda_l0,
+        lambda_l2,
+        learning_rate,
+        log_freq,
+        skip_county=skip_county,
     )
 
 
@@ -303,10 +326,18 @@ def fit_weights_a100_40(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
+    skip_county: bool = True,
 ) -> dict:
     return _fit_weights_impl(
-        branch, epochs, target_config, beta, lambda_l0, lambda_l2,
-        learning_rate, log_freq,
+        branch,
+        epochs,
+        target_config,
+        beta,
+        lambda_l0,
+        lambda_l2,
+        learning_rate,
+        log_freq,
+        skip_county=skip_county,
     )
 
 
@@ -327,10 +358,18 @@ def fit_weights_a100_80(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
+    skip_county: bool = True,
 ) -> dict:
     return _fit_weights_impl(
-        branch, epochs, target_config, beta, lambda_l0, lambda_l2,
-        learning_rate, log_freq,
+        branch,
+        epochs,
+        target_config,
+        beta,
+        lambda_l0,
+        lambda_l2,
+        learning_rate,
+        log_freq,
+        skip_county=skip_county,
     )
 
 
@@ -351,10 +390,18 @@ def fit_weights_h100(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
+    skip_county: bool = True,
 ) -> dict:
     return _fit_weights_impl(
-        branch, epochs, target_config, beta, lambda_l0, lambda_l2,
-        learning_rate, log_freq,
+        branch,
+        epochs,
+        target_config,
+        beta,
+        lambda_l0,
+        lambda_l2,
+        learning_rate,
+        log_freq,
+        skip_county=skip_county,
     )
 
 
@@ -391,11 +438,16 @@ def fit_from_package_t4(
     volume_package_path: str = None,
 ) -> dict:
     return _fit_from_package_impl(
-        branch, epochs, package_bytes=package_bytes,
+        branch,
+        epochs,
+        package_bytes=package_bytes,
         volume_package_path=volume_package_path,
-        target_config=target_config, beta=beta,
-        lambda_l0=lambda_l0, lambda_l2=lambda_l2,
-        learning_rate=learning_rate, log_freq=log_freq,
+        target_config=target_config,
+        beta=beta,
+        lambda_l0=lambda_l0,
+        lambda_l2=lambda_l2,
+        learning_rate=learning_rate,
+        log_freq=log_freq,
     )
 
 
@@ -420,11 +472,16 @@ def fit_from_package_a10(
     volume_package_path: str = None,
 ) -> dict:
     return _fit_from_package_impl(
-        branch, epochs, package_bytes=package_bytes,
+        branch,
+        epochs,
+        package_bytes=package_bytes,
         volume_package_path=volume_package_path,
-        target_config=target_config, beta=beta,
-        lambda_l0=lambda_l0, lambda_l2=lambda_l2,
-        learning_rate=learning_rate, log_freq=log_freq,
+        target_config=target_config,
+        beta=beta,
+        lambda_l0=lambda_l0,
+        lambda_l2=lambda_l2,
+        learning_rate=learning_rate,
+        log_freq=log_freq,
     )
 
 
@@ -449,11 +506,16 @@ def fit_from_package_a100_40(
     volume_package_path: str = None,
 ) -> dict:
     return _fit_from_package_impl(
-        branch, epochs, package_bytes=package_bytes,
+        branch,
+        epochs,
+        package_bytes=package_bytes,
         volume_package_path=volume_package_path,
-        target_config=target_config, beta=beta,
-        lambda_l0=lambda_l0, lambda_l2=lambda_l2,
-        learning_rate=learning_rate, log_freq=log_freq,
+        target_config=target_config,
+        beta=beta,
+        lambda_l0=lambda_l0,
+        lambda_l2=lambda_l2,
+        learning_rate=learning_rate,
+        log_freq=log_freq,
     )
 
 
@@ -478,11 +540,16 @@ def fit_from_package_a100_80(
     volume_package_path: str = None,
 ) -> dict:
     return _fit_from_package_impl(
-        branch, epochs, package_bytes=package_bytes,
+        branch,
+        epochs,
+        package_bytes=package_bytes,
         volume_package_path=volume_package_path,
-        target_config=target_config, beta=beta,
-        lambda_l0=lambda_l0, lambda_l2=lambda_l2,
-        learning_rate=learning_rate, log_freq=log_freq,
+        target_config=target_config,
+        beta=beta,
+        lambda_l0=lambda_l0,
+        lambda_l2=lambda_l2,
+        learning_rate=learning_rate,
+        log_freq=log_freq,
     )
 
 
@@ -507,11 +574,16 @@ def fit_from_package_h100(
     volume_package_path: str = None,
 ) -> dict:
     return _fit_from_package_impl(
-        branch, epochs, package_bytes=package_bytes,
+        branch,
+        epochs,
+        package_bytes=package_bytes,
         volume_package_path=volume_package_path,
-        target_config=target_config, beta=beta,
-        lambda_l0=lambda_l0, lambda_l2=lambda_l2,
-        learning_rate=learning_rate, log_freq=log_freq,
+        target_config=target_config,
+        beta=beta,
+        lambda_l0=lambda_l0,
+        lambda_l2=lambda_l2,
+        learning_rate=learning_rate,
+        log_freq=log_freq,
     )
 
 
@@ -542,6 +614,7 @@ def main(
     log_freq: int = None,
     package_path: str = None,
     package_volume: bool = False,
+    county_level: bool = False,
 ):
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
@@ -604,6 +677,7 @@ def main(
             lambda_l2=lambda_l2,
             learning_rate=learning_rate,
             log_freq=log_freq,
+            skip_county=not county_level,
         )
 
     with open(output, "wb") as f:

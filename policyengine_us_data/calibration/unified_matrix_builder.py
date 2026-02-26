@@ -189,6 +189,7 @@ class UnifiedMatrixBuilder:
         target_vars: set,
         geography,
         rerandomize_takeup: bool = False,
+        county_level: bool = True,
     ) -> dict:
         """Precompute ALL target variable values per county.
 
@@ -196,6 +197,11 @@ class UnifiedMatrixBuilder:
         cross-state cache pollution. Counties within the same state
         share a simulation since within-state recalculation is clean
         (only cross-state switches cause pollution).
+
+        When county_level=False, computes values once per state and
+        aliases the result to every county key in that state. This
+        is much faster (~51 state iterations vs ~3143 county
+        iterations) for variables that don't vary by county.
 
         Args:
             sim: Microsimulation instance (unused; kept for API
@@ -205,6 +211,9 @@ class UnifiedMatrixBuilder:
             rerandomize_takeup: If True, force takeup=True and
                 also store entity-level eligible amounts for
                 takeup-affected targets.
+            county_level: If True (default), iterate counties
+                within each state. If False, compute once per
+                state and alias to all counties.
 
         Returns:
             {county_fips_str: {
@@ -225,13 +234,22 @@ class UnifiedMatrixBuilder:
         for county in unique_counties:
             state_to_counties[int(county[:2])].append(county)
 
-        logger.info(
-            "Per-county precomputation: %d counties in %d states, "
-            "%d vars (fresh sim per state)",
-            len(unique_counties),
-            len(state_to_counties),
-            len(target_vars),
-        )
+        if county_level:
+            logger.info(
+                "Per-county precomputation: %d counties in %d "
+                "states, %d vars (fresh sim per state)",
+                len(unique_counties),
+                len(state_to_counties),
+                len(target_vars),
+            )
+        else:
+            logger.info(
+                "Per-STATE precomputation (skip-county): %d "
+                "states, %d vars, aliasing to %d county keys",
+                len(state_to_counties),
+                len(target_vars),
+                len(unique_counties),
+            )
 
         affected_targets = {}
         if rerandomize_takeup:
@@ -265,6 +283,62 @@ class UnifiedMatrixBuilder:
                 self.time_period,
                 np.full(n_hh, state_fips, dtype=np.int32),
             )
+
+            if not county_level:
+                for var in get_calculated_variables(state_sim):
+                    state_sim.delete_arrays(var)
+
+                hh = {}
+                for var in target_vars:
+                    if var.endswith("_count"):
+                        continue
+                    try:
+                        hh[var] = state_sim.calculate(
+                            var,
+                            self.time_period,
+                            map_to="household",
+                        ).values.astype(np.float32)
+                    except Exception as exc:
+                        logger.warning(
+                            "Cannot calculate '%s' for " "state %d: %s",
+                            var,
+                            state_fips,
+                            exc,
+                        )
+
+                entity_vals = {}
+                if rerandomize_takeup:
+                    for tvar, info in affected_targets.items():
+                        entity_level = info["entity"]
+                        try:
+                            entity_vals[tvar] = state_sim.calculate(
+                                tvar,
+                                self.time_period,
+                                map_to=entity_level,
+                            ).values.astype(np.float32)
+                        except Exception as exc:
+                            logger.warning(
+                                "Cannot calculate entity-level "
+                                "'%s' for state %d: %s",
+                                tvar,
+                                state_fips,
+                                exc,
+                            )
+
+                result = {"hh": hh, "entity": entity_vals}
+                for county_fips in counties:
+                    county_values[county_fips] = result
+                    county_count += 1
+
+                logger.info(
+                    "State %d: computed once, aliased to %d "
+                    "counties (%d/%d total)",
+                    state_fips,
+                    len(counties),
+                    county_count,
+                    len(unique_counties),
+                )
+                continue
 
             for county_fips in counties:
                 county_idx = get_county_enum_index_from_fips(county_fips)
@@ -1020,6 +1094,7 @@ class UnifiedMatrixBuilder:
         cache_dir: Optional[str] = None,
         sim_modifier=None,
         rerandomize_takeup: bool = False,
+        county_level: bool = True,
     ) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
         """Build sparse calibration matrix.
 
@@ -1044,6 +1119,10 @@ class UnifiedMatrixBuilder:
             rerandomize_takeup: If True, use geo-salted
                 entity-level takeup draws instead of base h5
                 takeup values for takeup-affected targets.
+            county_level: If True (default), iterate counties
+                within each state during precomputation. If
+                False, compute once per state and alias to all
+                counties (faster for county-invariant vars).
 
         Returns:
             (targets_df, X_sparse, target_names)
@@ -1143,6 +1222,7 @@ class UnifiedMatrixBuilder:
             unique_variables,
             geography,
             rerandomize_takeup=rerandomize_takeup,
+            county_level=county_level,
         )
 
         # 5c. State-independent structures (computed once)
@@ -1211,6 +1291,7 @@ class UnifiedMatrixBuilder:
                 entity_to_person_idx[entity_level] = np.array(
                     [ent_id_to_idx[int(eid)] for eid in person_ent_ids]
                 )
+            entity_to_person_idx["person"] = np.arange(len(entity_rel))
 
             for tvar in unique_variables:
                 for key, info in TAKEUP_AFFECTED_TARGETS.items():

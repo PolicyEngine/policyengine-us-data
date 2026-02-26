@@ -959,11 +959,20 @@ def run_calibration(
         UnifiedMatrixBuilder,
     )
 
-    # Step 1: Load dataset
+    # Step 1: Load dataset and detect time period
     logger.info("Loading dataset from %s", dataset_path)
     sim = Microsimulation(dataset=dataset_path)
     n_records = len(sim.calculate("household_id", map_to="household").values)
-    logger.info("Loaded %d households", n_records)
+    raw_keys = sim.dataset.load_dataset()["household_id"]
+    if isinstance(raw_keys, dict):
+        time_period = int(next(iter(raw_keys)))
+    else:
+        time_period = 2024
+    logger.info(
+        "Loaded %d households, time_period=%d",
+        n_records,
+        time_period,
+    )
 
     # Step 2: Clone and assign geography
     logger.info(
@@ -992,9 +1001,11 @@ def run_calibration(
         for var in raw_data:
             val = raw_data[var]
             if isinstance(val, dict):
-                data_dict[var] = val
+                # h5py returns string keys ("2024"); normalize
+                # to int so source_impute lookups work.
+                data_dict[var] = {int(k): v for k, v in val.items()}
             else:
-                data_dict[var] = {2024: val[...]}
+                data_dict[var] = {time_period: val[...]}
         del source_sim
 
         from policyengine_us_data.calibration.source_impute import (
@@ -1004,7 +1015,7 @@ def run_calibration(
         data_dict = impute_source_variables(
             data=data_dict,
             state_fips=base_states,
-            time_period=2024,
+            time_period=time_period,
             dataset_path=dataset_path,
         )
 
@@ -1038,7 +1049,7 @@ def run_calibration(
     db_uri = f"sqlite:///{db_path}"
     builder = UnifiedMatrixBuilder(
         db_uri=db_uri,
-        time_period=2024,
+        time_period=time_period,
         dataset_path=dataset_for_matrix,
     )
     targets_df, X_sparse, target_names = builder.build_matrix(

@@ -466,12 +466,23 @@ class UnifiedMatrixBuilder:
         unique_clone_states = np.unique(clone_states)
         cdv = county_dependent_vars or set()
 
+        # Pre-compute masks to avoid recomputing per variable
+        state_masks = {int(s): clone_states == s for s in unique_clone_states}
+        unique_person_states = np.unique(person_states)
+        person_state_masks = {
+            int(s): person_states == s for s in unique_person_states
+        }
+        county_masks = {}
+        unique_counties = None
+        if clone_counties is not None and county_values:
+            unique_counties = np.unique(clone_counties)
+            county_masks = {c: clone_counties == c for c in unique_counties}
+
         hh_vars = {}
         for var in target_vars:
             if var.endswith("_count"):
                 continue
             if var in cdv and county_values and clone_counties is not None:
-                unique_counties = np.unique(clone_counties)
                 first_county = unique_counties[0]
                 if var not in county_values.get(first_county, {}).get(
                     "hh", {}
@@ -479,7 +490,7 @@ class UnifiedMatrixBuilder:
                     continue
                 arr = np.empty(n_records, dtype=np.float32)
                 for county in unique_counties:
-                    mask = clone_counties == county
+                    mask = county_masks[county]
                     county_hh = county_values.get(county, {}).get("hh", {})
                     if var in county_hh:
                         arr[mask] = county_hh[var][mask]
@@ -492,18 +503,17 @@ class UnifiedMatrixBuilder:
                     continue
                 arr = np.empty(n_records, dtype=np.float32)
                 for state in unique_clone_states:
-                    mask = clone_states == state
+                    mask = state_masks[int(state)]
                     arr[mask] = state_values[int(state)]["hh"][var][mask]
                 hh_vars[var] = arr
 
-        unique_person_states = np.unique(person_states)
         person_vars = {}
         for var in constraint_vars:
             if var not in state_values[unique_clone_states[0]]["person"]:
                 continue
             arr = np.empty(n_persons, dtype=np.float32)
             for state in unique_person_states:
-                mask = person_states == state
+                mask = person_state_masks[int(state)]
                 arr[mask] = state_values[int(state)]["person"][var][mask]
             person_vars[var] = arr
 
@@ -1345,6 +1355,15 @@ class UnifiedMatrixBuilder:
                 len(affected_target_info),
             )
 
+            # Pre-compute takeup rates (constant across clones)
+            precomputed_rates = {}
+            for tvar, info in affected_target_info.items():
+                rk = info["rate_key"]
+                if rk not in precomputed_rates:
+                    precomputed_rates[rk] = load_take_up_rate(
+                        rk, self.time_period
+                    )
+
         # 5d. Clone loop
         from pathlib import Path
 
@@ -1428,17 +1447,13 @@ class UnifiedMatrixBuilder:
                                 ent_eligible[m] = sv[tvar][m]
 
                     # Entity-level block GEOIDs for takeup draws
-                    ent_blocks = np.array(
-                        [str(clone_blocks[h]) for h in ent_hh]
-                    )
+                    ent_blocks = clone_blocks[ent_hh]
                     ent_hh_ids = household_ids[ent_hh]
 
                     # Apply takeup per (block, household)
                     ent_takeup = np.zeros(n_ent, dtype=bool)
                     rate_key = info["rate_key"]
-                    rate_or_dict = load_take_up_rate(
-                        rate_key, self.time_period
-                    )
+                    rate_or_dict = precomputed_rates[rate_key]
                     for blk in np.unique(ent_blocks):
                         bm = ent_blocks == blk
                         sf = int(blk[:2])

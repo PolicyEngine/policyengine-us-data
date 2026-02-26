@@ -110,6 +110,7 @@ def _fit_weights_impl(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
+    workers: int = 1,
 ) -> dict:
     """Full pipeline: download data, build matrix, fit weights."""
     _clone_and_install(branch)
@@ -159,6 +160,8 @@ def _fit_weights_impl(
         cmd.extend(["--target-config", target_config])
     if skip_county:
         cmd.append("--skip-county")
+    if workers > 1:
+        cmd.extend(["--workers", str(workers)])
     _append_hyperparams(
         cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq
     )
@@ -265,6 +268,7 @@ def fit_weights_t4(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
+    workers: int = 1,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -276,6 +280,7 @@ def fit_weights_t4(
         learning_rate,
         log_freq,
         skip_county=skip_county,
+        workers=workers,
     )
 
 
@@ -297,6 +302,7 @@ def fit_weights_a10(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
+    workers: int = 1,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -308,6 +314,7 @@ def fit_weights_a10(
         learning_rate,
         log_freq,
         skip_county=skip_county,
+        workers=workers,
     )
 
 
@@ -329,6 +336,7 @@ def fit_weights_a100_40(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
+    workers: int = 1,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -340,6 +348,7 @@ def fit_weights_a100_40(
         learning_rate,
         log_freq,
         skip_county=skip_county,
+        workers=workers,
     )
 
 
@@ -361,6 +370,7 @@ def fit_weights_a100_80(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
+    workers: int = 1,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -372,6 +382,7 @@ def fit_weights_a100_80(
         learning_rate,
         log_freq,
         skip_county=skip_county,
+        workers=workers,
     )
 
 
@@ -393,6 +404,7 @@ def fit_weights_h100(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
+    workers: int = 1,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -404,6 +416,7 @@ def fit_weights_h100(
         learning_rate,
         log_freq,
         skip_county=skip_county,
+        workers=workers,
     )
 
 
@@ -617,6 +630,7 @@ def main(
     package_path: str = None,
     package_volume: bool = False,
     county_level: bool = False,
+    workers: int = 1,
 ):
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
@@ -680,6 +694,7 @@ def main(
             learning_rate=learning_rate,
             log_freq=log_freq,
             skip_county=not county_level,
+            workers=workers,
         )
 
     with open(output, "wb") as f:

@@ -268,6 +268,13 @@ def parse_args(argv=None):
         help="Epochs between per-target CSV log entries. "
         "Omit to disable epoch logging.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of parallel workers for state/county "
+        "precomputation (default: 1, sequential).",
+    )
     return parser.parse_args(argv)
 
 
@@ -869,6 +876,7 @@ def run_calibration(
     learning_rate: float = LEARNING_RATE,
     log_freq: int = None,
     log_path: str = None,
+    workers: int = 1,
 ):
     """Run unified calibration pipeline.
 
@@ -1062,6 +1070,7 @@ def run_calibration(
         sim_modifier=sim_modifier,
         rerandomize_takeup=do_rerandomize,
         county_level=not skip_county,
+        workers=workers,
     )
 
     builder.print_uprating_summary(targets_df)
@@ -1276,6 +1285,7 @@ def main(argv=None):
         learning_rate=args.learning_rate,
         log_freq=args.log_freq,
         log_path=cal_log_path,
+        workers=args.workers,
     )
 
     if weights is None:

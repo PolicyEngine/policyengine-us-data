@@ -87,6 +87,7 @@ def main():
         hierarchical_domains=["aca_ptc", "snap"],
         rerandomize_takeup=True,
         county_level=True,
+        workers=2,
     )
     print(f"  Matrix shape: {X.shape}")
     print(f"  Targets: {len(targets_df)}")

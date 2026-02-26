@@ -522,6 +522,101 @@ class TestConvertBlocksToStackedFormat:
         assert result[1] == "370010001001002"
 
 
+class TestTakeupDrawConsistency:
+    """Verify the matrix builder's inline takeup loop and
+    compute_block_takeup_for_entities produce identical draws
+    when given the same (block, household) inputs."""
+
+    def test_matrix_and_stacked_identical_draws(self):
+        """Both paths must produce identical boolean arrays."""
+        var = "takes_up_snap_if_eligible"
+        rate = 0.75
+
+        # 2 blocks, 3 households, variable entity counts per HH
+        # HH0 has 2 entities in block A
+        # HH1 has 3 entities in block A
+        # HH2 has 1 entity in block B
+        blocks = np.array(
+            [
+                "370010001001001",
+                "370010001001001",
+                "370010001001001",
+                "370010001001001",
+                "370010001001001",
+                "480010002002002",
+            ]
+        )
+        hh_ids = np.array([100, 100, 200, 200, 200, 300])
+        states = np.array([37, 37, 37, 37, 37, 48])
+
+        # Path 1: compute_block_takeup_for_entities (stacked)
+        stacked = compute_block_takeup_for_entities(
+            var, rate, blocks, states, hh_ids
+        )
+
+        # Path 2: reproduce matrix builder inline logic
+        n = len(blocks)
+        inline_takeup = np.zeros(n, dtype=bool)
+        for blk in np.unique(blocks):
+            bm = blocks == blk
+            for hh_id in np.unique(hh_ids[bm]):
+                hh_mask = bm & (hh_ids == hh_id)
+                rng = seeded_rng(var, salt=f"{blk}:{int(hh_id)}")
+                draws = rng.random(int(hh_mask.sum()))
+                inline_takeup[hh_mask] = draws < rate
+
+        np.testing.assert_array_equal(stacked, inline_takeup)
+
+    def test_aggregation_entity_to_household(self):
+        """np.add.at aggregation matches manual per-HH sum."""
+        n_hh = 3
+        n_ent = 6
+        ent_hh = np.array([0, 0, 1, 1, 1, 2])
+        eligible = np.array(
+            [100.0, 200.0, 50.0, 150.0, 100.0, 300.0],
+            dtype=np.float32,
+        )
+        takeup = np.array([True, False, True, True, False, True])
+
+        ent_values = (eligible * takeup).astype(np.float32)
+        hh_result = np.zeros(n_hh, dtype=np.float32)
+        np.add.at(hh_result, ent_hh, ent_values)
+
+        # Manual: HH0=100, HH1=50+150=200, HH2=300
+        expected = np.array([100.0, 200.0, 300.0], dtype=np.float32)
+        np.testing.assert_array_equal(hh_result, expected)
+
+    def test_state_specific_rate_resolved_from_block(self):
+        """Dict rates are resolved per block's state FIPS."""
+        from policyengine_us_data.utils.takeup import _resolve_rate
+
+        var = "takes_up_snap_if_eligible"
+        rate_dict = {"NC": 0.9, "TX": 0.6}
+        n = 5000
+
+        blocks_nc = np.array(["370010001001001"] * n)
+        states_nc = np.array([37] * n)
+        result_nc = compute_block_takeup_for_entities(
+            var, rate_dict, blocks_nc, states_nc
+        )
+        # NC rate=0.9, expect ~90%
+        frac_nc = result_nc.mean()
+        assert 0.85 < frac_nc < 0.95, f"NC frac={frac_nc}"
+
+        blocks_tx = np.array(["480010002002002"] * n)
+        states_tx = np.array([48] * n)
+        result_tx = compute_block_takeup_for_entities(
+            var, rate_dict, blocks_tx, states_tx
+        )
+        # TX rate=0.6, expect ~60%
+        frac_tx = result_tx.mean()
+        assert 0.55 < frac_tx < 0.65, f"TX frac={frac_tx}"
+
+        # Verify _resolve_rate actually gives different rates
+        assert _resolve_rate(rate_dict, 37) == 0.9
+        assert _resolve_rate(rate_dict, 48) == 0.6
+
+
 class TestDeriveGeographyFromBlocks:
     """Verify derive_geography_from_blocks returns correct
     geography dict from pre-assigned blocks."""

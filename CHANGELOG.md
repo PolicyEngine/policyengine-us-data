@@ -1,3 +1,10 @@
+## [1.71.0] - 2026-02-26
+
+### Added
+
+- Impute pregnancy in CPS microdata using CDC VSRR birth counts and Census ACS female population, with calibration targets per state.
+
+
 ## [1.70.0] - 2026-02-26
 
 ### Added

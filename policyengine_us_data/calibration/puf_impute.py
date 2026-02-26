@@ -74,7 +74,6 @@ IMPUTED_VARIABLES = [
     "non_sch_d_capital_gains",
     "general_business_credit",
     "energy_efficient_home_improvement_credit",
-    "traditional_ira_contributions",
     "amt_foreign_tax_credit",
     "excess_withheld_payroll_tax",
     "savers_credit",
@@ -160,6 +159,73 @@ OVERRIDDEN_IMPUTED_VARIABLES = [
     "partnership_s_corp_income_would_be_qualified",
     "rental_income_would_be_qualified",
 ]
+
+CPS_RETIREMENT_VARIABLES = [
+    "traditional_401k_contributions",
+    "roth_401k_contributions",
+    "traditional_ira_contributions",
+    "roth_ira_contributions",
+    "self_employed_pension_contributions",
+]
+
+RETIREMENT_PREDICTORS = [
+    "employment_income",
+    "self_employment_income",
+    "age",
+    "is_male",
+    "tax_unit_is_joint",
+    "is_tax_unit_head",
+    "is_tax_unit_spouse",
+    "is_tax_unit_dependent",
+]
+
+
+def _get_retirement_limits(year: int) -> dict:
+    """Return contribution limits for the given tax year.
+
+    Mirrors the limits in cps.py (duplicated here to avoid circular
+    imports between the calibration and dataset packages).
+    """
+    limits_by_year = {
+        2020: {
+            "401k": 19_500,
+            "401k_catch_up": 6_500,
+            "ira": 6_000,
+            "ira_catch_up": 1_000,
+        },
+        2021: {
+            "401k": 19_500,
+            "401k_catch_up": 6_500,
+            "ira": 6_000,
+            "ira_catch_up": 1_000,
+        },
+        2022: {
+            "401k": 20_500,
+            "401k_catch_up": 6_500,
+            "ira": 6_000,
+            "ira_catch_up": 1_000,
+        },
+        2023: {
+            "401k": 22_500,
+            "401k_catch_up": 7_500,
+            "ira": 6_500,
+            "ira_catch_up": 1_000,
+        },
+        2024: {
+            "401k": 23_000,
+            "401k_catch_up": 7_500,
+            "ira": 7_000,
+            "ira_catch_up": 1_000,
+        },
+        2025: {
+            "401k": 23_500,
+            "401k_catch_up": 7_500,
+            "ira": 7_000,
+            "ira_catch_up": 1_000,
+        },
+    }
+    clamped = max(min(year, max(limits_by_year)), min(limits_by_year))
+    return limits_by_year[clamped]
 
 
 MINIMUM_RETIREMENT_AGE = 62
@@ -441,6 +507,13 @@ def puf_clone_dataset(
             data, y_full, time_period, dataset_path
         )
 
+    # Impute retirement contributions for PUF half
+    puf_retirement = None
+    if y_full is not None and dataset_path is not None:
+        puf_retirement = _impute_retirement_contributions(
+            data, y_full, time_period, dataset_path
+        )
+
     new_data = {}
     for variable, time_dict in data.items():
         values = time_dict[time_period]
@@ -462,6 +535,13 @@ def puf_clone_dataset(
         elif variable == "weeks_unemployed" and puf_weeks is not None:
             new_data[variable] = {
                 time_period: np.concatenate([values, puf_weeks])
+            }
+        elif (
+            variable in CPS_RETIREMENT_VARIABLES and puf_retirement is not None
+        ):
+            puf_vals = puf_retirement[variable]
+            new_data[variable] = {
+                time_period: np.concatenate([values, puf_vals])
             }
         else:
             new_data[variable] = {
@@ -590,6 +670,122 @@ def _impute_weeks_unemployed(
     del fitted, predictions
     gc.collect()
     return imputed_weeks
+
+
+def _impute_retirement_contributions(
+    data: Dict[str, Dict[int, np.ndarray]],
+    puf_imputations: Dict[str, np.ndarray],
+    time_period: int,
+    dataset_path: str,
+) -> Dict[str, np.ndarray]:
+    """Impute retirement contributions for the PUF half using QRF.
+
+    Trains on CPS data (which has realistic income-to-contribution
+    relationships) and predicts onto PUF clone records using
+    PUF-imputed income as input features.
+
+    Args:
+        data: CPS data dict.
+        puf_imputations: Dict of PUF-imputed variable arrays.
+        time_period: Tax year.
+        dataset_path: Path to CPS h5 for Microsimulation.
+
+    Returns:
+        Dict mapping retirement variable names to imputed arrays.
+    """
+    from microimpute.models.qrf import QRF
+    from policyengine_us import Microsimulation
+
+    cps_sim = Microsimulation(dataset=dataset_path)
+
+    # Build training data from CPS (has realistic relationships)
+    train_cols = RETIREMENT_PREDICTORS + CPS_RETIREMENT_VARIABLES
+    try:
+        X_train = cps_sim.calculate_dataframe(train_cols)
+    except (ValueError, KeyError) as e:
+        logger.warning("Could not build retirement training data: %s", e)
+        n_persons = len(data["person_id"][time_period])
+        del cps_sim
+        return {var: np.zeros(n_persons) for var in CPS_RETIREMENT_VARIABLES}
+
+    # Build test data: demographics from CPS sim, income from PUF
+    X_test = cps_sim.calculate_dataframe(
+        [
+            p
+            for p in RETIREMENT_PREDICTORS
+            if p not in ("employment_income", "self_employment_income")
+        ]
+    )
+    for income_var in ("employment_income", "self_employment_income"):
+        if income_var in puf_imputations:
+            X_test[income_var] = puf_imputations[income_var]
+        else:
+            X_test[income_var] = cps_sim.calculate(income_var).values
+
+    del cps_sim
+
+    # Subsample training data
+    if len(X_train) > 5000:
+        X_train_sampled = X_train.sample(n=5000, random_state=42)
+    else:
+        X_train_sampled = X_train
+
+    # Train QRF
+    qrf = QRF(log_level="INFO", memory_efficient=True)
+    fitted = qrf.fit(
+        X_train=X_train_sampled,
+        predictors=RETIREMENT_PREDICTORS,
+        imputed_variables=CPS_RETIREMENT_VARIABLES,
+        n_jobs=1,
+    )
+    predictions = fitted.predict(X_test=X_test)
+
+    # Extract results and apply constraints
+    limits = _get_retirement_limits(time_period)
+    age = X_test["age"].values
+    catch_up_eligible = age >= 50
+    limit_401k = limits["401k"] + catch_up_eligible * limits["401k_catch_up"]
+    limit_ira = limits["ira"] + catch_up_eligible * limits["ira_catch_up"]
+
+    emp_income = X_test["employment_income"].values
+    se_income = X_test["self_employment_income"].values
+
+    result = {}
+    for var in CPS_RETIREMENT_VARIABLES:
+        vals = predictions[var].values
+
+        # Non-negativity
+        vals = np.maximum(vals, 0)
+
+        # Cap 401k at year-specific limit
+        if "401k" in var:
+            vals = np.minimum(vals, limit_401k)
+            # Zero out for records with no employment income
+            vals = np.where(emp_income > 0, vals, 0)
+
+        # Cap IRA at year-specific limit
+        if "ira" in var:
+            vals = np.minimum(vals, limit_ira)
+
+        # Zero out SE pension for records with no SE income
+        if var == "self_employed_pension_contributions":
+            vals = np.where(se_income > 0, vals, 0)
+
+        result[var] = vals
+
+    logger.info(
+        "Imputed retirement contributions for PUF: "
+        "401k mean=$%.0f, IRA mean=$%.0f, SE pension mean=$%.0f",
+        result["traditional_401k_contributions"].mean()
+        + result["roth_401k_contributions"].mean(),
+        result["traditional_ira_contributions"].mean()
+        + result["roth_ira_contributions"].mean(),
+        result["self_employed_pension_contributions"].mean(),
+    )
+
+    del fitted, predictions
+    gc.collect()
+    return result
 
 
 def _run_qrf_imputation(

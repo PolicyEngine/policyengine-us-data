@@ -14,7 +14,6 @@ import numpy as np
 import pytest
 from policyengine_us_data.datasets.cps.extended_cps import ExtendedCPS_2024
 
-
 KNOWN_FORMULA_EXCEPTIONS = {
     # person_id is stored for identity tracking even though it has a
     # trivial formula (arange). Safe to keep.

@@ -55,7 +55,7 @@ jobs:
           SKIP_UPLOAD="${{ github.event.inputs.skip_upload || 'false' }}"
           BRANCH="${{ github.head_ref || github.ref_name }}"
 
-          CMD="modal run modal_app/local_area.py --branch=${BRANCH} --num-workers=${NUM_WORKERS}"
+          CMD="modal run modal_app/local_area.py::main --branch=${BRANCH} --num-workers=${NUM_WORKERS}"
 
           if [ "$SKIP_UPLOAD" = "true" ]; then
             CMD="${CMD} --skip-upload"

@@ -565,9 +565,12 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
             if len(all_errors) > 5:
                 print(f"  ... and {len(all_errors) - 5} more")
 
-        if total_failed > 0:
+        if total_failed > 0 or (
+            all_errors and total_completed == 0
+        ):
             raise RuntimeError(
-                f"Build incomplete: {total_failed} failures. "
+                f"Build incomplete: {total_failed} failures, "
+                f"{len(all_errors)} errors. "
                 f"Volume preserved for retry."
             )
 

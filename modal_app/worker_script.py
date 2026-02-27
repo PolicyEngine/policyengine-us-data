@@ -28,6 +28,9 @@ def main():
     db_path = Path(args.db_path)
     output_dir = Path(args.output_dir)
 
+    original_stdout = sys.stdout
+    sys.stdout = sys.stderr
+
     from policyengine_us_data.calibration.publish_local_area import (
         build_state_h5,
         build_district_h5,
@@ -104,6 +107,7 @@ def main():
             )
             print(f"FAILED {item_type}:{item_id}: {e}", file=sys.stderr)
 
+    sys.stdout = original_stdout
     print(json.dumps(results))
 
 

@@ -38,7 +38,7 @@ _STATE_COUNTIES = _build_state_counties()
 
 def _generate_uniform_distribution(cd_geoid: str) -> Dict[str, float]:
     """Generate uniform distribution across counties in CD's state."""
-    from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+    from policyengine_us_data.calibration.calibration_utils import (
         STATE_CODES,
     )
 

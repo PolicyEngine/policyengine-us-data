@@ -622,7 +622,7 @@ class TestDeriveGeographyFromBlocks:
     geography dict from pre-assigned blocks."""
 
     def test_returns_expected_keys(self):
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             derive_geography_from_blocks,
         )
 
@@ -645,7 +645,7 @@ class TestDeriveGeographyFromBlocks:
         assert set(result.keys()) == expected_keys
 
     def test_county_fips_derived(self):
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             derive_geography_from_blocks,
         )
 
@@ -657,7 +657,7 @@ class TestDeriveGeographyFromBlocks:
         )
 
     def test_state_fips_derived(self):
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             derive_geography_from_blocks,
         )
 
@@ -669,7 +669,7 @@ class TestDeriveGeographyFromBlocks:
         )
 
     def test_tract_geoid_derived(self):
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             derive_geography_from_blocks,
         )
 
@@ -678,7 +678,7 @@ class TestDeriveGeographyFromBlocks:
         assert result["tract_geoid"][0] == "37001000100"
 
     def test_block_geoid_passthrough(self):
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             derive_geography_from_blocks,
         )
 

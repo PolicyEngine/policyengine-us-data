@@ -19,12 +19,12 @@ from policyengine_us_data.utils.data_upload import (
     upload_local_area_file,
     upload_local_area_batch_to_hf,
 )
-from policyengine_us_data.datasets.cps.local_area_calibration.stacked_dataset_builder import (
+from policyengine_us_data.calibration.stacked_dataset_builder import (
     create_sparse_cd_stacked_dataset,
     NYC_COUNTIES,
     NYC_CDS,
 )
-from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+from policyengine_us_data.calibration.calibration_utils import (
     get_all_cds_from_database,
     STATE_CODES,
 )

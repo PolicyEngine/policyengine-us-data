@@ -37,7 +37,7 @@ modal run modal_app/remote_calibration_runner.py --branch health-insurance-premi
 
 ## Changing Hyperparameters
 
-Hyperparameters are in `policyengine_us_data/datasets/cps/local_area_calibration/fit_calibration_weights.py`:
+Hyperparameters are in `policyengine_us_data/calibration/fit_calibration_weights.py`:
 
 ```python
 BETA = 0.35

@@ -20,7 +20,7 @@ from policyengine_us_data.db.create_database_tables import (
     create_database,
 )
 from policyengine_us_data.utils.db import get_geographic_strata
-from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+from policyengine_us_data.calibration.calibration_utils import (
     get_all_cds_from_database,
     get_cd_index_mapping,
 )

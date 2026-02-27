@@ -11,7 +11,7 @@ from pathlib import Path
 from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 from policyengine_core.enums import Enum
-from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+from policyengine_us_data.calibration.calibration_utils import (
     get_all_cds_from_database,
     get_calculated_variables,
     STATE_CODES,
@@ -23,7 +23,7 @@ from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils 
 from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
     County,
 )
-from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+from policyengine_us_data.calibration.block_assignment import (
     assign_geography_for_cd,
     derive_geography_from_blocks,
     get_county_filter_probability,

@@ -27,7 +27,7 @@ from policyengine_us_data.calibration.unified_calibration import (
     convert_weights_to_stacked_format,
     convert_blocks_to_stacked_format,
 )
-from policyengine_us_data.datasets.cps.local_area_calibration.stacked_dataset_builder import (
+from policyengine_us_data.calibration.stacked_dataset_builder import (
     create_sparse_cd_stacked_dataset,
 )
 from policyengine_us_data.utils.takeup import TAKEUP_AFFECTED_TARGETS

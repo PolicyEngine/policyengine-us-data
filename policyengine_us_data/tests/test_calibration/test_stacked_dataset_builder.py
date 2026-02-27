@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from policyengine_us import Microsimulation
-from policyengine_us_data.datasets.cps.local_area_calibration.stacked_dataset_builder import (
+from policyengine_us_data.calibration.stacked_dataset_builder import (
     create_sparse_cd_stacked_dataset,
 )
 

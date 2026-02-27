@@ -20,6 +20,12 @@ def main():
     parser.add_argument("--dataset-path", required=True)
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument(
+        "--calibration-blocks",
+        type=str,
+        default=None,
+        help="Path to stacked_blocks.npy from calibration",
+    )
     args = parser.parse_args()
 
     work_items = json.loads(args.work_items)
@@ -27,6 +33,19 @@ def main():
     dataset_path = Path(args.dataset_path)
     db_path = Path(args.db_path)
     output_dir = Path(args.output_dir)
+
+    calibration_blocks = None
+    if args.calibration_blocks:
+        calibration_blocks = np.load(args.calibration_blocks)
+
+    rerandomize_takeup = True
+    from policyengine_us_data.utils.takeup import (
+        TAKEUP_AFFECTED_TARGETS,
+    )
+
+    takeup_filter = [
+        info["takeup_var"] for info in TAKEUP_AFFECTED_TARGETS.values()
+    ]
 
     original_stdout = sys.stdout
     sys.stdout = sys.stderr
@@ -63,6 +82,9 @@ def main():
                     cds_to_calibrate=cds_to_calibrate,
                     dataset_path=dataset_path,
                     output_dir=output_dir,
+                    rerandomize_takeup=rerandomize_takeup,
+                    calibration_blocks=calibration_blocks,
+                    takeup_filter=takeup_filter,
                 )
             elif item_type == "district":
                 state_code, dist_num = item_id.split("-")
@@ -72,9 +94,7 @@ def main():
                         state_fips = fips
                         break
                 if state_fips is None:
-                    raise ValueError(
-                        f"Unknown state in district: {item_id}"
-                    )
+                    raise ValueError(f"Unknown state in district: {item_id}")
 
                 candidate = f"{state_fips}{int(dist_num):02d}"
                 if candidate in cds_to_calibrate:
@@ -100,6 +120,9 @@ def main():
                     cds_to_calibrate=cds_to_calibrate,
                     dataset_path=dataset_path,
                     output_dir=output_dir,
+                    rerandomize_takeup=rerandomize_takeup,
+                    calibration_blocks=calibration_blocks,
+                    takeup_filter=takeup_filter,
                 )
             elif item_type == "city":
                 path = build_city_h5(
@@ -108,6 +131,9 @@ def main():
                     cds_to_calibrate=cds_to_calibrate,
                     dataset_path=dataset_path,
                     output_dir=output_dir,
+                    rerandomize_takeup=rerandomize_takeup,
+                    calibration_blocks=calibration_blocks,
+                    takeup_filter=takeup_filter,
                 )
             else:
                 raise ValueError(f"Unknown item type: {item_type}")

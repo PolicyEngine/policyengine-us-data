@@ -154,23 +154,32 @@ def build_areas_worker(
 
     work_items_json = json.dumps(work_items)
 
+    worker_cmd = [
+        "uv",
+        "run",
+        "python",
+        "modal_app/worker_script.py",
+        "--work-items",
+        work_items_json,
+        "--weights-path",
+        calibration_inputs["weights"],
+        "--dataset-path",
+        calibration_inputs["dataset"],
+        "--db-path",
+        calibration_inputs["database"],
+        "--output-dir",
+        str(output_dir),
+    ]
+    if "blocks" in calibration_inputs:
+        worker_cmd.extend(
+            [
+                "--calibration-blocks",
+                calibration_inputs["blocks"],
+            ]
+        )
+
     result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "modal_app/worker_script.py",
-            "--work-items",
-            work_items_json,
-            "--weights-path",
-            calibration_inputs["weights"],
-            "--dataset-path",
-            calibration_inputs["dataset"],
-            "--db-path",
-            calibration_inputs["database"],
-            "--output-dir",
-            str(output_dir),
-        ],
+        worker_cmd,
         capture_output=True,
         text=True,
         env=os.environ.copy(),
@@ -474,11 +483,15 @@ print("Done")
     staging_volume.commit()
     print("Calibration inputs downloaded")
 
+    blocks_path = calibration_dir / "calibration" / "stacked_blocks.npy"
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
     }
+    if blocks_path.exists():
+        calibration_inputs["blocks"] = str(blocks_path)
+        print(f"Calibration blocks found: {blocks_path}")
 
     result = subprocess.run(
         [
@@ -582,8 +595,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
             for err in all_errors[:5]:
                 err_msg = err.get("error", "Unknown")[:100]
                 print(
-                    f"  - {err.get('item', err.get('worker'))}: "
-                    f"{err_msg}"
+                    f"  - {err.get('item', err.get('worker'))}: " f"{err_msg}"
                 )
             if len(all_errors) > 5:
                 print(f"  ... and {len(all_errors) - 5} more")

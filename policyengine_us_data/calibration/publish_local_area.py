@@ -28,6 +28,7 @@ from policyengine_us_data.calibration.calibration_utils import (
     get_all_cds_from_database,
     STATE_CODES,
 )
+from policyengine_us_data.utils.takeup import TAKEUP_AFFECTED_TARGETS
 
 CHECKPOINT_FILE = Path("completed_states.txt")
 CHECKPOINT_FILE_DISTRICTS = Path("completed_districts.txt")
@@ -80,6 +81,9 @@ def build_state_h5(
     cds_to_calibrate: List[str],
     dataset_path: Path,
     output_dir: Path,
+    rerandomize_takeup: bool = False,
+    calibration_blocks: np.ndarray = None,
+    takeup_filter: List[str] = None,
 ) -> Optional[Path]:
     """
     Build a single state H5 file (build only, no upload).
@@ -90,6 +94,9 @@ def build_state_h5(
         cds_to_calibrate: Full list of CD GEOIDs from calibration
         dataset_path: Path to base dataset H5 file
         output_dir: Output directory for H5 file
+        rerandomize_takeup: Re-draw takeup using block-level seeds
+        calibration_blocks: Stacked block GEOID array from calibration
+        takeup_filter: List of takeup vars to re-randomize
 
     Returns:
         Path to output H5 file if successful, None if no CDs found
@@ -123,6 +130,9 @@ def build_state_h5(
         cd_subset=cd_subset,
         dataset_path=str(dataset_path),
         output_path=str(output_path),
+        rerandomize_takeup=rerandomize_takeup,
+        calibration_blocks=calibration_blocks,
+        takeup_filter=takeup_filter,
     )
 
     return output_path
@@ -134,6 +144,9 @@ def build_district_h5(
     cds_to_calibrate: List[str],
     dataset_path: Path,
     output_dir: Path,
+    rerandomize_takeup: bool = False,
+    calibration_blocks: np.ndarray = None,
+    takeup_filter: List[str] = None,
 ) -> Path:
     """
     Build a single district H5 file (build only, no upload).
@@ -144,6 +157,9 @@ def build_district_h5(
         cds_to_calibrate: Full list of CD GEOIDs from calibration
         dataset_path: Path to base dataset H5 file
         output_dir: Output directory for H5 file
+        rerandomize_takeup: Re-draw takeup using block-level seeds
+        calibration_blocks: Stacked block GEOID array from calibration
+        takeup_filter: List of takeup vars to re-randomize
 
     Returns:
         Path to output H5 file
@@ -170,6 +186,9 @@ def build_district_h5(
         cd_subset=[cd_geoid],
         dataset_path=str(dataset_path),
         output_path=str(output_path),
+        rerandomize_takeup=rerandomize_takeup,
+        calibration_blocks=calibration_blocks,
+        takeup_filter=takeup_filter,
     )
 
     return output_path
@@ -181,6 +200,9 @@ def build_city_h5(
     cds_to_calibrate: List[str],
     dataset_path: Path,
     output_dir: Path,
+    rerandomize_takeup: bool = False,
+    calibration_blocks: np.ndarray = None,
+    takeup_filter: List[str] = None,
 ) -> Optional[Path]:
     """
     Build a city H5 file (build only, no upload).
@@ -193,6 +215,9 @@ def build_city_h5(
         cds_to_calibrate: Full list of CD GEOIDs from calibration
         dataset_path: Path to base dataset H5 file
         output_dir: Output directory for H5 file
+        rerandomize_takeup: Re-draw takeup using block-level seeds
+        calibration_blocks: Stacked block GEOID array from calibration
+        takeup_filter: List of takeup vars to re-randomize
 
     Returns:
         Path to output H5 file if successful, None otherwise
@@ -221,6 +246,9 @@ def build_city_h5(
         dataset_path=str(dataset_path),
         output_path=str(output_path),
         county_filter=NYC_COUNTIES,
+        rerandomize_takeup=rerandomize_takeup,
+        calibration_blocks=calibration_blocks,
+        takeup_filter=takeup_filter,
     )
 
     return output_path
@@ -247,6 +275,9 @@ def build_and_upload_states(
     output_dir: Path,
     completed_states: set,
     hf_batch_size: int = 10,
+    rerandomize_takeup: bool = False,
+    calibration_blocks: np.ndarray = None,
+    takeup_filter: List[str] = None,
 ):
     """Build and upload state H5 files with checkpointing."""
     db_uri = f"sqlite:///{db_path}"
@@ -282,6 +313,9 @@ def build_and_upload_states(
                 cd_subset=cd_subset,
                 dataset_path=str(dataset_path),
                 output_path=str(output_path),
+                rerandomize_takeup=rerandomize_takeup,
+                calibration_blocks=calibration_blocks,
+                takeup_filter=takeup_filter,
             )
 
             print(f"Uploading {state_code}.h5 to GCP...")
@@ -320,6 +354,9 @@ def build_and_upload_districts(
     output_dir: Path,
     completed_districts: set,
     hf_batch_size: int = 10,
+    rerandomize_takeup: bool = False,
+    calibration_blocks: np.ndarray = None,
+    takeup_filter: List[str] = None,
 ):
     """Build and upload district H5 files with checkpointing."""
     db_uri = f"sqlite:///{db_path}"
@@ -356,6 +393,9 @@ def build_and_upload_districts(
                 cd_subset=[cd_geoid],
                 dataset_path=str(dataset_path),
                 output_path=str(output_path),
+                rerandomize_takeup=rerandomize_takeup,
+                calibration_blocks=calibration_blocks,
+                takeup_filter=takeup_filter,
             )
 
             print(f"Uploading {friendly_name}.h5 to GCP...")
@@ -394,6 +434,9 @@ def build_and_upload_cities(
     output_dir: Path,
     completed_cities: set,
     hf_batch_size: int = 10,
+    rerandomize_takeup: bool = False,
+    calibration_blocks: np.ndarray = None,
+    takeup_filter: List[str] = None,
 ):
     """Build and upload city H5 files with checkpointing."""
     db_uri = f"sqlite:///{db_path}"
@@ -426,6 +469,9 @@ def build_and_upload_cities(
                     dataset_path=str(dataset_path),
                     output_path=str(output_path),
                     county_filter=NYC_COUNTIES,
+                    rerandomize_takeup=rerandomize_takeup,
+                    calibration_blocks=calibration_blocks,
+                    takeup_filter=takeup_filter,
                 )
 
                 print("Uploading NYC.h5 to GCP...")
@@ -492,6 +538,16 @@ def main():
         type=str,
         help="Override path to database file (for local testing)",
     )
+    parser.add_argument(
+        "--rerandomize-takeup",
+        action="store_true",
+        help="Re-draw takeup using block-level seeds",
+    )
+    parser.add_argument(
+        "--calibration-blocks",
+        type=str,
+        help="Path to stacked_blocks.npy from calibration",
+    )
     args = parser.parse_args()
 
     WORK_DIR.mkdir(parents=True, exist_ok=True)
@@ -526,6 +582,32 @@ def main():
     n_hh = sim.calculate("household_id", map_to="household").shape[0]
     print(f"\nBase dataset has {n_hh:,} households")
 
+    rerandomize_takeup = args.rerandomize_takeup
+    calibration_blocks = None
+    takeup_filter = None
+
+    if args.calibration_blocks:
+        calibration_blocks = np.load(args.calibration_blocks)
+        rerandomize_takeup = True
+        print(f"Loaded calibration blocks: {len(calibration_blocks):,}")
+    elif rerandomize_takeup:
+        blocks_path = inputs.get("blocks")
+        if blocks_path and Path(blocks_path).exists():
+            calibration_blocks = np.load(str(blocks_path))
+            print(
+                f"Loaded calibration blocks: " f"{len(calibration_blocks):,}"
+            )
+        else:
+            print(
+                "WARNING: --rerandomize-takeup set but no " "blocks available"
+            )
+
+    if rerandomize_takeup:
+        takeup_filter = [
+            info["takeup_var"] for info in TAKEUP_AFFECTED_TARGETS.values()
+        ]
+        print(f"Takeup filter: {takeup_filter}")
+
     # Determine what to build based on flags
     build_states = not args.districts_only and not args.cities_only
     build_districts = not args.states_only and not args.cities_only
@@ -557,6 +639,9 @@ def main():
             inputs["database"],
             WORK_DIR,
             completed_states,
+            rerandomize_takeup=rerandomize_takeup,
+            calibration_blocks=calibration_blocks,
+            takeup_filter=takeup_filter,
         )
 
     if build_districts:
@@ -571,6 +656,9 @@ def main():
             inputs["database"],
             WORK_DIR,
             completed_districts,
+            rerandomize_takeup=rerandomize_takeup,
+            calibration_blocks=calibration_blocks,
+            takeup_filter=takeup_filter,
         )
 
     if build_cities:
@@ -585,6 +673,9 @@ def main():
             inputs["database"],
             WORK_DIR,
             completed_cities,
+            rerandomize_takeup=rerandomize_takeup,
+            calibration_blocks=calibration_blocks,
+            takeup_filter=takeup_filter,
         )
 
     print("\n" + "=" * 60)

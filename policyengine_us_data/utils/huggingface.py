@@ -75,4 +75,71 @@ def download_calibration_inputs(
         paths[key] = local_path
         print(f"Downloaded {hf_path} to {local_path}")
 
+    optional_files = {
+        "blocks": "calibration/stacked_blocks.npy",
+    }
+    for key, hf_path in optional_files.items():
+        try:
+            hf_hub_download(
+                repo_id=repo,
+                filename=hf_path,
+                local_dir=str(output_path),
+                repo_type="model",
+                revision=version,
+                token=TOKEN,
+            )
+            local_path = output_path / hf_path
+            paths[key] = local_path
+            print(f"Downloaded {hf_path} to {local_path}")
+        except Exception as e:
+            print(f"Skipping optional {hf_path}: {e}")
+
+    return paths
+
+
+def download_calibration_logs(
+    output_dir: str,
+    repo: str = "policyengine/policyengine-us-data",
+    version: str = None,
+) -> dict:
+    """
+    Download calibration logs from Hugging Face.
+
+    Args:
+        output_dir: Local directory to download files to
+        repo: Hugging Face repository ID
+        version: Optional revision (commit, tag, or branch)
+
+    Returns:
+        dict mapping artifact names to local paths
+        (only includes files that exist on HF)
+    """
+    from pathlib import Path
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    files = {
+        "calibration_log": "calibration/logs/calibration_log.csv",
+        "diagnostics": "calibration/logs/unified_diagnostics.csv",
+        "config": "calibration/logs/unified_run_config.json",
+    }
+
+    paths = {}
+    for key, hf_path in files.items():
+        try:
+            hf_hub_download(
+                repo_id=repo,
+                filename=hf_path,
+                local_dir=str(output_path),
+                repo_type="model",
+                revision=version,
+                token=TOKEN,
+            )
+            local_path = output_path / hf_path
+            paths[key] = local_path
+            print(f"Downloaded {hf_path} to {local_path}")
+        except Exception as e:
+            print(f"Skipping {hf_path}: {e}")
+
     return paths

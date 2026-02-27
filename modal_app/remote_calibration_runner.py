@@ -70,11 +70,17 @@ def _collect_outputs(cal_lines):
     output_path = None
     log_path = None
     cal_log_path = None
+    config_path = None
+    blocks_path = None
     for line in cal_lines:
         if "OUTPUT_PATH:" in line:
             output_path = line.split("OUTPUT_PATH:")[1].strip()
+        elif "CONFIG_PATH:" in line:
+            config_path = line.split("CONFIG_PATH:")[1].strip()
         elif "CAL_LOG_PATH:" in line:
             cal_log_path = line.split("CAL_LOG_PATH:")[1].strip()
+        elif "BLOCKS_PATH:" in line:
+            blocks_path = line.split("BLOCKS_PATH:")[1].strip()
         elif "LOG_PATH:" in line:
             log_path = line.split("LOG_PATH:")[1].strip()
 
@@ -91,11 +97,92 @@ def _collect_outputs(cal_lines):
         with open(cal_log_path, "rb") as f:
             cal_log_bytes = f.read()
 
+    config_bytes = None
+    if config_path:
+        with open(config_path, "rb") as f:
+            config_bytes = f.read()
+
+    blocks_bytes = None
+    if blocks_path and os.path.exists(blocks_path):
+        with open(blocks_path, "rb") as f:
+            blocks_bytes = f.read()
+
     return {
         "weights": weights_bytes,
         "log": log_bytes,
         "cal_log": cal_log_bytes,
+        "config": config_bytes,
+        "blocks": blocks_bytes,
     }
+
+
+def _upload_logs_to_hf(log_files: dict):
+    """Upload calibration log files to HuggingFace.
+
+    Args:
+        log_files: dict mapping HF path suffixes to local file paths,
+            e.g. {"calibration_log.csv": "calibration_log.csv"}
+    """
+    from huggingface_hub import HfApi, CommitOperationAdd
+
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    repo = "policyengine/policyengine-us-data"
+
+    api = HfApi()
+    operations = []
+    for hf_name, local_path in log_files.items():
+        if not os.path.exists(local_path):
+            print(f"Skipping {local_path} (not found)", flush=True)
+            continue
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=f"calibration/logs/{hf_name}",
+                path_or_fileobj=local_path,
+            )
+        )
+
+    if not operations:
+        print("No log files to upload.", flush=True)
+        return
+
+    api.create_commit(
+        token=token,
+        repo_id=repo,
+        operations=operations,
+        repo_type="model",
+        commit_message=(f"Upload {len(operations)} calibration log file(s)"),
+    )
+    uploaded = [op.path_in_repo for op in operations]
+    print(f"Uploaded to HuggingFace: {uploaded}", flush=True)
+
+
+def _upload_calibration_artifact(local_path: str, hf_name: str):
+    """Upload a calibration artifact to calibration/ on HuggingFace."""
+    from huggingface_hub import HfApi, CommitOperationAdd
+
+    if not os.path.exists(local_path):
+        print(f"Skipping {local_path} (not found)", flush=True)
+        return
+
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    repo = "policyengine/policyengine-us-data"
+    api = HfApi()
+    api.create_commit(
+        token=token,
+        repo_id=repo,
+        operations=[
+            CommitOperationAdd(
+                path_in_repo=f"calibration/{hf_name}",
+                path_or_fileobj=local_path,
+            )
+        ],
+        repo_type="model",
+        commit_message=f"Upload calibration artifact: {hf_name}",
+    )
+    print(
+        f"Uploaded {local_path} to calibration/{hf_name}",
+        flush=True,
+    )
 
 
 def _fit_weights_impl(
@@ -629,6 +716,7 @@ def main(
     package_volume: bool = False,
     county_level: bool = False,
     workers: int = 1,
+    upload_logs: bool = False,
 ):
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
@@ -704,8 +792,31 @@ def main(
             f.write(result["log"])
         print(f"Diagnostics log saved to: {log_output}")
 
+    cal_log_output = "calibration_log.csv"
     if result.get("cal_log"):
-        cal_log_output = "calibration_log.csv"
         with open(cal_log_output, "wb") as f:
             f.write(result["cal_log"])
         print(f"Calibration log saved to: {cal_log_output}")
+
+    config_output = "unified_run_config.json"
+    if result.get("config"):
+        with open(config_output, "wb") as f:
+            f.write(result["config"])
+        print(f"Run config saved to: {config_output}")
+
+    blocks_output = "stacked_blocks.npy"
+    if result.get("blocks"):
+        with open(blocks_output, "wb") as f:
+            f.write(result["blocks"])
+        print(f"Stacked blocks saved to: {blocks_output}")
+
+    if upload_logs:
+        log_files = {
+            "calibration_log.csv": cal_log_output,
+            "unified_diagnostics.csv": log_output,
+            "unified_run_config.json": config_output,
+        }
+        _upload_logs_to_hf(log_files)
+
+        if result.get("blocks"):
+            _upload_calibration_artifact(blocks_output, "stacked_blocks.npy")

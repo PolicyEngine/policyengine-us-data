@@ -1348,6 +1348,7 @@ def main(argv=None):
         blocks_path = output_dir / "stacked_blocks.npy"
         np.save(str(blocks_path), blocks_stacked)
         logger.info("Stacked blocks saved to %s", blocks_path)
+        print(f"BLOCKS_PATH:{blocks_path}")
 
     # Save weights
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -1389,6 +1390,7 @@ def main(argv=None):
     with open(config_path, "w") as f:
         json.dump(run_config, f, indent=2)
     logger.info("Config saved to %s", config_path)
+    print(f"CONFIG_PATH:{config_path}")
     print(f"LOG_PATH:{diag_path}")
     if cal_log_path:
         print(f"CAL_LOG_PATH:{cal_log_path}")

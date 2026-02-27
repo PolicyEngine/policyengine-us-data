@@ -150,7 +150,9 @@ def build_district_h5(
     """
     cd_int = int(cd_geoid)
     state_fips = cd_int // 100
-    district_num = max(cd_int % 100, 1)
+    district_num = cd_int % 100
+    if district_num in AT_LARGE_DISTRICTS:
+        district_num = 1
     state_code = STATE_CODES.get(state_fips, str(state_fips))
     friendly_name = f"{state_code}-{district_num:02d}"
 
@@ -224,11 +226,16 @@ def build_city_h5(
     return output_path
 
 
+AT_LARGE_DISTRICTS = {0, 98}
+
+
 def get_district_friendly_name(cd_geoid: str) -> str:
     """Convert GEOID to friendly name (e.g., '0101' -> 'AL-01')."""
     cd_int = int(cd_geoid)
     state_fips = cd_int // 100
-    district_num = max(cd_int % 100, 1)
+    district_num = cd_int % 100
+    if district_num in AT_LARGE_DISTRICTS:
+        district_num = 1
     state_code = STATE_CODES.get(state_fips, str(state_fips))
     return f"{state_code}-{district_num:02d}"
 
@@ -327,7 +334,9 @@ def build_and_upload_districts(
     for i, cd_geoid in enumerate(cds_to_calibrate):
         cd_int = int(cd_geoid)
         state_fips = cd_int // 100
-        district_num = max(cd_int % 100, 1)
+        district_num = cd_int % 100
+        if district_num in AT_LARGE_DISTRICTS:
+            district_num = 1
         state_code = STATE_CODES.get(state_fips, str(state_fips))
         friendly_name = f"{state_code}-{district_num:02d}"
 

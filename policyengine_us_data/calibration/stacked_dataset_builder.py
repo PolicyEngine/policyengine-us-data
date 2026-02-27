@@ -919,7 +919,9 @@ if __name__ == "__main__":
             # Convert GEOID to friendly name: 3705 -> NC-05
             cd_int = int(cd_geoid)
             state_fips = cd_int // 100
-            district_num = max(cd_int % 100, 1)
+            district_num = cd_int % 100
+            if district_num in (0, 98):
+                district_num = 1
             state_code = STATE_CODES.get(state_fips, str(state_fips))
             friendly_name = f"{state_code}-{district_num:02d}"
 

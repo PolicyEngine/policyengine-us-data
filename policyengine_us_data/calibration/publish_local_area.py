@@ -549,7 +549,7 @@ def main():
             print(f"  {key}: {path}")
     elif args.skip_download:
         inputs = {
-            "weights": WORK_DIR / "w_district_calibration.npy",
+            "weights": WORK_DIR / "calibration_weights.npy",
             "dataset": WORK_DIR / "stratified_extended_cps.h5",
             "database": WORK_DIR / "policy_data.db",
         }

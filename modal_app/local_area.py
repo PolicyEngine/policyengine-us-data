@@ -453,8 +453,12 @@ def coordinate_publish(
     calibration_dir.mkdir(parents=True, exist_ok=True)
 
     # hf_hub_download preserves directory structure, so files are in calibration/ subdir
-    weights_path = calibration_dir / "calibration" / "w_district_calibration.npy"
-    dataset_path = calibration_dir / "calibration" / "stratified_extended_cps.h5"
+    weights_path = (
+        calibration_dir / "calibration" / "calibration_weights.npy"
+    )
+    dataset_path = (
+        calibration_dir / "calibration" / "stratified_extended_cps.h5"
+    )
     db_path = calibration_dir / "calibration" / "policy_data.db"
 
     print("Downloading calibration inputs from HuggingFace...")

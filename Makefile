@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
+.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
 
 HF_CLONE_DIR ?= $(HOME)/huggingface/policyengine-us-data
 
@@ -111,6 +111,9 @@ publish-local-area:
 
 validate-data:
 	python -c "from policyengine_us_data.storage.upload_completed_datasets import validate_all_datasets; validate_all_datasets()"
+
+upload-calibration:
+	python scripts/upload_calibration.py
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

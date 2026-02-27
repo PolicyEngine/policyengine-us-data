@@ -88,7 +88,7 @@ python -m policyengine_us_data.calibration.unified_calibration \
 Or equivalently: `make calibrate`
 
 Output:
-- `storage/calibration/unified_weights.npy` --- calibrated weight vector
+- `storage/calibration/calibration_weights.npy` --- calibrated weight vector
 - `storage/calibration/unified_diagnostics.csv` --- per-target error report
 - `storage/calibration/unified_run_config.json` --- full run configuration
 
@@ -250,7 +250,7 @@ ORDER BY variable, geo_level;
 |---|---|---|
 | `--dataset` | `storage/stratified_extended_cps_2024.h5` | Path to CPS h5 file |
 | `--db-path` | `storage/calibration/policy_data.db` | Path to target database |
-| `--output` | `storage/calibration/unified_weights.npy` | Weight output path |
+| `--output` | `storage/calibration/calibration_weights.npy` | Weight output path |
 | `--puf-dataset` | None | Path to PUF h5 (enables PUF cloning) |
 | `--preset` | `local` | L0 preset: `local` (1e-8) or `national` (1e-4) |
 | `--lambda-l0` | None | Custom L0 penalty (overrides `--preset`) |

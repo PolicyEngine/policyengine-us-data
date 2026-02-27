@@ -1239,7 +1239,7 @@ def main(argv=None):
         STORAGE_FOLDER / "calibration" / "policy_data.db"
     )
     output_path = args.output or str(
-        STORAGE_FOLDER / "calibration" / "unified_weights.npy"
+        STORAGE_FOLDER / "calibration" / "calibration_weights.npy"
     )
 
     if args.lambda_l0 is not None:

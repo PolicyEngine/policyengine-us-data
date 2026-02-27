@@ -1,4 +1,4 @@
-from huggingface_hub import hf_hub_download, login, HfApi
+from huggingface_hub import hf_hub_download, login, HfApi, CommitOperationAdd
 import os
 
 TOKEN = os.environ.get("HUGGING_FACE_TOKEN")
@@ -57,7 +57,7 @@ def download_calibration_inputs(
     output_path.mkdir(parents=True, exist_ok=True)
 
     files = {
-        "weights": "calibration/w_district_calibration.npy",
+        "weights": "calibration/calibration_weights.npy",
         "dataset": "calibration/stratified_extended_cps.h5",
         "database": "calibration/policy_data.db",
     }
@@ -145,3 +145,78 @@ def download_calibration_logs(
             print(f"Skipping {hf_path}: {e}")
 
     return paths
+
+
+def upload_calibration_artifacts(
+    weights_path: str = None,
+    blocks_path: str = None,
+    log_dir: str = None,
+    repo: str = "policyengine/policyengine-us-data",
+) -> list:
+    """Upload calibration artifacts to HuggingFace in a single commit.
+
+    Args:
+        weights_path: Path to calibration_weights.npy
+        blocks_path: Path to stacked_blocks.npy
+        log_dir: Directory containing log files
+            (calibration_log.csv, unified_diagnostics.csv,
+             unified_run_config.json)
+        repo: HuggingFace repository ID
+
+    Returns:
+        List of uploaded HF paths
+    """
+    operations = []
+
+    if weights_path and os.path.exists(weights_path):
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo="calibration/calibration_weights.npy",
+                path_or_fileobj=weights_path,
+            )
+        )
+
+    if blocks_path and os.path.exists(blocks_path):
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo="calibration/stacked_blocks.npy",
+                path_or_fileobj=blocks_path,
+            )
+        )
+
+    if log_dir:
+        log_files = {
+            "calibration_log.csv": "calibration/logs/calibration_log.csv",
+            "unified_diagnostics.csv": (
+                "calibration/logs/unified_diagnostics.csv"
+            ),
+            "unified_run_config.json": (
+                "calibration/logs/unified_run_config.json"
+            ),
+        }
+        for filename, hf_path in log_files.items():
+            local_path = os.path.join(log_dir, filename)
+            if os.path.exists(local_path):
+                operations.append(
+                    CommitOperationAdd(
+                        path_in_repo=hf_path,
+                        path_or_fileobj=local_path,
+                    )
+                )
+
+    if not operations:
+        print("No calibration artifacts to upload.")
+        return []
+
+    api = HfApi()
+    api.create_commit(
+        token=TOKEN,
+        repo_id=repo,
+        operations=operations,
+        repo_type="model",
+        commit_message=(f"Upload {len(operations)} calibration artifact(s)"),
+    )
+
+    uploaded = [op.path_in_repo for op in operations]
+    print(f"Uploaded to HuggingFace: {uploaded}")
+    return uploaded

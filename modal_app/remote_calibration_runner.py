@@ -118,73 +118,46 @@ def _collect_outputs(cal_lines):
     }
 
 
-def _upload_logs_to_hf(log_files: dict):
-    """Upload calibration log files to HuggingFace.
+def _trigger_repository_dispatch(event_type: str = "calibration-updated"):
+    """Fire a repository_dispatch event on GitHub."""
+    import json
+    import urllib.request
 
-    Args:
-        log_files: dict mapping HF path suffixes to local file paths,
-            e.g. {"calibration_log.csv": "calibration_log.csv"}
-    """
-    from huggingface_hub import HfApi, CommitOperationAdd
-
-    token = os.environ.get("HUGGING_FACE_TOKEN")
-    repo = "policyengine/policyengine-us-data"
-
-    api = HfApi()
-    operations = []
-    for hf_name, local_path in log_files.items():
-        if not os.path.exists(local_path):
-            print(f"Skipping {local_path} (not found)", flush=True)
-            continue
-        operations.append(
-            CommitOperationAdd(
-                path_in_repo=f"calibration/logs/{hf_name}",
-                path_or_fileobj=local_path,
-            )
+    token = os.environ.get(
+        "GITHUB_TOKEN",
+        os.environ.get("POLICYENGINE_US_DATA_GITHUB_TOKEN"),
+    )
+    if not token:
+        print(
+            "WARNING: No GITHUB_TOKEN or "
+            "POLICYENGINE_US_DATA_GITHUB_TOKEN found. "
+            "Skipping repository_dispatch.",
+            flush=True,
         )
+        return False
 
-    if not operations:
-        print("No log files to upload.", flush=True)
-        return
-
-    api.create_commit(
-        token=token,
-        repo_id=repo,
-        operations=operations,
-        repo_type="model",
-        commit_message=(f"Upload {len(operations)} calibration log file(s)"),
+    url = (
+        "https://api.github.com/repos/"
+        "PolicyEngine/policyengine-us-data/dispatches"
     )
-    uploaded = [op.path_in_repo for op in operations]
-    print(f"Uploaded to HuggingFace: {uploaded}", flush=True)
-
-
-def _upload_calibration_artifact(local_path: str, hf_name: str):
-    """Upload a calibration artifact to calibration/ on HuggingFace."""
-    from huggingface_hub import HfApi, CommitOperationAdd
-
-    if not os.path.exists(local_path):
-        print(f"Skipping {local_path} (not found)", flush=True)
-        return
-
-    token = os.environ.get("HUGGING_FACE_TOKEN")
-    repo = "policyengine/policyengine-us-data"
-    api = HfApi()
-    api.create_commit(
-        token=token,
-        repo_id=repo,
-        operations=[
-            CommitOperationAdd(
-                path_in_repo=f"calibration/{hf_name}",
-                path_or_fileobj=local_path,
-            )
-        ],
-        repo_type="model",
-        commit_message=f"Upload calibration artifact: {hf_name}",
+    payload = json.dumps({"event_type": event_type}).encode()
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
     )
+    resp = urllib.request.urlopen(req)
     print(
-        f"Uploaded {local_path} to calibration/{hf_name}",
+        f"Triggered repository_dispatch '{event_type}' "
+        f"(HTTP {resp.status})",
         flush=True,
     )
+    return True
 
 
 def _fit_weights_impl(
@@ -718,7 +691,9 @@ def main(
     package_volume: bool = False,
     county_level: bool = False,
     workers: int = 1,
+    upload: bool = False,
     upload_logs: bool = False,
+    trigger_publish: bool = False,
 ):
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
@@ -812,13 +787,17 @@ def main(
             f.write(result["blocks"])
         print(f"Stacked blocks saved to: {blocks_output}")
 
-    if upload_logs:
-        log_files = {
-            "calibration_log.csv": cal_log_output,
-            "unified_diagnostics.csv": log_output,
-            "unified_run_config.json": config_output,
-        }
-        _upload_logs_to_hf(log_files)
+    do_upload = upload or upload_logs
+    if do_upload:
+        from policyengine_us_data.utils.huggingface import (
+            upload_calibration_artifacts,
+        )
 
-        if result.get("blocks"):
-            _upload_calibration_artifact(blocks_output, "stacked_blocks.npy")
+        upload_calibration_artifacts(
+            weights_path=output,
+            blocks_path=blocks_output if result.get("blocks") else None,
+            log_dir=".",
+        )
+
+    if trigger_publish:
+        _trigger_repository_dispatch()

@@ -455,7 +455,7 @@ def coordinate_publish(
 
     # hf_hub_download preserves directory structure, so files are in calibration/ subdir
     weights_path = (
-        calibration_dir / "calibration" / "w_district_calibration.npy"
+        calibration_dir / "calibration" / "calibration_weights.npy"
     )
     dataset_path = (
         calibration_dir / "calibration" / "stratified_extended_cps.h5"

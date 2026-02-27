@@ -66,13 +66,33 @@ def main():
                 )
             elif item_type == "district":
                 state_code, dist_num = item_id.split("-")
-                geoid = None
+                state_fips = None
                 for fips, code in STATE_CODES.items():
                     if code == state_code:
-                        geoid = f"{fips}{int(dist_num):02d}"
+                        state_fips = fips
                         break
-                if geoid is None:
-                    raise ValueError(f"Unknown state in district: {item_id}")
+                if state_fips is None:
+                    raise ValueError(
+                        f"Unknown state in district: {item_id}"
+                    )
+
+                candidate = f"{state_fips}{int(dist_num):02d}"
+                if candidate in cds_to_calibrate:
+                    geoid = candidate
+                else:
+                    state_cds = [
+                        cd
+                        for cd in cds_to_calibrate
+                        if int(cd) // 100 == state_fips
+                    ]
+                    if len(state_cds) == 1:
+                        geoid = state_cds[0]
+                    else:
+                        raise ValueError(
+                            f"CD {candidate} not found and "
+                            f"state {state_code} has "
+                            f"{len(state_cds)} CDs"
+                        )
 
                 path = build_district_h5(
                     cd_geoid=geoid,

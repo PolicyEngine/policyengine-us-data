@@ -430,11 +430,18 @@ def coordinate_publish(
     print(f"Publishing version {version} from branch {branch}")
     print(f"Using {num_workers} parallel workers")
 
+    import shutil
+
     staging_dir = Path(VOLUME_MOUNT)
     version_dir = staging_dir / version
+    if version_dir.exists():
+        print(f"Clearing stale build directory: {version_dir}")
+        shutil.rmtree(version_dir)
     version_dir.mkdir(parents=True, exist_ok=True)
 
     calibration_dir = staging_dir / "calibration_inputs"
+    if calibration_dir.exists():
+        shutil.rmtree(calibration_dir)
     calibration_dir.mkdir(parents=True, exist_ok=True)
 
     # hf_hub_download preserves directory structure, so files are in calibration/ subdir
@@ -446,29 +453,26 @@ def coordinate_publish(
     )
     db_path = calibration_dir / "calibration" / "policy_data.db"
 
-    if not all(p.exists() for p in [weights_path, dataset_path, db_path]):
-        print("Downloading calibration inputs...")
-        result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "python",
-                "-c",
-                f"""
+    print("Downloading calibration inputs from HuggingFace...")
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
 download_calibration_inputs("{calibration_dir}")
 print("Done")
 """,
-            ],
-            text=True,
-            env=os.environ.copy(),
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Download failed: {result.stderr}")
-        staging_volume.commit()
-        print("Calibration inputs downloaded and cached on volume")
-    else:
-        print("Using cached calibration inputs from volume")
+        ],
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Download failed: {result.stderr}")
+    staging_volume.commit()
+    print("Calibration inputs downloaded")
 
     calibration_inputs = {
         "weights": str(weights_path),

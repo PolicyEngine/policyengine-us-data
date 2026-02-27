@@ -552,25 +552,36 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         total_completed = sum(len(r["completed"]) for r in all_results)
         total_failed = sum(len(r["failed"]) for r in all_results)
 
-        print(f"\nBuild summary:")
+        staging_volume.reload()
+        volume_completed = get_completed_from_volume(version_dir)
+        volume_new = volume_completed - completed
+        print(f"\nBuild summary (worker-reported):")
         print(f"  Completed: {total_completed}")
         print(f"  Failed: {total_failed}")
         print(f"  Previously completed: {len(completed)}")
+        print(f"Build summary (volume verification):")
+        print(f"  Files on volume: {len(volume_completed)}")
+        print(f"  New files this run: {len(volume_new)}")
 
         if all_errors:
             print(f"\nErrors ({len(all_errors)}):")
             for err in all_errors[:5]:
                 err_msg = err.get("error", "Unknown")[:100]
-                print(f"  - {err.get('item', err.get('worker'))}: {err_msg}")
+                print(
+                    f"  - {err.get('item', err.get('worker'))}: "
+                    f"{err_msg}"
+                )
             if len(all_errors) > 5:
                 print(f"  ... and {len(all_errors) - 5} more")
 
-        if total_failed > 0 or (
-            all_errors and total_completed == 0
-        ):
+        expected_total = len(states) + len(districts) + len(cities)
+        if len(volume_completed) < expected_total:
+            missing = expected_total - len(volume_completed)
             raise RuntimeError(
-                f"Build incomplete: {total_failed} failures, "
-                f"{len(all_errors)} errors. "
+                f"Build incomplete: {missing} files missing from "
+                f"volume ({len(volume_completed)}/{expected_total}). "
+                f"Worker errors: {len(all_errors)}, "
+                f"failures: {total_failed}. "
                 f"Volume preserved for retry."
             )
 

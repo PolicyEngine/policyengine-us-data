@@ -479,11 +479,11 @@ print("Done")
             "-c",
             f"""
 import json
-from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+from policyengine_us_data.calibration.calibration_utils import (
     get_all_cds_from_database,
     STATE_CODES,
 )
-from policyengine_us_data.datasets.cps.local_area_calibration.publish_local_area import (
+from policyengine_us_data.calibration.publish_local_area import (
     get_district_friendly_name,
 )
 

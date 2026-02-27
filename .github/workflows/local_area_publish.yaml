@@ -5,7 +5,7 @@ on:
   # push:
   #   branches: [main]
   #   paths:
-  #     - 'policyengine_us_data/datasets/cps/local_area_calibration/**'
+  #     - 'policyengine_us_data/calibration/**'
   #     - '.github/workflows/local_area_publish.yaml'
   #     - 'modal_app/**'
   # repository_dispatch:
@@ -24,7 +24,7 @@ on:
         type: boolean
 
 # Trigger strategy:
-# 1. Automatic: Code changes to local_area_calibration/ pushed to main
+# 1. Automatic: Code changes to calibration/ pushed to main
 # 2. repository_dispatch: Calibration workflow triggers after uploading new weights
 # 3. workflow_dispatch: Manual trigger with optional parameters
 

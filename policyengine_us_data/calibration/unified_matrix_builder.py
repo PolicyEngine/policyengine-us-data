@@ -21,12 +21,12 @@ from sqlalchemy import create_engine, text
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.census import STATE_NAME_TO_FIPS
-from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+from policyengine_us_data.calibration.calibration_utils import (
     get_calculated_variables,
     apply_op,
     get_geo_level,
 )
-from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+from policyengine_us_data.calibration.block_assignment import (
     get_county_enum_index_from_fips,
 )
 
@@ -73,7 +73,7 @@ def _compute_single_state(
     """
     from policyengine_us import Microsimulation
     from policyengine_us_data.utils.takeup import SIMPLE_TAKEUP_VARS
-    from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+    from policyengine_us_data.calibration.calibration_utils import (
         get_calculated_variables,
     )
 
@@ -187,10 +187,10 @@ def _compute_single_state_group_counties(
     """
     from policyengine_us import Microsimulation
     from policyengine_us_data.utils.takeup import SIMPLE_TAKEUP_VARS
-    from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+    from policyengine_us_data.calibration.calibration_utils import (
         get_calculated_variables,
     )
-    from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+    from policyengine_us_data.calibration.block_assignment import (
         get_county_enum_index_from_fips,
     )
 

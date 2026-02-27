@@ -621,7 +621,8 @@ def fit_l0_weights(
                     model.get_weights(deterministic=True).cpu().numpy()
                 )
 
-            nz = (weights_snap > 0).sum()
+            active_w = weights_snap[weights_snap > 0]
+            nz = len(active_w)
             sparsity = (1 - nz / n_total) * 100
 
             rel_errs = np.where(
@@ -633,13 +634,32 @@ def fit_l0_weights(
             max_err = np.max(np.abs(rel_errs))
             total_loss = np.sum(rel_errs**2)
 
+            if nz > 0:
+                w_tiny = (active_w < 0.01).sum()
+                w_small = ((active_w >= 0.01) & (active_w < 0.1)).sum()
+                w_med = ((active_w >= 0.1) & (active_w < 1.0)).sum()
+                w_normal = ((active_w >= 1.0) & (active_w < 10.0)).sum()
+                w_large = ((active_w >= 10.0) & (active_w < 1000.0)).sum()
+                w_huge = (active_w >= 1000.0).sum()
+                weight_dist = (
+                    f"[<0.01: {100*w_tiny/nz:.1f}%, "
+                    f"0.01-0.1: {100*w_small/nz:.1f}%, "
+                    f"0.1-1: {100*w_med/nz:.1f}%, "
+                    f"1-10: {100*w_normal/nz:.1f}%, "
+                    f"10-1000: {100*w_large/nz:.1f}%, "
+                    f">1000: {100*w_huge/nz:.1f}%]"
+                )
+            else:
+                weight_dist = "[no active weights]"
+
             print(
                 f"Epoch {epochs_done:4d}: "
                 f"mean_error={mean_err:.4%}, "
                 f"max_error={max_err:.1%}, "
                 f"total_loss={total_loss:.3f}, "
                 f"active={nz}/{n_total} "
-                f"({sparsity:.1f}% sparse)",
+                f"({sparsity:.1f}% sparse)\n"
+                f"         Weight dist: {weight_dist}",
                 flush=True,
             )
 

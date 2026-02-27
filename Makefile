@@ -90,9 +90,9 @@ data: download
 	python policyengine_us_data/datasets/puf/irs_puf.py
 	python policyengine_us_data/datasets/puf/puf.py
 	python policyengine_us_data/datasets/cps/extended_cps.py
+	python policyengine_us_data/calibration/create_stratified_cps.py
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
-	python policyengine_us_data/datasets/cps/local_area_calibration/create_stratified_cps.py
 
 calibrate: data
 	python -m policyengine_us_data.calibration.unified_calibration \
@@ -107,7 +107,7 @@ validate-package:
 	python -m policyengine_us_data.calibration.validate_package
 
 publish-local-area:
-	python policyengine_us_data/datasets/cps/local_area_calibration/publish_local_area.py
+	python policyengine_us_data/calibration/publish_local_area.py
 
 validate-data:
 	python -c "from policyengine_us_data.storage.upload_completed_datasets import validate_all_datasets; validate_all_datasets()"

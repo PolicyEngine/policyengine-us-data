@@ -6,7 +6,7 @@ import numpy as np
 from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
     County,
 )
-from policyengine_us_data.datasets.cps.local_area_calibration.county_assignment import (
+from policyengine_us_data.calibration.county_assignment import (
     assign_counties_for_cd,
     get_county_index,
     _build_state_counties,

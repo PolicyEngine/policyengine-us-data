@@ -346,7 +346,7 @@ def _generate_fallback_blocks(cd_geoid: str, n_households: int) -> np.ndarray:
         Array of 15-character block GEOID strings
     """
     # Import here to avoid circular dependency
-    from policyengine_us_data.datasets.cps.local_area_calibration.county_assignment import (
+    from policyengine_us_data.calibration.county_assignment import (
         assign_counties_for_cd,
     )
 

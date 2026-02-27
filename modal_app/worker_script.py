@@ -28,12 +28,12 @@ def main():
     db_path = Path(args.db_path)
     output_dir = Path(args.output_dir)
 
-    from policyengine_us_data.datasets.cps.local_area_calibration.publish_local_area import (
+    from policyengine_us_data.calibration.publish_local_area import (
         build_state_h5,
         build_district_h5,
         build_city_h5,
     )
-    from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+    from policyengine_us_data.calibration.calibration_utils import (
         get_all_cds_from_database,
         STATE_CODES,
     )

@@ -116,3 +116,97 @@ has a **Hugging Face** tab that loads `calibration_log.csv` directly from HF:
   to be set locally (not just as a Modal secret).
 - `--trigger-publish` requires `GITHUB_TOKEN` or
   `POLICYENGINE_US_DATA_GITHUB_TOKEN` set locally.
+
+## Full Pipeline Reference
+
+The calibration pipeline has four stages. Each can be run locally, via Modal CLI, or via GitHub Actions.
+
+### Stage 1: Build data
+
+Produces `stratified_extended_cps_2024.h5` from raw CPS/PUF/ACS inputs.
+
+| Method | Command |
+|--------|---------|
+| **Local** | `make data` |
+| **Modal (CI)** | `modal run modal_app/data_build.py --branch=<branch>` |
+| **GitHub Actions** | Automatic on merge to `main` via `code_changes.yaml` → `reusable_test.yaml` (with `full_suite: true`). Also triggered by `pr_code_changes.yaml` on PRs. |
+
+Notes:
+- `make data` stops at `create_stratified_cps.py`. Use `make data-legacy` to also build `enhanced_cps.py` and `small_enhanced_cps.py`.
+- `data_build.py` (CI) always builds the full suite including enhanced_cps.
+
+### Stage 2: Upload inputs to HuggingFace
+
+Pushes the dataset and (optionally) database to HF so Modal can download them.
+
+| Artifact | Command |
+|----------|---------|
+| Dataset | `make upload-dataset` |
+| Database | `make upload-database` |
+
+The database is relatively stable; only re-upload after `make database` or `make database-refresh`.
+
+### Stage 3: Fit calibration weights
+
+Downloads dataset + database from HF, builds the X matrix, fits L0-regularized weights on GPU.
+
+| Method | Command |
+|--------|---------|
+| **Local (CPU)** | `make calibrate` |
+| **Modal CLI** | `modal run modal_app/remote_calibration_runner.py --branch=<branch> --gpu=<gpu> --epochs=<n> [--upload]` |
+
+The `--upload` flag uploads weights + blocks + logs to HF in a single commit after fitting.
+
+Full example:
+```
+modal run modal_app/remote_calibration_runner.py \
+  --branch calibration-pipeline-improvements \
+  --gpu T4 --epochs 1000 \
+  --beta 0.65 --lambda-l0 1e-6 --lambda-l2 1e-8 \
+  --log-freq 500 \
+  --target-config policyengine_us_data/calibration/target_config.yaml \
+  --upload
+```
+
+**Important**: Without `--package-volume` or `--package-path`, the full pipeline clones the repo fresh from GitHub, downloads inputs fresh from HF, and builds the X matrix from scratch. No stale Modal volumes are involved.
+
+Artifacts uploaded to HF by `--upload`:
+
+| Local file | HF path |
+|------------|---------|
+| `calibration_weights.npy` | `calibration/calibration_weights.npy` |
+| `stacked_blocks.npy` | `calibration/stacked_blocks.npy` |
+| `calibration_log.csv` | `calibration/logs/calibration_log.csv` |
+| `unified_diagnostics.csv` | `calibration/logs/unified_diagnostics.csv` |
+| `unified_run_config.json` | `calibration/logs/unified_run_config.json` |
+
+### Stage 4: Build and stage local area H5 files
+
+Downloads weights + dataset + database from HF, builds state/district/city H5 files.
+
+| Method | Command |
+|--------|---------|
+| **Local** | `python policyengine_us_data/calibration/publish_local_area.py --rerandomize-takeup` |
+| **Modal CLI** | `make stage-h5s BRANCH=<branch>` (aka `modal run modal_app/local_area.py --branch=<branch> --num-workers=8`) |
+| **GitHub Actions** | "Publish Local Area H5 Files" workflow — manual trigger via `workflow_dispatch`, or automatic via `repository_dispatch` (`--trigger-publish` flag), or on code push to `main` touching `calibration/` or `modal_app/`. |
+
+This stages H5s to HF `staging/` paths. It does NOT promote to production or GCS.
+
+### Stage 5: Promote (manual gate)
+
+Moves files from HF staging to production paths and uploads to GCS.
+
+| Method | Command |
+|--------|---------|
+| **Modal CLI** | `modal run modal_app/local_area.py::main_promote --version=<version>` |
+| **GitHub Actions** | "Promote Local Area H5 Files" workflow — manual `workflow_dispatch` only. Requires `version` input. |
+
+### One-command pipeline
+
+For the common case (local data build → Modal calibration → Modal staging):
+
+```
+make pipeline GPU=T4 EPOCHS=1000 BRANCH=calibration-pipeline-improvements
+```
+
+This chains: `data` → `upload-dataset` → `calibrate-modal` → `stage-h5s`.

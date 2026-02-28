@@ -1,4 +1,9 @@
-.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
+.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset calibrate-modal stage-h5s pipeline clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
+
+GPU ?= A100-80GB
+EPOCHS ?= 200
+BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
+NUM_WORKERS ?= 8
 
 HF_CLONE_DIR ?= $(HOME)/huggingface/policyengine-us-data
 
@@ -114,6 +119,28 @@ validate-data:
 
 upload-calibration:
 	python scripts/upload_calibration.py
+
+upload-dataset:
+	python -c "from policyengine_us_data.utils.huggingface import upload; \
+		upload('policyengine_us_data/storage/stratified_extended_cps_2024.h5', \
+		'policyengine/policyengine-us-data', \
+		'calibration/stratified_extended_cps.h5')"
+	@echo "Dataset uploaded to HF."
+
+calibrate-modal:
+	modal run modal_app/remote_calibration_runner.py \
+		--branch $(BRANCH) --gpu $(GPU) --epochs $(EPOCHS) --upload
+
+stage-h5s:
+	modal run modal_app/local_area.py \
+		--branch $(BRANCH) --num-workers $(NUM_WORKERS)
+
+pipeline: data upload-dataset calibrate-modal stage-h5s
+	@echo ""
+	@echo "========================================"
+	@echo "Pipeline complete. H5s are in HF staging."
+	@echo "Run 'Promote Local Area H5 Files' workflow in GitHub to publish."
+	@echo "========================================"
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

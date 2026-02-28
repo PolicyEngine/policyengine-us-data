@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset calibrate-modal stage-h5s pipeline clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
+.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database calibrate-modal stage-h5s pipeline clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
 
 GPU ?= A100-80GB
 EPOCHS ?= 200
@@ -96,6 +96,8 @@ data: download
 	python policyengine_us_data/datasets/puf/puf.py
 	python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/calibration/create_stratified_cps.py
+
+data-legacy: data
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
 	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
 
@@ -126,6 +128,13 @@ upload-dataset:
 		'policyengine/policyengine-us-data', \
 		'calibration/stratified_extended_cps.h5')"
 	@echo "Dataset uploaded to HF."
+
+upload-database:
+	python -c "from policyengine_us_data.utils.huggingface import upload; \
+		upload('policyengine_us_data/storage/calibration/policy_data.db', \
+		'policyengine/policyengine-us-data', \
+		'calibration/policy_data.db')"
+	@echo "Database uploaded to HF."
 
 calibrate-modal:
 	modal run modal_app/remote_calibration_runner.py \

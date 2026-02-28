@@ -423,6 +423,65 @@ class TestImputeRetirementContributions:
             result["self_employed_pension_contributions"][pos_se] > 0
         )
 
+    def test_qrf_failure_returns_zeros(self):
+        """When QRF fit/predict throws, should return all zeros."""
+        import sys
+
+        mock_sim = _make_mock_sim(self.cps_df)
+
+        # Make a QRF that crashes on fit
+        mock_qrf_cls = MagicMock()
+        mock_qrf_cls.return_value.fit.side_effect = RuntimeError(
+            "QRF exploded"
+        )
+
+        qrf_mod = sys.modules["microimpute.models.qrf"]
+        old_qrf = getattr(qrf_mod, "QRF", None)
+        qrf_mod.QRF = mock_qrf_cls
+        try:
+            with patch(_MSIM_PATCH, return_value=mock_sim):
+                result = _impute_retirement_contributions(
+                    self.data,
+                    self.puf_imputations,
+                    self.time_period,
+                    "/fake/path.h5",
+                )
+        finally:
+            if old_qrf is not None:
+                qrf_mod.QRF = old_qrf
+
+        for var in CPS_RETIREMENT_VARIABLES:
+            assert var in result
+            assert np.all(result[var] == 0)
+
+    def test_training_data_failure_returns_zeros(self):
+        """When CPS calculate_dataframe fails, returns zeros."""
+        import sys
+
+        mock_sim = MagicMock()
+        mock_sim.calculate_dataframe.side_effect = ValueError(
+            "missing variable"
+        )
+
+        qrf_mod = sys.modules["microimpute.models.qrf"]
+        old_qrf = getattr(qrf_mod, "QRF", None)
+        qrf_mod.QRF = MagicMock()
+        try:
+            with patch(_MSIM_PATCH, return_value=mock_sim):
+                result = _impute_retirement_contributions(
+                    self.data,
+                    self.puf_imputations,
+                    self.time_period,
+                    "/fake/path.h5",
+                )
+        finally:
+            if old_qrf is not None:
+                qrf_mod.QRF = old_qrf
+
+        for var in CPS_RETIREMENT_VARIABLES:
+            assert var in result
+            assert np.all(result[var] == 0)
+
 
 # ── TestPufCloneRetirementRouting ────────────────────────────────────
 

@@ -697,6 +697,13 @@ def _impute_retirement_contributions(
     relationships) and predicts onto PUF clone records using
     PUF-imputed income as input features.
 
+    Note: ``pre_tax_contributions`` is separately imputed from PUF
+    via OVERRIDDEN_IMPUTED_VARIABLES.  In PolicyEngine it is a
+    formula (``adds`` of traditional_401k + traditional_403b + …),
+    so the stored value is only used when the formula is bypassed.
+    A future improvement could reconcile or drop the stored
+    pre_tax_contributions in favour of the formula sum.
+
     Args:
         data: CPS data dict.
         puf_imputations: Dict of PUF-imputed variable arrays.
@@ -705,6 +712,7 @@ def _impute_retirement_contributions(
 
     Returns:
         Dict mapping retirement variable names to imputed arrays.
+        Returns all-zeros on QRF failure.
     """
     from microimpute.models.qrf import QRF
     from policyengine_us import Microsimulation
@@ -739,13 +747,21 @@ def _impute_retirement_contributions(
 
     # Train QRF
     qrf = QRF(log_level="INFO", memory_efficient=True)
-    fitted = qrf.fit(
-        X_train=X_train_sampled,
-        predictors=RETIREMENT_PREDICTORS,
-        imputed_variables=CPS_RETIREMENT_VARIABLES,
-        n_jobs=1,
-    )
-    predictions = fitted.predict(X_test=X_test)
+    try:
+        fitted = qrf.fit(
+            X_train=X_train_sampled,
+            predictors=RETIREMENT_PREDICTORS,
+            imputed_variables=CPS_RETIREMENT_VARIABLES,
+            n_jobs=1,
+        )
+        predictions = fitted.predict(X_test=X_test)
+    except Exception as e:
+        logger.warning(
+            "QRF retirement imputation failed, returning zeros: %s",
+            e,
+        )
+        n_persons = len(data["person_id"][time_period])
+        return {var: np.zeros(n_persons) for var in CPS_RETIREMENT_VARIABLES}
 
     # Extract results and apply constraints
     limits = _get_retirement_limits(time_period)

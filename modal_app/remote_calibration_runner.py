@@ -216,8 +216,8 @@ def _fit_weights_impl(
     ]
     if target_config:
         cmd.extend(["--target-config", target_config])
-    if skip_county:
-        cmd.append("--skip-county")
+    if not skip_county:
+        cmd.append("--county-level")
     if workers > 1:
         cmd.extend(["--workers", str(workers)])
     _append_hyperparams(

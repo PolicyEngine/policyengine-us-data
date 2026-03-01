@@ -16,6 +16,7 @@ image = (
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
+VOLUME_MOUNT = "/calibration-data"
 
 
 def _run_streaming(cmd, env=None, label=""):
@@ -305,6 +306,110 @@ def _fit_from_package_impl(
         raise RuntimeError(f"Script failed with code {cal_rc}")
 
     return _collect_outputs(cal_lines)
+
+
+def _build_package_impl(
+    branch: str,
+    target_config: str = None,
+    skip_county: bool = True,
+    workers: int = 1,
+) -> str:
+    """Download data, build X matrix, save package to volume."""
+    _clone_and_install(branch)
+
+    print(
+        "Downloading calibration inputs from HuggingFace...",
+        flush=True,
+    )
+    dl_rc, dl_lines = _run_streaming(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            "from policyengine_us_data.utils.huggingface import "
+            "download_calibration_inputs; "
+            "paths = download_calibration_inputs("
+            "'/root/calibration_data'); "
+            "print(f\"DB: {paths['database']}\"); "
+            "print(f\"DATASET: {paths['dataset']}\")",
+        ],
+        env=os.environ.copy(),
+        label="download",
+    )
+    if dl_rc != 0:
+        raise RuntimeError(f"Download failed with code {dl_rc}")
+
+    db_path = dataset_path = None
+    for line in dl_lines:
+        if "DB:" in line:
+            db_path = line.split("DB:")[1].strip()
+        elif "DATASET:" in line:
+            dataset_path = line.split("DATASET:")[1].strip()
+
+    pkg_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
+    script_path = "policyengine_us_data/calibration/unified_calibration.py"
+    cmd = [
+        "uv",
+        "run",
+        "python",
+        script_path,
+        "--device",
+        "cpu",
+        "--epochs",
+        "0",
+        "--db-path",
+        db_path,
+        "--dataset",
+        dataset_path,
+        "--build-only",
+        "--package-output",
+        pkg_path,
+    ]
+    if target_config:
+        cmd.extend(["--target-config", target_config])
+    if not skip_county:
+        cmd.append("--county-level")
+    if workers > 1:
+        cmd.extend(["--workers", str(workers)])
+
+    build_rc, _ = _run_streaming(
+        cmd,
+        env=os.environ.copy(),
+        label="build",
+    )
+    if build_rc != 0:
+        raise RuntimeError(f"Package build failed with code {build_rc}")
+
+    size = os.path.getsize(pkg_path)
+    print(
+        f"Package saved to volume at {pkg_path} " f"({size:,} bytes)",
+        flush=True,
+    )
+    calibration_vol.commit()
+    return pkg_path
+
+
+@app.function(
+    image=image,
+    secrets=[hf_secret],
+    memory=65536,
+    cpu=4.0,
+    timeout=36000,
+    volumes={VOLUME_MOUNT: calibration_vol},
+)
+def build_package_remote(
+    branch: str = "main",
+    target_config: str = None,
+    skip_county: bool = True,
+    workers: int = 1,
+) -> str:
+    return _build_package_impl(
+        branch,
+        target_config=target_config,
+        skip_county=skip_county,
+        workers=workers,
+    )
 
 
 # --- Full pipeline GPU functions ---
@@ -671,9 +776,6 @@ PACKAGE_GPU_FUNCTIONS = {
 }
 
 
-VOLUME_MOUNT = "/calibration-data"
-
-
 @app.local_entrypoint()
 def main(
     branch: str = "main",
@@ -801,3 +903,35 @@ def main(
 
     if trigger_publish:
         _trigger_repository_dispatch()
+
+
+@app.local_entrypoint()
+def build_package(
+    branch: str = "main",
+    target_config: str = None,
+    county_level: bool = False,
+    workers: int = 1,
+):
+    """Build the calibration package (X matrix) on CPU and save
+    to Modal volume. Then use --package-volume with main to fit."""
+    print(
+        f"Building calibration package on Modal " f"(branch={branch})...",
+        flush=True,
+    )
+    vol_path = build_package_remote.remote(
+        branch=branch,
+        target_config=target_config,
+        skip_county=not county_level,
+        workers=workers,
+    )
+    print(
+        f"Package built and saved to Modal volume at {vol_path}",
+        flush=True,
+    )
+    print(
+        "To fit weights, run:\n"
+        "  modal run modal_app/remote_calibration_runner.py "
+        f"--branch {branch} --gpu <GPU> --epochs <N> "
+        "--package-volume --upload",
+        flush=True,
+    )

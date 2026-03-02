@@ -79,6 +79,9 @@ def download_calibration_inputs(
 
     optional_files = {
         "blocks": "calibration/stacked_blocks.npy",
+        "source_imputed_dataset": (
+            "calibration/" "source_imputed_stratified_extended_cps.h5"
+        ),
     }
     for key, hf_path in optional_files.items():
         try:
@@ -186,12 +189,15 @@ def upload_calibration_artifacts(
 
     if log_dir:
         log_files = {
-            "calibration_log.csv": "calibration/logs/calibration_log.csv",
+            "calibration_log.csv": ("calibration/logs/calibration_log.csv"),
             "unified_diagnostics.csv": (
                 "calibration/logs/unified_diagnostics.csv"
             ),
             "unified_run_config.json": (
                 "calibration/logs/unified_run_config.json"
+            ),
+            "validation_results.csv": (
+                "calibration/logs/validation_results.csv"
             ),
         }
         for filename, hf_path in log_files.items():

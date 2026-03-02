@@ -6,12 +6,16 @@ Usage:
     python -m policyengine_us_data.calibration.validate_staging \
         --area-type states,districts --areas NC \
         --period 2024 --output validation_results.csv
+
+    python -m policyengine_us_data.calibration.validate_staging \
+        --sanity-only --area-type states --areas NC
 """
 
 import argparse
 import csv
 import logging
 import math
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +35,9 @@ from policyengine_us_data.calibration.unified_matrix_builder import (
 )
 from policyengine_us_data.calibration.calibration_utils import (
     STATE_CODES,
+)
+from policyengine_us_data.calibration.sanity_checks import (
+    run_sanity_checks,
 )
 
 logger = logging.getLogger(__name__)
@@ -404,6 +411,11 @@ def parse_args(argv=None):
         default="validation_results.csv",
         help="Output CSV path",
     )
+    parser.add_argument(
+        "--sanity-only",
+        action="store_true",
+        help="Run only structural sanity checks (fast, " "no database needed)",
+    )
     return parser.parse_args(argv)
 
 
@@ -487,6 +499,65 @@ def _run_area_type(
     return results
 
 
+def _run_sanity_only(args):
+    """Run structural sanity checks on staging H5 files."""
+    area_types = [t.strip() for t in args.area_type.split(",")]
+    state_fips_list = _resolve_state_fips(args.areas)
+
+    total_failures = 0
+
+    for area_type in area_types:
+        if area_type == "states":
+            for fips in state_fips_list:
+                abbr = FIPS_TO_ABBR.get(fips, fips)
+                h5_url = f"{args.hf_prefix}/{area_type}/{abbr}.h5"
+                logger.info("Sanity-checking %s", h5_url)
+
+                if h5_url.startswith("hf://"):
+                    from huggingface_hub import hf_hub_download
+                    import tempfile
+
+                    parts = h5_url[5:].split("/", 2)
+                    repo = f"{parts[0]}/{parts[1]}"
+                    path = parts[2]
+                    local = hf_hub_download(
+                        repo_id=repo,
+                        filename=path,
+                        repo_type="model",
+                        token=os.environ.get("HUGGING_FACE_TOKEN"),
+                    )
+                else:
+                    local = h5_url
+
+                results = run_sanity_checks(local, args.period)
+                n_fail = sum(1 for r in results if r["status"] == "FAIL")
+                total_failures += n_fail
+
+                for r in results:
+                    if r["status"] != "PASS":
+                        detail = f" — {r['detail']}" if r["detail"] else ""
+                        logger.warning(
+                            "  %s [%s] %s%s",
+                            abbr,
+                            r["status"],
+                            r["check"],
+                            detail,
+                        )
+
+                if n_fail == 0:
+                    logger.info("  %s: all checks passed", abbr)
+        else:
+            logger.info(
+                "Sanity-only mode for %s not yet implemented",
+                area_type,
+            )
+
+    if total_failures > 0:
+        logger.error("%d total sanity failures", total_failures)
+    else:
+        logger.info("All sanity checks passed")
+
+
 def main(argv=None):
     logging.basicConfig(
         level=logging.INFO,
@@ -495,6 +566,10 @@ def main(argv=None):
 
     args = parse_args(argv)
     logger.info("CLI args: %s", vars(args))
+
+    if args.sanity_only:
+        _run_sanity_only(args)
+        return
 
     from policyengine_us import Microsimulation
 

@@ -361,3 +361,144 @@ For **national web app** (~50K records):
 |---|---|
 | `make calibrate` | Full pipeline with PUF and target config |
 | `make calibrate-build` | Build-only mode (saves package, no fitting) |
+| `make pipeline` | End-to-end: data, upload, calibrate, stage |
+| `make validate-staging` | Validate staged H5s against targets (states only) |
+| `make validate-staging-full` | Validate staged H5s (states + districts) |
+| `make upload-validation` | Push validation_results.csv to HF |
+| `make check-staging` | Smoke test: sum key variables across all state H5s |
+| `make check-sanity` | Quick structural integrity check on one state |
+| `make upload-calibration` | Upload weights, blocks, and logs to HF |
+
+## Takeup Rerandomization
+
+The calibration pipeline uses two independent code paths to compute the same target variables:
+
+1. **Matrix builder** (`UnifiedMatrixBuilder.build_matrix`): Computes a sparse calibration matrix $X$ where each row is a target and each column is a cloned household. The optimizer finds weights $w$ that minimize $\|Xw - t\|$ (target values).
+
+2. **Stacked builder** (`create_sparse_cd_stacked_dataset`): Produces the `.h5` files that users load in `Microsimulation`. It reconstructs each congressional district by combining base CPS records with calibrated weights and block-level geography.
+
+For the calibration to be meaningful, **both paths must produce identical values** for every target variable. If the matrix builder computes $X_{snap,NC} \cdot w = \$5.2B$ but the stacked NC.h5 file yields `sim.calculate("snap") * household_weight = $4.8B`, then the optimizer's solution does not actually match the target.
+
+### The problem with takeup variables
+
+Variables like `snap`, `aca_ptc`, `ssi`, and `medicaid` depend on **takeup draws** — random Bernoulli samples that determine whether an eligible household actually claims the benefit. By default, PolicyEngine draws these at simulation time using Python's built-in `hash()`, which is randomized per process.
+
+This means loading the same H5 file in two different processes can produce different SNAP totals, even with the same weights. Worse, the matrix builder runs in process A while the stacked builder runs in process B, so their draws can diverge.
+
+### The solution: block-level seeding
+
+Both paths call `seeded_rng(variable_name, salt=f"{block_geoid}:{household_id}")` to generate deterministic takeup draws. This ensures:
+
+- The same household at the same block always gets the same draw
+- Draws are stable across processes (no dependency on `hash()`)
+- Draws are stable when aggregating to any geography (state, CD, county)
+
+The affected variables are listed in `TAKEUP_AFFECTED_TARGETS` in `utils/takeup.py`: snap, aca_ptc, ssi, medicaid, tanf, head_start, early_head_start, and dc_property_tax_credit.
+
+The `--skip-takeup-rerandomize` flag disables this rerandomization for faster iteration when you only care about non-takeup variables. Do not use it for production calibrations.
+
+## Block-Level Seeding
+
+Each cloned household is assigned to a Census block (15-digit GEOID) during the `assign_random_geography` step. The first 2 digits are the state FIPS code, which determines the household's takeup rates (since benefit eligibility rules are state-specific).
+
+### Mechanism
+
+```python
+rng = seeded_rng(variable_name, salt=f"{block_geoid}:{household_id}")
+draw = rng.random()
+takes_up = draw < takeup_rate[state_fips]
+```
+
+The `seeded_rng` function uses `_stable_string_hash` — a deterministic hash that does not depend on Python's `PYTHONHASHSEED`. This is critical because Python's built-in `hash()` is randomized per process by default (since Python 3.3).
+
+### Why block (not CD or state)?
+
+Blocks are the finest Census geography. A household's block assignment stays the same regardless of how blocks are aggregated — the same household-block-draw triple produces the same result whether you are building an H5 for a state, a congressional district, or a county. This means:
+
+- State H5s and district H5s are consistent (no draw drift)
+- Future county-level H5s will also be consistent
+- Re-running the pipeline with different area selections yields the same per-household values
+
+### Inactive records
+
+When converting to stacked format, households that are not assigned to a given CD get zero weight. These inactive records must receive an empty string `""` as their block GEOID, not a real block. If they received real blocks, they would inflate the entity count `n` passed to the RNG, shifting the draw positions for active entities and breaking the $X \cdot w$ consistency invariant.
+
+## The $X \cdot w$ Consistency Invariant
+
+### Formal statement
+
+For every target variable $v$ and geography $g$:
+
+$$X_{v,g} \cdot w = \sum_{i \in g} \text{sim.calculate}(v)_i \times w_i$$
+
+where the left side comes from the matrix builder and the right side comes from loading the stacked H5 and running `Microsimulation.calculate()`.
+
+### Why it matters
+
+This invariant is what makes calibration meaningful. Without it, the optimizer's solution (which minimizes $\|Xw - t\|$) does not actually produce a dataset that matches the targets. The weights would be "correct" in the matrix builder's view but produce different totals in the H5 files that users actually load.
+
+### Known sources of drift
+
+1. **Mismatched takeup draws**: The matrix builder and stacked builder use different RNG states. Solved by block-level seeding (see above).
+
+2. **Different block assignments**: The stacked format uses first-clone-wins for multi-clone-same-CD records. With ~11M blocks and 3-10 clones, collision rate is ~0.7-10% of records. In practice, the residual mismatch is negligible.
+
+3. **Inactive records in RNG calls**: If inactive records (w=0) receive real block GEOIDs, they inflate the entity count for that block's RNG call, shifting draw positions. Solved by using `""` for inactive blocks.
+
+4. **Entity ordering**: Both paths must iterate over entities in the same order (`sim.calculate("{entity}_id", map_to=entity)`). NumPy boolean masking preserves order, so `draws[i]` maps to the same entity in both paths.
+
+### Testing
+
+The `test_xw_consistency.py` test (`pytest -m slow`) verifies this invariant end-to-end:
+
+1. Load base dataset, create geography with uniform weights
+2. Build $X$ with the matrix builder (including takeup rerandomization)
+3. Convert weights to stacked format
+4. Build stacked H5 for selected CDs
+5. Compare $X \cdot w$ vs `sim.calculate() * household_weight` — assert ratio within 1%
+
+## Post-Calibration Gating Workflow
+
+After the pipeline stages H5 files to HuggingFace, two manual review gates determine whether to promote to production.
+
+### Gate 1: Review calibration fit
+
+Load `calibration_log.csv` in the microcalibrate dashboard. This file contains the $X \cdot w$ values from the matrix builder for every target at every epoch.
+
+**What to check:**
+- Loss curve converges (no divergence in later epochs)
+- No individual target groups diverging while others improve
+- Final loss is comparable to or better than the previous production run
+
+If fit is poor, re-calibrate with different hyperparameters (learning rate, lambda_l0, beta, epochs).
+
+### Gate 2: Review simulation quality
+
+```bash
+make validate-staging          # states only (~30 min)
+make validate-staging-full     # states + districts (~3 hrs)
+make upload-validation         # push CSV to HF
+```
+
+This produces `validation_results.csv` with `sim.calculate()` values for every target. Load it in the dashboard's Combined tab alongside `calibration_log.csv`.
+
+**What to check:**
+- `CalibrationVsSimComparison` shows the gap between $X \cdot w$ and `sim.calculate()` values
+- No large regressions vs the previous production run
+- Sanity check column has no FAIL entries
+
+### Promote
+
+If both gates pass:
+- Run the "Promote Local Area H5 Files" GitHub workflow, OR
+- Manually copy staged files to the production paths in the HF repo
+
+### Structural pre-flight
+
+For a quick structural check without loading the full database:
+
+```bash
+make check-sanity              # one state, ~2 min
+```
+
+This runs weight non-negativity, entity ID uniqueness, NaN/Inf detection, person-household mapping, boolean takeup validation, and per-household range checks.

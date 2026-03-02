@@ -13,6 +13,7 @@ Usage:
 
 import argparse
 import csv
+import gc
 import logging
 import math
 import os
@@ -428,9 +429,14 @@ def _run_area_type(
     args,
     Microsimulation,
 ):
-    """Validate all areas for a single area_type."""
+    """Validate all areas for a single area_type.
+
+    Loads one sim at a time to keep memory low.
+    """
     results = []
-    sim_cache = {}
+    total_weighted_pop = 0.0
+    current_h5 = None
+    sim = None
 
     for area_id in area_ids:
         if area_type == "states":
@@ -443,19 +449,31 @@ def _run_area_type(
 
         h5_path = f"{args.hf_prefix}/{area_type}/{h5_name}.h5"
 
-        # Reuse sim if same .h5 (districts in same state)
-        if h5_path not in sim_cache:
-            logger.info(
-                "Loading sim from %s",
-                h5_path,
-            )
+        if h5_path != current_h5:
+            current_h5 = h5_path
+            del sim
+            gc.collect()
+            logger.info("Loading sim from %s", h5_path)
             try:
-                sim_cache[h5_path] = Microsimulation(dataset=h5_path)
+                sim = Microsimulation(dataset=h5_path)
             except Exception as e:
                 logger.error("Failed to load %s: %s", h5_path, e)
-                sim_cache[h5_path] = None
+                sim = None
 
-        sim = sim_cache[h5_path]
+            if sim is not None and area_type == "states":
+                person_weight = sim.calculate(
+                    "person_weight",
+                    map_to="person",
+                    period=args.period,
+                ).values.astype(np.float64)
+                area_pop = float(person_weight.sum())
+                total_weighted_pop += area_pop
+                logger.info(
+                    "  %s population: %,.0f",
+                    display_id,
+                    area_pop,
+                )
+
         if sim is None:
             continue
 
@@ -494,6 +512,12 @@ def _run_area_type(
             display_id,
             len(area_results),
             n_fail,
+        )
+
+    if area_type == "states" and total_weighted_pop > 0:
+        logger.info(
+            "TOTAL WEIGHTED POPULATION: %,.0f (expect ~340M)",
+            total_weighted_pop,
         )
 
     return results

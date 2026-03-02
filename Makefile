@@ -1,9 +1,10 @@
-.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database build-matrices calibrate-modal stage-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
+.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database build-matrices calibrate-modal stage-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote
 
 GPU ?= A100-80GB
 EPOCHS ?= 200
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 NUM_WORKERS ?= 8
+VERSION ?=
 
 HF_CLONE_DIR ?= $(HOME)/huggingface/policyengine-us-data
 
@@ -149,6 +150,11 @@ calibrate-modal:
 stage-h5s:
 	modal run modal_app/local_area.py::main \
 		--branch $(BRANCH) --num-workers $(NUM_WORKERS)
+
+promote:
+	$(eval VERSION := $(or $(VERSION),$(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")))
+	modal run modal_app/local_area.py::main_promote \
+		--branch $(BRANCH) --version $(VERSION)
 
 validate-staging:
 	python -m policyengine_us_data.calibration.validate_staging \

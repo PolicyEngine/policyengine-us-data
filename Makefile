@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database calibrate-modal stage-h5s pipeline clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
+.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database build-matrices calibrate-modal stage-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
 
 GPU ?= A100-80GB
 EPOCHS ?= 200
@@ -120,7 +120,8 @@ validate-data:
 	python -c "from policyengine_us_data.storage.upload_completed_datasets import validate_all_datasets; validate_all_datasets()"
 
 upload-calibration:
-	python scripts/upload_calibration.py
+	python -c "from policyengine_us_data.utils.huggingface import upload_calibration_artifacts; \
+		upload_calibration_artifacts()"
 
 upload-dataset:
 	python -c "from policyengine_us_data.utils.huggingface import upload; \
@@ -136,15 +137,41 @@ upload-database:
 		'calibration/policy_data.db')"
 	@echo "Database uploaded to HF."
 
+build-matrices:
+	modal run modal_app/remote_calibration_runner.py::build_package \
+		--branch $(BRANCH)
+
 calibrate-modal:
-	modal run modal_app/remote_calibration_runner.py \
-		--branch $(BRANCH) --gpu $(GPU) --epochs $(EPOCHS) --upload
+	modal run modal_app/remote_calibration_runner.py::main \
+		--branch $(BRANCH) --gpu $(GPU) --epochs $(EPOCHS) \
+		--prebuilt-matrices --push-results
 
 stage-h5s:
 	modal run modal_app/local_area.py \
 		--branch $(BRANCH) --num-workers $(NUM_WORKERS)
 
-pipeline: data upload-dataset calibrate-modal stage-h5s
+validate-staging:
+	python -m policyengine_us_data.calibration.validate_staging \
+		--area-type states --output validation_results.csv
+
+validate-staging-full:
+	python -m policyengine_us_data.calibration.validate_staging \
+		--area-type states,districts --output validation_results.csv
+
+upload-validation:
+	python -c "from policyengine_us_data.utils.huggingface import upload; \
+		upload('validation_results.csv', \
+		'policyengine/policyengine-us-data', \
+		'calibration/logs/validation_results.csv')"
+
+check-staging:
+	python -m policyengine_us_data.calibration.check_staging_sums
+
+check-sanity:
+	python -m policyengine_us_data.calibration.validate_staging \
+		--sanity-only --area-type states --areas NC
+
+pipeline: data upload-dataset build-matrices calibrate-modal stage-h5s
 	@echo ""
 	@echo "========================================"
 	@echo "Pipeline complete. H5s are in HF staging."

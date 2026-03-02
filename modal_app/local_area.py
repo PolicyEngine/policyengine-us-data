@@ -454,12 +454,7 @@ def coordinate_publish(
     calibration_dir.mkdir(parents=True, exist_ok=True)
 
     # hf_hub_download preserves directory structure, so files are in calibration/ subdir
-    weights_path = (
-        calibration_dir / "calibration" / "calibration_weights.npy"
-    )
-    dataset_path = (
-        calibration_dir / "calibration" / "stratified_extended_cps.h5"
-    )
+    weights_path = calibration_dir / "calibration" / "calibration_weights.npy"
     db_path = calibration_dir / "calibration" / "policy_data.db"
 
     print("Downloading calibration inputs from HuggingFace...")
@@ -482,6 +477,23 @@ print("Done")
         raise RuntimeError(f"Download failed: {result.stderr}")
     staging_volume.commit()
     print("Calibration inputs downloaded")
+
+    source_imputed_path = (
+        calibration_dir
+        / "calibration"
+        / "source_imputed_stratified_extended_cps.h5"
+    )
+    base_dataset_path = (
+        calibration_dir / "calibration" / "stratified_extended_cps.h5"
+    )
+    if source_imputed_path.exists():
+        dataset_path = source_imputed_path
+        print("Using source-imputed dataset")
+    else:
+        dataset_path = base_dataset_path
+        print(
+            "WARNING: Source-imputed dataset not found, " "using base dataset"
+        )
 
     blocks_path = calibration_dir / "calibration" / "stacked_blocks.npy"
     calibration_inputs = {

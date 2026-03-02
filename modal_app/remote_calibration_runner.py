@@ -161,6 +161,40 @@ def _trigger_repository_dispatch(event_type: str = "calibration-updated"):
     return True
 
 
+def _upload_source_imputed(lines):
+    """Parse SOURCE_IMPUTED_PATH from output and upload to HF."""
+    source_path = None
+    for line in lines:
+        if "SOURCE_IMPUTED_PATH:" in line:
+            raw = line.split("SOURCE_IMPUTED_PATH:")[1].strip()
+            source_path = raw.split("]")[-1].strip() if "]" in raw else raw
+    if not source_path or not os.path.exists(source_path):
+        return
+    print(f"Uploading source-imputed dataset: {source_path}", flush=True)
+    rc, _ = _run_streaming(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            "from policyengine_us_data.utils.huggingface import upload; "
+            f"upload('{source_path}', "
+            "'policyengine/policyengine-us-data', "
+            "'calibration/"
+            "source_imputed_stratified_extended_cps.h5')",
+        ],
+        env=os.environ.copy(),
+        label="upload-source-imputed",
+    )
+    if rc != 0:
+        print(
+            "WARNING: Failed to upload source-imputed dataset",
+            flush=True,
+        )
+    else:
+        print("Source-imputed dataset uploaded to HF", flush=True)
+
+
 def _fit_weights_impl(
     branch: str,
     epochs: int,
@@ -234,6 +268,8 @@ def _fit_weights_impl(
     )
     if cal_rc != 0:
         raise RuntimeError(f"Script failed with code {cal_rc}")
+
+    _upload_source_imputed(cal_lines)
 
     return _collect_outputs(cal_lines)
 
@@ -373,13 +409,15 @@ def _build_package_impl(
     if workers > 1:
         cmd.extend(["--workers", str(workers)])
 
-    build_rc, _ = _run_streaming(
+    build_rc, build_lines = _run_streaming(
         cmd,
         env=os.environ.copy(),
         label="build",
     )
     if build_rc != 0:
         raise RuntimeError(f"Package build failed with code {build_rc}")
+
+    _upload_source_imputed(build_lines)
 
     size = os.path.getsize(pkg_path)
     print(
@@ -410,6 +448,29 @@ def build_package_remote(
         skip_county=skip_county,
         workers=workers,
     )
+
+
+@app.function(
+    image=image,
+    timeout=30,
+    volumes={VOLUME_MOUNT: calibration_vol},
+)
+def check_volume_package() -> dict:
+    """Check if a calibration package exists on the volume."""
+    import datetime
+
+    pkg_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
+    if os.path.exists(pkg_path):
+        stat = os.stat(pkg_path)
+        mtime = datetime.datetime.fromtimestamp(
+            stat.st_mtime, tz=datetime.timezone.utc
+        )
+        return {
+            "exists": True,
+            "size": stat.st_size,
+            "modified": mtime.strftime("%Y-%m-%d %H:%M UTC"),
+        }
+    return {"exists": False}
 
 
 # --- Full pipeline GPU functions ---
@@ -790,11 +851,11 @@ def main(
     learning_rate: float = None,
     log_freq: int = None,
     package_path: str = None,
-    package_volume: bool = False,
+    prebuilt_matrices: bool = False,
+    full_pipeline: bool = False,
     county_level: bool = False,
     workers: int = 1,
-    upload: bool = False,
-    upload_logs: bool = False,
+    push_results: bool = False,
     trigger_publish: bool = False,
 ):
     if gpu not in GPU_FUNCTIONS:
@@ -803,10 +864,53 @@ def main(
             f"Choose from: {list(GPU_FUNCTIONS.keys())}"
         )
 
-    if package_volume:
+    if not prebuilt_matrices and not full_pipeline and not package_path:
+        vol_info = check_volume_package.remote()
+        if vol_info["exists"]:
+            raise SystemExit(
+                "\nA calibration package exists on the Modal "
+                f"volume (last modified: {vol_info['modified']}"
+                f", {vol_info['size']:,} bytes).\n"
+                "  To fit from this package:  "
+                "add --prebuilt-matrices\n"
+                "  To rebuild from scratch:   "
+                "add --full-pipeline\n"
+            )
+
+    if prebuilt_matrices:
         vol_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
         print(
-            f"Using package from Modal volume at {vol_path}",
+            "========================================",
+            flush=True,
+        )
+        print(
+            f"Mode: fitting from pre-built package on " f"Modal volume",
+            flush=True,
+        )
+        print(
+            f"GPU: {gpu} | Epochs: {epochs} | " f"Branch: {branch}",
+            flush=True,
+        )
+        if push_results:
+            print(
+                "After fitting, will upload to HuggingFace:",
+                flush=True,
+            )
+            print(
+                "  - calibration/calibration_weights.npy",
+                flush=True,
+            )
+            print(
+                "  - calibration/stacked_blocks.npy",
+                flush=True,
+            )
+            print(
+                "  - calibration/logs/ (diagnostics, config, "
+                "calibration log)",
+                flush=True,
+            )
+        print(
+            "========================================",
             flush=True,
         )
         func = PACKAGE_GPU_FUNCTIONS[gpu]
@@ -844,8 +948,37 @@ def main(
         )
     else:
         print(
-            f"Running full pipeline with GPU: {gpu}, "
-            f"epochs: {epochs}, branch: {branch}",
+            "========================================",
+            flush=True,
+        )
+        print(
+            f"Mode: full pipeline (download, build " f"matrix, fit)",
+            flush=True,
+        )
+        print(
+            f"GPU: {gpu} | Epochs: {epochs} | " f"Branch: {branch}",
+            flush=True,
+        )
+        if push_results:
+            print(
+                "After fitting, will upload to HuggingFace:",
+                flush=True,
+            )
+            print(
+                "  - calibration/calibration_weights.npy",
+                flush=True,
+            )
+            print(
+                "  - calibration/stacked_blocks.npy",
+                flush=True,
+            )
+            print(
+                "  - calibration/logs/ (diagnostics, config, "
+                "calibration log)",
+                flush=True,
+            )
+        print(
+            "========================================",
             flush=True,
         )
         func = GPU_FUNCTIONS[gpu]
@@ -889,8 +1022,7 @@ def main(
             f.write(result["blocks"])
         print(f"Stacked blocks saved to: {blocks_output}")
 
-    do_upload = upload or upload_logs
-    if do_upload:
+    if push_results:
         from policyengine_us_data.utils.huggingface import (
             upload_calibration_artifacts,
         )
@@ -913,9 +1045,26 @@ def build_package(
     workers: int = 1,
 ):
     """Build the calibration package (X matrix) on CPU and save
-    to Modal volume. Then use --package-volume with main to fit."""
+    to Modal volume. Then use --prebuilt-matrices to fit."""
     print(
-        f"Building calibration package on Modal " f"(branch={branch})...",
+        "========================================",
+        flush=True,
+    )
+    print(
+        f"Mode: building calibration package (CPU only)",
+        flush=True,
+    )
+    print(f"Branch: {branch}", flush=True)
+    print(
+        "This builds the X matrix and saves it to " "a Modal volume.",
+        flush=True,
+    )
+    print(
+        "No GPU is used. Timeout: 10 hours.",
+        flush=True,
+    )
+    print(
+        "========================================",
         flush=True,
     )
     vol_path = build_package_remote.remote(
@@ -929,9 +1078,11 @@ def build_package(
         flush=True,
     )
     print(
-        "To fit weights, run:\n"
-        "  modal run modal_app/remote_calibration_runner.py "
-        f"--branch {branch} --gpu <GPU> --epochs <N> "
-        "--package-volume --upload",
+        "\nTo fit weights, run:\n"
+        "  modal run modal_app/remote_calibration_runner.py"
+        "::main \\\n"
+        f"    --branch {branch} --gpu <GPU> "
+        "--epochs <N> \\\n"
+        "    --prebuilt-matrices --push-results",
         flush=True,
     )

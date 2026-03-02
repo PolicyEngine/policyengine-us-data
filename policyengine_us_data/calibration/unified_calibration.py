@@ -1159,6 +1159,7 @@ def run_calibration(
             "cd_geoid": geography.cd_geoid,
             "block_geoid": geography.block_geoid,
             "base_n_records": n_records,
+            "dataset_for_matrix": dataset_for_matrix,
         }
         return (
             None,
@@ -1203,6 +1204,7 @@ def run_calibration(
         "cd_geoid": geography.cd_geoid,
         "block_geoid": geography.block_geoid,
         "base_n_records": n_records,
+        "dataset_for_matrix": dataset_for_matrix,
     }
     return (
         weights,
@@ -1307,6 +1309,10 @@ def main(argv=None):
         log_path=cal_log_path,
         workers=args.workers,
     )
+
+    source_imputed = geography_info.get("dataset_for_matrix")
+    if source_imputed and source_imputed != dataset_path:
+        print(f"SOURCE_IMPUTED_PATH:{source_imputed}")
 
     if weights is None:
         logger.info("Build-only complete. Package saved.")

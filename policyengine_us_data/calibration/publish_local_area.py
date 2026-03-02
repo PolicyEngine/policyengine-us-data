@@ -567,6 +567,9 @@ def main():
             "dataset": WORK_DIR / "stratified_extended_cps.h5",
             "database": WORK_DIR / "policy_data.db",
         }
+        source_imputed = WORK_DIR / "source_imputed_stratified_extended_cps.h5"
+        if source_imputed.exists():
+            inputs["source_imputed_dataset"] = source_imputed
         print("Using existing files in work directory:")
         for key, path in inputs.items():
             if not path.exists():
@@ -577,6 +580,14 @@ def main():
         inputs = download_calibration_inputs(str(WORK_DIR))
         for key, path in inputs.items():
             inputs[key] = Path(path)
+
+    if "source_imputed_dataset" in inputs:
+        inputs["dataset"] = inputs["source_imputed_dataset"]
+        print("Using source-imputed dataset")
+    else:
+        print(
+            "WARNING: Source-imputed dataset not found, " "using base dataset"
+        )
 
     sim = Microsimulation(dataset=str(inputs["dataset"]))
     n_hh = sim.calculate("household_id", map_to="household").shape[0]

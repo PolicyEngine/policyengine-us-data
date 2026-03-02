@@ -51,13 +51,21 @@ def run_sanity_checks(
     """
     results = []
 
-    with h5py.File(h5_path, "r") as f:
-        keys = list(f.keys())
+    def _get(f, path):
+        """Resolve a slash path like 'var/2024' in the H5."""
+        try:
+            obj = f[path]
+            if isinstance(obj, h5py.Dataset):
+                return obj[:]
+            return None
+        except KeyError:
+            return None
 
+    with h5py.File(h5_path, "r") as f:
         # 1. Weight non-negativity
         w_key = f"household_weight/{period}"
-        if w_key in keys:
-            weights = f[w_key][:]
+        weights = _get(f, w_key)
+        if weights is not None:
             n_neg = int((weights < 0).sum())
             if n_neg > 0:
                 results.append(
@@ -91,11 +99,10 @@ def run_sanity_checks(
             "tax_unit",
             "spm_unit",
         ]:
-            id_key = f"{entity}_id/{period}"
-            if id_key not in keys:
-                id_key = f"{entity}_id"
-            if id_key in keys:
-                ids = f[id_key][:]
+            ids = _get(f, f"{entity}_id/{period}")
+            if ids is None:
+                ids = _get(f, f"{entity}_id")
+            if ids is not None:
                 n_dup = len(ids) - len(np.unique(ids))
                 if n_dup > 0:
                     results.append(
@@ -116,10 +123,9 @@ def run_sanity_checks(
 
         # 3. No NaN/Inf in key monetary variables
         for var in KEY_MONETARY_VARS:
-            var_key = f"{var}/{period}"
-            if var_key not in keys:
+            vals = _get(f, f"{var}/{period}")
+            if vals is None:
                 continue
-            vals = f[var_key][:]
             n_nan = int(np.isnan(vals).sum())
             n_inf = int(np.isinf(vals).sum())
             if n_nan > 0 or n_inf > 0:
@@ -140,16 +146,16 @@ def run_sanity_checks(
                 )
 
         # 4. Person-to-household mapping
-        phh_key = f"person_household_id/{period}"
-        hh_key = f"household_id/{period}"
-        if phh_key not in keys:
-            phh_key = "person_household_id"
-        if hh_key not in keys:
-            hh_key = "household_id"
+        person_hh_arr = _get(f, f"person_household_id/{period}")
+        if person_hh_arr is None:
+            person_hh_arr = _get(f, "person_household_id")
+        hh_id_arr = _get(f, f"household_id/{period}")
+        if hh_id_arr is None:
+            hh_id_arr = _get(f, "household_id")
 
-        if phh_key in keys and hh_key in keys:
-            person_hh = set(f[phh_key][:].tolist())
-            hh_ids = set(f[hh_key][:].tolist())
+        if person_hh_arr is not None and hh_id_arr is not None:
+            person_hh = set(person_hh_arr.tolist())
+            hh_ids = set(hh_id_arr.tolist())
             orphans = person_hh - hh_ids
             if orphans:
                 results.append(
@@ -173,10 +179,9 @@ def run_sanity_checks(
 
         # 5. Boolean takeup variables
         for var in TAKEUP_VARS:
-            var_key = f"{var}/{period}"
-            if var_key not in keys:
+            vals = _get(f, f"{var}/{period}")
+            if vals is None:
                 continue
-            vals = f[var_key][:]
             unique = set(np.unique(vals).tolist())
             valid = {True, False, 0, 1, 0.0, 1.0}
             bad = unique - valid
@@ -198,21 +203,17 @@ def run_sanity_checks(
                 )
 
         # 6. Reasonable per-capita ranges
-        w_key = f"household_weight/{period}"
-        emp_key = f"employment_income/{period}"
-        snap_key = f"snap/{period}"
-        if w_key in keys:
-            weights = f[w_key][:]
+        if weights is not None:
             total_hh = weights.sum()
             if total_hh > 0:
-                if emp_key in keys:
-                    emp = f[emp_key][:]
+                emp = _get(f, f"employment_income/{period}")
+                if emp is not None:
                     total_emp = (emp * weights).sum()
                     per_hh = total_emp / total_hh
                     if per_hh < 10_000 or per_hh > 200_000:
                         results.append(
                             {
-                                "check": ("per_hh_employment_income"),
+                                "check": "per_hh_employment_income",
                                 "status": "WARN",
                                 "detail": (
                                     f"${per_hh:,.0f}/hh "
@@ -223,15 +224,15 @@ def run_sanity_checks(
                     else:
                         results.append(
                             {
-                                "check": ("per_hh_employment_income"),
+                                "check": "per_hh_employment_income",
                                 "status": "PASS",
                                 "detail": f"${per_hh:,.0f}/hh",
                             }
                         )
 
-                if snap_key in keys:
-                    snap = f[snap_key][:]
-                    total_snap = (snap * weights).sum()
+                snap_arr = _get(f, f"snap/{period}")
+                if snap_arr is not None:
+                    total_snap = (snap_arr * weights).sum()
                     per_hh_snap = total_snap / total_hh
                     if per_hh_snap < 0 or per_hh_snap > 10_000:
                         results.append(
@@ -249,7 +250,7 @@ def run_sanity_checks(
                             {
                                 "check": "per_hh_snap",
                                 "status": "PASS",
-                                "detail": (f"${per_hh_snap:,.0f}/hh"),
+                                "detail": f"${per_hh_snap:,.0f}/hh",
                             }
                         )
 

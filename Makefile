@@ -147,7 +147,7 @@ calibrate-modal:
 		--prebuilt-matrices --push-results
 
 stage-h5s:
-	modal run modal_app/local_area.py \
+	modal run modal_app/local_area.py::main \
 		--branch $(BRANCH) --num-workers $(NUM_WORKERS)
 
 validate-staging:

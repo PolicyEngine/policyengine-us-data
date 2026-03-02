@@ -24,8 +24,7 @@ modal run modal_app/remote_calibration_runner.py --branch <branch> --epochs <n> 
 | `--output` | `calibration_weights.npy` | Local path for weights file |
 | `--log-output` | `unified_diagnostics.csv` | Local path for diagnostics log |
 | `--log-freq` | (none) | Log every N epochs to `calibration_log.csv` |
-| `--upload` | `False` | Upload weights, blocks, and logs to HuggingFace |
-| `--upload-logs` | `False` | Alias for `--upload` (backwards compat) |
+| `--push-results` | `False` | Upload weights, blocks, and logs to HuggingFace |
 | `--trigger-publish` | `False` | Fire `repository_dispatch` to trigger the Publish workflow |
 | `--target-config` | (none) | Target configuration name |
 | `--beta` | (none) | L0 relaxation parameter |
@@ -33,22 +32,40 @@ modal run modal_app/remote_calibration_runner.py --branch <branch> --epochs <n> 
 | `--lambda-l2` | (none) | L2 penalty weight |
 | `--learning-rate` | (none) | Optimizer learning rate |
 | `--package-path` | (none) | Local path to a pre-built calibration package |
-| `--package-volume` | `False` | Use package from Modal volume instead |
+| `--prebuilt-matrices` | `False` | Fit from pre-built package on Modal volume |
+| `--full-pipeline` | `False` | Force full rebuild even if a package exists on the volume |
 | `--county-level` | `False` | Include county-level targets |
 | `--workers` | `1` | Number of parallel workers |
 
 ### Examples
 
-Fit weights and upload everything to HF:
+**Two-step workflow (recommended):**
+
+Step 1 — Build the X matrix on CPU (no GPU cost, 10h timeout):
 ```bash
-modal run modal_app/remote_calibration_runner.py \
-  --branch main --epochs 200 --gpu A100-80GB --upload
+modal run modal_app/remote_calibration_runner.py::build_package \
+  --branch main
 ```
 
-Fit, upload, and trigger the publish workflow:
+Step 2 — Fit weights from the pre-built package on GPU:
 ```bash
-modal run modal_app/remote_calibration_runner.py \
-  --gpu A100-80GB --epochs 200 --upload --trigger-publish
+modal run modal_app/remote_calibration_runner.py::main \
+  --branch main --epochs 200 --gpu A100-80GB \
+  --prebuilt-matrices --push-results
+```
+
+**Full pipeline (single step, requires enough timeout for matrix build + fit):**
+```bash
+modal run modal_app/remote_calibration_runner.py::main \
+  --branch main --epochs 200 --gpu A100-80GB \
+  --full-pipeline --push-results
+```
+
+Fit, push, and trigger the publish workflow:
+```bash
+modal run modal_app/remote_calibration_runner.py::main \
+  --gpu A100-80GB --epochs 200 \
+  --prebuilt-matrices --push-results --trigger-publish
 ```
 
 ## Output Files
@@ -63,8 +80,8 @@ Every run produces these local files (whichever the calibration script emits):
 
 ## Artifact Upload to HuggingFace
 
-The `--upload` flag uploads all artifacts to HuggingFace in a single atomic
-commit after writing them locally:
+The `--push-results` flag uploads all artifacts to HuggingFace in a single
+atomic commit after writing them locally:
 
 | Local file | HF path |
 |------------|---------|
@@ -112,14 +129,14 @@ has a **Hugging Face** tab that loads `calibration_log.csv` directly from HF:
   "Weights saved to:" message.
 - Modal clones from GitHub, so local changes must be pushed before they
   take effect.
-- `--upload` requires the `HUGGING_FACE_TOKEN` environment variable
+- `--push-results` requires the `HUGGING_FACE_TOKEN` environment variable
   to be set locally (not just as a Modal secret).
 - `--trigger-publish` requires `GITHUB_TOKEN` or
   `POLICYENGINE_US_DATA_GITHUB_TOKEN` set locally.
 
 ## Full Pipeline Reference
 
-The calibration pipeline has four stages. Each can be run locally, via Modal CLI, or via GitHub Actions.
+The calibration pipeline has six stages. Each can be run locally, via Modal CLI, or via GitHub Actions.
 
 ### Stage 1: Build data
 
@@ -146,31 +163,40 @@ Pushes the dataset and (optionally) database to HF so Modal can download them.
 
 The database is relatively stable; only re-upload after `make database` or `make database-refresh`.
 
-### Stage 3: Fit calibration weights
+### Stage 3: Build calibration matrices
 
-Downloads dataset + database from HF, builds the X matrix, fits L0-regularized weights on GPU.
+Downloads dataset + database from HF, builds the X matrix, saves to Modal volume. CPU-only, no GPU cost.
+
+| Method | Command |
+|--------|---------|
+| **Local** | `make calibrate-build` |
+| **Modal CLI** | `make build-matrices BRANCH=<branch>` (aka `modal run modal_app/remote_calibration_runner.py::build_package --branch=<branch>`) |
+
+### Stage 4: Fit calibration weights
+
+Loads pre-built matrices from Modal volume, fits L0-regularized weights on GPU.
 
 | Method | Command |
 |--------|---------|
 | **Local (CPU)** | `make calibrate` |
-| **Modal CLI** | `modal run modal_app/remote_calibration_runner.py --branch=<branch> --gpu=<gpu> --epochs=<n> [--upload]` |
+| **Modal CLI** | `make calibrate-modal BRANCH=<branch> GPU=<gpu> EPOCHS=<n>` |
 
-The `--upload` flag uploads weights + blocks + logs to HF in a single commit after fitting.
+`make calibrate-modal` passes `--prebuilt-matrices --push-results` automatically.
 
 Full example:
 ```
-modal run modal_app/remote_calibration_runner.py \
+modal run modal_app/remote_calibration_runner.py::main \
   --branch calibration-pipeline-improvements \
   --gpu T4 --epochs 1000 \
   --beta 0.65 --lambda-l0 1e-6 --lambda-l2 1e-8 \
   --log-freq 500 \
   --target-config policyengine_us_data/calibration/target_config.yaml \
-  --upload
+  --prebuilt-matrices --push-results
 ```
 
-**Important**: Without `--package-volume` or `--package-path`, the full pipeline clones the repo fresh from GitHub, downloads inputs fresh from HF, and builds the X matrix from scratch. No stale Modal volumes are involved.
+**Safety check**: If a pre-built package exists on the volume and you don't pass `--prebuilt-matrices` or `--full-pipeline`, the runner refuses to proceed and tells you which flag to add. This prevents accidentally rebuilding from scratch.
 
-Artifacts uploaded to HF by `--upload`:
+Artifacts uploaded to HF by `--push-results`:
 
 | Local file | HF path |
 |------------|---------|
@@ -180,7 +206,7 @@ Artifacts uploaded to HF by `--upload`:
 | `unified_diagnostics.csv` | `calibration/logs/unified_diagnostics.csv` |
 | `unified_run_config.json` | `calibration/logs/unified_run_config.json` |
 
-### Stage 4: Build and stage local area H5 files
+### Stage 5: Build and stage local area H5 files
 
 Downloads weights + dataset + database from HF, builds state/district/city H5 files.
 
@@ -192,7 +218,7 @@ Downloads weights + dataset + database from HF, builds state/district/city H5 fi
 
 This stages H5s to HF `staging/` paths. It does NOT promote to production or GCS.
 
-### Stage 5: Promote (manual gate)
+### Stage 6: Promote (manual gate)
 
 Moves files from HF staging to production paths and uploads to GCS.
 
@@ -209,4 +235,4 @@ For the common case (local data build → Modal calibration → Modal staging):
 make pipeline GPU=T4 EPOCHS=1000 BRANCH=calibration-pipeline-improvements
 ```
 
-This chains: `data` → `upload-dataset` → `calibrate-modal` → `stage-h5s`.
+This chains: `data` → `upload-dataset` → `build-matrices` → `calibrate-modal` → `stage-h5s`.

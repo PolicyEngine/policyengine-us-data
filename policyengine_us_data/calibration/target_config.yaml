@@ -4,6 +4,9 @@ include:
   - variable: person_count
     geo_level: district
     domain_variable: age
+  - variable: person_count
+    geo_level: district
+    domain_variable: adjusted_gross_income
   - variable: household_count
     geo_level: district
 

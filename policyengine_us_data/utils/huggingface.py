@@ -37,6 +37,7 @@ def download_calibration_inputs(
     output_dir: str,
     repo: str = "policyengine/policyengine-us-data",
     version: str = None,
+    prefix: str = "",
 ) -> dict:
     """
     Download calibration inputs from Hugging Face.
@@ -45,6 +46,8 @@ def download_calibration_inputs(
         output_dir: Local directory to download files to
         repo: Hugging Face repository ID
         version: Optional revision (commit, tag, or branch)
+        prefix: Filename prefix for weights/blocks
+            (e.g. "national_")
 
     Returns:
         dict with keys 'weights', 'dataset', 'database' mapping to local paths
@@ -55,7 +58,7 @@ def download_calibration_inputs(
     output_path.mkdir(parents=True, exist_ok=True)
 
     files = {
-        "weights": "calibration/calibration_weights.npy",
+        "weights": f"calibration/{prefix}calibration_weights.npy",
         "dataset": "calibration/stratified_extended_cps.h5",
         "database": "calibration/policy_data.db",
     }
@@ -70,13 +73,12 @@ def download_calibration_inputs(
             revision=version,
             token=TOKEN,
         )
-        # hf_hub_download preserves directory structure
         local_path = output_path / hf_path
         paths[key] = local_path
         print(f"Downloaded {hf_path} to {local_path}")
 
     optional_files = {
-        "blocks": "calibration/stacked_blocks.npy",
+        "blocks": f"calibration/{prefix}stacked_blocks.npy",
         "source_imputed_dataset": (
             "calibration/" "source_imputed_stratified_extended_cps.h5"
         ),
@@ -153,6 +155,7 @@ def upload_calibration_artifacts(
     blocks_path: str = None,
     log_dir: str = None,
     repo: str = "policyengine/policyengine-us-data",
+    prefix: str = "",
 ) -> list:
     """Upload calibration artifacts to HuggingFace in a single commit.
 
@@ -163,6 +166,7 @@ def upload_calibration_artifacts(
             (calibration_log.csv, unified_diagnostics.csv,
              unified_run_config.json)
         repo: HuggingFace repository ID
+        prefix: Filename prefix for HF paths (e.g. "national_")
 
     Returns:
         List of uploaded HF paths
@@ -172,7 +176,7 @@ def upload_calibration_artifacts(
     if weights_path and os.path.exists(weights_path):
         operations.append(
             CommitOperationAdd(
-                path_in_repo="calibration/calibration_weights.npy",
+                path_in_repo=(f"calibration/{prefix}calibration_weights.npy"),
                 path_or_fileobj=weights_path,
             )
         )
@@ -180,22 +184,24 @@ def upload_calibration_artifacts(
     if blocks_path and os.path.exists(blocks_path):
         operations.append(
             CommitOperationAdd(
-                path_in_repo="calibration/stacked_blocks.npy",
+                path_in_repo=(f"calibration/{prefix}stacked_blocks.npy"),
                 path_or_fileobj=blocks_path,
             )
         )
 
     if log_dir:
         log_files = {
-            "calibration_log.csv": ("calibration/logs/calibration_log.csv"),
-            "unified_diagnostics.csv": (
-                "calibration/logs/unified_diagnostics.csv"
+            f"{prefix}calibration_log.csv": (
+                f"calibration/logs/{prefix}calibration_log.csv"
             ),
-            "unified_run_config.json": (
-                "calibration/logs/unified_run_config.json"
+            f"{prefix}unified_diagnostics.csv": (
+                f"calibration/logs/" f"{prefix}unified_diagnostics.csv"
             ),
-            "validation_results.csv": (
-                "calibration/logs/validation_results.csv"
+            f"{prefix}unified_run_config.json": (
+                f"calibration/logs/" f"{prefix}unified_run_config.json"
+            ),
+            f"{prefix}validation_results.csv": (
+                f"calibration/logs/" f"{prefix}validation_results.csv"
             ),
         }
         for filename, hf_path in log_files.items():

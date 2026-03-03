@@ -669,6 +669,149 @@ def main(
     print(result)
 
 
+@app.function(
+    image=image,
+    secrets=[hf_secret, gcp_secret],
+    volumes={VOLUME_MOUNT: staging_volume},
+    memory=16384,
+    timeout=14400,
+)
+def coordinate_national_publish(
+    branch: str = "main",
+) -> str:
+    """Build and upload a national US.h5 from national weights."""
+    setup_gcp_credentials()
+    setup_repo(branch)
+
+    version = get_version()
+    print(
+        f"Building national H5 for version {version} " f"from branch {branch}"
+    )
+
+    import shutil
+
+    staging_dir = Path(VOLUME_MOUNT)
+    calibration_dir = staging_dir / "national_calibration_inputs"
+    if calibration_dir.exists():
+        shutil.rmtree(calibration_dir)
+    calibration_dir.mkdir(parents=True, exist_ok=True)
+
+    print("Downloading national calibration inputs from HF...")
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
+from policyengine_us_data.utils.huggingface import (
+    download_calibration_inputs,
+)
+download_calibration_inputs("{calibration_dir}", prefix="national_")
+print("Done")
+""",
+        ],
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Download failed: {result.stderr}")
+    staging_volume.commit()
+    print("National calibration inputs downloaded")
+
+    weights_path = (
+        calibration_dir / "calibration" / "national_calibration_weights.npy"
+    )
+    db_path = calibration_dir / "calibration" / "policy_data.db"
+    source_imputed_path = (
+        calibration_dir
+        / "calibration"
+        / "source_imputed_stratified_extended_cps.h5"
+    )
+    base_dataset_path = (
+        calibration_dir / "calibration" / "stratified_extended_cps.h5"
+    )
+    if source_imputed_path.exists():
+        dataset_path = source_imputed_path
+        print("Using source-imputed dataset")
+    else:
+        dataset_path = base_dataset_path
+        print(
+            "WARNING: Source-imputed dataset not found, " "using base dataset"
+        )
+
+    blocks_path = (
+        calibration_dir / "calibration" / "national_stacked_blocks.npy"
+    )
+    calibration_inputs = {
+        "weights": str(weights_path),
+        "dataset": str(dataset_path),
+        "database": str(db_path),
+    }
+    if blocks_path.exists():
+        calibration_inputs["blocks"] = str(blocks_path)
+        print(f"National calibration blocks found: {blocks_path}")
+
+    version_dir = staging_dir / version
+    version_dir.mkdir(parents=True, exist_ok=True)
+
+    work_items = [{"type": "national", "id": "US"}]
+    print("Spawning worker for national H5 build...")
+    worker_result = build_areas_worker.remote(
+        branch=branch,
+        version=version,
+        work_items=work_items,
+        calibration_inputs=calibration_inputs,
+    )
+
+    print(
+        f"Worker result: "
+        f"{len(worker_result['completed'])} completed, "
+        f"{len(worker_result['failed'])} failed"
+    )
+
+    if worker_result["failed"]:
+        raise RuntimeError(f"National build failed: {worker_result['errors']}")
+
+    national_h5 = version_dir / "national" / "US.h5"
+    if not national_h5.exists():
+        raise RuntimeError(f"Expected {national_h5} not found after build")
+
+    print(f"Uploading {national_h5} to HF and GCS...")
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
+from policyengine_us_data.utils.data_upload import (
+    upload_local_area_file,
+)
+upload_local_area_file(
+    "{national_h5}",
+    "national",
+    version="{version}",
+)
+print("Done")
+""",
+        ],
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Upload failed: {result.stderr}")
+
+    return f"National US.h5 built and uploaded for " f"version {version}"
+
+
+@app.local_entrypoint()
+def main_national(branch: str = "main"):
+    """Build and publish national US.h5."""
+    result = coordinate_national_publish.remote(branch=branch)
+    print(result)
+
+
 @app.local_entrypoint()
 def main_promote(
     version: str = "",

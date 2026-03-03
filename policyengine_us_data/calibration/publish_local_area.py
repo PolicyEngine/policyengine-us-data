@@ -254,6 +254,37 @@ def build_city_h5(
     return output_path
 
 
+def build_national_h5(
+    weights: np.ndarray,
+    cds_to_calibrate: List[str],
+    dataset_path: Path,
+    output_dir: Path,
+    rerandomize_takeup: bool = False,
+    calibration_blocks: np.ndarray = None,
+    takeup_filter: List[str] = None,
+) -> Path:
+    national_dir = output_dir / "national"
+    national_dir.mkdir(parents=True, exist_ok=True)
+    output_path = national_dir / "US.h5"
+
+    print(f"\n{'='*60}")
+    print(f"Building national US.h5 ({len(cds_to_calibrate)} CDs)")
+    print(f"{'='*60}")
+
+    create_sparse_cd_stacked_dataset(
+        weights,
+        cds_to_calibrate,
+        cd_subset=None,
+        dataset_path=str(dataset_path),
+        output_path=str(output_path),
+        rerandomize_takeup=rerandomize_takeup,
+        calibration_blocks=calibration_blocks,
+        takeup_filter=takeup_filter,
+    )
+
+    return output_path
+
+
 AT_LARGE_DISTRICTS = {0, 98}
 
 

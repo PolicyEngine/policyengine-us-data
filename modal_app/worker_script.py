@@ -54,6 +54,7 @@ def main():
         build_state_h5,
         build_district_h5,
         build_city_h5,
+        build_national_h5,
     )
     from policyengine_us_data.calibration.calibration_utils import (
         get_all_cds_from_database,
@@ -127,6 +128,16 @@ def main():
             elif item_type == "city":
                 path = build_city_h5(
                     city_name=item_id,
+                    weights=weights,
+                    cds_to_calibrate=cds_to_calibrate,
+                    dataset_path=dataset_path,
+                    output_dir=output_dir,
+                    rerandomize_takeup=rerandomize_takeup,
+                    calibration_blocks=calibration_blocks,
+                    takeup_filter=takeup_filter,
+                )
+            elif item_type == "national":
+                path = build_national_h5(
                     weights=weights,
                     cds_to_calibrate=cds_to_calibrate,
                     dataset_path=dataset_path,

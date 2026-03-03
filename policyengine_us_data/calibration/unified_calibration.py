@@ -508,6 +508,7 @@ def fit_l0_weights(
     target_names: list = None,
     initial_weights: np.ndarray = None,
     targets_df: "pd.DataFrame" = None,
+    achievable: np.ndarray = None,
 ) -> np.ndarray:
     """Fit L0-regularized calibration weights.
 
@@ -596,7 +597,8 @@ def fit_l0_weights(
         with open(log_path, "w") as f:
             f.write(
                 "target_name,estimate,target,epoch,"
-                "error,rel_error,abs_error,rel_abs_error,loss\n"
+                "error,rel_error,abs_error,"
+                "rel_abs_error,loss,achievable\n"
             )
         logger.info(
             "Epoch logging enabled: freq=%d, path=%s",
@@ -671,6 +673,11 @@ def fit_l0_weights(
                 flush=True,
             )
 
+            ach_flags = (
+                achievable
+                if achievable is not None
+                else [True] * len(targets)
+            )
             with open(log_path, "a") as f:
                 for i in range(len(targets)):
                     est = y_pred[i]
@@ -684,7 +691,8 @@ def fit_l0_weights(
                         f'"{target_names[i]}",'
                         f"{est},{tgt},{epochs_done},"
                         f"{err},{rel_err},{abs_err},"
-                        f"{rel_abs},{loss}\n"
+                        f"{rel_abs},{loss},"
+                        f"{ach_flags[i]}\n"
                     )
 
             logger.info(
@@ -946,6 +954,8 @@ def run_calibration(
 
         initial_weights = package.get("initial_weights")
         targets = targets_df["value"].values
+        row_sums = np.array(X_sparse.sum(axis=1)).flatten()
+        pkg_achievable = row_sums > 0
         weights = fit_l0_weights(
             X_sparse=X_sparse,
             targets=targets,
@@ -960,6 +970,7 @@ def run_calibration(
             target_names=target_names,
             initial_weights=initial_weights,
             targets_df=targets_df,
+            achievable=pkg_achievable,
         )
         logger.info(
             "Total pipeline (from package): %.1f min",
@@ -1194,6 +1205,7 @@ def run_calibration(
         target_names=target_names,
         initial_weights=initial_weights,
         targets_df=targets_df,
+        achievable=achievable,
     )
 
     logger.info(

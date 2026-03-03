@@ -287,20 +287,18 @@ def validate_area(
         for c in non_geo:
             needed_vars.add(c["variable"])
 
+        is_count = variable.endswith("_count")
+        if not is_count and variable not in hh_vars_cache:
+            try:
+                hh_vars_cache[variable] = sim.calculate(
+                    variable,
+                    map_to="household",
+                    period=period,
+                ).values
+            except Exception:
+                pass
+
         for vname in needed_vars:
-            if vname not in hh_vars_cache:
-                entity = variable_entity_map.get(vname)
-                if entity == "household" or (
-                    entity is None and not vname.endswith("_count")
-                ):
-                    try:
-                        hh_vars_cache[vname] = sim.calculate(
-                            vname,
-                            map_to="household",
-                            period=period,
-                        ).values
-                    except Exception:
-                        pass
             if vname not in person_vars_cache:
                 try:
                     person_vars_cache[vname] = sim.calculate(
@@ -469,7 +467,7 @@ def _run_area_type(
                 area_pop = float(person_weight.sum())
                 total_weighted_pop += area_pop
                 logger.info(
-                    "  %s population: %,.0f",
+                    "  %s population: %.0f",
                     display_id,
                     area_pop,
                 )
@@ -516,7 +514,7 @@ def _run_area_type(
 
     if area_type == "states" and total_weighted_pop > 0:
         logger.info(
-            "TOTAL WEIGHTED POPULATION: %,.0f (expect ~340M)",
+            "TOTAL WEIGHTED POPULATION: %.0f (expect ~340M)",
             total_weighted_pop,
         )
 

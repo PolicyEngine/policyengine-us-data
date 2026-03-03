@@ -31,7 +31,7 @@ modal run modal_app/remote_calibration_runner.py --branch <branch> --epochs <n> 
 | `--lambda-l0` | (none) | L0 penalty weight |
 | `--lambda-l2` | (none) | L2 penalty weight |
 | `--learning-rate` | (none) | Optimizer learning rate |
-| `--package-path` | (none) | Local path to a pre-built calibration package |
+| `--package-path` | (none) | Local path to a pre-built calibration package (uploads to Modal volume, then fits) |
 | `--prebuilt-matrices` | `False` | Fit from pre-built package on Modal volume |
 | `--full-pipeline` | `False` | Force full rebuild even if a package exists on the volume |
 | `--county-level` | `False` | Include county-level targets |

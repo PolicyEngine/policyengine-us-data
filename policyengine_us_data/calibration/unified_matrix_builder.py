@@ -79,18 +79,6 @@ def _compute_single_state(
 
     state_sim = Microsimulation(dataset=dataset_path)
 
-    if rerandomize_takeup:
-        for spec in SIMPLE_TAKEUP_VARS:
-            entity = spec["entity"]
-            n_ent = len(
-                state_sim.calculate(f"{entity}_id", map_to=entity).values
-            )
-            state_sim.set_input(
-                spec["variable"],
-                time_period,
-                np.ones(n_ent, dtype=bool),
-            )
-
     state_sim.set_input(
         "state_fips",
         time_period,
@@ -132,6 +120,20 @@ def _compute_single_state(
                 state,
                 exc,
             )
+
+    if rerandomize_takeup:
+        for spec in SIMPLE_TAKEUP_VARS:
+            entity = spec["entity"]
+            n_ent = len(
+                state_sim.calculate(f"{entity}_id", map_to=entity).values
+            )
+            state_sim.set_input(
+                spec["variable"],
+                time_period,
+                np.ones(n_ent, dtype=bool),
+            )
+        for var in get_calculated_variables(state_sim):
+            state_sim.delete_arrays(var)
 
     entity_vals = {}
     if rerandomize_takeup:
@@ -196,23 +198,24 @@ def _compute_single_state_group_counties(
 
     state_sim = Microsimulation(dataset=dataset_path)
 
-    if rerandomize_takeup:
-        for spec in SIMPLE_TAKEUP_VARS:
-            entity = spec["entity"]
-            n_ent = len(
-                state_sim.calculate(f"{entity}_id", map_to=entity).values
-            )
-            state_sim.set_input(
-                spec["variable"],
-                time_period,
-                np.ones(n_ent, dtype=bool),
-            )
-
     state_sim.set_input(
         "state_fips",
         time_period,
         np.full(n_hh, state_fips, dtype=np.int32),
     )
+
+    original_takeup = {}
+    if rerandomize_takeup:
+        for spec in SIMPLE_TAKEUP_VARS:
+            entity = spec["entity"]
+            original_takeup[spec["variable"]] = (
+                entity,
+                state_sim.calculate(
+                    spec["variable"],
+                    time_period,
+                    map_to=entity,
+                ).values.copy(),
+            )
 
     results = []
     for county_fips in counties:
@@ -222,6 +225,9 @@ def _compute_single_state_group_counties(
             time_period,
             np.full(n_hh, county_idx, dtype=np.int32),
         )
+        if rerandomize_takeup:
+            for vname, (ent, orig) in original_takeup.items():
+                state_sim.set_input(vname, time_period, orig)
         for var in get_calculated_variables(state_sim):
             if var != "county":
                 state_sim.delete_arrays(var)
@@ -243,6 +249,21 @@ def _compute_single_state_group_counties(
                     county_fips,
                     exc,
                 )
+
+        if rerandomize_takeup:
+            for spec in SIMPLE_TAKEUP_VARS:
+                entity = spec["entity"]
+                n_ent = len(
+                    state_sim.calculate(f"{entity}_id", map_to=entity).values
+                )
+                state_sim.set_input(
+                    spec["variable"],
+                    time_period,
+                    np.ones(n_ent, dtype=bool),
+                )
+            for var in get_calculated_variables(state_sim):
+                if var != "county":
+                    state_sim.delete_arrays(var)
 
         entity_vals = {}
         if rerandomize_takeup:
@@ -876,20 +897,6 @@ class UnifiedMatrixBuilder:
             for i, state in enumerate(unique_states):
                 state_sim = Microsimulation(dataset=self.dataset_path)
 
-                if rerandomize_takeup:
-                    for spec in SIMPLE_TAKEUP_VARS:
-                        entity = spec["entity"]
-                        n_ent = len(
-                            state_sim.calculate(
-                                f"{entity}_id", map_to=entity
-                            ).values
-                        )
-                        state_sim.set_input(
-                            spec["variable"],
-                            self.time_period,
-                            np.ones(n_ent, dtype=bool),
-                        )
-
                 state_sim.set_input(
                     "state_fips",
                     self.time_period,
@@ -932,6 +939,22 @@ class UnifiedMatrixBuilder:
                             state,
                             exc,
                         )
+
+                if rerandomize_takeup:
+                    for spec in SIMPLE_TAKEUP_VARS:
+                        entity = spec["entity"]
+                        n_ent = len(
+                            state_sim.calculate(
+                                f"{entity}_id", map_to=entity
+                            ).values
+                        )
+                        state_sim.set_input(
+                            spec["variable"],
+                            self.time_period,
+                            np.ones(n_ent, dtype=bool),
+                        )
+                    for var in get_calculated_variables(state_sim):
+                        state_sim.delete_arrays(var)
 
                 entity_vals = {}
                 if rerandomize_takeup:
@@ -1125,26 +1148,24 @@ class UnifiedMatrixBuilder:
             for state_fips, counties in sorted(state_to_counties.items()):
                 state_sim = Microsimulation(dataset=self.dataset_path)
 
-                if rerandomize_takeup:
-                    for spec in SIMPLE_TAKEUP_VARS:
-                        entity = spec["entity"]
-                        n_ent = len(
-                            state_sim.calculate(
-                                f"{entity}_id",
-                                map_to=entity,
-                            ).values
-                        )
-                        state_sim.set_input(
-                            spec["variable"],
-                            self.time_period,
-                            np.ones(n_ent, dtype=bool),
-                        )
-
                 state_sim.set_input(
                     "state_fips",
                     self.time_period,
                     np.full(n_hh, state_fips, dtype=np.int32),
                 )
+
+                original_takeup = {}
+                if rerandomize_takeup:
+                    for spec in SIMPLE_TAKEUP_VARS:
+                        entity = spec["entity"]
+                        original_takeup[spec["variable"]] = (
+                            entity,
+                            state_sim.calculate(
+                                spec["variable"],
+                                self.time_period,
+                                map_to=entity,
+                            ).values.copy(),
+                        )
 
                 for county_fips in counties:
                     county_idx = get_county_enum_index_from_fips(county_fips)
@@ -1157,6 +1178,16 @@ class UnifiedMatrixBuilder:
                             dtype=np.int32,
                         ),
                     )
+                    if rerandomize_takeup:
+                        for vname, (
+                            ent,
+                            orig,
+                        ) in original_takeup.items():
+                            state_sim.set_input(
+                                vname,
+                                self.time_period,
+                                orig,
+                            )
                     for var in get_calculated_variables(state_sim):
                         if var != "county":
                             state_sim.delete_arrays(var)
@@ -1178,6 +1209,24 @@ class UnifiedMatrixBuilder:
                                 county_fips,
                                 exc,
                             )
+
+                    if rerandomize_takeup:
+                        for spec in SIMPLE_TAKEUP_VARS:
+                            entity = spec["entity"]
+                            n_ent = len(
+                                state_sim.calculate(
+                                    f"{entity}_id",
+                                    map_to=entity,
+                                ).values
+                            )
+                            state_sim.set_input(
+                                spec["variable"],
+                                self.time_period,
+                                np.ones(n_ent, dtype=bool),
+                            )
+                        for var in get_calculated_variables(state_sim):
+                            if var != "county":
+                                state_sim.delete_arrays(var)
 
                     entity_vals = {}
                     if rerandomize_takeup:

@@ -275,7 +275,6 @@ def _fit_weights_impl(
 def _fit_from_package_impl(
     branch: str,
     epochs: int,
-    package_bytes: bytes = None,
     volume_package_path: str = None,
     target_config: str = None,
     beta: float = None,
@@ -285,30 +284,20 @@ def _fit_from_package_impl(
     log_freq: int = None,
 ) -> dict:
     """Fit weights from a pre-built calibration package."""
+    if not volume_package_path:
+        raise ValueError("volume_package_path is required")
+
     _clone_and_install(branch)
 
     pkg_path = "/root/calibration_package.pkl"
-    if volume_package_path:
-        import shutil
+    import shutil
 
-        shutil.copy(volume_package_path, pkg_path)
-        size = os.path.getsize(pkg_path)
-        print(
-            f"Copied package from volume ({size:,} bytes) to {pkg_path}",
-            flush=True,
-        )
-    elif package_bytes:
-        with open(pkg_path, "wb") as f:
-            f.write(package_bytes)
-        print(
-            f"Wrote calibration package ({len(package_bytes)} bytes) "
-            f"to {pkg_path}",
-            flush=True,
-        )
-    else:
-        raise ValueError(
-            "Either package_bytes or volume_package_path required"
-        )
+    shutil.copy(volume_package_path, pkg_path)
+    size = os.path.getsize(pkg_path)
+    print(
+        f"Copied package from volume ({size:,} bytes) to {pkg_path}",
+        flush=True,
+    )
 
     script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
@@ -340,6 +329,57 @@ def _fit_from_package_impl(
         raise RuntimeError(f"Script failed with code {cal_rc}")
 
     return _collect_outputs(cal_lines)
+
+
+def _print_provenance_from_meta(
+    meta: dict, current_branch: str = None
+) -> None:
+    """Print provenance info and warn on branch mismatch."""
+    built = meta.get("created_at", "unknown")
+    branch = meta.get("git_branch", "unknown")
+    commit = meta.get("git_commit")
+    commit_short = commit[:8] if commit else "unknown"
+    dirty = " (DIRTY)" if meta.get("git_dirty") else ""
+    version = meta.get("package_version", "unknown")
+    print("--- Package Provenance ---", flush=True)
+    print(f"  Built:   {built}", flush=True)
+    print(
+        f"  Branch:  {branch} @ {commit_short}{dirty}",
+        flush=True,
+    )
+    print(f"  Version: {version}", flush=True)
+    print("--------------------------", flush=True)
+    if current_branch and branch != "unknown" and branch != current_branch:
+        print(
+            f"WARNING: Package built on branch "
+            f"'{branch}', but fitting with "
+            f"--branch {current_branch}",
+            flush=True,
+        )
+
+
+def _write_package_sidecar(pkg_path: str) -> None:
+    """Extract metadata from a pickle package and write a JSON sidecar."""
+    import json
+    import pickle
+
+    sidecar_path = pkg_path.replace(".pkl", "_meta.json")
+    try:
+        with open(pkg_path, "rb") as f:
+            package = pickle.load(f)
+        meta = package.get("metadata", {})
+        del package
+        with open(sidecar_path, "w") as f:
+            json.dump(meta, f, indent=2)
+        print(
+            f"Sidecar metadata written to {sidecar_path}",
+            flush=True,
+        )
+    except Exception as e:
+        print(
+            f"WARNING: Failed to write sidecar: {e}",
+            flush=True,
+        )
 
 
 def _build_package_impl(
@@ -417,6 +457,8 @@ def _build_package_impl(
 
     _upload_source_imputed(build_lines)
 
+    _write_package_sidecar(pkg_path)
+
     size = os.path.getsize(pkg_path)
     print(
         f"Package saved to volume at {pkg_path} " f"({size:,} bytes)",
@@ -454,21 +496,46 @@ def build_package_remote(
     volumes={VOLUME_MOUNT: calibration_vol},
 )
 def check_volume_package() -> dict:
-    """Check if a calibration package exists on the volume."""
+    """Check if a calibration package exists on the volume.
+
+    Reads the lightweight JSON sidecar for provenance fields.
+    Falls back to size/mtime if sidecar is missing.
+    """
     import datetime
+    import json
 
     pkg_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
-    if os.path.exists(pkg_path):
-        stat = os.stat(pkg_path)
-        mtime = datetime.datetime.fromtimestamp(
-            stat.st_mtime, tz=datetime.timezone.utc
-        )
-        return {
-            "exists": True,
-            "size": stat.st_size,
-            "modified": mtime.strftime("%Y-%m-%d %H:%M UTC"),
-        }
-    return {"exists": False}
+    sidecar_path = f"{VOLUME_MOUNT}/calibration_package_meta.json"
+    if not os.path.exists(pkg_path):
+        return {"exists": False}
+
+    stat = os.stat(pkg_path)
+    mtime = datetime.datetime.fromtimestamp(
+        stat.st_mtime, tz=datetime.timezone.utc
+    )
+    info = {
+        "exists": True,
+        "size": stat.st_size,
+        "modified": mtime.strftime("%Y-%m-%d %H:%M UTC"),
+    }
+    if os.path.exists(sidecar_path):
+        try:
+            with open(sidecar_path) as f:
+                meta = json.load(f)
+            for key in (
+                "git_branch",
+                "git_commit",
+                "git_dirty",
+                "package_version",
+                "created_at",
+                "dataset_sha256",
+                "db_sha256",
+            ):
+                if key in meta:
+                    info[key] = meta[key]
+        except Exception:
+            pass
+    return info
 
 
 # --- Full pipeline GPU functions ---
@@ -665,7 +732,6 @@ GPU_FUNCTIONS = {
     volumes={"/calibration-data": calibration_vol},
 )
 def fit_from_package_t4(
-    package_bytes: bytes = None,
     branch: str = "main",
     epochs: int = 200,
     target_config: str = None,
@@ -679,7 +745,6 @@ def fit_from_package_t4(
     return _fit_from_package_impl(
         branch,
         epochs,
-        package_bytes=package_bytes,
         volume_package_path=volume_package_path,
         target_config=target_config,
         beta=beta,
@@ -699,7 +764,6 @@ def fit_from_package_t4(
     volumes={"/calibration-data": calibration_vol},
 )
 def fit_from_package_a10(
-    package_bytes: bytes = None,
     branch: str = "main",
     epochs: int = 200,
     target_config: str = None,
@@ -713,7 +777,6 @@ def fit_from_package_a10(
     return _fit_from_package_impl(
         branch,
         epochs,
-        package_bytes=package_bytes,
         volume_package_path=volume_package_path,
         target_config=target_config,
         beta=beta,
@@ -733,7 +796,6 @@ def fit_from_package_a10(
     volumes={"/calibration-data": calibration_vol},
 )
 def fit_from_package_a100_40(
-    package_bytes: bytes = None,
     branch: str = "main",
     epochs: int = 200,
     target_config: str = None,
@@ -747,7 +809,6 @@ def fit_from_package_a100_40(
     return _fit_from_package_impl(
         branch,
         epochs,
-        package_bytes=package_bytes,
         volume_package_path=volume_package_path,
         target_config=target_config,
         beta=beta,
@@ -767,7 +828,6 @@ def fit_from_package_a100_40(
     volumes={"/calibration-data": calibration_vol},
 )
 def fit_from_package_a100_80(
-    package_bytes: bytes = None,
     branch: str = "main",
     epochs: int = 200,
     target_config: str = None,
@@ -781,7 +841,6 @@ def fit_from_package_a100_80(
     return _fit_from_package_impl(
         branch,
         epochs,
-        package_bytes=package_bytes,
         volume_package_path=volume_package_path,
         target_config=target_config,
         beta=beta,
@@ -801,7 +860,6 @@ def fit_from_package_a100_80(
     volumes={"/calibration-data": calibration_vol},
 )
 def fit_from_package_h100(
-    package_bytes: bytes = None,
     branch: str = "main",
     epochs: int = 200,
     target_config: str = None,
@@ -815,7 +873,6 @@ def fit_from_package_h100(
     return _fit_from_package_impl(
         branch,
         epochs,
-        package_bytes=package_bytes,
         volume_package_path=volume_package_path,
         target_config=target_config,
         beta=beta,
@@ -865,10 +922,17 @@ def main(
     if not prebuilt_matrices and not full_pipeline and not package_path:
         vol_info = check_volume_package.remote()
         if vol_info["exists"]:
+            pkg_branch = vol_info.get("git_branch", "")
+            pkg_commit = vol_info.get("git_commit", "")
+            prov_line = ""
+            if pkg_branch or pkg_commit:
+                cs = pkg_commit[:8] if pkg_commit else "?"
+                prov_line = f"\n  Built from: {pkg_branch} @ {cs}"
             raise SystemExit(
                 "\nA calibration package exists on the Modal "
                 f"volume (last modified: {vol_info['modified']}"
-                f", {vol_info['size']:,} bytes).\n"
+                f", {vol_info['size']:,} bytes)."
+                f"{prov_line}\n"
                 "  To fit from this package:  "
                 "add --prebuilt-matrices\n"
                 "  To rebuild from scratch:   "
@@ -877,6 +941,9 @@ def main(
 
     if prebuilt_matrices:
         vol_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
+        vol_info = check_volume_package.remote()
+        if vol_info.get("created_at") or vol_info.get("git_branch"):
+            _print_provenance_from_meta(vol_info, branch)
         print(
             "========================================",
             flush=True,
@@ -924,17 +991,38 @@ def main(
             volume_package_path=vol_path,
         )
     elif package_path:
+        vol_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
         print(f"Reading package from {package_path}...", flush=True)
+        import json as _json
+        import pickle as _pkl
+
         with open(package_path, "rb") as f:
             package_bytes = f.read()
+        size = len(package_bytes)
+        # Extract metadata for sidecar
+        pkg_meta = _pkl.loads(package_bytes).get("metadata", {})
+        sidecar_bytes = _json.dumps(pkg_meta, indent=2).encode()
         print(
-            f"Uploading package ({len(package_bytes)} bytes) "
-            f"to {gpu} on Modal...",
+            f"Uploading package ({size:,} bytes) to Modal volume...",
             flush=True,
         )
+        with calibration_vol.batch_upload(force=True) as batch:
+            from io import BytesIO
+
+            batch.put(
+                BytesIO(package_bytes),
+                "calibration_package.pkl",
+            )
+            batch.put(
+                BytesIO(sidecar_bytes),
+                "calibration_package_meta.json",
+            )
+        calibration_vol.commit()
+        del package_bytes
+        print("Upload complete.", flush=True)
+        _print_provenance_from_meta(pkg_meta, branch)
         func = PACKAGE_GPU_FUNCTIONS[gpu]
         result = func.remote(
-            package_bytes=package_bytes,
             branch=branch,
             epochs=epochs,
             target_config=target_config,
@@ -943,6 +1031,7 @@ def main(
             lambda_l2=lambda_l2,
             learning_rate=learning_rate,
             log_freq=log_freq,
+            volume_package_path=vol_path,
         )
     else:
         print(

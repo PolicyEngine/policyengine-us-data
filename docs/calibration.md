@@ -122,20 +122,13 @@ This lets you experiment with which targets to include without rebuilding the ma
 
 ### 4. Running on Modal (GPU cloud)
 
-**From a pre-built package via Modal Volume** (recommended):
+**From a pre-built package** (recommended):
 
-The calibration package is ~2 GB, too large to pass as a function argument. Upload it to a Modal Volume first, then reference it at runtime.
+Use `--package-path` to point at a local `.pkl` file. The runner automatically uploads it to the Modal Volume and then fits from it on the GPU, avoiding the function argument size limit.
 
 ```bash
-# One-time: create volume and upload package
-modal volume create calibration-data
-modal volume put calibration-data \
-  policyengine_us_data/storage/calibration/calibration_package.pkl \
-  calibration_package.pkl
-
-# Fit weights (reads from volume, no inline upload)
 modal run modal_app/remote_calibration_runner.py \
-  --package-volume \
+  --package-path policyengine_us_data/storage/calibration/calibration_package.pkl \
   --branch calibration-pipeline-improvements \
   --gpu T4 \
   --epochs 1000 \
@@ -144,7 +137,7 @@ modal run modal_app/remote_calibration_runner.py \
   --lambda-l2 1e-8
 ```
 
-To update the package on the volume after a rebuild, re-run the `modal volume put` command.
+If a package already exists on the volume from a previous upload, you can also use `--prebuilt-matrices` to fit directly without re-uploading.
 
 **Full pipeline** (builds matrix from scratch on Modal):
 
@@ -272,7 +265,7 @@ ORDER BY variable, geo_level;
 | Flag | Default | Description |
 |---|---|---|
 | `--build-only` | False | Build matrix, save package, skip fitting |
-| `--package-path` | None | Load pre-built package (skip matrix build) |
+| `--package-path` | None | Load pre-built package (uploads to Modal volume automatically when using Modal runner) |
 | `--package-output` | Auto (when `--build-only`) | Where to save package |
 
 ### Hyperparameter flags

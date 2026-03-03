@@ -1,7 +1,9 @@
-.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database build-matrices calibrate-modal stage-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote
+.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote
 
 GPU ?= A100-80GB
 EPOCHS ?= 200
+NATIONAL_GPU ?= T4
+NATIONAL_EPOCHS ?= 200
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 NUM_WORKERS ?= 8
 VERSION ?=
@@ -145,11 +147,27 @@ build-matrices:
 calibrate-modal:
 	modal run modal_app/remote_calibration_runner.py::main \
 		--branch $(BRANCH) --gpu $(GPU) --epochs $(EPOCHS) \
-		--prebuilt-matrices --push-results
+		--push-results
+
+calibrate-modal-national:
+	modal run modal_app/remote_calibration_runner.py::main \
+		--branch $(BRANCH) --gpu $(NATIONAL_GPU) \
+		--epochs $(NATIONAL_EPOCHS) \
+		--push-results --national
+
+calibrate-both:
+	$(MAKE) calibrate-modal & $(MAKE) calibrate-modal-national & wait
 
 stage-h5s:
 	modal run modal_app/local_area.py::main \
 		--branch $(BRANCH) --num-workers $(NUM_WORKERS)
+
+stage-national-h5:
+	modal run modal_app/local_area.py::main_national \
+		--branch $(BRANCH)
+
+stage-all-h5s:
+	$(MAKE) stage-h5s & $(MAKE) stage-national-h5 & wait
 
 promote:
 	$(eval VERSION := $(or $(VERSION),$(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")))
@@ -177,7 +195,7 @@ check-sanity:
 	python -m policyengine_us_data.calibration.validate_staging \
 		--sanity-only --area-type states --areas NC
 
-pipeline: data upload-dataset build-matrices calibrate-modal stage-h5s
+pipeline: data upload-dataset build-matrices calibrate-both stage-all-h5s
 	@echo ""
 	@echo "========================================"
 	@echo "Pipeline complete. H5s are in HF staging."

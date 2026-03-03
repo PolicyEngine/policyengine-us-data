@@ -908,91 +908,27 @@ def main(
     learning_rate: float = None,
     log_freq: int = None,
     package_path: str = None,
-    prebuilt_matrices: bool = False,
     full_pipeline: bool = False,
     county_level: bool = False,
     workers: int = 1,
     push_results: bool = False,
     trigger_publish: bool = False,
+    national: bool = False,
 ):
+    prefix = "national_" if national else ""
+    if national:
+        if lambda_l0 is None:
+            lambda_l0 = 1e-4
+        output = f"{prefix}{output}"
+        log_output = f"{prefix}{log_output}"
+
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
             f"Unknown GPU: {gpu}. "
             f"Choose from: {list(GPU_FUNCTIONS.keys())}"
         )
 
-    if not prebuilt_matrices and not full_pipeline and not package_path:
-        vol_info = check_volume_package.remote()
-        if vol_info["exists"]:
-            pkg_branch = vol_info.get("git_branch", "")
-            pkg_commit = vol_info.get("git_commit", "")
-            prov_line = ""
-            if pkg_branch or pkg_commit:
-                cs = pkg_commit[:8] if pkg_commit else "?"
-                prov_line = f"\n  Built from: {pkg_branch} @ {cs}"
-            raise SystemExit(
-                "\nA calibration package exists on the Modal "
-                f"volume (last modified: {vol_info['modified']}"
-                f", {vol_info['size']:,} bytes)."
-                f"{prov_line}\n"
-                "  To fit from this package:  "
-                "add --prebuilt-matrices\n"
-                "  To rebuild from scratch:   "
-                "add --full-pipeline\n"
-            )
-
-    if prebuilt_matrices:
-        vol_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
-        vol_info = check_volume_package.remote()
-        if vol_info.get("created_at") or vol_info.get("git_branch"):
-            _print_provenance_from_meta(vol_info, branch)
-        print(
-            "========================================",
-            flush=True,
-        )
-        print(
-            f"Mode: fitting from pre-built package on " f"Modal volume",
-            flush=True,
-        )
-        print(
-            f"GPU: {gpu} | Epochs: {epochs} | " f"Branch: {branch}",
-            flush=True,
-        )
-        if push_results:
-            print(
-                "After fitting, will upload to HuggingFace:",
-                flush=True,
-            )
-            print(
-                "  - calibration/calibration_weights.npy",
-                flush=True,
-            )
-            print(
-                "  - calibration/stacked_blocks.npy",
-                flush=True,
-            )
-            print(
-                "  - calibration/logs/ (diagnostics, config, "
-                "calibration log)",
-                flush=True,
-            )
-        print(
-            "========================================",
-            flush=True,
-        )
-        func = PACKAGE_GPU_FUNCTIONS[gpu]
-        result = func.remote(
-            branch=branch,
-            epochs=epochs,
-            target_config=target_config,
-            beta=beta,
-            lambda_l0=lambda_l0,
-            lambda_l2=lambda_l2,
-            learning_rate=learning_rate,
-            log_freq=log_freq,
-            volume_package_path=vol_path,
-        )
-    elif package_path:
+    if package_path:
         vol_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
         print(f"Reading package from {package_path}...", flush=True)
         import json as _json
@@ -1035,37 +971,19 @@ def main(
             log_freq=log_freq,
             volume_package_path=vol_path,
         )
-    else:
+    elif full_pipeline:
         print(
             "========================================",
             flush=True,
         )
         print(
-            f"Mode: full pipeline (download, build " f"matrix, fit)",
+            "Mode: full pipeline (download, build matrix, fit)",
             flush=True,
         )
         print(
             f"GPU: {gpu} | Epochs: {epochs} | " f"Branch: {branch}",
             flush=True,
         )
-        if push_results:
-            print(
-                "After fitting, will upload to HuggingFace:",
-                flush=True,
-            )
-            print(
-                "  - calibration/calibration_weights.npy",
-                flush=True,
-            )
-            print(
-                "  - calibration/stacked_blocks.npy",
-                flush=True,
-            )
-            print(
-                "  - calibration/logs/ (diagnostics, config, "
-                "calibration log)",
-                flush=True,
-            )
         print(
             "========================================",
             flush=True,
@@ -1083,6 +1001,65 @@ def main(
             skip_county=not county_level,
             workers=workers,
         )
+    else:
+        vol_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
+        vol_info = check_volume_package.remote()
+        if not vol_info["exists"]:
+            raise SystemExit(
+                "\nNo calibration package found on Modal volume.\n"
+                "Run 'make build-matrices' first, or use "
+                "--full-pipeline to build from scratch.\n"
+            )
+        if vol_info.get("created_at") or vol_info.get("git_branch"):
+            _print_provenance_from_meta(vol_info, branch)
+        mode_label = (
+            "national calibration"
+            if national
+            else "fitting from pre-built package"
+        )
+        print(
+            "========================================",
+            flush=True,
+        )
+        print(f"Mode: {mode_label}", flush=True)
+        print(
+            f"GPU: {gpu} | Epochs: {epochs} | " f"Branch: {branch}",
+            flush=True,
+        )
+        if push_results:
+            print(
+                "After fitting, will upload to HuggingFace:",
+                flush=True,
+            )
+            print(
+                f"  - calibration/{prefix}calibration_weights.npy",
+                flush=True,
+            )
+            print(
+                f"  - calibration/{prefix}stacked_blocks.npy",
+                flush=True,
+            )
+            print(
+                f"  - calibration/logs/{prefix}* (diagnostics, "
+                "config, calibration log)",
+                flush=True,
+            )
+        print(
+            "========================================",
+            flush=True,
+        )
+        func = PACKAGE_GPU_FUNCTIONS[gpu]
+        result = func.remote(
+            branch=branch,
+            epochs=epochs,
+            target_config=target_config,
+            beta=beta,
+            lambda_l0=lambda_l0,
+            lambda_l2=lambda_l2,
+            learning_rate=learning_rate,
+            log_freq=log_freq,
+            volume_package_path=vol_path,
+        )
 
     with open(output, "wb") as f:
         f.write(result["weights"])
@@ -1093,19 +1070,19 @@ def main(
             f.write(result["log"])
         print(f"Diagnostics log saved to: {log_output}")
 
-    cal_log_output = "calibration_log.csv"
+    cal_log_output = f"{prefix}calibration_log.csv"
     if result.get("cal_log"):
         with open(cal_log_output, "wb") as f:
             f.write(result["cal_log"])
         print(f"Calibration log saved to: {cal_log_output}")
 
-    config_output = "unified_run_config.json"
+    config_output = f"{prefix}unified_run_config.json"
     if result.get("config"):
         with open(config_output, "wb") as f:
             f.write(result["config"])
         print(f"Run config saved to: {config_output}")
 
-    blocks_output = "stacked_blocks.npy"
+    blocks_output = f"{prefix}stacked_blocks.npy"
     if result.get("blocks"):
         with open(blocks_output, "wb") as f:
             f.write(result["blocks"])
@@ -1118,8 +1095,9 @@ def main(
 
         upload_calibration_artifacts(
             weights_path=output,
-            blocks_path=blocks_output if result.get("blocks") else None,
+            blocks_path=(blocks_output if result.get("blocks") else None),
             log_dir=".",
+            prefix=prefix,
         )
 
     if trigger_publish:
@@ -1134,7 +1112,7 @@ def build_package(
     workers: int = 1,
 ):
     """Build the calibration package (X matrix) on CPU and save
-    to Modal volume. Then use --prebuilt-matrices to fit."""
+    to Modal volume. Then run main() to fit."""
     print(
         "========================================",
         flush=True,
@@ -1171,7 +1149,6 @@ def build_package(
         "  modal run modal_app/remote_calibration_runner.py"
         "::main \\\n"
         f"    --branch {branch} --gpu <GPU> "
-        "--epochs <N> \\\n"
-        "    --prebuilt-matrices --push-results",
+        "--epochs <N> --push-results",
         flush=True,
     )

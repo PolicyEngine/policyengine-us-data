@@ -113,16 +113,14 @@ def test_national_targets_loaded(built_db):
     """National targets should include well-known variables."""
     conn = sqlite3.connect(str(built_db))
     # The national stratum has no constraints in stratum_constraints.
-    rows = conn.execute(
-        """
+    rows = conn.execute("""
         SELECT DISTINCT t.variable
         FROM targets t
         JOIN strata s ON t.stratum_id = s.stratum_id
         LEFT JOIN stratum_constraints sc
             ON s.stratum_id = sc.stratum_id
         WHERE sc.stratum_id IS NULL
-        """
-    ).fetchall()
+        """).fetchall()
     conn.close()
 
     variables = {r[0] for r in rows}
@@ -136,16 +134,14 @@ def test_national_targets_loaded(built_db):
 def test_state_income_tax_targets(built_db):
     """State income tax targets should cover all income-tax states."""
     conn = sqlite3.connect(str(built_db))
-    rows = conn.execute(
-        """
+    rows = conn.execute("""
         SELECT sc.value, t.value
         FROM targets t
         JOIN strata s ON t.stratum_id = s.stratum_id
         JOIN stratum_constraints sc ON s.stratum_id = sc.stratum_id
         WHERE t.variable = 'state_income_tax'
           AND sc.constraint_variable = 'state_fips'
-        """
-    ).fetchall()
+        """).fetchall()
     conn.close()
 
     state_totals = {r[0]: r[1] for r in rows}
@@ -165,13 +161,11 @@ def test_state_income_tax_targets(built_db):
 def test_congressional_district_strata(built_db):
     """Should have strata for >= 435 congressional districts."""
     conn = sqlite3.connect(str(built_db))
-    n_cds = conn.execute(
-        """
+    n_cds = conn.execute("""
         SELECT COUNT(DISTINCT sc.value)
         FROM stratum_constraints sc
         WHERE sc.constraint_variable = 'congressional_district_geoid'
-        """
-    ).fetchone()[0]
+        """).fetchone()[0]
     conn.close()
 
     assert n_cds >= 435, f"Expected >= 435 CD strata, got {n_cds}"

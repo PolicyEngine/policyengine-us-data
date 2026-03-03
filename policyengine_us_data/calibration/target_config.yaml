@@ -3,6 +3,7 @@ include:
   # === DISTRICT — count targets ===
   - variable: person_count
     geo_level: district
+    domain_variable: age
   - variable: household_count
     geo_level: district
 

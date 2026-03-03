@@ -61,6 +61,118 @@ DEFAULT_EPOCHS = 100
 DEFAULT_N_CLONES = 436
 
 
+def get_git_provenance() -> dict:
+    """Capture git state and package version for provenance tracking."""
+    import subprocess as _sp
+
+    info = {
+        "git_commit": None,
+        "git_branch": None,
+        "git_dirty": None,
+        "package_version": None,
+    }
+    try:
+        info["git_commit"] = (
+            _sp.check_output(
+                ["git", "rev-parse", "HEAD"],
+                stderr=_sp.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+        info["git_branch"] = (
+            _sp.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                stderr=_sp.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+        porcelain = (
+            _sp.check_output(
+                ["git", "status", "--porcelain"],
+                stderr=_sp.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+        info["git_dirty"] = len(porcelain) > 0
+    except Exception:
+        pass
+    try:
+        from policyengine_us_data import __version__
+
+        info["package_version"] = __version__
+    except Exception:
+        pass
+    return info
+
+
+def print_package_provenance(metadata: dict) -> None:
+    """Print a provenance banner from package metadata."""
+    built = metadata.get("created_at", "unknown")
+    branch = metadata.get("git_branch", "unknown")
+    commit = metadata.get("git_commit")
+    commit_short = commit[:8] if commit else "unknown"
+    dirty = " (DIRTY)" if metadata.get("git_dirty") else ""
+    version = metadata.get("package_version", "unknown")
+    ds_sha = metadata.get("dataset_sha256", "")
+    db_sha = metadata.get("db_sha256", "")
+    ds_label = ds_sha[:12] if ds_sha else "unknown"
+    db_label = db_sha[:12] if db_sha else "unknown"
+    print("--- Package Provenance ---")
+    print(f"  Built:   {built}")
+    print(f"  Branch:  {branch} @ {commit_short}{dirty}")
+    print(f"  Version: {version}")
+    print(f"  Dataset SHA: {ds_label}  DB SHA: {db_label}")
+    print("--------------------------")
+
+
+def check_package_staleness(metadata: dict) -> None:
+    """Warn if package is stale, dirty, or from a different branch."""
+    import datetime
+
+    created = metadata.get("created_at")
+    if created:
+        try:
+            built_dt = datetime.datetime.fromisoformat(created)
+            age = datetime.datetime.now() - built_dt
+            if age.days > 7:
+                print(
+                    f"WARNING: Package is {age.days} days old "
+                    f"(built {created})"
+                )
+        except Exception:
+            pass
+
+    if metadata.get("git_dirty"):
+        print("WARNING: Package was built from a dirty " "working tree")
+
+    current = get_git_provenance()
+    pkg_branch = metadata.get("git_branch")
+    cur_branch = current.get("git_branch")
+    if pkg_branch and cur_branch and pkg_branch != cur_branch:
+        print(
+            f"WARNING: Package built on branch "
+            f"'{pkg_branch}', current branch is "
+            f"'{cur_branch}'"
+        )
+
+    pkg_commit = metadata.get("git_commit")
+    cur_commit = current.get("git_commit")
+    if (
+        pkg_commit
+        and cur_commit
+        and pkg_commit != cur_commit
+        and pkg_branch == cur_branch
+    ):
+        print(
+            f"WARNING: Package commit {pkg_commit[:8]} "
+            f"differs from current {cur_commit[:8]} "
+            f"on same branch '{cur_branch}'"
+        )
+
+
 def rerandomize_takeup(
     sim,
     clone_block_geoids: np.ndarray,
@@ -428,6 +540,9 @@ def load_calibration_package(path: str) -> dict:
         package["X_sparse"].shape[0],
         package["X_sparse"].shape[1],
     )
+    meta = package.get("metadata", {})
+    print_package_provenance(meta)
+    check_package_staleness(meta)
     return package
 
 
@@ -674,9 +789,7 @@ def fit_l0_weights(
             )
 
             ach_flags = (
-                achievable
-                if achievable is not None
-                else [True] * len(targets)
+                achievable if achievable is not None else [True] * len(targets)
             )
             with open(log_path, "a") as f:
                 for i in range(len(targets)):
@@ -1129,6 +1242,11 @@ def run_calibration(
         "seed": seed,
         "created_at": datetime.datetime.now().isoformat(),
     }
+    metadata.update(get_git_provenance())
+    from policyengine_us_data.utils.manifest import compute_file_checksum
+
+    metadata["dataset_sha256"] = compute_file_checksum(Path(dataset_path))
+    metadata["db_sha256"] = compute_file_checksum(Path(db_path))
 
     if package_output_path:
         full_initial_weights = compute_initial_weights(X_sparse, targets_df)
@@ -1419,6 +1537,7 @@ def main(argv=None):
         "mean_error_pct": float(err_pct.mean()),
         "elapsed_seconds": round(t_end - t_start, 1),
     }
+    run_config.update(get_git_provenance())
     config_path = output_dir / "unified_run_config.json"
     with open(config_path, "w") as f:
         json.dump(run_config, f, indent=2)

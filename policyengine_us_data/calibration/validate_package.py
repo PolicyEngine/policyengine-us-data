@@ -163,6 +163,18 @@ def format_report(result: ValidationResult, package_path: str = None) -> str:
         lines.append(f"Created: {meta['created_at']}")
     if meta.get("dataset_path"):
         lines.append(f"Dataset: {meta['dataset_path']}")
+    if meta.get("git_branch") or meta.get("git_commit"):
+        branch = meta.get("git_branch", "unknown")
+        commit = meta.get("git_commit", "")
+        commit_short = commit[:8] if commit else "unknown"
+        dirty = " (DIRTY)" if meta.get("git_dirty") else ""
+        lines.append(f"Git: {branch} @ {commit_short}{dirty}")
+    if meta.get("package_version"):
+        lines.append(f"Version: {meta['package_version']}")
+    if meta.get("dataset_sha256"):
+        lines.append(f"Dataset SHA: {meta['dataset_sha256'][:12]}")
+    if meta.get("db_sha256"):
+        lines.append(f"DB SHA: {meta['db_sha256'][:12]}")
     lines.append("")
 
     lines.append(

@@ -143,10 +143,10 @@ def upload_local_area_file(
     skip_hf: bool = False,
 ):
     """
-    Upload a single local area H5 file to a subdirectory (states/ or districts/).
+    Upload a single local area H5 file to a subdirectory.
 
-    Uploads to both GCS and Hugging Face with the file placed in the specified
-    subdirectory.
+    Supports states/, districts/, cities/, and national/.
+    Uploads to both GCS and Hugging Face.
 
     Args:
         skip_hf: If True, skip HuggingFace upload (for batched uploads later)

@@ -263,6 +263,16 @@ def build_national_h5(
     calibration_blocks: np.ndarray = None,
     takeup_filter: List[str] = None,
 ) -> Path:
+    """Build national US.h5 by collapsing CD weights to household level.
+
+    Unlike state/district H5s which re-run simulations per CD with
+    geographic reassignment, the national H5 keeps original geography
+    and simply sums weights across CDs per household, filtering to
+    nonzero-weight households.
+    """
+    import h5py
+    from policyengine_core.enums import Enum
+
     national_dir = output_dir / "national"
     national_dir.mkdir(parents=True, exist_ok=True)
     output_path = national_dir / "US.h5"
@@ -271,16 +281,93 @@ def build_national_h5(
     print(f"Building national US.h5 ({len(cds_to_calibrate)} CDs)")
     print(f"{'='*60}")
 
-    create_sparse_cd_stacked_dataset(
-        weights,
-        cds_to_calibrate,
-        cd_subset=None,
-        dataset_path=str(dataset_path),
-        output_path=str(output_path),
-        rerandomize_takeup=rerandomize_takeup,
-        calibration_blocks=calibration_blocks,
-        takeup_filter=takeup_filter,
+    sim = Microsimulation(dataset=str(dataset_path))
+    time_period = int(sim.default_calculation_period)
+
+    household_ids = sim.calculate("household_id", map_to="household").values
+    n_hh = len(household_ids)
+    n_cds = len(cds_to_calibrate)
+
+    W = weights.reshape(n_cds, n_hh)
+    hh_weights = W.sum(axis=0)
+
+    active_mask = hh_weights > 0
+    n_active = active_mask.sum()
+    print(f"Households: {n_hh:,} total, {n_active:,} active")
+    print(f"Total weight: {hh_weights[active_mask].sum():,.0f}")
+
+    sim.set_input("household_weight", time_period, hh_weights)
+
+    person_hh_ids = sim.calculate("household_id", map_to="person").values
+    active_hh_set = set(household_ids[active_mask])
+    person_mask = np.isin(person_hh_ids, list(active_hh_set))
+
+    print(
+        f"Persons: {len(person_mask):,} total, "
+        f"{person_mask.sum():,} active"
     )
+
+    data = {}
+    variables_saved = 0
+    for variable in sim.tax_benefit_system.variables:
+        holder = sim.get_holder(variable)
+        periods = holder.get_known_periods()
+        if not periods:
+            continue
+
+        var_data = {}
+        for period in periods:
+            values = holder.get_array(period)
+
+            var_def = sim.tax_benefit_system.variables.get(variable)
+            entity_key = var_def.entity.key
+
+            if entity_key == "person":
+                values = values[person_mask]
+            elif entity_key == "household":
+                values = values[active_mask]
+            else:
+                entity_id_var = f"{entity_key}_id"
+                entity_ids = sim.calculate(
+                    entity_id_var, map_to=entity_key
+                ).values
+                person_entity_ids = sim.calculate(
+                    entity_id_var, map_to="person"
+                ).values
+                active_entity_ids = set(person_entity_ids[person_mask])
+                entity_mask = np.isin(entity_ids, list(active_entity_ids))
+                values = values[entity_mask]
+
+            if var_def.value_type in (Enum, str) and variable != "county_fips":
+                if hasattr(values, "decode_to_str"):
+                    values = values.decode_to_str().astype("S")
+                else:
+                    values = values.astype("S")
+            elif variable == "county_fips":
+                values = values.astype("int32")
+            else:
+                values = np.array(values)
+
+            var_data[period] = values
+            variables_saved += 1
+
+        if var_data:
+            data[variable] = var_data
+
+    print(f"Variables saved: {variables_saved}")
+
+    with h5py.File(str(output_path), "w") as f:
+        for variable, periods in data.items():
+            grp = f.create_group(variable)
+            for period, values in periods.items():
+                grp.create_dataset(str(period), data=values)
+
+    print(f"National H5 saved to {output_path}")
+
+    with h5py.File(str(output_path), "r") as f:
+        if "household_id" in f and str(time_period) in f["household_id"]:
+            n = len(f["household_id"][str(time_period)][:])
+            print(f"Verified: {n:,} households in output")
 
     return output_path
 

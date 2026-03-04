@@ -1,8 +1,4 @@
-"""Tests for stacked_dataset_builder.py using deterministic test fixture.
-
-Tests now exercise the unified build_h5 function via the
-create_sparse_cd_stacked_dataset wrapper.
-"""
+"""Tests for build_h5 using deterministic test fixture."""
 
 import os
 import tempfile
@@ -10,9 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pathlib import Path
 from policyengine_us import Microsimulation
-from policyengine_us_data.calibration.stacked_dataset_builder import (
-    create_sparse_cd_stacked_dataset,
+from policyengine_us_data.calibration.publish_local_area import (
+    build_h5,
 )
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "test_fixture_50hh.h5")
@@ -52,12 +49,13 @@ def stacked_result(test_weights):
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = os.path.join(tmpdir, "test_output.h5")
 
-        create_sparse_cd_stacked_dataset(
-            test_weights,
-            TEST_CDS,
+        build_h5(
+            weights=np.array(test_weights),
+            blocks=None,
+            dataset_path=Path(FIXTURE_PATH),
+            output_path=Path(output_path),
+            cds_to_calibrate=TEST_CDS,
             cd_subset=TEST_CDS,
-            dataset_path=FIXTURE_PATH,
-            output_path=output_path,
         )
 
         sim_after = Microsimulation(dataset=output_path)
@@ -142,12 +140,13 @@ def stacked_sim(test_weights):
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = os.path.join(tmpdir, "test_output.h5")
 
-        create_sparse_cd_stacked_dataset(
-            test_weights,
-            TEST_CDS,
+        build_h5(
+            weights=np.array(test_weights),
+            blocks=None,
+            dataset_path=Path(FIXTURE_PATH),
+            output_path=Path(output_path),
+            cds_to_calibrate=TEST_CDS,
             cd_subset=TEST_CDS,
-            dataset_path=FIXTURE_PATH,
-            output_path=output_path,
         )
 
         sim = Microsimulation(dataset=output_path)
@@ -165,12 +164,13 @@ def stacked_sim_with_overlap(n_households):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = os.path.join(tmpdir, "test_overlap.h5")
-        create_sparse_cd_stacked_dataset(
-            w,
-            TEST_CDS,
+        build_h5(
+            weights=np.array(w),
+            blocks=None,
+            dataset_path=Path(FIXTURE_PATH),
+            output_path=Path(output_path),
+            cds_to_calibrate=TEST_CDS,
             cd_subset=TEST_CDS,
-            dataset_path=FIXTURE_PATH,
-            output_path=output_path,
         )
         sim = Microsimulation(dataset=output_path)
         yield {"sim": sim, "n_overlap": len(overlap_households)}

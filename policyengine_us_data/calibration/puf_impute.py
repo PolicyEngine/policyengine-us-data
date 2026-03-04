@@ -751,6 +751,10 @@ def _impute_retirement_contributions(
     catch_up_eligible = age >= 50
     limit_401k = limits["401k"] + catch_up_eligible * limits["401k_catch_up"]
     limit_ira = limits["ira"] + catch_up_eligible * limits["ira_catch_up"]
+    se_pension_cap = np.minimum(
+        X_test["self_employment_income"].values * limits["se_pension_rate"],
+        limits["se_pension_dollar_limit"],
+    )
 
     emp_income = X_test["employment_income"].values
     se_income = X_test["self_employment_income"].values
@@ -772,8 +776,9 @@ def _impute_retirement_contributions(
         if "ira" in var:
             vals = np.minimum(vals, limit_ira)
 
-        # Zero out SE pension for records with no SE income
+        # Cap SE pension at min(25% of SE income, dollar limit)
         if var == "self_employed_pension_contributions":
+            vals = np.minimum(vals, se_pension_cap)
             vals = np.where(se_income > 0, vals, 0)
 
         result[var] = vals

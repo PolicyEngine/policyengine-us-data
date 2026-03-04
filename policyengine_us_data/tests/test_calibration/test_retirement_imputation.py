@@ -208,7 +208,7 @@ class TestGetRetirementLimits:
     def test_clamps_above_max_year(self):
         assert _get_retirement_limits(2030) == _get_retirement_limits(2025)
 
-    def test_all_years_have_four_keys(self):
+    def test_all_years_have_expected_keys(self):
         for year in range(2020, 2026):
             lim = _get_retirement_limits(year)
             assert set(lim.keys()) == {
@@ -216,6 +216,8 @@ class TestGetRetirementLimits:
                 "401k_catch_up",
                 "ira",
                 "ira_catch_up",
+                "se_pension_rate",
+                "se_pension_dollar_limit",
             }
 
     def test_limits_increase_monotonically(self):
@@ -422,6 +424,22 @@ class TestImputeRetirementContributions:
         assert np.all(
             result["self_employed_pension_contributions"][pos_se] > 0
         )
+
+    def test_se_pension_capped_at_rate_times_income(self):
+        """SE pension should not exceed 25% of SE income."""
+        # Predict a large value that would exceed the SE cap
+        result = self._call_with_mocks(self._uniform_preds(50_000.0))
+        lim = _get_retirement_limits(self.time_period)
+        se_income = self.puf_imputations["self_employment_income"]
+        se_cap = np.minimum(
+            se_income * lim["se_pension_rate"],
+            lim["se_pension_dollar_limit"],
+        )
+        pos_se = se_income > 0
+        assert np.all(
+            result["self_employed_pension_contributions"][pos_se]
+            <= se_cap[pos_se] + 0.01
+        ), "SE pension exceeds 25%-of-income cap"
 
     def test_qrf_failure_returns_zeros(self):
         """When QRF fit/predict throws, should return all zeros."""

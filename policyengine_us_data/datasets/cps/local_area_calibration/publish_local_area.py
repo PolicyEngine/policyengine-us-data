@@ -280,8 +280,18 @@ def build_and_upload_states(
             print(f"Uploading {state_code}.h5 to GCP...")
             upload_local_area_file(str(output_path), "states", skip_hf=True)
 
+            # Upload HDFStore file if it exists
+            hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
+            if os.path.exists(hdfstore_path):
+                print(f"Uploading {state_code}.hdfstore.h5 to GCP...")
+                upload_local_area_file(
+                    hdfstore_path, "states_hdfstore", skip_hf=True
+                )
+
             # Queue for batched HuggingFace upload
             hf_queue.append((str(output_path), "states"))
+            if os.path.exists(hdfstore_path):
+                hf_queue.append((hdfstore_path, "states_hdfstore"))
 
             record_completed_state(state_code)
             print(f"Completed {state_code}")
@@ -352,8 +362,18 @@ def build_and_upload_districts(
             print(f"Uploading {friendly_name}.h5 to GCP...")
             upload_local_area_file(str(output_path), "districts", skip_hf=True)
 
+            # Upload HDFStore file if it exists
+            hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
+            if os.path.exists(hdfstore_path):
+                print(f"Uploading {friendly_name}.hdfstore.h5 to GCP...")
+                upload_local_area_file(
+                    hdfstore_path, "districts_hdfstore", skip_hf=True
+                )
+
             # Queue for batched HuggingFace upload
             hf_queue.append((str(output_path), "districts"))
+            if os.path.exists(hdfstore_path):
+                hf_queue.append((hdfstore_path, "districts_hdfstore"))
 
             record_completed_district(friendly_name)
             print(f"Completed {friendly_name}")
@@ -424,8 +444,20 @@ def build_and_upload_cities(
                     str(output_path), "cities", skip_hf=True
                 )
 
+                # Upload HDFStore file if it exists
+                hdfstore_path = str(output_path).replace(
+                    ".h5", ".hdfstore.h5"
+                )
+                if os.path.exists(hdfstore_path):
+                    print("Uploading NYC.hdfstore.h5 to GCP...")
+                    upload_local_area_file(
+                        hdfstore_path, "cities_hdfstore", skip_hf=True
+                    )
+
                 # Queue for batched HuggingFace upload
                 hf_queue.append((str(output_path), "cities"))
+                if os.path.exists(hdfstore_path):
+                    hf_queue.append((hdfstore_path, "cities_hdfstore"))
 
                 record_completed_city("NYC")
                 print("Completed NYC")

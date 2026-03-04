@@ -177,6 +177,13 @@ def build_areas_worker(
                 calibration_inputs["blocks"],
             ]
         )
+    if "geo_labels" in calibration_inputs:
+        worker_cmd.extend(
+            [
+                "--geo-labels",
+                calibration_inputs["geo_labels"],
+            ]
+        )
 
     result = subprocess.run(
         worker_cmd,
@@ -496,6 +503,7 @@ print("Done")
         )
 
     blocks_path = calibration_dir / "calibration" / "stacked_blocks.npy"
+    geo_labels_path = calibration_dir / "calibration" / "geo_labels.json"
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
@@ -504,6 +512,9 @@ print("Done")
     if blocks_path.exists():
         calibration_inputs["blocks"] = str(blocks_path)
         print(f"Calibration blocks found: {blocks_path}")
+    if geo_labels_path.exists():
+        calibration_inputs["geo_labels"] = str(geo_labels_path)
+        print(f"Geo labels found: {geo_labels_path}")
 
     result = subprocess.run(
         [
@@ -753,6 +764,9 @@ print("Done")
     blocks_path = (
         calibration_dir / "calibration" / "national_stacked_blocks.npy"
     )
+    national_geo_labels_path = (
+        calibration_dir / "calibration" / "national_geo_labels.json"
+    )
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
@@ -761,6 +775,9 @@ print("Done")
     if blocks_path.exists():
         calibration_inputs["blocks"] = str(blocks_path)
         print(f"National calibration blocks found: {blocks_path}")
+    if national_geo_labels_path.exists():
+        calibration_inputs["geo_labels"] = str(national_geo_labels_path)
+        print(f"National geo labels found: " f"{national_geo_labels_path}")
 
     version_dir = staging_dir / version
     version_dir.mkdir(parents=True, exist_ok=True)
@@ -787,7 +804,7 @@ print("Done")
     if not national_h5.exists():
         raise RuntimeError(f"Expected {national_h5} not found after build")
 
-    print(f"Uploading {national_h5} to HF and GCS...")
+    print(f"Uploading {national_h5} to HF staging...")
     result = subprocess.run(
         [
             "uv",
@@ -796,12 +813,11 @@ print("Done")
             "-c",
             f"""
 from policyengine_us_data.utils.data_upload import (
-    upload_local_area_file,
+    upload_to_staging_hf,
 )
-upload_local_area_file(
-    "{national_h5}",
-    "national",
-    version="{version}",
+upload_to_staging_hf(
+    [("{national_h5}", "national/US.h5")],
+    "{version}",
 )
 print("Done")
 """,
@@ -810,15 +826,91 @@ print("Done")
         env=os.environ.copy(),
     )
     if result.returncode != 0:
-        raise RuntimeError(f"Upload failed: {result.stderr}")
+        raise RuntimeError(f"Staging upload failed: {result.stderr}")
 
-    return f"National US.h5 built and uploaded for " f"version {version}"
+    print("National H5 staged. Run promote workflow to publish.")
+    return (
+        f"National US.h5 built and staged for version {version}. "
+        f"Run main_national_promote to publish."
+    )
 
 
 @app.local_entrypoint()
 def main_national(branch: str = "main"):
-    """Build and publish national US.h5."""
+    """Build and stage national US.h5."""
     result = coordinate_national_publish.remote(branch=branch)
+    print(result)
+
+
+@app.function(
+    image=image,
+    secrets=[hf_secret, gcp_secret],
+    volumes={VOLUME_MOUNT: staging_volume},
+    memory=4096,
+    timeout=3600,
+)
+def promote_national_publish(
+    branch: str = "main",
+) -> str:
+    """Promote national US.h5 from HF staging to production + GCS."""
+    setup_gcp_credentials()
+    setup_repo(branch)
+
+    version = get_version()
+    rel_paths = ["national/US.h5"]
+
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
+import json
+from pathlib import Path
+from policyengine_us_data.utils.data_upload import (
+    promote_staging_to_production_hf,
+    cleanup_staging_hf,
+    upload_local_area_file,
+)
+
+version = "{version}"
+rel_paths = {json.dumps(rel_paths)}
+version_dir = Path("{VOLUME_MOUNT}") / version
+
+print(f"Promoting national H5 from staging to production...")
+promoted = promote_staging_to_production_hf(rel_paths, version)
+print(f"Promoted {{promoted}} files to HuggingFace production")
+
+national_h5 = version_dir / "national" / "US.h5"
+if national_h5.exists():
+    print("Uploading national H5 to GCS...")
+    upload_local_area_file(
+        str(national_h5), "national", version=version, skip_hf=True
+    )
+    print("Uploaded national H5 to GCS")
+else:
+    print(f"WARNING: {{national_h5}} not on volume, skipping GCS")
+
+print("Cleaning up staging...")
+cleaned = cleanup_staging_hf(rel_paths, version)
+print(f"Cleaned up {{cleaned}} files from staging")
+print(f"Successfully promoted national H5 for version {{version}}")
+""",
+        ],
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"National promote failed: {result.stderr}")
+
+    return f"National US.h5 promoted for version {version}"
+
+
+@app.local_entrypoint()
+def main_national_promote(branch: str = "main"):
+    """Promote staged national US.h5 to production."""
+    result = promote_national_publish.remote(branch=branch)
     print(result)
 
 

@@ -1,3 +1,10 @@
+## [1.71.1] - 2026-03-04
+
+### Changed
+
+- Read IRS retirement contribution limits from policyengine-us parameters instead of hard-coding them.
+
+
 ## [1.71.0] - 2026-02-26
 
 ### Added

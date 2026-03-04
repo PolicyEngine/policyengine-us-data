@@ -649,51 +649,11 @@ def add_personal_income_variables(
     # Disregard reported pension contributions from people who report neither wage and salary
     # nor self-employment income.
     # Assume no 403(b) or 457 contributions for now.
-    # IRS retirement contribution limits by year.
-    RETIREMENT_LIMITS = {
-        2020: {
-            "401k": 19_500,
-            "401k_catch_up": 6_500,
-            "ira": 6_000,
-            "ira_catch_up": 1_000,
-        },
-        2021: {
-            "401k": 19_500,
-            "401k_catch_up": 6_500,
-            "ira": 6_000,
-            "ira_catch_up": 1_000,
-        },
-        2022: {
-            "401k": 20_500,
-            "401k_catch_up": 6_500,
-            "ira": 6_000,
-            "ira_catch_up": 1_000,
-        },
-        2023: {
-            "401k": 22_500,
-            "401k_catch_up": 7_500,
-            "ira": 6_500,
-            "ira_catch_up": 1_000,
-        },
-        2024: {
-            "401k": 23_000,
-            "401k_catch_up": 7_500,
-            "ira": 7_000,
-            "ira_catch_up": 1_000,
-        },
-        2025: {
-            "401k": 23_500,
-            "401k_catch_up": 7_500,
-            "ira": 7_000,
-            "ira_catch_up": 1_000,
-        },
-    }
-    # Clamp to the nearest available year for out-of-range values.
-    clamped_year = max(
-        min(year, max(RETIREMENT_LIMITS)),
-        min(RETIREMENT_LIMITS),
+    from policyengine_us_data.utils.retirement_limits import (
+        get_retirement_limits,
     )
-    limits = RETIREMENT_LIMITS[clamped_year]
+
+    limits = get_retirement_limits(year)
     LIMIT_401K = limits["401k"]
     LIMIT_401K_CATCH_UP = limits["401k_catch_up"]
     LIMIT_IRA = limits["ira"]

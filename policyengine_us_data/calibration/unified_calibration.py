@@ -1456,86 +1456,13 @@ def main(argv=None):
     cd_geoid = geography_info.get("cd_geoid")
     base_n_records = geography_info.get("base_n_records")
 
-    # --- Population consistency logging ---
     if cd_geoid is not None and base_n_records is not None:
-        n_clones = len(weights) // base_n_records
-        col_sums = np.array(X_sparse.sum(axis=0)).flatten()
-
-        # 1. Per-clone consistency
-        clone0_cs = col_sums[:base_n_records]
-        clone_mismatch_count = 0
-        for c in range(1, n_clones):
-            cs = col_sums[c * base_n_records : (c + 1) * base_n_records]
-            if not np.allclose(cs, clone0_cs, atol=0.5):
-                clone_mismatch_count += 1
-        logger.info(
-            "Column-sum clone consistency: "
-            "%d/%d clones differ from clone 0",
-            clone_mismatch_count,
-            n_clones - 1,
-        )
-
-        # 2. Per-record stats (clone 0 as proxy)
-        logger.info(
-            "Clone-0 col_sums: min=%.2f, mean=%.2f, " "median=%.2f, max=%.2f",
-            clone0_cs.min(),
-            clone0_cs.mean(),
-            np.median(clone0_cs),
-            clone0_cs.max(),
-        )
-        non_integer = np.sum(np.abs(clone0_cs - np.round(clone0_cs)) > 0.01)
-        logger.info(
-            "Non-integer column sums: %d / %d (%.1f%%)",
-            non_integer,
-            base_n_records,
-            100 * non_integer / base_n_records,
-        )
-
-        # 3. Weighted population from X col_sums
-        x_pop = float(np.sum(weights * col_sums))
-        diag_pop = float(diag_df["estimate"].sum())
-        logger.info(
-            "Population from X col_sums x w: %.0f  "
-            "(diag_df.estimate.sum: %.0f, diff: %.6f)",
-            x_pop,
-            diag_pop,
-            abs(x_pop - diag_pop) / max(diag_pop, 1),
-        )
-
-        # 4. Per-record average col_sum (avg across clones)
-        avg_cs = np.zeros(base_n_records, dtype=np.float64)
-        for c in range(n_clones):
-            avg_cs += col_sums[c * base_n_records : (c + 1) * base_n_records]
-        avg_cs /= n_clones
-        avg_pop = float(np.sum(weights * np.tile(avg_cs, n_clones)))
-        logger.info(
-            "Population from avg_col_sum x w: %.0f  " "(ratio to X pop: %.4f)",
-            avg_pop,
-            avg_pop / max(x_pop, 1),
-        )
-
-        # Save X-derived col_sums for post-hoc comparison
-        cs_path = output_dir / "x_col_sums_per_record.npy"
-        np.save(str(cs_path), clone0_cs)
-        logger.info("Saved X col_sums per record to %s", cs_path)
-        print(f"COL_SUMS_PATH:{cs_path}")
-
         cds_ordered = sorted(set(cd_geoid))
         stacked_weights = convert_weights_to_stacked_format(
             weights=weights,
             cd_geoid=cd_geoid,
             base_n_records=base_n_records,
             cds_ordered=cds_ordered,
-        )
-
-        # 5. Stacked population using X-derived col_sums
-        n_cds = len(cds_ordered)
-        W = stacked_weights.reshape(n_cds, base_n_records)
-        stacked_pop = float(np.sum(W * avg_cs[np.newaxis, :]))
-        logger.info(
-            "Stacked pop (X-derived pph): %.0f  " "(ratio to X pop: %.4f)",
-            stacked_pop,
-            stacked_pop / max(x_pop, 1),
         )
     else:
         logger.warning("No geography info available; saving raw weights")

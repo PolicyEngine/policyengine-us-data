@@ -1,0 +1,1 @@
+Prioritize reported benefit recipients in take-up assignment for SSI and SNAP.

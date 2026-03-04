@@ -79,6 +79,7 @@ def download_calibration_inputs(
 
     optional_files = {
         "blocks": f"calibration/{prefix}stacked_blocks.npy",
+        "geo_labels": f"calibration/{prefix}geo_labels.json",
         "source_imputed_dataset": (
             "calibration/" "source_imputed_stratified_extended_cps.h5"
         ),
@@ -153,6 +154,7 @@ def download_calibration_logs(
 def upload_calibration_artifacts(
     weights_path: str = None,
     blocks_path: str = None,
+    geo_labels_path: str = None,
     log_dir: str = None,
     repo: str = "policyengine/policyengine-us-data",
     prefix: str = "",
@@ -162,6 +164,7 @@ def upload_calibration_artifacts(
     Args:
         weights_path: Path to calibration_weights.npy
         blocks_path: Path to stacked_blocks.npy
+        geo_labels_path: Path to geo_labels.json
         log_dir: Directory containing log files
             (calibration_log.csv, unified_diagnostics.csv,
              unified_run_config.json)
@@ -186,6 +189,14 @@ def upload_calibration_artifacts(
             CommitOperationAdd(
                 path_in_repo=(f"calibration/{prefix}stacked_blocks.npy"),
                 path_or_fileobj=blocks_path,
+            )
+        )
+
+    if geo_labels_path and os.path.exists(geo_labels_path):
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=(f"calibration/{prefix}geo_labels.json"),
+                path_or_fileobj=geo_labels_path,
             )
         )
 

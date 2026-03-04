@@ -58,7 +58,7 @@ LOG_ALPHA_JITTER_SD = 0.01
 LAMBDA_L2 = 1e-12
 LEARNING_RATE = 0.15
 DEFAULT_EPOCHS = 100
-DEFAULT_N_CLONES = 436
+DEFAULT_N_CLONES = 430
 
 
 def get_git_provenance() -> dict:
@@ -1457,7 +1457,18 @@ def main(argv=None):
     base_n_records = geography_info.get("base_n_records")
 
     if cd_geoid is not None and base_n_records is not None:
+        from policyengine_us_data.calibration.calibration_utils import (
+            save_geo_labels,
+        )
+
         cds_ordered = sorted(set(cd_geoid))
+        save_geo_labels(cds_ordered, output_dir / "geo_labels.json")
+        print(f"GEO_LABELS_PATH:{output_dir / 'geo_labels.json'}")
+        logger.info(
+            "Saved %d geo labels to %s",
+            len(cds_ordered),
+            output_dir / "geo_labels.json",
+        )
         stacked_weights = convert_weights_to_stacked_format(
             weights=weights,
             cd_geoid=cd_geoid,
@@ -1516,6 +1527,7 @@ def main(argv=None):
         "target_config": args.target_config,
         "n_targets": len(targets_df),
         "n_records": X_sparse.shape[1],
+        "geo_labels_file": "geo_labels.json",
         "weight_format": weight_format,
         "weight_sum": float(stacked_weights.sum()),
         "weight_nonzero": int((stacked_weights > 0).sum()),

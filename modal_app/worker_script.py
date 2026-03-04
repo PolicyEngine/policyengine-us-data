@@ -26,6 +26,12 @@ def main():
         default=None,
         help="Path to stacked_blocks.npy from calibration",
     )
+    parser.add_argument(
+        "--geo-labels",
+        type=str,
+        default=None,
+        help="Path to geo_labels.json (overrides DB lookup)",
+    )
     args = parser.parse_args()
 
     work_items = json.loads(args.work_items)
@@ -58,11 +64,16 @@ def main():
     )
     from policyengine_us_data.calibration.calibration_utils import (
         get_all_cds_from_database,
+        load_geo_labels,
         STATE_CODES,
     )
 
-    db_uri = f"sqlite:///{db_path}"
-    cds_to_calibrate = get_all_cds_from_database(db_uri)
+    if args.geo_labels and Path(args.geo_labels).exists():
+        geo_labels = load_geo_labels(args.geo_labels)
+    else:
+        db_uri = f"sqlite:///{db_path}"
+        geo_labels = get_all_cds_from_database(db_uri)
+    cds_to_calibrate = geo_labels
     weights = np.load(weights_path)
 
     results = {
@@ -119,13 +130,11 @@ def main():
                     raise ValueError(f"Unknown state in district: {item_id}")
 
                 candidate = f"{state_fips}{int(dist_num):02d}"
-                if candidate in cds_to_calibrate:
+                if candidate in geo_labels:
                     geoid = candidate
                 else:
                     state_cds = [
-                        cd
-                        for cd in cds_to_calibrate
-                        if int(cd) // 100 == state_fips
+                        cd for cd in geo_labels if int(cd) // 100 == state_fips
                     ]
                     if len(state_cds) == 1:
                         geoid = state_cds[0]

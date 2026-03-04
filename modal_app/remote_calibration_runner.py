@@ -73,6 +73,7 @@ def _collect_outputs(cal_lines):
     cal_log_path = None
     config_path = None
     blocks_path = None
+    geo_labels_path = None
     for line in cal_lines:
         if "OUTPUT_PATH:" in line:
             output_path = line.split("OUTPUT_PATH:")[1].strip()
@@ -80,6 +81,8 @@ def _collect_outputs(cal_lines):
             config_path = line.split("CONFIG_PATH:")[1].strip()
         elif "CAL_LOG_PATH:" in line:
             cal_log_path = line.split("CAL_LOG_PATH:")[1].strip()
+        elif "GEO_LABELS_PATH:" in line:
+            geo_labels_path = line.split("GEO_LABELS_PATH:")[1].strip()
         elif "BLOCKS_PATH:" in line:
             blocks_path = line.split("BLOCKS_PATH:")[1].strip()
         elif "LOG_PATH:" in line:
@@ -108,12 +111,18 @@ def _collect_outputs(cal_lines):
         with open(blocks_path, "rb") as f:
             blocks_bytes = f.read()
 
+    geo_labels_bytes = None
+    if geo_labels_path and os.path.exists(geo_labels_path):
+        with open(geo_labels_path, "rb") as f:
+            geo_labels_bytes = f.read()
+
     return {
         "weights": weights_bytes,
         "log": log_bytes,
         "cal_log": cal_log_bytes,
         "config": config_bytes,
         "blocks": blocks_bytes,
+        "geo_labels": geo_labels_bytes,
     }
 
 
@@ -1086,6 +1095,12 @@ def main(
             f.write(result["blocks"])
         print(f"Stacked blocks saved to: {blocks_output}")
 
+    geo_labels_output = f"{prefix}geo_labels.json"
+    if result.get("geo_labels"):
+        with open(geo_labels_output, "wb") as f:
+            f.write(result["geo_labels"])
+        print(f"Geo labels saved to: {geo_labels_output}")
+
     if push_results:
         from policyengine_us_data.utils.huggingface import (
             upload_calibration_artifacts,
@@ -1094,6 +1109,9 @@ def main(
         upload_calibration_artifacts(
             weights_path=output,
             blocks_path=(blocks_output if result.get("blocks") else None),
+            geo_labels_path=(
+                geo_labels_output if result.get("geo_labels") else None
+            ),
             log_dir=".",
             prefix=prefix,
         )

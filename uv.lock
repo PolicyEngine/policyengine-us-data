@@ -1859,7 +1859,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us-data"
-version = "1.69.4"
+version = "1.71.1"
 source = { editable = "." }
 dependencies = [
     { name = "google-auth" },
@@ -1921,7 +1921,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pip-system-certs", specifier = ">=3.0" },
     { name = "policyengine-core", specifier = ">=3.23.6" },
-    { name = "policyengine-us", specifier = ">=1.516.0" },
+    { name = "policyengine-us", specifier = ">=1.572.5" },
     { name = "requests", specifier = ">=2.25.0" },
     { name = "samplics", marker = "extra == 'calibration'" },
     { name = "scipy", specifier = ">=1.15.3" },

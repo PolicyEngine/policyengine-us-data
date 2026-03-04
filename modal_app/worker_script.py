@@ -139,12 +139,9 @@ def main():
             elif item_type == "national":
                 path = build_national_h5(
                     weights=weights,
-                    cds_to_calibrate=cds_to_calibrate,
+                    blocks=calibration_blocks,
                     dataset_path=dataset_path,
                     output_dir=output_dir,
-                    rerandomize_takeup=rerandomize_takeup,
-                    calibration_blocks=calibration_blocks,
-                    takeup_filter=takeup_filter,
                 )
             else:
                 raise ValueError(f"Unknown item type: {item_type}")

@@ -73,6 +73,7 @@ def _collect_outputs(cal_lines):
     cal_log_path = None
     config_path = None
     blocks_path = None
+    col_sums_path = None
     for line in cal_lines:
         if "OUTPUT_PATH:" in line:
             output_path = line.split("OUTPUT_PATH:")[1].strip()
@@ -82,6 +83,8 @@ def _collect_outputs(cal_lines):
             cal_log_path = line.split("CAL_LOG_PATH:")[1].strip()
         elif "BLOCKS_PATH:" in line:
             blocks_path = line.split("BLOCKS_PATH:")[1].strip()
+        elif "COL_SUMS_PATH:" in line:
+            col_sums_path = line.split("COL_SUMS_PATH:")[1].strip()
         elif "LOG_PATH:" in line:
             log_path = line.split("LOG_PATH:")[1].strip()
 
@@ -108,12 +111,18 @@ def _collect_outputs(cal_lines):
         with open(blocks_path, "rb") as f:
             blocks_bytes = f.read()
 
+    col_sums_bytes = None
+    if col_sums_path and os.path.exists(col_sums_path):
+        with open(col_sums_path, "rb") as f:
+            col_sums_bytes = f.read()
+
     return {
         "weights": weights_bytes,
         "log": log_bytes,
         "cal_log": cal_log_bytes,
         "config": config_bytes,
         "blocks": blocks_bytes,
+        "col_sums": col_sums_bytes,
     }
 
 
@@ -1085,6 +1094,12 @@ def main(
         with open(blocks_output, "wb") as f:
             f.write(result["blocks"])
         print(f"Stacked blocks saved to: {blocks_output}")
+
+    col_sums_output = f"{prefix}x_col_sums_per_record.npy"
+    if result.get("col_sums"):
+        with open(col_sums_output, "wb") as f:
+            f.write(result["col_sums"])
+        print(f"X col_sums saved to: {col_sums_output}")
 
     if push_results:
         from policyengine_us_data.utils.huggingface import (

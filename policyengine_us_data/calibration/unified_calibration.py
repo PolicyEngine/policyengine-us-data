@@ -1514,6 +1514,12 @@ def main(argv=None):
             avg_pop / max(x_pop, 1),
         )
 
+        # Save X-derived col_sums for post-hoc comparison
+        cs_path = output_dir / "x_col_sums_per_record.npy"
+        np.save(str(cs_path), clone0_cs)
+        logger.info("Saved X col_sums per record to %s", cs_path)
+        print(f"COL_SUMS_PATH:{cs_path}")
+
         cds_ordered = sorted(set(cd_geoid))
         stacked_weights = convert_weights_to_stacked_format(
             weights=weights,

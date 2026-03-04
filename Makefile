@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data calibrate publish-local-area clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
+.PHONY: all format test install download upload docker documentation data validate-data calibrate publish-local-area clean build paper clean-paper presentations database database-refresh promote-database promote-dataset
 
 HF_CLONE_DIR ?= $(HOME)/huggingface/policyengine-us-data
 
@@ -25,7 +25,7 @@ upload:
 
 docker:
 	docker buildx build --platform linux/amd64 . -t policyengine-us-data:latest
-	
+
 documentation:
 	cd docs && \
 	rm -rf _build .jupyter_cache && \
@@ -100,6 +100,9 @@ calibrate: data
 
 publish-local-area:
 	python policyengine_us_data/datasets/cps/local_area_calibration/publish_local_area.py
+
+validate-data:
+	python -c "from policyengine_us_data.storage.upload_completed_datasets import validate_all_datasets; validate_all_datasets()"
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

@@ -1,1 +1,1 @@
-Sanity checks for built datasets to catch catastrophic data corruption.
+Hardened data pipeline against corrupted dataset uploads: pre-upload validation gate, post-generation assertions in enhanced CPS and sparse builders, CI workflow safety guards, file size checks, and comprehensive sanity tests for all dataset variants.

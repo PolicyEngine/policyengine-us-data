@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import h5py
@@ -16,6 +17,19 @@ def create_small_ecps():
         dataset=EnhancedCPS_2024,
     )
     simulation.subsample(1_000)
+
+    # Basic validation that subsample has reasonable data
+    weights = simulation.calculate("household_weight").values
+    if np.all(weights == 0):
+        raise ValueError(
+            "create_small_ecps: all household weights are zero "
+            "after subsample"
+        )
+    logging.info(
+        f"create_small_ecps: subsample has "
+        f"{len(weights)} households, "
+        f"{int(np.sum(weights > 0))} with non-zero weight"
+    )
 
     data = {}
     for variable in simulation.tax_benefit_system.variables:
@@ -75,6 +89,16 @@ def create_sparse_ecps():
     h_ids = h_ids[h_weights > 0]
     h_weights = h_weights[h_weights > 0]
 
+    if len(h_ids) < 1000:
+        raise ValueError(
+            f"create_sparse_ecps: only {len(h_ids)} households with "
+            f"non-zero weight (expected > 1000)"
+        )
+    logging.info(
+        f"create_sparse_ecps: {len(h_ids)} households after "
+        f"zero-weight filtering"
+    )
+
     subset_df = df[df[df_household_id_column].isin(h_ids)].copy()
 
     # Update the dataset and rebuild the simulation
@@ -104,11 +128,37 @@ def create_sparse_ecps():
             if len(data[variable]) == 0:
                 del data[variable]
 
-    with h5py.File(STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5", "w") as f:
+    # Validate critical variables exist before writing
+    critical_vars = [
+        "household_weight",
+        "employment_income",
+        "household_id",
+        "person_id",
+    ]
+    missing = [v for v in critical_vars if v not in data]
+    if missing:
+        raise ValueError(
+            f"create_sparse_ecps: missing critical variables: {missing}"
+        )
+    logging.info(f"create_sparse_ecps: data dict has {len(data)} variables")
+
+    output_path = STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5"
+    with h5py.File(output_path, "w") as f:
         for variable, periods in data.items():
             grp = f.create_group(variable)
             for period, values in periods.items():
                 grp.create_dataset(str(period), data=values)
+
+    file_size = os.path.getsize(output_path)
+    if file_size < 1_000_000:
+        raise ValueError(
+            f"create_sparse_ecps: output file only {file_size:,} bytes "
+            f"(expected > 1MB)"
+        )
+    logging.info(
+        f"create_sparse_ecps: wrote {file_size / 1e6:.1f}MB to "
+        f"{output_path}"
+    )
 
 
 if __name__ == "__main__":

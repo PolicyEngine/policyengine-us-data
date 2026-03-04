@@ -1,10 +1,10 @@
 """Sanity checks for built datasets.
 
-These tests catch catastrophic data issues like missing income
-variables, wrong population counts, or corrupted files. They run
-after every data build and would have caught the enhanced CPS
-overwrite bug (PR #569) where employment_income_before_lsr was
-dropped, zeroing out all employment income.
+Catch catastrophic data issues: missing income variables, wrong
+population counts, corrupted files, or undersized H5 outputs.
+These run after every data build and would have caught the
+enhanced CPS overwrite bug (PR #569) where
+employment_income_before_lsr was dropped, zeroing all income.
 """
 
 import pytest
@@ -103,3 +103,58 @@ def test_cps_household_count(cps_sim):
     weights = cps_sim.calculate("household_weight")
     total_hh = weights.sum()
     assert 100e6 < total_hh < 200e6, f"CPS total households = {total_hh:.2e}."
+
+
+# ── Sparse Enhanced CPS sanity checks ─────────────────────────
+
+
+@pytest.fixture(scope="module")
+def sparse_sim():
+    from policyengine_core.data import Dataset
+    from policyengine_us import Microsimulation
+    from policyengine_us_data.storage import STORAGE_FOLDER
+
+    path = STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5"
+    if not path.exists():
+        pytest.skip("sparse_enhanced_cps_2024.h5 not found")
+    return Microsimulation(dataset=Dataset.from_file(path))
+
+
+def test_sparse_employment_income_positive(sparse_sim):
+    """Sparse dataset employment income must be in the trillions."""
+    total = sparse_sim.calculate("employment_income").sum()
+    assert (
+        total > 5e12
+    ), f"Sparse employment_income sum is {total:.2e}, expected > 5T."
+
+
+def test_sparse_household_count(sparse_sim):
+    weights = sparse_sim.calculate("household_weight")
+    total_hh = weights.sum()
+    assert (
+        100e6 < total_hh < 200e6
+    ), f"Sparse total households = {total_hh:.2e}, expected 100M-200M."
+
+
+def test_sparse_poverty_rate_reasonable(sparse_sim):
+    in_poverty = sparse_sim.calculate("person_in_poverty", map_to="person")
+    rate = in_poverty.mean()
+    assert (
+        0.05 < rate < 0.25
+    ), f"Sparse poverty rate = {rate:.1%}, expected 5-25%."
+
+
+# ── File size checks ───────────────────────────────────────────
+
+
+def test_ecps_file_size():
+    """Enhanced CPS H5 file should be >100MB (was 590MB before bug)."""
+    from policyengine_us_data.storage import STORAGE_FOLDER
+
+    path = STORAGE_FOLDER / "enhanced_cps_2024.h5"
+    if not path.exists():
+        pytest.skip("enhanced_cps_2024.h5 not found")
+    size_mb = path.stat().st_size / (1024 * 1024)
+    assert (
+        size_mb > 100
+    ), f"enhanced_cps_2024.h5 is only {size_mb:.1f}MB, expected >100MB"

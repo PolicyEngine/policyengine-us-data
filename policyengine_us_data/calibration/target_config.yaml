@@ -1,209 +1,211 @@
 
 include:
-  # === DISTRICT — count targets ===
+  # === DISTRICT — age demographics only (national H5 experiment) ===
   - variable: person_count
     geo_level: district
     domain_variable: age
-  - variable: person_count
-    geo_level: district
-    domain_variable: adjusted_gross_income
-  - variable: household_count
-    geo_level: district
 
-  # === DISTRICT — dollar targets (needed_w 7-41, compatible) ===
-  - variable: real_estate_taxes
-    geo_level: district
-  - variable: self_employment_income
-    geo_level: district
-  - variable: taxable_pension_income
-    geo_level: district
-  - variable: refundable_ctc
-    geo_level: district
-  - variable: unemployment_compensation
-    geo_level: district
+  # # === DISTRICT — count targets ===
+  # - variable: person_count
+  #   geo_level: district
+  #   domain_variable: adjusted_gross_income
+  # - variable: household_count
+  #   geo_level: district
 
-  # === DISTRICT — ACA PTC ===
-  - variable: aca_ptc
-    geo_level: district
-  - variable: tax_unit_count
-    geo_level: district
-    domain_variable: aca_ptc
+  # # === DISTRICT — dollar targets (needed_w 7-41, compatible) ===
+  # - variable: real_estate_taxes
+  #   geo_level: district
+  # - variable: self_employment_income
+  #   geo_level: district
+  # - variable: taxable_pension_income
+  #   geo_level: district
+  # - variable: refundable_ctc
+  #   geo_level: district
+  # - variable: unemployment_compensation
+  #   geo_level: district
 
-  # === STATE ===
-  - variable: person_count
-    geo_level: state
-    domain_variable: medicaid_enrolled
-  - variable: person_count
-    geo_level: state
-    domain_variable: is_pregnant
-  - variable: snap
-    geo_level: state
+  # # === DISTRICT — ACA PTC ===
+  # - variable: aca_ptc
+  #   geo_level: district
+  # - variable: tax_unit_count
+  #   geo_level: district
+  #   domain_variable: aca_ptc
 
-  # === NATIONAL — aggregate dollar targets ===
-  - variable: adjusted_gross_income
-    geo_level: national
-  - variable: child_support_expense
-    geo_level: national
-  - variable: child_support_received
-    geo_level: national
-  - variable: eitc
-    geo_level: national
-  - variable: health_insurance_premiums_without_medicare_part_b
-    geo_level: national
-  - variable: medicaid
-    geo_level: national
-  - variable: medicare_part_b_premiums
-    geo_level: national
-  - variable: other_medical_expenses
-    geo_level: national
-  - variable: over_the_counter_health_expenses
-    geo_level: national
-  - variable: qualified_business_income_deduction
-    geo_level: national
-  - variable: rent
-    geo_level: national
-  - variable: salt_deduction
-    geo_level: national
-  - variable: snap
-    geo_level: national
-  - variable: social_security
-    geo_level: national
-  - variable: social_security_disability
-    geo_level: national
-  - variable: social_security_retirement
-    geo_level: national
-  - variable: spm_unit_capped_housing_subsidy
-    geo_level: national
-  - variable: spm_unit_capped_work_childcare_expenses
-    geo_level: national
-  - variable: ssi
-    geo_level: national
-  - variable: tanf
-    geo_level: national
-  - variable: tip_income
-    geo_level: national
-  - variable: unemployment_compensation
-    geo_level: national
+  # # === STATE ===
+  # - variable: person_count
+  #   geo_level: state
+  #   domain_variable: medicaid_enrolled
+  # - variable: person_count
+  #   geo_level: state
+  #   domain_variable: is_pregnant
+  # - variable: snap
+  #   geo_level: state
 
-  # === NATIONAL — IRS SOI domain-constrained dollar targets ===
-  - variable: aca_ptc
-    geo_level: national
-    domain_variable: aca_ptc
-  - variable: dividend_income
-    geo_level: national
-    domain_variable: dividend_income
-  - variable: eitc
-    geo_level: national
-    domain_variable: eitc_child_count
-  - variable: income_tax_positive
-    geo_level: national
-  - variable: income_tax_before_credits
-    geo_level: national
-    domain_variable: income_tax_before_credits
-  - variable: net_capital_gains
-    geo_level: national
-    domain_variable: net_capital_gains
-  - variable: qualified_business_income_deduction
-    geo_level: national
-    domain_variable: qualified_business_income_deduction
-  - variable: qualified_dividend_income
-    geo_level: national
-    domain_variable: qualified_dividend_income
-  - variable: refundable_ctc
-    geo_level: national
-    domain_variable: refundable_ctc
-  - variable: rental_income
-    geo_level: national
-    domain_variable: rental_income
-  - variable: salt
-    geo_level: national
-    domain_variable: salt
-  - variable: self_employment_income
-    geo_level: national
-    domain_variable: self_employment_income
-  - variable: tax_exempt_interest_income
-    geo_level: national
-    domain_variable: tax_exempt_interest_income
-  - variable: tax_unit_partnership_s_corp_income
-    geo_level: national
-    domain_variable: tax_unit_partnership_s_corp_income
-  - variable: taxable_interest_income
-    geo_level: national
-    domain_variable: taxable_interest_income
-  - variable: taxable_ira_distributions
-    geo_level: national
-    domain_variable: taxable_ira_distributions
-  - variable: taxable_pension_income
-    geo_level: national
-    domain_variable: taxable_pension_income
-  - variable: taxable_social_security
-    geo_level: national
-    domain_variable: taxable_social_security
-  - variable: unemployment_compensation
-    geo_level: national
-    domain_variable: unemployment_compensation
+  # # === NATIONAL — aggregate dollar targets ===
+  # - variable: adjusted_gross_income
+  #   geo_level: national
+  # - variable: child_support_expense
+  #   geo_level: national
+  # - variable: child_support_received
+  #   geo_level: national
+  # - variable: eitc
+  #   geo_level: national
+  # - variable: health_insurance_premiums_without_medicare_part_b
+  #   geo_level: national
+  # - variable: medicaid
+  #   geo_level: national
+  # - variable: medicare_part_b_premiums
+  #   geo_level: national
+  # - variable: other_medical_expenses
+  #   geo_level: national
+  # - variable: over_the_counter_health_expenses
+  #   geo_level: national
+  # - variable: qualified_business_income_deduction
+  #   geo_level: national
+  # - variable: rent
+  #   geo_level: national
+  # - variable: salt_deduction
+  #   geo_level: national
+  # - variable: snap
+  #   geo_level: national
+  # - variable: social_security
+  #   geo_level: national
+  # - variable: social_security_disability
+  #   geo_level: national
+  # - variable: social_security_retirement
+  #   geo_level: national
+  # - variable: spm_unit_capped_housing_subsidy
+  #   geo_level: national
+  # - variable: spm_unit_capped_work_childcare_expenses
+  #   geo_level: national
+  # - variable: ssi
+  #   geo_level: national
+  # - variable: tanf
+  #   geo_level: national
+  # - variable: tip_income
+  #   geo_level: national
+  # - variable: unemployment_compensation
+  #   geo_level: national
 
-  # === NATIONAL — IRS SOI filer count targets ===
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: aca_ptc
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: dividend_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: eitc_child_count
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: income_tax
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: income_tax_before_credits
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: medical_expense_deduction
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: net_capital_gains
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: qualified_business_income_deduction
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: qualified_dividend_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: real_estate_taxes
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: refundable_ctc
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: rental_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: salt
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: self_employment_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: tax_exempt_interest_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: tax_unit_partnership_s_corp_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: taxable_interest_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: taxable_ira_distributions
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: taxable_pension_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: taxable_social_security
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: unemployment_compensation
+  # # === NATIONAL — IRS SOI domain-constrained dollar targets ===
+  # - variable: aca_ptc
+  #   geo_level: national
+  #   domain_variable: aca_ptc
+  # - variable: dividend_income
+  #   geo_level: national
+  #   domain_variable: dividend_income
+  # - variable: eitc
+  #   geo_level: national
+  #   domain_variable: eitc_child_count
+  # - variable: income_tax_positive
+  #   geo_level: national
+  # - variable: income_tax_before_credits
+  #   geo_level: national
+  #   domain_variable: income_tax_before_credits
+  # - variable: net_capital_gains
+  #   geo_level: national
+  #   domain_variable: net_capital_gains
+  # - variable: qualified_business_income_deduction
+  #   geo_level: national
+  #   domain_variable: qualified_business_income_deduction
+  # - variable: qualified_dividend_income
+  #   geo_level: national
+  #   domain_variable: qualified_dividend_income
+  # - variable: refundable_ctc
+  #   geo_level: national
+  #   domain_variable: refundable_ctc
+  # - variable: rental_income
+  #   geo_level: national
+  #   domain_variable: rental_income
+  # - variable: salt
+  #   geo_level: national
+  #   domain_variable: salt
+  # - variable: self_employment_income
+  #   geo_level: national
+  #   domain_variable: self_employment_income
+  # - variable: tax_exempt_interest_income
+  #   geo_level: national
+  #   domain_variable: tax_exempt_interest_income
+  # - variable: tax_unit_partnership_s_corp_income
+  #   geo_level: national
+  #   domain_variable: tax_unit_partnership_s_corp_income
+  # - variable: taxable_interest_income
+  #   geo_level: national
+  #   domain_variable: taxable_interest_income
+  # - variable: taxable_ira_distributions
+  #   geo_level: national
+  #   domain_variable: taxable_ira_distributions
+  # - variable: taxable_pension_income
+  #   geo_level: national
+  #   domain_variable: taxable_pension_income
+  # - variable: taxable_social_security
+  #   geo_level: national
+  #   domain_variable: taxable_social_security
+  # - variable: unemployment_compensation
+  #   geo_level: national
+  #   domain_variable: unemployment_compensation
+
+  # # === NATIONAL — IRS SOI filer count targets ===
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: aca_ptc
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: dividend_income
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: eitc_child_count
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: income_tax
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: income_tax_before_credits
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: medical_expense_deduction
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: net_capital_gains
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: qualified_business_income_deduction
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: qualified_dividend_income
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: real_estate_taxes
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: refundable_ctc
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: rental_income
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: salt
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: self_employment_income
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: tax_exempt_interest_income
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: tax_unit_partnership_s_corp_income
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: taxable_interest_income
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: taxable_ira_distributions
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: taxable_pension_income
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: taxable_social_security
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: unemployment_compensation

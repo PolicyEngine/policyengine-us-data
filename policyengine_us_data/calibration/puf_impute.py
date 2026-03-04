@@ -19,6 +19,10 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from policyengine_us_data.utils.retirement_limits import (
+    get_retirement_limits,
+)
+
 logger = logging.getLogger(__name__)
 
 PUF_SUBSAMPLE_TARGET = 20_000
@@ -198,9 +202,11 @@ RETIREMENT_PREDICTORS = (
 def _get_retirement_limits(year: int) -> dict:
     """Return contribution limits for the given tax year.
 
-    Loads from imputation_parameters.yaml (single source of truth
-    shared with cps.py).
+    Merges 401k/IRA limits from policyengine-us parameters
+    (via get_retirement_limits) with SE pension params from
+    imputation_parameters.yaml.
     """
+    limits = dict(get_retirement_limits(year))
     yaml_path = (
         files("policyengine_us_data")
         / "datasets"
@@ -209,9 +215,11 @@ def _get_retirement_limits(year: int) -> dict:
     )
     with open(yaml_path, "r", encoding="utf-8") as f:
         params = yaml.safe_load(f)
-    limits_by_year = params["retirement_contribution_limits"]
-    clamped = max(min(year, max(limits_by_year)), min(limits_by_year))
-    return limits_by_year[clamped]
+    limits["se_pension_rate"] = params["se_pension_contribution_rate"]
+    se_dollar_limits = params["se_pension_contribution_dollar_limit"]
+    clamped = max(min(year, max(se_dollar_limits)), min(se_dollar_limits))
+    limits["se_pension_dollar_limit"] = se_dollar_limits[clamped]
+    return limits
 
 
 MINIMUM_RETIREMENT_AGE = 62

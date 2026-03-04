@@ -13,13 +13,14 @@ Requires:
 
 import logging
 import sys
-from importlib.resources import files
 
 import numpy as np
 import pandas as pd
-import yaml
 
 from policyengine_us_data.utils.loss import HARD_CODED_TOTALS
+from policyengine_us_data.utils.retirement_limits import (
+    get_retirement_limits,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -34,16 +35,8 @@ _RETIREMENT_VARS = [
 ]
 TARGETS = {k: HARD_CODED_TOTALS[k] for k in _RETIREMENT_VARS}
 
-# Contribution limits loaded from the shared YAML.
-_yaml_path = (
-    files("policyengine_us_data")
-    / "datasets"
-    / "cps"
-    / "imputation_parameters.yaml"
-)
-with open(_yaml_path, "r", encoding="utf-8") as _f:
-    _params = yaml.safe_load(_f)
-LIMITS_2024 = _params["retirement_contribution_limits"][2024]
+# Contribution limits from policyengine-us parameters.
+LIMITS_2024 = get_retirement_limits(2024)
 
 
 def load_extended_cps():

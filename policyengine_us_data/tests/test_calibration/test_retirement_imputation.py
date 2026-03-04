@@ -202,11 +202,22 @@ class TestGetRetirementLimits:
         lim = _get_retirement_limits(2025)
         assert lim["401k"] == 23_500
 
-    def test_clamps_below_min_year(self):
-        assert _get_retirement_limits(2015) == _get_retirement_limits(2020)
+    def test_old_year_returns_valid_limits(self):
+        """Years before our YAML range still return valid limits."""
+        lim = _get_retirement_limits(2015)
+        assert lim["401k"] > 0
+        assert lim["se_pension_rate"] == 0.25
+        # SE dollar limit clamps to earliest available year
+        assert (
+            lim["se_pension_dollar_limit"]
+            == _get_retirement_limits(2020)["se_pension_dollar_limit"]
+        )
 
-    def test_clamps_above_max_year(self):
-        assert _get_retirement_limits(2030) == _get_retirement_limits(2025)
+    def test_future_year_returns_valid_limits(self):
+        """Future years return valid limits from policyengine-us."""
+        lim = _get_retirement_limits(2030)
+        assert lim["401k"] > 0
+        assert lim["se_pension_rate"] == 0.25
 
     def test_all_years_have_expected_keys(self):
         for year in range(2020, 2026):
@@ -664,30 +675,38 @@ class TestPufCloneRetirementRouting:
 # ── TestLimitsMatchCps ───────────────────────────────────────────────
 
 
-class TestLimitsMatchYaml:
-    """Cross-check _get_retirement_limits() against the YAML source."""
+class TestLimitsStructure:
+    """Verify _get_retirement_limits() returns expected keys."""
 
-    @pytest.fixture(autouse=True)
-    def _load_yaml(self):
-        from importlib.resources import files as pkg_files
+    def test_2024_has_all_keys(self):
+        lim = _get_retirement_limits(2024)
+        assert set(lim.keys()) == {
+            "401k",
+            "401k_catch_up",
+            "ira",
+            "ira_catch_up",
+            "se_pension_rate",
+            "se_pension_dollar_limit",
+        }
 
-        import yaml
+    def test_2024_se_pension_rate(self):
+        lim = _get_retirement_limits(2024)
+        assert lim["se_pension_rate"] == 0.25
 
-        yaml_path = (
-            pkg_files("policyengine_us_data")
-            / "datasets"
-            / "cps"
-            / "imputation_parameters.yaml"
+    def test_2024_se_pension_dollar_limit(self):
+        lim = _get_retirement_limits(2024)
+        assert lim["se_pension_dollar_limit"] == 69_000
+
+    def test_401k_ira_from_policyengine_us(self):
+        """401k/IRA limits should match policyengine-us params."""
+        from policyengine_us_data.utils.retirement_limits import (
+            get_retirement_limits as pe_limits,
         )
-        with open(yaml_path, "r", encoding="utf-8") as f:
-            params = yaml.safe_load(f)
-        self.yaml_limits = params["retirement_contribution_limits"]
 
-    def test_all_years_match_yaml(self):
-        """Every year in the YAML must match _get_retirement_limits()."""
-        for year, expected in self.yaml_limits.items():
-            actual = _get_retirement_limits(year)
-            assert actual == expected, f"Year {year}: {actual} != {expected}"
-
-    def test_yaml_has_expected_years(self):
-        assert set(self.yaml_limits.keys()) == set(range(2020, 2026))
+        for year in [2020, 2023, 2024, 2025]:
+            ours = _get_retirement_limits(year)
+            pe = pe_limits(year)
+            for key in ["401k", "401k_catch_up", "ira", "ira_catch_up"]:
+                assert (
+                    ours[key] == pe[key]
+                ), f"Year {year} key {key}: {ours[key]} != {pe[key]}"

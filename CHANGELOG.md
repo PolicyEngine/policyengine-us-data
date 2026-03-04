@@ -1,3 +1,10 @@
+## [1.71.4] - 2026-03-04
+
+### Fixed
+
+- Fix create_sparse_ecps overwriting enhanced_cps_2024.h5 with sparse version that drops input variables like employment_income.
+
+
 ## [1.71.3] - 2026-03-04
 
 ### Changed

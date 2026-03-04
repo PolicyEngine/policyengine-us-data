@@ -1,3 +1,10 @@
+## [1.71.3] - 2026-03-04
+
+### Changed
+
+- Prioritize reported benefit recipients in take-up assignment for SSI and SNAP.
+
+
 ## [1.71.2] - 2026-03-04
 
 ### Fixed

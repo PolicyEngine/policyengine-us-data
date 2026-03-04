@@ -256,87 +256,245 @@ def build_city_h5(
 
 def build_national_h5(
     weights: np.ndarray,
-    cds_to_calibrate: List[str],
+    blocks: np.ndarray,
     dataset_path: Path,
     output_dir: Path,
-    rerandomize_takeup: bool = False,
-    calibration_blocks: np.ndarray = None,
-    takeup_filter: List[str] = None,
 ) -> Path:
-    """Build national US.h5 by collapsing CD weights to household level.
+    """Build national US.h5 by cloning records for each nonzero weight.
 
-    Unlike state/district H5s which re-run simulations per CD with
-    geographic reassignment, the national H5 keeps original geography
-    and simply sums weights across CDs per household, filtering to
-    nonzero-weight households.
+    Each nonzero entry in the (n_geo, n_hh) weight matrix represents a
+    distinct household clone placed at a specific census block. This
+    function clones entity arrays via fancy indexing, derives geography
+    from the blocks array, reindexes all entity IDs, and writes the H5.
     """
     import h5py
+    from collections import defaultdict
     from policyengine_core.enums import Enum
+    from policyengine_us_data.calibration.block_assignment import (
+        derive_geography_from_blocks,
+    )
+    from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
+        County,
+    )
 
     national_dir = output_dir / "national"
     national_dir.mkdir(parents=True, exist_ok=True)
     output_path = national_dir / "US.h5"
 
-    print(f"\n{'='*60}")
-    print(f"Building national US.h5 ({len(cds_to_calibrate)} CDs)")
-    print(f"{'='*60}")
-
+    # === Load base simulation ===
     sim = Microsimulation(dataset=str(dataset_path))
     time_period = int(sim.default_calculation_period)
-
     household_ids = sim.calculate("household_id", map_to="household").values
     n_hh = len(household_ids)
-    n_cds = len(cds_to_calibrate)
 
-    W = weights.reshape(n_cds, n_hh)
-    hh_weights = W.sum(axis=0)
+    if weights.shape[0] % n_hh != 0:
+        raise ValueError(
+            f"Weight vector length {weights.shape[0]} is not "
+            f"divisible by n_hh={n_hh}"
+        )
+    if len(blocks) != len(weights):
+        raise ValueError(
+            f"Blocks length {len(blocks)} != " f"weights length {len(weights)}"
+        )
+    n_geo = weights.shape[0] // n_hh
 
-    active_mask = hh_weights > 0
-    n_active = active_mask.sum()
-    print(f"Households: {n_hh:,} total, {n_active:,} active")
-    print(f"Total weight: {hh_weights[active_mask].sum():,.0f}")
-
-    sim.set_input("household_weight", time_period, hh_weights)
-
-    person_hh_ids = sim.calculate("household_id", map_to="person").values
-    active_hh_set = set(household_ids[active_mask])
-    person_mask = np.isin(person_hh_ids, list(active_hh_set))
-
+    print(f"\n{'='*60}")
     print(
-        f"Persons: {len(person_mask):,} total, "
-        f"{person_mask.sum():,} active"
+        f"Building national US.h5 " f"({n_geo} geo units, {n_hh} households)"
     )
+    print(f"{'='*60}")
+
+    # === Identify active clones ===
+    W = weights.reshape(n_geo, n_hh)
+    active_geo, active_hh = np.where(W > 0)
+    n_clones = len(active_geo)
+    clone_weights = W[active_geo, active_hh]
+    active_blocks = blocks[active_geo * n_hh + active_hh]
+
+    empty_count = np.sum(active_blocks == "")
+    if empty_count > 0:
+        raise ValueError(
+            f"{empty_count} active clones have empty block GEOIDs"
+        )
+
+    print(f"Active clones: {n_clones:,}")
+    print(f"Total weight: {clone_weights.sum():,.0f}")
+
+    # === Build entity membership maps ===
+    hh_id_to_idx = {int(hid): i for i, hid in enumerate(household_ids)}
+    person_hh_ids = sim.calculate("household_id", map_to="person").values
+
+    hh_to_persons = defaultdict(list)
+    for p_idx, p_hh_id in enumerate(person_hh_ids):
+        hh_to_persons[hh_id_to_idx[int(p_hh_id)]].append(p_idx)
+
+    SUB_ENTITIES = [
+        "tax_unit",
+        "spm_unit",
+        "family",
+        "marital_unit",
+    ]
+    hh_to_entity = {}
+    entity_id_arrays = {}
+    person_entity_id_arrays = {}
+
+    for ek in SUB_ENTITIES:
+        eids = sim.calculate(f"{ek}_id", map_to=ek).values
+        peids = sim.calculate(f"person_{ek}_id", map_to="person").values
+        entity_id_arrays[ek] = eids
+        person_entity_id_arrays[ek] = peids
+        eid_to_idx = {int(eid): i for i, eid in enumerate(eids)}
+
+        mapping = defaultdict(list)
+        seen = defaultdict(set)
+        for p_idx in range(len(person_hh_ids)):
+            hh_idx = hh_id_to_idx[int(person_hh_ids[p_idx])]
+            e_idx = eid_to_idx[int(peids[p_idx])]
+            if e_idx not in seen[hh_idx]:
+                seen[hh_idx].add(e_idx)
+                mapping[hh_idx].append(e_idx)
+        hh_to_entity[ek] = mapping
+
+    # === Build clone index arrays ===
+    hh_clone_idx = active_hh
+
+    persons_per_clone = np.array(
+        [len(hh_to_persons.get(h, [])) for h in active_hh]
+    )
+    person_parts = [
+        np.array(hh_to_persons.get(h, []), dtype=np.int64) for h in active_hh
+    ]
+    person_clone_idx = (
+        np.concatenate(person_parts)
+        if person_parts
+        else np.array([], dtype=np.int64)
+    )
+
+    entity_clone_idx = {}
+    entities_per_clone = {}
+    for ek in SUB_ENTITIES:
+        epc = np.array([len(hh_to_entity[ek].get(h, [])) for h in active_hh])
+        entities_per_clone[ek] = epc
+        parts = [
+            np.array(hh_to_entity[ek].get(h, []), dtype=np.int64)
+            for h in active_hh
+        ]
+        entity_clone_idx[ek] = (
+            np.concatenate(parts) if parts else np.array([], dtype=np.int64)
+        )
+
+    n_persons = len(person_clone_idx)
+    print(f"Cloned persons: {n_persons:,}")
+    for ek in SUB_ENTITIES:
+        print(f"Cloned {ek}s: {len(entity_clone_idx[ek]):,}")
+
+    # === Build new entity IDs and cross-references ===
+    new_hh_ids = np.arange(n_clones, dtype=np.int32)
+    new_person_ids = np.arange(n_persons, dtype=np.int32)
+    new_person_hh_ids = np.repeat(new_hh_ids, persons_per_clone)
+
+    new_entity_ids = {}
+    new_person_entity_ids = {}
+    clone_ids_for_persons = np.repeat(
+        np.arange(n_clones, dtype=np.int64), persons_per_clone
+    )
+
+    for ek in SUB_ENTITIES:
+        n_ents = len(entity_clone_idx[ek])
+        new_entity_ids[ek] = np.arange(n_ents, dtype=np.int32)
+
+        old_eids = entity_id_arrays[ek][entity_clone_idx[ek]].astype(np.int64)
+        clone_ids_e = np.repeat(
+            np.arange(n_clones, dtype=np.int64),
+            entities_per_clone[ek],
+        )
+
+        offset = int(old_eids.max()) + 1 if len(old_eids) > 0 else 1
+        entity_keys = clone_ids_e * offset + old_eids
+
+        sorted_order = np.argsort(entity_keys)
+        sorted_keys = entity_keys[sorted_order]
+        sorted_new = new_entity_ids[ek][sorted_order]
+
+        p_old_eids = person_entity_id_arrays[ek][person_clone_idx].astype(
+            np.int64
+        )
+        person_keys = clone_ids_for_persons * offset + p_old_eids
+
+        positions = np.searchsorted(sorted_keys, person_keys)
+        positions = np.clip(positions, 0, len(sorted_keys) - 1)
+        new_person_entity_ids[ek] = sorted_new[positions]
+
+    # === Derive geography from blocks (dedup optimization) ===
+    print("Deriving geography from blocks...")
+    unique_blocks, block_inv = np.unique(active_blocks, return_inverse=True)
+    print(f"  {n_clones:,} blocks -> " f"{len(unique_blocks):,} unique")
+    unique_geo = derive_geography_from_blocks(unique_blocks)
+    geography = {k: v[block_inv] for k, v in unique_geo.items()}
+
+    # === Calculate weights for all entity levels ===
+    person_weights = np.repeat(clone_weights, persons_per_clone)
+    per_person_wt = clone_weights / np.maximum(persons_per_clone, 1)
+
+    entity_weights = {}
+    for ek in SUB_ENTITIES:
+        n_ents = len(entity_clone_idx[ek])
+        ent_person_counts = np.zeros(n_ents, dtype=np.int32)
+        np.add.at(
+            ent_person_counts,
+            new_person_entity_ids[ek],
+            1,
+        )
+        clone_ids_e = np.repeat(np.arange(n_clones), entities_per_clone[ek])
+        entity_weights[ek] = per_person_wt[clone_ids_e] * ent_person_counts
+
+    # === Determine variables to save ===
+    vars_to_save = set(sim.input_variables)
+    vars_to_save.add("county")
+    vars_to_save.add("spm_unit_spm_threshold")
+    for gv in [
+        "block_geoid",
+        "tract_geoid",
+        "cbsa_code",
+        "sldu",
+        "sldl",
+        "place_fips",
+        "vtd",
+        "puma",
+        "zcta",
+    ]:
+        vars_to_save.add(gv)
+
+    # === Clone variable arrays ===
+    clone_idx_map = {
+        "household": hh_clone_idx,
+        "person": person_clone_idx,
+    }
+    for ek in SUB_ENTITIES:
+        clone_idx_map[ek] = entity_clone_idx[ek]
 
     data = {}
     variables_saved = 0
+
     for variable in sim.tax_benefit_system.variables:
+        if variable not in vars_to_save:
+            continue
+
         holder = sim.get_holder(variable)
         periods = holder.get_known_periods()
         if not periods:
             continue
 
+        var_def = sim.tax_benefit_system.variables.get(variable)
+        entity_key = var_def.entity.key
+        if entity_key not in clone_idx_map:
+            continue
+
+        cidx = clone_idx_map[entity_key]
         var_data = {}
+
         for period in periods:
             values = holder.get_array(period)
-
-            var_def = sim.tax_benefit_system.variables.get(variable)
-            entity_key = var_def.entity.key
-
-            if entity_key == "person":
-                values = values[person_mask]
-            elif entity_key == "household":
-                values = values[active_mask]
-            else:
-                entity_id_var = f"{entity_key}_id"
-                entity_ids = sim.calculate(
-                    entity_id_var, map_to=entity_key
-                ).values
-                person_entity_ids = sim.calculate(
-                    entity_id_var, map_to="person"
-                ).values
-                active_entity_ids = set(person_entity_ids[person_mask])
-                entity_mask = np.isin(entity_ids, list(active_entity_ids))
-                values = values[entity_mask]
 
             if var_def.value_type in (Enum, str) and variable != "county_fips":
                 if hasattr(values, "decode_to_str"):
@@ -348,26 +506,90 @@ def build_national_h5(
             else:
                 values = np.array(values)
 
-            var_data[period] = values
+            var_data[period] = values[cidx]
             variables_saved += 1
 
         if var_data:
             data[variable] = var_data
 
-    print(f"Variables saved: {variables_saved}")
+    print(f"Variables cloned: {variables_saved}")
 
+    # === Override entity IDs ===
+    data["household_id"] = {time_period: new_hh_ids}
+    data["person_id"] = {time_period: new_person_ids}
+    data["person_household_id"] = {
+        time_period: new_person_hh_ids,
+    }
+    for ek in SUB_ENTITIES:
+        data[f"{ek}_id"] = {
+            time_period: new_entity_ids[ek],
+        }
+        data[f"person_{ek}_id"] = {
+            time_period: new_person_entity_ids[ek],
+        }
+
+    # === Override weights ===
+    data["household_weight"] = {
+        time_period: clone_weights.astype(np.float32),
+    }
+    data["person_weight"] = {
+        time_period: person_weights.astype(np.float32),
+    }
+    for ek in SUB_ENTITIES:
+        data[f"{ek}_weight"] = {
+            time_period: entity_weights[ek].astype(np.float32),
+        }
+
+    # === Override geography ===
+    data["state_fips"] = {
+        time_period: geography["state_fips"].astype(np.int32),
+    }
+    county_names = np.array(
+        [County._member_names_[i] for i in geography["county_index"]]
+    ).astype("S")
+    data["county"] = {time_period: county_names}
+    data["county_fips"] = {
+        time_period: geography["county_fips"].astype(np.int32),
+    }
+    for gv in [
+        "block_geoid",
+        "tract_geoid",
+        "cbsa_code",
+        "sldu",
+        "sldl",
+        "place_fips",
+        "vtd",
+        "puma",
+        "zcta",
+    ]:
+        if gv in geography:
+            data[gv] = {
+                time_period: geography[gv].astype("S"),
+            }
+
+    # === Write H5 ===
     with h5py.File(str(output_path), "w") as f:
         for variable, periods in data.items():
             grp = f.create_group(variable)
             for period, values in periods.items():
                 grp.create_dataset(str(period), data=values)
 
-    print(f"National H5 saved to {output_path}")
+    print(f"\nNational H5 saved to {output_path}")
 
     with h5py.File(str(output_path), "r") as f:
-        if "household_id" in f and str(time_period) in f["household_id"]:
-            n = len(f["household_id"][str(time_period)][:])
+        tp = str(time_period)
+        if "household_id" in f and tp in f["household_id"]:
+            n = len(f["household_id"][tp][:])
             print(f"Verified: {n:,} households in output")
+        if "person_id" in f and tp in f["person_id"]:
+            n = len(f["person_id"][tp][:])
+            print(f"Verified: {n:,} persons in output")
+        if "household_weight" in f and tp in f["household_weight"]:
+            hw = f["household_weight"][tp][:]
+            print(f"Total population (HH weights): " f"{hw.sum():,.0f}")
+        if "person_weight" in f and tp in f["person_weight"]:
+            pw = f["person_weight"][tp][:]
+            print(f"Total population (person weights): " f"{pw.sum():,.0f}")
 
     return output_path
 

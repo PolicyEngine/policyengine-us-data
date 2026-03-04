@@ -13,29 +13,37 @@ Requires:
 
 import logging
 import sys
+from importlib.resources import files
 
 import numpy as np
 import pandas as pd
+import yaml
+
+from policyengine_us_data.utils.loss import HARD_CODED_TOTALS
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
-# Calibration targets (from etl_national_targets.py / loss.py)
-TARGETS = {
-    "traditional_401k_contributions": 482.7e9,
-    "roth_401k_contributions": 85.2e9,
-    "traditional_ira_contributions": 13.2e9,
-    "roth_ira_contributions": 35.0e9,
-    "self_employed_pension_contribution_ald": 29.5e9,
-}
+# Retirement-related subset of calibration targets (from loss.py).
+_RETIREMENT_VARS = [
+    "traditional_401k_contributions",
+    "roth_401k_contributions",
+    "traditional_ira_contributions",
+    "roth_ira_contributions",
+    "self_employed_pension_contribution_ald",
+]
+TARGETS = {k: HARD_CODED_TOTALS[k] for k in _RETIREMENT_VARS}
 
-# Contribution limits for 2024
-LIMITS_2024 = {
-    "401k": 23_000,
-    "401k_catch_up": 7_500,
-    "ira": 7_000,
-    "ira_catch_up": 1_000,
-}
+# Contribution limits loaded from the shared YAML.
+_yaml_path = (
+    files("policyengine_us_data")
+    / "datasets"
+    / "cps"
+    / "imputation_parameters.yaml"
+)
+with open(_yaml_path, "r", encoding="utf-8") as _f:
+    _params = yaml.safe_load(_f)
+LIMITS_2024 = _params["retirement_contribution_limits"][2024]
 
 
 def load_extended_cps():

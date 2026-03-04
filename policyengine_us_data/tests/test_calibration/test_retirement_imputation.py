@@ -646,27 +646,30 @@ class TestPufCloneRetirementRouting:
 # ── TestLimitsMatchCps ───────────────────────────────────────────────
 
 
-class TestLimitsMatchCps:
-    """Cross-check puf_impute limits against cps.py values."""
+class TestLimitsMatchYaml:
+    """Cross-check _get_retirement_limits() against the YAML source."""
 
-    def test_2024_401k_limit(self):
-        assert _get_retirement_limits(2024)["401k"] == 23_000
+    @pytest.fixture(autouse=True)
+    def _load_yaml(self):
+        from importlib.resources import files as pkg_files
 
-    def test_2024_ira_limit(self):
-        assert _get_retirement_limits(2024)["ira"] == 7_000
+        import yaml
 
-    def test_2023_401k_limit(self):
-        assert _get_retirement_limits(2023)["401k"] == 22_500
+        yaml_path = (
+            pkg_files("policyengine_us_data")
+            / "datasets"
+            / "cps"
+            / "imputation_parameters.yaml"
+        )
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            params = yaml.safe_load(f)
+        self.yaml_limits = params["retirement_contribution_limits"]
 
-    def test_2023_ira_limit(self):
-        assert _get_retirement_limits(2023)["ira"] == 6_500
+    def test_all_years_match_yaml(self):
+        """Every year in the YAML must match _get_retirement_limits()."""
+        for year, expected in self.yaml_limits.items():
+            actual = _get_retirement_limits(year)
+            assert actual == expected, f"Year {year}: {actual} != {expected}"
 
-    def test_2022_limits(self):
-        lim = _get_retirement_limits(2022)
-        assert lim["401k"] == 20_500
-        assert lim["ira"] == 6_000
-
-    def test_2021_limits(self):
-        lim = _get_retirement_limits(2021)
-        assert lim["401k"] == 19_500
-        assert lim["ira"] == 6_000
+    def test_yaml_has_expected_years(self):
+        assert set(self.yaml_limits.keys()) == set(range(2020, 2026))

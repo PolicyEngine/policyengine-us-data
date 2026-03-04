@@ -12,10 +12,12 @@ Usage within the calibration pipeline:
 
 import gc
 import logging
+from importlib.resources import files
 from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -196,47 +198,18 @@ RETIREMENT_PREDICTORS = (
 def _get_retirement_limits(year: int) -> dict:
     """Return contribution limits for the given tax year.
 
-    Mirrors the limits in cps.py (duplicated here to avoid circular
-    imports between the calibration and dataset packages).
+    Loads from imputation_parameters.yaml (single source of truth
+    shared with cps.py).
     """
-    limits_by_year = {
-        2020: {
-            "401k": 19_500,
-            "401k_catch_up": 6_500,
-            "ira": 6_000,
-            "ira_catch_up": 1_000,
-        },
-        2021: {
-            "401k": 19_500,
-            "401k_catch_up": 6_500,
-            "ira": 6_000,
-            "ira_catch_up": 1_000,
-        },
-        2022: {
-            "401k": 20_500,
-            "401k_catch_up": 6_500,
-            "ira": 6_000,
-            "ira_catch_up": 1_000,
-        },
-        2023: {
-            "401k": 22_500,
-            "401k_catch_up": 7_500,
-            "ira": 6_500,
-            "ira_catch_up": 1_000,
-        },
-        2024: {
-            "401k": 23_000,
-            "401k_catch_up": 7_500,
-            "ira": 7_000,
-            "ira_catch_up": 1_000,
-        },
-        2025: {
-            "401k": 23_500,
-            "401k_catch_up": 7_500,
-            "ira": 7_000,
-            "ira_catch_up": 1_000,
-        },
-    }
+    yaml_path = (
+        files("policyengine_us_data")
+        / "datasets"
+        / "cps"
+        / "imputation_parameters.yaml"
+    )
+    with open(yaml_path, "r", encoding="utf-8") as f:
+        params = yaml.safe_load(f)
+    limits_by_year = params["retirement_contribution_limits"]
     clamped = max(min(year, max(limits_by_year)), min(limits_by_year))
     return limits_by_year[clamped]
 
@@ -334,7 +307,10 @@ def _qrf_ss_shares(
         )
         predictions = fitted.predict(X_test=X_test)
     except Exception:
-        logger.warning("QRF SS split failed, falling back to heuristic")
+        logger.warning(
+            "QRF SS split failed, falling back to heuristic",
+            exc_info=True,
+        )
         return None
 
     # Clip to [0, 1] and normalise so shares sum to 1.
@@ -648,6 +624,11 @@ def _impute_weeks_unemployed(
     del cps_sim
 
     qrf = QRF(log_level="INFO", memory_efficient=True)
+    # Subsample to 5000 for QRF training speed: CPS has ~200K person
+    # records; QRF fitting is O(n log n) per tree, so 5K keeps
+    # training under ~30s while retaining adequate distributional
+    # coverage. Empirical testing showed diminishing accuracy gains
+    # beyond ~5K–10K records for these predictors.
     if len(X_train) > 5000:
         X_train_sampled = X_train.sample(n=5000, random_state=42)
     else:
@@ -739,7 +720,8 @@ def _impute_retirement_contributions(
 
     del cps_sim
 
-    # Subsample training data
+    # Subsample to 5000 for speed (see comment in
+    # _impute_weeks_unemployed for rationale).
     if len(X_train) > 5000:
         X_train_sampled = X_train.sample(n=5000, random_state=42)
     else:
@@ -755,10 +737,10 @@ def _impute_retirement_contributions(
             n_jobs=1,
         )
         predictions = fitted.predict(X_test=X_test)
-    except Exception as e:
+    except Exception:
         logger.warning(
-            "QRF retirement imputation failed, returning zeros: %s",
-            e,
+            "QRF retirement imputation failed, returning zeros",
+            exc_info=True,
         )
         n_persons = len(data["person_id"][time_period])
         return {var: np.zeros(n_persons) for var in CPS_RETIREMENT_VARIABLES}

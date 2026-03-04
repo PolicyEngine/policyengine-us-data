@@ -8,20 +8,15 @@ Usage:
     python publish_local_area.py [--skip-download] [--states-only] [--districts-only]
 """
 
-import os
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import List
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
 from policyengine_us_data.utils.data_upload import (
     upload_local_area_file,
     upload_local_area_batch_to_hf,
-)
-from policyengine_us_data.calibration.stacked_dataset_builder import (
-    NYC_COUNTIES,
-    NYC_CDS,
 )
 from policyengine_us_data.calibration.calibration_utils import (
     get_all_cds_from_database,
@@ -43,6 +38,30 @@ CHECKPOINT_FILE = Path("completed_states.txt")
 CHECKPOINT_FILE_DISTRICTS = Path("completed_districts.txt")
 CHECKPOINT_FILE_CITIES = Path("completed_cities.txt")
 WORK_DIR = Path("local_area_build")
+
+NYC_COUNTIES = {
+    "QUEENS_COUNTY_NY",
+    "BRONX_COUNTY_NY",
+    "RICHMOND_COUNTY_NY",
+    "NEW_YORK_COUNTY_NY",
+    "KINGS_COUNTY_NY",
+}
+
+NYC_CDS = [
+    "3603",
+    "3605",
+    "3606",
+    "3607",
+    "3608",
+    "3609",
+    "3610",
+    "3611",
+    "3612",
+    "3613",
+    "3614",
+    "3615",
+    "3616",
+]
 
 
 def load_completed_states() -> set:
@@ -84,212 +103,6 @@ def record_completed_city(city_name: str):
         f.write(f"{city_name}\n")
 
 
-def build_state_h5(
-    state_code: str,
-    weights: np.ndarray,
-    cds_to_calibrate: List[str],
-    dataset_path: Path,
-    output_dir: Path,
-    rerandomize_takeup: bool = False,
-    calibration_blocks: np.ndarray = None,
-    takeup_filter: List[str] = None,
-) -> Optional[Path]:
-    """Build a single state H5 file (build only, no upload).
-
-    Args:
-        state_code: Two-letter state code (e.g., "AL", "CA")
-        weights: Calibrated weight vector
-        cds_to_calibrate: Full list of CD GEOIDs from calibration
-        dataset_path: Path to base dataset H5 file
-        output_dir: Output directory for H5 file
-        rerandomize_takeup: Re-draw takeup using block-level seeds
-        calibration_blocks: Stacked block GEOID array from calibration
-        takeup_filter: List of takeup vars to re-randomize
-
-    Returns:
-        Path to output H5 file if successful, None if no CDs found
-    """
-    state_fips = None
-    for fips, code in STATE_CODES.items():
-        if code == state_code:
-            state_fips = fips
-            break
-
-    if state_fips is None:
-        print(f"Unknown state code: {state_code}")
-        return None
-
-    cd_subset = [cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips]
-    if not cd_subset:
-        print(f"No CDs found for {state_code}, skipping")
-        return None
-
-    states_dir = output_dir / "states"
-    states_dir.mkdir(parents=True, exist_ok=True)
-    output_path = states_dir / f"{state_code}.h5"
-
-    build_h5(
-        weights=weights,
-        blocks=calibration_blocks,
-        dataset_path=dataset_path,
-        output_path=output_path,
-        cds_to_calibrate=cds_to_calibrate,
-        cd_subset=cd_subset,
-        rerandomize_takeup=rerandomize_takeup,
-        takeup_filter=takeup_filter,
-    )
-
-    return output_path
-
-
-def build_district_h5(
-    cd_geoid: str,
-    weights: np.ndarray,
-    cds_to_calibrate: List[str],
-    dataset_path: Path,
-    output_dir: Path,
-    rerandomize_takeup: bool = False,
-    calibration_blocks: np.ndarray = None,
-    takeup_filter: List[str] = None,
-) -> Path:
-    """Build a single district H5 file (build only, no upload).
-
-    Args:
-        cd_geoid: Congressional district GEOID (e.g., "0101" for AL-01)
-        weights: Calibrated weight vector
-        cds_to_calibrate: Full list of CD GEOIDs from calibration
-        dataset_path: Path to base dataset H5 file
-        output_dir: Output directory for H5 file
-        rerandomize_takeup: Re-draw takeup using block-level seeds
-        calibration_blocks: Stacked block GEOID array from calibration
-        takeup_filter: List of takeup vars to re-randomize
-
-    Returns:
-        Path to output H5 file
-    """
-    cd_int = int(cd_geoid)
-    state_fips = cd_int // 100
-    district_num = cd_int % 100
-    if district_num in AT_LARGE_DISTRICTS:
-        district_num = 1
-    state_code = STATE_CODES.get(state_fips, str(state_fips))
-    friendly_name = f"{state_code}-{district_num:02d}"
-
-    districts_dir = output_dir / "districts"
-    districts_dir.mkdir(parents=True, exist_ok=True)
-    output_path = districts_dir / f"{friendly_name}.h5"
-
-    build_h5(
-        weights=weights,
-        blocks=calibration_blocks,
-        dataset_path=dataset_path,
-        output_path=output_path,
-        cds_to_calibrate=cds_to_calibrate,
-        cd_subset=[cd_geoid],
-        rerandomize_takeup=rerandomize_takeup,
-        takeup_filter=takeup_filter,
-    )
-
-    return output_path
-
-
-def build_city_h5(
-    city_name: str,
-    weights: np.ndarray,
-    cds_to_calibrate: List[str],
-    dataset_path: Path,
-    output_dir: Path,
-    rerandomize_takeup: bool = False,
-    calibration_blocks: np.ndarray = None,
-    takeup_filter: List[str] = None,
-) -> Optional[Path]:
-    """Build a city H5 file (build only, no upload).
-
-    Currently supports NYC only.
-
-    Args:
-        city_name: City name (currently only "NYC" supported)
-        weights: Calibrated weight vector
-        cds_to_calibrate: Full list of CD GEOIDs from calibration
-        dataset_path: Path to base dataset H5 file
-        output_dir: Output directory for H5 file
-        rerandomize_takeup: Re-draw takeup using block-level seeds
-        calibration_blocks: Stacked block GEOID array from calibration
-        takeup_filter: List of takeup vars to re-randomize
-
-    Returns:
-        Path to output H5 file if successful, None otherwise
-    """
-    if city_name != "NYC":
-        print(f"Unsupported city: {city_name}")
-        return None
-
-    cd_subset = [cd for cd in cds_to_calibrate if cd in NYC_CDS]
-    if not cd_subset:
-        print("No NYC-related CDs found, skipping")
-        return None
-
-    cities_dir = output_dir / "cities"
-    cities_dir.mkdir(parents=True, exist_ok=True)
-    output_path = cities_dir / "NYC.h5"
-
-    build_h5(
-        weights=weights,
-        blocks=calibration_blocks,
-        dataset_path=dataset_path,
-        output_path=output_path,
-        cds_to_calibrate=cds_to_calibrate,
-        cd_subset=cd_subset,
-        county_filter=NYC_COUNTIES,
-        rerandomize_takeup=rerandomize_takeup,
-        takeup_filter=takeup_filter,
-    )
-
-    return output_path
-
-
-def build_national_h5(
-    weights: np.ndarray,
-    blocks: np.ndarray,
-    dataset_path: Path,
-    output_dir: Path,
-    cds_to_calibrate: List[str] = None,
-    rerandomize_takeup: bool = False,
-    takeup_filter: List[str] = None,
-) -> Path:
-    """Build national US.h5. Thin wrapper around build_h5.
-
-    Args:
-        weights: Stacked weight vector.
-        blocks: Block GEOID per weight entry.
-        dataset_path: Path to base dataset H5 file.
-        output_dir: Output directory for H5 file.
-        cds_to_calibrate: Ordered list of CD GEOIDs. Required.
-        rerandomize_takeup: Re-draw takeup using block-level seeds.
-        takeup_filter: List of takeup vars to re-randomize.
-
-    Returns:
-        Path to output H5 file.
-    """
-    if cds_to_calibrate is None:
-        raise ValueError("cds_to_calibrate is required for build_national_h5")
-
-    national_dir = output_dir / "national"
-    national_dir.mkdir(parents=True, exist_ok=True)
-    output_path = national_dir / "US.h5"
-
-    return build_h5(
-        weights=weights,
-        blocks=blocks,
-        dataset_path=dataset_path,
-        output_path=output_path,
-        cds_to_calibrate=cds_to_calibrate,
-        cd_subset=None,
-        rerandomize_takeup=rerandomize_takeup,
-        takeup_filter=takeup_filter,
-    )
-
-
 def build_h5(
     weights: np.ndarray,
     blocks: np.ndarray,
@@ -303,9 +116,8 @@ def build_h5(
 ) -> Path:
     """Build an H5 file by cloning records for each nonzero weight.
 
-    Unified builder that replaces both build_national_h5 and
-    create_sparse_cd_stacked_dataset. Uses fancy indexing on a
-    single loaded simulation instead of looping over CDs.
+    Uses fancy indexing on a single loaded simulation instead of
+    looping over CDs.
 
     Each nonzero entry in the (n_geo, n_hh) weight matrix represents
     a distinct household clone. This function clones entity arrays,
@@ -449,6 +261,8 @@ def build_h5(
             if e_idx not in seen[hh_idx]:
                 seen[hh_idx].add(e_idx)
                 mapping[hh_idx].append(e_idx)
+        for hh_idx in mapping:
+            mapping[hh_idx].sort()
         hh_to_entity[ek] = mapping
 
     # === Build clone index arrays ===
@@ -748,10 +562,15 @@ def build_h5(
         # HH-level state_fips from geography
         hh_state_fips = geography["state_fips"].astype(np.int32)
 
+        # Use original household IDs for RNG seeding so that
+        # takeup draws match the matrix builder's
+        # salt=f"{block}:{int(hh_id)}" scheme.
+        original_hh_ids = household_ids[active_hh].astype(np.int64)
+
         takeup_results = apply_block_takeup_to_arrays(
             hh_blocks=active_blocks,
             hh_state_fips=hh_state_fips,
-            hh_ids=new_hh_ids,
+            hh_ids=original_hh_ids,
             entity_hh_indices=entity_hh_indices,
             entity_counts=entity_counts,
             time_period=time_period,

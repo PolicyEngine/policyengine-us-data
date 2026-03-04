@@ -10,6 +10,7 @@ Usage:
 """
 
 import tempfile
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -26,8 +27,6 @@ N_CDS_TO_CHECK = 3
 
 
 def _dataset_available():
-    from pathlib import Path
-
     return Path(DATASET_PATH).exists() and Path(DB_PATH).exists()
 
 
@@ -48,8 +47,8 @@ def test_xw_matches_stacked_sim():
         convert_weights_to_stacked_format,
         convert_blocks_to_stacked_format,
     )
-    from policyengine_us_data.calibration.stacked_dataset_builder import (
-        create_sparse_cd_stacked_dataset,
+    from policyengine_us_data.calibration.publish_local_area import (
+        build_h5,
     )
     from policyengine_us_data.utils.takeup import (
         TAKEUP_AFFECTED_TARGETS,
@@ -126,14 +125,14 @@ def test_xw_matches_stacked_sim():
 
     for cd in top_cds:
         h5_path = f"{tmpdir}/{cd}.h5"
-        create_sparse_cd_stacked_dataset(
-            w=w_stacked,
+        build_h5(
+            weights=np.array(w_stacked),
+            blocks=blocks_stacked,
+            dataset_path=Path(DATASET_PATH),
+            output_path=Path(h5_path),
             cds_to_calibrate=cds_ordered,
             cd_subset=[cd],
-            output_path=h5_path,
-            dataset_path=DATASET_PATH,
             rerandomize_takeup=True,
-            calibration_blocks=blocks_stacked,
             takeup_filter=takeup_filter,
         )
 

@@ -1,11 +1,9 @@
 """
-Create a sparse congressional district-stacked dataset with non-zero weight
-households.
+CLI for creating CD-stacked datasets via build_h5.
 
-DEPRECATED: This module is superseded by build_h5() in publish_local_area.py.
-create_sparse_cd_stacked_dataset is now a thin wrapper that delegates to
-build_h5, which uses a single simulation + fancy indexing instead of looping
-over CDs.
+All H5 building logic lives in build_h5() in publish_local_area.py.
+This module provides a CLI for common build modes (national, states,
+cds, single-cd, single-state, nyc).
 """
 
 import os
@@ -17,86 +15,15 @@ from policyengine_us_data.calibration.calibration_utils import (
     STATE_CODES,
 )
 
-NYC_COUNTIES = {
-    "QUEENS_COUNTY_NY",
-    "BRONX_COUNTY_NY",
-    "RICHMOND_COUNTY_NY",
-    "NEW_YORK_COUNTY_NY",
-    "KINGS_COUNTY_NY",
-}
-
-NYC_CDS = [
-    "3603",
-    "3605",
-    "3606",
-    "3607",
-    "3608",
-    "3609",
-    "3610",
-    "3611",
-    "3612",
-    "3613",
-    "3614",
-    "3615",
-    "3616",
-]
-
-
-def create_sparse_cd_stacked_dataset(
-    w,
-    cds_to_calibrate,
-    cd_subset=None,
-    output_path=None,
-    dataset_path=None,
-    county_filter=None,
-    seed: int = 42,
-    rerandomize_takeup: bool = False,
-    calibration_blocks: np.ndarray = None,
-    takeup_filter=None,
-):
-    """Thin wrapper around build_h5() for backward compatibility.
-
-    DEPRECATED: Use build_h5() from publish_local_area.py directly.
-
-    Args:
-        w: Calibrated weight vector.
-        cds_to_calibrate: Ordered list of CD GEOIDs.
-        cd_subset: Optional list of CDs to include.
-        output_path: Where to save the .h5 file.
-        dataset_path: Path to base dataset .h5 file.
-        county_filter: Optional county filter set.
-        seed: Unused (kept for API compat).
-        rerandomize_takeup: Re-draw takeup draws.
-        calibration_blocks: Stacked block GEOID array.
-        takeup_filter: List of takeup vars to re-randomize.
-
-    Returns:
-        output_path: Path to the saved .h5 file.
-    """
-    from policyengine_us_data.calibration.publish_local_area import (
-        build_h5,
-    )
-
-    if output_path is None:
-        raise ValueError("No output .h5 path given")
-
-    return build_h5(
-        weights=np.array(w),
-        blocks=calibration_blocks,
-        dataset_path=Path(dataset_path),
-        output_path=Path(output_path),
-        cds_to_calibrate=cds_to_calibrate,
-        cd_subset=cd_subset,
-        county_filter=county_filter,
-        rerandomize_takeup=rerandomize_takeup,
-        takeup_filter=takeup_filter,
-    )
-
-
 if __name__ == "__main__":
     import argparse
 
     from policyengine_us import Microsimulation
+    from policyengine_us_data.calibration.publish_local_area import (
+        build_h5,
+        NYC_COUNTIES,
+        NYC_CDS,
+    )
 
     parser = argparse.ArgumentParser(
         description="Create sparse CD-stacked datasets"
@@ -189,13 +116,13 @@ if __name__ == "__main__":
     if mode == "national":
         output_path = f"{output_dir}/national.h5"
         print(f"\nCreating national dataset: {output_path}")
-        create_sparse_cd_stacked_dataset(
-            w,
-            cds_to_calibrate,
-            dataset_path=dataset_path_str,
-            output_path=output_path,
+        build_h5(
+            weights=np.array(w),
+            blocks=cal_blocks,
+            dataset_path=Path(dataset_path_str),
+            output_path=Path(output_path),
+            cds_to_calibrate=cds_to_calibrate,
             rerandomize_takeup=rerand,
-            calibration_blocks=cal_blocks,
         )
 
     elif mode == "states":
@@ -207,14 +134,14 @@ if __name__ == "__main__":
                 continue
             output_path = f"{output_dir}/{state_code}.h5"
             print(f"\nCreating {state_code}: {output_path}")
-            create_sparse_cd_stacked_dataset(
-                w,
-                cds_to_calibrate,
+            build_h5(
+                weights=np.array(w),
+                blocks=cal_blocks,
+                dataset_path=Path(dataset_path_str),
+                output_path=Path(output_path),
+                cds_to_calibrate=cds_to_calibrate,
                 cd_subset=cd_subset,
-                dataset_path=dataset_path_str,
-                output_path=output_path,
                 rerandomize_takeup=rerand,
-                calibration_blocks=cal_blocks,
             )
 
     elif mode == "cds":
@@ -232,14 +159,14 @@ if __name__ == "__main__":
                 f"\n[{i+1}/{len(cds_to_calibrate)}] "
                 f"Creating {friendly_name}.h5"
             )
-            create_sparse_cd_stacked_dataset(
-                w,
-                cds_to_calibrate,
+            build_h5(
+                weights=np.array(w),
+                blocks=cal_blocks,
+                dataset_path=Path(dataset_path_str),
+                output_path=Path(output_path),
+                cds_to_calibrate=cds_to_calibrate,
                 cd_subset=[cd_geoid],
-                dataset_path=dataset_path_str,
-                output_path=output_path,
                 rerandomize_takeup=rerand,
-                calibration_blocks=cal_blocks,
             )
 
     elif mode == "single-cd":
@@ -249,14 +176,14 @@ if __name__ == "__main__":
             raise ValueError(f"CD {args.cd} not in calibrated CDs list")
         output_path = f"{output_dir}/{args.cd}.h5"
         print(f"\nCreating single CD dataset: {output_path}")
-        create_sparse_cd_stacked_dataset(
-            w,
-            cds_to_calibrate,
+        build_h5(
+            weights=np.array(w),
+            blocks=cal_blocks,
+            dataset_path=Path(dataset_path_str),
+            output_path=Path(output_path),
+            cds_to_calibrate=cds_to_calibrate,
             cd_subset=[args.cd],
-            dataset_path=dataset_path_str,
-            output_path=output_path,
             rerandomize_takeup=rerand,
-            calibration_blocks=cal_blocks,
         )
 
     elif mode == "single-state":
@@ -282,14 +209,14 @@ if __name__ == "__main__":
             f"\nCreating {state_code_upper} with "
             f"{len(cd_subset)} CDs: {output_path}"
         )
-        create_sparse_cd_stacked_dataset(
-            w,
-            cds_to_calibrate,
+        build_h5(
+            weights=np.array(w),
+            blocks=cal_blocks,
+            dataset_path=Path(dataset_path_str),
+            output_path=Path(output_path),
+            cds_to_calibrate=cds_to_calibrate,
             cd_subset=cd_subset,
-            dataset_path=dataset_path_str,
-            output_path=output_path,
             rerandomize_takeup=rerand,
-            calibration_blocks=cal_blocks,
         )
 
     elif mode == "nyc":
@@ -299,15 +226,15 @@ if __name__ == "__main__":
 
         output_path = f"{output_dir}/NYC.h5"
         print(f"\nCreating NYC with {len(cd_subset)} CDs: " f"{output_path}")
-        create_sparse_cd_stacked_dataset(
-            w,
-            cds_to_calibrate,
+        build_h5(
+            weights=np.array(w),
+            blocks=cal_blocks,
+            dataset_path=Path(dataset_path_str),
+            output_path=Path(output_path),
+            cds_to_calibrate=cds_to_calibrate,
             cd_subset=cd_subset,
-            dataset_path=dataset_path_str,
-            output_path=output_path,
             county_filter=NYC_COUNTIES,
             rerandomize_takeup=rerand,
-            calibration_blocks=cal_blocks,
         )
 
     print("\nDone!")

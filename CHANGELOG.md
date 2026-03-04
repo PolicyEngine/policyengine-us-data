@@ -1,3 +1,10 @@
+## [1.71.2] - 2026-03-04
+
+### Fixed
+
+- Reconcile SS sub-components after PUF imputation so they sum to social_security.
+
+
 ## [1.71.1] - 2026-03-04
 
 ### Changed

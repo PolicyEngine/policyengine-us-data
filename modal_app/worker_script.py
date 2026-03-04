@@ -142,6 +142,7 @@ def main():
                     blocks=calibration_blocks,
                     dataset_path=dataset_path,
                     output_dir=output_dir,
+                    cds_to_calibrate=cds_to_calibrate,
                 )
             else:
                 raise ValueError(f"Unknown item type: {item_type}")

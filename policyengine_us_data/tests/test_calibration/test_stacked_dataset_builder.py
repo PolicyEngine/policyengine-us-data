@@ -1,4 +1,8 @@
-"""Tests for stacked_dataset_builder.py using deterministic test fixture."""
+"""Tests for stacked_dataset_builder.py using deterministic test fixture.
+
+Tests now exercise the unified build_h5 function via the
+create_sparse_cd_stacked_dataset wrapper.
+"""
 
 import os
 import tempfile
@@ -69,12 +73,7 @@ def stacked_result(test_weights):
             )
         )
 
-        mapping_path = os.path.join(
-            tmpdir, "mappings", "test_output_household_mapping.csv"
-        )
-        mapping_df = pd.read_csv(mapping_path)
-
-        yield {"hh_df": hh_df, "mapping_df": mapping_df}
+        yield {"hh_df": hh_df}
 
 
 class TestStackedDatasetBuilder:
@@ -105,27 +104,6 @@ class TestStackedDatasetBuilder:
         """Each household should have a unique ID."""
         hh_df = stacked_result["hh_df"]
         assert hh_df["household_id"].nunique() == len(hh_df)
-
-    def test_mapping_has_required_columns(self, stacked_result):
-        """Mapping CSV should have expected columns."""
-        mapping_df = stacked_result["mapping_df"]
-        required_cols = [
-            "new_household_id",
-            "original_household_id",
-            "congressional_district",
-            "state_fips",
-        ]
-        for col in required_cols:
-            assert col in mapping_df.columns
-
-    def test_mapping_covers_all_output_households(self, stacked_result):
-        """Every output household should be in the mapping."""
-        hh_df = stacked_result["hh_df"]
-        mapping_df = stacked_result["mapping_df"]
-
-        output_hh_ids = set(hh_df["household_id"].values)
-        mapped_hh_ids = set(mapping_df["new_household_id"].values)
-        assert output_hh_ids == mapped_hh_ids
 
     def test_weights_are_positive(self, stacked_result):
         """All household weights should be positive."""
@@ -179,9 +157,8 @@ def stacked_sim(test_weights):
 @pytest.fixture(scope="module")
 def stacked_sim_with_overlap(n_households):
     """Stacked dataset where SAME households appear in BOTH CDs."""
-    # Force same households to appear in both CDs - tests reindexing
     w = np.zeros(n_households * len(TEST_CDS), dtype=float)
-    overlap_households = [0, 1, 2]  # Same households in both CDs
+    overlap_households = [0, 1, 2]
     for cd_idx in range(len(TEST_CDS)):
         for hh_idx in overlap_households:
             w[cd_idx * n_households + hh_idx] = 1.0
@@ -241,21 +218,16 @@ class TestEntityReindexing:
             ), f"person_family_id {pf_id} not in family_ids"
 
     def test_family_ids_unique_across_cds(self, stacked_sim_with_overlap):
-        """Same household in different CDs should have different family_ids."""
+        """Same HH in different CDs should get different family_ids."""
         sim = stacked_sim_with_overlap["sim"]
         n_overlap = stacked_sim_with_overlap["n_overlap"]
         n_cds = len(TEST_CDS)
 
         family_ids = sim.calculate("family_id", map_to="family").values
-        household_ids = sim.calculate(
-            "household_id", map_to="household"
-        ).values
 
-        # Should have n_overlap * n_cds unique families (one per HH-CD pair)
         expected_families = n_overlap * n_cds
         assert len(family_ids) == expected_families, (
-            f"Expected {expected_families} families (same HH in {n_cds} CDs), "
-            f"got {len(family_ids)}"
+            f"Expected {expected_families} families, " f"got {len(family_ids)}"
         )
         assert len(set(family_ids)) == expected_families, (
             f"Family IDs not unique: {len(set(family_ids))} unique "

@@ -626,3 +626,65 @@ def calculate_spm_thresholds_for_cd(
         thresholds[i] = base * equiv_scale * geoadj
 
     return thresholds
+
+
+def calculate_spm_thresholds_vectorized(
+    person_ages: np.ndarray,
+    person_spm_unit_ids: np.ndarray,
+    spm_unit_tenure_types: np.ndarray,
+    spm_unit_geoadj: np.ndarray,
+    year: int,
+) -> np.ndarray:
+    """Calculate SPM thresholds for cloned SPM units from raw arrays.
+
+    Works without a Microsimulation instance. Counts adults/children
+    per SPM unit from person-level arrays, then computes
+    base_threshold * equivalence_scale * geoadj for each unit.
+
+    Args:
+        person_ages: Age per cloned person.
+        person_spm_unit_ids: New SPM unit ID per cloned person
+            (0-based contiguous).
+        spm_unit_tenure_types: Tenure type string per cloned SPM
+            unit (e.g. b"RENTER", b"OWNER_WITH_MORTGAGE").
+        spm_unit_geoadj: Geographic adjustment factor per cloned
+            SPM unit.
+        year: Tax year for base threshold lookup.
+
+    Returns:
+        Float32 array of SPM thresholds, one per SPM unit.
+    """
+    n_units = len(spm_unit_tenure_types)
+
+    # Count adults and children per SPM unit
+    is_adult = person_ages >= 18
+    num_adults = np.zeros(n_units, dtype=np.int32)
+    num_children = np.zeros(n_units, dtype=np.int32)
+    np.add.at(num_adults, person_spm_unit_ids, is_adult.astype(np.int32))
+    np.add.at(num_children, person_spm_unit_ids, (~is_adult).astype(np.int32))
+
+    # Map tenure type strings to codes
+    tenure_codes = np.full(n_units, 3, dtype=np.int32)
+    for tenure_str, code in SPM_TENURE_STRING_TO_CODE.items():
+        tenure_bytes = (
+            tenure_str.encode() if isinstance(tenure_str, str) else tenure_str
+        )
+        mask = spm_unit_tenure_types == tenure_bytes
+        if not mask.any():
+            mask = spm_unit_tenure_types == tenure_str
+        tenure_codes[mask] = code
+
+    # Look up base thresholds
+    calc = SPMCalculator(year=year)
+    base_thresholds = calc.get_base_thresholds()
+
+    thresholds = np.zeros(n_units, dtype=np.float32)
+    for i in range(n_units):
+        tenure_str = TENURE_CODE_MAP.get(int(tenure_codes[i]), "renter")
+        base = base_thresholds[tenure_str]
+        equiv_scale = spm_equivalence_scale(
+            int(num_adults[i]), int(num_children[i])
+        )
+        thresholds[i] = base * equiv_scale * spm_unit_geoadj[i]
+
+    return thresholds

@@ -357,6 +357,70 @@ def _build_entity_to_hh_index(sim) -> Dict[str, np.ndarray]:
     return result
 
 
+def apply_block_takeup_to_arrays(
+    hh_blocks: np.ndarray,
+    hh_state_fips: np.ndarray,
+    hh_ids: np.ndarray,
+    entity_hh_indices: Dict[str, np.ndarray],
+    entity_counts: Dict[str, int],
+    time_period: int,
+    takeup_filter: List[str] = None,
+) -> Dict[str, np.ndarray]:
+    """Compute block-level takeup draws from raw arrays.
+
+    Works without a Microsimulation instance. For each takeup
+    variable, maps entity-level arrays from household-level block/
+    state/id arrays using entity->household index mappings, then
+    calls compute_block_takeup_for_entities.
+
+    Args:
+        hh_blocks: Block GEOID per cloned household (str array).
+        hh_state_fips: State FIPS per cloned household (int array).
+        hh_ids: Household ID per cloned household (int array).
+        entity_hh_indices: {entity_key: array} mapping each entity
+            instance to its household index. Keys: "person",
+            "tax_unit", "spm_unit".
+        entity_counts: {entity_key: count} number of entities per
+            type.
+        time_period: Tax year.
+        takeup_filter: Optional list of takeup variable names to
+            re-randomize. If None, all SIMPLE_TAKEUP_VARS are
+            processed. Non-filtered vars are set to True.
+
+    Returns:
+        {variable_name: bool_array} for each takeup variable.
+    """
+    filter_set = set(takeup_filter) if takeup_filter is not None else None
+    result = {}
+
+    for spec in SIMPLE_TAKEUP_VARS:
+        var_name = spec["variable"]
+        entity = spec["entity"]
+        rate_key = spec["rate_key"]
+        n_ent = entity_counts[entity]
+
+        if filter_set is not None and var_name not in filter_set:
+            result[var_name] = np.ones(n_ent, dtype=bool)
+            continue
+
+        ent_hh_idx = entity_hh_indices[entity]
+        ent_blocks = hh_blocks[ent_hh_idx].astype(str)
+        ent_states = hh_state_fips[ent_hh_idx]
+        ent_hh_ids = hh_ids[ent_hh_idx]
+
+        rate_or_dict = load_take_up_rate(rate_key, time_period)
+        bools = compute_block_takeup_for_entities(
+            var_name,
+            rate_or_dict,
+            ent_blocks,
+            ent_states,
+            ent_hh_ids,
+        )
+        result[var_name] = bools
+
+    return result
+
+
 def apply_block_takeup_draws_to_sim(
     sim,
     hh_blocks: np.ndarray,

@@ -11,7 +11,7 @@ Usage:
 import os
 import numpy as np
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Dict, List, Optional, Set
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
@@ -20,15 +20,24 @@ from policyengine_us_data.utils.data_upload import (
     upload_local_area_batch_to_hf,
 )
 from policyengine_us_data.calibration.stacked_dataset_builder import (
-    create_sparse_cd_stacked_dataset,
     NYC_COUNTIES,
     NYC_CDS,
 )
 from policyengine_us_data.calibration.calibration_utils import (
     get_all_cds_from_database,
     STATE_CODES,
+    load_cd_geoadj_values,
+    calculate_spm_thresholds_vectorized,
 )
-from policyengine_us_data.utils.takeup import TAKEUP_AFFECTED_TARGETS
+from policyengine_us_data.calibration.block_assignment import (
+    assign_geography_for_cd,
+    derive_geography_from_blocks,
+    get_county_filter_probability,
+)
+from policyengine_us_data.utils.takeup import (
+    TAKEUP_AFFECTED_TARGETS,
+    apply_block_takeup_to_arrays,
+)
 
 CHECKPOINT_FILE = Path("completed_states.txt")
 CHECKPOINT_FILE_DISTRICTS = Path("completed_districts.txt")
@@ -85,8 +94,7 @@ def build_state_h5(
     calibration_blocks: np.ndarray = None,
     takeup_filter: List[str] = None,
 ) -> Optional[Path]:
-    """
-    Build a single state H5 file (build only, no upload).
+    """Build a single state H5 file (build only, no upload).
 
     Args:
         state_code: Two-letter state code (e.g., "AL", "CA")
@@ -120,18 +128,14 @@ def build_state_h5(
     states_dir.mkdir(parents=True, exist_ok=True)
     output_path = states_dir / f"{state_code}.h5"
 
-    print(f"\n{'='*60}")
-    print(f"Building {state_code} ({len(cd_subset)} CDs)")
-    print(f"{'='*60}")
-
-    create_sparse_cd_stacked_dataset(
-        weights,
-        cds_to_calibrate,
+    build_h5(
+        weights=weights,
+        blocks=calibration_blocks,
+        dataset_path=dataset_path,
+        output_path=output_path,
+        cds_to_calibrate=cds_to_calibrate,
         cd_subset=cd_subset,
-        dataset_path=str(dataset_path),
-        output_path=str(output_path),
         rerandomize_takeup=rerandomize_takeup,
-        calibration_blocks=calibration_blocks,
         takeup_filter=takeup_filter,
     )
 
@@ -148,8 +152,7 @@ def build_district_h5(
     calibration_blocks: np.ndarray = None,
     takeup_filter: List[str] = None,
 ) -> Path:
-    """
-    Build a single district H5 file (build only, no upload).
+    """Build a single district H5 file (build only, no upload).
 
     Args:
         cd_geoid: Congressional district GEOID (e.g., "0101" for AL-01)
@@ -176,18 +179,14 @@ def build_district_h5(
     districts_dir.mkdir(parents=True, exist_ok=True)
     output_path = districts_dir / f"{friendly_name}.h5"
 
-    print(f"\n{'='*60}")
-    print(f"Building {friendly_name}")
-    print(f"{'='*60}")
-
-    create_sparse_cd_stacked_dataset(
-        weights,
-        cds_to_calibrate,
+    build_h5(
+        weights=weights,
+        blocks=calibration_blocks,
+        dataset_path=dataset_path,
+        output_path=output_path,
+        cds_to_calibrate=cds_to_calibrate,
         cd_subset=[cd_geoid],
-        dataset_path=str(dataset_path),
-        output_path=str(output_path),
         rerandomize_takeup=rerandomize_takeup,
-        calibration_blocks=calibration_blocks,
         takeup_filter=takeup_filter,
     )
 
@@ -204,8 +203,7 @@ def build_city_h5(
     calibration_blocks: np.ndarray = None,
     takeup_filter: List[str] = None,
 ) -> Optional[Path]:
-    """
-    Build a city H5 file (build only, no upload).
+    """Build a city H5 file (build only, no upload).
 
     Currently supports NYC only.
 
@@ -235,19 +233,15 @@ def build_city_h5(
     cities_dir.mkdir(parents=True, exist_ok=True)
     output_path = cities_dir / "NYC.h5"
 
-    print(f"\n{'='*60}")
-    print(f"Building NYC ({len(cd_subset)} CDs)")
-    print(f"{'='*60}")
-
-    create_sparse_cd_stacked_dataset(
-        weights,
-        cds_to_calibrate,
+    build_h5(
+        weights=weights,
+        blocks=calibration_blocks,
+        dataset_path=dataset_path,
+        output_path=output_path,
+        cds_to_calibrate=cds_to_calibrate,
         cd_subset=cd_subset,
-        dataset_path=str(dataset_path),
-        output_path=str(output_path),
         county_filter=NYC_COUNTIES,
         rerandomize_takeup=rerandomize_takeup,
-        calibration_blocks=calibration_blocks,
         takeup_filter=takeup_filter,
     )
 
@@ -259,27 +253,90 @@ def build_national_h5(
     blocks: np.ndarray,
     dataset_path: Path,
     output_dir: Path,
+    cds_to_calibrate: List[str] = None,
+    rerandomize_takeup: bool = False,
+    takeup_filter: List[str] = None,
 ) -> Path:
-    """Build national US.h5 by cloning records for each nonzero weight.
+    """Build national US.h5. Thin wrapper around build_h5.
 
-    Each nonzero entry in the (n_geo, n_hh) weight matrix represents a
-    distinct household clone placed at a specific census block. This
-    function clones entity arrays via fancy indexing, derives geography
-    from the blocks array, reindexes all entity IDs, and writes the H5.
+    Args:
+        weights: Stacked weight vector.
+        blocks: Block GEOID per weight entry.
+        dataset_path: Path to base dataset H5 file.
+        output_dir: Output directory for H5 file.
+        cds_to_calibrate: Ordered list of CD GEOIDs. Required.
+        rerandomize_takeup: Re-draw takeup using block-level seeds.
+        takeup_filter: List of takeup vars to re-randomize.
+
+    Returns:
+        Path to output H5 file.
     """
-    import h5py
-    from collections import defaultdict
-    from policyengine_core.enums import Enum
-    from policyengine_us_data.calibration.block_assignment import (
-        derive_geography_from_blocks,
-    )
-    from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
-        County,
-    )
+    if cds_to_calibrate is None:
+        raise ValueError("cds_to_calibrate is required for build_national_h5")
 
     national_dir = output_dir / "national"
     national_dir.mkdir(parents=True, exist_ok=True)
     output_path = national_dir / "US.h5"
+
+    return build_h5(
+        weights=weights,
+        blocks=blocks,
+        dataset_path=dataset_path,
+        output_path=output_path,
+        cds_to_calibrate=cds_to_calibrate,
+        cd_subset=None,
+        rerandomize_takeup=rerandomize_takeup,
+        takeup_filter=takeup_filter,
+    )
+
+
+def build_h5(
+    weights: np.ndarray,
+    blocks: np.ndarray,
+    dataset_path: Path,
+    output_path: Path,
+    cds_to_calibrate: List[str],
+    cd_subset: List[str] = None,
+    county_filter: set = None,
+    rerandomize_takeup: bool = False,
+    takeup_filter: List[str] = None,
+) -> Path:
+    """Build an H5 file by cloning records for each nonzero weight.
+
+    Unified builder that replaces both build_national_h5 and
+    create_sparse_cd_stacked_dataset. Uses fancy indexing on a
+    single loaded simulation instead of looping over CDs.
+
+    Each nonzero entry in the (n_geo, n_hh) weight matrix represents
+    a distinct household clone. This function clones entity arrays,
+    derives geography from blocks, reindexes entity IDs, recalculates
+    SPM thresholds, optionally rerandomizes takeup, and writes the H5.
+
+    Args:
+        weights: Stacked weight vector, shape (n_geo * n_hh,).
+        blocks: Block GEOID per weight entry, same shape.
+        dataset_path: Path to base dataset H5 file.
+        output_path: Where to write the output H5 file.
+        cds_to_calibrate: Ordered list of CD GEOIDs defining
+            weight matrix row ordering.
+        cd_subset: If provided, only include rows for these CDs.
+        county_filter: If provided, scale weights by P(target|CD)
+            for city datasets.
+        rerandomize_takeup: Re-draw takeup using block-level seeds.
+        takeup_filter: List of takeup vars to re-randomize.
+
+    Returns:
+        Path to the output H5 file.
+    """
+    import h5py
+    from collections import defaultdict
+    from policyengine_core.enums import Enum
+    from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
+        County,
+    )
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # === Load base simulation ===
     sim = Microsimulation(dataset=str(dataset_path))
@@ -292,24 +349,63 @@ def build_national_h5(
             f"Weight vector length {weights.shape[0]} is not "
             f"divisible by n_hh={n_hh}"
         )
+    n_geo = weights.shape[0] // n_hh
+
+    # Generate blocks from assign_geography_for_cd if not provided
+    if blocks is None:
+        print("No blocks provided, generating from CD assignments...")
+        all_blocks = np.empty(n_geo * n_hh, dtype="U15")
+        for geo_idx, cd in enumerate(cds_to_calibrate):
+            geo = assign_geography_for_cd(
+                cd_geoid=cd,
+                n_households=n_hh,
+                seed=42 + int(cd),
+            )
+            start = geo_idx * n_hh
+            all_blocks[start : start + n_hh] = geo["block_geoid"]
+        blocks = all_blocks
+
     if len(blocks) != len(weights):
         raise ValueError(
             f"Blocks length {len(blocks)} != " f"weights length {len(weights)}"
         )
-    n_geo = weights.shape[0] // n_hh
 
-    print(f"\n{'='*60}")
-    print(
-        f"Building national US.h5 " f"({n_geo} geo units, {n_hh} households)"
+    # === Reshape and filter weight matrix ===
+    W = weights.reshape(n_geo, n_hh).copy()
+
+    # CD subset filtering: zero out rows for CDs not in subset
+    if cd_subset is not None:
+        cd_index_set = set()
+        for cd in cd_subset:
+            if cd not in cds_to_calibrate:
+                raise ValueError(f"CD {cd} not in calibrated CDs list")
+            cd_index_set.add(cds_to_calibrate.index(cd))
+        for i in range(n_geo):
+            if i not in cd_index_set:
+                W[i, :] = 0
+
+    # County filtering: scale weights by P(target_counties | CD)
+    if county_filter is not None:
+        for geo_idx in range(n_geo):
+            cd = cds_to_calibrate[geo_idx]
+            p = get_county_filter_probability(cd, county_filter)
+            W[geo_idx, :] *= p
+
+    n_active_cds = len(cd_subset) if cd_subset is not None else n_geo
+    label = (
+        f"{n_active_cds} CDs"
+        if cd_subset is not None
+        else f"{n_geo} geo units"
     )
+    print(f"\n{'='*60}")
+    print(f"Building {output_path.name} ({label}, {n_hh} households)")
     print(f"{'='*60}")
 
     # === Identify active clones ===
-    W = weights.reshape(n_geo, n_hh)
     active_geo, active_hh = np.where(W > 0)
     n_clones = len(active_geo)
     clone_weights = W[active_geo, active_hh]
-    active_blocks = blocks[active_geo * n_hh + active_hh]
+    active_blocks = blocks.reshape(n_geo, n_hh)[active_geo, active_hh]
 
     empty_count = np.sum(active_blocks == "")
     if empty_count > 0:
@@ -452,6 +548,7 @@ def build_national_h5(
     vars_to_save = set(sim.input_variables)
     vars_to_save.add("county")
     vars_to_save.add("spm_unit_spm_threshold")
+    vars_to_save.add("congressional_district_geoid")
     for gv in [
         "block_geoid",
         "tract_geoid",
@@ -567,6 +664,102 @@ def build_national_h5(
                 time_period: geography[gv].astype("S"),
             }
 
+    # === Gap 4: Congressional district GEOID ===
+    clone_cd_geoids = np.array(
+        [int(cds_to_calibrate[g]) for g in active_geo],
+        dtype=np.int32,
+    )
+    data["congressional_district_geoid"] = {
+        time_period: clone_cd_geoids,
+    }
+
+    # === Gap 1: SPM threshold recalculation ===
+    print("Recalculating SPM thresholds...")
+    cd_geoadj_values = load_cd_geoadj_values(cds_to_calibrate)
+    # Build per-SPM-unit geoadj from clone's CD
+    spm_clone_ids = np.repeat(
+        np.arange(n_clones, dtype=np.int64),
+        entities_per_clone["spm_unit"],
+    )
+    spm_unit_geoadj = np.array(
+        [
+            cd_geoadj_values[cds_to_calibrate[active_geo[c]]]
+            for c in spm_clone_ids
+        ],
+        dtype=np.float64,
+    )
+
+    # Get cloned person ages and SPM unit IDs
+    person_ages = sim.calculate("age", map_to="person").values[
+        person_clone_idx
+    ]
+
+    # Get cloned tenure types
+    spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
+    spm_tenure_periods = spm_tenure_holder.get_known_periods()
+    if spm_tenure_periods:
+        raw_tenure = spm_tenure_holder.get_array(spm_tenure_periods[0])
+        if hasattr(raw_tenure, "decode_to_str"):
+            raw_tenure = raw_tenure.decode_to_str().astype("S")
+        else:
+            raw_tenure = np.array(raw_tenure).astype("S")
+        spm_tenure_cloned = raw_tenure[entity_clone_idx["spm_unit"]]
+    else:
+        spm_tenure_cloned = np.full(
+            len(entity_clone_idx["spm_unit"]),
+            b"RENTER",
+            dtype="S30",
+        )
+
+    new_spm_thresholds = calculate_spm_thresholds_vectorized(
+        person_ages=person_ages,
+        person_spm_unit_ids=new_person_entity_ids["spm_unit"],
+        spm_unit_tenure_types=spm_tenure_cloned,
+        spm_unit_geoadj=spm_unit_geoadj,
+        year=time_period,
+    )
+    data["spm_unit_spm_threshold"] = {
+        time_period: new_spm_thresholds,
+    }
+
+    # === Gap 2: Takeup rerandomization ===
+    if rerandomize_takeup:
+        print("Re-randomizing takeup draws...")
+        # Build entity->HH index for cloned entities
+        entity_hh_indices = {
+            "person": np.repeat(
+                np.arange(n_clones, dtype=np.int64),
+                persons_per_clone,
+            ).astype(np.int64),
+            "tax_unit": np.repeat(
+                np.arange(n_clones, dtype=np.int64),
+                entities_per_clone["tax_unit"],
+            ).astype(np.int64),
+            "spm_unit": np.repeat(
+                np.arange(n_clones, dtype=np.int64),
+                entities_per_clone["spm_unit"],
+            ).astype(np.int64),
+        }
+        entity_counts = {
+            "person": n_persons,
+            "tax_unit": len(entity_clone_idx["tax_unit"]),
+            "spm_unit": len(entity_clone_idx["spm_unit"]),
+        }
+        # HH-level state_fips from geography
+        hh_state_fips = geography["state_fips"].astype(np.int32)
+
+        takeup_results = apply_block_takeup_to_arrays(
+            hh_blocks=active_blocks,
+            hh_state_fips=hh_state_fips,
+            hh_ids=new_hh_ids,
+            entity_hh_indices=entity_hh_indices,
+            entity_counts=entity_counts,
+            time_period=time_period,
+            takeup_filter=takeup_filter,
+        )
+        for var_name, bools in takeup_results.items():
+            data[var_name] = {time_period: bools}
+
     # === Write H5 ===
     with h5py.File(str(output_path), "w") as f:
         for variable, periods in data.items():
@@ -574,7 +767,7 @@ def build_national_h5(
             for period, values in periods.items():
                 grp.create_dataset(str(period), data=values)
 
-    print(f"\nNational H5 saved to {output_path}")
+    print(f"\nH5 saved to {output_path}")
 
     with h5py.File(str(output_path), "r") as f:
         tp = str(time_period)
@@ -627,7 +820,7 @@ def build_and_upload_states(
     states_dir = output_dir / "states"
     states_dir.mkdir(parents=True, exist_ok=True)
 
-    hf_queue = []  # Queue for batched HuggingFace uploads
+    hf_queue = []
 
     for state_fips, state_code in STATE_CODES.items():
         if state_code in completed_states:
@@ -642,35 +835,30 @@ def build_and_upload_states(
             continue
 
         output_path = states_dir / f"{state_code}.h5"
-        print(f"\n{'='*60}")
-        print(f"Building {state_code} ({len(cd_subset)} CDs)")
-        print(f"{'='*60}")
 
         try:
-            create_sparse_cd_stacked_dataset(
-                w,
-                cds_to_calibrate,
+            build_h5(
+                weights=w,
+                blocks=calibration_blocks,
+                dataset_path=dataset_path,
+                output_path=output_path,
+                cds_to_calibrate=cds_to_calibrate,
                 cd_subset=cd_subset,
-                dataset_path=str(dataset_path),
-                output_path=str(output_path),
                 rerandomize_takeup=rerandomize_takeup,
-                calibration_blocks=calibration_blocks,
                 takeup_filter=takeup_filter,
             )
 
             print(f"Uploading {state_code}.h5 to GCP...")
             upload_local_area_file(str(output_path), "states", skip_hf=True)
 
-            # Queue for batched HuggingFace upload
             hf_queue.append((str(output_path), "states"))
-
             record_completed_state(state_code)
             print(f"Completed {state_code}")
 
-            # Flush HF queue every batch_size files
             if len(hf_queue) >= hf_batch_size:
                 print(
-                    f"\nUploading batch of {len(hf_queue)} files to HuggingFace..."
+                    f"\nUploading batch of {len(hf_queue)} "
+                    f"files to HuggingFace..."
                 )
                 upload_local_area_batch_to_hf(hf_queue)
                 hf_queue = []
@@ -679,10 +867,10 @@ def build_and_upload_states(
             print(f"ERROR building {state_code}: {e}")
             raise
 
-    # Flush remaining files to HuggingFace
     if hf_queue:
         print(
-            f"\nUploading final batch of {len(hf_queue)} files to HuggingFace..."
+            f"\nUploading final batch of {len(hf_queue)} "
+            f"files to HuggingFace..."
         )
         upload_local_area_batch_to_hf(hf_queue)
 
@@ -706,7 +894,7 @@ def build_and_upload_districts(
     districts_dir = output_dir / "districts"
     districts_dir.mkdir(parents=True, exist_ok=True)
 
-    hf_queue = []  # Queue for batched HuggingFace uploads
+    hf_queue = []
 
     for i, cd_geoid in enumerate(cds_to_calibrate):
         cd_int = int(cd_geoid)
@@ -722,35 +910,33 @@ def build_and_upload_districts(
             continue
 
         output_path = districts_dir / f"{friendly_name}.h5"
-        print(f"\n{'='*60}")
-        print(f"[{i+1}/{len(cds_to_calibrate)}] Building {friendly_name}")
-        print(f"{'='*60}")
+        print(
+            f"\n[{i+1}/{len(cds_to_calibrate)}] " f"Building {friendly_name}"
+        )
 
         try:
-            create_sparse_cd_stacked_dataset(
-                w,
-                cds_to_calibrate,
+            build_h5(
+                weights=w,
+                blocks=calibration_blocks,
+                dataset_path=dataset_path,
+                output_path=output_path,
+                cds_to_calibrate=cds_to_calibrate,
                 cd_subset=[cd_geoid],
-                dataset_path=str(dataset_path),
-                output_path=str(output_path),
                 rerandomize_takeup=rerandomize_takeup,
-                calibration_blocks=calibration_blocks,
                 takeup_filter=takeup_filter,
             )
 
             print(f"Uploading {friendly_name}.h5 to GCP...")
             upload_local_area_file(str(output_path), "districts", skip_hf=True)
 
-            # Queue for batched HuggingFace upload
             hf_queue.append((str(output_path), "districts"))
-
             record_completed_district(friendly_name)
             print(f"Completed {friendly_name}")
 
-            # Flush HF queue every batch_size files
             if len(hf_queue) >= hf_batch_size:
                 print(
-                    f"\nUploading batch of {len(hf_queue)} files to HuggingFace..."
+                    f"\nUploading batch of {len(hf_queue)} "
+                    f"files to HuggingFace..."
                 )
                 upload_local_area_batch_to_hf(hf_queue)
                 hf_queue = []
@@ -759,10 +945,10 @@ def build_and_upload_districts(
             print(f"ERROR building {friendly_name}: {e}")
             raise
 
-    # Flush remaining files to HuggingFace
     if hf_queue:
         print(
-            f"\nUploading final batch of {len(hf_queue)} files to HuggingFace..."
+            f"\nUploading final batch of {len(hf_queue)} "
+            f"files to HuggingFace..."
         )
         upload_local_area_batch_to_hf(hf_queue)
 
@@ -786,7 +972,7 @@ def build_and_upload_cities(
     cities_dir = output_dir / "cities"
     cities_dir.mkdir(parents=True, exist_ok=True)
 
-    hf_queue = []  # Queue for batched HuggingFace uploads
+    hf_queue = []
 
     # NYC
     if "NYC" in completed_cities:
@@ -797,20 +983,17 @@ def build_and_upload_cities(
             print("No NYC-related CDs found, skipping")
         else:
             output_path = cities_dir / "NYC.h5"
-            print(f"\n{'='*60}")
-            print(f"Building NYC ({len(cd_subset)} CDs)")
-            print(f"{'='*60}")
 
             try:
-                create_sparse_cd_stacked_dataset(
-                    w,
-                    cds_to_calibrate,
+                build_h5(
+                    weights=w,
+                    blocks=calibration_blocks,
+                    dataset_path=dataset_path,
+                    output_path=output_path,
+                    cds_to_calibrate=cds_to_calibrate,
                     cd_subset=cd_subset,
-                    dataset_path=str(dataset_path),
-                    output_path=str(output_path),
                     county_filter=NYC_COUNTIES,
                     rerandomize_takeup=rerandomize_takeup,
-                    calibration_blocks=calibration_blocks,
                     takeup_filter=takeup_filter,
                 )
 
@@ -819,9 +1002,7 @@ def build_and_upload_cities(
                     str(output_path), "cities", skip_hf=True
                 )
 
-                # Queue for batched HuggingFace upload
                 hf_queue.append((str(output_path), "cities"))
-
                 record_completed_city("NYC")
                 print("Completed NYC")
 
@@ -829,10 +1010,10 @@ def build_and_upload_cities(
                 print(f"ERROR building NYC: {e}")
                 raise
 
-    # Flush remaining files to HuggingFace
     if hf_queue:
         print(
-            f"\nUploading batch of {len(hf_queue)} city files to HuggingFace..."
+            f"\nUploading batch of {len(hf_queue)} "
+            f"city files to HuggingFace..."
         )
         upload_local_area_batch_to_hf(hf_queue)
 

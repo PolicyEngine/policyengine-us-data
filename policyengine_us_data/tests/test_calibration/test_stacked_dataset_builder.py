@@ -1,4 +1,8 @@
-"""Tests for stacked_dataset_builder.py using deterministic test fixture."""
+"""Tests for stacked_dataset_builder.py using deterministic test fixture.
+
+Tests now exercise the unified build_h5 function via the
+create_sparse_cd_stacked_dataset wrapper.
+"""
 
 import os
 import tempfile
@@ -69,12 +73,7 @@ def stacked_result(test_weights):
             )
         )
 
-        mapping_path = os.path.join(
-            tmpdir, "mappings", "test_output_household_mapping.csv"
-        )
-        mapping_df = pd.read_csv(mapping_path)
-
-        yield {"hh_df": hh_df, "mapping_df": mapping_df}
+        yield {"hh_df": hh_df}
 
 
 class TestStackedDatasetBuilder:
@@ -106,27 +105,6 @@ class TestStackedDatasetBuilder:
         hh_df = stacked_result["hh_df"]
         assert hh_df["household_id"].nunique() == len(hh_df)
 
-    def test_mapping_has_required_columns(self, stacked_result):
-        """Mapping CSV should have expected columns."""
-        mapping_df = stacked_result["mapping_df"]
-        required_cols = [
-            "new_household_id",
-            "original_household_id",
-            "congressional_district",
-            "state_fips",
-        ]
-        for col in required_cols:
-            assert col in mapping_df.columns
-
-    def test_mapping_covers_all_output_households(self, stacked_result):
-        """Every output household should be in the mapping."""
-        hh_df = stacked_result["hh_df"]
-        mapping_df = stacked_result["mapping_df"]
-
-        output_hh_ids = set(hh_df["household_id"].values)
-        mapped_hh_ids = set(mapping_df["new_household_id"].values)
-        assert output_hh_ids == mapped_hh_ids
-
     def test_weights_are_positive(self, stacked_result):
         """All household weights should be positive."""
         hh_df = stacked_result["hh_df"]
@@ -141,15 +119,17 @@ class TestStackedDatasetBuilder:
             state_fips = row["state_fips"]
 
             if state_fips == 37:
-                assert county.endswith("_NC"), (
-                    f"NC county should end with _NC: {county}"
-                )
+                assert county.endswith(
+                    "_NC"
+                ), f"NC county should end with _NC: {county}"
             elif state_fips == 2:
-                assert county.endswith("_AK"), (
-                    f"AK county should end with _AK: {county}"
-                )
+                assert county.endswith(
+                    "_AK"
+                ), f"AK county should end with _AK: {county}"
 
-    def test_household_count_matches_weights(self, stacked_result, test_weights):
+    def test_household_count_matches_weights(
+        self, stacked_result, test_weights
+    ):
         """Number of output households should match non-zero weights."""
         hh_df = stacked_result["hh_df"]
         expected_households = (test_weights > 0).sum()
@@ -177,9 +157,8 @@ def stacked_sim(test_weights):
 @pytest.fixture(scope="module")
 def stacked_sim_with_overlap(n_households):
     """Stacked dataset where SAME households appear in BOTH CDs."""
-    # Force same households to appear in both CDs - tests reindexing
     w = np.zeros(n_households * len(TEST_CDS), dtype=float)
-    overlap_households = [0, 1, 2]  # Same households in both CDs
+    overlap_households = [0, 1, 2]
     for cd_idx in range(len(TEST_CDS)):
         for hh_idx in overlap_households:
             w[cd_idx * n_households + hh_idx] = 1.0
@@ -203,45 +182,52 @@ class TestEntityReindexing:
     def test_family_ids_are_unique(self, stacked_sim):
         """Family IDs should be globally unique across all CDs."""
         family_ids = stacked_sim.calculate("family_id", map_to="family").values
-        assert len(family_ids) == len(set(family_ids)), "Family IDs should be unique"
+        assert len(family_ids) == len(
+            set(family_ids)
+        ), "Family IDs should be unique"
 
     def test_tax_unit_ids_are_unique(self, stacked_sim):
         """Tax unit IDs should be globally unique."""
-        tax_unit_ids = stacked_sim.calculate("tax_unit_id", map_to="tax_unit").values
-        assert len(tax_unit_ids) == len(set(tax_unit_ids)), (
-            "Tax unit IDs should be unique"
-        )
+        tax_unit_ids = stacked_sim.calculate(
+            "tax_unit_id", map_to="tax_unit"
+        ).values
+        assert len(tax_unit_ids) == len(
+            set(tax_unit_ids)
+        ), "Tax unit IDs should be unique"
 
     def test_spm_unit_ids_are_unique(self, stacked_sim):
         """SPM unit IDs should be globally unique."""
-        spm_unit_ids = stacked_sim.calculate("spm_unit_id", map_to="spm_unit").values
-        assert len(spm_unit_ids) == len(set(spm_unit_ids)), (
-            "SPM unit IDs should be unique"
-        )
+        spm_unit_ids = stacked_sim.calculate(
+            "spm_unit_id", map_to="spm_unit"
+        ).values
+        assert len(spm_unit_ids) == len(
+            set(spm_unit_ids)
+        ), "SPM unit IDs should be unique"
 
     def test_person_family_id_matches_family_id(self, stacked_sim):
         """person_family_id should reference valid family_ids."""
         person_family_ids = stacked_sim.calculate(
             "person_family_id", map_to="person"
         ).values
-        family_ids = set(stacked_sim.calculate("family_id", map_to="family").values)
+        family_ids = set(
+            stacked_sim.calculate("family_id", map_to="family").values
+        )
         for pf_id in person_family_ids:
-            assert pf_id in family_ids, f"person_family_id {pf_id} not in family_ids"
+            assert (
+                pf_id in family_ids
+            ), f"person_family_id {pf_id} not in family_ids"
 
     def test_family_ids_unique_across_cds(self, stacked_sim_with_overlap):
-        """Same household in different CDs should have different family_ids."""
+        """Same HH in different CDs should get different family_ids."""
         sim = stacked_sim_with_overlap["sim"]
         n_overlap = stacked_sim_with_overlap["n_overlap"]
         n_cds = len(TEST_CDS)
 
         family_ids = sim.calculate("family_id", map_to="family").values
-        household_ids = sim.calculate("household_id", map_to="household").values
 
-        # Should have n_overlap * n_cds unique families (one per HH-CD pair)
         expected_families = n_overlap * n_cds
         assert len(family_ids) == expected_families, (
-            f"Expected {expected_families} families (same HH in {n_cds} CDs), "
-            f"got {len(family_ids)}"
+            f"Expected {expected_families} families, " f"got {len(family_ids)}"
         )
         assert len(set(family_ids)) == expected_families, (
             f"Family IDs not unique: {len(set(family_ids))} unique "

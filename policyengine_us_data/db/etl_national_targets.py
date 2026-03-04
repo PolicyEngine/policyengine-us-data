@@ -237,19 +237,40 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "notes": "~5.8% of total OASDI (spouses/children of retired+disabled)",
             "year": HARDCODED_YEAR,
         },
-        # IRA contribution totals from IRS SOI accumulation tables
+        # Retirement contribution targets — see issue #553
         {
             "variable": "traditional_ira_contributions",
-            "value": 25e9,
-            "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
-            "notes": "Tax year 2022 (~5M x $4,510 avg) uprated ~12% to 2024",
+            "value": 13.2e9,
+            "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
+            "notes": "SOI 1304 Table 1.4 (TY 2022) 'IRA payments' deduction, col 124",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "variable": "traditional_401k_contributions",
+            "value": 482.7e9,
+            "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
+            "notes": "BEA/FRED employee DC deferrals ($567.9B) x 85% traditional share (Vanguard HAS 2024)",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "variable": "roth_401k_contributions",
+            "value": 85.2e9,
+            "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
+            "notes": "BEA/FRED employee DC deferrals ($567.9B) x 15% Roth share (Vanguard HAS 2024)",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "variable": "self_employed_pension_contribution_ald",
+            "value": 29.5e9,
+            "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
+            "notes": "SOI 1304 Table 1.4 (TY 2022) 'Payments to a Keogh plan', col 116",
             "year": HARDCODED_YEAR,
         },
         {
             "variable": "roth_ira_contributions",
-            "value": 39e9,
+            "value": 35.0e9,
             "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
-            "notes": "Tax year 2022 (~10M x $3,482 avg) uprated ~12% to 2024",
+            "notes": "IRS SOI IRA Accumulation Tables 5 & 6 (TY 2022), 10.04M contributors",
             "year": HARDCODED_YEAR,
         },
     ]

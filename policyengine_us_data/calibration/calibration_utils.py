@@ -521,6 +521,22 @@ def get_cd_index_mapping(db_uri: str = None):
     return cd_to_index, index_to_cd, cds_ordered
 
 
+def save_geo_labels(labels: List[str], path) -> None:
+    """Save geo unit labels to JSON."""
+    from pathlib import Path
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(labels, f)
+
+
+def load_geo_labels(path) -> List[str]:
+    """Load geo unit labels from JSON."""
+    with open(path) as f:
+        return json.load(f)
+
+
 def load_cd_geoadj_values(
     cds_to_calibrate: List[str],
 ) -> Dict[str, float]:

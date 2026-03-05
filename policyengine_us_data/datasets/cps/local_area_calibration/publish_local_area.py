@@ -445,9 +445,7 @@ def build_and_upload_cities(
                 )
 
                 # Upload HDFStore file if it exists
-                hdfstore_path = str(output_path).replace(
-                    ".h5", ".hdfstore.h5"
-                )
+                hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
                 if os.path.exists(hdfstore_path):
                     print("Uploading NYC.hdfstore.h5 to GCP...")
                     upload_local_area_file(

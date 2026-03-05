@@ -140,8 +140,7 @@ def _split_into_entity_dfs(combined_df, system, vars_to_save, time_period):
         df = combined_df[src_cols].copy()
         # Strip period suffix
         df.columns = [
-            c[: -len(suffix)] if c.endswith(suffix) else c
-            for c in df.columns
+            c[: -len(suffix)] if c.endswith(suffix) else c for c in df.columns
         ]
         # Rename person_X_id -> X_id if needed
         if src_id == person_ref and person_ref != id_col:

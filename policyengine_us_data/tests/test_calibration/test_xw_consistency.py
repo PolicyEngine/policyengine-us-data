@@ -17,7 +17,9 @@ import pytest
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-DATASET_PATH = str(STORAGE_FOLDER / "stratified_extended_cps_2024.h5")
+DATASET_PATH = str(
+    STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
+)
 DB_PATH = str(STORAGE_FOLDER / "calibration" / "policy_data.db")
 DB_URI = f"sqlite:///{DB_PATH}"
 

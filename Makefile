@@ -87,8 +87,8 @@ promote-database:
 	@echo "Copied DB and raw_inputs to HF clone. Now cd to HF repo, commit, and push."
 
 promote-dataset:
-	cp policyengine_us_data/storage/stratified_extended_cps_2024.h5 \
-		$(HF_CLONE_DIR)/calibration/stratified_extended_cps.h5
+	cp policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5 \
+		$(HF_CLONE_DIR)/calibration/source_imputed_stratified_extended_cps.h5
 	@echo "Copied dataset to HF clone. Now cd to HF repo, commit, and push."
 
 data: download
@@ -99,6 +99,7 @@ data: download
 	python policyengine_us_data/datasets/puf/puf.py
 	python policyengine_us_data/datasets/cps/extended_cps.py
 	python policyengine_us_data/calibration/create_stratified_cps.py
+	python policyengine_us_data/calibration/create_source_imputed_cps.py
 
 data-legacy: data
 	python policyengine_us_data/datasets/cps/enhanced_cps.py
@@ -128,9 +129,9 @@ upload-calibration:
 
 upload-dataset:
 	python -c "from policyengine_us_data.utils.huggingface import upload; \
-		upload('policyengine_us_data/storage/stratified_extended_cps_2024.h5', \
+		upload('policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5', \
 		'policyengine/policyengine-us-data', \
-		'calibration/stratified_extended_cps.h5')"
+		'calibration/source_imputed_stratified_extended_cps.h5')"
 	@echo "Dataset uploaded to HF."
 
 upload-database:

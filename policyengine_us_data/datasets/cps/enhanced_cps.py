@@ -202,7 +202,7 @@ class EnhancedCPS(Dataset):
             data["household_weight"][year] = optimised_weights
 
             # Validate dense weights
-            w = optimised_weights_dense
+            w = optimised_weights
             if np.any(np.isnan(w)):
                 raise ValueError(
                     f"Year {year}: household_weight contains NaN values"

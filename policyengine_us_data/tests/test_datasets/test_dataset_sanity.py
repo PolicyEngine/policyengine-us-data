@@ -48,8 +48,7 @@ def test_ecps_self_employment_income_positive(ecps_sim):
 
 def test_ecps_household_count(ecps_sim):
     """Household count should be roughly 130-160M."""
-    weights = ecps_sim.calculate("household_weight")
-    total_hh = weights.sum()
+    total_hh = ecps_sim.calculate("household_weight").values.sum()
     assert (
         100e6 < total_hh < 200e6
     ), f"Total households = {total_hh:.2e}, expected 100M-200M."
@@ -57,8 +56,9 @@ def test_ecps_household_count(ecps_sim):
 
 def test_ecps_person_count(ecps_sim):
     """Weighted person count should be roughly 330M."""
-    weights = ecps_sim.calculate("household_weight", map_to="person")
-    total_people = weights.sum()
+    total_people = ecps_sim.calculate(
+        "household_weight", map_to="person"
+    ).values.sum()
     assert (
         250e6 < total_people < 400e6
     ), f"Total people = {total_people:.2e}, expected 250M-400M."
@@ -100,8 +100,7 @@ def test_cps_employment_income_positive(cps_sim):
 
 
 def test_cps_household_count(cps_sim):
-    weights = cps_sim.calculate("household_weight")
-    total_hh = weights.sum()
+    total_hh = cps_sim.calculate("household_weight").values.sum()
     assert 100e6 < total_hh < 200e6, f"CPS total households = {total_hh:.2e}."
 
 
@@ -129,8 +128,7 @@ def test_sparse_employment_income_positive(sparse_sim):
 
 
 def test_sparse_household_count(sparse_sim):
-    weights = sparse_sim.calculate("household_weight")
-    total_hh = weights.sum()
+    total_hh = sparse_sim.calculate("household_weight").values.sum()
     assert (
         100e6 < total_hh < 200e6
     ), f"Sparse total households = {total_hh:.2e}, expected 100M-200M."

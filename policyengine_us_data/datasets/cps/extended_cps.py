@@ -57,15 +57,6 @@ class ExtendedCPS(Dataset):
     # needed by the dataset loader before formulas can run).
     _KEEP_FORMULA_VARS = {"person_id"}
 
-    # CPS stores aggregate variables (e.g. employment_income) but
-    # policyengine-us computes them via ``adds`` from input variables
-    # (e.g. employment_income_before_lsr).  Rename before dropping so
-    # the raw data is preserved under the correct input-variable name.
-    _RENAME_BEFORE_DROP = {
-        "employment_income": "employment_income_before_lsr",
-        "self_employment_income": ("self_employment_income_before_lsr"),
-    }
-
     @classmethod
     def _drop_formula_variables(cls, data):
         """Remove variables that are computed by policyengine-us.
@@ -73,15 +64,28 @@ class ExtendedCPS(Dataset):
         Variables with formulas, ``adds``, or ``subtracts`` are
         recomputed by the simulation engine, so storing them wastes
         space and can mislead validation.
+
+        Aggregate variables whose ``adds`` include a behavioral-
+        response input (e.g. ``employment_income_before_lsr``) are
+        renamed to that input before dropping so the raw data is
+        preserved under the correct input-variable name.
         """
         from policyengine_us import CountryTaxBenefitSystem
 
-        for src, dst in cls._RENAME_BEFORE_DROP.items():
-            if src in data and dst not in data:
-                logger.info("Renaming %s -> %s before drop", src, dst)
-                data[dst] = data.pop(src)
-
         tbs = CountryTaxBenefitSystem()
+
+        _SUFFIXES = ("_before_lsr", "_before_response")
+        for name, var in tbs.variables.items():
+            for add_var in getattr(var, "adds", None) or []:
+                if any(add_var.endswith(s) for s in _SUFFIXES):
+                    if name in data and add_var not in data:
+                        logger.info(
+                            "Renaming %s -> %s before drop",
+                            name,
+                            add_var,
+                        )
+                        data[add_var] = data.pop(name)
+
         formula_vars = {
             name
             for name, var in tbs.variables.items()

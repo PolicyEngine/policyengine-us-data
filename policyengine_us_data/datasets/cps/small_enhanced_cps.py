@@ -131,7 +131,7 @@ def create_sparse_ecps():
     # Validate critical variables exist before writing
     critical_vars = [
         "household_weight",
-        "employment_income",
+        "employment_income_before_lsr",
         "household_id",
         "person_id",
     ]

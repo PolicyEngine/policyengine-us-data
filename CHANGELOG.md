@@ -1,3 +1,10 @@
+## [1.72.0] - 2026-03-05
+
+### Added
+
+- Hardened data pipeline against corrupted dataset uploads: pre-upload validation gate, post-generation assertions in enhanced CPS and sparse builders, CI workflow safety guards, file size checks, and comprehensive sanity tests for all dataset variants (5 layers of defense).
+
+
 ## [1.71.4] - 2026-03-04
 
 ### Fixed

@@ -154,23 +154,39 @@ def build_areas_worker(
 
     work_items_json = json.dumps(work_items)
 
+    worker_cmd = [
+        "uv",
+        "run",
+        "python",
+        "modal_app/worker_script.py",
+        "--work-items",
+        work_items_json,
+        "--weights-path",
+        calibration_inputs["weights"],
+        "--dataset-path",
+        calibration_inputs["dataset"],
+        "--db-path",
+        calibration_inputs["database"],
+        "--output-dir",
+        str(output_dir),
+    ]
+    if "blocks" in calibration_inputs:
+        worker_cmd.extend(
+            [
+                "--calibration-blocks",
+                calibration_inputs["blocks"],
+            ]
+        )
+    if "geo_labels" in calibration_inputs:
+        worker_cmd.extend(
+            [
+                "--geo-labels",
+                calibration_inputs["geo_labels"],
+            ]
+        )
+
     result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "modal_app/worker_script.py",
-            "--work-items",
-            work_items_json,
-            "--weights-path",
-            calibration_inputs["weights"],
-            "--dataset-path",
-            calibration_inputs["dataset"],
-            "--db-path",
-            calibration_inputs["database"],
-            "--output-dir",
-            str(output_dir),
-        ],
+        worker_cmd,
         capture_output=True,
         text=True,
         env=os.environ.copy(),
@@ -254,18 +270,18 @@ print(json.dumps(manifest))
 
 @app.function(
     image=image,
-    secrets=[hf_secret, gcp_secret],
+    secrets=[hf_secret],
     volumes={VOLUME_MOUNT: staging_volume},
     memory=8192,
     timeout=14400,
 )
 def upload_to_staging(branch: str, version: str, manifest: Dict) -> str:
     """
-    Upload files to GCS (production) and HuggingFace (staging only).
+    Upload files to HuggingFace staging only.
 
+    GCS is updated during promote_publish, not here.
     Promote must be run separately via promote_publish.
     """
-    setup_gcp_credentials()
     setup_repo(branch)
 
     manifest_json = json.dumps(manifest)
@@ -280,10 +296,7 @@ def upload_to_staging(branch: str, version: str, manifest: Dict) -> str:
 import json
 from pathlib import Path
 from policyengine_us_data.utils.manifest import verify_manifest
-from policyengine_us_data.utils.data_upload import (
-    upload_local_area_file,
-    upload_to_staging_hf,
-)
+from policyengine_us_data.utils.data_upload import upload_to_staging_hf
 
 manifest = json.loads('''{manifest_json}''')
 version = "{version}"
@@ -305,20 +318,6 @@ for rel_path in manifest["files"].keys():
     local_path = version_dir / rel_path
     files_with_paths.append((local_path, rel_path))
 
-# Upload to GCS (direct to production paths)
-print(f"Uploading {{len(files_with_paths)}} files to GCS...")
-gcs_count = 0
-for local_path, rel_path in files_with_paths:
-    subdirectory = str(Path(rel_path).parent)
-    upload_local_area_file(
-        str(local_path),
-        subdirectory,
-        version=version,
-        skip_hf=True,
-    )
-    gcs_count += 1
-print(f"Uploaded {{gcs_count}} files to GCS")
-
 # Upload to HuggingFace staging/
 print(f"Uploading {{len(files_with_paths)}} files to HuggingFace staging/...")
 hf_count = upload_to_staging_hf(files_with_paths, version)
@@ -336,24 +335,26 @@ print(f"Staged version {{version}} for promotion")
 
     return (
         f"Staged version {version} with {len(manifest['files'])} files. "
-        f"Run promote workflow to publish to HuggingFace production."
+        f"Run promote workflow to publish to HuggingFace production and GCS."
     )
 
 
 @app.function(
     image=image,
-    secrets=[hf_secret],
+    secrets=[hf_secret, gcp_secret],
     volumes={VOLUME_MOUNT: staging_volume},
     memory=4096,
     timeout=3600,
 )
 def promote_publish(branch: str = "main", version: str = "") -> str:
     """
-    Promote staged files from HF staging/ to production paths, then cleanup.
+    Promote staged files from HF staging/ to production paths,
+    upload to GCS, then cleanup HF staging.
 
     Reads the manifest from the Modal staging volume to determine which
     files to promote.
     """
+    setup_gcp_credentials()
     setup_repo(branch)
 
     staging_dir = Path(VOLUME_MOUNT)
@@ -379,17 +380,34 @@ def promote_publish(branch: str = "main", version: str = "") -> str:
             "-c",
             f"""
 import json
+from pathlib import Path
 from policyengine_us_data.utils.data_upload import (
     promote_staging_to_production_hf,
     cleanup_staging_hf,
+    upload_local_area_file,
 )
 
 rel_paths = json.loads('''{rel_paths_json}''')
 version = "{version}"
+version_dir = Path("{VOLUME_MOUNT}") / version
 
 print(f"Promoting {{len(rel_paths)}} files from staging/ to production...")
 promoted = promote_staging_to_production_hf(rel_paths, version)
-print(f"Promoted {{promoted}} files to production")
+print(f"Promoted {{promoted}} files to HuggingFace production")
+
+print(f"Uploading {{len(rel_paths)}} files to GCS...")
+gcs_count = 0
+for rel_path in rel_paths:
+    local_path = version_dir / rel_path
+    subdirectory = str(Path(rel_path).parent)
+    upload_local_area_file(
+        str(local_path),
+        subdirectory,
+        version=version,
+        skip_hf=True,
+    )
+    gcs_count += 1
+print(f"Uploaded {{gcs_count}} files to GCS")
 
 print("Cleaning up staging/...")
 cleaned = cleanup_staging_hf(rel_paths, version)
@@ -428,51 +446,64 @@ def coordinate_publish(
     print(f"Publishing version {version} from branch {branch}")
     print(f"Using {num_workers} parallel workers")
 
+    import shutil
+
     staging_dir = Path(VOLUME_MOUNT)
     version_dir = staging_dir / version
+    if version_dir.exists():
+        print(f"Clearing stale build directory: {version_dir}")
+        shutil.rmtree(version_dir)
     version_dir.mkdir(parents=True, exist_ok=True)
 
     calibration_dir = staging_dir / "calibration_inputs"
+    if calibration_dir.exists():
+        shutil.rmtree(calibration_dir)
     calibration_dir.mkdir(parents=True, exist_ok=True)
 
     # hf_hub_download preserves directory structure, so files are in calibration/ subdir
-    weights_path = (
-        calibration_dir / "calibration" / "w_district_calibration.npy"
-    )
-    dataset_path = (
-        calibration_dir / "calibration" / "stratified_extended_cps.h5"
-    )
+    weights_path = calibration_dir / "calibration" / "calibration_weights.npy"
     db_path = calibration_dir / "calibration" / "policy_data.db"
 
-    if not all(p.exists() for p in [weights_path, dataset_path, db_path]):
-        print("Downloading calibration inputs...")
-        result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "python",
-                "-c",
-                f"""
+    print("Downloading calibration inputs from HuggingFace...")
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
 download_calibration_inputs("{calibration_dir}")
 print("Done")
 """,
-            ],
-            text=True,
-            env=os.environ.copy(),
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Download failed: {result.stderr}")
-        staging_volume.commit()
-        print("Calibration inputs downloaded and cached on volume")
-    else:
-        print("Using cached calibration inputs from volume")
+        ],
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Download failed: {result.stderr}")
+    staging_volume.commit()
+    print("Calibration inputs downloaded")
 
+    dataset_path = (
+        calibration_dir
+        / "calibration"
+        / "source_imputed_stratified_extended_cps.h5"
+    )
+
+    blocks_path = calibration_dir / "calibration" / "stacked_blocks.npy"
+    geo_labels_path = calibration_dir / "calibration" / "geo_labels.json"
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
     }
+    if blocks_path.exists():
+        calibration_inputs["blocks"] = str(blocks_path)
+        print(f"Calibration blocks found: {blocks_path}")
+    if geo_labels_path.exists():
+        calibration_inputs["geo_labels"] = str(geo_labels_path)
+        print(f"Geo labels found: {geo_labels_path}")
 
     result = subprocess.run(
         [
@@ -482,11 +513,11 @@ print("Done")
             "-c",
             f"""
 import json
-from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+from policyengine_us_data.calibration.calibration_utils import (
     get_all_cds_from_database,
     STATE_CODES,
 )
-from policyengine_us_data.datasets.cps.local_area_calibration.publish_local_area import (
+from policyengine_us_data.calibration.publish_local_area import (
     get_district_friendly_name,
 )
 
@@ -560,22 +591,35 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         total_completed = sum(len(r["completed"]) for r in all_results)
         total_failed = sum(len(r["failed"]) for r in all_results)
 
-        print(f"\nBuild summary:")
+        staging_volume.reload()
+        volume_completed = get_completed_from_volume(version_dir)
+        volume_new = volume_completed - completed
+        print(f"\nBuild summary (worker-reported):")
         print(f"  Completed: {total_completed}")
         print(f"  Failed: {total_failed}")
         print(f"  Previously completed: {len(completed)}")
+        print(f"Build summary (volume verification):")
+        print(f"  Files on volume: {len(volume_completed)}")
+        print(f"  New files this run: {len(volume_new)}")
 
         if all_errors:
             print(f"\nErrors ({len(all_errors)}):")
             for err in all_errors[:5]:
                 err_msg = err.get("error", "Unknown")[:100]
-                print(f"  - {err.get('item', err.get('worker'))}: {err_msg}")
+                print(
+                    f"  - {err.get('item', err.get('worker'))}: " f"{err_msg}"
+                )
             if len(all_errors) > 5:
                 print(f"  ... and {len(all_errors) - 5} more")
 
-        if total_failed > 0:
+        expected_total = len(states) + len(districts) + len(cities)
+        if len(volume_completed) < expected_total:
+            missing = expected_total - len(volume_completed)
             raise RuntimeError(
-                f"Build incomplete: {total_failed} failures. "
+                f"Build incomplete: {missing} files missing from "
+                f"volume ({len(volume_completed)}/{expected_total}). "
+                f"Worker errors: {len(all_errors)}, "
+                f"failures: {total_failed}. "
                 f"Volume preserved for retry."
             )
 
@@ -632,6 +676,220 @@ def main(
         num_workers=num_workers,
         skip_upload=skip_upload,
     )
+    print(result)
+
+
+@app.function(
+    image=image,
+    secrets=[hf_secret, gcp_secret],
+    volumes={VOLUME_MOUNT: staging_volume},
+    memory=16384,
+    timeout=14400,
+)
+def coordinate_national_publish(
+    branch: str = "main",
+) -> str:
+    """Build and upload a national US.h5 from national weights."""
+    setup_gcp_credentials()
+    setup_repo(branch)
+
+    version = get_version()
+    print(
+        f"Building national H5 for version {version} " f"from branch {branch}"
+    )
+
+    import shutil
+
+    staging_dir = Path(VOLUME_MOUNT)
+    calibration_dir = staging_dir / "national_calibration_inputs"
+    if calibration_dir.exists():
+        shutil.rmtree(calibration_dir)
+    calibration_dir.mkdir(parents=True, exist_ok=True)
+
+    print("Downloading national calibration inputs from HF...")
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
+from policyengine_us_data.utils.huggingface import (
+    download_calibration_inputs,
+)
+download_calibration_inputs("{calibration_dir}", prefix="national_")
+print("Done")
+""",
+        ],
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Download failed: {result.stderr}")
+    staging_volume.commit()
+    print("National calibration inputs downloaded")
+
+    weights_path = (
+        calibration_dir / "calibration" / "national_calibration_weights.npy"
+    )
+    db_path = calibration_dir / "calibration" / "policy_data.db"
+    dataset_path = (
+        calibration_dir
+        / "calibration"
+        / "source_imputed_stratified_extended_cps.h5"
+    )
+
+    blocks_path = (
+        calibration_dir / "calibration" / "national_stacked_blocks.npy"
+    )
+    national_geo_labels_path = (
+        calibration_dir / "calibration" / "national_geo_labels.json"
+    )
+    calibration_inputs = {
+        "weights": str(weights_path),
+        "dataset": str(dataset_path),
+        "database": str(db_path),
+    }
+    if blocks_path.exists():
+        calibration_inputs["blocks"] = str(blocks_path)
+        print(f"National calibration blocks found: {blocks_path}")
+    if national_geo_labels_path.exists():
+        calibration_inputs["geo_labels"] = str(national_geo_labels_path)
+        print(f"National geo labels found: " f"{national_geo_labels_path}")
+
+    version_dir = staging_dir / version
+    version_dir.mkdir(parents=True, exist_ok=True)
+
+    work_items = [{"type": "national", "id": "US"}]
+    print("Spawning worker for national H5 build...")
+    worker_result = build_areas_worker.remote(
+        branch=branch,
+        version=version,
+        work_items=work_items,
+        calibration_inputs=calibration_inputs,
+    )
+
+    print(
+        f"Worker result: "
+        f"{len(worker_result['completed'])} completed, "
+        f"{len(worker_result['failed'])} failed"
+    )
+
+    if worker_result["failed"]:
+        raise RuntimeError(f"National build failed: {worker_result['errors']}")
+
+    staging_volume.reload()
+    national_h5 = version_dir / "national" / "US.h5"
+    if not national_h5.exists():
+        raise RuntimeError(f"Expected {national_h5} not found after build")
+
+    print(f"Uploading {national_h5} to HF staging...")
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
+from policyengine_us_data.utils.data_upload import (
+    upload_to_staging_hf,
+)
+upload_to_staging_hf(
+    [("{national_h5}", "national/US.h5")],
+    "{version}",
+)
+print("Done")
+""",
+        ],
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Staging upload failed: {result.stderr}")
+
+    print("National H5 staged. Run promote workflow to publish.")
+    return (
+        f"National US.h5 built and staged for version {version}. "
+        f"Run main_national_promote to publish."
+    )
+
+
+@app.local_entrypoint()
+def main_national(branch: str = "main"):
+    """Build and stage national US.h5."""
+    result = coordinate_national_publish.remote(branch=branch)
+    print(result)
+
+
+@app.function(
+    image=image,
+    secrets=[hf_secret, gcp_secret],
+    volumes={VOLUME_MOUNT: staging_volume},
+    memory=4096,
+    timeout=3600,
+)
+def promote_national_publish(
+    branch: str = "main",
+) -> str:
+    """Promote national US.h5 from HF staging to production + GCS."""
+    setup_gcp_credentials()
+    setup_repo(branch)
+
+    version = get_version()
+    rel_paths = ["national/US.h5"]
+
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
+import json
+from pathlib import Path
+from policyengine_us_data.utils.data_upload import (
+    promote_staging_to_production_hf,
+    cleanup_staging_hf,
+    upload_local_area_file,
+)
+
+version = "{version}"
+rel_paths = {json.dumps(rel_paths)}
+version_dir = Path("{VOLUME_MOUNT}") / version
+
+print(f"Promoting national H5 from staging to production...")
+promoted = promote_staging_to_production_hf(rel_paths, version)
+print(f"Promoted {{promoted}} files to HuggingFace production")
+
+national_h5 = version_dir / "national" / "US.h5"
+if national_h5.exists():
+    print("Uploading national H5 to GCS...")
+    upload_local_area_file(
+        str(national_h5), "national", version=version, skip_hf=True
+    )
+    print("Uploaded national H5 to GCS")
+else:
+    print(f"WARNING: {{national_h5}} not on volume, skipping GCS")
+
+print("Cleaning up staging...")
+cleaned = cleanup_staging_hf(rel_paths, version)
+print(f"Cleaned up {{cleaned}} files from staging")
+print(f"Successfully promoted national H5 for version {{version}}")
+""",
+        ],
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"National promote failed: {result.stderr}")
+
+    return f"National US.h5 promoted for version {version}"
+
+
+@app.local_entrypoint()
+def main_national_promote(branch: str = "main"):
+    """Promote staged national US.h5 to production."""
+    result = promote_national_publish.remote(branch=branch)
     print(result)
 
 

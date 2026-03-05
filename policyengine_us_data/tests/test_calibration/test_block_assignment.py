@@ -14,7 +14,7 @@ class TestBlockAssignment:
 
     def test_assign_returns_correct_shape(self):
         """Verify assign_blocks_for_cd returns correct shape."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_blocks_for_cd,
         )
 
@@ -26,7 +26,7 @@ class TestBlockAssignment:
 
     def test_assign_is_deterministic(self):
         """Verify same seed produces same results."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_blocks_for_cd,
         )
 
@@ -36,7 +36,7 @@ class TestBlockAssignment:
 
     def test_different_seeds_different_results(self):
         """Verify different seeds produce different results."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_blocks_for_cd,
         )
 
@@ -46,7 +46,7 @@ class TestBlockAssignment:
 
     def test_ny_cd_gets_ny_blocks(self):
         """Verify NY CDs get NY blocks."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_blocks_for_cd,
         )
 
@@ -59,7 +59,7 @@ class TestBlockAssignment:
 
     def test_ca_cd_gets_ca_blocks(self):
         """Verify CA CDs get CA blocks."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_blocks_for_cd,
         )
 
@@ -76,7 +76,7 @@ class TestGeographyLookup:
 
     def test_get_county_from_block(self):
         """Verify county FIPS extraction from block GEOID."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_county_fips_from_block,
         )
 
@@ -89,7 +89,7 @@ class TestGeographyLookup:
 
     def test_get_tract_from_block(self):
         """Verify tract GEOID extraction from block GEOID."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_tract_geoid_from_block,
         )
 
@@ -100,7 +100,7 @@ class TestGeographyLookup:
 
     def test_get_state_fips_from_block(self):
         """Verify state FIPS extraction from block GEOID."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_state_fips_from_block,
         )
 
@@ -114,7 +114,7 @@ class TestCBSALookup:
 
     def test_manhattan_in_nyc_metro(self):
         """Verify Manhattan (New York County) is in NYC metro area."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_cbsa_from_county,
         )
 
@@ -125,7 +125,7 @@ class TestCBSALookup:
 
     def test_sf_county_in_sf_metro(self):
         """Verify San Francisco County is in SF metro area."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_cbsa_from_county,
         )
 
@@ -136,7 +136,7 @@ class TestCBSALookup:
 
     def test_rural_county_no_cbsa(self):
         """Verify rural county not in any metro area returns None."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_cbsa_from_county,
         )
 
@@ -150,7 +150,7 @@ class TestIntegratedAssignment:
 
     def test_assign_geography_returns_all_fields(self):
         """Verify assign_geography returns dict with all geography fields."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_geography_for_cd,
         )
 
@@ -181,7 +181,7 @@ class TestIntegratedAssignment:
 
     def test_geography_is_consistent(self):
         """Verify all geography fields are consistent with each other."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_geography_for_cd,
         )
 
@@ -207,7 +207,7 @@ class TestStateLegislativeDistricts:
 
     def test_get_sldu_from_block(self):
         """Verify SLDU lookup from block GEOID."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_sldu_from_block,
         )
 
@@ -218,7 +218,7 @@ class TestStateLegislativeDistricts:
 
     def test_get_sldl_from_block(self):
         """Verify SLDL lookup from block GEOID."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_sldl_from_block,
         )
 
@@ -229,7 +229,7 @@ class TestStateLegislativeDistricts:
 
     def test_assign_geography_includes_state_leg(self):
         """Verify assign_geography includes SLDU and SLDL."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_geography_for_cd,
         )
 
@@ -246,7 +246,7 @@ class TestPlaceLookup:
 
     def test_get_place_fips_from_block(self):
         """Verify place FIPS lookup from block GEOID."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_place_fips_from_block,
         )
 
@@ -257,7 +257,7 @@ class TestPlaceLookup:
 
     def test_assign_geography_includes_place(self):
         """Verify assign_geography includes place_fips."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_geography_for_cd,
         )
 
@@ -272,7 +272,7 @@ class TestPUMALookup:
 
     def test_get_puma_from_block(self):
         """Verify PUMA lookup from block GEOID."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_puma_from_block,
         )
 
@@ -283,7 +283,7 @@ class TestPUMALookup:
 
     def test_assign_geography_includes_puma(self):
         """Verify assign_geography includes PUMA."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_geography_for_cd,
         )
 
@@ -298,7 +298,7 @@ class TestVTDLookup:
 
     def test_get_vtd_from_block(self):
         """Verify VTD lookup from block GEOID."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_vtd_from_block,
         )
 
@@ -309,7 +309,7 @@ class TestVTDLookup:
 
     def test_assign_geography_includes_vtd(self):
         """Verify assign_geography includes VTD."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_geography_for_cd,
         )
 
@@ -324,7 +324,7 @@ class TestAllGeographyLookup:
 
     def test_get_all_geography_returns_all_fields(self):
         """Verify get_all_geography_from_block returns all expected fields."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_all_geography_from_block,
         )
 
@@ -336,7 +336,7 @@ class TestAllGeographyLookup:
 
     def test_get_all_geography_unknown_block(self):
         """Verify get_all_geography handles unknown block gracefully."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_all_geography_from_block,
         )
 
@@ -352,7 +352,7 @@ class TestCountyEnumIntegration:
 
     def test_get_county_enum_from_block(self):
         """Verify we can get County enum index from block GEOID."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_county_enum_index_from_block,
         )
         from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
@@ -368,7 +368,7 @@ class TestCountyEnumIntegration:
 
     def test_assign_geography_includes_county_index(self):
         """Verify assign_geography includes county_index for backwards compat."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_geography_for_cd,
         )
         from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
@@ -392,7 +392,7 @@ class TestZCTALookup:
 
     def test_get_zcta_from_block(self):
         """Verify ZCTA lookup from block GEOID."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             get_zcta_from_block,
         )
 
@@ -403,7 +403,7 @@ class TestZCTALookup:
 
     def test_assign_geography_includes_zcta(self):
         """Verify assign_geography includes ZCTA."""
-        from policyengine_us_data.datasets.cps.local_area_calibration.block_assignment import (
+        from policyengine_us_data.calibration.block_assignment import (
             assign_geography_for_cd,
         )
 

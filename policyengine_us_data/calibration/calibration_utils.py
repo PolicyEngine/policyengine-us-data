@@ -3,6 +3,7 @@ Shared utilities for calibration scripts.
 """
 
 from typing import Dict, List, Tuple
+import json
 import numpy as np
 import pandas as pd
 
@@ -521,6 +522,22 @@ def get_cd_index_mapping(db_uri: str = None):
     return cd_to_index, index_to_cd, cds_ordered
 
 
+def save_geo_labels(labels: List[str], path) -> None:
+    """Save geo unit labels to JSON."""
+    from pathlib import Path
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(labels, f)
+
+
+def load_geo_labels(path) -> List[str]:
+    """Load geo unit labels from JSON."""
+    with open(path) as f:
+        return json.load(f)
+
+
 def load_cd_geoadj_values(
     cds_to_calibrate: List[str],
 ) -> Dict[str, float]:
@@ -548,93 +565,74 @@ def load_cd_geoadj_values(
         )
         rent_lookup[row["cd_geoid"]] = geoadj
 
-    # Map each CD to calibrate to its geoadj value
-    # Handle at-large districts: database uses XX01, rent CSV uses XX00
     geoadj_dict = {}
     for cd in cds_to_calibrate:
         if cd in rent_lookup:
             geoadj_dict[cd] = rent_lookup[cd]
         else:
-            # Try at-large mapping: XX01 -> XX00
-            cd_int = int(cd)
-            state_fips = cd_int // 100
-            district = cd_int % 100
-            if district == 1:
-                at_large_cd = str(state_fips * 100)  # XX00
-                if at_large_cd in rent_lookup:
-                    geoadj_dict[cd] = rent_lookup[at_large_cd]
-                    continue
-            # Fallback to national average (geoadj = 1.0)
             print(f"Warning: No rent data for CD {cd}, using geoadj=1.0")
             geoadj_dict[cd] = 1.0
 
     return geoadj_dict
 
 
-def calculate_spm_thresholds_for_cd(
-    sim,
-    time_period: int,
-    geoadj: float,
+def calculate_spm_thresholds_vectorized(
+    person_ages: np.ndarray,
+    person_spm_unit_ids: np.ndarray,
+    spm_unit_tenure_types: np.ndarray,
+    spm_unit_geoadj: np.ndarray,
     year: int,
 ) -> np.ndarray:
-    """
-    Calculate SPM thresholds for all SPM units using CD-specific geo-adjustment.
-    """
-    spm_unit_ids_person = sim.calculate("spm_unit_id", map_to="person").values
-    ages = sim.calculate("age", map_to="person").values
+    """Calculate SPM thresholds for cloned SPM units from raw arrays.
 
-    df = pd.DataFrame(
-        {
-            "spm_unit_id": spm_unit_ids_person,
-            "is_adult": ages >= 18,
-            "is_child": ages < 18,
-        }
-    )
+    Works without a Microsimulation instance. Counts adults/children
+    per SPM unit from person-level arrays, then computes
+    base_threshold * equivalence_scale * geoadj for each unit.
 
-    agg = (
-        df.groupby("spm_unit_id")
-        .agg(
-            num_adults=("is_adult", "sum"),
-            num_children=("is_child", "sum"),
+    Args:
+        person_ages: Age per cloned person.
+        person_spm_unit_ids: New SPM unit ID per cloned person
+            (0-based contiguous).
+        spm_unit_tenure_types: Tenure type string per cloned SPM
+            unit (e.g. b"RENTER", b"OWNER_WITH_MORTGAGE").
+        spm_unit_geoadj: Geographic adjustment factor per cloned
+            SPM unit.
+        year: Tax year for base threshold lookup.
+
+    Returns:
+        Float32 array of SPM thresholds, one per SPM unit.
+    """
+    n_units = len(spm_unit_tenure_types)
+
+    # Count adults and children per SPM unit
+    is_adult = person_ages >= 18
+    num_adults = np.zeros(n_units, dtype=np.int32)
+    num_children = np.zeros(n_units, dtype=np.int32)
+    np.add.at(num_adults, person_spm_unit_ids, is_adult.astype(np.int32))
+    np.add.at(num_children, person_spm_unit_ids, (~is_adult).astype(np.int32))
+
+    # Map tenure type strings to codes
+    tenure_codes = np.full(n_units, 3, dtype=np.int32)
+    for tenure_str, code in SPM_TENURE_STRING_TO_CODE.items():
+        tenure_bytes = (
+            tenure_str.encode() if isinstance(tenure_str, str) else tenure_str
         )
-        .reset_index()
-    )
+        mask = spm_unit_tenure_types == tenure_bytes
+        if not mask.any():
+            mask = spm_unit_tenure_types == tenure_str
+        tenure_codes[mask] = code
 
-    tenure_types = sim.calculate(
-        "spm_unit_tenure_type", map_to="spm_unit"
-    ).values
-    spm_unit_ids_unit = sim.calculate("spm_unit_id", map_to="spm_unit").values
-
-    tenure_df = pd.DataFrame(
-        {
-            "spm_unit_id": spm_unit_ids_unit,
-            "tenure_type": tenure_types,
-        }
-    )
-
-    merged = agg.merge(tenure_df, on="spm_unit_id", how="left")
-    merged["tenure_code"] = (
-        merged["tenure_type"]
-        .map(SPM_TENURE_STRING_TO_CODE)
-        .fillna(3)
-        .astype(int)
-    )
-
+    # Look up base thresholds
     calc = SPMCalculator(year=year)
     base_thresholds = calc.get_base_thresholds()
 
-    n = len(merged)
-    thresholds = np.zeros(n, dtype=np.float32)
-
-    for i in range(n):
-        tenure_str = TENURE_CODE_MAP.get(
-            int(merged.iloc[i]["tenure_code"]), "renter"
-        )
+    thresholds = np.zeros(n_units, dtype=np.float32)
+    for i in range(n_units):
+        tenure_str = TENURE_CODE_MAP.get(int(tenure_codes[i]), "renter")
         base = base_thresholds[tenure_str]
         equiv_scale = spm_equivalence_scale(
-            int(merged.iloc[i]["num_adults"]),
-            int(merged.iloc[i]["num_children"]),
+            int(num_adults[i]), int(num_children[i])
         )
-        thresholds[i] = base * equiv_scale * geoadj
+        thresholds[i] = base * equiv_scale * spm_unit_geoadj[i]
 
     return thresholds

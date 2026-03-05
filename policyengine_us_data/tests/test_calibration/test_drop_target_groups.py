@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 from scipy import sparse
 
-from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+from policyengine_us_data.calibration.calibration_utils import (
     drop_target_groups,
     create_target_groups,
 )

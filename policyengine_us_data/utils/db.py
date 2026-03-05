@@ -11,7 +11,9 @@ from policyengine_us_data.db.create_database_tables import (
 )
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-DEFAULT_DATASET = str(STORAGE_FOLDER / "stratified_extended_cps_2024.h5")
+DEFAULT_DATASET = str(
+    STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
+)
 
 
 def etl_argparser(
@@ -144,10 +146,6 @@ def parse_ucgid(ucgid_str: str) -> Dict:
         state_and_district = ucgid_str[9:]
         state_fips = int(state_and_district[:2])
         district_number = int(state_and_district[2:])
-        if district_number == 0 or (
-            state_fips == 11 and district_number == 98
-        ):
-            district_number = 1
         cd_geoid = state_fips * 100 + district_number
         return {
             "type": "district",

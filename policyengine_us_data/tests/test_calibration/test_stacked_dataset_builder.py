@@ -1,4 +1,4 @@
-"""Tests for stacked_dataset_builder.py using deterministic test fixture."""
+"""Tests for build_h5 using deterministic test fixture."""
 
 import os
 import tempfile
@@ -6,13 +6,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pathlib import Path
 from policyengine_us import Microsimulation
-from policyengine_us_data.datasets.cps.local_area_calibration.stacked_dataset_builder import (
-    create_sparse_cd_stacked_dataset,
+from policyengine_us_data.calibration.publish_local_area import (
+    build_h5,
 )
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "test_fixture_50hh.h5")
-TEST_CDS = ["3701", "201"]  # NC-01 and AK at-large
+TEST_CDS = ["3701", "200"]  # NC-01 and AK at-large
 SEED = 42
 
 
@@ -48,12 +49,13 @@ def stacked_result(test_weights):
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = os.path.join(tmpdir, "test_output.h5")
 
-        create_sparse_cd_stacked_dataset(
-            test_weights,
-            TEST_CDS,
+        build_h5(
+            weights=np.array(test_weights),
+            blocks=None,
+            dataset_path=Path(FIXTURE_PATH),
+            output_path=Path(output_path),
+            cds_to_calibrate=TEST_CDS,
             cd_subset=TEST_CDS,
-            dataset_path=FIXTURE_PATH,
-            output_path=output_path,
         )
 
         sim_after = Microsimulation(dataset=output_path)
@@ -69,12 +71,7 @@ def stacked_result(test_weights):
             )
         )
 
-        mapping_path = os.path.join(
-            tmpdir, "mappings", "test_output_household_mapping.csv"
-        )
-        mapping_df = pd.read_csv(mapping_path)
-
-        yield {"hh_df": hh_df, "mapping_df": mapping_df}
+        yield {"hh_df": hh_df}
 
 
 class TestStackedDatasetBuilder:
@@ -85,10 +82,10 @@ class TestStackedDatasetBuilder:
         assert len(cds_in_output) == len(TEST_CDS)
 
     def test_output_contains_both_cds(self, stacked_result):
-        """Output should contain both NC-01 (3701) and AK-AL (201)."""
+        """Output should contain both NC-01 (3701) and AK-AL (200)."""
         hh_df = stacked_result["hh_df"]
         cds_in_output = set(hh_df["congressional_district_geoid"].unique())
-        expected = {3701, 201}
+        expected = {3701, 200}
         assert cds_in_output == expected
 
     def test_state_fips_matches_cd(self, stacked_result):
@@ -105,27 +102,6 @@ class TestStackedDatasetBuilder:
         """Each household should have a unique ID."""
         hh_df = stacked_result["hh_df"]
         assert hh_df["household_id"].nunique() == len(hh_df)
-
-    def test_mapping_has_required_columns(self, stacked_result):
-        """Mapping CSV should have expected columns."""
-        mapping_df = stacked_result["mapping_df"]
-        required_cols = [
-            "new_household_id",
-            "original_household_id",
-            "congressional_district",
-            "state_fips",
-        ]
-        for col in required_cols:
-            assert col in mapping_df.columns
-
-    def test_mapping_covers_all_output_households(self, stacked_result):
-        """Every output household should be in the mapping."""
-        hh_df = stacked_result["hh_df"]
-        mapping_df = stacked_result["mapping_df"]
-
-        output_hh_ids = set(hh_df["household_id"].values)
-        mapped_hh_ids = set(mapping_df["new_household_id"].values)
-        assert output_hh_ids == mapped_hh_ids
 
     def test_weights_are_positive(self, stacked_result):
         """All household weights should be positive."""
@@ -164,12 +140,13 @@ def stacked_sim(test_weights):
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = os.path.join(tmpdir, "test_output.h5")
 
-        create_sparse_cd_stacked_dataset(
-            test_weights,
-            TEST_CDS,
+        build_h5(
+            weights=np.array(test_weights),
+            blocks=None,
+            dataset_path=Path(FIXTURE_PATH),
+            output_path=Path(output_path),
+            cds_to_calibrate=TEST_CDS,
             cd_subset=TEST_CDS,
-            dataset_path=FIXTURE_PATH,
-            output_path=output_path,
         )
 
         sim = Microsimulation(dataset=output_path)
@@ -179,21 +156,21 @@ def stacked_sim(test_weights):
 @pytest.fixture(scope="module")
 def stacked_sim_with_overlap(n_households):
     """Stacked dataset where SAME households appear in BOTH CDs."""
-    # Force same households to appear in both CDs - tests reindexing
     w = np.zeros(n_households * len(TEST_CDS), dtype=float)
-    overlap_households = [0, 1, 2]  # Same households in both CDs
+    overlap_households = [0, 1, 2]
     for cd_idx in range(len(TEST_CDS)):
         for hh_idx in overlap_households:
             w[cd_idx * n_households + hh_idx] = 1.0
 
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = os.path.join(tmpdir, "test_overlap.h5")
-        create_sparse_cd_stacked_dataset(
-            w,
-            TEST_CDS,
+        build_h5(
+            weights=np.array(w),
+            blocks=None,
+            dataset_path=Path(FIXTURE_PATH),
+            output_path=Path(output_path),
+            cds_to_calibrate=TEST_CDS,
             cd_subset=TEST_CDS,
-            dataset_path=FIXTURE_PATH,
-            output_path=output_path,
         )
         sim = Microsimulation(dataset=output_path)
         yield {"sim": sim, "n_overlap": len(overlap_households)}
@@ -241,21 +218,16 @@ class TestEntityReindexing:
             ), f"person_family_id {pf_id} not in family_ids"
 
     def test_family_ids_unique_across_cds(self, stacked_sim_with_overlap):
-        """Same household in different CDs should have different family_ids."""
+        """Same HH in different CDs should get different family_ids."""
         sim = stacked_sim_with_overlap["sim"]
         n_overlap = stacked_sim_with_overlap["n_overlap"]
         n_cds = len(TEST_CDS)
 
         family_ids = sim.calculate("family_id", map_to="family").values
-        household_ids = sim.calculate(
-            "household_id", map_to="household"
-        ).values
 
-        # Should have n_overlap * n_cds unique families (one per HH-CD pair)
         expected_families = n_overlap * n_cds
         assert len(family_ids) == expected_families, (
-            f"Expected {expected_families} families (same HH in {n_cds} CDs), "
-            f"got {len(family_ids)}"
+            f"Expected {expected_families} families, " f"got {len(family_ids)}"
         )
         assert len(set(family_ids)) == expected_families, (
             f"Family IDs not unique: {len(set(family_ids))} unique "

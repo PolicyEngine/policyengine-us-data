@@ -91,9 +91,9 @@ CSV_COLUMNS = [
 
 
 def _classify_variable(variable: str) -> str:
-    if "household_count" in variable:
+    if variable == "household_count":
         return "household_count"
-    if "person_count" in variable:
+    if variable == "person_count":
         return "person_count"
     if variable.endswith("_count"):
         return "count"

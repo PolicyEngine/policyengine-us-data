@@ -12,7 +12,7 @@ Medicaid/Head Start).
 """
 
 import numpy as np
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.parameters import load_take_up_rate
@@ -236,6 +236,7 @@ def apply_block_takeup_to_arrays(
     entity_counts: Dict[str, int],
     time_period: int,
     takeup_filter: List[str] = None,
+    precomputed_rates: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, np.ndarray]:
     """Compute block-level takeup draws from raw arrays.
 
@@ -257,6 +258,9 @@ def apply_block_takeup_to_arrays(
         takeup_filter: Optional list of takeup variable names to
             re-randomize. If None, all SIMPLE_TAKEUP_VARS are
             processed. Non-filtered vars are set to True.
+        precomputed_rates: Optional {rate_key: rate_or_dict} cache.
+            When provided, skips ``load_take_up_rate`` calls and
+            uses cached values instead.
 
     Returns:
         {variable_name: bool_array} for each takeup variable.
@@ -278,7 +282,10 @@ def apply_block_takeup_to_arrays(
         ent_blocks = hh_blocks[ent_hh_idx].astype(str)
         ent_hh_ids = hh_ids[ent_hh_idx]
 
-        rate_or_dict = load_take_up_rate(rate_key, time_period)
+        if precomputed_rates is not None and rate_key in precomputed_rates:
+            rate_or_dict = precomputed_rates[rate_key]
+        else:
+            rate_or_dict = load_take_up_rate(rate_key, time_period)
         bools = compute_block_takeup_for_entities(
             var_name,
             rate_or_dict,

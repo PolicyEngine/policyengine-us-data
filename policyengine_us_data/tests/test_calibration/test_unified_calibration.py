@@ -12,9 +12,8 @@ from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     TAKEUP_AFFECTED_TARGETS,
-    draw_takeup_for_geo,
-    compute_entity_takeup_for_geo,
     compute_block_takeup_for_entities,
+    apply_block_takeup_to_arrays,
     _resolve_rate,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
@@ -73,66 +72,116 @@ class TestRerandomizeTakeupSeeding:
         assert 0.70 < frac < 0.80
 
 
-class TestGeoSaltedDraws:
-    """Verify draw_takeup_for_geo produces reproducible,
-    geo-dependent draws using geo: salt prefix."""
+class TestBlockSaltedDraws:
+    """Verify compute_block_takeup_for_entities produces
+    reproducible, block-dependent draws."""
 
-    def test_same_geo_same_draws(self):
-        d1 = draw_takeup_for_geo("takes_up_snap_if_eligible", "3701", 500)
-        d2 = draw_takeup_for_geo("takes_up_snap_if_eligible", "3701", 500)
+    def test_same_block_same_results(self):
+        blocks = np.array(["370010001001001"] * 500)
+        d1 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks
+        )
+        d2 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks
+        )
         np.testing.assert_array_equal(d1, d2)
 
-    def test_different_geos_different_draws(self):
-        d1 = draw_takeup_for_geo("takes_up_snap_if_eligible", "3701", 500)
-        d2 = draw_takeup_for_geo("takes_up_snap_if_eligible", "4816", 500)
+    def test_different_blocks_different_results(self):
+        n = 500
+        d1 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible",
+            0.8,
+            np.array(["370010001001001"] * n),
+        )
+        d2 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible",
+            0.8,
+            np.array(["480010002002002"] * n),
+        )
         assert not np.array_equal(d1, d2)
 
-    def test_different_vars_different_draws(self):
-        d1 = draw_takeup_for_geo("takes_up_snap_if_eligible", "3701", 500)
-        d2 = draw_takeup_for_geo("takes_up_aca_if_eligible", "3701", 500)
+    def test_different_vars_different_results(self):
+        blocks = np.array(["370010001001001"] * 500)
+        d1 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks
+        )
+        d2 = compute_block_takeup_for_entities(
+            "takes_up_aca_if_eligible", 0.8, blocks
+        )
         assert not np.array_equal(d1, d2)
 
-    def test_geo_salt_not_collide_with_block_salt(self):
-        d_geo = draw_takeup_for_geo("takes_up_snap_if_eligible", "3701", 500)
-        rng_block = seeded_rng("takes_up_snap_if_eligible", salt="3701")
-        d_block = rng_block.random(500)
-        assert not np.array_equal(d_geo, d_block)
+    def test_hh_salt_differs_from_block_only(self):
+        blocks = np.array(["370010001001001"] * 500)
+        hh_ids = np.array([1] * 500)
+        d_block = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks
+        )
+        d_hh = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks, hh_ids
+        )
+        assert not np.array_equal(d_block, d_hh)
 
-    def test_draws_in_unit_interval(self):
-        draws = draw_takeup_for_geo("takes_up_snap_if_eligible", "3701", 10000)
-        assert draws.min() >= 0.0
-        assert draws.max() < 1.0
 
+class TestApplyBlockTakeupToArrays:
+    """Verify apply_block_takeup_to_arrays returns correct
+    boolean arrays for all entity levels."""
 
-class TestComputeEntityTakeup:
-    """Verify compute_entity_takeup_for_geo returns
-    correct boolean arrays."""
+    def _make_arrays(self, n_hh, persons_per_hh, tu_per_hh, spm_per_hh):
+        """Build test arrays for n_hh households."""
+        n_p = n_hh * persons_per_hh
+        n_tu = n_hh * tu_per_hh
+        n_spm = n_hh * spm_per_hh
+        hh_blocks = np.array(["370010001001001"] * n_hh)
+        hh_state_fips = np.array([37] * n_hh, dtype=np.int32)
+        hh_ids = np.arange(n_hh, dtype=np.int64)
+        entity_hh_indices = {
+            "person": np.repeat(np.arange(n_hh), persons_per_hh),
+            "tax_unit": np.repeat(np.arange(n_hh), tu_per_hh),
+            "spm_unit": np.repeat(np.arange(n_hh), spm_per_hh),
+        }
+        entity_counts = {
+            "person": n_p,
+            "tax_unit": n_tu,
+            "spm_unit": n_spm,
+        }
+        return (
+            hh_blocks,
+            hh_state_fips,
+            hh_ids,
+            entity_hh_indices,
+            entity_counts,
+        )
 
     def test_returns_all_takeup_vars(self):
-        n = {"person": 100, "tax_unit": 50, "spm_unit": 40}
-        result = compute_entity_takeup_for_geo("3701", n, 37, 2024)
+        args = self._make_arrays(10, 3, 2, 1)
+        result = apply_block_takeup_to_arrays(*args, time_period=2024)
         for spec in SIMPLE_TAKEUP_VARS:
             assert spec["variable"] in result
             assert result[spec["variable"]].dtype == bool
 
     def test_correct_entity_counts(self):
-        n = {"person": 200, "tax_unit": 80, "spm_unit": 60}
-        result = compute_entity_takeup_for_geo("3701", n, 37, 2024)
+        args = self._make_arrays(20, 10, 4, 3)
+        result = apply_block_takeup_to_arrays(*args, time_period=2024)
         assert len(result["takes_up_snap_if_eligible"]) == 60
         assert len(result["takes_up_aca_if_eligible"]) == 80
         assert len(result["takes_up_ssi_if_eligible"]) == 200
 
     def test_reproducible(self):
-        n = {"person": 100, "tax_unit": 50, "spm_unit": 40}
-        r1 = compute_entity_takeup_for_geo("3701", n, 37, 2024)
-        r2 = compute_entity_takeup_for_geo("3701", n, 37, 2024)
+        args = self._make_arrays(10, 3, 2, 1)
+        r1 = apply_block_takeup_to_arrays(*args, time_period=2024)
+        r2 = apply_block_takeup_to_arrays(*args, time_period=2024)
         for var in r1:
             np.testing.assert_array_equal(r1[var], r2[var])
 
-    def test_different_geo_different_result(self):
-        n = {"person": 100, "tax_unit": 50, "spm_unit": 40}
-        r1 = compute_entity_takeup_for_geo("3701", n, 37, 2024)
-        r2 = compute_entity_takeup_for_geo("4816", n, 48, 2024)
+    def test_different_blocks_different_result(self):
+        args_a = self._make_arrays(10, 3, 2, 1)
+        r1 = apply_block_takeup_to_arrays(*args_a, time_period=2024)
+
+        args_b = list(self._make_arrays(10, 3, 2, 1))
+        args_b[0] = np.array(["480010002002002"] * 10)
+        args_b[1] = np.array([48] * 10, dtype=np.int32)
+        r2 = apply_block_takeup_to_arrays(*args_b, time_period=2024)
+
         differs = any(not np.array_equal(r1[v], r2[v]) for v in r1)
         assert differs
 
@@ -170,12 +219,6 @@ class TestSimpleTakeupConfig:
     def test_expected_count(self):
         assert len(SIMPLE_TAKEUP_VARS) == 9
 
-    def test_importable_from_unified_calibration(self):
-        from policyengine_us_data.calibration.unified_calibration import (
-            SIMPLE_TAKEUP_VARS as UC_VARS,
-        )
-
-        assert UC_VARS is SIMPLE_TAKEUP_VARS
 
 
 class TestTakeupAffectedTargets:
@@ -308,12 +351,11 @@ class TestBlockTakeupSeeding:
 
     def test_reproducible(self):
         blocks = np.array(["010010001001001"] * 50 + ["020010001001001"] * 50)
-        states = np.array([1] * 50 + [2] * 50)
         r1 = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks, states
+            "takes_up_snap_if_eligible", 0.8, blocks
         )
         r2 = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks, states
+            "takes_up_snap_if_eligible", 0.8, blocks
         )
         np.testing.assert_array_equal(r1, r2)
 
@@ -321,29 +363,26 @@ class TestBlockTakeupSeeding:
         n = 500
         blocks_a = np.array(["010010001001001"] * n)
         blocks_b = np.array(["020010001001001"] * n)
-        states = np.array([1] * n)
         r_a = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks_a, states
+            "takes_up_snap_if_eligible", 0.8, blocks_a
         )
         r_b = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks_b, states
+            "takes_up_snap_if_eligible", 0.8, blocks_b
         )
         assert not np.array_equal(r_a, r_b)
 
     def test_returns_booleans(self):
         blocks = np.array(["370010001001001"] * 100)
-        states = np.array([37] * 100)
         result = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks, states
+            "takes_up_snap_if_eligible", 0.8, blocks
         )
         assert result.dtype == bool
 
     def test_rate_respected(self):
         n = 10000
         blocks = np.array(["370010001001001"] * n)
-        states = np.array([37] * n)
         result = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.75, blocks, states
+            "takes_up_snap_if_eligible", 0.75, blocks
         )
         frac = result.mean()
         assert 0.70 < frac < 0.80
@@ -547,12 +586,9 @@ class TestTakeupDrawConsistency:
             ]
         )
         hh_ids = np.array([100, 100, 200, 200, 200, 300])
-        states = np.array([37, 37, 37, 37, 37, 48])
 
         # Path 1: compute_block_takeup_for_entities (stacked)
-        stacked = compute_block_takeup_for_entities(
-            var, rate, blocks, states, hh_ids
-        )
+        stacked = compute_block_takeup_for_entities(var, rate, blocks, hh_ids)
 
         # Path 2: reproduce matrix builder inline logic
         n = len(blocks)
@@ -595,18 +631,16 @@ class TestTakeupDrawConsistency:
         n = 5000
 
         blocks_nc = np.array(["370010001001001"] * n)
-        states_nc = np.array([37] * n)
         result_nc = compute_block_takeup_for_entities(
-            var, rate_dict, blocks_nc, states_nc
+            var, rate_dict, blocks_nc
         )
         # NC rate=0.9, expect ~90%
         frac_nc = result_nc.mean()
         assert 0.85 < frac_nc < 0.95, f"NC frac={frac_nc}"
 
         blocks_tx = np.array(["480010002002002"] * n)
-        states_tx = np.array([48] * n)
         result_tx = compute_block_takeup_for_entities(
-            var, rate_dict, blocks_tx, states_tx
+            var, rate_dict, blocks_tx
         )
         # TX rate=0.6, expect ~60%
         frac_tx = result_tx.mean()

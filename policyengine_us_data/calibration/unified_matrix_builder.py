@@ -562,10 +562,7 @@ def _process_single_clone(
     # Takeup re-randomisation
     if do_takeup and affected_target_info:
         from policyengine_us_data.utils.takeup import (
-            _resolve_rate,
-        )
-        from policyengine_us_data.utils.randomness import (
-            seeded_rng,
+            compute_block_takeup_for_entities,
         )
 
         clone_blocks = geo_blocks[col_start:col_end]
@@ -602,21 +599,12 @@ def _process_single_clone(
             ent_blocks = clone_blocks[ent_hh]
             ent_hh_ids = household_ids[ent_hh]
 
-            ent_takeup = np.zeros(n_ent, dtype=bool)
-            rate_key = info["rate_key"]
-            rate_or_dict = precomputed_rates[rate_key]
-            for blk in np.unique(ent_blocks):
-                bm = ent_blocks == blk
-                sf = int(blk[:2])
-                rate = _resolve_rate(rate_or_dict, sf)
-                for hh_id in np.unique(ent_hh_ids[bm]):
-                    hh_mask = bm & (ent_hh_ids == hh_id)
-                    rng = seeded_rng(
-                        takeup_var,
-                        salt=f"{blk}:{int(hh_id)}",
-                    )
-                    draws = rng.random(int(hh_mask.sum()))
-                    ent_takeup[hh_mask] = draws < rate
+            ent_takeup = compute_block_takeup_for_entities(
+                takeup_var,
+                precomputed_rates[info["rate_key"]],
+                ent_blocks,
+                ent_hh_ids,
+            )
 
             ent_values = (ent_eligible * ent_takeup).astype(np.float32)
 
@@ -2149,13 +2137,10 @@ class UnifiedMatrixBuilder:
         if rerandomize_takeup:
             from policyengine_us_data.utils.takeup import (
                 TAKEUP_AFFECTED_TARGETS,
-                _resolve_rate,
+                compute_block_takeup_for_entities,
             )
             from policyengine_us_data.parameters import (
                 load_take_up_rate,
-            )
-            from policyengine_us_data.utils.randomness import (
-                seeded_rng,
             )
 
             # Build entity-to-household index arrays
@@ -2404,21 +2389,12 @@ class UnifiedMatrixBuilder:
                         ent_blocks = clone_blocks[ent_hh]
                         ent_hh_ids = household_ids[ent_hh]
 
-                        ent_takeup = np.zeros(n_ent, dtype=bool)
-                        rate_key = info["rate_key"]
-                        rate_or_dict = precomputed_rates[rate_key]
-                        for blk in np.unique(ent_blocks):
-                            bm = ent_blocks == blk
-                            sf = int(blk[:2])
-                            rate = _resolve_rate(rate_or_dict, sf)
-                            for hh_id in np.unique(ent_hh_ids[bm]):
-                                hh_mask = bm & (ent_hh_ids == hh_id)
-                                rng = seeded_rng(
-                                    takeup_var,
-                                    salt=(f"{blk}:" f"{int(hh_id)}"),
-                                )
-                                draws = rng.random(int(hh_mask.sum()))
-                                ent_takeup[hh_mask] = draws < rate
+                        ent_takeup = compute_block_takeup_for_entities(
+                            takeup_var,
+                            precomputed_rates[info["rate_key"]],
+                            ent_blocks,
+                            ent_hh_ids,
+                        )
 
                         ent_values = (ent_eligible * ent_takeup).astype(
                             np.float32

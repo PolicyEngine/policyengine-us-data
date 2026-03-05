@@ -790,6 +790,7 @@ print("Done")
     if worker_result["failed"]:
         raise RuntimeError(f"National build failed: {worker_result['errors']}")
 
+    staging_volume.reload()
     national_h5 = version_dir / "national" / "US.h5"
     if not national_h5.exists():
         raise RuntimeError(f"Expected {national_h5} not found after build")

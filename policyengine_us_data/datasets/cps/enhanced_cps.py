@@ -201,6 +201,31 @@ class EnhancedCPS(Dataset):
             )
             data["household_weight"][year] = optimised_weights
 
+            # Validate dense weights
+            w = optimised_weights
+            if np.any(np.isnan(w)):
+                raise ValueError(
+                    f"Year {year}: household_weight contains NaN values"
+                )
+            if np.any(w < 0):
+                raise ValueError(
+                    f"Year {year}: household_weight contains negative values"
+                )
+            weighted_hh_count = float(np.sum(w))
+            if not (1e8 <= weighted_hh_count <= 2e8):
+                raise ValueError(
+                    f"Year {year}: weighted household count "
+                    f"{weighted_hh_count:,.0f} outside expected range "
+                    f"[100M, 200M]"
+                )
+            logging.info(
+                f"Year {year}: weights validated — "
+                f"{weighted_hh_count:,.0f} weighted households, "
+                f"{int(np.sum(w > 0))} non-zero"
+            )
+
+        logging.info("Post-generation weight validation passed")
+
         self.save_dataset(data)
 
 

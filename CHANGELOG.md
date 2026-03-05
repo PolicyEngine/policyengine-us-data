@@ -1,3 +1,31 @@
+## [1.72.1] - 2026-03-05
+
+### Fixed
+
+- Fixed double-weight application in dataset sanity tests: use `.values.sum()` for household_weight checks to avoid MicroSeries applying weights twice.
+
+
+## [1.72.0] - 2026-03-05
+
+### Added
+
+- Hardened data pipeline against corrupted dataset uploads: pre-upload validation gate, post-generation assertions in enhanced CPS and sparse builders, CI workflow safety guards, file size checks, and comprehensive sanity tests for all dataset variants (5 layers of defense).
+
+
+## [1.71.4] - 2026-03-04
+
+### Fixed
+
+- Fix create_sparse_ecps overwriting enhanced_cps_2024.h5 with sparse version that drops input variables like employment_income.
+
+
+## [1.71.3] - 2026-03-04
+
+### Changed
+
+- Prioritize reported benefit recipients in take-up assignment for SSI and SNAP.
+
+
 ## [1.71.2] - 2026-03-04
 
 ### Fixed

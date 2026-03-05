@@ -74,25 +74,19 @@ class ExtendedCPS(Dataset):
 
         tbs = CountryTaxBenefitSystem()
 
+        _RESPONSE_SUFFIXES = ("_before_lsr", "_before_response")
         for name, var in tbs.variables.items():
             if name not in data:
                 continue
             for add_var in getattr(var, "adds", None) or []:
-                av = tbs.variables.get(add_var)
-                if av is None:
-                    continue
-                is_input = (
-                    not (hasattr(av, "formulas") and av.formulas)
-                    and not getattr(av, "adds", None)
-                    and not getattr(av, "subtracts", None)
-                )
-                if is_input and add_var not in data:
-                    logger.info(
-                        "Renaming %s -> %s before drop",
-                        name,
-                        add_var,
-                    )
-                    data[add_var] = data.pop(name)
+                if any(add_var.endswith(s) for s in _RESPONSE_SUFFIXES):
+                    if add_var not in data:
+                        logger.info(
+                            "Renaming %s -> %s before drop",
+                            name,
+                            add_var,
+                        )
+                        data[add_var] = data.pop(name)
                     break
 
         formula_vars = {

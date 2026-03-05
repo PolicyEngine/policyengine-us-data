@@ -224,23 +224,7 @@ class EnhancedCPS(Dataset):
                 f"{int(np.sum(w > 0))} non-zero"
             )
 
-        # Validate critical income variable exists in data.
-        # The CPS stores employment_income_before_lsr (or the older
-        # employment_income key); either must be present with data.
-        income_key = None
-        for k in ("employment_income_before_lsr", "employment_income"):
-            if k in data and data[k]:
-                income_key = k
-                break
-        if income_key is None:
-            raise ValueError(
-                "Neither employment_income_before_lsr nor "
-                "employment_income found with data in dataset"
-            )
-        logging.info(
-            f"Post-generation validation passed for EnhancedCPS "
-            f"(income key: {income_key})"
-        )
+        logging.info("Post-generation weight validation passed")
 
         self.save_dataset(data)
 

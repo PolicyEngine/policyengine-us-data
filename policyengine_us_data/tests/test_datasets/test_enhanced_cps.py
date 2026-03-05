@@ -1,6 +1,23 @@
 import pytest
 
 
+def test_ecps_employment_income_direct():
+    """Direct check that employment income from the actual dataset is > 5T.
+
+    This tests the ACTUAL H5 dataset, not calibration_log.csv, and would
+    have caught the bug where employment_income_before_lsr was dropped.
+    """
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us import Microsimulation
+
+    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    total = sim.calculate("employment_income").sum()
+    assert total > 5e12, (
+        f"employment_income sum is {total:.2e}, expected > 5T. "
+        "Likely missing employment_income_before_lsr in dataset."
+    )
+
+
 def test_ecps_has_mortgage_interest():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation

@@ -80,6 +80,20 @@ def test_sparse_ecps(sim):
     assert percent_within_10 > 60.0
 
 
+def test_sparse_ecps_employment_income_positive(sim):
+    """Direct check that employment income is in the trillions.
+
+    Unlike test_sparse_ecps which filters out zero targets via zero_mask,
+    this test would have caught the bug where employment_income_before_lsr
+    was dropped, zeroing out all employment income.
+    """
+    total = sim.calculate("employment_income").sum()
+    assert total > 5e12, (
+        f"employment_income sum is {total:.2e}, expected > 5T. "
+        "Likely missing employment_income_before_lsr in dataset."
+    )
+
+
 def test_sparse_ecps_has_mortgage_interest(sim):
     assert sim.calculate("deductible_mortgage_interest").sum() > 1
 

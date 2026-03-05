@@ -224,15 +224,23 @@ class EnhancedCPS(Dataset):
                 f"{int(np.sum(w > 0))} non-zero"
             )
 
-        # Validate critical variables exist in data
-        if "employment_income_before_lsr" not in data:
+        # Validate critical income variable exists in data.
+        # The CPS stores employment_income_before_lsr (or the older
+        # employment_income key); either must be present with data.
+        income_key = None
+        for k in ("employment_income_before_lsr", "employment_income"):
+            if k in data and data[k]:
+                income_key = k
+                break
+        if income_key is None:
             raise ValueError(
-                "employment_income_before_lsr missing from dataset"
+                "Neither employment_income_before_lsr nor "
+                "employment_income found with data in dataset"
             )
-        eib_periods = data["employment_income_before_lsr"]
-        if not eib_periods:
-            raise ValueError("employment_income_before_lsr has no period data")
-        logging.info("Post-generation validation passed for EnhancedCPS")
+        logging.info(
+            f"Post-generation validation passed for EnhancedCPS "
+            f"(income key: {income_key})"
+        )
 
         self.save_dataset(data)
 

@@ -24,7 +24,12 @@ MIN_FILE_SIZES = {
 # H5 groups that must exist and contain data.
 REQUIRED_GROUPS = [
     "household_weight",
+]
+
+# At least one of these income groups must exist with data.
+INCOME_GROUPS = [
     "employment_income_before_lsr",
+    "employment_income",
 ]
 
 # Aggregate thresholds for sanity checks (year 2024).
@@ -70,34 +75,38 @@ def validate_dataset(file_path: Path) -> None:
         )
 
     # 2. H5 structure check - verify critical groups exist with data
+    def _check_group_has_data(f, name):
+        """Return True if the H5 group/dataset has non-empty data."""
+        if name not in f:
+            return False
+        group = f[name]
+        if isinstance(group, h5py.Group):
+            if len(group.keys()) == 0:
+                return False
+            first_key = list(group.keys())[0]
+            return len(group[first_key][:]) > 0
+        elif isinstance(group, h5py.Dataset):
+            return group.size > 0
+        return False
+
     try:
         with h5py.File(file_path, "r") as f:
             for group_name in REQUIRED_GROUPS:
-                if group_name not in f:
+                if not _check_group_has_data(f, group_name):
                     errors.append(
-                        f"Required group '{group_name}' missing from H5 file."
+                        f"Required group '{group_name}' missing "
+                        f"or empty in H5 file."
                     )
-                    continue
-                group = f[group_name]
-                # Group should have at least one year key with data
-                if isinstance(group, h5py.Group):
-                    if len(group.keys()) == 0:
-                        errors.append(
-                            f"Group '{group_name}' exists but has no year keys."
-                        )
-                    else:
-                        # Check first year key has non-empty data
-                        first_key = list(group.keys())[0]
-                        data = group[first_key][:]
-                        if len(data) == 0:
-                            errors.append(
-                                f"Group '{group_name}/{first_key}' has empty data."
-                            )
-                elif isinstance(group, h5py.Dataset):
-                    if group.size == 0:
-                        errors.append(
-                            f"Dataset '{group_name}' has empty data."
-                        )
+
+            # At least one income group must have data
+            has_income = any(
+                _check_group_has_data(f, g) for g in INCOME_GROUPS
+            )
+            if not has_income:
+                errors.append(
+                    f"No income data found. Need at least one of "
+                    f"{INCOME_GROUPS} with data in H5 file."
+                )
     except Exception as e:
         errors.append(f"Failed to read H5 file: {e}")
 
@@ -115,10 +124,10 @@ def validate_dataset(file_path: Path) -> None:
         sim = Microsimulation(dataset=file_path)
         year = 2024
 
-        emp_income = sim.calculate("employment_income_before_lsr", year).sum()
+        emp_income = sim.calculate("employment_income", year).sum()
         if emp_income < MIN_EMPLOYMENT_INCOME_SUM:
             errors.append(
-                f"employment_income_before_lsr sum = ${emp_income:,.0f}, "
+                f"employment_income sum = ${emp_income:,.0f}, "
                 f"expected > ${MIN_EMPLOYMENT_INCOME_SUM:,.0f}. "
                 f"Data may have dropped employment income."
             )
@@ -145,7 +154,7 @@ def validate_dataset(file_path: Path) -> None:
 
     print(f"  ✓ Validation passed for {filename}")
     print(f"    File size: {file_size / 1024 / 1024:.1f} MB")
-    print(f"    Employment income sum: ${emp_income:,.0f}")
+    print(f"    employment_income sum: ${emp_income:,.0f}")
     print(f"    Household weight sum: {hh_weight:,.0f}")
 
 

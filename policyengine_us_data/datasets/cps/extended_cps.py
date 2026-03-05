@@ -57,6 +57,15 @@ class ExtendedCPS(Dataset):
     # needed by the dataset loader before formulas can run).
     _KEEP_FORMULA_VARS = {"person_id"}
 
+    # CPS stores aggregate variables (e.g. employment_income) but
+    # policyengine-us computes them via ``adds`` from input variables
+    # (e.g. employment_income_before_lsr).  Rename before dropping so
+    # the raw data is preserved under the correct input-variable name.
+    _RENAME_BEFORE_DROP = {
+        "employment_income": "employment_income_before_lsr",
+        "self_employment_income": ("self_employment_income_before_lsr"),
+    }
+
     @classmethod
     def _drop_formula_variables(cls, data):
         """Remove variables that are computed by policyengine-us.
@@ -66,6 +75,11 @@ class ExtendedCPS(Dataset):
         space and can mislead validation.
         """
         from policyengine_us import CountryTaxBenefitSystem
+
+        for src, dst in cls._RENAME_BEFORE_DROP.items():
+            if src in data and dst not in data:
+                logger.info("Renaming %s -> %s before drop", src, dst)
+                data[dst] = data.pop(src)
 
         tbs = CountryTaxBenefitSystem()
         formula_vars = {

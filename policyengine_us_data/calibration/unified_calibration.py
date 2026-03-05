@@ -246,7 +246,14 @@ def parse_args(argv=None):
     parser.add_argument(
         "--skip-source-impute",
         action="store_true",
-        help="Skip ACS/SIPP/SCF re-imputation with state",
+        default=True,
+        help="(default) Skip ACS/SIPP/SCF re-imputation with state",
+    )
+    parser.add_argument(
+        "--no-skip-source-impute",
+        dest="skip_source_impute",
+        action="store_false",
+        help="Run ACS/SIPP/SCF source imputation inline",
     )
     parser.add_argument(
         "--target-config",
@@ -926,7 +933,7 @@ def run_calibration(
     domain_variables: list = None,
     hierarchical_domains: list = None,
     skip_takeup_rerandomize: bool = False,
-    skip_source_impute: bool = False,
+    skip_source_impute: bool = True,
     skip_county: bool = True,
     target_config: dict = None,
     build_only: bool = False,
@@ -1285,7 +1292,7 @@ def main(argv=None):
     from policyengine_us_data.storage import STORAGE_FOLDER
 
     dataset_path = args.dataset or str(
-        STORAGE_FOLDER / "stratified_extended_cps_2024.h5"
+        STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
     )
     db_path = args.db_path or str(
         STORAGE_FOLDER / "calibration" / "policy_data.db"
@@ -1346,7 +1353,7 @@ def main(argv=None):
         domain_variables=domain_variables,
         hierarchical_domains=hierarchical_domains,
         skip_takeup_rerandomize=args.skip_takeup_rerandomize,
-        skip_source_impute=getattr(args, "skip_source_impute", False),
+        skip_source_impute=args.skip_source_impute,
         skip_county=not args.county_level,
         target_config=target_config,
         build_only=args.build_only,

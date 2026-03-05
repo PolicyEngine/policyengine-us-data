@@ -220,7 +220,6 @@ class TestSimpleTakeupConfig:
         assert len(SIMPLE_TAKEUP_VARS) == 9
 
 
-
 class TestTakeupAffectedTargets:
     """Verify TAKEUP_AFFECTED_TARGETS is consistent."""
 

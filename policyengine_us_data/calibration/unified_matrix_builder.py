@@ -385,10 +385,10 @@ def _evaluate_constraints_standalone(
     household_ids: np.ndarray,
     n_households: int,
 ) -> np.ndarray:
-    """Standalone constraint evaluation (no ``self``).
+    """Standalone constraint evaluation (no class instance).
 
-    Same logic as
-    ``UnifiedMatrixBuilder._evaluate_constraints_from_values``.
+    Evaluates person-level constraints and aggregates to
+    household level via .any().
     """
     if not constraints:
         return np.ones(n_households, dtype=bool)
@@ -423,12 +423,10 @@ def _calculate_target_values_standalone(
     household_ids: np.ndarray,
     variable_entity_map: dict,
 ) -> np.ndarray:
-    """Standalone target-value calculation (no ``self``).
+    """Standalone target-value calculation (no class instance).
 
-    Same logic as
-    ``UnifiedMatrixBuilder._calculate_target_values_from_values``
-    but uses ``variable_entity_map`` instead of
-    ``tax_benefit_system``.
+    Uses ``variable_entity_map`` dict for entity resolution
+    (picklable, unlike ``tax_benefit_system``).
     """
     is_count = target_variable.endswith("_count")
 
@@ -750,10 +748,18 @@ class UnifiedMatrixBuilder:
 
         self._entity_rel_cache = pd.DataFrame(
             {
-                "person_id": sim.calculate("person_id", map_to="person").values,
-                "household_id": sim.calculate("household_id", map_to="person").values,
-                "tax_unit_id": sim.calculate("tax_unit_id", map_to="person").values,
-                "spm_unit_id": sim.calculate("spm_unit_id", map_to="person").values,
+                "person_id": sim.calculate(
+                    "person_id", map_to="person"
+                ).values,
+                "household_id": sim.calculate(
+                    "household_id", map_to="person"
+                ).values,
+                "tax_unit_id": sim.calculate(
+                    "tax_unit_id", map_to="person"
+                ).values,
+                "spm_unit_id": sim.calculate(
+                    "spm_unit_id", map_to="person"
+                ).values,
             }
         )
         return self._entity_rel_cache
@@ -1352,80 +1358,6 @@ class UnifiedMatrixBuilder:
         return hh_vars, person_vars
 
     # ---------------------------------------------------------------
-    # Constraint evaluation
-    # ---------------------------------------------------------------
-
-    def _evaluate_constraints_entity_aware(
-        self,
-        sim,
-        constraints: List[dict],
-        n_households: int,
-    ) -> np.ndarray:
-        """Evaluate constraints at person level, aggregate to
-        household level via .any()."""
-        if not constraints:
-            return np.ones(n_households, dtype=bool)
-
-        entity_rel = self._build_entity_relationship(sim)
-        n_persons = len(entity_rel)
-        person_mask = np.ones(n_persons, dtype=bool)
-
-        for c in constraints:
-            try:
-                vals = sim.calculate(
-                    c["variable"],
-                    self.time_period,
-                    map_to="person",
-                ).values
-            except Exception as exc:
-                logger.warning(
-                    "Cannot evaluate constraint '%s': %s",
-                    c["variable"],
-                    exc,
-                )
-                return np.zeros(n_households, dtype=bool)
-            person_mask &= apply_op(vals, c["operation"], c["value"])
-
-        df = entity_rel.copy()
-        df["satisfies"] = person_mask
-        hh_mask = df.groupby("household_id")["satisfies"].any()
-
-        household_ids = sim.calculate("household_id", map_to="household").values
-        return np.array([hh_mask.get(hid, False) for hid in household_ids])
-
-    def _evaluate_constraints_from_values(
-        self,
-        constraints: List[dict],
-        person_vars: Dict[str, np.ndarray],
-        entity_rel: pd.DataFrame,
-        household_ids: np.ndarray,
-        n_households: int,
-    ) -> np.ndarray:
-        """Evaluate constraints from precomputed person-level
-        values, aggregate to household level via .any()."""
-        if not constraints:
-            return np.ones(n_households, dtype=bool)
-
-        n_persons = len(entity_rel)
-        person_mask = np.ones(n_persons, dtype=bool)
-
-        for c in constraints:
-            var = c["variable"]
-            if var not in person_vars:
-                logger.warning(
-                    "Constraint var '%s' not in precomputed " "person_vars",
-                    var,
-                )
-                return np.zeros(n_households, dtype=bool)
-            vals = person_vars[var]
-            person_mask &= apply_op(vals, c["operation"], c["value"])
-
-        df = entity_rel.copy()
-        df["satisfies"] = person_mask
-        hh_mask = df.groupby("household_id")["satisfies"].any()
-        return np.array([hh_mask.get(hid, False) for hid in household_ids])
-
-    # ---------------------------------------------------------------
     # Database queries
     # ---------------------------------------------------------------
 
@@ -1534,7 +1466,9 @@ class UnifiedMatrixBuilder:
                 factors[(from_year, "cpi")] = 1.0
 
             try:
-                pop_from = params.calibration.gov.census.populations.total(from_year)
+                pop_from = params.calibration.gov.census.populations.total(
+                    from_year
+                )
                 pop_to = params.calibration.gov.census.populations.total(
                     self.time_period
                 )
@@ -1553,14 +1487,7 @@ class UnifiedMatrixBuilder:
         if period == self.time_period:
             return 1.0, "none"
 
-        count_indicators = [
-            "count",
-            "person",
-            "people",
-            "households",
-            "tax_units",
-        ]
-        is_count = any(ind in variable.lower() for ind in count_indicators)
+        is_count = variable.endswith("_count")
         uprating_type = "pop" if is_count else "cpi"
         factor = factors.get((period, uprating_type), 1.0)
         return factor, uprating_type
@@ -1618,7 +1545,9 @@ class UnifiedMatrixBuilder:
                         var_factors[var] = 1.0
                         continue
                     period = row.iloc[0]["period"]
-                    factor, _ = self._get_uprating_info(var, period, national_factors)
+                    factor, _ = self._get_uprating_info(
+                        var, period, national_factors
+                    )
                     var_factors[var] = factor
 
             result[state_int] = var_factors
@@ -1720,12 +1649,14 @@ class UnifiedMatrixBuilder:
         print("\n" + "=" * 60)
         print("UPRATING SUMMARY")
         print("=" * 60)
-        print(f"Uprated {len(uprated)} of {len(targets_df)} targets")
+        print(f"Uprated {len(uprated)} of " f"{len(targets_df)} targets")
         period_counts = uprated["period"].value_counts().sort_index()
         for period, count in period_counts.items():
             print(f"  Period {period}: {count} targets")
         factors = eff[eff != 1.0]
-        print(f"  Factor range: [{factors.min():.4f}, {factors.max():.4f}]")
+        print(
+            f"  Factor range: [{factors.min():.4f}, " f"{factors.max():.4f}]"
+        )
 
     # ---------------------------------------------------------------
     # Target naming
@@ -1753,158 +1684,12 @@ class UnifiedMatrixBuilder:
 
         non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
         if non_geo:
-            strs = [f"{c['variable']}{c['operation']}{c['value']}" for c in non_geo]
+            strs = [
+                f"{c['variable']}{c['operation']}{c['value']}" for c in non_geo
+            ]
             parts.append("[" + ",".join(strs) + "]")
 
         return "/".join(parts)
-
-    # ---------------------------------------------------------------
-    # Target value calculation
-    # ---------------------------------------------------------------
-
-    def _calculate_target_values(
-        self,
-        sim,
-        target_variable: str,
-        non_geo_constraints: List[dict],
-        n_households: int,
-    ) -> np.ndarray:
-        """Calculate per-household target values.
-
-        For count targets (*_count): count entities per HH
-        satisfying constraints.
-        For value targets: multiply values by constraint mask.
-        """
-        is_count = target_variable.endswith("_count")
-
-        if not is_count:
-            mask = self._evaluate_constraints_entity_aware(
-                sim, non_geo_constraints, n_households
-            )
-            vals = sim.calculate(target_variable, map_to="household").values
-            return (vals * mask).astype(np.float32)
-
-        # Count target: entity-aware counting
-        entity_rel = self._build_entity_relationship(sim)
-        n_persons = len(entity_rel)
-        person_mask = np.ones(n_persons, dtype=bool)
-
-        for c in non_geo_constraints:
-            try:
-                cv = sim.calculate(c["variable"], map_to="person").values
-            except Exception:
-                return np.zeros(n_households, dtype=np.float32)
-            person_mask &= apply_op(cv, c["operation"], c["value"])
-
-        target_entity = sim.tax_benefit_system.variables[target_variable].entity.key
-        household_ids = sim.calculate("household_id", map_to="household").values
-
-        if target_entity == "household":
-            if non_geo_constraints:
-                mask = self._evaluate_constraints_entity_aware(
-                    sim, non_geo_constraints, n_households
-                )
-                return mask.astype(np.float32)
-            return np.ones(n_households, dtype=np.float32)
-
-        if target_entity == "person":
-            er = entity_rel.copy()
-            er["satisfies"] = person_mask
-            filtered = er[er["satisfies"]]
-            counts = filtered.groupby("household_id")["person_id"].nunique()
-        else:
-            eid_col = f"{target_entity}_id"
-            er = entity_rel.copy()
-            er["satisfies"] = person_mask
-            entity_ok = er.groupby(eid_col)["satisfies"].any()
-            unique = er[["household_id", eid_col]].drop_duplicates()
-            unique["entity_ok"] = unique[eid_col].map(entity_ok)
-            filtered = unique[unique["entity_ok"]]
-            counts = filtered.groupby("household_id")[eid_col].nunique()
-
-        return np.array(
-            [counts.get(hid, 0) for hid in household_ids],
-            dtype=np.float32,
-        )
-
-    def _calculate_target_values_from_values(
-        self,
-        target_variable: str,
-        non_geo_constraints: List[dict],
-        n_households: int,
-        hh_vars: Dict[str, np.ndarray],
-        person_vars: Dict[str, np.ndarray],
-        entity_rel: pd.DataFrame,
-        household_ids: np.ndarray,
-        tax_benefit_system,
-    ) -> np.ndarray:
-        """Calculate per-household target values from precomputed
-        arrays.
-
-        Same logic as _calculate_target_values but reads from
-        hh_vars/person_vars instead of calling sim.calculate().
-        """
-        is_count = target_variable.endswith("_count")
-
-        if not is_count:
-            mask = self._evaluate_constraints_from_values(
-                non_geo_constraints,
-                person_vars,
-                entity_rel,
-                household_ids,
-                n_households,
-            )
-            vals = hh_vars.get(target_variable)
-            if vals is None:
-                return np.zeros(n_households, dtype=np.float32)
-            return (vals * mask).astype(np.float32)
-
-        # Count target: entity-aware counting
-        n_persons = len(entity_rel)
-        person_mask = np.ones(n_persons, dtype=bool)
-
-        for c in non_geo_constraints:
-            var = c["variable"]
-            if var not in person_vars:
-                return np.zeros(n_households, dtype=np.float32)
-            cv = person_vars[var]
-            person_mask &= apply_op(cv, c["operation"], c["value"])
-
-        target_entity = tax_benefit_system.variables[
-            target_variable
-        ].entity.key
-
-        if target_entity == "household":
-            if non_geo_constraints:
-                mask = self._evaluate_constraints_from_values(
-                    non_geo_constraints,
-                    person_vars,
-                    entity_rel,
-                    household_ids,
-                    n_households,
-                )
-                return mask.astype(np.float32)
-            return np.ones(n_households, dtype=np.float32)
-
-        if target_entity == "person":
-            er = entity_rel.copy()
-            er["satisfies"] = person_mask
-            filtered = er[er["satisfies"]]
-            counts = filtered.groupby("household_id")["person_id"].nunique()
-        else:
-            eid_col = f"{target_entity}_id"
-            er = entity_rel.copy()
-            er["satisfies"] = person_mask
-            entity_ok = er.groupby(eid_col)["satisfies"].any()
-            unique = er[["household_id", eid_col]].drop_duplicates()
-            unique["entity_ok"] = unique[eid_col].map(entity_ok)
-            filtered = unique[unique["entity_ok"]]
-            counts = filtered.groupby("household_id")[eid_col].nunique()
-
-        return np.array(
-            [counts.get(hid, 0) for hid in household_ids],
-            dtype=np.float32,
-        )
 
     # ---------------------------------------------------------------
     # Clone simulation
@@ -2045,9 +1830,15 @@ class UnifiedMatrixBuilder:
         n_targets = len(targets_df)
 
         # 2. Sort targets by geographic level
-        targets_df["_geo_level"] = targets_df["geographic_id"].apply(get_geo_level)
-        targets_df = targets_df.sort_values(["_geo_level", "variable", "geographic_id"])
-        targets_df = targets_df.drop(columns=["_geo_level"]).reset_index(drop=True)
+        targets_df["_geo_level"] = targets_df["geographic_id"].apply(
+            get_geo_level
+        )
+        targets_df = targets_df.sort_values(
+            ["_geo_level", "variable", "geographic_id"]
+        )
+        targets_df = targets_df.drop(columns=["_geo_level"]).reset_index(
+            drop=True
+        )
 
         # 3. Build column index structures from geography
         state_col_lists: Dict[int, list] = defaultdict(list)
@@ -2074,7 +1865,9 @@ class UnifiedMatrixBuilder:
             geo_id = row["geographic_id"]
             target_geo_info.append((geo_level, geo_id))
 
-            non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
+            non_geo = [
+                c for c in constraints if c["variable"] not in _GEO_VARS
+            ]
             non_geo_constraints_list.append(non_geo)
 
             target_names.append(
@@ -2459,15 +2252,15 @@ class UnifiedMatrixBuilder:
                         )
                         if vkey not in count_cache:
                             count_cache[vkey] = (
-                                self._calculate_target_values_from_values(
-                                    variable,
-                                    non_geo,
-                                    n_records,
-                                    hh_vars,
-                                    person_vars,
-                                    entity_rel,
-                                    household_ids,
-                                    tax_benefit_system,
+                                _calculate_target_values_standalone(
+                                    target_variable=variable,
+                                    non_geo_constraints=non_geo,
+                                    n_households=n_records,
+                                    hh_vars=hh_vars,
+                                    person_vars=person_vars,
+                                    entity_rel=entity_rel,
+                                    household_ids=household_ids,
+                                    variable_entity_map=variable_entity_map,
                                 )
                             )
                         values = count_cache[vkey]
@@ -2476,7 +2269,7 @@ class UnifiedMatrixBuilder:
                             continue
                         if constraint_key not in mask_cache:
                             mask_cache[constraint_key] = (
-                                self._evaluate_constraints_from_values(
+                                _evaluate_constraints_standalone(
                                     non_geo,
                                     person_vars,
                                     entity_rel,

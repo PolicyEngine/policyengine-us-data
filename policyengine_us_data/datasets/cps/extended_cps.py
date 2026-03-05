@@ -64,10 +64,31 @@ class ExtendedCPS(Dataset):
         Variables with formulas, ``adds``, or ``subtracts`` are
         recomputed by the simulation engine, so storing them wastes
         space and can mislead validation.
+
+        Aggregate variables whose ``adds`` include a behavioral-
+        response input (e.g. ``employment_income_before_lsr``) are
+        renamed to that input before dropping so the raw data is
+        preserved under the correct input-variable name.
         """
         from policyengine_us import CountryTaxBenefitSystem
 
         tbs = CountryTaxBenefitSystem()
+
+        _RESPONSE_SUFFIXES = ("_before_lsr", "_before_response")
+        for name, var in tbs.variables.items():
+            if name not in data:
+                continue
+            for add_var in getattr(var, "adds", None) or []:
+                if any(add_var.endswith(s) for s in _RESPONSE_SUFFIXES):
+                    if add_var not in data:
+                        logger.info(
+                            "Renaming %s -> %s before drop",
+                            name,
+                            add_var,
+                        )
+                        data[add_var] = data.pop(name)
+                    break
+
         formula_vars = {
             name
             for name, var in tbs.variables.items()

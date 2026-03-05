@@ -125,13 +125,13 @@ def create_sparse_ecps():
             if values is not None:
                 data[variable][time_period] = values
 
-            if len(data[variable]) == 0:
-                del data[variable]
+        if len(data[variable]) == 0:
+            del data[variable]
 
     # Validate critical variables exist before writing
     critical_vars = [
         "household_weight",
-        "employment_income",
+        "employment_income_before_lsr",
         "household_id",
         "person_id",
     ]

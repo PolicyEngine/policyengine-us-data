@@ -35,7 +35,6 @@ from typing import Optional
 
 import numpy as np
 
-from policyengine_us_data.utils.takeup import SIMPLE_TAKEUP_VARS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -171,84 +170,6 @@ def check_package_staleness(metadata: dict) -> None:
             f"differs from current {cur_commit[:8]} "
             f"on same branch '{cur_branch}'"
         )
-
-
-def rerandomize_takeup(
-    sim,
-    clone_block_geoids: np.ndarray,
-    clone_state_fips: np.ndarray,
-    time_period: int,
-) -> None:
-    """Re-randomize simple takeup variables per census block.
-
-    Groups entities by their household's block GEOID and draws
-    new takeup booleans using seeded_rng(var_name, salt=block).
-    Overrides the simulation's stored inputs.
-
-    Args:
-        sim: Microsimulation instance (already has state_fips).
-        clone_block_geoids: Block GEOIDs per household.
-        clone_state_fips: State FIPS per household.
-        time_period: Tax year.
-    """
-    from policyengine_us_data.parameters import (
-        load_take_up_rate,
-    )
-    from policyengine_us_data.utils.randomness import (
-        seeded_rng,
-    )
-
-    hh_ids = sim.calculate("household_id", map_to="household").values
-    hh_to_block = dict(zip(hh_ids, clone_block_geoids))
-    hh_to_state = dict(zip(hh_ids, clone_state_fips))
-
-    for spec in SIMPLE_TAKEUP_VARS:
-        var_name = spec["variable"]
-        entity_level = spec["entity"]
-        rate_key = spec["rate_key"]
-
-        rate_or_dict = load_take_up_rate(rate_key, time_period)
-
-        is_state_specific = isinstance(rate_or_dict, dict)
-
-        entity_ids = sim.calculate(
-            f"{entity_level}_id", map_to=entity_level
-        ).values
-        entity_hh_ids = sim.calculate(
-            "household_id", map_to=entity_level
-        ).values
-        n_entities = len(entity_ids)
-
-        draws = np.zeros(n_entities, dtype=np.float64)
-        rates = np.zeros(n_entities, dtype=np.float64)
-
-        entity_blocks = np.array(
-            [hh_to_block.get(hid, "0") for hid in entity_hh_ids]
-        )
-
-        unique_blocks = np.unique(entity_blocks)
-        for block in unique_blocks:
-            mask = entity_blocks == block
-            n_in_block = mask.sum()
-            rng = seeded_rng(var_name, salt=str(block))
-            draws[mask] = rng.random(n_in_block)
-
-            if is_state_specific:
-                block_hh_ids = entity_hh_ids[mask]
-                for i, hid in enumerate(block_hh_ids):
-                    state = int(hh_to_state.get(hid, 0))
-                    state_str = str(state)
-                    r = rate_or_dict.get(
-                        state_str,
-                        rate_or_dict.get(state, 0.8),
-                    )
-                    idx = np.where(mask)[0][i]
-                    rates[idx] = r
-            else:
-                rates[mask] = rate_or_dict
-
-        new_values = draws < rates
-        sim.set_input(var_name, time_period, new_values)
 
 
 def parse_args(argv=None):

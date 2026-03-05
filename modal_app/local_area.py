@@ -485,22 +485,11 @@ print("Done")
     staging_volume.commit()
     print("Calibration inputs downloaded")
 
-    source_imputed_path = (
+    dataset_path = (
         calibration_dir
         / "calibration"
         / "source_imputed_stratified_extended_cps.h5"
     )
-    base_dataset_path = (
-        calibration_dir / "calibration" / "stratified_extended_cps.h5"
-    )
-    if source_imputed_path.exists():
-        dataset_path = source_imputed_path
-        print("Using source-imputed dataset")
-    else:
-        dataset_path = base_dataset_path
-        print(
-            "WARNING: Source-imputed dataset not found, " "using base dataset"
-        )
 
     blocks_path = calibration_dir / "calibration" / "stacked_blocks.npy"
     geo_labels_path = calibration_dir / "calibration" / "geo_labels.json"
@@ -744,22 +733,11 @@ print("Done")
         calibration_dir / "calibration" / "national_calibration_weights.npy"
     )
     db_path = calibration_dir / "calibration" / "policy_data.db"
-    source_imputed_path = (
+    dataset_path = (
         calibration_dir
         / "calibration"
         / "source_imputed_stratified_extended_cps.h5"
     )
-    base_dataset_path = (
-        calibration_dir / "calibration" / "stratified_extended_cps.h5"
-    )
-    if source_imputed_path.exists():
-        dataset_path = source_imputed_path
-        print("Using source-imputed dataset")
-    else:
-        dataset_path = base_dataset_path
-        print(
-            "WARNING: Source-imputed dataset not found, " "using base dataset"
-        )
 
     blocks_path = (
         calibration_dir / "calibration" / "national_stacked_blocks.npy"

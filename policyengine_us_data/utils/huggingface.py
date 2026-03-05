@@ -60,8 +60,9 @@ def download_calibration_inputs(
     output_path.mkdir(parents=True, exist_ok=True)
 
     files = {
-        "weights": f"calibration/{prefix}calibration_weights.npy",
-        "dataset": "calibration/stratified_extended_cps.h5",
+        "dataset": (
+            "calibration/" "source_imputed_stratified_extended_cps.h5"
+        ),
         "database": "calibration/policy_data.db",
     }
 
@@ -80,11 +81,9 @@ def download_calibration_inputs(
         print(f"Downloaded {hf_path} to {local_path}")
 
     optional_files = {
+        "weights": f"calibration/{prefix}calibration_weights.npy",
         "blocks": f"calibration/{prefix}stacked_blocks.npy",
         "geo_labels": f"calibration/{prefix}geo_labels.json",
-        "source_imputed_dataset": (
-            "calibration/" "source_imputed_stratified_extended_cps.h5"
-        ),
     }
     for key, hf_path in optional_files.items():
         try:

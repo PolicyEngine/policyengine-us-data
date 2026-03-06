@@ -32,6 +32,12 @@ def main():
         default=None,
         help="Path to geo_labels.json (overrides DB lookup)",
     )
+    parser.add_argument(
+        "--stacked-takeup",
+        type=str,
+        default=None,
+        help="Path to stacked_takeup.npz from calibration",
+    )
     args = parser.parse_args()
 
     work_items = json.loads(args.work_items)
@@ -44,7 +50,10 @@ def main():
     if args.calibration_blocks:
         calibration_blocks = np.load(args.calibration_blocks)
 
-    rerandomize_takeup = True
+    stacked_takeup = None
+    if args.stacked_takeup:
+        stacked_takeup = dict(np.load(args.stacked_takeup))
+
     from policyengine_us_data.utils.takeup import (
         TAKEUP_AFFECTED_TARGETS,
     )
@@ -115,8 +124,8 @@ def main():
                     output_path=states_dir / f"{item_id}.h5",
                     cds_to_calibrate=cds_to_calibrate,
                     cd_subset=cd_subset,
-                    rerandomize_takeup=rerandomize_takeup,
                     takeup_filter=takeup_filter,
+                    stacked_takeup=stacked_takeup,
                 )
 
             elif item_type == "district":
@@ -160,8 +169,8 @@ def main():
                     output_path=districts_dir / f"{friendly_name}.h5",
                     cds_to_calibrate=cds_to_calibrate,
                     cd_subset=[geoid],
-                    rerandomize_takeup=rerandomize_takeup,
                     takeup_filter=takeup_filter,
+                    stacked_takeup=stacked_takeup,
                 )
 
             elif item_type == "city":
@@ -182,8 +191,8 @@ def main():
                     cds_to_calibrate=cds_to_calibrate,
                     cd_subset=cd_subset,
                     county_filter=NYC_COUNTIES,
-                    rerandomize_takeup=rerandomize_takeup,
                     takeup_filter=takeup_filter,
+                    stacked_takeup=stacked_takeup,
                 )
 
             elif item_type == "national":
@@ -195,6 +204,7 @@ def main():
                     dataset_path=dataset_path,
                     output_path=national_dir / "US.h5",
                     cds_to_calibrate=cds_to_calibrate,
+                    stacked_takeup=stacked_takeup,
                 )
             else:
                 raise ValueError(f"Unknown item type: {item_type}")

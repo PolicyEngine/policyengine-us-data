@@ -128,6 +128,88 @@ def get_completed_from_volume(version_dir: Path) -> set:
     return completed
 
 
+def run_phase(
+    phase_name: str,
+    states: List[str],
+    districts: List[str],
+    cities: List[str],
+    num_workers: int,
+    completed: set,
+    branch: str,
+    version: str,
+    calibration_inputs: Dict[str, str],
+    version_dir: Path,
+) -> set:
+    """Run a single build phase, spawning workers and collecting results."""
+    work_chunks = partition_work(
+        states, districts, cities, num_workers, completed
+    )
+    total_remaining = sum(len(c) for c in work_chunks)
+
+    print(f"\n--- Phase: {phase_name} ---")
+    print(
+        f"Remaining work: {total_remaining} items "
+        f"across {len(work_chunks)} workers"
+    )
+
+    if total_remaining == 0:
+        print(f"All {phase_name} items already built!")
+        return completed
+
+    handles = []
+    for i, chunk in enumerate(work_chunks):
+        print(f"  Worker {i}: {len(chunk)} items")
+        handle = build_areas_worker.spawn(
+            branch=branch,
+            version=version,
+            work_items=chunk,
+            calibration_inputs=calibration_inputs,
+        )
+        handles.append(handle)
+
+    print(f"Waiting for {phase_name} workers to complete...")
+    all_results = []
+    all_errors = []
+
+    for i, handle in enumerate(handles):
+        try:
+            result = handle.get()
+            all_results.append(result)
+            print(
+                f"  Worker {i}: {len(result['completed'])} completed, "
+                f"{len(result['failed'])} failed"
+            )
+            if result["errors"]:
+                all_errors.extend(result["errors"])
+        except Exception as e:
+            all_errors.append({"worker": i, "error": str(e)})
+            print(f"  Worker {i}: CRASHED - {e}")
+
+    total_completed = sum(len(r["completed"]) for r in all_results)
+    total_failed = sum(len(r["failed"]) for r in all_results)
+
+    staging_volume.reload()
+    volume_completed = get_completed_from_volume(version_dir)
+    volume_new = volume_completed - completed
+
+    print(f"\n{phase_name} summary (worker-reported):")
+    print(f"  Completed: {total_completed}")
+    print(f"  Failed: {total_failed}")
+    print(f"{phase_name} summary (volume verification):")
+    print(f"  Files on volume: {len(volume_completed)}")
+    print(f"  New files this run: {len(volume_new)}")
+
+    if all_errors:
+        print(f"\nErrors ({len(all_errors)}):")
+        for err in all_errors[:5]:
+            err_msg = err.get("error", "Unknown")[:100]
+            print(f"  - {err.get('item', err.get('worker'))}: " f"{err_msg}")
+        if len(all_errors) > 5:
+            print(f"  ... and {len(all_errors) - 5} more")
+
+    return volume_completed
+
+
 @app.function(
     image=image,
     secrets=[hf_secret, gcp_secret],
@@ -182,6 +264,13 @@ def build_areas_worker(
             [
                 "--geo-labels",
                 calibration_inputs["geo_labels"],
+            ]
+        )
+    if "stacked_takeup" in calibration_inputs:
+        worker_cmd.extend(
+            [
+                "--stacked-takeup",
+                calibration_inputs["stacked_takeup"],
             ]
         )
 
@@ -436,6 +525,7 @@ def coordinate_publish(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
+    skip_download: bool = False,
 ) -> str:
     """Coordinate the full publishing workflow."""
     setup_gcp_credentials()
@@ -455,34 +545,55 @@ def coordinate_publish(
     version_dir.mkdir(parents=True, exist_ok=True)
 
     calibration_dir = staging_dir / "calibration_inputs"
-    if calibration_dir.exists():
-        shutil.rmtree(calibration_dir)
-    calibration_dir.mkdir(parents=True, exist_ok=True)
 
     # hf_hub_download preserves directory structure, so files are in calibration/ subdir
     weights_path = calibration_dir / "calibration" / "calibration_weights.npy"
     db_path = calibration_dir / "calibration" / "policy_data.db"
 
-    print("Downloading calibration inputs from HuggingFace...")
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "-c",
-            f"""
+    if skip_download:
+        print("Verifying pre-pushed calibration inputs...")
+        staging_volume.reload()
+        dataset_path = (
+            calibration_dir
+            / "calibration"
+            / "source_imputed_stratified_extended_cps.h5"
+        )
+        required = {
+            "weights": weights_path,
+            "dataset": dataset_path,
+            "database": db_path,
+        }
+        for label, p in required.items():
+            if not p.exists():
+                raise RuntimeError(
+                    f"Missing required calibration input " f"({label}): {p}"
+                )
+        print("All required calibration inputs found on volume.")
+    else:
+        if calibration_dir.exists():
+            shutil.rmtree(calibration_dir)
+        calibration_dir.mkdir(parents=True, exist_ok=True)
+
+        print("Downloading calibration inputs from HuggingFace...")
+        result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "-c",
+                f"""
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
 download_calibration_inputs("{calibration_dir}")
 print("Done")
 """,
-        ],
-        text=True,
-        env=os.environ.copy(),
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Download failed: {result.stderr}")
-    staging_volume.commit()
-    print("Calibration inputs downloaded")
+            ],
+            text=True,
+            env=os.environ.copy(),
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Download failed: {result.stderr}")
+        staging_volume.commit()
+        print("Calibration inputs downloaded")
 
     dataset_path = (
         calibration_dir
@@ -503,6 +614,10 @@ print("Done")
     if geo_labels_path.exists():
         calibration_inputs["geo_labels"] = str(geo_labels_path)
         print(f"Geo labels found: {geo_labels_path}")
+    takeup_path = calibration_dir / "calibration" / "stacked_takeup.npz"
+    if takeup_path.exists():
+        calibration_inputs["stacked_takeup"] = str(takeup_path)
+        print(f"Stacked takeup found: {takeup_path}")
 
     result = subprocess.run(
         [
@@ -544,78 +659,49 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
     completed = get_completed_from_volume(version_dir)
     print(f"Found {len(completed)} already-completed items on volume")
 
-    work_chunks = partition_work(states, districts, cities, num_workers, completed)
+    phase_args = dict(
+        num_workers=num_workers,
+        branch=branch,
+        version=version,
+        calibration_inputs=calibration_inputs,
+        version_dir=version_dir,
+    )
 
-    total_remaining = sum(len(c) for c in work_chunks)
-    print(f"Remaining work: {total_remaining} items across {len(work_chunks)} workers")
+    completed = run_phase(
+        "States",
+        states=states,
+        districts=[],
+        cities=[],
+        completed=completed,
+        **phase_args,
+    )
 
-    if total_remaining == 0:
-        print("All items already built!")
-    else:
-        print("\nSpawning workers...")
-        handles = []
-        for i, chunk in enumerate(work_chunks):
-            print(f"  Worker {i}: {len(chunk)} items")
-            handle = build_areas_worker.spawn(
-                branch=branch,
-                version=version,
-                work_items=chunk,
-                calibration_inputs=calibration_inputs,
-            )
-            handles.append(handle)
+    completed = run_phase(
+        "Districts",
+        states=[],
+        districts=districts,
+        cities=[],
+        completed=completed,
+        **phase_args,
+    )
 
-        print("\nWaiting for workers to complete...")
-        all_results = []
-        all_errors = []
+    completed = run_phase(
+        "Cities",
+        states=[],
+        districts=[],
+        cities=cities,
+        completed=completed,
+        **phase_args,
+    )
 
-        for i, handle in enumerate(handles):
-            try:
-                result = handle.get()
-                all_results.append(result)
-                print(
-                    f"  Worker {i}: {len(result['completed'])} completed, "
-                    f"{len(result['failed'])} failed"
-                )
-                if result["errors"]:
-                    all_errors.extend(result["errors"])
-            except Exception as e:
-                all_errors.append({"worker": i, "error": str(e)})
-                print(f"  Worker {i}: CRASHED - {e}")
-
-        total_completed = sum(len(r["completed"]) for r in all_results)
-        total_failed = sum(len(r["failed"]) for r in all_results)
-
-        staging_volume.reload()
-        volume_completed = get_completed_from_volume(version_dir)
-        volume_new = volume_completed - completed
-        print(f"\nBuild summary (worker-reported):")
-        print(f"  Completed: {total_completed}")
-        print(f"  Failed: {total_failed}")
-        print(f"  Previously completed: {len(completed)}")
-        print(f"Build summary (volume verification):")
-        print(f"  Files on volume: {len(volume_completed)}")
-        print(f"  New files this run: {len(volume_new)}")
-
-        if all_errors:
-            print(f"\nErrors ({len(all_errors)}):")
-            for err in all_errors[:5]:
-                err_msg = err.get("error", "Unknown")[:100]
-                print(
-                    f"  - {err.get('item', err.get('worker'))}: " f"{err_msg}"
-                )
-            if len(all_errors) > 5:
-                print(f"  ... and {len(all_errors) - 5} more")
-
-        expected_total = len(states) + len(districts) + len(cities)
-        if len(volume_completed) < expected_total:
-            missing = expected_total - len(volume_completed)
-            raise RuntimeError(
-                f"Build incomplete: {missing} files missing from "
-                f"volume ({len(volume_completed)}/{expected_total}). "
-                f"Worker errors: {len(all_errors)}, "
-                f"failures: {total_failed}. "
-                f"Volume preserved for retry."
-            )
+    expected_total = len(states) + len(districts) + len(cities)
+    if len(completed) < expected_total:
+        missing = expected_total - len(completed)
+        raise RuntimeError(
+            f"Build incomplete: {missing} files missing from "
+            f"volume ({len(completed)}/{expected_total}). "
+            f"Volume preserved for retry."
+        )
 
     if skip_upload:
         print("\nSkipping upload (--skip-upload flag set)")
@@ -659,12 +745,14 @@ def main(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
+    skip_download: bool = False,
 ):
     """Local entrypoint for Modal CLI."""
     result = coordinate_publish.remote(
         branch=branch,
         num_workers=num_workers,
         skip_upload=skip_upload,
+        skip_download=skip_download,
     )
     print(result)
 
@@ -746,6 +834,12 @@ print("Done")
     if national_geo_labels_path.exists():
         calibration_inputs["geo_labels"] = str(national_geo_labels_path)
         print(f"National geo labels found: " f"{national_geo_labels_path}")
+    national_takeup_path = (
+        calibration_dir / "calibration" / "national_stacked_takeup.npz"
+    )
+    if national_takeup_path.exists():
+        calibration_inputs["stacked_takeup"] = str(national_takeup_path)
+        print(f"National stacked takeup found: " f"{national_takeup_path}")
 
     version_dir = staging_dir / version
     version_dir.mkdir(parents=True, exist_ok=True)

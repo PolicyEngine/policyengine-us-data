@@ -23,6 +23,7 @@ if __name__ == "__main__":
         build_h5,
         NYC_COUNTIES,
         NYC_CDS,
+        TAKEUP_AFFECTED_TARGETS,
     )
 
     parser = argparse.ArgumentParser(
@@ -72,14 +73,14 @@ if __name__ == "__main__":
         help="State code e.g. RI, CA (--mode single-state)",
     )
     parser.add_argument(
-        "--rerandomize-takeup",
-        action="store_true",
-        help="Re-randomize takeup draws per CD",
-    )
-    parser.add_argument(
         "--calibration-blocks",
         default=None,
         help="Path to stacked_blocks.npy",
+    )
+    parser.add_argument(
+        "--stacked-takeup",
+        default=None,
+        help="Path to stacked_takeup.npz from calibration",
     )
 
     args = parser.parse_args()
@@ -107,11 +108,20 @@ if __name__ == "__main__":
             f"expected ({expected_length:,})"
         )
 
-    rerand = args.rerandomize_takeup
     cal_blocks = None
+    takeup_filter = None
     if args.calibration_blocks:
         cal_blocks = np.load(args.calibration_blocks)
         print(f"Loaded calibration blocks: {len(cal_blocks):,}")
+        takeup_filter = [
+            info["takeup_var"] for info in TAKEUP_AFFECTED_TARGETS.values()
+        ]
+        print(f"Takeup filter: {takeup_filter}")
+
+    stacked_takeup = None
+    if args.stacked_takeup:
+        stacked_takeup = dict(np.load(args.stacked_takeup))
+        print(f"Loaded stacked takeup: " f"{list(stacked_takeup.keys())}")
 
     if mode == "national":
         output_path = f"{output_dir}/national.h5"
@@ -122,7 +132,8 @@ if __name__ == "__main__":
             dataset_path=Path(dataset_path_str),
             output_path=Path(output_path),
             cds_to_calibrate=cds_to_calibrate,
-            rerandomize_takeup=rerand,
+            takeup_filter=takeup_filter,
+            stacked_takeup=stacked_takeup,
         )
 
     elif mode == "states":
@@ -141,7 +152,8 @@ if __name__ == "__main__":
                 output_path=Path(output_path),
                 cds_to_calibrate=cds_to_calibrate,
                 cd_subset=cd_subset,
-                rerandomize_takeup=rerand,
+                takeup_filter=takeup_filter,
+                stacked_takeup=stacked_takeup,
             )
 
     elif mode == "cds":
@@ -166,7 +178,8 @@ if __name__ == "__main__":
                 output_path=Path(output_path),
                 cds_to_calibrate=cds_to_calibrate,
                 cd_subset=[cd_geoid],
-                rerandomize_takeup=rerand,
+                takeup_filter=takeup_filter,
+                stacked_takeup=stacked_takeup,
             )
 
     elif mode == "single-cd":
@@ -183,7 +196,8 @@ if __name__ == "__main__":
             output_path=Path(output_path),
             cds_to_calibrate=cds_to_calibrate,
             cd_subset=[args.cd],
-            rerandomize_takeup=rerand,
+            takeup_filter=takeup_filter,
+            stacked_takeup=stacked_takeup,
         )
 
     elif mode == "single-state":
@@ -216,7 +230,8 @@ if __name__ == "__main__":
             output_path=Path(output_path),
             cds_to_calibrate=cds_to_calibrate,
             cd_subset=cd_subset,
-            rerandomize_takeup=rerand,
+            takeup_filter=takeup_filter,
+            stacked_takeup=stacked_takeup,
         )
 
     elif mode == "nyc":
@@ -234,7 +249,8 @@ if __name__ == "__main__":
             cds_to_calibrate=cds_to_calibrate,
             cd_subset=cd_subset,
             county_filter=NYC_COUNTIES,
-            rerandomize_takeup=rerand,
+            takeup_filter=takeup_filter,
+            stacked_takeup=stacked_takeup,
         )
 
     print("\nDone!")

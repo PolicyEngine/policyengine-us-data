@@ -1998,6 +1998,12 @@ class UnifiedMatrixBuilder:
                         rk, self.time_period
                     )
 
+            # Store for post-optimization stacked takeup
+            self.entity_hh_idx_map = entity_hh_idx_map
+            self.household_ids = household_ids
+            self.precomputed_rates = precomputed_rates
+            self.affected_target_info = affected_target_info
+
         # 5d. Clone loop
         from pathlib import Path
 

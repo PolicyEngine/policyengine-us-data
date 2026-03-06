@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote
+.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local
 
 GPU ?= A100-80GB
 EPOCHS ?= 200
@@ -118,7 +118,21 @@ validate-package:
 	python -m policyengine_us_data.calibration.validate_package
 
 publish-local-area:
-	python policyengine_us_data/calibration/publish_local_area.py
+	python policyengine_us_data/calibration/publish_local_area.py --upload
+
+build-h5s:
+	python -m policyengine_us_data.calibration.publish_local_area \
+		--weights-path policyengine_us_data/storage/calibration/calibration_weights.npy \
+		--dataset-path policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5 \
+		--db-path policyengine_us_data/storage/calibration/policy_data.db \
+		--calibration-blocks policyengine_us_data/storage/calibration/stacked_blocks.npy \
+		--stacked-takeup policyengine_us_data/storage/calibration/stacked_takeup.npz \
+		--states-only
+
+validate-local:
+	python -m policyengine_us_data.calibration.validate_staging \
+		--hf-prefix local_area_build \
+		--area-type states --output validation_results.csv
 
 validate-data:
 	python -c "from policyengine_us_data.storage.upload_completed_datasets import validate_all_datasets; validate_all_datasets()"
@@ -141,6 +155,27 @@ upload-database:
 		'calibration/policy_data.db')"
 	@echo "Database uploaded to HF."
 
+push-to-modal:
+	modal volume put local-area-staging \
+		policyengine_us_data/storage/calibration/calibration_weights.npy \
+		calibration_inputs/calibration/calibration_weights.npy --force
+	modal volume put local-area-staging \
+		policyengine_us_data/storage/calibration/stacked_blocks.npy \
+		calibration_inputs/calibration/stacked_blocks.npy --force
+	modal volume put local-area-staging \
+		policyengine_us_data/storage/calibration/stacked_takeup.npz \
+		calibration_inputs/calibration/stacked_takeup.npz --force
+	modal volume put local-area-staging \
+		policyengine_us_data/storage/calibration/policy_data.db \
+		calibration_inputs/calibration/policy_data.db --force
+	modal volume put local-area-staging \
+		policyengine_us_data/storage/calibration/geo_labels.json \
+		calibration_inputs/calibration/geo_labels.json --force
+	modal volume put local-area-staging \
+		policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5 \
+		calibration_inputs/calibration/source_imputed_stratified_extended_cps.h5 --force
+	@echo "All calibration inputs pushed to Modal volume."
+
 build-matrices:
 	modal run modal_app/remote_calibration_runner.py::build_package \
 		--branch $(BRANCH)
@@ -161,7 +196,8 @@ calibrate-both:
 
 stage-h5s:
 	modal run modal_app/local_area.py::main \
-		--branch $(BRANCH) --num-workers $(NUM_WORKERS)
+		--branch $(BRANCH) --num-workers $(NUM_WORKERS) \
+		$(if $(SKIP_DOWNLOAD),--skip-download)
 
 stage-national-h5:
 	modal run modal_app/local_area.py::main_national \

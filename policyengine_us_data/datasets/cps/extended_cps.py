@@ -78,6 +78,7 @@ class ExtendedCPS(Dataset):
     # due to entity shape mismatch.
     _KEEP_FORMULA_VARS = {
         "person_id",
+        "is_pregnant",
         "interest_deduction",
         "self_employed_pension_contribution_ald",
         "self_employed_health_insurance_ald",

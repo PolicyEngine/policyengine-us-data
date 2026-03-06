@@ -227,9 +227,7 @@ class TestSchemaViewsAndLookups(unittest.TestCase):
         from sqlalchemy import text
 
         with self.engine.connect() as conn:
-            rows = conn.execute(
-                text("SELECT * FROM stratum_domain")
-            ).fetchall()
+            rows = conn.execute(text("SELECT * FROM stratum_domain")).fetchall()
         return rows
 
     def test_geographic_stratum_excluded(self):
@@ -246,7 +244,7 @@ class TestSchemaViewsAndLookups(unittest.TestCase):
         domain_stratum_ids = {r[0] for r in rows}
         self.assertTrue(
             domain_stratum_ids.isdisjoint(geo_ids),
-            "Geographic strata should not appear in " "stratum_domain",
+            "Geographic strata should not appear in stratum_domain",
         )
 
     def test_single_domain_variable(self):
@@ -280,7 +278,7 @@ class TestSchemaViewsAndLookups(unittest.TestCase):
         }
         self.assertTrue(
             all_domain_vars.isdisjoint(excluded),
-            f"Found excluded vars: " f"{all_domain_vars & excluded}",
+            f"Found excluded vars: {all_domain_vars & excluded}",
         )
 
     # ----------------------------------------------------------------
@@ -291,18 +289,14 @@ class TestSchemaViewsAndLookups(unittest.TestCase):
         from sqlalchemy import text
 
         with self.engine.connect() as conn:
-            rows = conn.execute(
-                text("SELECT * FROM target_overview")
-            ).fetchall()
+            rows = conn.execute(text("SELECT * FROM target_overview")).fetchall()
         return rows
 
     def _overview_columns(self):
         from sqlalchemy import text
 
         with self.engine.connect() as conn:
-            cursor = conn.execute(
-                text("SELECT * FROM target_overview LIMIT 0")
-            )
+            cursor = conn.execute(text("SELECT * FROM target_overview LIMIT 0"))
             return [desc[0] for desc in cursor.cursor.description]
 
     def test_national_geo_level(self):

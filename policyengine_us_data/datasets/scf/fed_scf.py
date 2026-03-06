@@ -32,16 +32,12 @@ class SummarizedFedSCF(Dataset):
 
     def generate(self):
         if self._scf_download_url is None:
-            raise ValueError(
-                f"No raw SCF data URL known for year {self.time_period}."
-            )
+            raise ValueError(f"No raw SCF data URL known for year {self.time_period}.")
 
         url = self._scf_download_url
 
         response = requests.get(url, stream=True)
-        total_size_in_bytes = int(
-            response.headers.get("content-length", 200e6)
-        )
+        total_size_in_bytes = int(response.headers.get("content-length", 200e6))
         progress_bar = tqdm(
             total=total_size_in_bytes,
             unit="iB",
@@ -49,9 +45,7 @@ class SummarizedFedSCF(Dataset):
             desc="Downloading SCF",
         )
         if response.status_code == 404:
-            raise FileNotFoundError(
-                "Received a 404 response when fetching the data."
-            )
+            raise FileNotFoundError("Received a 404 response when fetching the data.")
         with BytesIO() as file:
             content_length_actual = 0
             for data in response.iter_content(int(1e6)):
@@ -65,9 +59,7 @@ class SummarizedFedSCF(Dataset):
             zipfile = ZipFile(file)
             with pd.HDFStore(self.file_path, mode="w") as storage:
                 # Find the Stata file, which should be the only .dta file in the zip
-                dta_files = [
-                    f for f in zipfile.namelist() if f.endswith(".dta")
-                ]
+                dta_files = [f for f in zipfile.namelist() if f.endswith(".dta")]
                 if not dta_files:
                     raise FileNotFoundError(
                         "No .dta file found in the SCF zip archive."

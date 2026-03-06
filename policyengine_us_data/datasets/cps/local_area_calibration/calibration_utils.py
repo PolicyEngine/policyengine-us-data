@@ -351,9 +351,7 @@ def create_target_groups(
 
         for domain_var, var_name in pairs:
             var_mask = (
-                (targets_df["variable"] == var_name)
-                & level_mask
-                & ~processed_mask
+                (targets_df["variable"] == var_name) & level_mask & ~processed_mask
             )
             if has_domain and domain_var is not None:
                 var_mask &= targets_df["domain_variable"] == domain_var
@@ -379,15 +377,11 @@ def create_target_groups(
             # Format output based on level and count
             if n_targets == 1:
                 value = matching["value"].iloc[0]
-                info_str = (
-                    f"{level_name} {label} (1 target, value={value:,.0f})"
-                )
+                info_str = f"{level_name} {label} (1 target, value={value:,.0f})"
                 print_str = f"  Group {group_id}: {label} = {value:,.0f}"
             else:
                 info_str = f"{level_name} {label} ({n_targets} targets)"
-                print_str = (
-                    f"  Group {group_id}: {label} ({n_targets} targets)"
-                )
+                print_str = f"  Group {group_id}: {label} ({n_targets} targets)"
 
             group_info.append(f"Group {group_id}: {info_str}")
             print(print_str)
@@ -440,9 +434,7 @@ def drop_target_groups(
                 drop_ids.add(gid)
                 matched = True
         if not matched:
-            print(
-                f"  WARNING: no match for " f"({label_substr!r}, {geo_name!r})"
-            )
+            print(f"  WARNING: no match for ({label_substr!r}, {geo_name!r})")
 
     keep_mask = ~np.isin(target_groups, list(drop_ids))
 
@@ -600,9 +592,7 @@ def calculate_spm_thresholds_for_cd(
         .reset_index()
     )
 
-    tenure_types = sim.calculate(
-        "spm_unit_tenure_type", map_to="spm_unit"
-    ).values
+    tenure_types = sim.calculate("spm_unit_tenure_type", map_to="spm_unit").values
     spm_unit_ids_unit = sim.calculate("spm_unit_id", map_to="spm_unit").values
 
     tenure_df = pd.DataFrame(
@@ -614,10 +604,7 @@ def calculate_spm_thresholds_for_cd(
 
     merged = agg.merge(tenure_df, on="spm_unit_id", how="left")
     merged["tenure_code"] = (
-        merged["tenure_type"]
-        .map(SPM_TENURE_STRING_TO_CODE)
-        .fillna(3)
-        .astype(int)
+        merged["tenure_type"].map(SPM_TENURE_STRING_TO_CODE).fillna(3).astype(int)
     )
 
     calc = SPMCalculator(year=year)
@@ -627,9 +614,7 @@ def calculate_spm_thresholds_for_cd(
     thresholds = np.zeros(n, dtype=np.float32)
 
     for i in range(n):
-        tenure_str = TENURE_CODE_MAP.get(
-            int(merged.iloc[i]["tenure_code"]), "renter"
-        )
+        tenure_str = TENURE_CODE_MAP.get(int(merged.iloc[i]["tenure_code"]), "renter")
         base = base_thresholds[tenure_str]
         equiv_scale = spm_equivalence_scale(
             int(merged.iloc[i]["num_adults"]),

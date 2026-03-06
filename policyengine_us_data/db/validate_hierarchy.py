@@ -31,9 +31,7 @@ def validate_geographic_hierarchy(session):
             "ERROR: No US-level stratum found (should have parent_stratum_id = None)"
         )
     else:
-        print(
-            f"✓ US stratum found: {us_stratum.notes} (ID: {us_stratum.stratum_id})"
-        )
+        print(f"✓ US stratum found: {us_stratum.notes} (ID: {us_stratum.stratum_id})")
 
         # Check it has no constraints
         us_constraints = session.exec(
@@ -89,14 +87,10 @@ def validate_geographic_hierarchy(session):
             c for c in constraints if c.constraint_variable == "state_fips"
         ]
         if not state_fips_constraint:
-            errors.append(
-                f"ERROR: State '{state.notes}' has no state_fips constraint"
-            )
+            errors.append(f"ERROR: State '{state.notes}' has no state_fips constraint")
         else:
             state_ids[state.stratum_id] = state.notes
-            print(
-                f"  - {state.notes}: state_fips = {state_fips_constraint[0].value}"
-            )
+            print(f"  - {state.notes}: state_fips = {state_fips_constraint[0].value}")
 
     # Check congressional districts
     print("\nChecking Congressional Districts...")
@@ -112,11 +106,10 @@ def validate_geographic_hierarchy(session):
             )
         ).all()
         constraint_vars = {c.constraint_variable for c in constraints}
-        if (
-            "congressional_district_geoid" in constraint_vars
-            and constraint_vars
-            <= {"state_fips", "congressional_district_geoid"}
-        ):
+        if "congressional_district_geoid" in constraint_vars and constraint_vars <= {
+            "state_fips",
+            "congressional_district_geoid",
+        }:
             all_cds.append(s)
 
     print(f"✓ Found {len(all_cds)} congressional/delegate districts")
@@ -158,9 +151,7 @@ def validate_geographic_hierarchy(session):
                 wyoming_cds.append(child)
 
         if len(wyoming_cds) != 1:
-            errors.append(
-                f"ERROR: Wyoming should have 1 CD, found {len(wyoming_cds)}"
-            )
+            errors.append(f"ERROR: Wyoming should have 1 CD, found {len(wyoming_cds)}")
         else:
             print(f"✓ Wyoming has correct number of CDs: 1")
 
@@ -184,9 +175,7 @@ def validate_geographic_hierarchy(session):
             for cd in wrong_parent_cds[:5]:
                 errors.append(f"  - {cd.notes}")
         else:
-            print(
-                "✓ No congressional districts incorrectly parented to Wyoming"
-            )
+            print("✓ No congressional districts incorrectly parented to Wyoming")
 
     return errors
 
@@ -237,13 +226,10 @@ def validate_demographic_strata(session):
         if actual == expected_total:
             print(f"✓ {domain}: {actual} strata")
         elif actual == 0:
-            errors.append(
-                f"ERROR: {domain} has no strata, " f"expected {expected_total}"
-            )
+            errors.append(f"ERROR: {domain} has no strata, expected {expected_total}")
         else:
             errors.append(
-                f"WARNING: {domain} has {actual} strata, "
-                f"expected {expected_total}"
+                f"WARNING: {domain} has {actual} strata, expected {expected_total}"
             )
 
     # Identify geographic strata (those with only geographic
@@ -291,11 +277,9 @@ def validate_demographic_strata(session):
                 )
         else:
             no_parents += 1
-            errors.append(
-                f"ERROR: Stratum {stratum.stratum_id} " f"has no parent"
-            )
+            errors.append(f"ERROR: Stratum {stratum.stratum_id} has no parent")
 
-    print(f"  Sample of {len(sample_strata)} " f"demographic strata:")
+    print(f"  Sample of {len(sample_strata)} demographic strata:")
     print(f"    - With geographic parent: {correct_parents}")
     print(f"    - With wrong parent: {wrong_parents}")
     print(f"    - With no parent: {no_parents}")
@@ -322,18 +306,12 @@ def validate_constraint_uniqueness(session):
         else:
             hash_counts[stratum.definition_hash] = [stratum]
 
-    duplicates = {
-        h: strata for h, strata in hash_counts.items() if len(strata) > 1
-    }
+    duplicates = {h: strata for h, strata in hash_counts.items() if len(strata) > 1}
 
     if duplicates:
-        errors.append(
-            f"ERROR: Found {len(duplicates)} duplicate definition_hashes"
-        )
+        errors.append(f"ERROR: Found {len(duplicates)} duplicate definition_hashes")
         for hash_val, strata in list(duplicates.items())[:3]:  # Show first 3
-            errors.append(
-                f"  Hash {hash_val[:10]}... appears {len(strata)} times:"
-            )
+            errors.append(f"  Hash {hash_val[:10]}... appears {len(strata)} times:")
             for s in strata[:3]:
                 errors.append(f"    - ID {s.stratum_id}: {s.notes[:50]}")
     else:
@@ -345,9 +323,7 @@ def validate_constraint_uniqueness(session):
 def main():
     """Run all validation checks"""
 
-    DATABASE_URL = (
-        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
-    )
+    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 
     all_errors = []

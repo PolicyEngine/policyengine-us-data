@@ -245,9 +245,7 @@ print(json.dumps(manifest))
     print(f"  States: {manifest['totals']['states']}")
     print(f"  Districts: {manifest['totals']['districts']}")
     print(f"  Cities: {manifest['totals']['cities']}")
-    print(
-        f"  Total size: {manifest['totals']['total_size_bytes'] / 1e9:.2f} GB"
-    )
+    print(f"  Total size: {manifest['totals']['total_size_bytes'] / 1e9:.2f} GB")
 
     return manifest
 
@@ -362,8 +360,7 @@ def promote_publish(branch: str = "main", version: str = "") -> str:
     manifest_path = staging_dir / version / "manifest.json"
     if not manifest_path.exists():
         raise RuntimeError(
-            f"No manifest found at {manifest_path}. "
-            f"Run build+stage workflow first."
+            f"No manifest found at {manifest_path}. Run build+stage workflow first."
         )
 
     with open(manifest_path) as f:
@@ -405,7 +402,9 @@ print(f"Successfully published version {{version}}")
     if result.returncode != 0:
         raise RuntimeError(f"Promote failed: {result.stderr}")
 
-    return f"Successfully promoted version {version} with {len(manifest['files'])} files"
+    return (
+        f"Successfully promoted version {version} with {len(manifest['files'])} files"
+    )
 
 
 @app.function(
@@ -436,12 +435,8 @@ def coordinate_publish(
     calibration_dir.mkdir(parents=True, exist_ok=True)
 
     # hf_hub_download preserves directory structure, so files are in calibration/ subdir
-    weights_path = (
-        calibration_dir / "calibration" / "w_district_calibration.npy"
-    )
-    dataset_path = (
-        calibration_dir / "calibration" / "stratified_extended_cps.h5"
-    )
+    weights_path = calibration_dir / "calibration" / "w_district_calibration.npy"
+    dataset_path = calibration_dir / "calibration" / "stratified_extended_cps.h5"
     db_path = calibration_dir / "calibration" / "policy_data.db"
 
     if not all(p.exists() for p in [weights_path, dataset_path, db_path]):
@@ -514,15 +509,10 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
     completed = get_completed_from_volume(version_dir)
     print(f"Found {len(completed)} already-completed items on volume")
 
-    work_chunks = partition_work(
-        states, districts, cities, num_workers, completed
-    )
+    work_chunks = partition_work(states, districts, cities, num_workers, completed)
 
     total_remaining = sum(len(c) for c in work_chunks)
-    print(
-        f"Remaining work: {total_remaining} items "
-        f"across {len(work_chunks)} workers"
-    )
+    print(f"Remaining work: {total_remaining} items across {len(work_chunks)} workers")
 
     if total_remaining == 0:
         print("All items already built!")
@@ -594,14 +584,10 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
     )
 
     if actual_total < expected_total:
-        print(
-            f"WARNING: Expected {expected_total} files, found {actual_total}"
-        )
+        print(f"WARNING: Expected {expected_total} files, found {actual_total}")
 
     print("\nStarting upload to staging...")
-    result = upload_to_staging.remote(
-        branch=branch, version=version, manifest=manifest
-    )
+    result = upload_to_staging.remote(branch=branch, version=version, manifest=manifest)
     print(result)
 
     print("\n" + "=" * 60)

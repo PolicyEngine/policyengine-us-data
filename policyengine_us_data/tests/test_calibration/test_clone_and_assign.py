@@ -66,13 +66,10 @@ class TestLoadGlobalBlockDistribution:
         csv_path = tmp_path / "block_cd_distributions.csv.gz"
         MOCK_BLOCKS.to_csv(csv_path, index=False, compression="gzip")
         with patch(
-            "policyengine_us_data.calibration"
-            ".clone_and_assign.STORAGE_FOLDER",
+            "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
             tmp_path,
         ):
-            blocks, cds, states, probs = (
-                load_global_block_distribution.__wrapped__()
-            )
+            blocks, cds, states, probs = load_global_block_distribution.__wrapped__()
         assert len(blocks) == 9
         np.testing.assert_almost_equal(probs.sum(), 1.0)
 
@@ -80,8 +77,7 @@ class TestLoadGlobalBlockDistribution:
         csv_path = tmp_path / "block_cd_distributions.csv.gz"
         MOCK_BLOCKS.to_csv(csv_path, index=False, compression="gzip")
         with patch(
-            "policyengine_us_data.calibration"
-            ".clone_and_assign.STORAGE_FOLDER",
+            "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
             tmp_path,
         ):
             _, _, states, _ = load_global_block_distribution.__wrapped__()
@@ -137,8 +133,7 @@ class TestAssignRandomGeography:
         fake = tmp_path / "nonexistent"
         fake.mkdir()
         with patch(
-            "policyengine_us_data.calibration"
-            ".clone_and_assign.STORAGE_FOLDER",
+            "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
             fake,
         ):
             with pytest.raises(FileNotFoundError):

@@ -43,9 +43,7 @@ def matrix_result():
 
     sim = Microsimulation(dataset=DATASET_PATH)
     n_records = sim.calculate("household_id").values.shape[0]
-    geography = assign_random_geography(
-        n_records, n_clones=N_CLONES, seed=SEED
-    )
+    geography = assign_random_geography(n_records, n_clones=N_CLONES, seed=SEED)
     builder = UnifiedMatrixBuilder(
         db_uri=DB_URI,
         time_period=2024,
@@ -124,8 +122,7 @@ class TestStateMasking:
 
         if state_0 == state_1:
             pytest.skip(
-                "Both clones landed in the same state — "
-                "cannot test cross-state masking"
+                "Both clones landed in the same state — cannot test cross-state masking"
             )
 
         state_targets = targets_df[targets_df["geo_level"] == "state"]
@@ -164,11 +161,7 @@ class TestDistrictMasking:
         vals_0 = X_csc[:, col_0].toarray().ravel()
 
         same_state_other_cd = district_targets[
-            (
-                district_targets["geographic_id"].apply(
-                    lambda g: g.startswith(state_0)
-                )
-            )
+            (district_targets["geographic_id"].apply(lambda g: g.startswith(state_0)))
             & (district_targets["geographic_id"] != cd_0)
         ]
 
@@ -198,10 +191,7 @@ class TestDistrictMasking:
         X_csc = X.tocsc()
         vals_0 = X_csc[:, col_0].toarray().ravel()
 
-        any_nonzero = any(
-            vals_0[row.name] != 0 for _, row in own_cd_targets.iterrows()
-        )
+        any_nonzero = any(vals_0[row.name] != 0 for _, row in own_cd_targets.iterrows())
         assert any_nonzero, (
-            f"Clone 0 should have at least one non-zero entry "
-            f"for its own CD {cd_0}"
+            f"Clone 0 should have at least one non-zero entry for its own CD {cd_0}"
         )

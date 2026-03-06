@@ -28,9 +28,7 @@ def analyze_common_support(cps_data, puf_data, predictors):
 
         # Overlap coefficient (Weitzman 1970)
         # OVL = sum(min(f(x), g(x))) where f,g are densities
-        bins = np.histogram_bin_edges(
-            np.concatenate([cps_dist, puf_dist]), bins=50
-        )
+        bins = np.histogram_bin_edges(np.concatenate([cps_dist, puf_dist]), bins=50)
 
         cps_hist, _ = np.histogram(cps_dist, bins=bins, density=True)
         puf_hist, _ = np.histogram(puf_dist, bins=bins, density=True)
@@ -81,9 +79,7 @@ def validate_qrf_accuracy(puf_data, predictors, target_vars, n_estimators=100):
         )
 
         # Fit QRF
-        qrf = RandomForestQuantileRegressor(
-            n_estimators=n_estimators, random_state=42
-        )
+        qrf = RandomForestQuantileRegressor(n_estimators=n_estimators, random_state=42)
         qrf.fit(X_train, y_train)
 
         # Predictions at multiple quantiles
@@ -92,7 +88,7 @@ def validate_qrf_accuracy(puf_data, predictors, target_vars, n_estimators=100):
 
         for q in quantiles:
             pred = qrf.predict(X_test, quantiles=[q])
-            predictions[f"q{int(q*100)}"] = pred.flatten()
+            predictions[f"q{int(q * 100)}"] = pred.flatten()
 
         # Calculate metrics
         median_pred = predictions["q50"]
@@ -124,9 +120,7 @@ def validate_qrf_accuracy(puf_data, predictors, target_vars, n_estimators=100):
             "qrf_rmse": rmse,
             "hotdeck_mae": hotdeck_mae,
             "linear_mae": lr_mae,
-            "qrf_improvement_vs_hotdeck": (hotdeck_mae - mae)
-            / hotdeck_mae
-            * 100,
+            "qrf_improvement_vs_hotdeck": (hotdeck_mae - mae) / hotdeck_mae * 100,
             "qrf_improvement_vs_linear": (lr_mae - mae) / lr_mae * 100,
             "coverage_90pct": coverage_90,
             "coverage_50pct": coverage_50,
@@ -135,9 +129,7 @@ def validate_qrf_accuracy(puf_data, predictors, target_vars, n_estimators=100):
     return pd.DataFrame(results).T
 
 
-def test_joint_distribution_preservation(
-    original_data, imputed_data, var_pairs
-):
+def test_joint_distribution_preservation(original_data, imputed_data, var_pairs):
     """Test whether joint distributions are preserved in imputation."""
 
     results = []
@@ -159,12 +151,12 @@ def test_joint_distribution_preservation(
 
         # Joint distribution test (2D KS test approximation)
         # Using average of marginal KS statistics
-        ks1 = stats.ks_2samp(
-            original_data[var1].dropna(), imputed_data[var1].dropna()
-        )[0]
-        ks2 = stats.ks_2samp(
-            original_data[var2].dropna(), imputed_data[var2].dropna()
-        )[0]
+        ks1 = stats.ks_2samp(original_data[var1].dropna(), imputed_data[var1].dropna())[
+            0
+        ]
+        ks2 = stats.ks_2samp(original_data[var2].dropna(), imputed_data[var2].dropna())[
+            0
+        ]
         joint_ks = (ks1 + ks2) / 2
 
         results.append(
@@ -281,9 +273,7 @@ def generate_qrf_diagnostic_report(cps_data, puf_data, imputed_data):
     print(
         f"- Average QRF improvement vs linear: {accuracy_df['qrf_improvement_vs_linear'].mean():.1f}%"
     )
-    print(
-        f"- Average 90% coverage: {accuracy_df['coverage_90pct'].mean():.3f}"
-    )
+    print(f"- Average 90% coverage: {accuracy_df['coverage_90pct'].mean():.3f}")
 
     # Joint distribution preservation
     print("\n\n3. Joint Distribution Preservation")
@@ -295,16 +285,12 @@ def generate_qrf_diagnostic_report(cps_data, puf_data, imputed_data):
         ("pension_income", "social_security"),
     ]
 
-    joint_df = test_joint_distribution_preservation(
-        puf_data, imputed_data, var_pairs
-    )
+    joint_df = test_joint_distribution_preservation(puf_data, imputed_data, var_pairs)
     print(joint_df.to_string(index=False))
 
     # Create diagnostic plots
     create_diagnostic_plots(cps_data, puf_data, predictors)
-    print(
-        "\n\nDiagnostic plots saved to validation/common_support_diagnostics.png"
-    )
+    print("\n\nDiagnostic plots saved to validation/common_support_diagnostics.png")
 
     # Save results
     support_df.to_csv("validation/common_support_analysis.csv")

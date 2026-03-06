@@ -150,9 +150,7 @@ def get_county_filter_probability(
     else:
         dist = _generate_uniform_distribution(cd_key)
 
-    return sum(
-        prob for county, prob in dist.items() if county in county_filter
-    )
+    return sum(prob for county, prob in dist.items() if county in county_filter)
 
 
 def get_filtered_county_distribution(

@@ -20,9 +20,7 @@ checkpoint_volume = modal.Volume.from_name(
 )
 
 image = (
-    modal.Image.debian_slim(python_version="3.13")
-    .apt_install("git")
-    .pip_install("uv")
+    modal.Image.debian_slim(python_version="3.13").apt_install("git").pip_install("uv")
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
@@ -380,9 +378,7 @@ def build_datasets(
         print("=== Phase 3: Building extended CPS ===")
         run_script_with_checkpoint(
             "policyengine_us_data/datasets/cps/extended_cps.py",
-            SCRIPT_OUTPUTS[
-                "policyengine_us_data/datasets/cps/extended_cps.py"
-            ],
+            SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/extended_cps.py"],
             branch,
             checkpoint_volume,
             env=env,
@@ -390,18 +386,13 @@ def build_datasets(
 
         # GROUP 3: After extended_cps - run in parallel
         # enhanced_cps and stratified_cps both depend on extended_cps
-        print(
-            "=== Phase 4: Building enhanced and stratified CPS (parallel)"
-            " ==="
-        )
+        print("=== Phase 4: Building enhanced and stratified CPS (parallel) ===")
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = [
                 executor.submit(
                     run_script_with_checkpoint,
                     "policyengine_us_data/datasets/cps/enhanced_cps.py",
-                    SCRIPT_OUTPUTS[
-                        "policyengine_us_data/datasets/cps/enhanced_cps.py"
-                    ],
+                    SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/enhanced_cps.py"],
                     branch,
                     checkpoint_volume,
                     env=env,
@@ -426,9 +417,7 @@ def build_datasets(
         print("=== Phase 5: Building small enhanced CPS ===")
         run_script_with_checkpoint(
             "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
-            SCRIPT_OUTPUTS[
-                "policyengine_us_data/datasets/cps/small_enhanced_cps.py"
-            ],
+            SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/small_enhanced_cps.py"],
             branch,
             checkpoint_volume,
             env=env,

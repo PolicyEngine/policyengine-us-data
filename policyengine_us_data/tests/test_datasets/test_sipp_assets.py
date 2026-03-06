@@ -59,12 +59,12 @@ def test_ecps_has_liquid_assets():
     MAXIMUM_TOTAL = 30e12  # $30 trillion ceiling
 
     assert total > MINIMUM_TOTAL, (
-        f"Total liquid assets ${total/1e12:.1f}T below "
-        f"minimum ${MINIMUM_TOTAL/1e12:.0f}T"
+        f"Total liquid assets ${total / 1e12:.1f}T below "
+        f"minimum ${MINIMUM_TOTAL / 1e12:.0f}T"
     )
     assert total < MAXIMUM_TOTAL, (
-        f"Total liquid assets ${total/1e12:.1f}T above "
-        f"maximum ${MAXIMUM_TOTAL/1e12:.0f}T"
+        f"Total liquid assets ${total / 1e12:.1f}T above "
+        f"maximum ${MAXIMUM_TOTAL / 1e12:.0f}T"
     )
 
 
@@ -102,12 +102,10 @@ def test_liquid_assets_distribution():
     MEDIAN_MAX = 20_000
 
     assert weighted_median > MEDIAN_MIN, (
-        f"Median liquid assets ${weighted_median:,.0f} below "
-        f"minimum ${MEDIAN_MIN:,}"
+        f"Median liquid assets ${weighted_median:,.0f} below minimum ${MEDIAN_MIN:,}"
     )
     assert weighted_median < MEDIAN_MAX, (
-        f"Median liquid assets ${weighted_median:,.0f} above "
-        f"maximum ${MEDIAN_MAX:,}"
+        f"Median liquid assets ${weighted_median:,.0f} above maximum ${MEDIAN_MAX:,}"
     )
 
 
@@ -129,9 +127,7 @@ def test_asset_categories_exist():
     assert bonds >= 0, "Bond assets should be non-negative"
 
     # Bank accounts typically largest category of liquid assets
-    assert (
-        bank > stocks * 0.3
-    ), "Bank accounts should be substantial relative to stocks"
+    assert bank > stocks * 0.3, "Bank accounts should be substantial relative to stocks"
 
 
 def test_low_asset_households():
@@ -158,10 +154,8 @@ def test_low_asset_households():
     MAX_PCT = 0.70
 
     assert below_2k > MIN_PCT, (
-        f"Only {below_2k:.1%} have <$2k liquid assets, "
-        f"expected at least {MIN_PCT:.0%}"
+        f"Only {below_2k:.1%} have <$2k liquid assets, expected at least {MIN_PCT:.0%}"
     )
     assert below_2k < MAX_PCT, (
-        f"{below_2k:.1%} have <$2k liquid assets, "
-        f"expected at most {MAX_PCT:.0%}"
+        f"{below_2k:.1%} have <$2k liquid assets, expected at most {MAX_PCT:.0%}"
     )

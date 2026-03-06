@@ -10,9 +10,7 @@ if not TOKEN:
     )
 
 
-def download(
-    repo: str, repo_filename: str, local_folder: str, version: str = None
-):
+def download(repo: str, repo_filename: str, local_folder: str, version: str = None):
 
     hf_hub_download(
         repo_id=repo,

@@ -68,8 +68,7 @@ def train_tip_model():
         )
     # Sum tip columns (AJB*_TXAMT + TJB*_TXAMT) across all jobs.
     df["tip_income"] = (
-        df[df.columns[df.columns.str.contains("TXAMT")]].fillna(0).sum(axis=1)
-        * 12
+        df[df.columns[df.columns.str.contains("TXAMT")]].fillna(0).sum(axis=1) * 12
     )
     df["employment_income"] = df.TPTOTINC * 12
     df["is_under_18"] = (df.TAGE < 18) & (df.MONTHCODE == 12)

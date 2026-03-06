@@ -93,9 +93,7 @@ def main():
     parser.add_argument(
         "--execute", action="store_true", help="Actually perform the migration"
     )
-    parser.add_argument(
-        "--gcs-only", action="store_true", help="Only migrate GCS"
-    )
+    parser.add_argument("--gcs-only", action="store_true", help="Only migrate GCS")
     parser.add_argument(
         "--hf-only", action="store_true", help="Only migrate HuggingFace"
     )

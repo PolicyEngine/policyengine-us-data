@@ -109,9 +109,7 @@ def print_categorized_report(invalid_entries, county_to_states):
     print("\n" + "=" * 60)
     print("WRONG STATE ASSIGNMENTS")
     print("=" * 60)
-    for name, wrong_state, correct_states in sorted(
-        invalid_entries["wrong_state"]
-    ):
+    for name, wrong_state, correct_states in sorted(invalid_entries["wrong_state"]):
         print(f"  {name}")
         print(f"    Listed as: {wrong_state}")
         print(f"    Actually exists in: {', '.join(sorted(correct_states))}")

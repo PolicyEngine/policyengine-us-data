@@ -71,9 +71,7 @@ class TestConstants:
 
     def test_all_source_variables_defined(self):
         expected = (
-            ACS_IMPUTED_VARIABLES
-            + SIPP_IMPUTED_VARIABLES
-            + SCF_IMPUTED_VARIABLES
+            ACS_IMPUTED_VARIABLES + SIPP_IMPUTED_VARIABLES + SCF_IMPUTED_VARIABLES
         )
         assert ALL_SOURCE_VARIABLES == expected
 

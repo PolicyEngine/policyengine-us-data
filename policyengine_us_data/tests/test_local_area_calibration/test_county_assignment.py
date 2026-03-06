@@ -47,9 +47,7 @@ class TestCountyAssignment:
         for idx in result:
             county_name = County._member_names_[idx]
             # Should end with _NY
-            assert county_name.endswith(
-                "_NY"
-            ), f"Got non-NY county: {county_name}"
+            assert county_name.endswith("_NY"), f"Got non-NY county: {county_name}"
 
     def test_ca_cd_gets_ca_counties(self):
         """Verify CA CDs get CA counties."""
@@ -58,9 +56,7 @@ class TestCountyAssignment:
 
         for idx in result:
             county_name = County._member_names_[idx]
-            assert county_name.endswith(
-                "_CA"
-            ), f"Got non-CA county: {county_name}"
+            assert county_name.endswith("_CA"), f"Got non-CA county: {county_name}"
 
 
 class TestCountyIndex:

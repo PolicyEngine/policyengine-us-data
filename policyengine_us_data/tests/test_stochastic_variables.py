@@ -10,7 +10,6 @@ from policyengine_us_data.utils.randomness import (
 
 
 class TestTakeUpRateParameters:
-
     def test_eitc_rate_loads(self):
         rates = load_take_up_rate("eitc", 2022)
         assert isinstance(rates, dict)
@@ -52,7 +51,6 @@ class TestTakeUpRateParameters:
 
 
 class TestStableStringHash:
-
     def test_deterministic(self):
         h1 = _stable_string_hash("takes_up_snap_if_eligible")
         h2 = _stable_string_hash("takes_up_snap_if_eligible")
@@ -69,7 +67,6 @@ class TestStableStringHash:
 
 
 class TestSeededRng:
-
     def test_same_name_same_results(self):
         rng1 = seeded_rng("takes_up_snap_if_eligible")
         result1 = rng1.random(1000)
@@ -103,7 +100,6 @@ class TestSeededRng:
 
 
 class TestTakeUpProportions:
-
     def test_take_up_produces_expected_proportion(self):
         rate = 0.7
         n = 10_000

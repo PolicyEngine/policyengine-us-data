@@ -7,9 +7,7 @@ app = modal.App("policyengine-us-data-fit-weights")
 hf_secret = modal.Secret.from_name("huggingface-token")
 
 image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .apt_install("git")
-    .pip_install("uv")
+    modal.Image.debian_slim(python_version="3.11").apt_install("git").pip_install("uv")
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"

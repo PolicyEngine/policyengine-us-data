@@ -1,3 +1,4 @@
+import functools
 import os
 import shutil
 import subprocess
@@ -84,8 +85,9 @@ def setup_gcp_credentials():
     return None
 
 
+@functools.cache
 def get_current_commit() -> str:
-    """Get the current git commit SHA."""
+    """Get the current git commit SHA (cached per process)."""
     return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
 
 

@@ -1,3 +1,5 @@
+import gc
+
 import pandas as pd
 import numpy as np
 import logging
@@ -654,8 +656,6 @@ def build_loss_matrix(dataset: type, time_period):
     loss_matrix = _add_snap_metric_columns(loss_matrix, sim)
 
     del sim, df
-    import gc
-
     gc.collect()
 
     return loss_matrix, np.array(targets_array)

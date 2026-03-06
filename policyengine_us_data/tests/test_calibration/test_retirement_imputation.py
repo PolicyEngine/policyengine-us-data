@@ -139,9 +139,9 @@ class TestConstants:
     def test_retirement_vars_not_in_imputed(self):
         """Retirement vars must NOT be in IMPUTED_VARIABLES."""
         for var in CPS_RETIREMENT_VARIABLES:
-            assert (
-                var not in IMPUTED_VARIABLES
-            ), f"{var} should not be in IMPUTED_VARIABLES"
+            assert var not in IMPUTED_VARIABLES, (
+                f"{var} should not be in IMPUTED_VARIABLES"
+            )
 
     def test_retirement_vars_not_in_overridden(self):
         for var in CPS_RETIREMENT_VARIABLES:
@@ -171,9 +171,9 @@ class TestConstants:
     def test_income_predictors_in_imputed_variables(self):
         """All income predictors must be available from PUF QRF."""
         for var in RETIREMENT_INCOME_PREDICTORS:
-            assert (
-                var in IMPUTED_VARIABLES
-            ), f"{var} not in IMPUTED_VARIABLES — won't be in puf_imputations"
+            assert var in IMPUTED_VARIABLES, (
+                f"{var} not in IMPUTED_VARIABLES — won't be in puf_imputations"
+            )
 
     def test_predictors_are_combined_lists(self):
         expected = (
@@ -367,9 +367,9 @@ class TestImputeRetirementContributions:
             "traditional_401k_contributions",
             "roth_401k_contributions",
         ):
-            assert np.all(
-                result[var][zero_wage] == 0
-            ), f"{var} should be 0 when employment_income is 0"
+            assert np.all(result[var][zero_wage] == 0), (
+                f"{var} should be 0 when employment_income is 0"
+            )
 
     def test_se_pension_zero_when_no_se_income(self):
         result = self._call_with_mocks(self._uniform_preds(5_000.0))
@@ -707,6 +707,6 @@ class TestLimitsStructure:
             ours = _get_retirement_limits(year)
             pe = pe_limits(year)
             for key in ["401k", "401k_catch_up", "ira", "ira_catch_up"]:
-                assert (
-                    ours[key] == pe[key]
-                ), f"Year {year} key {key}: {ours[key]} != {pe[key]}"
+                assert ours[key] == pe[key], (
+                    f"Year {year} key {key}: {ours[key]} != {pe[key]}"
+                )

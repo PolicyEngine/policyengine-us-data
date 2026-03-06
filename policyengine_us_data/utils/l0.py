@@ -191,11 +191,11 @@ def train_with_l0(model, train_loader, epochs=10, l0_lambda=1e-3):
         if epoch % 1 == 0:
             sparsity_stats = model.get_sparsity_stats()
             logging.info(
-                f"Epoch {epoch}: Loss={total_loss/len(train_loader):.4f}, L0={total_l0/len(train_loader):.4f}"
+                f"Epoch {epoch}: Loss={total_loss / len(train_loader):.4f}, L0={total_l0 / len(train_loader):.4f}"
             )
             for layer, stats in sparsity_stats.items():
                 logging.info(
-                    f"  {layer}: {stats['sparsity']*100:.1f}% sparse, {stats['active_params']:.1f} active params"
+                    f"  {layer}: {stats['sparsity'] * 100:.1f}% sparse, {stats['active_params']:.1f} active params"
                 )
 
 

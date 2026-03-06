@@ -92,7 +92,7 @@ def validate_qrf_accuracy(puf_data, predictors, target_vars, n_estimators=100):
 
         for q in quantiles:
             pred = qrf.predict(X_test, quantiles=[q])
-            predictions[f"q{int(q*100)}"] = pred.flatten()
+            predictions[f"q{int(q * 100)}"] = pred.flatten()
 
         # Calculate metrics
         median_pred = predictions["q50"]

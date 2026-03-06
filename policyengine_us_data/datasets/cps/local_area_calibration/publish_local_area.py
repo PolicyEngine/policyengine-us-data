@@ -113,9 +113,9 @@ def build_state_h5(
     states_dir.mkdir(parents=True, exist_ok=True)
     output_path = states_dir / f"{state_code}.h5"
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Building {state_code} ({len(cd_subset)} CDs)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     create_sparse_cd_stacked_dataset(
         weights,
@@ -158,9 +158,9 @@ def build_district_h5(
     districts_dir.mkdir(parents=True, exist_ok=True)
     output_path = districts_dir / f"{friendly_name}.h5"
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Building {friendly_name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     create_sparse_cd_stacked_dataset(
         weights,
@@ -208,9 +208,9 @@ def build_city_h5(
     cities_dir.mkdir(parents=True, exist_ok=True)
     output_path = cities_dir / "NYC.h5"
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Building NYC ({len(cd_subset)} CDs)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     create_sparse_cd_stacked_dataset(
         weights,
@@ -264,9 +264,9 @@ def build_and_upload_states(
             continue
 
         output_path = states_dir / f"{state_code}.h5"
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Building {state_code} ({len(cd_subset)} CDs)")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         try:
             create_sparse_cd_stacked_dataset(
@@ -336,9 +336,9 @@ def build_and_upload_districts(
             continue
 
         output_path = districts_dir / f"{friendly_name}.h5"
-        print(f"\n{'='*60}")
-        print(f"[{i+1}/{len(cds_to_calibrate)}] Building {friendly_name}")
-        print(f"{'='*60}")
+        print(f"\n{'=' * 60}")
+        print(f"[{i + 1}/{len(cds_to_calibrate)}] Building {friendly_name}")
+        print(f"{'=' * 60}")
 
         try:
             create_sparse_cd_stacked_dataset(
@@ -405,9 +405,9 @@ def build_and_upload_cities(
             print("No NYC-related CDs found, skipping")
         else:
             output_path = cities_dir / "NYC.h5"
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Building NYC ({len(cd_subset)} CDs)")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             try:
                 create_sparse_cd_stacked_dataset(

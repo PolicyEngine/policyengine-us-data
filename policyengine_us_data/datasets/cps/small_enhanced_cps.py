@@ -22,8 +22,7 @@ def create_small_ecps():
     weights = simulation.calculate("household_weight").values
     if np.all(weights == 0):
         raise ValueError(
-            "create_small_ecps: all household weights are zero "
-            "after subsample"
+            "create_small_ecps: all household weights are zero after subsample"
         )
     logging.info(
         f"create_small_ecps: subsample has "
@@ -156,8 +155,7 @@ def create_sparse_ecps():
             f"(expected > 1MB)"
         )
     logging.info(
-        f"create_sparse_ecps: wrote {file_size / 1e6:.1f}MB to "
-        f"{output_path}"
+        f"create_sparse_ecps: wrote {file_size / 1e6:.1f}MB to {output_path}"
     )
 
 

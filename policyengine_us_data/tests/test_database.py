@@ -14,7 +14,7 @@ from policyengine_us_data.db.create_database_tables import (
 
 @pytest.fixture
 def engine(tmp_path):
-    db_uri = f"sqlite:///{tmp_path/'test.db'}"
+    db_uri = f"sqlite:///{tmp_path / 'test.db'}"
     return create_database(db_uri)
 
 

@@ -308,20 +308,20 @@ def pull_district_soi_variable(
         # Check that all GEO_IDs are valid
         produced_codes = set(result["GEO_ID"])
         invalid_codes = produced_codes - valid_district_codes
-        assert (
-            not invalid_codes
-        ), f"Invalid district codes after redistricting: {invalid_codes}"
+        assert not invalid_codes, (
+            f"Invalid district codes after redistricting: {invalid_codes}"
+        )
 
         # Check we have exactly 436 districts
-        assert (
-            len(produced_codes) == 436
-        ), f"Expected 436 districts after redistricting, got {len(produced_codes)}"
+        assert len(produced_codes) == 436, (
+            f"Expected 436 districts after redistricting, got {len(produced_codes)}"
+        )
 
         # Check that all GEO_IDs successfully mapped to names
         missing_names = result[result["GEO_NAME"].isna()]["GEO_ID"].unique()
-        assert (
-            len(missing_names) == 0
-        ), f"GEO_IDs without names in ID_TO_NAME mapping: {missing_names}"
+        assert len(missing_names) == 0, (
+            f"GEO_IDs without names in ID_TO_NAME mapping: {missing_names}"
+        )
 
     # final column order
     result = result[

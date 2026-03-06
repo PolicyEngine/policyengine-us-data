@@ -308,8 +308,7 @@ def fit_l0_weights(
     initial_weights = np.ones(n_total) * 100
 
     logger.info(
-        "L0 calibration: %d targets, %d features, "
-        "lambda_l0=%.1e, epochs=%d",
+        "L0 calibration: %d targets, %d features, lambda_l0=%.1e, epochs=%d",
         X_sparse.shape[0],
         n_total,
         lambda_l0,

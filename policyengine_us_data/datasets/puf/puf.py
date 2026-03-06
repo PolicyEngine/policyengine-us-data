@@ -155,9 +155,9 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
         print(f"Share with QBI > 0: {share_qbi_pos:6.2%}")
         print(f"Among those, share with W-2 wages: {share_wages:6.2%}")
         if np.any(w2_wages > 0):
-            print(f"Mean W-2 (if >0): ${np.mean(w2_wages[w2_wages>0]):,.0f}")
+            print(f"Mean W-2 (if >0): ${np.mean(w2_wages[w2_wages > 0]):,.0f}")
         if np.any(ubia > 0):
-            print(f"Median UBIA (if >0): ${np.median(ubia[ubia>0]):,.0f}")
+            print(f"Median UBIA (if >0): ${np.median(ubia[ubia > 0]):,.0f}")
 
     return w2_wages, ubia
 

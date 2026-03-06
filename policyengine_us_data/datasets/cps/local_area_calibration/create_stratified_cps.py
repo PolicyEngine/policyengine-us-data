@@ -57,7 +57,7 @@ def create_stratified_cps_dataset(
 
     print(f"Original dataset: {n_households_orig:,} households")
     print(f"Target dataset: {target_households:,} households")
-    print(f"Reduction ratio: {target_households/n_households_orig:.1%}")
+    print(f"Reduction ratio: {target_households / n_households_orig:.1%}")
 
     # Show income distribution
     print("\nAGI Percentiles (original):")
@@ -88,7 +88,7 @@ def create_stratified_cps_dataset(
     remaining_quota = target_households - n_top
     if remaining_quota <= 0:
         raise ValueError(
-            f"Target ({target_households:,}) is less than top {100-high_income_percentile}% "
+            f"Target ({target_households:,}) is less than top {100 - high_income_percentile}% "
             f"count ({n_top:,}). Increase target_households."
         )
 
@@ -176,7 +176,7 @@ def create_stratified_cps_dataset(
 
     n_selected = np.sum(selected_mask)
     print(
-        f"\nTotal selected: {n_selected:,} households ({n_selected/n_households_orig:.1%} of original)"
+        f"\nTotal selected: {n_selected:,} households ({n_selected / n_households_orig:.1%} of original)"
     )
 
     # Verify high earners are preserved

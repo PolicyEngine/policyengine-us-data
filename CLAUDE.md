@@ -11,8 +11,8 @@
 - `make test` - Also runs all tests
 
 ## Formatting
-- `make format` - Format all code using Black with 79 char line length
-- `black . -l 79 --check` - Check formatting without changing files
+- `make format` - Format all code using ruff with 79 char line length
+- `ruff format --check .` - Check formatting without changing files
 
 ## Code Style Guidelines
 - **Imports**: Standard libraries first, then third-party, then internal
@@ -20,7 +20,7 @@
 - **Naming**: Classes: PascalCase, Functions/Variables: snake_case, Constants: UPPER_SNAKE_CASE
 - **Documentation**: Google-style docstrings with Args and Returns sections
 - **Error Handling**: Use validation checks with specific error messages
-- **Line Length**: 79 characters max (Black configured in pyproject.toml)
+- **Line Length**: 79 characters max (ruff configured in pyproject.toml)
 - **Python Version**: Targeting Python 3.11
 
 ## Git and PR Guidelines

@@ -588,9 +588,9 @@ def create_sparse_cd_stacked_dataset(
 
     # Check weights in combined_df AFTER reindexing
     print(f"\nWeights in combined_df AFTER reindexing:")
-    print(f"  HH weight sum: {combined_df[hh_weight_col].sum()/1e6:.2f}M")
+    print(f"  HH weight sum: {combined_df[hh_weight_col].sum() / 1e6:.2f}M")
     print(
-        f"  Person weight sum: {combined_df[person_weight_col].sum()/1e6:.2f}M"
+        f"  Person weight sum: {combined_df[person_weight_col].sum() / 1e6:.2f}M"
     )
     print(
         f"  Ratio: {combined_df[person_weight_col].sum() / combined_df[hh_weight_col].sum():.2f}"
@@ -852,7 +852,7 @@ if __name__ == "__main__":
 
             output_path = f"{output_dir}/{friendly_name}.h5"
             print(
-                f"\n[{i+1}/{len(cds_to_calibrate)}] Creating {friendly_name}.h5 (GEOID {cd_geoid})"
+                f"\n[{i + 1}/{len(cds_to_calibrate)}] Creating {friendly_name}.h5 (GEOID {cd_geoid})"
             )
             create_sparse_cd_stacked_dataset(
                 w,

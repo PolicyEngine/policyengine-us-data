@@ -243,7 +243,7 @@ print(f"- All KS tests p > 0.05: {(support_df['ks_pvalue'] > 0.05).all()}")
 print("\n\n2. VARIANCE EXPLAINED BY PREDICTORS")
 print("-" * 40)
 for var, r2 in variance_explained.items():
-    print(f"- {var.replace('_', ' ').title()}: {r2*100:.0f}%")
+    print(f"- {var.replace('_', ' ').title()}: {r2 * 100:.0f}%")
 
 # 3. Out-of-Sample Accuracy
 print("\n\n3. OUT-OF-SAMPLE PREDICTION ACCURACY")
@@ -308,7 +308,7 @@ with open("validation/outputs/variance_explained.txt", "w") as f:
     f.write("Variance Explained by Predictors (R-squared)\n")
     f.write("=" * 40 + "\n\n")
     for var, r2 in variance_explained.items():
-        f.write(f"{var.replace('_', ' ').title()}: {r2*100:.0f}%\n")
+        f.write(f"{var.replace('_', ' ').title()}: {r2 * 100:.0f}%\n")
 print(
     "✓ Saved variance explained to validation/outputs/variance_explained.txt"
 )
@@ -337,7 +337,7 @@ with open("validation/outputs/qrf_diagnostics_summary.txt", "w") as f:
     f.write("2. VARIANCE EXPLAINED\n")
     f.write("-" * 40 + "\n")
     for var, r2 in variance_explained.items():
-        f.write(f"{var.replace('_', ' ').title()}: {r2*100:.0f}%\n")
+        f.write(f"{var.replace('_', ' ').title()}: {r2 * 100:.0f}%\n")
 
     f.write("\n3. OUT-OF-SAMPLE ACCURACY\n")
     f.write("-" * 40 + "\n")

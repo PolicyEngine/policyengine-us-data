@@ -104,7 +104,6 @@ def test_download_failure():
         patch("requests.get", return_value=failed_response),
         pytest.raises(ValueError) as excinfo,
     ):
-
         # Run the function, expect ValueError
         generate_county_fips_2020_dataset()
 

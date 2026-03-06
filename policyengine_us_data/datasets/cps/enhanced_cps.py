@@ -9,12 +9,14 @@ from policyengine_us_data.utils import (
     print_reweighting_diagnostics,
     set_seeds,
 )
+import gc
 import numpy as np
 from tqdm import trange
 from typing import Type
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS_2024,
+    ExtendedCPS_2024_Half,
     CPS_2024,
 )
 import logging
@@ -179,7 +181,11 @@ class EnhancedCPS(Dataset):
             keep_idx = np.where(keep_mask_bool)[0]
             loss_matrix_clean = loss_matrix.iloc[:, keep_idx]
             targets_array_clean = targets_array[keep_idx]
+            del loss_matrix, targets_array
+            gc.collect()
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
+
+            loss_matrix_clean = loss_matrix_clean.astype(np.float32)
 
             optimised_weights = reweight(
                 original_weights,
@@ -243,7 +249,7 @@ class ReweightedCPS_2024(Dataset):
 
 
 class EnhancedCPS_2024(EnhancedCPS):
-    input_dataset = ExtendedCPS_2024
+    input_dataset = ExtendedCPS_2024_Half
     start_year = 2024
     end_year = 2024
     name = "enhanced_cps_2024"

@@ -653,6 +653,11 @@ def build_loss_matrix(dataset: type, time_period):
     targets_array.extend(snap_state_targets)
     loss_matrix = _add_snap_metric_columns(loss_matrix, sim)
 
+    del sim, df
+    import gc
+
+    gc.collect()
+
     return loss_matrix, np.array(targets_array)
 
 

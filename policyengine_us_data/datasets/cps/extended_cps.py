@@ -117,5 +117,15 @@ class ExtendedCPS_2024(ExtendedCPS):
     time_period = 2024
 
 
+class ExtendedCPS_2024_Half(ExtendedCPS):
+    cps = CPS_2024
+    puf = PUF_2024
+    name = "extended_cps_2024_half"
+    label = "Extended CPS 2024 (half sample)"
+    file_path = STORAGE_FOLDER / "extended_cps_2024_half.h5"
+    time_period = 2024
+
+
 if __name__ == "__main__":
     ExtendedCPS_2024().generate()
+    ExtendedCPS_2024_Half().generate()

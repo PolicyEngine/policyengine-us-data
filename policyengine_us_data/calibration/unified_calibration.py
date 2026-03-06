@@ -893,6 +893,126 @@ def convert_blocks_to_stacked_format(
     return B
 
 
+def compute_stacked_takeup(
+    weights: np.ndarray,
+    cd_geoid: np.ndarray,
+    block_geoid: np.ndarray,
+    base_n_records: int,
+    cds_ordered: list,
+    entity_hh_idx_map: dict,
+    household_ids: np.ndarray,
+    precomputed_rates: dict,
+    affected_target_info: dict,
+) -> dict:
+    """Compute weight-weighted takeup per (CD, entity).
+
+    For each takeup variable, iterates over all clones and
+    recomputes entity-level takeup draws (deterministic given
+    block and hh_id). Accumulates weight-weighted takeup
+    per (CD, base_entity_index) using the final optimizer
+    weights.
+
+    Returns:
+        Dict mapping takeup variable name to ndarray of
+        shape (n_cds, n_base_entities).
+    """
+    from policyengine_us_data.utils.takeup import (
+        compute_block_takeup_for_entities,
+    )
+
+    n_total = len(weights)
+    n_clones = n_total // base_n_records
+    n_cds = len(cds_ordered)
+    cd_to_idx = {cd: i for i, cd in enumerate(cds_ordered)}
+
+    col_cd_idx = np.empty(n_total, dtype=np.int32)
+    for i, cd in enumerate(cd_geoid):
+        col_cd_idx[i] = cd_to_idx.get(cd, -1)
+
+    unique_takeup = {}
+    for tvar, info in affected_target_info.items():
+        if tvar.endswith("_count"):
+            continue
+        tv = info["takeup_var"]
+        if tv not in unique_takeup:
+            unique_takeup[tv] = info
+
+    result = {}
+
+    for takeup_var, info in unique_takeup.items():
+        entity_level = info["entity"]
+        rate_key = info["rate_key"]
+        ent_hh = entity_hh_idx_map[entity_level]
+        n_ent = len(ent_hh)
+        rate = precomputed_rates[rate_key]
+
+        numerator = np.zeros(n_cds * n_ent, dtype=np.float64)
+        denominator = np.zeros(n_cds * n_ent, dtype=np.float64)
+
+        for clone_idx in range(n_clones):
+            col_start = clone_idx * base_n_records
+            col_end = col_start + base_n_records
+            clone_w = weights[col_start:col_end]
+
+            if not np.any(clone_w > 0):
+                continue
+
+            clone_blocks = block_geoid[col_start:col_end]
+
+            ent_blocks = clone_blocks[ent_hh]
+            ent_hh_ids = household_ids[ent_hh]
+
+            ent_takeup = compute_block_takeup_for_entities(
+                takeup_var, rate, ent_blocks, ent_hh_ids
+            ).astype(np.float64)
+
+            ent_w = clone_w[ent_hh]
+            ent_cd_idx = col_cd_idx[col_start:col_end][ent_hh]
+
+            ent_active = (ent_w > 0) & (ent_cd_idx >= 0)
+            if not ent_active.any():
+                continue
+
+            ent_indices = np.arange(n_ent)
+            flat = ent_cd_idx * n_ent + ent_indices
+
+            np.add.at(
+                numerator,
+                flat[ent_active],
+                (ent_w * ent_takeup)[ent_active],
+            )
+            np.add.at(
+                denominator,
+                flat[ent_active],
+                ent_w[ent_active],
+            )
+
+            if (clone_idx + 1) % 100 == 0:
+                logger.info(
+                    "Stacked takeup %s: clone %d/%d",
+                    takeup_var,
+                    clone_idx + 1,
+                    n_clones,
+                )
+
+        valid = denominator > 0
+        takeup_avg = np.ones(n_cds * n_ent, dtype=np.float32)
+        takeup_avg[valid] = (numerator[valid] / denominator[valid]).astype(
+            np.float32
+        )
+
+        result[takeup_var] = takeup_avg.reshape(n_cds, n_ent)
+        logger.info(
+            "Stacked takeup %s: shape %s, " "active cells %d, mean %.4f",
+            takeup_var,
+            result[takeup_var].shape,
+            valid.sum(),
+            takeup_avg[valid].mean() if valid.any() else 0,
+        )
+
+    return result
+
+
 def compute_diagnostics(
     weights: np.ndarray,
     X_sparse,
@@ -1262,6 +1382,10 @@ def run_calibration(
         "block_geoid": geography.block_geoid,
         "base_n_records": n_records,
         "dataset_for_matrix": dataset_for_matrix,
+        "entity_hh_idx_map": getattr(builder, "entity_hh_idx_map", None),
+        "household_ids": getattr(builder, "household_ids", None),
+        "precomputed_rates": getattr(builder, "precomputed_rates", None),
+        "affected_target_info": getattr(builder, "affected_target_info", None),
     }
     return (
         weights,
@@ -1438,6 +1562,39 @@ def main(argv=None):
         np.save(str(blocks_path), blocks_stacked)
         logger.info("Stacked blocks saved to %s", blocks_path)
         print(f"BLOCKS_PATH:{blocks_path}")
+
+    # Save stacked takeup (weight-averaged per CD × entity)
+    entity_hh_idx_map = geography_info.get("entity_hh_idx_map")
+    affected_info = geography_info.get("affected_target_info")
+    if (
+        block_geoid is not None
+        and cd_geoid is not None
+        and base_n_records is not None
+        and entity_hh_idx_map is not None
+        and affected_info
+    ):
+        import time as _time
+
+        t_takeup = _time.time()
+        stacked_tu = compute_stacked_takeup(
+            weights=weights,
+            cd_geoid=cd_geoid,
+            block_geoid=block_geoid,
+            base_n_records=base_n_records,
+            cds_ordered=cds_ordered,
+            entity_hh_idx_map=entity_hh_idx_map,
+            household_ids=geography_info["household_ids"],
+            precomputed_rates=geography_info["precomputed_rates"],
+            affected_target_info=affected_info,
+        )
+        takeup_path = output_dir / "stacked_takeup.npz"
+        np.savez_compressed(str(takeup_path), **stacked_tu)
+        logger.info(
+            "Stacked takeup saved to %s (%.1f min)",
+            takeup_path,
+            (_time.time() - t_takeup) / 60,
+        )
+        print(f"TAKEUP_PATH:{takeup_path}")
 
     # Save weights
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)

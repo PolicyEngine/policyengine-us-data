@@ -1,11 +1,11 @@
 """
-Publish local area H5 files to GCP and Hugging Face.
+Build local area H5 files, optionally uploading to GCP and Hugging Face.
 
 Downloads calibration inputs from HF, generates state/district H5s
-with checkpointing, and uploads to both destinations.
+with checkpointing. Uploads only occur when --upload is explicitly passed.
 
 Usage:
-    python publish_local_area.py [--skip-download] [--states-only] [--districts-only]
+    python publish_local_area.py [--skip-download] [--states-only] [--upload]
 """
 
 import numpy as np
@@ -111,8 +111,8 @@ def build_h5(
     cds_to_calibrate: List[str],
     cd_subset: List[str] = None,
     county_filter: set = None,
-    rerandomize_takeup: bool = False,
     takeup_filter: List[str] = None,
+    stacked_takeup: dict = None,
 ) -> Path:
     """Build an H5 file by cloning records for each nonzero weight.
 
@@ -122,11 +122,14 @@ def build_h5(
     Each nonzero entry in the (n_geo, n_hh) weight matrix represents
     a distinct household clone. This function clones entity arrays,
     derives geography from blocks, reindexes entity IDs, recalculates
-    SPM thresholds, optionally rerandomizes takeup, and writes the H5.
+    SPM thresholds, applies calibration takeup draws (when blocks are
+    provided), and writes the H5.
 
     Args:
         weights: Stacked weight vector, shape (n_geo * n_hh,).
-        blocks: Block GEOID per weight entry, same shape.
+        blocks: Block GEOID per weight entry, same shape. When
+            provided, calibration takeup draws are applied
+            automatically.
         dataset_path: Path to base dataset H5 file.
         output_path: Where to write the output H5 file.
         cds_to_calibrate: Ordered list of CD GEOIDs defining
@@ -134,8 +137,10 @@ def build_h5(
         cd_subset: If provided, only include rows for these CDs.
         county_filter: If provided, scale weights by P(target|CD)
             for city datasets.
-        rerandomize_takeup: Re-draw takeup using block-level seeds.
-        takeup_filter: List of takeup vars to re-randomize.
+        takeup_filter: List of takeup vars to apply.
+        stacked_takeup: Pre-computed weight-averaged takeup per
+            (CD, entity). Dict of {var_name: (n_cds, n_ent)}.
+            When provided, overrides block-based takeup draws.
 
     Returns:
         Path to the output H5 file.
@@ -149,6 +154,8 @@ def build_h5(
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    apply_takeup = blocks is not None
 
     # === Load base simulation ===
     sim = Microsimulation(dataset=str(dataset_path))
@@ -536,10 +543,40 @@ def build_h5(
         time_period: new_spm_thresholds,
     }
 
-    # === Gap 2: Takeup rerandomization ===
-    if rerandomize_takeup:
-        print("Re-randomizing takeup draws...")
-        # Build entity->HH index for cloned entities
+    # === Apply calibration takeup draws ===
+    if stacked_takeup is not None:
+        print("Applying pre-computed stacked takeup values...")
+        from policyengine_us_data.utils.takeup import (
+            SIMPLE_TAKEUP_VARS,
+        )
+
+        var_to_entity = {
+            spec["variable"]: spec["entity"] for spec in SIMPLE_TAKEUP_VARS
+        }
+        for spec in SIMPLE_TAKEUP_VARS:
+            var_name = spec["variable"]
+            entity_level = spec["entity"]
+
+            if entity_level == "person":
+                n_ent = n_persons
+                clone_ids_e = np.repeat(np.arange(n_clones), persons_per_clone)
+                base_indices = person_clone_idx
+            else:
+                n_ent = len(entity_clone_idx[entity_level])
+                clone_ids_e = np.repeat(
+                    np.arange(n_clones),
+                    entities_per_clone[entity_level],
+                )
+                base_indices = entity_clone_idx[entity_level]
+
+            if var_name in stacked_takeup:
+                geo_indices = active_geo[clone_ids_e]
+                values = stacked_takeup[var_name][geo_indices, base_indices]
+                data[var_name] = {time_period: values.astype(np.float32)}
+            else:
+                data[var_name] = {time_period: np.ones(n_ent, dtype=bool)}
+    elif apply_takeup:
+        print("Applying calibration takeup draws...")
         entity_hh_indices = {
             "person": np.repeat(
                 np.arange(n_clones, dtype=np.int64),
@@ -559,12 +596,7 @@ def build_h5(
             "tax_unit": len(entity_clone_idx["tax_unit"]),
             "spm_unit": len(entity_clone_idx["spm_unit"]),
         }
-        # HH-level state_fips from geography
         hh_state_fips = geography["state_fips"].astype(np.int32)
-
-        # Use original household IDs for RNG seeding so that
-        # takeup draws match the matrix builder's
-        # salt=f"{block}:{int(hh_id)}" scheme.
         original_hh_ids = household_ids[active_hh].astype(np.int64)
 
         takeup_results = apply_block_takeup_to_arrays(
@@ -620,18 +652,19 @@ def get_district_friendly_name(cd_geoid: str) -> str:
     return f"{state_code}-{district_num:02d}"
 
 
-def build_and_upload_states(
+def build_states(
     weights_path: Path,
     dataset_path: Path,
     db_path: Path,
     output_dir: Path,
     completed_states: set,
     hf_batch_size: int = 10,
-    rerandomize_takeup: bool = False,
     calibration_blocks: np.ndarray = None,
     takeup_filter: List[str] = None,
+    upload: bool = False,
+    stacked_takeup: dict = None,
 ):
-    """Build and upload state H5 files with checkpointing."""
+    """Build state H5 files with checkpointing, optionally uploading."""
     db_uri = f"sqlite:///{db_path}"
     cds_to_calibrate = get_all_cds_from_database(db_uri)
     w = np.load(weights_path)
@@ -663,18 +696,21 @@ def build_and_upload_states(
                 output_path=output_path,
                 cds_to_calibrate=cds_to_calibrate,
                 cd_subset=cd_subset,
-                rerandomize_takeup=rerandomize_takeup,
                 takeup_filter=takeup_filter,
+                stacked_takeup=stacked_takeup,
             )
 
-            print(f"Uploading {state_code}.h5 to GCP...")
-            upload_local_area_file(str(output_path), "states", skip_hf=True)
+            if upload:
+                print(f"Uploading {state_code}.h5 to GCP...")
+                upload_local_area_file(
+                    str(output_path), "states", skip_hf=True
+                )
+                hf_queue.append((str(output_path), "states"))
 
-            hf_queue.append((str(output_path), "states"))
             record_completed_state(state_code)
             print(f"Completed {state_code}")
 
-            if len(hf_queue) >= hf_batch_size:
+            if upload and len(hf_queue) >= hf_batch_size:
                 print(
                     f"\nUploading batch of {len(hf_queue)} "
                     f"files to HuggingFace..."
@@ -686,7 +722,7 @@ def build_and_upload_states(
             print(f"ERROR building {state_code}: {e}")
             raise
 
-    if hf_queue:
+    if upload and hf_queue:
         print(
             f"\nUploading final batch of {len(hf_queue)} "
             f"files to HuggingFace..."
@@ -694,18 +730,19 @@ def build_and_upload_states(
         upload_local_area_batch_to_hf(hf_queue)
 
 
-def build_and_upload_districts(
+def build_districts(
     weights_path: Path,
     dataset_path: Path,
     db_path: Path,
     output_dir: Path,
     completed_districts: set,
     hf_batch_size: int = 10,
-    rerandomize_takeup: bool = False,
     calibration_blocks: np.ndarray = None,
     takeup_filter: List[str] = None,
+    upload: bool = False,
+    stacked_takeup: dict = None,
 ):
-    """Build and upload district H5 files with checkpointing."""
+    """Build district H5 files with checkpointing, optionally uploading."""
     db_uri = f"sqlite:///{db_path}"
     cds_to_calibrate = get_all_cds_from_database(db_uri)
     w = np.load(weights_path)
@@ -741,18 +778,21 @@ def build_and_upload_districts(
                 output_path=output_path,
                 cds_to_calibrate=cds_to_calibrate,
                 cd_subset=[cd_geoid],
-                rerandomize_takeup=rerandomize_takeup,
                 takeup_filter=takeup_filter,
+                stacked_takeup=stacked_takeup,
             )
 
-            print(f"Uploading {friendly_name}.h5 to GCP...")
-            upload_local_area_file(str(output_path), "districts", skip_hf=True)
+            if upload:
+                print(f"Uploading {friendly_name}.h5 to GCP...")
+                upload_local_area_file(
+                    str(output_path), "districts", skip_hf=True
+                )
+                hf_queue.append((str(output_path), "districts"))
 
-            hf_queue.append((str(output_path), "districts"))
             record_completed_district(friendly_name)
             print(f"Completed {friendly_name}")
 
-            if len(hf_queue) >= hf_batch_size:
+            if upload and len(hf_queue) >= hf_batch_size:
                 print(
                     f"\nUploading batch of {len(hf_queue)} "
                     f"files to HuggingFace..."
@@ -764,7 +804,7 @@ def build_and_upload_districts(
             print(f"ERROR building {friendly_name}: {e}")
             raise
 
-    if hf_queue:
+    if upload and hf_queue:
         print(
             f"\nUploading final batch of {len(hf_queue)} "
             f"files to HuggingFace..."
@@ -772,18 +812,19 @@ def build_and_upload_districts(
         upload_local_area_batch_to_hf(hf_queue)
 
 
-def build_and_upload_cities(
+def build_cities(
     weights_path: Path,
     dataset_path: Path,
     db_path: Path,
     output_dir: Path,
     completed_cities: set,
     hf_batch_size: int = 10,
-    rerandomize_takeup: bool = False,
     calibration_blocks: np.ndarray = None,
     takeup_filter: List[str] = None,
+    upload: bool = False,
+    stacked_takeup: dict = None,
 ):
-    """Build and upload city H5 files with checkpointing."""
+    """Build city H5 files with checkpointing, optionally uploading."""
     db_uri = f"sqlite:///{db_path}"
     cds_to_calibrate = get_all_cds_from_database(db_uri)
     w = np.load(weights_path)
@@ -812,16 +853,17 @@ def build_and_upload_cities(
                     cds_to_calibrate=cds_to_calibrate,
                     cd_subset=cd_subset,
                     county_filter=NYC_COUNTIES,
-                    rerandomize_takeup=rerandomize_takeup,
                     takeup_filter=takeup_filter,
+                    stacked_takeup=stacked_takeup,
                 )
 
-                print("Uploading NYC.h5 to GCP...")
-                upload_local_area_file(
-                    str(output_path), "cities", skip_hf=True
-                )
+                if upload:
+                    print("Uploading NYC.h5 to GCP...")
+                    upload_local_area_file(
+                        str(output_path), "cities", skip_hf=True
+                    )
+                    hf_queue.append((str(output_path), "cities"))
 
-                hf_queue.append((str(output_path), "cities"))
                 record_completed_city("NYC")
                 print("Completed NYC")
 
@@ -829,7 +871,7 @@ def build_and_upload_cities(
                 print(f"ERROR building NYC: {e}")
                 raise
 
-    if hf_queue:
+    if upload and hf_queue:
         print(
             f"\nUploading batch of {len(hf_queue)} "
             f"city files to HuggingFace..."
@@ -879,14 +921,19 @@ def main():
         help="Override path to database file (for local testing)",
     )
     parser.add_argument(
-        "--rerandomize-takeup",
-        action="store_true",
-        help="Re-draw takeup using block-level seeds",
-    )
-    parser.add_argument(
         "--calibration-blocks",
         type=str,
         help="Path to stacked_blocks.npy from calibration",
+    )
+    parser.add_argument(
+        "--stacked-takeup",
+        type=str,
+        help="Path to stacked_takeup.npz from calibration",
+    )
+    parser.add_argument(
+        "--upload",
+        action="store_true",
+        help="Upload to GCP and HuggingFace (default: build locally only)",
     )
     args = parser.parse_args()
 
@@ -926,100 +973,93 @@ def main():
     n_hh = sim.calculate("household_id", map_to="household").shape[0]
     print(f"\nBase dataset has {n_hh:,} households")
 
-    rerandomize_takeup = args.rerandomize_takeup
     calibration_blocks = None
     takeup_filter = None
 
     if args.calibration_blocks:
         calibration_blocks = np.load(args.calibration_blocks)
-        rerandomize_takeup = True
         print(f"Loaded calibration blocks: {len(calibration_blocks):,}")
-    elif rerandomize_takeup:
-        blocks_path = inputs.get("blocks")
-        if blocks_path and Path(blocks_path).exists():
-            calibration_blocks = np.load(str(blocks_path))
-            print(
-                f"Loaded calibration blocks: " f"{len(calibration_blocks):,}"
-            )
-        else:
-            print(
-                "WARNING: --rerandomize-takeup set but no " "blocks available"
-            )
-
-    if rerandomize_takeup:
         takeup_filter = [
             info["takeup_var"] for info in TAKEUP_AFFECTED_TARGETS.values()
         ]
         print(f"Takeup filter: {takeup_filter}")
 
+    stacked_takeup = None
+    if getattr(args, "stacked_takeup", None):
+        stacked_takeup = dict(np.load(args.stacked_takeup))
+        print(f"Loaded stacked takeup: " f"{list(stacked_takeup.keys())}")
+
     # Determine what to build based on flags
-    build_states = not args.districts_only and not args.cities_only
-    build_districts = not args.states_only and not args.cities_only
-    build_cities = not args.states_only and not args.districts_only
+    do_states = not args.districts_only and not args.cities_only
+    do_districts = not args.states_only and not args.cities_only
+    do_cities = not args.states_only and not args.districts_only
 
     # If a specific *-only flag is set, only build that type
     if args.states_only:
-        build_states = True
-        build_districts = False
-        build_cities = False
+        do_states = True
+        do_districts = False
+        do_cities = False
     elif args.districts_only:
-        build_states = False
-        build_districts = True
-        build_cities = False
+        do_states = False
+        do_districts = True
+        do_cities = False
     elif args.cities_only:
-        build_states = False
-        build_districts = False
-        build_cities = True
+        do_states = False
+        do_districts = False
+        do_cities = True
 
-    if build_states:
+    if do_states:
         print("\n" + "=" * 60)
         print("BUILDING STATE FILES")
         print("=" * 60)
         completed_states = load_completed_states()
         print(f"Already completed: {len(completed_states)} states")
-        build_and_upload_states(
+        build_states(
             inputs["weights"],
             inputs["dataset"],
             inputs["database"],
             WORK_DIR,
             completed_states,
-            rerandomize_takeup=rerandomize_takeup,
             calibration_blocks=calibration_blocks,
             takeup_filter=takeup_filter,
+            upload=args.upload,
+            stacked_takeup=stacked_takeup,
         )
 
-    if build_districts:
+    if do_districts:
         print("\n" + "=" * 60)
         print("BUILDING DISTRICT FILES")
         print("=" * 60)
         completed_districts = load_completed_districts()
         print(f"Already completed: {len(completed_districts)} districts")
-        build_and_upload_districts(
+        build_districts(
             inputs["weights"],
             inputs["dataset"],
             inputs["database"],
             WORK_DIR,
             completed_districts,
-            rerandomize_takeup=rerandomize_takeup,
             calibration_blocks=calibration_blocks,
             takeup_filter=takeup_filter,
+            upload=args.upload,
+            stacked_takeup=stacked_takeup,
         )
 
-    if build_cities:
+    if do_cities:
         print("\n" + "=" * 60)
         print("BUILDING CITY FILES")
         print("=" * 60)
         completed_cities = load_completed_cities()
         print(f"Already completed: {len(completed_cities)} cities")
-        build_and_upload_cities(
+        build_cities(
             inputs["weights"],
             inputs["dataset"],
             inputs["database"],
             WORK_DIR,
             completed_cities,
-            rerandomize_takeup=rerandomize_takeup,
             calibration_blocks=calibration_blocks,
             takeup_filter=takeup_filter,
+            upload=args.upload,
+            stacked_takeup=stacked_takeup,
         )
 
     print("\n" + "=" * 60)

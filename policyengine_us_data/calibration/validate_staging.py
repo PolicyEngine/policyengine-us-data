@@ -16,6 +16,7 @@ import csv
 import gc
 import logging
 import math
+import multiprocessing as mp
 import os
 from pathlib import Path
 from typing import Optional
@@ -418,6 +419,84 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+def _validate_single_area(
+    area_type,
+    area_id,
+    h5_path,
+    display_id,
+    area_targets,
+    area_training,
+    db_path,
+    period,
+):
+    """Validate one area in an isolated process.
+
+    Runs in a subprocess so all memory (Microsimulation, caches)
+    is fully reclaimed by the OS when the process exits.
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+    from policyengine_us import Microsimulation
+    from sqlalchemy import create_engine as _create_engine
+
+    engine = _create_engine(f"sqlite:///{db_path}")
+
+    logger.info("Loading sim from %s", h5_path)
+    try:
+        sim = Microsimulation(dataset=h5_path)
+    except Exception as e:
+        logger.error("Failed to load %s: %s", h5_path, e)
+        return [], 0.0
+
+    area_pop = 0.0
+    if area_type == "states":
+        person_weight = sim.calculate(
+            "person_weight",
+            map_to="person",
+            period=period,
+        ).values.astype(np.float64)
+        area_pop = float(person_weight.sum())
+        logger.info("  %s population: %.0f", display_id, area_pop)
+
+    if len(area_targets) == 0:
+        logger.warning("No targets for %s, skipping", display_id)
+        return [], area_pop
+
+    logger.info(
+        "Validating %d targets for %s",
+        len(area_targets),
+        display_id,
+    )
+
+    variable_entity_map = _build_variable_entity_map(sim)
+
+    area_results = validate_area(
+        sim=sim,
+        targets_df=area_targets,
+        engine=engine,
+        area_type=area_type,
+        area_id=area_id,
+        display_id=display_id,
+        period=period,
+        training_mask=area_training,
+        variable_entity_map=variable_entity_map,
+    )
+
+    n_fail = sum(
+        1 for r in area_results if r["sanity_check"] == "FAIL"
+    )
+    logger.info(
+        "  %s: %d results, %d sanity failures",
+        display_id,
+        len(area_results),
+        n_fail,
+    )
+
+    return area_results, area_pop
+
+
 def _run_area_type(
     area_type,
     area_ids,
@@ -429,12 +508,11 @@ def _run_area_type(
 ):
     """Validate all areas for a single area_type.
 
-    Loads one sim at a time to keep memory low.
+    Each area runs in a subprocess so the OS fully reclaims
+    memory between states (avoids OOM on large states like CA).
     """
     results = []
     total_weighted_pop = 0.0
-    current_h5 = None
-    sim = None
 
     for area_id in area_ids:
         if area_type == "states":
@@ -447,70 +525,32 @@ def _run_area_type(
 
         h5_path = f"{args.hf_prefix}/{area_type}/{h5_name}.h5"
 
-        if h5_path != current_h5:
-            current_h5 = h5_path
-            del sim
-            gc.collect()
-            logger.info("Loading sim from %s", h5_path)
-            try:
-                sim = Microsimulation(dataset=h5_path)
-            except Exception as e:
-                logger.error("Failed to load %s: %s", h5_path, e)
-                sim = None
-
-            if sim is not None and area_type == "states":
-                person_weight = sim.calculate(
-                    "person_weight",
-                    map_to="person",
-                    period=args.period,
-                ).values.astype(np.float64)
-                area_pop = float(person_weight.sum())
-                total_weighted_pop += area_pop
-                logger.info(
-                    "  %s population: %.0f",
-                    display_id,
-                    area_pop,
-                )
-
-        if sim is None:
-            continue
-
-        area_mask = (level_targets["geographic_id"] == area_id).values
-        area_targets = level_targets[area_mask].reset_index(drop=True)
+        area_mask = (
+            level_targets["geographic_id"] == area_id
+        ).values
+        area_targets = level_targets[area_mask].reset_index(
+            drop=True
+        )
         area_training = level_training[area_mask]
 
-        if len(area_targets) == 0:
-            logger.warning("No targets for %s, skipping", display_id)
-            continue
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(1) as pool:
+            area_results, area_pop = pool.apply(
+                _validate_single_area,
+                (
+                    area_type,
+                    area_id,
+                    h5_path,
+                    display_id,
+                    area_targets,
+                    area_training,
+                    args.db_path,
+                    args.period,
+                ),
+            )
 
-        logger.info(
-            "Validating %d targets for %s",
-            len(area_targets),
-            display_id,
-        )
-
-        variable_entity_map = _build_variable_entity_map(sim)
-
-        area_results = validate_area(
-            sim=sim,
-            targets_df=area_targets,
-            engine=engine,
-            area_type=area_type,
-            area_id=area_id,
-            display_id=display_id,
-            period=args.period,
-            training_mask=area_training,
-            variable_entity_map=variable_entity_map,
-        )
+        total_weighted_pop += area_pop
         results.extend(area_results)
-
-        n_fail = sum(1 for r in area_results if r["sanity_check"] == "FAIL")
-        logger.info(
-            "  %s: %d results, %d sanity failures",
-            display_id,
-            len(area_results),
-            n_fail,
-        )
 
     if area_type == "states" and total_weighted_pop > 0:
         logger.info(

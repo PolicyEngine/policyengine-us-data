@@ -55,7 +55,7 @@ class ExtendedCPS(Dataset):
 
     # Variables with formulas that must still be stored (e.g. IDs
     # needed by the dataset loader before formulas can run).
-    _KEEP_FORMULA_VARS = {"person_id"}
+    _KEEP_FORMULA_VARS = {"person_id", "is_pregnant"}
 
     @classmethod
     def _drop_formula_variables(cls, data):

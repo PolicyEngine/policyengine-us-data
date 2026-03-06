@@ -35,9 +35,10 @@ include:
   - variable: person_count
     geo_level: state
     domain_variable: medicaid_enrolled
-  - variable: person_count
-    geo_level: state
-    domain_variable: is_pregnant
+  # TODO: re-enable once make data is re-run with is_pregnant preserved
+  # - variable: person_count
+  #   geo_level: state
+  #   domain_variable: is_pregnant
   - variable: snap
     geo_level: state
 

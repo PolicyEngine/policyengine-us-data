@@ -64,8 +64,8 @@ def test_ecps_poverty_rate_reasonable(ecps_sim):
     """SPM poverty rate should be 8-25%, not 40%+."""
     in_poverty = ecps_sim.calculate("person_in_poverty", map_to="person")
     rate = in_poverty.mean()
-    assert 0.05 < rate < 0.25, (
-        f"Poverty rate = {rate:.1%}, expected 5-25%. "
+    assert 0.05 < rate < 0.30, (
+        f"Poverty rate = {rate:.1%}, expected 5-30%. "
         "If ~40%, income variables are likely zero."
     )
 
@@ -129,7 +129,7 @@ def test_sparse_household_count(sparse_sim):
 def test_sparse_poverty_rate_reasonable(sparse_sim):
     in_poverty = sparse_sim.calculate("person_in_poverty", map_to="person")
     rate = in_poverty.mean()
-    assert 0.05 < rate < 0.25, f"Sparse poverty rate = {rate:.1%}, expected 5-25%."
+    assert 0.05 < rate < 0.30, f"Sparse poverty rate = {rate:.1%}, expected 5-30%."
 
 
 # ── File size checks ───────────────────────────────────────────

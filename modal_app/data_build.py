@@ -1,3 +1,4 @@
+import functools
 import os
 import shutil
 import subprocess
@@ -84,9 +85,16 @@ def setup_gcp_credentials():
     return None
 
 
+@functools.cache
+def get_current_commit() -> str:
+    """Get the current git commit SHA (cached per process)."""
+    return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+
+
 def get_checkpoint_path(branch: str, output_file: str) -> Path:
-    """Get the checkpoint path for an output file, scoped by branch."""
-    return Path(VOLUME_MOUNT) / branch / Path(output_file).name
+    """Get the checkpoint path for an output file, scoped by branch and commit."""
+    commit = get_current_commit()
+    return Path(VOLUME_MOUNT) / branch / commit / Path(output_file).name
 
 
 def is_checkpointed(branch: str, output_file: str) -> bool:
@@ -224,7 +232,8 @@ def run_tests_with_checkpoints(
     Raises:
         RuntimeError: If any test module fails.
     """
-    checkpoint_dir = Path(VOLUME_MOUNT) / branch / "tests"
+    commit = get_current_commit()
+    checkpoint_dir = Path(VOLUME_MOUNT) / branch / commit / "tests"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     for module in TEST_MODULES:
@@ -293,6 +302,17 @@ def build_datasets(
     os.chdir("/root")
     subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
     os.chdir("policyengine-us-data")
+
+    # Clean stale checkpoints from other commits
+    branch_dir = Path(VOLUME_MOUNT) / branch
+    if branch_dir.exists():
+        current_commit = get_current_commit()
+        for entry in branch_dir.iterdir():
+            if entry.is_dir() and entry.name != current_commit:
+                shutil.rmtree(entry)
+                print(f"Removed stale checkpoint dir: {entry.name[:12]}")
+        checkpoint_volume.commit()
+
     # Use uv sync to install exact versions from uv.lock
     subprocess.run(["uv", "sync", "--locked"], check=True)
 

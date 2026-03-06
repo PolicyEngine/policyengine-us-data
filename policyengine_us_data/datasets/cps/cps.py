@@ -2223,3 +2223,4 @@ class CPS_2024_Full(CPS):
 
 if __name__ == "__main__":
     CPS_2024_Full().generate()
+    CPS_2024().generate()

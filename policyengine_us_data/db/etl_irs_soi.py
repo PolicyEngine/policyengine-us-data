@@ -492,9 +492,9 @@ def load_soi_data(long_dfs, year):
             session.add(district_filer_stratum)
             session.flush()
 
-        filer_strata["district"][
-            district_geoid
-        ] = district_filer_stratum.stratum_id
+        filer_strata["district"][district_geoid] = (
+            district_filer_stratum.stratum_id
+        )
 
     session.commit()
 
@@ -636,9 +636,9 @@ def load_soi_data(long_dfs, year):
 
             # Store lookup for later use
             if geo_info["type"] == "national":
-                eitc_stratum_lookup["national"][
-                    n_children
-                ] = new_stratum.stratum_id
+                eitc_stratum_lookup["national"][n_children] = (
+                    new_stratum.stratum_id
+                )
             elif geo_info["type"] == "state":
                 key = (geo_info["state_fips"], n_children)
                 eitc_stratum_lookup["state"][key] = new_stratum.stratum_id
@@ -1000,9 +1000,9 @@ def load_soi_data(long_dfs, year):
             session.flush()
 
             if geo_info["type"] == "state":
-                agi_stratum_lookup["state"][
-                    geo_info["state_fips"]
-                ] = new_stratum.stratum_id
+                agi_stratum_lookup["state"][geo_info["state_fips"]] = (
+                    new_stratum.stratum_id
+                )
             elif geo_info["type"] == "district":
                 agi_stratum_lookup["district"][
                     geo_info["congressional_district_geoid"]

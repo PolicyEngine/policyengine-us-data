@@ -126,8 +126,7 @@ def test_national_targets_loaded(built_db):
     variables = {r[0] for r in rows}
     for expected in ["snap", "social_security", "ssi"]:
         assert expected in variables, (
-            f"National target '{expected}' missing. "
-            f"Found: {sorted(variables)}"
+            f"National target '{expected}' missing. Found: {sorted(variables)}"
         )
 
 
@@ -153,8 +152,7 @@ def test_state_income_tax_targets(built_db):
     ca_val = state_totals.get("06") or state_totals.get("6")
     assert ca_val is not None, "California (FIPS 06) target missing"
     assert ca_val > 100e9, (
-        f"California income tax should be > $100B, "
-        f"got ${ca_val / 1e9:.1f}B"
+        f"California income tax should be > $100B, got ${ca_val / 1e9:.1f}B"
     )
 
 

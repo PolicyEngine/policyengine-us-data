@@ -246,7 +246,7 @@ class TestSchemaViewsAndLookups(unittest.TestCase):
         domain_stratum_ids = {r[0] for r in rows}
         self.assertTrue(
             domain_stratum_ids.isdisjoint(geo_ids),
-            "Geographic strata should not appear in " "stratum_domain",
+            "Geographic strata should not appear in stratum_domain",
         )
 
     def test_single_domain_variable(self):
@@ -280,7 +280,7 @@ class TestSchemaViewsAndLookups(unittest.TestCase):
         }
         self.assertTrue(
             all_domain_vars.isdisjoint(excluded),
-            f"Found excluded vars: " f"{all_domain_vars & excluded}",
+            f"Found excluded vars: {all_domain_vars & excluded}",
         )
 
     # ----------------------------------------------------------------

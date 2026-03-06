@@ -238,7 +238,7 @@ def validate_demographic_strata(session):
             print(f"✓ {domain}: {actual} strata")
         elif actual == 0:
             errors.append(
-                f"ERROR: {domain} has no strata, " f"expected {expected_total}"
+                f"ERROR: {domain} has no strata, expected {expected_total}"
             )
         else:
             errors.append(
@@ -291,11 +291,9 @@ def validate_demographic_strata(session):
                 )
         else:
             no_parents += 1
-            errors.append(
-                f"ERROR: Stratum {stratum.stratum_id} " f"has no parent"
-            )
+            errors.append(f"ERROR: Stratum {stratum.stratum_id} has no parent")
 
-    print(f"  Sample of {len(sample_strata)} " f"demographic strata:")
+    print(f"  Sample of {len(sample_strata)} demographic strata:")
     print(f"    - With geographic parent: {correct_parents}")
     print(f"    - With wrong parent: {wrong_parents}")
     print(f"    - With no parent: {no_parents}")

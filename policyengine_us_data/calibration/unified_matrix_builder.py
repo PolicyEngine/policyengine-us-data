@@ -430,14 +430,12 @@ class UnifiedMatrixBuilder:
         print("\n" + "=" * 60)
         print("UPRATING SUMMARY")
         print("=" * 60)
-        print(f"Uprated {len(uprated)} of " f"{len(targets_df)} targets")
+        print(f"Uprated {len(uprated)} of {len(targets_df)} targets")
         period_counts = uprated["period"].value_counts().sort_index()
         for period, count in period_counts.items():
             print(f"  Period {period}: {count} targets")
         factors = eff[eff != 1.0]
-        print(
-            f"  Factor range: [{factors.min():.4f}, " f"{factors.max():.4f}]"
-        )
+        print(f"  Factor range: [{factors.min():.4f}, {factors.max():.4f}]")
 
     # ---------------------------------------------------------------
     # Target naming
@@ -745,7 +743,7 @@ class UnifiedMatrixBuilder:
             clone_states = geography.state_fips[col_start:col_end]
 
             logger.info(
-                "Processing clone %d/%d " "(cols %d-%d, %d unique states)...",
+                "Processing clone %d/%d (cols %d-%d, %d unique states)...",
                 clone_idx + 1,
                 n_clones,
                 col_start,

@@ -440,9 +440,7 @@ def drop_target_groups(
                 drop_ids.add(gid)
                 matched = True
         if not matched:
-            print(
-                f"  WARNING: no match for " f"({label_substr!r}, {geo_name!r})"
-            )
+            print(f"  WARNING: no match for ({label_substr!r}, {geo_name!r})")
 
     keep_mask = ~np.isin(target_groups, list(drop_ids))
 

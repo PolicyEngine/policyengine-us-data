@@ -5,7 +5,7 @@ HF_CLONE_DIR ?= $(HOME)/huggingface/policyengine-us-data
 all: data test
 
 format:
-	black . -l 79
+	ruff format .
 
 test:
 	pytest

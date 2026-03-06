@@ -391,8 +391,7 @@ def build_datasets(
         # GROUP 3: After extended_cps - run in parallel
         # enhanced_cps and stratified_cps both depend on extended_cps
         print(
-            "=== Phase 4: Building enhanced and stratified CPS (parallel)"
-            " ==="
+            "=== Phase 4: Building enhanced and stratified CPS (parallel) ==="
         )
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = [

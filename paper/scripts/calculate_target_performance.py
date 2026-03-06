@@ -79,8 +79,9 @@ def compare_dataset_performance(
 
     # Calculate average improvement by target category
     categories = {
-        "IRS Income": lambda x: "employment_income" in x
-        or "capital_gains" in x,
+        "IRS Income": lambda x: (
+            "employment_income" in x or "capital_gains" in x
+        ),
         "Demographics": lambda x: "age_" in x or "population" in x,
         "Programs": lambda x: "snap" in x or "social_security" in x,
         "Tax Expenditures": lambda x: "salt" in x or "charitable" in x,

@@ -101,10 +101,10 @@ def fmt(x):
     if x < 1e3:
         return f"{x:.0f}"
     if x < 1e6:
-        return f"{x/1e3:.0f}k"
+        return f"{x / 1e3:.0f}k"
     if x < 1e9:
-        return f"{x/1e6:.0f}m"
-    return f"{x/1e9:.1f}bn"
+        return f"{x / 1e6:.0f}m"
+    return f"{x / 1e9:.1f}bn"
 
 
 def build_loss_matrix(dataset: type, time_period):
@@ -325,18 +325,14 @@ def build_loss_matrix(dataset: type, time_period):
     loss_matrix["nation/treasury/eitc"] = sim.calculate(
         "eitc", map_to="household"
     ).values
-    eitc_spending = (
-        sim.tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc
-    )
+    eitc_spending = sim.tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc
     targets_array.append(eitc_spending(time_period))
 
     # IRS EITC filers and totals by child counts
     eitc_stats = pd.read_csv(CALIBRATION_FOLDER / "eitc.csv")
 
     eitc_spending_uprating = eitc_spending(time_period) / eitc_spending(2021)
-    population = (
-        sim.tax_benefit_system.parameters.calibration.gov.census.populations.total
-    )
+    population = sim.tax_benefit_system.parameters.calibration.gov.census.populations.total
     population_uprating = population(time_period) / population(2021)
 
     for _, row in eitc_stats.iterrows():
@@ -439,7 +435,7 @@ def build_loss_matrix(dataset: type, time_period):
             "other_medical_expenses",
             "medicare_part_b_premiums",
         ]:
-            label = f"nation/census/{expense_type}/age_{age_lower_bound}_to_{age_lower_bound+9}"
+            label = f"nation/census/{expense_type}/age_{age_lower_bound}_to_{age_lower_bound + 9}"
             value = sim.calculate(expense_type).values
             loss_matrix[label] = sim.map_result(
                 in_age_range * value, "person", "household"

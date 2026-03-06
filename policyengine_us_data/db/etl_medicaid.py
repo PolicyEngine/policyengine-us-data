@@ -222,9 +222,9 @@ def load_medicaid_data(long_state, long_cd, year):
             )
             session.add(new_stratum)
             session.flush()
-            medicaid_stratum_lookup["state"][
-                state_fips
-            ] = new_stratum.stratum_id
+            medicaid_stratum_lookup["state"][state_fips] = (
+                new_stratum.stratum_id
+            )
 
         # District -------------------
         if long_cd is None:

@@ -295,7 +295,7 @@ reform_revenue = reform_sim.calculate("income_tax").sum()
 
 # Calculate impact
 revenue_impact = reform_revenue - baseline_revenue
-print(f"revenue_impact (B): {revenue_impact / 1E9:.2f}")
+print(f"revenue_impact (B): {revenue_impact / 1e9:.2f}")
 
 # Calculate taxable payroll
 taxable_ss_earnings = baseline.calculate(

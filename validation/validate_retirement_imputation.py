@@ -80,7 +80,7 @@ def validate_constraints(sim) -> list:
         n_over_cap = (vals > max_401k + 1).sum()
         if n_over_cap > 0:
             issues.append(
-                f"FAIL: {var} has {n_over_cap} values exceeding " f"401k cap"
+                f"FAIL: {var} has {n_over_cap} values exceeding 401k cap"
             )
 
         zero_wage = emp_income == 0
@@ -111,7 +111,7 @@ def validate_constraints(sim) -> list:
         n_over_cap = (vals > max_ira + 1).sum()
         if n_over_cap > 0:
             issues.append(
-                f"FAIL: {var} has {n_over_cap} values exceeding " f"IRA cap"
+                f"FAIL: {var} has {n_over_cap} values exceeding IRA cap"
             )
 
     # SE pension constraint
@@ -168,8 +168,8 @@ def validate_aggregates(sim) -> list:
         if ratio < 0.1 or ratio > 5.0:
             issues.append(
                 f"WARNING: {var} weighted sum "
-                f"${weighted_sum/1e9:.1f}B is far from "
-                f"target ${target/1e9:.1f}B "
+                f"${weighted_sum / 1e9:.1f}B is far from "
+                f"target ${target / 1e9:.1f}B "
                 f"(ratio={ratio:.2f})"
             )
 

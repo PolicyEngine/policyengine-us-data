@@ -115,10 +115,10 @@ def test_sparse_ecps_replicates_jct_tax_expenditures():
         & (calibration_log["epoch"] == calibration_log["epoch"].max())
     ]
 
-    assert (
-        jct_rows.rel_abs_error.max() < 0.5
-    ), "JCT tax expenditure targets not met (see the calibration log for details). Max relative error: {:.2%}".format(
-        jct_rows.rel_abs_error.max()
+    assert jct_rows.rel_abs_error.max() < 0.5, (
+        "JCT tax expenditure targets not met (see the calibration log for details). Max relative error: {:.2%}".format(
+            jct_rows.rel_abs_error.max()
+        )
     )
 
 
@@ -155,8 +155,8 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
         TOLERANCE = 0.4
 
         logging.info(
-            f"{deduction} tax expenditure {tax_expenditure/1e9:.1f}bn "
-            f"differs from target {target/1e9:.1f}bn by {pct_error:.2%}"
+            f"{deduction} tax expenditure {tax_expenditure / 1e9:.1f}bn "
+            f"differs from target {target / 1e9:.1f}bn by {pct_error:.2%}"
         )
         assert pct_error < TOLERANCE, deduction
 
@@ -204,17 +204,17 @@ def test_sparse_aca_calibration(sim):
 
         pct_error = abs(simulated - target_spending) / target_spending
         logging.info(
-            f"{state}: simulated ${simulated/1e9:.2f} bn  "
-            f"target ${target_spending/1e9:.2f} bn  "
+            f"{state}: simulated ${simulated / 1e9:.2f} bn  "
+            f"target ${target_spending / 1e9:.2f} bn  "
             f"error {pct_error:.2%}"
         )
 
         if pct_error > TOLERANCE:
             failed = True
 
-    assert (
-        not failed
-    ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    assert not failed, (
+        f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    )
 
 
 def test_sparse_medicaid_calibration(sim):
@@ -238,14 +238,14 @@ def test_sparse_medicaid_calibration(sim):
 
         pct_error = abs(simulated - target_enrollment) / target_enrollment
         logging.info(
-            f"{state}: simulated ${simulated/1e9:.2f} bn  "
-            f"target ${target_enrollment/1e9:.2f} bn  "
+            f"{state}: simulated ${simulated / 1e9:.2f} bn  "
+            f"target ${target_enrollment / 1e9:.2f} bn  "
             f"error {pct_error:.2%}"
         )
 
         if pct_error > TOLERANCE:
             failed = True
 
-    assert (
-        not failed
-    ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    assert not failed, (
+        f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    )

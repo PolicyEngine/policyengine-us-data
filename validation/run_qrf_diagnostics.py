@@ -225,7 +225,7 @@ def main():
     for display_name, actual_name in target_map.items():
         if actual_name in variance_results:
             print(
-                f"- {display_name.capitalize()}: {variance_results[actual_name]*100:.0f}%"
+                f"- {display_name.capitalize()}: {variance_results[actual_name] * 100:.0f}%"
             )
 
     # 3. Joint distribution preservation
@@ -281,7 +281,7 @@ def main():
         for display_name, actual_name in target_map.items():
             if actual_name in variance_results:
                 f.write(
-                    f"{display_name.capitalize()}: {variance_results[actual_name]*100:.0f}%\n"
+                    f"{display_name.capitalize()}: {variance_results[actual_name] * 100:.0f}%\n"
                 )
     print(
         "✓ Saved variance explained results to validation/outputs/variance_explained.txt"
@@ -321,7 +321,7 @@ def main():
         for display_name, actual_name in target_map.items():
             if actual_name in variance_results:
                 f.write(
-                    f"{display_name.capitalize()}: {variance_results[actual_name]*100:.0f}%\n"
+                    f"{display_name.capitalize()}: {variance_results[actual_name] * 100:.0f}%\n"
                 )
 
         if valid_pairs:

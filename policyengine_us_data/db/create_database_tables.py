@@ -306,8 +306,7 @@ def validate_parent_child_constraints(mapper, connection, target: Stratum):
             if any(int(cv) == int(val) for cv in child_vals):
                 continue
         raise ValueError(
-            f"Child stratum must include parent constraint "
-            f"({var} {op} {val})"
+            f"Child stratum must include parent constraint ({var} {op} {val})"
         )
 
 

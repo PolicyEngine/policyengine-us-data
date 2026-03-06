@@ -341,7 +341,7 @@ for y in display_years:
     idx = y - START_YEAR
     if idx < n_years:
         pop = target_matrix[:, idx].sum()
-        print(f"  {y}: {pop/1e6:6.1f}M")
+        print(f"  {y}: {pop / 1e6:6.1f}M")
 
 # =========================================================================
 # STEP 2: BUILD HOUSEHOLD AGE MATRIX
@@ -413,7 +413,7 @@ for year_idx in range(n_years):
         if year in display_years:
             ss_baseline = np.sum(ss_values * baseline_weights)
             print(
-                f"  [DEBUG {year}] SS baseline: ${ss_baseline/1e9:.1f}B, target: ${ss_target/1e9:.1f}B"
+                f"  [DEBUG {year}] SS baseline: ${ss_baseline / 1e9:.1f}B, target: ${ss_target / 1e9:.1f}B"
             )
 
     payroll_values = None
@@ -435,7 +435,7 @@ for year_idx in range(n_years):
         if year in display_years:
             payroll_baseline = np.sum(payroll_values * baseline_weights)
             print(
-                f"  [DEBUG {year}] Payroll baseline: ${payroll_baseline/1e9:.1f}B, target: ${payroll_target/1e9:.1f}B"
+                f"  [DEBUG {year}] Payroll baseline: ${payroll_baseline / 1e9:.1f}B, target: ${payroll_target / 1e9:.1f}B"
             )
 
     h6_income_values = None
@@ -476,10 +476,10 @@ for year_idx in range(n_years):
                     h6_income_values * baseline_weights
                 )
                 print(
-                    f"  [DEBUG {year}] H6 baseline revenue: ${h6_impact_baseline/1e9:.3f}B, target: ${h6_revenue_target/1e9:.3f}B"
+                    f"  [DEBUG {year}] H6 baseline revenue: ${h6_impact_baseline / 1e9:.3f}B, target: ${h6_revenue_target / 1e9:.3f}B"
                 )
                 print(
-                    f"  [DEBUG {year}] H6 target ratio: {h6_target_ratio:.4f} × payroll ${payroll_target_year/1e9:.1f}B"
+                    f"  [DEBUG {year}] H6 target ratio: {h6_target_ratio:.4f} × payroll ${payroll_target_year / 1e9:.1f}B"
                 )
 
             del reform_sim
@@ -506,10 +506,10 @@ for year_idx in range(n_years):
             oasdi_baseline = np.sum(oasdi_tob_values * baseline_weights)
             hi_baseline = np.sum(hi_tob_values * baseline_weights)
             print(
-                f"  [DEBUG {year}] OASDI TOB baseline: ${oasdi_baseline/1e9:.1f}B, target: ${oasdi_tob_target/1e9:.1f}B"
+                f"  [DEBUG {year}] OASDI TOB baseline: ${oasdi_baseline / 1e9:.1f}B, target: ${oasdi_tob_target / 1e9:.1f}B"
             )
             print(
-                f"  [DEBUG {year}] HI TOB baseline: ${hi_baseline/1e9:.1f}B, target: ${hi_tob_target/1e9:.1f}B"
+                f"  [DEBUG {year}] HI TOB baseline: ${hi_baseline / 1e9:.1f}B, target: ${hi_tob_target / 1e9:.1f}B"
             )
 
     y_target = target_matrix[:, year_idx]
@@ -557,12 +557,12 @@ for year_idx in range(n_years):
         if USE_SS:
             ss_achieved = np.sum(ss_values * w_new)
             print(
-                f"  [DEBUG {year}] SS achieved: ${ss_achieved/1e9:.1f}B (error: ${abs(ss_achieved - ss_target)/1e6:.1f}M, {(ss_achieved - ss_target)/ss_target*100:.3f}%)"
+                f"  [DEBUG {year}] SS achieved: ${ss_achieved / 1e9:.1f}B (error: ${abs(ss_achieved - ss_target) / 1e6:.1f}M, {(ss_achieved - ss_target) / ss_target * 100:.3f}%)"
             )
         if USE_PAYROLL:
             payroll_achieved = np.sum(payroll_values * w_new)
             print(
-                f"  [DEBUG {year}] Payroll achieved: ${payroll_achieved/1e9:.1f}B (error: ${abs(payroll_achieved - payroll_target)/1e6:.1f}M, {(payroll_achieved - payroll_target)/payroll_target*100:.3f}%)"
+                f"  [DEBUG {year}] Payroll achieved: ${payroll_achieved / 1e9:.1f}B (error: ${abs(payroll_achieved - payroll_target) / 1e6:.1f}M, {(payroll_achieved - payroll_target) / payroll_target * 100:.3f}%)"
             )
         if USE_H6_REFORM and h6_revenue_target is not None:
             h6_revenue_achieved = np.sum(h6_income_values * w_new)
@@ -574,16 +574,16 @@ for year_idx in range(n_years):
                 else 0
             )
             print(
-                f"  [DEBUG {year}] H6 achieved revenue: ${h6_revenue_achieved/1e9:.3f}B (error: ${abs(h6_revenue_achieved - h6_revenue_target)/1e6:.1f}M, {error_pct:.3f}%)"
+                f"  [DEBUG {year}] H6 achieved revenue: ${h6_revenue_achieved / 1e9:.3f}B (error: ${abs(h6_revenue_achieved - h6_revenue_target) / 1e6:.1f}M, {error_pct:.3f}%)"
             )
         if USE_TOB:
             oasdi_achieved = np.sum(oasdi_tob_values * w_new)
             hi_achieved = np.sum(hi_tob_values * w_new)
             print(
-                f"  [DEBUG {year}] OASDI TOB achieved: ${oasdi_achieved/1e9:.1f}B (error: ${abs(oasdi_achieved - oasdi_tob_target)/1e6:.1f}M, {(oasdi_achieved - oasdi_tob_target)/oasdi_tob_target*100:.3f}%)"
+                f"  [DEBUG {year}] OASDI TOB achieved: ${oasdi_achieved / 1e9:.1f}B (error: ${abs(oasdi_achieved - oasdi_tob_target) / 1e6:.1f}M, {(oasdi_achieved - oasdi_tob_target) / oasdi_tob_target * 100:.3f}%)"
             )
             print(
-                f"  [DEBUG {year}] HI TOB achieved: ${hi_achieved/1e9:.1f}B (error: ${abs(hi_achieved - hi_tob_target)/1e6:.1f}M, {(hi_achieved - hi_tob_target)/hi_tob_target*100:.3f}%)"
+                f"  [DEBUG {year}] HI TOB achieved: ${hi_achieved / 1e9:.1f}B (error: ${abs(hi_achieved - hi_tob_target) / 1e6:.1f}M, {(hi_achieved - hi_tob_target) / hi_tob_target * 100:.3f}%)"
             )
 
     weights_matrix[:, year_idx] = w_new
@@ -613,5 +613,5 @@ for year_idx in range(n_years):
         )
     elif year_idx % 5 == 0:
         print(
-            f"{year}    Processing... ({year_idx+1}/{n_years})                        {mem_gb:.2f}GB"
+            f"{year}    Processing... ({year_idx + 1}/{n_years})                        {mem_gb:.2f}GB"
         )

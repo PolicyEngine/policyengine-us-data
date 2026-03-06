@@ -246,9 +246,7 @@ def load_pregnancy_data(
         df: From transform_pregnancy_data.
         year: Target year for the calibration targets.
     """
-    db_url = (
-        f"sqlite:///" f"{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
-    )
+    db_url = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
     engine = create_engine(db_url)
 
     with Session(engine) as session:
@@ -274,8 +272,7 @@ def load_pregnancy_data(
             state_fips = int(row["state_fips"])
             if state_fips not in geo_strata["state"]:
                 logger.warning(
-                    f"No geographic stratum for FIPS "
-                    f"{state_fips}, skipping"
+                    f"No geographic stratum for FIPS {state_fips}, skipping"
                 )
                 continue
 
@@ -369,7 +366,7 @@ def main():
             logger.warning(f"ACS {acs_year} not available: {e}")
     if pop_df is None:
         raise RuntimeError(
-            f"No ACS population data for " f"{year - 1} or {year - 2}"
+            f"No ACS population data for {year - 1} or {year - 2}"
         )
 
     df = transform_pregnancy_data(births_df, pop_df)
@@ -377,7 +374,7 @@ def main():
     total_births = df["births"].sum()
     total_target = df["pregnancy_target"].sum()
     print(f"Total births: {total_births:,.0f}")
-    print(f"Pregnancy target (point-in-time): " f"{total_target:,.0f}")
+    print(f"Pregnancy target (point-in-time): {total_target:,.0f}")
 
     load_pregnancy_data(df, year)
     print("Pregnancy calibration targets loaded.")

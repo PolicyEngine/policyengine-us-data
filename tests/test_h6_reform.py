@@ -145,9 +145,9 @@ class TestH6ThresholdCrossover:
         # 2046+: crossover
         for year in range(2046, 2054):
             oasdi_single, _ = calculate_oasdi_thresholds(year)
-            assert needs_crossover_swap(
-                oasdi_single, HI_SINGLE
-            ), f"Year {year}"
+            assert needs_crossover_swap(oasdi_single, HI_SINGLE), (
+                f"Year {year}"
+            )
 
 
 class TestH6ThresholdSwapping:

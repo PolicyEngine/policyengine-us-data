@@ -419,7 +419,9 @@ def add_id_variables(
     # by the index within household (of each person, or their spouse if
     # one exists earlier in the survey).
 
-    marital_unit_id = Series(marital_unit_id).rank(
+    marital_unit_id = Series(
+        marital_unit_id
+    ).rank(
         method="dense"
     )  # Simplify to a natural number sequence with repetitions [0, 1, 1, 2, 3, ...]
 
@@ -533,16 +535,16 @@ def add_personal_income_variables(
     cps["weekly_hours_worked"] = person.HRSWK * person.WKSWORK / 52
     cps["hours_worked_last_week"] = person.A_HRS1 * person.WKSWORK / 52
 
-    cps["taxable_interest_income"] = person.INT_VAL * (
-        p["taxable_interest_fraction"]
+    cps["taxable_interest_income"] = (
+        person.INT_VAL * (p["taxable_interest_fraction"])
     )
     cps["tax_exempt_interest_income"] = person.INT_VAL * (
         1 - p["taxable_interest_fraction"]
     )
     cps["self_employment_income"] = person.SEMP_VAL
     cps["farm_income"] = person.FRSE_VAL
-    cps["qualified_dividend_income"] = person.DIV_VAL * (
-        p["qualified_dividend_fraction"]
+    cps["qualified_dividend_income"] = (
+        person.DIV_VAL * (p["qualified_dividend_fraction"])
     )
     cps["non_qualified_dividend_income"] = person.DIV_VAL * (
         1 - p["qualified_dividend_fraction"]
@@ -740,8 +742,8 @@ def add_personal_income_variables(
     cps["traditional_ira_contributions"] = ira_capped * trad_ira_share
     cps["roth_ira_contributions"] = ira_capped * (1 - trad_ira_share)
     # Allocate capital gains into long-term and short-term based on aggregate split.
-    cps["long_term_capital_gains"] = person.CAP_VAL * (
-        p["long_term_capgain_fraction"]
+    cps["long_term_capital_gains"] = (
+        person.CAP_VAL * (p["long_term_capgain_fraction"])
     )
     cps["short_term_capital_gains"] = person.CAP_VAL * (
         1 - p["long_term_capgain_fraction"]
@@ -1749,25 +1751,63 @@ def _update_documentation_with_numbers(log_df, docs_dir):
 
     # Define replacements based on our logging structure
     replacements = {
-        "- **Step 0 - Initial**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **Step 0 - Initial**: Code 0 people = {data_map.get(('Step 0 - Initial', 'Code 0 people'), 0):,.0f}",
-        "- **Step 1 - Citizens**: Moved to Code 1 = *[Run cps.py to populate]*": lambda: f"- **Step 1 - Citizens**: Moved to Code 1 = {data_map.get(('Step 1 - Citizens', 'Moved to Code 1'), 0):,.0f}",
-        "- **ASEC Conditions**: Current Code 0 people = *[Run cps.py to populate]*": lambda: f"- **ASEC Conditions**: Current Code 0 people = {data_map.get(('ASEC Conditions', 'Current Code 0 people'), 0):,.0f}",
-        "- **After conditions**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After conditions**: Code 0 people = {data_map.get(('After conditions', 'Code 0 people'), 0):,.0f}",
-        "- **Before adjustment**: Undocumented workers = *[Run cps.py to populate]*": lambda: f"- **Before adjustment**: Undocumented workers = {data_map.get(('Before adjustment', 'Undocumented workers'), 0):,.0f}",
-        "- **Target**: Undocumented workers target = *[Run cps.py to populate]*": lambda: f"- **Target**: Undocumented workers target = {data_map.get(('Target', 'Undocumented workers target'), 0):,.0f}",
-        "- **Before adjustment**: Undocumented students = *[Run cps.py to populate]*": lambda: f"- **Before adjustment**: Undocumented students = {data_map.get(('Before adjustment', 'Undocumented students'), 0):,.0f}",
-        "- **Target**: Undocumented students target = *[Run cps.py to populate]*": lambda: f"- **Target**: Undocumented students target = {data_map.get(('Target', 'Undocumented students target'), 0):,.0f}",
-        "- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: f"- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = {data_map.get(('Step 3 - EAD workers', 'Moved from Code 0 to Code 2'), 0):,.0f}",
-        "- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: f"- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = {data_map.get(('Step 4 - EAD students', 'Moved from Code 0 to Code 2'), 0):,.0f}",
-        "- **After EAD assignment**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After EAD assignment**: Code 0 people = {data_map.get(('After EAD assignment', 'Code 0 people'), 0):,.0f}",
-        "- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = *[Run cps.py to populate]*": lambda: f"- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = {data_map.get(('Step 5 - Family correlation', 'Changed from Code 3 to Code 0'), 0):,.0f}",
-        "- **After family correlation**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After family correlation**: Code 0 people = {data_map.get(('After family correlation', 'Code 0 people'), 0):,.0f}",
-        "- **Final**: Code 0 (NONE) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 0 (NONE) = {data_map.get(('Final', 'Code 0 (NONE)'), 0):,.0f}",
-        "- **Final**: Code 1 (CITIZEN) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 1 (CITIZEN) = {data_map.get(('Final', 'Code 1 (CITIZEN)'), 0):,.0f}",
-        "- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = {data_map.get(('Final', 'Code 2 (NON_CITIZEN_VALID_EAD)'), 0):,.0f}",
-        "- **Final**: Code 3 (OTHER_NON_CITIZEN) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 3 (OTHER_NON_CITIZEN) = {data_map.get(('Final', 'Code 3 (OTHER_NON_CITIZEN)'), 0):,.0f}",
-        "- **Final**: Total undocumented (Code 0) = *[Run cps.py to populate]*": lambda: f"- **Final**: Total undocumented (Code 0) = {data_map.get(('Final', 'Total undocumented (Code 0)'), 0):,.0f}",
-        "- **Final**: Undocumented target = *[Run cps.py to populate]*": lambda: f"- **Final**: Undocumented target = {data_map.get(('Final', 'Undocumented target'), 0):,.0f}",
+        "- **Step 0 - Initial**: Code 0 people = *[Run cps.py to populate]*": lambda: (
+            f"- **Step 0 - Initial**: Code 0 people = {data_map.get(('Step 0 - Initial', 'Code 0 people'), 0):,.0f}"
+        ),
+        "- **Step 1 - Citizens**: Moved to Code 1 = *[Run cps.py to populate]*": lambda: (
+            f"- **Step 1 - Citizens**: Moved to Code 1 = {data_map.get(('Step 1 - Citizens', 'Moved to Code 1'), 0):,.0f}"
+        ),
+        "- **ASEC Conditions**: Current Code 0 people = *[Run cps.py to populate]*": lambda: (
+            f"- **ASEC Conditions**: Current Code 0 people = {data_map.get(('ASEC Conditions', 'Current Code 0 people'), 0):,.0f}"
+        ),
+        "- **After conditions**: Code 0 people = *[Run cps.py to populate]*": lambda: (
+            f"- **After conditions**: Code 0 people = {data_map.get(('After conditions', 'Code 0 people'), 0):,.0f}"
+        ),
+        "- **Before adjustment**: Undocumented workers = *[Run cps.py to populate]*": lambda: (
+            f"- **Before adjustment**: Undocumented workers = {data_map.get(('Before adjustment', 'Undocumented workers'), 0):,.0f}"
+        ),
+        "- **Target**: Undocumented workers target = *[Run cps.py to populate]*": lambda: (
+            f"- **Target**: Undocumented workers target = {data_map.get(('Target', 'Undocumented workers target'), 0):,.0f}"
+        ),
+        "- **Before adjustment**: Undocumented students = *[Run cps.py to populate]*": lambda: (
+            f"- **Before adjustment**: Undocumented students = {data_map.get(('Before adjustment', 'Undocumented students'), 0):,.0f}"
+        ),
+        "- **Target**: Undocumented students target = *[Run cps.py to populate]*": lambda: (
+            f"- **Target**: Undocumented students target = {data_map.get(('Target', 'Undocumented students target'), 0):,.0f}"
+        ),
+        "- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: (
+            f"- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = {data_map.get(('Step 3 - EAD workers', 'Moved from Code 0 to Code 2'), 0):,.0f}"
+        ),
+        "- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: (
+            f"- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = {data_map.get(('Step 4 - EAD students', 'Moved from Code 0 to Code 2'), 0):,.0f}"
+        ),
+        "- **After EAD assignment**: Code 0 people = *[Run cps.py to populate]*": lambda: (
+            f"- **After EAD assignment**: Code 0 people = {data_map.get(('After EAD assignment', 'Code 0 people'), 0):,.0f}"
+        ),
+        "- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = *[Run cps.py to populate]*": lambda: (
+            f"- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = {data_map.get(('Step 5 - Family correlation', 'Changed from Code 3 to Code 0'), 0):,.0f}"
+        ),
+        "- **After family correlation**: Code 0 people = *[Run cps.py to populate]*": lambda: (
+            f"- **After family correlation**: Code 0 people = {data_map.get(('After family correlation', 'Code 0 people'), 0):,.0f}"
+        ),
+        "- **Final**: Code 0 (NONE) = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Code 0 (NONE) = {data_map.get(('Final', 'Code 0 (NONE)'), 0):,.0f}"
+        ),
+        "- **Final**: Code 1 (CITIZEN) = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Code 1 (CITIZEN) = {data_map.get(('Final', 'Code 1 (CITIZEN)'), 0):,.0f}"
+        ),
+        "- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = {data_map.get(('Final', 'Code 2 (NON_CITIZEN_VALID_EAD)'), 0):,.0f}"
+        ),
+        "- **Final**: Code 3 (OTHER_NON_CITIZEN) = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Code 3 (OTHER_NON_CITIZEN) = {data_map.get(('Final', 'Code 3 (OTHER_NON_CITIZEN)'), 0):,.0f}"
+        ),
+        "- **Final**: Total undocumented (Code 0) = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Total undocumented (Code 0) = {data_map.get(('Final', 'Total undocumented (Code 0)'), 0):,.0f}"
+        ),
+        "- **Final**: Undocumented target = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Undocumented target = {data_map.get(('Final', 'Undocumented target'), 0):,.0f}"
+        ),
     }
 
     # Apply replacements

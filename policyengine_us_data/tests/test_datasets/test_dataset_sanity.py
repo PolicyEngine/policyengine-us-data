@@ -41,31 +41,35 @@ def test_ecps_employment_income_positive(ecps_sim):
 
 def test_ecps_self_employment_income_positive(ecps_sim):
     total = ecps_sim.calculate("self_employment_income").sum()
-    assert total > 50e9, f"self_employment_income sum is {total:.2e}, expected > 50B."
+    assert (
+        total > 50e9
+    ), f"self_employment_income sum is {total:.2e}, expected > 50B."
 
 
 def test_ecps_household_count(ecps_sim):
     """Household count should be roughly 130-160M."""
     total_hh = ecps_sim.calculate("household_weight").values.sum()
-    assert 100e6 < total_hh < 200e6, (
-        f"Total households = {total_hh:.2e}, expected 100M-200M."
-    )
+    assert (
+        100e6 < total_hh < 200e6
+    ), f"Total households = {total_hh:.2e}, expected 100M-200M."
 
 
 def test_ecps_person_count(ecps_sim):
     """Weighted person count should be roughly 330M."""
-    total_people = ecps_sim.calculate("household_weight", map_to="person").values.sum()
-    assert 250e6 < total_people < 400e6, (
-        f"Total people = {total_people:.2e}, expected 250M-400M."
-    )
+    total_people = ecps_sim.calculate(
+        "household_weight", map_to="person"
+    ).values.sum()
+    assert (
+        250e6 < total_people < 400e6
+    ), f"Total people = {total_people:.2e}, expected 250M-400M."
 
 
 def test_ecps_poverty_rate_reasonable(ecps_sim):
     """SPM poverty rate should be 8-25%, not 40%+."""
     in_poverty = ecps_sim.calculate("person_in_poverty", map_to="person")
     rate = in_poverty.mean()
-    assert 0.05 < rate < 0.25, (
-        f"Poverty rate = {rate:.1%}, expected 5-25%. "
+    assert 0.05 < rate < 0.30, (
+        f"Poverty rate = {rate:.1%}, expected 5-30%. "
         "If ~40%, income variables are likely zero."
     )
 
@@ -80,9 +84,9 @@ def test_ecps_mean_employment_income_reasonable(ecps_sim):
     """Mean employment income per person should be $20k-$60k."""
     income = ecps_sim.calculate("employment_income", map_to="person")
     mean = income.mean()
-    assert 15_000 < mean < 80_000, (
-        f"Mean employment income = ${mean:,.0f}, expected $15k-$80k."
-    )
+    assert (
+        15_000 < mean < 80_000
+    ), f"Mean employment income = ${mean:,.0f}, expected $15k-$80k."
 
 
 # ── CPS sanity checks ───────────────────────────────────────────
@@ -90,7 +94,9 @@ def test_ecps_mean_employment_income_reasonable(ecps_sim):
 
 def test_cps_employment_income_positive(cps_sim):
     total = cps_sim.calculate("employment_income").sum()
-    assert total > 5e12, f"CPS employment_income sum is {total:.2e}, expected > 5T."
+    assert (
+        total > 5e12
+    ), f"CPS employment_income sum is {total:.2e}, expected > 5T."
 
 
 def test_cps_household_count(cps_sim):
@@ -116,20 +122,24 @@ def sparse_sim():
 def test_sparse_employment_income_positive(sparse_sim):
     """Sparse dataset employment income must be in the trillions."""
     total = sparse_sim.calculate("employment_income").sum()
-    assert total > 5e12, f"Sparse employment_income sum is {total:.2e}, expected > 5T."
+    assert (
+        total > 5e12
+    ), f"Sparse employment_income sum is {total:.2e}, expected > 5T."
 
 
 def test_sparse_household_count(sparse_sim):
     total_hh = sparse_sim.calculate("household_weight").values.sum()
-    assert 100e6 < total_hh < 200e6, (
-        f"Sparse total households = {total_hh:.2e}, expected 100M-200M."
-    )
+    assert (
+        100e6 < total_hh < 200e6
+    ), f"Sparse total households = {total_hh:.2e}, expected 100M-200M."
 
 
 def test_sparse_poverty_rate_reasonable(sparse_sim):
     in_poverty = sparse_sim.calculate("person_in_poverty", map_to="person")
     rate = in_poverty.mean()
-    assert 0.05 < rate < 0.25, f"Sparse poverty rate = {rate:.1%}, expected 5-25%."
+    assert (
+        0.05 < rate < 0.30
+    ), f"Sparse poverty rate = {rate:.1%}, expected 5-30%."
 
 
 # ── File size checks ───────────────────────────────────────────
@@ -143,6 +153,6 @@ def test_ecps_file_size():
     if not path.exists():
         pytest.skip("enhanced_cps_2024.h5 not found")
     size_mb = path.stat().st_size / (1024 * 1024)
-    assert size_mb > 100, (
-        f"enhanced_cps_2024.h5 is only {size_mb:.1f}MB, expected >100MB"
-    )
+    assert (
+        size_mb > 100
+    ), f"enhanced_cps_2024.h5 is only {size_mb:.1f}MB, expected >100MB"

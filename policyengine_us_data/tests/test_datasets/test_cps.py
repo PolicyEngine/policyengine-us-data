@@ -13,18 +13,11 @@ def test_cps_has_auto_loan_interest():
     RELATIVE_TOLERANCE = 0.4
 
     assert (
-        abs(
-            sim.calculate("auto_loan_interest").sum()
-            / AUTO_LOAN_INTEREST_TARGET
-            - 1
-        )
+        abs(sim.calculate("auto_loan_interest").sum() / AUTO_LOAN_INTEREST_TARGET - 1)
         < RELATIVE_TOLERANCE
     )
     assert (
-        abs(
-            sim.calculate("auto_loan_balance").sum() / AUTO_LOAN_BALANCE_TARGET
-            - 1
-        )
+        abs(sim.calculate("auto_loan_balance").sum() / AUTO_LOAN_BALANCE_TARGET - 1)
         < RELATIVE_TOLERANCE
     )
 
@@ -38,11 +31,7 @@ def test_cps_has_fsla_overtime_premium():
     OVERTIME_PREMIUM_TARGET = 70e9
     RELATIVE_TOLERANCE = 0.2
     assert (
-        abs(
-            sim.calculate("fsla_overtime_premium").sum()
-            / OVERTIME_PREMIUM_TARGET
-            - 1
-        )
+        abs(sim.calculate("fsla_overtime_premium").sum() / OVERTIME_PREMIUM_TARGET - 1)
         < RELATIVE_TOLERANCE
     )
 

@@ -130,11 +130,7 @@ def _insert_aca_ptc_data(engine):
         ]
         for tid, sid, var, val, period in targets:
             conn.execute(
-                text(
-                    "INSERT INTO targets "
-                    "VALUES (:tid, :sid, :var, :val, "
-                    ":period, 1)"
-                ),
+                text("INSERT INTO targets VALUES (:tid, :sid, :var, :val, :period, 1)"),
                 {
                     "tid": tid,
                     "sid": sid,
@@ -193,9 +189,7 @@ class TestQueryTargets(unittest.TestCase):
         df = b._query_targets({"domain_variables": ["aca_ptc"]})
         national = df[df["geo_level"] == "national"]
         self.assertTrue((national["geographic_id"] == "US").all())
-        state_ca = df[
-            (df["geo_level"] == "state") & (df["geographic_id"] == "6")
-        ]
+        state_ca = df[(df["geo_level"] == "state") & (df["geographic_id"] == "6")]
         self.assertGreater(len(state_ca), 0)
 
 
@@ -227,9 +221,9 @@ class TestHierarchicalUprating(unittest.TestCase):
         }
         df["original_value"] = df["value"].copy()
         df["uprating_factor"] = df.apply(
-            lambda row: b._get_uprating_info(
-                row["variable"], row["period"], factors
-            )[0],
+            lambda row: b._get_uprating_info(row["variable"], row["period"], factors)[
+                0
+            ],
             axis=1,
         )
         df["value"] = df["original_value"] * df["uprating_factor"]
@@ -254,9 +248,7 @@ class TestHierarchicalUprating(unittest.TestCase):
                 & (result["geo_level"] == "district")
                 & (
                     result["geographic_id"].apply(
-                        lambda g, s=sf: (
-                            int(g) // 100 == s if g.isdigit() else False
-                        )
+                        lambda g, s=sf: int(g) // 100 == s if g.isdigit() else False
                     )
                 )
             ]
@@ -290,8 +282,7 @@ class TestHierarchicalUprating(unittest.TestCase):
         b, df, factors = self._get_targets_with_uprating(cpi_factor=1.15)
         result = b._apply_hierarchical_uprating(df, ["aca_ptc"], factors)
         cd_aca = result[
-            (result["variable"] == "aca_ptc")
-            & (result["geo_level"] == "district")
+            (result["variable"] == "aca_ptc") & (result["geo_level"] == "district")
         ]
         for _, row in cd_aca.iterrows():
             self.assertAlmostEqual(row["hif"], 1.0, places=6)

@@ -57,9 +57,7 @@ def _make_data(
     if age is not None:
         data["age"] = {tp: np.concatenate([age, age]).astype(np.float32)}
     if is_male is not None:
-        data["is_male"] = {
-            tp: np.concatenate([is_male, is_male]).astype(np.float32)
-        }
+        data["is_male"] = {tp: np.concatenate([is_male, is_male]).astype(np.float32)}
     return data, n, tp
 
 

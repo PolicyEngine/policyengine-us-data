@@ -55,7 +55,7 @@ l0 = [
 
 [dependency-groups]
 dev = [
-    "black",
+    "ruff>=0.9.0",
     "pytest",
     "quantile-forest",
     "tabulate",
@@ -81,24 +81,6 @@ addopts = "-v"
 testpaths = [
     "policyengine_us_data/tests",
 ]
-
-[tool.black]
-line-length = 79
-target-version = ['py311', 'py312', 'py313']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
 
 [tool.towncrier]
 package = "policyengine_us_data"

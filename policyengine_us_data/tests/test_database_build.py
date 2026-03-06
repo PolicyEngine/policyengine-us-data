@@ -23,8 +23,7 @@ DB_PATH = DB_DIR / "policy_data.db"
 # HuggingFace URL for the stratified CPS dataset.
 # ETL scripts use this only to derive the time period (2024).
 HF_DATASET = (
-    "hf://policyengine/policyengine-us-data"
-    "/calibration/stratified_extended_cps.h5"
+    "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
 )
 
 # Scripts run in the same order as `make database` in the Makefile.
@@ -80,9 +79,7 @@ def built_db():
             )
 
     if errors:
-        pytest.fail(
-            f"{len(errors)} ETL script(s) failed:\n" + "\n\n".join(errors)
-        )
+        pytest.fail(f"{len(errors)} ETL script(s) failed:\n" + "\n\n".join(errors))
 
     assert DB_PATH.exists(), "policy_data.db was not created"
     return DB_PATH
@@ -99,9 +96,7 @@ def test_expected_tables_exist(built_db):
     conn = sqlite3.connect(str(built_db))
     tables = {
         row[0]
-        for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
     conn.close()
 
@@ -126,8 +121,7 @@ def test_national_targets_loaded(built_db):
     variables = {r[0] for r in rows}
     for expected in ["snap", "social_security", "ssi"]:
         assert expected in variables, (
-            f"National target '{expected}' missing. "
-            f"Found: {sorted(variables)}"
+            f"National target '{expected}' missing. Found: {sorted(variables)}"
         )
 
 
@@ -153,8 +147,7 @@ def test_state_income_tax_targets(built_db):
     ca_val = state_totals.get("06") or state_totals.get("6")
     assert ca_val is not None, "California (FIPS 06) target missing"
     assert ca_val > 100e9, (
-        f"California income tax should be > $100B, "
-        f"got ${ca_val / 1e9:.1f}B"
+        f"California income tax should be > $100B, got ${ca_val / 1e9:.1f}B"
     )
 
 
@@ -176,9 +169,7 @@ def test_all_target_variables_exist_in_policyengine(built_db):
     from policyengine_us.system import system
 
     conn = sqlite3.connect(str(built_db))
-    variables = {
-        r[0] for r in conn.execute("SELECT DISTINCT variable FROM targets")
-    }
+    variables = {r[0] for r in conn.execute("SELECT DISTINCT variable FROM targets")}
     conn.close()
 
     missing = [v for v in variables if v not in system.variables]

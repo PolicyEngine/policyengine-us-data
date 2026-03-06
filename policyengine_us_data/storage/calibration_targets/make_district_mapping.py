@@ -91,9 +91,7 @@ def fetch_block_to_district_map(congress: int) -> pd.DataFrame:
             return bef[["GEOID", f"CD{congress}"]]
 
     else:
-        raise ValueError(
-            f"Congress {congress} is not supported by this function."
-        )
+        raise ValueError(f"Congress {congress} is not supported by this function.")
 
 
 def fetch_block_population(state) -> pd.DataFrame:
@@ -145,9 +143,7 @@ def fetch_block_population(state) -> pd.DataFrame:
     geo_df = pd.DataFrame(geo_records, columns=["LOGRECNO", "GEOID"])
 
     # ---------------- P-file: pull total-population cell ----------------------
-    p1_records = [
-        (p[4], int(p[5])) for p in map(lambda x: x.split("|"), p1_lines)
-    ]
+    p1_records = [(p[4], int(p[5])) for p in map(lambda x: x.split("|"), p1_lines)]
     p1_df = pd.DataFrame(p1_records, columns=["LOGRECNO", "P0010001"])
 
     # ---------------- Merge & finish -----------------------------------------

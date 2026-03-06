@@ -116,18 +116,14 @@ def upload_files_to_gcs(
     Upload files to Google Cloud Storage and set metadata with the version.
     """
     credentials, project_id = google.auth.default()
-    storage_client = storage.Client(
-        credentials=credentials, project=project_id
-    )
+    storage_client = storage.Client(credentials=credentials, project=project_id)
     bucket = storage_client.bucket(gcs_bucket_name)
 
     for file_path in files:
         file_path = Path(file_path)
         blob = bucket.blob(file_path.name)
         blob.upload_from_filename(file_path)
-        logging.info(
-            f"Uploaded {file_path.name} to GCS bucket {gcs_bucket_name}."
-        )
+        logging.info(f"Uploaded {file_path.name} to GCS bucket {gcs_bucket_name}.")
 
         # Set metadata
         blob.metadata = {"version": version}
@@ -164,9 +160,7 @@ def upload_local_area_file(
 
     # Upload to GCS with subdirectory
     credentials, project_id = google.auth.default()
-    storage_client = storage.Client(
-        credentials=credentials, project=project_id
-    )
+    storage_client = storage.Client(credentials=credentials, project=project_id)
     bucket = storage_client.bucket(gcs_bucket_name)
 
     blob_name = f"{subdirectory}/{file_path.name}"
@@ -336,9 +330,7 @@ def upload_to_staging_hf(
             f"Uploaded batch {i // batch_size + 1}: {len(operations)} files to staging/"
         )
 
-    logging.info(
-        f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace"
-    )
+    logging.info(f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace")
     return total_uploaded
 
 

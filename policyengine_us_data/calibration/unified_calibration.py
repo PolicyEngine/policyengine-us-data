@@ -144,20 +144,14 @@ def rerandomize_takeup(
 
         is_state_specific = isinstance(rate_or_dict, dict)
 
-        entity_ids = sim.calculate(
-            f"{entity_level}_id", map_to=entity_level
-        ).values
-        entity_hh_ids = sim.calculate(
-            "household_id", map_to=entity_level
-        ).values
+        entity_ids = sim.calculate(f"{entity_level}_id", map_to=entity_level).values
+        entity_hh_ids = sim.calculate("household_id", map_to=entity_level).values
         n_entities = len(entity_ids)
 
         draws = np.zeros(n_entities, dtype=np.float64)
         rates = np.zeros(n_entities, dtype=np.float64)
 
-        entity_blocks = np.array(
-            [hh_to_block.get(hid, "0") for hid in entity_hh_ids]
-        )
+        entity_blocks = np.array([hh_to_block.get(hid, "0") for hid in entity_hh_ids])
 
         unique_blocks = np.unique(entity_blocks)
         for block in unique_blocks:
@@ -185,9 +179,7 @@ def rerandomize_takeup(
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(
-        description="Unified L0 calibration pipeline"
-    )
+    parser = argparse.ArgumentParser(description="Unified L0 calibration pipeline")
     parser.add_argument(
         "--dataset",
         default=None,
@@ -308,8 +300,7 @@ def fit_l0_weights(
     initial_weights = np.ones(n_total) * 100
 
     logger.info(
-        "L0 calibration: %d targets, %d features, "
-        "lambda_l0=%.1e, epochs=%d",
+        "L0 calibration: %d targets, %d features, lambda_l0=%.1e, epochs=%d",
         X_sparse.shape[0],
         n_total,
         lambda_l0,
@@ -609,8 +600,7 @@ def run_calibration(
         )
 
         source_path = str(
-            Path(dataset_path).parent
-            / f"source_imputed_{Path(dataset_path).stem}.h5"
+            Path(dataset_path).parent / f"source_imputed_{Path(dataset_path).stem}.h5"
         )
         with h5py.File(source_path, "w") as f:
             for var, time_dict in data_dict.items():
@@ -716,9 +706,7 @@ def main(argv=None):
     dataset_path = args.dataset or str(
         STORAGE_FOLDER / "stratified_extended_cps_2024.h5"
     )
-    db_path = args.db_path or str(
-        STORAGE_FOLDER / "calibration" / "policy_data.db"
-    )
+    db_path = args.db_path or str(STORAGE_FOLDER / "calibration" / "policy_data.db")
     output_path = args.output or str(
         STORAGE_FOLDER / "calibration" / "unified_weights.npy"
     )
@@ -732,15 +720,11 @@ def main(argv=None):
 
     domain_variables = None
     if args.domain_variables:
-        domain_variables = [
-            x.strip() for x in args.domain_variables.split(",")
-        ]
+        domain_variables = [x.strip() for x in args.domain_variables.split(",")]
 
     hierarchical_domains = None
     if args.hierarchical_domains:
-        hierarchical_domains = [
-            x.strip() for x in args.hierarchical_domains.split(",")
-        ]
+        hierarchical_domains = [x.strip() for x in args.hierarchical_domains.split(",")]
 
     t_start = time.time()
 

@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install ruff
+        run: pip install ruff>=0.9.0
       - name: Check formatting
-        uses: "lgeiger/black-action@master"
-        with:
-          args: ". -l 79 --check"
+        run: ruff format --check .

@@ -11,9 +11,7 @@ def _stable_string_hash(s: str) -> np.uint64:
     Ported from policyengine_core.commons.formulas._stable_string_hash.
     """
     with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore", "overflow encountered", RuntimeWarning
-        )
+        warnings.filterwarnings("ignore", "overflow encountered", RuntimeWarning)
         h = np.uint64(0)
         for byte in s.encode("utf-8"):
             h = h * np.uint64(31) + np.uint64(byte)

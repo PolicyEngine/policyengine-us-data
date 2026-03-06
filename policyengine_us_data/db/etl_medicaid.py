@@ -116,9 +116,7 @@ def transform_administrative_medicaid_data(state_admin_df, year):
             ].sort_values("Reporting Period", ascending=False)
 
             if not state_history.empty:
-                fallback_value = state_history.iloc[0][
-                    "Total Medicaid Enrollment"
-                ]
+                fallback_value = state_history.iloc[0]["Total Medicaid Enrollment"]
                 fallback_period = state_history.iloc[0]["Reporting Period"]
                 print(
                     f"  {state_abbrev}: Using {fallback_value:,.0f} from period {fallback_period}"
@@ -153,9 +151,7 @@ def transform_survey_medicaid_data(cd_survey_df):
 
 def load_medicaid_data(long_state, long_cd, year):
 
-    DATABASE_URL = (
-        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
-    )
+    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
@@ -222,9 +218,7 @@ def load_medicaid_data(long_state, long_cd, year):
             )
             session.add(new_stratum)
             session.flush()
-            medicaid_stratum_lookup["state"][
-                state_fips
-            ] = new_stratum.stratum_id
+            medicaid_stratum_lookup["state"][state_fips] = new_stratum.stratum_id
 
         # District -------------------
         if long_cd is None:

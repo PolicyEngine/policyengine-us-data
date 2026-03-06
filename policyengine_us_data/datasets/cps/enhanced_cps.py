@@ -44,9 +44,7 @@ def reweight(
     normalisation_factor = np.where(
         is_national, nation_normalisation_factor, state_normalisation_factor
     )
-    normalisation_factor = torch.tensor(
-        normalisation_factor, dtype=torch.float32
-    )
+    normalisation_factor = torch.tensor(normalisation_factor, dtype=torch.float32)
     targets_array = torch.tensor(targets_array, dtype=torch.float32)
 
     inv_mean_normalisation = 1 / np.mean(normalisation_factor.numpy())
@@ -59,12 +57,8 @@ def reweight(
         estimate = weights @ loss_matrix
         if torch.isnan(estimate).any():
             raise ValueError("Estimate contains NaNs")
-        rel_error = (
-            ((estimate - targets_array) + 1) / (targets_array + 1)
-        ) ** 2
-        rel_error_normalized = (
-            inv_mean_normalisation * rel_error * normalisation_factor
-        )
+        rel_error = (((estimate - targets_array) + 1) / (targets_array + 1)) ** 2
+        rel_error_normalized = inv_mean_normalisation * rel_error * normalisation_factor
         if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
         return rel_error_normalized.mean()
@@ -119,9 +113,7 @@ def reweight(
             start_loss = l.item()
         loss_rel_change = (l.item() - start_loss) / start_loss
         l.backward()
-        iterator.set_postfix(
-            {"loss": l.item(), "loss_rel_change": loss_rel_change}
-        )
+        iterator.set_postfix({"loss": l.item(), "loss_rel_change": loss_rel_change})
         optimizer.step()
         if log_path is not None:
             performance.to_csv(log_path, index=False)
@@ -180,9 +172,7 @@ class EnhancedCPS(Dataset):
 
         # Run the optimization procedure to get (close to) minimum loss weights
         for year in range(self.start_year, self.end_year + 1):
-            loss_matrix, targets_array = build_loss_matrix(
-                self.input_dataset, year
-            )
+            loss_matrix, targets_array = build_loss_matrix(self.input_dataset, year)
             zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
             bad_mask = loss_matrix.columns.isin(bad_targets)
             keep_mask_bool = ~(zero_mask | bad_mask)
@@ -204,9 +194,7 @@ class EnhancedCPS(Dataset):
             # Validate dense weights
             w = optimised_weights
             if np.any(np.isnan(w)):
-                raise ValueError(
-                    f"Year {year}: household_weight contains NaN values"
-                )
+                raise ValueError(f"Year {year}: household_weight contains NaN values")
             if np.any(w < 0):
                 raise ValueError(
                     f"Year {year}: household_weight contains negative values"
@@ -247,12 +235,8 @@ class ReweightedCPS_2024(Dataset):
             1, 0.1, len(original_weights)
         )
         for year in [2024]:
-            loss_matrix, targets_array = build_loss_matrix(
-                self.input_dataset, year
-            )
-            optimised_weights = reweight(
-                original_weights, loss_matrix, targets_array
-            )
+            loss_matrix, targets_array = build_loss_matrix(self.input_dataset, year)
+            optimised_weights = reweight(original_weights, loss_matrix, targets_array)
             data["household_weight"] = optimised_weights
 
         self.save_dataset(data)

@@ -44,10 +44,7 @@ def etl_argparser(
 
     args = parser.parse_args()
 
-    if (
-        not args.dataset.startswith("hf://")
-        and not Path(args.dataset).exists()
-    ):
+    if not args.dataset.startswith("hf://") and not Path(args.dataset).exists():
         raise FileNotFoundError(
             f"Dataset not found: {args.dataset}\n"
             f"Either build it locally (`make data`) or pass a "
@@ -69,18 +66,14 @@ def get_stratum_by_id(session: Session, stratum_id: int) -> Optional[Stratum]:
     return session.get(Stratum, stratum_id)
 
 
-def get_simple_stratum_by_ucgid(
-    session: Session, ucgid: str
-) -> Optional[Stratum]:
+def get_simple_stratum_by_ucgid(session: Session, ucgid: str) -> Optional[Stratum]:
     """
     Finds a stratum defined *only* by a single ucgid_str constraint.
     """
     constraint_count_subquery = (
         select(
             StratumConstraint.stratum_id,
-            sa.func.count(StratumConstraint.stratum_id).label(
-                "constraint_count"
-            ),
+            sa.func.count(StratumConstraint.stratum_id).label("constraint_count"),
         )
         .group_by(StratumConstraint.stratum_id)
         .subquery()
@@ -137,16 +130,12 @@ def parse_ucgid(ucgid_str: str) -> Dict:
     elif ucgid_str.startswith("0400000US"):
         state_fips = int(ucgid_str[9:])
         return {"type": "state", "state_fips": state_fips}
-    elif ucgid_str.startswith("5001800US") or ucgid_str.startswith(
-        "5001900US"
-    ):
+    elif ucgid_str.startswith("5001800US") or ucgid_str.startswith("5001900US"):
         # 5001800US = 118th Congress, 5001900US = 119th Congress
         state_and_district = ucgid_str[9:]
         state_fips = int(state_and_district[:2])
         district_number = int(state_and_district[2:])
-        if district_number == 0 or (
-            state_fips == 11 and district_number == 98
-        ):
+        if district_number == 0 or (state_fips == 11 and district_number == 98):
             district_number = 1
         cd_geoid = state_fips * 100 + district_number
         return {
@@ -201,9 +190,7 @@ def get_geographic_strata(session: Session) -> Dict:
         if not constraints:
             strata_map["national"] = stratum.stratum_id
         else:
-            constraint_vars = {
-                c.constraint_variable: c.value for c in constraints
-            }
+            constraint_vars = {c.constraint_variable: c.value for c in constraints}
 
             if "congressional_district_geoid" in constraint_vars:
                 cd_geoid = int(constraint_vars["congressional_district_geoid"])

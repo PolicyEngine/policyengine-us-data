@@ -57,7 +57,7 @@ def create_stratified_cps_dataset(
 
     print(f"Original dataset: {n_households_orig:,} households")
     print(f"Target dataset: {target_households:,} households")
-    print(f"Reduction ratio: {target_households/n_households_orig:.1%}")
+    print(f"Reduction ratio: {target_households / n_households_orig:.1%}")
 
     # Show income distribution
     print("\nAGI Percentiles (original):")
@@ -79,16 +79,14 @@ def create_stratified_cps_dataset(
         f"  Top {100 - high_income_percentile}% (AGI >= ${high_income_threshold:,.0f}): {n_top:,}"
     )
     print(f"  Middle 25-{high_income_percentile}%: {n_middle:,}")
-    print(
-        f"  Bottom 25% (AGI < ${bottom_25_pct_threshold:,.0f}): {n_bottom_25:,}"
-    )
+    print(f"  Bottom 25% (AGI < ${bottom_25_pct_threshold:,.0f}): {n_bottom_25:,}")
 
     # Calculate sampling rates
     # Keep ALL top earners, distribute remaining quota between middle and bottom
     remaining_quota = target_households - n_top
     if remaining_quota <= 0:
         raise ValueError(
-            f"Target ({target_households:,}) is less than top {100-high_income_percentile}% "
+            f"Target ({target_households:,}) is less than top {100 - high_income_percentile}% "
             f"count ({n_top:,}). Increase target_households."
         )
 
@@ -132,9 +130,7 @@ def create_stratified_cps_dataset(
     # Top earners - keep all
     top_mask = agi >= high_income_threshold
     selected_mask[top_mask] = True
-    print(
-        f"  Top {100 - high_income_percentile}%: selected {np.sum(top_mask):,}"
-    )
+    print(f"  Top {100 - high_income_percentile}%: selected {np.sum(top_mask):,}")
 
     # Bottom 25%
     bottom_mask = agi < bottom_25_pct_threshold
@@ -176,7 +172,7 @@ def create_stratified_cps_dataset(
 
     n_selected = np.sum(selected_mask)
     print(
-        f"\nTotal selected: {n_selected:,} households ({n_selected/n_households_orig:.1%} of original)"
+        f"\nTotal selected: {n_selected:,} households ({n_selected / n_households_orig:.1%} of original)"
     )
 
     # Verify high earners are preserved
@@ -271,10 +267,7 @@ def create_stratified_cps_dataset(
         if "person_id" in f and str(time_period) in f["person_id"]:
             person_ids = f["person_id"][str(time_period)][:]
             print(f"  Final persons: {len(person_ids):,}")
-        if (
-            "household_weight" in f
-            and str(time_period) in f["household_weight"]
-        ):
+        if "household_weight" in f and str(time_period) in f["household_weight"]:
             weights = f["household_weight"][str(time_period)][:]
             print(f"  Final household weights sum: {np.sum(weights):,.0f}")
 
@@ -342,7 +335,5 @@ if __name__ == "__main__":
     )
     print("\nExamples:")
     print("  python create_stratified_cps.py 30000")
-    print(
-        "  python create_stratified_cps.py 50000 --top=99.5 --oversample-poor"
-    )
+    print("  python create_stratified_cps.py 50000 --top=99.5 --oversample-poor")
     print("  python create_stratified_cps.py 30000 --seed=123  # reproducible")

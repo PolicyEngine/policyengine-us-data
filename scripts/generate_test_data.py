@@ -46,9 +46,7 @@ def generate_synthetic_cps(n_households=1000, seed=42):
                 "age": age,
                 "sex": np.random.choice([1, 2]),  # 1=male, 2=female
                 "person_weight": np.random.uniform(1000, 3000),
-                "employment_income": (
-                    np.random.lognormal(10, 1.5) if age >= 18 else 0
-                ),
+                "employment_income": (np.random.lognormal(10, 1.5) if age >= 18 else 0),
                 "is_disabled": np.random.random() < 0.15,
                 "role": role,
             }
@@ -82,52 +80,32 @@ def generate_synthetic_puf(n_returns=10000, seed=43):
     for i in range(n_returns):
         # Income components (log-normal distributions)
         wages = np.random.lognormal(10.5, 1.2)
-        interest = (
-            np.random.exponential(500) if np.random.random() < 0.3 else 0
-        )
-        dividends = (
-            np.random.exponential(1000) if np.random.random() < 0.2 else 0
-        )
+        interest = np.random.exponential(500) if np.random.random() < 0.3 else 0
+        dividends = np.random.exponential(1000) if np.random.random() < 0.2 else 0
         business = np.random.lognormal(9, 2) if np.random.random() < 0.1 else 0
-        cap_gains = (
-            np.random.exponential(5000) if np.random.random() < 0.15 else 0
-        )
+        cap_gains = np.random.exponential(5000) if np.random.random() < 0.15 else 0
 
         # Deductions
-        mortgage_int = (
-            np.random.exponential(8000) if np.random.random() < 0.25 else 0
-        )
-        charity = (
-            np.random.exponential(3000) if np.random.random() < 0.3 else 0
-        )
+        mortgage_int = np.random.exponential(8000) if np.random.random() < 0.25 else 0
+        charity = np.random.exponential(3000) if np.random.random() < 0.3 else 0
         salt = min(10000, wages * 0.05 + np.random.normal(0, 1000))
 
         # Demographics (limited in PUF)
-        filing_status = np.random.choice(
-            [1, 2, 3, 4], p=[0.45, 0.40, 0.10, 0.05]
-        )
-        num_deps = np.random.choice(
-            [0, 1, 2, 3, 4], p=[0.6, 0.15, 0.15, 0.08, 0.02]
-        )
+        filing_status = np.random.choice([1, 2, 3, 4], p=[0.45, 0.40, 0.10, 0.05])
+        num_deps = np.random.choice([0, 1, 2, 3, 4], p=[0.6, 0.15, 0.15, 0.08, 0.02])
 
         return_data = {
             "return_id": i,
             "filing_status": filing_status,
             "num_dependents": num_deps,
             "age_primary": np.random.randint(18, 85),
-            "age_secondary": (
-                np.random.randint(18, 85) if filing_status == 2 else 0
-            ),
+            "age_secondary": (np.random.randint(18, 85) if filing_status == 2 else 0),
             "wages": wages,
             "interest": interest,
             "dividends": dividends,
             "business_income": business,
             "capital_gains": cap_gains,
-            "total_income": wages
-            + interest
-            + dividends
-            + business
-            + cap_gains,
+            "total_income": wages + interest + dividends + business + cap_gains,
             "mortgage_interest": mortgage_int,
             "charitable_deduction": charity,
             "salt_deduction": salt,

@@ -94,14 +94,11 @@ def validate_dataset(file_path: Path) -> None:
             for group_name in REQUIRED_GROUPS:
                 if not _check_group_has_data(f, group_name):
                     errors.append(
-                        f"Required group '{group_name}' missing "
-                        f"or empty in H5 file."
+                        f"Required group '{group_name}' missing or empty in H5 file."
                     )
 
             # At least one income group must have data
-            has_income = any(
-                _check_group_has_data(f, g) for g in INCOME_GROUPS
-            )
+            has_income = any(_check_group_has_data(f, g) for g in INCOME_GROUPS)
             if not has_income:
                 errors.append(
                     f"No income data found. Need at least one of "

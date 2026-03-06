@@ -23,9 +23,7 @@ def create_policyengine_uprating_factors_table():
             parameter = system.parameters.get_child(variable.uprating)
             start_value = parameter(START_YEAR)
             for year in range(START_YEAR, END_YEAR + 1):
-                population_growth = population_size(year) / population_size(
-                    START_YEAR
-                )
+                population_growth = population_size(year) / population_size(START_YEAR)
                 variable_names.append(variable.name)
                 years.append(year)
                 growth = parameter(year) / start_value

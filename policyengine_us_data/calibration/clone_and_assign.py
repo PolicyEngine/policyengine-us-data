@@ -45,8 +45,7 @@ def load_global_block_distribution():
     csv_path = STORAGE_FOLDER / "block_cd_distributions.csv.gz"
     if not csv_path.exists():
         raise FileNotFoundError(
-            f"{csv_path} not found. "
-            "Run make_block_cd_distributions.py to generate."
+            f"{csv_path} not found. Run make_block_cd_distributions.py to generate."
         )
 
     df = pd.read_csv(csv_path, dtype={"block_geoid": str})

@@ -109,11 +109,7 @@ def test_stored_values_match_computed(
 
             computed_total = np.sum(computed.astype(float))
             if abs(stored_total) > 0:
-                pct_diff = (
-                    abs(stored_total - computed_total)
-                    / abs(stored_total)
-                    * 100
-                )
+                pct_diff = abs(stored_total - computed_total) / abs(stored_total) * 100
             else:
                 pct_diff = 0
 
@@ -141,23 +137,13 @@ def test_ss_subcomponents_sum_to_computed_total(sim, dataset_path):
     stored in the dataset sum to the simulation's computed total.
     """
     with h5py.File(dataset_path, "r") as f:
-        ss_retirement = f["social_security_retirement"]["2024"][...].astype(
-            float
-        )
-        ss_disability = f["social_security_disability"]["2024"][...].astype(
-            float
-        )
-        ss_survivors = f["social_security_survivors"]["2024"][...].astype(
-            float
-        )
-        ss_dependents = f["social_security_dependents"]["2024"][...].astype(
-            float
-        )
+        ss_retirement = f["social_security_retirement"]["2024"][...].astype(float)
+        ss_disability = f["social_security_disability"]["2024"][...].astype(float)
+        ss_survivors = f["social_security_survivors"]["2024"][...].astype(float)
+        ss_dependents = f["social_security_dependents"]["2024"][...].astype(float)
 
     sub_sum = ss_retirement + ss_disability + ss_survivors + ss_dependents
-    computed_total = np.array(sim.calculate("social_security", 2024)).astype(
-        float
-    )
+    computed_total = np.array(sim.calculate("social_security", 2024)).astype(float)
 
     # Only check records that have any SS income
     has_ss = computed_total > 0

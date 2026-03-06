@@ -71,18 +71,10 @@ class UnifiedMatrixBuilder:
 
         self._entity_rel_cache = pd.DataFrame(
             {
-                "person_id": sim.calculate(
-                    "person_id", map_to="person"
-                ).values,
-                "household_id": sim.calculate(
-                    "household_id", map_to="person"
-                ).values,
-                "tax_unit_id": sim.calculate(
-                    "tax_unit_id", map_to="person"
-                ).values,
-                "spm_unit_id": sim.calculate(
-                    "spm_unit_id", map_to="person"
-                ).values,
+                "person_id": sim.calculate("person_id", map_to="person").values,
+                "household_id": sim.calculate("household_id", map_to="person").values,
+                "tax_unit_id": sim.calculate("tax_unit_id", map_to="person").values,
+                "spm_unit_id": sim.calculate("spm_unit_id", map_to="person").values,
             }
         )
         return self._entity_rel_cache
@@ -126,9 +118,7 @@ class UnifiedMatrixBuilder:
         df["satisfies"] = person_mask
         hh_mask = df.groupby("household_id")["satisfies"].any()
 
-        household_ids = sim.calculate(
-            "household_id", map_to="household"
-        ).values
+        household_ids = sim.calculate("household_id", map_to="household").values
         return np.array([hh_mask.get(hid, False) for hid in household_ids])
 
     # ---------------------------------------------------------------
@@ -240,9 +230,7 @@ class UnifiedMatrixBuilder:
                 factors[(from_year, "cpi")] = 1.0
 
             try:
-                pop_from = params.calibration.gov.census.populations.total(
-                    from_year
-                )
+                pop_from = params.calibration.gov.census.populations.total(from_year)
                 pop_to = params.calibration.gov.census.populations.total(
                     self.time_period
                 )
@@ -326,9 +314,7 @@ class UnifiedMatrixBuilder:
                         var_factors[var] = 1.0
                         continue
                     period = row.iloc[0]["period"]
-                    factor, _ = self._get_uprating_info(
-                        var, period, national_factors
-                    )
+                    factor, _ = self._get_uprating_info(var, period, national_factors)
                     var_factors[var] = factor
 
             result[state_int] = var_factors
@@ -430,14 +416,12 @@ class UnifiedMatrixBuilder:
         print("\n" + "=" * 60)
         print("UPRATING SUMMARY")
         print("=" * 60)
-        print(f"Uprated {len(uprated)} of " f"{len(targets_df)} targets")
+        print(f"Uprated {len(uprated)} of {len(targets_df)} targets")
         period_counts = uprated["period"].value_counts().sort_index()
         for period, count in period_counts.items():
             print(f"  Period {period}: {count} targets")
         factors = eff[eff != 1.0]
-        print(
-            f"  Factor range: [{factors.min():.4f}, " f"{factors.max():.4f}]"
-        )
+        print(f"  Factor range: [{factors.min():.4f}, {factors.max():.4f}]")
 
     # ---------------------------------------------------------------
     # Target naming
@@ -465,9 +449,7 @@ class UnifiedMatrixBuilder:
 
         non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
         if non_geo:
-            strs = [
-                f"{c['variable']}{c['operation']}{c['value']}" for c in non_geo
-            ]
+            strs = [f"{c['variable']}{c['operation']}{c['value']}" for c in non_geo]
             parts.append("[" + ",".join(strs) + "]")
 
         return "/".join(parts)
@@ -510,12 +492,8 @@ class UnifiedMatrixBuilder:
                 return np.zeros(n_households, dtype=np.float32)
             person_mask &= apply_op(cv, c["operation"], c["value"])
 
-        target_entity = sim.tax_benefit_system.variables[
-            target_variable
-        ].entity.key
-        household_ids = sim.calculate(
-            "household_id", map_to="household"
-        ).values
+        target_entity = sim.tax_benefit_system.variables[target_variable].entity.key
+        household_ids = sim.calculate("household_id", map_to="household").values
 
         if target_entity == "household":
             if non_geo_constraints:
@@ -674,15 +652,9 @@ class UnifiedMatrixBuilder:
         n_targets = len(targets_df)
 
         # 2. Sort targets by geographic level
-        targets_df["_geo_level"] = targets_df["geographic_id"].apply(
-            get_geo_level
-        )
-        targets_df = targets_df.sort_values(
-            ["_geo_level", "variable", "geographic_id"]
-        )
-        targets_df = targets_df.drop(columns=["_geo_level"]).reset_index(
-            drop=True
-        )
+        targets_df["_geo_level"] = targets_df["geographic_id"].apply(get_geo_level)
+        targets_df = targets_df.sort_values(["_geo_level", "variable", "geographic_id"])
+        targets_df = targets_df.drop(columns=["_geo_level"]).reset_index(drop=True)
 
         # 3. Build column index structures from geography
         state_col_lists: Dict[int, list] = defaultdict(list)
@@ -709,9 +681,7 @@ class UnifiedMatrixBuilder:
             geo_id = row["geographic_id"]
             target_geo_info.append((geo_level, geo_id))
 
-            non_geo = [
-                c for c in constraints if c["variable"] not in _GEO_VARS
-            ]
+            non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
             non_geo_constraints_list.append(non_geo)
 
             target_names.append(
@@ -745,7 +715,7 @@ class UnifiedMatrixBuilder:
             clone_states = geography.state_fips[col_start:col_end]
 
             logger.info(
-                "Processing clone %d/%d " "(cols %d-%d, %d unique states)...",
+                "Processing clone %d/%d (cols %d-%d, %d unique states)...",
                 clone_idx + 1,
                 n_clones,
                 col_start,

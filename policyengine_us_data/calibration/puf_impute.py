@@ -194,9 +194,7 @@ RETIREMENT_INCOME_PREDICTORS = [
     "social_security",
 ]
 
-RETIREMENT_PREDICTORS = (
-    RETIREMENT_DEMOGRAPHIC_PREDICTORS + RETIREMENT_INCOME_PREDICTORS
-)
+RETIREMENT_PREDICTORS = RETIREMENT_DEMOGRAPHIC_PREDICTORS + RETIREMENT_INCOME_PREDICTORS
 
 
 def _get_retirement_limits(year: int) -> dict:
@@ -411,9 +409,7 @@ def reconcile_ss_subcomponents(
     if puf_has_ss.any():
         shares = _qrf_ss_shares(data, n_cps, time_period, puf_has_ss)
         if shares is None:
-            shares = _age_heuristic_ss_shares(
-                data, n_cps, time_period, puf_has_ss
-            )
+            shares = _age_heuristic_ss_shares(data, n_cps, time_period, puf_has_ss)
 
     for sub in SS_SUBCOMPONENTS:
         if sub not in data:
@@ -492,17 +488,13 @@ def puf_clone_dataset(
             return pred_values
         entity = var_meta.entity.key
         if entity != "person":
-            return cps_sim.populations[entity].value_from_first_person(
-                pred_values
-            )
+            return cps_sim.populations[entity].value_from_first_person(pred_values)
         return pred_values
 
     # Impute weeks_unemployed for PUF half
     puf_weeks = None
     if y_full is not None and dataset_path is not None:
-        puf_weeks = _impute_weeks_unemployed(
-            data, y_full, time_period, dataset_path
-        )
+        puf_weeks = _impute_weeks_unemployed(data, y_full, time_period, dataset_path)
 
     # Impute retirement contributions for PUF half
     puf_retirement = None
@@ -526,24 +518,14 @@ def puf_clone_dataset(
                 time_period: np.concatenate([values, values + values.max()])
             }
         elif "_weight" in variable:
-            new_data[variable] = {
-                time_period: np.concatenate([values, values * 0])
-            }
+            new_data[variable] = {time_period: np.concatenate([values, values * 0])}
         elif variable == "weeks_unemployed" and puf_weeks is not None:
-            new_data[variable] = {
-                time_period: np.concatenate([values, puf_weeks])
-            }
-        elif (
-            variable in CPS_RETIREMENT_VARIABLES and puf_retirement is not None
-        ):
+            new_data[variable] = {time_period: np.concatenate([values, puf_weeks])}
+        elif variable in CPS_RETIREMENT_VARIABLES and puf_retirement is not None:
             puf_vals = puf_retirement[variable]
-            new_data[variable] = {
-                time_period: np.concatenate([values, puf_vals])
-            }
+            new_data[variable] = {time_period: np.concatenate([values, puf_vals])}
         else:
-            new_data[variable] = {
-                time_period: np.concatenate([values, values])
-            }
+            new_data[variable] = {time_period: np.concatenate([values, values])}
 
     new_data["state_fips"] = {
         time_period: np.concatenate([state_fips, state_fips]).astype(np.int32)
@@ -662,11 +644,7 @@ def _impute_weeks_unemployed(
     logger.info(
         "Imputed weeks_unemployed for PUF: %d with weeks > 0, mean = %.1f",
         (imputed_weeks > 0).sum(),
-        (
-            imputed_weeks[imputed_weeks > 0].mean()
-            if (imputed_weeks > 0).any()
-            else 0
-        ),
+        (imputed_weeks[imputed_weeks > 0].mean() if (imputed_weeks > 0).any() else 0),
     )
 
     del fitted, predictions
@@ -836,9 +814,7 @@ def _run_qrf_imputation(
 
     puf_sim = Microsimulation(dataset=puf_dataset)
 
-    puf_agi = puf_sim.calculate(
-        "adjusted_gross_income", map_to="person"
-    ).values
+    puf_agi = puf_sim.calculate("adjusted_gross_income", map_to="person").values
 
     X_train_full = puf_sim.calculate_dataframe(
         DEMOGRAPHIC_PREDICTORS + IMPUTED_VARIABLES
@@ -873,9 +849,7 @@ def _run_qrf_imputation(
                 X_test[pred] = data[pred][time_period].astype(np.float32)
 
     logger.info("Imputing %d PUF variables (full)", len(IMPUTED_VARIABLES))
-    y_full = _batch_qrf(
-        X_train_full, X_test, DEMOGRAPHIC_PREDICTORS, IMPUTED_VARIABLES
-    )
+    y_full = _batch_qrf(X_train_full, X_test, DEMOGRAPHIC_PREDICTORS, IMPUTED_VARIABLES)
 
     logger.info(
         "Imputing %d PUF variables (override)",
@@ -915,9 +889,7 @@ def _stratified_subsample_index(
     if remaining_quota >= len(bottom_idx):
         selected_bottom = bottom_idx
     else:
-        selected_bottom = rng.choice(
-            bottom_idx, size=remaining_quota, replace=False
-        )
+        selected_bottom = rng.choice(bottom_idx, size=remaining_quota, replace=False)
 
     selected = np.concatenate([top_idx, selected_bottom])
     selected.sort()

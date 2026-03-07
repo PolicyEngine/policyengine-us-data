@@ -1566,6 +1566,96 @@ def main(argv=None):
     # Save stacked takeup (weight-averaged per CD × entity)
     entity_hh_idx_map = geography_info.get("entity_hh_idx_map")
     affected_info = geography_info.get("affected_target_info")
+    hh_ids_for_takeup = geography_info.get("household_ids")
+    rates_for_takeup = geography_info.get("precomputed_rates")
+
+    # Rebuild entity mappings from sim when loading from package
+    if (
+        block_geoid is not None
+        and cd_geoid is not None
+        and base_n_records is not None
+        and entity_hh_idx_map is None
+    ):
+        logger.info("Rebuilding entity mappings for stacked takeup...")
+        from policyengine_us_data.utils.takeup import (
+            TAKEUP_AFFECTED_TARGETS,
+        )
+        from policyengine_us_data.parameters import (
+            load_take_up_rate,
+        )
+
+        ds = source_imputed or dataset_path
+        sim = Microsimulation(dataset=ds)
+        tp = int(sim.default_calculation_period)
+
+        hh_ids_for_takeup = sim.calculate(
+            "household_id", map_to="household"
+        ).values
+        person_hh_ids = sim.calculate("household_id", map_to="person").values
+        hh_id_to_idx = {int(h): i for i, h in enumerate(hh_ids_for_takeup)}
+        person_hh_idx = np.array([hh_id_to_idx[int(h)] for h in person_hh_ids])
+
+        import pandas as pd
+
+        entity_rel_df = pd.DataFrame(
+            {
+                "household_id": sim.calculate(
+                    "household_id", map_to="person"
+                ).values,
+                "tax_unit_id": sim.calculate(
+                    "tax_unit_id", map_to="person"
+                ).values,
+                "spm_unit_id": sim.calculate(
+                    "spm_unit_id", map_to="person"
+                ).values,
+            }
+        )
+        spm_to_hh = (
+            entity_rel_df.groupby("spm_unit_id")["household_id"]
+            .first()
+            .to_dict()
+        )
+        spm_ids = sim.calculate("spm_unit_id", map_to="spm_unit").values
+        spm_hh_idx = np.array(
+            [hh_id_to_idx[int(spm_to_hh[int(s)])] for s in spm_ids]
+        )
+
+        tu_to_hh = (
+            entity_rel_df.groupby("tax_unit_id")["household_id"]
+            .first()
+            .to_dict()
+        )
+        tu_ids = sim.calculate("tax_unit_id", map_to="tax_unit").values
+        tu_hh_idx = np.array(
+            [hh_id_to_idx[int(tu_to_hh[int(t)])] for t in tu_ids]
+        )
+
+        entity_hh_idx_map = {
+            "spm_unit": spm_hh_idx,
+            "tax_unit": tu_hh_idx,
+            "person": person_hh_idx,
+        }
+
+        unique_vars = set(targets_df["variable"].values)
+        affected_info = {}
+        for tvar in unique_vars:
+            for key, info in TAKEUP_AFFECTED_TARGETS.items():
+                if tvar == key:
+                    affected_info[tvar] = info
+                    break
+
+        rates_for_takeup = {}
+        for tvar, info in affected_info.items():
+            rk = info["rate_key"]
+            if rk not in rates_for_takeup:
+                rates_for_takeup[rk] = load_take_up_rate(rk, tp)
+
+        del sim
+        logger.info(
+            "Rebuilt entity mappings: %d affected vars",
+            len(affected_info),
+        )
+
     if (
         block_geoid is not None
         and cd_geoid is not None
@@ -1583,8 +1673,8 @@ def main(argv=None):
             base_n_records=base_n_records,
             cds_ordered=cds_ordered,
             entity_hh_idx_map=entity_hh_idx_map,
-            household_ids=geography_info["household_ids"],
-            precomputed_rates=geography_info["precomputed_rates"],
+            household_ids=hh_ids_for_takeup,
+            precomputed_rates=rates_for_takeup,
             affected_target_info=affected_info,
         )
         takeup_path = output_dir / "stacked_takeup.npz"

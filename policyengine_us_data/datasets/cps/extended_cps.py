@@ -50,23 +50,46 @@ class ExtendedCPS(Dataset):
             dataset_path=str(self.cps.file_path),
         )
 
+        new_data = self._rename_imputed_to_inputs(new_data)
         new_data = self._drop_formula_variables(new_data)
         self.save_dataset(new_data)
 
-    # Variables with formulas that must still be stored.
-    # Includes person_id (needed by dataset loader) and PUF-imputed
-    # variables whose sub-components aren't separately stored —
-    # dropping these would lose the QRF imputation with no way to
-    # recompute them.
-    _KEEP_FORMULA_VARS = {
-        "person_id",
-        # PUF-imputed adds vars without stored sub-components:
-        "taxable_pension_income",
-        "interest_deduction",
-        "tax_exempt_pension_income",
-        "pre_tax_contributions",
-        "self_employed_pension_contribution_ald",
-        "self_employed_health_insurance_ald",
+    @classmethod
+    def _rename_imputed_to_inputs(cls, data):
+        """Rename QRF-imputed formula vars to their leaf inputs.
+
+        The QRF imputes formula-level aggregates (e.g.
+        taxable_pension_income) but the engine needs leaf inputs
+        (e.g. taxable_private_pension_income) so formulas work.
+        """
+        for formula_var, input_var in cls._IMPUTED_TO_INPUT.items():
+            if formula_var in data and input_var not in data:
+                logger.info(
+                    "Renaming %s -> %s (leaf input)",
+                    formula_var,
+                    input_var,
+                )
+                data[input_var] = data.pop(formula_var)
+        return data
+
+    # Variables with formulas that must still be stored (e.g. IDs
+    # needed by the dataset loader before formulas can run).
+    _KEEP_FORMULA_VARS = {"person_id"}
+
+    # QRF imputes formula-level variables (e.g. taxable_pension_income)
+    # but we must store them under leaf input names so
+    # _drop_formula_variables doesn't discard them. The engine then
+    # recomputes the formula var from its adds.
+    _IMPUTED_TO_INPUT = {
+        "taxable_pension_income": "taxable_private_pension_income",
+        "tax_exempt_pension_income": "tax_exempt_private_pension_income",
+        "interest_deduction": "deductible_mortgage_interest",
+        "self_employed_pension_contribution_ald": (
+            "self_employed_pension_contribution_ald_person"
+        ),
+        "self_employed_health_insurance_ald": (
+            "self_employed_health_insurance_ald_person"
+        ),
     }
 
     @classmethod

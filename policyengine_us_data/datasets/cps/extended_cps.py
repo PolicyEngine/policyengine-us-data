@@ -53,9 +53,21 @@ class ExtendedCPS(Dataset):
         new_data = self._drop_formula_variables(new_data)
         self.save_dataset(new_data)
 
-    # Variables with formulas that must still be stored (e.g. IDs
-    # needed by the dataset loader before formulas can run).
-    _KEEP_FORMULA_VARS = {"person_id"}
+    # Variables with formulas that must still be stored.
+    # Includes person_id (needed by dataset loader) and PUF-imputed
+    # variables whose sub-components aren't separately stored —
+    # dropping these would lose the QRF imputation with no way to
+    # recompute them.
+    _KEEP_FORMULA_VARS = {
+        "person_id",
+        # PUF-imputed adds vars without stored sub-components:
+        "taxable_pension_income",
+        "interest_deduction",
+        "tax_exempt_pension_income",
+        "pre_tax_contributions",
+        "self_employed_pension_contribution_ald",
+        "self_employed_health_insurance_ald",
+    }
 
     @classmethod
     def _drop_formula_variables(cls, data):

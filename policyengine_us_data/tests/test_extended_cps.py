@@ -9,13 +9,14 @@ Uses synthetic data to verify that:
 import numpy as np
 import pandas as pd
 import pytest
-from unittest.mock import MagicMock
 
-from policyengine_us_data.datasets.cps.extended_cps import (
+from policyengine_us_data.calibration.puf_impute import (
+    DEMOGRAPHIC_PREDICTORS,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
+)
+from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_ONLY_IMPUTED_VARIABLES,
-    CPS_STAGE2_DEMOGRAPHIC_PREDICTORS,
     CPS_STAGE2_INCOME_PREDICTORS,
 )
 
@@ -84,14 +85,14 @@ class TestSequentialQRF:
         test_x = df.drop(train.index)[["x"]]
 
         # Sequential: y2 conditions on y1
-        qrf = QRF(log_level="ERROR")
-        fitted = qrf.fit(
+        qrf = QRF(log_level="ERROR", memory_efficient=True)
+        result = qrf.fit_predict(
             X_train=train,
+            X_test=test_x,
             predictors=["x"],
             imputed_variables=["y1", "y2"],
             n_jobs=1,
         )
-        result = fitted.predict(X_test=test_x)
 
         # The imputed y1 and y2 should be positively correlated
         corr = result["y1"].corr(result["y2"])
@@ -113,33 +114,33 @@ class TestSequentialQRF:
         test_x = df.drop(train.index)[["x"]]
 
         # Sequential (single call)
-        qrf_seq = QRF(log_level="ERROR")
-        fitted_seq = qrf_seq.fit(
+        qrf_seq = QRF(log_level="ERROR", memory_efficient=True)
+        result_seq = qrf_seq.fit_predict(
             X_train=train,
+            X_test=test_x,
             predictors=["x"],
             imputed_variables=["y1", "y2"],
             n_jobs=1,
         )
-        result_seq = fitted_seq.predict(X_test=test_x)
 
         # Independent (separate calls, like old batched approach)
-        qrf_y1 = QRF(log_level="ERROR")
-        fitted_y1 = qrf_y1.fit(
+        qrf_y1 = QRF(log_level="ERROR", memory_efficient=True)
+        result_y1 = qrf_y1.fit_predict(
             X_train=train[["x", "y1"]],
+            X_test=test_x,
             predictors=["x"],
             imputed_variables=["y1"],
             n_jobs=1,
         )
-        result_y1 = fitted_y1.predict(X_test=test_x)
 
-        qrf_y2 = QRF(log_level="ERROR")
-        fitted_y2 = qrf_y2.fit(
+        qrf_y2 = QRF(log_level="ERROR", memory_efficient=True)
+        result_y2 = qrf_y2.fit_predict(
             X_train=train[["x", "y2"]],
+            X_test=test_x,
             predictors=["x"],
             imputed_variables=["y2"],
             n_jobs=1,
         )
-        result_y2 = fitted_y2.predict(X_test=test_x)
 
         # The sequential y1-y2 correlation should be higher than
         # the independent one

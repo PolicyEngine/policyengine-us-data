@@ -15,6 +15,11 @@ VALIDATED_FILENAMES = {
     "cps_2024.h5",
 }
 
+FILENAME_TO_DATASET = {
+    "enhanced_cps_2024.h5": EnhancedCPS_2024,
+    "cps_2024.h5": CPS_2024,
+}
+
 # Minimum file sizes in bytes for validated datasets.
 MIN_FILE_SIZES = {
     "enhanced_cps_2024.h5": 100 * 1024 * 1024,  # 100 MB
@@ -118,7 +123,10 @@ def validate_dataset(file_path: Path) -> None:
     from policyengine_us import Microsimulation
 
     try:
-        sim = Microsimulation(dataset=file_path)
+        dataset_cls = FILENAME_TO_DATASET.get(filename)
+        if dataset_cls is None:
+            raise DatasetValidationError(f"No dataset class registered for {filename}")
+        sim = Microsimulation(dataset=dataset_cls)
         year = 2024
 
         emp_income = sim.calculate("employment_income", year).sum()

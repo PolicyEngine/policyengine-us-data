@@ -1,14 +1,15 @@
 name: Publish Local Area H5 Files
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'policyengine_us_data/datasets/cps/local_area_calibration/**'
-      - '.github/workflows/local_area_publish.yaml'
-      - 'modal_app/**'
-  repository_dispatch:
-    types: [calibration-updated]
+  # TEMPORARILY DISABLED - re-enable push/repository_dispatch triggers when ready
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'policyengine_us_data/datasets/cps/local_area_calibration/**'
+  #     - '.github/workflows/local_area_publish.yaml'
+  #     - 'modal_app/**'
+  # repository_dispatch:
+  #   types: [calibration-updated]
   workflow_dispatch:
     inputs:
       num_workers:
@@ -55,7 +56,7 @@ jobs:
           SKIP_UPLOAD="${{ github.event.inputs.skip_upload || 'false' }}"
           BRANCH="${{ github.head_ref || github.ref_name }}"
 
-          CMD="modal run modal_app/local_area.py --branch=${BRANCH} --num-workers=${NUM_WORKERS}"
+          CMD="modal run modal_app/local_area.py::main --branch=${BRANCH} --num-workers=${NUM_WORKERS}"
 
           if [ "$SKIP_UPLOAD" = "true" ]; then
             CMD="${CMD} --skip-upload"

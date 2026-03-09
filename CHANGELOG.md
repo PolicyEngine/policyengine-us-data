@@ -1,3 +1,10 @@
+## [1.72.3] - 2026-03-09
+
+### Changed
+
+- Replaced batched QRF imputation with single sequential QRF via microimpute's fit_predict() API, preserving full covariance across all 85+ PUF income variables.
+
+
 ## [1.72.2] - 2026-03-06
 
 ### Changed

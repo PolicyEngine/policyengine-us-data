@@ -46,6 +46,18 @@ class TestVariableListConsistency:
                 f"IMPUTED_VARIABLES — won't have PUF-imputed values"
             )
 
+    def test_cps_only_vars_mostly_exist_in_tbs(self):
+        """Most CPS-only variables should exist in policyengine-us.
+        A few may be missing if upstream hasn't added them yet."""
+        from policyengine_us import CountryTaxBenefitSystem
+
+        tbs = CountryTaxBenefitSystem()
+        valid = [v for v in CPS_ONLY_IMPUTED_VARIABLES if v in tbs.variables]
+        assert len(valid) >= len(CPS_ONLY_IMPUTED_VARIABLES) * 0.9, (
+            f"Only {len(valid)}/{len(CPS_ONLY_IMPUTED_VARIABLES)} "
+            f"CPS-only vars exist in tax-benefit system"
+        )
+
 
 class TestSequentialQRF:
     """Verify that sequential QRF produces correlated outputs,

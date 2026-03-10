@@ -133,21 +133,28 @@ def _impute_cps_only_variables(
         predicted values for the PUF clone half (person-level).
     """
     from microimpute.models.qrf import QRF
-    from policyengine_us import Microsimulation
+    from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
     all_predictors = CPS_STAGE2_DEMOGRAPHIC_PREDICTORS + CPS_STAGE2_INCOME_PREDICTORS
 
+    # Filter to variables that exist in the current policyengine-us.
+    tbs = CountryTaxBenefitSystem()
+    valid_outputs = [v for v in CPS_ONLY_IMPUTED_VARIABLES if v in tbs.variables]
+    skipped = set(CPS_ONLY_IMPUTED_VARIABLES) - set(valid_outputs)
+    if skipped:
+        logger.warning(
+            "CPS-only imputation: %d variables not in tax-benefit system: %s",
+            len(skipped),
+            sorted(skipped),
+        )
+
     # Load original (non-doubled) CPS for training data.
     cps_sim = Microsimulation(dataset=dataset_path)
-    X_train = cps_sim.calculate_dataframe(all_predictors + CPS_ONLY_IMPUTED_VARIABLES)
+    X_train = cps_sim.calculate_dataframe(all_predictors + valid_outputs)
     del cps_sim
 
-    available_outputs = [
-        col for col in CPS_ONLY_IMPUTED_VARIABLES if col in X_train.columns
-    ]
-    missing_outputs = [
-        col for col in CPS_ONLY_IMPUTED_VARIABLES if col not in X_train.columns
-    ]
+    available_outputs = [col for col in valid_outputs if col in X_train.columns]
+    missing_outputs = [col for col in valid_outputs if col not in X_train.columns]
     if missing_outputs:
         logger.warning(
             "CPS-only imputation: %d variables not found in CPS: %s",

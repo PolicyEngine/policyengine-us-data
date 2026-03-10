@@ -151,7 +151,6 @@ def _impute_cps_only_variables(
     # Load original (non-doubled) CPS for training data.
     cps_sim = Microsimulation(dataset=dataset_path)
     X_train = cps_sim.calculate_dataframe(all_predictors + valid_outputs)
-    del cps_sim
 
     available_outputs = [col for col in valid_outputs if col in X_train.columns]
     missing_outputs = [col for col in valid_outputs if col not in X_train.columns]
@@ -162,18 +161,16 @@ def _impute_cps_only_variables(
             missing_outputs,
         )
 
-    # Build PUF clone test data: demographics from CPS donor,
-    # income from PUF-imputed values (second half of doubled data).
+    # Build PUF clone test data: demographics from CPS sim (PUF clones
+    # share demographics with their CPS donors), income from the
+    # PUF-imputed values in the second half of the doubled data.
     n_persons_half = len(data["person_id"][time_period]) // 2
-    X_test_rows = {}
-    for var in CPS_STAGE2_DEMOGRAPHIC_PREDICTORS:
-        # Demographics are the same in both halves; use second half.
-        X_test_rows[var] = data[var][time_period][n_persons_half:]
+    X_test = cps_sim.calculate_dataframe(CPS_STAGE2_DEMOGRAPHIC_PREDICTORS)
+    del cps_sim
+
     for var in CPS_STAGE2_INCOME_PREDICTORS:
         # Income comes from PUF imputation in the second half.
-        X_test_rows[var] = data[var][time_period][n_persons_half:]
-
-    X_test = pd.DataFrame(X_test_rows)
+        X_test[var] = data[var][time_period][n_persons_half:]
 
     logger.info(
         "Stage-2 CPS-only imputation: %d outputs, "
@@ -235,7 +232,13 @@ def _splice_cps_only_predictions(
     cps_sim = Microsimulation(dataset=dataset_path)
     tbs = cps_sim.tax_benefit_system
 
-    n_persons_half = len(data["person_id"][time_period]) // 2
+    # Pre-compute half-lengths per entity so we split each
+    # variable's array at the correct midpoint.
+    entity_half_lengths = {}
+    for entity_key in ["person", "tax_unit", "spm_unit", "family", "household"]:
+        id_var = f"{entity_key}_id"
+        if id_var in data:
+            entity_half_lengths[entity_key] = len(data[id_var][time_period]) // 2
 
     for var in CPS_ONLY_IMPUTED_VARIABLES:
         if var not in data or var not in predictions.columns:
@@ -243,15 +246,18 @@ def _splice_cps_only_predictions(
 
         pred_values = predictions[var].values
         var_meta = tbs.variables.get(var)
-        if var_meta is not None and var_meta.entity.key != "person":
-            pred_values = cps_sim.populations[
-                var_meta.entity.key
-            ].value_from_first_person(pred_values)
+        entity_key = var_meta.entity.key if var_meta is not None else "person"
 
+        if entity_key != "person":
+            pred_values = cps_sim.populations[entity_key].value_from_first_person(
+                pred_values
+            )
+
+        n_half = entity_half_lengths.get(entity_key, len(data[var][time_period]) // 2)
         values = data[var][time_period]
         # First half: keep original CPS values.
         # Second half: replace with QRF predictions.
-        cps_half = values[:n_persons_half]
+        cps_half = values[:n_half]
         new_values = np.concatenate([cps_half, pred_values])
         data[var] = {time_period: new_values}
 

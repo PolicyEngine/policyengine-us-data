@@ -11,7 +11,6 @@ import pandas as pd
 import pytest
 
 from policyengine_us_data.calibration.puf_impute import (
-    DEMOGRAPHIC_PREDICTORS,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
 )

@@ -19,18 +19,19 @@ from policyengine_us_data.utils.data_upload import (
     upload_local_area_batch_to_hf,
 )
 from policyengine_us_data.calibration.calibration_utils import (
-    get_all_cds_from_database,
     STATE_CODES,
     load_cd_geoadj_values,
     calculate_spm_thresholds_vectorized,
 )
 from policyengine_us_data.calibration.block_assignment import (
-    assign_geography_for_cd,
     derive_geography_from_blocks,
     get_county_filter_probability,
 )
+from policyengine_us_data.calibration.clone_and_assign import (
+    assign_random_geography,
+)
 from policyengine_us_data.utils.takeup import (
-    TAKEUP_AFFECTED_TARGETS,
+    SIMPLE_TAKEUP_VARS,
     apply_block_takeup_to_arrays,
 )
 
@@ -105,42 +106,24 @@ def record_completed_city(city_name: str):
 
 def build_h5(
     weights: np.ndarray,
-    blocks: np.ndarray,
+    geography,
     dataset_path: Path,
     output_path: Path,
-    cds_to_calibrate: List[str],
     cd_subset: List[str] = None,
     county_filter: set = None,
     takeup_filter: List[str] = None,
-    stacked_takeup: dict = None,
 ) -> Path:
     """Build an H5 file by cloning records for each nonzero weight.
 
-    Uses fancy indexing on a single loaded simulation instead of
-    looping over CDs.
-
-    Each nonzero entry in the (n_geo, n_hh) weight matrix represents
-    a distinct household clone. This function clones entity arrays,
-    derives geography from blocks, reindexes entity IDs, recalculates
-    SPM thresholds, applies calibration takeup draws (when blocks are
-    provided), and writes the H5.
-
     Args:
-        weights: Stacked weight vector, shape (n_geo * n_hh,).
-        blocks: Block GEOID per weight entry, same shape. When
-            provided, calibration takeup draws are applied
-            automatically.
+        weights: Clone-level weight vector, shape (n_clones_total * n_hh,).
+        geography: GeographyAssignment from assign_random_geography.
         dataset_path: Path to base dataset H5 file.
         output_path: Where to write the output H5 file.
-        cds_to_calibrate: Ordered list of CD GEOIDs defining
-            weight matrix row ordering.
-        cd_subset: If provided, only include rows for these CDs.
+        cd_subset: If provided, only include clones for these CDs.
         county_filter: If provided, scale weights by P(target|CD)
             for city datasets.
         takeup_filter: List of takeup vars to apply.
-        stacked_takeup: Pre-computed weight-averaged takeup per
-            (CD, entity). Dict of {var_name: (n_cds, n_ent)}.
-            When provided, overrides block-based takeup draws.
 
     Returns:
         Path to the output H5 file.
@@ -155,7 +138,8 @@ def build_h5(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    apply_takeup = blocks is not None
+    blocks = geography.block_geoid
+    clone_cds = geography.cd_geoid.astype(str)
 
     # === Load base simulation ===
     sim = Microsimulation(dataset=str(dataset_path))
@@ -168,53 +152,31 @@ def build_h5(
             f"Weight vector length {weights.shape[0]} is not "
             f"divisible by n_hh={n_hh}"
         )
-    n_geo = weights.shape[0] // n_hh
-
-    # Generate blocks from assign_geography_for_cd if not provided
-    if blocks is None:
-        print("No blocks provided, generating from CD assignments...")
-        all_blocks = np.empty(n_geo * n_hh, dtype="U15")
-        for geo_idx, cd in enumerate(cds_to_calibrate):
-            geo = assign_geography_for_cd(
-                cd_geoid=cd,
-                n_households=n_hh,
-                seed=42 + int(cd),
-            )
-            start = geo_idx * n_hh
-            all_blocks[start : start + n_hh] = geo["block_geoid"]
-        blocks = all_blocks
-
-    if len(blocks) != len(weights):
-        raise ValueError(
-            f"Blocks length {len(blocks)} != " f"weights length {len(weights)}"
-        )
+    n_clones_total = weights.shape[0] // n_hh
 
     # === Reshape and filter weight matrix ===
-    W = weights.reshape(n_geo, n_hh).copy()
+    W = weights.reshape(n_clones_total, n_hh).copy()
+    clone_cds_matrix = clone_cds.reshape(n_clones_total, n_hh)
 
-    # CD subset filtering: zero out rows for CDs not in subset
+    # CD subset filtering: zero out cells whose CD isn't in subset
     if cd_subset is not None:
-        cd_index_set = set()
-        for cd in cd_subset:
-            if cd not in cds_to_calibrate:
-                raise ValueError(f"CD {cd} not in calibrated CDs list")
-            cd_index_set.add(cds_to_calibrate.index(cd))
-        for i in range(n_geo):
-            if i not in cd_index_set:
-                W[i, :] = 0
+        cd_subset_set = set(cd_subset)
+        cd_mask = np.vectorize(lambda cd: cd in cd_subset_set)(
+            clone_cds_matrix
+        )
+        W[~cd_mask] = 0
 
     # County filtering: scale weights by P(target_counties | CD)
     if county_filter is not None:
-        for geo_idx in range(n_geo):
-            cd = cds_to_calibrate[geo_idx]
-            p = get_county_filter_probability(cd, county_filter)
-            W[geo_idx, :] *= p
+        p_matrix = np.vectorize(
+            lambda cd: get_county_filter_probability(cd, county_filter)
+        )(clone_cds_matrix)
+        W *= p_matrix
 
-    n_active_cds = len(cd_subset) if cd_subset is not None else n_geo
     label = (
-        f"{n_active_cds} CDs"
+        f"CD subset {cd_subset}"
         if cd_subset is not None
-        else f"{n_geo} geo units"
+        else f"{n_clones_total} clone rows"
     )
     print(f"\n{'='*60}")
     print(f"Building {output_path.name} ({label}, {n_hh} households)")
@@ -224,7 +186,10 @@ def build_h5(
     active_geo, active_hh = np.where(W > 0)
     n_clones = len(active_geo)
     clone_weights = W[active_geo, active_hh]
-    active_blocks = blocks.reshape(n_geo, n_hh)[active_geo, active_hh]
+    active_blocks = blocks.reshape(n_clones_total, n_hh)[active_geo, active_hh]
+    active_clone_cds = clone_cds.reshape(n_clones_total, n_hh)[
+        active_geo, active_hh
+    ]
 
     empty_count = np.sum(active_blocks == "")
     if empty_count > 0:
@@ -347,7 +312,7 @@ def build_h5(
     unique_blocks, block_inv = np.unique(active_blocks, return_inverse=True)
     print(f"  {n_clones:,} blocks -> " f"{len(unique_blocks):,} unique")
     unique_geo = derive_geography_from_blocks(unique_blocks)
-    geography = {k: v[block_inv] for k, v in unique_geo.items()}
+    clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
     # === Calculate weights for all entity levels ===
     person_weights = np.repeat(clone_weights, persons_per_clone)
@@ -460,14 +425,14 @@ def build_h5(
 
     # === Override geography ===
     data["state_fips"] = {
-        time_period: geography["state_fips"].astype(np.int32),
+        time_period: clone_geo["state_fips"].astype(np.int32),
     }
     county_names = np.array(
-        [County._member_names_[i] for i in geography["county_index"]]
+        [County._member_names_[i] for i in clone_geo["county_index"]]
     ).astype("S")
     data["county"] = {time_period: county_names}
     data["county_fips"] = {
-        time_period: geography["county_fips"].astype(np.int32),
+        time_period: clone_geo["county_fips"].astype(np.int32),
     }
     for gv in [
         "block_geoid",
@@ -480,15 +445,14 @@ def build_h5(
         "puma",
         "zcta",
     ]:
-        if gv in geography:
+        if gv in clone_geo:
             data[gv] = {
-                time_period: geography[gv].astype("S"),
+                time_period: clone_geo[gv].astype("S"),
             }
 
     # === Gap 4: Congressional district GEOID ===
     clone_cd_geoids = np.array(
-        [int(cds_to_calibrate[g]) for g in active_geo],
-        dtype=np.int32,
+        [int(cd) for cd in active_clone_cds], dtype=np.int32
     )
     data["congressional_district_geoid"] = {
         time_period: clone_cd_geoids,
@@ -496,17 +460,15 @@ def build_h5(
 
     # === Gap 1: SPM threshold recalculation ===
     print("Recalculating SPM thresholds...")
-    cd_geoadj_values = load_cd_geoadj_values(cds_to_calibrate)
+    unique_cds_list = sorted(set(active_clone_cds))
+    cd_geoadj_values = load_cd_geoadj_values(unique_cds_list)
     # Build per-SPM-unit geoadj from clone's CD
     spm_clone_ids = np.repeat(
         np.arange(n_clones, dtype=np.int64),
         entities_per_clone["spm_unit"],
     )
     spm_unit_geoadj = np.array(
-        [
-            cd_geoadj_values[cds_to_calibrate[active_geo[c]]]
-            for c in spm_clone_ids
-        ],
+        [cd_geoadj_values[active_clone_cds[c]] for c in spm_clone_ids],
         dtype=np.float64,
     )
 
@@ -544,38 +506,7 @@ def build_h5(
     }
 
     # === Apply calibration takeup draws ===
-    if stacked_takeup is not None:
-        print("Applying pre-computed stacked takeup values...")
-        from policyengine_us_data.utils.takeup import (
-            SIMPLE_TAKEUP_VARS,
-        )
-
-        var_to_entity = {
-            spec["variable"]: spec["entity"] for spec in SIMPLE_TAKEUP_VARS
-        }
-        for spec in SIMPLE_TAKEUP_VARS:
-            var_name = spec["variable"]
-            entity_level = spec["entity"]
-
-            if entity_level == "person":
-                n_ent = n_persons
-                clone_ids_e = np.repeat(np.arange(n_clones), persons_per_clone)
-                base_indices = person_clone_idx
-            else:
-                n_ent = len(entity_clone_idx[entity_level])
-                clone_ids_e = np.repeat(
-                    np.arange(n_clones),
-                    entities_per_clone[entity_level],
-                )
-                base_indices = entity_clone_idx[entity_level]
-
-            if var_name in stacked_takeup:
-                geo_indices = active_geo[clone_ids_e]
-                values = stacked_takeup[var_name][geo_indices, base_indices]
-                data[var_name] = {time_period: values.astype(np.float32)}
-            else:
-                data[var_name] = {time_period: np.ones(n_ent, dtype=bool)}
-    elif apply_takeup:
+    if blocks is not None:
         print("Applying calibration takeup draws...")
         entity_hh_indices = {
             "person": np.repeat(
@@ -596,7 +527,7 @@ def build_h5(
             "tax_unit": len(entity_clone_idx["tax_unit"]),
             "spm_unit": len(entity_clone_idx["spm_unit"]),
         }
-        hh_state_fips = geography["state_fips"].astype(np.int32)
+        hh_state_fips = clone_geo["state_fips"].astype(np.int32)
         original_hh_ids = household_ids[active_hh].astype(np.int64)
 
         takeup_results = apply_block_takeup_to_arrays(
@@ -655,19 +586,18 @@ def get_district_friendly_name(cd_geoid: str) -> str:
 def build_states(
     weights_path: Path,
     dataset_path: Path,
-    db_path: Path,
+    geography,
     output_dir: Path,
     completed_states: set,
     hf_batch_size: int = 10,
-    calibration_blocks: np.ndarray = None,
     takeup_filter: List[str] = None,
     upload: bool = False,
-    stacked_takeup: dict = None,
+    state_filter: str = None,
 ):
     """Build state H5 files with checkpointing, optionally uploading."""
-    db_uri = f"sqlite:///{db_path}"
-    cds_to_calibrate = get_all_cds_from_database(db_uri)
     w = np.load(weights_path)
+
+    all_cds = sorted(set(geography.cd_geoid.astype(str)))
 
     states_dir = output_dir / "states"
     states_dir.mkdir(parents=True, exist_ok=True)
@@ -675,13 +605,13 @@ def build_states(
     hf_queue = []
 
     for state_fips, state_code in STATE_CODES.items():
+        if state_filter and state_code != state_filter:
+            continue
         if state_code in completed_states:
             print(f"Skipping {state_code} (already completed)")
             continue
 
-        cd_subset = [
-            cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips
-        ]
+        cd_subset = [cd for cd in all_cds if int(cd) // 100 == state_fips]
         if not cd_subset:
             print(f"No CDs found for {state_code}, skipping")
             continue
@@ -691,13 +621,11 @@ def build_states(
         try:
             build_h5(
                 weights=w,
-                blocks=calibration_blocks,
+                geography=geography,
                 dataset_path=dataset_path,
                 output_path=output_path,
-                cds_to_calibrate=cds_to_calibrate,
                 cd_subset=cd_subset,
                 takeup_filter=takeup_filter,
-                stacked_takeup=stacked_takeup,
             )
 
             if upload:
@@ -733,26 +661,24 @@ def build_states(
 def build_districts(
     weights_path: Path,
     dataset_path: Path,
-    db_path: Path,
+    geography,
     output_dir: Path,
     completed_districts: set,
     hf_batch_size: int = 10,
-    calibration_blocks: np.ndarray = None,
     takeup_filter: List[str] = None,
     upload: bool = False,
-    stacked_takeup: dict = None,
 ):
     """Build district H5 files with checkpointing, optionally uploading."""
-    db_uri = f"sqlite:///{db_path}"
-    cds_to_calibrate = get_all_cds_from_database(db_uri)
     w = np.load(weights_path)
+
+    all_cds = sorted(set(geography.cd_geoid.astype(str)))
 
     districts_dir = output_dir / "districts"
     districts_dir.mkdir(parents=True, exist_ok=True)
 
     hf_queue = []
 
-    for i, cd_geoid in enumerate(cds_to_calibrate):
+    for i, cd_geoid in enumerate(all_cds):
         cd_int = int(cd_geoid)
         state_fips = cd_int // 100
         district_num = cd_int % 100
@@ -766,20 +692,16 @@ def build_districts(
             continue
 
         output_path = districts_dir / f"{friendly_name}.h5"
-        print(
-            f"\n[{i+1}/{len(cds_to_calibrate)}] " f"Building {friendly_name}"
-        )
+        print(f"\n[{i+1}/{len(all_cds)}] Building {friendly_name}")
 
         try:
             build_h5(
                 weights=w,
-                blocks=calibration_blocks,
+                geography=geography,
                 dataset_path=dataset_path,
                 output_path=output_path,
-                cds_to_calibrate=cds_to_calibrate,
                 cd_subset=[cd_geoid],
                 takeup_filter=takeup_filter,
-                stacked_takeup=stacked_takeup,
             )
 
             if upload:
@@ -815,19 +737,17 @@ def build_districts(
 def build_cities(
     weights_path: Path,
     dataset_path: Path,
-    db_path: Path,
+    geography,
     output_dir: Path,
     completed_cities: set,
     hf_batch_size: int = 10,
-    calibration_blocks: np.ndarray = None,
     takeup_filter: List[str] = None,
     upload: bool = False,
-    stacked_takeup: dict = None,
 ):
     """Build city H5 files with checkpointing, optionally uploading."""
-    db_uri = f"sqlite:///{db_path}"
-    cds_to_calibrate = get_all_cds_from_database(db_uri)
     w = np.load(weights_path)
+
+    all_cds = sorted(set(geography.cd_geoid.astype(str)))
 
     cities_dir = output_dir / "cities"
     cities_dir.mkdir(parents=True, exist_ok=True)
@@ -838,7 +758,7 @@ def build_cities(
     if "NYC" in completed_cities:
         print("Skipping NYC (already completed)")
     else:
-        cd_subset = [cd for cd in cds_to_calibrate if cd in NYC_CDS]
+        cd_subset = [cd for cd in all_cds if cd in NYC_CDS]
         if not cd_subset:
             print("No NYC-related CDs found, skipping")
         else:
@@ -847,14 +767,12 @@ def build_cities(
             try:
                 build_h5(
                     weights=w,
-                    blocks=calibration_blocks,
+                    geography=geography,
                     dataset_path=dataset_path,
                     output_path=output_path,
-                    cds_to_calibrate=cds_to_calibrate,
                     cd_subset=cd_subset,
                     county_filter=NYC_COUNTIES,
                     takeup_filter=takeup_filter,
-                    stacked_takeup=stacked_takeup,
                 )
 
                 if upload:
@@ -916,19 +834,21 @@ def main():
         help="Override path to dataset file (for local testing)",
     )
     parser.add_argument(
-        "--db-path",
+        "--state",
         type=str,
-        help="Override path to database file (for local testing)",
+        help="Build only this state (e.g., SC, NY, CA)",
     )
     parser.add_argument(
-        "--calibration-blocks",
-        type=str,
-        help="Path to stacked_blocks.npy from calibration",
+        "--n-clones",
+        type=int,
+        required=True,
+        help="Number of clones used in calibration",
     )
     parser.add_argument(
-        "--stacked-takeup",
-        type=str,
-        help="Path to stacked_takeup.npz from calibration",
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed used in calibration (default: 42)",
     )
     parser.add_argument(
         "--upload",
@@ -939,11 +859,10 @@ def main():
 
     WORK_DIR.mkdir(parents=True, exist_ok=True)
 
-    if args.weights_path and args.dataset_path and args.db_path:
+    if args.weights_path and args.dataset_path:
         inputs = {
             "weights": Path(args.weights_path),
             "dataset": Path(args.dataset_path),
-            "database": Path(args.db_path),
         }
         print("Using provided paths:")
         for key, path in inputs.items():
@@ -954,7 +873,6 @@ def main():
             "dataset": (
                 WORK_DIR / "source_imputed_stratified_extended_cps.h5"
             ),
-            "database": WORK_DIR / "policy_data.db",
         }
         print("Using existing files in work directory:")
         for key, path in inputs.items():
@@ -971,23 +889,20 @@ def main():
 
     sim = Microsimulation(dataset=str(inputs["dataset"]))
     n_hh = sim.calculate("household_id", map_to="household").shape[0]
+    del sim
     print(f"\nBase dataset has {n_hh:,} households")
 
-    calibration_blocks = None
-    takeup_filter = None
-
-    if args.calibration_blocks:
-        calibration_blocks = np.load(args.calibration_blocks)
-        print(f"Loaded calibration blocks: {len(calibration_blocks):,}")
-        takeup_filter = [
-            info["takeup_var"] for info in TAKEUP_AFFECTED_TARGETS.values()
-        ]
-        print(f"Takeup filter: {takeup_filter}")
-
-    stacked_takeup = None
-    if getattr(args, "stacked_takeup", None):
-        stacked_takeup = dict(np.load(args.stacked_takeup))
-        print(f"Loaded stacked takeup: " f"{list(stacked_takeup.keys())}")
+    print(
+        f"Regenerating geography: {n_hh} records x "
+        f"{args.n_clones} clones, seed={args.seed}"
+    )
+    geography = assign_random_geography(
+        n_records=n_hh,
+        n_clones=args.n_clones,
+        seed=args.seed,
+    )
+    takeup_filter = [spec["variable"] for spec in SIMPLE_TAKEUP_VARS]
+    print(f"Takeup filter: {takeup_filter}")
 
     # Determine what to build based on flags
     do_states = not args.districts_only and not args.cities_only
@@ -1017,13 +932,12 @@ def main():
         build_states(
             inputs["weights"],
             inputs["dataset"],
-            inputs["database"],
+            geography,
             WORK_DIR,
             completed_states,
-            calibration_blocks=calibration_blocks,
             takeup_filter=takeup_filter,
             upload=args.upload,
-            stacked_takeup=stacked_takeup,
+            state_filter=args.state,
         )
 
     if do_districts:
@@ -1031,17 +945,15 @@ def main():
         print("BUILDING DISTRICT FILES")
         print("=" * 60)
         completed_districts = load_completed_districts()
-        print(f"Already completed: {len(completed_districts)} districts")
+        print(f"Already completed: " f"{len(completed_districts)} districts")
         build_districts(
             inputs["weights"],
             inputs["dataset"],
-            inputs["database"],
+            geography,
             WORK_DIR,
             completed_districts,
-            calibration_blocks=calibration_blocks,
             takeup_filter=takeup_filter,
             upload=args.upload,
-            stacked_takeup=stacked_takeup,
         )
 
     if do_cities:
@@ -1053,13 +965,11 @@ def main():
         build_cities(
             inputs["weights"],
             inputs["dataset"],
-            inputs["database"],
+            geography,
             WORK_DIR,
             completed_cities,
-            calibration_blocks=calibration_blocks,
             takeup_filter=takeup_filter,
             upload=args.upload,
-            stacked_takeup=stacked_takeup,
         )
 
     print("\n" + "=" * 60)

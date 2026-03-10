@@ -1418,6 +1418,11 @@ def main(argv=None):
     dataset_path = args.dataset or str(
         STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
     )
+    if not Path(dataset_path).exists():
+        raise FileNotFoundError(
+            f"Dataset not found: {dataset_path}\n"
+            "Run 'make data' first, or pass --dataset with a valid path."
+        )
     db_path = args.db_path or str(
         STORAGE_FOLDER / "calibration" / "policy_data.db"
     )
@@ -1518,187 +1523,15 @@ def main(argv=None):
         (err_pct < 25).mean() * 100,
     )
 
-    # Convert to stacked format for stacked_dataset_builder
-    cd_geoid = geography_info.get("cd_geoid")
-    base_n_records = geography_info.get("base_n_records")
-
-    if cd_geoid is not None and base_n_records is not None:
-        from policyengine_us_data.calibration.calibration_utils import (
-            save_geo_labels,
-        )
-
-        cds_ordered = sorted(set(cd_geoid))
-        save_geo_labels(cds_ordered, output_dir / "geo_labels.json")
-        print(f"GEO_LABELS_PATH:{output_dir / 'geo_labels.json'}")
-        logger.info(
-            "Saved %d geo labels to %s",
-            len(cds_ordered),
-            output_dir / "geo_labels.json",
-        )
-        stacked_weights = convert_weights_to_stacked_format(
-            weights=weights,
-            cd_geoid=cd_geoid,
-            base_n_records=base_n_records,
-            cds_ordered=cds_ordered,
-        )
-    else:
-        logger.warning("No geography info available; saving raw weights")
-        stacked_weights = weights
-
-    # Save stacked blocks alongside weights
-    block_geoid = geography_info.get("block_geoid")
-    if (
-        block_geoid is not None
-        and cd_geoid is not None
-        and base_n_records is not None
-    ):
-        blocks_stacked = convert_blocks_to_stacked_format(
-            block_geoid=block_geoid,
-            cd_geoid=cd_geoid,
-            base_n_records=base_n_records,
-            cds_ordered=cds_ordered,
-        )
-        blocks_path = output_dir / "stacked_blocks.npy"
-        np.save(str(blocks_path), blocks_stacked)
-        logger.info("Stacked blocks saved to %s", blocks_path)
-        print(f"BLOCKS_PATH:{blocks_path}")
-
-    # Save stacked takeup (weight-averaged per CD × entity)
-    entity_hh_idx_map = geography_info.get("entity_hh_idx_map")
-    affected_info = geography_info.get("affected_target_info")
-    hh_ids_for_takeup = geography_info.get("household_ids")
-    rates_for_takeup = geography_info.get("precomputed_rates")
-
-    # Rebuild entity mappings from sim when loading from package
-    if (
-        block_geoid is not None
-        and cd_geoid is not None
-        and base_n_records is not None
-        and entity_hh_idx_map is None
-    ):
-        logger.info("Rebuilding entity mappings for stacked takeup...")
-        from policyengine_us_data.utils.takeup import (
-            TAKEUP_AFFECTED_TARGETS,
-        )
-        from policyengine_us_data.parameters import (
-            load_take_up_rate,
-        )
-
-        ds = source_imputed or dataset_path
-        sim = Microsimulation(dataset=ds)
-        tp = int(sim.default_calculation_period)
-
-        hh_ids_for_takeup = sim.calculate(
-            "household_id", map_to="household"
-        ).values
-        person_hh_ids = sim.calculate("household_id", map_to="person").values
-        hh_id_to_idx = {int(h): i for i, h in enumerate(hh_ids_for_takeup)}
-        person_hh_idx = np.array([hh_id_to_idx[int(h)] for h in person_hh_ids])
-
-        import pandas as pd
-
-        entity_rel_df = pd.DataFrame(
-            {
-                "household_id": sim.calculate(
-                    "household_id", map_to="person"
-                ).values,
-                "tax_unit_id": sim.calculate(
-                    "tax_unit_id", map_to="person"
-                ).values,
-                "spm_unit_id": sim.calculate(
-                    "spm_unit_id", map_to="person"
-                ).values,
-            }
-        )
-        spm_to_hh = (
-            entity_rel_df.groupby("spm_unit_id")["household_id"]
-            .first()
-            .to_dict()
-        )
-        spm_ids = sim.calculate("spm_unit_id", map_to="spm_unit").values
-        spm_hh_idx = np.array(
-            [hh_id_to_idx[int(spm_to_hh[int(s)])] for s in spm_ids]
-        )
-
-        tu_to_hh = (
-            entity_rel_df.groupby("tax_unit_id")["household_id"]
-            .first()
-            .to_dict()
-        )
-        tu_ids = sim.calculate("tax_unit_id", map_to="tax_unit").values
-        tu_hh_idx = np.array(
-            [hh_id_to_idx[int(tu_to_hh[int(t)])] for t in tu_ids]
-        )
-
-        entity_hh_idx_map = {
-            "spm_unit": spm_hh_idx,
-            "tax_unit": tu_hh_idx,
-            "person": person_hh_idx,
-        }
-
-        unique_vars = set(targets_df["variable"].values)
-        affected_info = {}
-        for tvar in unique_vars:
-            for key, info in TAKEUP_AFFECTED_TARGETS.items():
-                if tvar == key:
-                    affected_info[tvar] = info
-                    break
-
-        rates_for_takeup = {}
-        for tvar, info in affected_info.items():
-            rk = info["rate_key"]
-            if rk not in rates_for_takeup:
-                rates_for_takeup[rk] = load_take_up_rate(rk, tp)
-
-        del sim
-        logger.info(
-            "Rebuilt entity mappings: %d affected vars",
-            len(affected_info),
-        )
-
-    if (
-        block_geoid is not None
-        and cd_geoid is not None
-        and base_n_records is not None
-        and entity_hh_idx_map is not None
-        and affected_info
-    ):
-        import time as _time
-
-        t_takeup = _time.time()
-        stacked_tu = compute_stacked_takeup(
-            weights=weights,
-            cd_geoid=cd_geoid,
-            block_geoid=block_geoid,
-            base_n_records=base_n_records,
-            cds_ordered=cds_ordered,
-            entity_hh_idx_map=entity_hh_idx_map,
-            household_ids=hh_ids_for_takeup,
-            precomputed_rates=rates_for_takeup,
-            affected_target_info=affected_info,
-        )
-        takeup_path = output_dir / "stacked_takeup.npz"
-        np.savez_compressed(str(takeup_path), **stacked_tu)
-        logger.info(
-            "Stacked takeup saved to %s (%.1f min)",
-            takeup_path,
-            (_time.time() - t_takeup) / 60,
-        )
-        print(f"TAKEUP_PATH:{takeup_path}")
-
-    # Save weights
+    # Save weights (raw clone-level, NOT stacked)
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    np.save(output_path, stacked_weights)
+    np.save(output_path, weights)
     logger.info("Weights saved to %s", output_path)
     print(f"OUTPUT_PATH:{output_path}")
 
     # Save run config
     t_end = time.time()
-    weight_format = (
-        "stacked"
-        if cd_geoid is not None and base_n_records is not None
-        else "raw"
-    )
+    weight_format = "clone_level"
     run_config = {
         "dataset": dataset_path,
         "db_path": db_path,
@@ -1716,10 +1549,9 @@ def main(argv=None):
         "target_config": args.target_config,
         "n_targets": len(targets_df),
         "n_records": X_sparse.shape[1],
-        "geo_labels_file": "geo_labels.json",
         "weight_format": weight_format,
-        "weight_sum": float(stacked_weights.sum()),
-        "weight_nonzero": int((stacked_weights > 0).sum()),
+        "weight_sum": float(weights.sum()),
+        "weight_nonzero": int((weights > 0).sum()),
         "mean_error_pct": float(err_pct.mean()),
         "elapsed_seconds": round(t_end - t_start, 1),
     }

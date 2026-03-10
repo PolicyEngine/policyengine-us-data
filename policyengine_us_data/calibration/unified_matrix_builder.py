@@ -1034,16 +1034,11 @@ class UnifiedMatrixBuilder:
                 'entity': {var: array}
             }}
         """
-        if not county_level or not county_dep_targets:
-            if not county_level:
-                logger.info(
-                    "County-level computation disabled " "(skip-county mode)"
-                )
-            else:
-                logger.info(
-                    "No county-dependent target vars; "
-                    "skipping county precomputation"
-                )
+        if not county_dep_targets:
+            logger.info(
+                "No county-dependent target vars; "
+                "skipping county precomputation"
+            )
             return {}
 
         from policyengine_us_data.utils.takeup import (

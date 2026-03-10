@@ -55,12 +55,10 @@ def main():
         stacked_takeup = dict(np.load(args.stacked_takeup))
 
     from policyengine_us_data.utils.takeup import (
-        TAKEUP_AFFECTED_TARGETS,
+        SIMPLE_TAKEUP_VARS,
     )
 
-    takeup_filter = [
-        info["takeup_var"] for info in TAKEUP_AFFECTED_TARGETS.values()
-    ]
+    takeup_filter = [spec["variable"] for spec in SIMPLE_TAKEUP_VARS]
 
     original_stdout = sys.stdout
     sys.stdout = sys.stderr

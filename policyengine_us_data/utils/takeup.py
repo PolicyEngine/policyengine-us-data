@@ -183,12 +183,18 @@ def compute_block_takeup_for_entities(
     rate_or_dict,
     entity_blocks: np.ndarray,
     entity_hh_ids: np.ndarray = None,
+    entity_clone_ids: np.ndarray = None,
 ) -> np.ndarray:
     """Compute boolean takeup via block-level seeded draws.
 
     Each unique (block, household) pair gets its own seeded RNG,
     producing reproducible draws regardless of how many households
     share the same block across clones.
+
+    When multiple clones share the same (block, hh_id), the draws
+    are generated once for a single clone's entity count and tiled
+    so every clone gets identical draws — matching the matrix
+    builder, which processes each clone independently.
 
     State FIPS for rate resolution is derived from the first two
     characters of each block GEOID.
@@ -200,6 +206,10 @@ def compute_block_takeup_for_entities(
         entity_hh_ids: Household ID per entity (int array).
             When provided, seeds per (block, household) for
             clone-independent draws.
+        entity_clone_ids: Clone index per entity (int array).
+            When provided, draws are tiled across clones sharing
+            the same (block, hh_id) so each clone gets identical
+            takeup decisions.
 
     Returns:
         Boolean array of shape (n_entities,).
@@ -219,8 +229,21 @@ def compute_block_takeup_for_entities(
         if entity_hh_ids is not None:
             for hh_id in np.unique(entity_hh_ids[blk_mask]):
                 hh_mask = blk_mask & (entity_hh_ids == hh_id)
+                n_total = int(hh_mask.sum())
                 rng = seeded_rng(var_name, salt=f"{block}:{int(hh_id)}")
-                draws[hh_mask] = rng.random(int(hh_mask.sum()))
+
+                if entity_clone_ids is not None and n_total > 1:
+                    clone_ids = entity_clone_ids[hh_mask]
+                    first_clone = clone_ids[0]
+                    n_per_clone = int((clone_ids == first_clone).sum())
+                    if n_per_clone < n_total:
+                        base_draws = rng.random(n_per_clone)
+                        n_copies = n_total // n_per_clone
+                        draws[hh_mask] = np.tile(base_draws, n_copies)
+                    else:
+                        draws[hh_mask] = rng.random(n_total)
+                else:
+                    draws[hh_mask] = rng.random(n_total)
         else:
             rng = seeded_rng(var_name, salt=str(block))
             draws[blk_mask] = rng.random(int(blk_mask.sum()))
@@ -281,6 +304,7 @@ def apply_block_takeup_to_arrays(
         ent_hh_idx = entity_hh_indices[entity]
         ent_blocks = hh_blocks[ent_hh_idx].astype(str)
         ent_hh_ids = hh_ids[ent_hh_idx]
+        ent_clone_ids = ent_hh_idx
 
         if precomputed_rates is not None and rate_key in precomputed_rates:
             rate_or_dict = precomputed_rates[rate_key]
@@ -291,6 +315,7 @@ def apply_block_takeup_to_arrays(
             rate_or_dict,
             ent_blocks,
             ent_hh_ids,
+            entity_clone_ids=ent_clone_ids,
         )
         result[var_name] = bools
 

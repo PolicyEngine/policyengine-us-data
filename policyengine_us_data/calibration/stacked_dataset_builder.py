@@ -97,9 +97,7 @@ if __name__ == "__main__":
     print(f"Found {len(cds_to_calibrate)} congressional districts")
 
     sim = Microsimulation(dataset=str(dataset_path))
-    n_hh = sim.calculate(
-        "household_id", map_to="household"
-    ).shape[0]
+    n_hh = sim.calculate("household_id", map_to="household").shape[0]
     del sim
     expected_length = len(cds_to_calibrate) * n_hh
 
@@ -113,9 +111,7 @@ if __name__ == "__main__":
     cal_blocks = np.load(args.calibration_blocks)
     print(f"Loaded calibration blocks: {len(cal_blocks):,}")
 
-    cd_geoid = np.repeat(
-        np.array(cds_to_calibrate, dtype=str), n_hh
-    )
+    cd_geoid = np.repeat(np.array(cds_to_calibrate, dtype=str), n_hh)
     geography = GeographyAssignment(
         block_geoid=cal_blocks,
         cd_geoid=cd_geoid,
@@ -131,9 +127,7 @@ if __name__ == "__main__":
         f"{geography.n_records} records"
     )
 
-    takeup_filter = [
-        spec["variable"] for spec in SIMPLE_TAKEUP_VARS
-    ]
+    takeup_filter = [spec["variable"] for spec in SIMPLE_TAKEUP_VARS]
 
     # === Dispatch ===
     if mode == "national":
@@ -159,9 +153,7 @@ if __name__ == "__main__":
 
     elif mode == "single-state":
         if not args.state:
-            raise ValueError(
-                "--state required with --mode single-state"
-            )
+            raise ValueError("--state required with --mode single-state")
         build_states(
             weights_path=weights_path,
             dataset_path=dataset_path,
@@ -184,13 +176,9 @@ if __name__ == "__main__":
 
     elif mode == "single-cd":
         if not args.cd:
-            raise ValueError(
-                "--cd required with --mode single-cd"
-            )
+            raise ValueError("--cd required with --mode single-cd")
         if args.cd not in cds_to_calibrate:
-            raise ValueError(
-                f"CD {args.cd} not in calibrated CDs"
-            )
+            raise ValueError(f"CD {args.cd} not in calibrated CDs")
         output_path = output_dir / f"{args.cd}.h5"
         print(f"\nCreating single CD dataset: {output_path}")
         build_h5(

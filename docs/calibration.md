@@ -386,7 +386,7 @@ Both paths call `seeded_rng(variable_name, salt=f"{block_geoid}:{household_id}")
 - Draws are stable across processes (no dependency on `hash()`)
 - Draws are stable when aggregating to any geography (state, CD, county)
 
-The affected variables are listed in `TAKEUP_AFFECTED_TARGETS` in `utils/takeup.py`: snap, aca_ptc, ssi, medicaid, tanf, head_start, early_head_start, and dc_property_tax_credit.
+All takeup variables in `SIMPLE_TAKEUP_VARS` (in `utils/takeup.py`) receive block-seeded draws in the H5 builder, including `would_file_taxes_voluntarily`. The calibration matrix uses `TAKEUP_AFFECTED_TARGETS` to identify which *target* variables need takeup-adjusted rows, but the H5 builder applies draws to all `SIMPLE_TAKEUP_VARS` so that every takeup variable gets proper block-seeded values.
 
 The `--skip-takeup-rerandomize` flag disables this rerandomization for faster iteration when you only care about non-takeup variables. Do not use it for production calibrations.
 

@@ -124,9 +124,8 @@ build-h5s:
 	python -m policyengine_us_data.calibration.publish_local_area \
 		--weights-path policyengine_us_data/storage/calibration/calibration_weights.npy \
 		--dataset-path policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5 \
-		--db-path policyengine_us_data/storage/calibration/policy_data.db \
-		--calibration-blocks policyengine_us_data/storage/calibration/stacked_blocks.npy \
-		--stacked-takeup policyengine_us_data/storage/calibration/stacked_takeup.npz \
+		--n-clones 430 \
+		--seed 42 \
 		--states-only
 
 validate-local:

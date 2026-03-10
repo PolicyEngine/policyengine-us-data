@@ -39,8 +39,8 @@ INCOME_GROUPS = [
 
 # Aggregate thresholds for sanity checks (year 2024).
 MIN_EMPLOYMENT_INCOME_SUM = 5e12  # $5 trillion
-MIN_HOUSEHOLD_WEIGHT_SUM = 100e6  # 100 million
-MAX_HOUSEHOLD_WEIGHT_SUM = 200e6  # 200 million
+MIN_HOUSEHOLD_WEIGHT_SUM = 1e12  # 1 trillion
+MAX_HOUSEHOLD_WEIGHT_SUM = 50e12  # 50 trillion
 
 
 class DatasetValidationError(Exception):

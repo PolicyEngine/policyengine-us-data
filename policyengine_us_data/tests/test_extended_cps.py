@@ -26,25 +26,17 @@ class TestVariableListConsistency:
 
     def test_no_overlap_imputed_and_cps_only(self):
         overlap = set(IMPUTED_VARIABLES) & set(CPS_ONLY_IMPUTED_VARIABLES)
-        assert (
-            overlap == set()
-        ), f"Variables in both IMPUTED and CPS_ONLY: {overlap}"
+        assert overlap == set(), f"Variables in both IMPUTED and CPS_ONLY: {overlap}"
 
     def test_no_overlap_overridden_and_cps_only(self):
-        overlap = set(OVERRIDDEN_IMPUTED_VARIABLES) & set(
-            CPS_ONLY_IMPUTED_VARIABLES
-        )
-        assert (
-            overlap == set()
-        ), f"Variables in both OVERRIDDEN and CPS_ONLY: {overlap}"
+        overlap = set(OVERRIDDEN_IMPUTED_VARIABLES) & set(CPS_ONLY_IMPUTED_VARIABLES)
+        assert overlap == set(), f"Variables in both OVERRIDDEN and CPS_ONLY: {overlap}"
 
     def test_overridden_is_subset_of_imputed(self):
-        not_in_imputed = set(OVERRIDDEN_IMPUTED_VARIABLES) - set(
-            IMPUTED_VARIABLES
+        not_in_imputed = set(OVERRIDDEN_IMPUTED_VARIABLES) - set(IMPUTED_VARIABLES)
+        assert not_in_imputed == set(), (
+            f"OVERRIDDEN vars not in IMPUTED: {not_in_imputed}"
         )
-        assert (
-            not_in_imputed == set()
-        ), f"OVERRIDDEN vars not in IMPUTED: {not_in_imputed}"
 
     def test_stage2_income_predictors_in_imputed(self):
         """Stage-2 income predictors must come from stage-1 imputation."""
@@ -71,9 +63,7 @@ class TestSequentialQRF:
         y2 = 0.3 * x + 0.5 * y1 + rng.normal(0, 3, n)
         return pd.DataFrame({"x": x, "y1": y1, "y2": y2})
 
-    def test_sequential_qrf_preserves_correlation(
-        self, correlated_training_data
-    ):
+    def test_sequential_qrf_preserves_correlation(self, correlated_training_data):
         """When y2 depends on y1, sequential QRF should produce
         y1-y2 correlation closer to training data than independent
         imputation would."""
@@ -96,13 +86,10 @@ class TestSequentialQRF:
         # The imputed y1 and y2 should be positively correlated
         corr = result["y1"].corr(result["y2"])
         assert corr > 0.5, (
-            f"Sequential QRF y1-y2 correlation = {corr:.3f}, "
-            f"expected > 0.5"
+            f"Sequential QRF y1-y2 correlation = {corr:.3f}, expected > 0.5"
         )
 
-    def test_single_call_vs_separate_calls_differ(
-        self, correlated_training_data
-    ):
+    def test_single_call_vs_separate_calls_differ(self, correlated_training_data):
         """Imputing y1 and y2 in a single sequential call should
         produce different y2 values than imputing them separately
         (the old batched approach)."""

@@ -135,26 +135,18 @@ def _impute_cps_only_variables(
     from microimpute.models.qrf import QRF
     from policyengine_us import Microsimulation
 
-    all_predictors = (
-        CPS_STAGE2_DEMOGRAPHIC_PREDICTORS + CPS_STAGE2_INCOME_PREDICTORS
-    )
+    all_predictors = CPS_STAGE2_DEMOGRAPHIC_PREDICTORS + CPS_STAGE2_INCOME_PREDICTORS
 
     # Load original (non-doubled) CPS for training data.
     cps_sim = Microsimulation(dataset=dataset_path)
-    X_train = cps_sim.calculate_dataframe(
-        all_predictors + CPS_ONLY_IMPUTED_VARIABLES
-    )
+    X_train = cps_sim.calculate_dataframe(all_predictors + CPS_ONLY_IMPUTED_VARIABLES)
     del cps_sim
 
     available_outputs = [
-        col
-        for col in CPS_ONLY_IMPUTED_VARIABLES
-        if col in X_train.columns
+        col for col in CPS_ONLY_IMPUTED_VARIABLES if col in X_train.columns
     ]
     missing_outputs = [
-        col
-        for col in CPS_ONLY_IMPUTED_VARIABLES
-        if col not in X_train.columns
+        col for col in CPS_ONLY_IMPUTED_VARIABLES if col not in X_train.columns
     ]
     if missing_outputs:
         logger.warning(

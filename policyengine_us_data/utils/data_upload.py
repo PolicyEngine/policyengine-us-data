@@ -33,23 +33,57 @@ def upload_data_files(
     gcs_bucket_name: str = "policyengine-us-data",
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
-    version: str = None,
-):
+    version: Optional[str] = None,
+) -> None:
+    from policyengine_us_data.utils.gcs_version import (
+        GCSVersionInfo,
+        HFVersionInfo,
+        VersionManifest,
+        upload_manifest,
+    )
+    from datetime import datetime, timezone
+
     if version is None:
         version = metadata.version("policyengine-us-data")
 
-    upload_files_to_hf(
+    hf_commit = upload_files_to_hf(
         files=files,
         version=version,
         hf_repo_name=hf_repo_name,
         hf_repo_type=hf_repo_type,
     )
 
-    upload_files_to_gcs(
+    generations = upload_files_to_gcs(
         files=files,
         version=version,
         gcs_bucket_name=gcs_bucket_name,
     )
+
+    # Build and upload version manifest
+    credentials, project_id = google.auth.default()
+    storage_client = storage.Client(
+        credentials=credentials, project=project_id
+    )
+    bucket = storage_client.bucket(gcs_bucket_name)
+
+    manifest = VersionManifest(
+        version=version,
+        created_at=datetime.now(timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        hf=HFVersionInfo(repo=hf_repo_name, commit=hf_commit),
+        gcs=GCSVersionInfo(
+            bucket=gcs_bucket_name,
+            generations=generations,
+        ),
+    )
+    upload_manifest(
+        bucket,
+        manifest,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+    )
+    logging.info(f"Created version manifest for {version}.")
 
 
 def upload_files_to_hf(
@@ -57,9 +91,12 @@ def upload_files_to_hf(
     version: str,
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
-):
-    """
-    Upload files to Hugging Face repository and tag the commit with the version.
+) -> str:
+    """Upload files to Hugging Face repository and tag the
+    commit with the version.
+
+    Returns:
+        The commit SHA (oid) of the created commit.
     """
     api = HfApi()
     hf_operations = []
@@ -86,7 +123,7 @@ def upload_files_to_hf(
     )
     logging.info(f"Uploaded files to Hugging Face repository {hf_repo_name}.")
 
-    # Tag commit with version
+    # Tag commit with version (convenience for HF web UI)
     try:
         api.create_tag(
             token=token,
@@ -106,31 +143,49 @@ def upload_files_to_hf(
         else:
             raise
 
+    return commit_info.oid
+
 
 def upload_files_to_gcs(
     files: List[str],
     version: str,
     gcs_bucket_name: str = "policyengine-us-data",
-):
-    """
-    Upload files to Google Cloud Storage and set metadata with the version.
+) -> Dict[str, int]:
+    """Upload files to Google Cloud Storage and set metadata
+    with the version.
+
+    Returns:
+        Dict mapping blob name to its GCS generation number.
     """
     credentials, project_id = google.auth.default()
-    storage_client = storage.Client(credentials=credentials, project=project_id)
+    storage_client = storage.Client(
+        credentials=credentials, project=project_id
+    )
     bucket = storage_client.bucket(gcs_bucket_name)
 
+    generations: Dict[str, int] = {}
     for file_path in files:
         file_path = Path(file_path)
         blob = bucket.blob(file_path.name)
         blob.upload_from_filename(file_path)
-        logging.info(f"Uploaded {file_path.name} to GCS bucket {gcs_bucket_name}.")
+        logging.info(
+            f"Uploaded {file_path.name} to GCS bucket " f"{gcs_bucket_name}."
+        )
 
         # Set metadata
         blob.metadata = {"version": version}
         blob.patch()
+
+        # Read back generation number for manifest
+        blob.reload()
+        generations[file_path.name] = blob.generation
         logging.info(
-            f"Set metadata for {file_path.name} in GCS bucket {gcs_bucket_name}."
+            f"Set metadata for {file_path.name} in GCS "
+            f"bucket {gcs_bucket_name} "
+            f"(generation {blob.generation})."
         )
+
+    return generations
 
 
 def upload_local_area_file(
@@ -141,15 +196,19 @@ def upload_local_area_file(
     hf_repo_type: str = "model",
     version: str = None,
     skip_hf: bool = False,
-):
-    """
-    Upload a single local area H5 file to a subdirectory (states/ or districts/).
+) -> int:
+    """Upload a single local area H5 file to a subdirectory
+    (states/ or districts/).
 
-    Uploads to both GCS and Hugging Face with the file placed in the specified
-    subdirectory.
+    Uploads to both GCS and Hugging Face with the file placed
+    in the specified subdirectory.
 
     Args:
-        skip_hf: If True, skip HuggingFace upload (for batched uploads later)
+        skip_hf: If True, skip HuggingFace upload (for batched
+            uploads later)
+
+    Returns:
+        The GCS generation number of the uploaded blob.
     """
     if version is None:
         version = metadata.version("policyengine-us-data")
@@ -160,7 +219,9 @@ def upload_local_area_file(
 
     # Upload to GCS with subdirectory
     credentials, project_id = google.auth.default()
-    storage_client = storage.Client(credentials=credentials, project=project_id)
+    storage_client = storage.Client(
+        credentials=credentials, project=project_id
+    )
     bucket = storage_client.bucket(gcs_bucket_name)
 
     blob_name = f"{subdirectory}/{file_path.name}"
@@ -168,10 +229,15 @@ def upload_local_area_file(
     blob.upload_from_filename(file_path)
     blob.metadata = {"version": version}
     blob.patch()
-    logging.info(f"Uploaded {blob_name} to GCS bucket {gcs_bucket_name}.")
+    blob.reload()
+    generation = blob.generation
+    logging.info(
+        f"Uploaded {blob_name} to GCS bucket "
+        f"{gcs_bucket_name} (generation {generation})."
+    )
 
     if skip_hf:
-        return
+        return generation
 
     # Upload to Hugging Face with subdirectory
     token = os.environ.get("HUGGING_FACE_TOKEN")
@@ -182,11 +248,16 @@ def upload_local_area_file(
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,
         token=token,
-        commit_message=f"Upload {subdirectory}/{file_path.name} for version {version}",
+        commit_message=(
+            f"Upload {subdirectory}/{file_path.name} " f"for version {version}"
+        ),
     )
     logging.info(
-        f"Uploaded {subdirectory}/{file_path.name} to Hugging Face {hf_repo_name}."
+        f"Uploaded {subdirectory}/{file_path.name} to "
+        f"Hugging Face {hf_repo_name}."
     )
+
+    return generation
 
 
 def upload_local_area_batch_to_hf(
@@ -330,7 +401,9 @@ def upload_to_staging_hf(
             f"Uploaded batch {i // batch_size + 1}: {len(operations)} files to staging/"
         )
 
-    logging.info(f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace")
+    logging.info(
+        f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace"
+    )
     return total_uploaded
 
 

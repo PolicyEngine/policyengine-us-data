@@ -5,13 +5,11 @@ from huggingface_hub import (
     CommitOperationCopy,
     CommitOperationDelete,
 )
-from huggingface_hub.errors import RevisionNotFoundError
 from google.cloud import storage
 from pathlib import Path
 from importlib import metadata
 import google.auth
 import httpx
-import json
 import logging
 import os
 
@@ -146,9 +144,7 @@ def upload_files_to_gcs(
         Dict mapping blob name to its GCS generation number.
     """
     credentials, project_id = google.auth.default()
-    storage_client = storage.Client(
-        credentials=credentials, project=project_id
-    )
+    storage_client = storage.Client(credentials=credentials, project=project_id)
     bucket = storage_client.bucket(gcs_bucket_name)
 
     generations: Dict[str, int] = {}
@@ -156,9 +152,7 @@ def upload_files_to_gcs(
         file_path = Path(file_path)
         blob = bucket.blob(file_path.name)
         blob.upload_from_filename(file_path)
-        logging.info(
-            f"Uploaded {file_path.name} to GCS bucket " f"{gcs_bucket_name}."
-        )
+        logging.info(f"Uploaded {file_path.name} to GCS bucket {gcs_bucket_name}.")
 
         # Set metadata
         blob.metadata = {"version": version}
@@ -207,9 +201,7 @@ def upload_local_area_file(
 
     # Upload to GCS with subdirectory
     credentials, project_id = google.auth.default()
-    storage_client = storage.Client(
-        credentials=credentials, project=project_id
-    )
+    storage_client = storage.Client(credentials=credentials, project=project_id)
     bucket = storage_client.bucket(gcs_bucket_name)
 
     blob_name = f"{subdirectory}/{file_path.name}"
@@ -237,12 +229,11 @@ def upload_local_area_file(
         repo_type=hf_repo_type,
         token=token,
         commit_message=(
-            f"Upload {subdirectory}/{file_path.name} " f"for version {version}"
+            f"Upload {subdirectory}/{file_path.name} for version {version}"
         ),
     )
     logging.info(
-        f"Uploaded {subdirectory}/{file_path.name} to "
-        f"Hugging Face {hf_repo_name}."
+        f"Uploaded {subdirectory}/{file_path.name} to Hugging Face {hf_repo_name}."
     )
 
     return generation
@@ -389,9 +380,7 @@ def upload_to_staging_hf(
             f"Uploaded batch {i // batch_size + 1}: {len(operations)} files to staging/"
         )
 
-    logging.info(
-        f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace"
-    )
+    logging.info(f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace")
     return total_uploaded
 
 

@@ -7,7 +7,6 @@ import pytest
 from google.api_core.exceptions import NotFound
 
 from policyengine_us_data.utils.version_manifest import (
-    HFVersionInfo,
     GCSVersionInfo,
     VersionManifest,
     VersionRegistry,
@@ -22,11 +21,6 @@ from policyengine_us_data.utils.version_manifest import (
     get_data_version,
 )
 from policyengine_us_data.tests.fixtures.test_version_manifest import (
-    sample_generations,
-    sample_hf_info,
-    sample_manifest,
-    sample_registry,
-    mock_bucket,
     make_mock_blob,
     setup_bucket_with_registry,
 )
@@ -46,10 +40,7 @@ class TestVersionManifestSerialization:
         assert result["hf"]["repo"] == ("policyengine/policyengine-us-data")
         assert result["hf"]["commit"] == "abc123def456"
         assert result["gcs"]["bucket"] == "policyengine-us-data"
-        assert (
-            result["gcs"]["generations"]["enhanced_cps_2024.h5"]
-            == 1710203948123456
-        )
+        assert result["gcs"]["generations"]["enhanced_cps_2024.h5"] == 1710203948123456
 
     def test_from_dict(self, sample_manifest):
         data = {
@@ -73,9 +64,7 @@ class TestVersionManifestSerialization:
         assert result.version == "1.72.3"
         assert result.hf.commit == "abc123def456"
         assert result.hf.repo == ("policyengine/policyengine-us-data")
-        assert (
-            result.gcs.generations["enhanced_cps_2024.h5"] == 1710203948123456
-        )
+        assert result.gcs.generations["enhanced_cps_2024.h5"] == 1710203948123456
         assert result.gcs.bucket == "policyengine-us-data"
 
     def test_roundtrip(self, sample_manifest):
@@ -128,9 +117,7 @@ class TestVersionManifestSerialization:
         assert data["special_operation"] == "roll-back"
         assert data["roll_back_version"] == "1.70.1"
 
-    def test_special_operation_roundtrip(
-        self, sample_generations, sample_hf_info
-    ):
+    def test_special_operation_roundtrip(self, sample_generations, sample_hf_info):
         manifest = VersionManifest(
             version="1.73.0",
             created_at="2026-03-10T15:00:00Z",
@@ -477,9 +464,7 @@ class TestGetManifest:
         assert isinstance(result, VersionManifest)
         assert result.version == "1.72.3"
         assert result.hf.commit == "abc123def456"
-        assert (
-            result.gcs.generations["enhanced_cps_2024.h5"] == 1710203948123456
-        )
+        assert result.gcs.generations["enhanced_cps_2024.h5"] == 1710203948123456
 
     @patch(f"{_MOD}._get_gcs_bucket")
     def test_nonexistent_version(
@@ -730,8 +715,8 @@ class TestRollback:
 
 
 class TestUploadFilesToGcsReturnsGenerations:
-    @patch("policyengine_us_data.utils.data_upload." "google.auth")
-    @patch("policyengine_us_data.utils.data_upload." "storage")
+    @patch("policyengine_us_data.utils.data_upload.google.auth")
+    @patch("policyengine_us_data.utils.data_upload.storage")
     def test_returns_generations(self, mock_storage, mock_auth, tmp_path):
         from policyengine_us_data.utils.data_upload import (
             upload_files_to_gcs,
@@ -775,8 +760,8 @@ class TestUploadFilesToGcsReturnsGenerations:
 class TestEndToEndUploadCreatesRegistry:
     @patch(f"{_MOD}._upload_registry_to_hf")
     @patch(f"{_MOD}._get_gcs_bucket")
-    @patch("policyengine_us_data.utils.data_upload." "google.auth")
-    @patch("policyengine_us_data.utils.data_upload." "storage")
+    @patch("policyengine_us_data.utils.data_upload.google.auth")
+    @patch("policyengine_us_data.utils.data_upload.storage")
     @patch("policyengine_us_data.utils.data_upload.HfApi")
     @patch("policyengine_us_data.utils.data_upload.os")
     def test_creates_registry(
@@ -870,7 +855,7 @@ class TestGetDataManifest:
                     "version": "1.72.3",
                     "created_at": ("2026-03-10T14:30:00Z"),
                     "hf": {
-                        "repo": ("policyengine/" "policyengine-us-data"),
+                        "repo": ("policyengine/policyengine-us-data"),
                         "commit": "abc123",
                     },
                     "gcs": {

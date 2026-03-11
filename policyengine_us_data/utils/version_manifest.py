@@ -200,7 +200,7 @@ def _upload_registry_to_gcs(
     data = json.dumps(registry.to_dict(), indent=2)
     blob = bucket.blob(REGISTRY_BLOB)
     blob.upload_from_string(data, content_type="application/json")
-    logging.info("Uploaded registry to GCS " f"(current={registry.current}).")
+    logging.info(f"Uploaded registry to GCS (current={registry.current}).")
 
 
 def _upload_registry_to_hf(
@@ -211,9 +211,7 @@ def _upload_registry_to_hf(
     api = HfApi()
     data = json.dumps(registry.to_dict(), indent=2)
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         f.write(data)
         tmp_path = f.name
 
@@ -224,13 +222,9 @@ def _upload_registry_to_hf(
             repo_id=HF_REPO_NAME,
             repo_type=HF_REPO_TYPE,
             token=token,
-            commit_message=(
-                "Update version registry " f"(current={registry.current})"
-            ),
+            commit_message=(f"Update version registry (current={registry.current})"),
         )
-        logging.info(
-            f"Uploaded {REGISTRY_BLOB} to " f"HF repo {HF_REPO_NAME}."
-        )
+        logging.info(f"Uploaded {REGISTRY_BLOB} to HF repo {HF_REPO_NAME}.")
     finally:
         os.unlink(tmp_path)
 
@@ -305,9 +299,7 @@ def _restore_hf_commit(
             repo_id=HF_REPO_NAME,
             operations=operations,
             repo_type=HF_REPO_TYPE,
-            commit_message=(
-                f"Roll back to {target_version} " f"as {new_version}"
-            ),
+            commit_message=(f"Roll back to {target_version} as {new_version}"),
         )
 
     try:
@@ -320,9 +312,7 @@ def _restore_hf_commit(
         )
     except Exception as e:
         if "already exists" in str(e) or "409" in str(e):
-            logging.warning(
-                f"Tag {new_version} already exists. " "Skipping tag creation."
-            )
+            logging.warning(f"Tag {new_version} already exists. Skipping tag creation.")
         else:
             raise
 
@@ -355,8 +345,7 @@ def build_manifest(
         blob = bucket.get_blob(name)
         if blob is None:
             raise ValueError(
-                f"Blob '{name}' not found in bucket "
-                f"'{bucket.name}' after upload."
+                f"Blob '{name}' not found in bucket '{bucket.name}' after upload."
             )
         generations[name] = blob.generation
 
@@ -505,19 +494,13 @@ def rollback(
 
     new_gens = _restore_gcs_generations(bucket, old_manifest.gcs.generations)
     hf_commit = (
-        _restore_hf_commit(old_manifest, new_version)
-        if old_manifest.hf
-        else None
+        _restore_hf_commit(old_manifest, new_version) if old_manifest.hf else None
     )
 
     manifest = VersionManifest(
         version=new_version,
         created_at=_utc_now_iso(),
-        hf=(
-            HFVersionInfo(repo=HF_REPO_NAME, commit=hf_commit)
-            if hf_commit
-            else None
-        ),
+        hf=(HFVersionInfo(repo=HF_REPO_NAME, commit=hf_commit) if hf_commit else None),
         gcs=GCSVersionInfo(
             bucket=GCS_BUCKET_NAME,
             generations=new_gens,

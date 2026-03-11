@@ -9,6 +9,10 @@ from policyengine_core.data import Dataset
 from policyengine_us_data.datasets.cps.cps import *  # noqa: F403
 from policyengine_us_data.datasets.puf import *  # noqa: F403
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.retirement_limits import (
+    get_retirement_limits,
+    get_se_pension_limits,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,17 +26,13 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "tax_exempt_401k_distributions",
     "taxable_403b_distributions",
     "tax_exempt_403b_distributions",
-    "roth_ira_distributions",
-    "regular_ira_distributions",
     "keogh_distributions",
     "taxable_sep_distributions",
     "tax_exempt_sep_distributions",
-    "other_type_retirement_account_distributions",
-    "taxable_private_pension_income",
-    "tax_exempt_private_pension_income",
     # Retirement contributions
     "traditional_401k_contributions",
     "roth_401k_contributions",
+    "traditional_ira_contributions",
     "roth_ira_contributions",
     "self_employed_pension_contributions",
     # Social Security sub-components
@@ -198,10 +198,137 @@ def _impute_cps_only_variables(
     for var in missing_outputs:
         predictions[var] = 0
 
+    # Apply domain constraints to retirement and SS variables.
+    predictions = _apply_post_processing(
+        predictions, X_test, time_period, data
+    )
+
     logger.info(
         "Stage-2 CPS-only imputation took %.2fs total",
         time.time() - total_start,
     )
+    return predictions
+
+
+def apply_retirement_constraints(predictions, X_test, time_period):
+    """Enforce IRS contribution limits on retirement variable predictions.
+
+    Args:
+        predictions: DataFrame of QRF predictions for retirement
+            contribution variables.
+        X_test: DataFrame with at least ``age``,
+            ``employment_income``, and ``self_employment_income``.
+        time_period: Tax year (int) for IRS limit look-up.
+
+    Returns:
+        DataFrame with constrained values (same columns).
+    """
+    limits = get_retirement_limits(time_period)
+    se_limits = get_se_pension_limits(time_period)
+
+    age = X_test["age"].values
+    catch_up = age >= 50
+    emp_income = X_test["employment_income"].values
+    se_income = X_test["self_employment_income"].values
+
+    limit_401k = limits["401k"] + catch_up * limits["401k_catch_up"]
+    limit_ira = limits["ira"] + catch_up * limits["ira_catch_up"]
+    se_pension_cap = np.minimum(
+        se_income * se_limits["se_pension_rate"],
+        se_limits["se_pension_dollar_limit"],
+    )
+
+    # Explicit mapping: variable -> (cap array, zero_mask or None).
+    _CONSTRAINT_MAP = {
+        "traditional_401k_contributions": (limit_401k, emp_income == 0),
+        "roth_401k_contributions": (limit_401k, emp_income == 0),
+        "traditional_ira_contributions": (limit_ira, None),
+        "roth_ira_contributions": (limit_ira, None),
+        "self_employed_pension_contributions": (
+            se_pension_cap,
+            se_income == 0,
+        ),
+    }
+
+    result = predictions.clip(lower=0)
+    for var in result.columns:
+        cap, zero_mask = _CONSTRAINT_MAP.get(var, (None, None))
+        if cap is not None:
+            result[var] = np.minimum(result[var].values, cap)
+        if zero_mask is not None:
+            result.loc[zero_mask, var] = 0
+
+    return result
+
+
+def reconcile_ss_subcomponents(predictions, total_ss):
+    """Normalize Social Security sub-components to sum to total.
+
+    Args:
+        predictions: DataFrame with columns for each SS
+            sub-component (retirement, disability, dependents,
+            survivors).
+        total_ss: numpy array of total social_security per record.
+
+    Returns:
+        DataFrame with reconciled dollar values.
+    """
+    values = np.maximum(predictions.values, 0)
+    row_sums = values.sum(axis=1)
+    positive_mask = total_ss > 0
+
+    shares = np.zeros_like(values)
+    nonzero_rows = row_sums > 0
+    both = positive_mask & nonzero_rows
+    shares[both] = values[both] / row_sums[both, np.newaxis]
+    # If row_sum == 0 but total_ss > 0, distribute equally.
+    equal_rows = positive_mask & ~nonzero_rows
+    shares[equal_rows] = 1.0 / values.shape[1]
+
+    out = np.where(
+        positive_mask[:, np.newaxis],
+        shares * total_ss[:, np.newaxis],
+        0.0,
+    )
+    return pd.DataFrame(out, columns=predictions.columns)
+
+
+_RETIREMENT_VARS = {
+    "traditional_401k_contributions",
+    "roth_401k_contributions",
+    "traditional_ira_contributions",
+    "roth_ira_contributions",
+    "self_employed_pension_contributions",
+}
+
+_SS_SUBCOMPONENT_VARS = {
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_dependents",
+    "social_security_survivors",
+}
+
+
+def _apply_post_processing(predictions, X_test, time_period, data):
+    """Apply retirement constraints and SS reconciliation."""
+    ret_cols = [c for c in predictions.columns if c in _RETIREMENT_VARS]
+    if ret_cols:
+        constrained = apply_retirement_constraints(
+            predictions[ret_cols], X_test, time_period
+        )
+        for col in ret_cols:
+            predictions[col] = constrained[col]
+
+    ss_cols = [c for c in predictions.columns if c in _SS_SUBCOMPONENT_VARS]
+    if ss_cols:
+        n_half = len(data["person_id"][time_period]) // 2
+        total_ss = data["social_security"][time_period][n_half:]
+        reconciled = reconcile_ss_subcomponents(
+            predictions[ss_cols], total_ss
+        )
+        for col in ss_cols:
+            predictions[col] = reconciled[col]
+
     return predictions
 
 

@@ -35,13 +35,15 @@ def upload_data_files(
     hf_repo_type: str = "model",
     version: Optional[str] = None,
 ) -> None:
-    from policyengine_us_data.utils.gcs_version import (
+    from policyengine_us_data.utils.version_manifest import (
+        GCS_BUCKET_NAME,
+        HF_REPO_NAME,
         GCSVersionInfo,
         HFVersionInfo,
         VersionManifest,
         upload_manifest,
+        _utc_now_iso,
     )
-    from datetime import datetime, timezone
 
     if version is None:
         version = metadata.version("policyengine-us-data")
@@ -59,30 +61,16 @@ def upload_data_files(
         gcs_bucket_name=gcs_bucket_name,
     )
 
-    # Build and upload version manifest
-    credentials, project_id = google.auth.default()
-    storage_client = storage.Client(
-        credentials=credentials, project=project_id
-    )
-    bucket = storage_client.bucket(gcs_bucket_name)
-
     manifest = VersionManifest(
         version=version,
-        created_at=datetime.now(timezone.utc)
-        .isoformat()
-        .replace("+00:00", "Z"),
-        hf=HFVersionInfo(repo=hf_repo_name, commit=hf_commit),
+        created_at=_utc_now_iso(),
+        hf=HFVersionInfo(repo=HF_REPO_NAME, commit=hf_commit),
         gcs=GCSVersionInfo(
-            bucket=gcs_bucket_name,
+            bucket=GCS_BUCKET_NAME,
             generations=generations,
         ),
     )
-    upload_manifest(
-        bucket,
-        manifest,
-        hf_repo_name=hf_repo_name,
-        hf_repo_type=hf_repo_type,
-    )
+    upload_manifest(manifest)
     logging.info(f"Created version manifest for {version}.")
 
 

@@ -1,4 +1,4 @@
-"""Tests for GCS version registry system."""
+"""Tests for version manifest registry system."""
 
 import json
 from unittest.mock import MagicMock, patch, call
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch, call
 import pytest
 from google.api_core.exceptions import NotFound
 
-from policyengine_us_data.utils.gcs_version import (
+from policyengine_us_data.utils.version_manifest import (
     HFVersionInfo,
     GCSVersionInfo,
     VersionManifest,
@@ -21,7 +21,7 @@ from policyengine_us_data.utils.gcs_version import (
     get_data_manifest,
     get_data_version,
 )
-from policyengine_us_data.tests.fixtures.test_gcs_version import (
+from policyengine_us_data.tests.fixtures.test_version_manifest import (
     sample_generations,
     sample_hf_info,
     sample_manifest,
@@ -30,6 +30,9 @@ from policyengine_us_data.tests.fixtures.test_gcs_version import (
     make_mock_blob,
     setup_bucket_with_registry,
 )
+
+_MOD = "policyengine_us_data.utils.version_manifest"
+
 
 # -- VersionManifest serialization tests ---------------------------
 
@@ -53,13 +56,13 @@ class TestVersionManifestSerialization:
             "version": "1.72.3",
             "created_at": "2026-03-10T14:30:00Z",
             "hf": {
-                "repo": "policyengine/policyengine-us-data",
+                "repo": ("policyengine/policyengine-us-data"),
                 "commit": "abc123def456",
             },
             "gcs": {
                 "bucket": "policyengine-us-data",
                 "generations": {
-                    "enhanced_cps_2024.h5": 1710203948123456,
+                    "enhanced_cps_2024.h5": (1710203948123456),
                     "cps_2024.h5": 1710203948234567,
                     "states/AL.h5": 1710203948345678,
                 },
@@ -79,13 +82,11 @@ class TestVersionManifestSerialization:
         roundtripped = VersionManifest.from_dict(sample_manifest.to_dict())
 
         assert roundtripped.version == sample_manifest.version
-        assert roundtripped.created_at == (sample_manifest.created_at)
+        assert roundtripped.created_at == sample_manifest.created_at
         assert roundtripped.hf.repo == sample_manifest.hf.repo
-        assert roundtripped.hf.commit == (sample_manifest.hf.commit)
-        assert roundtripped.gcs.bucket == (sample_manifest.gcs.bucket)
-        assert roundtripped.gcs.generations == (
-            sample_manifest.gcs.generations
-        )
+        assert roundtripped.hf.commit == sample_manifest.hf.commit
+        assert roundtripped.gcs.bucket == sample_manifest.gcs.bucket
+        assert roundtripped.gcs.generations == sample_manifest.gcs.generations
 
     def test_without_hf(self, sample_generations):
         manifest = VersionManifest(
@@ -145,7 +146,9 @@ class TestVersionManifestSerialization:
         assert roundtripped.special_operation == "roll-back"
         assert roundtripped.roll_back_version == "1.70.1"
 
-    def test_regular_manifest_has_no_special_operation(self):
+    def test_regular_manifest_has_no_special_operation(
+        self,
+    ):
         data = {
             "version": "1.72.3",
             "created_at": "2026-03-10T14:30:00Z",
@@ -185,7 +188,7 @@ class TestVersionRegistrySerialization:
 
     def test_roundtrip(self, sample_registry):
         roundtripped = VersionRegistry.from_dict(sample_registry.to_dict())
-        assert roundtripped.current == (sample_registry.current)
+        assert roundtripped.current == sample_registry.current
         assert len(roundtripped.versions) == len(sample_registry.versions)
         assert roundtripped.versions[0].version == "1.72.3"
 
@@ -211,7 +214,9 @@ class TestVersionRegistrySerialization:
 
 
 class TestBuildManifest:
-    def test_structure(self, mock_bucket):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_structure(self, mock_get_bucket, mock_bucket):
+        mock_get_bucket.return_value = mock_bucket
         blob_names = [
             "file_a.h5",
             "file_b.h5",
@@ -223,7 +228,7 @@ class TestBuildManifest:
             make_mock_blob(300),
         ]
 
-        result = build_manifest(mock_bucket, "1.72.3", blob_names)
+        result = build_manifest("1.72.3", blob_names)
 
         assert isinstance(result, VersionManifest)
         assert result.version == "1.72.3"
@@ -236,7 +241,9 @@ class TestBuildManifest:
         assert result.gcs.bucket == "policyengine-us-data"
         assert result.hf is None
 
-    def test_with_subdirectories(self, mock_bucket):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_with_subdirectories(self, mock_get_bucket, mock_bucket):
+        mock_get_bucket.return_value = mock_bucket
         blob_names = [
             "states/AL.h5",
             "districts/CA-01.h5",
@@ -246,18 +253,24 @@ class TestBuildManifest:
             make_mock_blob(222),
         ]
 
-        result = build_manifest(mock_bucket, "1.72.3", blob_names)
+        result = build_manifest("1.72.3", blob_names)
 
         assert "states/AL.h5" in result.gcs.generations
         assert "districts/CA-01.h5" in result.gcs.generations
         assert result.gcs.generations["states/AL.h5"] == 111
         assert result.gcs.generations["districts/CA-01.h5"] == 222
 
-    def test_with_hf_info(self, mock_bucket, sample_hf_info):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_with_hf_info(
+        self,
+        mock_get_bucket,
+        mock_bucket,
+        sample_hf_info,
+    ):
+        mock_get_bucket.return_value = mock_bucket
         mock_bucket.get_blob.return_value = make_mock_blob(999)
 
         result = build_manifest(
-            mock_bucket,
             "1.72.3",
             ["file.h5"],
             hf_info=sample_hf_info,
@@ -267,11 +280,13 @@ class TestBuildManifest:
         assert result.hf.commit == "abc123def456"
         assert result.hf.repo == ("policyengine/policyengine-us-data")
 
-    def test_missing_blob_raises(self, mock_bucket):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_missing_blob_raises(self, mock_get_bucket, mock_bucket):
+        mock_get_bucket.return_value = mock_bucket
         mock_bucket.get_blob.return_value = None
 
         with pytest.raises(ValueError, match="not found"):
-            build_manifest(mock_bucket, "1.72.3", ["missing.h5"])
+            build_manifest("1.72.3", ["missing.h5"])
 
 
 # -- upload_manifest tests -----------------------------------------
@@ -280,10 +295,6 @@ class TestBuildManifest:
 class TestUploadManifest:
     def _setup_empty_registry(self, bucket):
         """Mock bucket with no existing registry."""
-        blob = MagicMock()
-        blob.download_as_text.side_effect = NotFound("Not found")
-        # First call reads existing registry (NotFound),
-        # subsequent calls are for writing
         written = {}
 
         def mock_blob(name):
@@ -301,10 +312,19 @@ class TestUploadManifest:
         bucket.blob.side_effect = mock_blob
         return written
 
-    def test_writes_registry_to_gcs(self, mock_bucket, sample_manifest):
+    @patch(f"{_MOD}._upload_registry_to_hf")
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_writes_registry_to_gcs(
+        self,
+        mock_get_bucket,
+        mock_hf,
+        mock_bucket,
+        sample_manifest,
+    ):
+        mock_get_bucket.return_value = mock_bucket
         written = self._setup_empty_registry(mock_bucket)
 
-        upload_manifest(mock_bucket, sample_manifest)
+        upload_manifest(sample_manifest)
 
         assert "version_manifest.json" in written
         blob = written["version_manifest.json"]
@@ -315,10 +335,19 @@ class TestUploadManifest:
         assert len(registry_data["versions"]) == 1
         assert registry_data["versions"][0]["version"] == "1.72.3"
 
-    def test_includes_hf_commit(self, mock_bucket, sample_manifest):
+    @patch(f"{_MOD}._upload_registry_to_hf")
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_includes_hf_commit(
+        self,
+        mock_get_bucket,
+        mock_hf,
+        mock_bucket,
+        sample_manifest,
+    ):
+        mock_get_bucket.return_value = mock_bucket
         written = self._setup_empty_registry(mock_bucket)
 
-        upload_manifest(mock_bucket, sample_manifest)
+        upload_manifest(sample_manifest)
 
         blob = written["version_manifest.json"]
         written_json = blob.upload_from_string.call_args[0][0]
@@ -326,8 +355,16 @@ class TestUploadManifest:
 
         assert registry_data["versions"][0]["hf"]["commit"] == "abc123def456"
 
-    def test_appends_to_existing_registry(self, mock_bucket, sample_manifest):
-        # Pre-populate with an older version
+    @patch(f"{_MOD}._upload_registry_to_hf")
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_appends_to_existing_registry(
+        self,
+        mock_get_bucket,
+        mock_hf,
+        mock_bucket,
+        sample_manifest,
+    ):
+        mock_get_bucket.return_value = mock_bucket
         older = VersionManifest(
             version="1.72.2",
             created_at="2026-03-09T10:00:00Z",
@@ -350,7 +387,7 @@ class TestUploadManifest:
 
         mock_bucket.blob.side_effect = mock_blob
 
-        upload_manifest(mock_bucket, sample_manifest)
+        upload_manifest(sample_manifest)
 
         blob = written["version_manifest.json"]
         written_json = blob.upload_from_string.call_args[0][0]
@@ -358,65 +395,65 @@ class TestUploadManifest:
 
         assert registry_data["current"] == "1.72.3"
         assert len(registry_data["versions"]) == 2
-        # Most recent first
         assert registry_data["versions"][0]["version"] == "1.72.3"
         assert registry_data["versions"][1]["version"] == "1.72.2"
 
-    @patch("policyengine_us_data.utils.gcs_version.os")
-    @patch("policyengine_us_data.utils.gcs_version.HfApi")
-    def test_uploads_to_hf_when_repo_provided(
+    @patch(f"{_MOD}.os")
+    @patch(f"{_MOD}.HfApi")
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_always_uploads_to_hf(
         self,
+        mock_get_bucket,
         mock_hf_api_cls,
         mock_os,
         mock_bucket,
         sample_manifest,
     ):
+        mock_get_bucket.return_value = mock_bucket
         mock_os.environ.get.return_value = "fake_token"
         mock_os.unlink = MagicMock()
         mock_api = MagicMock()
         mock_hf_api_cls.return_value = mock_api
 
-        # Mock GCS read (empty registry)
         blob = MagicMock()
         blob.download_as_text.side_effect = NotFound("Not found")
         mock_bucket.blob.return_value = blob
 
-        upload_manifest(
-            mock_bucket,
-            sample_manifest,
-            hf_repo_name=("policyengine/policyengine-us-data"),
-        )
+        upload_manifest(sample_manifest)
 
         mock_api.upload_file.assert_called_once()
         call_kwargs = mock_api.upload_file.call_args.kwargs
         assert call_kwargs["path_in_repo"] == ("version_manifest.json")
         assert call_kwargs["repo_id"] == ("policyengine/policyengine-us-data")
 
-    def test_skips_hf_when_no_repo(self, mock_bucket, sample_manifest):
-        self._setup_empty_registry(mock_bucket)
-
-        # No hf_repo_name — should not raise or call HF
-        upload_manifest(mock_bucket, sample_manifest)
-
 
 # -- get_current_version tests -------------------------------------
 
 
 class TestGetCurrentVersion:
-    def test_returns_version(self, mock_bucket, sample_registry):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_returns_version(
+        self,
+        mock_get_bucket,
+        mock_bucket,
+        sample_registry,
+    ):
+        mock_get_bucket.return_value = mock_bucket
         setup_bucket_with_registry(mock_bucket, sample_registry)
 
-        result = get_current_version(mock_bucket)
+        result = get_current_version()
 
         assert result == "1.72.3"
         mock_bucket.blob.assert_called_with("version_manifest.json")
 
-    def test_no_registry_returns_none(self, mock_bucket):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_no_registry_returns_none(self, mock_get_bucket, mock_bucket):
+        mock_get_bucket.return_value = mock_bucket
         blob = MagicMock()
         blob.download_as_text.side_effect = NotFound("Not found")
         mock_bucket.blob.return_value = blob
 
-        result = get_current_version(mock_bucket)
+        result = get_current_version()
 
         assert result is None
 
@@ -425,10 +462,17 @@ class TestGetCurrentVersion:
 
 
 class TestGetManifest:
-    def test_specific_version(self, mock_bucket, sample_registry):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_specific_version(
+        self,
+        mock_get_bucket,
+        mock_bucket,
+        sample_registry,
+    ):
+        mock_get_bucket.return_value = mock_bucket
         setup_bucket_with_registry(mock_bucket, sample_registry)
 
-        result = get_manifest(mock_bucket, "1.72.3")
+        result = get_manifest("1.72.3")
 
         assert isinstance(result, VersionManifest)
         assert result.version == "1.72.3"
@@ -437,26 +481,37 @@ class TestGetManifest:
             result.gcs.generations["enhanced_cps_2024.h5"] == 1710203948123456
         )
 
-    def test_nonexistent_version(self, mock_bucket, sample_registry):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_nonexistent_version(
+        self,
+        mock_get_bucket,
+        mock_bucket,
+        sample_registry,
+    ):
+        mock_get_bucket.return_value = mock_bucket
         setup_bucket_with_registry(mock_bucket, sample_registry)
 
         with pytest.raises(ValueError, match="not found"):
-            get_manifest(mock_bucket, "9.9.9")
+            get_manifest("9.9.9")
 
-    def test_no_registry_raises(self, mock_bucket):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_no_registry_raises(self, mock_get_bucket, mock_bucket):
+        mock_get_bucket.return_value = mock_bucket
         blob = MagicMock()
         blob.download_as_text.side_effect = NotFound("Not found")
         mock_bucket.blob.return_value = blob
 
         with pytest.raises(ValueError, match="not found"):
-            get_manifest(mock_bucket, "1.72.3")
+            get_manifest("1.72.3")
 
 
 # -- list_versions tests -------------------------------------------
 
 
 class TestListVersions:
-    def test_returns_sorted(self, mock_bucket):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_returns_sorted(self, mock_get_bucket, mock_bucket):
+        mock_get_bucket.return_value = mock_bucket
         v1 = VersionManifest(
             version="1.72.1",
             created_at="t1",
@@ -478,15 +533,21 @@ class TestListVersions:
         registry = VersionRegistry(current="1.72.3", versions=[v2, v3, v1])
         setup_bucket_with_registry(mock_bucket, registry)
 
-        result = list_versions(mock_bucket)
+        result = list_versions()
 
-        assert result == ["1.72.1", "1.72.2", "1.72.3"]
+        assert result == [
+            "1.72.1",
+            "1.72.2",
+            "1.72.3",
+        ]
 
-    def test_empty(self, mock_bucket):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_empty(self, mock_get_bucket, mock_bucket):
+        mock_get_bucket.return_value = mock_bucket
         registry = VersionRegistry()
         setup_bucket_with_registry(mock_bucket, registry)
 
-        result = list_versions(mock_bucket)
+        result = list_versions()
 
         assert result == []
 
@@ -495,11 +556,18 @@ class TestListVersions:
 
 
 class TestDownloadVersionedFile:
+    @patch(f"{_MOD}._get_gcs_bucket")
     def test_downloads_correct_generation(
-        self, mock_bucket, sample_manifest, tmp_path
+        self,
+        mock_get_bucket,
+        mock_bucket,
+        sample_manifest,
+        tmp_path,
     ):
+        mock_get_bucket.return_value = mock_bucket
         registry = VersionRegistry(
-            current="1.72.3", versions=[sample_manifest]
+            current="1.72.3",
+            versions=[sample_manifest],
         )
         registry_json = json.dumps(registry.to_dict())
 
@@ -517,7 +585,6 @@ class TestDownloadVersionedFile:
 
         local_path = str(tmp_path / "AL.h5")
         download_versioned_file(
-            mock_bucket,
             "states/AL.h5",
             "1.72.3",
             local_path,
@@ -535,17 +602,23 @@ class TestDownloadVersionedFile:
         ]
         assert len(gen_call) == 1
 
+    @patch(f"{_MOD}._get_gcs_bucket")
     def test_file_not_in_manifest(
-        self, mock_bucket, sample_manifest, tmp_path
+        self,
+        mock_get_bucket,
+        mock_bucket,
+        sample_manifest,
+        tmp_path,
     ):
+        mock_get_bucket.return_value = mock_bucket
         registry = VersionRegistry(
-            current="1.72.3", versions=[sample_manifest]
+            current="1.72.3",
+            versions=[sample_manifest],
         )
         setup_bucket_with_registry(mock_bucket, registry)
 
         with pytest.raises(ValueError, match="not found"):
             download_versioned_file(
-                mock_bucket,
                 "nonexistent.h5",
                 "1.72.3",
                 str(tmp_path / "out.h5"),
@@ -556,12 +629,14 @@ class TestDownloadVersionedFile:
 
 
 class TestRollback:
-    @patch("policyengine_us_data.utils.gcs_version." "CommitOperationAdd")
-    @patch("policyengine_us_data.utils.gcs_version." "hf_hub_download")
-    @patch("policyengine_us_data.utils.gcs_version.HfApi")
-    @patch("policyengine_us_data.utils.gcs_version.os")
+    @patch(f"{_MOD}.CommitOperationAdd")
+    @patch(f"{_MOD}.hf_hub_download")
+    @patch(f"{_MOD}.HfApi")
+    @patch(f"{_MOD}.os")
+    @patch(f"{_MOD}._get_gcs_bucket")
     def test_creates_new_version_with_old_data(
         self,
+        mock_get_bucket,
         mock_os,
         mock_hf_api_cls,
         mock_hf_download,
@@ -569,19 +644,17 @@ class TestRollback:
         mock_bucket,
         sample_manifest,
     ):
+        mock_get_bucket.return_value = mock_bucket
         mock_os.environ.get.return_value = "fake_token"
         mock_os.path.join = lambda *args: "/".join(args)
         mock_os.unlink = MagicMock()
 
-        # Setup HF mock
         mock_api = MagicMock()
         mock_hf_api_cls.return_value = mock_api
         commit_info = MagicMock()
         commit_info.oid = "new_commit_sha"
         mock_api.create_commit.return_value = commit_info
 
-        # Setup bucket: get_manifest reads registry,
-        # upload_manifest reads then writes registry
         registry = VersionRegistry(
             current="1.72.3",
             versions=[sample_manifest],
@@ -603,7 +676,6 @@ class TestRollback:
 
         mock_bucket.blob.side_effect = mock_blob
 
-        # get_blob returns blobs with new generations
         new_gen_counter = iter([50001, 50002, 50003])
 
         def mock_get_blob(name):
@@ -614,7 +686,6 @@ class TestRollback:
         mock_bucket.get_blob.side_effect = mock_get_blob
 
         result = rollback(
-            mock_bucket,
             target_version="1.72.3",
             new_version="1.73.0",
         )
@@ -624,10 +695,8 @@ class TestRollback:
         assert result.special_operation == "roll-back"
         assert result.roll_back_version == "1.72.3"
 
-        # GCS files were copied
         assert mock_bucket.copy_blob.call_count == 3
 
-        # Registry was written with both versions
         blob = written["version_manifest.json"]
         written_json = blob.upload_from_string.call_args[0][0]
         registry_data = json.loads(written_json)
@@ -637,21 +706,21 @@ class TestRollback:
         assert registry_data["versions"][0]["version"] == "1.73.0"
         assert registry_data["versions"][0]["special_operation"] == "roll-back"
 
-        # HF commit was created and tagged
         mock_api.create_commit.assert_called_once()
         commit_msg = mock_api.create_commit.call_args.kwargs["commit_message"]
         assert "1.72.3" in commit_msg
         assert "1.73.0" in commit_msg
         mock_api.create_tag.assert_called_once()
 
-    def test_nonexistent_version(self, mock_bucket):
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_nonexistent_version(self, mock_get_bucket, mock_bucket):
+        mock_get_bucket.return_value = mock_bucket
         blob = MagicMock()
         blob.download_as_text.side_effect = NotFound("Not found")
         mock_bucket.blob.return_value = blob
 
         with pytest.raises(ValueError, match="not found"):
             rollback(
-                mock_bucket,
                 target_version="9.9.9",
                 new_version="9.10.0",
             )
@@ -662,7 +731,7 @@ class TestRollback:
 
 class TestUploadFilesToGcsReturnsGenerations:
     @patch("policyengine_us_data.utils.data_upload." "google.auth")
-    @patch("policyengine_us_data.utils.data_upload.storage")
+    @patch("policyengine_us_data.utils.data_upload." "storage")
     def test_returns_generations(self, mock_storage, mock_auth, tmp_path):
         from policyengine_us_data.utils.data_upload import (
             upload_files_to_gcs,
@@ -704,23 +773,27 @@ class TestUploadFilesToGcsReturnsGenerations:
 
 
 class TestEndToEndUploadCreatesRegistry:
+    @patch(f"{_MOD}._upload_registry_to_hf")
+    @patch(f"{_MOD}._get_gcs_bucket")
     @patch("policyengine_us_data.utils.data_upload." "google.auth")
-    @patch("policyengine_us_data.utils.data_upload.storage")
+    @patch("policyengine_us_data.utils.data_upload." "storage")
     @patch("policyengine_us_data.utils.data_upload.HfApi")
     @patch("policyengine_us_data.utils.data_upload.os")
     def test_creates_registry(
         self,
         mock_os,
         mock_hf_api_cls,
-        mock_storage,
-        mock_auth,
+        mock_du_storage,
+        mock_du_auth,
+        mock_get_bucket,
+        mock_hf_upload,
         tmp_path,
     ):
         from policyengine_us_data.utils.data_upload import (
             upload_data_files,
         )
 
-        mock_auth.default.return_value = (
+        mock_du_auth.default.return_value = (
             MagicMock(),
             "project",
         )
@@ -733,10 +806,11 @@ class TestEndToEndUploadCreatesRegistry:
         mock_api.create_commit.return_value = commit_info
 
         mock_client = MagicMock()
-        mock_storage.Client.return_value = mock_client
+        mock_du_storage.Client.return_value = mock_client
         mock_bucket = MagicMock()
         mock_bucket.name = "policyengine-us-data"
         mock_client.bucket.return_value = mock_bucket
+        mock_get_bucket.return_value = mock_bucket
 
         blob_data = MagicMock()
         blob_data.generation = 55555
@@ -778,29 +852,29 @@ class TestEndToEndUploadCreatesRegistry:
 
 class TestGetDataManifest:
     def setup_method(self):
-        import policyengine_us_data.utils.gcs_version as mod
+        import policyengine_us_data.utils.version_manifest as mod
 
         mod._cached_registry = None
 
     def teardown_method(self):
-        import policyengine_us_data.utils.gcs_version as mod
+        import policyengine_us_data.utils.version_manifest as mod
 
         mod._cached_registry = None
 
-    @patch("policyengine_us_data.utils.gcs_version." "hf_hub_download")
+    @patch(f"{_MOD}.hf_hub_download")
     def test_returns_registry(self, mock_download, tmp_path):
         registry_data = {
             "current": "1.72.3",
             "versions": [
                 {
                     "version": "1.72.3",
-                    "created_at": "2026-03-10T14:30:00Z",
+                    "created_at": ("2026-03-10T14:30:00Z"),
                     "hf": {
                         "repo": ("policyengine/" "policyengine-us-data"),
                         "commit": "abc123",
                     },
                     "gcs": {
-                        "bucket": "policyengine-us-data",
+                        "bucket": ("policyengine-us-data"),
                         "generations": {"file.h5": 12345},
                     },
                 },
@@ -817,19 +891,19 @@ class TestGetDataManifest:
         assert len(result.versions) == 1
         assert result.versions[0].hf.commit == "abc123"
         mock_download.assert_called_once_with(
-            repo_id="policyengine/policyengine-us-data",
+            repo_id=("policyengine/policyengine-us-data"),
             repo_type="model",
             filename="version_manifest.json",
         )
 
-    @patch("policyengine_us_data.utils.gcs_version." "hf_hub_download")
+    @patch(f"{_MOD}.hf_hub_download")
     def test_caches_result(self, mock_download, tmp_path):
         registry_data = {
             "current": "1.72.3",
             "versions": [
                 {
                     "version": "1.72.3",
-                    "created_at": "2026-03-10T14:30:00Z",
+                    "created_at": ("2026-03-10T14:30:00Z"),
                     "hf": None,
                     "gcs": {
                         "bucket": "b",
@@ -848,14 +922,14 @@ class TestGetDataManifest:
         assert first is second
         assert mock_download.call_count == 1
 
-    @patch("policyengine_us_data.utils.gcs_version." "hf_hub_download")
+    @patch(f"{_MOD}.hf_hub_download")
     def test_get_data_version(self, mock_download, tmp_path):
         registry_data = {
             "current": "1.72.3",
             "versions": [
                 {
                     "version": "1.72.3",
-                    "created_at": "2026-03-10T14:30:00Z",
+                    "created_at": ("2026-03-10T14:30:00Z"),
                     "hf": None,
                     "gcs": {
                         "bucket": "b",

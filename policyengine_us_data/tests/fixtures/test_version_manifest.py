@@ -1,11 +1,11 @@
-"""Shared fixtures for GCS version registry tests."""
+"""Shared fixtures for version manifest tests."""
 
 import json
 from unittest.mock import MagicMock
 
 import pytest
 
-from policyengine_us_data.utils.gcs_version import (
+from policyengine_us_data.utils.version_manifest import (
     HFVersionInfo,
     GCSVersionInfo,
     VersionManifest,

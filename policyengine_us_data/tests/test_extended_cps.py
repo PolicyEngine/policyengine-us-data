@@ -96,9 +96,7 @@ class TestVariableListConsistency:
             "other_type_retirement_account_distributions",
         }
         present = should_not_exist & set(CPS_ONLY_IMPUTED_VARIABLES)
-        assert present == set(), (
-            f"Non-existent variables still in CPS_ONLY: {present}"
-        )
+        assert present == set(), f"Non-existent variables still in CPS_ONLY: {present}"
 
     def test_pension_income_not_in_cps_only(self):
         """Pension income vars are handled by Stage 1 rename, not
@@ -165,7 +163,9 @@ class TestRetirementConstraints:
         for var in ["traditional_ira_contributions", "roth_ira_contributions"]:
             assert (result[var].values <= cap).all(), f"{var} exceeds IRA cap"
 
-    def test_401k_zeroed_without_employment_income(self, sample_predictions, sample_features):
+    def test_401k_zeroed_without_employment_income(
+        self, sample_predictions, sample_features
+    ):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
         no_emp = sample_features["employment_income"] == 0
         for var in ["traditional_401k_contributions", "roth_401k_contributions"]:
@@ -180,7 +180,9 @@ class TestRetirementConstraints:
         rate_cap = se_income * 0.25
         assert (se_vals <= rate_cap + 1).all(), "SE pension exceeds 25% of SE income"
 
-    def test_se_pension_zeroed_without_se_income(self, sample_predictions, sample_features):
+    def test_se_pension_zeroed_without_se_income(
+        self, sample_predictions, sample_features
+    ):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
         no_se = sample_features["self_employment_income"] == 0
         assert (
@@ -244,7 +246,9 @@ class TestSSReconciliation:
         )
         total_ss = np.array([25000])
         result = reconcile_ss_subcomponents(predictions, total_ss)
-        assert result["social_security_retirement"].values[0] == pytest.approx(25000, abs=0.01)
+        assert result["social_security_retirement"].values[0] == pytest.approx(
+            25000, abs=0.01
+        )
 
 
 class TestSequentialQRF:
@@ -268,11 +272,16 @@ class TestSequentialQRF:
 
         qrf = QRF(log_level="ERROR", memory_efficient=True)
         result = qrf.fit_predict(
-            X_train=train, X_test=test_x,
-            predictors=["x"], imputed_variables=["y1", "y2"], n_jobs=1,
+            X_train=train,
+            X_test=test_x,
+            predictors=["x"],
+            imputed_variables=["y1", "y2"],
+            n_jobs=1,
         )
         corr = result["y1"].corr(result["y2"])
-        assert corr > 0.5, f"Sequential QRF y1-y2 correlation = {corr:.3f}, expected > 0.5"
+        assert corr > 0.5, (
+            f"Sequential QRF y1-y2 correlation = {corr:.3f}, expected > 0.5"
+        )
 
     def test_single_call_vs_separate_calls_differ(self, correlated_training_data):
         from microimpute.models.qrf import QRF
@@ -283,20 +292,29 @@ class TestSequentialQRF:
 
         qrf_seq = QRF(log_level="ERROR", memory_efficient=True)
         result_seq = qrf_seq.fit_predict(
-            X_train=train, X_test=test_x,
-            predictors=["x"], imputed_variables=["y1", "y2"], n_jobs=1,
+            X_train=train,
+            X_test=test_x,
+            predictors=["x"],
+            imputed_variables=["y1", "y2"],
+            n_jobs=1,
         )
 
         qrf_y1 = QRF(log_level="ERROR", memory_efficient=True)
         result_y1 = qrf_y1.fit_predict(
-            X_train=train[["x", "y1"]], X_test=test_x,
-            predictors=["x"], imputed_variables=["y1"], n_jobs=1,
+            X_train=train[["x", "y1"]],
+            X_test=test_x,
+            predictors=["x"],
+            imputed_variables=["y1"],
+            n_jobs=1,
         )
 
         qrf_y2 = QRF(log_level="ERROR", memory_efficient=True)
         result_y2 = qrf_y2.fit_predict(
-            X_train=train[["x", "y2"]], X_test=test_x,
-            predictors=["x"], imputed_variables=["y2"], n_jobs=1,
+            X_train=train[["x", "y2"]],
+            X_test=test_x,
+            predictors=["x"],
+            imputed_variables=["y2"],
+            n_jobs=1,
         )
 
         corr_seq = result_seq["y1"].corr(result_seq["y2"])

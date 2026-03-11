@@ -199,9 +199,7 @@ def _impute_cps_only_variables(
         predictions[var] = 0
 
     # Apply domain constraints to retirement and SS variables.
-    predictions = _apply_post_processing(
-        predictions, X_test, time_period, data
-    )
+    predictions = _apply_post_processing(predictions, X_test, time_period, data)
 
     logger.info(
         "Stage-2 CPS-only imputation took %.2fs total",
@@ -323,9 +321,7 @@ def _apply_post_processing(predictions, X_test, time_period, data):
     if ss_cols:
         n_half = len(data["person_id"][time_period]) // 2
         total_ss = data["social_security"][time_period][n_half:]
-        reconciled = reconcile_ss_subcomponents(
-            predictions[ss_cols], total_ss
-        )
+        reconciled = reconcile_ss_subcomponents(predictions[ss_cols], total_ss)
         for col in ss_cols:
             predictions[col] = reconciled[col]
 

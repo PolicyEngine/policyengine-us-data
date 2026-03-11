@@ -21,69 +21,15 @@ from policyengine_us_data.utils.gcs_version import (
     get_data_manifest,
     get_data_version,
 )
-
-# -- Fixtures -------------------------------------------------------
-
-
-@pytest.fixture
-def sample_generations():
-    return {
-        "enhanced_cps_2024.h5": 1710203948123456,
-        "cps_2024.h5": 1710203948234567,
-        "states/AL.h5": 1710203948345678,
-    }
-
-
-@pytest.fixture
-def sample_hf_info():
-    return HFVersionInfo(
-        repo="policyengine/policyengine-us-data",
-        commit="abc123def456",
-    )
-
-
-@pytest.fixture
-def sample_manifest(sample_generations, sample_hf_info):
-    return VersionManifest(
-        version="1.72.3",
-        created_at="2026-03-10T14:30:00Z",
-        hf=sample_hf_info,
-        gcs=GCSVersionInfo(
-            bucket="policyengine-us-data",
-            generations=sample_generations,
-        ),
-    )
-
-
-@pytest.fixture
-def sample_registry(sample_manifest):
-    """A registry with one version entry."""
-    return VersionRegistry(
-        current="1.72.3",
-        versions=[sample_manifest],
-    )
-
-
-@pytest.fixture
-def mock_bucket():
-    bucket = MagicMock()
-    bucket.name = "policyengine-us-data"
-    return bucket
-
-
-def _make_mock_blob(generation: int):
-    blob = MagicMock()
-    blob.generation = generation
-    return blob
-
-
-def _setup_bucket_with_registry(bucket, registry):
-    """Configure a mock bucket to serve a registry."""
-    registry_json = json.dumps(registry.to_dict())
-    blob = MagicMock()
-    blob.download_as_text.return_value = registry_json
-    bucket.blob.return_value = blob
-
+from policyengine_us_data.tests.fixtures.test_gcs_version import (
+    sample_generations,
+    sample_hf_info,
+    sample_manifest,
+    sample_registry,
+    mock_bucket,
+    make_mock_blob,
+    setup_bucket_with_registry,
+)
 
 # -- VersionManifest serialization tests ---------------------------
 
@@ -272,9 +218,9 @@ class TestBuildManifest:
             "file_c.h5",
         ]
         mock_bucket.get_blob.side_effect = [
-            _make_mock_blob(100),
-            _make_mock_blob(200),
-            _make_mock_blob(300),
+            make_mock_blob(100),
+            make_mock_blob(200),
+            make_mock_blob(300),
         ]
 
         result = build_manifest(mock_bucket, "1.72.3", blob_names)
@@ -296,8 +242,8 @@ class TestBuildManifest:
             "districts/CA-01.h5",
         ]
         mock_bucket.get_blob.side_effect = [
-            _make_mock_blob(111),
-            _make_mock_blob(222),
+            make_mock_blob(111),
+            make_mock_blob(222),
         ]
 
         result = build_manifest(mock_bucket, "1.72.3", blob_names)
@@ -308,7 +254,7 @@ class TestBuildManifest:
         assert result.gcs.generations["districts/CA-01.h5"] == 222
 
     def test_with_hf_info(self, mock_bucket, sample_hf_info):
-        mock_bucket.get_blob.return_value = _make_mock_blob(999)
+        mock_bucket.get_blob.return_value = make_mock_blob(999)
 
         result = build_manifest(
             mock_bucket,
@@ -458,7 +404,7 @@ class TestUploadManifest:
 
 class TestGetCurrentVersion:
     def test_returns_version(self, mock_bucket, sample_registry):
-        _setup_bucket_with_registry(mock_bucket, sample_registry)
+        setup_bucket_with_registry(mock_bucket, sample_registry)
 
         result = get_current_version(mock_bucket)
 
@@ -480,7 +426,7 @@ class TestGetCurrentVersion:
 
 class TestGetManifest:
     def test_specific_version(self, mock_bucket, sample_registry):
-        _setup_bucket_with_registry(mock_bucket, sample_registry)
+        setup_bucket_with_registry(mock_bucket, sample_registry)
 
         result = get_manifest(mock_bucket, "1.72.3")
 
@@ -492,7 +438,7 @@ class TestGetManifest:
         )
 
     def test_nonexistent_version(self, mock_bucket, sample_registry):
-        _setup_bucket_with_registry(mock_bucket, sample_registry)
+        setup_bucket_with_registry(mock_bucket, sample_registry)
 
         with pytest.raises(ValueError, match="not found"):
             get_manifest(mock_bucket, "9.9.9")
@@ -530,7 +476,7 @@ class TestListVersions:
             gcs=GCSVersionInfo(bucket="b", generations={"f.h5": 3}),
         )
         registry = VersionRegistry(current="1.72.3", versions=[v2, v3, v1])
-        _setup_bucket_with_registry(mock_bucket, registry)
+        setup_bucket_with_registry(mock_bucket, registry)
 
         result = list_versions(mock_bucket)
 
@@ -538,7 +484,7 @@ class TestListVersions:
 
     def test_empty(self, mock_bucket):
         registry = VersionRegistry()
-        _setup_bucket_with_registry(mock_bucket, registry)
+        setup_bucket_with_registry(mock_bucket, registry)
 
         result = list_versions(mock_bucket)
 
@@ -595,7 +541,7 @@ class TestDownloadVersionedFile:
         registry = VersionRegistry(
             current="1.72.3", versions=[sample_manifest]
         )
-        _setup_bucket_with_registry(mock_bucket, registry)
+        setup_bucket_with_registry(mock_bucket, registry)
 
         with pytest.raises(ValueError, match="not found"):
             download_versioned_file(

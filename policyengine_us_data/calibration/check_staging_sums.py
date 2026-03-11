@@ -52,8 +52,7 @@ def main(argv=None):
     parser.add_argument(
         "--hf-prefix",
         default=DEFAULT_HF_PREFIX,
-        help="HF path prefix for state H5 files "
-        f"(default: {DEFAULT_HF_PREFIX})",
+        help=f"HF path prefix for state H5 files (default: {DEFAULT_HF_PREFIX})",
     )
     args = parser.parse_args(argv)
 

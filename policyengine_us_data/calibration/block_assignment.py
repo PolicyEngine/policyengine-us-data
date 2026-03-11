@@ -525,12 +525,8 @@ def derive_geography_from_blocks(
     Returns:
         Dict with same keys as assign_geography_for_cd.
     """
-    county_fips = np.array(
-        [get_county_fips_from_block(b) for b in block_geoids]
-    )
-    tract_geoids = np.array(
-        [get_tract_geoid_from_block(b) for b in block_geoids]
-    )
+    county_fips = np.array([get_county_fips_from_block(b) for b in block_geoids])
+    tract_geoids = np.array([get_tract_geoid_from_block(b) for b in block_geoids])
     state_fips = np.array([get_state_fips_from_block(b) for b in block_geoids])
     cbsa_codes = np.array([get_cbsa_from_county(c) or "" for c in county_fips])
     county_indices = np.array(

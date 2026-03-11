@@ -114,8 +114,7 @@ def _run_sanity_check(
     if abs(sim_value) > ceiling:
         return (
             "FAIL",
-            f"|{sim_value:.2e}| > {ceiling:.0e} ceiling "
-            f"({vtype} @ {geo_level})",
+            f"|{sim_value:.2e}| > {ceiling:.0e} ceiling ({vtype} @ {geo_level})",
         )
     return "PASS", ""
 
@@ -233,15 +232,9 @@ def _build_entity_rel(sim) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "person_id": sim.calculate("person_id", map_to="person").values,
-            "household_id": sim.calculate(
-                "household_id", map_to="person"
-            ).values,
-            "tax_unit_id": sim.calculate(
-                "tax_unit_id", map_to="person"
-            ).values,
-            "spm_unit_id": sim.calculate(
-                "spm_unit_id", map_to="person"
-            ).values,
+            "household_id": sim.calculate("household_id", map_to="person").values,
+            "tax_unit_id": sim.calculate("tax_unit_id", map_to="person").values,
+            "spm_unit_id": sim.calculate("spm_unit_id", map_to="person").values,
         }
     )
 
@@ -398,8 +391,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--target-config",
         default=DEFAULT_TARGET_CONFIG,
-        help="YAML config with exclude rules "
-        "(default: target_config_full.yaml)",
+        help="YAML config with exclude rules (default: target_config_full.yaml)",
     )
     parser.add_argument(
         "--db-path",
@@ -414,7 +406,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--sanity-only",
         action="store_true",
-        help="Run only structural sanity checks (fast, " "no database needed)",
+        help="Run only structural sanity checks (fast, no database needed)",
     )
     return parser.parse_args(argv)
 
@@ -484,9 +476,7 @@ def _validate_single_area(
         variable_entity_map=variable_entity_map,
     )
 
-    n_fail = sum(
-        1 for r in area_results if r["sanity_check"] == "FAIL"
-    )
+    n_fail = sum(1 for r in area_results if r["sanity_check"] == "FAIL")
     logger.info(
         "  %s: %d results, %d sanity failures",
         display_id,
@@ -525,12 +515,8 @@ def _run_area_type(
 
         h5_path = f"{args.hf_prefix}/{area_type}/{h5_name}.h5"
 
-        area_mask = (
-            level_targets["geographic_id"] == area_id
-        ).values
-        area_targets = level_targets[area_mask].reset_index(
-            drop=True
-        )
+        area_mask = (level_targets["geographic_id"] == area_id).values
+        area_targets = level_targets[area_mask].reset_index(drop=True)
         area_training = level_training[area_mask]
 
         ctx = mp.get_context("spawn")

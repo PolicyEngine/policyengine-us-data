@@ -85,9 +85,7 @@ def validate_package(
             )
         k = min(n_hardest, len(ratios))
         hardest_local_idx = np.argpartition(ratios, k)[:k]
-        hardest_local_idx = hardest_local_idx[
-            np.argsort(ratios[hardest_local_idx])
-        ]
+        hardest_local_idx = hardest_local_idx[np.argsort(ratios[hardest_local_idx])]
         hardest_global_idx = achievable_idx[hardest_local_idx]
 
         hardest_targets = pd.DataFrame(
@@ -96,9 +94,7 @@ def validate_package(
                 "domain_variable": targets_df["domain_variable"]
                 .iloc[hardest_global_idx]
                 .values,
-                "variable": targets_df["variable"]
-                .iloc[hardest_global_idx]
-                .values,
+                "variable": targets_df["variable"].iloc[hardest_global_idx].values,
                 "geographic_id": targets_df["geographic_id"]
                 .iloc[hardest_global_idx]
                 .values,
@@ -178,8 +174,7 @@ def format_report(result: ValidationResult, package_path: str = None) -> str:
     lines.append("")
 
     lines.append(
-        f"Matrix:  {result.n_targets:,} targets"
-        f" x {result.n_columns:,} columns"
+        f"Matrix:  {result.n_targets:,} targets x {result.n_columns:,} columns"
     )
     lines.append(f"Non-zero: {result.nnz:,} (density: {result.density:.6f})")
     if meta.get("n_clones"):
@@ -191,28 +186,21 @@ def format_report(result: ValidationResult, package_path: str = None) -> str:
         lines.append(", ".join(parts))
     lines.append("")
 
-    pct = (
-        100 * result.n_achievable / result.n_targets if result.n_targets else 0
-    )
+    pct = 100 * result.n_achievable / result.n_targets if result.n_targets else 0
     pct_imp = 100 - pct
     lines.append("--- Achievability ---")
     lines.append(
-        f"Achievable: {result.n_achievable:>6,}"
-        f" / {result.n_targets:,} ({pct:.1f}%)"
+        f"Achievable: {result.n_achievable:>6,} / {result.n_targets:,} ({pct:.1f}%)"
     )
     lines.append(
-        f"Impossible: {result.n_impossible:>6,}"
-        f" / {result.n_targets:,} ({pct_imp:.1f}%)"
+        f"Impossible: {result.n_impossible:>6,} / {result.n_targets:,} ({pct_imp:.1f}%)"
     )
     lines.append("")
 
     if len(result.impossible_targets) > 0:
         lines.append("--- Impossible Targets ---")
         for _, row in result.impossible_targets.iterrows():
-            lines.append(
-                f"  {row['target_name']:<60s}"
-                f" {row['target_value']:>14,.0f}"
-            )
+            lines.append(f"  {row['target_name']:<60s} {row['target_value']:>14,.0f}")
         lines.append("")
 
     if len(result.impossible_by_group) > 1:
@@ -228,9 +216,7 @@ def format_report(result: ValidationResult, package_path: str = None) -> str:
 
     if len(result.hardest_targets) > 0:
         n = len(result.hardest_targets)
-        lines.append(
-            f"--- Hardest Achievable Targets" f" ({n} lowest ratio) ---"
-        )
+        lines.append(f"--- Hardest Achievable Targets ({n} lowest ratio) ---")
         for _, row in result.hardest_targets.iterrows():
             lines.append(
                 f"  {row['target_name']:<50s}"
@@ -271,9 +257,7 @@ def format_report(result: ValidationResult, package_path: str = None) -> str:
             f" targets below ratio {result.strict_ratio})"
         )
     elif result.n_impossible > 0:
-        lines.append(
-            f"RESULT: FAIL ({result.n_impossible} impossible targets)"
-        )
+        lines.append(f"RESULT: FAIL ({result.n_impossible} impossible targets)")
     else:
         lines.append("RESULT: PASS")
 
@@ -281,9 +265,7 @@ def format_report(result: ValidationResult, package_path: str = None) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Validate a calibration package"
-    )
+    parser = argparse.ArgumentParser(description="Validate a calibration package")
     parser.add_argument(
         "path",
         nargs="?",
@@ -303,8 +285,7 @@ def main():
         type=float,
         default=None,
         metavar="RATIO",
-        help="Fail if any achievable target has ratio below RATIO"
-        " (default: 0.01)",
+        help="Fail if any achievable target has ratio below RATIO (default: 0.01)",
     )
     args = parser.parse_args()
 

@@ -19,9 +19,7 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 logger = logging.getLogger(__name__)
 
 INPUT_PATH = str(STORAGE_FOLDER / "stratified_extended_cps_2024.h5")
-OUTPUT_PATH = str(
-    STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
-)
+OUTPUT_PATH = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
 
 
 def create_source_imputed_cps(
@@ -49,9 +47,7 @@ def create_source_imputed_cps(
 
     logger.info("Loaded %d households, time_period=%d", n_records, time_period)
 
-    geography = assign_random_geography(
-        n_records=n_records, n_clones=1, seed=seed
-    )
+    geography = assign_random_geography(n_records=n_records, n_clones=1, seed=seed)
     base_states = geography.state_fips[:n_records]
 
     raw_data = sim.dataset.load_dataset()
@@ -59,9 +55,7 @@ def create_source_imputed_cps(
     for var in raw_data:
         val = raw_data[var]
         if isinstance(val, dict):
-            data_dict[var] = {
-                int(k) if k.isdigit() else k: v for k, v in val.items()
-            }
+            data_dict[var] = {int(k) if k.isdigit() else k: v for k, v in val.items()}
         else:
             data_dict[var] = {time_period: val[...]}
 

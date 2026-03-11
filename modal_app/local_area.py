@@ -104,18 +104,14 @@ def validate_artifacts(
 
     artifacts = config.get("artifacts", {})
     if not artifacts:
-        print(
-            "WARNING: No artifacts section in run config, "
-            "skipping validation"
-        )
+        print("WARNING: No artifacts section in run config, skipping validation")
         return
 
     for filename, expected_hash in artifacts.items():
         filepath = artifact_dir / filename
         if not filepath.exists():
             raise RuntimeError(
-                f"Artifact validation failed: {filename} "
-                f"not found in {artifact_dir}"
+                f"Artifact validation failed: {filename} not found in {artifact_dir}"
             )
         h = hashlib.sha256()
         with open(filepath, "rb") as fh:
@@ -130,10 +126,7 @@ def validate_artifacts(
                 f"  Actual:   {actual}"
             )
 
-    print(
-        f"Validated {len(artifacts)} artifact(s) "
-        f"against run config checksums"
-    )
+    print(f"Validated {len(artifacts)} artifact(s) against run config checksums")
 
 
 def get_version() -> str:
@@ -214,16 +207,11 @@ def run_phase(
     version_dir: Path,
 ) -> set:
     """Run a single build phase, spawning workers and collecting results."""
-    work_chunks = partition_work(
-        states, districts, cities, num_workers, completed
-    )
+    work_chunks = partition_work(states, districts, cities, num_workers, completed)
     total_remaining = sum(len(c) for c in work_chunks)
 
     print(f"\n--- Phase: {phase_name} ---")
-    print(
-        f"Remaining work: {total_remaining} items "
-        f"across {len(work_chunks)} workers"
-    )
+    print(f"Remaining work: {total_remaining} items across {len(work_chunks)} workers")
 
     if total_remaining == 0:
         print(f"All {phase_name} items already built!")
@@ -276,7 +264,7 @@ def run_phase(
         print(f"\nErrors ({len(all_errors)}):")
         for err in all_errors[:5]:
             err_msg = err.get("error", "Unknown")[:100]
-            print(f"  - {err.get('item', err.get('worker'))}: " f"{err_msg}")
+            print(f"  - {err.get('item', err.get('worker'))}: {err_msg}")
         if len(all_errors) > 5:
             print(f"  ... and {len(all_errors) - 5} more")
 
@@ -412,9 +400,7 @@ print(json.dumps(manifest))
     print(f"  States: {manifest['totals']['states']}")
     print(f"  Districts: {manifest['totals']['districts']}")
     print(f"  Cities: {manifest['totals']['cities']}")
-    print(
-        f"  Total size: {manifest['totals']['total_size_bytes'] / 1e9:.2f} GB"
-    )
+    print(f"  Total size: {manifest['totals']['total_size_bytes'] / 1e9:.2f} GB")
 
     return manifest
 
@@ -573,7 +559,9 @@ print(f"Successfully published version {{version}}")
     if result.returncode != 0:
         raise RuntimeError(f"Promote failed: {result.stderr}")
 
-    return f"Successfully promoted version {version} with {len(manifest['files'])} files"
+    return (
+        f"Successfully promoted version {version} with {len(manifest['files'])} files"
+    )
 
 
 @app.function(
@@ -625,15 +613,11 @@ def coordinate_publish(
             "dataset": dataset_path,
             "database": db_path,
             "geography": (calibration_dir / "calibration" / "geography.npz"),
-            "run_config": (
-                calibration_dir / "calibration" / "unified_run_config.json"
-            ),
+            "run_config": (calibration_dir / "calibration" / "unified_run_config.json"),
         }
         for label, p in required.items():
             if not p.exists():
-                raise RuntimeError(
-                    f"Missing required calibration input " f"({label}): {p}"
-                )
+                raise RuntimeError(f"Missing required calibration input ({label}): {p}")
         print("All required calibration inputs found on volume.")
     else:
         if calibration_dir.exists():
@@ -662,15 +646,11 @@ print("Done")
         print("Calibration inputs downloaded")
 
     dataset_path = (
-        calibration_dir
-        / "calibration"
-        / "source_imputed_stratified_extended_cps.h5"
+        calibration_dir / "calibration" / "source_imputed_stratified_extended_cps.h5"
     )
 
     geo_npz_path = calibration_dir / "calibration" / "geography.npz"
-    config_json_path = (
-        calibration_dir / "calibration" / "unified_run_config.json"
-    )
+    config_json_path = calibration_dir / "calibration" / "unified_run_config.json"
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
@@ -786,14 +766,10 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
     )
 
     if actual_total < expected_total:
-        print(
-            f"WARNING: Expected {expected_total} files, found {actual_total}"
-        )
+        print(f"WARNING: Expected {expected_total} files, found {actual_total}")
 
     print("\nStarting upload to staging...")
-    result = upload_to_staging.remote(
-        branch=branch, version=version, manifest=manifest
-    )
+    result = upload_to_staging.remote(branch=branch, version=version, manifest=manifest)
     print(result)
 
     print("\n" + "=" * 60)
@@ -844,9 +820,7 @@ def coordinate_national_publish(
     setup_repo(branch)
 
     version = get_version()
-    print(
-        f"Building national H5 for version {version} " f"from branch {branch}"
-    )
+    print(f"Building national H5 for version {version} from branch {branch}")
 
     import shutil
 
@@ -879,14 +853,10 @@ print("Done")
     staging_volume.commit()
     print("National calibration inputs downloaded")
 
-    weights_path = (
-        calibration_dir / "calibration" / "national_calibration_weights.npy"
-    )
+    weights_path = calibration_dir / "calibration" / "national_calibration_weights.npy"
     db_path = calibration_dir / "calibration" / "policy_data.db"
     dataset_path = (
-        calibration_dir
-        / "calibration"
-        / "source_imputed_stratified_extended_cps.h5"
+        calibration_dir / "calibration" / "source_imputed_stratified_extended_cps.h5"
     )
 
     geo_npz_path = calibration_dir / "calibration" / "national_geography.npz"

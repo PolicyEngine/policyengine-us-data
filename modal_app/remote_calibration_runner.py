@@ -5,14 +5,10 @@ import modal
 app = modal.App("policyengine-us-data-fit-weights")
 
 hf_secret = modal.Secret.from_name("huggingface-token")
-calibration_vol = modal.Volume.from_name(
-    "calibration-data", create_if_missing=True
-)
+calibration_vol = modal.Volume.from_name("calibration-data", create_if_missing=True)
 
 image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .apt_install("git")
-    .pip_install("uv")
+    modal.Image.debian_slim(python_version="3.11").apt_install("git").pip_install("uv")
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
@@ -52,9 +48,7 @@ def _clone_and_install(branch: str):
     subprocess.run(["uv", "sync", "--extra", "l0"], check=True)
 
 
-def _append_hyperparams(
-    cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq=None
-):
+def _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq=None):
     """Append optional hyperparameter flags to a command list."""
     if beta is not None:
         cmd.extend(["--beta", str(beta)])
@@ -155,10 +149,7 @@ def _trigger_repository_dispatch(event_type: str = "calibration-updated"):
         )
         return False
 
-    url = (
-        "https://api.github.com/repos/"
-        "PolicyEngine/policyengine-us-data/dispatches"
-    )
+    url = "https://api.github.com/repos/PolicyEngine/policyengine-us-data/dispatches"
     payload = json.dumps({"event_type": event_type}).encode()
     req = urllib.request.Request(
         url,
@@ -172,8 +163,7 @@ def _trigger_repository_dispatch(event_type: str = "calibration-updated"):
     )
     resp = urllib.request.urlopen(req)
     print(
-        f"Triggered repository_dispatch '{event_type}' "
-        f"(HTTP {resp.status})",
+        f"Triggered repository_dispatch '{event_type}' (HTTP {resp.status})",
         flush=True,
     )
     return True
@@ -275,9 +265,7 @@ def _fit_weights_impl(
         cmd.append("--county-level")
     if workers > 1:
         cmd.extend(["--workers", str(workers)])
-    _append_hyperparams(
-        cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq
-    )
+    _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq)
 
     cal_rc, cal_lines = _run_streaming(
         cmd,
@@ -334,9 +322,7 @@ def _fit_from_package_impl(
     ]
     if target_config:
         cmd.extend(["--target-config", target_config])
-    _append_hyperparams(
-        cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq
-    )
+    _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq)
 
     print(f"Running command: {' '.join(cmd)}", flush=True)
 
@@ -351,9 +337,7 @@ def _fit_from_package_impl(
     return _collect_outputs(cal_lines)
 
 
-def _print_provenance_from_meta(
-    meta: dict, current_branch: str = None
-) -> None:
+def _print_provenance_from_meta(meta: dict, current_branch: str = None) -> None:
     """Print provenance info and warn on branch mismatch."""
     built = meta.get("created_at", "unknown")
     branch = meta.get("git_branch", "unknown")
@@ -481,7 +465,7 @@ def _build_package_impl(
 
     size = os.path.getsize(pkg_path)
     print(
-        f"Package saved to volume at {pkg_path} " f"({size:,} bytes)",
+        f"Package saved to volume at {pkg_path} ({size:,} bytes)",
         flush=True,
     )
     calibration_vol.commit()
@@ -530,9 +514,7 @@ def check_volume_package() -> dict:
         return {"exists": False}
 
     stat = os.stat(pkg_path)
-    mtime = datetime.datetime.fromtimestamp(
-        stat.st_mtime, tz=datetime.timezone.utc
-    )
+    mtime = datetime.datetime.fromtimestamp(stat.st_mtime, tz=datetime.timezone.utc)
     info = {
         "exists": True,
         "size": stat.st_size,
@@ -942,8 +924,7 @@ def main(
 
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
-            f"Unknown GPU: {gpu}. "
-            f"Choose from: {list(GPU_FUNCTIONS.keys())}"
+            f"Unknown GPU: {gpu}. Choose from: {list(GPU_FUNCTIONS.keys())}"
         )
 
     if package_path:
@@ -999,7 +980,7 @@ def main(
             flush=True,
         )
         print(
-            f"GPU: {gpu} | Epochs: {epochs} | " f"Branch: {branch}",
+            f"GPU: {gpu} | Epochs: {epochs} | Branch: {branch}",
             flush=True,
         )
         print(
@@ -1031,9 +1012,7 @@ def main(
         if vol_info.get("created_at") or vol_info.get("git_branch"):
             _print_provenance_from_meta(vol_info, branch)
         mode_label = (
-            "national calibration"
-            if national
-            else "fitting from pre-built package"
+            "national calibration" if national else "fitting from pre-built package"
         )
         print(
             "========================================",
@@ -1041,7 +1020,7 @@ def main(
         )
         print(f"Mode: {mode_label}", flush=True)
         print(
-            f"GPU: {gpu} | Epochs: {epochs} | " f"Branch: {branch}",
+            f"GPU: {gpu} | Epochs: {epochs} | Branch: {branch}",
             flush=True,
         )
         if push_results:
@@ -1126,12 +1105,8 @@ def main(
         upload_calibration_artifacts(
             weights_path=output,
             blocks_path=(blocks_output if result.get("blocks") else None),
-            geo_labels_path=(
-                geo_labels_output if result.get("geo_labels") else None
-            ),
-            geography_path=(
-                geography_output if result.get("geography") else None
-            ),
+            geo_labels_path=(geo_labels_output if result.get("geo_labels") else None),
+            geography_path=(geography_output if result.get("geography") else None),
             log_dir=".",
             prefix=prefix,
         )
@@ -1159,7 +1134,7 @@ def build_package(
     )
     print(f"Branch: {branch}", flush=True)
     print(
-        "This builds the X matrix and saves it to " "a Modal volume.",
+        "This builds the X matrix and saves it to a Modal volume.",
         flush=True,
     )
     print(

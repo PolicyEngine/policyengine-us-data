@@ -554,18 +554,14 @@ class TestBuildStateValues(unittest.TestCase):
         )
 
         # First sim should get state 37
-        fips_calls_0 = [
-            c for c in sims[0].set_input_calls if c[0] == "state_fips"
-        ]
+        fips_calls_0 = [c for c in sims[0].set_input_calls if c[0] == "state_fips"]
         assert len(fips_calls_0) == 1
         np.testing.assert_array_equal(
             fips_calls_0[0][2], np.full(4, 37, dtype=np.int32)
         )
 
         # Second sim should get state 48
-        fips_calls_1 = [
-            c for c in sims[1].set_input_calls if c[0] == "state_fips"
-        ]
+        fips_calls_1 = [c for c in sims[1].set_input_calls if c[0] == "state_fips"]
         assert len(fips_calls_1) == 1
         np.testing.assert_array_equal(
             fips_calls_1[0][2], np.full(4, 48, dtype=np.int32)
@@ -607,7 +603,7 @@ class TestBuildStateValues(unittest.TestCase):
                 set_true_vars.add(var)
 
         assert takeup_var_names == set_true_vars, (
-            f"Missing forced-true vars: " f"{takeup_var_names - set_true_vars}"
+            f"Missing forced-true vars: {takeup_var_names - set_true_vars}"
         )
 
         # Entity-level calculation happens for affected target
@@ -731,9 +727,7 @@ class TestBuildCountyValues(unittest.TestCase):
         return_value=["var_a"],
     )
     @patch("policyengine_us.Microsimulation")
-    def test_sim_reuse_within_state(
-        self, mock_msim_cls, mock_gcv, mock_county_idx
-    ):
+    def test_sim_reuse_within_state(self, mock_msim_cls, mock_gcv, mock_county_idx):
         sim = _FakeSimulation()
         mock_msim_cls.return_value = sim
 
@@ -764,9 +758,7 @@ class TestBuildCountyValues(unittest.TestCase):
         return_value=[],
     )
     @patch("policyengine_us.Microsimulation")
-    def test_fresh_sim_across_states(
-        self, mock_msim_cls, mock_gcv, mock_county_idx
-    ):
+    def test_fresh_sim_across_states(self, mock_msim_cls, mock_gcv, mock_county_idx):
         mock_msim_cls.side_effect = [
             _FakeSimulation(),
             _FakeSimulation(),
@@ -795,9 +787,7 @@ class TestBuildCountyValues(unittest.TestCase):
         return_value=["var_a", "county"],
     )
     @patch("policyengine_us.Microsimulation")
-    def test_delete_arrays_per_county(
-        self, mock_msim_cls, mock_gcv, mock_county_idx
-    ):
+    def test_delete_arrays_per_county(self, mock_msim_cls, mock_gcv, mock_county_idx):
         sim = _FakeSimulation()
         mock_msim_cls.return_value = sim
 
@@ -872,9 +862,7 @@ class TestBuildStateValuesParallel(unittest.TestCase):
         return_value=[],
     )
     @patch("policyengine_us.Microsimulation")
-    def test_workers_gt1_creates_pool(
-        self, mock_msim_cls, mock_gcv, mock_pool_cls
-    ):
+    def test_workers_gt1_creates_pool(self, mock_msim_cls, mock_gcv, mock_pool_cls):
         mock_future = MagicMock()
         mock_future.result.return_value = (
             37,
@@ -1005,9 +993,7 @@ class TestBuildCountyValuesParallel(unittest.TestCase):
         return_value=[],
     )
     @patch("policyengine_us.Microsimulation")
-    def test_workers_1_skips_pool(
-        self, mock_msim_cls, mock_gcv, mock_county_idx
-    ):
+    def test_workers_1_skips_pool(self, mock_msim_cls, mock_gcv, mock_county_idx):
         mock_msim_cls.return_value = _FakeSimulation()
         builder = self._make_builder()
         geo = self._make_geo(["37001"])

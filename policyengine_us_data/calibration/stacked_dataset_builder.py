@@ -2,8 +2,8 @@
 CLI for creating CD-stacked datasets from calibration artifacts.
 
 Thin wrapper around build_h5/build_states/build_districts/build_cities
-in publish_local_area.py. Constructs a GeographyAssignment from local
-calibration outputs and delegates all H5 building logic.
+in publish_local_area.py. Loads a GeographyAssignment from geography.npz
+and delegates all H5 building logic.
 """
 
 import os
@@ -14,7 +14,7 @@ from policyengine_us_data.calibration.calibration_utils import (
     get_all_cds_from_database,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
-    GeographyAssignment,
+    load_geography,
 )
 
 if __name__ == "__main__":
@@ -48,9 +48,9 @@ if __name__ == "__main__":
         help="Path to policy_data.db",
     )
     parser.add_argument(
-        "--calibration-blocks",
+        "--geography-path",
         required=True,
-        help="Path to stacked_blocks.npy",
+        help="Path to geography.npz from calibration",
     )
     parser.add_argument(
         "--output-dir",
@@ -96,32 +96,20 @@ if __name__ == "__main__":
     cds_to_calibrate = get_all_cds_from_database(db_uri)
     print(f"Found {len(cds_to_calibrate)} congressional districts")
 
-    sim = Microsimulation(dataset=str(dataset_path))
-    n_hh = sim.calculate("household_id", map_to="household").shape[0]
-    del sim
-    expected_length = len(cds_to_calibrate) * n_hh
-
-    if len(w) != expected_length:
+    # === Load geography (required) ===
+    if not args.geography_path or not Path(args.geography_path).exists():
         raise ValueError(
-            f"Weight vector length ({len(w):,}) doesn't match "
-            f"expected ({expected_length:,})"
+            f"--geography-path is required and must exist. "
+            f"Got: {args.geography_path}. "
+            f"Re-run calibration to generate geography.npz."
         )
-
-    # === Construct geography from calibration artifacts ===
-    cal_blocks = np.load(args.calibration_blocks)
-    print(f"Loaded calibration blocks: {len(cal_blocks):,}")
-
-    cd_geoid = np.repeat(np.array(cds_to_calibrate, dtype=str), n_hh)
-    geography = GeographyAssignment(
-        block_geoid=cal_blocks,
-        cd_geoid=cd_geoid,
-        county_fips=np.full(len(w), "", dtype="U5"),
-        state_fips=np.array(
-            [int(cd) // 100 for cd in cd_geoid], dtype=np.int32
-        ),
-        n_records=n_hh,
-        n_clones=len(cds_to_calibrate),
+    geography = load_geography(args.geography_path)
+    print(
+        f"Loaded geography from {args.geography_path}: "
+        f"{geography.n_clones} clones x "
+        f"{geography.n_records} records"
     )
+
     print(
         f"Geography: {geography.n_clones} clones x "
         f"{geography.n_records} records"

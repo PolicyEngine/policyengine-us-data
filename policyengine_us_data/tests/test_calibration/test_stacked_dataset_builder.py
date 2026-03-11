@@ -11,10 +11,47 @@ from policyengine_us import Microsimulation
 from policyengine_us_data.calibration.publish_local_area import (
     build_h5,
 )
+from policyengine_us_data.calibration.clone_and_assign import (
+    GeographyAssignment,
+)
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "test_fixture_50hh.h5")
 TEST_CDS = ["3701", "200"]  # NC-01 and AK at-large
 SEED = 42
+
+
+# Real county FIPS per CD for realistic test blocks
+_CD_COUNTY = {
+    "200": "02020",  # AK at-large → Anchorage
+    "3701": "37183",  # NC-01 → Wake County
+}
+
+
+def _make_geography(n_hh, cds):
+    """Build a GeographyAssignment for testing with real county FIPS."""
+    n_cds = len(cds)
+    n_total = n_hh * n_cds
+    cd_geoid = np.repeat(np.array(sorted(cds), dtype=str), n_hh)
+    # Block GEOID = county(5) + tract(6) + block(4) = 15 chars
+    block_geoid = np.array(
+        [
+            f"{_CD_COUNTY[cd]}{i:06d}{i:04d}"[:15]
+            for cd, i in zip(cd_geoid, range(n_total))
+        ],
+        dtype="U15",
+    )
+    state_fips_arr = np.array(
+        [int(cd) // 100 for cd in cd_geoid], dtype=np.int32
+    )
+    county_fips = np.array([b[:5] for b in block_geoid], dtype="U5")
+    return GeographyAssignment(
+        block_geoid=block_geoid,
+        cd_geoid=cd_geoid,
+        county_fips=county_fips,
+        state_fips=state_fips_arr,
+        n_records=n_hh,
+        n_clones=n_cds,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -44,17 +81,17 @@ def test_weights(n_households):
 
 
 @pytest.fixture(scope="module")
-def stacked_result(test_weights):
+def stacked_result(test_weights, n_households):
     """Run stacked dataset builder and return results."""
+    geography = _make_geography(n_households, TEST_CDS)
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = os.path.join(tmpdir, "test_output.h5")
 
         build_h5(
             weights=np.array(test_weights),
-            blocks=None,
+            geography=geography,
             dataset_path=Path(FIXTURE_PATH),
             output_path=Path(output_path),
-            cds_to_calibrate=TEST_CDS,
             cd_subset=TEST_CDS,
         )
 
@@ -135,17 +172,17 @@ class TestStackedDatasetBuilder:
 
 
 @pytest.fixture(scope="module")
-def stacked_sim(test_weights):
+def stacked_sim(test_weights, n_households):
     """Run stacked dataset builder and return the simulation."""
+    geography = _make_geography(n_households, TEST_CDS)
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = os.path.join(tmpdir, "test_output.h5")
 
         build_h5(
             weights=np.array(test_weights),
-            blocks=None,
+            geography=geography,
             dataset_path=Path(FIXTURE_PATH),
             output_path=Path(output_path),
-            cds_to_calibrate=TEST_CDS,
             cd_subset=TEST_CDS,
         )
 
@@ -162,18 +199,21 @@ def stacked_sim_with_overlap(n_households):
         for hh_idx in overlap_households:
             w[cd_idx * n_households + hh_idx] = 1.0
 
+    geography = _make_geography(n_households, TEST_CDS)
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = os.path.join(tmpdir, "test_overlap.h5")
         build_h5(
             weights=np.array(w),
-            blocks=None,
+            geography=geography,
             dataset_path=Path(FIXTURE_PATH),
             output_path=Path(output_path),
-            cds_to_calibrate=TEST_CDS,
             cd_subset=TEST_CDS,
         )
         sim = Microsimulation(dataset=output_path)
-        yield {"sim": sim, "n_overlap": len(overlap_households)}
+        yield {
+            "sim": sim,
+            "n_overlap": len(overlap_households),
+        }
 
 
 class TestEntityReindexing:
@@ -230,6 +270,7 @@ class TestEntityReindexing:
             f"Expected {expected_families} families, " f"got {len(family_ids)}"
         )
         assert len(set(family_ids)) == expected_families, (
-            f"Family IDs not unique: {len(set(family_ids))} unique "
+            f"Family IDs not unique: "
+            f"{len(set(family_ids))} unique "
             f"out of {len(family_ids)}"
         )

@@ -138,8 +138,8 @@ def build_h5(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    blocks = geography.block_geoid
-    clone_cds = geography.cd_geoid.astype(str)
+    blocks = np.asarray(geography.block_geoid)
+    clone_cds = np.asarray(geography.cd_geoid, dtype=str)
 
     # === Load base simulation ===
     sim = Microsimulation(dataset=str(dataset_path))
@@ -379,15 +379,19 @@ def build_h5(
         for period in periods:
             values = holder.get_array(period)
 
+            # Convert Arrow-backed arrays to numpy before indexing
+            if hasattr(values, "_pa_array") or hasattr(values, "_ndarray"):
+                values = np.asarray(values)
+
             if var_def.value_type in (Enum, str) and variable != "county_fips":
                 if hasattr(values, "decode_to_str"):
                     values = values.decode_to_str().astype("S")
                 else:
-                    values = values.astype("S")
+                    values = np.asarray(values).astype("S")
             elif variable == "county_fips":
-                values = values.astype("int32")
+                values = np.asarray(values).astype("int32")
             else:
-                values = np.array(values)
+                values = np.asarray(values)
 
             var_data[period] = values[cidx]
             variables_saved += 1

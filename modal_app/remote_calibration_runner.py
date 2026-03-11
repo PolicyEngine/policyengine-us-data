@@ -10,7 +10,9 @@ calibration_vol = modal.Volume.from_name(
 )
 
 image = (
-    modal.Image.debian_slim(python_version="3.11").apt_install("git").pip_install("uv")
+    modal.Image.debian_slim(python_version="3.11")
+    .apt_install("git")
+    .pip_install("uv")
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
@@ -74,6 +76,7 @@ def _collect_outputs(cal_lines):
     config_path = None
     blocks_path = None
     geo_labels_path = None
+    geography_path = None
     for line in cal_lines:
         if "OUTPUT_PATH:" in line:
             output_path = line.split("OUTPUT_PATH:")[1].strip()
@@ -83,6 +86,8 @@ def _collect_outputs(cal_lines):
             cal_log_path = line.split("CAL_LOG_PATH:")[1].strip()
         elif "GEO_LABELS_PATH:" in line:
             geo_labels_path = line.split("GEO_LABELS_PATH:")[1].strip()
+        elif "GEOGRAPHY_PATH:" in line:
+            geography_path = line.split("GEOGRAPHY_PATH:")[1].strip()
         elif "BLOCKS_PATH:" in line:
             blocks_path = line.split("BLOCKS_PATH:")[1].strip()
         elif "LOG_PATH:" in line:
@@ -116,6 +121,11 @@ def _collect_outputs(cal_lines):
         with open(geo_labels_path, "rb") as f:
             geo_labels_bytes = f.read()
 
+    geography_bytes = None
+    if geography_path and os.path.exists(geography_path):
+        with open(geography_path, "rb") as f:
+            geography_bytes = f.read()
+
     return {
         "weights": weights_bytes,
         "log": log_bytes,
@@ -123,6 +133,7 @@ def _collect_outputs(cal_lines):
         "config": config_bytes,
         "blocks": blocks_bytes,
         "geo_labels": geo_labels_bytes,
+        "geography": geography_bytes,
     }
 
 
@@ -1101,6 +1112,12 @@ def main(
             f.write(result["geo_labels"])
         print(f"Geo labels saved to: {geo_labels_output}")
 
+    geography_output = f"{prefix}geography.npz"
+    if result.get("geography"):
+        with open(geography_output, "wb") as f:
+            f.write(result["geography"])
+        print(f"Geography saved to: {geography_output}")
+
     if push_results:
         from policyengine_us_data.utils.huggingface import (
             upload_calibration_artifacts,
@@ -1111,6 +1128,9 @@ def main(
             blocks_path=(blocks_output if result.get("blocks") else None),
             geo_labels_path=(
                 geo_labels_output if result.get("geo_labels") else None
+            ),
+            geography_path=(
+                geography_output if result.get("geography") else None
             ),
             log_dir=".",
             prefix=prefix,

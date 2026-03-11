@@ -51,16 +51,89 @@ def setup_gcp_credentials():
 
 
 def setup_repo(branch: str):
-    """Clone repo and install dependencies."""
+    """Clone the repo at the requested branch and install deps.
+
+    Always clones fresh from GitHub so every container runs the
+    latest code — no stale image cache issues.
+    """
     repo_dir = Path("/root/policyengine-us-data")
 
-    if not repo_dir.exists():
-        os.chdir("/root")
-        subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
-        os.chdir("policyengine-us-data")
-        subprocess.run(["uv", "sync", "--locked"], check=True)
-    else:
-        os.chdir(repo_dir)
+    if repo_dir.exists():
+        import shutil
+
+        shutil.rmtree(repo_dir)
+
+    os.chdir("/root")
+    subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
+    os.chdir("policyengine-us-data")
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    print(f"Checked out {branch} at {sha[:8]}")
+    subprocess.run(["uv", "sync", "--locked"], check=True)
+
+
+def validate_artifacts(
+    config_path: Path,
+    artifact_dir: Path,
+) -> None:
+    """Verify artifact checksums against unified_run_config.json.
+
+    Args:
+        config_path: Path to unified_run_config.json.
+        artifact_dir: Directory containing the artifact files.
+
+    Raises:
+        RuntimeError: If any artifact is missing or has a
+            checksum mismatch.
+    """
+    import hashlib
+
+    if not config_path.exists():
+        print(
+            "WARNING: unified_run_config.json not found, "
+            "skipping artifact validation "
+            "(backwards compat with old runs)"
+        )
+        return
+
+    with open(config_path) as f:
+        config = json.load(f)
+
+    artifacts = config.get("artifacts", {})
+    if not artifacts:
+        print(
+            "WARNING: No artifacts section in run config, "
+            "skipping validation"
+        )
+        return
+
+    for filename, expected_hash in artifacts.items():
+        filepath = artifact_dir / filename
+        if not filepath.exists():
+            raise RuntimeError(
+                f"Artifact validation failed: {filename} "
+                f"not found in {artifact_dir}"
+            )
+        h = hashlib.sha256()
+        with open(filepath, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        actual = f"sha256:{h.hexdigest()}"
+        if actual != expected_hash:
+            raise RuntimeError(
+                f"Artifact validation failed: {filename} "
+                f"checksum mismatch.\n"
+                f"  Expected: {expected_hash}\n"
+                f"  Actual:   {actual}"
+            )
+
+    print(
+        f"Validated {len(artifacts)} artifact(s) "
+        f"against run config checksums"
+    )
 
 
 def get_version() -> str:
@@ -252,28 +325,17 @@ def build_areas_worker(
         "--output-dir",
         str(output_dir),
     ]
-    if "blocks" in calibration_inputs:
-        worker_cmd.extend(
-            [
-                "--calibration-blocks",
-                calibration_inputs["blocks"],
-            ]
+    if "geography" not in calibration_inputs:
+        raise RuntimeError(
+            "geography.npz path missing from calibration_inputs. "
+            "Re-run calibration to generate this artifact."
         )
-    if "geo_labels" in calibration_inputs:
-        worker_cmd.extend(
-            [
-                "--geo-labels",
-                calibration_inputs["geo_labels"],
-            ]
-        )
-    if "stacked_takeup" in calibration_inputs:
-        worker_cmd.extend(
-            [
-                "--stacked-takeup",
-                calibration_inputs["stacked_takeup"],
-            ]
-        )
-
+    worker_cmd.extend(
+        [
+            "--geography-path",
+            calibration_inputs["geography"],
+        ]
+    )
     result = subprocess.run(
         worker_cmd,
         capture_output=True,
@@ -350,7 +412,9 @@ print(json.dumps(manifest))
     print(f"  States: {manifest['totals']['states']}")
     print(f"  Districts: {manifest['totals']['districts']}")
     print(f"  Cities: {manifest['totals']['cities']}")
-    print(f"  Total size: {manifest['totals']['total_size_bytes'] / 1e9:.2f} GB")
+    print(
+        f"  Total size: {manifest['totals']['total_size_bytes'] / 1e9:.2f} GB"
+    )
 
     return manifest
 
@@ -509,9 +573,7 @@ print(f"Successfully published version {{version}}")
     if result.returncode != 0:
         raise RuntimeError(f"Promote failed: {result.stderr}")
 
-    return (
-        f"Successfully promoted version {version} with {len(manifest['files'])} files"
-    )
+    return f"Successfully promoted version {version} with {len(manifest['files'])} files"
 
 
 @app.function(
@@ -562,6 +624,10 @@ def coordinate_publish(
             "weights": weights_path,
             "dataset": dataset_path,
             "database": db_path,
+            "geography": (calibration_dir / "calibration" / "geography.npz"),
+            "run_config": (
+                calibration_dir / "calibration" / "unified_run_config.json"
+            ),
         }
         for label, p in required.items():
             if not p.exists():
@@ -601,24 +667,26 @@ print("Done")
         / "source_imputed_stratified_extended_cps.h5"
     )
 
-    blocks_path = calibration_dir / "calibration" / "stacked_blocks.npy"
-    geo_labels_path = calibration_dir / "calibration" / "geo_labels.json"
+    geo_npz_path = calibration_dir / "calibration" / "geography.npz"
+    config_json_path = (
+        calibration_dir / "calibration" / "unified_run_config.json"
+    )
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
     }
-    if blocks_path.exists():
-        calibration_inputs["blocks"] = str(blocks_path)
-        print(f"Calibration blocks found: {blocks_path}")
-    if geo_labels_path.exists():
-        calibration_inputs["geo_labels"] = str(geo_labels_path)
-        print(f"Geo labels found: {geo_labels_path}")
-    takeup_path = calibration_dir / "calibration" / "stacked_takeup.npz"
-    if takeup_path.exists():
-        calibration_inputs["stacked_takeup"] = str(takeup_path)
-        print(f"Stacked takeup found: {takeup_path}")
-
+    if not geo_npz_path.exists():
+        raise RuntimeError(
+            f"geography.npz not found at {geo_npz_path}. "
+            f"Re-run calibration to generate this artifact."
+        )
+    calibration_inputs["geography"] = str(geo_npz_path)
+    print(f"Geography artifact found: {geo_npz_path}")
+    validate_artifacts(
+        config_json_path,
+        calibration_dir / "calibration",
+    )
     result = subprocess.run(
         [
             "uv",
@@ -718,10 +786,14 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
     )
 
     if actual_total < expected_total:
-        print(f"WARNING: Expected {expected_total} files, found {actual_total}")
+        print(
+            f"WARNING: Expected {expected_total} files, found {actual_total}"
+        )
 
     print("\nStarting upload to staging...")
-    result = upload_to_staging.remote(branch=branch, version=version, manifest=manifest)
+    result = upload_to_staging.remote(
+        branch=branch, version=version, manifest=manifest
+    )
     print(result)
 
     print("\n" + "=" * 60)
@@ -817,30 +889,27 @@ print("Done")
         / "source_imputed_stratified_extended_cps.h5"
     )
 
-    blocks_path = (
-        calibration_dir / "calibration" / "national_stacked_blocks.npy"
-    )
-    national_geo_labels_path = (
-        calibration_dir / "calibration" / "national_geo_labels.json"
+    geo_npz_path = calibration_dir / "calibration" / "national_geography.npz"
+    config_json_path = (
+        calibration_dir / "calibration" / "national_unified_run_config.json"
     )
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
     }
-    if blocks_path.exists():
-        calibration_inputs["blocks"] = str(blocks_path)
-        print(f"National calibration blocks found: {blocks_path}")
-    if national_geo_labels_path.exists():
-        calibration_inputs["geo_labels"] = str(national_geo_labels_path)
-        print(f"National geo labels found: " f"{national_geo_labels_path}")
-    national_takeup_path = (
-        calibration_dir / "calibration" / "national_stacked_takeup.npz"
+    if not geo_npz_path.exists():
+        raise RuntimeError(
+            f"national_geography.npz not found at "
+            f"{geo_npz_path}. Re-run national calibration "
+            f"to generate this artifact."
+        )
+    calibration_inputs["geography"] = str(geo_npz_path)
+    print(f"National geography artifact found: {geo_npz_path}")
+    validate_artifacts(
+        config_json_path,
+        calibration_dir / "calibration",
     )
-    if national_takeup_path.exists():
-        calibration_inputs["stacked_takeup"] = str(national_takeup_path)
-        print(f"National stacked takeup found: " f"{national_takeup_path}")
-
     version_dir = staging_dir / version
     version_dir.mkdir(parents=True, exist_ok=True)
 

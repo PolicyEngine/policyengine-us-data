@@ -780,239 +780,6 @@ def fit_l0_weights(
     return weights
 
 
-def convert_weights_to_stacked_format(
-    weights: np.ndarray,
-    cd_geoid: np.ndarray,
-    base_n_records: int,
-    cds_ordered: list,
-) -> np.ndarray:
-    """Convert column-ordered weights to (n_cds, n_records) stacked format.
-
-    The L0 calibration produces one weight per column, where columns
-    are ordered by clone (column i -> clone i // n_records, record
-    i % n_records) with random CD assignments. This function
-    aggregates weights across clones into the (n_cds, n_records)
-    layout expected by stacked_dataset_builder.
-
-    Args:
-        weights: Raw weight vector from L0 fitting, length
-            n_clones * base_n_records.
-        cd_geoid: CD GEOID per column from geography assignment.
-        base_n_records: Number of base households (before cloning).
-        cds_ordered: Ordered list of CD GEOIDs defining row order.
-
-    Returns:
-        Flat array of length n_cds * base_n_records that reshapes
-        to (n_cds, base_n_records).
-    """
-    n_total = len(weights)
-    n_cds = len(cds_ordered)
-
-    cd_to_idx = {cd: idx for idx, cd in enumerate(cds_ordered)}
-    record_indices = np.arange(n_total) % base_n_records
-    cd_row_indices = np.array([cd_to_idx[cd] for cd in cd_geoid])
-    flat_indices = cd_row_indices * base_n_records + record_indices
-
-    W = np.zeros(n_cds * base_n_records, dtype=np.float64)
-    np.add.at(W, flat_indices, weights)
-
-    assert np.isclose(
-        W.sum(), weights.sum()
-    ), f"Weight sum mismatch: {W.sum()} vs {weights.sum()}"
-    logger.info(
-        "Converted weights to stacked format: "
-        "(%d, %d) = %d elements, sum=%.1f",
-        n_cds,
-        base_n_records,
-        len(W),
-        W.sum(),
-    )
-    return W
-
-
-def convert_blocks_to_stacked_format(
-    block_geoid: np.ndarray,
-    cd_geoid: np.ndarray,
-    base_n_records: int,
-    cds_ordered: list,
-) -> np.ndarray:
-    """Convert column-ordered block GEOIDs to stacked format.
-
-    Parallel to convert_weights_to_stacked_format. For each
-    (CD, record) slot, stores the block GEOID from the first
-    clone assigned there. Empty string for unfilled slots
-    (records with no clone in that CD).
-
-    Args:
-        block_geoid: Block GEOID per column from geography
-            assignment. Length n_clones * base_n_records.
-        cd_geoid: CD GEOID per column from geography
-            assignment.
-        base_n_records: Number of base households.
-        cds_ordered: Ordered list of CD GEOIDs defining
-            row order.
-
-    Returns:
-        Array of dtype U15, length n_cds * base_n_records,
-        reshapeable to (n_cds, base_n_records).
-    """
-    n_total = len(block_geoid)
-    n_cds = len(cds_ordered)
-
-    cd_to_idx = {cd: idx for idx, cd in enumerate(cds_ordered)}
-    record_indices = np.arange(n_total) % base_n_records
-    cd_row_indices = np.array([cd_to_idx[cd] for cd in cd_geoid])
-    flat_indices = cd_row_indices * base_n_records + record_indices
-
-    B = np.full(n_cds * base_n_records, "", dtype="U15")
-    n_collisions = 0
-    for i in range(n_total):
-        fi = flat_indices[i]
-        if B[fi] == "":
-            B[fi] = block_geoid[i]
-        else:
-            n_collisions += 1
-
-    if n_collisions > 0:
-        logger.warning(
-            "Block collisions: %d slots had multiple clones "
-            "with different blocks.",
-            n_collisions,
-        )
-
-    n_filled = np.count_nonzero(B != "")
-    logger.info(
-        "Converted blocks to stacked format: "
-        "(%d, %d) = %d slots, %d filled (%.1f%%)",
-        n_cds,
-        base_n_records,
-        len(B),
-        n_filled,
-        n_filled / len(B) * 100,
-    )
-    return B
-
-
-def compute_stacked_takeup(
-    weights: np.ndarray,
-    cd_geoid: np.ndarray,
-    block_geoid: np.ndarray,
-    base_n_records: int,
-    cds_ordered: list,
-    entity_hh_idx_map: dict,
-    household_ids: np.ndarray,
-    precomputed_rates: dict,
-    affected_target_info: dict,
-) -> dict:
-    """Compute weight-weighted takeup per (CD, entity).
-
-    For each takeup variable, iterates over all clones and
-    recomputes entity-level takeup draws (deterministic given
-    block and hh_id). Accumulates weight-weighted takeup
-    per (CD, base_entity_index) using the final optimizer
-    weights.
-
-    Returns:
-        Dict mapping takeup variable name to ndarray of
-        shape (n_cds, n_base_entities).
-    """
-    from policyengine_us_data.utils.takeup import (
-        compute_block_takeup_for_entities,
-    )
-
-    n_total = len(weights)
-    n_clones = n_total // base_n_records
-    n_cds = len(cds_ordered)
-    cd_to_idx = {cd: i for i, cd in enumerate(cds_ordered)}
-
-    col_cd_idx = np.empty(n_total, dtype=np.int32)
-    for i, cd in enumerate(cd_geoid):
-        col_cd_idx[i] = cd_to_idx.get(cd, -1)
-
-    unique_takeup = {}
-    for tvar, info in affected_target_info.items():
-        if tvar.endswith("_count"):
-            continue
-        tv = info["takeup_var"]
-        if tv not in unique_takeup:
-            unique_takeup[tv] = info
-
-    result = {}
-
-    for takeup_var, info in unique_takeup.items():
-        entity_level = info["entity"]
-        rate_key = info["rate_key"]
-        ent_hh = entity_hh_idx_map[entity_level]
-        n_ent = len(ent_hh)
-        rate = precomputed_rates[rate_key]
-
-        numerator = np.zeros(n_cds * n_ent, dtype=np.float64)
-        denominator = np.zeros(n_cds * n_ent, dtype=np.float64)
-
-        for clone_idx in range(n_clones):
-            col_start = clone_idx * base_n_records
-            col_end = col_start + base_n_records
-            clone_w = weights[col_start:col_end]
-
-            if not np.any(clone_w > 0):
-                continue
-
-            clone_blocks = block_geoid[col_start:col_end]
-
-            ent_blocks = clone_blocks[ent_hh]
-            ent_hh_ids = household_ids[ent_hh]
-
-            ent_takeup = compute_block_takeup_for_entities(
-                takeup_var, rate, ent_blocks, ent_hh_ids
-            ).astype(np.float64)
-
-            ent_w = clone_w[ent_hh]
-            ent_cd_idx = col_cd_idx[col_start:col_end][ent_hh]
-
-            ent_active = (ent_w > 0) & (ent_cd_idx >= 0)
-            if not ent_active.any():
-                continue
-
-            ent_indices = np.arange(n_ent)
-            flat = ent_cd_idx * n_ent + ent_indices
-
-            np.add.at(
-                numerator,
-                flat[ent_active],
-                (ent_w * ent_takeup)[ent_active],
-            )
-            np.add.at(
-                denominator,
-                flat[ent_active],
-                ent_w[ent_active],
-            )
-
-            if (clone_idx + 1) % 100 == 0:
-                logger.info(
-                    "Stacked takeup %s: clone %d/%d",
-                    takeup_var,
-                    clone_idx + 1,
-                    n_clones,
-                )
-
-        valid = denominator > 0
-        takeup_avg = np.ones(n_cds * n_ent, dtype=np.float32)
-        takeup_avg[valid] = (numerator[valid] / denominator[valid]).astype(
-            np.float32
-        )
-
-        result[takeup_var] = takeup_avg.reshape(n_cds, n_ent)
-        logger.info(
-            "Stacked takeup %s: shape %s, " "active cells %d, mean %.4f",
-            takeup_var,
-            result[takeup_var].shape,
-            valid.sum(),
-            takeup_avg[valid].mean() if valid.any() else 0,
-        )
-
-    return result
-
-
 def compute_diagnostics(
     weights: np.ndarray,
     X_sparse,
@@ -1529,7 +1296,54 @@ def main(argv=None):
     logger.info("Weights saved to %s", output_path)
     print(f"OUTPUT_PATH:{output_path}")
 
-    # Save run config
+    # Save full geography for local-area pipeline
+    from policyengine_us_data.calibration.clone_and_assign import (
+        GeographyAssignment,
+        save_geography,
+    )
+
+    geography = GeographyAssignment(
+        block_geoid=geography_info["block_geoid"],
+        cd_geoid=geography_info["cd_geoid"],
+        county_fips=np.array([b[:5] for b in geography_info["block_geoid"]]),
+        state_fips=np.array(
+            [int(b[:2]) for b in geography_info["block_geoid"]],
+            dtype=np.int32,
+        ),
+        n_records=geography_info["base_n_records"],
+        n_clones=len(sorted(set(geography_info["cd_geoid"].astype(str)))),
+    )
+    geo_path = output_dir / "geography.npz"
+    save_geography(geography, geo_path)
+    logger.info("Geography saved to %s", geo_path)
+    print(f"GEOGRAPHY_PATH:{geo_path}")
+
+    # Also save legacy artifacts for backward compatibility
+    blocks_path = output_dir / "stacked_blocks.npy"
+    np.save(str(blocks_path), geography_info["block_geoid"])
+    logger.info("Blocks saved to %s", blocks_path)
+    print(f"BLOCKS_PATH:{blocks_path}")
+
+    from policyengine_us_data.calibration.calibration_utils import (
+        save_geo_labels,
+    )
+
+    cds_ordered = sorted(set(geography_info["cd_geoid"].astype(str)))
+    geo_labels_path = output_dir / "geo_labels.json"
+    save_geo_labels(cds_ordered, geo_labels_path)
+    logger.info("Geo labels saved to %s", geo_labels_path)
+    print(f"GEO_LABELS_PATH:{geo_labels_path}")
+
+    # Save run config with artifact checksums
+    import hashlib
+
+    def _sha256(filepath):
+        h = hashlib.sha256()
+        with open(filepath, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return f"sha256:{h.hexdigest()}"
+
     t_end = time.time()
     weight_format = "clone_level"
     run_config = {
@@ -1554,6 +1368,10 @@ def main(argv=None):
         "weight_nonzero": int((weights > 0).sum()),
         "mean_error_pct": float(err_pct.mean()),
         "elapsed_seconds": round(t_end - t_start, 1),
+        "artifacts": {
+            "calibration_weights.npy": _sha256(output_path),
+            "geography.npz": _sha256(geo_path),
+        },
     }
     run_config.update(get_git_provenance())
     config_path = output_dir / "unified_run_config.json"

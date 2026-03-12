@@ -76,6 +76,7 @@ ABBR_TO_FIPS = {v: str(k) for k, v in STATE_CODES.items()}
 CSV_COLUMNS = [
     "area_type",
     "area_id",
+    "district",
     "variable",
     "target_name",
     "period",
@@ -161,12 +162,42 @@ def _get_stratum_constraints(engine, stratum_id: int) -> list:
     return df.to_dict("records")
 
 
+def _batch_stratum_constraints(engine, stratum_ids) -> dict:
+    """Load constraints for all strata in one query."""
+    if not stratum_ids:
+        return {}
+    from sqlalchemy import text
+
+    placeholders = ",".join(str(int(s)) for s in stratum_ids)
+    query = text(
+        f"SELECT stratum_id, constraint_variable AS variable, "
+        f"operation, value "
+        f"FROM stratum_constraints "
+        f"WHERE stratum_id IN ({placeholders})"
+    )
+    with engine.connect() as conn:
+        df = pd.read_sql(query, conn)
+    result = {}
+    for sid, group in df.groupby("stratum_id"):
+        result[int(sid)] = group[["variable", "operation", "value"]].to_dict(
+            "records"
+        )
+    for sid in stratum_ids:
+        result.setdefault(int(sid), [])
+    return result
+
+
 def _geoid_to_district_filename(geoid: str) -> str:
-    """Convert DB geographic_id like '3701' to filename 'NC-01'."""
+    """Convert DB geographic_id like '3701' to filename 'NC-01'.
+
+    At-large districts use '00' in FIPS but '01' in filenames.
+    """
     geoid = geoid.zfill(4)
     state_fips = geoid[:-2]
     district_num = geoid[-2:]
-    abbr = FIPS_TO_ABBR.get(state_fips)
+    if district_num in ("00", "98"):
+        district_num = "01"
+    abbr = FIPS_TO_ABBR.get(str(int(state_fips)))
     if abbr is None:
         return geoid
     return f"{abbr}-{district_num}"
@@ -203,11 +234,12 @@ def _resolve_district_ids(engine, areas_str: Optional[str]) -> list:
             conn,
         )
     all_geoids = df["geographic_id"].tolist()
+    state_fips_ints = {int(f) for f in state_fips_list}
     result = []
     for geoid in all_geoids:
         padded = str(geoid).zfill(4)
-        sfips = padded[:-2]
-        if sfips in state_fips_list:
+        sfips = int(padded[:-2])
+        if sfips in state_fips_ints:
             result.append(str(geoid))
     return sorted(result)
 
@@ -256,6 +288,7 @@ def validate_area(
     period: int,
     training_mask: np.ndarray,
     variable_entity_map: dict,
+    constraints_map: Optional[dict] = None,
 ) -> list:
     entity_rel = _build_entity_rel(sim)
     household_ids = sim.calculate("household_id", map_to="household").values
@@ -280,7 +313,10 @@ def validate_area(
         target_value = float(row["value"])
         stratum_id = int(row["stratum_id"])
 
-        constraints = _get_stratum_constraints(engine, stratum_id)
+        if constraints_map is not None:
+            constraints = constraints_map.get(stratum_id, [])
+        else:
+            constraints = _get_stratum_constraints(engine, stratum_id)
         non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
 
         needed_vars = set()
@@ -349,6 +385,7 @@ def validate_area(
             {
                 "area_type": area_type,
                 "area_id": display_id,
+                "district": "",
                 "variable": variable,
                 "target_name": target_name,
                 "period": int(row["period"]),
@@ -415,6 +452,19 @@ def parse_args(argv=None):
         "--sanity-only",
         action="store_true",
         help="Run only structural sanity checks (fast, " "no database needed)",
+    )
+    parser.add_argument(
+        "--via-districts",
+        action="store_true",
+        help="Validate state targets by aggregating district "
+        "H5 files (faster for large states)",
+    )
+    parser.add_argument(
+        "--max-district-workers",
+        type=int,
+        default=4,
+        help="Max parallel district subprocesses "
+        "(default: 4, used with --via-districts)",
     )
     return parser.parse_args(argv)
 
@@ -484,9 +534,7 @@ def _validate_single_area(
         variable_entity_map=variable_entity_map,
     )
 
-    n_fail = sum(
-        1 for r in area_results if r["sanity_check"] == "FAIL"
-    )
+    n_fail = sum(1 for r in area_results if r["sanity_check"] == "FAIL")
     logger.info(
         "  %s: %d results, %d sanity failures",
         display_id,
@@ -495,6 +543,257 @@ def _validate_single_area(
     )
 
     return area_results, area_pop
+
+
+def _compute_district_contributions(
+    district_h5_path,
+    district_display_id,
+    state_targets_df,
+    constraints_map,
+    db_path,
+    period,
+):
+    """Compute per-household * weight for each state target in one district.
+
+    Returns list of dicts: {target_idx, district, sim_value}.
+    Runs in a subprocess for memory isolation.
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+    from policyengine_us import Microsimulation
+
+    logger.info("Loading district sim from %s", district_h5_path)
+    try:
+        sim = Microsimulation(dataset=district_h5_path)
+    except Exception as e:
+        logger.error("Failed to load %s: %s", district_h5_path, e)
+        return []
+
+    variable_entity_map = _build_variable_entity_map(sim)
+    entity_rel = _build_entity_rel(sim)
+    household_ids = sim.calculate("household_id", map_to="household").values
+    n_households = len(household_ids)
+
+    hh_weight = sim.calculate(
+        "household_weight",
+        map_to="household",
+        period=period,
+    ).values.astype(np.float64)
+
+    hh_vars_cache = {}
+    person_vars_cache = {}
+
+    results = []
+    for i, (idx, row) in enumerate(state_targets_df.iterrows()):
+        variable = row["variable"]
+        stratum_id = int(row["stratum_id"])
+
+        constraints = constraints_map.get(stratum_id, [])
+        non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
+
+        is_count = variable.endswith("_count")
+        if not is_count and variable not in hh_vars_cache:
+            try:
+                hh_vars_cache[variable] = sim.calculate(
+                    variable,
+                    map_to="household",
+                    period=period,
+                ).values
+            except Exception:
+                pass
+
+        needed_vars = {variable}
+        for c in non_geo:
+            needed_vars.add(c["variable"])
+        for vname in needed_vars:
+            if vname not in person_vars_cache:
+                try:
+                    person_vars_cache[vname] = sim.calculate(
+                        vname,
+                        map_to="person",
+                        period=period,
+                    ).values
+                except Exception:
+                    pass
+
+        per_hh = _calculate_target_values_standalone(
+            target_variable=variable,
+            non_geo_constraints=non_geo,
+            n_households=n_households,
+            hh_vars=hh_vars_cache,
+            person_vars=person_vars_cache,
+            entity_rel=entity_rel,
+            household_ids=household_ids,
+            variable_entity_map=variable_entity_map,
+        )
+
+        sim_value = float(np.dot(per_hh, hh_weight))
+        results.append(
+            {
+                "target_idx": i,
+                "district": district_display_id,
+                "sim_value": sim_value,
+            }
+        )
+
+    logger.info(
+        "  %s: computed %d target contributions",
+        district_display_id,
+        len(results),
+    )
+    return results
+
+
+def _run_state_via_districts(
+    state_fips,
+    state_abbr,
+    level_targets,
+    level_training,
+    engine,
+    args,
+    max_workers,
+):
+    """Validate one state by aggregating district H5 contributions."""
+    state_mask = (level_targets["geographic_id"] == state_fips).values
+    state_targets = level_targets[state_mask].reset_index(drop=True)
+    state_training = level_training[state_mask]
+
+    if len(state_targets) == 0:
+        logger.warning("No targets for %s, skipping", state_abbr)
+        return []
+
+    stratum_ids = state_targets["stratum_id"].unique().tolist()
+    constraints_map = _batch_stratum_constraints(engine, stratum_ids)
+
+    district_ids = _resolve_district_ids(engine, state_abbr)
+    if not district_ids:
+        logger.warning("No districts found for %s", state_abbr)
+        return []
+
+    logger.info(
+        "Validating %s via %d districts (%d targets)",
+        state_abbr,
+        len(district_ids),
+        len(state_targets),
+    )
+
+    district_args = []
+    for geoid in district_ids:
+        display_id = _geoid_to_district_filename(geoid)
+        h5_path = f"{args.hf_prefix}/districts/{display_id}.h5"
+        district_args.append(
+            (
+                h5_path,
+                display_id,
+                state_targets,
+                constraints_map,
+                args.db_path,
+                args.period,
+            )
+        )
+
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(max_workers) as pool:
+        all_district_results = pool.starmap(
+            _compute_district_contributions, district_args
+        )
+
+    n_targets = len(state_targets)
+    aggregated = np.zeros(n_targets, dtype=np.float64)
+    per_district_rows = []
+
+    for district_results in all_district_results:
+        for entry in district_results:
+            tidx = entry["target_idx"]
+            aggregated[tidx] += entry["sim_value"]
+
+            row_data = state_targets.iloc[tidx]
+            target_value = float(row_data["value"])
+            variable = row_data["variable"]
+            stratum_id = int(row_data["stratum_id"])
+            constraints = constraints_map.get(stratum_id, [])
+            target_name = UnifiedMatrixBuilder._make_target_name(
+                variable, constraints
+            )
+
+            per_district_rows.append(
+                {
+                    "area_type": "states",
+                    "area_id": state_abbr,
+                    "district": entry["district"],
+                    "variable": variable,
+                    "target_name": target_name,
+                    "period": int(row_data["period"]),
+                    "target_value": target_value,
+                    "sim_value": entry["sim_value"],
+                    "error": "",
+                    "rel_error": "",
+                    "abs_error": "",
+                    "rel_abs_error": "",
+                    "sanity_check": "",
+                    "sanity_reason": "",
+                    "in_training": bool(state_training[tidx]),
+                }
+            )
+
+    summary_rows = []
+    for i in range(n_targets):
+        row_data = state_targets.iloc[i]
+        variable = row_data["variable"]
+        target_value = float(row_data["value"])
+        sim_value = float(aggregated[i])
+        stratum_id = int(row_data["stratum_id"])
+
+        constraints = constraints_map.get(stratum_id, [])
+        target_name = UnifiedMatrixBuilder._make_target_name(
+            variable, constraints
+        )
+
+        error = sim_value - target_value
+        abs_error = abs(error)
+        if target_value != 0:
+            rel_error = error / target_value
+            rel_abs_error = abs_error / abs(target_value)
+        else:
+            rel_error = float("inf") if error != 0 else 0.0
+            rel_abs_error = float("inf") if abs_error != 0 else 0.0
+
+        sanity_check, sanity_reason = _run_sanity_check(
+            sim_value, variable, "state"
+        )
+
+        summary_rows.append(
+            {
+                "area_type": "states",
+                "area_id": state_abbr,
+                "district": "",
+                "variable": variable,
+                "target_name": target_name,
+                "period": int(row_data["period"]),
+                "target_value": target_value,
+                "sim_value": sim_value,
+                "error": error,
+                "rel_error": rel_error,
+                "abs_error": abs_error,
+                "rel_abs_error": rel_abs_error,
+                "sanity_check": sanity_check,
+                "sanity_reason": sanity_reason,
+                "in_training": bool(state_training[i]),
+            }
+        )
+
+    n_fail = sum(1 for r in summary_rows if r["sanity_check"] == "FAIL")
+    logger.info(
+        "  %s: %d targets, %d sanity failures (via %d districts)",
+        state_abbr,
+        n_targets,
+        n_fail,
+        len(district_ids),
+    )
+
+    return per_district_rows + summary_rows
 
 
 def _run_area_type(
@@ -511,6 +810,22 @@ def _run_area_type(
     Each area runs in a subprocess so the OS fully reclaims
     memory between states (avoids OOM on large states like CA).
     """
+    if area_type == "states" and getattr(args, "via_districts", False):
+        results = []
+        for area_id in area_ids:
+            abbr = FIPS_TO_ABBR.get(area_id, area_id)
+            state_results = _run_state_via_districts(
+                state_fips=area_id,
+                state_abbr=abbr,
+                level_targets=level_targets,
+                level_training=level_training,
+                engine=engine,
+                args=args,
+                max_workers=getattr(args, "max_district_workers", 4),
+            )
+            results.extend(state_results)
+        return results
+
     results = []
     total_weighted_pop = 0.0
 
@@ -525,12 +840,8 @@ def _run_area_type(
 
         h5_path = f"{args.hf_prefix}/{area_type}/{h5_name}.h5"
 
-        area_mask = (
-            level_targets["geographic_id"] == area_id
-        ).values
-        area_targets = level_targets[area_mask].reset_index(
-            drop=True
-        )
+        area_mask = (level_targets["geographic_id"] == area_id).values
+        area_targets = level_targets[area_mask].reset_index(drop=True)
         area_training = level_training[area_mask]
 
         ctx = mp.get_context("spawn")

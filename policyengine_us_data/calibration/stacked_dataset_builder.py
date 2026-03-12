@@ -10,9 +10,6 @@ import os
 import numpy as np
 from pathlib import Path
 
-from policyengine_us_data.calibration.calibration_utils import (
-    get_all_cds_from_database,
-)
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
 )
@@ -93,25 +90,31 @@ if __name__ == "__main__":
     # === Load and validate ===
     w = np.load(str(weights_path))
     db_uri = f"sqlite:///{db_path}"
-    cds_to_calibrate = get_all_cds_from_database(db_uri)
-    print(f"Found {len(cds_to_calibrate)} congressional districts")
 
     sim = Microsimulation(dataset=str(dataset_path))
     n_hh = sim.calculate("household_id", map_to="household").shape[0]
     del sim
-    expected_length = len(cds_to_calibrate) * n_hh
 
-    if len(w) != expected_length:
+    if len(w) % n_hh != 0:
         raise ValueError(
-            f"Weight vector length ({len(w):,}) doesn't match "
-            f"expected ({expected_length:,})"
+            f"Weight vector length ({len(w):,}) is not divisible "
+            f"by n_hh ({n_hh:,})"
         )
+    n_clones = len(w) // n_hh
+    print(f"Detected {n_clones} clones from weights ({len(w):,} / {n_hh:,})")
 
     # === Construct geography from calibration artifacts ===
-    cal_blocks = np.load(args.calibration_blocks)
+    cal_blocks = np.load(args.calibration_blocks, allow_pickle=True)
     print(f"Loaded calibration blocks: {len(cal_blocks):,}")
 
-    cd_geoid = np.repeat(np.array(cds_to_calibrate, dtype=str), n_hh)
+    if len(cal_blocks) != len(w):
+        raise ValueError(
+            f"Blocks length ({len(cal_blocks):,}) doesn't match "
+            f"weights length ({len(w):,})"
+        )
+
+    # Derive CD GEOIDs from blocks (first 4 digits of block GEOID)
+    cd_geoid = np.array([str(b)[:4] for b in cal_blocks], dtype=str)
     geography = GeographyAssignment(
         block_geoid=cal_blocks,
         cd_geoid=cd_geoid,
@@ -120,7 +123,7 @@ if __name__ == "__main__":
             [int(cd) // 100 for cd in cd_geoid], dtype=np.int32
         ),
         n_records=n_hh,
-        n_clones=len(cds_to_calibrate),
+        n_clones=n_clones,
     )
     print(
         f"Geography: {geography.n_clones} clones x "
@@ -131,7 +134,7 @@ if __name__ == "__main__":
 
     # === Dispatch ===
     if mode == "national":
-        output_path = output_dir / "national.h5"
+        output_path = output_dir / "US.h5"
         print(f"\nCreating national dataset: {output_path}")
         build_h5(
             weights=w,
@@ -177,7 +180,8 @@ if __name__ == "__main__":
     elif mode == "single-cd":
         if not args.cd:
             raise ValueError("--cd required with --mode single-cd")
-        if args.cd not in cds_to_calibrate:
+        calibrated_cds = sorted(set(cd_geoid))
+        if args.cd not in calibrated_cds:
             raise ValueError(f"CD {args.cd} not in calibrated CDs")
         output_path = output_dir / f"{args.cd}.h5"
         print(f"\nCreating single CD dataset: {output_path}")

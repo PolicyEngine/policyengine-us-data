@@ -28,6 +28,7 @@ from policyengine_us_data.calibration.block_assignment import (
     get_county_filter_probability,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
+    GeographyAssignment,
     assign_random_geography,
 )
 from policyengine_us_data.utils.takeup import (
@@ -168,8 +169,14 @@ def build_h5(
 
     # County filtering: scale weights by P(target_counties | CD)
     if county_filter is not None:
+        unique_cds = np.unique(clone_cds_matrix)
+        cd_prob = {
+            cd: get_county_filter_probability(cd, county_filter)
+            for cd in unique_cds
+        }
         p_matrix = np.vectorize(
-            lambda cd: get_county_filter_probability(cd, county_filter)
+            cd_prob.__getitem__,
+            otypes=[float],
         )(clone_cds_matrix)
         W *= p_matrix
 
@@ -185,6 +192,11 @@ def build_h5(
     # === Identify active clones ===
     active_geo, active_hh = np.where(W > 0)
     n_clones = len(active_geo)
+    if n_clones == 0:
+        raise ValueError(
+            f"No active clones after filtering. "
+            f"cd_subset={cd_subset}, county_filter={county_filter}"
+        )
     clone_weights = W[active_geo, active_hh]
     active_blocks = blocks.reshape(n_clones_total, n_hh)[active_geo, active_hh]
     active_clone_cds = clone_cds.reshape(n_clones_total, n_hh)[
@@ -892,15 +904,36 @@ def main():
     del sim
     print(f"\nBase dataset has {n_hh:,} households")
 
-    print(
-        f"Regenerating geography: {n_hh} records x "
-        f"{args.n_clones} clones, seed={args.seed}"
-    )
-    geography = assign_random_geography(
-        n_records=n_hh,
-        n_clones=args.n_clones,
-        seed=args.seed,
-    )
+    geo_cache = WORK_DIR / f"geography_{n_hh}x{args.n_clones}_s{args.seed}.npz"
+    if geo_cache.exists():
+        print(f"Loading cached geography from {geo_cache}")
+        npz = np.load(geo_cache, allow_pickle=True)
+        geography = GeographyAssignment(
+            block_geoid=npz["block_geoid"],
+            cd_geoid=npz["cd_geoid"],
+            county_fips=npz["county_fips"],
+            state_fips=npz["state_fips"],
+            n_records=n_hh,
+            n_clones=args.n_clones,
+        )
+    else:
+        print(
+            f"Generating geography: {n_hh} records x "
+            f"{args.n_clones} clones, seed={args.seed}"
+        )
+        geography = assign_random_geography(
+            n_records=n_hh,
+            n_clones=args.n_clones,
+            seed=args.seed,
+        )
+        np.savez_compressed(
+            geo_cache,
+            block_geoid=geography.block_geoid,
+            cd_geoid=geography.cd_geoid,
+            county_fips=geography.county_fips,
+            state_fips=geography.state_fips,
+        )
+        print(f"Saved geography cache to {geo_cache}")
     takeup_filter = [spec["variable"] for spec in SIMPLE_TAKEUP_VARS]
     print(f"Takeup filter: {takeup_filter}")
 

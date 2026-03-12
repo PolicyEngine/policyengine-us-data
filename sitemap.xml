@@ -23,6 +23,9 @@
     <loc>http://localhost:3000/local-area-calibration-setup</loc>
   </url>
   <url>
+    <loc>http://localhost:3000/calibration</loc>
+  </url>
+  <url>
     <loc>http://localhost:3000/discussion</loc>
   </url>
   <url>

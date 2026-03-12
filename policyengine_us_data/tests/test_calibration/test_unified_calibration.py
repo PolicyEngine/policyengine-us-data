@@ -78,12 +78,8 @@ class TestBlockSaltedDraws:
 
     def test_same_block_same_results(self):
         blocks = np.array(["370010001001001"] * 500)
-        d1 = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks
-        )
-        d2 = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks
-        )
+        d1 = compute_block_takeup_for_entities("takes_up_snap_if_eligible", 0.8, blocks)
+        d2 = compute_block_takeup_for_entities("takes_up_snap_if_eligible", 0.8, blocks)
         np.testing.assert_array_equal(d1, d2)
 
     def test_different_blocks_different_results(self):
@@ -102,12 +98,8 @@ class TestBlockSaltedDraws:
 
     def test_different_vars_different_results(self):
         blocks = np.array(["370010001001001"] * 500)
-        d1 = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks
-        )
-        d2 = compute_block_takeup_for_entities(
-            "takes_up_aca_if_eligible", 0.8, blocks
-        )
+        d1 = compute_block_takeup_for_entities("takes_up_snap_if_eligible", 0.8, blocks)
+        d2 = compute_block_takeup_for_entities("takes_up_aca_if_eligible", 0.8, blocks)
         assert not np.array_equal(d1, d2)
 
     def test_hh_salt_differs_from_block_only(self):
@@ -315,9 +307,7 @@ class TestGeographyAssignmentCountyFips:
     """Verify county_fips field on GeographyAssignment."""
 
     def test_county_fips_equals_block_prefix(self):
-        blocks = np.array(
-            ["370010001001001", "480010002002002", "060370003003003"]
-        )
+        blocks = np.array(["370010001001001", "480010002002002", "060370003003003"])
         ga = GeographyAssignment(
             block_geoid=blocks,
             cd_geoid=np.array(["3701", "4801", "0613"]),
@@ -350,12 +340,8 @@ class TestBlockTakeupSeeding:
 
     def test_reproducible(self):
         blocks = np.array(["010010001001001"] * 50 + ["020010001001001"] * 50)
-        r1 = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks
-        )
-        r2 = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks
-        )
+        r1 = compute_block_takeup_for_entities("takes_up_snap_if_eligible", 0.8, blocks)
+        r2 = compute_block_takeup_for_entities("takes_up_snap_if_eligible", 0.8, blocks)
         np.testing.assert_array_equal(r1, r2)
 
     def test_different_blocks_different_draws(self):
@@ -486,80 +472,6 @@ class TestAssembleCloneValuesCounty:
         np.testing.assert_array_equal(hh_vars["snap"], expected)
 
 
-class TestConvertBlocksToStackedFormat:
-    """Verify convert_blocks_to_stacked_format produces
-    correct stacked block arrays."""
-
-    def test_basic_conversion(self):
-        from policyengine_us_data.calibration.unified_calibration import (
-            convert_blocks_to_stacked_format,
-        )
-
-        block_geoid = np.array(
-            [
-                "370010001001001",
-                "370010001001002",
-                "480010002002001",
-                "480010002002002",
-            ]
-        )
-        cd_geoid = np.array(["3701", "3701", "4801", "4801"])
-        base_n_records = 2
-        cds_ordered = ["3701", "4801"]
-
-        result = convert_blocks_to_stacked_format(
-            block_geoid, cd_geoid, base_n_records, cds_ordered
-        )
-        assert result.dtype.kind == "U"
-        assert len(result) == 4
-        assert result[0] == "370010001001001"
-        assert result[1] == "370010001001002"
-        assert result[2] == "480010002002001"
-        assert result[3] == "480010002002002"
-
-    def test_empty_slots(self):
-        from policyengine_us_data.calibration.unified_calibration import (
-            convert_blocks_to_stacked_format,
-        )
-
-        block_geoid = np.array(["370010001001001", "370010001001002"])
-        cd_geoid = np.array(["3701", "3701"])
-        base_n_records = 2
-        cds_ordered = ["3701", "4801"]
-
-        result = convert_blocks_to_stacked_format(
-            block_geoid, cd_geoid, base_n_records, cds_ordered
-        )
-        assert len(result) == 4
-        assert result[0] == "370010001001001"
-        assert result[1] == "370010001001002"
-        assert result[2] == ""
-        assert result[3] == ""
-
-    def test_first_clone_wins(self):
-        from policyengine_us_data.calibration.unified_calibration import (
-            convert_blocks_to_stacked_format,
-        )
-
-        block_geoid = np.array(
-            [
-                "370010001001001",
-                "370010001001002",
-                "370010001001099",
-                "370010001001099",
-            ]
-        )
-        cd_geoid = np.array(["3701", "3701", "3701", "3701"])
-        base_n_records = 2
-        cds_ordered = ["3701"]
-
-        result = convert_blocks_to_stacked_format(
-            block_geoid, cd_geoid, base_n_records, cds_ordered
-        )
-        assert result[0] == "370010001001001"
-        assert result[1] == "370010001001002"
-
-
 class TestTakeupDrawConsistency:
     """Verify the matrix builder's inline takeup loop and
     compute_block_takeup_for_entities produce identical draws
@@ -630,17 +542,13 @@ class TestTakeupDrawConsistency:
         n = 5000
 
         blocks_nc = np.array(["370010001001001"] * n)
-        result_nc = compute_block_takeup_for_entities(
-            var, rate_dict, blocks_nc
-        )
+        result_nc = compute_block_takeup_for_entities(var, rate_dict, blocks_nc)
         # NC rate=0.9, expect ~90%
         frac_nc = result_nc.mean()
         assert 0.85 < frac_nc < 0.95, f"NC frac={frac_nc}"
 
         blocks_tx = np.array(["480010002002002"] * n)
-        result_tx = compute_block_takeup_for_entities(
-            var, rate_dict, blocks_tx
-        )
+        result_tx = compute_block_takeup_for_entities(var, rate_dict, blocks_tx)
         # TX rate=0.6, expect ~60%
         frac_tx = result_tx.mean()
         assert 0.55 < frac_tx < 0.65, f"TX frac={frac_tx}"

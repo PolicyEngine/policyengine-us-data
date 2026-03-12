@@ -110,9 +110,7 @@ def assign_random_geography(
             n_bad = collisions.sum()
             if n_bad == 0:
                 break
-            clone_indices[collisions] = rng.choice(
-                len(blocks), size=n_bad, p=probs
-            )
+            clone_indices[collisions] = rng.choice(len(blocks), size=n_bad, p=probs)
             clone_cds = cds[clone_indices]
             collisions = np.zeros(n_records, dtype=bool)
             for prev in range(clone_idx):
@@ -129,6 +127,50 @@ def assign_random_geography(
         state_fips=states[indices],
         n_records=n_records,
         n_clones=n_clones,
+    )
+
+
+def save_geography(geography: GeographyAssignment, path) -> None:
+    """Save a GeographyAssignment to a compressed .npz file.
+
+    Args:
+        geography: The geography assignment to save.
+        path: Output file path (should end in .npz).
+    """
+    from pathlib import Path
+
+    path = Path(path)
+    np.savez_compressed(
+        path,
+        block_geoid=geography.block_geoid,
+        cd_geoid=geography.cd_geoid,
+        county_fips=geography.county_fips,
+        state_fips=geography.state_fips,
+        n_records=np.array([geography.n_records]),
+        n_clones=np.array([geography.n_clones]),
+    )
+
+
+def load_geography(path) -> GeographyAssignment:
+    """Load a GeographyAssignment from a .npz file.
+
+    Args:
+        path: Path to the .npz file saved by save_geography.
+
+    Returns:
+        GeographyAssignment with all fields restored.
+    """
+    from pathlib import Path
+
+    path = Path(path)
+    data = np.load(path, allow_pickle=False)
+    return GeographyAssignment(
+        block_geoid=data["block_geoid"],
+        cd_geoid=data["cd_geoid"],
+        county_fips=data["county_fips"],
+        state_fips=data["state_fips"],
+        n_records=int(data["n_records"][0]),
+        n_clones=int(data["n_clones"][0]),
     )
 
 

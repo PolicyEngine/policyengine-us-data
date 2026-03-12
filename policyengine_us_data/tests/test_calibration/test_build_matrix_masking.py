@@ -15,9 +15,7 @@ from scipy import sparse
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-DATASET_PATH = str(
-    STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
-)
+DATASET_PATH = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
 DB_PATH = str(STORAGE_FOLDER / "calibration" / "policy_data.db")
 DB_URI = f"sqlite:///{DB_PATH}"
 
@@ -56,9 +54,7 @@ def matrix_result():
         target_filter={"domain_variables": ["snap", "medicaid"]},
     )
     X_csc = X_sparse.tocsc()
-    national_rows = targets_df[
-        targets_df["geo_level"] == "national"
-    ].index.values
+    national_rows = targets_df[targets_df["geo_level"] == "national"].index.values
     district_targets = targets_df[targets_df["geo_level"] == "district"]
     record_idx = None
     for ri in range(n_records):

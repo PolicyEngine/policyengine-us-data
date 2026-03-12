@@ -2,8 +2,8 @@
 CLI for creating CD-stacked datasets from calibration artifacts.
 
 Thin wrapper around build_h5/build_states/build_districts/build_cities
-in publish_local_area.py. Constructs a GeographyAssignment from local
-calibration outputs and delegates all H5 building logic.
+in publish_local_area.py. Loads a GeographyAssignment from geography.npz
+and delegates all H5 building logic.
 """
 
 import os
@@ -11,7 +11,7 @@ import numpy as np
 from pathlib import Path
 
 from policyengine_us_data.calibration.clone_and_assign import (
-    GeographyAssignment,
+    load_geography,
 )
 
 if __name__ == "__main__":
@@ -45,9 +45,9 @@ if __name__ == "__main__":
         help="Path to policy_data.db",
     )
     parser.add_argument(
-        "--calibration-blocks",
+        "--geography-path",
         required=True,
-        help="Path to stacked_blocks.npy",
+        help="Path to geography.npz from calibration",
     )
     parser.add_argument(
         "--output-dir",
@@ -91,43 +91,22 @@ if __name__ == "__main__":
     w = np.load(str(weights_path))
     db_uri = f"sqlite:///{db_path}"
 
-    sim = Microsimulation(dataset=str(dataset_path))
-    n_hh = sim.calculate("household_id", map_to="household").shape[0]
-    del sim
-
-    if len(w) % n_hh != 0:
+    # === Load geography (required) ===
+    if not args.geography_path or not Path(args.geography_path).exists():
         raise ValueError(
-            f"Weight vector length ({len(w):,}) is not divisible "
-            f"by n_hh ({n_hh:,})"
+            f"--geography-path is required and must exist. "
+            f"Got: {args.geography_path}. "
+            f"Re-run calibration to generate geography.npz."
         )
-    n_clones = len(w) // n_hh
-    print(f"Detected {n_clones} clones from weights ({len(w):,} / {n_hh:,})")
-
-    # === Construct geography from calibration artifacts ===
-    cal_blocks = np.load(args.calibration_blocks, allow_pickle=True)
-    print(f"Loaded calibration blocks: {len(cal_blocks):,}")
-
-    if len(cal_blocks) != len(w):
-        raise ValueError(
-            f"Blocks length ({len(cal_blocks):,}) doesn't match "
-            f"weights length ({len(w):,})"
-        )
-
-    # Derive CD GEOIDs from blocks (first 4 digits of block GEOID)
-    cd_geoid = np.array([str(b)[:4] for b in cal_blocks], dtype=str)
-    geography = GeographyAssignment(
-        block_geoid=cal_blocks,
-        cd_geoid=cd_geoid,
-        county_fips=np.full(len(w), "", dtype="U5"),
-        state_fips=np.array(
-            [int(cd) // 100 for cd in cd_geoid], dtype=np.int32
-        ),
-        n_records=n_hh,
-        n_clones=n_clones,
-    )
+    geography = load_geography(args.geography_path)
     print(
-        f"Geography: {geography.n_clones} clones x "
+        f"Loaded geography from {args.geography_path}: "
+        f"{geography.n_clones} clones x "
         f"{geography.n_records} records"
+    )
+
+    print(
+        f"Geography: {geography.n_clones} clones x {geography.n_records} records"
     )
 
     takeup_filter = [spec["variable"] for spec in SIMPLE_TAKEUP_VARS]

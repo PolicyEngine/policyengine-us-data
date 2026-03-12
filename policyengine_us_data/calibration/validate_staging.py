@@ -115,8 +115,7 @@ def _run_sanity_check(
     if abs(sim_value) > ceiling:
         return (
             "FAIL",
-            f"|{sim_value:.2e}| > {ceiling:.0e} ceiling "
-            f"({vtype} @ {geo_level})",
+            f"|{sim_value:.2e}| > {ceiling:.0e} ceiling ({vtype} @ {geo_level})",
         )
     return "PASS", ""
 
@@ -265,15 +264,9 @@ def _build_entity_rel(sim) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "person_id": sim.calculate("person_id", map_to="person").values,
-            "household_id": sim.calculate(
-                "household_id", map_to="person"
-            ).values,
-            "tax_unit_id": sim.calculate(
-                "tax_unit_id", map_to="person"
-            ).values,
-            "spm_unit_id": sim.calculate(
-                "spm_unit_id", map_to="person"
-            ).values,
+            "household_id": sim.calculate("household_id", map_to="person").values,
+            "tax_unit_id": sim.calculate("tax_unit_id", map_to="person").values,
+            "spm_unit_id": sim.calculate("spm_unit_id", map_to="person").values,
         }
     )
 
@@ -435,8 +428,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--target-config",
         default=DEFAULT_TARGET_CONFIG,
-        help="YAML config with exclude rules "
-        "(default: target_config_full.yaml)",
+        help="YAML config with exclude rules (default: target_config_full.yaml)",
     )
     parser.add_argument(
         "--db-path",
@@ -451,7 +443,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--sanity-only",
         action="store_true",
-        help="Run only structural sanity checks (fast, " "no database needed)",
+        help="Run only structural sanity checks (fast, no database needed)",
     )
     parser.add_argument(
         "--via-districts",

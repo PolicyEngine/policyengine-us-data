@@ -17,9 +17,7 @@ import pytest
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-DATASET_PATH = str(
-    STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
-)
+DATASET_PATH = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
 DB_PATH = str(STORAGE_FOLDER / "calibration" / "policy_data.db")
 DB_URI = f"sqlite:///{DB_PATH}"
 
@@ -44,10 +42,6 @@ def test_xw_matches_stacked_sim():
     )
     from policyengine_us_data.calibration.unified_matrix_builder import (
         UnifiedMatrixBuilder,
-    )
-    from policyengine_us_data.calibration.unified_calibration import (
-        convert_weights_to_stacked_format,
-        convert_blocks_to_stacked_format,
     )
     from policyengine_us_data.calibration.publish_local_area import (
         build_h5,
@@ -98,29 +92,14 @@ def test_xw_matches_stacked_sim():
     w = np.ones(n_total, dtype=np.float64)
     xw = X @ w
 
-    geo_cd_strs = np.array([str(g) for g in geography.cd_geoid])
-    cds_ordered = sorted(set(geo_cd_strs))
-    w_stacked = convert_weights_to_stacked_format(
-        weights=w,
-        cd_geoid=geography.cd_geoid,
-        base_n_records=n_records,
-        cds_ordered=cds_ordered,
-    )
-    blocks_stacked = convert_blocks_to_stacked_format(
-        block_geoid=geography.block_geoid,
-        cd_geoid=geography.cd_geoid,
-        base_n_records=n_records,
-        cds_ordered=cds_ordered,
-    )
+    cds_ordered = sorted(set(geography.cd_geoid.astype(str)))
 
+    # Per-CD weight sums to find top CDs
     cd_weights = {}
     for i, cd in enumerate(cds_ordered):
-        start = i * n_records
-        end = start + n_records
-        cd_weights[cd] = w_stacked[start:end].sum()
-    top_cds = sorted(cd_weights, key=cd_weights.get, reverse=True)[
-        :N_CDS_TO_CHECK
-    ]
+        mask = geography.cd_geoid.astype(str) == cd
+        cd_weights[cd] = w[mask].sum()
+    top_cds = sorted(cd_weights, key=cd_weights.get, reverse=True)[:N_CDS_TO_CHECK]
 
     check_vars = ["aca_ptc", "snap"]
     tmpdir = tempfile.mkdtemp()
@@ -128,13 +107,11 @@ def test_xw_matches_stacked_sim():
     for cd in top_cds:
         h5_path = f"{tmpdir}/{cd}.h5"
         build_h5(
-            weights=np.array(w_stacked),
-            blocks=blocks_stacked,
+            weights=w,
+            geography=geography,
             dataset_path=Path(DATASET_PATH),
             output_path=Path(h5_path),
-            cds_to_calibrate=cds_ordered,
             cd_subset=[cd],
-            rerandomize_takeup=True,
             takeup_filter=takeup_filter,
         )
 
@@ -148,8 +125,7 @@ def test_xw_matches_stacked_sim():
             stacked_sum = (vals * hh_weight).sum()
 
             cd_row = targets_df[
-                (targets_df["variable"] == var)
-                & (targets_df["geographic_id"] == cd)
+                (targets_df["variable"] == var) & (targets_df["geographic_id"] == cd)
             ]
             if len(cd_row) == 0:
                 continue

@@ -58,8 +58,7 @@ SCRIPT_OUTPUTS = {
         "policyengine_us_data/storage/stratified_extended_cps_2024.h5"
     ),
     "policyengine_us_data/calibration/create_source_imputed_cps.py": (
-        "policyengine_us_data/storage/"
-        "source_imputed_stratified_extended_cps_2024.h5"
+        "policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5"
     ),
     "policyengine_us_data/datasets/cps/small_enhanced_cps.py": (
         "policyengine_us_data/storage/small_enhanced_cps_2024.h5"

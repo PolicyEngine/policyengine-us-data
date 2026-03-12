@@ -163,8 +163,7 @@ def run_sanity_checks(
                         "check": "person_household_mapping",
                         "status": "FAIL",
                         "detail": (
-                            f"{len(orphans)} persons map to "
-                            "non-existent households"
+                            f"{len(orphans)} persons map to non-existent households"
                         ),
                     }
                 )
@@ -215,10 +214,7 @@ def run_sanity_checks(
                             {
                                 "check": "per_hh_employment_income",
                                 "status": "WARN",
-                                "detail": (
-                                    f"${per_hh:,.0f}/hh "
-                                    "(expected $10K-$200K)"
-                                ),
+                                "detail": (f"${per_hh:,.0f}/hh (expected $10K-$200K)"),
                             }
                         )
                     else:
@@ -240,8 +236,7 @@ def run_sanity_checks(
                                 "check": "per_hh_snap",
                                 "status": "WARN",
                                 "detail": (
-                                    f"${per_hh_snap:,.0f}/hh "
-                                    "(expected $0-$10K)"
+                                    f"${per_hh_snap:,.0f}/hh (expected $0-$10K)"
                                 ),
                             }
                         )
@@ -282,7 +277,7 @@ def main():
         detail = f" — {r['detail']}" if r["detail"] else ""
         print(f"  [{icon}] {r['check']}{detail}")
 
-    print(f"\n{len(results)} checks: " f"{n_fail} failures, {n_warn} warnings")
+    print(f"\n{len(results)} checks: {n_fail} failures, {n_warn} warnings")
     if n_fail > 0:
         raise SystemExit(1)
 

@@ -104,9 +104,7 @@ class TestApplyTargetConfig:
 
     def test_matrix_and_names_stay_in_sync(self, sample_targets):
         df, X, names = sample_targets
-        config = {
-            "exclude": [{"variable": "person_count", "geo_level": "national"}]
-        }
+        config = {"exclude": [{"variable": "person_count", "geo_level": "national"}]}
         out_df, out_X, out_names = apply_target_config(df, X, names, config)
         assert out_X.shape[0] == len(out_df)
         assert len(out_names) == len(out_df)
@@ -114,9 +112,7 @@ class TestApplyTargetConfig:
 
     def test_no_match_keeps_all(self, sample_targets):
         df, X, names = sample_targets
-        config = {
-            "exclude": [{"variable": "nonexistent", "geo_level": "national"}]
-        }
+        config = {"exclude": [{"variable": "nonexistent", "geo_level": "national"}]}
         out_df, out_X, out_names = apply_target_config(df, X, names, config)
         assert len(out_df) == len(df)
         assert out_X.shape[0] == X.shape[0]
@@ -126,7 +122,7 @@ class TestLoadTargetConfig:
     def test_load_valid_config(self, tmp_path):
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
-            "exclude:\n" "  - variable: snap\n" "    geo_level: national\n"
+            "exclude:\n  - variable: snap\n    geo_level: national\n"
         )
         config = load_target_config(str(config_file))
         assert len(config["exclude"]) == 1

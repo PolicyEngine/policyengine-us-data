@@ -123,7 +123,7 @@ def main(argv=None):
             )
 
     if any_flag:
-        print("\n*** = >30% deviation from reference. " "Investigate further.")
+        print("\n*** = >30% deviation from reference. Investigate further.")
 
     if failures:
         print(f"\n{len(failures)} variables failed:")
@@ -145,7 +145,9 @@ def main(argv=None):
         icon = (
             "PASS"
             if r["status"] == "PASS"
-            else "FAIL" if r["status"] == "FAIL" else "WARN"
+            else "FAIL"
+            if r["status"] == "FAIL"
+            else "WARN"
         )
         print(f"  [{icon}] {r['check']}: {r['detail']}")
 

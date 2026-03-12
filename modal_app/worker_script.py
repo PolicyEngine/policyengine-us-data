@@ -21,22 +21,9 @@ def main():
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
-        "--calibration-blocks",
-        type=str,
-        default=None,
-        help="Path to stacked_blocks.npy from calibration",
-    )
-    parser.add_argument(
-        "--geo-labels",
-        type=str,
-        default=None,
-        help="Path to geo_labels.json (overrides DB lookup)",
-    )
-    parser.add_argument(
-        "--stacked-takeup",
-        type=str,
-        default=None,
-        help="Path to stacked_takeup.npz from calibration",
+        "--geography-path",
+        required=True,
+        help="Path to geography.npz from calibration",
     )
     args = parser.parse_args()
 
@@ -45,14 +32,6 @@ def main():
     dataset_path = Path(args.dataset_path)
     db_path = Path(args.db_path)
     output_dir = Path(args.output_dir)
-
-    calibration_blocks = None
-    if args.calibration_blocks:
-        calibration_blocks = np.load(args.calibration_blocks)
-
-    stacked_takeup = None
-    if args.stacked_takeup:
-        stacked_takeup = dict(np.load(args.stacked_takeup))
 
     from policyengine_us_data.utils.takeup import (
         SIMPLE_TAKEUP_VARS,
@@ -70,18 +49,30 @@ def main():
         AT_LARGE_DISTRICTS,
     )
     from policyengine_us_data.calibration.calibration_utils import (
-        get_all_cds_from_database,
-        load_geo_labels,
         STATE_CODES,
     )
+    from policyengine_us_data.calibration.clone_and_assign import (
+        load_geography,
+    )
 
-    if args.geo_labels and Path(args.geo_labels).exists():
-        geo_labels = load_geo_labels(args.geo_labels)
-    else:
-        db_uri = f"sqlite:///{db_path}"
-        geo_labels = get_all_cds_from_database(db_uri)
-    cds_to_calibrate = geo_labels
     weights = np.load(weights_path)
+
+    # Load geography from .npz (required)
+    if not args.geography_path or not Path(args.geography_path).exists():
+        raise RuntimeError(
+            f"--geography-path is required and must exist. "
+            f"Got: {args.geography_path}. "
+            f"Re-run calibration to generate geography.npz."
+        )
+    geography = load_geography(args.geography_path)
+    cds_to_calibrate = sorted(set(geography.cd_geoid.astype(str)))
+    geo_labels = cds_to_calibrate
+    print(
+        f"Loaded geography from {args.geography_path}: "
+        f"{geography.n_clones} clones x "
+        f"{geography.n_records} records",
+        file=sys.stderr,
+    )
 
     results = {
         "completed": [],
@@ -103,9 +94,7 @@ def main():
                 if state_fips is None:
                     raise ValueError(f"Unknown state code: {item_id}")
                 cd_subset = [
-                    cd
-                    for cd in cds_to_calibrate
-                    if int(cd) // 100 == state_fips
+                    cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips
                 ]
                 if not cd_subset:
                     print(
@@ -117,13 +106,11 @@ def main():
                 states_dir.mkdir(parents=True, exist_ok=True)
                 path = build_h5(
                     weights=weights,
-                    blocks=calibration_blocks,
+                    geography=geography,
                     dataset_path=dataset_path,
                     output_path=states_dir / f"{item_id}.h5",
-                    cds_to_calibrate=cds_to_calibrate,
                     cd_subset=cd_subset,
                     takeup_filter=takeup_filter,
-                    stacked_takeup=stacked_takeup,
                 )
 
             elif item_type == "district":
@@ -162,13 +149,11 @@ def main():
                 districts_dir.mkdir(parents=True, exist_ok=True)
                 path = build_h5(
                     weights=weights,
-                    blocks=calibration_blocks,
+                    geography=geography,
                     dataset_path=dataset_path,
                     output_path=districts_dir / f"{friendly_name}.h5",
-                    cds_to_calibrate=cds_to_calibrate,
                     cd_subset=[geoid],
                     takeup_filter=takeup_filter,
-                    stacked_takeup=stacked_takeup,
                 )
 
             elif item_type == "city":
@@ -183,14 +168,12 @@ def main():
                 cities_dir.mkdir(parents=True, exist_ok=True)
                 path = build_h5(
                     weights=weights,
-                    blocks=calibration_blocks,
+                    geography=geography,
                     dataset_path=dataset_path,
                     output_path=cities_dir / "NYC.h5",
-                    cds_to_calibrate=cds_to_calibrate,
                     cd_subset=cd_subset,
                     county_filter=NYC_COUNTIES,
                     takeup_filter=takeup_filter,
-                    stacked_takeup=stacked_takeup,
                 )
 
             elif item_type == "national":
@@ -198,11 +181,9 @@ def main():
                 national_dir.mkdir(parents=True, exist_ok=True)
                 path = build_h5(
                     weights=weights,
-                    blocks=calibration_blocks,
+                    geography=geography,
                     dataset_path=dataset_path,
                     output_path=national_dir / "US.h5",
-                    cds_to_calibrate=cds_to_calibrate,
-                    stacked_takeup=stacked_takeup,
                 )
             else:
                 raise ValueError(f"Unknown item type: {item_type}")

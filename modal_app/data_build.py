@@ -1,3 +1,4 @@
+import functools
 import os
 import shutil
 import subprocess
@@ -20,9 +21,7 @@ checkpoint_volume = modal.Volume.from_name(
 )
 
 image = (
-    modal.Image.debian_slim(python_version="3.13")
-    .apt_install("git")
-    .pip_install("uv")
+    modal.Image.debian_slim(python_version="3.13").apt_install("git").pip_install("uv")
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
@@ -55,9 +54,11 @@ SCRIPT_OUTPUTS = {
         "policyengine_us_data/storage/enhanced_cps_2024.h5",
         "calibration_log.csv",
     ],
-    "policyengine_us_data/datasets/cps/"
-    "local_area_calibration/create_stratified_cps.py": (
+    "policyengine_us_data/calibration/create_stratified_cps.py": (
         "policyengine_us_data/storage/stratified_extended_cps_2024.h5"
+    ),
+    "policyengine_us_data/calibration/create_source_imputed_cps.py": (
+        "policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5"
     ),
     "policyengine_us_data/datasets/cps/small_enhanced_cps.py": (
         "policyengine_us_data/storage/small_enhanced_cps_2024.h5"
@@ -70,7 +71,7 @@ TEST_MODULES = [
     "policyengine_us_data/tests/test_database.py",
     "policyengine_us_data/tests/test_pandas3_compatibility.py",
     "policyengine_us_data/tests/test_datasets/",
-    "policyengine_us_data/tests/test_local_area_calibration/",
+    "policyengine_us_data/tests/test_calibration/",
 ]
 
 
@@ -86,9 +87,16 @@ def setup_gcp_credentials():
     return None
 
 
+@functools.cache
+def get_current_commit() -> str:
+    """Get the current git commit SHA (cached per process)."""
+    return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+
+
 def get_checkpoint_path(branch: str, output_file: str) -> Path:
-    """Get the checkpoint path for an output file, scoped by branch."""
-    return Path(VOLUME_MOUNT) / branch / Path(output_file).name
+    """Get the checkpoint path for an output file, scoped by branch and commit."""
+    commit = get_current_commit()
+    return Path(VOLUME_MOUNT) / branch / commit / Path(output_file).name
 
 
 def is_checkpointed(branch: str, output_file: str) -> bool:
@@ -226,7 +234,8 @@ def run_tests_with_checkpoints(
     Raises:
         RuntimeError: If any test module fails.
     """
-    checkpoint_dir = Path(VOLUME_MOUNT) / branch / "tests"
+    commit = get_current_commit()
+    checkpoint_dir = Path(VOLUME_MOUNT) / branch / commit / "tests"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     for module in TEST_MODULES:
@@ -295,6 +304,17 @@ def build_datasets(
     os.chdir("/root")
     subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
     os.chdir("policyengine-us-data")
+
+    # Clean stale checkpoints from other commits
+    branch_dir = Path(VOLUME_MOUNT) / branch
+    if branch_dir.exists():
+        current_commit = get_current_commit()
+        for entry in branch_dir.iterdir():
+            if entry.is_dir() and entry.name != current_commit:
+                shutil.rmtree(entry)
+                print(f"Removed stale checkpoint dir: {entry.name[:12]}")
+        checkpoint_volume.commit()
+
     # Use uv sync to install exact versions from uv.lock
     subprocess.run(["uv", "sync", "--locked"], check=True)
 
@@ -380,9 +400,7 @@ def build_datasets(
         print("=== Phase 3: Building extended CPS ===")
         run_script_with_checkpoint(
             "policyengine_us_data/datasets/cps/extended_cps.py",
-            SCRIPT_OUTPUTS[
-                "policyengine_us_data/datasets/cps/extended_cps.py"
-            ],
+            SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/extended_cps.py"],
             branch,
             checkpoint_volume,
             env=env,
@@ -390,29 +408,22 @@ def build_datasets(
 
         # GROUP 3: After extended_cps - run in parallel
         # enhanced_cps and stratified_cps both depend on extended_cps
-        print(
-            "=== Phase 4: Building enhanced and stratified CPS (parallel)"
-            " ==="
-        )
+        print("=== Phase 4: Building enhanced and stratified CPS (parallel) ===")
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = [
                 executor.submit(
                     run_script_with_checkpoint,
                     "policyengine_us_data/datasets/cps/enhanced_cps.py",
-                    SCRIPT_OUTPUTS[
-                        "policyengine_us_data/datasets/cps/enhanced_cps.py"
-                    ],
+                    SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/enhanced_cps.py"],
                     branch,
                     checkpoint_volume,
                     env=env,
                 ),
                 executor.submit(
                     run_script_with_checkpoint,
-                    "policyengine_us_data/datasets/cps/"
-                    "local_area_calibration/create_stratified_cps.py",
+                    "policyengine_us_data/calibration/create_stratified_cps.py",
                     SCRIPT_OUTPUTS[
-                        "policyengine_us_data/datasets/cps/"
-                        "local_area_calibration/create_stratified_cps.py"
+                        "policyengine_us_data/calibration/create_stratified_cps.py"
                     ],
                     branch,
                     checkpoint_volume,
@@ -426,9 +437,7 @@ def build_datasets(
         print("=== Phase 5: Building small enhanced CPS ===")
         run_script_with_checkpoint(
             "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
-            SCRIPT_OUTPUTS[
-                "policyengine_us_data/datasets/cps/small_enhanced_cps.py"
-            ],
+            SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/small_enhanced_cps.py"],
             branch,
             checkpoint_volume,
             env=env,

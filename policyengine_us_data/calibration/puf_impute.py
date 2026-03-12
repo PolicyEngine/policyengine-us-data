@@ -194,9 +194,7 @@ RETIREMENT_INCOME_PREDICTORS = [
     "social_security",
 ]
 
-RETIREMENT_PREDICTORS = (
-    RETIREMENT_DEMOGRAPHIC_PREDICTORS + RETIREMENT_INCOME_PREDICTORS
-)
+RETIREMENT_PREDICTORS = RETIREMENT_DEMOGRAPHIC_PREDICTORS + RETIREMENT_INCOME_PREDICTORS
 
 
 def _get_retirement_limits(year: int) -> dict:
@@ -411,9 +409,7 @@ def reconcile_ss_subcomponents(
     if puf_has_ss.any():
         shares = _qrf_ss_shares(data, n_cps, time_period, puf_has_ss)
         if shares is None:
-            shares = _age_heuristic_ss_shares(
-                data, n_cps, time_period, puf_has_ss
-            )
+            shares = _age_heuristic_ss_shares(data, n_cps, time_period, puf_has_ss)
 
     for sub in SS_SUBCOMPONENTS:
         if sub not in data:
@@ -492,17 +488,13 @@ def puf_clone_dataset(
             return pred_values
         entity = var_meta.entity.key
         if entity != "person":
-            return cps_sim.populations[entity].value_from_first_person(
-                pred_values
-            )
+            return cps_sim.populations[entity].value_from_first_person(pred_values)
         return pred_values
 
     # Impute weeks_unemployed for PUF half
     puf_weeks = None
     if y_full is not None and dataset_path is not None:
-        puf_weeks = _impute_weeks_unemployed(
-            data, y_full, time_period, dataset_path
-        )
+        puf_weeks = _impute_weeks_unemployed(data, y_full, time_period, dataset_path)
 
     # Impute retirement contributions for PUF half
     puf_retirement = None
@@ -526,24 +518,14 @@ def puf_clone_dataset(
                 time_period: np.concatenate([values, values + values.max()])
             }
         elif "_weight" in variable:
-            new_data[variable] = {
-                time_period: np.concatenate([values, values * 0])
-            }
+            new_data[variable] = {time_period: np.concatenate([values, values * 0])}
         elif variable == "weeks_unemployed" and puf_weeks is not None:
-            new_data[variable] = {
-                time_period: np.concatenate([values, puf_weeks])
-            }
-        elif (
-            variable in CPS_RETIREMENT_VARIABLES and puf_retirement is not None
-        ):
+            new_data[variable] = {time_period: np.concatenate([values, puf_weeks])}
+        elif variable in CPS_RETIREMENT_VARIABLES and puf_retirement is not None:
             puf_vals = puf_retirement[variable]
-            new_data[variable] = {
-                time_period: np.concatenate([values, puf_vals])
-            }
+            new_data[variable] = {time_period: np.concatenate([values, puf_vals])}
         else:
-            new_data[variable] = {
-                time_period: np.concatenate([values, values])
-            }
+            new_data[variable] = {time_period: np.concatenate([values, values])}
 
     new_data["state_fips"] = {
         time_period: np.concatenate([state_fips, state_fips]).astype(np.int32)
@@ -631,24 +613,18 @@ def _impute_weeks_unemployed(
 
     del cps_sim
 
-    qrf = QRF(log_level="INFO", memory_efficient=True)
-    # Subsample to 5000 for QRF training speed: CPS has ~200K person
-    # records; QRF fitting is O(n log n) per tree, so 5K keeps
-    # training under ~30s while retaining adequate distributional
-    # coverage. Empirical testing showed diminishing accuracy gains
-    # beyond ~5K–10K records for these predictors.
-    if len(X_train) > 5000:
-        X_train_sampled = X_train.sample(n=5000, random_state=42)
-    else:
-        X_train_sampled = X_train
-
-    fitted = qrf.fit(
-        X_train=X_train_sampled,
+    qrf = QRF(
+        log_level="INFO",
+        memory_efficient=True,
+        max_train_samples=5000,
+    )
+    predictions = qrf.fit_predict(
+        X_train=X_train,
+        X_test=X_test,
         predictors=WEEKS_PREDICTORS,
         imputed_variables=["weeks_unemployed"],
         n_jobs=1,
     )
-    predictions = fitted.predict(X_test=X_test)
     imputed_weeks = predictions["weeks_unemployed"].values
 
     imputed_weeks = np.clip(imputed_weeks, 0, 52)
@@ -662,15 +638,9 @@ def _impute_weeks_unemployed(
     logger.info(
         "Imputed weeks_unemployed for PUF: %d with weeks > 0, mean = %.1f",
         (imputed_weeks > 0).sum(),
-        (
-            imputed_weeks[imputed_weeks > 0].mean()
-            if (imputed_weeks > 0).any()
-            else 0
-        ),
+        (imputed_weeks[imputed_weeks > 0].mean() if (imputed_weeks > 0).any() else 0),
     )
 
-    del fitted, predictions
-    gc.collect()
     return imputed_weeks
 
 
@@ -728,23 +698,19 @@ def _impute_retirement_contributions(
 
     del cps_sim
 
-    # Subsample to 5000 for speed (see comment in
-    # _impute_weeks_unemployed for rationale).
-    if len(X_train) > 5000:
-        X_train_sampled = X_train.sample(n=5000, random_state=42)
-    else:
-        X_train_sampled = X_train
-
-    # Train QRF
-    qrf = QRF(log_level="INFO", memory_efficient=True)
+    qrf = QRF(
+        log_level="INFO",
+        memory_efficient=True,
+        max_train_samples=5000,
+    )
     try:
-        fitted = qrf.fit(
-            X_train=X_train_sampled,
+        predictions = qrf.fit_predict(
+            X_train=X_train,
+            X_test=X_test,
             predictors=RETIREMENT_PREDICTORS,
             imputed_variables=CPS_RETIREMENT_VARIABLES,
             n_jobs=1,
         )
-        predictions = fitted.predict(X_test=X_test)
     except Exception:
         logger.warning(
             "QRF retirement imputation failed, returning zeros",
@@ -801,8 +767,6 @@ def _impute_retirement_contributions(
         result["self_employed_pension_contributions"].mean(),
     )
 
-    del fitted, predictions
-    gc.collect()
     return result
 
 
@@ -836,9 +800,7 @@ def _run_qrf_imputation(
 
     puf_sim = Microsimulation(dataset=puf_dataset)
 
-    puf_agi = puf_sim.calculate(
-        "adjusted_gross_income", map_to="person"
-    ).values
+    puf_agi = puf_sim.calculate("adjusted_gross_income", map_to="person").values
 
     X_train_full = puf_sim.calculate_dataframe(
         DEMOGRAPHIC_PREDICTORS + IMPUTED_VARIABLES
@@ -873,7 +835,7 @@ def _run_qrf_imputation(
                 X_test[pred] = data[pred][time_period].astype(np.float32)
 
     logger.info("Imputing %d PUF variables (full)", len(IMPUTED_VARIABLES))
-    y_full = _batch_qrf(
+    y_full = _sequential_qrf(
         X_train_full, X_test, DEMOGRAPHIC_PREDICTORS, IMPUTED_VARIABLES
     )
 
@@ -881,7 +843,7 @@ def _run_qrf_imputation(
         "Imputing %d PUF variables (override)",
         len(OVERRIDDEN_IMPUTED_VARIABLES),
     )
-    y_override = _batch_qrf(
+    y_override = _sequential_qrf(
         X_train_override,
         X_test,
         DEMOGRAPHIC_PREDICTORS,
@@ -915,79 +877,54 @@ def _stratified_subsample_index(
     if remaining_quota >= len(bottom_idx):
         selected_bottom = bottom_idx
     else:
-        selected_bottom = rng.choice(
-            bottom_idx, size=remaining_quota, replace=False
-        )
+        selected_bottom = rng.choice(bottom_idx, size=remaining_quota, replace=False)
 
     selected = np.concatenate([top_idx, selected_bottom])
     selected.sort()
     return selected
 
 
-def _batch_qrf(
+def _sequential_qrf(
     X_train: pd.DataFrame,
     X_test: pd.DataFrame,
     predictors: List[str],
     output_vars: List[str],
-    batch_size: int = 10,
 ) -> Dict[str, np.ndarray]:
-    """Run QRF in batches to control memory.
+    """Run a single sequential QRF preserving covariance.
+
+    Uses microimpute's fit_predict() which handles missing variable
+    detection, gc cleanup, and zero-fill internally. Each variable
+    is conditioned on all previously imputed variables, preserving
+    the full joint distribution.
 
     Args:
         X_train: Training data with predictors + output vars.
         X_test: Test data with predictors only.
         predictors: Predictor column names.
         output_vars: Output variable names to impute.
-        batch_size: Variables per batch.
 
     Returns:
         Dict mapping variable name to imputed values.
     """
     from microimpute.models.qrf import QRF
 
-    available = [c for c in output_vars if c in X_train.columns]
-    missing = [c for c in output_vars if c not in X_train.columns]
+    qrf = QRF(
+        log_level="INFO",
+        memory_efficient=True,
+    )
+    predictions = qrf.fit_predict(
+        X_train=X_train,
+        X_test=X_test,
+        predictors=predictors,
+        imputed_variables=output_vars,
+        n_jobs=1,
+    )
 
+    result = {var: predictions[var].values for var in predictions.columns}
+    missing = set(output_vars) - set(result)
     if missing:
-        logger.warning(
-            "%d variables missing from training: %s",
-            len(missing),
-            missing[:5],
+        raise ValueError(
+            f"{len(missing)} variables requested but not returned "
+            f"by fit_predict(): {sorted(missing)[:10]}"
         )
-
-    result = {}
-
-    for batch_start in range(0, len(available), batch_size):
-        batch_vars = available[batch_start : batch_start + batch_size]
-
-        gc.collect()
-
-        qrf = QRF(
-            log_level="INFO",
-            memory_efficient=True,
-            batch_size=10,
-            cleanup_interval=5,
-        )
-
-        batch_X_train = X_train[predictors + batch_vars].copy()
-
-        fitted = qrf.fit(
-            X_train=batch_X_train,
-            predictors=predictors,
-            imputed_variables=batch_vars,
-            n_jobs=1,
-        )
-
-        predictions = fitted.predict(X_test=X_test)
-
-        for var in batch_vars:
-            result[var] = predictions[var].values
-
-        del fitted, predictions, batch_X_train
-        gc.collect()
-
-    n_test = len(X_test)
-    for var in missing:
-        result[var] = np.zeros(n_test)
-
     return result

@@ -42,13 +42,9 @@ def pull_hardcoded_targets():
         "VARIABLE": list(HARD_CODED_TOTALS.keys()),
         "VALUE": list(HARD_CODED_TOTALS.values()),
         "IS_COUNT": [0.0]
-        * len(
-            HARD_CODED_TOTALS
-        ),  # All values are monetary amounts, not counts
+        * len(HARD_CODED_TOTALS),  # All values are monetary amounts, not counts
         "BREAKDOWN_VARIABLE": [np.nan]
-        * len(
-            HARD_CODED_TOTALS
-        ),  # No breakdown variable for hardcoded targets
+        * len(HARD_CODED_TOTALS),  # No breakdown variable for hardcoded targets
         "LOWER_BOUND": [np.nan] * len(HARD_CODED_TOTALS),
         "UPPER_BOUND": [np.nan] * len(HARD_CODED_TOTALS),
     }

@@ -15,13 +15,12 @@ from scipy import sparse
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-DATASET_PATH = str(STORAGE_FOLDER / "stratified_extended_cps_2024.h5")
+DATASET_PATH = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
 DB_PATH = str(STORAGE_FOLDER / "calibration" / "policy_data.db")
 DB_URI = f"sqlite:///{DB_PATH}"
 
 N_CLONES = 2
 SEED = 42
-RECORD_IDX = 8629  # High SNAP ($18k), lands in TX/PA with seed=42
 
 
 def _data_available():
@@ -43,9 +42,7 @@ def matrix_result():
 
     sim = Microsimulation(dataset=DATASET_PATH)
     n_records = sim.calculate("household_id").values.shape[0]
-    geography = assign_random_geography(
-        n_records, n_clones=N_CLONES, seed=SEED
-    )
+    geography = assign_random_geography(n_records, n_clones=N_CLONES, seed=SEED)
     builder = UnifiedMatrixBuilder(
         db_uri=DB_URI,
         time_period=2024,
@@ -56,12 +53,32 @@ def matrix_result():
         sim=sim,
         target_filter={"domain_variables": ["snap", "medicaid"]},
     )
+    X_csc = X_sparse.tocsc()
+    national_rows = targets_df[targets_df["geo_level"] == "national"].index.values
+    district_targets = targets_df[targets_df["geo_level"] == "district"]
+    record_idx = None
+    for ri in range(n_records):
+        vals = X_csc[:, ri].toarray().ravel()
+        if not np.any(vals[national_rows] != 0):
+            continue
+        cd = str(geography.cd_geoid[ri])
+        own_cd_rows = district_targets[
+            district_targets["geographic_id"] == cd
+        ].index.values
+        if len(own_cd_rows) > 0 and np.any(vals[own_cd_rows] != 0):
+            record_idx = ri
+            break
+
+    if record_idx is None:
+        pytest.skip("No suitable test household found")
+
     return {
         "geography": geography,
         "targets_df": targets_df,
         "X": X_sparse,
         "target_names": target_names,
         "n_records": n_records,
+        "record_idx": record_idx,
     }
 
 
@@ -94,8 +111,8 @@ class TestNationalMasking:
         national_rows = targets_df[targets_df["geo_level"] == "national"].index
         assert len(national_rows) > 0
 
-        col_0 = _clone_col(n_records, 0, RECORD_IDX)
-        col_1 = _clone_col(n_records, 1, RECORD_IDX)
+        col_0 = _clone_col(n_records, 0, matrix_result["record_idx"])
+        col_1 = _clone_col(n_records, 1, matrix_result["record_idx"])
         X_csc = X.tocsc()
 
         visible_0 = X_csc[:, col_0].toarray().ravel()
@@ -117,15 +134,14 @@ class TestStateMasking:
         geography = matrix_result["geography"]
         n_records = matrix_result["n_records"]
 
-        col_0 = _clone_col(n_records, 0, RECORD_IDX)
-        col_1 = _clone_col(n_records, 1, RECORD_IDX)
+        col_0 = _clone_col(n_records, 0, matrix_result["record_idx"])
+        col_1 = _clone_col(n_records, 1, matrix_result["record_idx"])
         state_0 = str(int(geography.state_fips[col_0]))
         state_1 = str(int(geography.state_fips[col_1]))
 
         if state_0 == state_1:
             pytest.skip(
-                "Both clones landed in the same state — "
-                "cannot test cross-state masking"
+                "Both clones landed in the same state — cannot test cross-state masking"
             )
 
         state_targets = targets_df[targets_df["geo_level"] == "state"]
@@ -155,7 +171,7 @@ class TestDistrictMasking:
         geography = matrix_result["geography"]
         n_records = matrix_result["n_records"]
 
-        col_0 = _clone_col(n_records, 0, RECORD_IDX)
+        col_0 = _clone_col(n_records, 0, matrix_result["record_idx"])
         cd_0 = str(geography.cd_geoid[col_0])
         state_0 = str(int(geography.state_fips[col_0]))
 
@@ -164,11 +180,7 @@ class TestDistrictMasking:
         vals_0 = X_csc[:, col_0].toarray().ravel()
 
         same_state_other_cd = district_targets[
-            (
-                district_targets["geographic_id"].apply(
-                    lambda g: g.startswith(state_0)
-                )
-            )
+            (district_targets["geographic_id"].apply(lambda g: g.startswith(state_0)))
             & (district_targets["geographic_id"] != cd_0)
         ]
 
@@ -185,7 +197,7 @@ class TestDistrictMasking:
         geography = matrix_result["geography"]
         n_records = matrix_result["n_records"]
 
-        col_0 = _clone_col(n_records, 0, RECORD_IDX)
+        col_0 = _clone_col(n_records, 0, matrix_result["record_idx"])
         cd_0 = str(geography.cd_geoid[col_0])
 
         own_cd_targets = targets_df[
@@ -198,10 +210,7 @@ class TestDistrictMasking:
         X_csc = X.tocsc()
         vals_0 = X_csc[:, col_0].toarray().ravel()
 
-        any_nonzero = any(
-            vals_0[row.name] != 0 for _, row in own_cd_targets.iterrows()
-        )
+        any_nonzero = any(vals_0[row.name] != 0 for _, row in own_cd_targets.iterrows())
         assert any_nonzero, (
-            f"Clone 0 should have at least one non-zero entry "
-            f"for its own CD {cd_0}"
+            f"Clone 0 should have at least one non-zero entry for its own CD {cd_0}"
         )

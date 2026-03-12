@@ -115,10 +115,10 @@ def test_sparse_ecps_replicates_jct_tax_expenditures():
         & (calibration_log["epoch"] == calibration_log["epoch"].max())
     ]
 
-    assert (
-        jct_rows.rel_abs_error.max() < 0.5
-    ), "JCT tax expenditure targets not met (see the calibration log for details). Max relative error: {:.2%}".format(
-        jct_rows.rel_abs_error.max()
+    assert jct_rows.rel_abs_error.max() < 0.5, (
+        "JCT tax expenditure targets not met (see the calibration log for details). Max relative error: {:.2%}".format(
+            jct_rows.rel_abs_error.max()
+        )
     )
 
 
@@ -133,9 +133,7 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
     }
 
     baseline = sim
-    income_tax_b = baseline.calculate(
-        "income_tax", period=2024, map_to="household"
-    )
+    income_tax_b = baseline.calculate("income_tax", period=2024, map_to="household")
 
     for deduction, target in EXPENDITURE_TARGETS.items():
         # Create reform that neutralizes the deduction
@@ -145,9 +143,7 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
 
         # Run reform simulation
         reformed = Microsimulation(reform=RepealDeduction, dataset=sim.dataset)
-        income_tax_r = reformed.calculate(
-            "income_tax", period=2024, map_to="household"
-        )
+        income_tax_r = reformed.calculate("income_tax", period=2024, map_to="household")
 
         # Calculate tax expenditure
         tax_expenditure = (income_tax_r - income_tax_b).sum()
@@ -155,8 +151,8 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
         TOLERANCE = 0.4
 
         logging.info(
-            f"{deduction} tax expenditure {tax_expenditure/1e9:.1f}bn "
-            f"differs from target {target/1e9:.1f}bn by {pct_error:.2%}"
+            f"{deduction} tax expenditure {tax_expenditure / 1e9:.1f}bn "
+            f"differs from target {target / 1e9:.1f}bn by {pct_error:.2%}"
         )
         assert pct_error < TOLERANCE, deduction
 
@@ -188,9 +184,7 @@ def test_sparse_aca_calibration(sim):
     # Monthly to yearly
     targets["spending"] = targets["spending"] * 12
     # Adjust to match national target
-    targets["spending"] = targets["spending"] * (
-        98e9 / targets["spending"].sum()
-    )
+    targets["spending"] = targets["spending"] * (98e9 / targets["spending"].sum())
 
     state_code_hh = sim.calculate("state_code", map_to="household").values
     aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
@@ -204,17 +198,15 @@ def test_sparse_aca_calibration(sim):
 
         pct_error = abs(simulated - target_spending) / target_spending
         logging.info(
-            f"{state}: simulated ${simulated/1e9:.2f} bn  "
-            f"target ${target_spending/1e9:.2f} bn  "
+            f"{state}: simulated ${simulated / 1e9:.2f} bn  "
+            f"target ${target_spending / 1e9:.2f} bn  "
             f"error {pct_error:.2%}"
         )
 
         if pct_error > TOLERANCE:
             failed = True
 
-    assert (
-        not failed
-    ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    assert not failed, f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
 
 
 def test_sparse_medicaid_calibration(sim):
@@ -238,14 +230,12 @@ def test_sparse_medicaid_calibration(sim):
 
         pct_error = abs(simulated - target_enrollment) / target_enrollment
         logging.info(
-            f"{state}: simulated ${simulated/1e9:.2f} bn  "
-            f"target ${target_enrollment/1e9:.2f} bn  "
+            f"{state}: simulated ${simulated / 1e9:.2f} bn  "
+            f"target ${target_enrollment / 1e9:.2f} bn  "
             f"error {pct_error:.2%}"
         )
 
         if pct_error > TOLERANCE:
             failed = True
 
-    assert (
-        not failed
-    ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    assert not failed, f"One or more states exceeded tolerance of {TOLERANCE:.0%}."

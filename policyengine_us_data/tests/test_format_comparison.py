@@ -92,10 +92,7 @@ def _read_h5py_arrays(h5py_path: str):
             arr = f[var][period_key][:]
             if arr.dtype.kind in ("S", "O"):
                 arr = np.array(
-                    [
-                        x.decode() if isinstance(x, bytes) else str(x)
-                        for x in arr
-                    ]
+                    [x.decode() if isinstance(x, bytes) else str(x) for x in arr]
                 )
             arrays[var] = arr
 
@@ -130,9 +127,7 @@ def _split_into_entity_dfs(arrays, system, vars_to_save):
         if ref_col in arrays:
             person_vars.append(ref_col)
 
-    person_df = pd.DataFrame(
-        {v: arrays[v] for v in person_vars if v in arrays}
-    )
+    person_df = pd.DataFrame({v: arrays[v] for v in person_vars if v in arrays})
     entity_dfs = {"person": person_df}
 
     # Group entity DataFrames
@@ -167,16 +162,12 @@ def _build_uprating_manifest(vars_to_save, system):
     records = []
     for var in sorted(vars_to_save):
         entity = (
-            system.variables[var].entity.key
-            if var in system.variables
-            else "unknown"
+            system.variables[var].entity.key if var in system.variables else "unknown"
         )
         uprating = ""
         if var in system.variables:
             uprating = getattr(system.variables[var], "uprating", None) or ""
-        records.append(
-            {"variable": var, "entity": entity, "uprating": uprating}
-        )
+        records.append({"variable": var, "entity": entity, "uprating": uprating})
     return pd.DataFrame(records)
 
 
@@ -218,9 +209,7 @@ def h5py_to_hdfstore(h5py_path: str, hdfstore_path: str) -> dict:
     print("Reading h5py file...")
     arrays, time_period, h5_vars = _read_h5py_arrays(h5py_path)
     n_persons = len(arrays.get("person_id", []))
-    print(
-        f"  {len(h5_vars)} variables, {n_persons:,} persons, year={time_period}"
-    )
+    print(f"  {len(h5_vars)} variables, {n_persons:,} persons, year={time_period}")
 
     print("Splitting into entity DataFrames...")
     entity_dfs = _split_into_entity_dfs(arrays, system, h5_vars)
@@ -288,11 +277,7 @@ def compare_formats(h5py_path: str, hdfstore_path: str) -> dict:
                             hdf_unique = np.unique(hdf_values)
                             if h5_values.dtype.kind in ("U", "S", "O"):
                                 match = set(
-                                    (
-                                        x.decode()
-                                        if isinstance(x, bytes)
-                                        else str(x)
-                                    )
+                                    (x.decode() if isinstance(x, bytes) else str(x))
                                     for x in h5_unique
                                 ) == set(str(x) for x in hdf_unique)
                             else:
@@ -318,17 +303,11 @@ def compare_formats(h5py_path: str, hdfstore_path: str) -> dict:
                             if h5_values.dtype.kind in ("U", "S", "O"):
                                 h5_str = np.array(
                                     [
-                                        (
-                                            x.decode()
-                                            if isinstance(x, bytes)
-                                            else str(x)
-                                        )
+                                        (x.decode() if isinstance(x, bytes) else str(x))
                                         for x in h5_values
                                     ]
                                 )
-                                hdf_str = np.array(
-                                    [str(x) for x in hdf_values]
-                                )
+                                hdf_str = np.array([str(x) for x in hdf_values])
                                 if np.array_equal(h5_str, hdf_str):
                                     passed.append(var)
                                 else:
@@ -383,9 +362,9 @@ def compare_formats(h5py_path: str, hdfstore_path: str) -> dict:
 
 def print_results(result):
     """Print comparison results to stdout."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Format Comparison Results")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Total h5py variables: {result['total_h5py_vars']}")
     print(f"Passed: {len(result['passed'])}")
     print(f"Failed: {len(result['failed'])}")
@@ -429,12 +408,12 @@ def test_roundtrip(h5py_path, tmp_path):
     result = compare_formats(h5py_path, hdfstore_path)
     print_results(result)
 
-    assert (
-        len(result["failed"]) == 0
-    ), f"{len(result['failed'])} variables have mismatched values"
-    assert (
-        len(result["skipped"]) == 0
-    ), f"{len(result['skipped'])} variables missing from HDFStore"
+    assert len(result["failed"]) == 0, (
+        f"{len(result['failed'])} variables have mismatched values"
+    )
+    assert len(result["skipped"]) == 0, (
+        f"{len(result['skipped'])} variables missing from HDFStore"
+    )
 
 
 def test_manifest(h5py_path, tmp_path):
@@ -443,9 +422,7 @@ def test_manifest(h5py_path, tmp_path):
     h5py_to_hdfstore(h5py_path, hdfstore_path)
 
     with pd.HDFStore(hdfstore_path, "r") as store:
-        assert (
-            "/_variable_metadata" in store.keys()
-        ), "Missing _variable_metadata table"
+        assert "/_variable_metadata" in store.keys(), "Missing _variable_metadata table"
         manifest = store["/_variable_metadata"]
         assert "variable" in manifest.columns
         assert "entity" in manifest.columns
@@ -464,17 +441,15 @@ def test_all_entities(h5py_path, tmp_path):
 
     expected = set(ENTITIES)
     with pd.HDFStore(hdfstore_path, "r") as store:
-        actual = {
-            k.lstrip("/") for k in store.keys() if not k.startswith("/_")
-        }
+        actual = {k.lstrip("/") for k in store.keys() if not k.startswith("/_")}
         missing = expected - actual
         assert not missing, f"Missing entity tables: {missing}"
         for entity in expected:
             df = store[f"/{entity}"]
             assert len(df) > 0, f"Entity {entity} has 0 rows"
-            assert (
-                f"{entity}_id" in df.columns
-            ), f"Entity {entity} missing {entity}_id column"
+            assert f"{entity}_id" in df.columns, (
+                f"Entity {entity} missing {entity}_id column"
+            )
             print(f"  {entity}: {len(df):,} rows, {len(df.columns)} cols")
 
 
@@ -485,9 +460,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Convert h5py dataset to HDFStore and verify roundtrip"
     )
-    parser.add_argument(
-        "--h5py-path", required=True, help="Path to h5py format file"
-    )
+    parser.add_argument("--h5py-path", required=True, help="Path to h5py format file")
     parser.add_argument(
         "--output-path",
         default=None,

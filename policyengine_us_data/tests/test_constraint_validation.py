@@ -138,9 +138,7 @@ class TestConflictingBounds:
             Constraint(variable="age", operation=">", value="20"),
             Constraint(variable="age", operation=">=", value="25"),
         ]
-        with pytest.raises(
-            ConstraintValidationError, match="conflicting lower bounds"
-        ):
+        with pytest.raises(ConstraintValidationError, match="conflicting lower bounds"):
             ensure_consistent_constraint_set(constraints)
 
     def test_conflicting_upper_bounds(self):
@@ -149,9 +147,7 @@ class TestConflictingBounds:
             Constraint(variable="age", operation="<", value="50"),
             Constraint(variable="age", operation="<=", value="45"),
         ]
-        with pytest.raises(
-            ConstraintValidationError, match="conflicting upper bounds"
-        ):
+        with pytest.raises(ConstraintValidationError, match="conflicting upper bounds"):
             ensure_consistent_constraint_set(constraints)
 
 
@@ -193,9 +189,7 @@ class TestNonNumericValues:
     def test_string_equality_valid(self):
         """medicaid_enrolled == 'True' should pass."""
         constraints = [
-            Constraint(
-                variable="medicaid_enrolled", operation="==", value="True"
-            ),
+            Constraint(variable="medicaid_enrolled", operation="==", value="True"),
         ]
         ensure_consistent_constraint_set(constraints)  # No exception
 

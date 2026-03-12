@@ -182,10 +182,7 @@ def extract_female_population(year: int) -> pd.DataFrame:
         data = load_json(cache_file)
     else:
         var_ids = ",".join([f"B01001_{i:03d}E" for i in range(30, 39)])
-        url = (
-            f"https://api.census.gov/data/{year}/acs/acs1"
-            f"?get={var_ids}&for=state:*"
-        )
+        url = f"https://api.census.gov/data/{year}/acs/acs1?get={var_ids}&for=state:*"
         logger.info(f"Fetching ACS B01001 female 15-44 for {year}")
         resp = requests.get(url, timeout=30)
         resp.raise_for_status()
@@ -222,9 +219,7 @@ def transform_pregnancy_data(
     df = births_df.merge(pop_df, on="state_abbrev")
     df["state_fips"] = df["state_abbrev"].map(STATE_ABBREV_TO_FIPS)
     # Point-in-time pregnancy count.
-    df["pregnancy_target"] = (
-        df["births"] * PREGNANCY_DURATION_FRACTION
-    ).round()
+    df["pregnancy_target"] = (df["births"] * PREGNANCY_DURATION_FRACTION).round()
     # Rate for stochastic assignment in the CPS build.
     df["pregnancy_rate"] = (
         df["births"] / df["female_15_44"]
@@ -246,9 +241,7 @@ def load_pregnancy_data(
         df: From transform_pregnancy_data.
         year: Target year for the calibration targets.
     """
-    db_url = (
-        f"sqlite:///" f"{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
-    )
+    db_url = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
     engine = create_engine(db_url)
 
     with Session(engine) as session:
@@ -273,10 +266,7 @@ def load_pregnancy_data(
         for _, row in df.iterrows():
             state_fips = int(row["state_fips"])
             if state_fips not in geo_strata["state"]:
-                logger.warning(
-                    f"No geographic stratum for FIPS "
-                    f"{state_fips}, skipping"
-                )
+                logger.warning(f"No geographic stratum for FIPS {state_fips}, skipping")
                 continue
 
             parent_id = geo_strata["state"][state_fips]
@@ -368,16 +358,14 @@ def main():
         except Exception as e:
             logger.warning(f"ACS {acs_year} not available: {e}")
     if pop_df is None:
-        raise RuntimeError(
-            f"No ACS population data for " f"{year - 1} or {year - 2}"
-        )
+        raise RuntimeError(f"No ACS population data for {year - 1} or {year - 2}")
 
     df = transform_pregnancy_data(births_df, pop_df)
 
     total_births = df["births"].sum()
     total_target = df["pregnancy_target"].sum()
     print(f"Total births: {total_births:,.0f}")
-    print(f"Pregnancy target (point-in-time): " f"{total_target:,.0f}")
+    print(f"Pregnancy target (point-in-time): {total_target:,.0f}")
 
     load_pregnancy_data(df, year)
     print("Pregnancy calibration targets loaded.")

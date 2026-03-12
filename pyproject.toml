@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "policyengine_us_data"
-version = "1.72.1"
+version = "1.73.0"
 description = "A package to create representative microdata for the US."
 readme = "README.md"
 authors = [
@@ -28,7 +28,7 @@ dependencies = [
     "tqdm>=4.60.0",
     "microdf_python>=1.2.1",
     "setuptools>=60",
-    "microimpute>=1.1.4",
+    "microimpute>=1.15.1",
     "pip-system-certs>=3.0",
     "google-cloud-storage>=2.0.0",
     "google-auth>=2.0.0",
@@ -55,7 +55,7 @@ l0 = [
 
 [dependency-groups]
 dev = [
-    "black",
+    "ruff>=0.9.0",
     "pytest",
     "quantile-forest",
     "tabulate",
@@ -81,24 +81,6 @@ addopts = "-v"
 testpaths = [
     "policyengine_us_data/tests",
 ]
-
-[tool.black]
-line-length = 79
-target-version = ['py311', 'py312', 'py313']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
 
 [tool.towncrier]
 package = "policyengine_us_data"

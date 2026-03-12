@@ -105,9 +105,9 @@ def create_h6_reform():
         # The swapped rate error is 14x smaller and aligns with tax-cutting intent.
 
         # Tier 1 (Base): HI ONLY (35%)
-        reform_payload[
-            "gov.irs.social_security.taxability.rate.base.benefit_cap"
-        ][period] = 0.35
+        reform_payload["gov.irs.social_security.taxability.rate.base.benefit_cap"][
+            period
+        ] = 0.35
         reform_payload["gov.irs.social_security.taxability.rate.base.excess"][
             period
         ] = 0.35
@@ -116,25 +116,25 @@ def create_h6_reform():
         reform_payload[
             "gov.irs.social_security.taxability.rate.additional.benefit_cap"
         ][period] = 0.85
-        reform_payload[
-            "gov.irs.social_security.taxability.rate.additional.excess"
-        ][period] = 0.85
+        reform_payload["gov.irs.social_security.taxability.rate.additional.excess"][
+            period
+        ] = 0.85
 
         # --- SET THRESHOLDS (MIN/MAX SWAP) ---
         # Always put the smaller number in 'base' and larger in 'adjusted_base'
 
         # Single
-        reform_payload[
-            "gov.irs.social_security.taxability.threshold.base.main.SINGLE"
-        ][period] = min(oasdi_target_single, HI_SINGLE)
+        reform_payload["gov.irs.social_security.taxability.threshold.base.main.SINGLE"][
+            period
+        ] = min(oasdi_target_single, HI_SINGLE)
         reform_payload[
             "gov.irs.social_security.taxability.threshold.adjusted_base.main.SINGLE"
         ][period] = max(oasdi_target_single, HI_SINGLE)
 
         # Joint
-        reform_payload[
-            "gov.irs.social_security.taxability.threshold.base.main.JOINT"
-        ][period] = min(oasdi_target_joint, HI_JOINT)
+        reform_payload["gov.irs.social_security.taxability.threshold.base.main.JOINT"][
+            period
+        ] = min(oasdi_target_joint, HI_JOINT)
         reform_payload[
             "gov.irs.social_security.taxability.threshold.adjusted_base.main.JOINT"
         ][period] = max(oasdi_target_joint, HI_JOINT)
@@ -158,12 +158,12 @@ def create_h6_reform():
 
     # 1. Set Thresholds to "HI Only" mode
     # Base = $34k / $44k
-    reform_payload[
-        "gov.irs.social_security.taxability.threshold.base.main.SINGLE"
-    ][elim_period] = HI_SINGLE
-    reform_payload[
-        "gov.irs.social_security.taxability.threshold.base.main.JOINT"
-    ][elim_period] = HI_JOINT
+    reform_payload["gov.irs.social_security.taxability.threshold.base.main.SINGLE"][
+        elim_period
+    ] = HI_SINGLE
+    reform_payload["gov.irs.social_security.taxability.threshold.base.main.JOINT"][
+        elim_period
+    ] = HI_JOINT
 
     # Adjusted = Infinity (Disable the second tier effectively)
     reform_payload[
@@ -192,12 +192,12 @@ def create_h6_reform():
     ] = 0.35
 
     # Tier 2 (Disabled via threshold, but zero out for safety)
-    reform_payload[
-        "gov.irs.social_security.taxability.rate.additional.benefit_cap"
-    ][elim_period] = 0.35
-    reform_payload[
-        "gov.irs.social_security.taxability.rate.additional.excess"
-    ][elim_period] = 0.35
+    reform_payload["gov.irs.social_security.taxability.rate.additional.benefit_cap"][
+        elim_period
+    ] = 0.35
+    reform_payload["gov.irs.social_security.taxability.rate.additional.excess"][
+        elim_period
+    ] = 0.35
 
     # Create the Reform Object
     from policyengine_core.reforms import Reform
@@ -242,18 +242,14 @@ USE_PAYROLL = "--use-payroll" in sys.argv
 if USE_PAYROLL:
     sys.argv.remove("--use-payroll")
     if not USE_GREG:
-        print(
-            "Warning: --use-payroll requires --greg, enabling GREG automatically"
-        )
+        print("Warning: --use-payroll requires --greg, enabling GREG automatically")
         USE_GREG = True
 
 USE_H6_REFORM = "--use-h6-reform" in sys.argv
 if USE_H6_REFORM:
     sys.argv.remove("--use-h6-reform")
     if not USE_GREG:
-        print(
-            "Warning: --use-h6-reform requires --greg, enabling GREG automatically"
-        )
+        print("Warning: --use-h6-reform requires --greg, enabling GREG automatically")
         USE_GREG = True
     from ssa_data import load_h6_income_rate_change
 
@@ -261,9 +257,7 @@ USE_TOB = "--use-tob" in sys.argv
 if USE_TOB:
     sys.argv.remove("--use-tob")
     if not USE_GREG:
-        print(
-            "Warning: --use-tob requires --greg, enabling GREG automatically"
-        )
+        print("Warning: --use-tob requires --greg, enabling GREG automatically")
         USE_GREG = True
     from ssa_data import load_oasdi_tob_projections, load_hi_tob_projections
 
@@ -320,9 +314,7 @@ print("\n" + "=" * 70)
 print("STEP 1: DEMOGRAPHIC PROJECTIONS")
 print("=" * 70)
 
-target_matrix = load_ssa_age_projections(
-    start_year=START_YEAR, end_year=END_YEAR
-)
+target_matrix = load_ssa_age_projections(start_year=START_YEAR, end_year=END_YEAR)
 n_years = target_matrix.shape[1]
 n_ages = target_matrix.shape[0]
 
@@ -341,7 +333,7 @@ for y in display_years:
     idx = y - START_YEAR
     if idx < n_years:
         pop = target_matrix[:, idx].sum()
-        print(f"  {y}: {pop/1e6:6.1f}M")
+        print(f"  {y}: {pop / 1e6:6.1f}M")
 
 # =========================================================================
 # STEP 2: BUILD HOUSEHOLD AGE MATRIX
@@ -390,9 +382,7 @@ for year_idx in range(n_years):
 
     sim = Microsimulation(dataset=BASE_DATASET_PATH)
 
-    income_tax_hh = sim.calculate(
-        "income_tax", period=year, map_to="household"
-    )
+    income_tax_hh = sim.calculate("income_tax", period=year, map_to="household")
     income_tax_baseline_total = income_tax_hh.sum()
     income_tax_values = income_tax_hh.values
 
@@ -405,15 +395,13 @@ for year_idx in range(n_years):
     ss_values = None
     ss_target = None
     if USE_SS:
-        ss_hh = sim.calculate(
-            "social_security", period=year, map_to="household"
-        )
+        ss_hh = sim.calculate("social_security", period=year, map_to="household")
         ss_values = ss_hh.values
         ss_target = load_ssa_benefit_projections(year)
         if year in display_years:
             ss_baseline = np.sum(ss_values * baseline_weights)
             print(
-                f"  [DEBUG {year}] SS baseline: ${ss_baseline/1e9:.1f}B, target: ${ss_target/1e9:.1f}B"
+                f"  [DEBUG {year}] SS baseline: ${ss_baseline / 1e9:.1f}B, target: ${ss_target / 1e9:.1f}B"
             )
 
     payroll_values = None
@@ -435,7 +423,7 @@ for year_idx in range(n_years):
         if year in display_years:
             payroll_baseline = np.sum(payroll_values * baseline_weights)
             print(
-                f"  [DEBUG {year}] Payroll baseline: ${payroll_baseline/1e9:.1f}B, target: ${payroll_target/1e9:.1f}B"
+                f"  [DEBUG {year}] Payroll baseline: ${payroll_baseline / 1e9:.1f}B, target: ${payroll_target / 1e9:.1f}B"
             )
 
     h6_income_values = None
@@ -452,9 +440,7 @@ for year_idx in range(n_years):
         else:
             # Create and apply H6 reform
             h6_reform = create_h6_reform()
-            reform_sim = Microsimulation(
-                dataset=BASE_DATASET_PATH, reform=h6_reform
-            )
+            reform_sim = Microsimulation(dataset=BASE_DATASET_PATH, reform=h6_reform)
 
             # Calculate reform income tax
             income_tax_reform_hh = reform_sim.calculate(
@@ -472,14 +458,12 @@ for year_idx in range(n_years):
 
             # Debug output for key years
             if year in display_years:
-                h6_impact_baseline = np.sum(
-                    h6_income_values * baseline_weights
+                h6_impact_baseline = np.sum(h6_income_values * baseline_weights)
+                print(
+                    f"  [DEBUG {year}] H6 baseline revenue: ${h6_impact_baseline / 1e9:.3f}B, target: ${h6_revenue_target / 1e9:.3f}B"
                 )
                 print(
-                    f"  [DEBUG {year}] H6 baseline revenue: ${h6_impact_baseline/1e9:.3f}B, target: ${h6_revenue_target/1e9:.3f}B"
-                )
-                print(
-                    f"  [DEBUG {year}] H6 target ratio: {h6_target_ratio:.4f} × payroll ${payroll_target_year/1e9:.1f}B"
+                    f"  [DEBUG {year}] H6 target ratio: {h6_target_ratio:.4f} × payroll ${payroll_target_year / 1e9:.1f}B"
                 )
 
             del reform_sim
@@ -506,10 +490,10 @@ for year_idx in range(n_years):
             oasdi_baseline = np.sum(oasdi_tob_values * baseline_weights)
             hi_baseline = np.sum(hi_tob_values * baseline_weights)
             print(
-                f"  [DEBUG {year}] OASDI TOB baseline: ${oasdi_baseline/1e9:.1f}B, target: ${oasdi_tob_target/1e9:.1f}B"
+                f"  [DEBUG {year}] OASDI TOB baseline: ${oasdi_baseline / 1e9:.1f}B, target: ${oasdi_tob_target / 1e9:.1f}B"
             )
             print(
-                f"  [DEBUG {year}] HI TOB baseline: ${hi_baseline/1e9:.1f}B, target: ${hi_tob_target/1e9:.1f}B"
+                f"  [DEBUG {year}] HI TOB baseline: ${hi_baseline / 1e9:.1f}B, target: ${hi_tob_target / 1e9:.1f}B"
             )
 
     y_target = target_matrix[:, year_idx]
@@ -547,43 +531,37 @@ for year_idx in range(n_years):
                 f"largest: {max_neg:,.0f}"
             )
         else:
-            print(
-                f"  [DEBUG {year}] Negative weights: 0 (all weights non-negative)"
-            )
+            print(f"  [DEBUG {year}] Negative weights: 0 (all weights non-negative)")
 
-    if year in display_years and (
-        USE_SS or USE_PAYROLL or USE_H6_REFORM or USE_TOB
-    ):
+    if year in display_years and (USE_SS or USE_PAYROLL or USE_H6_REFORM or USE_TOB):
         if USE_SS:
             ss_achieved = np.sum(ss_values * w_new)
             print(
-                f"  [DEBUG {year}] SS achieved: ${ss_achieved/1e9:.1f}B (error: ${abs(ss_achieved - ss_target)/1e6:.1f}M, {(ss_achieved - ss_target)/ss_target*100:.3f}%)"
+                f"  [DEBUG {year}] SS achieved: ${ss_achieved / 1e9:.1f}B (error: ${abs(ss_achieved - ss_target) / 1e6:.1f}M, {(ss_achieved - ss_target) / ss_target * 100:.3f}%)"
             )
         if USE_PAYROLL:
             payroll_achieved = np.sum(payroll_values * w_new)
             print(
-                f"  [DEBUG {year}] Payroll achieved: ${payroll_achieved/1e9:.1f}B (error: ${abs(payroll_achieved - payroll_target)/1e6:.1f}M, {(payroll_achieved - payroll_target)/payroll_target*100:.3f}%)"
+                f"  [DEBUG {year}] Payroll achieved: ${payroll_achieved / 1e9:.1f}B (error: ${abs(payroll_achieved - payroll_target) / 1e6:.1f}M, {(payroll_achieved - payroll_target) / payroll_target * 100:.3f}%)"
             )
         if USE_H6_REFORM and h6_revenue_target is not None:
             h6_revenue_achieved = np.sum(h6_income_values * w_new)
             error_pct = (
-                (h6_revenue_achieved - h6_revenue_target)
-                / abs(h6_revenue_target)
-                * 100
+                (h6_revenue_achieved - h6_revenue_target) / abs(h6_revenue_target) * 100
                 if h6_revenue_target != 0
                 else 0
             )
             print(
-                f"  [DEBUG {year}] H6 achieved revenue: ${h6_revenue_achieved/1e9:.3f}B (error: ${abs(h6_revenue_achieved - h6_revenue_target)/1e6:.1f}M, {error_pct:.3f}%)"
+                f"  [DEBUG {year}] H6 achieved revenue: ${h6_revenue_achieved / 1e9:.3f}B (error: ${abs(h6_revenue_achieved - h6_revenue_target) / 1e6:.1f}M, {error_pct:.3f}%)"
             )
         if USE_TOB:
             oasdi_achieved = np.sum(oasdi_tob_values * w_new)
             hi_achieved = np.sum(hi_tob_values * w_new)
             print(
-                f"  [DEBUG {year}] OASDI TOB achieved: ${oasdi_achieved/1e9:.1f}B (error: ${abs(oasdi_achieved - oasdi_tob_target)/1e6:.1f}M, {(oasdi_achieved - oasdi_tob_target)/oasdi_tob_target*100:.3f}%)"
+                f"  [DEBUG {year}] OASDI TOB achieved: ${oasdi_achieved / 1e9:.1f}B (error: ${abs(oasdi_achieved - oasdi_tob_target) / 1e6:.1f}M, {(oasdi_achieved - oasdi_tob_target) / oasdi_tob_target * 100:.3f}%)"
             )
             print(
-                f"  [DEBUG {year}] HI TOB achieved: ${hi_achieved/1e9:.1f}B (error: ${abs(hi_achieved - hi_tob_target)/1e6:.1f}M, {(hi_achieved - hi_tob_target)/hi_tob_target*100:.3f}%)"
+                f"  [DEBUG {year}] HI TOB achieved: ${hi_achieved / 1e9:.1f}B (error: ${abs(hi_achieved - hi_tob_target) / 1e6:.1f}M, {(hi_achieved - hi_tob_target) / hi_tob_target * 100:.3f}%)"
             )
 
     weights_matrix[:, year_idx] = w_new
@@ -593,9 +571,7 @@ for year_idx in range(n_years):
     total_population[year_idx] = np.sum(y_target)
 
     if SAVE_H5:
-        h5_path = create_household_year_h5(
-            year, w_new, BASE_DATASET_PATH, OUTPUT_DIR
-        )
+        h5_path = create_household_year_h5(year, w_new, BASE_DATASET_PATH, OUTPUT_DIR)
         if year in display_years:
             print(f"  Saved {year}.h5")
 
@@ -613,5 +589,5 @@ for year_idx in range(n_years):
         )
     elif year_idx % 5 == 0:
         print(
-            f"{year}    Processing... ({year_idx+1}/{n_years})                        {mem_gb:.2f}GB"
+            f"{year}    Processing... ({year_idx + 1}/{n_years})                        {mem_gb:.2f}GB"
         )

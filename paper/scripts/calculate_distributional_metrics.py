@@ -82,7 +82,7 @@ def calculate_top_shares(values, weights, percentiles=[90, 99]):
         threshold = weighted_percentile(values, weights, p)
         mask = values >= threshold
         top_income = np.sum(values[mask] * weights[mask])
-        shares[f"top_{100-p}%"] = top_income / total_income
+        shares[f"top_{100 - p}%"] = top_income / total_income
 
     return shares
 

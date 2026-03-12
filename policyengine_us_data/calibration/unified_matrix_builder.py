@@ -21,10 +21,13 @@ from sqlalchemy import create_engine, text
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.census import STATE_NAME_TO_FIPS
-from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+from policyengine_us_data.calibration.calibration_utils import (
     get_calculated_variables,
     apply_op,
     get_geo_level,
+)
+from policyengine_us_data.calibration.block_assignment import (
+    get_county_enum_index_from_fips,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +37,672 @@ _GEO_VARS = {
     "state_code",
     "congressional_district_geoid",
 }
+
+COUNTY_DEPENDENT_VARS = {
+    "aca_ptc",
+}
+
+
+def _compute_single_state(
+    dataset_path: str,
+    time_period: int,
+    state: int,
+    n_hh: int,
+    target_vars: list,
+    constraint_vars: list,
+    rerandomize_takeup: bool,
+    affected_targets: dict,
+):
+    """Compute household/person/entity values for one state.
+
+    Top-level function (not a method) so it is picklable for
+    ``ProcessPoolExecutor``.
+
+    Args:
+        dataset_path: Path to the base CPS h5 file.
+        time_period: Tax year for simulation.
+        state: State FIPS code.
+        n_hh: Number of household records.
+        target_vars: Target variable names (list for determinism).
+        constraint_vars: Constraint variable names (list).
+        rerandomize_takeup: Force takeup=True if True.
+        affected_targets: Takeup-affected target info dict.
+
+    Returns:
+        (state_fips, {"hh": {...}, "person": {...}, "entity": {...}})
+    """
+    from policyengine_us import Microsimulation
+    from policyengine_us_data.utils.takeup import SIMPLE_TAKEUP_VARS
+    from policyengine_us_data.calibration.calibration_utils import (
+        get_calculated_variables,
+    )
+
+    state_sim = Microsimulation(dataset=dataset_path)
+
+    state_sim.set_input(
+        "state_fips",
+        time_period,
+        np.full(n_hh, state, dtype=np.int32),
+    )
+    for var in get_calculated_variables(state_sim):
+        state_sim.delete_arrays(var)
+
+    hh = {}
+    for var in target_vars:
+        if var.endswith("_count"):
+            continue
+        try:
+            hh[var] = state_sim.calculate(
+                var,
+                time_period,
+                map_to="household",
+            ).values.astype(np.float32)
+        except Exception as exc:
+            logger.warning(
+                "Cannot calculate '%s' for state %d: %s",
+                var,
+                state,
+                exc,
+            )
+
+    person = {}
+    for var in constraint_vars:
+        try:
+            person[var] = state_sim.calculate(
+                var,
+                time_period,
+                map_to="person",
+            ).values.astype(np.float32)
+        except Exception as exc:
+            logger.warning(
+                "Cannot calculate constraint '%s' for state %d: %s",
+                var,
+                state,
+                exc,
+            )
+
+    if rerandomize_takeup:
+        for spec in SIMPLE_TAKEUP_VARS:
+            entity = spec["entity"]
+            n_ent = len(state_sim.calculate(f"{entity}_id", map_to=entity).values)
+            state_sim.set_input(
+                spec["variable"],
+                time_period,
+                np.ones(n_ent, dtype=bool),
+            )
+        for var in get_calculated_variables(state_sim):
+            state_sim.delete_arrays(var)
+
+    entity_vals = {}
+    if rerandomize_takeup:
+        for tvar, info in affected_targets.items():
+            entity_level = info["entity"]
+            try:
+                entity_vals[tvar] = state_sim.calculate(
+                    tvar,
+                    time_period,
+                    map_to=entity_level,
+                ).values.astype(np.float32)
+            except Exception as exc:
+                logger.warning(
+                    "Cannot calculate entity-level '%s' (map_to=%s) for state %d: %s",
+                    tvar,
+                    entity_level,
+                    state,
+                    exc,
+                )
+
+    return (state, {"hh": hh, "person": person, "entity": entity_vals})
+
+
+def _compute_single_state_group_counties(
+    dataset_path: str,
+    time_period: int,
+    state_fips: int,
+    counties: list,
+    n_hh: int,
+    county_dep_targets: list,
+    rerandomize_takeup: bool,
+    affected_targets: dict,
+):
+    """Compute county-dependent values for all counties in one state.
+
+    Top-level function (not a method) so it is picklable for
+    ``ProcessPoolExecutor``. Creates one ``Microsimulation`` per
+    state and reuses it across counties within that state.
+
+    Args:
+        dataset_path: Path to the base CPS h5 file.
+        time_period: Tax year for simulation.
+        state_fips: State FIPS code for this group.
+        counties: List of county FIPS strings in this state.
+        n_hh: Number of household records.
+        county_dep_targets: County-dependent target var names.
+        rerandomize_takeup: Force takeup=True if True.
+        affected_targets: Takeup-affected target info dict.
+
+    Returns:
+        list of (county_fips_str, {"hh": {...}, "entity": {...}})
+    """
+    from policyengine_us import Microsimulation
+    from policyengine_us_data.utils.takeup import SIMPLE_TAKEUP_VARS
+    from policyengine_us_data.calibration.calibration_utils import (
+        get_calculated_variables,
+    )
+    from policyengine_us_data.calibration.block_assignment import (
+        get_county_enum_index_from_fips,
+    )
+
+    state_sim = Microsimulation(dataset=dataset_path)
+
+    state_sim.set_input(
+        "state_fips",
+        time_period,
+        np.full(n_hh, state_fips, dtype=np.int32),
+    )
+
+    original_takeup = {}
+    if rerandomize_takeup:
+        for spec in SIMPLE_TAKEUP_VARS:
+            entity = spec["entity"]
+            original_takeup[spec["variable"]] = (
+                entity,
+                state_sim.calculate(
+                    spec["variable"],
+                    time_period,
+                    map_to=entity,
+                ).values.copy(),
+            )
+
+    results = []
+    for county_fips in counties:
+        county_idx = get_county_enum_index_from_fips(county_fips)
+        state_sim.set_input(
+            "county",
+            time_period,
+            np.full(n_hh, county_idx, dtype=np.int32),
+        )
+        if rerandomize_takeup:
+            for vname, (ent, orig) in original_takeup.items():
+                state_sim.set_input(vname, time_period, orig)
+        for var in get_calculated_variables(state_sim):
+            if var != "county":
+                state_sim.delete_arrays(var)
+
+        hh = {}
+        for var in county_dep_targets:
+            if var.endswith("_count"):
+                continue
+            try:
+                hh[var] = state_sim.calculate(
+                    var,
+                    time_period,
+                    map_to="household",
+                ).values.astype(np.float32)
+            except Exception as exc:
+                logger.warning(
+                    "Cannot calculate '%s' for county %s: %s",
+                    var,
+                    county_fips,
+                    exc,
+                )
+
+        if rerandomize_takeup:
+            for spec in SIMPLE_TAKEUP_VARS:
+                entity = spec["entity"]
+                n_ent = len(state_sim.calculate(f"{entity}_id", map_to=entity).values)
+                state_sim.set_input(
+                    spec["variable"],
+                    time_period,
+                    np.ones(n_ent, dtype=bool),
+                )
+            for var in get_calculated_variables(state_sim):
+                if var != "county":
+                    state_sim.delete_arrays(var)
+
+        entity_vals = {}
+        if rerandomize_takeup:
+            for tvar, info in affected_targets.items():
+                entity_level = info["entity"]
+                try:
+                    entity_vals[tvar] = state_sim.calculate(
+                        tvar,
+                        time_period,
+                        map_to=entity_level,
+                    ).values.astype(np.float32)
+                except Exception as exc:
+                    logger.warning(
+                        "Cannot calculate entity-level '%s' for county %s: %s",
+                        tvar,
+                        county_fips,
+                        exc,
+                    )
+
+        results.append((county_fips, {"hh": hh, "entity": entity_vals}))
+
+    return results
+
+
+# ---------------------------------------------------------------
+# Clone-loop parallelisation helpers (module-level for pickling)
+# ---------------------------------------------------------------
+
+_CLONE_SHARED: dict = {}
+
+
+def _init_clone_worker(shared_data: dict) -> None:
+    """Initialise worker process with shared read-only data.
+
+    Called once per worker at ``ProcessPoolExecutor`` startup so the
+    ~50-200 MB payload is pickled *per worker* (not per clone).
+    """
+    _CLONE_SHARED.update(shared_data)
+
+
+def _assemble_clone_values_standalone(
+    state_values: dict,
+    clone_states: np.ndarray,
+    person_hh_indices: np.ndarray,
+    target_vars: set,
+    constraint_vars: set,
+    county_values: dict = None,
+    clone_counties: np.ndarray = None,
+    county_dependent_vars: set = None,
+) -> tuple:
+    """Standalone clone-value assembly (no ``self``).
+
+    Identical logic to
+    ``UnifiedMatrixBuilder._assemble_clone_values`` but usable
+    from a worker process.
+    """
+    n_records = len(clone_states)
+    n_persons = len(person_hh_indices)
+    person_states = clone_states[person_hh_indices]
+    unique_clone_states = np.unique(clone_states)
+    cdv = county_dependent_vars or set()
+
+    state_masks = {int(s): clone_states == s for s in unique_clone_states}
+    unique_person_states = np.unique(person_states)
+    person_state_masks = {int(s): person_states == s for s in unique_person_states}
+    county_masks = {}
+    unique_counties = None
+    if clone_counties is not None and county_values:
+        unique_counties = np.unique(clone_counties)
+        county_masks = {c: clone_counties == c for c in unique_counties}
+
+    hh_vars: dict = {}
+    for var in target_vars:
+        if var.endswith("_count"):
+            continue
+        if var in cdv and county_values and clone_counties is not None:
+            first_county = unique_counties[0]
+            if var not in county_values.get(first_county, {}).get("hh", {}):
+                continue
+            arr = np.empty(n_records, dtype=np.float32)
+            for county in unique_counties:
+                mask = county_masks[county]
+                county_hh = county_values.get(county, {}).get("hh", {})
+                if var in county_hh:
+                    arr[mask] = county_hh[var][mask]
+                else:
+                    st = int(county[:2])
+                    arr[mask] = state_values[st]["hh"][var][mask]
+            hh_vars[var] = arr
+        else:
+            if var not in state_values[unique_clone_states[0]]["hh"]:
+                continue
+            arr = np.empty(n_records, dtype=np.float32)
+            for state in unique_clone_states:
+                mask = state_masks[int(state)]
+                arr[mask] = state_values[int(state)]["hh"][var][mask]
+            hh_vars[var] = arr
+
+    person_vars: dict = {}
+    for var in constraint_vars:
+        if var not in state_values[unique_clone_states[0]]["person"]:
+            continue
+        arr = np.empty(n_persons, dtype=np.float32)
+        for state in unique_person_states:
+            mask = person_state_masks[int(state)]
+            arr[mask] = state_values[int(state)]["person"][var][mask]
+        person_vars[var] = arr
+
+    return hh_vars, person_vars
+
+
+def _evaluate_constraints_standalone(
+    constraints,
+    person_vars: dict,
+    entity_rel: pd.DataFrame,
+    household_ids: np.ndarray,
+    n_households: int,
+) -> np.ndarray:
+    """Standalone constraint evaluation (no class instance).
+
+    Evaluates person-level constraints and aggregates to
+    household level via .any().
+    """
+    if not constraints:
+        return np.ones(n_households, dtype=bool)
+
+    n_persons = len(entity_rel)
+    person_mask = np.ones(n_persons, dtype=bool)
+
+    for c in constraints:
+        var = c["variable"]
+        if var not in person_vars:
+            logger.warning(
+                "Constraint var '%s' not in precomputed person_vars",
+                var,
+            )
+            return np.zeros(n_households, dtype=bool)
+        vals = person_vars[var]
+        person_mask &= apply_op(vals, c["operation"], c["value"])
+
+    df = entity_rel.copy()
+    df["satisfies"] = person_mask
+    hh_mask = df.groupby("household_id")["satisfies"].any()
+    return np.array([hh_mask.get(hid, False) for hid in household_ids])
+
+
+def _calculate_target_values_standalone(
+    target_variable: str,
+    non_geo_constraints: list,
+    n_households: int,
+    hh_vars: dict,
+    person_vars: dict,
+    entity_rel: pd.DataFrame,
+    household_ids: np.ndarray,
+    variable_entity_map: dict,
+) -> np.ndarray:
+    """Standalone target-value calculation (no class instance).
+
+    Uses ``variable_entity_map`` dict for entity resolution
+    (picklable, unlike ``tax_benefit_system``).
+    """
+    is_count = target_variable.endswith("_count")
+
+    if not is_count:
+        mask = _evaluate_constraints_standalone(
+            non_geo_constraints,
+            person_vars,
+            entity_rel,
+            household_ids,
+            n_households,
+        )
+        vals = hh_vars.get(target_variable)
+        if vals is None:
+            return np.zeros(n_households, dtype=np.float32)
+        return (vals * mask).astype(np.float32)
+
+    # Count target: entity-aware counting
+    n_persons = len(entity_rel)
+    person_mask = np.ones(n_persons, dtype=bool)
+
+    for c in non_geo_constraints:
+        var = c["variable"]
+        if var not in person_vars:
+            return np.zeros(n_households, dtype=np.float32)
+        cv = person_vars[var]
+        person_mask &= apply_op(cv, c["operation"], c["value"])
+
+    target_entity = variable_entity_map.get(target_variable)
+    if target_entity is None:
+        return np.zeros(n_households, dtype=np.float32)
+
+    if target_entity == "household":
+        if non_geo_constraints:
+            mask = _evaluate_constraints_standalone(
+                non_geo_constraints,
+                person_vars,
+                entity_rel,
+                household_ids,
+                n_households,
+            )
+            return mask.astype(np.float32)
+        return np.ones(n_households, dtype=np.float32)
+
+    if target_entity == "person":
+        er = entity_rel.copy()
+        er["satisfies"] = person_mask
+        filtered = er[er["satisfies"]]
+        counts = filtered.groupby("household_id")["person_id"].nunique()
+    else:
+        eid_col = f"{target_entity}_id"
+        er = entity_rel.copy()
+        er["satisfies"] = person_mask
+        entity_ok = er.groupby(eid_col)["satisfies"].any()
+        unique = er[["household_id", eid_col]].drop_duplicates()
+        unique["entity_ok"] = unique[eid_col].map(entity_ok)
+        filtered = unique[unique["entity_ok"]]
+        counts = filtered.groupby("household_id")[eid_col].nunique()
+
+    return np.array(
+        [counts.get(hid, 0) for hid in household_ids],
+        dtype=np.float32,
+    )
+
+
+def _process_single_clone(
+    clone_idx: int,
+    col_start: int,
+    col_end: int,
+    cache_path: str,
+) -> tuple:
+    """Process one clone in a worker process.
+
+    Reads shared read-only data from ``_CLONE_SHARED``
+    (populated by ``_init_clone_worker``).  Writes COO
+    entries as a compressed ``.npz`` file to *cache_path*.
+
+    Args:
+        clone_idx: Zero-based clone index.
+        col_start: First column index for this clone.
+        col_end: One-past-last column index.
+        cache_path: File path for output ``.npz``.
+
+    Returns:
+        (clone_idx, n_nonzero) tuple.
+    """
+    sd = _CLONE_SHARED
+
+    # Unpack shared data
+    geo_states = sd["geography_state_fips"]
+    geo_counties = sd["geography_county_fips"]
+    geo_blocks = sd["geography_block_geoid"]
+    state_values = sd["state_values"]
+    county_values = sd["county_values"]
+    person_hh_indices = sd["person_hh_indices"]
+    unique_variables = sd["unique_variables"]
+    unique_constraint_vars = sd["unique_constraint_vars"]
+    county_dep_targets = sd["county_dep_targets"]
+    target_variables = sd["target_variables"]
+    target_geo_info = sd["target_geo_info"]
+    non_geo_constraints_list = sd["non_geo_constraints_list"]
+    n_records = sd["n_records"]
+    n_total = sd["n_total"]
+    n_targets = sd["n_targets"]
+    state_to_cols = sd["state_to_cols"]
+    cd_to_cols = sd["cd_to_cols"]
+    entity_rel = sd["entity_rel"]
+    household_ids = sd["household_ids"]
+    variable_entity_map = sd["variable_entity_map"]
+    do_takeup = sd["rerandomize_takeup"]
+    affected_target_info = sd["affected_target_info"]
+    entity_hh_idx_map = sd.get("entity_hh_idx_map", {})
+    entity_to_person_idx = sd.get("entity_to_person_idx", {})
+    precomputed_rates = sd.get("precomputed_rates", {})
+
+    # Slice geography for this clone
+    clone_states = geo_states[col_start:col_end]
+    clone_counties = geo_counties[col_start:col_end]
+
+    # Assemble hh/person values from precomputed state/county
+    hh_vars, person_vars = _assemble_clone_values_standalone(
+        state_values,
+        clone_states,
+        person_hh_indices,
+        unique_variables,
+        unique_constraint_vars,
+        county_values=county_values,
+        clone_counties=clone_counties,
+        county_dependent_vars=county_dep_targets,
+    )
+
+    # Takeup re-randomisation
+    if do_takeup and affected_target_info:
+        from policyengine_us_data.utils.takeup import (
+            compute_block_takeup_for_entities,
+        )
+
+        clone_blocks = geo_blocks[col_start:col_end]
+
+        for tvar, info in affected_target_info.items():
+            if tvar.endswith("_count"):
+                continue
+            entity_level = info["entity"]
+            takeup_var = info["takeup_var"]
+            ent_hh = entity_hh_idx_map[entity_level]
+            n_ent = len(ent_hh)
+            ent_states = clone_states[ent_hh]
+
+            ent_eligible = np.zeros(n_ent, dtype=np.float32)
+            if tvar in county_dep_targets and county_values:
+                ent_counties = clone_counties[ent_hh]
+                for cfips in np.unique(ent_counties):
+                    m = ent_counties == cfips
+                    cv = county_values.get(cfips, {}).get("entity", {})
+                    if tvar in cv:
+                        ent_eligible[m] = cv[tvar][m]
+                    else:
+                        st = int(cfips[:2])
+                        sv = state_values[st]["entity"]
+                        if tvar in sv:
+                            ent_eligible[m] = sv[tvar][m]
+            else:
+                for st in np.unique(ent_states):
+                    m = ent_states == st
+                    sv = state_values[int(st)]["entity"]
+                    if tvar in sv:
+                        ent_eligible[m] = sv[tvar][m]
+
+            ent_blocks = clone_blocks[ent_hh]
+            ent_hh_ids = household_ids[ent_hh]
+
+            ent_takeup = compute_block_takeup_for_entities(
+                takeup_var,
+                precomputed_rates[info["rate_key"]],
+                ent_blocks,
+                ent_hh_ids,
+            )
+
+            ent_values = (ent_eligible * ent_takeup).astype(np.float32)
+
+            hh_result = np.zeros(n_records, dtype=np.float32)
+            np.add.at(hh_result, ent_hh, ent_values)
+            hh_vars[tvar] = hh_result
+
+            if tvar in person_vars:
+                pidx = entity_to_person_idx[entity_level]
+                person_vars[tvar] = ent_values[pidx]
+
+    # Build COO entries for every target row
+    mask_cache: dict = {}
+    count_cache: dict = {}
+    rows_list: list = []
+    cols_list: list = []
+    vals_list: list = []
+
+    for row_idx in range(n_targets):
+        variable = target_variables[row_idx]
+        geo_level, geo_id = target_geo_info[row_idx]
+        non_geo = non_geo_constraints_list[row_idx]
+
+        if geo_level == "district":
+            all_geo_cols = cd_to_cols.get(
+                str(geo_id),
+                np.array([], dtype=np.int64),
+            )
+        elif geo_level == "state":
+            all_geo_cols = state_to_cols.get(
+                int(geo_id),
+                np.array([], dtype=np.int64),
+            )
+        else:
+            all_geo_cols = np.arange(n_total)
+
+        clone_cols = all_geo_cols[
+            (all_geo_cols >= col_start) & (all_geo_cols < col_end)
+        ]
+        if len(clone_cols) == 0:
+            continue
+
+        rec_indices = clone_cols - col_start
+
+        constraint_key = tuple(
+            sorted(
+                (
+                    c["variable"],
+                    c["operation"],
+                    c["value"],
+                )
+                for c in non_geo
+            )
+        )
+
+        if variable.endswith("_count"):
+            vkey = (variable, constraint_key)
+            if vkey not in count_cache:
+                count_cache[vkey] = _calculate_target_values_standalone(
+                    variable,
+                    non_geo,
+                    n_records,
+                    hh_vars,
+                    person_vars,
+                    entity_rel,
+                    household_ids,
+                    variable_entity_map,
+                )
+            values = count_cache[vkey]
+        else:
+            if variable not in hh_vars:
+                continue
+            if constraint_key not in mask_cache:
+                mask_cache[constraint_key] = _evaluate_constraints_standalone(
+                    non_geo,
+                    person_vars,
+                    entity_rel,
+                    household_ids,
+                    n_records,
+                )
+            mask = mask_cache[constraint_key]
+            values = hh_vars[variable] * mask
+
+        vals = values[rec_indices]
+        nonzero = vals != 0
+        if nonzero.any():
+            rows_list.append(
+                np.full(
+                    nonzero.sum(),
+                    row_idx,
+                    dtype=np.int32,
+                )
+            )
+            cols_list.append(clone_cols[nonzero].astype(np.int32))
+            vals_list.append(vals[nonzero])
+
+    # Write COO
+    if rows_list:
+        cr = np.concatenate(rows_list)
+        cc = np.concatenate(cols_list)
+        cv = np.concatenate(vals_list)
+    else:
+        cr = np.array([], dtype=np.int32)
+        cc = np.array([], dtype=np.int32)
+        cv = np.array([], dtype=np.float32)
+
+    np.savez_compressed(cache_path, rows=cr, cols=cc, vals=cv)
+    return clone_idx, len(cv)
 
 
 class UnifiedMatrixBuilder:
@@ -71,65 +740,589 @@ class UnifiedMatrixBuilder:
 
         self._entity_rel_cache = pd.DataFrame(
             {
-                "person_id": sim.calculate(
-                    "person_id", map_to="person"
-                ).values,
-                "household_id": sim.calculate(
-                    "household_id", map_to="person"
-                ).values,
-                "tax_unit_id": sim.calculate(
-                    "tax_unit_id", map_to="person"
-                ).values,
-                "spm_unit_id": sim.calculate(
-                    "spm_unit_id", map_to="person"
-                ).values,
+                "person_id": sim.calculate("person_id", map_to="person").values,
+                "household_id": sim.calculate("household_id", map_to="person").values,
+                "tax_unit_id": sim.calculate("tax_unit_id", map_to="person").values,
+                "spm_unit_id": sim.calculate("spm_unit_id", map_to="person").values,
             }
         )
         return self._entity_rel_cache
 
     # ---------------------------------------------------------------
-    # Constraint evaluation
+    # Per-state precomputation
     # ---------------------------------------------------------------
 
-    def _evaluate_constraints_entity_aware(
+    def _build_state_values(
         self,
         sim,
-        constraints: List[dict],
-        n_households: int,
-    ) -> np.ndarray:
-        """Evaluate constraints at person level, aggregate to
-        household level via .any()."""
-        if not constraints:
-            return np.ones(n_households, dtype=bool)
+        target_vars: set,
+        constraint_vars: set,
+        geography,
+        rerandomize_takeup: bool = True,
+        workers: int = 1,
+    ) -> dict:
+        """Precompute household/person/entity values per state.
 
-        entity_rel = self._build_entity_relationship(sim)
-        n_persons = len(entity_rel)
-        person_mask = np.ones(n_persons, dtype=bool)
+        Creates a fresh Microsimulation per state to prevent
+        cross-state cache pollution (stale intermediate values
+        from one state leaking into another's calculations).
 
-        for c in constraints:
-            try:
-                vals = sim.calculate(
-                    c["variable"],
+        County-dependent variables (e.g. aca_ptc) are computed
+        here as a state-level fallback; county-level overrides
+        are applied later via ``_build_county_values``.
+
+        Args:
+            sim: Microsimulation instance (unused; kept for API
+                compatibility).
+            target_vars: Set of target variable names.
+            constraint_vars: Set of constraint variable names.
+            geography: GeographyAssignment with state_fips.
+            rerandomize_takeup: If True, force takeup=True and
+                also store entity-level eligible amounts for
+                takeup-affected targets.
+            workers: Number of parallel worker processes.
+                When >1, uses ProcessPoolExecutor.
+
+        Returns:
+            {state_fips: {
+                'hh': {var: array},
+                'person': {var: array},
+                'entity': {var: array}  # only if rerandomize
+            }}
+        """
+        from policyengine_us_data.utils.takeup import (
+            TAKEUP_AFFECTED_TARGETS,
+        )
+
+        unique_states = sorted(set(int(s) for s in geography.state_fips))
+        n_hh = geography.n_records
+
+        logger.info(
+            "Per-state precomputation: %d states, "
+            "%d hh vars, %d constraint vars "
+            "(fresh sim per state, workers=%d)",
+            len(unique_states),
+            len([v for v in target_vars if not v.endswith("_count")]),
+            len(constraint_vars),
+            workers,
+        )
+
+        # Identify takeup-affected targets before the state loop
+        affected_targets = {}
+        if rerandomize_takeup:
+            for tvar in target_vars:
+                for key, info in TAKEUP_AFFECTED_TARGETS.items():
+                    if tvar == key or tvar.startswith(key):
+                        affected_targets[tvar] = info
+                        break
+
+        # Convert sets to sorted lists for deterministic iteration
+        target_vars_list = sorted(target_vars)
+        constraint_vars_list = sorted(constraint_vars)
+
+        state_values = {}
+
+        if workers > 1:
+            from concurrent.futures import (
+                ProcessPoolExecutor,
+                as_completed,
+            )
+
+            logger.info(
+                "Parallel state precomputation with %d workers",
+                workers,
+            )
+            with ProcessPoolExecutor(max_workers=workers) as pool:
+                futures = {
+                    pool.submit(
+                        _compute_single_state,
+                        self.dataset_path,
+                        self.time_period,
+                        st,
+                        n_hh,
+                        target_vars_list,
+                        constraint_vars_list,
+                        rerandomize_takeup,
+                        affected_targets,
+                    ): st
+                    for st in unique_states
+                }
+                completed = 0
+                for future in as_completed(futures):
+                    st = futures[future]
+                    try:
+                        sf, vals = future.result()
+                        state_values[sf] = vals
+                        completed += 1
+                        if completed % 10 == 0 or completed == 1:
+                            logger.info(
+                                "State %d/%d complete",
+                                completed,
+                                len(unique_states),
+                            )
+                    except Exception as exc:
+                        for f in futures:
+                            f.cancel()
+                        raise RuntimeError(f"State {st} failed: {exc}") from exc
+        else:
+            from policyengine_us import Microsimulation
+            from policyengine_us_data.utils.takeup import (
+                SIMPLE_TAKEUP_VARS,
+            )
+
+            for i, state in enumerate(unique_states):
+                state_sim = Microsimulation(dataset=self.dataset_path)
+
+                state_sim.set_input(
+                    "state_fips",
                     self.time_period,
-                    map_to="person",
-                ).values
-            except Exception as exc:
-                logger.warning(
-                    "Cannot evaluate constraint '%s': %s",
-                    c["variable"],
-                    exc,
+                    np.full(n_hh, state, dtype=np.int32),
                 )
-                return np.zeros(n_households, dtype=bool)
-            person_mask &= apply_op(vals, c["operation"], c["value"])
+                for var in get_calculated_variables(state_sim):
+                    state_sim.delete_arrays(var)
 
-        df = entity_rel.copy()
-        df["satisfies"] = person_mask
-        hh_mask = df.groupby("household_id")["satisfies"].any()
+                hh = {}
+                for var in target_vars:
+                    if var.endswith("_count"):
+                        continue
+                    try:
+                        hh[var] = state_sim.calculate(
+                            var,
+                            self.time_period,
+                            map_to="household",
+                        ).values.astype(np.float32)
+                    except Exception as exc:
+                        logger.warning(
+                            "Cannot calculate '%s' for state %d: %s",
+                            var,
+                            state,
+                            exc,
+                        )
 
-        household_ids = sim.calculate(
-            "household_id", map_to="household"
-        ).values
-        return np.array([hh_mask.get(hid, False) for hid in household_ids])
+                person = {}
+                for var in constraint_vars:
+                    try:
+                        person[var] = state_sim.calculate(
+                            var,
+                            self.time_period,
+                            map_to="person",
+                        ).values.astype(np.float32)
+                    except Exception as exc:
+                        logger.warning(
+                            "Cannot calculate constraint '%s' for state %d: %s",
+                            var,
+                            state,
+                            exc,
+                        )
+
+                if rerandomize_takeup:
+                    for spec in SIMPLE_TAKEUP_VARS:
+                        entity = spec["entity"]
+                        n_ent = len(
+                            state_sim.calculate(f"{entity}_id", map_to=entity).values
+                        )
+                        state_sim.set_input(
+                            spec["variable"],
+                            self.time_period,
+                            np.ones(n_ent, dtype=bool),
+                        )
+                    for var in get_calculated_variables(state_sim):
+                        state_sim.delete_arrays(var)
+
+                entity_vals = {}
+                if rerandomize_takeup:
+                    for tvar, info in affected_targets.items():
+                        entity_level = info["entity"]
+                        try:
+                            entity_vals[tvar] = state_sim.calculate(
+                                tvar,
+                                self.time_period,
+                                map_to=entity_level,
+                            ).values.astype(np.float32)
+                        except Exception as exc:
+                            logger.warning(
+                                "Cannot calculate entity-level "
+                                "'%s' (map_to=%s) for "
+                                "state %d: %s",
+                                tvar,
+                                entity_level,
+                                state,
+                                exc,
+                            )
+
+                state_values[state] = {
+                    "hh": hh,
+                    "person": person,
+                    "entity": entity_vals,
+                }
+                if (i + 1) % 10 == 0 or i == 0:
+                    logger.info(
+                        "State %d/%d complete",
+                        i + 1,
+                        len(unique_states),
+                    )
+
+        logger.info(
+            "Per-state precomputation done: %d states",
+            len(state_values),
+        )
+        return state_values
+
+    def _build_county_values(
+        self,
+        sim,
+        county_dep_targets: set,
+        geography,
+        rerandomize_takeup: bool = True,
+        county_level: bool = True,
+        workers: int = 1,
+    ) -> dict:
+        """Precompute county-dependent variable values per county.
+
+        Only iterates over COUNTY_DEPENDENT_VARS that actually
+        benefit from per-county computation. All other target
+        variables use state-level values from _build_state_values.
+
+        Creates a fresh Microsimulation per state group to prevent
+        cross-state cache pollution. Counties within the same state
+        share a simulation since within-state recalculation is clean
+        (only cross-state switches cause pollution).
+
+        When county_level=False, returns an empty dict immediately
+        (all values come from state-level precomputation).
+
+        Args:
+            sim: Microsimulation instance (unused; kept for API
+                compatibility).
+            county_dep_targets: Subset of target vars that depend
+                on county (intersection of targets with
+                COUNTY_DEPENDENT_VARS).
+            geography: GeographyAssignment with county_fips.
+            rerandomize_takeup: If True, force takeup=True and
+                also store entity-level eligible amounts for
+                takeup-affected targets.
+            county_level: If True, iterate counties within each
+                state. If False, return empty dict (skip county
+                computation entirely).
+            workers: Number of parallel worker processes.
+                When >1, uses ProcessPoolExecutor.
+
+        Returns:
+            {county_fips_str: {
+                'hh': {var: array},
+                'entity': {var: array}
+            }}
+        """
+        if not county_level or not county_dep_targets:
+            logger.info(
+                "Skipping county precomputation (county_level=%s, targets=%d)",
+                county_level,
+                len(county_dep_targets),
+            )
+            return {}
+
+        from policyengine_us_data.utils.takeup import (
+            TAKEUP_AFFECTED_TARGETS,
+        )
+
+        unique_counties = sorted(set(geography.county_fips))
+        n_hh = geography.n_records
+
+        state_to_counties = defaultdict(list)
+        for county in unique_counties:
+            state_to_counties[int(county[:2])].append(county)
+
+        logger.info(
+            "Per-county precomputation: %d counties in %d "
+            "states, %d county-dependent vars "
+            "(fresh sim per state, workers=%d)",
+            len(unique_counties),
+            len(state_to_counties),
+            len(county_dep_targets),
+            workers,
+        )
+
+        affected_targets = {}
+        if rerandomize_takeup:
+            for tvar in county_dep_targets:
+                for key, info in TAKEUP_AFFECTED_TARGETS.items():
+                    if tvar == key or tvar.startswith(key):
+                        affected_targets[tvar] = info
+                        break
+
+        # Convert to sorted list for deterministic iteration
+        county_dep_targets_list = sorted(county_dep_targets)
+
+        county_values = {}
+
+        if workers > 1:
+            from concurrent.futures import (
+                ProcessPoolExecutor,
+                as_completed,
+            )
+
+            logger.info(
+                "Parallel county precomputation with %d workers (%d state groups)",
+                workers,
+                len(state_to_counties),
+            )
+            with ProcessPoolExecutor(max_workers=workers) as pool:
+                futures = {
+                    pool.submit(
+                        _compute_single_state_group_counties,
+                        self.dataset_path,
+                        self.time_period,
+                        sf,
+                        counties,
+                        n_hh,
+                        county_dep_targets_list,
+                        rerandomize_takeup,
+                        affected_targets,
+                    ): sf
+                    for sf, counties in sorted(state_to_counties.items())
+                }
+                completed = 0
+                county_count = 0
+                for future in as_completed(futures):
+                    sf = futures[future]
+                    try:
+                        results = future.result()
+                        for cfips, vals in results:
+                            county_values[cfips] = vals
+                            county_count += 1
+                        completed += 1
+                        if county_count % 500 == 0 or completed == 1:
+                            logger.info(
+                                "County %d/%d complete (%d/%d state groups)",
+                                county_count,
+                                len(unique_counties),
+                                completed,
+                                len(state_to_counties),
+                            )
+                    except Exception as exc:
+                        for f in futures:
+                            f.cancel()
+                        raise RuntimeError(f"State group {sf} failed: {exc}") from exc
+        else:
+            from policyengine_us import Microsimulation
+            from policyengine_us_data.utils.takeup import (
+                SIMPLE_TAKEUP_VARS,
+            )
+
+            county_count = 0
+            for state_fips, counties in sorted(state_to_counties.items()):
+                state_sim = Microsimulation(dataset=self.dataset_path)
+
+                state_sim.set_input(
+                    "state_fips",
+                    self.time_period,
+                    np.full(n_hh, state_fips, dtype=np.int32),
+                )
+
+                original_takeup = {}
+                if rerandomize_takeup:
+                    for spec in SIMPLE_TAKEUP_VARS:
+                        entity = spec["entity"]
+                        original_takeup[spec["variable"]] = (
+                            entity,
+                            state_sim.calculate(
+                                spec["variable"],
+                                self.time_period,
+                                map_to=entity,
+                            ).values.copy(),
+                        )
+
+                for county_fips in counties:
+                    county_idx = get_county_enum_index_from_fips(county_fips)
+                    state_sim.set_input(
+                        "county",
+                        self.time_period,
+                        np.full(
+                            n_hh,
+                            county_idx,
+                            dtype=np.int32,
+                        ),
+                    )
+                    if rerandomize_takeup:
+                        for vname, (
+                            ent,
+                            orig,
+                        ) in original_takeup.items():
+                            state_sim.set_input(
+                                vname,
+                                self.time_period,
+                                orig,
+                            )
+                    for var in get_calculated_variables(state_sim):
+                        if var != "county":
+                            state_sim.delete_arrays(var)
+
+                    hh = {}
+                    for var in county_dep_targets:
+                        if var.endswith("_count"):
+                            continue
+                        try:
+                            hh[var] = state_sim.calculate(
+                                var,
+                                self.time_period,
+                                map_to="household",
+                            ).values.astype(np.float32)
+                        except Exception as exc:
+                            logger.warning(
+                                "Cannot calculate '%s' for county %s: %s",
+                                var,
+                                county_fips,
+                                exc,
+                            )
+
+                    if rerandomize_takeup:
+                        for spec in SIMPLE_TAKEUP_VARS:
+                            entity = spec["entity"]
+                            n_ent = len(
+                                state_sim.calculate(
+                                    f"{entity}_id",
+                                    map_to=entity,
+                                ).values
+                            )
+                            state_sim.set_input(
+                                spec["variable"],
+                                self.time_period,
+                                np.ones(n_ent, dtype=bool),
+                            )
+                        for var in get_calculated_variables(state_sim):
+                            if var != "county":
+                                state_sim.delete_arrays(var)
+
+                    entity_vals = {}
+                    if rerandomize_takeup:
+                        for (
+                            tvar,
+                            info,
+                        ) in affected_targets.items():
+                            entity_level = info["entity"]
+                            try:
+                                entity_vals[tvar] = state_sim.calculate(
+                                    tvar,
+                                    self.time_period,
+                                    map_to=entity_level,
+                                ).values.astype(np.float32)
+                            except Exception as exc:
+                                logger.warning(
+                                    "Cannot calculate "
+                                    "entity-level '%s' "
+                                    "for county %s: %s",
+                                    tvar,
+                                    county_fips,
+                                    exc,
+                                )
+
+                    county_values[county_fips] = {
+                        "hh": hh,
+                        "entity": entity_vals,
+                    }
+                    county_count += 1
+                    if county_count % 500 == 0 or county_count == 1:
+                        logger.info(
+                            "County %d/%d complete",
+                            county_count,
+                            len(unique_counties),
+                        )
+
+        logger.info(
+            "Per-county precomputation done: %d counties",
+            len(county_values),
+        )
+        return county_values
+
+    def _assemble_clone_values(
+        self,
+        state_values: dict,
+        clone_states: np.ndarray,
+        person_hh_indices: np.ndarray,
+        target_vars: set,
+        constraint_vars: set,
+        county_values: dict = None,
+        clone_counties: np.ndarray = None,
+        county_dependent_vars: set = None,
+    ) -> tuple:
+        """Assemble per-clone values from state/county precomputation.
+
+        For each target variable, selects values from either
+        county_values (if the var is county-dependent) or
+        state_values (otherwise) using numpy fancy indexing.
+
+        Args:
+            state_values: Output of _build_state_values.
+            clone_states: State FIPS per record for this clone.
+            person_hh_indices: Maps person index to household
+                index (0..n_records-1).
+            target_vars: Set of target variable names.
+            constraint_vars: Set of constraint variable names.
+            county_values: Output of _build_county_values.
+            clone_counties: County FIPS per record for this
+                clone (str array).
+            county_dependent_vars: Set of var names that should
+                be looked up by county instead of state.
+
+        Returns:
+            (hh_vars, person_vars) where hh_vars maps variable
+            name to household-level float32 array and person_vars
+            maps constraint variable name to person-level array.
+        """
+        n_records = len(clone_states)
+        n_persons = len(person_hh_indices)
+        person_states = clone_states[person_hh_indices]
+        unique_clone_states = np.unique(clone_states)
+        cdv = county_dependent_vars or set()
+
+        # Pre-compute masks to avoid recomputing per variable
+        state_masks = {int(s): clone_states == s for s in unique_clone_states}
+        unique_person_states = np.unique(person_states)
+        person_state_masks = {int(s): person_states == s for s in unique_person_states}
+        county_masks = {}
+        unique_counties = None
+        if clone_counties is not None and county_values:
+            unique_counties = np.unique(clone_counties)
+            county_masks = {c: clone_counties == c for c in unique_counties}
+
+        hh_vars = {}
+        for var in target_vars:
+            if var.endswith("_count"):
+                continue
+            if var in cdv and county_values and clone_counties is not None:
+                first_county = unique_counties[0]
+                if var not in county_values.get(first_county, {}).get("hh", {}):
+                    continue
+                arr = np.empty(n_records, dtype=np.float32)
+                for county in unique_counties:
+                    mask = county_masks[county]
+                    county_hh = county_values.get(county, {}).get("hh", {})
+                    if var in county_hh:
+                        arr[mask] = county_hh[var][mask]
+                    else:
+                        st = int(county[:2])
+                        arr[mask] = state_values[st]["hh"][var][mask]
+                hh_vars[var] = arr
+            else:
+                if var not in state_values[unique_clone_states[0]]["hh"]:
+                    continue
+                arr = np.empty(n_records, dtype=np.float32)
+                for state in unique_clone_states:
+                    mask = state_masks[int(state)]
+                    arr[mask] = state_values[int(state)]["hh"][var][mask]
+                hh_vars[var] = arr
+
+        person_vars = {}
+        for var in constraint_vars:
+            if var not in state_values[unique_clone_states[0]]["person"]:
+                continue
+            arr = np.empty(n_persons, dtype=np.float32)
+            for state in unique_person_states:
+                mask = person_state_masks[int(state)]
+                arr[mask] = state_values[int(state)]["person"][var][mask]
+            person_vars[var] = arr
+
+        return hh_vars, person_vars
 
     # ---------------------------------------------------------------
     # Database queries
@@ -240,9 +1433,7 @@ class UnifiedMatrixBuilder:
                 factors[(from_year, "cpi")] = 1.0
 
             try:
-                pop_from = params.calibration.gov.census.populations.total(
-                    from_year
-                )
+                pop_from = params.calibration.gov.census.populations.total(from_year)
                 pop_to = params.calibration.gov.census.populations.total(
                     self.time_period
                 )
@@ -261,14 +1452,7 @@ class UnifiedMatrixBuilder:
         if period == self.time_period:
             return 1.0, "none"
 
-        count_indicators = [
-            "count",
-            "person",
-            "people",
-            "households",
-            "tax_units",
-        ]
-        is_count = any(ind in variable.lower() for ind in count_indicators)
+        is_count = variable.endswith("_count")
         uprating_type = "pop" if is_count else "cpi"
         factor = factors.get((period, uprating_type), 1.0)
         return factor, uprating_type
@@ -326,9 +1510,7 @@ class UnifiedMatrixBuilder:
                         var_factors[var] = 1.0
                         continue
                     period = row.iloc[0]["period"]
-                    factor, _ = self._get_uprating_info(
-                        var, period, national_factors
-                    )
+                    factor, _ = self._get_uprating_info(var, period, national_factors)
                     var_factors[var] = factor
 
             result[state_int] = var_factors
@@ -430,14 +1612,12 @@ class UnifiedMatrixBuilder:
         print("\n" + "=" * 60)
         print("UPRATING SUMMARY")
         print("=" * 60)
-        print(f"Uprated {len(uprated)} of " f"{len(targets_df)} targets")
+        print(f"Uprated {len(uprated)} of {len(targets_df)} targets")
         period_counts = uprated["period"].value_counts().sort_index()
         for period, count in period_counts.items():
             print(f"  Period {period}: {count} targets")
         factors = eff[eff != 1.0]
-        print(
-            f"  Factor range: [{factors.min():.4f}, " f"{factors.max():.4f}]"
-        )
+        print(f"  Factor range: [{factors.min():.4f}, {factors.max():.4f}]")
 
     # ---------------------------------------------------------------
     # Target naming
@@ -465,85 +1645,10 @@ class UnifiedMatrixBuilder:
 
         non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
         if non_geo:
-            strs = [
-                f"{c['variable']}{c['operation']}{c['value']}" for c in non_geo
-            ]
+            strs = [f"{c['variable']}{c['operation']}{c['value']}" for c in non_geo]
             parts.append("[" + ",".join(strs) + "]")
 
         return "/".join(parts)
-
-    # ---------------------------------------------------------------
-    # Target value calculation
-    # ---------------------------------------------------------------
-
-    def _calculate_target_values(
-        self,
-        sim,
-        target_variable: str,
-        non_geo_constraints: List[dict],
-        n_households: int,
-    ) -> np.ndarray:
-        """Calculate per-household target values.
-
-        For count targets (*_count): count entities per HH
-        satisfying constraints.
-        For value targets: multiply values by constraint mask.
-        """
-        is_count = target_variable.endswith("_count")
-
-        if not is_count:
-            mask = self._evaluate_constraints_entity_aware(
-                sim, non_geo_constraints, n_households
-            )
-            vals = sim.calculate(target_variable, map_to="household").values
-            return (vals * mask).astype(np.float32)
-
-        # Count target: entity-aware counting
-        entity_rel = self._build_entity_relationship(sim)
-        n_persons = len(entity_rel)
-        person_mask = np.ones(n_persons, dtype=bool)
-
-        for c in non_geo_constraints:
-            try:
-                cv = sim.calculate(c["variable"], map_to="person").values
-            except Exception:
-                return np.zeros(n_households, dtype=np.float32)
-            person_mask &= apply_op(cv, c["operation"], c["value"])
-
-        target_entity = sim.tax_benefit_system.variables[
-            target_variable
-        ].entity.key
-        household_ids = sim.calculate(
-            "household_id", map_to="household"
-        ).values
-
-        if target_entity == "household":
-            if non_geo_constraints:
-                mask = self._evaluate_constraints_entity_aware(
-                    sim, non_geo_constraints, n_households
-                )
-                return mask.astype(np.float32)
-            return np.ones(n_households, dtype=np.float32)
-
-        if target_entity == "person":
-            er = entity_rel.copy()
-            er["satisfies"] = person_mask
-            filtered = er[er["satisfies"]]
-            counts = filtered.groupby("household_id")["person_id"].nunique()
-        else:
-            eid_col = f"{target_entity}_id"
-            er = entity_rel.copy()
-            er["satisfies"] = person_mask
-            entity_ok = er.groupby(eid_col)["satisfies"].any()
-            unique = er[["household_id", eid_col]].drop_duplicates()
-            unique["entity_ok"] = unique[eid_col].map(entity_ok)
-            filtered = unique[unique["entity_ok"]]
-            counts = filtered.groupby("household_id")[eid_col].nunique()
-
-        return np.array(
-            [counts.get(hid, 0) for hid in household_ids],
-            dtype=np.float32,
-        )
 
     # ---------------------------------------------------------------
     # Clone simulation
@@ -614,6 +1719,9 @@ class UnifiedMatrixBuilder:
         hierarchical_domains: Optional[List[str]] = None,
         cache_dir: Optional[str] = None,
         sim_modifier=None,
+        rerandomize_takeup: bool = True,
+        county_level: bool = True,
+        workers: int = 1,
     ) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
         """Build sparse calibration matrix.
 
@@ -635,6 +1743,13 @@ class UnifiedMatrixBuilder:
                 called per clone after state_fips is set but
                 before cache clearing. Use for takeup
                 re-randomization.
+            rerandomize_takeup: If True, use geo-salted
+                entity-level takeup draws instead of base h5
+                takeup values for takeup-affected targets.
+            county_level: If True (default), iterate counties
+                within each state during precomputation. If
+                False, compute once per state and alias to all
+                counties (faster for county-invariant vars).
 
         Returns:
             (targets_df, X_sparse, target_names)
@@ -674,15 +1789,9 @@ class UnifiedMatrixBuilder:
         n_targets = len(targets_df)
 
         # 2. Sort targets by geographic level
-        targets_df["_geo_level"] = targets_df["geographic_id"].apply(
-            get_geo_level
-        )
-        targets_df = targets_df.sort_values(
-            ["_geo_level", "variable", "geographic_id"]
-        )
-        targets_df = targets_df.drop(columns=["_geo_level"]).reset_index(
-            drop=True
-        )
+        targets_df["_geo_level"] = targets_df["geographic_id"].apply(get_geo_level)
+        targets_df = targets_df.sort_values(["_geo_level", "variable", "geographic_id"])
+        targets_df = targets_df.drop(columns=["_geo_level"]).reset_index(drop=True)
 
         # 3. Build column index structures from geography
         state_col_lists: Dict[int, list] = defaultdict(list)
@@ -709,9 +1818,7 @@ class UnifiedMatrixBuilder:
             geo_id = row["geographic_id"]
             target_geo_info.append((geo_level, geo_id))
 
-            non_geo = [
-                c for c in constraints if c["variable"] not in _GEO_VARS
-            ]
+            non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
             non_geo_constraints_list.append(non_geo)
 
             target_names.append(
@@ -720,156 +1827,433 @@ class UnifiedMatrixBuilder:
 
         unique_variables = set(targets_df["variable"].values)
 
-        # 5. Clone loop
-        from pathlib import Path
+        # 5a. Collect unique constraint variables
+        unique_constraint_vars = set()
+        for constraints in non_geo_constraints_list:
+            for c in constraints:
+                unique_constraint_vars.add(c["variable"])
 
-        clone_dir = Path(cache_dir) if cache_dir else None
-        if clone_dir:
-            clone_dir.mkdir(parents=True, exist_ok=True)
-
+        # 5b. Per-state precomputation (51 sims on one object)
         self._entity_rel_cache = None
+        state_values = self._build_state_values(
+            sim,
+            unique_variables,
+            unique_constraint_vars,
+            geography,
+            rerandomize_takeup=rerandomize_takeup,
+            workers=workers,
+        )
 
-        for clone_idx in range(n_clones):
-            if clone_dir:
-                coo_path = clone_dir / f"clone_{clone_idx:04d}.npz"
-                if coo_path.exists():
-                    logger.info(
-                        "Clone %d/%d cached, skipping.",
-                        clone_idx + 1,
-                        n_clones,
-                    )
-                    continue
+        # 5b-county. Per-county precomputation for county-dependent vars
+        county_dep_targets = unique_variables & COUNTY_DEPENDENT_VARS
+        county_values = self._build_county_values(
+            sim,
+            county_dep_targets,
+            geography,
+            rerandomize_takeup=rerandomize_takeup,
+            county_level=county_level,
+            workers=workers,
+        )
 
-            col_start = clone_idx * n_records
-            col_end = col_start + n_records
-            clone_states = geography.state_fips[col_start:col_end]
+        # 5c. State-independent structures (computed once)
+        entity_rel = self._build_entity_relationship(sim)
+        household_ids = sim.calculate("household_id", map_to="household").values
+        person_hh_ids = sim.calculate("household_id", map_to="person").values
+        hh_id_to_idx = {int(hid): idx for idx, hid in enumerate(household_ids)}
+        person_hh_indices = np.array([hh_id_to_idx[int(hid)] for hid in person_hh_ids])
+        tax_benefit_system = sim.tax_benefit_system
+
+        # Pre-extract entity keys so workers don't need
+        # the unpicklable TaxBenefitSystem object.
+        variable_entity_map: Dict[str, str] = {}
+        for var in unique_variables:
+            if var.endswith("_count") and var in tax_benefit_system.variables:
+                variable_entity_map[var] = tax_benefit_system.variables[var].entity.key
+
+        # 5c-extra: Entity-to-household index maps for takeup
+        affected_target_info = {}
+        if rerandomize_takeup:
+            from policyengine_us_data.utils.takeup import (
+                TAKEUP_AFFECTED_TARGETS,
+                compute_block_takeup_for_entities,
+            )
+            from policyengine_us_data.parameters import (
+                load_take_up_rate,
+            )
+
+            # Build entity-to-household index arrays
+            spm_to_hh_id = (
+                entity_rel.groupby("spm_unit_id")["household_id"].first().to_dict()
+            )
+            spm_ids = sim.calculate("spm_unit_id", map_to="spm_unit").values
+            spm_hh_idx = np.array(
+                [hh_id_to_idx[int(spm_to_hh_id[int(sid)])] for sid in spm_ids]
+            )
+
+            tu_to_hh_id = (
+                entity_rel.groupby("tax_unit_id")["household_id"].first().to_dict()
+            )
+            tu_ids = sim.calculate("tax_unit_id", map_to="tax_unit").values
+            tu_hh_idx = np.array(
+                [hh_id_to_idx[int(tu_to_hh_id[int(tid)])] for tid in tu_ids]
+            )
+
+            entity_hh_idx_map = {
+                "spm_unit": spm_hh_idx,
+                "tax_unit": tu_hh_idx,
+                "person": person_hh_indices,
+            }
+
+            entity_to_person_idx = {}
+            for entity_level in ("spm_unit", "tax_unit"):
+                ent_ids = sim.calculate(
+                    f"{entity_level}_id",
+                    map_to=entity_level,
+                ).values
+                ent_id_to_idx = {int(eid): idx for idx, eid in enumerate(ent_ids)}
+                person_ent_ids = entity_rel[f"{entity_level}_id"].values
+                entity_to_person_idx[entity_level] = np.array(
+                    [ent_id_to_idx[int(eid)] for eid in person_ent_ids]
+                )
+            entity_to_person_idx["person"] = np.arange(len(entity_rel))
+
+            for tvar in unique_variables:
+                for key, info in TAKEUP_AFFECTED_TARGETS.items():
+                    if tvar == key:
+                        affected_target_info[tvar] = info
+                        break
 
             logger.info(
-                "Processing clone %d/%d " "(cols %d-%d, %d unique states)...",
-                clone_idx + 1,
+                "Block-level takeup enabled, %d affected target vars",
+                len(affected_target_info),
+            )
+
+            # Pre-compute takeup rates (constant across clones)
+            precomputed_rates = {}
+            for tvar, info in affected_target_info.items():
+                rk = info["rate_key"]
+                if rk not in precomputed_rates:
+                    precomputed_rates[rk] = load_take_up_rate(rk, self.time_period)
+
+            # Store for post-optimization stacked takeup
+            self.entity_hh_idx_map = entity_hh_idx_map
+            self.household_ids = household_ids
+            self.precomputed_rates = precomputed_rates
+            self.affected_target_info = affected_target_info
+
+        # 5d. Clone loop
+        from pathlib import Path
+
+        if workers > 1:
+            # ---- Parallel clone processing ----
+            import concurrent.futures
+            import tempfile
+
+            if cache_dir:
+                clone_dir = Path(cache_dir)
+            else:
+                clone_dir = Path(tempfile.mkdtemp(prefix="clone_coo_"))
+            clone_dir.mkdir(parents=True, exist_ok=True)
+
+            target_variables = [
+                str(targets_df.iloc[i]["variable"]) for i in range(n_targets)
+            ]
+
+            shared_data = {
+                "geography_state_fips": geography.state_fips,
+                "geography_county_fips": geography.county_fips,
+                "geography_block_geoid": geography.block_geoid,
+                "state_values": state_values,
+                "county_values": county_values,
+                "person_hh_indices": person_hh_indices,
+                "unique_variables": unique_variables,
+                "unique_constraint_vars": unique_constraint_vars,
+                "county_dep_targets": county_dep_targets,
+                "target_variables": target_variables,
+                "target_geo_info": target_geo_info,
+                "non_geo_constraints_list": (non_geo_constraints_list),
+                "n_records": n_records,
+                "n_total": n_total,
+                "n_targets": n_targets,
+                "state_to_cols": state_to_cols,
+                "cd_to_cols": cd_to_cols,
+                "entity_rel": entity_rel,
+                "household_ids": household_ids,
+                "variable_entity_map": variable_entity_map,
+                "rerandomize_takeup": rerandomize_takeup,
+                "affected_target_info": affected_target_info,
+            }
+            if rerandomize_takeup and affected_target_info:
+                shared_data["entity_hh_idx_map"] = entity_hh_idx_map
+                shared_data["entity_to_person_idx"] = entity_to_person_idx
+                shared_data["precomputed_rates"] = precomputed_rates
+
+            logger.info(
+                "Starting parallel clone processing: %d clones, %d workers",
                 n_clones,
-                col_start,
-                col_end - 1,
-                len(np.unique(clone_states)),
+                workers,
             )
 
-            var_values, clone_sim = self._simulate_clone(
-                clone_states,
-                n_records,
-                unique_variables,
-                sim_modifier=sim_modifier,
-                clone_idx=clone_idx,
-            )
-
-            mask_cache: Dict[tuple, np.ndarray] = {}
-            count_cache: Dict[tuple, np.ndarray] = {}
-
-            rows_list: list = []
-            cols_list: list = []
-            vals_list: list = []
-
-            for row_idx in range(n_targets):
-                variable = str(targets_df.iloc[row_idx]["variable"])
-                geo_level, geo_id = target_geo_info[row_idx]
-                non_geo = non_geo_constraints_list[row_idx]
-
-                # Geographic column selection
-                if geo_level == "district":
-                    all_geo_cols = cd_to_cols.get(
-                        str(geo_id),
-                        np.array([], dtype=np.int64),
-                    )
-                elif geo_level == "state":
-                    all_geo_cols = state_to_cols.get(
-                        int(geo_id),
-                        np.array([], dtype=np.int64),
-                    )
-                else:
-                    all_geo_cols = np.arange(n_total)
-
-                clone_cols = all_geo_cols[
-                    (all_geo_cols >= col_start) & (all_geo_cols < col_end)
-                ]
-                if len(clone_cols) == 0:
-                    continue
-
-                rec_indices = clone_cols - col_start
-
-                constraint_key = tuple(
-                    sorted(
-                        (
-                            c["variable"],
-                            c["operation"],
-                            c["value"],
+            futures: dict = {}
+            with concurrent.futures.ProcessPoolExecutor(
+                max_workers=workers,
+                initializer=_init_clone_worker,
+                initargs=(shared_data,),
+            ) as pool:
+                for ci in range(n_clones):
+                    coo_path = str(clone_dir / f"clone_{ci:04d}.npz")
+                    if Path(coo_path).exists():
+                        logger.info(
+                            "Clone %d/%d cached.",
+                            ci + 1,
+                            n_clones,
                         )
-                        for c in non_geo
+                        continue
+                    cs = ci * n_records
+                    ce = cs + n_records
+                    fut = pool.submit(
+                        _process_single_clone,
+                        ci,
+                        cs,
+                        ce,
+                        coo_path,
                     )
+                    futures[fut] = ci
+
+                for fut in concurrent.futures.as_completed(futures):
+                    ci = futures[fut]
+                    try:
+                        _, nnz = fut.result()
+                        if (ci + 1) % 50 == 0:
+                            logger.info(
+                                "Clone %d/%d done (%d nnz).",
+                                ci + 1,
+                                n_clones,
+                                nnz,
+                            )
+                    except Exception as exc:
+                        for f in futures:
+                            f.cancel()
+                        raise RuntimeError(f"Clone {ci} failed: {exc}") from exc
+
+        else:
+            # ---- Sequential clone processing (unchanged) ----
+            clone_dir = Path(cache_dir) if cache_dir else None
+            if clone_dir:
+                clone_dir.mkdir(parents=True, exist_ok=True)
+
+            for clone_idx in range(n_clones):
+                if clone_dir:
+                    coo_path = clone_dir / f"clone_{clone_idx:04d}.npz"
+                    if coo_path.exists():
+                        logger.info(
+                            "Clone %d/%d cached, skipping.",
+                            clone_idx + 1,
+                            n_clones,
+                        )
+                        continue
+
+                col_start = clone_idx * n_records
+                col_end = col_start + n_records
+                clone_states = geography.state_fips[col_start:col_end]
+                clone_counties = geography.county_fips[col_start:col_end]
+
+                if (clone_idx + 1) % 50 == 0 or clone_idx == 0:
+                    logger.info(
+                        "Assembling clone %d/%d (cols %d-%d, %d unique states)...",
+                        clone_idx + 1,
+                        n_clones,
+                        col_start,
+                        col_end - 1,
+                        len(np.unique(clone_states)),
+                    )
+
+                hh_vars, person_vars = self._assemble_clone_values(
+                    state_values,
+                    clone_states,
+                    person_hh_indices,
+                    unique_variables,
+                    unique_constraint_vars,
+                    county_values=county_values,
+                    clone_counties=clone_counties,
+                    county_dependent_vars=(county_dep_targets),
                 )
 
-                if variable.endswith("_count"):
-                    vkey = (variable, constraint_key)
-                    if vkey not in count_cache:
-                        count_cache[vkey] = self._calculate_target_values(
-                            clone_sim,
-                            variable,
-                            non_geo,
-                            n_records,
+                # Apply geo-specific entity-level takeup
+                # for affected target variables
+                if rerandomize_takeup and affected_target_info:
+                    clone_blocks = geography.block_geoid[col_start:col_end]
+                    for (
+                        tvar,
+                        info,
+                    ) in affected_target_info.items():
+                        if tvar.endswith("_count"):
+                            continue
+                        entity_level = info["entity"]
+                        takeup_var = info["takeup_var"]
+                        ent_hh = entity_hh_idx_map[entity_level]
+                        n_ent = len(ent_hh)
+
+                        ent_states = clone_states[ent_hh]
+
+                        ent_eligible = np.zeros(n_ent, dtype=np.float32)
+                        if tvar in county_dep_targets and county_values:
+                            ent_counties = clone_counties[ent_hh]
+                            for cfips in np.unique(ent_counties):
+                                m = ent_counties == cfips
+                                cv = county_values.get(cfips, {}).get("entity", {})
+                                if tvar in cv:
+                                    ent_eligible[m] = cv[tvar][m]
+                                else:
+                                    st = int(cfips[:2])
+                                    sv = state_values[st]["entity"]
+                                    if tvar in sv:
+                                        ent_eligible[m] = sv[tvar][m]
+                        else:
+                            for st in np.unique(ent_states):
+                                m = ent_states == st
+                                sv = state_values[int(st)]["entity"]
+                                if tvar in sv:
+                                    ent_eligible[m] = sv[tvar][m]
+
+                        ent_blocks = clone_blocks[ent_hh]
+                        ent_hh_ids = household_ids[ent_hh]
+
+                        ent_takeup = compute_block_takeup_for_entities(
+                            takeup_var,
+                            precomputed_rates[info["rate_key"]],
+                            ent_blocks,
+                            ent_hh_ids,
                         )
-                    values = count_cache[vkey]
-                else:
-                    if variable not in var_values:
+
+                        ent_values = (ent_eligible * ent_takeup).astype(np.float32)
+
+                        hh_result = np.zeros(n_records, dtype=np.float32)
+                        np.add.at(hh_result, ent_hh, ent_values)
+                        hh_vars[tvar] = hh_result
+
+                        if tvar in person_vars:
+                            pidx = entity_to_person_idx[entity_level]
+                            person_vars[tvar] = ent_values[pidx]
+
+                mask_cache: Dict[tuple, np.ndarray] = {}
+                count_cache: Dict[tuple, np.ndarray] = {}
+
+                rows_list: list = []
+                cols_list: list = []
+                vals_list: list = []
+
+                for row_idx in range(n_targets):
+                    variable = str(targets_df.iloc[row_idx]["variable"])
+                    geo_level, geo_id = target_geo_info[row_idx]
+                    non_geo = non_geo_constraints_list[row_idx]
+
+                    if geo_level == "district":
+                        all_geo_cols = cd_to_cols.get(
+                            str(geo_id),
+                            np.array([], dtype=np.int64),
+                        )
+                    elif geo_level == "state":
+                        all_geo_cols = state_to_cols.get(
+                            int(geo_id),
+                            np.array([], dtype=np.int64),
+                        )
+                    else:
+                        all_geo_cols = np.arange(n_total)
+
+                    clone_cols = all_geo_cols[
+                        (all_geo_cols >= col_start) & (all_geo_cols < col_end)
+                    ]
+                    if len(clone_cols) == 0:
                         continue
-                    if constraint_key not in mask_cache:
-                        mask_cache[constraint_key] = (
-                            self._evaluate_constraints_entity_aware(
-                                clone_sim,
-                                non_geo,
-                                n_records,
+
+                    rec_indices = clone_cols - col_start
+
+                    constraint_key = tuple(
+                        sorted(
+                            (
+                                c["variable"],
+                                c["operation"],
+                                c["value"],
+                            )
+                            for c in non_geo
+                        )
+                    )
+
+                    if variable.endswith("_count"):
+                        vkey = (
+                            variable,
+                            constraint_key,
+                        )
+                        if vkey not in count_cache:
+                            count_cache[vkey] = _calculate_target_values_standalone(
+                                target_variable=variable,
+                                non_geo_constraints=non_geo,
+                                n_households=n_records,
+                                hh_vars=hh_vars,
+                                person_vars=person_vars,
+                                entity_rel=entity_rel,
+                                household_ids=household_ids,
+                                variable_entity_map=variable_entity_map,
+                            )
+                        values = count_cache[vkey]
+                    else:
+                        if variable not in hh_vars:
+                            continue
+                        if constraint_key not in mask_cache:
+                            mask_cache[constraint_key] = (
+                                _evaluate_constraints_standalone(
+                                    non_geo,
+                                    person_vars,
+                                    entity_rel,
+                                    household_ids,
+                                    n_records,
+                                )
+                            )
+                        mask = mask_cache[constraint_key]
+                        values = hh_vars[variable] * mask
+
+                    vals = values[rec_indices]
+                    nonzero = vals != 0
+                    if nonzero.any():
+                        rows_list.append(
+                            np.full(
+                                nonzero.sum(),
+                                row_idx,
+                                dtype=np.int32,
                             )
                         )
-                    mask = mask_cache[constraint_key]
-                    values = var_values[variable] * mask
+                        cols_list.append(clone_cols[nonzero].astype(np.int32))
+                        vals_list.append(vals[nonzero])
 
-                vals = values[rec_indices]
-                nonzero = vals != 0
-                if nonzero.any():
-                    rows_list.append(
-                        np.full(
-                            nonzero.sum(),
-                            row_idx,
-                            dtype=np.int32,
-                        )
+                # Save COO entries
+                if rows_list:
+                    cr = np.concatenate(rows_list)
+                    cc = np.concatenate(cols_list)
+                    cv = np.concatenate(vals_list)
+                else:
+                    cr = np.array([], dtype=np.int32)
+                    cc = np.array([], dtype=np.int32)
+                    cv = np.array([], dtype=np.float32)
+
+                if clone_dir:
+                    np.savez_compressed(
+                        str(coo_path),
+                        rows=cr,
+                        cols=cc,
+                        vals=cv,
                     )
-                    cols_list.append(clone_cols[nonzero].astype(np.int32))
-                    vals_list.append(vals[nonzero])
-
-            # Save COO entries
-            if rows_list:
-                cr = np.concatenate(rows_list)
-                cc = np.concatenate(cols_list)
-                cv = np.concatenate(vals_list)
-            else:
-                cr = np.array([], dtype=np.int32)
-                cc = np.array([], dtype=np.int32)
-                cv = np.array([], dtype=np.float32)
-
-            if clone_dir:
-                np.savez_compressed(
-                    str(coo_path),
-                    rows=cr,
-                    cols=cc,
-                    vals=cv,
-                )
-                logger.info(
-                    "Clone %d: %d nonzero entries saved.",
-                    clone_idx + 1,
-                    len(cv),
-                )
-                del var_values, clone_sim
-            else:
-                self._coo_parts[0].append(cr)
-                self._coo_parts[1].append(cc)
-                self._coo_parts[2].append(cv)
+                    if (clone_idx + 1) % 50 == 0:
+                        logger.info(
+                            "Clone %d: %d nonzero entries saved.",
+                            clone_idx + 1,
+                            len(cv),
+                        )
+                    del hh_vars, person_vars
+                else:
+                    self._coo_parts[0].append(cr)
+                    self._coo_parts[1].append(cc)
+                    self._coo_parts[2].append(cv)
 
         # 6. Assemble sparse matrix from COO data
         logger.info("Assembling matrix from %d clones...", n_clones)

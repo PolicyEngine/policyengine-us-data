@@ -15,6 +15,11 @@ VALIDATED_FILENAMES = {
     "cps_2024.h5",
 }
 
+FILENAME_TO_DATASET = {
+    "enhanced_cps_2024.h5": EnhancedCPS_2024,
+    "cps_2024.h5": CPS_2024,
+}
+
 # Minimum file sizes in bytes for validated datasets.
 MIN_FILE_SIZES = {
     "enhanced_cps_2024.h5": 100 * 1024 * 1024,  # 100 MB
@@ -94,14 +99,11 @@ def validate_dataset(file_path: Path) -> None:
             for group_name in REQUIRED_GROUPS:
                 if not _check_group_has_data(f, group_name):
                     errors.append(
-                        f"Required group '{group_name}' missing "
-                        f"or empty in H5 file."
+                        f"Required group '{group_name}' missing or empty in H5 file."
                     )
 
             # At least one income group must have data
-            has_income = any(
-                _check_group_has_data(f, g) for g in INCOME_GROUPS
-            )
+            has_income = any(_check_group_has_data(f, g) for g in INCOME_GROUPS)
             if not has_income:
                 errors.append(
                     f"No income data found. Need at least one of "
@@ -121,7 +123,10 @@ def validate_dataset(file_path: Path) -> None:
     from policyengine_us import Microsimulation
 
     try:
-        sim = Microsimulation(dataset=file_path)
+        dataset_cls = FILENAME_TO_DATASET.get(filename)
+        if dataset_cls is None:
+            raise DatasetValidationError(f"No dataset class registered for {filename}")
+        sim = Microsimulation(dataset=dataset_cls)
         year = 2024
 
         emp_income = sim.calculate("employment_income", year).sum()
@@ -132,7 +137,7 @@ def validate_dataset(file_path: Path) -> None:
                 f"Data may have dropped employment income."
             )
 
-        hh_weight = sim.calculate("household_weight", year).sum()
+        hh_weight = sim.calculate("household_weight", year).values.sum()
         if hh_weight < MIN_HOUSEHOLD_WEIGHT_SUM:
             errors.append(
                 f"household_weight sum = {hh_weight:,.0f}, "

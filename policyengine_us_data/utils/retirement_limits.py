@@ -4,7 +4,9 @@ Reads IRS contribution limits from the policyengine-us parameter tree
 instead of hard-coding them.
 """
 
+import yaml
 from functools import lru_cache
+from importlib.resources import files
 
 
 @lru_cache(maxsize=16)
@@ -33,4 +35,33 @@ def get_retirement_limits(year: int) -> dict:
         "401k_catch_up": int(p.catch_up.limit.children["k401"](d).calc(50)),
         "ira": int(p.limit.ira(d)),
         "ira_catch_up": int(p.catch_up.limit.ira(d)),
+    }
+
+
+@lru_cache(maxsize=16)
+def get_se_pension_limits(year: int) -> dict:
+    """Return SE pension contribution limits for the given tax year.
+
+    Reads from imputation_parameters.yaml. Returns the contribution
+    rate and dollar cap, with the year clamped to the available range.
+
+    Returns:
+        Dict with keys: se_pension_rate, se_pension_dollar_limit.
+    """
+    params_path = (
+        files("policyengine_us_data")
+        / "datasets"
+        / "cps"
+        / "imputation_parameters.yaml"
+    )
+    with open(str(params_path)) as f:
+        params = yaml.safe_load(f)
+
+    dollar_limits = params["se_pension_contribution_dollar_limit"]
+    years = list(dollar_limits.keys())
+    clamped = max(min(years), min(year, max(years)))
+
+    return {
+        "se_pension_rate": params["se_pension_contribution_rate"],
+        "se_pension_dollar_limit": dollar_limits[clamped],
     }

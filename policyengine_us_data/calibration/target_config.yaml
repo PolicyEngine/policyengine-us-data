@@ -1,0 +1,232 @@
+
+include:
+  # === DISTRICT — age demographics ===
+  - variable: person_count
+    geo_level: district
+    domain_variable: age
+
+  # === DISTRICT — count targets ===
+  - variable: person_count
+    geo_level: district
+    domain_variable: adjusted_gross_income
+  - variable: household_count
+    geo_level: district
+
+  # === DISTRICT — dollar targets (needed_w 7-41, compatible) ===
+  - variable: real_estate_taxes
+    geo_level: district
+  - variable: self_employment_income
+    geo_level: district
+  - variable: taxable_pension_income
+    geo_level: district
+  # DISABLED: refundable_ctc formula doesn't gate on tax_unit_is_filer;
+  # non-filer values inflate totals beyond IRS SOI targets.
+  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
+  # - variable: refundable_ctc
+  #   geo_level: district
+  - variable: unemployment_compensation
+    geo_level: district
+
+  # === DISTRICT — ACA PTC ===
+  # DISABLED: aca_ptc formula doesn't gate on tax_unit_is_filer;
+  # non-filer values inflate totals beyond IRS SOI targets.
+  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
+  # - variable: aca_ptc
+  #   geo_level: district
+  # - variable: tax_unit_count
+  #   geo_level: district
+  #   domain_variable: aca_ptc
+
+  # === STATE ===
+  - variable: person_count
+    geo_level: state
+    domain_variable: medicaid_enrolled
+  - variable: person_count
+    geo_level: state
+    domain_variable: is_pregnant
+  - variable: snap
+    geo_level: state
+
+  # === NATIONAL — aggregate dollar targets ===
+  - variable: adjusted_gross_income
+    geo_level: national
+  - variable: child_support_expense
+    geo_level: national
+  - variable: child_support_received
+    geo_level: national
+  # DISABLED: eitc formula doesn't gate on tax_unit_is_filer;
+  # non-filer values inflate totals beyond IRS SOI targets.
+  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
+  # - variable: eitc
+  #   geo_level: national
+  - variable: health_insurance_premiums_without_medicare_part_b
+    geo_level: national
+  - variable: medicaid
+    geo_level: national
+  - variable: medicare_part_b_premiums
+    geo_level: national
+  - variable: other_medical_expenses
+    geo_level: national
+  - variable: over_the_counter_health_expenses
+    geo_level: national
+  - variable: qualified_business_income_deduction
+    geo_level: national
+  - variable: rent
+    geo_level: national
+  - variable: salt_deduction
+    geo_level: national
+  - variable: snap
+    geo_level: national
+  - variable: social_security
+    geo_level: national
+  - variable: social_security_disability
+    geo_level: national
+  - variable: social_security_retirement
+    geo_level: national
+  - variable: spm_unit_capped_housing_subsidy
+    geo_level: national
+  - variable: spm_unit_capped_work_childcare_expenses
+    geo_level: national
+  - variable: ssi
+    geo_level: national
+  - variable: tanf
+    geo_level: national
+  - variable: tip_income
+    geo_level: national
+  - variable: unemployment_compensation
+    geo_level: national
+
+  # === NATIONAL — IRS SOI domain-constrained dollar targets ===
+  # DISABLED: aca_ptc formula doesn't gate on tax_unit_is_filer
+  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
+  # - variable: aca_ptc
+  #   geo_level: national
+  #   domain_variable: aca_ptc
+  - variable: dividend_income
+    geo_level: national
+    domain_variable: dividend_income
+  # DISABLED: eitc formula doesn't gate on tax_unit_is_filer
+  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
+  # - variable: eitc
+  #   geo_level: national
+  #   domain_variable: eitc_child_count
+  - variable: income_tax_positive
+    geo_level: national
+  - variable: income_tax_before_credits
+    geo_level: national
+    domain_variable: income_tax_before_credits
+  - variable: net_capital_gains
+    geo_level: national
+    domain_variable: net_capital_gains
+  - variable: qualified_business_income_deduction
+    geo_level: national
+    domain_variable: qualified_business_income_deduction
+  - variable: qualified_dividend_income
+    geo_level: national
+    domain_variable: qualified_dividend_income
+  # DISABLED: refundable_ctc formula doesn't gate on tax_unit_is_filer
+  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
+  # - variable: refundable_ctc
+  #   geo_level: national
+  #   domain_variable: refundable_ctc
+  - variable: rental_income
+    geo_level: national
+    domain_variable: rental_income
+  - variable: salt
+    geo_level: national
+    domain_variable: salt
+  - variable: self_employment_income
+    geo_level: national
+    domain_variable: self_employment_income
+  - variable: tax_exempt_interest_income
+    geo_level: national
+    domain_variable: tax_exempt_interest_income
+  - variable: tax_unit_partnership_s_corp_income
+    geo_level: national
+    domain_variable: tax_unit_partnership_s_corp_income
+  - variable: taxable_interest_income
+    geo_level: national
+    domain_variable: taxable_interest_income
+  - variable: taxable_ira_distributions
+    geo_level: national
+    domain_variable: taxable_ira_distributions
+  - variable: taxable_pension_income
+    geo_level: national
+    domain_variable: taxable_pension_income
+  - variable: taxable_social_security
+    geo_level: national
+    domain_variable: taxable_social_security
+  - variable: unemployment_compensation
+    geo_level: national
+    domain_variable: unemployment_compensation
+
+  # === NATIONAL — IRS SOI filer count targets ===
+  # DISABLED: aca_ptc inflated by non-filers
+  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: aca_ptc
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: dividend_income
+  # DISABLED: eitc inflated by non-filers
+  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: eitc_child_count
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: income_tax
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: income_tax_before_credits
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: medical_expense_deduction
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: net_capital_gains
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: qualified_business_income_deduction
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: qualified_dividend_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: real_estate_taxes
+  # DISABLED: refundable_ctc inflated by non-filers
+  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
+  # - variable: tax_unit_count
+  #   geo_level: national
+  #   domain_variable: refundable_ctc
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: rental_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: salt
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: self_employment_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: tax_exempt_interest_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: tax_unit_partnership_s_corp_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: taxable_interest_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: taxable_ira_distributions
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: taxable_pension_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: taxable_social_security
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: unemployment_compensation

@@ -54,9 +54,11 @@ SCRIPT_OUTPUTS = {
         "policyengine_us_data/storage/enhanced_cps_2024.h5",
         "calibration_log.csv",
     ],
-    "policyengine_us_data/datasets/cps/"
-    "local_area_calibration/create_stratified_cps.py": (
+    "policyengine_us_data/calibration/create_stratified_cps.py": (
         "policyengine_us_data/storage/stratified_extended_cps_2024.h5"
+    ),
+    "policyengine_us_data/calibration/create_source_imputed_cps.py": (
+        "policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5"
     ),
     "policyengine_us_data/datasets/cps/small_enhanced_cps.py": (
         "policyengine_us_data/storage/small_enhanced_cps_2024.h5"
@@ -69,7 +71,7 @@ TEST_MODULES = [
     "policyengine_us_data/tests/test_database.py",
     "policyengine_us_data/tests/test_pandas3_compatibility.py",
     "policyengine_us_data/tests/test_datasets/",
-    "policyengine_us_data/tests/test_local_area_calibration/",
+    "policyengine_us_data/tests/test_calibration/",
 ]
 
 
@@ -419,11 +421,9 @@ def build_datasets(
                 ),
                 executor.submit(
                     run_script_with_checkpoint,
-                    "policyengine_us_data/datasets/cps/"
-                    "local_area_calibration/create_stratified_cps.py",
+                    "policyengine_us_data/calibration/create_stratified_cps.py",
                     SCRIPT_OUTPUTS[
-                        "policyengine_us_data/datasets/cps/"
-                        "local_area_calibration/create_stratified_cps.py"
+                        "policyengine_us_data/calibration/create_stratified_cps.py"
                     ],
                     branch,
                     checkpoint_volume,

@@ -4,6 +4,7 @@ from huggingface_hub import (
     CommitOperationAdd,
     CommitOperationCopy,
     CommitOperationDelete,
+    hf_hub_download,
 )
 from google.cloud import storage
 from pathlib import Path
@@ -144,7 +145,9 @@ def upload_files_to_gcs(
         Dict mapping blob name to its GCS generation number.
     """
     credentials, project_id = google.auth.default()
-    storage_client = storage.Client(credentials=credentials, project=project_id)
+    storage_client = storage.Client(
+        credentials=credentials, project=project_id
+    )
     bucket = storage_client.bucket(gcs_bucket_name)
 
     generations: Dict[str, int] = {}
@@ -152,7 +155,9 @@ def upload_files_to_gcs(
         file_path = Path(file_path)
         blob = bucket.blob(file_path.name)
         blob.upload_from_filename(file_path)
-        logging.info(f"Uploaded {file_path.name} to GCS bucket {gcs_bucket_name}.")
+        logging.info(
+            f"Uploaded {file_path.name} to GCS bucket {gcs_bucket_name}."
+        )
 
         # Set metadata
         blob.metadata = {"version": version}
@@ -179,11 +184,10 @@ def upload_local_area_file(
     version: str = None,
     skip_hf: bool = False,
 ) -> int:
-    """Upload a single local area H5 file to a subdirectory
-    (states/ or districts/).
+    """Upload a single local area H5 file to a subdirectory.
 
-    Uploads to both GCS and Hugging Face with the file placed
-    in the specified subdirectory.
+    Supports states/, districts/, cities/, and national/.
+    Uploads to both GCS and Hugging Face.
 
     Args:
         skip_hf: If True, skip HuggingFace upload (for batched
@@ -201,7 +205,9 @@ def upload_local_area_file(
 
     # Upload to GCS with subdirectory
     credentials, project_id = google.auth.default()
-    storage_client = storage.Client(credentials=credentials, project=project_id)
+    storage_client = storage.Client(
+        credentials=credentials, project=project_id
+    )
     bucket = storage_client.bucket(gcs_bucket_name)
 
     blob_name = f"{subdirectory}/{file_path.name}"
@@ -380,7 +386,9 @@ def upload_to_staging_hf(
             f"Uploaded batch {i // batch_size + 1}: {len(operations)} files to staging/"
         )
 
-    logging.info(f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace")
+    logging.info(
+        f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace"
+    )
     return total_uploaded
 
 
@@ -507,3 +515,51 @@ def cleanup_staging_hf(
 
     logging.info(f"Cleaned up {len(files)} files from staging/")
     return len(files)
+
+
+def upload_from_hf_staging_to_gcs(
+    rel_paths: List[str],
+    version: str,
+    gcs_bucket_name: str = "policyengine-us-data",
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+) -> int:
+    """Download files from HF staging/ and upload to GCS production paths.
+
+    Args:
+        rel_paths: Relative paths like "states/AL.h5", "districts/NC-01.h5"
+        version: Version string for GCS metadata
+        gcs_bucket_name: GCS bucket name
+        hf_repo_name: HuggingFace repository name
+        hf_repo_type: Repository type
+
+    Returns:
+        Number of files uploaded
+    """
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+
+    credentials, project_id = google.auth.default()
+    storage_client = storage.Client(
+        credentials=credentials, project=project_id
+    )
+    bucket = storage_client.bucket(gcs_bucket_name)
+
+    uploaded = 0
+    for rel_path in rel_paths:
+        staging_filename = f"staging/{rel_path}"
+        local_path = hf_hub_download(
+            repo_id=hf_repo_name,
+            filename=staging_filename,
+            repo_type=hf_repo_type,
+            token=token,
+        )
+
+        blob = bucket.blob(rel_path)
+        blob.upload_from_filename(local_path)
+        blob.metadata = {"version": version}
+        blob.patch()
+        uploaded += 1
+        logging.info(f"Uploaded {rel_path} to GCS (sourced from HF staging)")
+
+    logging.info(f"Total: uploaded {uploaded} files from HF staging to GCS")
+    return uploaded

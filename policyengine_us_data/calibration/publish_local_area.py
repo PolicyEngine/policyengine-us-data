@@ -168,8 +168,7 @@ def build_h5(
     if county_filter is not None:
         unique_cds = np.unique(clone_cds_matrix)
         cd_prob = {
-            cd: get_county_filter_probability(cd, county_filter)
-            for cd in unique_cds
+            cd: get_county_filter_probability(cd, county_filter) for cd in unique_cds
         }
         p_matrix = np.vectorize(
             cd_prob.__getitem__,

@@ -1,4 +1,0 @@
-- bump: minor
-  changes:
-    enhanced:
-      - Add capital income predictors (interest, dividend, rental income) to SIPP liquid asset imputation model for improved accuracy.

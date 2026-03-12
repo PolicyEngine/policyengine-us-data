@@ -68,8 +68,7 @@ def train_tip_model():
         )
     # Sum tip columns (AJB*_TXAMT + TJB*_TXAMT) across all jobs.
     df["tip_income"] = (
-        df[df.columns[df.columns.str.contains("TXAMT")]].fillna(0).sum(axis=1)
-        * 12
+        df[df.columns[df.columns.str.contains("TXAMT")]].fillna(0).sum(axis=1) * 12
     )
     df["employment_income"] = df.TPTOTINC * 12
     df["is_under_18"] = (df.TAGE < 18) & (df.MONTHCODE == 12)
@@ -207,9 +206,7 @@ def train_asset_model():
 
     # Capital income predictors (annualized from monthly SIPP)
     # Maps to CPS: interest_income, dividend_income, rental_income
-    df["interest_income"] = (
-        df["TINC_BANK"].fillna(0) + df["TINC_BOND"].fillna(0)
-    ) * 12
+    df["interest_income"] = (df["TINC_BANK"].fillna(0) + df["TINC_BOND"].fillna(0)) * 12
     df["dividend_income"] = df["TINC_STMF"].fillna(0) * 12
     df["rental_income"] = df["TINC_RENT"].fillna(0) * 12
 

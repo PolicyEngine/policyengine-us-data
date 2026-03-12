@@ -66,13 +66,10 @@ class TestLoadGlobalBlockDistribution:
         csv_path = tmp_path / "block_cd_distributions.csv.gz"
         MOCK_BLOCKS.to_csv(csv_path, index=False, compression="gzip")
         with patch(
-            "policyengine_us_data.calibration"
-            ".clone_and_assign.STORAGE_FOLDER",
+            "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
             tmp_path,
         ):
-            blocks, cds, states, probs = (
-                load_global_block_distribution.__wrapped__()
-            )
+            blocks, cds, states, probs = load_global_block_distribution.__wrapped__()
         assert len(blocks) == 9
         np.testing.assert_almost_equal(probs.sum(), 1.0)
 
@@ -80,8 +77,7 @@ class TestLoadGlobalBlockDistribution:
         csv_path = tmp_path / "block_cd_distributions.csv.gz"
         MOCK_BLOCKS.to_csv(csv_path, index=False, compression="gzip")
         with patch(
-            "policyengine_us_data.calibration"
-            ".clone_and_assign.STORAGE_FOLDER",
+            "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
             tmp_path,
         ):
             _, _, states, _ = load_global_block_distribution.__wrapped__()
@@ -133,12 +129,26 @@ class TestAssignRandomGeography:
             expected = int(r.block_geoid[i][:2])
             assert r.state_fips[i] == expected
 
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_no_cd_collisions_across_clones(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        r = assign_random_geography(n_records=100, n_clones=3, seed=42)
+        for rec in range(r.n_records):
+            rec_cds = [
+                r.cd_geoid[clone * r.n_records + rec] for clone in range(r.n_clones)
+            ]
+            assert len(rec_cds) == len(set(rec_cds)), (
+                f"Record {rec} has duplicate CDs: {rec_cds}"
+            )
+
     def test_missing_file_raises(self, tmp_path):
         fake = tmp_path / "nonexistent"
         fake.mkdir()
         with patch(
-            "policyengine_us_data.calibration"
-            ".clone_and_assign.STORAGE_FOLDER",
+            "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
             fake,
         ):
             with pytest.raises(FileNotFoundError):
@@ -150,6 +160,7 @@ class TestDoubleGeographyForPuf:
         geo = GeographyAssignment(
             block_geoid=np.array(["010010001001001", "020010001001001"] * 3),
             cd_geoid=np.array(["101", "202"] * 3),
+            county_fips=np.array(["01001", "02001"] * 3),
             state_fips=np.array([1, 2] * 3),
             n_records=2,
             n_clones=3,
@@ -172,6 +183,9 @@ class TestDoubleGeographyForPuf:
                 ]
             ),
             cd_geoid=np.array(["101", "202", "1036", "653", "4831", "1227"]),
+            county_fips=np.array(
+                ["01001", "02001", "36010", "06010", "48010", "12010"]
+            ),
             state_fips=np.array([1, 2, 36, 6, 48, 12]),
             n_records=3,
             n_clones=2,

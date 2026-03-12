@@ -1,3 +1,5 @@
+import gc
+
 import pandas as pd
 import numpy as np
 import logging
@@ -53,14 +55,43 @@ HARD_CODED_TOTALS = {
     "social_security_disability": 148e9,  # ~10.2% (disabled workers)
     "social_security_survivors": 160e9,  # ~11.0% (widows, children of deceased)
     "social_security_dependents": 84e9,  # ~5.8% (spouses/children of retired+disabled)
-    # IRA contribution totals from IRS SOI IRA accumulation tables.
-    # Tax year 2022: ~5M taxpayers x $4,510 avg = ~$22.5B traditional;
-    # ~10M taxpayers x $3,482 avg = ~$34.8B Roth.
-    # Uprated ~12% to 2024 for limit increases ($6k->$7k) and
-    # wage growth.
+    # Retirement contribution calibration targets.
+    #
+    # traditional_ira_contributions: IRS SOI Publication 1304, Table 1.4
+    # (TY 2022), "IRA payments" deduction — $13.17B (col 124, row
+    # "All returns, total"). This is the actual above-the-line
+    # deduction claimed on returns. The variable flows directly into
+    # the ALD with no deductibility logic in policyengine-us, so the
+    # target must match the deduction, not total contributions.
+    # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
+    "traditional_ira_contributions": 13.2e9,
+    # traditional_401k_contributions & roth_401k_contributions:
+    # BEA/FRED National Income Accounts. Total DC employer+employee
+    # = $815.4B (Y351RC1A027NBEA), employer-only = $247.5B
+    # (W351RC0A144NBEA), employee elective deferrals = $567.9B.
+    # Split into traditional/Roth using estimated 15% Roth dollar
+    # share (Vanguard How America Saves 2024: 18% participation,
+    # ~15% dollar share; PSCA 67th Annual Survey: 21% participation).
+    # Traditional: $567.9B × 85% = $482.7B
+    # Roth: $567.9B × 15% = $85.2B
+    # https://fred.stlouisfed.org/series/Y351RC1A027NBEA
+    # https://fred.stlouisfed.org/series/W351RC0A144NBEA
+    # https://corporate.vanguard.com/content/dam/corp/research/pdf/how_america_saves_report_2024.pdf
+    "traditional_401k_contributions": 482.7e9,
+    "roth_401k_contributions": 85.2e9,
+    # self_employed_pension_contribution_ald: IRS SOI Publication
+    # 1304, Table 1.4 (TY 2022), "Payments to a Keogh plan" —
+    # $29.48B (col 116, row "All returns, total"). Includes
+    # SEP-IRAs, SIMPLE-IRAs, and traditional Keogh/HR-10 plans.
+    # Targeting the ALD (not the input) because policyengine-us
+    # applies a min(contributions, SE_income) cap.
+    # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
+    "self_employed_pension_contribution_ald": 29.5e9,
+    # roth_ira_contributions: IRS SOI IRA Accumulation Tables 5 & 6
+    # (TY 2022). Total Roth IRA contributions = $35.0B (10.04M
+    # contributors). Direct administrative source.
     # https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
-    "traditional_ira_contributions": 25e9,
-    "roth_ira_contributions": 39e9,
+    "roth_ira_contributions": 35.0e9,
 }
 
 
@@ -72,10 +103,10 @@ def fmt(x):
     if x < 1e3:
         return f"{x:.0f}"
     if x < 1e6:
-        return f"{x/1e3:.0f}k"
+        return f"{x / 1e3:.0f}k"
     if x < 1e9:
-        return f"{x/1e6:.0f}m"
-    return f"{x/1e9:.1f}bn"
+        return f"{x / 1e6:.0f}m"
+    return f"{x / 1e9:.1f}bn"
 
 
 def build_loss_matrix(dataset: type, time_period):
@@ -135,9 +166,7 @@ def build_loss_matrix(dataset: type, time_period):
             continue
 
         mask = (
-            (agi >= row["AGI lower bound"])
-            * (agi < row["AGI upper bound"])
-            * filer
+            (agi >= row["AGI lower bound"]) * (agi < row["AGI upper bound"]) * filer
         ) > 0
 
         if row["Filing status"] == "Single":
@@ -157,12 +186,8 @@ def build_loss_matrix(dataset: type, time_period):
         if row["Count"]:
             values = (values > 0).astype(float)
 
-        agi_range_label = (
-            f"{fmt(row['AGI lower bound'])}-{fmt(row['AGI upper bound'])}"
-        )
-        taxable_label = (
-            "taxable" if row["Taxable only"] else "all" + " returns"
-        )
+        agi_range_label = f"{fmt(row['AGI lower bound'])}-{fmt(row['AGI upper bound'])}"
+        taxable_label = "taxable" if row["Taxable only"] else "all" + " returns"
         filing_status_label = row["Filing status"]
 
         variable_label = row["Variable"].replace("_", " ")
@@ -241,9 +266,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     for variable_name in CBO_PROGRAMS:
         label = f"nation/cbo/{variable_name}"
-        loss_matrix[label] = sim.calculate(
-            variable_name, map_to="household"
-        ).values
+        loss_matrix[label] = sim.calculate(variable_name, map_to="household").values
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
         param_name = CBO_PARAM_NAME_MAP.get(variable_name, variable_name)
@@ -283,9 +306,9 @@ def build_loss_matrix(dataset: type, time_period):
 
     # National ACA Enrollment (people receiving a PTC)
     label = "nation/gov/aca_enrollment"
-    on_ptc = (
-        sim.calculate("aca_ptc", map_to="person", period=2025).values > 0
-    ).astype(int)
+    on_ptc = (sim.calculate("aca_ptc", map_to="person", period=2025).values > 0).astype(
+        int
+    )
     loss_matrix[label] = sim.map_result(on_ptc, "person", "household")
 
     ACA_PTC_ENROLLMENT_2024 = 19_743_689  # people enrolled
@@ -317,13 +340,9 @@ def build_loss_matrix(dataset: type, time_period):
         eitc_eligible_children = sim.calculate("eitc_child_count").values
         eitc = sim.calculate("eitc").values
         if row["count_children"] < 2:
-            meets_child_criteria = (
-                eitc_eligible_children == row["count_children"]
-            )
+            meets_child_criteria = eitc_eligible_children == row["count_children"]
         else:
-            meets_child_criteria = (
-                eitc_eligible_children >= row["count_children"]
-            )
+            meets_child_criteria = eitc_eligible_children >= row["count_children"]
         loss_matrix[returns_label] = sim.map_result(
             (eitc > 0) * meets_child_criteria,
             "tax_unit",
@@ -377,9 +396,7 @@ def build_loss_matrix(dataset: type, time_period):
     # Hard-coded totals
     for variable_name, target in HARD_CODED_TOTALS.items():
         label = f"nation/census/{variable_name}"
-        loss_matrix[label] = sim.calculate(
-            variable_name, map_to="household"
-        ).values
+        loss_matrix[label] = sim.calculate(variable_name, map_to="household").values
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
         targets_array.append(target)
@@ -387,8 +404,8 @@ def build_loss_matrix(dataset: type, time_period):
     # Negative household market income total rough estimate from the IRS SOI PUF
 
     market_income = sim.calculate("household_market_income").values
-    loss_matrix["nation/irs/negative_household_market_income_total"] = (
-        market_income * (market_income < 0)
+    loss_matrix["nation/irs/negative_household_market_income_total"] = market_income * (
+        market_income < 0
     )
     targets_array.append(-138e9)
 
@@ -410,7 +427,7 @@ def build_loss_matrix(dataset: type, time_period):
             "other_medical_expenses",
             "medicare_part_b_premiums",
         ]:
-            label = f"nation/census/{expense_type}/age_{age_lower_bound}_to_{age_lower_bound+9}"
+            label = f"nation/census/{expense_type}/age_{age_lower_bound}_to_{age_lower_bound + 9}"
             value = sim.calculate(expense_type).values
             loss_matrix[label] = sim.map_result(
                 in_age_range * value, "person", "household"
@@ -419,39 +436,27 @@ def build_loss_matrix(dataset: type, time_period):
 
     # AGI by SPM threshold totals
 
-    spm_threshold_agi = pd.read_csv(
-        CALIBRATION_FOLDER / "spm_threshold_agi.csv"
-    )
+    spm_threshold_agi = pd.read_csv(CALIBRATION_FOLDER / "spm_threshold_agi.csv")
 
     for _, row in spm_threshold_agi.iterrows():
-        spm_unit_agi = sim.calculate(
-            "adjusted_gross_income", map_to="spm_unit"
-        ).values
+        spm_unit_agi = sim.calculate("adjusted_gross_income", map_to="spm_unit").values
         spm_threshold = sim.calculate("spm_unit_spm_threshold").values
         in_threshold_range = (spm_threshold >= row["lower_spm_threshold"]) * (
             spm_threshold < row["upper_spm_threshold"]
         )
-        label = (
-            f"nation/census/agi_in_spm_threshold_decile_{int(row['decile'])}"
-        )
+        label = f"nation/census/agi_in_spm_threshold_decile_{int(row['decile'])}"
         loss_matrix[label] = sim.map_result(
             in_threshold_range * spm_unit_agi, "spm_unit", "household"
         )
         targets_array.append(row["adjusted_gross_income"])
 
-        label = (
-            f"nation/census/count_in_spm_threshold_decile_{int(row['decile'])}"
-        )
-        loss_matrix[label] = sim.map_result(
-            in_threshold_range, "spm_unit", "household"
-        )
+        label = f"nation/census/count_in_spm_threshold_decile_{int(row['decile'])}"
+        loss_matrix[label] = sim.map_result(in_threshold_range, "spm_unit", "household")
         targets_array.append(row["count"])
 
     # Population by state and population under 5 by state
 
-    state_population = pd.read_csv(
-        CALIBRATION_FOLDER / "population_by_state.csv"
-    )
+    state_population = pd.read_csv(CALIBRATION_FOLDER / "population_by_state.csv")
 
     for _, row in state_population.iterrows():
         in_state = sim.calculate("state_code", map_to="person") == row["state"]
@@ -462,9 +467,7 @@ def build_loss_matrix(dataset: type, time_period):
         under_5 = sim.calculate("age").values < 5
         in_state_under_5 = in_state * under_5
         label = f"state/census/population_under_5_by_state/{row['state']}"
-        loss_matrix[label] = sim.map_result(
-            in_state_under_5, "person", "household"
-        )
+        loss_matrix[label] = sim.map_result(in_state_under_5, "person", "household")
         targets_array.append(row["population_under_5"])
 
     age = sim.calculate("age").values
@@ -488,9 +491,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     # SALT tax expenditure targeting
 
-    _add_tax_expenditure_targets(
-        dataset, time_period, sim, loss_matrix, targets_array
-    )
+    _add_tax_expenditure_targets(dataset, time_period, sim, loss_matrix, targets_array)
 
     if any(loss_matrix.isna().sum() > 0):
         raise ValueError("Some targets are missing from the loss matrix")
@@ -504,9 +505,7 @@ def build_loss_matrix(dataset: type, time_period):
 
         # Overall count by SSN card type
         label = f"nation/ssa/ssn_card_type_{card_type_str.lower()}_count"
-        loss_matrix[label] = sim.map_result(
-            ssn_type_mask, "person", "household"
-        )
+        loss_matrix[label] = sim.map_result(ssn_type_mask, "person", "household")
 
         # Target undocumented population by year based on various sources
         if card_type_str == "NONE":
@@ -542,14 +541,11 @@ def build_loss_matrix(dataset: type, time_period):
     for _, row in spending_by_state.iterrows():
         # Households located in this state
         in_state = (
-            sim.calculate("state_code", map_to="household").values
-            == row["state"]
+            sim.calculate("state_code", map_to="household").values == row["state"]
         )
 
         # ACA PTC amounts for every household (2025)
-        aca_value = sim.calculate(
-            "aca_ptc", map_to="household", period=2025
-        ).values
+        aca_value = sim.calculate("aca_ptc", map_to="household", period=2025).values
 
         # Add a loss-matrix entry and matching target
         label = f"nation/irs/aca_spending/{row['state'].lower()}"
@@ -582,9 +578,7 @@ def build_loss_matrix(dataset: type, time_period):
         in_state_enrolled = in_state & is_enrolled
 
         label = f"state/irs/aca_enrollment/{row['state'].lower()}"
-        loss_matrix[label] = sim.map_result(
-            in_state_enrolled, "person", "household"
-        )
+        loss_matrix[label] = sim.map_result(in_state_enrolled, "person", "household")
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
 
@@ -601,9 +595,7 @@ def build_loss_matrix(dataset: type, time_period):
     state_person = sim.calculate("state_code", map_to="person").values
 
     # Flag people in households that actually receive medicaid
-    has_medicaid = sim.calculate(
-        "medicaid_enrolled", map_to="person", period=2025
-    )
+    has_medicaid = sim.calculate("medicaid_enrolled", map_to="person", period=2025)
     is_medicaid_eligible = sim.calculate(
         "is_medicaid_eligible", map_to="person", period=2025
     ).values
@@ -615,9 +607,7 @@ def build_loss_matrix(dataset: type, time_period):
         in_state_enrolled = in_state & is_enrolled
 
         label = f"irs/medicaid_enrollment/{row['state'].lower()}"
-        loss_matrix[label] = sim.map_result(
-            in_state_enrolled, "person", "household"
-        )
+        loss_matrix[label] = sim.map_result(in_state_enrolled, "person", "household")
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
 
@@ -641,9 +631,7 @@ def build_loss_matrix(dataset: type, time_period):
                 age_lower_bound = int(age_range.replace("+", ""))
                 age_upper_bound = np.inf
             else:
-                age_lower_bound, age_upper_bound = map(
-                    int, age_range.split("-")
-                )
+                age_lower_bound, age_upper_bound = map(int, age_range.split("-"))
 
             age_mask = (age >= age_lower_bound) & (age <= age_upper_bound)
             label = f"state/census/age/{state}/{age_range}"
@@ -666,6 +654,9 @@ def build_loss_matrix(dataset: type, time_period):
     snap_state_target_names, snap_state_targets = _add_snap_state_targets(sim)
     targets_array.extend(snap_state_targets)
     loss_matrix = _add_snap_metric_columns(loss_matrix, sim)
+
+    del sim, df
+    gc.collect()
 
     return loss_matrix, np.array(targets_array)
 
@@ -711,9 +702,7 @@ def _add_tax_expenditure_targets(
         simulation.default_calculation_period = time_period
 
         # Calculate the baseline and reform income tax values.
-        income_tax_r = simulation.calculate(
-            "income_tax", map_to="household"
-        ).values
+        income_tax_r = simulation.calculate("income_tax", map_to="household").values
 
         # Compute the tax expenditure (TE) values.
         te_values = income_tax_r - income_tax_b
@@ -747,9 +736,7 @@ def _add_agi_state_targets():
         + soi_targets["VARIABLE"]
         + "/"
         + soi_targets.apply(
-            lambda r: get_agi_band_label(
-                r["AGI_LOWER_BOUND"], r["AGI_UPPER_BOUND"]
-            ),
+            lambda r: get_agi_band_label(r["AGI_LOWER_BOUND"], r["AGI_UPPER_BOUND"]),
             axis=1,
         )
     )
@@ -770,9 +757,7 @@ def _add_agi_metric_columns(
 
     agi = sim.calculate("adjusted_gross_income").values
     state = sim.calculate("state_code", map_to="person").values
-    state = sim.map_result(
-        state, "person", "tax_unit", how="value_from_first_person"
-    )
+    state = sim.map_result(state, "person", "tax_unit", how="value_from_first_person")
 
     for _, r in soi_targets.iterrows():
         lower, upper = r.AGI_LOWER_BOUND, r.AGI_UPPER_BOUND
@@ -816,13 +801,9 @@ def _add_state_real_estate_taxes(loss_matrix, targets_list, sim):
         rtol=1e-8,
     ), "Real estate tax totals do not sum to national target"
 
-    targets_list.extend(
-        real_estate_taxes_targets["real_estate_taxes_bn"].tolist()
-    )
+    targets_list.extend(real_estate_taxes_targets["real_estate_taxes_bn"].tolist())
 
-    real_estate_taxes = sim.calculate(
-        "real_estate_taxes", map_to="household"
-    ).values
+    real_estate_taxes = sim.calculate("real_estate_taxes", map_to="household").values
     state = sim.calculate("state_code", map_to="household").values
 
     for _, r in real_estate_taxes_targets.iterrows():
@@ -845,22 +826,16 @@ def _add_snap_state_targets(sim):
     ).calibration.gov.cbo._children["snap"]
     ratio = snap_targets[["Cost"]].sum().values[0] / national_cost_target
     snap_targets[["CostAdj"]] = snap_targets[["Cost"]] / ratio
-    assert (
-        np.round(snap_targets[["CostAdj"]].sum().values[0])
-        == national_cost_target
-    )
+    assert np.round(snap_targets[["CostAdj"]].sum().values[0]) == national_cost_target
 
     cost_targets = snap_targets.copy()[["GEO_ID", "CostAdj"]]
-    cost_targets["target_name"] = (
-        cost_targets["GEO_ID"].str[-4:] + "/snap-cost"
-    )
+    cost_targets["target_name"] = cost_targets["GEO_ID"].str[-4:] + "/snap-cost"
 
     hh_targets = snap_targets.copy()[["GEO_ID", "Households"]]
     hh_targets["target_name"] = snap_targets["GEO_ID"].str[-4:] + "/snap-hhs"
 
     target_names = (
-        cost_targets["target_name"].tolist()
-        + hh_targets["target_name"].tolist()
+        cost_targets["target_name"].tolist() + hh_targets["target_name"].tolist()
     )
     target_values = (
         cost_targets["CostAdj"].astype(float).tolist()
@@ -879,14 +854,12 @@ def _add_snap_metric_columns(
     snap_targets = pd.read_csv(CALIBRATION_FOLDER / "snap_state.csv")
 
     snap_cost = sim.calculate("snap_reported", map_to="household").values
-    snap_hhs = (
-        sim.calculate("snap_reported", map_to="household").values > 0
-    ).astype(int)
+    snap_hhs = (sim.calculate("snap_reported", map_to="household").values > 0).astype(
+        int
+    )
 
     state = sim.calculate("state_code", map_to="person").values
-    state = sim.map_result(
-        state, "person", "household", how="value_from_first_person"
-    )
+    state = sim.map_result(state, "person", "household", how="value_from_first_person")
     STATE_ABBR_TO_FIPS["DC"] = 11
     state_fips = pd.Series(state).apply(lambda s: STATE_ABBR_TO_FIPS[s])
 
@@ -905,9 +878,7 @@ def _add_snap_metric_columns(
     return loss_matrix
 
 
-def print_reweighting_diagnostics(
-    optimised_weights, loss_matrix, targets_array, label
-):
+def print_reweighting_diagnostics(optimised_weights, loss_matrix, targets_array, label):
     # Convert all inputs to NumPy arrays right at the start
     optimised_weights_np = (
         optimised_weights.numpy()
@@ -934,9 +905,7 @@ def print_reweighting_diagnostics(
     # All subsequent calculations use the guaranteed NumPy versions
     estimate = optimised_weights_np @ loss_matrix_np
 
-    rel_error = (
-        ((estimate - targets_array_np) + 1) / (targets_array_np + 1)
-    ) ** 2
+    rel_error = (((estimate - targets_array_np) + 1) / (targets_array_np + 1)) ** 2
     within_10_percent_mask = np.abs(estimate - targets_array_np) <= (
         0.10 * np.abs(targets_array_np)
     )

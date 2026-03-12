@@ -946,3 +946,9 @@
     - Bump policyengine-us to 1.570.7 to include TANF formula fixes and takes_up_tanf_if_eligible
       variable for calibration.
   date: 2026-02-19 13:41:26
+- bump: patch
+  changes:
+    fixed:
+    - Add TANF takeup (22%) assignment to CPS data pipeline so takes_up_tanf_if_eligible
+      is persisted in the dataset.
+  date: 2026-02-19 16:34:50

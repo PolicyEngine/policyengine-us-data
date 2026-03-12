@@ -1,9 +1,120 @@
+## [1.73.0] - 2026-03-12
+
+### Added
+
+- Add end-to-end test for calibration database build pipeline.
+- Unified calibration pipeline with GPU-accelerated L1/L0 solver, target config YAML, and CLI package validator.
+  Per-state and per-county precomputation replacing per-clone Microsimulation (51 sims instead of 436).
+  Parallel state, county, and clone loop processing via ProcessPoolExecutor.
+  Block-level takeup re-randomization with deterministic seeded draws.
+  Hierarchical uprating with ACA PTC state-level CSV factors and CD reconciliation.
+  Modal remote runner with Volume support, CUDA OOM fixes, and checkpointing.
+  H5 builder that filters calibrated clone weights by CD subset, uses pre-assigned random census blocks from `geography.npz` to derive full sub-state geography, and produces self-contained local area datasets.
+  Staging validation script (validate_staging.py) with sim.calculate() comparison and sanity checks.
+
+### Changed
+
+- Geography assignment now prevents clone-to-CD collisions.
+  County-dependent vars (aca_ptc) selectively precomputed per county; other vars use state-only path.
+  Target config switched to finest-grain include mode (~18K targets).
+- Migrated from changelog_entry.yaml to towncrier fragments to eliminate merge conflicts.
+
+### Fixed
+
+- Cross-state cache pollution in matrix builder precomputation.
+  Takeup draw ordering mismatch between matrix builder and stacked builder.
+  At-large district geoid mismatch (7 districts had 0 estimates).
+
+
+## [1.72.3] - 2026-03-09
+
+### Changed
+
+- Replaced batched QRF imputation with single sequential QRF via microimpute's fit_predict() API, preserving full covariance across all 85+ PUF income variables.
+
+
+## [1.72.2] - 2026-03-06
+
+### Changed
+
+- Switch from black to ruff format.
+
+
+## [1.72.1] - 2026-03-05
+
+### Fixed
+
+- Fixed double-weight application in dataset sanity tests: use `.values.sum()` for household_weight checks to avoid MicroSeries applying weights twice.
+
+
+## [1.72.0] - 2026-03-05
+
+### Added
+
+- Hardened data pipeline against corrupted dataset uploads: pre-upload validation gate, post-generation assertions in enhanced CPS and sparse builders, CI workflow safety guards, file size checks, and comprehensive sanity tests for all dataset variants (5 layers of defense).
+
+
+## [1.71.4] - 2026-03-04
+
+### Fixed
+
+- Fix create_sparse_ecps overwriting enhanced_cps_2024.h5 with sparse version that drops input variables like employment_income.
+
+
+## [1.71.3] - 2026-03-04
+
+### Changed
+
+- Prioritize reported benefit recipients in take-up assignment for SSI and SNAP.
+
+
+## [1.71.2] - 2026-03-04
+
+### Fixed
+
+- Reconcile SS sub-components after PUF imputation so they sum to social_security.
+
+
+## [1.71.1] - 2026-03-04
+
+### Changed
+
+- Read IRS retirement contribution limits from policyengine-us parameters instead of hard-coding them.
+
+
+## [1.71.0] - 2026-02-26
+
+### Added
+
+- Impute pregnancy in CPS microdata using CDC VSRR birth counts and Census ACS female population, with calibration targets per state.
+
+
+## [1.70.0] - 2026-02-26
+
+### Added
+
+- Add end-to-end test for calibration database build pipeline.
+
+
+## [1.69.4] - 2026-02-24
+
+### Changed
+
+- Migrated from changelog_entry.yaml to towncrier fragments to eliminate merge conflicts.
+
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.69.3] - 2026-02-19 16:34:50
+
+### Fixed
+
+- Add TANF takeup (22%) assignment to CPS data pipeline so takes_up_tanf_if_eligible is persisted in the dataset.
 
 ## [1.69.2] - 2026-02-19 13:41:26
 
@@ -1066,6 +1177,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.69.3]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.69.2...1.69.3
 [1.69.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.69.1...1.69.2
 [1.69.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.69.0...1.69.1
 [1.69.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.68.0...1.69.0

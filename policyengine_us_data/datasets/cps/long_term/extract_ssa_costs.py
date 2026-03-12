@@ -2,9 +2,7 @@ import pandas as pd
 import numpy as np
 
 # Read the file
-df = pd.read_excel(
-    "SingleYearTRTables_TR2025.xlsx", sheet_name="VI.G9", header=None
-)
+df = pd.read_excel("SingleYearTRTables_TR2025.xlsx", sheet_name="VI.G9", header=None)
 
 print("DataFrame shape:", df.shape)
 print("\nChecking data types around row 66-70:")

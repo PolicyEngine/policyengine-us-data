@@ -237,19 +237,40 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "notes": "~5.8% of total OASDI (spouses/children of retired+disabled)",
             "year": HARDCODED_YEAR,
         },
-        # IRA contribution totals from IRS SOI accumulation tables
+        # Retirement contribution targets — see issue #553
         {
             "variable": "traditional_ira_contributions",
-            "value": 25e9,
-            "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
-            "notes": "Tax year 2022 (~5M x $4,510 avg) uprated ~12% to 2024",
+            "value": 13.2e9,
+            "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
+            "notes": "SOI 1304 Table 1.4 (TY 2022) 'IRA payments' deduction, col 124",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "variable": "traditional_401k_contributions",
+            "value": 482.7e9,
+            "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
+            "notes": "BEA/FRED employee DC deferrals ($567.9B) x 85% traditional share (Vanguard HAS 2024)",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "variable": "roth_401k_contributions",
+            "value": 85.2e9,
+            "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
+            "notes": "BEA/FRED employee DC deferrals ($567.9B) x 15% Roth share (Vanguard HAS 2024)",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "variable": "self_employed_pension_contribution_ald",
+            "value": 29.5e9,
+            "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
+            "notes": "SOI 1304 Table 1.4 (TY 2022) 'Payments to a Keogh plan', col 116",
             "year": HARDCODED_YEAR,
         },
         {
             "variable": "roth_ira_contributions",
-            "value": 39e9,
+            "value": 35.0e9,
             "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
-            "notes": "Tax year 2022 (~10M x $3,482 avg) uprated ~12% to 2024",
+            "notes": "IRS SOI IRA Accumulation Tables 5 & 6 (TY 2022), 10.04M contributors",
             "year": HARDCODED_YEAR,
         },
     ]
@@ -402,14 +423,10 @@ def transform_national_targets(raw_targets):
     # Note: income_tax_positive from CBO and eitc from Treasury need
     # filer constraint
     cbo_non_tax = [
-        t
-        for t in raw_targets["cbo_targets"]
-        if t["variable"] != "income_tax_positive"
+        t for t in raw_targets["cbo_targets"] if t["variable"] != "income_tax_positive"
     ]
     cbo_tax = [
-        t
-        for t in raw_targets["cbo_targets"]
-        if t["variable"] == "income_tax_positive"
+        t for t in raw_targets["cbo_targets"] if t["variable"] == "income_tax_positive"
     ]
 
     all_direct_targets = raw_targets["direct_sum_targets"] + cbo_non_tax
@@ -422,14 +439,10 @@ def transform_national_targets(raw_targets):
     )
 
     direct_df = (
-        pd.DataFrame(all_direct_targets)
-        if all_direct_targets
-        else pd.DataFrame()
+        pd.DataFrame(all_direct_targets) if all_direct_targets else pd.DataFrame()
     )
     tax_filer_df = (
-        pd.DataFrame(all_tax_filer_targets)
-        if all_tax_filer_targets
-        else pd.DataFrame()
+        pd.DataFrame(all_tax_filer_targets) if all_tax_filer_targets else pd.DataFrame()
     )
 
     # Conditional targets stay as list for special processing
@@ -438,9 +451,7 @@ def transform_national_targets(raw_targets):
     return direct_df, tax_filer_df, conditional_targets
 
 
-def load_national_targets(
-    direct_targets_df, tax_filer_df, conditional_targets
-):
+def load_national_targets(direct_targets_df, tax_filer_df, conditional_targets):
     """
     Load national targets into the database.
 
@@ -454,17 +465,13 @@ def load_national_targets(
         List of conditional count targets requiring strata
     """
 
-    DATABASE_URL = (
-        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
-    )
+    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
         # Get the national stratum
         us_stratum = (
-            session.query(Stratum)
-            .filter(Stratum.parent_stratum_id == None)
-            .first()
+            session.query(Stratum).filter(Stratum.parent_stratum_id == None).first()
         )
 
         if not us_stratum:
@@ -490,9 +497,7 @@ def load_national_targets(
             notes_parts = []
             if pd.notna(target_data.get("notes")):
                 notes_parts.append(target_data["notes"])
-            notes_parts.append(
-                f"Source: {target_data.get('source', 'Unknown')}"
-            )
+            notes_parts.append(f"Source: {target_data.get('source', 'Unknown')}")
             combined_notes = " | ".join(notes_parts)
 
             if existing_target:
@@ -562,9 +567,7 @@ def load_national_targets(
                 notes_parts = []
                 if pd.notna(target_data.get("notes")):
                     notes_parts.append(target_data["notes"])
-                notes_parts.append(
-                    f"Source: {target_data.get('source', 'Unknown')}"
-                )
+                notes_parts.append(f"Source: {target_data.get('source', 'Unknown')}")
                 combined_notes = " | ".join(notes_parts)
 
                 if existing_target:
@@ -678,23 +681,17 @@ def load_national_targets(
                 ]
 
                 session.add(new_stratum)
-                print(
-                    f"Created stratum and target for {constraint_var} enrollment"
-                )
+                print(f"Created stratum and target for {constraint_var} enrollment")
 
         session.commit()
 
         total_targets = (
-            len(direct_targets_df)
-            + len(tax_filer_df)
-            + len(conditional_targets)
+            len(direct_targets_df) + len(tax_filer_df) + len(conditional_targets)
         )
         print(f"\nSuccessfully loaded {total_targets} national targets")
         print(f"  - {len(direct_targets_df)} direct sum targets")
         print(f"  - {len(tax_filer_df)} tax filer targets")
-        print(
-            f"  - {len(conditional_targets)} enrollment count targets (as strata)"
-        )
+        print(f"  - {len(conditional_targets)} enrollment count targets (as strata)")
 
 
 def main():
@@ -709,8 +706,8 @@ def main():
 
     # Transform
     print("Transforming targets...")
-    direct_targets_df, tax_filer_df, conditional_targets = (
-        transform_national_targets(raw_targets)
+    direct_targets_df, tax_filer_df, conditional_targets = transform_national_targets(
+        raw_targets
     )
 
     # Load

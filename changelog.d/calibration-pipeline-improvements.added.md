@@ -4,5 +4,5 @@ Parallel state, county, and clone loop processing via ProcessPoolExecutor.
 Block-level takeup re-randomization with deterministic seeded draws.
 Hierarchical uprating with ACA PTC state-level CSV factors and CD reconciliation.
 Modal remote runner with Volume support, CUDA OOM fixes, and checkpointing.
-Stacked dataset builder with sparse CD subsets and calibration block propagation.
+H5 builder that filters calibrated clone weights by CD subset, uses pre-assigned random census blocks from `geography.npz` to derive full sub-state geography, and produces self-contained local area datasets.
 Staging validation script (validate_staging.py) with sim.calculate() comparison and sanity checks.

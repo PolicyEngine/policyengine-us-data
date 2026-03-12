@@ -116,11 +116,9 @@ def _make_mock_sim(cps_df):
 
 
 def _make_mock_qrf_class(predictions_df):
-    """Build a mock QRF class whose predict returns predictions_df."""
+    """Build a mock QRF class whose fit_predict returns predictions_df."""
     mock_cls = MagicMock()
-    fitted = MagicMock()
-    fitted.predict.return_value = predictions_df
-    mock_cls.return_value.fit.return_value = fitted
+    mock_cls.return_value.fit_predict.return_value = predictions_df
     return mock_cls
 
 
@@ -431,9 +429,9 @@ class TestImputeRetirementContributions:
 
         mock_sim = _make_mock_sim(self.cps_df)
 
-        # Make a QRF that crashes on fit
+        # Make a QRF that crashes on fit_predict
         mock_qrf_cls = MagicMock()
-        mock_qrf_cls.return_value.fit.side_effect = RuntimeError("QRF exploded")
+        mock_qrf_cls.return_value.fit_predict.side_effect = RuntimeError("QRF exploded")
 
         qrf_mod = sys.modules["microimpute.models.qrf"]
         old_qrf = getattr(qrf_mod, "QRF", None)

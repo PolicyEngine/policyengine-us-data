@@ -1013,9 +1013,11 @@ class UnifiedMatrixBuilder:
                 'entity': {var: array}
             }}
         """
-        if not county_dep_targets:
+        if not county_level or not county_dep_targets:
             logger.info(
-                "No county-dependent target vars; skipping county precomputation"
+                "Skipping county precomputation (county_level=%s, targets=%d)",
+                county_level,
+                len(county_dep_targets),
             )
             return {}
 

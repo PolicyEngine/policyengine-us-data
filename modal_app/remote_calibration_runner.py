@@ -213,7 +213,7 @@ def _fit_weights_impl(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
-    workers: int = 1,
+    workers: int = 8,
 ) -> dict:
     """Full pipeline: download data, build matrix, fit weights."""
     _clone_and_install(branch)
@@ -390,7 +390,7 @@ def _build_package_impl(
     branch: str,
     target_config: str = None,
     skip_county: bool = True,
-    workers: int = 1,
+    workers: int = 8,
 ) -> str:
     """Download data, build X matrix, save package to volume."""
     _clone_and_install(branch)
@@ -476,15 +476,15 @@ def _build_package_impl(
     image=image,
     secrets=[hf_secret],
     memory=65536,
-    cpu=4.0,
-    timeout=36000,
+    cpu=8.0,
+    timeout=50400,
     volumes={VOLUME_MOUNT: calibration_vol},
 )
 def build_package_remote(
     branch: str = "main",
     target_config: str = None,
     skip_county: bool = True,
-    workers: int = 1,
+    workers: int = 8,
 ) -> str:
     return _build_package_impl(
         branch,
@@ -547,7 +547,7 @@ def check_volume_package() -> dict:
     image=image,
     secrets=[hf_secret],
     memory=32768,
-    cpu=4.0,
+    cpu=8.0,
     gpu="T4",
     timeout=14400,
 )
@@ -561,7 +561,7 @@ def fit_weights_t4(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
-    workers: int = 1,
+    workers: int = 8,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -581,7 +581,7 @@ def fit_weights_t4(
     image=image,
     secrets=[hf_secret],
     memory=32768,
-    cpu=4.0,
+    cpu=8.0,
     gpu="A10",
     timeout=14400,
 )
@@ -595,7 +595,7 @@ def fit_weights_a10(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
-    workers: int = 1,
+    workers: int = 8,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -615,7 +615,7 @@ def fit_weights_a10(
     image=image,
     secrets=[hf_secret],
     memory=32768,
-    cpu=4.0,
+    cpu=8.0,
     gpu="A100-40GB",
     timeout=14400,
 )
@@ -629,7 +629,7 @@ def fit_weights_a100_40(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
-    workers: int = 1,
+    workers: int = 8,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -649,7 +649,7 @@ def fit_weights_a100_40(
     image=image,
     secrets=[hf_secret],
     memory=32768,
-    cpu=4.0,
+    cpu=8.0,
     gpu="A100-80GB",
     timeout=14400,
 )
@@ -663,7 +663,7 @@ def fit_weights_a100_80(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
-    workers: int = 1,
+    workers: int = 8,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -683,7 +683,7 @@ def fit_weights_a100_80(
     image=image,
     secrets=[hf_secret],
     memory=32768,
-    cpu=4.0,
+    cpu=8.0,
     gpu="H100",
     timeout=14400,
 )
@@ -697,7 +697,7 @@ def fit_weights_h100(
     learning_rate: float = None,
     log_freq: int = None,
     skip_county: bool = True,
-    workers: int = 1,
+    workers: int = 8,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -728,7 +728,7 @@ GPU_FUNCTIONS = {
 @app.function(
     image=image,
     memory=32768,
-    cpu=4.0,
+    cpu=8.0,
     gpu="T4",
     timeout=14400,
     volumes={"/calibration-data": calibration_vol},
@@ -760,7 +760,7 @@ def fit_from_package_t4(
 @app.function(
     image=image,
     memory=32768,
-    cpu=4.0,
+    cpu=8.0,
     gpu="A10",
     timeout=14400,
     volumes={"/calibration-data": calibration_vol},
@@ -792,7 +792,7 @@ def fit_from_package_a10(
 @app.function(
     image=image,
     memory=32768,
-    cpu=4.0,
+    cpu=8.0,
     gpu="A100-40GB",
     timeout=14400,
     volumes={"/calibration-data": calibration_vol},
@@ -824,7 +824,7 @@ def fit_from_package_a100_40(
 @app.function(
     image=image,
     memory=32768,
-    cpu=4.0,
+    cpu=8.0,
     gpu="A100-80GB",
     timeout=14400,
     volumes={"/calibration-data": calibration_vol},
@@ -856,7 +856,7 @@ def fit_from_package_a100_80(
 @app.function(
     image=image,
     memory=32768,
-    cpu=4.0,
+    cpu=8.0,
     gpu="H100",
     timeout=14400,
     volumes={"/calibration-data": calibration_vol},
@@ -910,7 +910,7 @@ def main(
     package_path: str = None,
     full_pipeline: bool = False,
     county_level: bool = False,
-    workers: int = 1,
+    workers: int = 8,
     push_results: bool = False,
     trigger_publish: bool = False,
     national: bool = False,
@@ -1120,7 +1120,7 @@ def build_package(
     branch: str = "main",
     target_config: str = None,
     county_level: bool = False,
-    workers: int = 1,
+    workers: int = 8,
 ):
     """Build the calibration package (X matrix) on CPU and save
     to Modal volume. Then run main() to fit."""
@@ -1138,7 +1138,7 @@ def build_package(
         flush=True,
     )
     print(
-        "No GPU is used. Timeout: 10 hours.",
+        "No GPU is used. Timeout: 14 hours.",
         flush=True,
     )
     print(

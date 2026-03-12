@@ -1169,7 +1169,7 @@ def main(argv=None):
     dataset_path = args.dataset or str(
         STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
     )
-    if not Path(dataset_path).exists():
+    if not args.package_path and not Path(dataset_path).exists():
         raise FileNotFoundError(
             f"Dataset not found: {dataset_path}\n"
             "Run 'make data' first, or pass --dataset with a valid path."

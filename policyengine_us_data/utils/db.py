@@ -11,7 +11,7 @@ from policyengine_us_data.db.create_database_tables import (
 )
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-DEFAULT_DATASET = str(STORAGE_FOLDER / "stratified_extended_cps_2024.h5")
+DEFAULT_DATASET = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
 
 
 def etl_argparser(

@@ -8,9 +8,12 @@ Usage:
     python publish_local_area.py [--skip-download] [--states-only] [--upload]
 """
 
+import os
+import warnings
 import numpy as np
+import pandas as pd
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
@@ -103,6 +106,126 @@ def load_completed_cities() -> set:
 def record_completed_city(city_name: str):
     with open(CHECKPOINT_FILE_CITIES, "a") as f:
         f.write(f"{city_name}\n")
+
+
+def _split_data_into_entity_dfs(
+    data: Dict[str, dict],
+    system,
+    time_period: int,
+) -> Dict[str, pd.DataFrame]:
+    """Split the data dict into per-entity DataFrames.
+
+    Groups variables by entity, builds one DataFrame per entity.
+    Group entities are deduplicated by their ID column.
+    """
+    ENTITIES = [
+        "person",
+        "household",
+        "tax_unit",
+        "spm_unit",
+        "family",
+        "marital_unit",
+    ]
+    entity_vars: Dict[str, list] = {e: [] for e in ENTITIES}
+
+    for var_name in sorted(data.keys()):
+        if var_name in system.variables:
+            ek = system.variables[var_name].entity.key
+            if ek in entity_vars:
+                entity_vars[ek].append(var_name)
+        else:
+            entity_vars["household"].append(var_name)
+
+    entity_dfs: Dict[str, pd.DataFrame] = {}
+    for entity in ENTITIES:
+        id_col = f"{entity}_id"
+        cols = {}
+        for var_name in entity_vars[entity]:
+            periods = data[var_name]
+            tp_key = time_period if time_period in periods else str(time_period)
+            if tp_key not in periods:
+                continue
+            arr = periods[tp_key]
+            if hasattr(arr, "dtype") and arr.dtype.kind == "S":
+                arr = np.char.decode(arr, "utf-8")
+            cols[var_name] = arr
+
+        if entity == "person":
+            for ref_entity in ENTITIES[1:]:
+                ref_col = f"person_{ref_entity}_id"
+                if ref_col in data:
+                    periods = data[ref_col]
+                    tp_key = time_period if time_period in periods else str(time_period)
+                    if tp_key in periods:
+                        cols[ref_col] = periods[tp_key]
+
+        if not cols:
+            continue
+
+        df = pd.DataFrame(cols)
+        if entity != "person" and id_col in df.columns:
+            df = df.drop_duplicates(subset=[id_col]).reset_index(drop=True)
+        entity_dfs[entity] = df
+
+    return entity_dfs
+
+
+def _build_uprating_manifest(
+    data: Dict[str, dict],
+    system,
+) -> pd.DataFrame:
+    """Build manifest of variable metadata for embedding in HDFStore."""
+    records = []
+    for var_name in sorted(data.keys()):
+        entity = (
+            system.variables[var_name].entity.key
+            if var_name in system.variables
+            else "unknown"
+        )
+        uprating = ""
+        if var_name in system.variables:
+            uprating = getattr(system.variables[var_name], "uprating", None) or ""
+        records.append({"variable": var_name, "entity": entity, "uprating": uprating})
+    return pd.DataFrame(records)
+
+
+def _save_hdfstore(
+    entity_dfs: Dict[str, pd.DataFrame],
+    manifest_df: pd.DataFrame,
+    output_path: str,
+    time_period: int,
+) -> str:
+    """Save entity DataFrames and manifest to a Pandas HDFStore file."""
+    hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
+
+    print(f"\nSaving HDFStore to {hdfstore_path}...")
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            category=pd.errors.PerformanceWarning,
+            message=".*PyTables will pickle object types.*",
+        )
+        with pd.HDFStore(hdfstore_path, mode="w") as store:
+            for entity_name, df in entity_dfs.items():
+                for col in df.columns:
+                    if df[col].dtype == object:
+                        df[col] = df[col].astype(str)
+                store.put(entity_name, df, format="table")
+
+            store.put("_variable_metadata", manifest_df, format="table")
+            store.put(
+                "_time_period",
+                pd.Series([time_period]),
+                format="table",
+            )
+
+    for entity_name, df in entity_dfs.items():
+        print(f"  {entity_name}: {len(df):,} rows, {len(df.columns)} cols")
+    print(f"  manifest: {len(manifest_df)} variables")
+    print("HDFStore saved successfully!")
+
+    return hdfstore_path
 
 
 def build_h5(
@@ -563,6 +686,11 @@ def build_h5(
             pw = f["person_weight"][tp][:]
             print(f"Total population (person weights): {pw.sum():,.0f}")
 
+    # === HDFStore output (entity-level format) ===
+    entity_dfs = _split_data_into_entity_dfs(data, sim.tax_benefit_system, time_period)
+    manifest_df = _build_uprating_manifest(data, sim.tax_benefit_system)
+    _save_hdfstore(entity_dfs, manifest_df, str(output_path), time_period)
+
     return output_path
 
 
@@ -628,7 +756,18 @@ def build_states(
             if upload:
                 print(f"Uploading {state_code}.h5 to GCP...")
                 upload_local_area_file(str(output_path), "states", skip_hf=True)
+
+                # Upload HDFStore file if it exists
+                hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
+                if os.path.exists(hdfstore_path):
+                    print(f"Uploading {state_code}.hdfstore.h5 to GCP...")
+                    upload_local_area_file(
+                        hdfstore_path, "states_hdfstore", skip_hf=True
+                    )
+
                 hf_queue.append((str(output_path), "states"))
+                if os.path.exists(hdfstore_path):
+                    hf_queue.append((hdfstore_path, "states_hdfstore"))
 
             record_completed_state(state_code)
             print(f"Completed {state_code}")
@@ -696,7 +835,18 @@ def build_districts(
             if upload:
                 print(f"Uploading {friendly_name}.h5 to GCP...")
                 upload_local_area_file(str(output_path), "districts", skip_hf=True)
+
+                # Upload HDFStore file if it exists
+                hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
+                if os.path.exists(hdfstore_path):
+                    print(f"Uploading {friendly_name}.hdfstore.h5 to GCP...")
+                    upload_local_area_file(
+                        hdfstore_path, "districts_hdfstore", skip_hf=True
+                    )
+
                 hf_queue.append((str(output_path), "districts"))
+                if os.path.exists(hdfstore_path):
+                    hf_queue.append((hdfstore_path, "districts_hdfstore"))
 
             record_completed_district(friendly_name)
             print(f"Completed {friendly_name}")
@@ -759,7 +909,18 @@ def build_cities(
                 if upload:
                     print("Uploading NYC.h5 to GCP...")
                     upload_local_area_file(str(output_path), "cities", skip_hf=True)
+
+                    # Upload HDFStore file if it exists
+                    hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
+                    if os.path.exists(hdfstore_path):
+                        print("Uploading NYC.hdfstore.h5 to GCP...")
+                        upload_local_area_file(
+                            hdfstore_path, "cities_hdfstore", skip_hf=True
+                        )
+
                     hf_queue.append((str(output_path), "cities"))
+                    if os.path.exists(hdfstore_path):
+                        hf_queue.append((hdfstore_path, "cities_hdfstore"))
 
                 record_completed_city("NYC")
                 print("Completed NYC")

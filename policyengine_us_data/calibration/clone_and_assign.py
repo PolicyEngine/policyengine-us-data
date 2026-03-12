@@ -163,7 +163,7 @@ def load_geography(path) -> GeographyAssignment:
     from pathlib import Path
 
     path = Path(path)
-    data = np.load(path, allow_pickle=False)
+    data = np.load(path, allow_pickle=True)
     return GeographyAssignment(
         block_geoid=data["block_geoid"],
         cd_geoid=data["cd_geoid"],

@@ -18,6 +18,7 @@ from policyengine_us_data.calibration.puf_impute import (
 from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_ONLY_IMPUTED_VARIABLES,
     CPS_STAGE2_INCOME_PREDICTORS,
+    _SSA_DEFAULT_SHARES,
     apply_retirement_constraints,
     reconcile_ss_subcomponents,
 )
@@ -248,6 +249,38 @@ class TestSSReconciliation:
         result = reconcile_ss_subcomponents(predictions, total_ss)
         assert result["social_security_retirement"].values[0] == pytest.approx(
             25000, abs=0.01
+        )
+
+    def test_zero_predictions_use_ssa_shares(self):
+        """When QRF predicts all zeros, fallback should use SSA
+        aggregate proportions (not equal 1/4 shares)."""
+        cols = [
+            "social_security_retirement",
+            "social_security_disability",
+            "social_security_dependents",
+            "social_security_survivors",
+        ]
+        predictions = pd.DataFrame(
+            {c: [0.0] for c in cols}
+        )
+        total_ss = np.array([10000.0])
+        result = reconcile_ss_subcomponents(predictions, total_ss)
+
+        # Compute expected shares from the SSA totals dict.
+        ssa_totals = np.array([_SSA_DEFAULT_SHARES[c] for c in cols])
+        expected_shares = ssa_totals / ssa_totals.sum()
+
+        for i, col in enumerate(cols):
+            assert result[col].values[0] == pytest.approx(
+                10000.0 * expected_shares[i], rel=1e-6
+            ), f"{col} share mismatch"
+
+        # Retirement should dominate (~73%), not be 25%.
+        ret_share = (
+            result["social_security_retirement"].values[0] / 10000.0
+        )
+        assert ret_share > 0.70, (
+            f"Retirement share {ret_share:.3f} should be > 0.70"
         )
 
 

@@ -279,9 +279,12 @@ def reconcile_ss_subcomponents(predictions, total_ss):
     nonzero_rows = row_sums > 0
     both = positive_mask & nonzero_rows
     shares[both] = values[both] / row_sums[both, np.newaxis]
-    # If row_sum == 0 but total_ss > 0, distribute equally.
+    # If row_sum == 0 but total_ss > 0, use SSA aggregate shares.
     equal_rows = positive_mask & ~nonzero_rows
-    shares[equal_rows] = 1.0 / values.shape[1]
+    ssa_totals = np.array(
+        [_SSA_DEFAULT_SHARES[c] for c in predictions.columns]
+    )
+    shares[equal_rows] = ssa_totals / ssa_totals.sum()
 
     out = np.where(
         positive_mask[:, np.newaxis],
@@ -304,6 +307,16 @@ _SS_SUBCOMPONENT_VARS = {
     "social_security_disability",
     "social_security_dependents",
     "social_security_survivors",
+}
+
+# SSA Fact Sheet aggregate totals (billions $).  Used as fallback
+# shares when QRF predicts all zeros for a record that has positive
+# total social_security.  Source: HARD_CODED_TOTALS in utils/loss.py.
+_SSA_DEFAULT_SHARES = {
+    "social_security_retirement": 1_060e9,
+    "social_security_disability": 148e9,
+    "social_security_survivors": 160e9,
+    "social_security_dependents": 84e9,
 }
 
 

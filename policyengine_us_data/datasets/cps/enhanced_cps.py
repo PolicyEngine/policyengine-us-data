@@ -160,15 +160,6 @@ class EnhancedCPS(Dataset):
             "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
             "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
             "state/RI/adjusted_gross_income/amount/-inf_1",
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "state/RI/adjusted_gross_income/amount/-inf_1",
             "nation/irs/exempt interest/count/AGI in -inf-inf/taxable/All",
         ]
 

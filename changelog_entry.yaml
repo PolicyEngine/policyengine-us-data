@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    fixed:
+    - Align SSI takeup and disability flags to CPS-reported receipt, fixing ~0.6pp poverty rate inflation

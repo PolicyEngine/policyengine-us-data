@@ -340,6 +340,38 @@ def add_takeup(self):
         rng.random(n_tax_units) < voluntary_filing_rate
     )
 
+    # --- SSI: align takeup and disability to CPS-reported receipt ---
+    # Without this, PE computes SSI eligibility from rules and then
+    # randomly assigns takeup, so many CPS respondents who actually
+    # report receiving SSI get $0 in the simulation.  This inflates
+    # PE's poverty rate by ~0.6pp.
+    n_persons = len(data["person_id"])
+    reported_ssi = data["ssi_reported"] > 0
+
+    # 1) Takeup: guarantee SSI for reporters; adjusted random draw
+    #    for non-reporters so overall rate matches ~50% (Urban
+    #    Institute estimate for adults 65+).
+    SSI_TAKEUP_RATE = 0.50
+    n_reporters = reported_ssi.sum()
+    n_non_reporters = (~reported_ssi).sum()
+    target_takeup = int(SSI_TAKEUP_RATE * n_persons)
+    remaining_needed = max(0, target_takeup - n_reporters)
+    non_reporter_rate = (
+        remaining_needed / n_non_reporters if n_non_reporters > 0 else 0
+    )
+
+    ssi_rng = np.random.default_rng(seed=200)
+    data["takes_up_ssi_if_eligible"] = reported_ssi | (
+        (~reported_ssi) & (ssi_rng.random(n_persons) < non_reporter_rate)
+    )
+
+    # 2) Disability: if someone reports SSI and is under 65 they
+    #    must be disabled (SSI requires aged OR disabled/blind).
+    #    CPS disability flags (PEDIS* columns) miss some of these.
+    ages = data["age"]
+    under_65 = ages < 65
+    data["is_disabled"] = data["is_disabled"] | (reported_ssi & under_65)
+
     self.save_dataset(data)
 
 

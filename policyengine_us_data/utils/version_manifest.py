@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import google.auth
+from packaging.version import Version
 from google.api_core.exceptions import NotFound
 from google.cloud import storage
 from huggingface_hub import (
@@ -302,19 +303,14 @@ def _restore_hf_commit(
             commit_message=(f"Roll back to {target_version} as {new_version}"),
         )
 
-    try:
-        api.create_tag(
-            token=token,
-            repo_id=HF_REPO_NAME,
-            tag=new_version,
-            revision=commit_info.oid,
-            repo_type=HF_REPO_TYPE,
-        )
-    except Exception as e:
-        if "already exists" in str(e) or "409" in str(e):
-            logging.warning(f"Tag {new_version} already exists. Skipping tag creation.")
-        else:
-            raise
+    api.create_tag(
+        token=token,
+        repo_id=HF_REPO_NAME,
+        tag=new_version,
+        revision=commit_info.oid,
+        repo_type=HF_REPO_TYPE,
+        exist_ok=True,
+    )
 
     return commit_info.oid
 
@@ -420,7 +416,10 @@ def list_versions() -> list[str]:
     """
     bucket = _get_gcs_bucket()
     registry = _read_registry_from_gcs(bucket)
-    return sorted(v.version for v in registry.versions)
+    return sorted(
+        (v.version for v in registry.versions),
+        key=Version,
+    )
 
 
 def download_versioned_file(

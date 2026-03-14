@@ -14,6 +14,11 @@ import httpx
 import logging
 import os
 
+from policyengine_us_data.utils.version_manifest import (
+    GCS_BUCKET_NAME,
+    HF_REPO_NAME,
+    HF_REPO_TYPE,
+)
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -29,14 +34,12 @@ RETRY_BASE_WAIT = 30
 
 def upload_data_files(
     files: List[str],
-    gcs_bucket_name: str = "policyengine-us-data",
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    gcs_bucket_name: str = GCS_BUCKET_NAME,
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
     version: Optional[str] = None,
 ) -> None:
     from policyengine_us_data.utils.version_manifest import (
-        GCS_BUCKET_NAME,
-        HF_REPO_NAME,
         GCSVersionInfo,
         HFVersionInfo,
         VersionManifest,
@@ -76,8 +79,8 @@ def upload_data_files(
 def upload_files_to_hf(
     files: List[str],
     version: str,
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
 ) -> str:
     """Upload files to Hugging Face repository and tag the
     commit with the version.
@@ -110,25 +113,17 @@ def upload_files_to_hf(
     )
     logging.info(f"Uploaded files to Hugging Face repository {hf_repo_name}.")
 
-    # Tag commit with version (convenience for HF web UI)
-    try:
-        api.create_tag(
-            token=token,
-            repo_id=hf_repo_name,
-            tag=version,
-            revision=commit_info.oid,
-            repo_type=hf_repo_type,
-        )
-        logging.info(
-            f"Tagged commit with {version} in Hugging Face repository {hf_repo_name}."
-        )
-    except Exception as e:
-        if "Tag reference exists already" in str(e) or "409" in str(e):
-            logging.warning(
-                f"Tag {version} already exists in {hf_repo_name}. Skipping tag creation."
-            )
-        else:
-            raise
+    api.create_tag(
+        token=token,
+        repo_id=hf_repo_name,
+        tag=version,
+        revision=commit_info.oid,
+        repo_type=hf_repo_type,
+        exist_ok=True,
+    )
+    logging.info(
+        f"Tagged commit with {version} in Hugging Face repository {hf_repo_name}."
+    )
 
     return commit_info.oid
 
@@ -136,7 +131,7 @@ def upload_files_to_hf(
 def upload_files_to_gcs(
     files: List[str],
     version: str,
-    gcs_bucket_name: str = "policyengine-us-data",
+    gcs_bucket_name: str = GCS_BUCKET_NAME,
 ) -> Dict[str, int]:
     """Upload files to Google Cloud Storage and set metadata
     with the version.
@@ -174,9 +169,9 @@ def upload_files_to_gcs(
 def upload_local_area_file(
     file_path: str,
     subdirectory: str,
-    gcs_bucket_name: str = "policyengine-us-data",
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    gcs_bucket_name: str = GCS_BUCKET_NAME,
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
     version: str = None,
     skip_hf: bool = False,
 ) -> int:
@@ -241,8 +236,8 @@ def upload_local_area_file(
 
 def upload_local_area_batch_to_hf(
     files_with_subdirs: List[tuple],
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
     version: str = None,
 ):
     """
@@ -327,8 +322,8 @@ def hf_create_commit_with_retry(
 def upload_to_staging_hf(
     files_with_paths: List[Tuple[Path, str]],
     version: str,
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
     batch_size: int = 50,
 ) -> int:
     """
@@ -387,8 +382,8 @@ def upload_to_staging_hf(
 def promote_staging_to_production_hf(
     files: List[str],
     version: str,
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
 ) -> int:
     """
     Atomically promote files from staging/ to production paths.
@@ -455,8 +450,8 @@ def promote_staging_to_production_hf(
 def cleanup_staging_hf(
     files: List[str],
     version: str,
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
 ) -> int:
     """
     Clean up staging folder after successful promotion.

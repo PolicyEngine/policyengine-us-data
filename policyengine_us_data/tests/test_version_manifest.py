@@ -536,6 +536,42 @@ class TestListVersions:
 
         assert result == []
 
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_semver_ordering(self, mock_get_bucket, mock_bucket):
+        mock_get_bucket.return_value = mock_bucket
+        versions = [
+            "1.100.0",
+            "2.0.0",
+            "1.9.0",
+            "1.10.0",
+        ]
+        manifests = [
+            VersionManifest(
+                version=v,
+                created_at="t",
+                hf=None,
+                gcs=GCSVersionInfo(
+                    bucket="b",
+                    generations={"f.h5": i},
+                ),
+            )
+            for i, v in enumerate(versions)
+        ]
+        registry = VersionRegistry(
+            current="2.0.0",
+            versions=manifests,
+        )
+        setup_bucket_with_registry(mock_bucket, registry)
+
+        result = list_versions()
+
+        assert result == [
+            "1.9.0",
+            "1.10.0",
+            "1.100.0",
+            "2.0.0",
+        ]
+
 
 # -- download_versioned_file tests ---------------------------------
 
@@ -696,6 +732,65 @@ class TestRollback:
         assert "1.72.3" in commit_msg
         assert "1.73.0" in commit_msg
         mock_api.create_tag.assert_called_once()
+
+    @patch(f"{_MOD}._upload_registry_to_hf")
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_rollback_without_hf(
+        self,
+        mock_get_bucket,
+        mock_hf_upload,
+        mock_bucket,
+    ):
+        mock_get_bucket.return_value = mock_bucket
+
+        old_manifest = VersionManifest(
+            version="1.72.3",
+            created_at="2026-03-10T14:30:00Z",
+            hf=None,
+            gcs=GCSVersionInfo(
+                bucket="policyengine-us-data",
+                generations={"file.h5": 111},
+            ),
+        )
+        registry = VersionRegistry(
+            current="1.72.3",
+            versions=[old_manifest],
+        )
+        registry_json = json.dumps(registry.to_dict())
+        written = {}
+
+        def mock_blob(name, generation=None):
+            if name == "version_manifest.json":
+                b = MagicMock()
+                b.name = name
+                b.download_as_text.return_value = registry_json
+                written[name] = b
+                return b
+            blob = MagicMock()
+            blob.name = name
+            blob.generation = generation
+            return blob
+
+        mock_bucket.blob.side_effect = mock_blob
+
+        restored_blob = MagicMock()
+        restored_blob.generation = 222
+        mock_bucket.get_blob.return_value = restored_blob
+
+        result = rollback(
+            target_version="1.72.3",
+            new_version="1.73.0",
+        )
+
+        assert result.version == "1.73.0"
+        assert result.hf is None
+        assert result.special_operation == "roll-back"
+        assert mock_bucket.copy_blob.call_count == 1
+
+        blob = written["version_manifest.json"]
+        written_json = blob.upload_from_string.call_args[0][0]
+        registry_data = json.loads(written_json)
+        assert registry_data["versions"][0]["hf"] is None
 
     @patch(f"{_MOD}._get_gcs_bucket")
     def test_nonexistent_version(self, mock_get_bucket, mock_bucket):

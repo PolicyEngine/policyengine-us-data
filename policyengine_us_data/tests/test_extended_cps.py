@@ -18,8 +18,9 @@ from policyengine_us_data.calibration.puf_impute import (
 from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_ONLY_IMPUTED_VARIABLES,
     CPS_STAGE2_INCOME_PREDICTORS,
+    SS_SUBCOMPONENT_SEQUENCE,
+    _impute_ss_subcomponents_sequential,
     apply_retirement_constraints,
-    reconcile_ss_subcomponents,
 )
 
 
@@ -74,17 +75,14 @@ class TestVariableListConsistency:
             f"Retirement contribution vars missing from CPS_ONLY: {missing}"
         )
 
-    def test_ss_subcomponents_in_cps_only(self):
-        """All 4 SS sub-component vars should be in CPS_ONLY."""
-        expected = {
-            "social_security_retirement",
-            "social_security_disability",
-            "social_security_dependents",
-            "social_security_survivors",
-        }
-        missing = expected - set(CPS_ONLY_IMPUTED_VARIABLES)
-        assert missing == set(), (
-            f"SS sub-component vars missing from CPS_ONLY: {missing}"
+    def test_ss_subcomponents_not_in_cps_only(self):
+        """SS sub-components are handled by sequential imputation,
+        not the main CPS_ONLY batch."""
+        ss_vars = set(SS_SUBCOMPONENT_SEQUENCE)
+        overlap = ss_vars & set(CPS_ONLY_IMPUTED_VARIABLES)
+        assert overlap == set(), (
+            f"SS sub-component vars should NOT be in CPS_ONLY "
+            f"(handled sequentially): {overlap}"
         )
 
     def test_nonexistent_vars_not_in_cps_only(self):
@@ -190,65 +188,100 @@ class TestRetirementConstraints:
         ).all(), "SE pension should be zero without SE income"
 
 
-class TestSSReconciliation:
-    """Post-processing SS normalization ensures sub-components sum to total."""
+class TestSequentialSSImputation:
+    """Sequential share-of-remainder SS imputation guarantees
+    sub-components sum to total by construction."""
 
-    def test_subcomponents_sum_to_total(self):
-        predictions = pd.DataFrame(
+    @pytest.fixture
+    def synthetic_ss_data(self):
+        """Create synthetic CPS-like training data with correlated
+        SS sub-components that sum to total social_security."""
+        rng = np.random.default_rng(42)
+        n = 500
+        age = rng.normal(68, 10, n).clip(18, 95)
+        is_male = rng.binomial(1, 0.45, n).astype(float)
+        emp_income = rng.exponential(20000, n) * (age < 65)
+        se_income = rng.exponential(5000, n) * (rng.random(n) < 0.1)
+        total_ss = rng.exponential(15000, n) * (age > 50)
+
+        # Split total into sub-components with realistic shares.
+        ret_share = rng.beta(8, 3, n)  # ~73%
+        rem1 = 1 - ret_share
+        dis_share = rng.beta(2, 8, n) * rem1
+        rem2 = rem1 - dis_share
+        sur_share = rng.beta(2, 7, n) * rem2
+        dep = rem2 - sur_share * rem2
+
+        X_train = pd.DataFrame(
             {
-                "social_security_retirement": [0.6, 0.0, 0.8, 0.3],
-                "social_security_disability": [0.3, 0.0, 0.1, 0.5],
-                "social_security_dependents": [0.05, 0.0, 0.05, 0.1],
-                "social_security_survivors": [0.05, 0.0, 0.05, 0.1],
+                "age": age,
+                "is_male": is_male,
+                "employment_income": emp_income,
+                "self_employment_income": se_income,
+                "social_security": total_ss,
+                "social_security_retirement": ret_share * total_ss,
+                "social_security_survivors": sur_share * rem2 * total_ss,
+                "social_security_disability": dis_share * total_ss,
+                "social_security_dependents": dep * total_ss,
             }
         )
-        total_ss = np.array([20000, 0, 15000, 10000])
-        result = reconcile_ss_subcomponents(predictions, total_ss)
+
+        predictors = [
+            "age",
+            "is_male",
+            "employment_income",
+            "self_employment_income",
+            "social_security",
+        ]
+        return X_train, predictors
+
+    def test_subcomponents_sum_to_total(self, synthetic_ss_data):
+        X_train, predictors = synthetic_ss_data
+        X_test = X_train[predictors].iloc[:50].copy()
+        total_ss = X_test["social_security"].values
+
+        result = _impute_ss_subcomponents_sequential(
+            X_train, X_test, total_ss, predictors
+        )
         sums = sum(result[col].values for col in result.columns)
         np.testing.assert_allclose(sums, total_ss, atol=0.01)
 
-    def test_zero_ss_zeroes_all_subcomponents(self):
-        predictions = pd.DataFrame(
-            {
-                "social_security_retirement": [0.5, 0.7],
-                "social_security_disability": [0.3, 0.2],
-                "social_security_dependents": [0.1, 0.05],
-                "social_security_survivors": [0.1, 0.05],
-            }
+    def test_zero_ss_zeroes_all_subcomponents(self, synthetic_ss_data):
+        X_train, predictors = synthetic_ss_data
+        X_test = X_train[predictors].iloc[:10].copy()
+        total_ss = np.zeros(10)
+
+        result = _impute_ss_subcomponents_sequential(
+            X_train, X_test, total_ss, predictors
         )
-        total_ss = np.array([0, 0])
-        result = reconcile_ss_subcomponents(predictions, total_ss)
         for col in result.columns:
             assert (result[col].values == 0).all(), f"{col} should be zero"
 
-    def test_shares_are_non_negative(self):
-        predictions = pd.DataFrame(
-            {
-                "social_security_retirement": [-0.5, 0.8],
-                "social_security_disability": [1.2, 0.2],
-                "social_security_dependents": [0.1, 0.0],
-                "social_security_survivors": [0.2, 0.0],
-            }
-        )
-        total_ss = np.array([10000, 5000])
-        result = reconcile_ss_subcomponents(predictions, total_ss)
-        for col in result.columns:
-            assert (result[col].values >= 0).all(), f"{col} has negative values"
+    def test_all_components_non_negative(self, synthetic_ss_data):
+        X_train, predictors = synthetic_ss_data
+        X_test = X_train[predictors].iloc[:50].copy()
+        total_ss = X_test["social_security"].values
 
-    def test_single_component_gets_full_total(self):
-        predictions = pd.DataFrame(
-            {
-                "social_security_retirement": [1.0],
-                "social_security_disability": [0.0],
-                "social_security_dependents": [0.0],
-                "social_security_survivors": [0.0],
-            }
+        result = _impute_ss_subcomponents_sequential(
+            X_train, X_test, total_ss, predictors
         )
-        total_ss = np.array([25000])
-        result = reconcile_ss_subcomponents(predictions, total_ss)
-        assert result["social_security_retirement"].values[0] == pytest.approx(
-            25000, abs=0.01
+        for col in result.columns:
+            assert (result[col].values >= -0.01).all(), f"{col} has negative values"
+
+    def test_retirement_dominates(self, synthetic_ss_data):
+        """Retirement should get the largest share on average."""
+        X_train, predictors = synthetic_ss_data
+        X_test = X_train[predictors].iloc[:100].copy()
+        total_ss = X_test["social_security"].values
+
+        result = _impute_ss_subcomponents_sequential(
+            X_train, X_test, total_ss, predictors
         )
+        has_ss = total_ss > 0
+        ret_total = result["social_security_retirement"].values[has_ss].sum()
+        ss_total = total_ss[has_ss].sum()
+        ret_share = ret_total / ss_total
+        assert ret_share > 0.5, f"Retirement share {ret_share:.3f} should be > 0.5"
 
 
 class TestSequentialQRF:

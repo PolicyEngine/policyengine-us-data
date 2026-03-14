@@ -1,0 +1,1 @@
+Replace equal-share (1/4 each) fallback in SS sub-component reconciliation with SSA Fact Sheet proportions (~73% retirement, ~10% disability, ~11% survivors, ~6% dependents) for records where QRF predicts all zeros.

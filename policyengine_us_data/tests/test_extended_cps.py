@@ -260,9 +260,7 @@ class TestSSReconciliation:
             "social_security_dependents",
             "social_security_survivors",
         ]
-        predictions = pd.DataFrame(
-            {c: [0.0] for c in cols}
-        )
+        predictions = pd.DataFrame({c: [0.0] for c in cols})
         total_ss = np.array([10000.0])
         result = reconcile_ss_subcomponents(predictions, total_ss)
 
@@ -276,12 +274,8 @@ class TestSSReconciliation:
             ), f"{col} share mismatch"
 
         # Retirement should dominate (~73%), not be 25%.
-        ret_share = (
-            result["social_security_retirement"].values[0] / 10000.0
-        )
-        assert ret_share > 0.70, (
-            f"Retirement share {ret_share:.3f} should be > 0.70"
-        )
+        ret_share = result["social_security_retirement"].values[0] / 10000.0
+        assert ret_share > 0.70, f"Retirement share {ret_share:.3f} should be > 0.70"
 
 
 class TestSequentialQRF:

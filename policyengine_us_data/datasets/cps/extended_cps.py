@@ -281,9 +281,7 @@ def reconcile_ss_subcomponents(predictions, total_ss):
     shares[both] = values[both] / row_sums[both, np.newaxis]
     # If row_sum == 0 but total_ss > 0, use SSA aggregate shares.
     equal_rows = positive_mask & ~nonzero_rows
-    ssa_totals = np.array(
-        [_SSA_DEFAULT_SHARES[c] for c in predictions.columns]
-    )
+    ssa_totals = np.array([_SSA_DEFAULT_SHARES[c] for c in predictions.columns])
     shares[equal_rows] = ssa_totals / ssa_totals.sum()
 
     out = np.where(

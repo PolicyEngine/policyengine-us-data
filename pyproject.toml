@@ -43,6 +43,7 @@ dependencies = [
     "xlrd>=2.0.2",
     "spm-calculator>=0.1.0",
     "tenacity>=8.0.0",
+    "packaging>=21.0",
 ]
 
 [project.optional-dependencies]

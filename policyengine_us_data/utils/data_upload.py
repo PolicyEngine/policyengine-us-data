@@ -6,16 +6,19 @@ from huggingface_hub import (
     CommitOperationDelete,
     hf_hub_download,
 )
-from huggingface_hub.errors import RevisionNotFoundError
 from google.cloud import storage
 from pathlib import Path
 from importlib import metadata
 import google.auth
 import httpx
-import json
 import logging
 import os
 
+from policyengine_us_data.utils.version_manifest import (
+    GCS_BUCKET_NAME,
+    HF_REPO_NAME,
+    HF_REPO_TYPE,
+)
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -31,36 +34,59 @@ RETRY_BASE_WAIT = 30
 
 def upload_data_files(
     files: List[str],
-    gcs_bucket_name: str = "policyengine-us-data",
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
-    version: str = None,
-):
+    gcs_bucket_name: str = GCS_BUCKET_NAME,
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
+    version: Optional[str] = None,
+) -> None:
+    from policyengine_us_data.utils.version_manifest import (
+        GCSVersionInfo,
+        HFVersionInfo,
+        VersionManifest,
+        upload_manifest,
+        _utc_now_iso,
+    )
+
     if version is None:
         version = metadata.version("policyengine-us-data")
 
-    upload_files_to_hf(
+    hf_commit = upload_files_to_hf(
         files=files,
         version=version,
         hf_repo_name=hf_repo_name,
         hf_repo_type=hf_repo_type,
     )
 
-    upload_files_to_gcs(
+    generations = upload_files_to_gcs(
         files=files,
         version=version,
         gcs_bucket_name=gcs_bucket_name,
     )
 
+    manifest = VersionManifest(
+        version=version,
+        created_at=_utc_now_iso(),
+        hf=HFVersionInfo(repo=HF_REPO_NAME, commit=hf_commit),
+        gcs=GCSVersionInfo(
+            bucket=GCS_BUCKET_NAME,
+            generations=generations,
+        ),
+    )
+    upload_manifest(manifest)
+    logging.info(f"Created version manifest for {version}.")
+
 
 def upload_files_to_hf(
     files: List[str],
     version: str,
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
-):
-    """
-    Upload files to Hugging Face repository and tag the commit with the version.
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
+) -> str:
+    """Upload files to Hugging Face repository and tag the
+    commit with the version.
+
+    Returns:
+        The commit SHA (oid) of the created commit.
     """
     api = HfApi()
     hf_operations = []
@@ -87,39 +113,37 @@ def upload_files_to_hf(
     )
     logging.info(f"Uploaded files to Hugging Face repository {hf_repo_name}.")
 
-    # Tag commit with version
-    try:
-        api.create_tag(
-            token=token,
-            repo_id=hf_repo_name,
-            tag=version,
-            revision=commit_info.oid,
-            repo_type=hf_repo_type,
-        )
-        logging.info(
-            f"Tagged commit with {version} in Hugging Face repository {hf_repo_name}."
-        )
-    except Exception as e:
-        if "Tag reference exists already" in str(e) or "409" in str(e):
-            logging.warning(
-                f"Tag {version} already exists in {hf_repo_name}. Skipping tag creation."
-            )
-        else:
-            raise
+    api.create_tag(
+        token=token,
+        repo_id=hf_repo_name,
+        tag=version,
+        revision=commit_info.oid,
+        repo_type=hf_repo_type,
+        exist_ok=True,
+    )
+    logging.info(
+        f"Tagged commit with {version} in Hugging Face repository {hf_repo_name}."
+    )
+
+    return commit_info.oid
 
 
 def upload_files_to_gcs(
     files: List[str],
     version: str,
-    gcs_bucket_name: str = "policyengine-us-data",
-):
-    """
-    Upload files to Google Cloud Storage and set metadata with the version.
+    gcs_bucket_name: str = GCS_BUCKET_NAME,
+) -> Dict[str, int]:
+    """Upload files to Google Cloud Storage and set metadata
+    with the version.
+
+    Returns:
+        Dict mapping blob name to its GCS generation number.
     """
     credentials, project_id = google.auth.default()
     storage_client = storage.Client(credentials=credentials, project=project_id)
     bucket = storage_client.bucket(gcs_bucket_name)
 
+    generations: Dict[str, int] = {}
     for file_path in files:
         file_path = Path(file_path)
         blob = bucket.blob(file_path.name)
@@ -129,28 +153,39 @@ def upload_files_to_gcs(
         # Set metadata
         blob.metadata = {"version": version}
         blob.patch()
+
+        # Read back generation number for manifest
+        blob.reload()
+        generations[file_path.name] = blob.generation
         logging.info(
-            f"Set metadata for {file_path.name} in GCS bucket {gcs_bucket_name}."
+            f"Set metadata for {file_path.name} in GCS "
+            f"bucket {gcs_bucket_name} "
+            f"(generation {blob.generation})."
         )
+
+    return generations
 
 
 def upload_local_area_file(
     file_path: str,
     subdirectory: str,
-    gcs_bucket_name: str = "policyengine-us-data",
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    gcs_bucket_name: str = GCS_BUCKET_NAME,
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
     version: str = None,
     skip_hf: bool = False,
-):
-    """
-    Upload a single local area H5 file to a subdirectory.
+) -> int:
+    """Upload a single local area H5 file to a subdirectory.
 
     Supports states/, districts/, cities/, and national/.
     Uploads to both GCS and Hugging Face.
 
     Args:
-        skip_hf: If True, skip HuggingFace upload (for batched uploads later)
+        skip_hf: If True, skip HuggingFace upload (for batched
+            uploads later)
+
+    Returns:
+        The GCS generation number of the uploaded blob.
     """
     if version is None:
         version = metadata.version("policyengine-us-data")
@@ -169,10 +204,15 @@ def upload_local_area_file(
     blob.upload_from_filename(file_path)
     blob.metadata = {"version": version}
     blob.patch()
-    logging.info(f"Uploaded {blob_name} to GCS bucket {gcs_bucket_name}.")
+    blob.reload()
+    generation = blob.generation
+    logging.info(
+        f"Uploaded {blob_name} to GCS bucket "
+        f"{gcs_bucket_name} (generation {generation})."
+    )
 
     if skip_hf:
-        return
+        return generation
 
     # Upload to Hugging Face with subdirectory
     token = os.environ.get("HUGGING_FACE_TOKEN")
@@ -183,17 +223,21 @@ def upload_local_area_file(
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,
         token=token,
-        commit_message=f"Upload {subdirectory}/{file_path.name} for version {version}",
+        commit_message=(
+            f"Upload {subdirectory}/{file_path.name} for version {version}"
+        ),
     )
     logging.info(
         f"Uploaded {subdirectory}/{file_path.name} to Hugging Face {hf_repo_name}."
     )
 
+    return generation
+
 
 def upload_local_area_batch_to_hf(
     files_with_subdirs: List[tuple],
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
     version: str = None,
 ):
     """
@@ -278,8 +322,8 @@ def hf_create_commit_with_retry(
 def upload_to_staging_hf(
     files_with_paths: List[Tuple[Path, str]],
     version: str,
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
     batch_size: int = 50,
 ) -> int:
     """
@@ -338,8 +382,8 @@ def upload_to_staging_hf(
 def promote_staging_to_production_hf(
     files: List[str],
     version: str,
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
 ) -> int:
     """
     Atomically promote files from staging/ to production paths.
@@ -406,8 +450,8 @@ def promote_staging_to_production_hf(
 def cleanup_staging_hf(
     files: List[str],
     version: str,
-    hf_repo_name: str = "policyengine/policyengine-us-data",
-    hf_repo_type: str = "model",
+    hf_repo_name: str = HF_REPO_NAME,
+    hf_repo_type: str = HF_REPO_TYPE,
 ) -> int:
     """
     Clean up staging folder after successful promotion.

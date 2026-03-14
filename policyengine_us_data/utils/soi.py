@@ -164,6 +164,7 @@ def get_soi(year: int) -> pd.DataFrame:
     }
     soi = pd.read_csv(CALIBRATION_FOLDER / "soi_targets.csv")
     soi = soi[soi.Year == soi.Year.max()]
+    soi["Value"] = soi["Value"].astype(float)
 
     uprating_factors = {}
     for variable in uprating_map:

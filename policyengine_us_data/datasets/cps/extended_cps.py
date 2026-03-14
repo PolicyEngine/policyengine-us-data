@@ -380,9 +380,6 @@ def _splice_cps_only_predictions(
         values = data[var][time_period]
         # First half: keep original CPS values.
         # Second half: replace with QRF predictions.
-        # Defensive clip: contributions and benefits cannot be negative.
-        if var in _RETIREMENT_VARS or var in _SS_SUBCOMPONENT_VARS:
-            pred_values = np.maximum(pred_values, 0)
         cps_half = values[:n_half]
         new_values = np.concatenate([cps_half, pred_values])
         data[var] = {time_period: new_values}

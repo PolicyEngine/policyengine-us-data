@@ -332,7 +332,7 @@ def impute_aggregate_mars(puf: pd.DataFrame) -> pd.DataFrame:
     if n_agg == 0:
         return puf
 
-    reg = puf[puf.MARS != 0]
+    reg = puf[puf.MARS != 0].copy()
 
     # Use available income variables as predictors for MARS
     predictors = [c for c in MARS_IMPUTATION_PREDICTORS if c in puf.columns]

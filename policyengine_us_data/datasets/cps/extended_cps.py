@@ -478,9 +478,9 @@ class ExtendedCPS(Dataset):
             return new_data
 
         logger.info(
-            "Injecting %d PUF households with AGI > $%s",
+            "Injecting %d PUF households with AGI > $%d",
             n_high_hh,
-            f"{AGI_INJECTION_THRESHOLD:,}",
+            AGI_INJECTION_THRESHOLD,
         )
 
         # Load raw PUF arrays for entity mask construction
@@ -572,10 +572,18 @@ class ExtendedCPS(Dataset):
             ):
                 puf_subset = puf_subset + id_offset
 
-            # Match dtypes (filing_status is stored as bytes)
+            # Match dtypes to avoid object arrays that HDF5 can't save
             existing = new_data[variable][self.time_period]
-            if existing.dtype.kind in ("S", "U"):
+            try:
                 puf_subset = np.array(puf_subset).astype(existing.dtype)
+            except (ValueError, TypeError):
+                logger.warning(
+                    "Skipping %s: cannot cast PUF dtype %s to %s",
+                    variable,
+                    puf_subset.dtype,
+                    existing.dtype,
+                )
+                continue
 
             new_data[variable][self.time_period] = np.concatenate(
                 [existing, puf_subset]

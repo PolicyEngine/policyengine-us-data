@@ -460,15 +460,24 @@ class ExtendedCPS(Dataset):
         errors). This directly appends PUF records with AGI above
         AGI_INJECTION_THRESHOLD as additional households, giving the
         reweighter actual high-income observations.
+
+        Uses raw PUF arrays for speed — only creates a Microsimulation
+        briefly to identify high-AGI households, then reads stored
+        arrays directly instead of calling calculate() per variable.
         """
         from policyengine_us import Microsimulation
 
         logger.info("Loading PUF for high-income record injection...")
         puf_sim = Microsimulation(dataset=self.puf)
 
-        # Identify high-AGI households
+        # Identify high-AGI households (only calculation needed)
         hh_agi = puf_sim.calculate("adjusted_gross_income", map_to="household").values
-        all_hh_ids = puf_sim.calculate("household_id").values
+        tbs = puf_sim.tax_benefit_system
+        del puf_sim  # Free simulation memory immediately
+
+        # Load raw PUF arrays (fast, no simulation)
+        puf_data = self.puf(require=True).load_dataset()
+        all_hh_ids = puf_data["household_id"]
         high_mask_hh = hh_agi > AGI_INJECTION_THRESHOLD
         high_hh_id_set = set(all_hh_ids[high_mask_hh])
 
@@ -483,10 +492,7 @@ class ExtendedCPS(Dataset):
             AGI_INJECTION_THRESHOLD,
         )
 
-        # Load raw PUF arrays for entity mask construction
-        puf_data = puf_sim.dataset.load_dataset()
-
-        # Build entity-level masks
+        # Build entity-level masks from raw arrays
         high_hh_id_arr = np.fromiter(high_hh_id_set, dtype=float)
         person_mask = np.isin(
             puf_data["person_household_id"],
@@ -529,9 +535,9 @@ class ExtendedCPS(Dataset):
                     id_offset = max(id_offset, int(vals.max()))
         id_offset += 1_000_000
 
-        tbs = puf_sim.tax_benefit_system
-
-        # For each variable, extract high-income PUF values and append
+        # For each variable in new_data, read from raw PUF arrays
+        # (no calculate() calls — uses stored values directly)
+        n_appended = 0
         for variable in list(new_data.keys()):
             var_meta = tbs.variables.get(variable)
             if var_meta is None:
@@ -543,26 +549,24 @@ class ExtendedCPS(Dataset):
 
             mask = entity_masks[entity]
 
-            try:
-                puf_values = puf_sim.calculate(variable).values
-            except (KeyError, ValueError, RuntimeError) as e:
-                logger.warning(
-                    "Could not calculate %s from PUF: %s",
-                    variable,
-                    e,
-                )
+            # Read from raw PUF arrays if available; pad with zeros
+            # for variables not in PUF (CPS-only variables)
+            if variable in puf_data:
+                puf_values = puf_data[variable]
+                if hasattr(puf_values, "__array__"):
+                    puf_values = np.asarray(puf_values)
+            else:
                 puf_values = np.zeros(int(mask.sum()))
 
             if len(puf_values) != len(mask):
-                logger.warning(
-                    "Length mismatch for %s: values=%d, mask=%d",
-                    variable,
-                    len(puf_values),
-                    len(mask),
-                )
-                continue
+                # Variable has wrong entity length — pad instead
+                puf_values = np.zeros(int(mask.sum()))
 
-            puf_subset = puf_values[mask]
+            puf_subset = (
+                puf_values[mask]
+                if len(puf_values) > len(mask) or len(puf_values) == len(mask)
+                else puf_values
+            )
 
             # Offset IDs to avoid collisions
             if variable.endswith("_id") and puf_subset.dtype.kind in (
@@ -577,7 +581,7 @@ class ExtendedCPS(Dataset):
             try:
                 puf_subset = np.array(puf_subset).astype(existing.dtype)
             except (ValueError, TypeError):
-                # Can't cast — pad with zeros/empty to keep lengths aligned
+                # Can't cast — pad with zeros to keep lengths aligned
                 logger.warning(
                     "Padding %s with defaults: cannot cast PUF dtype %s to %s",
                     variable,
@@ -589,8 +593,9 @@ class ExtendedCPS(Dataset):
             new_data[variable][self.time_period] = np.concatenate(
                 [existing, puf_subset]
             )
+            n_appended += 1
 
-        del puf_sim
+        logger.info("Appended PUF values for %d variables", n_appended)
         return new_data
 
     @classmethod

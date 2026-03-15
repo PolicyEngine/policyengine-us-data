@@ -554,16 +554,22 @@ class ExtendedCPS(Dataset):
             existing = new_data[variable][self.time_period]
             n_inject = int(mask.sum())
 
+            # For string/enum vars, use the most common existing value
+            # as default (empty string is not a valid enum value)
+            if existing.dtype.kind in ("S", "U"):
+                default_val = np.full(n_inject, existing[0], dtype=existing.dtype)
+            else:
+                default_val = np.zeros(n_inject, dtype=existing.dtype)
+
             if variable in puf_data:
                 puf_values = puf_data[variable]
                 if hasattr(puf_values, "__array__"):
                     puf_values = np.asarray(puf_values)
             else:
-                puf_values = np.zeros(n_inject, dtype=existing.dtype)
+                puf_values = default_val
 
             if len(puf_values) != len(mask):
-                # Variable has wrong entity length — pad instead
-                puf_values = np.zeros(n_inject, dtype=existing.dtype)
+                puf_values = default_val
 
             puf_subset = (
                 puf_values[mask]
@@ -590,7 +596,12 @@ class ExtendedCPS(Dataset):
                     puf_subset.dtype,
                     existing.dtype,
                 )
-                puf_subset = np.zeros(len(puf_subset), dtype=existing.dtype)
+                if existing.dtype.kind in ("S", "U"):
+                    puf_subset = np.full(
+                        len(puf_subset), existing[0], dtype=existing.dtype
+                    )
+                else:
+                    puf_subset = np.zeros(len(puf_subset), dtype=existing.dtype)
 
             new_data[variable][self.time_period] = np.concatenate(
                 [existing, puf_subset]

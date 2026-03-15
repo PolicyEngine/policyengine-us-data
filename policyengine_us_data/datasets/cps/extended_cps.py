@@ -577,13 +577,14 @@ class ExtendedCPS(Dataset):
             try:
                 puf_subset = np.array(puf_subset).astype(existing.dtype)
             except (ValueError, TypeError):
+                # Can't cast — pad with zeros/empty to keep lengths aligned
                 logger.warning(
-                    "Skipping %s: cannot cast PUF dtype %s to %s",
+                    "Padding %s with defaults: cannot cast PUF dtype %s to %s",
                     variable,
                     puf_subset.dtype,
                     existing.dtype,
                 )
-                continue
+                puf_subset = np.zeros(len(puf_subset), dtype=existing.dtype)
 
             new_data[variable][self.time_period] = np.concatenate(
                 [existing, puf_subset]

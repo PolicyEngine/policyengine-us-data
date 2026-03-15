@@ -549,18 +549,21 @@ class ExtendedCPS(Dataset):
 
             mask = entity_masks[entity]
 
-            # Read from raw PUF arrays if available; pad with zeros
-            # for variables not in PUF (CPS-only variables)
+            # Read from raw PUF arrays if available; pad with
+            # defaults for variables not in PUF (CPS-only variables)
+            existing = new_data[variable][self.time_period]
+            n_inject = int(mask.sum())
+
             if variable in puf_data:
                 puf_values = puf_data[variable]
                 if hasattr(puf_values, "__array__"):
                     puf_values = np.asarray(puf_values)
             else:
-                puf_values = np.zeros(int(mask.sum()))
+                puf_values = np.zeros(n_inject, dtype=existing.dtype)
 
             if len(puf_values) != len(mask):
                 # Variable has wrong entity length — pad instead
-                puf_values = np.zeros(int(mask.sum()))
+                puf_values = np.zeros(n_inject, dtype=existing.dtype)
 
             puf_subset = (
                 puf_values[mask]
@@ -577,7 +580,6 @@ class ExtendedCPS(Dataset):
                 puf_subset = puf_subset + id_offset
 
             # Match dtypes to avoid object arrays that HDF5 can't save
-            existing = new_data[variable][self.time_period]
             try:
                 puf_subset = np.array(puf_subset).astype(existing.dtype)
             except (ValueError, TypeError):

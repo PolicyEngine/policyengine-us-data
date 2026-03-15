@@ -16,6 +16,9 @@ from policyengine_us_data.utils.retirement_limits import (
 
 logger = logging.getLogger(__name__)
 
+# Minimum AGI for PUF records to be injected into the ExtendedCPS
+AGI_INJECTION_THRESHOLD = 1_000_000
+
 # CPS-only variables that should be QRF-imputed for the PUF clone half
 # instead of naively duplicated from the CPS donor. These are
 # income-correlated variables that exist only in the CPS; demographics,
@@ -446,7 +449,139 @@ class ExtendedCPS(Dataset):
 
         new_data = self._rename_imputed_to_inputs(new_data)
         new_data = self._drop_formula_variables(new_data)
+        new_data = self._inject_high_income_puf_records(new_data)
         self.save_dataset(new_data)
+
+    def _inject_high_income_puf_records(self, new_data):
+        """Inject ultra-high-income PUF records into the extended CPS.
+
+        The CPS severely under-represents the top of the income
+        distribution ($5M+ AGI brackets have -95% to -99% calibration
+        errors). This directly appends PUF records with AGI above
+        AGI_INJECTION_THRESHOLD as additional households, giving the
+        reweighter actual high-income observations.
+        """
+        from policyengine_us import Microsimulation
+
+        logger.info("Loading PUF for high-income record injection...")
+        puf_sim = Microsimulation(dataset=self.puf)
+
+        # Identify high-AGI households
+        hh_agi = puf_sim.calculate("adjusted_gross_income", map_to="household").values
+        all_hh_ids = puf_sim.calculate("household_id").values
+        high_mask_hh = hh_agi > AGI_INJECTION_THRESHOLD
+        high_hh_id_set = set(all_hh_ids[high_mask_hh])
+
+        n_high_hh = int(high_mask_hh.sum())
+        if n_high_hh == 0:
+            logger.info("No high-income PUF households found")
+            return new_data
+
+        logger.info(
+            "Injecting %d PUF households with AGI > $%s",
+            n_high_hh,
+            f"{AGI_INJECTION_THRESHOLD:,}",
+        )
+
+        # Load raw PUF arrays for entity mask construction
+        puf_data = puf_sim.dataset.load_dataset()
+
+        # Build entity-level masks
+        person_mask = np.isin(
+            puf_data["person_household_id"],
+            list(high_hh_id_set),
+        )
+        # In PUF, household = tax_unit = spm_unit = family
+        group_mask = np.isin(
+            puf_data["household_id"],
+            list(high_hh_id_set),
+        )
+        # Marital units: find which belong to high-income persons
+        high_marital_ids = set(puf_data["person_marital_unit_id"][person_mask])
+        marital_mask = np.isin(
+            puf_data["marital_unit_id"],
+            list(high_marital_ids),
+        )
+
+        entity_masks = {
+            "person": person_mask,
+            "household": group_mask,
+            "tax_unit": group_mask,
+            "spm_unit": group_mask,
+            "family": group_mask,
+            "marital_unit": marital_mask,
+        }
+
+        logger.info(
+            "High-income record counts: persons=%d, households=%d, marital_units=%d",
+            person_mask.sum(),
+            group_mask.sum(),
+            marital_mask.sum(),
+        )
+
+        # Compute ID offset to avoid collisions with existing data
+        id_offset = 0
+        for key in new_data:
+            if "_id" in key:
+                vals = new_data[key][self.time_period]
+                if vals.dtype.kind in ("f", "i", "u"):
+                    id_offset = max(id_offset, int(vals.max()))
+        id_offset += 1_000_000
+
+        tbs = puf_sim.tax_benefit_system
+
+        # For each variable, extract high-income PUF values and append
+        for variable in list(new_data.keys()):
+            var_meta = tbs.variables.get(variable)
+            if var_meta is None:
+                continue
+
+            entity = var_meta.entity.key
+            if entity not in entity_masks:
+                continue
+
+            mask = entity_masks[entity]
+
+            try:
+                puf_values = puf_sim.calculate(variable).values
+            except Exception as e:
+                logger.warning(
+                    "Could not calculate %s from PUF: %s",
+                    variable,
+                    e,
+                )
+                puf_values = np.zeros(int(mask.sum()))
+
+            if len(puf_values) != len(mask):
+                logger.warning(
+                    "Length mismatch for %s: values=%d, mask=%d",
+                    variable,
+                    len(puf_values),
+                    len(mask),
+                )
+                continue
+
+            puf_subset = puf_values[mask]
+
+            # Offset IDs to avoid collisions
+            if "_id" in variable and puf_subset.dtype.kind in (
+                "f",
+                "i",
+                "u",
+            ):
+                puf_subset = puf_subset + id_offset
+
+            # Match dtypes (filing_status is stored as bytes)
+            existing = new_data[variable][self.time_period]
+            if existing.dtype.kind in ("S", "U"):
+                puf_subset = np.array(puf_subset).astype(existing.dtype)
+
+            new_data[variable][self.time_period] = np.concatenate(
+                [existing, puf_subset]
+            )
+
+        del puf_sim
+        return new_data
 
     @classmethod
     def _rename_imputed_to_inputs(cls, data):

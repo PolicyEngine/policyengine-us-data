@@ -487,20 +487,21 @@ class ExtendedCPS(Dataset):
         puf_data = puf_sim.dataset.load_dataset()
 
         # Build entity-level masks
+        high_hh_id_arr = np.fromiter(high_hh_id_set, dtype=float)
         person_mask = np.isin(
             puf_data["person_household_id"],
-            list(high_hh_id_set),
+            high_hh_id_arr,
         )
         # In PUF, household = tax_unit = spm_unit = family
         group_mask = np.isin(
             puf_data["household_id"],
-            list(high_hh_id_set),
+            high_hh_id_arr,
         )
         # Marital units: find which belong to high-income persons
-        high_marital_ids = set(puf_data["person_marital_unit_id"][person_mask])
+        high_marital_ids = np.unique(puf_data["person_marital_unit_id"][person_mask])
         marital_mask = np.isin(
             puf_data["marital_unit_id"],
-            list(high_marital_ids),
+            high_marital_ids,
         )
 
         entity_masks = {
@@ -522,7 +523,7 @@ class ExtendedCPS(Dataset):
         # Compute ID offset to avoid collisions with existing data
         id_offset = 0
         for key in new_data:
-            if "_id" in key:
+            if key.endswith("_id"):
                 vals = new_data[key][self.time_period]
                 if vals.dtype.kind in ("f", "i", "u"):
                     id_offset = max(id_offset, int(vals.max()))
@@ -544,7 +545,7 @@ class ExtendedCPS(Dataset):
 
             try:
                 puf_values = puf_sim.calculate(variable).values
-            except Exception as e:
+            except (KeyError, ValueError, RuntimeError) as e:
                 logger.warning(
                     "Could not calculate %s from PUF: %s",
                     variable,
@@ -564,7 +565,7 @@ class ExtendedCPS(Dataset):
             puf_subset = puf_values[mask]
 
             # Offset IDs to avoid collisions
-            if "_id" in variable and puf_subset.dtype.kind in (
+            if variable.endswith("_id") and puf_subset.dtype.kind in (
                 "f",
                 "i",
                 "u",

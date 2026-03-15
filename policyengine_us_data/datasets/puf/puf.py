@@ -332,12 +332,12 @@ def impute_aggregate_mars(puf: pd.DataFrame) -> pd.DataFrame:
     if n_agg == 0:
         return puf
 
-    reg = puf[puf.MARS != 0].copy()
+    reg = puf[puf.MARS != 0]
 
     # Use available income variables as predictors for MARS
     predictors = [c for c in MARS_IMPUTATION_PREDICTORS if c in puf.columns]
 
-    # Train on a sample of regular records
+    # Train on a sample of regular records (sample() returns a copy)
     train = reg.sample(n=min(10_000, len(reg)), random_state=42)[
         predictors + ["MARS"]
     ].fillna(0)

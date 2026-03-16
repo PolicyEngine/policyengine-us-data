@@ -321,42 +321,12 @@ def _compute_single_state_group_counties(
                         exc,
                     )
 
-        entity_wf_false = {}
-        if rerandomize_takeup:
-            has_tu_target = any(
-                info["entity"] == "tax_unit"
-                for info in affected_targets.values()
-            )
-            if has_tu_target:
-                n_tu = len(
-                    state_sim.calculate(
-                        "tax_unit_id", map_to="tax_unit"
-                    ).values
-                )
-                state_sim.set_input(
-                    "would_file_taxes_voluntarily",
-                    time_period,
-                    np.zeros(n_tu, dtype=bool),
-                )
-                for var in get_calculated_variables(state_sim):
-                    if var not in ("county", "zip_code"):
-                        state_sim.delete_arrays(var)
-                for tvar, info in affected_targets.items():
-                    if info["entity"] != "tax_unit":
-                        continue
-                    entity_wf_false[tvar] = state_sim.calculate(
-                        tvar,
-                        time_period,
-                        map_to="tax_unit",
-                    ).values.astype(np.float32)
-
         results.append(
             (
                 county_fips,
                 {
                     "hh": hh,
                     "entity": entity_vals,
-                    "entity_wf_false": entity_wf_false,
                 },
             )
         )
@@ -1412,43 +1382,9 @@ class UnifiedMatrixBuilder:
                                     exc,
                                 )
 
-                    entity_wf_false = {}
-                    if rerandomize_takeup:
-                        has_tu_target = any(
-                            info["entity"] == "tax_unit"
-                            for info in affected_targets.values()
-                        )
-                        if has_tu_target:
-                            n_tu = len(
-                                state_sim.calculate(
-                                    "tax_unit_id",
-                                    map_to="tax_unit",
-                                ).values
-                            )
-                            state_sim.set_input(
-                                "would_file_taxes_voluntarily",
-                                self.time_period,
-                                np.zeros(n_tu, dtype=bool),
-                            )
-                            for var in get_calculated_variables(state_sim):
-                                if var not in ("county", "zip_code"):
-                                    state_sim.delete_arrays(var)
-                            for (
-                                tvar,
-                                info,
-                            ) in affected_targets.items():
-                                if info["entity"] != "tax_unit":
-                                    continue
-                                entity_wf_false[tvar] = state_sim.calculate(
-                                    tvar,
-                                    self.time_period,
-                                    map_to="tax_unit",
-                                ).values.astype(np.float32)
-
                     county_values[county_fips] = {
                         "hh": hh,
                         "entity": entity_vals,
-                        "entity_wf_false": entity_wf_false,
                     }
                     county_count += 1
                     if county_count % 500 == 0 or county_count == 1:

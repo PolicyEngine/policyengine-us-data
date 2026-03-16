@@ -15,9 +15,7 @@ class CensusCPS(Dataset):
 
     def generate(self):
         if self._cps_download_url is None:
-            raise ValueError(
-                f"No raw CPS data URL known for year {self.time_period}."
-            )
+            raise ValueError(f"No raw CPS data URL known for year {self.time_period}.")
 
         url = self._cps_download_url
 
@@ -28,9 +26,7 @@ class CensusCPS(Dataset):
             ]
 
         response = requests.get(url, stream=True)
-        total_size_in_bytes = int(
-            response.headers.get("content-length", 200e6)
-        )
+        total_size_in_bytes = int(response.headers.get("content-length", 200e6))
         progress_bar = tqdm(
             total=total_size_in_bytes,
             unit="iB",
@@ -38,9 +34,7 @@ class CensusCPS(Dataset):
             desc="Downloading ASEC",
         )
         if response.status_code == 404:
-            raise FileNotFoundError(
-                "Received a 404 response when fetching the data."
-            )
+            raise FileNotFoundError("Received a 404 response when fetching the data.")
         with BytesIO() as file:
             content_length_actual = 0
             for data in response.iter_content(int(1e6)):
@@ -65,33 +59,23 @@ class CensusCPS(Dataset):
                     file_prefix = "cpspb/asec/prod/data/2019/"
                 else:
                     file_prefix = ""
-                with zipfile.open(
-                    f"{file_prefix}pppub{file_year_code}.csv"
-                ) as f:
+                with zipfile.open(f"{file_prefix}pppub{file_year_code}.csv") as f:
                     storage["person"] = pd.read_csv(
                         f,
-                        usecols=PERSON_COLUMNS
-                        + spm_unit_columns
-                        + TAX_UNIT_COLUMNS,
+                        usecols=PERSON_COLUMNS + spm_unit_columns + TAX_UNIT_COLUMNS,
                     ).fillna(0)
                     person = storage["person"]
-                with zipfile.open(
-                    f"{file_prefix}ffpub{file_year_code}.csv"
-                ) as f:
+                with zipfile.open(f"{file_prefix}ffpub{file_year_code}.csv") as f:
                     person_family_id = person.PH_SEQ * 10 + person.PF_SEQ
                     family = pd.read_csv(f).fillna(0)
                     family_id = family.FH_SEQ * 10 + family.FFPOS
                     family = family[family_id.isin(person_family_id)]
                     storage["family"] = family
-                with zipfile.open(
-                    f"{file_prefix}hhpub{file_year_code}.csv"
-                ) as f:
+                with zipfile.open(f"{file_prefix}hhpub{file_year_code}.csv") as f:
                     person_household_id = person.PH_SEQ
                     household = pd.read_csv(f).fillna(0)
                     household_id = household.H_SEQ
-                    household = household[
-                        household_id.isin(person_household_id)
-                    ]
+                    household = household[household_id.isin(person_household_id)]
                     storage["household"] = household
                 storage["tax_unit"] = self._create_tax_unit_table(person)
                 storage["spm_unit"] = self._create_spm_unit_table(

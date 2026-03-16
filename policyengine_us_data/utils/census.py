@@ -139,9 +139,7 @@ TERRITORY_UCGIDS = {
 
 
 def get_census_docs(year):
-    docs_url = (
-        f"https://api.census.gov/data/{year}/acs/acs1/subject/variables.json"
-    )
+    docs_url = f"https://api.census.gov/data/{year}/acs/acs1/subject/variables.json"
     cache_file = f"census_docs_{year}.json"
     if is_cached(cache_file):
         logger.info(f"Using cached {cache_file}")

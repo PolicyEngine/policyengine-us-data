@@ -24,8 +24,7 @@ assert round(ss_estimate_cost_b) == ss_trustees_cost_b
 ## Taxable Payroll for Social Security
 taxible_estimate_b = (
     sim.calculate("taxable_earnings_for_social_security").sum() / 1e9
-    + sim.calculate("social_security_taxable_self_employment_income").sum()
-    / 1e9
+    + sim.calculate("social_security_taxable_self_employment_income").sum() / 1e9
 )
 
 ### Trustees SingleYearTRTables_TR2025.xlsx, Tab VI.G6 (nominal dollars in billions)
@@ -66,8 +65,7 @@ assert np.allclose(ss_estimate_cost_b, ss_trustees_cost_b, rtol=0.0001)
 ## Taxable Payroll for Social Security
 taxible_estimate_b = (
     sim.calculate("taxable_earnings_for_social_security").sum() / 1e9
-    + sim.calculate("social_security_taxable_self_employment_income").sum()
-    / 1e9
+    + sim.calculate("social_security_taxable_self_employment_income").sum() / 1e9
 )
 
 ### Trustees SingleYearTRTables_TR2025.xlsx, Tab VI.G6 (nominal dollars in billions)
@@ -175,9 +173,9 @@ def create_h6_reform():
         # The swapped rate error is 14x smaller and aligns with tax-cutting intent.
 
         # Tier 1 (Base): HI ONLY (35%)
-        reform_payload[
-            "gov.irs.social_security.taxability.rate.base.benefit_cap"
-        ][period] = 0.35
+        reform_payload["gov.irs.social_security.taxability.rate.base.benefit_cap"][
+            period
+        ] = 0.35
         reform_payload["gov.irs.social_security.taxability.rate.base.excess"][
             period
         ] = 0.35
@@ -186,25 +184,25 @@ def create_h6_reform():
         reform_payload[
             "gov.irs.social_security.taxability.rate.additional.benefit_cap"
         ][period] = 0.85
-        reform_payload[
-            "gov.irs.social_security.taxability.rate.additional.excess"
-        ][period] = 0.85
+        reform_payload["gov.irs.social_security.taxability.rate.additional.excess"][
+            period
+        ] = 0.85
 
         # --- SET THRESHOLDS (MIN/MAX SWAP) ---
         # Always put the smaller number in 'base' and larger in 'adjusted_base'
 
         # Single
-        reform_payload[
-            "gov.irs.social_security.taxability.threshold.base.main.SINGLE"
-        ][period] = min(oasdi_target_single, HI_SINGLE)
+        reform_payload["gov.irs.social_security.taxability.threshold.base.main.SINGLE"][
+            period
+        ] = min(oasdi_target_single, HI_SINGLE)
         reform_payload[
             "gov.irs.social_security.taxability.threshold.adjusted_base.main.SINGLE"
         ][period] = max(oasdi_target_single, HI_SINGLE)
 
         # Joint
-        reform_payload[
-            "gov.irs.social_security.taxability.threshold.base.main.JOINT"
-        ][period] = min(oasdi_target_joint, HI_JOINT)
+        reform_payload["gov.irs.social_security.taxability.threshold.base.main.JOINT"][
+            period
+        ] = min(oasdi_target_joint, HI_JOINT)
         reform_payload[
             "gov.irs.social_security.taxability.threshold.adjusted_base.main.JOINT"
         ][period] = max(oasdi_target_joint, HI_JOINT)
@@ -228,12 +226,12 @@ def create_h6_reform():
 
     # 1. Set Thresholds to "HI Only" mode
     # Base = $34k / $44k
-    reform_payload[
-        "gov.irs.social_security.taxability.threshold.base.main.SINGLE"
-    ][elim_period] = HI_SINGLE
-    reform_payload[
-        "gov.irs.social_security.taxability.threshold.base.main.JOINT"
-    ][elim_period] = HI_JOINT
+    reform_payload["gov.irs.social_security.taxability.threshold.base.main.SINGLE"][
+        elim_period
+    ] = HI_SINGLE
+    reform_payload["gov.irs.social_security.taxability.threshold.base.main.JOINT"][
+        elim_period
+    ] = HI_JOINT
 
     # Adjusted = Infinity (Disable the second tier effectively)
     reform_payload[
@@ -262,12 +260,12 @@ def create_h6_reform():
     ] = 0.35
 
     # Tier 2 (Disabled via threshold, but zero out for safety)
-    reform_payload[
-        "gov.irs.social_security.taxability.rate.additional.benefit_cap"
-    ][elim_period] = 0.35
-    reform_payload[
-        "gov.irs.social_security.taxability.rate.additional.excess"
-    ][elim_period] = 0.35
+    reform_payload["gov.irs.social_security.taxability.rate.additional.benefit_cap"][
+        elim_period
+    ] = 0.35
+    reform_payload["gov.irs.social_security.taxability.rate.additional.excess"][
+        elim_period
+    ] = 0.35
 
     return reform_payload
 
@@ -298,23 +296,17 @@ revenue_impact = reform_revenue - baseline_revenue
 print(f"revenue_impact (B): {revenue_impact / 1e9:.2f}")
 
 # Calculate taxable payroll
-taxable_ss_earnings = baseline.calculate(
-    "taxable_earnings_for_social_security"
-)
+taxable_ss_earnings = baseline.calculate("taxable_earnings_for_social_security")
 taxable_self_employment = baseline.calculate(
     "social_security_taxable_self_employment_income"
 )
-total_taxable_payroll = (
-    taxable_ss_earnings.sum() + taxable_self_employment.sum()
-)
+total_taxable_payroll = taxable_ss_earnings.sum() + taxable_self_employment.sum()
 
 # Calculate SS benefits
 ss_benefits = baseline.calculate("social_security")
 total_ss_benefits = ss_benefits.sum()
 
-est_rev_as_pct_of_taxable_payroll = (
-    100 * revenue_impact / total_taxable_payroll
-)
+est_rev_as_pct_of_taxable_payroll = 100 * revenue_impact / total_taxable_payroll
 
 # From https://www.ssa.gov/oact/solvency/provisions/tables/table_run133.html:
 target_rev_as_pct_of_taxable_payroll = -1.12

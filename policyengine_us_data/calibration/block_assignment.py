@@ -138,7 +138,9 @@ def _load_cbsa_crosswalk() -> Dict[str, str]:
     Returns:
         Dict mapping 5-digit county FIPS to CBSA code (or None if not in CBSA)
     """
-    url = "https://data.nber.org/cbsa-csa-fips-county-crosswalk/2023/cbsa2fipsxw_2023.csv"
+    url = (
+        "https://data.nber.org/cbsa-csa-fips-county-crosswalk/2023/cbsa2fipsxw_2023.csv"
+    )
     try:
         df = pd.read_csv(url, dtype=str)
         # Build 5-digit county FIPS from state + county codes
@@ -270,14 +272,10 @@ def get_all_geography_from_block(block_geoid: str) -> Dict[str, Optional[str]]:
         result = {
             "sldu": row["sldu"] if pd.notna(row["sldu"]) else None,
             "sldl": row["sldl"] if pd.notna(row["sldl"]) else None,
-            "place_fips": (
-                row["place_fips"] if pd.notna(row["place_fips"]) else None
-            ),
+            "place_fips": (row["place_fips"] if pd.notna(row["place_fips"]) else None),
             "vtd": row["vtd"] if pd.notna(row["vtd"]) else None,
             "puma": row["puma"] if pd.notna(row["puma"]) else None,
-            "zcta": (
-                row["zcta"] if has_zcta and pd.notna(row["zcta"]) else None
-            ),
+            "zcta": (row["zcta"] if has_zcta and pd.notna(row["zcta"]) else None),
         }
         return result
     return {
@@ -446,17 +444,11 @@ def assign_geography_for_cd(
         - county_index: int32 indices into County enum (for backwards compat)
     """
     # Assign blocks first
-    block_geoids = assign_blocks_for_cd(
-        cd_geoid, n_households, seed, distributions
-    )
+    block_geoids = assign_blocks_for_cd(cd_geoid, n_households, seed, distributions)
 
     # Derive geography directly from block GEOID structure
-    county_fips = np.array(
-        [get_county_fips_from_block(b) for b in block_geoids]
-    )
-    tract_geoids = np.array(
-        [get_tract_geoid_from_block(b) for b in block_geoids]
-    )
+    county_fips = np.array([get_county_fips_from_block(b) for b in block_geoids])
+    tract_geoids = np.array([get_tract_geoid_from_block(b) for b in block_geoids])
     state_fips = np.array([get_state_fips_from_block(b) for b in block_geoids])
 
     # CBSA lookup via county (may be None for rural areas)
@@ -533,12 +525,8 @@ def derive_geography_from_blocks(
     Returns:
         Dict with same keys as assign_geography_for_cd.
     """
-    county_fips = np.array(
-        [get_county_fips_from_block(b) for b in block_geoids]
-    )
-    tract_geoids = np.array(
-        [get_tract_geoid_from_block(b) for b in block_geoids]
-    )
+    county_fips = np.array([get_county_fips_from_block(b) for b in block_geoids])
+    tract_geoids = np.array([get_tract_geoid_from_block(b) for b in block_geoids])
     state_fips = np.array([get_state_fips_from_block(b) for b in block_geoids])
     cbsa_codes = np.array([get_cbsa_from_county(c) or "" for c in county_fips])
     county_indices = np.array(

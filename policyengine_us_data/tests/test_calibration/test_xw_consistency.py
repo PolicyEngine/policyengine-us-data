@@ -17,9 +17,7 @@ import pytest
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-DATASET_PATH = str(
-    STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
-)
+DATASET_PATH = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
 DB_PATH = str(STORAGE_FOLDER / "calibration" / "policy_data.db")
 DB_URI = f"sqlite:///{DB_PATH}"
 
@@ -101,9 +99,7 @@ def test_xw_matches_stacked_sim():
     for i, cd in enumerate(cds_ordered):
         mask = geography.cd_geoid.astype(str) == cd
         cd_weights[cd] = w[mask].sum()
-    top_cds = sorted(cd_weights, key=cd_weights.get, reverse=True)[
-        :N_CDS_TO_CHECK
-    ]
+    top_cds = sorted(cd_weights, key=cd_weights.get, reverse=True)[:N_CDS_TO_CHECK]
 
     check_vars = ["aca_ptc", "snap"]
     tmpdir = tempfile.mkdtemp()
@@ -129,8 +125,7 @@ def test_xw_matches_stacked_sim():
             stacked_sum = (vals * hh_weight).sum()
 
             cd_row = targets_df[
-                (targets_df["variable"] == var)
-                & (targets_df["geographic_id"] == cd)
+                (targets_df["variable"] == var) & (targets_df["geographic_id"] == cd)
             ]
             if len(cd_row) == 0:
                 continue

@@ -13,6 +13,4 @@ def db_uri():
 
 @pytest.fixture(scope="module")
 def dataset_path():
-    return str(
-        STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
-    )
+    return str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")

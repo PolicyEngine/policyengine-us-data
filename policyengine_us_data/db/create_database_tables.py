@@ -39,9 +39,7 @@ class Stratum(SQLModel, table=True):
         description="Unique identifier for the stratum.",
     )
     definition_hash: str = Field(
-        sa_column_kwargs={
-            "comment": "SHA-256 hash of the stratum's constraints."
-        },
+        sa_column_kwargs={"comment": "SHA-256 hash of the stratum's constraints."},
         max_length=64,
     )
     parent_stratum_id: Optional[int] = Field(
@@ -89,9 +87,7 @@ class StratumConstraint(SQLModel, table=True):
         primary_key=True,
         description="The comparison operator (==, !=, >, >=, <, <=).",
     )
-    value: str = Field(
-        description="The value for the constraint rule (e.g., '25')."
-    )
+    value: str = Field(description="The value for the constraint rule (e.g., '25').")
     notes: Optional[str] = Field(
         default=None, description="Optional notes about the constraint."
     )
@@ -117,9 +113,7 @@ class Target(SQLModel, table=True):
     variable: str = Field(
         description="A variable defined in policyengine-us (e.g., 'income_tax')."
     )
-    period: int = Field(
-        description="The time period for the data, typically a year."
-    )
+    period: int = Field(description="The time period for the data, typically a year.")
     stratum_id: int = Field(foreign_key="strata.stratum_id", index=True)
     reform_id: int = Field(
         default=0,
@@ -156,19 +150,13 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
     Calculate and set the definition_hash before saving a Stratum instance.
     """
     constraints_history = get_history(target, "constraints_rel")
-    if not (
-        constraints_history.has_changes() or target.definition_hash is None
-    ):
+    if not (constraints_history.has_changes() or target.definition_hash is None):
         return
 
     if not target.constraints_rel:  # Handle cases with no constraints
         # Include parent_stratum_id to make hash unique per parent
-        parent_str = (
-            str(target.parent_stratum_id) if target.parent_stratum_id else ""
-        )
-        target.definition_hash = hashlib.sha256(
-            parent_str.encode("utf-8")
-        ).hexdigest()
+        parent_str = str(target.parent_stratum_id) if target.parent_stratum_id else ""
+        target.definition_hash = hashlib.sha256(parent_str.encode("utf-8")).hexdigest()
         return
 
     constraint_strings = [
@@ -178,9 +166,7 @@ def calculate_definition_hash(mapper, connection, target: Stratum):
 
     constraint_strings.sort()
     # Include parent_stratum_id in the hash to ensure uniqueness per parent
-    parent_str = (
-        str(target.parent_stratum_id) if target.parent_stratum_id else ""
-    )
+    parent_str = str(target.parent_stratum_id) if target.parent_stratum_id else ""
     fingerprint_text = parent_str + "\n" + "\n".join(constraint_strings)
     h = hashlib.sha256(fingerprint_text.encode("utf-8"))
     target.definition_hash = h.hexdigest()
@@ -241,10 +227,7 @@ def _validate_geographic_consistency(parent_rows, child_constraints):
                 )
 
     # CD must belong to the parent state.
-    if (
-        "state_fips" in parent_dict
-        and "congressional_district_geoid" in child_dict
-    ):
+    if "state_fips" in parent_dict and "congressional_district_geoid" in child_dict:
         parent_state = int(parent_dict["state_fips"])
         child_cd = int(child_dict["congressional_district_geoid"])
         cd_state = child_cd // 100
@@ -288,8 +271,7 @@ def validate_parent_child_constraints(mapper, connection, target: Stratum):
         return
 
     child_set = {
-        (c.constraint_variable, c.operation, c.value)
-        for c in target.constraints_rel
+        (c.constraint_variable, c.operation, c.value) for c in target.constraints_rel
     }
 
     for var, op, val in parent_rows:

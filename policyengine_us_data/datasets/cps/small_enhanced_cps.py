@@ -35,9 +35,7 @@ def create_small_ecps():
         data[variable] = {}
         for time_period in simulation.get_holder(variable).get_known_periods():
             values = simulation.get_holder(variable).get_array(time_period)
-            if simulation.tax_benefit_system.variables.get(
-                variable
-            ).value_type in (
+            if simulation.tax_benefit_system.variables.get(variable).value_type in (
                 Enum,
                 str,
             ):
@@ -114,8 +112,7 @@ def create_sparse_ecps():
         for time_period in sim.get_holder(variable).get_known_periods():
             values = sim.get_holder(variable).get_array(time_period)
             if (
-                sim.tax_benefit_system.variables.get(variable).value_type
-                in (Enum, str)
+                sim.tax_benefit_system.variables.get(variable).value_type in (Enum, str)
                 and variable != "county_fips"
             ):
                 values = values.decode_to_str().astype("S")
@@ -138,9 +135,7 @@ def create_sparse_ecps():
     ]
     missing = [v for v in critical_vars if v not in data]
     if missing:
-        raise ValueError(
-            f"create_sparse_ecps: missing critical variables: {missing}"
-        )
+        raise ValueError(f"create_sparse_ecps: missing critical variables: {missing}")
     logging.info(f"create_sparse_ecps: data dict has {len(data)} variables")
 
     output_path = STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5"
@@ -155,9 +150,7 @@ def create_sparse_ecps():
         raise ValueError(
             f"create_sparse_ecps: output file only {file_size:,} bytes (expected > 1MB)"
         )
-    logging.info(
-        f"create_sparse_ecps: wrote {file_size / 1e6:.1f}MB to {output_path}"
-    )
+    logging.info(f"create_sparse_ecps: wrote {file_size / 1e6:.1f}MB to {output_path}")
 
 
 if __name__ == "__main__":

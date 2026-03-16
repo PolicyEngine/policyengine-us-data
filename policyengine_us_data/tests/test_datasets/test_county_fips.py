@@ -48,9 +48,7 @@ def mock_upload_to_hf():
 def mock_local_folder():
     """Mock the LOCAL_FOLDER"""
     mock_path = MagicMock()
-    with patch(
-        "policyengine_us_data.geography.county_fips.LOCAL_FOLDER", mock_path
-    ):
+    with patch("policyengine_us_data.geography.county_fips.LOCAL_FOLDER", mock_path):
         yield mock_path
 
 
@@ -179,6 +177,4 @@ def test_huggingface_upload(mock_upload_to_hf, mock_to_csv, mock_requests_get):
     assert call_kwargs["repo_file_path"] == "county_fips_2020.csv.gz"
 
     # Verify that the first parameter is a BytesIO instance
-    assert isinstance(
-        mock_upload_to_hf.call_args[1]["local_file_path"], BytesIO
-    )
+    assert isinstance(mock_upload_to_hf.call_args[1]["local_file_path"], BytesIO)

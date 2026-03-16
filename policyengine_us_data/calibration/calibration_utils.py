@@ -352,9 +352,7 @@ def create_target_groups(
 
         for domain_var, var_name in pairs:
             var_mask = (
-                (targets_df["variable"] == var_name)
-                & level_mask
-                & ~processed_mask
+                (targets_df["variable"] == var_name) & level_mask & ~processed_mask
             )
             if has_domain and domain_var is not None:
                 var_mask &= targets_df["domain_variable"] == domain_var
@@ -380,15 +378,11 @@ def create_target_groups(
             # Format output based on level and count
             if n_targets == 1:
                 value = matching["value"].iloc[0]
-                info_str = (
-                    f"{level_name} {label} (1 target, value={value:,.0f})"
-                )
+                info_str = f"{level_name} {label} (1 target, value={value:,.0f})"
                 print_str = f"  Group {group_id}: {label} = {value:,.0f}"
             else:
                 info_str = f"{level_name} {label} ({n_targets} targets)"
-                print_str = (
-                    f"  Group {group_id}: {label} ({n_targets} targets)"
-                )
+                print_str = f"  Group {group_id}: {label} ({n_targets} targets)"
 
             group_info.append(f"Group {group_id}: {info_str}")
             print(print_str)
@@ -628,9 +622,7 @@ def calculate_spm_thresholds_vectorized(
     for i in range(n_units):
         tenure_str = TENURE_CODE_MAP.get(int(tenure_codes[i]), "renter")
         base = base_thresholds[tenure_str]
-        equiv_scale = spm_equivalence_scale(
-            int(num_adults[i]), int(num_children[i])
-        )
+        equiv_scale = spm_equivalence_scale(int(num_adults[i]), int(num_children[i]))
         thresholds[i] = base * equiv_scale * spm_unit_geoadj[i]
 
     return thresholds

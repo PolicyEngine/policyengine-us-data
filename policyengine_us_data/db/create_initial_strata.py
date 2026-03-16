@@ -45,16 +45,12 @@ def fetch_congressional_districts(year):
     df = df[df["district_number"] >= 0].copy()
 
     # Filter out statewide summary records for multi-district states
-    df["n_districts"] = df.groupby("state_fips")["state_fips"].transform(
-        "count"
-    )
+    df["n_districts"] = df.groupby("state_fips")["state_fips"].transform("count")
     df = df[(df["n_districts"] == 1) | (df["district_number"] > 0)].copy()
     df = df.drop(columns=["n_districts"])
 
     df.loc[df["district_number"] == 0, "district_number"] = 1
-    df["congressional_district_geoid"] = (
-        df["state_fips"] * 100 + df["district_number"]
-    )
+    df["congressional_district_geoid"] = df["state_fips"] * 100 + df["district_number"]
 
     df = df[
         [
@@ -130,9 +126,7 @@ def main():
     # Fetch congressional district data
     cd_df = fetch_congressional_districts(year)
 
-    DATABASE_URL = (
-        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
-    )
+    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
@@ -157,9 +151,7 @@ def main():
         # Create state-level strata
         unique_states = cd_df["state_fips"].unique()
         for state_fips in sorted(unique_states):
-            state_name = STATE_NAMES.get(
-                state_fips, f"State FIPS {state_fips}"
-            )
+            state_name = STATE_NAMES.get(state_fips, f"State FIPS {state_fips}")
             state_stratum = Stratum(
                 parent_stratum_id=us_stratum_id,
                 notes=state_name,

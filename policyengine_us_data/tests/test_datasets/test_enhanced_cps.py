@@ -50,10 +50,10 @@ def test_ecps_replicates_jct_tax_expenditures():
         & (calibration_log["epoch"] == calibration_log["epoch"].max())
     ]
 
-    assert (
-        jct_rows.rel_abs_error.max() < 0.5
-    ), "JCT tax expenditure targets not met (see the calibration log for details). Max relative error: {:.2%}".format(
-        jct_rows.rel_abs_error.max()
+    assert jct_rows.rel_abs_error.max() < 0.5, (
+        "JCT tax expenditure targets not met (see the calibration log for details). Max relative error: {:.2%}".format(
+            jct_rows.rel_abs_error.max()
+        )
     )
 
 
@@ -71,9 +71,7 @@ def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
     }
 
     baseline = Microsimulation(dataset=EnhancedCPS_2024)
-    income_tax_b = baseline.calculate(
-        "income_tax", period=2024, map_to="household"
-    )
+    income_tax_b = baseline.calculate("income_tax", period=2024, map_to="household")
 
     for deduction, target in EXPENDITURE_TARGETS.items():
         # Create reform that neutralizes the deduction
@@ -82,12 +80,8 @@ def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
                 self.neutralize_variable(deduction)
 
         # Run reform simulation
-        reformed = Microsimulation(
-            reform=RepealDeduction, dataset=EnhancedCPS_2024
-        )
-        income_tax_r = reformed.calculate(
-            "income_tax", period=2024, map_to="household"
-        )
+        reformed = Microsimulation(reform=RepealDeduction, dataset=EnhancedCPS_2024)
+        income_tax_r = reformed.calculate("income_tax", period=2024, map_to="household")
 
         # Calculate tax expenditure
         tax_expenditure = (income_tax_r - income_tax_b).sum()
@@ -137,9 +131,9 @@ def test_undocumented_matches_ssn_none():
 
     # 1. Per-person equivalence
     mismatches = np.where(ssn_type_none_mask != undocumented_mask)[0]
-    assert (
-        mismatches.size == 0
-    ), f"{mismatches.size} mismatches between 'NONE' SSN and 'UNDOCUMENTED' status"
+    assert mismatches.size == 0, (
+        f"{mismatches.size} mismatches between 'NONE' SSN and 'UNDOCUMENTED' status"
+    )
 
     # 2. Optional aggregate sanity-check
     count = undocumented_mask.sum()
@@ -164,9 +158,7 @@ def test_aca_calibration():
     # Monthly to yearly
     targets["spending"] = targets["spending"] * 12
     # Adjust to match national target
-    targets["spending"] = targets["spending"] * (
-        98e9 / targets["spending"].sum()
-    )
+    targets["spending"] = targets["spending"] * (98e9 / targets["spending"].sum())
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
     state_code_hh = sim.calculate("state_code", map_to="household").values
@@ -189,9 +181,7 @@ def test_aca_calibration():
         if pct_error > TOLERANCE:
             failed = True
 
-    assert (
-        not failed
-    ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    assert not failed, f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
 
 
 def test_immigration_status_diversity():
@@ -227,19 +217,17 @@ def test_immigration_status_diversity():
     )
 
     # Also check that we have a reasonable percentage of citizens (should be 85-90%)
-    assert (
-        80 < citizen_pct < 95
-    ), f"Citizen percentage ({citizen_pct:.1f}%) outside expected range (80-95%)"
+    assert 80 < citizen_pct < 95, (
+        f"Citizen percentage ({citizen_pct:.1f}%) outside expected range (80-95%)"
+    )
 
     # Check that we have some non-citizens
     non_citizen_pct = 100 - citizen_pct
-    assert (
-        non_citizen_pct > 5
-    ), f"Too few non-citizens ({non_citizen_pct:.1f}%) - expected at least 5%"
-
-    print(
-        f"Immigration status diversity test passed: {citizen_pct:.1f}% citizens"
+    assert non_citizen_pct > 5, (
+        f"Too few non-citizens ({non_citizen_pct:.1f}%) - expected at least 5%"
     )
+
+    print(f"Immigration status diversity test passed: {citizen_pct:.1f}% citizens")
 
 
 def test_medicaid_calibration():
@@ -277,6 +265,4 @@ def test_medicaid_calibration():
         if pct_error > TOLERANCE:
             failed = True
 
-    assert (
-        not failed
-    ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    assert not failed, f"One or more states exceeded tolerance of {TOLERANCE:.0%}."

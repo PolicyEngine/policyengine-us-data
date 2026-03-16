@@ -145,7 +145,9 @@ def main(argv=None):
         icon = (
             "PASS"
             if r["status"] == "PASS"
-            else "FAIL" if r["status"] == "FAIL" else "WARN"
+            else "FAIL"
+            if r["status"] == "FAIL"
+            else "WARN"
         )
         print(f"  [{icon}] {r['check']}: {r['detail']}")
 

@@ -30,9 +30,7 @@ def create_test_fixture():
 
     # Household-level arrays
     household_ids = np.arange(N_HOUSEHOLDS, dtype=np.int32)
-    household_weights = np.random.uniform(500, 3000, N_HOUSEHOLDS).astype(
-        np.float32
-    )
+    household_weights = np.random.uniform(500, 3000, N_HOUSEHOLDS).astype(np.float32)
 
     # Assign households to states (use NC=37 and AK=2 for testing)
     # 40 households in NC, 10 in AK
@@ -102,18 +100,14 @@ def create_test_fixture():
         f["household_id"].create_dataset(TIME_PERIOD, data=household_ids)
 
         f.create_group("household_weight")
-        f["household_weight"].create_dataset(
-            TIME_PERIOD, data=household_weights
-        )
+        f["household_weight"].create_dataset(TIME_PERIOD, data=household_weights)
 
         # Person variables
         f.create_group("person_id")
         f["person_id"].create_dataset(TIME_PERIOD, data=person_ids)
 
         f.create_group("person_household_id")
-        f["person_household_id"].create_dataset(
-            TIME_PERIOD, data=person_household_ids
-        )
+        f["person_household_id"].create_dataset(TIME_PERIOD, data=person_household_ids)
 
         f.create_group("person_weight")
         f["person_weight"].create_dataset(TIME_PERIOD, data=person_weights)
@@ -122,18 +116,14 @@ def create_test_fixture():
         f["age"].create_dataset(TIME_PERIOD, data=ages)
 
         f.create_group("employment_income")
-        f["employment_income"].create_dataset(
-            TIME_PERIOD, data=employment_income
-        )
+        f["employment_income"].create_dataset(TIME_PERIOD, data=employment_income)
 
         # Tax unit
         f.create_group("tax_unit_id")
         f["tax_unit_id"].create_dataset(TIME_PERIOD, data=tax_unit_ids)
 
         f.create_group("person_tax_unit_id")
-        f["person_tax_unit_id"].create_dataset(
-            TIME_PERIOD, data=person_tax_unit_ids
-        )
+        f["person_tax_unit_id"].create_dataset(TIME_PERIOD, data=person_tax_unit_ids)
 
         f.create_group("tax_unit_weight")
         f["tax_unit_weight"].create_dataset(TIME_PERIOD, data=tax_unit_weights)
@@ -143,9 +133,7 @@ def create_test_fixture():
         f["spm_unit_id"].create_dataset(TIME_PERIOD, data=spm_unit_ids)
 
         f.create_group("person_spm_unit_id")
-        f["person_spm_unit_id"].create_dataset(
-            TIME_PERIOD, data=person_spm_unit_ids
-        )
+        f["person_spm_unit_id"].create_dataset(TIME_PERIOD, data=person_spm_unit_ids)
 
         f.create_group("spm_unit_weight")
         f["spm_unit_weight"].create_dataset(TIME_PERIOD, data=spm_unit_weights)
@@ -155,9 +143,7 @@ def create_test_fixture():
         f["family_id"].create_dataset(TIME_PERIOD, data=family_ids)
 
         f.create_group("person_family_id")
-        f["person_family_id"].create_dataset(
-            TIME_PERIOD, data=person_family_ids
-        )
+        f["person_family_id"].create_dataset(TIME_PERIOD, data=person_family_ids)
 
         f.create_group("family_weight")
         f["family_weight"].create_dataset(TIME_PERIOD, data=family_weights)
@@ -172,9 +158,7 @@ def create_test_fixture():
         )
 
         f.create_group("marital_unit_weight")
-        f["marital_unit_weight"].create_dataset(
-            TIME_PERIOD, data=marital_unit_weights
-        )
+        f["marital_unit_weight"].create_dataset(TIME_PERIOD, data=marital_unit_weights)
 
         # Geography (household level)
         f.create_group("state_fips")

@@ -54,14 +54,8 @@ def _make_mock_data(n_persons=20, n_households=5, time_period=2024):
         "person_household_id": {time_period: hh_ids_person},
         "person_tax_unit_id": {time_period: hh_ids_person.copy()},
         "person_spm_unit_id": {time_period: hh_ids_person.copy()},
-        "age": {
-            time_period: rng.integers(18, 80, size=n_persons).astype(
-                np.float32
-            )
-        },
-        "is_male": {
-            time_period: rng.integers(0, 2, size=n_persons).astype(np.float32)
-        },
+        "age": {time_period: rng.integers(18, 80, size=n_persons).astype(np.float32)},
+        "is_male": {time_period: rng.integers(0, 2, size=n_persons).astype(np.float32)},
         "household_weight": {time_period: np.ones(n_households) * 1000},
         "employment_income": {
             time_period: rng.uniform(0, 100_000, n_persons).astype(np.float32)
@@ -71,9 +65,7 @@ def _make_mock_data(n_persons=20, n_households=5, time_period=2024):
         },
     }
     for var in CPS_RETIREMENT_VARIABLES:
-        data[var] = {
-            time_period: rng.uniform(0, 5000, n_persons).astype(np.float32)
-        }
+        data[var] = {time_period: rng.uniform(0, 5000, n_persons).astype(np.float32)}
     return data
 
 
@@ -137,9 +129,9 @@ class TestConstants:
     def test_retirement_vars_not_in_imputed(self):
         """Retirement vars must NOT be in IMPUTED_VARIABLES."""
         for var in CPS_RETIREMENT_VARIABLES:
-            assert (
-                var not in IMPUTED_VARIABLES
-            ), f"{var} should not be in IMPUTED_VARIABLES"
+            assert var not in IMPUTED_VARIABLES, (
+                f"{var} should not be in IMPUTED_VARIABLES"
+            )
 
     def test_retirement_vars_not_in_overridden(self):
         for var in CPS_RETIREMENT_VARIABLES:
@@ -169,14 +161,12 @@ class TestConstants:
     def test_income_predictors_in_imputed_variables(self):
         """All income predictors must be available from PUF QRF."""
         for var in RETIREMENT_INCOME_PREDICTORS:
-            assert (
-                var in IMPUTED_VARIABLES
-            ), f"{var} not in IMPUTED_VARIABLES — won't be in puf_imputations"
+            assert var in IMPUTED_VARIABLES, (
+                f"{var} not in IMPUTED_VARIABLES — won't be in puf_imputations"
+            )
 
     def test_predictors_are_combined_lists(self):
-        expected = (
-            RETIREMENT_DEMOGRAPHIC_PREDICTORS + RETIREMENT_INCOME_PREDICTORS
-        )
+        expected = RETIREMENT_DEMOGRAPHIC_PREDICTORS + RETIREMENT_INCOME_PREDICTORS
         assert RETIREMENT_PREDICTORS == expected
 
 
@@ -268,18 +258,12 @@ class TestImputeRetirementContributions:
         self.puf_imputations = {
             "employment_income": emp,
             "self_employment_income": se,
-            "taxable_interest_income": rng.uniform(0, 5_000, self.n).astype(
-                np.float32
-            ),
+            "taxable_interest_income": rng.uniform(0, 5_000, self.n).astype(np.float32),
             "qualified_dividend_income": rng.uniform(0, 3_000, self.n).astype(
                 np.float32
             ),
-            "taxable_pension_income": rng.uniform(0, 20_000, self.n).astype(
-                np.float32
-            ),
-            "social_security": rng.uniform(0, 15_000, self.n).astype(
-                np.float32
-            ),
+            "taxable_pension_income": rng.uniform(0, 20_000, self.n).astype(np.float32),
+            "social_security": rng.uniform(0, 15_000, self.n).astype(np.float32),
         }
 
         self.cps_df = _make_cps_df(self.n, rng)
@@ -317,10 +301,7 @@ class TestImputeRetirementContributions:
     def _random_preds(self, low, high, seed=99):
         rng = np.random.default_rng(seed)
         return pd.DataFrame(
-            {
-                var: rng.uniform(low, high, self.n)
-                for var in CPS_RETIREMENT_VARIABLES
-            }
+            {var: rng.uniform(low, high, self.n) for var in CPS_RETIREMENT_VARIABLES}
         )
 
     def test_returns_all_retirement_vars(self):
@@ -365,27 +346,23 @@ class TestImputeRetirementContributions:
             "traditional_401k_contributions",
             "roth_401k_contributions",
         ):
-            assert np.all(
-                result[var][zero_wage] == 0
-            ), f"{var} should be 0 when employment_income is 0"
+            assert np.all(result[var][zero_wage] == 0), (
+                f"{var} should be 0 when employment_income is 0"
+            )
 
     def test_se_pension_zero_when_no_se_income(self):
         result = self._call_with_mocks(self._uniform_preds(5_000.0))
         zero_se = self.puf_imputations["self_employment_income"] == 0
         assert zero_se.sum() == 20
-        assert np.all(
-            result["self_employed_pension_contributions"][zero_se] == 0
-        )
+        assert np.all(result["self_employed_pension_contributions"][zero_se] == 0)
 
     def test_catch_up_age_threshold(self):
         """Records age >= 50 get higher caps than younger."""
-        self.cps_df["age"] = np.concatenate(
-            [np.full(25, 30.0), np.full(25, 55.0)]
-        )
+        self.cps_df["age"] = np.concatenate([np.full(25, 30.0), np.full(25, 55.0)])
         # All have positive income
-        self.puf_imputations["employment_income"] = np.full(
-            self.n, 100_000.0
-        ).astype(np.float32)
+        self.puf_imputations["employment_income"] = np.full(self.n, 100_000.0).astype(
+            np.float32
+        )
 
         lim = _get_retirement_limits(self.time_period)
         val = float(lim["401k"]) + 1000  # 24000
@@ -402,9 +379,7 @@ class TestImputeRetirementContributions:
 
     def test_ira_catch_up_threshold(self):
         """IRA catch-up also works for age >= 50."""
-        self.cps_df["age"] = np.concatenate(
-            [np.full(25, 30.0), np.full(25, 55.0)]
-        )
+        self.cps_df["age"] = np.concatenate([np.full(25, 30.0), np.full(25, 55.0)])
         lim = _get_retirement_limits(self.time_period)
         val = float(lim["ira"]) + 500  # 7500
 
@@ -430,9 +405,7 @@ class TestImputeRetirementContributions:
     def test_se_pension_nonzero_for_positive_se(self):
         result = self._call_with_mocks(self._uniform_preds(5_000.0))
         pos_se = self.puf_imputations["self_employment_income"] > 0
-        assert np.all(
-            result["self_employed_pension_contributions"][pos_se] > 0
-        )
+        assert np.all(result["self_employed_pension_contributions"][pos_se] > 0)
 
     def test_se_pension_capped_at_rate_times_income(self):
         """SE pension should not exceed 25% of SE income."""
@@ -458,9 +431,7 @@ class TestImputeRetirementContributions:
 
         # Make a QRF that crashes on fit_predict
         mock_qrf_cls = MagicMock()
-        mock_qrf_cls.return_value.fit_predict.side_effect = RuntimeError(
-            "QRF exploded"
-        )
+        mock_qrf_cls.return_value.fit_predict.side_effect = RuntimeError("QRF exploded")
 
         qrf_mod = sys.modules["microimpute.models.qrf"]
         old_qrf = getattr(qrf_mod, "QRF", None)
@@ -486,9 +457,7 @@ class TestImputeRetirementContributions:
         import sys
 
         mock_sim = MagicMock()
-        mock_sim.calculate_dataframe.side_effect = ValueError(
-            "missing variable"
-        )
+        mock_sim.calculate_dataframe.side_effect = ValueError("missing variable")
 
         qrf_mod = sys.modules["microimpute.models.qrf"]
         old_qrf = getattr(qrf_mod, "QRF", None)
@@ -538,9 +507,7 @@ class TestPufCloneRetirementRouting:
         state_fips = np.array([1, 2, 36, 6, 48])
         n = 20
 
-        fake_retirement = {
-            var: np.full(n, 999.0) for var in CPS_RETIREMENT_VARIABLES
-        }
+        fake_retirement = {var: np.full(n, 999.0) for var in CPS_RETIREMENT_VARIABLES}
 
         with (
             patch(
@@ -581,12 +548,8 @@ class TestPufCloneRetirementRouting:
         state_fips = np.array([1, 2, 36, 6, 48])
         n = 20
 
-        originals = {
-            var: data[var][2024].copy() for var in CPS_RETIREMENT_VARIABLES
-        }
-        fake_retirement = {
-            var: np.zeros(n) for var in CPS_RETIREMENT_VARIABLES
-        }
+        originals = {var: data[var][2024].copy() for var in CPS_RETIREMENT_VARIABLES}
+        fake_retirement = {var: np.zeros(n) for var in CPS_RETIREMENT_VARIABLES}
 
         with (
             patch(
@@ -617,9 +580,7 @@ class TestPufCloneRetirementRouting:
             )
 
         for var in CPS_RETIREMENT_VARIABLES:
-            np.testing.assert_array_equal(
-                result[var][2024][:n], originals[var]
-            )
+            np.testing.assert_array_equal(result[var][2024][:n], originals[var])
 
     def test_puf_half_gets_zero_retirement_for_zero_imputed(self):
         """When imputation returns zeros, PUF half should be zero."""
@@ -627,9 +588,7 @@ class TestPufCloneRetirementRouting:
         state_fips = np.array([1, 2, 36, 6, 48])
         n = 20
 
-        fake_retirement = {
-            var: np.zeros(n) for var in CPS_RETIREMENT_VARIABLES
-        }
+        fake_retirement = {var: np.zeros(n) for var in CPS_RETIREMENT_VARIABLES}
 
         with (
             patch(
@@ -699,6 +658,6 @@ class TestLimitsStructure:
             ours = _get_retirement_limits(year)
             pe = pe_limits(year)
             for key in ["401k", "401k_catch_up", "ira", "ira_catch_up"]:
-                assert (
-                    ours[key] == pe[key]
-                ), f"Year {year} key {key}: {ours[key]} != {pe[key]}"
+                assert ours[key] == pe[key], (
+                    f"Year {year} key {key}: {ours[key]} != {pe[key]}"
+                )

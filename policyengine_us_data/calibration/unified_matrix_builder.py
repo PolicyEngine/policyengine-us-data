@@ -635,11 +635,13 @@ def _process_single_clone(
             ent_hh = entity_hh_idx_map[entity]
             ent_blocks = clone_blocks[ent_hh]
             ent_hh_ids = household_ids[ent_hh]
+            ent_ci = np.full(len(ent_hh), clone_idx, dtype=np.int64)
             draws = compute_block_takeup_for_entities(
                 var_name,
                 precomputed_rates[rate_key],
                 ent_blocks,
                 ent_hh_ids,
+                ent_ci,
             )
             wf_draws[entity] = draws
             if var_name in person_vars:
@@ -706,12 +708,14 @@ def _process_single_clone(
 
             ent_blocks = clone_blocks[ent_hh]
             ent_hh_ids = household_ids[ent_hh]
+            ent_ci = np.full(n_ent, clone_idx, dtype=np.int64)
 
             ent_takeup = compute_block_takeup_for_entities(
                 takeup_var,
                 precomputed_rates[info["rate_key"]],
                 ent_blocks,
                 ent_hh_ids,
+                ent_ci,
             )
 
             ent_values = (ent_eligible * ent_takeup).astype(np.float32)
@@ -2290,11 +2294,13 @@ class UnifiedMatrixBuilder:
                         ent_hh = entity_hh_idx_map[entity]
                         ent_blocks = clone_blocks[ent_hh]
                         ent_hh_ids = household_ids[ent_hh]
+                        ent_ci = np.full(len(ent_hh), clone_idx, dtype=np.int64)
                         draws = compute_block_takeup_for_entities(
                             var_name,
                             precomputed_rates[rate_key],
                             ent_blocks,
                             ent_hh_ids,
+                            ent_ci,
                         )
                         wf_draws[entity] = draws
                         if var_name in person_vars:
@@ -2368,12 +2374,14 @@ class UnifiedMatrixBuilder:
 
                         ent_blocks = clone_blocks[ent_hh]
                         ent_hh_ids = household_ids[ent_hh]
+                        ent_ci = np.full(n_ent, clone_idx, dtype=np.int64)
 
                         ent_takeup = compute_block_takeup_for_entities(
                             takeup_var,
                             precomputed_rates[info["rate_key"]],
                             ent_blocks,
                             ent_hh_ids,
+                            ent_ci,
                         )
 
                         ent_values = (ent_eligible * ent_takeup).astype(np.float32)

@@ -238,7 +238,6 @@ def extract_soi_data() -> pd.DataFrame:
 
 
 def transform_soi_data(raw_df):
-
     TARGETS = [
         dict(code="59661", name="eitc", breakdown=("eitc_child_count", 0)),
         dict(code="59662", name="eitc", breakdown=("eitc_child_count", 1)),

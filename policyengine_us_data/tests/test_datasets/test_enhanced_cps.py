@@ -145,7 +145,6 @@ def test_undocumented_matches_ssn_none():
 
 
 def test_aca_calibration():
-
     import pandas as pd
     from pathlib import Path
     from policyengine_us import Microsimulation
@@ -231,7 +230,6 @@ def test_immigration_status_diversity():
 
 
 def test_medicaid_calibration():
-
     import pandas as pd
     from pathlib import Path
     from policyengine_us import Microsimulation

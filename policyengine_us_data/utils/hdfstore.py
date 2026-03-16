@@ -54,9 +54,7 @@ def split_data_into_entity_dfs(
         cols = {}
         for var_name in entity_vars[entity]:
             periods = data[var_name]
-            tp_key = (
-                time_period if time_period in periods else str(time_period)
-            )
+            tp_key = time_period if time_period in periods else str(time_period)
             if tp_key not in periods:
                 continue
             arr = periods[tp_key]
@@ -69,11 +67,7 @@ def split_data_into_entity_dfs(
                 ref_col = f"person_{ref_entity}_id"
                 if ref_col in data:
                     periods = data[ref_col]
-                    tp_key = (
-                        time_period
-                        if time_period in periods
-                        else str(time_period)
-                    )
+                    tp_key = time_period if time_period in periods else str(time_period)
                     if tp_key in periods:
                         cols[ref_col] = periods[tp_key]
 
@@ -110,9 +104,7 @@ def build_uprating_manifest(
         )
         uprating = ""
         if var_name in system.variables:
-            uprating = (
-                getattr(system.variables[var_name], "uprating", None) or ""
-            )
+            uprating = getattr(system.variables[var_name], "uprating", None) or ""
         records.append(
             {
                 "variable": var_name,
@@ -168,7 +160,7 @@ def save_hdfstore(
             )
 
     for entity_name, df in entity_dfs.items():
-        print(f"  {entity_name}: {len(df):,} rows, " f"{len(df.columns)} cols")
+        print(f"  {entity_name}: {len(df):,} rows, {len(df.columns)} cols")
     print(f"  manifest: {len(manifest_df)} variables")
     print("HDFStore saved successfully!")
 

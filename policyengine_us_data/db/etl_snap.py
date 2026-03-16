@@ -153,7 +153,6 @@ def transform_survey_snap_data(raw_df):
 
 
 def load_administrative_snap_data(df_states, year):
-
     DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 

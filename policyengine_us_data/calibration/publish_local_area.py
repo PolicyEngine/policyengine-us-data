@@ -311,22 +311,6 @@ def build_h5(
     unique_geo = derive_geography_from_blocks(unique_blocks)
     clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
-    # === Calculate weights for all entity levels ===
-    person_weights = np.repeat(clone_weights, persons_per_clone)
-    per_person_wt = clone_weights / np.maximum(persons_per_clone, 1)
-
-    entity_weights = {}
-    for ek in SUB_ENTITIES:
-        n_ents = len(entity_clone_idx[ek])
-        ent_person_counts = np.zeros(n_ents, dtype=np.int32)
-        np.add.at(
-            ent_person_counts,
-            new_person_entity_ids[ek],
-            1,
-        )
-        clone_ids_e = np.repeat(np.arange(n_clones), entities_per_clone[ek])
-        entity_weights[ek] = per_person_wt[clone_ids_e] * ent_person_counts
-
     # === Determine variables to save ===
     vars_to_save = set(sim.input_variables)
     vars_to_save.add("county")
@@ -413,16 +397,12 @@ def build_h5(
         }
 
     # === Override weights ===
+    # Only write household_weight; sub-entity weights (tax_unit_weight,
+    # spm_unit_weight, person_weight, etc.) are formula variables in
+    # policyengine-us that derive from household_weight at runtime.
     data["household_weight"] = {
         time_period: clone_weights.astype(np.float32),
     }
-    data["person_weight"] = {
-        time_period: person_weights.astype(np.float32),
-    }
-    for ek in SUB_ENTITIES:
-        data[f"{ek}_weight"] = {
-            time_period: entity_weights[ek].astype(np.float32),
-        }
 
     # === Override geography ===
     data["state_fips"] = {

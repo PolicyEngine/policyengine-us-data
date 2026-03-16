@@ -511,6 +511,7 @@ def build_h5(
             hh_blocks=active_blocks,
             hh_state_fips=hh_state_fips,
             hh_ids=original_hh_ids,
+            hh_clone_indices=active_geo.astype(np.int64),
             entity_hh_indices=entity_hh_indices,
             entity_counts=entity_counts,
             time_period=time_period,

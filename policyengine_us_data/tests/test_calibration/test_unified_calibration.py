@@ -74,44 +74,61 @@ class TestRerandomizeTakeupSeeding:
 
 class TestBlockSaltedDraws:
     """Verify compute_block_takeup_for_entities produces
-    reproducible, block-dependent draws."""
+    reproducible, clone-dependent draws."""
 
-    def test_same_block_same_results(self):
-        blocks = np.array(["370010001001001"] * 500)
-        d1 = compute_block_takeup_for_entities("takes_up_snap_if_eligible", 0.8, blocks)
-        d2 = compute_block_takeup_for_entities("takes_up_snap_if_eligible", 0.8, blocks)
-        np.testing.assert_array_equal(d1, d2)
-
-    def test_different_blocks_different_results(self):
+    def test_same_inputs_same_results(self):
         n = 500
+        blocks = np.array(["370010001001001"] * n)
+        hh_ids = np.arange(n, dtype=np.int64)
+        ci = np.zeros(n, dtype=np.int64)
         d1 = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible",
-            0.8,
-            np.array(["370010001001001"] * n),
+            "takes_up_snap_if_eligible", 0.8, blocks, hh_ids, ci
         )
         d2 = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible",
-            0.8,
-            np.array(["480010002002002"] * n),
+            "takes_up_snap_if_eligible", 0.8, blocks, hh_ids, ci
+        )
+        np.testing.assert_array_equal(d1, d2)
+
+    def test_different_clone_idx_different_results(self):
+        n = 500
+        blocks = np.array(["370010001001001"] * n)
+        hh_ids = np.arange(n, dtype=np.int64)
+        ci0 = np.zeros(n, dtype=np.int64)
+        ci1 = np.ones(n, dtype=np.int64)
+        d1 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks, hh_ids, ci0
+        )
+        d2 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks, hh_ids, ci1
         )
         assert not np.array_equal(d1, d2)
 
     def test_different_vars_different_results(self):
-        blocks = np.array(["370010001001001"] * 500)
-        d1 = compute_block_takeup_for_entities("takes_up_snap_if_eligible", 0.8, blocks)
-        d2 = compute_block_takeup_for_entities("takes_up_aca_if_eligible", 0.8, blocks)
+        n = 500
+        blocks = np.array(["370010001001001"] * n)
+        hh_ids = np.arange(n, dtype=np.int64)
+        ci = np.zeros(n, dtype=np.int64)
+        d1 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks, hh_ids, ci
+        )
+        d2 = compute_block_takeup_for_entities(
+            "takes_up_aca_if_eligible", 0.8, blocks, hh_ids, ci
+        )
         assert not np.array_equal(d1, d2)
 
-    def test_hh_salt_differs_from_block_only(self):
-        blocks = np.array(["370010001001001"] * 500)
-        hh_ids = np.array([1] * 500)
-        d_block = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks
+    def test_different_hh_ids_different_results(self):
+        n = 500
+        blocks = np.array(["370010001001001"] * n)
+        ci = np.zeros(n, dtype=np.int64)
+        hh_a = np.arange(n, dtype=np.int64)
+        hh_b = np.arange(n, dtype=np.int64) + 1000
+        d1 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks, hh_a, ci
         )
-        d_hh = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks, hh_ids
+        d2 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks, hh_b, ci
         )
-        assert not np.array_equal(d_block, d_hh)
+        assert not np.array_equal(d1, d2)
 
 
 class TestApplyBlockTakeupToArrays:
@@ -126,6 +143,7 @@ class TestApplyBlockTakeupToArrays:
         hh_blocks = np.array(["370010001001001"] * n_hh)
         hh_state_fips = np.array([37] * n_hh, dtype=np.int32)
         hh_ids = np.arange(n_hh, dtype=np.int64)
+        hh_clone_indices = np.zeros(n_hh, dtype=np.int64)
         entity_hh_indices = {
             "person": np.repeat(np.arange(n_hh), persons_per_hh),
             "tax_unit": np.repeat(np.arange(n_hh), tu_per_hh),
@@ -140,6 +158,7 @@ class TestApplyBlockTakeupToArrays:
             hh_blocks,
             hh_state_fips,
             hh_ids,
+            hh_clone_indices,
             entity_hh_indices,
             entity_counts,
         )
@@ -336,38 +355,61 @@ class TestGeographyAssignmentCountyFips:
 
 class TestBlockTakeupSeeding:
     """Verify compute_block_takeup_for_entities is
-    reproducible and block-dependent."""
+    reproducible and clone-dependent."""
 
     def test_reproducible(self):
+        n = 100
         blocks = np.array(["010010001001001"] * 50 + ["020010001001001"] * 50)
-        r1 = compute_block_takeup_for_entities("takes_up_snap_if_eligible", 0.8, blocks)
-        r2 = compute_block_takeup_for_entities("takes_up_snap_if_eligible", 0.8, blocks)
+        hh_ids = np.arange(n, dtype=np.int64)
+        ci = np.zeros(n, dtype=np.int64)
+        r1 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks, hh_ids, ci
+        )
+        r2 = compute_block_takeup_for_entities(
+            "takes_up_snap_if_eligible", 0.8, blocks, hh_ids, ci
+        )
         np.testing.assert_array_equal(r1, r2)
 
-    def test_different_blocks_different_draws(self):
+    def test_different_blocks_different_rates(self):
+        """With state-dependent rates, different blocks yield
+        different takeup because rate thresholds differ."""
         n = 500
-        blocks_a = np.array(["010010001001001"] * n)
-        blocks_b = np.array(["020010001001001"] * n)
+        hh_ids = np.arange(n, dtype=np.int64)
+        ci = np.zeros(n, dtype=np.int64)
+        rate_dict = {"AL": 0.9, "AK": 0.3}
         r_a = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks_a
+            "takes_up_snap_if_eligible",
+            rate_dict,
+            np.array(["010010001001001"] * n),
+            hh_ids,
+            ci,
         )
         r_b = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks_b
+            "takes_up_snap_if_eligible",
+            rate_dict,
+            np.array(["020010001001001"] * n),
+            hh_ids,
+            ci,
         )
         assert not np.array_equal(r_a, r_b)
 
     def test_returns_booleans(self):
-        blocks = np.array(["370010001001001"] * 100)
+        n = 100
+        blocks = np.array(["370010001001001"] * n)
+        hh_ids = np.arange(n, dtype=np.int64)
+        ci = np.zeros(n, dtype=np.int64)
         result = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.8, blocks
+            "takes_up_snap_if_eligible", 0.8, blocks, hh_ids, ci
         )
         assert result.dtype == bool
 
     def test_rate_respected(self):
         n = 10000
         blocks = np.array(["370010001001001"] * n)
+        hh_ids = np.arange(n, dtype=np.int64)
+        ci = np.zeros(n, dtype=np.int64)
         result = compute_block_takeup_for_entities(
-            "takes_up_snap_if_eligible", 0.75, blocks
+            "takes_up_snap_if_eligible", 0.75, blocks, hh_ids, ci
         )
         frac = result.mean()
         assert 0.70 < frac < 0.80
@@ -481,6 +523,7 @@ class TestTakeupDrawConsistency:
         """Both paths must produce identical boolean arrays."""
         var = "takes_up_snap_if_eligible"
         rate = 0.75
+        clone_idx = 5
 
         # 2 blocks, 3 households, variable entity counts per HH
         # HH0 has 2 entities in block A
@@ -497,20 +540,23 @@ class TestTakeupDrawConsistency:
             ]
         )
         hh_ids = np.array([100, 100, 200, 200, 200, 300])
+        ci = np.full(len(blocks), clone_idx, dtype=np.int64)
 
-        # Path 1: compute_block_takeup_for_entities (stacked)
-        stacked = compute_block_takeup_for_entities(var, rate, blocks, hh_ids)
+        # Path 1: compute_block_takeup_for_entities
+        stacked = compute_block_takeup_for_entities(var, rate, blocks, hh_ids, ci)
 
-        # Path 2: reproduce matrix builder inline logic
+        # Path 2: reproduce inline logic with hh_id:clone_idx salt
         n = len(blocks)
         inline_takeup = np.zeros(n, dtype=bool)
-        for blk in np.unique(blocks):
-            bm = blocks == blk
-            for hh_id in np.unique(hh_ids[bm]):
-                hh_mask = bm & (hh_ids == hh_id)
-                rng = seeded_rng(var, salt=f"{blk}:{int(hh_id)}")
-                draws = rng.random(int(hh_mask.sum()))
-                inline_takeup[hh_mask] = draws < rate
+        for hh_id in np.unique(hh_ids):
+            hh_mask = hh_ids == hh_id
+            rng = seeded_rng(var, salt=f"{int(hh_id)}:{clone_idx}")
+            draws = rng.random(int(hh_mask.sum()))
+            # Rate from block's state FIPS
+            blk = blocks[hh_mask][0]
+            sf = int(str(blk)[:2])
+            r = _resolve_rate(rate, sf)
+            inline_takeup[hh_mask] = draws < r
 
         np.testing.assert_array_equal(stacked, inline_takeup)
 
@@ -542,18 +588,22 @@ class TestTakeupDrawConsistency:
         n = 5000
 
         blocks_nc = np.array(["370010001001001"] * n)
-        result_nc = compute_block_takeup_for_entities(var, rate_dict, blocks_nc)
-        # NC rate=0.9, expect ~90%
+        hh_ids_nc = np.arange(n, dtype=np.int64)
+        ci = np.zeros(n, dtype=np.int64)
+        result_nc = compute_block_takeup_for_entities(
+            var, rate_dict, blocks_nc, hh_ids_nc, ci
+        )
         frac_nc = result_nc.mean()
         assert 0.85 < frac_nc < 0.95, f"NC frac={frac_nc}"
 
         blocks_tx = np.array(["480010002002002"] * n)
-        result_tx = compute_block_takeup_for_entities(var, rate_dict, blocks_tx)
-        # TX rate=0.6, expect ~60%
+        hh_ids_tx = np.arange(n, dtype=np.int64)
+        result_tx = compute_block_takeup_for_entities(
+            var, rate_dict, blocks_tx, hh_ids_tx, ci
+        )
         frac_tx = result_tx.mean()
         assert 0.55 < frac_tx < 0.65, f"TX frac={frac_tx}"
 
-        # Verify _resolve_rate actually gives different rates
         assert _resolve_rate(rate_dict, 37) == 0.9
         assert _resolve_rate(rate_dict, 48) == 0.6
 

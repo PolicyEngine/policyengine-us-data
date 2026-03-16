@@ -3,9 +3,9 @@ ONE-OFF VALIDATION SCRIPT
 
 This is a one-off script used to verify that the h5py-to-HDFStore
 conversion logic is correct. It reads an existing h5py dataset file,
-converts it to entity-level Pandas HDFStore using the same splitting/dedup
-logic as stacked_dataset_builder, then compares all variables to verify
-the conversion is lossless.
+converts it to entity-level Pandas HDFStore using the production
+splitting/dedup logic, then compares all variables to verify the
+conversion is lossless.
 
 This script is NOT part of the regular test suite and is not intended to
 be run in CI. It exists to validate the HDFStore serialization logic
@@ -18,21 +18,18 @@ Usage (run directly to avoid policyengine_us_data __init__ imports):
 
 import argparse
 import sys
-import warnings
 
 import h5py
 import numpy as np
 import pandas as pd
 import pytest
 
-ENTITIES = [
-    "person",
-    "household",
-    "tax_unit",
-    "spm_unit",
-    "family",
-    "marital_unit",
-]
+from policyengine_us_data.utils.hdfstore import (
+    ENTITIES,
+    split_data_into_entity_dfs,
+    build_uprating_manifest,
+    save_hdfstore,
+)
 
 
 def _load_system():
@@ -43,8 +40,9 @@ def _load_system():
 
 
 # ---------------------------------------------------------------------------
-# h5py -> HDFStore conversion (self-contained reproduction of the builder
-# logic so we don't need to import stacked_dataset_builder and its heavy deps)
+# h5py reading helpers (test-specific; reads the flat h5py format
+# and wraps it into the nested {var: {period: array}} structure
+# expected by the production HDFStore utilities)
 # ---------------------------------------------------------------------------
 
 
@@ -54,12 +52,9 @@ def _read_h5py_arrays(h5py_path: str):
     The h5py format stores ``variable / period -> array``.  Periods can be
     yearly (``"2024"``), monthly (``"2024-01"``), or ``"ETERNITY"``.
 
-    Some h5py files are fully person-level (all arrays have the same length).
-    Others are already entity-level: group-entity variables have fewer rows
-    than person-level variables.
-
-    Returns ``(arrays, time_period, h5_vars)`` where arrays is a dict of
-    ``{variable_name: numpy_array}``.
+    Returns ``(data, time_period, h5_vars)`` where *data* is a nested dict
+    ``{variable_name: {period_key: numpy_array}}`` matching the format
+    used by the production HDFStore utilities.
     """
     with h5py.File(h5py_path, "r") as f:
         h5_vars = sorted(f.keys())
@@ -78,7 +73,7 @@ def _read_h5py_arrays(h5py_path: str):
             raise ValueError("Could not determine year from h5py file")
 
         time_period = int(year)
-        arrays = {}
+        data = {}
 
         for var in h5_vars:
             subkeys = list(f[var].keys())
@@ -94,103 +89,10 @@ def _read_h5py_arrays(h5py_path: str):
                 arr = np.array(
                     [x.decode() if isinstance(x, bytes) else str(x) for x in arr]
                 )
-            arrays[var] = arr
+            # Wrap in nested dict keyed by the period string
+            data[var] = {period_key: arr}
 
-    return arrays, time_period, h5_vars
-
-
-def _split_into_entity_dfs(arrays, system, vars_to_save):
-    """Build entity-level DataFrames from a dict of variable arrays.
-
-    ``arrays`` maps variable names to numpy arrays.  Arrays may already be
-    at entity-level (different lengths for different entities) or all at
-    person-level.  We group variables by entity, then build one DataFrame
-    per entity using arrays of matching length.
-    """
-    entity_cols = {e: [] for e in ENTITIES}
-
-    for var in sorted(vars_to_save):
-        if var not in arrays:
-            continue
-        if var in system.variables:
-            entity_key = system.variables[var].entity.key
-            entity_cols[entity_key].append(var)
-        else:
-            entity_cols["household"].append(var)
-
-    # Person DataFrame: person vars + entity membership IDs
-    person_vars = entity_cols["person"][:]
-    if "person_id" not in person_vars and "person_id" in arrays:
-        person_vars.insert(0, "person_id")
-    for entity in ENTITIES[1:]:
-        ref_col = f"person_{entity}_id"
-        if ref_col in arrays:
-            person_vars.append(ref_col)
-
-    person_df = pd.DataFrame({v: arrays[v] for v in person_vars if v in arrays})
-    entity_dfs = {"person": person_df}
-
-    # Group entity DataFrames
-    for entity in ENTITIES[1:]:
-        id_col = f"{entity}_id"
-        vars_for_entity = entity_cols[entity][:]
-        if id_col not in vars_for_entity and id_col in arrays:
-            vars_for_entity.insert(0, id_col)
-
-        if not vars_for_entity:
-            continue
-
-        # Check if the arrays are already at entity level (shorter than
-        # person) or at person level (same length as person_id)
-        n_persons = len(arrays.get("person_id", []))
-        sample_len = len(arrays[vars_for_entity[0]])
-
-        df_data = {v: arrays[v] for v in vars_for_entity if v in arrays}
-        df = pd.DataFrame(df_data)
-
-        if sample_len == n_persons and id_col in df.columns:
-            # Person-level: need to deduplicate by entity ID
-            df = df.drop_duplicates(subset=[id_col]).reset_index(drop=True)
-
-        entity_dfs[entity] = df
-
-    return entity_dfs
-
-
-def _build_uprating_manifest(vars_to_save, system):
-    """Build manifest of variable metadata."""
-    records = []
-    for var in sorted(vars_to_save):
-        entity = (
-            system.variables[var].entity.key if var in system.variables else "unknown"
-        )
-        uprating = ""
-        if var in system.variables:
-            uprating = getattr(system.variables[var], "uprating", None) or ""
-        records.append({"variable": var, "entity": entity, "uprating": uprating})
-    return pd.DataFrame(records)
-
-
-def _save_hdfstore(entity_dfs, manifest_df, hdfstore_path, time_period):
-    """Save entity DataFrames and manifest to a Pandas HDFStore file."""
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            category=pd.errors.PerformanceWarning,
-            message=".*PyTables will pickle object types.*",
-        )
-        with pd.HDFStore(hdfstore_path, mode="w") as store:
-            for entity_name, df in entity_dfs.items():
-                # Deduplicate column names (can happen if a var appears
-                # in multiple entity buckets)
-                df = df.loc[:, ~df.columns.duplicated()]
-                for col in df.columns:
-                    if df[col].dtype == object:
-                        df[col] = df[col].astype(str)
-                store.put(entity_name, df, format="table")
-            store.put("_variable_metadata", manifest_df, format="table")
-            store.put("_time_period", pd.Series([time_period]), format="table")
-    return hdfstore_path
+    return data, time_period, h5_vars
 
 
 # ---------------------------------------------------------------------------
@@ -201,22 +103,25 @@ def _save_hdfstore(entity_dfs, manifest_df, hdfstore_path, time_period):
 def h5py_to_hdfstore(h5py_path: str, hdfstore_path: str) -> dict:
     """Convert an h5py variable-centric file to entity-level HDFStore.
 
+    Uses the production HDFStore utilities so this test validates the
+    real code path rather than a local reimplementation.
+
     Returns a summary dict with entity row counts.
     """
     print("Loading policyengine-us system (this takes a minute)...")
     system = _load_system()
 
     print("Reading h5py file...")
-    arrays, time_period, h5_vars = _read_h5py_arrays(h5py_path)
-    n_persons = len(arrays.get("person_id", []))
+    data, time_period, h5_vars = _read_h5py_arrays(h5py_path)
+    n_persons = len(next(iter(data.get("person_id", {}).values()), []))
     print(f"  {len(h5_vars)} variables, {n_persons:,} persons, year={time_period}")
 
     print("Splitting into entity DataFrames...")
-    entity_dfs = _split_into_entity_dfs(arrays, system, h5_vars)
-    manifest_df = _build_uprating_manifest(h5_vars, system)
+    entity_dfs = split_data_into_entity_dfs(data, system, time_period)
+    manifest_df = build_uprating_manifest(data, system)
 
     print(f"Saving HDFStore to {hdfstore_path}...")
-    _save_hdfstore(entity_dfs, manifest_df, hdfstore_path, time_period)
+    save_hdfstore(entity_dfs, manifest_df, hdfstore_path, time_period)
 
     summary = {}
     for entity_name, df in entity_dfs.items():

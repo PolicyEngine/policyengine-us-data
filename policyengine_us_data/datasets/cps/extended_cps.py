@@ -535,16 +535,31 @@ class ExtendedCPS(Dataset):
                     id_offset = max(id_offset, int(vals.max()))
         id_offset += 1_000_000
 
+        # Build a lookup: existing array length → entity, so we can
+        # handle variables not in the tax-benefit system (e.g. raw
+        # dataset variables) by matching their array length.
+        entity_lengths = {}
+        for entity_key, m in entity_masks.items():
+            # Pre-injection length for this entity in the CPS data
+            for key in new_data:
+                arr = new_data[key][self.time_period]
+                if len(arr) not in entity_lengths:
+                    entity_lengths[len(arr)] = entity_key
+
         # For each variable in new_data, read from raw PUF arrays
         # (no calculate() calls — uses stored values directly)
         n_appended = 0
         for variable in list(new_data.keys()):
             var_meta = tbs.variables.get(variable)
-            if var_meta is None:
-                continue
 
-            entity = var_meta.entity.key
-            if entity not in entity_masks:
+            if var_meta is not None:
+                entity = var_meta.entity.key
+            else:
+                # Infer entity from array length
+                arr_len = len(new_data[variable][self.time_period])
+                entity = entity_lengths.get(arr_len)
+
+            if entity is None or entity not in entity_masks:
                 continue
 
             mask = entity_masks[entity]

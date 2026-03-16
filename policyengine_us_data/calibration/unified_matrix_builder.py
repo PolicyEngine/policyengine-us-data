@@ -267,7 +267,7 @@ def _compute_single_state_group_counties(
             for vname, (ent, orig) in original_takeup.items():
                 state_sim.set_input(vname, time_period, orig)
         for var in get_calculated_variables(state_sim):
-            if var != "county":
+            if var not in ("county", "zip_code"):
                 state_sim.delete_arrays(var)
 
         hh = {}
@@ -300,7 +300,7 @@ def _compute_single_state_group_counties(
                     np.ones(n_ent, dtype=bool),
                 )
             for var in get_calculated_variables(state_sim):
-                if var != "county":
+                if var not in ("county", "zip_code"):
                     state_sim.delete_arrays(var)
 
         entity_vals = {}
@@ -339,7 +339,7 @@ def _compute_single_state_group_counties(
                     np.zeros(n_tu, dtype=bool),
                 )
                 for var in get_calculated_variables(state_sim):
-                    if var != "county":
+                    if var not in ("county", "zip_code"):
                         state_sim.delete_arrays(var)
                 for tvar, info in affected_targets.items():
                     if info["entity"] != "tax_unit":
@@ -1333,6 +1333,12 @@ class UnifiedMatrixBuilder:
                             dtype=np.int32,
                         ),
                     )
+                    if county_fips == "06037":
+                        state_sim.set_input(
+                            "zip_code",
+                            self.time_period,
+                            np.full(n_hh, "90001"),
+                        )
                     if rerandomize_takeup:
                         for vname, (
                             ent,
@@ -1344,7 +1350,7 @@ class UnifiedMatrixBuilder:
                                 orig,
                             )
                     for var in get_calculated_variables(state_sim):
-                        if var != "county":
+                        if var not in ("county", "zip_code"):
                             state_sim.delete_arrays(var)
 
                     hh = {}
@@ -1380,7 +1386,7 @@ class UnifiedMatrixBuilder:
                                 np.ones(n_ent, dtype=bool),
                             )
                         for var in get_calculated_variables(state_sim):
-                            if var != "county":
+                            if var not in ("county", "zip_code"):
                                 state_sim.delete_arrays(var)
 
                     entity_vals = {}
@@ -1425,7 +1431,7 @@ class UnifiedMatrixBuilder:
                                 np.zeros(n_tu, dtype=bool),
                             )
                             for var in get_calculated_variables(state_sim):
-                                if var != "county":
+                                if var not in ("county", "zip_code"):
                                     state_sim.delete_arrays(var)
                             for (
                                 tvar,

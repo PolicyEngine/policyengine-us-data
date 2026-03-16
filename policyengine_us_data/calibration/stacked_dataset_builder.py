@@ -105,7 +105,9 @@ if __name__ == "__main__":
         f"{geography.n_records} records"
     )
 
-    print(f"Geography: {geography.n_clones} clones x {geography.n_records} records")
+    print(
+        f"Geography: {geography.n_clones} clones x {geography.n_records} records"
+    )
 
     takeup_filter = [spec["variable"] for spec in SIMPLE_TAKEUP_VARS]
 

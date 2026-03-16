@@ -93,7 +93,9 @@ class CPS(Dataset):
 
         # Store original dtypes before modifying
         original_data: dict = self.load_dataset()
-        original_dtypes = {key: original_data[key].dtype for key in original_data}
+        original_dtypes = {
+            key: original_data[key].dtype for key in original_data
+        }
         sim = Microsimulation(dataset=self)
         sim.subsample(frac=frac)
 
@@ -206,13 +208,18 @@ def add_takeup(self):
     aca_rate = load_take_up_rate("aca", self.time_period)
     medicaid_rates_by_state = load_take_up_rate("medicaid", self.time_period)
     head_start_rate = load_take_up_rate("head_start", self.time_period)
-    early_head_start_rate = load_take_up_rate("early_head_start", self.time_period)
+    early_head_start_rate = load_take_up_rate(
+        "early_head_start", self.time_period
+    )
     ssi_rate = load_take_up_rate("ssi", self.time_period)
 
     # EITC: varies by number of children
     eitc_child_count = baseline.calculate("eitc_child_count").values
     eitc_takeup_rate = np.array(
-        [eitc_rates_by_children.get(min(int(c), 3), 0.85) for c in eitc_child_count]
+        [
+            eitc_rates_by_children.get(min(int(c), 3), 0.85)
+            for c in eitc_child_count
+        ]
     )
     rng = seeded_rng("takes_up_eitc")
     data["takes_up_eitc"] = rng.random(n_tax_units) < eitc_takeup_rate
@@ -231,7 +238,9 @@ def add_takeup(self):
     target_snap_takeup_count = int(snap_rate * n_spm_units)
     remaining_snap_needed = max(0, target_snap_takeup_count - n_snap_reporters)
     snap_non_reporter_rate = (
-        remaining_snap_needed / n_snap_non_reporters if n_snap_non_reporters > 0 else 0
+        remaining_snap_needed / n_snap_non_reporters
+        if n_snap_non_reporters > 0
+        else 0
     )
 
     # Assign: all reporters + adjusted rate for non-reporters
@@ -248,7 +257,9 @@ def add_takeup(self):
     hh_ids = data["household_id"]
     person_hh_ids = data["person_household_id"]
     hh_to_state = dict(zip(hh_ids, state_codes))
-    person_states = np.array([hh_to_state.get(hh_id, "CA") for hh_id in person_hh_ids])
+    person_states = np.array(
+        [hh_to_state.get(hh_id, "CA") for hh_id in person_hh_ids]
+    )
     medicaid_rate_by_person = np.array(
         [medicaid_rates_by_state.get(s, 0.93) for s in person_states]
     )
@@ -259,7 +270,9 @@ def add_takeup(self):
 
     # Head Start
     rng = seeded_rng("takes_up_head_start_if_eligible")
-    data["takes_up_head_start_if_eligible"] = rng.random(n_persons) < head_start_rate
+    data["takes_up_head_start_if_eligible"] = (
+        rng.random(n_persons) < head_start_rate
+    )
 
     # Early Head Start
     rng = seeded_rng("takes_up_early_head_start_if_eligible")
@@ -277,7 +290,9 @@ def add_takeup(self):
     target_ssi_takeup_count = int(ssi_rate * n_persons)
     remaining_ssi_needed = max(0, target_ssi_takeup_count - n_ssi_reporters)
     ssi_non_reporter_rate = (
-        remaining_ssi_needed / n_ssi_non_reporters if n_ssi_non_reporters > 0 else 0
+        remaining_ssi_needed / n_ssi_non_reporters
+        if n_ssi_non_reporters > 0
+        else 0
     )
 
     # Assign: all reporters + adjusted rate for non-reporters
@@ -300,7 +315,9 @@ def add_takeup(self):
     data["would_claim_wic"] = rng.random(n_persons) < wic_takeup_rate_by_person
 
     # WIC nutritional risk — fully resolved
-    wic_risk_rates = load_take_up_rate("wic_nutritional_risk", self.time_period)
+    wic_risk_rates = load_take_up_rate(
+        "wic_nutritional_risk", self.time_period
+    )
     wic_risk_rate_by_person = np.array(
         [wic_risk_rates.get(c, 0) for c in wic_categories]
     )
@@ -347,8 +364,12 @@ def uprate_cps_data(data, from_period, to_period):
     uprating = create_policyengine_uprating_factors_table()
     for variable in uprating.index.unique():
         if variable in data:
-            current_index = uprating[uprating.index == variable][to_period].values[0]
-            start_index = uprating[uprating.index == variable][from_period].values[0]
+            current_index = uprating[uprating.index == variable][
+                to_period
+            ].values[0]
+            start_index = uprating[uprating.index == variable][
+                from_period
+            ].values[0]
             growth = current_index / start_index
             data[variable] = data[variable] * growth
 
@@ -390,7 +411,9 @@ def add_id_variables(
 
     # Marital units
 
-    marital_unit_id = person.PH_SEQ * 1e6 + np.maximum(person.A_LINENO, person.A_SPOUSE)
+    marital_unit_id = person.PH_SEQ * 1e6 + np.maximum(
+        person.A_LINENO, person.A_SPOUSE
+    )
 
     # marital_unit_id is not the household ID, zero padded and followed
     # by the index within household (of each person, or their spouse if
@@ -430,7 +453,9 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     # "Is...blind or does...have serious difficulty seeing even when Wearing
     #  glasses?" 1 -> Yes
     cps["is_blind"] = person.PEDISEYE == 1
-    DISABILITY_FLAGS = ["PEDIS" + i for i in ["DRS", "EAR", "EYE", "OUT", "PHY", "REM"]]
+    DISABILITY_FLAGS = [
+        "PEDIS" + i for i in ["DRS", "EAR", "EYE", "OUT", "PHY", "REM"]
+    ]
     cps["is_disabled"] = (person[DISABILITY_FLAGS] == 1).any(axis=1)
 
     def children_per_parent(col: str) -> pd.DataFrame:
@@ -452,7 +477,9 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
 
     # Aggregate to parent.
     res = (
-        pd.concat([children_per_parent("PEPAR1"), children_per_parent("PEPAR2")])
+        pd.concat(
+            [children_per_parent("PEPAR1"), children_per_parent("PEPAR2")]
+        )
         .groupby(["PH_SEQ", "A_LINENO"])
         .children.sum()
         .reset_index()
@@ -478,7 +505,9 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     add_overtime_occupation(cps, person)
 
 
-def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
+def add_personal_income_variables(
+    cps: h5py.File, person: DataFrame, year: int
+):
     """Add income variables.
 
     Args:
@@ -504,14 +533,16 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     cps["weekly_hours_worked"] = person.HRSWK
     cps["hours_worked_last_week"] = person.A_HRS1
 
-    cps["taxable_interest_income"] = person.INT_VAL * (p["taxable_interest_fraction"])
+    cps["taxable_interest_income"] = person.INT_VAL * (
+        p["taxable_interest_fraction"]
+    )
     cps["tax_exempt_interest_income"] = person.INT_VAL * (
         1 - p["taxable_interest_fraction"]
     )
     cps["self_employment_income"] = person.SEMP_VAL
     cps["farm_income"] = person.FRSE_VAL
-    cps["qualified_dividend_income"] = (
-        person.DIV_VAL * (p["qualified_dividend_fraction"])
+    cps["qualified_dividend_income"] = person.DIV_VAL * (
+        p["qualified_dividend_fraction"]
     )
     cps["non_qualified_dividend_income"] = person.DIV_VAL * (
         1 - p["qualified_dividend_fraction"]
@@ -530,14 +561,18 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     #   8 = Other
     is_retirement = (person.RESNSS1 == 1) | (person.RESNSS2 == 1)
     is_disability = (person.RESNSS1 == 2) | (person.RESNSS2 == 2)
-    is_survivor = np.isin(person.RESNSS1, [3, 5]) | np.isin(person.RESNSS2, [3, 5])
+    is_survivor = np.isin(person.RESNSS1, [3, 5]) | np.isin(
+        person.RESNSS2, [3, 5]
+    )
     is_dependent = np.isin(person.RESNSS1, [4, 6, 7]) | np.isin(
         person.RESNSS2, [4, 6, 7]
     )
 
     # Primary classification: assign full SS_VAL to the highest-
     # priority category when someone has multiple source codes.
-    cps["social_security_retirement"] = np.where(is_retirement, person.SS_VAL, 0)
+    cps["social_security_retirement"] = np.where(
+        is_retirement, person.SS_VAL, 0
+    )
     cps["social_security_disability"] = np.where(
         is_disability & ~is_retirement, person.SS_VAL, 0
     )
@@ -580,7 +615,9 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     # Add pensions and annuities.
     cps_pensions = person.PNSN_VAL + person.ANN_VAL
     # Assume a constant fraction of pension income is taxable.
-    cps["taxable_private_pension_income"] = cps_pensions * p["taxable_pension_fraction"]
+    cps["taxable_private_pension_income"] = (
+        cps_pensions * p["taxable_pension_fraction"]
+    )
     cps["tax_exempt_private_pension_income"] = cps_pensions * (
         1 - p["taxable_pension_fraction"]
     )
@@ -604,11 +641,18 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     for source_with_taxable_fraction in ["401k", "403b", "sep"]:
         cps[f"taxable_{source_with_taxable_fraction}_distributions"] = (
             cps[f"{source_with_taxable_fraction}_distributions"]
-            * p[f"taxable_{source_with_taxable_fraction}_distribution_fraction"]
+            * p[
+                f"taxable_{source_with_taxable_fraction}_distribution_fraction"
+            ]
         )
         cps[f"tax_exempt_{source_with_taxable_fraction}_distributions"] = cps[
             f"{source_with_taxable_fraction}_distributions"
-        ] * (1 - p[f"taxable_{source_with_taxable_fraction}_distribution_fraction"])
+        ] * (
+            1
+            - p[
+                f"taxable_{source_with_taxable_fraction}_distribution_fraction"
+            ]
+        )
         del cps[f"{source_with_taxable_fraction}_distributions"]
 
     # Assume all regular IRA distributions are taxable,
@@ -696,7 +740,9 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     cps["traditional_ira_contributions"] = ira_capped * trad_ira_share
     cps["roth_ira_contributions"] = ira_capped * (1 - trad_ira_share)
     # Allocate capital gains into long-term and short-term based on aggregate split.
-    cps["long_term_capital_gains"] = person.CAP_VAL * (p["long_term_capgain_fraction"])
+    cps["long_term_capital_gains"] = person.CAP_VAL * (
+        p["long_term_capgain_fraction"]
+    )
     cps["short_term_capital_gains"] = person.CAP_VAL * (
         1 - p["long_term_capgain_fraction"]
     )
@@ -724,7 +770,10 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
 
     # Get QBI simulation parameters ---
     yamlfilename = (
-        files("policyengine_us_data") / "datasets" / "puf" / "qbi_assumptions.yaml"
+        files("policyengine_us_data")
+        / "datasets"
+        / "puf"
+        / "qbi_assumptions.yaml"
     )
     with open(yamlfilename, "r", encoding="utf-8") as yamlfile:
         p = yaml.safe_load(yamlfile)
@@ -778,10 +827,14 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
             3: "RENTER",
         }
         cps["spm_unit_tenure_type"] = (
-            spm_unit.SPM_TENMORTSTATUS.map(tenure_map).fillna("RENTER").astype("S")
+            spm_unit.SPM_TENMORTSTATUS.map(tenure_map)
+            .fillna("RENTER")
+            .astype("S")
         )
 
-    cps["reduced_price_school_meals_reported"] = cps["free_school_meals_reported"] * 0
+    cps["reduced_price_school_meals_reported"] = (
+        cps["free_school_meals_reported"] * 0
+    )
 
 
 def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
@@ -915,7 +968,9 @@ def add_ssn_card_type(
             share_to_move = min(share_to_move, 1.0)  # Cap at 100%
         else:
             # Calculate how much to move to reach target (for EAD case)
-            needed_weighted = current_weighted - target_weighted  # Will be negative
+            needed_weighted = (
+                current_weighted - target_weighted
+            )  # Will be negative
             total_weight = np.sum(person_weights[eligible_ids])
             share_to_move = abs(needed_weighted) / total_weight
             share_to_move = min(share_to_move, 1.0)  # Cap at 100%
@@ -1159,7 +1214,9 @@ def add_ssn_card_type(
     )
 
     # CONDITION 10: Government Employees
-    is_government_worker = np.isin(person.PEIO1COW, [1, 2, 3])  # Fed/state/local gov
+    is_government_worker = np.isin(
+        person.PEIO1COW, [1, 2, 3]
+    )  # Fed/state/local gov
     is_military_occupation = person.A_MJOCC == 11  # Military occupation
     is_government_employee = is_government_worker | is_military_occupation
     condition_10_mask = potentially_undocumented & is_government_employee
@@ -1273,8 +1330,12 @@ def add_ssn_card_type(
     undocumented_students_mask = (
         (ssn_card_type == 0) & noncitizens & (person.A_HSCOL == 2)
     )
-    undocumented_workers_count = np.sum(person_weights[undocumented_workers_mask])
-    undocumented_students_count = np.sum(person_weights[undocumented_students_mask])
+    undocumented_workers_count = np.sum(
+        person_weights[undocumented_workers_mask]
+    )
+    undocumented_students_count = np.sum(
+        person_weights[undocumented_students_mask]
+    )
 
     after_conditions_code_0 = np.sum(person_weights[ssn_card_type == 0])
     print(f"After conditions - Code 0 people: {after_conditions_code_0:,.0f}")
@@ -1469,11 +1530,15 @@ def add_ssn_card_type(
                     f"Selected {len(selected_indices)} people from {len(mixed_household_candidates)} candidates in mixed households"
                 )
             else:
-                print("No additional family members selected (target already reached)")
+                print(
+                    "No additional family members selected (target already reached)"
+                )
         else:
             print("No mixed-status households found for family correlation")
     else:
-        print("No additional undocumented people needed - target already reached")
+        print(
+            "No additional undocumented people needed - target already reached"
+        )
 
     # Calculate the weighted impact
     code_0_after = np.sum(person_weights[ssn_card_type == 0])
@@ -1548,7 +1613,9 @@ def add_ssn_card_type(
     age_at_entry = np.maximum(0, person.A_AGE - years_in_us)
 
     # start every non-citizen as LPR so no UNSET survives
-    immigration_status = np.full(len(person), "LEGAL_PERMANENT_RESIDENT", dtype="U32")
+    immigration_status = np.full(
+        len(person), "LEGAL_PERMANENT_RESIDENT", dtype="U32"
+    )
 
     # Set citizens (SSN card type 1) to CITIZEN status
     immigration_status[ssn_card_type == 1] = "CITIZEN"
@@ -1596,7 +1663,9 @@ def add_ssn_card_type(
     immigration_status[recent_refugee_mask] = "REFUGEE"
 
     # 6. Temp non-qualified (Code 2 not caught by DACA rule)
-    mask = (ssn_card_type == 2) & (immigration_status == "LEGAL_PERMANENT_RESIDENT")
+    mask = (ssn_card_type == 2) & (
+        immigration_status == "LEGAL_PERMANENT_RESIDENT"
+    )
     immigration_status[mask] = "TPS"
 
     # Final write (all values now in ImmigrationStatus Enum)
@@ -1612,7 +1681,9 @@ def add_ssn_card_type(
         2: "NON_CITIZEN_VALID_EAD",  # Non-citizens with work/study authorization
         3: "OTHER_NON_CITIZEN",  # Non-citizens with indicators of legal status
     }
-    ssn_card_type_str = pd.Series(ssn_card_type).map(code_to_str).astype("S").values
+    ssn_card_type_str = (
+        pd.Series(ssn_card_type).map(code_to_str).astype("S").values
+    )
     cps["ssn_card_type"] = ssn_card_type_str
 
     # Final population summary
@@ -1819,7 +1890,9 @@ def add_tips(self, cps: h5py.File):
     # Drop temporary columns used only for imputation
     # is_married is person-level here but policyengine-us defines it at Family
     # level, so we must not save it
-    cps = cps.drop(columns=["is_married", "is_under_18", "is_under_6"], errors="ignore")
+    cps = cps.drop(
+        columns=["is_married", "is_under_18", "is_under_6"], errors="ignore"
+    )
 
     self.save_dataset(cps)
 
@@ -1939,7 +2012,9 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         all_persons_data["is_female"] = (raw_person_data.A_SEX == 2).values
 
         # Add marital status (A_MARITL codes: 1,2 = married with spouse present/absent)
-        all_persons_data["is_married"] = raw_person_data.A_MARITL.isin([1, 2]).values
+        all_persons_data["is_married"] = raw_person_data.A_MARITL.isin(
+            [1, 2]
+        ).values
 
         # Define adults as age 18+
         all_persons_data["is_adult"] = all_persons_data["age"] >= 18
@@ -1958,7 +2033,8 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         # Identify couple households (households with exactly 2 married adults)
         married_adults_per_household = (
             all_persons_data[
-                (all_persons_data["is_adult"]) & (all_persons_data["is_married"])
+                (all_persons_data["is_adult"])
+                & (all_persons_data["is_married"])
             ]
             .groupby("person_household_id")
             .size()
@@ -1966,7 +2042,12 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
         couple_households = married_adults_per_household[
             (married_adults_per_household == 2)
-            & (all_persons_data.groupby("person_household_id")["n_adults"].first() == 2)
+            & (
+                all_persons_data.groupby("person_household_id")[
+                    "n_adults"
+                ].first()
+                == 2
+            )
         ].index
 
         all_persons_data["is_couple_household"] = all_persons_data[
@@ -2066,7 +2147,9 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     }
 
     # Apply the mapping to recode the race values
-    cps_data["cps_race"] = np.vectorize(CPS_RACE_MAPPING.get)(cps_data["cps_race"])
+    cps_data["cps_race"] = np.vectorize(CPS_RACE_MAPPING.get)(
+        cps_data["cps_race"]
+    )
 
     lengths = {k: len(v) for k, v in cps_data.items()}
     var_len = cps_data["person_household_id"].shape[0]
@@ -2098,7 +2181,9 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
     # Add is_married variable for household heads based on raw person data
     reference_persons = person_data[mask]
-    receiver_data["is_married"] = reference_persons.A_MARITL.isin([1, 2]).values
+    receiver_data["is_married"] = reference_persons.A_MARITL.isin(
+        [1, 2]
+    ).values
 
     # Impute auto loan balance from the SCF
     from policyengine_us_data.datasets.scf.scf import SCF_2022
@@ -2133,7 +2218,9 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     logging.getLogger("microimpute").setLevel(getattr(logging, log_level))
 
     qrf_model = QRF()
-    donor_data = donor_data.sample(frac=0.5, random_state=42).reset_index(drop=True)
+    donor_data = donor_data.sample(frac=0.5, random_state=42).reset_index(
+        drop=True
+    )
     fitted_model = qrf_model.fit(
         X_train=donor_data,
         predictors=PREDICTORS,

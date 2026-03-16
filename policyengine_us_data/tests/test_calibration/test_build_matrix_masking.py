@@ -15,7 +15,9 @@ from scipy import sparse
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-DATASET_PATH = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
+DATASET_PATH = str(
+    STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
+)
 DB_PATH = str(STORAGE_FOLDER / "calibration" / "policy_data.db")
 DB_URI = f"sqlite:///{DB_PATH}"
 
@@ -42,7 +44,9 @@ def matrix_result():
 
     sim = Microsimulation(dataset=DATASET_PATH)
     n_records = sim.calculate("household_id").values.shape[0]
-    geography = assign_random_geography(n_records, n_clones=N_CLONES, seed=SEED)
+    geography = assign_random_geography(
+        n_records, n_clones=N_CLONES, seed=SEED
+    )
     builder = UnifiedMatrixBuilder(
         db_uri=DB_URI,
         time_period=2024,
@@ -54,7 +58,9 @@ def matrix_result():
         target_filter={"domain_variables": ["snap", "medicaid"]},
     )
     X_csc = X_sparse.tocsc()
-    national_rows = targets_df[targets_df["geo_level"] == "national"].index.values
+    national_rows = targets_df[
+        targets_df["geo_level"] == "national"
+    ].index.values
     district_targets = targets_df[targets_df["geo_level"] == "district"]
     record_idx = None
     for ri in range(n_records):
@@ -180,7 +186,11 @@ class TestDistrictMasking:
         vals_0 = X_csc[:, col_0].toarray().ravel()
 
         same_state_other_cd = district_targets[
-            (district_targets["geographic_id"].apply(lambda g: g.startswith(state_0)))
+            (
+                district_targets["geographic_id"].apply(
+                    lambda g: g.startswith(state_0)
+                )
+            )
             & (district_targets["geographic_id"] != cd_0)
         ]
 
@@ -210,7 +220,9 @@ class TestDistrictMasking:
         X_csc = X.tocsc()
         vals_0 = X_csc[:, col_0].toarray().ravel()
 
-        any_nonzero = any(vals_0[row.name] != 0 for _, row in own_cd_targets.iterrows())
-        assert any_nonzero, (
-            f"Clone 0 should have at least one non-zero entry for its own CD {cd_0}"
+        any_nonzero = any(
+            vals_0[row.name] != 0 for _, row in own_cd_targets.iterrows()
         )
+        assert (
+            any_nonzero
+        ), f"Clone 0 should have at least one non-zero entry for its own CD {cd_0}"

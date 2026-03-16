@@ -101,7 +101,9 @@ def analyze_high_income_taxpayers():
     for threshold in thresholds:
         count = (weights[agi >= threshold]).sum()
         pct_returns = count / weights.sum() * 100
-        total_agi = (agi[agi >= threshold] * weights[agi >= threshold]).sum() / 1e9
+        total_agi = (
+            agi[agi >= threshold] * weights[agi >= threshold]
+        ).sum() / 1e9
 
         results.append(
             {
@@ -133,7 +135,9 @@ def validate_state_revenues():
 
             results.append({"state_code": state, "revenue_billions": total})
 
-    return pd.DataFrame(results).sort_values("revenue_billions", ascending=False)
+    return pd.DataFrame(results).sort_values(
+        "revenue_billions", ascending=False
+    )
 
 
 def generate_validation_report():

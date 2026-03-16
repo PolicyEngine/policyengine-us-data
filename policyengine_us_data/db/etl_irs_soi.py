@@ -104,7 +104,9 @@ def make_records(
                 f"WARNING: A59664 values appear to be in thousands (max={max_value:,.0f})"
             )
             print("The IRS may have fixed their data inconsistency.")
-            print("Please verify and remove the special case handling if confirmed.")
+            print(
+                "Please verify and remove the special case handling if confirmed."
+            )
             # Don't apply the fix - data appears to already be in thousands
         else:
             # Convert from dollars to thousands to match other columns
@@ -160,7 +162,9 @@ def convert_district_data(
     """Transforms data from pre- to post- 2020 census districts"""
     df = input_df.copy()
     old_districts_df = df[df["ucgid_str"].str.startswith("5001800US")].copy()
-    old_districts_df = old_districts_df.sort_values("ucgid_str").reset_index(drop=True)
+    old_districts_df = old_districts_df.sort_values("ucgid_str").reset_index(
+        drop=True
+    )
     old_values = old_districts_df["target_value"].to_numpy()
     new_values = mapping_matrix.T @ old_values
 
@@ -285,15 +289,19 @@ def transform_soi_data(raw_df):
     # State -------------------
     # You've got agi_stub == 0 in here, which you want to use any time you don't want to
     # divide data by AGI classes (i.e., agi_stub)
-    state_df = raw_df.copy().loc[(raw_df.STATE != "US") & (raw_df.CONG_DISTRICT == 0)]
-    state_df["ucgid_str"] = "0400000US" + state_df["STATEFIPS"].astype(str).str.zfill(2)
+    state_df = raw_df.copy().loc[
+        (raw_df.STATE != "US") & (raw_df.CONG_DISTRICT == 0)
+    ]
+    state_df["ucgid_str"] = "0400000US" + state_df["STATEFIPS"].astype(
+        str
+    ).str.zfill(2)
 
     # District ------------------
     district_df = raw_df.copy().loc[(raw_df.CONG_DISTRICT > 0)]
 
-    max_cong_district_by_state = raw_df.groupby("STATE")["CONG_DISTRICT"].transform(
-        "max"
-    )
+    max_cong_district_by_state = raw_df.groupby("STATE")[
+        "CONG_DISTRICT"
+    ].transform("max")
     district_df = raw_df.copy().loc[
         (raw_df["CONG_DISTRICT"] > 0) | (max_cong_district_by_state == 0)
     ]
@@ -362,7 +370,9 @@ def transform_soi_data(raw_df):
     # Pre- to Post- 2020 Census redisticting
     mapping = get_district_mapping()
     converted = [
-        convert_district_data(r, mapping["mapping_matrix"], mapping["new_codes"])
+        convert_district_data(
+            r, mapping["mapping_matrix"], mapping["new_codes"]
+        )
         for r in records
     ]
 
@@ -372,7 +382,9 @@ def transform_soi_data(raw_df):
 def load_soi_data(long_dfs, year):
     """Load a list of databases into the db, critically dependent on order"""
 
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    DATABASE_URL = (
+        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    )
     engine = create_engine(DATABASE_URL)
 
     session = Session(engine)
@@ -446,7 +458,9 @@ def load_soi_data(long_dfs, year):
         filer_strata["state"][state_fips] = state_filer_stratum.stratum_id
 
     # District filer strata
-    for district_geoid, district_geo_stratum_id in geo_strata["district"].items():
+    for district_geoid, district_geo_stratum_id in geo_strata[
+        "district"
+    ].items():
         # Check if district filer stratum exists
         district_filer_stratum = (
             session.query(Stratum)
@@ -478,7 +492,9 @@ def load_soi_data(long_dfs, year):
             session.add(district_filer_stratum)
             session.flush()
 
-        filer_strata["district"][district_geoid] = district_filer_stratum.stratum_id
+        filer_strata["district"][
+            district_geoid
+        ] = district_filer_stratum.stratum_id
 
     session.commit()
 
@@ -509,7 +525,9 @@ def load_soi_data(long_dfs, year):
                     )
                 ]
             elif geo_info["type"] == "state":
-                parent_stratum_id = filer_strata["state"][geo_info["state_fips"]]
+                parent_stratum_id = filer_strata["state"][
+                    geo_info["state_fips"]
+                ]
                 note = f"State FIPS {geo_info['state_fips']} EITC received with {n_children} children (filers)"
                 constraints = [
                     StratumConstraint(
@@ -618,7 +636,9 @@ def load_soi_data(long_dfs, year):
 
             # Store lookup for later use
             if geo_info["type"] == "national":
-                eitc_stratum_lookup["national"][n_children] = new_stratum.stratum_id
+                eitc_stratum_lookup["national"][
+                    n_children
+                ] = new_stratum.stratum_id
             elif geo_info["type"] == "state":
                 key = (geo_info["state_fips"], n_children)
                 eitc_stratum_lookup["state"][key] = new_stratum.stratum_id
@@ -632,7 +652,8 @@ def load_soi_data(long_dfs, year):
     first_agi_index = [
         i
         for i in range(len(long_dfs))
-        if long_dfs[i][["target_variable"]].values[0] == "adjusted_gross_income"
+        if long_dfs[i][["target_variable"]].values[0]
+        == "adjusted_gross_income"
         and long_dfs[i][["breakdown_variable"]].values[0] == "one"
     ][0]
     for j in range(8, first_agi_index, 2):
@@ -655,13 +676,17 @@ def load_soi_data(long_dfs, year):
                 parent_stratum_id = filer_strata["national"]
                 geo_description = "National"
             elif geo_info["type"] == "state":
-                parent_stratum_id = filer_strata["state"][geo_info["state_fips"]]
+                parent_stratum_id = filer_strata["state"][
+                    geo_info["state_fips"]
+                ]
                 geo_description = f"State {geo_info['state_fips']}"
             elif geo_info["type"] == "district":
                 parent_stratum_id = filer_strata["district"][
                     geo_info["congressional_district_geoid"]
                 ]
-                geo_description = f"CD {geo_info['congressional_district_geoid']}"
+                geo_description = (
+                    f"CD {geo_info['congressional_district_geoid']}"
+                )
 
             # Create child stratum with constraint for this IRS variable
             # Note: This stratum will have the constraint that amount_variable > 0
@@ -716,7 +741,9 @@ def load_soi_data(long_dfs, year):
                         StratumConstraint(
                             constraint_variable="congressional_district_geoid",
                             operation="==",
-                            value=str(geo_info["congressional_district_geoid"]),
+                            value=str(
+                                geo_info["congressional_district_geoid"]
+                            ),
                         )
                     )
 
@@ -778,7 +805,9 @@ def load_soi_data(long_dfs, year):
         elif geo_info["type"] == "district":
             stratum = session.get(
                 Stratum,
-                filer_strata["district"][geo_info["congressional_district_geoid"]],
+                filer_strata["district"][
+                    geo_info["congressional_district_geoid"]
+                ],
             )
 
         # Check if target already exists
@@ -793,7 +822,9 @@ def load_soi_data(long_dfs, year):
         )
 
         if existing_target:
-            existing_target.value = agi_values.iloc[i][["target_value"]].values[0]
+            existing_target.value = agi_values.iloc[i][
+                ["target_value"]
+            ].values[0]
         else:
             stratum.targets_rel.append(
                 Target(
@@ -870,7 +901,9 @@ def load_soi_data(long_dfs, year):
             person_count = agi_df.iloc[i][["target_value"]].values[0]
 
             if geo_info["type"] == "state":
-                parent_stratum_id = filer_strata["state"][geo_info["state_fips"]]
+                parent_stratum_id = filer_strata["state"][
+                    geo_info["state_fips"]
+                ]
                 note = f"State FIPS {geo_info['state_fips']} filers, AGI >= {agi_income_lower}, AGI < {agi_income_upper}"
                 constraints = [
                     StratumConstraint(
@@ -967,9 +1000,9 @@ def load_soi_data(long_dfs, year):
             session.flush()
 
             if geo_info["type"] == "state":
-                agi_stratum_lookup["state"][geo_info["state_fips"]] = (
-                    new_stratum.stratum_id
-                )
+                agi_stratum_lookup["state"][
+                    geo_info["state_fips"]
+                ] = new_stratum.stratum_id
             elif geo_info["type"] == "district":
                 agi_stratum_lookup["district"][
                     geo_info["congressional_district_geoid"]

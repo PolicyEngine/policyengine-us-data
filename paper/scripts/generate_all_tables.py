@@ -33,7 +33,9 @@ def create_latex_table(df, caption, label, float_format=None):
 
     # Format the dataframe as LaTeX
     if float_format:
-        table_body = df.to_latex(index=False, escape=False, float_format=float_format)
+        table_body = df.to_latex(
+            index=False, escape=False, float_format=float_format
+        )
     else:
         table_body = df.to_latex(index=False, escape=False)
 
@@ -42,7 +44,9 @@ def create_latex_table(df, caption, label, float_format=None):
     tabular_start = next(
         i for i, line in enumerate(lines) if "\\begin{tabular}" in line
     )
-    tabular_end = next(i for i, line in enumerate(lines) if "\\end{tabular}" in line)
+    tabular_end = next(
+        i for i, line in enumerate(lines) if "\\end{tabular}" in line
+    )
 
     # Indent the tabular content
     for i in range(tabular_start, tabular_end + 1):

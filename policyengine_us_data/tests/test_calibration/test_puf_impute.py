@@ -150,7 +150,9 @@ class TestStratifiedSubsample:
                 rng.uniform(500_000, 5_000_000, size=250),
             ]
         )
-        idx = _stratified_subsample_index(income, target_n=10_000, top_pct=99.5)
+        idx = _stratified_subsample_index(
+            income, target_n=10_000, top_pct=99.5
+        )
         assert len(idx) == 10_000
 
     def test_preserves_top_earners(self):
@@ -164,7 +166,9 @@ class TestStratifiedSubsample:
         threshold = np.percentile(income, 99.5)
         n_top = (income >= threshold).sum()
 
-        idx = _stratified_subsample_index(income, target_n=10_000, top_pct=99.5)
+        idx = _stratified_subsample_index(
+            income, target_n=10_000, top_pct=99.5
+        )
         selected_income = income[idx]
         n_top_selected = (selected_income >= threshold).sum()
         assert n_top_selected == n_top

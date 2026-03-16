@@ -101,12 +101,12 @@ def test_liquid_assets_distribution():
     MEDIAN_MIN = 3_000
     MEDIAN_MAX = 20_000
 
-    assert weighted_median > MEDIAN_MIN, (
-        f"Median liquid assets ${weighted_median:,.0f} below minimum ${MEDIAN_MIN:,}"
-    )
-    assert weighted_median < MEDIAN_MAX, (
-        f"Median liquid assets ${weighted_median:,.0f} above maximum ${MEDIAN_MAX:,}"
-    )
+    assert (
+        weighted_median > MEDIAN_MIN
+    ), f"Median liquid assets ${weighted_median:,.0f} below minimum ${MEDIAN_MIN:,}"
+    assert (
+        weighted_median < MEDIAN_MAX
+    ), f"Median liquid assets ${weighted_median:,.0f} above maximum ${MEDIAN_MAX:,}"
 
 
 def test_asset_categories_exist():
@@ -127,7 +127,9 @@ def test_asset_categories_exist():
     assert bonds >= 0, "Bond assets should be non-negative"
 
     # Bank accounts typically largest category of liquid assets
-    assert bank > stocks * 0.3, "Bank accounts should be substantial relative to stocks"
+    assert (
+        bank > stocks * 0.3
+    ), "Bank accounts should be substantial relative to stocks"
 
 
 def test_low_asset_households():
@@ -153,9 +155,9 @@ def test_low_asset_households():
     MIN_PCT = 0.10
     MAX_PCT = 0.70
 
-    assert below_2k > MIN_PCT, (
-        f"Only {below_2k:.1%} have <$2k liquid assets, expected at least {MIN_PCT:.0%}"
-    )
-    assert below_2k < MAX_PCT, (
-        f"{below_2k:.1%} have <$2k liquid assets, expected at most {MAX_PCT:.0%}"
-    )
+    assert (
+        below_2k > MIN_PCT
+    ), f"Only {below_2k:.1%} have <$2k liquid assets, expected at least {MIN_PCT:.0%}"
+    assert (
+        below_2k < MAX_PCT
+    ), f"{below_2k:.1%} have <$2k liquid assets, expected at most {MAX_PCT:.0%}"

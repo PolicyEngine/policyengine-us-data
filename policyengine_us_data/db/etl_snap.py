@@ -154,7 +154,9 @@ def transform_survey_snap_data(raw_df):
 
 def load_administrative_snap_data(df_states, year):
 
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    DATABASE_URL = (
+        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    )
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:
@@ -242,7 +244,9 @@ def load_survey_snap_data(survey_df, year, snap_stratum_lookup):
     load_administrative_snap_data, so we don't recreate them.
     """
 
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    DATABASE_URL = (
+        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    )
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:

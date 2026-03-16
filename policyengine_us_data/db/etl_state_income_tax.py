@@ -320,7 +320,11 @@ def main():
     # Print summary
     total_collections = transformed_df["income_tax_collections"].sum()
     states_with_tax = len(
-        [s for s in transformed_df["state_abbrev"] if s not in NO_INCOME_TAX_STATES]
+        [
+            s
+            for s in transformed_df["state_abbrev"]
+            if s not in NO_INCOME_TAX_STATES
+        ]
     )
 
     logger.info(
@@ -333,7 +337,9 @@ def main():
 
     # Print Ohio specifically (for the issue reference)
     ohio_row = transformed_df[transformed_df["state_abbrev"] == "OH"].iloc[0]
-    logger.info(f"  Ohio (OH): ${ohio_row['income_tax_collections'] / 1e9:.2f}B")
+    logger.info(
+        f"  Ohio (OH): ${ohio_row['income_tax_collections'] / 1e9:.2f}B"
+    )
 
 
 if __name__ == "__main__":

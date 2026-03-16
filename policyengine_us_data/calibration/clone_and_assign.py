@@ -110,7 +110,9 @@ def assign_random_geography(
             n_bad = collisions.sum()
             if n_bad == 0:
                 break
-            clone_indices[collisions] = rng.choice(len(blocks), size=n_bad, p=probs)
+            clone_indices[collisions] = rng.choice(
+                len(blocks), size=n_bad, p=probs
+            )
             clone_cds = cds[clone_indices]
             collisions = np.zeros(n_records, dtype=bool)
             for prev in range(clone_idx):

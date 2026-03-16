@@ -214,7 +214,9 @@ def run_sanity_checks(
                             {
                                 "check": "per_hh_employment_income",
                                 "status": "WARN",
-                                "detail": (f"${per_hh:,.0f}/hh (expected $10K-$200K)"),
+                                "detail": (
+                                    f"${per_hh:,.0f}/hh (expected $10K-$200K)"
+                                ),
                             }
                         )
                     else:

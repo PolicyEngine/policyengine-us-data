@@ -65,6 +65,8 @@ def load_take_up_rate(variable_name: str, year: int = 2018):
             break
 
     if applicable_value is None:
-        raise ValueError(f"No take-up rate found for {variable_name} in {year}")
+        raise ValueError(
+            f"No take-up rate found for {variable_name} in {year}"
+        )
 
     return applicable_value

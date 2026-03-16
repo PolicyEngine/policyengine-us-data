@@ -130,7 +130,9 @@ def _insert_aca_ptc_data(engine):
         ]
         for tid, sid, var, val, period in targets:
             conn.execute(
-                text("INSERT INTO targets VALUES (:tid, :sid, :var, :val, :period, 1)"),
+                text(
+                    "INSERT INTO targets VALUES (:tid, :sid, :var, :val, :period, 1)"
+                ),
                 {
                     "tid": tid,
                     "sid": sid,
@@ -189,7 +191,9 @@ class TestQueryTargets(unittest.TestCase):
         df = b._query_targets({"domain_variables": ["aca_ptc"]})
         national = df[df["geo_level"] == "national"]
         self.assertTrue((national["geographic_id"] == "US").all())
-        state_ca = df[(df["geo_level"] == "state") & (df["geographic_id"] == "6")]
+        state_ca = df[
+            (df["geo_level"] == "state") & (df["geographic_id"] == "6")
+        ]
         self.assertGreater(len(state_ca), 0)
 
 
@@ -221,9 +225,9 @@ class TestHierarchicalUprating(unittest.TestCase):
         }
         df["original_value"] = df["value"].copy()
         df["uprating_factor"] = df.apply(
-            lambda row: b._get_uprating_info(row["variable"], row["period"], factors)[
-                0
-            ],
+            lambda row: b._get_uprating_info(
+                row["variable"], row["period"], factors
+            )[0],
             axis=1,
         )
         df["value"] = df["original_value"] * df["uprating_factor"]
@@ -248,7 +252,9 @@ class TestHierarchicalUprating(unittest.TestCase):
                 & (result["geo_level"] == "district")
                 & (
                     result["geographic_id"].apply(
-                        lambda g, s=sf: int(g) // 100 == s if g.isdigit() else False
+                        lambda g, s=sf: (
+                            int(g) // 100 == s if g.isdigit() else False
+                        )
                     )
                 )
             ]
@@ -282,7 +288,8 @@ class TestHierarchicalUprating(unittest.TestCase):
         b, df, factors = self._get_targets_with_uprating(cpi_factor=1.15)
         result = b._apply_hierarchical_uprating(df, ["aca_ptc"], factors)
         cd_aca = result[
-            (result["variable"] == "aca_ptc") & (result["geo_level"] == "district")
+            (result["variable"] == "aca_ptc")
+            & (result["geo_level"] == "district")
         ]
         for _, row in cd_aca.iterrows():
             self.assertAlmostEqual(row["hif"], 1.0, places=6)
@@ -554,14 +561,18 @@ class TestBuildStateValues(unittest.TestCase):
         )
 
         # First sim should get state 37
-        fips_calls_0 = [c for c in sims[0].set_input_calls if c[0] == "state_fips"]
+        fips_calls_0 = [
+            c for c in sims[0].set_input_calls if c[0] == "state_fips"
+        ]
         assert len(fips_calls_0) == 1
         np.testing.assert_array_equal(
             fips_calls_0[0][2], np.full(4, 37, dtype=np.int32)
         )
 
         # Second sim should get state 48
-        fips_calls_1 = [c for c in sims[1].set_input_calls if c[0] == "state_fips"]
+        fips_calls_1 = [
+            c for c in sims[1].set_input_calls if c[0] == "state_fips"
+        ]
         assert len(fips_calls_1) == 1
         np.testing.assert_array_equal(
             fips_calls_1[0][2], np.full(4, 48, dtype=np.int32)
@@ -602,9 +613,9 @@ class TestBuildStateValues(unittest.TestCase):
                 assert values.all(), f"{var} not forced True"
                 set_true_vars.add(var)
 
-        assert takeup_var_names == set_true_vars, (
-            f"Missing forced-true vars: {takeup_var_names - set_true_vars}"
-        )
+        assert (
+            takeup_var_names == set_true_vars
+        ), f"Missing forced-true vars: {takeup_var_names - set_true_vars}"
 
         # Entity-level calculation happens for affected target
         entity_calcs = [
@@ -727,7 +738,9 @@ class TestBuildCountyValues(unittest.TestCase):
         return_value=["var_a"],
     )
     @patch("policyengine_us.Microsimulation")
-    def test_sim_reuse_within_state(self, mock_msim_cls, mock_gcv, mock_county_idx):
+    def test_sim_reuse_within_state(
+        self, mock_msim_cls, mock_gcv, mock_county_idx
+    ):
         sim = _FakeSimulation()
         mock_msim_cls.return_value = sim
 
@@ -758,7 +771,9 @@ class TestBuildCountyValues(unittest.TestCase):
         return_value=[],
     )
     @patch("policyengine_us.Microsimulation")
-    def test_fresh_sim_across_states(self, mock_msim_cls, mock_gcv, mock_county_idx):
+    def test_fresh_sim_across_states(
+        self, mock_msim_cls, mock_gcv, mock_county_idx
+    ):
         mock_msim_cls.side_effect = [
             _FakeSimulation(),
             _FakeSimulation(),
@@ -787,7 +802,9 @@ class TestBuildCountyValues(unittest.TestCase):
         return_value=["var_a", "county"],
     )
     @patch("policyengine_us.Microsimulation")
-    def test_delete_arrays_per_county(self, mock_msim_cls, mock_gcv, mock_county_idx):
+    def test_delete_arrays_per_county(
+        self, mock_msim_cls, mock_gcv, mock_county_idx
+    ):
         sim = _FakeSimulation()
         mock_msim_cls.return_value = sim
 
@@ -862,7 +879,9 @@ class TestBuildStateValuesParallel(unittest.TestCase):
         return_value=[],
     )
     @patch("policyengine_us.Microsimulation")
-    def test_workers_gt1_creates_pool(self, mock_msim_cls, mock_gcv, mock_pool_cls):
+    def test_workers_gt1_creates_pool(
+        self, mock_msim_cls, mock_gcv, mock_pool_cls
+    ):
         mock_future = MagicMock()
         mock_future.result.return_value = (
             37,
@@ -993,7 +1012,9 @@ class TestBuildCountyValuesParallel(unittest.TestCase):
         return_value=[],
     )
     @patch("policyengine_us.Microsimulation")
-    def test_workers_1_skips_pool(self, mock_msim_cls, mock_gcv, mock_county_idx):
+    def test_workers_1_skips_pool(
+        self, mock_msim_cls, mock_gcv, mock_county_idx
+    ):
         mock_msim_cls.return_value = _FakeSimulation()
         builder = self._make_builder()
         geo = self._make_geo(["37001"])

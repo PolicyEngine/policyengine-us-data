@@ -30,7 +30,9 @@ class IRS_PUF(Dataset):
 
         with pd.HDFStore(self.file_path, mode="w") as storage:
             storage.put("puf", pd.read_csv(puf_file_path))
-            storage.put("puf_demographics", pd.read_csv(puf_demographics_file_path))
+            storage.put(
+                "puf_demographics", pd.read_csv(puf_demographics_file_path)
+            )
 
 
 class IRS_PUF_2015(IRS_PUF):

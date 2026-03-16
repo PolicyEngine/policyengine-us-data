@@ -103,7 +103,9 @@ def validate_dataset(file_path: Path) -> None:
                     )
 
             # At least one income group must have data
-            has_income = any(_check_group_has_data(f, g) for g in INCOME_GROUPS)
+            has_income = any(
+                _check_group_has_data(f, g) for g in INCOME_GROUPS
+            )
             if not has_income:
                 errors.append(
                     f"No income data found. Need at least one of "
@@ -125,7 +127,9 @@ def validate_dataset(file_path: Path) -> None:
     try:
         dataset_cls = FILENAME_TO_DATASET.get(filename)
         if dataset_cls is None:
-            raise DatasetValidationError(f"No dataset class registered for {filename}")
+            raise DatasetValidationError(
+                f"No dataset class registered for {filename}"
+            )
         sim = Microsimulation(dataset=dataset_cls)
         year = 2024
 

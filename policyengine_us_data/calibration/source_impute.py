@@ -225,7 +225,9 @@ def _person_state_fips(
     if hh_ids_person is not None:
         hh_ids = data["household_id"][time_period]
         hh_to_idx = {int(hh_id): i for i, hh_id in enumerate(hh_ids)}
-        return np.array([state_fips[hh_to_idx[int(hh_id)]] for hh_id in hh_ids_person])
+        return np.array(
+            [state_fips[hh_to_idx[int(hh_id)]] for hh_id in hh_ids_person]
+        )
     # Fallback: distribute persons across households as evenly
     # as possible (first households get any remainder).
     n_hh = len(data["household_id"][time_period])
@@ -262,9 +264,9 @@ def _impute_acs(
     predictors = ACS_PREDICTORS + ["state_fips"]
 
     acs_df = acs.calculate_dataframe(ACS_PREDICTORS + ACS_IMPUTED_VARIABLES)
-    acs_df["state_fips"] = acs.calculate("state_fips", map_to="person").values.astype(
-        np.float32
-    )
+    acs_df["state_fips"] = acs.calculate(
+        "state_fips", map_to="person"
+    ).values.astype(np.float32)
 
     train_df = acs_df[acs_df.is_household_head].sample(10_000, random_state=42)
     train_df = _encode_tenure_type(train_df)
@@ -366,10 +368,16 @@ def _impute_sipp(
     sipp_df["is_under_18"] = sipp_df.TAGE < 18
     sipp_df["is_under_6"] = sipp_df.TAGE < 6
     sipp_df["count_under_18"] = (
-        sipp_df.groupby("SSUID")["is_under_18"].sum().loc[sipp_df.SSUID.values].values
+        sipp_df.groupby("SSUID")["is_under_18"]
+        .sum()
+        .loc[sipp_df.SSUID.values]
+        .values
     )
     sipp_df["count_under_6"] = (
-        sipp_df.groupby("SSUID")["is_under_6"].sum().loc[sipp_df.SSUID.values].values
+        sipp_df.groupby("SSUID")["is_under_6"]
+        .sum()
+        .loc[sipp_df.SSUID.values]
+        .values
     )
 
     tip_cols = [
@@ -400,9 +408,9 @@ def _impute_sipp(
         age_df = pd.DataFrame({"hh": hh_ids_person, "age": person_ages})
         under_18 = age_df.groupby("hh")["age"].apply(lambda x: (x < 18).sum())
         under_6 = age_df.groupby("hh")["age"].apply(lambda x: (x < 6).sum())
-        cps_tip_df["count_under_18"] = under_18.loc[hh_ids_person].values.astype(
-            np.float32
-        )
+        cps_tip_df["count_under_18"] = under_18.loc[
+            hh_ids_person
+        ].values.astype(np.float32)
         cps_tip_df["count_under_6"] = under_6.loc[hh_ids_person].values.astype(
             np.float32
         )
@@ -491,7 +499,10 @@ def _impute_sipp(
                 asset_train.index,
                 size=min(20_000, len(asset_train)),
                 replace=True,
-                p=(asset_train.household_weight / asset_train.household_weight.sum()),
+                p=(
+                    asset_train.household_weight
+                    / asset_train.household_weight.sum()
+                ),
             )
         ]
 
@@ -502,15 +513,15 @@ def _impute_sipp(
             ["employment_income", "age", "is_male"],
         )
         if "is_male" in cps_asset_df.columns:
-            cps_asset_df["is_female"] = (~cps_asset_df["is_male"].astype(bool)).astype(
-                np.float32
-            )
+            cps_asset_df["is_female"] = (
+                ~cps_asset_df["is_male"].astype(bool)
+            ).astype(np.float32)
         else:
             cps_asset_df["is_female"] = 0.0
         if "is_married" in data:
-            cps_asset_df["is_married"] = data["is_married"][time_period].astype(
-                np.float32
-            )
+            cps_asset_df["is_married"] = data["is_married"][
+                time_period
+            ].astype(np.float32)
         else:
             cps_asset_df["is_married"] = 0.0
         cps_asset_df["count_under_18"] = (
@@ -612,7 +623,9 @@ def _impute_scf(
     cps_df = _build_cps_receiver(data, time_period, dataset_path, pe_vars)
 
     if "is_male" in cps_df.columns:
-        cps_df["is_female"] = (~cps_df["is_male"].astype(bool)).astype(np.float32)
+        cps_df["is_female"] = (~cps_df["is_male"].astype(bool)).astype(
+            np.float32
+        )
     else:
         cps_df["is_female"] = 0.0
 

@@ -85,7 +85,9 @@ def validate_package(
             )
         k = min(n_hardest, len(ratios))
         hardest_local_idx = np.argpartition(ratios, k)[:k]
-        hardest_local_idx = hardest_local_idx[np.argsort(ratios[hardest_local_idx])]
+        hardest_local_idx = hardest_local_idx[
+            np.argsort(ratios[hardest_local_idx])
+        ]
         hardest_global_idx = achievable_idx[hardest_local_idx]
 
         hardest_targets = pd.DataFrame(
@@ -94,7 +96,9 @@ def validate_package(
                 "domain_variable": targets_df["domain_variable"]
                 .iloc[hardest_global_idx]
                 .values,
-                "variable": targets_df["variable"].iloc[hardest_global_idx].values,
+                "variable": targets_df["variable"]
+                .iloc[hardest_global_idx]
+                .values,
                 "geographic_id": targets_df["geographic_id"]
                 .iloc[hardest_global_idx]
                 .values,
@@ -186,7 +190,9 @@ def format_report(result: ValidationResult, package_path: str = None) -> str:
         lines.append(", ".join(parts))
     lines.append("")
 
-    pct = 100 * result.n_achievable / result.n_targets if result.n_targets else 0
+    pct = (
+        100 * result.n_achievable / result.n_targets if result.n_targets else 0
+    )
     pct_imp = 100 - pct
     lines.append("--- Achievability ---")
     lines.append(
@@ -200,7 +206,9 @@ def format_report(result: ValidationResult, package_path: str = None) -> str:
     if len(result.impossible_targets) > 0:
         lines.append("--- Impossible Targets ---")
         for _, row in result.impossible_targets.iterrows():
-            lines.append(f"  {row['target_name']:<60s} {row['target_value']:>14,.0f}")
+            lines.append(
+                f"  {row['target_name']:<60s} {row['target_value']:>14,.0f}"
+            )
         lines.append("")
 
     if len(result.impossible_by_group) > 1:
@@ -257,7 +265,9 @@ def format_report(result: ValidationResult, package_path: str = None) -> str:
             f" targets below ratio {result.strict_ratio})"
         )
     elif result.n_impossible > 0:
-        lines.append(f"RESULT: FAIL ({result.n_impossible} impossible targets)")
+        lines.append(
+            f"RESULT: FAIL ({result.n_impossible} impossible targets)"
+        )
     else:
         lines.append("RESULT: PASS")
 
@@ -265,7 +275,9 @@ def format_report(result: ValidationResult, package_path: str = None) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Validate a calibration package")
+    parser = argparse.ArgumentParser(
+        description="Validate a calibration package"
+    )
     parser.add_argument(
         "path",
         nargs="?",

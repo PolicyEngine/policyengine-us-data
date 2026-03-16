@@ -178,7 +178,9 @@ def _batch_stratum_constraints(engine, stratum_ids) -> dict:
         df = pd.read_sql(query, conn)
     result = {}
     for sid, group in df.groupby("stratum_id"):
-        result[int(sid)] = group[["variable", "operation", "value"]].to_dict("records")
+        result[int(sid)] = group[["variable", "operation", "value"]].to_dict(
+            "records"
+        )
     for sid in stratum_ids:
         result.setdefault(int(sid), [])
     return result
@@ -262,9 +264,15 @@ def _build_entity_rel(sim) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "person_id": sim.calculate("person_id", map_to="person").values,
-            "household_id": sim.calculate("household_id", map_to="person").values,
-            "tax_unit_id": sim.calculate("tax_unit_id", map_to="person").values,
-            "spm_unit_id": sim.calculate("spm_unit_id", map_to="person").values,
+            "household_id": sim.calculate(
+                "household_id", map_to="person"
+            ).values,
+            "tax_unit_id": sim.calculate(
+                "tax_unit_id", map_to="person"
+            ).values,
+            "spm_unit_id": sim.calculate(
+                "spm_unit_id", map_to="person"
+            ).values,
         }
     )
 
@@ -704,7 +712,9 @@ def _run_state_via_districts(
             variable = row_data["variable"]
             stratum_id = int(row_data["stratum_id"])
             constraints = constraints_map.get(stratum_id, [])
-            target_name = UnifiedMatrixBuilder._make_target_name(variable, constraints)
+            target_name = UnifiedMatrixBuilder._make_target_name(
+                variable, constraints
+            )
 
             per_district_rows.append(
                 {
@@ -735,7 +745,9 @@ def _run_state_via_districts(
         stratum_id = int(row_data["stratum_id"])
 
         constraints = constraints_map.get(stratum_id, [])
-        target_name = UnifiedMatrixBuilder._make_target_name(variable, constraints)
+        target_name = UnifiedMatrixBuilder._make_target_name(
+            variable, constraints
+        )
 
         error = sim_value - target_value
         abs_error = abs(error)
@@ -746,7 +758,9 @@ def _run_state_via_districts(
             rel_error = float("inf") if error != 0 else 0.0
             rel_abs_error = float("inf") if abs_error != 0 else 0.0
 
-        sanity_check, sanity_reason = _run_sanity_check(sim_value, variable, "state")
+        sanity_check, sanity_reason = _run_sanity_check(
+            sim_value, variable, "state"
+        )
 
         summary_rows.append(
             {

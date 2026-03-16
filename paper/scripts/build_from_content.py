@@ -47,8 +47,12 @@ class ContentConverter:
             latex = re.sub(r"^# Abstract\n\n", "", latex)
         else:
             # Convert markdown headers to LaTeX sections
-            latex = re.sub(r"^# (.+)$", r"\\section{\1}", latex, flags=re.MULTILINE)
-            latex = re.sub(r"^## (.+)$", r"\\subsection{\1}", latex, flags=re.MULTILINE)
+            latex = re.sub(
+                r"^# (.+)$", r"\\section{\1}", latex, flags=re.MULTILINE
+            )
+            latex = re.sub(
+                r"^## (.+)$", r"\\subsection{\1}", latex, flags=re.MULTILINE
+            )
             latex = re.sub(
                 r"^### (.+)$",
                 r"\\subsubsection{\1}",
@@ -169,11 +173,15 @@ class ContentConverter:
                     if len(author_list) == 1:
                         # Handle "Author1 and Author2" format
                         if " and " in authors:
-                            first_author = authors.split(" and ")[0].strip().split()[-1]
+                            first_author = (
+                                authors.split(" and ")[0].strip().split()[-1]
+                            )
                             cite_key = f"{first_author.lower()}{year}"
                         else:
                             # Single author
-                            author = author_list[0].strip().split()[-1]  # Last name
+                            author = (
+                                author_list[0].strip().split()[-1]
+                            )  # Last name
                             cite_key = f"{author.lower()}{year}"
                     else:
                         # Multiple authors - use first author
@@ -183,7 +191,9 @@ class ContentConverter:
                 return f"\\citep{{{cite_key}}}"
             return match.group(0)  # Return original if no year found
 
-        latex = re.sub(r"\(([^)]+(?:19|20)\d{2}[a-z]?)\)", convert_citation, latex)
+        latex = re.sub(
+            r"\(([^)]+(?:19|20)\d{2}[a-z]?)\)", convert_citation, latex
+        )
 
         # Also handle inline citations like "Author (Year)" or "Author et al. (Year)"
         def convert_inline_citation(match):
@@ -266,11 +276,15 @@ class ContentConverter:
                     if len(author_list) == 1:
                         # Handle "Author1 and Author2" format
                         if " and " in authors:
-                            first_author = authors.split(" and ")[0].strip().split()[-1]
+                            first_author = (
+                                authors.split(" and ")[0].strip().split()[-1]
+                            )
                             cite_key = f"{first_author.lower()}{year}"
                         else:
                             # Single author
-                            author = author_list[0].strip().split()[-1]  # Last name
+                            author = (
+                                author_list[0].strip().split()[-1]
+                            )  # Last name
                             cite_key = f"{author.lower()}{year}"
                     else:
                         # Multiple authors - use first author
@@ -280,7 +294,9 @@ class ContentConverter:
                 return f"{{cite}}`{cite_key}`"
             return match.group(0)
 
-        myst = re.sub(r"\(([^)]+(?:19|20)\d{2}[a-z]?)\)", convert_myst_citation, myst)
+        myst = re.sub(
+            r"\(([^)]+(?:19|20)\d{2}[a-z]?)\)", convert_myst_citation, myst
+        )
 
         # Handle inline citations like "Author (Year)" - convert to {cite:t}`author_year`
         def convert_inline_myst(match):
@@ -327,7 +343,9 @@ class ContentConverter:
         # LaTeX conversion
         if stem == "abstract":
             latex_content = self.md_to_latex(content, section_type="abstract")
-            latex_content = f"\\begin{{abstract}}\n{latex_content}\n\\end{{abstract}}"
+            latex_content = (
+                f"\\begin{{abstract}}\n{latex_content}\n\\end{{abstract}}"
+            )
             latex_path = self.paper_dir / "abstract.tex"
         elif stem == "introduction":
             latex_content = self.md_to_latex(content)

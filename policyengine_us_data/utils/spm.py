@@ -44,7 +44,9 @@ def calculate_spm_thresholds_with_geoadj(
     for i in range(n):
         tenure_str = TENURE_CODE_MAP.get(int(tenure_codes[i]), "renter")
         base = base_thresholds[tenure_str]
-        equiv_scale = spm_equivalence_scale(int(num_adults[i]), int(num_children[i]))
+        equiv_scale = spm_equivalence_scale(
+            int(num_adults[i]), int(num_children[i])
+        )
         thresholds[i] = base * equiv_scale * geoadj[i]
 
     return thresholds

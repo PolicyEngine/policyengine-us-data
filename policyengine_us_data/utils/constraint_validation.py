@@ -111,7 +111,9 @@ def _check_operation_compatibility(var_name: str, operations: set) -> None:
         )
 
 
-def _check_range_validity(var_name: str, constraints: List[Constraint]) -> None:
+def _check_range_validity(
+    var_name: str, constraints: List[Constraint]
+) -> None:
     """Check that range constraints don't create an empty range."""
     lower_bound = float("-inf")
     upper_bound = float("inf")
@@ -126,7 +128,9 @@ def _check_range_validity(var_name: str, constraints: List[Constraint]) -> None:
             continue
 
         if c.operation == ">":
-            if val > lower_bound or (val == lower_bound and not lower_inclusive):
+            if val > lower_bound or (
+                val == lower_bound and not lower_inclusive
+            ):
                 lower_bound = val
                 lower_inclusive = False
         elif c.operation == ">=":
@@ -134,7 +138,9 @@ def _check_range_validity(var_name: str, constraints: List[Constraint]) -> None:
                 lower_bound = val
                 lower_inclusive = True
         elif c.operation == "<":
-            if val < upper_bound or (val == upper_bound and not upper_inclusive):
+            if val < upper_bound or (
+                val == upper_bound and not upper_inclusive
+            ):
                 upper_bound = val
                 upper_inclusive = False
         elif c.operation == "<=":
@@ -148,7 +154,9 @@ def _check_range_validity(var_name: str, constraints: List[Constraint]) -> None:
             f"{var_name}: empty range - lower bound {lower_bound} > "
             f"upper bound {upper_bound}"
         )
-    if lower_bound == upper_bound and not (lower_inclusive and upper_inclusive):
+    if lower_bound == upper_bound and not (
+        lower_inclusive and upper_inclusive
+    ):
         raise ConstraintValidationError(
             f"{var_name}: empty range - bounds equal at {lower_bound} "
             "but not both inclusive"

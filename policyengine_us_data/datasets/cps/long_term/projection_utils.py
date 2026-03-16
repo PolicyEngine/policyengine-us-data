@@ -27,7 +27,9 @@ def build_household_age_matrix(sim, n_ages=86):
     n_households = len(household_ids_unique)
 
     X = np.zeros((n_households, n_ages))
-    hh_id_to_idx = {hh_id: idx for idx, hh_id in enumerate(household_ids_unique)}
+    hh_id_to_idx = {
+        hh_id: idx for idx, hh_id in enumerate(household_ids_unique)
+    }
 
     for person_idx in range(len(age_person)):
         age = int(age_person.values[person_idx])
@@ -65,7 +67,9 @@ def get_pseudo_input_variables(sim):
     return pseudo_inputs
 
 
-def create_household_year_h5(year, household_weights, base_dataset_path, output_dir):
+def create_household_year_h5(
+    year, household_weights, base_dataset_path, output_dir
+):
     """
     Create a year-specific .h5 file with calibrated household weights.
 
@@ -189,7 +193,9 @@ def calculate_year_statistics(
     Returns:
         Dictionary with year statistics and calibrated weights
     """
-    income_tax_hh = sim.calculate("income_tax", period=year, map_to="household")
+    income_tax_hh = sim.calculate(
+        "income_tax", period=year, map_to="household"
+    )
     income_tax_baseline_total = income_tax_hh.sum()
     income_tax_values = income_tax_hh.values
 
@@ -200,7 +206,9 @@ def calculate_year_statistics(
     ss_values = None
     ss_target = None
     if use_ss:
-        ss_hh = sim.calculate("social_security", period=year, map_to="household")
+        ss_hh = sim.calculate(
+            "social_security", period=year, map_to="household"
+        )
         ss_baseline_total = ss_hh.sum()
         ss_values = ss_hh.values
 

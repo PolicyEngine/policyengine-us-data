@@ -54,8 +54,12 @@ def validate_constraints(sim) -> list:
     issues = []
     year = 2024
 
-    emp_income = sim.calculate("employment_income", year, map_to="person").values
-    se_income = sim.calculate("self_employment_income", year, map_to="person").values
+    emp_income = sim.calculate(
+        "employment_income", year, map_to="person"
+    ).values
+    se_income = sim.calculate(
+        "self_employment_income", year, map_to="person"
+    ).values
     age = sim.calculate("age", year, map_to="person").values
 
     catch_up = age >= 50
@@ -75,7 +79,9 @@ def validate_constraints(sim) -> list:
 
         n_over_cap = (vals > max_401k + 1).sum()
         if n_over_cap > 0:
-            issues.append(f"FAIL: {var} has {n_over_cap} values exceeding 401k cap")
+            issues.append(
+                f"FAIL: {var} has {n_over_cap} values exceeding 401k cap"
+            )
 
         zero_wage = emp_income == 0
         n_nonzero_no_wage = (vals[zero_wage] > 0).sum()
@@ -104,7 +110,9 @@ def validate_constraints(sim) -> list:
 
         n_over_cap = (vals > max_ira + 1).sum()
         if n_over_cap > 0:
-            issues.append(f"FAIL: {var} has {n_over_cap} values exceeding IRA cap")
+            issues.append(
+                f"FAIL: {var} has {n_over_cap} values exceeding IRA cap"
+            )
 
     # SE pension constraint
     var = "self_employed_pension_contributions"
@@ -133,7 +141,9 @@ def validate_aggregates(sim) -> list:
 
     weight = sim.calculate("person_weight", year).values
 
-    logger.info("\n%-45s %15s %15s %10s", "Variable", "Weighted Sum", "Target", "Ratio")
+    logger.info(
+        "\n%-45s %15s %15s %10s", "Variable", "Weighted Sum", "Target", "Ratio"
+    )
     logger.info("-" * 90)
 
     for var, target in TARGETS.items():

@@ -94,7 +94,9 @@ def main():
                 if state_fips is None:
                     raise ValueError(f"Unknown state code: {item_id}")
                 cd_subset = [
-                    cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips
+                    cd
+                    for cd in cds_to_calibrate
+                    if int(cd) // 100 == state_fips
                 ]
                 if not cd_subset:
                     print(

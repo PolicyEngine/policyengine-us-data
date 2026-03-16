@@ -18,7 +18,9 @@ class ACS(Dataset):
 
         raw_data = self.census_acs(require=True).load()
         acs = h5py.File(self.file_path, mode="w")
-        person, household = [raw_data[entity] for entity in ("person", "household")]
+        person, household = [
+            raw_data[entity] for entity in ("person", "household")
+        ]
 
         self.add_id_variables(acs, person, household)
         self.add_person_variables(acs, person, household)
@@ -37,7 +39,9 @@ class ACS(Dataset):
         h_id_to_number = pd.Series(
             np.arange(len(household)), index=household["SERIALNO"]
         )
-        household["household_id"] = h_id_to_number[household["SERIALNO"]].values
+        household["household_id"] = h_id_to_number[
+            household["SERIALNO"]
+        ].values
         person["household_id"] = h_id_to_number[person["SERIALNO"]].values
         person["person_id"] = person.index + 1
 
@@ -96,7 +100,9 @@ class ACS(Dataset):
     @staticmethod
     def add_household_variables(acs: h5py.File, household: DataFrame) -> None:
         acs["household_vehicles_owned"] = household.VEH
-        acs["state_fips"] = acs["household_state_fips"] = household.ST.astype(int)
+        acs["state_fips"] = acs["household_state_fips"] = household.ST.astype(
+            int
+        )
 
 
 class ACS_2022(ACS):

@@ -126,11 +126,15 @@ def build_county_cd_distributions():
 
     # Create CD geoid in our format: state_fips * 100 + district
     # Examples: AL-1 = 101, NY-10 = 3610, DC = 1198
-    df["cd_geoid"] = df["state_fips"].astype(int) * 100 + df["CD119"].astype(int)
+    df["cd_geoid"] = df["state_fips"].astype(int) * 100 + df["CD119"].astype(
+        int
+    )
 
     # Step 4: Aggregate by (CD, county)
     print("\nAggregating population by CD and county...")
-    cd_county_pop = df.groupby(["cd_geoid", "county_fips"])["POP20"].sum().reset_index()
+    cd_county_pop = (
+        df.groupby(["cd_geoid", "county_fips"])["POP20"].sum().reset_index()
+    )
     print(f"  Unique CD-county pairs: {len(cd_county_pop):,}")
 
     # Step 5: Calculate P(county|CD)
@@ -147,7 +151,9 @@ def build_county_cd_distributions():
     # Step 6: Map county FIPS to enum names
     print("\nMapping county FIPS to enum names...")
     fips_to_enum = build_county_fips_to_enum_mapping()
-    cd_county_pop["county_name"] = cd_county_pop["county_fips"].map(fips_to_enum)
+    cd_county_pop["county_name"] = cd_county_pop["county_fips"].map(
+        fips_to_enum
+    )
 
     # Check for unmapped counties
     unmapped = cd_county_pop[cd_county_pop["county_name"].isna()]
@@ -171,7 +177,9 @@ def build_county_cd_distributions():
 
     # Step 8: Save CSV
     output = cd_county_pop[["cd_geoid", "county_name", "probability"]]
-    output = output.sort_values(["cd_geoid", "probability"], ascending=[True, False])
+    output = output.sort_values(
+        ["cd_geoid", "probability"], ascending=[True, False]
+    )
 
     output_path = STORAGE_FOLDER / "county_cd_distributions.csv"
     output.to_csv(output_path, index=False)

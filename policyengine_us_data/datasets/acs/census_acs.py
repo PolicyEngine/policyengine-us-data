@@ -66,7 +66,9 @@ class CensusACS(Dataset):
             household = self.process_household_data(
                 household_url, "psam_hus", HOUSEHOLD_COLUMNS
             )
-            person = self.process_person_data(person_url, "psam_pus", PERSON_COLUMNS)
+            person = self.process_person_data(
+                person_url, "psam_pus", PERSON_COLUMNS
+            )
             person = person[person.SERIALNO.isin(household.SERIALNO)]
             household = household[household.SERIALNO.isin(person.SERIALNO)]
             storage["household"] = household
@@ -104,7 +106,9 @@ class CensusACS(Dataset):
         return res
 
     @staticmethod
-    def process_person_data(url: str, prefix: str, columns: List[str]) -> pd.DataFrame:
+    def process_person_data(
+        url: str, prefix: str, columns: List[str]
+    ) -> pd.DataFrame:
         req = requests.get(url, stream=True)
         with BytesIO() as f:
             pbar = tqdm()
@@ -133,7 +137,9 @@ class CensusACS(Dataset):
         return res
 
     @staticmethod
-    def create_spm_unit_table(storage: pd.HDFStore, person: pd.DataFrame) -> None:
+    def create_spm_unit_table(
+        storage: pd.HDFStore, person: pd.DataFrame
+    ) -> None:
         SPM_UNIT_COLUMNS = [
             "CAPHOUSESUB",
             "CAPWKCCXPNS",
@@ -175,10 +181,12 @@ class CensusACS(Dataset):
 
         # Ensure SERIALNO is treated as string
         JOIN_COLUMNS = ["SERIALNO", "SPORDER"]
-        original_person_table["SERIALNO"] = original_person_table["SERIALNO"].astype(
-            str
-        )
-        original_person_table["SPORDER"] = original_person_table["SPORDER"].astype(int)
+        original_person_table["SERIALNO"] = original_person_table[
+            "SERIALNO"
+        ].astype(str)
+        original_person_table["SPORDER"] = original_person_table[
+            "SPORDER"
+        ].astype(int)
         person["SERIALNO"] = person["SERIALNO"].astype(str)
         person["SPORDER"] = person["SPORDER"].astype(int)
 

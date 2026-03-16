@@ -227,7 +227,9 @@ class TestSchemaViewsAndLookups(unittest.TestCase):
         from sqlalchemy import text
 
         with self.engine.connect() as conn:
-            rows = conn.execute(text("SELECT * FROM stratum_domain")).fetchall()
+            rows = conn.execute(
+                text("SELECT * FROM stratum_domain")
+            ).fetchall()
         return rows
 
     def test_geographic_stratum_excluded(self):
@@ -289,14 +291,18 @@ class TestSchemaViewsAndLookups(unittest.TestCase):
         from sqlalchemy import text
 
         with self.engine.connect() as conn:
-            rows = conn.execute(text("SELECT * FROM target_overview")).fetchall()
+            rows = conn.execute(
+                text("SELECT * FROM target_overview")
+            ).fetchall()
         return rows
 
     def _overview_columns(self):
         from sqlalchemy import text
 
         with self.engine.connect() as conn:
-            cursor = conn.execute(text("SELECT * FROM target_overview LIMIT 0"))
+            cursor = conn.execute(
+                text("SELECT * FROM target_overview LIMIT 0")
+            )
             return [desc[0] for desc in cursor.cursor.description]
 
     def test_national_geo_level(self):

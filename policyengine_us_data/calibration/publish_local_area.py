@@ -168,14 +168,17 @@ def build_h5(
     # CD subset filtering: zero out cells whose CD isn't in subset
     if cd_subset is not None:
         cd_subset_set = set(cd_subset)
-        cd_mask = np.vectorize(lambda cd: cd in cd_subset_set)(clone_cds_matrix)
+        cd_mask = np.vectorize(lambda cd: cd in cd_subset_set)(
+            clone_cds_matrix
+        )
         W[~cd_mask] = 0
 
     # County filtering: scale weights by P(target_counties | CD)
     if county_filter is not None:
         unique_cds = np.unique(clone_cds_matrix)
         cd_prob = {
-            cd: get_county_filter_probability(cd, county_filter) for cd in unique_cds
+            cd: get_county_filter_probability(cd, county_filter)
+            for cd in unique_cds
         }
         p_matrix = np.vectorize(
             cd_prob.__getitem__,
@@ -202,11 +205,15 @@ def build_h5(
         )
     clone_weights = W[active_geo, active_hh]
     active_blocks = blocks.reshape(n_clones_total, n_hh)[active_geo, active_hh]
-    active_clone_cds = clone_cds.reshape(n_clones_total, n_hh)[active_geo, active_hh]
+    active_clone_cds = clone_cds.reshape(n_clones_total, n_hh)[
+        active_geo, active_hh
+    ]
 
     empty_count = np.sum(active_blocks == "")
     if empty_count > 0:
-        raise ValueError(f"{empty_count} active clones have empty block GEOIDs")
+        raise ValueError(
+            f"{empty_count} active clones have empty block GEOIDs"
+        )
 
     print(f"Active clones: {n_clones:,}")
     print(f"Total weight: {clone_weights.sum():,.0f}")
@@ -251,12 +258,16 @@ def build_h5(
     # === Build clone index arrays ===
     hh_clone_idx = active_hh
 
-    persons_per_clone = np.array([len(hh_to_persons.get(h, [])) for h in active_hh])
+    persons_per_clone = np.array(
+        [len(hh_to_persons.get(h, [])) for h in active_hh]
+    )
     person_parts = [
         np.array(hh_to_persons.get(h, []), dtype=np.int64) for h in active_hh
     ]
     person_clone_idx = (
-        np.concatenate(person_parts) if person_parts else np.array([], dtype=np.int64)
+        np.concatenate(person_parts)
+        if person_parts
+        else np.array([], dtype=np.int64)
     )
 
     entity_clone_idx = {}
@@ -265,7 +276,8 @@ def build_h5(
         epc = np.array([len(hh_to_entity[ek].get(h, [])) for h in active_hh])
         entities_per_clone[ek] = epc
         parts = [
-            np.array(hh_to_entity[ek].get(h, []), dtype=np.int64) for h in active_hh
+            np.array(hh_to_entity[ek].get(h, []), dtype=np.int64)
+            for h in active_hh
         ]
         entity_clone_idx[ek] = (
             np.concatenate(parts) if parts else np.array([], dtype=np.int64)
@@ -304,7 +316,9 @@ def build_h5(
         sorted_keys = entity_keys[sorted_order]
         sorted_new = new_entity_ids[ek][sorted_order]
 
-        p_old_eids = person_entity_id_arrays[ek][person_clone_idx].astype(np.int64)
+        p_old_eids = person_entity_id_arrays[ek][person_clone_idx].astype(
+            np.int64
+        )
         person_keys = clone_ids_for_persons * offset + p_old_eids
 
         positions = np.searchsorted(sorted_keys, person_keys)
@@ -459,7 +473,9 @@ def build_h5(
             }
 
     # === Gap 4: Congressional district GEOID ===
-    clone_cd_geoids = np.array([int(cd) for cd in active_clone_cds], dtype=np.int32)
+    clone_cd_geoids = np.array(
+        [int(cd) for cd in active_clone_cds], dtype=np.int32
+    )
     data["congressional_district_geoid"] = {
         time_period: clone_cd_geoids,
     }
@@ -479,7 +495,9 @@ def build_h5(
     )
 
     # Get cloned person ages and SPM unit IDs
-    person_ages = sim.calculate("age", map_to="person").values[person_clone_idx]
+    person_ages = sim.calculate("age", map_to="person").values[
+        person_clone_idx
+    ]
 
     # Get cloned tenure types
     spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
@@ -571,7 +589,9 @@ def build_h5(
             print(f"Total population (person weights): {pw.sum():,.0f}")
 
     # === HDFStore output (entity-level format) ===
-    entity_dfs = split_data_into_entity_dfs(data, sim.tax_benefit_system, time_period)
+    entity_dfs = split_data_into_entity_dfs(
+        data, sim.tax_benefit_system, time_period
+    )
     manifest_df = build_uprating_manifest(data, sim.tax_benefit_system)
     save_hdfstore(entity_dfs, manifest_df, str(output_path), time_period)
 
@@ -639,7 +659,9 @@ def build_states(
 
             if upload:
                 print(f"Uploading {state_code}.h5 to GCP...")
-                upload_local_area_file(str(output_path), "states", skip_hf=True)
+                upload_local_area_file(
+                    str(output_path), "states", skip_hf=True
+                )
 
                 # Upload HDFStore file if it exists
                 hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
@@ -657,7 +679,9 @@ def build_states(
             print(f"Completed {state_code}")
 
             if upload and len(hf_queue) >= hf_batch_size:
-                print(f"\nUploading batch of {len(hf_queue)} files to HuggingFace...")
+                print(
+                    f"\nUploading batch of {len(hf_queue)} files to HuggingFace..."
+                )
                 upload_local_area_batch_to_hf(hf_queue)
                 hf_queue = []
 
@@ -666,7 +690,9 @@ def build_states(
             raise
 
     if upload and hf_queue:
-        print(f"\nUploading final batch of {len(hf_queue)} files to HuggingFace...")
+        print(
+            f"\nUploading final batch of {len(hf_queue)} files to HuggingFace..."
+        )
         upload_local_area_batch_to_hf(hf_queue)
 
 
@@ -718,7 +744,9 @@ def build_districts(
 
             if upload:
                 print(f"Uploading {friendly_name}.h5 to GCP...")
-                upload_local_area_file(str(output_path), "districts", skip_hf=True)
+                upload_local_area_file(
+                    str(output_path), "districts", skip_hf=True
+                )
 
                 # Upload HDFStore file if it exists
                 hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
@@ -736,7 +764,9 @@ def build_districts(
             print(f"Completed {friendly_name}")
 
             if upload and len(hf_queue) >= hf_batch_size:
-                print(f"\nUploading batch of {len(hf_queue)} files to HuggingFace...")
+                print(
+                    f"\nUploading batch of {len(hf_queue)} files to HuggingFace..."
+                )
                 upload_local_area_batch_to_hf(hf_queue)
                 hf_queue = []
 
@@ -745,7 +775,9 @@ def build_districts(
             raise
 
     if upload and hf_queue:
-        print(f"\nUploading final batch of {len(hf_queue)} files to HuggingFace...")
+        print(
+            f"\nUploading final batch of {len(hf_queue)} files to HuggingFace..."
+        )
         upload_local_area_batch_to_hf(hf_queue)
 
 
@@ -792,10 +824,14 @@ def build_cities(
 
                 if upload:
                     print("Uploading NYC.h5 to GCP...")
-                    upload_local_area_file(str(output_path), "cities", skip_hf=True)
+                    upload_local_area_file(
+                        str(output_path), "cities", skip_hf=True
+                    )
 
                     # Upload HDFStore file if it exists
-                    hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
+                    hdfstore_path = str(output_path).replace(
+                        ".h5", ".hdfstore.h5"
+                    )
                     if os.path.exists(hdfstore_path):
                         print("Uploading NYC.hdfstore.h5 to GCP...")
                         upload_local_area_file(
@@ -814,7 +850,9 @@ def build_cities(
                 raise
 
     if upload and hf_queue:
-        print(f"\nUploading batch of {len(hf_queue)} city files to HuggingFace...")
+        print(
+            f"\nUploading batch of {len(hf_queue)} city files to HuggingFace..."
+        )
         upload_local_area_batch_to_hf(hf_queue)
 
 
@@ -891,7 +929,9 @@ def main():
     elif args.skip_download:
         inputs = {
             "weights": WORK_DIR / "calibration_weights.npy",
-            "dataset": (WORK_DIR / "source_imputed_stratified_extended_cps.h5"),
+            "dataset": (
+                WORK_DIR / "source_imputed_stratified_extended_cps.h5"
+            ),
         }
         print("Using existing files in work directory:")
         for key, path in inputs.items():

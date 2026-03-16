@@ -21,9 +21,9 @@ class TestWeeksUnemployed:
 
         # Check for correct variable
         assert '"LKWEEKS"' in content, "LKWEEKS should be in PERSON_COLUMNS"
-        assert '"WKSUNEM"' not in content, (
-            "WKSUNEM should not be in PERSON_COLUMNS (Census uses LKWEEKS)"
-        )
+        assert (
+            '"WKSUNEM"' not in content
+        ), "WKSUNEM should not be in PERSON_COLUMNS (Census uses LKWEEKS)"
 
     def test_cps_uses_lkweeks(self):
         """Test that cps.py uses LKWEEKS, not WKSUNEM."""

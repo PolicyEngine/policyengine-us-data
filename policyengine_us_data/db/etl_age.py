@@ -66,7 +66,9 @@ def transform_age_data(age_data, docs):
     # Filter out Puerto Rico's district and state records
     # 5001800US7298 = 118th Congress, 5001900US7298 = 119th Congress
     df_geos = df_data[
-        ~df_data["ucgid_str"].isin(["5001800US7298", "5001900US7298", "0400000US72"])
+        ~df_data["ucgid_str"].isin(
+            ["5001800US7298", "5001900US7298", "0400000US72"]
+        )
     ].copy()
 
     df = df_geos[["ucgid_str"] + AGE_COLS]
@@ -104,7 +106,9 @@ def load_age_data(df_long, geo, year):
         raise ValueError('geo must be one of "National", "State", "District"')
 
     # Prepare to load data -----------
-    DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    DATABASE_URL = (
+        f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    )
     engine = create_engine(DATABASE_URL)
 
     with Session(engine) as session:

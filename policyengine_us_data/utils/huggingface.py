@@ -10,7 +10,9 @@ if not TOKEN:
     )
 
 
-def download(repo: str, repo_filename: str, local_folder: str, version: str = None):
+def download(
+    repo: str, repo_filename: str, local_folder: str, version: str = None
+):
 
     hf_hub_download(
         repo_id=repo,
@@ -216,11 +218,15 @@ def upload_calibration_artifacts(
 
     if log_dir:
         # Upload run config to calibration/ root for artifact validation
-        run_config_local = os.path.join(log_dir, f"{prefix}unified_run_config.json")
+        run_config_local = os.path.join(
+            log_dir, f"{prefix}unified_run_config.json"
+        )
         if os.path.exists(run_config_local):
             operations.append(
                 CommitOperationAdd(
-                    path_in_repo=(f"calibration/{prefix}unified_run_config.json"),
+                    path_in_repo=(
+                        f"calibration/{prefix}unified_run_config.json"
+                    ),
                     path_or_fileobj=run_config_local,
                 )
             )

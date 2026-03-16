@@ -60,7 +60,9 @@ def download_state_baf(state_fips: str, state_abbr: str) -> dict:
             )
 
         # Place (City/CDP)
-        place_file = f"BlockAssign_ST{state_fips}_{state_abbr}_INCPLACE_CDP.txt"
+        place_file = (
+            f"BlockAssign_ST{state_fips}_{state_abbr}_INCPLACE_CDP.txt"
+        )
         if place_file in z.namelist():
             df = pd.read_csv(z.open(place_file), sep="|", dtype=str)
             results["place"] = df.rename(
@@ -166,17 +168,23 @@ def build_block_crosswalk():
 
                     # Merge other geographies
                     if "sldl" in bafs:
-                        df = df.merge(bafs["sldl"], on="block_geoid", how="left")
+                        df = df.merge(
+                            bafs["sldl"], on="block_geoid", how="left"
+                        )
                     else:
                         df["sldl"] = None
 
                     if "place" in bafs:
-                        df = df.merge(bafs["place"], on="block_geoid", how="left")
+                        df = df.merge(
+                            bafs["place"], on="block_geoid", how="left"
+                        )
                     else:
                         df["place_fips"] = None
 
                     if "vtd" in bafs:
-                        df = df.merge(bafs["vtd"], on="block_geoid", how="left")
+                        df = df.merge(
+                            bafs["vtd"], on="block_geoid", how="left"
+                        )
                     else:
                         df["vtd"] = None
 

@@ -24,8 +24,12 @@ def convert_markdown_to_latex(markdown_content: str) -> str:
 
     # Convert headers
     latex = re.sub(r"^# (.+)$", r"\\section{\1}", latex, flags=re.MULTILINE)
-    latex = re.sub(r"^## (.+)$", r"\\subsection{\1}", latex, flags=re.MULTILINE)
-    latex = re.sub(r"^### (.+)$", r"\\subsubsection{\1}", latex, flags=re.MULTILINE)
+    latex = re.sub(
+        r"^## (.+)$", r"\\subsection{\1}", latex, flags=re.MULTILINE
+    )
+    latex = re.sub(
+        r"^### (.+)$", r"\\subsubsection{\1}", latex, flags=re.MULTILINE
+    )
 
     # Convert bold and italic
     latex = re.sub(r"\*\*(.+?)\*\*", r"\\textbf{\1}", latex)
@@ -63,7 +67,9 @@ def convert_markdown_to_latex(markdown_content: str) -> str:
 
             # Manage list stack
             while len(list_stack) > indent_level + 1:
-                new_lines.append("  " * (len(list_stack) - 1) + "\\end{itemize}")
+                new_lines.append(
+                    "  " * (len(list_stack) - 1) + "\\end{itemize}"
+                )
                 list_stack.pop()
 
             if len(list_stack) <= indent_level:
@@ -75,7 +81,9 @@ def convert_markdown_to_latex(markdown_content: str) -> str:
         else:
             # Close any open lists
             while list_stack:
-                new_lines.append("  " * (len(list_stack) - 1) + "\\end{itemize}")
+                new_lines.append(
+                    "  " * (len(list_stack) - 1) + "\\end{itemize}"
+                )
                 list_stack.pop()
             new_lines.append(line)
             in_list = False

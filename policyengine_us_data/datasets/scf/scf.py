@@ -55,7 +55,9 @@ class SCF(Dataset):
                 try:
                     scf[key] = np.array(scf[key])
                 except Exception as e:
-                    print(f"Warning: Could not convert {key} to numpy array: {e}")
+                    print(
+                        f"Warning: Could not convert {key} to numpy array: {e}"
+                    )
 
         self.save_dataset(scf)
 
@@ -108,7 +110,9 @@ class SCF(Dataset):
 
         # Store original dtypes before modifying
         original_data: dict = self.load_dataset()
-        original_dtypes = {key: original_data[key].dtype for key in original_data}
+        original_dtypes = {
+            key: original_data[key].dtype for key in original_data
+        }
 
         sim = Microsimulation(dataset=self)
         sim.subsample(frac=frac)
@@ -185,13 +189,17 @@ def rename_columns_to_match_cps(scf: dict, raw_data: pd.DataFrame) -> None:
             4: 4,  # Asian
             5: 7,  # Other
         }
-        scf["cps_race"] = raw_data["racecl5"].map(race_map).fillna(6).astype(int).values
+        scf["cps_race"] = (
+            raw_data["racecl5"].map(race_map).fillna(6).astype(int).values
+        )
         # Hispanic indicator
         scf["is_hispanic"] = (raw_data["racecl5"] == 3).values
 
     # Children in household
     if "kids" in raw_data.columns:
-        scf["own_children_in_household"] = raw_data["kids"].fillna(0).astype(int).values
+        scf["own_children_in_household"] = (
+            raw_data["kids"].fillna(0).astype(int).values
+        )
 
     # Rent
     if "rent" in raw_data.columns:
@@ -199,7 +207,9 @@ def rename_columns_to_match_cps(scf: dict, raw_data: pd.DataFrame) -> None:
 
     # Vehicle loan (auto loan)
     if "veh_inst" in raw_data.columns:
-        scf["total_vehicle_installments"] = raw_data["veh_inst"].fillna(0).values
+        scf["total_vehicle_installments"] = (
+            raw_data["veh_inst"].fillna(0).values
+        )
 
     # Marital status
     if "married" in raw_data.columns:
@@ -259,7 +269,9 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
             logger.error(
                 f"Network error downloading SCF data for year {year}: {str(e)}"
             )
-            raise RuntimeError(f"Failed to download SCF data for year {year}") from e
+            raise RuntimeError(
+                f"Failed to download SCF data for year {year}"
+            ) from e
 
         # Process zip file
         try:
@@ -270,7 +282,9 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
             dta_files = [f for f in z.namelist() if f.endswith(".dta")]
             if not dta_files:
                 logger.error(f"No Stata files found in zip for year {year}")
-                raise ValueError(f"No Stata files found in zip for year {year}")
+                raise ValueError(
+                    f"No Stata files found in zip for year {year}"
+                )
 
             logger.info(f"Found Stata files: {dta_files}")
 
@@ -284,14 +298,18 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
                     )
                     logger.info(f"Read DataFrame with shape {df.shape}")
             except Exception as e:
-                logger.error(f"Error reading Stata file for year {year}: {str(e)}")
+                logger.error(
+                    f"Error reading Stata file for year {year}: {str(e)}"
+                )
                 raise RuntimeError(
                     f"Failed to process Stata file for year {year}"
                 ) from e
 
         except zipfile.BadZipFile as e:
             logger.error(f"Bad zip file for year {year}: {str(e)}")
-            raise RuntimeError(f"Downloaded zip file is corrupt for year {year}") from e
+            raise RuntimeError(
+                f"Downloaded zip file is corrupt for year {year}"
+            ) from e
 
         # Process the interest data and add to final SCF dictionary
         auto_df = df[IDENTIFYER_COLUMNS + AUTO_LOAN_COLUMNS].copy()

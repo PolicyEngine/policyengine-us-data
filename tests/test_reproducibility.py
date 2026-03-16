@@ -144,9 +144,9 @@ class TestReproducibility:
             if file_path.exists() and filename != "checksums.txt":
                 with open(file_path, "rb") as f:
                     actual_checksum = hashlib.sha256(f.read()).hexdigest()
-                assert actual_checksum == expected_checksum, (
-                    f"Checksum mismatch for {filename}"
-                )
+                assert (
+                    actual_checksum == expected_checksum
+                ), f"Checksum mismatch for {filename}"
 
     def test_memory_usage(self):
         """Test that memory usage stays within bounds."""

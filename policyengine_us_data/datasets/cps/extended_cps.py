@@ -561,21 +561,17 @@ class ExtendedCPS(Dataset):
             else:
                 default_val = np.zeros(n_inject, dtype=existing.dtype)
 
-            if variable in puf_data:
-                puf_values = puf_data[variable]
-                if hasattr(puf_values, "__array__"):
-                    puf_values = np.asarray(puf_values)
-            else:
-                puf_values = default_val
-
-            if len(puf_values) != len(mask):
-                puf_values = default_val
-
-            puf_subset = (
-                puf_values[mask]
-                if len(puf_values) > len(mask) or len(puf_values) == len(mask)
-                else puf_values
+            use_puf = (
+                variable in puf_data
+                and len(np.asarray(puf_data[variable])) == len(mask)
+                and np.asarray(puf_data[variable]).dtype.kind == existing.dtype.kind
             )
+
+            if use_puf:
+                puf_values = np.asarray(puf_data[variable])
+                puf_subset = puf_values[mask]
+            else:
+                puf_subset = default_val
 
             # Offset IDs to avoid collisions
             if variable.endswith("_id") and puf_subset.dtype.kind in (
@@ -585,23 +581,12 @@ class ExtendedCPS(Dataset):
             ):
                 puf_subset = puf_subset + id_offset
 
-            # Match dtypes to avoid object arrays that HDF5 can't save
-            try:
-                puf_subset = np.array(puf_subset).astype(existing.dtype)
-            except (ValueError, TypeError):
-                # Can't cast — pad with zeros to keep lengths aligned
-                logger.warning(
-                    "Padding %s with defaults: cannot cast PUF dtype %s to %s",
-                    variable,
-                    puf_subset.dtype,
-                    existing.dtype,
-                )
-                if existing.dtype.kind in ("S", "U"):
-                    puf_subset = np.full(
-                        len(puf_subset), existing[0], dtype=existing.dtype
-                    )
-                else:
-                    puf_subset = np.zeros(len(puf_subset), dtype=existing.dtype)
+            # Ensure dtype matches existing array
+            if puf_subset.dtype != existing.dtype:
+                try:
+                    puf_subset = puf_subset.astype(existing.dtype)
+                except (ValueError, TypeError):
+                    puf_subset = default_val
 
             new_data[variable][self.time_period] = np.concatenate(
                 [existing, puf_subset]

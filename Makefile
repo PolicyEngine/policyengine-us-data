@@ -143,9 +143,11 @@ upload-calibration:
 		upload_calibration_artifacts()"
 
 upload-dataset:
-	@echo "NOTE: source_imputed H5 is an intermediate artifact."
-	@echo "Use 'make push-to-modal' to push to Modal volume,"
-	@echo "or 'make promote-dataset' to publish to HF at promotion time."
+	python -c "from policyengine_us_data.utils.huggingface import upload; \
+		upload('policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5', \
+		'policyengine/policyengine-us-data', \
+		'calibration/source_imputed_stratified_extended_cps.h5')"
+	@echo "Dataset uploaded to HF."
 
 upload-database:
 	python -c "from policyengine_us_data.utils.huggingface import upload; \
@@ -186,7 +188,8 @@ calibrate-both:
 
 stage-h5s:
 	modal run modal_app/local_area.py::main \
-		--branch $(BRANCH) --num-workers $(NUM_WORKERS)
+		--branch $(BRANCH) --num-workers $(NUM_WORKERS) \
+		$(if $(SKIP_DOWNLOAD),--skip-download)
 
 stage-national-h5:
 	modal run modal_app/local_area.py::main_national \
@@ -221,7 +224,7 @@ check-sanity:
 	python -m policyengine_us_data.calibration.validate_staging \
 		--sanity-only --area-type states --areas NC
 
-pipeline: data push-to-modal build-matrices calibrate-both stage-all-h5s
+pipeline: data upload-dataset build-matrices calibrate-both stage-all-h5s
 	@echo ""
 	@echo "========================================"
 	@echo "Pipeline complete. H5s are in HF staging."

@@ -568,7 +568,7 @@ def coordinate_publish(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
-    skip_download: bool = True,
+    skip_download: bool = False,
 ) -> str:
     """Coordinate the full publishing workflow."""
     setup_gcp_credentials()
@@ -780,7 +780,7 @@ def main(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
-    skip_download: bool = True,
+    skip_download: bool = False,
 ):
     """Local entrypoint for Modal CLI."""
     result = coordinate_publish.remote(

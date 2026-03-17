@@ -145,6 +145,50 @@ def _trigger_repository_dispatch(event_type: str = "calibration-updated"):
     return True
 
 
+def _upload_source_imputed(lines):
+    """Parse SOURCE_IMPUTED_PATH from output and upload to HF."""
+    source_path = None
+    for line in lines:
+        if "SOURCE_IMPUTED_PATH:" in line:
+            raw = line.split("SOURCE_IMPUTED_PATH:")[1].strip()
+            source_path = raw.split("]")[-1].strip() if "]" in raw else raw
+    if not source_path or not os.path.exists(source_path):
+        return
+    print(f"Uploading source-imputed dataset: {source_path}", flush=True)
+    rc, _ = _run_streaming(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            "from policyengine_us_data.utils.huggingface import upload; "
+            f"upload('{source_path}', "
+            "'policyengine/policyengine-us-data', "
+            "'calibration/"
+            "source_imputed_stratified_extended_cps.h5')",
+        ],
+        env=os.environ.copy(),
+        label="upload-source-imputed",
+    )
+    if rc != 0:
+        print(
+            "WARNING: Failed to upload source-imputed dataset",
+            flush=True,
+        )
+    else:
+        print("Source-imputed dataset uploaded to HF", flush=True)
+
+    # Mirror to pipeline artifact repo.
+    from pathlib import Path
+
+    from policyengine_us_data.utils.pipeline_artifacts import (
+        mirror_to_pipeline,
+    )
+
+    mirror_to_pipeline(
+        "stage_4_source_imputed",
+        [Path(source_path)],
+    )
 def _fit_weights_impl(
     branch: str,
     epochs: int,
@@ -1045,6 +1089,25 @@ def main(
             log_dir=".",
             prefix=prefix,
         )
+
+        # Mirror to pipeline artifact repo.
+        from pathlib import Path
+
+        from policyengine_us_data.utils.pipeline_artifacts import (
+            mirror_to_pipeline,
+        )
+
+        stage_6_files = [Path(output)]
+        if result.get("geography"):
+            stage_6_files.append(Path(geography_output))
+        for name in [
+            cal_log_output,
+            log_output,
+            config_output,
+        ]:
+            if os.path.exists(name):
+                stage_6_files.append(Path(name))
+        mirror_to_pipeline("stage_6_weights", stage_6_files)
 
     if trigger_publish:
         _trigger_repository_dispatch()

@@ -608,6 +608,28 @@ print(f"Successfully published version {{version}}")
     if result.returncode != 0:
         raise RuntimeError(f"Promote failed: {result.stderr}")
 
+    # Mirror manifest-only to pipeline artifact repo (files
+    # are too large to double-upload; checksums are recorded).
+    try:
+        from policyengine_us_data.utils.pipeline_artifacts import (
+            mirror_to_pipeline,
+        )
+
+        version_dir = Path(VOLUME_MOUNT) / version
+        h5_files = [
+            version_dir / rp for rp in manifest["files"] if (version_dir / rp).exists()
+        ]
+        mirror_to_pipeline(
+            "stage_7_local_area",
+            h5_files,
+            manifest_only=True,
+        )
+    except Exception:
+        print(
+            "WARNING: Failed to mirror stage_7 manifest to pipeline repo",
+            flush=True,
+        )
+
     return (
         f"Successfully promoted version {version} with {len(manifest['files'])} files"
     )

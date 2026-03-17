@@ -476,6 +476,26 @@ def build_datasets(
             "policyengine_us_data/storage/upload_completed_datasets.py",
             env=env,
         )
+        # Upload source_imputed to calibration/ path for downstream pipeline
+        print("Uploading source_imputed dataset to HF calibration/...")
+        subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "-c",
+                "from policyengine_us_data.utils.huggingface import upload; "
+                "upload("
+                "'policyengine_us_data/storage/"
+                "source_imputed_stratified_extended_cps_2024.h5', "
+                "'policyengine/policyengine-us-data', "
+                "'calibration/"
+                "source_imputed_stratified_extended_cps.h5')",
+            ],
+            check=True,
+            env=env,
+        )
+        print("Source imputed dataset uploaded to HF")
 
     # Clean up checkpoints after successful completion
     cleanup_checkpoints(branch, checkpoint_volume)

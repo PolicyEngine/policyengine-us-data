@@ -356,9 +356,7 @@ def add_takeup(self):
     n_non_reporters = (~reported_ssi).sum()
     target_takeup = int(SSI_TAKEUP_RATE * n_persons)
     remaining_needed = max(0, target_takeup - n_reporters)
-    non_reporter_rate = (
-        remaining_needed / n_non_reporters if n_non_reporters > 0 else 0
-    )
+    non_reporter_rate = remaining_needed / n_non_reporters if n_non_reporters > 0 else 0
 
     ssi_rng = np.random.default_rng(seed=200)
     data["takes_up_ssi_if_eligible"] = reported_ssi | (

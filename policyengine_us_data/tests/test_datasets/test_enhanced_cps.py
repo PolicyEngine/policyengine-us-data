@@ -216,10 +216,9 @@ def test_immigration_status_diversity():
         "Immigration status not being read from data."
     )
 
-    # Check reasonable percentage of citizens (85-90% for CPS, higher with
-    # injected PUF records since tax filers are almost all citizens)
-    assert 80 < citizen_pct < 98, (
-        f"Citizen percentage ({citizen_pct:.1f}%) outside expected range (80-98%)"
+    # Also check that we have a reasonable percentage of citizens (should be 85-90%)
+    assert 80 < citizen_pct < 95, (
+        f"Citizen percentage ({citizen_pct:.1f}%) outside expected range (80-95%)"
     )
 
     # Check that we have some non-citizens

@@ -1295,29 +1295,7 @@ def main(argv=None):
     logger.info("Weights saved to %s", output_path)
     print(f"OUTPUT_PATH:{output_path}")
 
-    # Save full geography for local-area pipeline
-    from policyengine_us_data.calibration.clone_and_assign import (
-        GeographyAssignment,
-        save_geography,
-    )
-
-    geography = GeographyAssignment(
-        block_geoid=geography_info["block_geoid"],
-        cd_geoid=geography_info["cd_geoid"],
-        county_fips=np.array([b[:5] for b in geography_info["block_geoid"]]),
-        state_fips=np.array(
-            [int(b[:2]) for b in geography_info["block_geoid"]],
-            dtype=np.int32,
-        ),
-        n_records=geography_info["base_n_records"],
-        n_clones=args.n_clones,
-    )
-    geo_path = output_dir / "geography.npz"
-    save_geography(geography, geo_path)
-    logger.info("Geography saved to %s", geo_path)
-    print(f"GEOGRAPHY_PATH:{geo_path}")
-
-    # Also save legacy artifacts for backward compatibility
+    # Save legacy block artifact for backward compatibility
     blocks_path = output_dir / "stacked_blocks.npy"
     np.save(str(blocks_path), geography_info["block_geoid"])
     logger.info("Blocks saved to %s", blocks_path)
@@ -1369,7 +1347,6 @@ def main(argv=None):
         "elapsed_seconds": round(t_end - t_start, 1),
         "artifacts": {
             "calibration_weights.npy": _sha256(output_path),
-            "geography.npz": _sha256(geo_path),
         },
     }
     run_config.update(get_git_provenance())

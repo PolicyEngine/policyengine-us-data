@@ -1264,128 +1264,20 @@ class UnifiedMatrixBuilder:
                             f"State group {sf} failed: {exc}"
                         ) from exc
         else:
-            from policyengine_us import Microsimulation
-            from policyengine_us_data.utils.takeup import (
-                SIMPLE_TAKEUP_VARS,
-            )
-
             county_count = 0
-            for state_fips, counties in sorted(state_to_counties.items()):
-                state_sim = Microsimulation(dataset=self.dataset_path)
-
-                state_sim.set_input(
-                    "state_fips",
+            for sf, counties in sorted(state_to_counties.items()):
+                results = _compute_single_state_group_counties(
+                    self.dataset_path,
                     self.time_period,
-                    np.full(n_hh, state_fips, dtype=np.int32),
+                    sf,
+                    counties,
+                    n_hh,
+                    county_dep_targets_list,
+                    rerandomize_takeup,
+                    affected_targets,
                 )
-
-                original_takeup = {}
-                if rerandomize_takeup:
-                    for spec in SIMPLE_TAKEUP_VARS:
-                        entity = spec["entity"]
-                        original_takeup[spec["variable"]] = (
-                            entity,
-                            state_sim.calculate(
-                                spec["variable"],
-                                self.time_period,
-                                map_to=entity,
-                            ).values.copy(),
-                        )
-
-                for county_fips in counties:
-                    county_idx = get_county_enum_index_from_fips(county_fips)
-                    state_sim.set_input(
-                        "county",
-                        self.time_period,
-                        np.full(
-                            n_hh,
-                            county_idx,
-                            dtype=np.int32,
-                        ),
-                    )
-                    if county_fips == "06037":
-                        state_sim.set_input(
-                            "zip_code",
-                            self.time_period,
-                            np.full(n_hh, "90001"),
-                        )
-                    if rerandomize_takeup:
-                        for vname, (
-                            ent,
-                            orig,
-                        ) in original_takeup.items():
-                            state_sim.set_input(
-                                vname,
-                                self.time_period,
-                                orig,
-                            )
-                    for var in get_calculated_variables(state_sim):
-                        if var not in ("county", "zip_code"):
-                            state_sim.delete_arrays(var)
-
-                    hh = {}
-                    for var in county_dep_targets:
-                        if var.endswith("_count"):
-                            continue
-                        try:
-                            hh[var] = state_sim.calculate(
-                                var,
-                                self.time_period,
-                                map_to="household",
-                            ).values.astype(np.float32)
-                        except Exception as exc:
-                            logger.warning(
-                                "Cannot calculate '%s' for county %s: %s",
-                                var,
-                                county_fips,
-                                exc,
-                            )
-
-                    if rerandomize_takeup:
-                        for spec in SIMPLE_TAKEUP_VARS:
-                            entity = spec["entity"]
-                            n_ent = len(
-                                state_sim.calculate(
-                                    f"{entity}_id",
-                                    map_to=entity,
-                                ).values
-                            )
-                            state_sim.set_input(
-                                spec["variable"],
-                                self.time_period,
-                                np.ones(n_ent, dtype=bool),
-                            )
-                        for var in get_calculated_variables(state_sim):
-                            if var not in ("county", "zip_code"):
-                                state_sim.delete_arrays(var)
-
-                    entity_vals = {}
-                    if rerandomize_takeup:
-                        for (
-                            tvar,
-                            info,
-                        ) in affected_targets.items():
-                            entity_level = info["entity"]
-                            try:
-                                entity_vals[tvar] = state_sim.calculate(
-                                    tvar,
-                                    self.time_period,
-                                    map_to=entity_level,
-                                ).values.astype(np.float32)
-                            except Exception as exc:
-                                logger.warning(
-                                    "Cannot calculate "
-                                    "entity-level '%s' "
-                                    "for county %s: %s",
-                                    tvar,
-                                    county_fips,
-                                    exc,
-                                )
-
-                    county_values[county_fips] = {
-                        "hh": hh,
-                        "entity": entity_vals,
-                    }
+                for county_fips, vals in results:
+                    county_values[county_fips] = vals
                     county_count += 1
                     if county_count % 500 == 0 or county_count == 1:
                         logger.info(

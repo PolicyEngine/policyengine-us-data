@@ -19,23 +19,17 @@ include:
     geo_level: district
   - variable: taxable_pension_income
     geo_level: district
-  # DISABLED: refundable_ctc formula doesn't gate on tax_unit_is_filer;
-  # non-filer values inflate totals beyond IRS SOI targets.
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: refundable_ctc
-  #   geo_level: district
+  - variable: refundable_ctc
+    geo_level: district
   - variable: unemployment_compensation
     geo_level: district
 
   # === DISTRICT — ACA PTC ===
-  # DISABLED: aca_ptc formula doesn't gate on tax_unit_is_filer;
-  # non-filer values inflate totals beyond IRS SOI targets.
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: aca_ptc
-  #   geo_level: district
-  # - variable: tax_unit_count
-  #   geo_level: district
-  #   domain_variable: aca_ptc
+  - variable: aca_ptc
+    geo_level: district
+  - variable: tax_unit_count
+    geo_level: district
+    domain_variable: aca_ptc
 
   # === STATE ===
   - variable: person_count
@@ -54,11 +48,8 @@ include:
     geo_level: national
   - variable: child_support_received
     geo_level: national
-  # DISABLED: eitc formula doesn't gate on tax_unit_is_filer;
-  # non-filer values inflate totals beyond IRS SOI targets.
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: eitc
-  #   geo_level: national
+  - variable: eitc
+    geo_level: national
   - variable: health_insurance_premiums_without_medicare_part_b
     geo_level: national
   - variable: medicaid
@@ -97,19 +88,15 @@ include:
     geo_level: national
 
   # === NATIONAL — IRS SOI domain-constrained dollar targets ===
-  # DISABLED: aca_ptc formula doesn't gate on tax_unit_is_filer
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: aca_ptc
-  #   geo_level: national
-  #   domain_variable: aca_ptc
+  - variable: aca_ptc
+    geo_level: national
+    domain_variable: aca_ptc
   - variable: dividend_income
     geo_level: national
     domain_variable: dividend_income
-  # DISABLED: eitc formula doesn't gate on tax_unit_is_filer
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: eitc
-  #   geo_level: national
-  #   domain_variable: eitc_child_count
+  - variable: eitc
+    geo_level: national
+    domain_variable: eitc_child_count
   - variable: income_tax_positive
     geo_level: national
   - variable: income_tax_before_credits
@@ -124,11 +111,9 @@ include:
   - variable: qualified_dividend_income
     geo_level: national
     domain_variable: qualified_dividend_income
-  # DISABLED: refundable_ctc formula doesn't gate on tax_unit_is_filer
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: refundable_ctc
-  #   geo_level: national
-  #   domain_variable: refundable_ctc
+  - variable: refundable_ctc
+    geo_level: national
+    domain_variable: refundable_ctc
   - variable: rental_income
     geo_level: national
     domain_variable: rental_income
@@ -161,19 +146,15 @@ include:
     domain_variable: unemployment_compensation
 
   # === NATIONAL — IRS SOI filer count targets ===
-  # DISABLED: aca_ptc inflated by non-filers
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: tax_unit_count
-  #   geo_level: national
-  #   domain_variable: aca_ptc
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: aca_ptc
   - variable: tax_unit_count
     geo_level: national
     domain_variable: dividend_income
-  # DISABLED: eitc inflated by non-filers
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: tax_unit_count
-  #   geo_level: national
-  #   domain_variable: eitc_child_count
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: eitc_child_count
   - variable: tax_unit_count
     geo_level: national
     domain_variable: income_tax
@@ -195,11 +176,9 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: real_estate_taxes
-  # DISABLED: refundable_ctc inflated by non-filers
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: tax_unit_count
-  #   geo_level: national
-  #   domain_variable: refundable_ctc
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: refundable_ctc
   - variable: tax_unit_count
     geo_level: national
     domain_variable: rental_income

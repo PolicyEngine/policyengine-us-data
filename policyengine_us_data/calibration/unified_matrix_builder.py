@@ -124,9 +124,7 @@ def _compute_single_state(
     if rerandomize_takeup:
         for spec in SIMPLE_TAKEUP_VARS:
             entity = spec["entity"]
-            n_ent = len(
-                state_sim.calculate(f"{entity}_id", map_to=entity).values
-            )
+            n_ent = len(state_sim.calculate(f"{entity}_id", map_to=entity).values)
             state_sim.set_input(
                 spec["variable"],
                 time_period,
@@ -160,9 +158,7 @@ def _compute_single_state(
             info["entity"] == "tax_unit" for info in affected_targets.values()
         )
         if has_tu_target:
-            n_tu = len(
-                state_sim.calculate("tax_unit_id", map_to="tax_unit").values
-            )
+            n_tu = len(state_sim.calculate("tax_unit_id", map_to="tax_unit").values)
             state_sim.set_input(
                 "would_file_taxes_voluntarily",
                 time_period,
@@ -291,9 +287,7 @@ def _compute_single_state_group_counties(
         if rerandomize_takeup:
             for spec in SIMPLE_TAKEUP_VARS:
                 entity = spec["entity"]
-                n_ent = len(
-                    state_sim.calculate(f"{entity}_id", map_to=entity).values
-                )
+                n_ent = len(state_sim.calculate(f"{entity}_id", map_to=entity).values)
                 state_sim.set_input(
                     spec["variable"],
                     time_period,
@@ -374,9 +368,7 @@ def _assemble_clone_values_standalone(
 
     state_masks = {int(s): clone_states == s for s in unique_clone_states}
     unique_person_states = np.unique(person_states)
-    person_state_masks = {
-        int(s): person_states == s for s in unique_person_states
-    }
+    person_state_masks = {int(s): person_states == s for s in unique_person_states}
     county_masks = {}
     unique_counties = None
     if clone_counties is not None and county_values:
@@ -675,9 +667,7 @@ def _process_single_clone(
                     ent_counties = clone_counties[ent_hh]
                     for cfips in np.unique(ent_counties):
                         m = ent_counties == cfips
-                        cv = county_values.get(cfips, {}).get(
-                            "entity_wf_false", {}
-                        )
+                        cv = county_values.get(cfips, {}).get("entity_wf_false", {})
                         if tvar in cv:
                             ent_wf_false[m] = cv[tvar][m]
                         else:
@@ -853,18 +843,10 @@ class UnifiedMatrixBuilder:
 
         self._entity_rel_cache = pd.DataFrame(
             {
-                "person_id": sim.calculate(
-                    "person_id", map_to="person"
-                ).values,
-                "household_id": sim.calculate(
-                    "household_id", map_to="person"
-                ).values,
-                "tax_unit_id": sim.calculate(
-                    "tax_unit_id", map_to="person"
-                ).values,
-                "spm_unit_id": sim.calculate(
-                    "spm_unit_id", map_to="person"
-                ).values,
+                "person_id": sim.calculate("person_id", map_to="person").values,
+                "household_id": sim.calculate("household_id", map_to="person").values,
+                "tax_unit_id": sim.calculate("tax_unit_id", map_to="person").values,
+                "spm_unit_id": sim.calculate("spm_unit_id", map_to="person").values,
             }
         )
         return self._entity_rel_cache
@@ -984,9 +966,7 @@ class UnifiedMatrixBuilder:
                     except Exception as exc:
                         for f in futures:
                             f.cancel()
-                        raise RuntimeError(
-                            f"State {st} failed: {exc}"
-                        ) from exc
+                        raise RuntimeError(f"State {st} failed: {exc}") from exc
         else:
             from policyengine_us import Microsimulation
             from policyengine_us_data.utils.takeup import (
@@ -1042,9 +1022,7 @@ class UnifiedMatrixBuilder:
                     for spec in SIMPLE_TAKEUP_VARS:
                         entity = spec["entity"]
                         n_ent = len(
-                            state_sim.calculate(
-                                f"{entity}_id", map_to=entity
-                            ).values
+                            state_sim.calculate(f"{entity}_id", map_to=entity).values
                         )
                         state_sim.set_input(
                             spec["variable"],
@@ -1260,9 +1238,7 @@ class UnifiedMatrixBuilder:
                     except Exception as exc:
                         for f in futures:
                             f.cancel()
-                        raise RuntimeError(
-                            f"State group {sf} failed: {exc}"
-                        ) from exc
+                        raise RuntimeError(f"State group {sf} failed: {exc}") from exc
         else:
             county_count = 0
             for sf, counties in sorted(state_to_counties.items()):
@@ -1336,9 +1312,7 @@ class UnifiedMatrixBuilder:
         # Pre-compute masks to avoid recomputing per variable
         state_masks = {int(s): clone_states == s for s in unique_clone_states}
         unique_person_states = np.unique(person_states)
-        person_state_masks = {
-            int(s): person_states == s for s in unique_person_states
-        }
+        person_state_masks = {int(s): person_states == s for s in unique_person_states}
         county_masks = {}
         unique_counties = None
         if clone_counties is not None and county_values:
@@ -1351,9 +1325,7 @@ class UnifiedMatrixBuilder:
                 continue
             if var in cdv and county_values and clone_counties is not None:
                 first_county = unique_counties[0]
-                if var not in county_values.get(first_county, {}).get(
-                    "hh", {}
-                ):
+                if var not in county_values.get(first_county, {}).get("hh", {}):
                     continue
                 arr = np.empty(n_records, dtype=np.float32)
                 for county in unique_counties:
@@ -1495,9 +1467,7 @@ class UnifiedMatrixBuilder:
                 factors[(from_year, "cpi")] = 1.0
 
             try:
-                pop_from = params.calibration.gov.census.populations.total(
-                    from_year
-                )
+                pop_from = params.calibration.gov.census.populations.total(from_year)
                 pop_to = params.calibration.gov.census.populations.total(
                     self.time_period
                 )
@@ -1574,9 +1544,7 @@ class UnifiedMatrixBuilder:
                         var_factors[var] = 1.0
                         continue
                     period = row.iloc[0]["period"]
-                    factor, _ = self._get_uprating_info(
-                        var, period, national_factors
-                    )
+                    factor, _ = self._get_uprating_info(var, period, national_factors)
                     var_factors[var] = factor
 
             result[state_int] = var_factors
@@ -1711,9 +1679,7 @@ class UnifiedMatrixBuilder:
 
         non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
         if non_geo:
-            strs = [
-                f"{c['variable']}{c['operation']}{c['value']}" for c in non_geo
-            ]
+            strs = [f"{c['variable']}{c['operation']}{c['value']}" for c in non_geo]
             parts.append("[" + ",".join(strs) + "]")
 
         return "/".join(parts)
@@ -1857,15 +1823,9 @@ class UnifiedMatrixBuilder:
         n_targets = len(targets_df)
 
         # 2. Sort targets by geographic level
-        targets_df["_geo_level"] = targets_df["geographic_id"].apply(
-            get_geo_level
-        )
-        targets_df = targets_df.sort_values(
-            ["_geo_level", "variable", "geographic_id"]
-        )
-        targets_df = targets_df.drop(columns=["_geo_level"]).reset_index(
-            drop=True
-        )
+        targets_df["_geo_level"] = targets_df["geographic_id"].apply(get_geo_level)
+        targets_df = targets_df.sort_values(["_geo_level", "variable", "geographic_id"])
+        targets_df = targets_df.drop(columns=["_geo_level"]).reset_index(drop=True)
 
         # 3. Build column index structures from geography
         state_col_lists: Dict[int, list] = defaultdict(list)
@@ -1892,9 +1852,7 @@ class UnifiedMatrixBuilder:
             geo_id = row["geographic_id"]
             target_geo_info.append((geo_level, geo_id))
 
-            non_geo = [
-                c for c in constraints if c["variable"] not in _GEO_VARS
-            ]
+            non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
             non_geo_constraints_list.append(non_geo)
 
             target_names.append(
@@ -1933,14 +1891,10 @@ class UnifiedMatrixBuilder:
 
         # 5c. State-independent structures (computed once)
         entity_rel = self._build_entity_relationship(sim)
-        household_ids = sim.calculate(
-            "household_id", map_to="household"
-        ).values
+        household_ids = sim.calculate("household_id", map_to="household").values
         person_hh_ids = sim.calculate("household_id", map_to="person").values
         hh_id_to_idx = {int(hid): idx for idx, hid in enumerate(household_ids)}
-        person_hh_indices = np.array(
-            [hh_id_to_idx[int(hid)] for hid in person_hh_ids]
-        )
+        person_hh_indices = np.array([hh_id_to_idx[int(hid)] for hid in person_hh_ids])
         tax_benefit_system = sim.tax_benefit_system
 
         # Pre-extract entity keys so workers don't need
@@ -1948,9 +1902,7 @@ class UnifiedMatrixBuilder:
         variable_entity_map: Dict[str, str] = {}
         for var in unique_variables:
             if var.endswith("_count") and var in tax_benefit_system.variables:
-                variable_entity_map[var] = tax_benefit_system.variables[
-                    var
-                ].entity.key
+                variable_entity_map[var] = tax_benefit_system.variables[var].entity.key
 
         # 5c-extra: Entity-to-household index maps for takeup
         affected_target_info = {}
@@ -1965,9 +1917,7 @@ class UnifiedMatrixBuilder:
 
             # Build entity-to-household index arrays
             spm_to_hh_id = (
-                entity_rel.groupby("spm_unit_id")["household_id"]
-                .first()
-                .to_dict()
+                entity_rel.groupby("spm_unit_id")["household_id"].first().to_dict()
             )
             spm_ids = sim.calculate("spm_unit_id", map_to="spm_unit").values
             spm_hh_idx = np.array(
@@ -1975,9 +1925,7 @@ class UnifiedMatrixBuilder:
             )
 
             tu_to_hh_id = (
-                entity_rel.groupby("tax_unit_id")["household_id"]
-                .first()
-                .to_dict()
+                entity_rel.groupby("tax_unit_id")["household_id"].first().to_dict()
             )
             tu_ids = sim.calculate("tax_unit_id", map_to="tax_unit").values
             tu_hh_idx = np.array(
@@ -1996,9 +1944,7 @@ class UnifiedMatrixBuilder:
                     f"{entity_level}_id",
                     map_to=entity_level,
                 ).values
-                ent_id_to_idx = {
-                    int(eid): idx for idx, eid in enumerate(ent_ids)
-                }
+                ent_id_to_idx = {int(eid): idx for idx, eid in enumerate(ent_ids)}
                 person_ent_ids = entity_rel[f"{entity_level}_id"].values
                 entity_to_person_idx[entity_level] = np.array(
                     [ent_id_to_idx[int(eid)] for eid in person_ent_ids]
@@ -2025,9 +1971,7 @@ class UnifiedMatrixBuilder:
             for spec in _ALL_TAKEUP:
                 rk = spec["rate_key"]
                 if rk not in precomputed_rates:
-                    precomputed_rates[rk] = load_take_up_rate(
-                        rk, self.time_period
-                    )
+                    precomputed_rates[rk] = load_take_up_rate(rk, self.time_period)
 
             # Store for post-optimization stacked takeup
             self.entity_hh_idx_map = entity_hh_idx_map
@@ -2128,9 +2072,7 @@ class UnifiedMatrixBuilder:
                     except Exception as exc:
                         for f in futures:
                             f.cancel()
-                        raise RuntimeError(
-                            f"Clone {ci} failed: {exc}"
-                        ) from exc
+                        raise RuntimeError(f"Clone {ci} failed: {exc}") from exc
 
         else:
             # ---- Sequential clone processing (unchanged) ----
@@ -2197,9 +2139,7 @@ class UnifiedMatrixBuilder:
                         ent_hh = entity_hh_idx_map[entity]
                         ent_blocks = clone_blocks[ent_hh]
                         ent_hh_ids = household_ids[ent_hh]
-                        ent_ci = np.full(
-                            len(ent_hh), clone_idx, dtype=np.int64
-                        )
+                        ent_ci = np.full(len(ent_hh), clone_idx, dtype=np.int64)
                         draws = compute_block_takeup_for_entities(
                             var_name,
                             precomputed_rates[rate_key],
@@ -2210,9 +2150,7 @@ class UnifiedMatrixBuilder:
                         wf_draws[entity] = draws
                         if var_name in person_vars:
                             pidx = entity_to_person_idx[entity]
-                            person_vars[var_name] = draws[pidx].astype(
-                                np.float32
-                            )
+                            person_vars[var_name] = draws[pidx].astype(np.float32)
 
                     # Phase 2: target loop with would_file blending
                     for (
@@ -2233,9 +2171,7 @@ class UnifiedMatrixBuilder:
                             ent_counties = clone_counties[ent_hh]
                             for cfips in np.unique(ent_counties):
                                 m = ent_counties == cfips
-                                cv = county_values.get(cfips, {}).get(
-                                    "entity", {}
-                                )
+                                cv = county_values.get(cfips, {}).get("entity", {})
                                 if tvar in cv:
                                     ent_eligible[m] = cv[tvar][m]
                                 else:
@@ -2251,10 +2187,7 @@ class UnifiedMatrixBuilder:
                                     ent_eligible[m] = sv[tvar][m]
 
                         # Blend for tax_unit targets
-                        if (
-                            entity_level == "tax_unit"
-                            and "tax_unit" in wf_draws
-                        ):
+                        if entity_level == "tax_unit" and "tax_unit" in wf_draws:
                             ent_wf_false = np.zeros(n_ent, dtype=np.float32)
                             if tvar in county_dep_targets and county_values:
                                 ent_counties = clone_counties[ent_hh]
@@ -2267,9 +2200,7 @@ class UnifiedMatrixBuilder:
                                         ent_wf_false[m] = cv[tvar][m]
                                     else:
                                         st = int(cfips[:2])
-                                        sv = state_values[st].get(
-                                            "entity_wf_false", {}
-                                        )
+                                        sv = state_values[st].get("entity_wf_false", {})
                                         if tvar in sv:
                                             ent_wf_false[m] = sv[tvar][m]
                             else:
@@ -2298,9 +2229,7 @@ class UnifiedMatrixBuilder:
                             ent_ci,
                         )
 
-                        ent_values = (ent_eligible * ent_takeup).astype(
-                            np.float32
-                        )
+                        ent_values = (ent_eligible * ent_takeup).astype(np.float32)
 
                         hh_result = np.zeros(n_records, dtype=np.float32)
                         np.add.at(hh_result, ent_hh, ent_values)
@@ -2360,17 +2289,15 @@ class UnifiedMatrixBuilder:
                             constraint_key,
                         )
                         if vkey not in count_cache:
-                            count_cache[vkey] = (
-                                _calculate_target_values_standalone(
-                                    target_variable=variable,
-                                    non_geo_constraints=non_geo,
-                                    n_households=n_records,
-                                    hh_vars=hh_vars,
-                                    person_vars=person_vars,
-                                    entity_rel=entity_rel,
-                                    household_ids=household_ids,
-                                    variable_entity_map=variable_entity_map,
-                                )
+                            count_cache[vkey] = _calculate_target_values_standalone(
+                                target_variable=variable,
+                                non_geo_constraints=non_geo,
+                                n_households=n_records,
+                                hh_vars=hh_vars,
+                                person_vars=person_vars,
+                                entity_rel=entity_rel,
+                                household_ids=household_ids,
+                                variable_entity_map=variable_entity_map,
                             )
                         values = count_cache[vkey]
                     else:

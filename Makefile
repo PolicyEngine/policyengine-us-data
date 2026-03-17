@@ -87,9 +87,11 @@ promote-database:
 	@echo "Copied DB and raw_inputs to HF clone. Now cd to HF repo, commit, and push."
 
 promote-dataset:
-	cp policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5 \
-		$(HF_CLONE_DIR)/calibration/source_imputed_stratified_extended_cps.h5
-	@echo "Copied dataset to HF clone. Now cd to HF repo, commit, and push."
+	python -c "from policyengine_us_data.utils.huggingface import upload; \
+		upload('policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5', \
+		'policyengine/policyengine-us-data', \
+		'calibration/source_imputed_stratified_extended_cps.h5')"
+	@echo "Dataset promoted to HF."
 
 data: download
 	python policyengine_us_data/utils/uprating.py
@@ -141,11 +143,9 @@ upload-calibration:
 		upload_calibration_artifacts()"
 
 upload-dataset:
-	python -c "from policyengine_us_data.utils.huggingface import upload; \
-		upload('policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5', \
-		'policyengine/policyengine-us-data', \
-		'calibration/source_imputed_stratified_extended_cps.h5')"
-	@echo "Dataset uploaded to HF."
+	@echo "NOTE: source_imputed H5 is an intermediate artifact."
+	@echo "Use 'make push-to-modal' to push to Modal volume,"
+	@echo "or 'make promote-dataset' to publish to HF at promotion time."
 
 upload-database:
 	python -c "from policyengine_us_data.utils.huggingface import upload; \
@@ -159,17 +159,8 @@ push-to-modal:
 		policyengine_us_data/storage/calibration/calibration_weights.npy \
 		calibration_inputs/calibration/calibration_weights.npy --force
 	modal volume put local-area-staging \
-		policyengine_us_data/storage/calibration/stacked_blocks.npy \
-		calibration_inputs/calibration/stacked_blocks.npy --force
-	modal volume put local-area-staging \
-		policyengine_us_data/storage/calibration/stacked_takeup.npz \
-		calibration_inputs/calibration/stacked_takeup.npz --force
-	modal volume put local-area-staging \
 		policyengine_us_data/storage/calibration/policy_data.db \
 		calibration_inputs/calibration/policy_data.db --force
-	modal volume put local-area-staging \
-		policyengine_us_data/storage/calibration/geo_labels.json \
-		calibration_inputs/calibration/geo_labels.json --force
 	modal volume put local-area-staging \
 		policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5 \
 		calibration_inputs/calibration/source_imputed_stratified_extended_cps.h5 --force
@@ -195,8 +186,7 @@ calibrate-both:
 
 stage-h5s:
 	modal run modal_app/local_area.py::main \
-		--branch $(BRANCH) --num-workers $(NUM_WORKERS) \
-		$(if $(SKIP_DOWNLOAD),--skip-download)
+		--branch $(BRANCH) --num-workers $(NUM_WORKERS)
 
 stage-national-h5:
 	modal run modal_app/local_area.py::main_national \
@@ -231,7 +221,7 @@ check-sanity:
 	python -m policyengine_us_data.calibration.validate_staging \
 		--sanity-only --area-type states --areas NC
 
-pipeline: data upload-dataset build-matrices calibrate-both stage-all-h5s
+pipeline: data push-to-modal build-matrices calibrate-both stage-all-h5s
 	@echo ""
 	@echo "========================================"
 	@echo "Pipeline complete. H5s are in HF staging."

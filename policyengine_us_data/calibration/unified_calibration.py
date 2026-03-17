@@ -136,9 +136,7 @@ def check_package_staleness(metadata: dict) -> None:
             built_dt = datetime.datetime.fromisoformat(created)
             age = datetime.datetime.now() - built_dt
             if age.days > 7:
-                print(
-                    f"WARNING: Package is {age.days} days old (built {created})"
-                )
+                print(f"WARNING: Package is {age.days} days old (built {created})")
         except Exception:
             pass
 
@@ -171,9 +169,7 @@ def check_package_staleness(metadata: dict) -> None:
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(
-        description="Unified L0 calibration pipeline"
-    )
+    parser = argparse.ArgumentParser(description="Unified L0 calibration pipeline")
     parser.add_argument(
         "--dataset",
         default=None,
@@ -342,9 +338,7 @@ def _match_rules(targets_df, rules):
     for rule in rules:
         rule_mask = targets_df["variable"] == rule["variable"]
         if "geo_level" in rule:
-            rule_mask = rule_mask & (
-                targets_df["geo_level"] == rule["geo_level"]
-            )
+            rule_mask = rule_mask & (targets_df["geo_level"] == rule["geo_level"])
         if "domain_variable" in rule:
             rule_mask = rule_mask & (
                 targets_df["domain_variable"] == rule["domain_variable"]
@@ -584,9 +578,7 @@ def fit_l0_weights(
 
     import torch
 
-    os.environ.setdefault(
-        "PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True"
-    )
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     n_total = X_sparse.shape[1]
     if initial_weights is None:
@@ -629,9 +621,7 @@ def fit_l0_weights(
     builtins.print = _flushed_print
 
     enable_logging = (
-        log_freq is not None
-        and log_path is not None
-        and target_names is not None
+        log_freq is not None and log_path is not None and target_names is not None
     )
     if enable_logging:
         Path(log_path).parent.mkdir(parents=True, exist_ok=True)
@@ -668,9 +658,7 @@ def fit_l0_weights(
 
             with torch.no_grad():
                 y_pred = model.predict(X_sparse).cpu().numpy()
-                weights_snap = (
-                    model.get_weights(deterministic=True).cpu().numpy()
-                )
+                weights_snap = model.get_weights(deterministic=True).cpu().numpy()
 
             active_w = weights_snap[weights_snap > 0]
             nz = len(active_w)
@@ -714,9 +702,7 @@ def fit_l0_weights(
                 flush=True,
             )
 
-            ach_flags = (
-                achievable if achievable is not None else [True] * len(targets)
-            )
+            ach_flags = achievable if achievable is not None else [True] * len(targets)
             with open(log_path, "a") as f:
                 for i in range(len(targets)):
                     est = y_pred[i]
@@ -987,8 +973,7 @@ def run_calibration(
         )
 
         source_path = str(
-            Path(dataset_path).parent
-            / f"source_imputed_{Path(dataset_path).stem}.h5"
+            Path(dataset_path).parent / f"source_imputed_{Path(dataset_path).stem}.h5"
         )
         with h5py.File(source_path, "w") as f:
             for var, time_dict in data_dict.items():
@@ -1189,9 +1174,7 @@ def main(argv=None):
             f"Dataset not found: {dataset_path}\n"
             "Run 'make data' first, or pass --dataset with a valid path."
         )
-    db_path = args.db_path or str(
-        STORAGE_FOLDER / "calibration" / "policy_data.db"
-    )
+    db_path = args.db_path or str(STORAGE_FOLDER / "calibration" / "policy_data.db")
     output_path = args.output or str(
         STORAGE_FOLDER / "calibration" / "calibration_weights.npy"
     )
@@ -1205,15 +1188,11 @@ def main(argv=None):
 
     domain_variables = None
     if args.domain_variables:
-        domain_variables = [
-            x.strip() for x in args.domain_variables.split(",")
-        ]
+        domain_variables = [x.strip() for x in args.domain_variables.split(",")]
 
     hierarchical_domains = None
     if args.hierarchical_domains:
-        hierarchical_domains = [
-            x.strip() for x in args.hierarchical_domains.split(",")
-        ]
+        hierarchical_domains = [x.strip() for x in args.hierarchical_domains.split(",")]
 
     t_start = time.time()
 

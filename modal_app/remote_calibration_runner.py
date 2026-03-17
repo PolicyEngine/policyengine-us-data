@@ -76,9 +76,6 @@ def _collect_outputs(cal_lines):
     log_path = None
     cal_log_path = None
     config_path = None
-    blocks_path = None
-    geo_labels_path = None
-    geography_path = None
     for line in cal_lines:
         if "OUTPUT_PATH:" in line:
             output_path = line.split("OUTPUT_PATH:")[1].strip()
@@ -86,12 +83,6 @@ def _collect_outputs(cal_lines):
             config_path = line.split("CONFIG_PATH:")[1].strip()
         elif "CAL_LOG_PATH:" in line:
             cal_log_path = line.split("CAL_LOG_PATH:")[1].strip()
-        elif "GEO_LABELS_PATH:" in line:
-            geo_labels_path = line.split("GEO_LABELS_PATH:")[1].strip()
-        elif "GEOGRAPHY_PATH:" in line:
-            geography_path = line.split("GEOGRAPHY_PATH:")[1].strip()
-        elif "BLOCKS_PATH:" in line:
-            blocks_path = line.split("BLOCKS_PATH:")[1].strip()
         elif "LOG_PATH:" in line:
             log_path = line.split("LOG_PATH:")[1].strip()
 
@@ -113,29 +104,11 @@ def _collect_outputs(cal_lines):
         with open(config_path, "rb") as f:
             config_bytes = f.read()
 
-    blocks_bytes = None
-    if blocks_path and os.path.exists(blocks_path):
-        with open(blocks_path, "rb") as f:
-            blocks_bytes = f.read()
-
-    geo_labels_bytes = None
-    if geo_labels_path and os.path.exists(geo_labels_path):
-        with open(geo_labels_path, "rb") as f:
-            geo_labels_bytes = f.read()
-
-    geography_bytes = None
-    if geography_path and os.path.exists(geography_path):
-        with open(geography_path, "rb") as f:
-            geography_bytes = f.read()
-
     return {
         "weights": weights_bytes,
         "log": log_bytes,
         "cal_log": cal_log_bytes,
         "config": config_bytes,
-        "blocks": blocks_bytes,
-        "geo_labels": geo_labels_bytes,
-        "geography": geography_bytes,
     }
 
 
@@ -175,40 +148,6 @@ def _trigger_repository_dispatch(event_type: str = "calibration-updated"):
         flush=True,
     )
     return True
-
-
-def _upload_source_imputed(lines):
-    """Parse SOURCE_IMPUTED_PATH from output and upload to HF."""
-    source_path = None
-    for line in lines:
-        if "SOURCE_IMPUTED_PATH:" in line:
-            raw = line.split("SOURCE_IMPUTED_PATH:")[1].strip()
-            source_path = raw.split("]")[-1].strip() if "]" in raw else raw
-    if not source_path or not os.path.exists(source_path):
-        return
-    print(f"Uploading source-imputed dataset: {source_path}", flush=True)
-    rc, _ = _run_streaming(
-        [
-            "uv",
-            "run",
-            "python",
-            "-c",
-            "from policyengine_us_data.utils.huggingface import upload; "
-            f"upload('{source_path}', "
-            "'policyengine/policyengine-us-data', "
-            "'calibration/"
-            "source_imputed_stratified_extended_cps.h5')",
-        ],
-        env=os.environ.copy(),
-        label="upload-source-imputed",
-    )
-    if rc != 0:
-        print(
-            "WARNING: Failed to upload source-imputed dataset",
-            flush=True,
-        )
-    else:
-        print("Source-imputed dataset uploaded to HF", flush=True)
 
 
 def _fit_weights_impl(
@@ -282,8 +221,6 @@ def _fit_weights_impl(
     )
     if cal_rc != 0:
         raise RuntimeError(f"Script failed with code {cal_rc}")
-
-    _upload_source_imputed(cal_lines)
 
     return _collect_outputs(cal_lines)
 
@@ -466,8 +403,6 @@ def _build_package_impl(
     )
     if build_rc != 0:
         raise RuntimeError(f"Package build failed with code {build_rc}")
-
-    _upload_source_imputed(build_lines)
 
     _write_package_sidecar(pkg_path)
 
@@ -1041,10 +976,6 @@ def main(
                 flush=True,
             )
             print(
-                f"  - calibration/{prefix}stacked_blocks.npy",
-                flush=True,
-            )
-            print(
                 f"  - calibration/logs/{prefix}* (diagnostics, "
                 "config, calibration log)",
                 flush=True,
@@ -1087,24 +1018,6 @@ def main(
             f.write(result["config"])
         print(f"Run config saved to: {config_output}")
 
-    blocks_output = f"{prefix}stacked_blocks.npy"
-    if result.get("blocks"):
-        with open(blocks_output, "wb") as f:
-            f.write(result["blocks"])
-        print(f"Stacked blocks saved to: {blocks_output}")
-
-    geo_labels_output = f"{prefix}geo_labels.json"
-    if result.get("geo_labels"):
-        with open(geo_labels_output, "wb") as f:
-            f.write(result["geo_labels"])
-        print(f"Geo labels saved to: {geo_labels_output}")
-
-    geography_output = f"{prefix}geography.npz"
-    if result.get("geography"):
-        with open(geography_output, "wb") as f:
-            f.write(result["geography"])
-        print(f"Geography saved to: {geography_output}")
-
     if push_results:
         from policyengine_us_data.utils.huggingface import (
             upload_calibration_artifacts,
@@ -1112,9 +1025,6 @@ def main(
 
         upload_calibration_artifacts(
             weights_path=output,
-            blocks_path=(blocks_output if result.get("blocks") else None),
-            geo_labels_path=(geo_labels_output if result.get("geo_labels") else None),
-            geography_path=(geography_output if result.get("geography") else None),
             log_dir=".",
             prefix=prefix,
         )

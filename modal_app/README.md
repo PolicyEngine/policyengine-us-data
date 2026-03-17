@@ -76,7 +76,6 @@ Every run produces these local files (whichever the calibration script emits):
 - **unified_diagnostics.csv** — Final per-target diagnostics
 - **calibration_log.csv** — Per-target metrics across epochs (requires `--log-freq`)
 - **unified_run_config.json** — Run configuration and summary stats
-- **stacked_blocks.npy** — Census block assignments for stacked records
 
 ## Artifact Upload to HuggingFace
 
@@ -86,7 +85,6 @@ atomic commit after writing them locally:
 | Local file | HF path |
 |------------|---------|
 | `calibration_weights.npy` | `calibration/calibration_weights.npy` |
-| `stacked_blocks.npy` | `calibration/stacked_blocks.npy` |
 | `calibration_log.csv` | `calibration/logs/calibration_log.csv` |
 | `unified_diagnostics.csv` | `calibration/logs/unified_diagnostics.csv` |
 | `unified_run_config.json` | `calibration/logs/unified_run_config.json` |
@@ -201,7 +199,6 @@ Artifacts uploaded to HF by `--push-results`:
 | Local file | HF path |
 |------------|---------|
 | `calibration_weights.npy` | `calibration/calibration_weights.npy` |
-| `stacked_blocks.npy` | `calibration/stacked_blocks.npy` |
 | `calibration_log.csv` | `calibration/logs/calibration_log.csv` |
 | `unified_diagnostics.csv` | `calibration/logs/unified_diagnostics.csv` |
 | `unified_run_config.json` | `calibration/logs/unified_run_config.json` |

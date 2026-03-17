@@ -433,15 +433,38 @@ def build_datasets(
             for future in as_completed(futures):
                 future.result()
 
-        # SEQUENTIAL: Small enhanced CPS (needs enhanced_cps)
-        print("=== Phase 5: Building small enhanced CPS ===")
-        run_script_with_checkpoint(
-            "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
-            SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/small_enhanced_cps.py"],
-            branch,
-            checkpoint_volume,
-            env=env,
+        # GROUP 4: After Phase 4 - run in parallel
+        # create_source_imputed_cps needs stratified_cps
+        # small_enhanced_cps needs enhanced_cps
+        print(
+            "=== Phase 5: Building source imputed CPS "
+            "and small enhanced CPS (parallel) ==="
         )
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(
+                    run_script_with_checkpoint,
+                    "policyengine_us_data/calibration/create_source_imputed_cps.py",
+                    SCRIPT_OUTPUTS[
+                        "policyengine_us_data/calibration/create_source_imputed_cps.py"
+                    ],
+                    branch,
+                    checkpoint_volume,
+                    env=env,
+                ),
+                executor.submit(
+                    run_script_with_checkpoint,
+                    "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+                    SCRIPT_OUTPUTS[
+                        "policyengine_us_data/datasets/cps/small_enhanced_cps.py"
+                    ],
+                    branch,
+                    checkpoint_volume,
+                    env=env,
+                ),
+            ]
+            for future in as_completed(futures):
+                future.result()
 
     # Run tests with checkpointing
     print("=== Running tests with checkpointing ===")

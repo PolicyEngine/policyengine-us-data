@@ -21,9 +21,16 @@ def main():
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
-        "--geography-path",
-        required=True,
-        help="Path to geography.npz from calibration",
+        "--n-clones",
+        type=int,
+        default=430,
+        help="Number of clones used in calibration",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed used in calibration",
     )
     args = parser.parse_args()
 
@@ -52,23 +59,25 @@ def main():
         STATE_CODES,
     )
     from policyengine_us_data.calibration.clone_and_assign import (
-        load_geography,
+        assign_random_geography,
     )
+    from policyengine_us import Microsimulation
 
     weights = np.load(weights_path)
 
-    # Load geography from .npz (required)
-    if not args.geography_path or not Path(args.geography_path).exists():
-        raise RuntimeError(
-            f"--geography-path is required and must exist. "
-            f"Got: {args.geography_path}. "
-            f"Re-run calibration to generate geography.npz."
-        )
-    geography = load_geography(args.geography_path)
+    sim = Microsimulation(dataset=str(dataset_path))
+    n_records = sim.calculate("household_id", map_to="household").shape[0]
+    del sim
+
+    geography = assign_random_geography(
+        n_records=n_records,
+        n_clones=args.n_clones,
+        seed=args.seed,
+    )
     cds_to_calibrate = sorted(set(geography.cd_geoid.astype(str)))
     geo_labels = cds_to_calibrate
     print(
-        f"Loaded geography from {args.geography_path}: "
+        f"Generated geography: "
         f"{geography.n_clones} clones x "
         f"{geography.n_records} records",
         file=sys.stderr,

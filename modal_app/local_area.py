@@ -313,17 +313,10 @@ def build_areas_worker(
         "--output-dir",
         str(output_dir),
     ]
-    if "geography" not in calibration_inputs:
-        raise RuntimeError(
-            "geography.npz path missing from calibration_inputs. "
-            "Re-run calibration to generate this artifact."
-        )
-    worker_cmd.extend(
-        [
-            "--geography-path",
-            calibration_inputs["geography"],
-        ]
-    )
+    if "n_clones" in calibration_inputs:
+        worker_cmd.extend(["--n-clones", str(calibration_inputs["n_clones"])])
+    if "seed" in calibration_inputs:
+        worker_cmd.extend(["--seed", str(calibration_inputs["seed"])])
     result = subprocess.run(
         worker_cmd,
         capture_output=True,
@@ -575,7 +568,7 @@ def coordinate_publish(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
-    skip_download: bool = False,
+    skip_download: bool = True,
 ) -> str:
     """Coordinate the full publishing workflow."""
     setup_gcp_credentials()
@@ -612,12 +605,12 @@ def coordinate_publish(
             "weights": weights_path,
             "dataset": dataset_path,
             "database": db_path,
-            "geography": (calibration_dir / "calibration" / "geography.npz"),
-            "run_config": (calibration_dir / "calibration" / "unified_run_config.json"),
         }
         for label, p in required.items():
             if not p.exists():
-                raise RuntimeError(f"Missing required calibration input ({label}): {p}")
+                raise RuntimeError(
+                    f"Missing required calibration input ({label}): {p}"
+                )
         print("All required calibration inputs found on volume.")
     else:
         if calibration_dir.exists():
@@ -649,20 +642,14 @@ print("Done")
         calibration_dir / "calibration" / "source_imputed_stratified_extended_cps.h5"
     )
 
-    geo_npz_path = calibration_dir / "calibration" / "geography.npz"
     config_json_path = calibration_dir / "calibration" / "unified_run_config.json"
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
+        "n_clones": 430,
+        "seed": 42,
     }
-    if not geo_npz_path.exists():
-        raise RuntimeError(
-            f"geography.npz not found at {geo_npz_path}. "
-            f"Re-run calibration to generate this artifact."
-        )
-    calibration_inputs["geography"] = str(geo_npz_path)
-    print(f"Geography artifact found: {geo_npz_path}")
     validate_artifacts(
         config_json_path,
         calibration_dir / "calibration",
@@ -793,7 +780,7 @@ def main(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
-    skip_download: bool = False,
+    skip_download: bool = True,
 ):
     """Local entrypoint for Modal CLI."""
     result = coordinate_publish.remote(
@@ -859,7 +846,6 @@ print("Done")
         calibration_dir / "calibration" / "source_imputed_stratified_extended_cps.h5"
     )
 
-    geo_npz_path = calibration_dir / "calibration" / "national_geography.npz"
     config_json_path = (
         calibration_dir / "calibration" / "national_unified_run_config.json"
     )
@@ -867,15 +853,9 @@ print("Done")
         "weights": str(weights_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
+        "n_clones": 430,
+        "seed": 42,
     }
-    if not geo_npz_path.exists():
-        raise RuntimeError(
-            f"national_geography.npz not found at "
-            f"{geo_npz_path}. Re-run national calibration "
-            f"to generate this artifact."
-        )
-    calibration_inputs["geography"] = str(geo_npz_path)
-    print(f"National geography artifact found: {geo_npz_path}")
     validate_artifacts(
         config_json_path,
         calibration_dir / "calibration",

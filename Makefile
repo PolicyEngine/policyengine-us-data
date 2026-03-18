@@ -6,6 +6,7 @@ NATIONAL_GPU ?= T4
 NATIONAL_EPOCHS ?= 200
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 NUM_WORKERS ?= 8
+N_CLONES ?= 430
 VERSION ?=
 
 HF_CLONE_DIR ?= $(HOME)/huggingface/policyengine-us-data
@@ -169,16 +170,16 @@ push-to-modal:
 	@echo "All pipeline artifacts pushed to Modal volume."
 
 build-matrices:
-	modal run modal_app/remote_calibration_runner.py::build_package \
-		--branch $(BRANCH)
+	modal run --detach modal_app/remote_calibration_runner.py::build_package \
+		--branch $(BRANCH) --county-level --n-clones $(N_CLONES)
 
 calibrate-modal:
-	modal run modal_app/remote_calibration_runner.py::main \
+	modal run --detach modal_app/remote_calibration_runner.py::main \
 		--branch $(BRANCH) --gpu $(GPU) --epochs $(EPOCHS) \
 		--push-results
 
 calibrate-modal-national:
-	modal run modal_app/remote_calibration_runner.py::main \
+	modal run --detach modal_app/remote_calibration_runner.py::main \
 		--branch $(BRANCH) --gpu $(NATIONAL_GPU) \
 		--epochs $(NATIONAL_EPOCHS) \
 		--push-results --national
@@ -187,19 +188,19 @@ calibrate-both:
 	$(MAKE) calibrate-modal & $(MAKE) calibrate-modal-national & wait
 
 stage-h5s:
-	modal run modal_app/local_area.py::main \
-		--branch $(BRANCH) --num-workers $(NUM_WORKERS)
+	modal run --detach modal_app/local_area.py::main \
+		--branch $(BRANCH) --num-workers $(NUM_WORKERS) --n-clones $(N_CLONES)
 
 stage-national-h5:
-	modal run modal_app/local_area.py::main_national \
-		--branch $(BRANCH)
+	modal run --detach modal_app/local_area.py::main_national \
+		--branch $(BRANCH) --n-clones $(N_CLONES)
 
 stage-all-h5s:
 	$(MAKE) stage-h5s & $(MAKE) stage-national-h5 & wait
 
 promote:
 	$(eval VERSION := $(or $(VERSION),$(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")))
-	modal run modal_app/local_area.py::main_promote \
+	modal run --detach modal_app/local_area.py::main_promote \
 		--branch $(BRANCH) --version $(VERSION)
 
 validate-staging:
@@ -224,13 +225,20 @@ check-sanity:
 		--sanity-only --area-type states --areas NC
 
 build-data-modal:
-	modal run modal_app/data_build.py::main --branch $(BRANCH) --upload
+	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload
 
-pipeline: build-data-modal build-matrices calibrate-both stage-all-h5s
-	@echo ""
+pipeline:
 	@echo "========================================"
-	@echo "Pipeline complete. H5s are in HF staging."
-	@echo "Run 'Promote Local Area H5 Files' workflow in GitHub to publish."
+	@echo "Pipeline steps (run sequentially, each is --detach):"
+	@echo "  1. make build-data-modal"
+	@echo "  2. make build-matrices"
+	@echo "  3. make calibrate-both"
+	@echo "  4. make stage-all-h5s"
+	@echo "  5. make promote"
+	@echo ""
+	@echo "Each step runs with --detach. Monitor progress"
+	@echo "in the Modal dashboard and run the next step"
+	@echo "after the previous one completes."
 	@echo "========================================"
 
 clean:

@@ -319,6 +319,7 @@ def _build_package_impl(
     target_config: str = None,
     skip_county: bool = True,
     workers: int = 8,
+    n_clones: int = 430,
 ) -> str:
     """Read data from pipeline volume, build X matrix, save package."""
     _clone_and_install(branch)
@@ -358,6 +359,7 @@ def _build_package_impl(
         cmd.append("--county-level")
     if workers > 1:
         cmd.extend(["--workers", str(workers)])
+    cmd.extend(["--n-clones", str(n_clones)])
 
     build_rc, build_lines = _run_streaming(
         cmd,
@@ -391,12 +393,14 @@ def build_package_remote(
     target_config: str = None,
     skip_county: bool = True,
     workers: int = 8,
+    n_clones: int = 430,
 ) -> str:
     return _build_package_impl(
         branch,
         target_config=target_config,
         skip_county=skip_county,
         workers=workers,
+        n_clones=n_clones,
     )
 
 
@@ -1023,6 +1027,7 @@ def build_package(
     target_config: str = None,
     county_level: bool = False,
     workers: int = 8,
+    n_clones: int = 430,
 ):
     """Build the calibration package (X matrix) on CPU and save
     to Modal volume. Then run main() to fit."""
@@ -1049,6 +1054,7 @@ def build_package(
         target_config=target_config,
         skip_county=not county_level,
         workers=workers,
+        n_clones=n_clones,
     )
     print(
         f"Package built and saved to Modal volume at {vol_path}",

@@ -579,6 +579,7 @@ def coordinate_publish(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
+    n_clones: int = 430,
 ) -> str:
     """Coordinate the full publishing workflow."""
     setup_gcp_credentials()
@@ -621,7 +622,7 @@ def coordinate_publish(
         "weights": str(weights_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
-        "n_clones": 430,
+        "n_clones": n_clones,
         "seed": 42,
     }
     validate_artifacts(config_json_path, artifacts)
@@ -751,12 +752,14 @@ def main(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
+    n_clones: int = 430,
 ):
     """Local entrypoint for Modal CLI."""
     result = coordinate_publish.remote(
         branch=branch,
         num_workers=num_workers,
         skip_upload=skip_upload,
+        n_clones=n_clones,
     )
     print(result)
 
@@ -773,6 +776,7 @@ def main(
 )
 def coordinate_national_publish(
     branch: str = "main",
+    n_clones: int = 430,
 ) -> str:
     """Build and upload a national US.h5 from national weights."""
     setup_gcp_credentials()
@@ -807,7 +811,7 @@ def coordinate_national_publish(
         "weights": str(weights_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
-        "n_clones": 430,
+        "n_clones": n_clones,
         "seed": 42,
     }
     validate_artifacts(config_json_path, artifacts)
@@ -869,9 +873,9 @@ print("Done")
 
 
 @app.local_entrypoint()
-def main_national(branch: str = "main"):
+def main_national(branch: str = "main", n_clones: int = 430):
     """Build and stage national US.h5."""
-    result = coordinate_national_publish.remote(branch=branch)
+    result = coordinate_national_publish.remote(branch=branch, n_clones=n_clones)
     print(result)
 
 

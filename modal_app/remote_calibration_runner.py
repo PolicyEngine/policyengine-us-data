@@ -5,15 +5,14 @@ import modal
 app = modal.App("policyengine-us-data-fit-weights")
 
 hf_secret = modal.Secret.from_name("huggingface-token")
-calibration_vol = modal.Volume.from_name("calibration-data", create_if_missing=True)
+pipeline_vol = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
 
 image = (
     modal.Image.debian_slim(python_version="3.11").apt_install("git").pip_install("uv")
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
-VOLUME_MOUNT = "/calibration-data"
-_DEFAULT_UV_HTTP_TIMEOUT = "1800"
+PIPELINE_MOUNT = "/pipeline"
 
 
 def _run_streaming(cmd, env=None, label=""):
@@ -162,34 +161,18 @@ def _fit_weights_impl(
     skip_county: bool = True,
     workers: int = 8,
 ) -> dict:
-    """Full pipeline: download data, build matrix, fit weights."""
+    """Full pipeline: read data from pipeline volume, build matrix, fit."""
     _clone_and_install(branch)
 
-    print("Downloading calibration inputs from HuggingFace...", flush=True)
-    dl_rc, dl_lines = _run_streaming(
-        [
-            "uv",
-            "run",
-            "python",
-            "-c",
-            "from policyengine_us_data.utils.huggingface import "
-            "download_calibration_inputs; "
-            "paths = download_calibration_inputs('/root/calibration_data'); "
-            "print(f\"DB: {paths['database']}\"); "
-            "print(f\"DATASET: {paths['dataset']}\")",
-        ],
-        env=os.environ.copy(),
-        label="download",
-    )
-    if dl_rc != 0:
-        raise RuntimeError(f"Download failed with code {dl_rc}")
-
-    db_path = dataset_path = None
-    for line in dl_lines:
-        if "DB:" in line:
-            db_path = line.split("DB:")[1].strip()
-        elif "DATASET:" in line:
-            dataset_path = line.split("DATASET:")[1].strip()
+    pipeline_vol.reload()
+    artifacts = f"{PIPELINE_MOUNT}/artifacts"
+    db_path = f"{artifacts}/policy_data.db"
+    dataset_path = f"{artifacts}/source_imputed_stratified_extended_cps.h5"
+    for label, p in [("database", db_path), ("dataset", dataset_path)]:
+        if not os.path.exists(p):
+            raise RuntimeError(
+                f"Missing {label} on pipeline volume: {p}. Run data_build first."
+            )
 
     script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
@@ -337,40 +320,20 @@ def _build_package_impl(
     skip_county: bool = True,
     workers: int = 8,
 ) -> str:
-    """Download data, build X matrix, save package to volume."""
+    """Read data from pipeline volume, build X matrix, save package."""
     _clone_and_install(branch)
 
-    print(
-        "Downloading calibration inputs from HuggingFace...",
-        flush=True,
-    )
-    dl_rc, dl_lines = _run_streaming(
-        [
-            "uv",
-            "run",
-            "python",
-            "-c",
-            "from policyengine_us_data.utils.huggingface import "
-            "download_calibration_inputs; "
-            "paths = download_calibration_inputs("
-            "'/root/calibration_data'); "
-            "print(f\"DB: {paths['database']}\"); "
-            "print(f\"DATASET: {paths['dataset']}\")",
-        ],
-        env=os.environ.copy(),
-        label="download",
-    )
-    if dl_rc != 0:
-        raise RuntimeError(f"Download failed with code {dl_rc}")
+    pipeline_vol.reload()
+    artifacts = f"{PIPELINE_MOUNT}/artifacts"
+    db_path = f"{artifacts}/policy_data.db"
+    dataset_path = f"{artifacts}/source_imputed_stratified_extended_cps.h5"
+    for label, p in [("database", db_path), ("dataset", dataset_path)]:
+        if not os.path.exists(p):
+            raise RuntimeError(
+                f"Missing {label} on pipeline volume: {p}. Run data_build first."
+            )
 
-    db_path = dataset_path = None
-    for line in dl_lines:
-        if "DB:" in line:
-            db_path = line.split("DB:")[1].strip()
-        elif "DATASET:" in line:
-            dataset_path = line.split("DATASET:")[1].strip()
-
-    pkg_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
+    pkg_path = f"{PIPELINE_MOUNT}/artifacts/calibration_package.pkl"
     script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
         "uv",
@@ -411,7 +374,7 @@ def _build_package_impl(
         f"Package saved to volume at {pkg_path} ({size:,} bytes)",
         flush=True,
     )
-    calibration_vol.commit()
+    pipeline_vol.commit()
     return pkg_path
 
 
@@ -421,7 +384,7 @@ def _build_package_impl(
     memory=65536,
     cpu=8.0,
     timeout=50400,
-    volumes={VOLUME_MOUNT: calibration_vol},
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def build_package_remote(
     branch: str = "main",
@@ -440,7 +403,7 @@ def build_package_remote(
 @app.function(
     image=image,
     timeout=30,
-    volumes={VOLUME_MOUNT: calibration_vol},
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def check_volume_package() -> dict:
     """Check if a calibration package exists on the volume.
@@ -451,8 +414,8 @@ def check_volume_package() -> dict:
     import datetime
     import json
 
-    pkg_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
-    sidecar_path = f"{VOLUME_MOUNT}/calibration_package_meta.json"
+    pkg_path = f"{PIPELINE_MOUNT}/artifacts/calibration_package.pkl"
+    sidecar_path = f"{PIPELINE_MOUNT}/artifacts/calibration_package_meta.json"
     if not os.path.exists(pkg_path):
         return {"exists": False}
 
@@ -493,6 +456,7 @@ def check_volume_package() -> dict:
     cpu=8.0,
     gpu="T4",
     timeout=14400,
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_t4(
     branch: str = "main",
@@ -527,6 +491,7 @@ def fit_weights_t4(
     cpu=8.0,
     gpu="A10",
     timeout=14400,
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_a10(
     branch: str = "main",
@@ -561,6 +526,7 @@ def fit_weights_a10(
     cpu=8.0,
     gpu="A100-40GB",
     timeout=14400,
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_a100_40(
     branch: str = "main",
@@ -595,6 +561,7 @@ def fit_weights_a100_40(
     cpu=8.0,
     gpu="A100-80GB",
     timeout=14400,
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_a100_80(
     branch: str = "main",
@@ -629,6 +596,7 @@ def fit_weights_a100_80(
     cpu=8.0,
     gpu="H100",
     timeout=14400,
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_h100(
     branch: str = "main",
@@ -674,7 +642,7 @@ GPU_FUNCTIONS = {
     cpu=8.0,
     gpu="T4",
     timeout=14400,
-    volumes={"/calibration-data": calibration_vol},
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_t4(
     branch: str = "main",
@@ -706,7 +674,7 @@ def fit_from_package_t4(
     cpu=8.0,
     gpu="A10",
     timeout=14400,
-    volumes={"/calibration-data": calibration_vol},
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_a10(
     branch: str = "main",
@@ -738,7 +706,7 @@ def fit_from_package_a10(
     cpu=8.0,
     gpu="A100-40GB",
     timeout=14400,
-    volumes={"/calibration-data": calibration_vol},
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_a100_40(
     branch: str = "main",
@@ -770,7 +738,7 @@ def fit_from_package_a100_40(
     cpu=8.0,
     gpu="A100-80GB",
     timeout=14400,
-    volumes={"/calibration-data": calibration_vol},
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_a100_80(
     branch: str = "main",
@@ -802,7 +770,7 @@ def fit_from_package_a100_80(
     cpu=8.0,
     gpu="H100",
     timeout=14400,
-    volumes={"/calibration-data": calibration_vol},
+    volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_h100(
     branch: str = "main",
@@ -871,7 +839,7 @@ def main(
         )
 
     if package_path:
-        vol_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
+        vol_path = f"{PIPELINE_MOUNT}/artifacts/calibration_package.pkl"
         print(f"Reading package from {package_path}...", flush=True)
         import json as _json
         import pickle as _pkl
@@ -879,25 +847,24 @@ def main(
         with open(package_path, "rb") as f:
             package_bytes = f.read()
         size = len(package_bytes)
-        # Extract metadata for sidecar
         pkg_meta = _pkl.loads(package_bytes).get("metadata", {})
         sidecar_bytes = _json.dumps(pkg_meta, indent=2).encode()
         print(
             f"Uploading package ({size:,} bytes) to Modal volume...",
             flush=True,
         )
-        with calibration_vol.batch_upload(force=True) as batch:
+        with pipeline_vol.batch_upload(force=True) as batch:
             from io import BytesIO
 
             batch.put(
                 BytesIO(package_bytes),
-                "calibration_package.pkl",
+                "artifacts/calibration_package.pkl",
             )
             batch.put(
                 BytesIO(sidecar_bytes),
-                "calibration_package_meta.json",
+                "artifacts/calibration_package_meta.json",
             )
-        calibration_vol.commit()
+        pipeline_vol.commit()
         del package_bytes
         print("Upload complete.", flush=True)
         _print_provenance_from_meta(pkg_meta, branch)
@@ -919,7 +886,7 @@ def main(
             flush=True,
         )
         print(
-            "Mode: full pipeline (download, build matrix, fit)",
+            "Mode: full pipeline (read from volume, build matrix, fit)",
             flush=True,
         )
         print(
@@ -944,7 +911,7 @@ def main(
             workers=workers,
         )
     else:
-        vol_path = f"{VOLUME_MOUNT}/calibration_package.pkl"
+        vol_path = f"{PIPELINE_MOUNT}/artifacts/calibration_package.pkl"
         vol_info = check_volume_package.remote()
         if not vol_info["exists"]:
             raise SystemExit(
@@ -1017,6 +984,23 @@ def main(
         with open(config_output, "wb") as f:
             f.write(result["config"])
         print(f"Run config saved to: {config_output}")
+
+    # Push weights to pipeline volume for downstream steps
+    from io import BytesIO
+
+    print("Pushing weights to pipeline volume...", flush=True)
+    with pipeline_vol.batch_upload(force=True) as batch:
+        batch.put(
+            BytesIO(result["weights"]),
+            f"artifacts/{prefix}calibration_weights.npy",
+        )
+        if result.get("config"):
+            batch.put(
+                BytesIO(result["config"]),
+                f"artifacts/{prefix}unified_run_config.json",
+            )
+    pipeline_vol.commit()
+    print("Weights committed to pipeline volume", flush=True)
 
     if push_results:
         from policyengine_us_data.utils.huggingface import (

@@ -20,6 +20,13 @@ checkpoint_volume = modal.Volume.from_name(
     create_if_missing=True,
 )
 
+# Shared pipeline volume for inter-step artifact transport
+pipeline_volume = modal.Volume.from_name(
+    "pipeline-artifacts",
+    create_if_missing=True,
+)
+PIPELINE_MOUNT = "/pipeline"
+
 image = (
     modal.Image.debian_slim(python_version="3.13").apt_install("git").pip_install("uv")
 )
@@ -278,7 +285,10 @@ def run_tests_with_checkpoints(
 @app.function(
     image=image,
     secrets=[hf_secret, gcp_secret],
-    volumes={VOLUME_MOUNT: checkpoint_volume},
+    volumes={
+        VOLUME_MOUNT: checkpoint_volume,
+        PIPELINE_MOUNT: pipeline_volume,
+    },
     memory=32768,
     cpu=8.0,
     timeout=14400,
@@ -478,32 +488,27 @@ def build_datasets(
     print("=== Running tests with checkpointing ===")
     run_tests_with_checkpoints(branch, checkpoint_volume, env)
 
-    # Upload if requested
+    # Copy pipeline artifacts to shared volume for downstream steps
+    print("Copying pipeline artifacts to shared volume...")
+    artifacts_dir = Path(PIPELINE_MOUNT) / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        "policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5",
+        artifacts_dir / "source_imputed_stratified_extended_cps.h5",
+    )
+    shutil.copy2(
+        "policyengine_us_data/storage/calibration/policy_data.db",
+        artifacts_dir / "policy_data.db",
+    )
+    pipeline_volume.commit()
+    print("Pipeline artifacts committed to shared volume")
+
+    # Upload if requested (HF publication only)
     if upload:
         run_script(
             "policyengine_us_data/storage/upload_completed_datasets.py",
             env=env,
         )
-        # Upload source_imputed to calibration/ path for downstream pipeline
-        print("Uploading source_imputed dataset to HF calibration/...")
-        subprocess.run(
-            [
-                "uv",
-                "run",
-                "python",
-                "-c",
-                "from policyengine_us_data.utils.huggingface import upload; "
-                "upload("
-                "'policyengine_us_data/storage/"
-                "source_imputed_stratified_extended_cps_2024.h5', "
-                "'policyengine/policyengine-us-data', "
-                "'calibration/"
-                "source_imputed_stratified_extended_cps.h5')",
-            ],
-            check=True,
-            env=env,
-        )
-        print("Source imputed dataset uploaded to HF")
 
     # Clean up checkpoints after successful completion
     cleanup_checkpoints(branch, checkpoint_volume)

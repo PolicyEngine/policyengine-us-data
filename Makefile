@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local
+.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local
 
 GPU ?= A100-80GB
 EPOCHS ?= 200
@@ -157,16 +157,16 @@ upload-database:
 	@echo "Database uploaded to HF."
 
 push-to-modal:
-	modal volume put local-area-staging \
+	modal volume put pipeline-artifacts \
 		policyengine_us_data/storage/calibration/calibration_weights.npy \
-		calibration_inputs/calibration/calibration_weights.npy --force
-	modal volume put local-area-staging \
+		artifacts/calibration_weights.npy --force
+	modal volume put pipeline-artifacts \
 		policyengine_us_data/storage/calibration/policy_data.db \
-		calibration_inputs/calibration/policy_data.db --force
-	modal volume put local-area-staging \
+		artifacts/policy_data.db --force
+	modal volume put pipeline-artifacts \
 		policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5 \
-		calibration_inputs/calibration/source_imputed_stratified_extended_cps.h5 --force
-	@echo "All calibration inputs pushed to Modal volume."
+		artifacts/source_imputed_stratified_extended_cps.h5 --force
+	@echo "All pipeline artifacts pushed to Modal volume."
 
 build-matrices:
 	modal run modal_app/remote_calibration_runner.py::build_package \
@@ -188,8 +188,7 @@ calibrate-both:
 
 stage-h5s:
 	modal run modal_app/local_area.py::main \
-		--branch $(BRANCH) --num-workers $(NUM_WORKERS) \
-		$(if $(SKIP_DOWNLOAD),--skip-download)
+		--branch $(BRANCH) --num-workers $(NUM_WORKERS)
 
 stage-national-h5:
 	modal run modal_app/local_area.py::main_national \
@@ -224,7 +223,10 @@ check-sanity:
 	python -m policyengine_us_data.calibration.validate_staging \
 		--sanity-only --area-type states --areas NC
 
-pipeline: data upload-dataset build-matrices calibrate-both stage-all-h5s
+build-data-modal:
+	modal run modal_app/data_build.py::main --branch $(BRANCH) --upload
+
+pipeline: build-data-modal build-matrices calibrate-both stage-all-h5s
 	@echo ""
 	@echo "========================================"
 	@echo "Pipeline complete. H5s are in HF staging."

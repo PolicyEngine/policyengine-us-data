@@ -28,6 +28,11 @@ staging_volume = modal.Volume.from_name(
     create_if_missing=True,
 )
 
+pipeline_volume = modal.Volume.from_name(
+    "pipeline-artifacts",
+    create_if_missing=True,
+)
+
 image = (
     modal.Image.debian_slim(python_version="3.13")
     .apt_install("git")
@@ -282,7 +287,10 @@ def run_phase(
 @app.function(
     image=image,
     secrets=[hf_secret, gcp_secret],
-    volumes={VOLUME_MOUNT: staging_volume},
+    volumes={
+        VOLUME_MOUNT: staging_volume,
+        "/pipeline": pipeline_volume,
+    },
     memory=16384,
     cpu=4.0,
     timeout=14400,
@@ -568,7 +576,10 @@ print(f"Successfully published version {{version}}")
 @app.function(
     image=image,
     secrets=[hf_secret, gcp_secret],
-    volumes={VOLUME_MOUNT: staging_volume},
+    volumes={
+        VOLUME_MOUNT: staging_volume,
+        "/pipeline": pipeline_volume,
+    },
     memory=8192,
     timeout=86400,
 )
@@ -576,7 +587,6 @@ def coordinate_publish(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
-    skip_download: bool = False,
 ) -> str:
     """Coordinate the full publishing workflow."""
     setup_gcp_credentials()
@@ -595,62 +605,26 @@ def coordinate_publish(
         shutil.rmtree(version_dir)
     version_dir.mkdir(parents=True, exist_ok=True)
 
-    calibration_dir = staging_dir / "calibration_inputs"
+    pipeline_volume.reload()
+    artifacts = Path("/pipeline/artifacts")
+    weights_path = artifacts / "calibration_weights.npy"
+    db_path = artifacts / "policy_data.db"
+    dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
+    config_json_path = artifacts / "unified_run_config.json"
 
-    # hf_hub_download preserves directory structure, so files are in calibration/ subdir
-    weights_path = calibration_dir / "calibration" / "calibration_weights.npy"
-    db_path = calibration_dir / "calibration" / "policy_data.db"
+    required = {
+        "weights": weights_path,
+        "dataset": dataset_path,
+        "database": db_path,
+    }
+    for label, p in required.items():
+        if not p.exists():
+            raise RuntimeError(
+                f"Missing {label} on pipeline volume: {p}. "
+                f"Run upstream pipeline steps first."
+            )
+    print("All required pipeline artifacts found on volume.")
 
-    if skip_download:
-        print("Verifying pre-pushed calibration inputs...")
-        staging_volume.reload()
-        dataset_path = (
-            calibration_dir
-            / "calibration"
-            / "source_imputed_stratified_extended_cps.h5"
-        )
-        required = {
-            "weights": weights_path,
-            "dataset": dataset_path,
-            "database": db_path,
-        }
-        for label, p in required.items():
-            if not p.exists():
-                raise RuntimeError(
-                    f"Missing required calibration input ({label}): {p}"
-                )
-        print("All required calibration inputs found on volume.")
-    else:
-        if calibration_dir.exists():
-            shutil.rmtree(calibration_dir)
-        calibration_dir.mkdir(parents=True, exist_ok=True)
-
-        print("Downloading calibration inputs from HuggingFace...")
-        result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "python",
-                "-c",
-                f"""
-from policyengine_us_data.utils.huggingface import download_calibration_inputs
-download_calibration_inputs("{calibration_dir}")
-print("Done")
-""",
-            ],
-            text=True,
-            env=os.environ.copy(),
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Download failed: {result.stderr}")
-        staging_volume.commit()
-        print("Calibration inputs downloaded")
-
-    dataset_path = (
-        calibration_dir / "calibration" / "source_imputed_stratified_extended_cps.h5"
-    )
-
-    config_json_path = calibration_dir / "calibration" / "unified_run_config.json"
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
@@ -658,10 +632,7 @@ print("Done")
         "n_clones": 430,
         "seed": 42,
     }
-    validate_artifacts(
-        config_json_path,
-        calibration_dir / "calibration",
-    )
+    validate_artifacts(config_json_path, artifacts)
     result = subprocess.run(
         [
             "uv",
@@ -788,14 +759,12 @@ def main(
     branch: str = "main",
     num_workers: int = 8,
     skip_upload: bool = False,
-    skip_download: bool = False,
 ):
     """Local entrypoint for Modal CLI."""
     result = coordinate_publish.remote(
         branch=branch,
         num_workers=num_workers,
         skip_upload=skip_upload,
-        skip_download=skip_download,
     )
     print(result)
 
@@ -803,7 +772,10 @@ def main(
 @app.function(
     image=image,
     secrets=[hf_secret, gcp_secret],
-    volumes={VOLUME_MOUNT: staging_volume},
+    volumes={
+        VOLUME_MOUNT: staging_volume,
+        "/pipeline": pipeline_volume,
+    },
     memory=16384,
     timeout=14400,
 )
@@ -817,46 +789,28 @@ def coordinate_national_publish(
     version = get_version()
     print(f"Building national H5 for version {version} from branch {branch}")
 
-    import shutil
-
     staging_dir = Path(VOLUME_MOUNT)
-    calibration_dir = staging_dir / "national_calibration_inputs"
-    if calibration_dir.exists():
-        shutil.rmtree(calibration_dir)
-    calibration_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Downloading national calibration inputs from HF...")
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "-c",
-            f"""
-from policyengine_us_data.utils.huggingface import (
-    download_calibration_inputs,
-)
-download_calibration_inputs("{calibration_dir}", prefix="national_")
-print("Done")
-""",
-        ],
-        text=True,
-        env=os.environ.copy(),
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Download failed: {result.stderr}")
-    staging_volume.commit()
-    print("National calibration inputs downloaded")
+    pipeline_volume.reload()
+    artifacts = Path("/pipeline/artifacts")
+    weights_path = artifacts / "national_calibration_weights.npy"
+    db_path = artifacts / "policy_data.db"
+    dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
+    config_json_path = artifacts / "national_unified_run_config.json"
 
-    weights_path = calibration_dir / "calibration" / "national_calibration_weights.npy"
-    db_path = calibration_dir / "calibration" / "policy_data.db"
-    dataset_path = (
-        calibration_dir / "calibration" / "source_imputed_stratified_extended_cps.h5"
-    )
+    required = {
+        "weights": weights_path,
+        "dataset": dataset_path,
+        "database": db_path,
+    }
+    for label, p in required.items():
+        if not p.exists():
+            raise RuntimeError(
+                f"Missing {label} on pipeline volume: {p}. "
+                f"Run upstream pipeline steps first."
+            )
+    print("All required national pipeline artifacts found.")
 
-    config_json_path = (
-        calibration_dir / "calibration" / "national_unified_run_config.json"
-    )
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
@@ -864,10 +818,7 @@ print("Done")
         "n_clones": 430,
         "seed": 42,
     }
-    validate_artifacts(
-        config_json_path,
-        calibration_dir / "calibration",
-    )
+    validate_artifacts(config_json_path, artifacts)
     version_dir = staging_dir / version
     version_dir.mkdir(parents=True, exist_ok=True)
 

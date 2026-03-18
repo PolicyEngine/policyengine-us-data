@@ -225,7 +225,7 @@ check-sanity:
 		--sanity-only --area-type states --areas NC
 
 build-data-modal:
-	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload
+	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload --skip-tests --skip-enhanced-cps
 
 pipeline:
 	@echo "========================================"

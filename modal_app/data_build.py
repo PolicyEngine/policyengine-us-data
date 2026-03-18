@@ -298,6 +298,8 @@ def build_datasets(
     branch: str = "main",
     sequential: bool = False,
     clear_checkpoints: bool = False,
+    skip_tests: bool = False,
+    skip_enhanced_cps: bool = False,
 ):
     """Build all datasets with preemption-resilient checkpointing.
 
@@ -306,6 +308,9 @@ def build_datasets(
         branch: Git branch to build from.
         sequential: Use sequential (non-parallel) execution.
         clear_checkpoints: Clear existing checkpoints before starting.
+        skip_tests: Skip running the test suite (useful for calibration runs).
+        skip_enhanced_cps: Skip enhanced_cps.py and small_enhanced_cps.py
+            (useful for calibration runs that only need source_imputed H5).
     """
     setup_gcp_credentials()
 
@@ -343,9 +348,22 @@ def build_datasets(
         "policyengine_us_data/storage/download_private_prerequisites.py",
         env=env,
     )
+    # Checkpoint policy_data.db immediately after download so it survives
+    # test failures and can be restored on retries.
+    save_checkpoint(
+        branch,
+        "policyengine_us_data/storage/calibration/policy_data.db",
+        checkpoint_volume,
+    )
 
     if sequential:
         for script, output in SCRIPT_OUTPUTS.items():
+            if skip_enhanced_cps and script in (
+                "policyengine_us_data/datasets/cps/enhanced_cps.py",
+                "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+            ):
+                print(f"Skipping {script} (--skip-enhanced-cps)")
+                continue
             run_script_with_checkpoint(
                 script,
                 output,
@@ -427,16 +445,24 @@ def build_datasets(
         # GROUP 3: After extended_cps - run in parallel
         # enhanced_cps and stratified_cps both depend on extended_cps
         print("=== Phase 4: Building enhanced and stratified CPS (parallel) ===")
+        phase4_futures = []
         with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [
-                executor.submit(
-                    run_script_with_checkpoint,
-                    "policyengine_us_data/datasets/cps/enhanced_cps.py",
-                    SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/enhanced_cps.py"],
-                    branch,
-                    checkpoint_volume,
-                    env=env,
-                ),
+            if not skip_enhanced_cps:
+                phase4_futures.append(
+                    executor.submit(
+                        run_script_with_checkpoint,
+                        "policyengine_us_data/datasets/cps/enhanced_cps.py",
+                        SCRIPT_OUTPUTS[
+                            "policyengine_us_data/datasets/cps/enhanced_cps.py"
+                        ],
+                        branch,
+                        checkpoint_volume,
+                        env=env,
+                    )
+                )
+            else:
+                print("Skipping enhanced_cps.py (--skip-enhanced-cps)")
+            phase4_futures.append(
                 executor.submit(
                     run_script_with_checkpoint,
                     "policyengine_us_data/calibration/create_stratified_cps.py",
@@ -446,9 +472,9 @@ def build_datasets(
                     branch,
                     checkpoint_volume,
                     env=env,
-                ),
-            ]
-            for future in as_completed(futures):
+                )
+            )
+            for future in as_completed(phase4_futures):
                 future.result()
 
         # GROUP 4: After Phase 4 - run in parallel
@@ -458,8 +484,9 @@ def build_datasets(
             "=== Phase 5: Building source imputed CPS "
             "and small enhanced CPS (parallel) ==="
         )
+        phase5_futures = []
         with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [
+            phase5_futures.append(
                 executor.submit(
                     run_script_with_checkpoint,
                     "policyengine_us_data/calibration/create_source_imputed_cps.py",
@@ -469,26 +496,28 @@ def build_datasets(
                     branch,
                     checkpoint_volume,
                     env=env,
-                ),
-                executor.submit(
-                    run_script_with_checkpoint,
-                    "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
-                    SCRIPT_OUTPUTS[
-                        "policyengine_us_data/datasets/cps/small_enhanced_cps.py"
-                    ],
-                    branch,
-                    checkpoint_volume,
-                    env=env,
-                ),
-            ]
-            for future in as_completed(futures):
+                )
+            )
+            if not skip_enhanced_cps:
+                phase5_futures.append(
+                    executor.submit(
+                        run_script_with_checkpoint,
+                        "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+                        SCRIPT_OUTPUTS[
+                            "policyengine_us_data/datasets/cps/small_enhanced_cps.py"
+                        ],
+                        branch,
+                        checkpoint_volume,
+                        env=env,
+                    )
+                )
+            else:
+                print("Skipping small_enhanced_cps.py (--skip-enhanced-cps)")
+            for future in as_completed(phase5_futures):
                 future.result()
 
-    # Run tests with checkpointing
-    print("=== Running tests with checkpointing ===")
-    run_tests_with_checkpoints(branch, checkpoint_volume, env)
-
-    # Copy pipeline artifacts to shared volume for downstream steps
+    # Copy pipeline artifacts to shared volume before tests so that a test
+    # failure does not block downstream calibration steps.
     print("Copying pipeline artifacts to shared volume...")
     artifacts_dir = Path(PIPELINE_MOUNT) / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -503,6 +532,13 @@ def build_datasets(
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")
 
+    # Run tests with checkpointing
+    if skip_tests:
+        print("Skipping tests (--skip-tests)")
+    else:
+        print("=== Running tests with checkpointing ===")
+        run_tests_with_checkpoints(branch, checkpoint_volume, env)
+
     # Upload if requested (HF publication only)
     if upload:
         run_script(
@@ -513,7 +549,7 @@ def build_datasets(
     # Clean up checkpoints after successful completion
     cleanup_checkpoints(branch, checkpoint_volume)
 
-    return "Data build and tests completed successfully"
+    return "Data build completed successfully"
 
 
 @app.local_entrypoint()
@@ -522,11 +558,15 @@ def main(
     branch: str = "main",
     sequential: bool = False,
     clear_checkpoints: bool = False,
+    skip_tests: bool = False,
+    skip_enhanced_cps: bool = False,
 ):
     result = build_datasets.remote(
         upload=upload,
         branch=branch,
         sequential=sequential,
         clear_checkpoints=clear_checkpoints,
+        skip_tests=skip_tests,
+        skip_enhanced_cps=skip_enhanced_cps,
     )
     print(result)

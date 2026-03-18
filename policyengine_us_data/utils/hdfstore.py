@@ -1,11 +1,10 @@
 """
 Dataset serialization utilities.
 
-Provides ``build_output_dataset`` (the public entry-point used by callers)
-and two internal serializers:
+Provides two serializers used by ``build_output_dataset``:
 
-* ``_save_h5``  – variable-centric h5py format
-* ``_save_hdfstore`` – entity-level Pandas HDFStore consumed by API v2
+* ``save_h5``  – variable-centric h5py format
+* ``save_hdfstore`` – entity-level Pandas HDFStore consumed by API v2
 """
 
 import warnings
@@ -40,6 +39,23 @@ class DatasetResult:
 # -------------------------------------------------------------------
 
 
+def _resolve_period_key(periods: dict, time_period: int):
+    """Find the best matching key in a variable's period dict.
+
+    Tries ``time_period`` (int), ``str(time_period)``, then falls back
+    to the first available key (handles ETERNITY and Period objects).
+    Returns ``None`` when *periods* is empty.
+    """
+    if time_period in periods:
+        return time_period
+    s = str(time_period)
+    if s in periods:
+        return s
+    if periods:
+        return next(iter(periods))
+    return None
+
+
 def _split_data_into_entity_dfs(
     data: Dict[str, dict],
     system,
@@ -72,8 +88,8 @@ def _split_data_into_entity_dfs(
         cols = {}
         for var_name in entity_vars[entity]:
             periods = data[var_name]
-            tp_key = time_period if time_period in periods else str(time_period)
-            if tp_key not in periods:
+            tp_key = _resolve_period_key(periods, time_period)
+            if tp_key is None:
                 continue
             arr = periods[tp_key]
             if hasattr(arr, "dtype") and arr.dtype.kind == "S":
@@ -85,8 +101,8 @@ def _split_data_into_entity_dfs(
                 ref_col = f"person_{ref_entity}_id"
                 if ref_col in data:
                     periods = data[ref_col]
-                    tp_key = time_period if time_period in periods else str(time_period)
-                    if tp_key in periods:
+                    tp_key = _resolve_period_key(periods, time_period)
+                    if tp_key is not None:
                         cols[ref_col] = periods[tp_key]
 
         if not cols:
@@ -138,7 +154,7 @@ def _build_uprating_manifest(
 # -------------------------------------------------------------------
 
 
-def _save_h5(result: DatasetResult, output_base: str) -> str:
+def save_h5(result: DatasetResult, output_base: str) -> str:
     """Write variable-centric h5py file.
 
     Args:
@@ -175,7 +191,7 @@ def _save_h5(result: DatasetResult, output_base: str) -> str:
     return h5_path
 
 
-def _save_hdfstore(result: DatasetResult, output_base: str) -> str:
+def save_hdfstore(result: DatasetResult, output_base: str) -> str:
     """Write entity-level Pandas HDFStore file.
 
     Args:

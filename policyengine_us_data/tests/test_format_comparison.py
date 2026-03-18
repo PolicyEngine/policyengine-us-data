@@ -27,7 +27,7 @@ import pytest
 from policyengine_us_data.utils.hdfstore import (
     ENTITIES,
     DatasetResult,
-    _save_hdfstore,
+    save_hdfstore,
 )
 
 
@@ -119,12 +119,17 @@ def h5py_to_hdfstore(h5py_path: str, hdfstore_path: str) -> dict:
     output_base = hdfstore_path.replace(".hdfstore.h5", "")
 
     print(f"Saving HDFStore to {hdfstore_path}...")
-    _save_hdfstore(result, output_base)
+    save_hdfstore(result, output_base)
 
     summary = {}
-    for entity_name, df in entity_dfs.items():
-        summary[entity_name] = {"rows": len(df), "cols": len(df.columns)}
-    summary["manifest_vars"] = len(manifest_df)
+    with pd.HDFStore(hdfstore_path, "r") as store:
+        for k in store.keys():
+            if not k.startswith("/_"):
+                name = k.lstrip("/")
+                df = store[k]
+                summary[name] = {"rows": len(df), "cols": len(df.columns)}
+        if "/_variable_metadata" in store.keys():
+            summary["manifest_vars"] = len(store["/_variable_metadata"])
     return summary
 
 
@@ -360,6 +365,8 @@ def test_all_entities(h5py_path, tmp_path):
 
 
 if __name__ == "__main__":
+    from pathlib import Path as _Path
+
     parser = argparse.ArgumentParser(
         description="Convert h5py dataset to HDFStore and verify roundtrip"
     )
@@ -374,7 +381,8 @@ if __name__ == "__main__":
     if args.output_path:
         hdfstore_path = args.output_path
     else:
-        hdfstore_path = args.h5py_path.replace(".h5", ".hdfstore.h5")
+        p = _Path(args.h5py_path)
+        hdfstore_path = str(p.with_suffix("")) + ".hdfstore.h5"
 
     print(f"Converting {args.h5py_path} -> {hdfstore_path}...")
     summary = h5py_to_hdfstore(args.h5py_path, hdfstore_path)

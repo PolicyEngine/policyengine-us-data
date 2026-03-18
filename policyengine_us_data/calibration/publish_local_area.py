@@ -10,15 +10,14 @@ Usage:
 
 import os
 import numpy as np
-import pandas as pd
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.utils.hdfstore import (
     DatasetResult,
-    _save_h5,
-    _save_hdfstore,
+    save_h5,
+    save_hdfstore,
 )
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
 from policyengine_us_data.utils.data_upload import (
@@ -552,8 +551,8 @@ def build_output_dataset(
         time_period=time_period,
         system=sim.tax_benefit_system,
     )
-    _save_h5(result, str(output_base))
-    _save_hdfstore(result, str(output_base))
+    save_h5(result, str(output_base))
+    save_hdfstore(result, str(output_base))
 
     return result
 
@@ -619,19 +618,20 @@ def build_states(
 
             h5_path = str(output_base) + ".h5"
             hdfstore_path = str(output_base) + ".hdfstore.h5"
+            has_hdfstore = os.path.exists(hdfstore_path)
 
             if upload:
                 print(f"Uploading {state_code}.h5 to GCP...")
                 upload_local_area_file(h5_path, "states", skip_hf=True)
 
-                if os.path.exists(hdfstore_path):
+                if has_hdfstore:
                     print(f"Uploading {state_code}.hdfstore.h5 to GCP...")
                     upload_local_area_file(
                         hdfstore_path, "states_hdfstore", skip_hf=True
                     )
 
                 hf_queue.append((h5_path, "states"))
-                if os.path.exists(hdfstore_path):
+                if has_hdfstore:
                     hf_queue.append((hdfstore_path, "states_hdfstore"))
 
             record_completed_state(state_code)
@@ -699,19 +699,20 @@ def build_districts(
 
             h5_path = str(output_base) + ".h5"
             hdfstore_path = str(output_base) + ".hdfstore.h5"
+            has_hdfstore = os.path.exists(hdfstore_path)
 
             if upload:
                 print(f"Uploading {friendly_name}.h5 to GCP...")
                 upload_local_area_file(h5_path, "districts", skip_hf=True)
 
-                if os.path.exists(hdfstore_path):
+                if has_hdfstore:
                     print(f"Uploading {friendly_name}.hdfstore.h5 to GCP...")
                     upload_local_area_file(
                         hdfstore_path, "districts_hdfstore", skip_hf=True
                     )
 
                 hf_queue.append((h5_path, "districts"))
-                if os.path.exists(hdfstore_path):
+                if has_hdfstore:
                     hf_queue.append((hdfstore_path, "districts_hdfstore"))
 
             record_completed_district(friendly_name)
@@ -774,19 +775,20 @@ def build_cities(
 
                 h5_path = str(output_base) + ".h5"
                 hdfstore_path = str(output_base) + ".hdfstore.h5"
+                has_hdfstore = os.path.exists(hdfstore_path)
 
                 if upload:
                     print("Uploading NYC.h5 to GCP...")
                     upload_local_area_file(h5_path, "cities", skip_hf=True)
 
-                    if os.path.exists(hdfstore_path):
+                    if has_hdfstore:
                         print("Uploading NYC.hdfstore.h5 to GCP...")
                         upload_local_area_file(
                             hdfstore_path, "cities_hdfstore", skip_hf=True
                         )
 
                     hf_queue.append((h5_path, "cities"))
-                    if os.path.exists(hdfstore_path):
+                    if has_hdfstore:
                         hf_queue.append((hdfstore_path, "cities_hdfstore"))
 
                 record_completed_city("NYC")

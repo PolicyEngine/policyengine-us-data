@@ -685,12 +685,11 @@ class TestBuildCountyValues(unittest.TestCase):
 
     @patch(
         "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_county_enum_index_from_fips",
+        ".block_assignment.get_county_enum_index_from_fips",
         return_value=1,
     )
     @patch(
-        "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_calculated_variables",
+        "policyengine_us_data.calibration.calibration_utils.get_calculated_variables",
         return_value=["var_a"],
     )
     @patch("policyengine_us.Microsimulation")
@@ -718,12 +717,11 @@ class TestBuildCountyValues(unittest.TestCase):
 
     @patch(
         "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_county_enum_index_from_fips",
+        ".block_assignment.get_county_enum_index_from_fips",
         return_value=1,
     )
     @patch(
-        "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_calculated_variables",
+        "policyengine_us_data.calibration.calibration_utils.get_calculated_variables",
         return_value=["var_a"],
     )
     @patch("policyengine_us.Microsimulation")
@@ -749,12 +747,11 @@ class TestBuildCountyValues(unittest.TestCase):
 
     @patch(
         "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_county_enum_index_from_fips",
+        ".block_assignment.get_county_enum_index_from_fips",
         return_value=1,
     )
     @patch(
-        "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_calculated_variables",
+        "policyengine_us_data.calibration.calibration_utils.get_calculated_variables",
         return_value=[],
     )
     @patch("policyengine_us.Microsimulation")
@@ -778,12 +775,11 @@ class TestBuildCountyValues(unittest.TestCase):
 
     @patch(
         "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_county_enum_index_from_fips",
+        ".block_assignment.get_county_enum_index_from_fips",
         return_value=1,
     )
     @patch(
-        "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_calculated_variables",
+        "policyengine_us_data.calibration.calibration_utils.get_calculated_variables",
         return_value=["var_a", "county"],
     )
     @patch("policyengine_us.Microsimulation")
@@ -940,12 +936,11 @@ class TestBuildCountyValuesParallel(unittest.TestCase):
     )
     @patch(
         "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_county_enum_index_from_fips",
+        ".block_assignment.get_county_enum_index_from_fips",
         return_value=1,
     )
     @patch(
-        "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_calculated_variables",
+        "policyengine_us_data.calibration.calibration_utils.get_calculated_variables",
         return_value=[],
     )
     @patch("policyengine_us.Microsimulation")
@@ -984,12 +979,11 @@ class TestBuildCountyValuesParallel(unittest.TestCase):
 
     @patch(
         "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_county_enum_index_from_fips",
+        ".block_assignment.get_county_enum_index_from_fips",
         return_value=1,
     )
     @patch(
-        "policyengine_us_data.calibration"
-        ".unified_matrix_builder.get_calculated_variables",
+        "policyengine_us_data.calibration.calibration_utils.get_calculated_variables",
         return_value=[],
     )
     @patch("policyengine_us.Microsimulation")

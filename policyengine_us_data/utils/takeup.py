@@ -298,17 +298,16 @@ def extend_aca_takeup_to_match_target(
         return result
 
     available_idx = np.flatnonzero(available_mask)
-    ordered_idx = available_idx[
-        np.argsort(entity_draws[available_idx], kind="stable")
-    ]
-    cumulative_people = current_people + np.cumsum(
-        enrolled_person_weights[ordered_idx]
+    ordered_idx = available_idx[np.argsort(entity_draws[available_idx], kind="stable")]
+    cumulative_people = current_people + np.cumsum(enrolled_person_weights[ordered_idx])
+    n_to_add = (
+        np.searchsorted(
+            cumulative_people,
+            target_people,
+            side="left",
+        )
+        + 1
     )
-    n_to_add = np.searchsorted(
-        cumulative_people,
-        target_people,
-        side="left",
-    ) + 1
     result[ordered_idx[:n_to_add]] = True
     return result
 

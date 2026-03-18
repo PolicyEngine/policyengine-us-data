@@ -43,7 +43,7 @@ def main():
     sys.stdout = sys.stderr
 
     from policyengine_us_data.calibration.publish_local_area import (
-        build_h5,
+        build_output_dataset,
         NYC_COUNTIES,
         NYC_CDS,
         AT_LARGE_DISTRICTS,
@@ -104,11 +104,11 @@ def main():
                     continue
                 states_dir = output_dir / "states"
                 states_dir.mkdir(parents=True, exist_ok=True)
-                path = build_h5(
+                result = build_output_dataset(
                     weights=weights,
                     geography=geography,
                     dataset_path=dataset_path,
-                    output_path=states_dir / f"{item_id}.h5",
+                    output_base=states_dir / item_id,
                     cd_subset=cd_subset,
                     takeup_filter=takeup_filter,
                 )
@@ -147,11 +147,11 @@ def main():
 
                 districts_dir = output_dir / "districts"
                 districts_dir.mkdir(parents=True, exist_ok=True)
-                path = build_h5(
+                result = build_output_dataset(
                     weights=weights,
                     geography=geography,
                     dataset_path=dataset_path,
-                    output_path=districts_dir / f"{friendly_name}.h5",
+                    output_base=districts_dir / friendly_name,
                     cd_subset=[geoid],
                     takeup_filter=takeup_filter,
                 )
@@ -166,11 +166,11 @@ def main():
                     continue
                 cities_dir = output_dir / "cities"
                 cities_dir.mkdir(parents=True, exist_ok=True)
-                path = build_h5(
+                result = build_output_dataset(
                     weights=weights,
                     geography=geography,
                     dataset_path=dataset_path,
-                    output_path=cities_dir / "NYC.h5",
+                    output_base=cities_dir / "NYC",
                     cd_subset=cd_subset,
                     county_filter=NYC_COUNTIES,
                     takeup_filter=takeup_filter,
@@ -179,16 +179,16 @@ def main():
             elif item_type == "national":
                 national_dir = output_dir / "national"
                 national_dir.mkdir(parents=True, exist_ok=True)
-                path = build_h5(
+                result = build_output_dataset(
                     weights=weights,
                     geography=geography,
                     dataset_path=dataset_path,
-                    output_path=national_dir / "US.h5",
+                    output_base=national_dir / "US",
                 )
             else:
                 raise ValueError(f"Unknown item type: {item_type}")
 
-            if path:
+            if result:
                 results["completed"].append(f"{item_type}:{item_id}")
                 print(
                     f"Completed {item_type}:{item_id}",

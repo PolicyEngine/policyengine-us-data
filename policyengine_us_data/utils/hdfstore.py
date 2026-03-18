@@ -1,14 +1,18 @@
 """
-HDFStore serialization utilities.
+Dataset serialization utilities.
 
-Converts variable-centric data dicts (``{var: {period: array}}``) into
-entity-level Pandas HDFStore files consumed by API v2 and
-``extend_single_year_dataset()``.
+Provides ``build_output_dataset`` (the public entry-point used by callers)
+and two internal serializers:
+
+* ``_save_h5``  – variable-centric h5py format
+* ``_save_hdfstore`` – entity-level Pandas HDFStore consumed by API v2
 """
 
 import warnings
-from typing import Dict
+from dataclasses import dataclass
+from typing import Any, Dict
 
+import h5py
 import numpy as np
 import pandas as pd
 
@@ -22,7 +26,21 @@ ENTITIES = [
 ]
 
 
-def split_data_into_entity_dfs(
+@dataclass
+class DatasetResult:
+    """Typed container returned by ``build_output_dataset``."""
+
+    data: Dict[str, Dict]  # {var_name: {period: np.ndarray}}
+    time_period: int
+    system: Any  # TaxBenefitSystem
+
+
+# -------------------------------------------------------------------
+# Internal helpers
+# -------------------------------------------------------------------
+
+
+def _split_data_into_entity_dfs(
     data: Dict[str, dict],
     system,
     time_period: int,
@@ -82,7 +100,7 @@ def split_data_into_entity_dfs(
     return entity_dfs
 
 
-def build_uprating_manifest(
+def _build_uprating_manifest(
     data: Dict[str, dict],
     system,
 ) -> pd.DataFrame:
@@ -115,27 +133,64 @@ def build_uprating_manifest(
     return pd.DataFrame(records)
 
 
-def save_hdfstore(
-    entity_dfs: Dict[str, pd.DataFrame],
-    manifest_df: pd.DataFrame,
-    output_path: str,
-    time_period: int,
-) -> str:
-    """Save entity DataFrames and manifest to a Pandas HDFStore file.
+# -------------------------------------------------------------------
+# Serializers
+# -------------------------------------------------------------------
+
+
+def _save_h5(result: DatasetResult, output_base: str) -> str:
+    """Write variable-centric h5py file.
 
     Args:
-        entity_dfs: One DataFrame per entity from
-            :func:`split_data_into_entity_dfs`.
-        manifest_df: Variable metadata from
-            :func:`build_uprating_manifest`.
-        output_path: Path to the base ``.h5`` file.  The HDFStore is
-            written alongside it with a ``.hdfstore.h5`` suffix.
-        time_period: Year stored as metadata inside the HDFStore.
+        result: The assembled dataset.
+        output_base: Path stem **without** file extension.
 
     Returns:
-        Path to the created HDFStore file.
+        Path to the created ``.h5`` file.
     """
-    hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
+    h5_path = str(output_base) + ".h5"
+    with h5py.File(h5_path, "w") as f:
+        for variable, periods in result.data.items():
+            grp = f.create_group(variable)
+            for period, values in periods.items():
+                grp.create_dataset(str(period), data=values)
+
+    print(f"\nH5 saved to {h5_path}")
+
+    with h5py.File(h5_path, "r") as f:
+        tp = str(result.time_period)
+        if "household_id" in f and tp in f["household_id"]:
+            n = len(f["household_id"][tp][:])
+            print(f"Verified: {n:,} households in output")
+        if "person_id" in f and tp in f["person_id"]:
+            n = len(f["person_id"][tp][:])
+            print(f"Verified: {n:,} persons in output")
+        if "household_weight" in f and tp in f["household_weight"]:
+            hw = f["household_weight"][tp][:]
+            print(f"Total population (HH weights): {hw.sum():,.0f}")
+        if "person_weight" in f and tp in f["person_weight"]:
+            pw = f["person_weight"][tp][:]
+            print(f"Total population (person weights): {pw.sum():,.0f}")
+
+    return h5_path
+
+
+def _save_hdfstore(result: DatasetResult, output_base: str) -> str:
+    """Write entity-level Pandas HDFStore file.
+
+    Args:
+        result: The assembled dataset.
+        output_base: Path stem **without** file extension.
+
+    Returns:
+        Path to the created ``.hdfstore.h5`` file.
+    """
+    hdfstore_path = str(output_base) + ".hdfstore.h5"
+
+    entity_dfs = _split_data_into_entity_dfs(
+        result.data, result.system, result.time_period
+    )
+    manifest_df = _build_uprating_manifest(result.data, result.system)
 
     print(f"\nSaving HDFStore to {hdfstore_path}...")
 
@@ -147,6 +202,7 @@ def save_hdfstore(
         )
         with pd.HDFStore(hdfstore_path, mode="w") as store:
             for entity_name, df in entity_dfs.items():
+                df = df.copy()
                 for col in df.columns:
                     if df[col].dtype == object:
                         df[col] = df[col].astype(str)
@@ -155,7 +211,7 @@ def save_hdfstore(
             store.put("_variable_metadata", manifest_df, format="table")
             store.put(
                 "_time_period",
-                pd.Series([time_period]),
+                pd.Series([result.time_period]),
                 format="table",
             )
 

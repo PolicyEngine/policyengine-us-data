@@ -1,7 +1,7 @@
 """
 CLI for creating CD-stacked datasets from calibration artifacts.
 
-Thin wrapper around build_h5/build_states/build_districts/build_cities
+Thin wrapper around build_output_dataset/build_states/build_districts/build_cities
 in publish_local_area.py. Loads a GeographyAssignment from geography.npz
 and delegates all H5 building logic.
 """
@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     from policyengine_us import Microsimulation
     from policyengine_us_data.calibration.publish_local_area import (
-        build_h5,
+        build_output_dataset,
         build_states,
         build_districts,
         build_cities,
@@ -111,13 +111,13 @@ if __name__ == "__main__":
 
     # === Dispatch ===
     if mode == "national":
-        output_path = output_dir / "US.h5"
-        print(f"\nCreating national dataset: {output_path}")
-        build_h5(
+        output_base = output_dir / "US"
+        print(f"\nCreating national dataset: {output_base}")
+        build_output_dataset(
             weights=w,
             geography=geography,
             dataset_path=dataset_path,
-            output_path=output_path,
+            output_base=output_base,
             takeup_filter=takeup_filter,
         )
 
@@ -160,13 +160,13 @@ if __name__ == "__main__":
         calibrated_cds = sorted(set(cd_geoid))
         if args.cd not in calibrated_cds:
             raise ValueError(f"CD {args.cd} not in calibrated CDs")
-        output_path = output_dir / f"{args.cd}.h5"
-        print(f"\nCreating single CD dataset: {output_path}")
-        build_h5(
+        output_base = output_dir / args.cd
+        print(f"\nCreating single CD dataset: {output_base}")
+        build_output_dataset(
             weights=w,
             geography=geography,
             dataset_path=dataset_path,
-            output_path=output_path,
+            output_base=output_base,
             cd_subset=[args.cd],
             takeup_filter=takeup_filter,
         )

@@ -26,9 +26,8 @@ import pytest
 
 from policyengine_us_data.utils.hdfstore import (
     ENTITIES,
-    split_data_into_entity_dfs,
-    build_uprating_manifest,
-    save_hdfstore,
+    DatasetResult,
+    _save_hdfstore,
 )
 
 
@@ -116,12 +115,11 @@ def h5py_to_hdfstore(h5py_path: str, hdfstore_path: str) -> dict:
     n_persons = len(next(iter(data.get("person_id", {}).values()), []))
     print(f"  {len(h5_vars)} variables, {n_persons:,} persons, year={time_period}")
 
-    print("Splitting into entity DataFrames...")
-    entity_dfs = split_data_into_entity_dfs(data, system, time_period)
-    manifest_df = build_uprating_manifest(data, system)
+    result = DatasetResult(data=data, time_period=time_period, system=system)
+    output_base = hdfstore_path.replace(".hdfstore.h5", "")
 
     print(f"Saving HDFStore to {hdfstore_path}...")
-    save_hdfstore(entity_dfs, manifest_df, hdfstore_path, time_period)
+    _save_hdfstore(result, output_base)
 
     summary = {}
     for entity_name, df in entity_dfs.items():

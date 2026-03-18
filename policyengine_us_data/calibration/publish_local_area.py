@@ -16,9 +16,9 @@ from typing import Dict, List
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.utils.hdfstore import (
-    split_data_into_entity_dfs,
-    build_uprating_manifest,
-    save_hdfstore,
+    DatasetResult,
+    _save_h5,
+    _save_hdfstore,
 )
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
 from policyengine_us_data.utils.data_upload import (
@@ -112,39 +112,39 @@ def record_completed_city(city_name: str):
         f.write(f"{city_name}\n")
 
 
-def build_h5(
+def build_output_dataset(
     weights: np.ndarray,
     geography,
     dataset_path: Path,
-    output_path: Path,
+    output_base: Path,
     cd_subset: List[str] = None,
     county_filter: set = None,
     takeup_filter: List[str] = None,
-) -> Path:
-    """Build an H5 file by cloning records for each nonzero weight.
+) -> DatasetResult:
+    """Assemble a dataset and serialize to h5py + HDFStore.
 
     Args:
         weights: Clone-level weight vector, shape (n_clones_total * n_hh,).
         geography: GeographyAssignment from assign_random_geography.
         dataset_path: Path to base dataset H5 file.
-        output_path: Where to write the output H5 file.
+        output_base: Path stem **without** file extension.
+            Serializers append ``.h5`` and ``.hdfstore.h5``.
         cd_subset: If provided, only include clones for these CDs.
         county_filter: If provided, scale weights by P(target|CD)
             for city datasets.
         takeup_filter: List of takeup vars to apply.
 
     Returns:
-        Path to the output H5 file.
+        A :class:`DatasetResult` with the assembled data.
     """
-    import h5py
     from collections import defaultdict
     from policyengine_core.enums import Enum
     from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
         County,
     )
 
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_base = Path(output_base)
+    output_base.parent.mkdir(parents=True, exist_ok=True)
 
     blocks = np.asarray(geography.block_geoid)
     clone_cds = np.asarray(geography.cd_geoid, dtype=str)
@@ -546,36 +546,16 @@ def build_h5(
         for var_name, bools in takeup_results.items():
             data[var_name] = {time_period: bools}
 
-    # === Write H5 ===
-    with h5py.File(str(output_path), "w") as f:
-        for variable, periods in data.items():
-            grp = f.create_group(variable)
-            for period, values in periods.items():
-                grp.create_dataset(str(period), data=values)
+    # === Serialize ===
+    result = DatasetResult(
+        data=data,
+        time_period=time_period,
+        system=sim.tax_benefit_system,
+    )
+    _save_h5(result, str(output_base))
+    _save_hdfstore(result, str(output_base))
 
-    print(f"\nH5 saved to {output_path}")
-
-    with h5py.File(str(output_path), "r") as f:
-        tp = str(time_period)
-        if "household_id" in f and tp in f["household_id"]:
-            n = len(f["household_id"][tp][:])
-            print(f"Verified: {n:,} households in output")
-        if "person_id" in f and tp in f["person_id"]:
-            n = len(f["person_id"][tp][:])
-            print(f"Verified: {n:,} persons in output")
-        if "household_weight" in f and tp in f["household_weight"]:
-            hw = f["household_weight"][tp][:]
-            print(f"Total population (HH weights): {hw.sum():,.0f}")
-        if "person_weight" in f and tp in f["person_weight"]:
-            pw = f["person_weight"][tp][:]
-            print(f"Total population (person weights): {pw.sum():,.0f}")
-
-    # === HDFStore output (entity-level format) ===
-    entity_dfs = split_data_into_entity_dfs(data, sim.tax_benefit_system, time_period)
-    manifest_df = build_uprating_manifest(data, sim.tax_benefit_system)
-    save_hdfstore(entity_dfs, manifest_df, str(output_path), time_period)
-
-    return output_path
+    return result
 
 
 AT_LARGE_DISTRICTS = {0, 98}
@@ -625,31 +605,32 @@ def build_states(
             print(f"No CDs found for {state_code}, skipping")
             continue
 
-        output_path = states_dir / f"{state_code}.h5"
+        output_base = states_dir / state_code
 
         try:
-            build_h5(
+            build_output_dataset(
                 weights=w,
                 geography=geography,
                 dataset_path=dataset_path,
-                output_path=output_path,
+                output_base=output_base,
                 cd_subset=cd_subset,
                 takeup_filter=takeup_filter,
             )
 
+            h5_path = str(output_base) + ".h5"
+            hdfstore_path = str(output_base) + ".hdfstore.h5"
+
             if upload:
                 print(f"Uploading {state_code}.h5 to GCP...")
-                upload_local_area_file(str(output_path), "states", skip_hf=True)
+                upload_local_area_file(h5_path, "states", skip_hf=True)
 
-                # Upload HDFStore file if it exists
-                hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
                 if os.path.exists(hdfstore_path):
                     print(f"Uploading {state_code}.hdfstore.h5 to GCP...")
                     upload_local_area_file(
                         hdfstore_path, "states_hdfstore", skip_hf=True
                     )
 
-                hf_queue.append((str(output_path), "states"))
+                hf_queue.append((h5_path, "states"))
                 if os.path.exists(hdfstore_path):
                     hf_queue.append((hdfstore_path, "states_hdfstore"))
 
@@ -703,32 +684,33 @@ def build_districts(
             print(f"Skipping {friendly_name} (already completed)")
             continue
 
-        output_path = districts_dir / f"{friendly_name}.h5"
+        output_base = districts_dir / friendly_name
         print(f"\n[{i + 1}/{len(all_cds)}] Building {friendly_name}")
 
         try:
-            build_h5(
+            build_output_dataset(
                 weights=w,
                 geography=geography,
                 dataset_path=dataset_path,
-                output_path=output_path,
+                output_base=output_base,
                 cd_subset=[cd_geoid],
                 takeup_filter=takeup_filter,
             )
 
+            h5_path = str(output_base) + ".h5"
+            hdfstore_path = str(output_base) + ".hdfstore.h5"
+
             if upload:
                 print(f"Uploading {friendly_name}.h5 to GCP...")
-                upload_local_area_file(str(output_path), "districts", skip_hf=True)
+                upload_local_area_file(h5_path, "districts", skip_hf=True)
 
-                # Upload HDFStore file if it exists
-                hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
                 if os.path.exists(hdfstore_path):
                     print(f"Uploading {friendly_name}.hdfstore.h5 to GCP...")
                     upload_local_area_file(
                         hdfstore_path, "districts_hdfstore", skip_hf=True
                     )
 
-                hf_queue.append((str(output_path), "districts"))
+                hf_queue.append((h5_path, "districts"))
                 if os.path.exists(hdfstore_path):
                     hf_queue.append((hdfstore_path, "districts_hdfstore"))
 
@@ -777,32 +759,33 @@ def build_cities(
         if not cd_subset:
             print("No NYC-related CDs found, skipping")
         else:
-            output_path = cities_dir / "NYC.h5"
+            output_base = cities_dir / "NYC"
 
             try:
-                build_h5(
+                build_output_dataset(
                     weights=w,
                     geography=geography,
                     dataset_path=dataset_path,
-                    output_path=output_path,
+                    output_base=output_base,
                     cd_subset=cd_subset,
                     county_filter=NYC_COUNTIES,
                     takeup_filter=takeup_filter,
                 )
 
+                h5_path = str(output_base) + ".h5"
+                hdfstore_path = str(output_base) + ".hdfstore.h5"
+
                 if upload:
                     print("Uploading NYC.h5 to GCP...")
-                    upload_local_area_file(str(output_path), "cities", skip_hf=True)
+                    upload_local_area_file(h5_path, "cities", skip_hf=True)
 
-                    # Upload HDFStore file if it exists
-                    hdfstore_path = str(output_path).replace(".h5", ".hdfstore.h5")
                     if os.path.exists(hdfstore_path):
                         print("Uploading NYC.hdfstore.h5 to GCP...")
                         upload_local_area_file(
                             hdfstore_path, "cities_hdfstore", skip_hf=True
                         )
 
-                    hf_queue.append((str(output_path), "cities"))
+                    hf_queue.append((h5_path, "cities"))
                     if os.path.exists(hdfstore_path):
                         hf_queue.append((hdfstore_path, "cities_hdfstore"))
 

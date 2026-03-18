@@ -1,4 +1,4 @@
-"""Tests for build_h5 using deterministic test fixture."""
+"""Tests for build_output_dataset using deterministic test fixture."""
 
 import os
 import tempfile
@@ -9,7 +9,7 @@ import pytest
 from pathlib import Path
 from policyengine_us import Microsimulation
 from policyengine_us_data.calibration.publish_local_area import (
-    build_h5,
+    build_output_dataset,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
@@ -83,17 +83,17 @@ def stacked_result(test_weights, n_households):
     """Run stacked dataset builder and return results."""
     geography = _make_geography(n_households, TEST_CDS)
     with tempfile.TemporaryDirectory() as tmpdir:
-        output_path = os.path.join(tmpdir, "test_output.h5")
+        output_base = os.path.join(tmpdir, "test_output")
 
-        build_h5(
+        build_output_dataset(
             weights=np.array(test_weights),
             geography=geography,
             dataset_path=Path(FIXTURE_PATH),
-            output_path=Path(output_path),
+            output_base=Path(output_base),
             cd_subset=TEST_CDS,
         )
 
-        sim_after = Microsimulation(dataset=output_path)
+        sim_after = Microsimulation(dataset=output_base + ".h5")
         hh_df = pd.DataFrame(
             sim_after.calculate_dataframe(
                 [
@@ -172,17 +172,17 @@ def stacked_sim(test_weights, n_households):
     """Run stacked dataset builder and return the simulation."""
     geography = _make_geography(n_households, TEST_CDS)
     with tempfile.TemporaryDirectory() as tmpdir:
-        output_path = os.path.join(tmpdir, "test_output.h5")
+        output_base = os.path.join(tmpdir, "test_output")
 
-        build_h5(
+        build_output_dataset(
             weights=np.array(test_weights),
             geography=geography,
             dataset_path=Path(FIXTURE_PATH),
-            output_path=Path(output_path),
+            output_base=Path(output_base),
             cd_subset=TEST_CDS,
         )
 
-        sim = Microsimulation(dataset=output_path)
+        sim = Microsimulation(dataset=output_base + ".h5")
         yield sim
 
 
@@ -197,15 +197,15 @@ def stacked_sim_with_overlap(n_households):
 
     geography = _make_geography(n_households, TEST_CDS)
     with tempfile.TemporaryDirectory() as tmpdir:
-        output_path = os.path.join(tmpdir, "test_overlap.h5")
-        build_h5(
+        output_base = os.path.join(tmpdir, "test_overlap")
+        build_output_dataset(
             weights=np.array(w),
             geography=geography,
             dataset_path=Path(FIXTURE_PATH),
-            output_path=Path(output_path),
+            output_base=Path(output_base),
             cd_subset=TEST_CDS,
         )
-        sim = Microsimulation(dataset=output_path)
+        sim = Microsimulation(dataset=output_base + ".h5")
         yield {
             "sim": sim,
             "n_overlap": len(overlap_households),

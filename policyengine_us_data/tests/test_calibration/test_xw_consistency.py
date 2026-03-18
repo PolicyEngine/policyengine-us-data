@@ -44,7 +44,7 @@ def test_xw_matches_stacked_sim():
         UnifiedMatrixBuilder,
     )
     from policyengine_us_data.calibration.publish_local_area import (
-        build_h5,
+        build_output_dataset,
     )
     from policyengine_us_data.utils.takeup import (
         TAKEUP_AFFECTED_TARGETS,
@@ -105,17 +105,17 @@ def test_xw_matches_stacked_sim():
     tmpdir = tempfile.mkdtemp()
 
     for cd in top_cds:
-        h5_path = f"{tmpdir}/{cd}.h5"
-        build_h5(
+        output_base = f"{tmpdir}/{cd}"
+        build_output_dataset(
             weights=w,
             geography=geography,
             dataset_path=Path(DATASET_PATH),
-            output_path=Path(h5_path),
+            output_base=Path(output_base),
             cd_subset=[cd],
             takeup_filter=takeup_filter,
         )
 
-        stacked_sim = Microsimulation(dataset=h5_path)
+        stacked_sim = Microsimulation(dataset=output_base + ".h5")
         hh_weight = stacked_sim.calculate(
             "household_weight", 2024, map_to="household"
         ).values

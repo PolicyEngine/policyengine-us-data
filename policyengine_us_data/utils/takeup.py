@@ -108,6 +108,12 @@ TAKEUP_AFFECTED_TARGETS: Dict[str, dict] = {
     },
 }
 
+# CMS 2025 Marketplace OEP State-Level Public Use File, Total / All row.
+# This is the number of consumers receiving APTC in plan year 2025.
+ACA_POST_CALIBRATION_PERSON_TARGETS = {
+    2025: 22_380_137,
+}
+
 # FIPS -> 2-letter state code for Medicaid rate lookup
 _FIPS_TO_STATE_CODE = {
     1: "AL",
@@ -178,14 +184,13 @@ def _resolve_rate(
     return float(rate_or_dict)
 
 
-def compute_block_takeup_for_entities(
+def compute_block_takeup_draws_for_entities(
     var_name: str,
-    rate_or_dict,
     entity_blocks: np.ndarray,
     entity_hh_ids: np.ndarray = None,
     entity_clone_ids: np.ndarray = None,
 ) -> np.ndarray:
-    """Compute boolean takeup via block-level seeded draws.
+    """Compute deterministic uniform draws for block-level takeup.
 
     Each unique (block, household) pair gets its own seeded RNG,
     producing reproducible draws regardless of how many households
@@ -197,11 +202,10 @@ def compute_block_takeup_for_entities(
     builder, which processes each clone independently.
 
     State FIPS for rate resolution is derived from the first two
-    characters of each block GEOID.
+    characters of each block GEOID in the downstream boolean step.
 
     Args:
         var_name: Takeup variable name.
-        rate_or_dict: Scalar rate or {state_code: rate} dict.
         entity_blocks: Block GEOID per entity (str array).
         entity_hh_ids: Household ID per entity (int array).
             When provided, seeds per (block, household) for
@@ -212,19 +216,15 @@ def compute_block_takeup_for_entities(
             takeup decisions.
 
     Returns:
-        Boolean array of shape (n_entities,).
+        Float array of shape (n_entities,) in [0, 1).
     """
     n = len(entity_blocks)
     draws = np.zeros(n, dtype=np.float64)
-    rates = np.ones(n, dtype=np.float64)
 
     for block in np.unique(entity_blocks):
         if block == "":
             continue
         blk_mask = entity_blocks == block
-        sf = int(str(block)[:2])
-        rate = _resolve_rate(rate_or_dict, sf)
-        rates[blk_mask] = rate
 
         if entity_hh_ids is not None:
             for hh_id in np.unique(entity_hh_ids[blk_mask]):
@@ -248,7 +248,69 @@ def compute_block_takeup_for_entities(
             rng = seeded_rng(var_name, salt=str(block))
             draws[blk_mask] = rng.random(int(blk_mask.sum()))
 
+    return draws
+
+
+def compute_block_takeup_for_entities(
+    var_name: str,
+    rate_or_dict,
+    entity_blocks: np.ndarray,
+    entity_hh_ids: np.ndarray = None,
+    entity_clone_ids: np.ndarray = None,
+) -> np.ndarray:
+    """Compute boolean takeup via block-level seeded draws."""
+    draws = compute_block_takeup_draws_for_entities(
+        var_name,
+        entity_blocks,
+        entity_hh_ids,
+        entity_clone_ids,
+    )
+    rates = np.ones(len(entity_blocks), dtype=np.float64)
+
+    for block in np.unique(entity_blocks):
+        if block == "":
+            continue
+        blk_mask = entity_blocks == block
+        rates[blk_mask] = _resolve_rate(rate_or_dict, int(str(block)[:2]))
+
     return draws < rates
+
+
+def extend_aca_takeup_to_match_target(
+    base_takeup: np.ndarray,
+    entity_draws: np.ndarray,
+    enrolled_person_weights: np.ndarray,
+    target_people: float,
+) -> np.ndarray:
+    """Turn on extra tax units until weighted ACA enrollment hits target.
+
+    ``enrolled_person_weights`` should be the weighted number of
+    people in each tax unit who would receive ACA PTC if that tax
+    unit takes up coverage in the target year.
+    """
+    result = base_takeup.copy()
+    current_people = enrolled_person_weights[result].sum()
+    if current_people >= target_people:
+        return result
+
+    available_mask = (~result) & (enrolled_person_weights > 0)
+    if not available_mask.any():
+        return result
+
+    available_idx = np.flatnonzero(available_mask)
+    ordered_idx = available_idx[
+        np.argsort(entity_draws[available_idx], kind="stable")
+    ]
+    cumulative_people = current_people + np.cumsum(
+        enrolled_person_weights[ordered_idx]
+    )
+    n_to_add = np.searchsorted(
+        cumulative_people,
+        target_people,
+        side="left",
+    ) + 1
+    result[ordered_idx[:n_to_add]] = True
+    return result
 
 
 def apply_block_takeup_to_arrays(

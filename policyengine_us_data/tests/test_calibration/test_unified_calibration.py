@@ -12,8 +12,10 @@ from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     TAKEUP_AFFECTED_TARGETS,
-    compute_block_takeup_for_entities,
     apply_block_takeup_to_arrays,
+    compute_block_takeup_draws_for_entities,
+    compute_block_takeup_for_entities,
+    extend_aca_takeup_to_match_target,
     _resolve_rate,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
@@ -176,6 +178,43 @@ class TestApplyBlockTakeupToArrays:
 
         differs = any(not np.array_equal(r1[v], r2[v]) for v in r1)
         assert differs
+
+
+class TestAcaTakeupTargeting:
+    """Verify ACA post-calibration targeting helpers."""
+
+    def test_draw_helper_matches_boolean_helper(self):
+        blocks = np.array(["370010001001001"] * 25)
+        hh_ids = np.arange(25, dtype=np.int64)
+        draws = compute_block_takeup_draws_for_entities(
+            "takes_up_aca_if_eligible",
+            blocks,
+            hh_ids,
+        )
+        result = compute_block_takeup_for_entities(
+            "takes_up_aca_if_eligible",
+            0.7,
+            blocks,
+            hh_ids,
+        )
+        np.testing.assert_array_equal(result, draws < 0.7)
+
+    def test_extend_only_adds_true_values_until_target(self):
+        base_takeup = np.array([True, False, False, False], dtype=bool)
+        entity_draws = np.array([0.10, 0.40, 0.20, 0.30], dtype=np.float64)
+        enrolled_person_weights = np.array([2.0, 1.0, 3.0, 4.0], dtype=np.float64)
+
+        result = extend_aca_takeup_to_match_target(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            target_people=6.0,
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([True, False, True, True], dtype=bool),
+        )
 
 
 class TestResolveRate:

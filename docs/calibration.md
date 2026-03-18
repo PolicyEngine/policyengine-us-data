@@ -45,7 +45,7 @@ Both must exist before running calibration. The stratified CPS already contains 
 
 Build the matrix from the stratified CPS without PUF cloning or re-imputation. This is the fastest way to get a calibration package for experimentation.
 
-**Step 1: Build the matrix (~12K base records x 436 clones = ~5.2M columns).**
+**Step 1: Build the matrix (~12K base records x 430 clones = ~5.2M columns).**
 
 ```bash
 python -m policyengine_us_data.calibration.unified_calibration \
@@ -73,7 +73,7 @@ You can re-run Step 2 as many times as you want with different hyperparameters. 
 
 ### 2. Full pipeline with PUF
 
-Adding `--puf-dataset` doubles the record count (~24K base records x 436 clones = ~10.4M columns) by creating PUF-imputed copies of every CPS record. This also triggers source re-imputation unless skipped.
+Adding `--puf-dataset` doubles the record count (~24K base records x 430 clones = ~10.3M columns) by creating PUF-imputed copies of every CPS record. This also triggers source re-imputation unless skipped.
 
 **Single-pass (build + fit):**
 
@@ -249,8 +249,11 @@ ORDER BY variable, geo_level;
 | `--lambda-l0` | None | Custom L0 penalty (overrides `--preset`) |
 | `--epochs` | 100 | Training epochs |
 | `--device` | `cpu` | `cpu` or `cuda` |
-| `--n-clones` | 436 | Number of dataset clones |
+| `--n-clones` | 430 | Number of dataset clones |
 | `--seed` | 42 | Random seed for geography assignment |
+| `--national` | False | Use national preset (λ_L0=1e-4, ~50K records) |
+| `--workers` | 1 | Parallel workers for per-state precomputation |
+| `--county-level` | False | Include county-level targets (slower) |
 
 ### Target selection
 
@@ -352,9 +355,17 @@ For **national web app** (~50K records):
 
 | Target | Description |
 |---|---|
-| `make calibrate` | Full pipeline with PUF and target config |
+| `make calibrate` | Full local pipeline with target config |
 | `make calibrate-build` | Build-only mode (saves package, no fitting) |
-| `make pipeline` | End-to-end: data, upload, calibrate, stage |
+| `make build-matrices` | Build calibration matrices on Modal (CPU) |
+| `make calibrate-modal` | Fit county-level weights on Modal GPU |
+| `make calibrate-modal-national` | Fit national weights on Modal GPU (T4) |
+| `make calibrate-both` | Run county + national fits in parallel |
+| `make stage-h5s` | Build state/district/city H5s on Modal |
+| `make stage-national-h5` | Build national US.h5 on Modal |
+| `make stage-all-h5s` | Run both staging jobs in parallel |
+| `make promote` | Promote staged files to versioned HF paths |
+| `make pipeline` | Print sequential steps for full pipeline |
 | `make validate-staging` | Validate staged H5s against targets (states only) |
 | `make validate-staging-full` | Validate staged H5s (states + districts) |
 | `make upload-validation` | Push validation_results.csv to HF |

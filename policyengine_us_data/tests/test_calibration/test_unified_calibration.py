@@ -6,8 +6,6 @@ block-level takeup seeding, county precomputation, and CLI flags.
 """
 
 import numpy as np
-import pytest
-
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
@@ -556,7 +554,6 @@ class TestTakeupDrawConsistency:
     def test_aggregation_entity_to_household(self):
         """np.add.at aggregation matches manual per-HH sum."""
         n_hh = 3
-        n_ent = 6
         ent_hh = np.array([0, 0, 1, 1, 1, 2])
         eligible = np.array(
             [100.0, 200.0, 50.0, 150.0, 100.0, 300.0],

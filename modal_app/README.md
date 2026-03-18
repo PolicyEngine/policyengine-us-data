@@ -35,7 +35,9 @@ modal run modal_app/remote_calibration_runner.py --branch <branch> --epochs <n> 
 | `--prebuilt-matrices` | `False` | Fit from pre-built package on Modal volume |
 | `--full-pipeline` | `False` | Force full rebuild even if a package exists on the volume |
 | `--county-level` | `False` | Include county-level targets |
-| `--workers` | `1` | Number of parallel workers |
+| `--workers` | `8` | Number of parallel workers for matrix building |
+| `--national` | `False` | Run national preset (λ_L0=1e-4, ~50K records) instead of local preset |
+| `--n-clones` | `430` | Number of geographic clones per household (used by `build_package`) |
 
 ### Examples
 
@@ -138,7 +140,7 @@ The calibration pipeline has six stages. Each can be run locally, via Modal CLI,
 
 ### Stage 1: Build data
 
-Produces `stratified_extended_cps_2024.h5` from raw CPS/PUF/ACS inputs.
+Produces `source_imputed_stratified_extended_cps_2024.h5` from raw CPS/PUF/ACS/SIPP/SCF inputs.
 
 | Method | Command |
 |--------|---------|
@@ -147,7 +149,7 @@ Produces `stratified_extended_cps_2024.h5` from raw CPS/PUF/ACS inputs.
 | **GitHub Actions** | Automatic on merge to `main` via `code_changes.yaml` → `reusable_test.yaml` (with `full_suite: true`). Also triggered by `pr_code_changes.yaml` on PRs. |
 
 Notes:
-- `make data` stops at `create_stratified_cps.py`. Use `make data-legacy` to also build `enhanced_cps.py` and `small_enhanced_cps.py`.
+- `make data` runs through `create_source_imputed_cps.py`. Use `make data-legacy` to also build `enhanced_cps.py` and `small_enhanced_cps.py`.
 - `data_build.py` (CI) always builds the full suite including enhanced_cps.
 
 ### Stage 2: Upload inputs to HuggingFace
@@ -177,9 +179,11 @@ Loads pre-built matrices from Modal volume, fits L0-regularized weights on GPU.
 | Method | Command |
 |--------|---------|
 | **Local (CPU)** | `make calibrate` |
-| **Modal CLI** | `make calibrate-modal BRANCH=<branch> GPU=<gpu> EPOCHS=<n>` |
+| **Modal CLI (local preset)** | `make calibrate-modal BRANCH=<branch> GPU=<gpu> EPOCHS=<n>` |
+| **Modal CLI (national preset)** | `make calibrate-modal-national BRANCH=<branch>` |
+| **Both presets** | `make calibrate-both BRANCH=<branch>` |
 
-`make calibrate-modal` passes `--prebuilt-matrices --push-results` automatically.
+`make calibrate-modal` passes `--prebuilt-matrices --push-results` automatically. `make calibrate-modal-national` adds `--national`, which sets λ_L0=1e-4 for a smaller ~50K-record output. `make calibrate-both` runs both in parallel.
 
 Full example:
 ```
@@ -210,7 +214,9 @@ Downloads weights + dataset + database from HF, builds state/district/city H5 fi
 | Method | Command |
 |--------|---------|
 | **Local** | `python policyengine_us_data/calibration/publish_local_area.py --rerandomize-takeup` |
-| **Modal CLI** | `make stage-h5s BRANCH=<branch>` (aka `modal run modal_app/local_area.py --branch=<branch> --num-workers=8`) |
+| **Modal CLI (states/districts)** | `make stage-h5s BRANCH=<branch>` |
+| **Modal CLI (national)** | `make stage-national-h5 BRANCH=<branch>` |
+| **Both** | `make stage-all-h5s BRANCH=<branch>` |
 | **GitHub Actions** | "Publish Local Area H5 Files" workflow — manual trigger via `workflow_dispatch`, or automatic via `repository_dispatch` (`--trigger-publish` flag), or on code push to `main` touching `calibration/` or `modal_app/`. |
 
 This stages H5s to HF `staging/` paths. It does NOT promote to production or GCS.

@@ -32,11 +32,8 @@ from policyengine_us_data.calibration.clone_and_assign import (
     assign_random_geography,
 )
 from policyengine_us_data.utils.takeup import (
-    ACA_POST_CALIBRATION_PERSON_TARGETS,
     SIMPLE_TAKEUP_VARS,
     apply_block_takeup_to_arrays,
-    compute_block_takeup_draws_for_entities,
-    extend_aca_takeup_to_match_target,
 )
 
 CHECKPOINT_FILE = Path("completed_states.txt")
@@ -539,51 +536,7 @@ def build_h5(
             time_period=time_period,
             takeup_filter=takeup_filter,
         )
-
-        if (
-            (takeup_filter is None or "takes_up_aca_if_eligible" in takeup_filter)
-            and "takes_up_aca_if_eligible" in takeup_results
-            and 2025 in ACA_POST_CALIBRATION_PERSON_TARGETS
-        ):
-            print("Applying 2025 ACA post-calibration enrollment override...")
-            sim.set_input(
-                "takes_up_aca_if_eligible",
-                2025,
-                np.ones(len(entity_id_arrays["tax_unit"]), dtype=bool),
-            )
-            sim.delete_arrays("aca_ptc")
-            enrolled_if_takeup = (
-                sim.calculate("aca_ptc", map_to="person", period=2025).values > 0
-            )[person_clone_idx]
-            aca_person_weights_if_takeup = np.zeros(
-                len(entity_clone_idx["tax_unit"]),
-                dtype=np.float64,
-            )
-            np.add.at(
-                aca_person_weights_if_takeup,
-                new_person_entity_ids["tax_unit"],
-                enrolled_if_takeup.astype(np.float64) * person_weights,
-            )
-            tax_unit_hh_idx = entity_hh_indices["tax_unit"]
-            aca_draws = compute_block_takeup_draws_for_entities(
-                "takes_up_aca_if_eligible",
-                active_blocks[tax_unit_hh_idx].astype(str),
-                original_hh_ids[tax_unit_hh_idx],
-                entity_clone_ids=tax_unit_hh_idx,
-            )
-            data["takes_up_aca_if_eligible"] = {
-                time_period: takeup_results["takes_up_aca_if_eligible"],
-                2025: extend_aca_takeup_to_match_target(
-                    takeup_results["takes_up_aca_if_eligible"],
-                    aca_draws,
-                    aca_person_weights_if_takeup,
-                    ACA_POST_CALIBRATION_PERSON_TARGETS[2025],
-                ),
-            }
-
         for var_name, bools in takeup_results.items():
-            if var_name == "takes_up_aca_if_eligible" and var_name in data:
-                continue
             data[var_name] = {time_period: bools}
 
     # === Write H5 ===

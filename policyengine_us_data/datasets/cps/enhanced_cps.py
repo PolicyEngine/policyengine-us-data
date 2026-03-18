@@ -1,10 +1,7 @@
 from policyengine_core.data import Dataset
 import pandas as pd
 from policyengine_us_data.utils import (
-    pe_to_soi,
-    get_soi,
     build_loss_matrix,
-    fmt,
     HardConcrete,
     print_reweighting_diagnostics,
     set_seeds,
@@ -15,9 +12,13 @@ from tqdm import trange
 from typing import Type
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.cps.extended_cps import (
-    ExtendedCPS_2024,
     ExtendedCPS_2024_Half,
     CPS_2024,
+)
+from policyengine_us_data.utils.randomness import seeded_rng
+from policyengine_us_data.utils.takeup import (
+    ACA_POST_CALIBRATION_PERSON_TARGETS,
+    extend_aca_takeup_to_match_target,
 )
 import logging
 
@@ -25,6 +26,48 @@ try:
     import torch
 except ImportError:
     torch = None
+
+
+def _get_period_array(period_values: dict, period: int) -> np.ndarray:
+    """Get a period array from a TIME_PERIOD_ARRAYS variable dict."""
+    value = period_values.get(period)
+    if value is None:
+        value = period_values.get(str(period))
+    if value is None:
+        raise KeyError(f"Missing period {period}")
+    return np.asarray(value)
+
+
+def create_aca_2025_takeup_override(
+    base_takeup: np.ndarray,
+    person_enrolled_if_takeup: np.ndarray,
+    person_weights: np.ndarray,
+    person_tax_unit_ids: np.ndarray,
+    tax_unit_ids: np.ndarray,
+    target_people: float = ACA_POST_CALIBRATION_PERSON_TARGETS[2025],
+) -> np.ndarray:
+    """Add 2025 ACA takers until weighted APTC enrollment hits target."""
+    tax_unit_id_to_idx = {
+        int(tax_unit_id): idx for idx, tax_unit_id in enumerate(tax_unit_ids)
+    }
+    person_tax_unit_idx = np.array(
+        [tax_unit_id_to_idx[int(tax_unit_id)] for tax_unit_id in person_tax_unit_ids],
+        dtype=np.int64,
+    )
+    enrolled_person_weights = np.zeros(len(tax_unit_ids), dtype=np.float64)
+    np.add.at(
+        enrolled_person_weights,
+        person_tax_unit_idx,
+        person_enrolled_if_takeup.astype(np.float64) * person_weights,
+    )
+    draws = seeded_rng("takes_up_aca_if_eligible").random(len(tax_unit_ids))
+
+    return extend_aca_takeup_to_match_target(
+        base_takeup=np.asarray(base_takeup, dtype=bool),
+        entity_draws=draws,
+        enrolled_person_weights=enrolled_person_weights,
+        target_people=target_people,
+    )
 
 
 def reweight(
@@ -88,7 +131,7 @@ def reweight(
         optimizer.zero_grad()
         masked = torch.exp(weights) * gates()
         l_main = loss(masked)
-        l = l_main + l0_lambda * gates.get_penalty()
+        loss_value = l_main + l0_lambda * gates.get_penalty()
         if (log_path is not None) and (i % 10 == 0):
             gates.eval()
             estimates = (torch.exp(weights) * gates()) @ loss_matrix
@@ -112,10 +155,12 @@ def reweight(
         if (log_path is not None) and (i % 1000 == 0):
             performance.to_csv(log_path, index=False)
         if start_loss is None:
-            start_loss = l.item()
-        loss_rel_change = (l.item() - start_loss) / start_loss
-        l.backward()
-        iterator.set_postfix({"loss": l.item(), "loss_rel_change": loss_rel_change})
+            start_loss = loss_value.item()
+        loss_rel_change = (loss_value.item() - start_loss) / start_loss
+        loss_value.backward()
+        iterator.set_postfix(
+            {"loss": loss_value.item(), "loss_rel_change": loss_rel_change}
+        )
         optimizer.step()
         if log_path is not None:
             performance.to_csv(log_path, index=False)
@@ -144,6 +189,7 @@ class EnhancedCPS(Dataset):
 
         sim = Microsimulation(dataset=self.input_dataset)
         data = sim.dataset.load_dataset()
+        base_year = int(sim.default_calculation_period)
         data["household_weight"] = {}
         original_weights = sim.calculate("household_weight")
         original_weights = original_weights.values + np.random.normal(
@@ -216,6 +262,52 @@ class EnhancedCPS(Dataset):
                 f"Year {year}: weights validated — "
                 f"{weighted_hh_count:,.0f} weighted households, "
                 f"{int(np.sum(w > 0))} non-zero"
+            )
+
+        if 2025 in ACA_POST_CALIBRATION_PERSON_TARGETS:
+            sim.set_input(
+                "household_weight",
+                base_year,
+                _get_period_array(data["household_weight"], base_year).astype(
+                    np.float32
+                ),
+            )
+            sim.set_input(
+                "takes_up_aca_if_eligible",
+                2025,
+                np.ones(
+                    len(_get_period_array(data["tax_unit_id"], base_year)),
+                    dtype=bool,
+                ),
+            )
+            sim.delete_arrays("aca_ptc")
+
+            data["takes_up_aca_if_eligible"][2025] = create_aca_2025_takeup_override(
+                base_takeup=_get_period_array(
+                    data["takes_up_aca_if_eligible"],
+                    base_year,
+                ),
+                person_enrolled_if_takeup=np.asarray(
+                    sim.calculate(
+                        "aca_ptc",
+                        map_to="person",
+                        period=2025,
+                        use_weights=False,
+                    )
+                )
+                > 0,
+                person_weights=np.asarray(
+                    sim.calculate(
+                        "person_weight",
+                        period=2025,
+                        use_weights=False,
+                    )
+                ),
+                person_tax_unit_ids=_get_period_array(
+                    data["person_tax_unit_id"],
+                    base_year,
+                ),
+                tax_unit_ids=_get_period_array(data["tax_unit_id"], base_year),
             )
 
         logging.info("Post-generation weight validation passed")

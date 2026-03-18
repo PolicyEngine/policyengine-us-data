@@ -167,23 +167,6 @@ class TestStackedDatasetBuilder:
         assert len(hh_df) == expected_households
 
 
-class TestAcaTakeupOverride:
-    """Verify stacked datasets carry a 2025 ACA takeup override."""
-
-    def test_aca_takeup_includes_2025_period(self, stacked_sim):
-        data = stacked_sim.dataset.load_dataset()["takes_up_aca_if_eligible"]
-        periods = {int(period) for period in data}
-        assert periods == {int(stacked_sim.default_calculation_period), 2025}
-
-    def test_aca_takeup_2025_only_adds_true_values(self, stacked_sim):
-        data = stacked_sim.dataset.load_dataset()["takes_up_aca_if_eligible"]
-        base_period = int(stacked_sim.default_calculation_period)
-        takeup_2024 = np.asarray(data[next(p for p in data if int(p) == base_period)])
-        takeup_2025 = np.asarray(data[next(p for p in data if int(p) == 2025)])
-        assert takeup_2025.mean() > takeup_2024.mean()
-        assert np.all(takeup_2024 <= takeup_2025)
-
-
 @pytest.fixture(scope="module")
 def stacked_sim(test_weights, n_households):
     """Run stacked dataset builder and return the simulation."""

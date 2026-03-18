@@ -163,22 +163,33 @@ def validate_dataset(file_path: Path) -> None:
     print(f"    Household weight sum: {hh_weight:,.0f}")
 
 
-def upload_datasets():
-    dataset_files = [
-        EnhancedCPS_2024.file_path,
+def upload_datasets(require_enhanced_cps: bool = True):
+    required_files = [
         CPS_2024.file_path,
-        STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
         STORAGE_FOLDER / "calibration" / "policy_data.db",
     ]
+    enhanced_files = [
+        EnhancedCPS_2024.file_path,
+        STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
+    ]
+    if require_enhanced_cps:
+        required_files.extend(enhanced_files)
 
-    # Filter to only existing files
     existing_files = []
-    for file_path in dataset_files:
+    for file_path in required_files:
         if file_path.exists():
             existing_files.append(file_path)
             print(f"✓ Found: {file_path}")
         else:
-            raise FileNotFoundError(f"File not found: {file_path}")
+            raise FileNotFoundError(f"Required file not found: {file_path}")
+
+    if not require_enhanced_cps:
+        for file_path in enhanced_files:
+            if file_path.exists():
+                existing_files.append(file_path)
+                print(f"✓ Found (optional): {file_path}")
+            else:
+                print(f"⚠ Skipping (not built): {file_path}")
 
     if not existing_files:
         raise ValueError("No dataset files found to upload!")
@@ -211,4 +222,13 @@ def validate_all_datasets():
 
 
 if __name__ == "__main__":
-    upload_datasets()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--no-require-enhanced-cps",
+        action="store_true",
+        help="Treat enhanced_cps and small_enhanced_cps as optional.",
+    )
+    args = parser.parse_args()
+    upload_datasets(require_enhanced_cps=not args.no_require_enhanced_cps)

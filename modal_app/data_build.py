@@ -541,8 +541,12 @@ def build_datasets(
 
     # Upload if requested (HF publication only)
     if upload:
+        upload_args = []
+        if skip_enhanced_cps:
+            upload_args.append("--no-require-enhanced-cps")
         run_script(
             "policyengine_us_data/storage/upload_completed_datasets.py",
+            args=upload_args,
             env=env,
         )
 

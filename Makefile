@@ -1,9 +1,9 @@
 .PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local
 
 GPU ?= A100-80GB
-EPOCHS ?= 200
+EPOCHS ?= 1000
 NATIONAL_GPU ?= T4
-NATIONAL_EPOCHS ?= 200
+NATIONAL_EPOCHS ?= 1000
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 NUM_WORKERS ?= 8
 N_CLONES ?= 430
@@ -228,18 +228,11 @@ build-data-modal:
 	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload --skip-tests --skip-enhanced-cps
 
 pipeline:
-	@echo "========================================"
-	@echo "Pipeline steps (run sequentially, each is --detach):"
-	@echo "  1. make build-data-modal"
-	@echo "  2. make build-matrices"
-	@echo "  3. make calibrate-both"
-	@echo "  4. make stage-all-h5s"
-	@echo "  5. make promote"
-	@echo ""
-	@echo "Each step runs with --detach. Monitor progress"
-	@echo "in the Modal dashboard and run the next step"
-	@echo "after the previous one completes."
-	@echo "========================================"
+	modal run --detach modal_app/pipeline.py::main \
+		--action run --branch $(BRANCH) --gpu $(GPU) \
+		--epochs $(EPOCHS) --national-gpu $(NATIONAL_GPU) \
+		--national-epochs $(NATIONAL_EPOCHS) \
+		--num-workers $(NUM_WORKERS) --n-clones $(N_CLONES)
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

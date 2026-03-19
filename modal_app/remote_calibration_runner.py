@@ -874,11 +874,11 @@ def main(
         with pipeline_vol.batch_upload(force=True) as batch:
             from io import BytesIO
 
-            batch.put(
+            batch.put_file(
                 BytesIO(package_bytes),
                 "artifacts/calibration_package.pkl",
             )
-            batch.put(
+            batch.put_file(
                 BytesIO(sidecar_bytes),
                 "artifacts/calibration_package_meta.json",
             )
@@ -1008,12 +1008,12 @@ def main(
 
     print("Pushing weights to pipeline volume...", flush=True)
     with pipeline_vol.batch_upload(force=True) as batch:
-        batch.put(
+        batch.put_file(
             BytesIO(result["weights"]),
             f"artifacts/{prefix}calibration_weights.npy",
         )
         if result.get("config"):
-            batch.put(
+            batch.put_file(
                 BytesIO(result["config"]),
                 f"artifacts/{prefix}unified_run_config.json",
             )

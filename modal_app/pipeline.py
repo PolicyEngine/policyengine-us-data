@@ -804,12 +804,12 @@ def run_pipeline(
 
             # Write regional results to pipeline volume
             with pipeline_volume.batch_upload(force=True) as batch:
-                batch.put(
+                batch.put_file(
                     BytesIO(regional_result["weights"]),
                     "artifacts/calibration_weights.npy",
                 )
                 if regional_result.get("config"):
-                    batch.put(
+                    batch.put_file(
                         BytesIO(regional_result["config"]),
                         "artifacts/unified_run_config.json",
                     )
@@ -828,12 +828,12 @@ def run_pipeline(
                 print("  National fit complete. Writing to volume...")
 
                 with pipeline_volume.batch_upload(force=True) as batch:
-                    batch.put(
+                    batch.put_file(
                         BytesIO(national_result["weights"]),
                         "artifacts/national_calibration_weights.npy",
                     )
                     if national_result.get("config"):
-                        batch.put(
+                        batch.put_file(
                             BytesIO(national_result["config"]),
                             "artifacts/national_unified_run_config.json",
                         )

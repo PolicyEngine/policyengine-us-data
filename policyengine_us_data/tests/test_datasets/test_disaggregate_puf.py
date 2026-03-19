@@ -1,4 +1,4 @@
-"""Tests for disaggregate_puf module (v2 conservative approach).
+"""Tests for disaggregate_puf module.
 
 Uses a synthetic mini-PUF to validate the disaggregation logic
 without requiring private IRS data.

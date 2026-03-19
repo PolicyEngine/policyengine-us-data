@@ -30,7 +30,7 @@ assert isinstance(QBI_PARAMS, dict)
 # Helper functions ---
 def sample_bernoulli_lognormal(n, prob, log_mean, log_sigma, rng):
     """Generate a Bernoulli-lognormal mixture."""
-    positive = np.random.binomial(1, prob, size=n)
+    positive = rng.binomial(1, prob, size=n)
     amounts = np.where(
         positive,
         rng.lognormal(mean=log_mean, sigma=log_sigma, size=n),
@@ -419,7 +419,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     pr_sstb = largest_qbi_source_name.map(QBI_PARAMS["sstb_prob_map_by_name"]).fillna(
         0.0
     )
-    puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
+    puf["business_is_sstb"] = rng.binomial(n=1, p=pr_sstb)
 
     reit_params = QBI_PARAMS["reit_ptp_income_distribution"]
     p_reit_ptp = reit_params["probability_of_receiving"]

@@ -252,43 +252,33 @@ def _record_step(
     write_run_meta(meta, vol)
 
 
-# ── Imports from other Modal apps ────────────────────────────────
-# These are imported at function call time to avoid
-# cross-app import issues at module level.
+# ── Include other Modal apps ─────────────────────────────────────
+# app.include() merges functions from other apps into this one,
+# ensuring Modal mounts their files and registers their functions
+# (with their GPU/memory/volume configs) in the ephemeral run.
 
+from modal_app.data_build import app as _data_build_app
+from modal_app.data_build import build_datasets
 
-def _get_data_build():
-    """Import build_datasets from data_build app."""
-    from modal_app.data_build import build_datasets
+app.include(_data_build_app)
 
-    return build_datasets
+from modal_app.remote_calibration_runner import app as _calibration_app
+from modal_app.remote_calibration_runner import (
+    build_package_remote,
+    PACKAGE_GPU_FUNCTIONS,
+)
 
+app.include(_calibration_app)
 
-def _get_calibration_funcs():
-    """Import calibration functions."""
-    from modal_app.remote_calibration_runner import (
-        build_package_remote,
-        PACKAGE_GPU_FUNCTIONS,
-    )
+from modal_app.local_area import app as _local_area_app
+from modal_app.local_area import (
+    coordinate_publish,
+    coordinate_national_publish,
+    promote_publish,
+    promote_national_publish,
+)
 
-    return build_package_remote, PACKAGE_GPU_FUNCTIONS
-
-
-def _get_local_area_funcs():
-    """Import local area publishing functions."""
-    from modal_app.local_area import (
-        coordinate_publish,
-        coordinate_national_publish,
-        promote_publish,
-        promote_national_publish,
-    )
-
-    return (
-        coordinate_publish,
-        coordinate_national_publish,
-        promote_publish,
-        promote_national_publish,
-    )
+app.include(_local_area_app)
 
 
 # ── Stage base datasets ─────────────────────────────────────────
@@ -572,7 +562,6 @@ def run_pipeline(
             print("\n[Step 1/5] Building datasets...")
             step_start = time.time()
 
-            build_datasets = _get_data_build()
             build_datasets.remote(
                 upload=False,
                 branch=branch,
@@ -603,10 +592,6 @@ def run_pipeline(
             print("\n[Step 2/5] Building calibration package...")
             step_start = time.time()
 
-            (
-                build_package_remote,
-                _,
-            ) = _get_calibration_funcs()
             pkg_path = build_package_remote.remote(
                 branch=branch,
                 workers=num_workers,
@@ -628,8 +613,6 @@ def run_pipeline(
         if not _step_completed(meta, "fit_weights"):
             print("\n[Step 3/5] Fitting calibration weights...")
             step_start = time.time()
-
-            _, PACKAGE_GPU_FUNCTIONS = _get_calibration_funcs()
 
             vol_path = "/pipeline/artifacts/calibration_package.pkl"
 
@@ -728,13 +711,6 @@ def run_pipeline(
                 "uploading diagnostics (parallel)..."
             )
             step_start = time.time()
-
-            (
-                coordinate_publish,
-                coordinate_national_publish,
-                _,
-                _,
-            ) = _get_local_area_funcs()
 
             # Spawn H5 builds (run on separate Modal containers)
             print(f"  Spawning regional H5 build ({num_workers} workers)...")
@@ -930,13 +906,6 @@ print(f"Promoted {{count}} base dataset(s)")
         print(f"  WARNING: Base dataset promotion: {e}")
 
     # Promote H5s via existing functions
-    (
-        _,
-        _,
-        promote_publish,
-        promote_national_publish,
-    ) = _get_local_area_funcs()
-
     print("\nPromoting regional H5s...")
     try:
         regional_result = promote_publish.remote(

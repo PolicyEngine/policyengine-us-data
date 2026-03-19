@@ -162,7 +162,14 @@ def impute_pension_contributions_to_puf(puf_df):
     from policyengine_us import Microsimulation
     from policyengine_us_data.datasets.cps import CPS_2024
 
-    cps = Microsimulation(dataset=CPS_2024)
+    # CPS_2024 may not exist yet during parallel CI builds.
+    # Fall back to CPS_2021 release artifact if needed.
+    try:
+        cps = Microsimulation(dataset=CPS_2024)
+    except Exception:
+        from policyengine_us_data.datasets.cps import CPS_2021
+
+        cps = Microsimulation(dataset=CPS_2021)
     cps.subsample(10_000)
 
     predictors = [

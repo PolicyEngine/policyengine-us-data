@@ -136,28 +136,22 @@ def _draw_truncated_lognormal(
 ) -> np.ndarray:
     """Draw AGI values from truncated lognormal, rescaled to total.
 
-    Solves for mu so that the truncated lognormal has roughly
-    the right mean, then rescales draws to match exact total.
+    Uses scipy's truncnorm in log-space to draw from a truncated
+    lognormal, then rescales draws to match exact weighted total.
     """
     if n == 0:
         return np.array([])
 
     target_mean = target_total / weights.sum()
 
-    # Initial mu estimate (untruncated lognormal mean formula)
+    # mu estimate (untruncated lognormal mean formula)
     mu = np.log(max(target_mean, lower + 1)) - sigma**2 / 2
 
-    # Draw from truncated lognormal via rejection sampling
-    vals = np.empty(n)
-    for i in range(n):
-        for _ in range(1000):
-            v = rng.lognormal(mean=mu, sigma=sigma)
-            if lower <= v <= upper:
-                vals[i] = v
-                break
-        else:
-            # Fallback: clamp
-            vals[i] = np.clip(rng.lognormal(mean=mu, sigma=sigma), lower, upper)
+    # Draw from truncated lognormal via scipy truncnorm in log-space
+    a = (np.log(lower) - mu) / sigma
+    b = (np.log(upper) - mu) / sigma
+    log_vals = truncnorm.rvs(a, b, loc=mu, scale=sigma, size=n, random_state=rng)
+    vals = np.exp(log_vals)
 
     # Rescale so weighted sum matches total
     current_weighted = (vals * weights).sum()

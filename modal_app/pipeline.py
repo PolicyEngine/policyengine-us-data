@@ -294,16 +294,40 @@ def _get_local_area_funcs():
 # ── Stage base datasets ─────────────────────────────────────────
 
 
-def stage_base_datasets(run_id: str, version: str) -> None:
+def _clone_and_install(branch: str) -> None:
+    """Clone the repo and install deps in the orchestrator."""
+    repo_dir = Path("/root/policyengine-us-data")
+    if repo_dir.exists():
+        import shutil
+
+        shutil.rmtree(repo_dir)
+    subprocess.run(
+        ["git", "clone", "-b", branch, REPO_URL],
+        cwd="/root",
+        check=True,
+    )
+    subprocess.run(
+        ["uv", "sync", "--locked"],
+        cwd="/root/policyengine-us-data",
+        check=True,
+    )
+
+
+def stage_base_datasets(
+    run_id: str,
+    version: str,
+    branch: str,
+) -> None:
     """Upload source_imputed + policy_data.db from pipeline
     volume to HF staging/.
 
-    Reads artifacts from /pipeline/artifacts/ and uploads
-    via upload_to_staging_hf().
+    Clones the repo and shells out to upload_to_staging_hf()
+    via subprocess, consistent with other Modal apps.
 
     Args:
         run_id: The current run ID (for logging).
         version: Package version string for the commit.
+        branch: Git branch for repo clone.
     """
     artifacts = Path(ARTIFACTS_DIR)
 
@@ -314,7 +338,7 @@ def stage_base_datasets(run_id: str, version: str) -> None:
     if source_imputed.exists():
         files_with_paths.append(
             (
-                source_imputed,
+                str(source_imputed),
                 "calibration/source_imputed_stratified_extended_cps.h5",
             )
         )
@@ -323,7 +347,7 @@ def stage_base_datasets(run_id: str, version: str) -> None:
         print("  WARNING: source_imputed not found, skipping")
 
     if policy_db.exists():
-        files_with_paths.append((policy_db, "calibration/policy_data.db"))
+        files_with_paths.append((str(policy_db), "calibration/policy_data.db"))
         print(f"  policy_data.db: {policy_db.stat().st_size:,} bytes")
     else:
         print("  WARNING: policy_data.db not found, skipping")
@@ -332,18 +356,53 @@ def stage_base_datasets(run_id: str, version: str) -> None:
         print("  No base datasets to stage")
         return
 
-    from policyengine_us_data.utils.data_upload import (
-        upload_to_staging_hf,
-    )
+    _clone_and_install(branch)
 
-    count = upload_to_staging_hf(files_with_paths, version)
-    print(f"  Staged {count} base dataset(s) to HF")
+    # Build the upload script as a Python snippet
+    import json as _json
+
+    pairs_json = _json.dumps(files_with_paths)
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
+import json
+from policyengine_us_data.utils.data_upload import (
+    upload_to_staging_hf,
+)
+
+pairs = json.loads('''{pairs_json}''')
+files_with_paths = [(p, r) for p, r in pairs]
+count = upload_to_staging_hf(files_with_paths, "{version}")
+print(f"Staged {{count}} base dataset(s) to HF")
+""",
+        ],
+        cwd="/root/policyengine-us-data",
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Base dataset staging failed: {result.stderr}")
+    print(f"  {result.stdout.strip()}")
 
 
 def upload_run_diagnostics(
     run_id: str,
+    branch: str,
 ) -> None:
-    """Upload run diagnostics to HF for archival."""
+    """Upload run diagnostics to HF for archival.
+
+    Shells out via subprocess for consistency with other
+    Modal apps and to avoid package dependencies in the
+    orchestrator image.
+
+    Args:
+        run_id: The current run ID.
+        branch: Git branch for repo clone.
+    """
     diag_dir = Path(RUNS_DIR) / run_id / "diagnostics"
     if not diag_dir.exists():
         print("  No diagnostics to upload")
@@ -355,21 +414,50 @@ def upload_run_diagnostics(
         return
 
     print(f"  Found {len(files)} diagnostic file(s) to upload")
-    # Upload diagnostics via HF API
-    from huggingface_hub import HfApi
 
-    api = HfApi()
-    token = os.environ.get("HUGGING_FACE_TOKEN")
+    # Build file list as JSON for the subprocess
+    import json as _json
 
-    for f in files:
-        api.upload_file(
-            path_or_fileobj=str(f),
-            path_in_repo=(f"calibration/runs/{run_id}/diagnostics/{f.name}"),
-            repo_id="policyengine/policyengine-us-data",
-            repo_type="model",
-            token=token,
-        )
-        print(f"  Uploaded {f.name}")
+    file_entries = [
+        (str(f), f"calibration/runs/{run_id}/diagnostics/{f.name}") for f in files
+    ]
+    entries_json = _json.dumps(file_entries)
+
+    # Ensure repo is cloned (may already be from stage_base_datasets)
+    if not Path("/root/policyengine-us-data").exists():
+        _clone_and_install(branch)
+
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
+import json, os
+from huggingface_hub import HfApi
+
+entries = json.loads('''{entries_json}''')
+api = HfApi()
+token = os.environ.get("HUGGING_FACE_TOKEN")
+for local_path, repo_path in entries:
+    api.upload_file(
+        path_or_fileobj=local_path,
+        path_in_repo=repo_path,
+        repo_id="policyengine/policyengine-us-data",
+        repo_type="model",
+        token=token,
+    )
+    print(f"Uploaded {{repo_path}}")
+""",
+        ],
+        cwd="/root/policyengine-us-data",
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Diagnostics upload failed: {result.stderr}")
+    print(f"  {result.stdout.strip()}")
 
 
 # ── Orchestrator ─────────────────────────────────────────────────
@@ -543,7 +631,7 @@ def run_pipeline(
 
             _, PACKAGE_GPU_FUNCTIONS = _get_calibration_funcs()
 
-            vol_path = "/calibration-data/calibration_package.pkl"
+            vol_path = "/pipeline/artifacts/calibration_package.pkl"
 
             # Spawn regional fit
             regional_func = PACKAGE_GPU_FUNCTIONS[gpu]
@@ -586,35 +674,6 @@ def run_pipeline(
                         BytesIO(regional_result["config"]),
                         "artifacts/unified_run_config.json",
                     )
-                if regional_result.get("blocks"):
-                    batch.put(
-                        BytesIO(regional_result["blocks"]),
-                        "artifacts/stacked_blocks.npy",
-                    )
-                if regional_result.get("geo_labels"):
-                    batch.put(
-                        BytesIO(regional_result["geo_labels"]),
-                        "artifacts/geo_labels.json",
-                    )
-                if regional_result.get("geography"):
-                    batch.put(
-                        BytesIO(regional_result["geography"]),
-                        "artifacts/geography.npz",
-                    )
-
-            # Also upload to HF for downstream steps
-            # that download from HF
-            from policyengine_us_data.utils.huggingface import (
-                upload_calibration_artifacts,
-            )
-
-            # Save regional results locally for upload
-            _save_result_locally(regional_result, prefix="")
-            upload_calibration_artifacts(
-                weights_path="/tmp/calibration_weights.npy",
-                log_dir="/tmp",
-                prefix="",
-            )
 
             archive_diagnostics(
                 run_id,
@@ -639,22 +698,6 @@ def run_pipeline(
                             BytesIO(national_result["config"]),
                             "artifacts/national_unified_run_config.json",
                         )
-                    if national_result.get("geography"):
-                        batch.put(
-                            BytesIO(national_result["geography"]),
-                            "artifacts/national_geography.npz",
-                        )
-
-                # Upload national to HF
-                _save_result_locally(
-                    national_result,
-                    prefix="national_",
-                )
-                upload_calibration_artifacts(
-                    weights_path=("/tmp/national_calibration_weights.npy"),
-                    log_dir="/tmp",
-                    prefix="national_",
-                )
 
                 archive_diagnostics(
                     run_id,
@@ -715,10 +758,10 @@ def run_pipeline(
             pipeline_volume.reload()
 
             print("  Staging base datasets to HF...")
-            stage_base_datasets(run_id, version)
+            stage_base_datasets(run_id, version, branch)
 
             print("  Uploading run diagnostics...")
-            upload_run_diagnostics(run_id)
+            upload_run_diagnostics(run_id, branch)
 
             # Now wait for H5 builds to finish
             print("  Waiting for regional H5 build...")
@@ -771,40 +814,6 @@ def run_pipeline(
         print(f"\nPIPELINE FAILED: {e}")
         print(f"Resume with: --resume-run-id {run_id}")
         raise
-
-
-def _save_result_locally(result: dict, prefix: str) -> None:
-    """Save calibration result bytes to /tmp for upload."""
-    if result.get("weights"):
-        with open(
-            f"/tmp/{prefix}calibration_weights.npy",
-            "wb",
-        ) as f:
-            f.write(result["weights"])
-    if result.get("blocks"):
-        with open(f"/tmp/{prefix}stacked_blocks.npy", "wb") as f:
-            f.write(result["blocks"])
-    if result.get("geo_labels"):
-        with open(f"/tmp/{prefix}geo_labels.json", "wb") as f:
-            f.write(result["geo_labels"])
-    if result.get("geography"):
-        with open(f"/tmp/{prefix}geography.npz", "wb") as f:
-            f.write(result["geography"])
-    if result.get("log"):
-        with open(
-            f"/tmp/{prefix}unified_diagnostics.csv",
-            "wb",
-        ) as f:
-            f.write(result["log"])
-    if result.get("cal_log"):
-        with open(f"/tmp/{prefix}calibration_log.csv", "wb") as f:
-            f.write(result["cal_log"])
-    if result.get("config"):
-        with open(
-            f"/tmp/{prefix}unified_run_config.json",
-            "wb",
-        ) as f:
-            f.write(result["config"])
 
 
 def _print_step_timings(meta: RunMetadata) -> None:
@@ -884,19 +893,39 @@ def promote_run(
     print(f"  SHA:     {meta.sha[:12]}")
     print("=" * 60)
 
+    # Clone repo for subprocess calls
+    _clone_and_install(meta.branch)
+
     # Promote base datasets from staging → production
     print("\nPromoting base datasets (staging → production)...")
     try:
-        from policyengine_us_data.utils.data_upload import (
-            promote_staging_to_production_hf,
-        )
+        result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "-c",
+                f"""
+from policyengine_us_data.utils.data_upload import (
+    promote_staging_to_production_hf,
+)
 
-        base_files = [
-            "calibration/source_imputed_stratified_extended_cps.h5",
-            "calibration/policy_data.db",
-        ]
-        count = promote_staging_to_production_hf(base_files, version)
-        print(f"  Promoted {count} base dataset(s)")
+base_files = [
+    "calibration/source_imputed_stratified_extended_cps.h5",
+    "calibration/policy_data.db",
+]
+count = promote_staging_to_production_hf(base_files, "{version}")
+print(f"Promoted {{count}} base dataset(s)")
+""",
+            ],
+            cwd="/root/policyengine-us-data",
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+        print(f"  {result.stdout.strip()}")
     except Exception as e:
         print(f"  WARNING: Base dataset promotion: {e}")
 
@@ -930,25 +959,41 @@ def promote_run(
     # Register version in manifest
     print("\nRegistering version in manifest...")
     try:
-        from policyengine_us_data.utils.version_manifest import (
-            build_manifest,
-            upload_manifest,
-        )
+        result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "-c",
+                f"""
+from policyengine_us_data.utils.version_manifest import (
+    build_manifest,
+    upload_manifest,
+)
 
-        # Build manifest from GCS blobs
-        blob_names = [
-            "calibration/source_imputed_stratified_extended_cps.h5",
-            "calibration/policy_data.db",
-            "calibration/calibration_weights.npy",
-        ]
-        manifest = build_manifest(
-            version=version,
-            blob_names=blob_names,
+blob_names = [
+    "calibration/source_imputed_stratified_extended_cps.h5",
+    "calibration/policy_data.db",
+    "calibration/calibration_weights.npy",
+]
+manifest = build_manifest(
+    version="{version}",
+    blob_names=blob_names,
+)
+manifest.pipeline_run_id = "{run_id}"
+manifest.diagnostics_path = "calibration/runs/{run_id}/diagnostics/"
+upload_manifest(manifest)
+print("Registered version {version} in version_manifest.json")
+""",
+            ],
+            cwd="/root/policyengine-us-data",
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
         )
-        manifest.pipeline_run_id = run_id
-        manifest.diagnostics_path = f"calibration/runs/{run_id}/diagnostics/"
-        upload_manifest(manifest)
-        print(f"  Registered version {version} in version_manifest.json")
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+        print(f"  {result.stdout.strip()}")
     except Exception as e:
         print(f"  WARNING: Version registration failed: {e}")
         print("  This can be done manually later via version_manifest.py")

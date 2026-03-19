@@ -518,6 +518,10 @@ def build_datasets(
 
     # Copy pipeline artifacts to shared volume before tests so that a test
     # failure does not block downstream calibration steps.
+    # Files selected:
+    #   - source_imputed H5: main dataset for calibration and local area builds
+    #   - policy_data.db: calibration target database
+    #   - calibration_weights.npy: pre-existing weights for re-runs (if present)
     print("Copying pipeline artifacts to shared volume...")
     artifacts_dir = Path(PIPELINE_MOUNT) / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -529,6 +533,13 @@ def build_datasets(
         "policyengine_us_data/storage/calibration/policy_data.db",
         artifacts_dir / "policy_data.db",
     )
+    cal_weights = Path("policyengine_us_data/storage/calibration_weights.npy")
+    if cal_weights.exists():
+        shutil.copy2(
+            cal_weights,
+            artifacts_dir / "calibration_weights.npy",
+        )
+        print("Copied existing calibration_weights.npy to pipeline volume")
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")
 

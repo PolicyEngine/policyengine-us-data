@@ -290,9 +290,14 @@ def _print_provenance_from_meta(meta: dict, current_branch: str = None) -> None:
         )
 
 
-def _write_package_sidecar(pkg_path: str) -> None:
-    """Extract metadata from a pickle package and write a JSON sidecar."""
+def _write_package_sidecar(pkg_path: str) -> bool:
+    """Extract metadata from a pickle package and write a JSON sidecar.
+
+    Returns:
+        True if sidecar was written successfully, False otherwise.
+    """
     import json
+    import logging
     import pickle
 
     sidecar_path = pkg_path.replace(".pkl", "_meta.json")
@@ -307,11 +312,14 @@ def _write_package_sidecar(pkg_path: str) -> None:
             f"Sidecar metadata written to {sidecar_path}",
             flush=True,
         )
+        return True
     except Exception as e:
-        print(
-            f"WARNING: Failed to write sidecar: {e}",
-            flush=True,
+        logging.warning(
+            "Failed to write package sidecar for %s: %s",
+            pkg_path,
+            e,
         )
+        return False
 
 
 def _build_package_impl(
@@ -369,7 +377,13 @@ def _build_package_impl(
     if build_rc != 0:
         raise RuntimeError(f"Package build failed with code {build_rc}")
 
-    _write_package_sidecar(pkg_path)
+    sidecar_ok = _write_package_sidecar(pkg_path)
+    if not sidecar_ok:
+        print(
+            "WARNING: Package sidecar (provenance metadata) "
+            "was not written. The package itself is still valid.",
+            flush=True,
+        )
 
     size = os.path.getsize(pkg_path)
     print(

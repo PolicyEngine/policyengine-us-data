@@ -218,8 +218,13 @@ def run_phase(
     version: str,
     calibration_inputs: Dict[str, str],
     version_dir: Path,
-) -> set:
-    """Run a single build phase, spawning workers and collecting results."""
+) -> tuple:
+    """Run a single build phase, spawning workers and collecting results.
+
+    Returns:
+        A tuple of (volume_completed, phase_errors) where phase_errors
+        is a list of error dicts from workers and crashes.
+    """
     work_chunks = partition_work(states, districts, cities, num_workers, completed)
     total_remaining = sum(len(c) for c in work_chunks)
 
@@ -228,7 +233,7 @@ def run_phase(
 
     if total_remaining == 0:
         print(f"All {phase_name} items already built!")
-        return completed
+        return completed, []
 
     handles = []
     for i, chunk in enumerate(work_chunks):
@@ -281,7 +286,7 @@ def run_phase(
         if len(all_errors) > 5:
             print(f"  ... and {len(all_errors) - 5} more")
 
-    return volume_completed
+    return volume_completed, all_errors
 
 
 @app.function(
@@ -682,7 +687,9 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         version_dir=version_dir,
     )
 
-    completed = run_phase(
+    accumulated_errors = []
+
+    completed, phase_errors = run_phase(
         "States",
         states=states,
         districts=[],
@@ -690,8 +697,9 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         completed=completed,
         **phase_args,
     )
+    accumulated_errors.extend(phase_errors)
 
-    completed = run_phase(
+    completed, phase_errors = run_phase(
         "Districts",
         states=[],
         districts=districts,
@@ -699,8 +707,9 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         completed=completed,
         **phase_args,
     )
+    accumulated_errors.extend(phase_errors)
 
-    completed = run_phase(
+    completed, phase_errors = run_phase(
         "Cities",
         states=[],
         districts=[],
@@ -708,6 +717,17 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         completed=completed,
         **phase_args,
     )
+    accumulated_errors.extend(phase_errors)
+
+    # Fail if any workers crashed (not just missing files)
+    if accumulated_errors:
+        crash_errors = [e for e in accumulated_errors if "worker" in e]
+        if crash_errors:
+            raise RuntimeError(
+                f"Build failed: {len(crash_errors)} worker "
+                f"crash(es) detected across all phases. "
+                f"Errors: {crash_errors[:3]}"
+            )
 
     expected_total = len(states) + len(districts) + len(cities)
     if len(completed) < expected_total:
@@ -849,6 +869,17 @@ def coordinate_national_publish(
     if not national_h5.exists():
         raise RuntimeError(f"Expected {national_h5} not found after build")
 
+    # Compute SHA256 checksum before upload for integrity verification
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(national_h5, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    national_checksum = f"sha256:{h.hexdigest()}"
+    national_size = national_h5.stat().st_size
+    print(f"National H5 checksum: {national_checksum} ({national_size:,} bytes)")
+
     print(f"Uploading {national_h5} to HF staging...")
     result = subprocess.run(
         [
@@ -872,6 +903,15 @@ print("Done")
     )
     if result.returncode != 0:
         raise RuntimeError(f"Staging upload failed: {result.stderr}")
+
+    # Verify the file still exists on the volume after upload
+    staging_volume.reload()
+    if not national_h5.exists():
+        raise RuntimeError("National H5 disappeared from staging volume after upload")
+    print(
+        f"Post-upload verification passed: {national_h5} "
+        f"(checksum: {national_checksum})"
+    )
 
     print("National H5 staged. Run promote workflow to publish.")
     return (

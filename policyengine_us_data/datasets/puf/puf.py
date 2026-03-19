@@ -11,10 +11,12 @@ from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.puf.uprate_puf import uprate_puf
 from policyengine_us_data.datasets.puf.irs_puf import IRS_PUF_2015
+from policyengine_us_data.datasets.puf.disaggregate_puf import (
+    disaggregate_aggregate_records,
+)
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
-
 
 rng = np.random.default_rng(seed=64)
 
@@ -165,9 +167,9 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
 
 def impute_pension_contributions_to_puf(puf_df):
     from policyengine_us import Microsimulation
-    from policyengine_us_data.datasets.cps import CPS_2021
+    from policyengine_us_data.datasets.cps import CPS_2024
 
-    cps = Microsimulation(dataset=CPS_2021)
+    cps = Microsimulation(dataset=CPS_2024)
     cps.subsample(10_000)
     cps_df = cps.calculate_dataframe(
         ["employment_income", "household_weight", "pre_tax_contributions"]
@@ -528,7 +530,7 @@ class PUF(Dataset):
             self.save_dataset(arrays)
             return
 
-        puf = puf[puf.MARS != 0]  # Remove aggregate records
+        puf = disaggregate_aggregate_records(puf)  # 4 rows → ~120 weighted
 
         original_recid = puf.RECID.values.copy()
         puf = preprocess_puf(puf)
@@ -572,7 +574,7 @@ class PUF(Dataset):
         self.earn_splits = []
         for _, row in puf.iterrows():
             i += 1
-            exemptions = row["exemptions_count"]
+            exemptions = int(row["exemptions_count"])
             tax_unit_id = row["household_id"]
             self.add_tax_unit(row, tax_unit_id)
             self.add_filer(row, tax_unit_id)

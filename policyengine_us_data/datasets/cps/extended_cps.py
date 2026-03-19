@@ -148,7 +148,10 @@ class ExtendedCPS(Dataset):
         cps_sim = Microsimulation(dataset=self.cps)
         puf_sim = Microsimulation(dataset=self.puf)
 
-        puf_sim.subsample(10_000)
+        # Don't subsample the PUF — the weighted subsample drops
+        # nearly all high-income records (weight≈1). Instead, the
+        # stratified sample in impute_income_variables handles
+        # training set size reduction while preserving the tail.
 
         INPUTS = [
             "age",
@@ -254,13 +257,45 @@ def impute_income_variables(
     batch_size = 10  # Reduce to 10 variables at a time
     result = pd.DataFrame(index=X_test.index)
 
-    # Sample training data more aggressively upfront
-    sample_size = min(5000, len(X_train))  # Reduced from 5000
-    if len(X_train) > sample_size:
-        logging.info(
-            f"Sampling training data from {len(X_train)} to {sample_size} rows"
+    # Stratified sample: keep ALL high-income records and
+    # subsample the rest to ~5K. The naive random sample drops
+    # nearly all $5M+ records since they have weight≈1.
+    sample_size = 5000
+    if "employment_income" in X_train.columns:
+        _agi_proxy = (
+            X_train[[c for c in X_train.columns if c in available_outputs]]
+            .fillna(0)
+            .sum(axis=1)
         )
+    else:
+        _agi_proxy = X_train.iloc[:, -1].fillna(0)
+
+    _high_mask = _agi_proxy.abs() >= 5_000_000
+    _n_high = int(_high_mask.sum())
+    _max_high = 5000  # cap high-income records
+    _n_low_target = max(sample_size - min(_n_high, _max_high), 2000)
+
+    if len(X_train) > sample_size and _n_high > 0:
+        _low_pool = X_train[~_high_mask]
+        _high_pool = X_train[_high_mask]
+        _n_low_sample = min(_n_low_target, len(_low_pool))
+        _low_sampled = _low_pool.sample(n=_n_low_sample, random_state=42)
+        if len(_high_pool) > _max_high:
+            _high_pool = _high_pool.sample(n=_max_high, random_state=42)
+        X_train_sampled = pd.concat(
+            [_low_sampled, _high_pool], ignore_index=True
+        )
+        logging.info(
+            f"Stratified training sample: {_n_low_sample} "
+            f"regular + {len(_high_pool)} high-income = "
+            f"{len(X_train_sampled)} total"
+        )
+    elif len(X_train) > sample_size:
         X_train_sampled = X_train.sample(n=sample_size, random_state=42)
+        logging.info(
+            f"Sampling training data from {len(X_train)} "
+            f"to {sample_size} rows"
+        )
     else:
         X_train_sampled = X_train
 

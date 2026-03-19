@@ -15,6 +15,10 @@ from policyengine_us_data.utils.uprating import (
 from microimpute.models.qrf import QRF
 import logging
 from policyengine_us_data.parameters import load_take_up_rate
+from policyengine_us_data.datasets.cps.takeup import (
+    align_reported_ssi_disability,
+    prioritize_reported_recipients,
+)
 from policyengine_us_data.utils.randomness import seeded_rng
 
 
@@ -224,19 +228,10 @@ def add_takeup(self):
     # SNAP: prioritize reported recipients
     rng = seeded_rng("takes_up_snap_if_eligible")
     reported_snap = data["snap_reported"] > 0
-
-    # Calculate adjusted rate for non-reporters to hit target
-    n_snap_reporters = reported_snap.sum()
-    n_snap_non_reporters = (~reported_snap).sum()
-    target_snap_takeup_count = int(snap_rate * n_spm_units)
-    remaining_snap_needed = max(0, target_snap_takeup_count - n_snap_reporters)
-    snap_non_reporter_rate = (
-        remaining_snap_needed / n_snap_non_reporters if n_snap_non_reporters > 0 else 0
-    )
-
-    # Assign: all reporters + adjusted rate for non-reporters
-    data["takes_up_snap_if_eligible"] = reported_snap | (
-        (~reported_snap) & (rng.random(n_spm_units) < snap_non_reporter_rate)
+    data["takes_up_snap_if_eligible"] = prioritize_reported_recipients(
+        reported_snap,
+        snap_rate,
+        rng.random(n_spm_units),
     )
 
     # ACA
@@ -270,19 +265,10 @@ def add_takeup(self):
     # SSI: prioritize reported recipients
     rng = seeded_rng("takes_up_ssi_if_eligible")
     reported_ssi = data["ssi_reported"] > 0
-
-    # Calculate adjusted rate for non-reporters to hit target
-    n_ssi_reporters = reported_ssi.sum()
-    n_ssi_non_reporters = (~reported_ssi).sum()
-    target_ssi_takeup_count = int(ssi_rate * n_persons)
-    remaining_ssi_needed = max(0, target_ssi_takeup_count - n_ssi_reporters)
-    ssi_non_reporter_rate = (
-        remaining_ssi_needed / n_ssi_non_reporters if n_ssi_non_reporters > 0 else 0
-    )
-
-    # Assign: all reporters + adjusted rate for non-reporters
-    data["takes_up_ssi_if_eligible"] = reported_ssi | (
-        (~reported_ssi) & (rng.random(n_persons) < ssi_non_reporter_rate)
+    data["takes_up_ssi_if_eligible"] = prioritize_reported_recipients(
+        reported_ssi,
+        ssi_rate,
+        rng.random(n_persons),
     )
 
     # TANF
@@ -340,35 +326,15 @@ def add_takeup(self):
         rng.random(n_tax_units) < voluntary_filing_rate
     )
 
-    # --- SSI: align takeup and disability to CPS-reported receipt ---
-    # Without this, PE computes SSI eligibility from rules and then
-    # randomly assigns takeup, so many CPS respondents who actually
-    # report receiving SSI get $0 in the simulation.  This inflates
-    # PE's poverty rate by ~0.6pp.
-    n_persons = len(data["person_id"])
+    # --- SSI: align disability to CPS-reported receipt ---
+    # CPS disability flags miss some under-65 SSI recipients, but SSI
+    # requires under-65 recipients to be disabled or blind.
     reported_ssi = data["ssi_reported"] > 0
-
-    # 1) Takeup: guarantee SSI for reporters; adjusted random draw
-    #    for non-reporters so overall rate matches ~50% (Urban
-    #    Institute estimate for adults 65+).
-    SSI_TAKEUP_RATE = 0.50
-    n_reporters = reported_ssi.sum()
-    n_non_reporters = (~reported_ssi).sum()
-    target_takeup = int(SSI_TAKEUP_RATE * n_persons)
-    remaining_needed = max(0, target_takeup - n_reporters)
-    non_reporter_rate = remaining_needed / n_non_reporters if n_non_reporters > 0 else 0
-
-    ssi_rng = np.random.default_rng(seed=200)
-    data["takes_up_ssi_if_eligible"] = reported_ssi | (
-        (~reported_ssi) & (ssi_rng.random(n_persons) < non_reporter_rate)
+    data["is_disabled"] = align_reported_ssi_disability(
+        data["is_disabled"],
+        reported_ssi,
+        data["age"],
     )
-
-    # 2) Disability: if someone reports SSI and is under 65 they
-    #    must be disabled (SSI requires aged OR disabled/blind).
-    #    CPS disability flags (PEDIS* columns) miss some of these.
-    ages = data["age"]
-    under_65 = ages < 65
-    data["is_disabled"] = data["is_disabled"] | (reported_ssi & under_65)
 
     self.save_dataset(data)
 
@@ -540,8 +506,8 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     )
     cps["self_employment_income"] = person.SEMP_VAL
     cps["farm_income"] = person.FRSE_VAL
-    cps["qualified_dividend_income"] = (
-        person.DIV_VAL * (p["qualified_dividend_fraction"])
+    cps["qualified_dividend_income"] = person.DIV_VAL * (
+        p["qualified_dividend_fraction"]
     )
     cps["non_qualified_dividend_income"] = person.DIV_VAL * (
         1 - p["qualified_dividend_fraction"]

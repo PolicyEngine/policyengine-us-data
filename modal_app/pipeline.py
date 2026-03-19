@@ -380,6 +380,7 @@ print(f"Staged {{count}} base dataset(s) to HF")
         ],
         cwd="/root/policyengine-us-data",
         text=True,
+        capture_output=True,
         env=os.environ.copy(),
     )
     if result.returncode != 0:
@@ -451,6 +452,7 @@ for local_path, repo_path in entries:
 """,
         ],
         cwd="/root/policyengine-us-data",
+        capture_output=True,
         text=True,
         env=os.environ.copy(),
     )

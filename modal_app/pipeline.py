@@ -467,7 +467,7 @@ for local_path, repo_path in entries:
     image=image,
     cpu=2,
     memory=4096,
-    timeout=172800,  # 48 hours
+    timeout=86400,  # 24 hours (Modal max)
     volumes={
         PIPELINE_MOUNT: pipeline_volume,
         STAGING_MOUNT: staging_volume,

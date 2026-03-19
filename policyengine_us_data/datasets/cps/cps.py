@@ -15,6 +15,10 @@ from policyengine_us_data.utils.uprating import (
 from microimpute.models.qrf import QRF
 import logging
 from policyengine_us_data.parameters import load_take_up_rate
+from policyengine_us_data.datasets.cps.takeup import (
+    align_reported_ssi_disability,
+    prioritize_reported_recipients,
+)
 from policyengine_us_data.utils.randomness import seeded_rng
 
 
@@ -224,19 +228,10 @@ def add_takeup(self):
     # SNAP: prioritize reported recipients
     rng = seeded_rng("takes_up_snap_if_eligible")
     reported_snap = data["snap_reported"] > 0
-
-    # Calculate adjusted rate for non-reporters to hit target
-    n_snap_reporters = reported_snap.sum()
-    n_snap_non_reporters = (~reported_snap).sum()
-    target_snap_takeup_count = int(snap_rate * n_spm_units)
-    remaining_snap_needed = max(0, target_snap_takeup_count - n_snap_reporters)
-    snap_non_reporter_rate = (
-        remaining_snap_needed / n_snap_non_reporters if n_snap_non_reporters > 0 else 0
-    )
-
-    # Assign: all reporters + adjusted rate for non-reporters
-    data["takes_up_snap_if_eligible"] = reported_snap | (
-        (~reported_snap) & (rng.random(n_spm_units) < snap_non_reporter_rate)
+    data["takes_up_snap_if_eligible"] = prioritize_reported_recipients(
+        reported_snap,
+        snap_rate,
+        rng.random(n_spm_units),
     )
 
     # ACA
@@ -270,19 +265,10 @@ def add_takeup(self):
     # SSI: prioritize reported recipients
     rng = seeded_rng("takes_up_ssi_if_eligible")
     reported_ssi = data["ssi_reported"] > 0
-
-    # Calculate adjusted rate for non-reporters to hit target
-    n_ssi_reporters = reported_ssi.sum()
-    n_ssi_non_reporters = (~reported_ssi).sum()
-    target_ssi_takeup_count = int(ssi_rate * n_persons)
-    remaining_ssi_needed = max(0, target_ssi_takeup_count - n_ssi_reporters)
-    ssi_non_reporter_rate = (
-        remaining_ssi_needed / n_ssi_non_reporters if n_ssi_non_reporters > 0 else 0
-    )
-
-    # Assign: all reporters + adjusted rate for non-reporters
-    data["takes_up_ssi_if_eligible"] = reported_ssi | (
-        (~reported_ssi) & (rng.random(n_persons) < ssi_non_reporter_rate)
+    data["takes_up_ssi_if_eligible"] = prioritize_reported_recipients(
+        reported_ssi,
+        ssi_rate,
+        rng.random(n_persons),
     )
 
     # TANF
@@ -338,6 +324,16 @@ def add_takeup(self):
     rng = seeded_rng("would_file_taxes_voluntarily")
     data["would_file_taxes_voluntarily"] = ~data["takes_up_eitc"] & (
         rng.random(n_tax_units) < voluntary_filing_rate
+    )
+
+    # --- SSI: align disability to CPS-reported receipt ---
+    # CPS disability flags miss some under-65 SSI recipients, but SSI
+    # requires under-65 recipients to be disabled or blind.
+    reported_ssi = data["ssi_reported"] > 0
+    data["is_disabled"] = align_reported_ssi_disability(
+        data["is_disabled"],
+        reported_ssi,
+        data["age"],
     )
 
     self.save_dataset(data)

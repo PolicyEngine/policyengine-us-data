@@ -21,3 +21,4 @@ node_modules
 !age_state.csv
 !agi_state.csv
 !soi_targets.csv
+.claude/worktrees/

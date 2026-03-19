@@ -1,8 +1,6 @@
-import os
 import yaml
 from importlib.resources import files
 
-from tqdm import tqdm
 import numpy as np
 import pandas as pd
 from microdf import MicroDataFrame
@@ -112,14 +110,10 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     )
     revenues = np.maximum(qbi, 0) / margins
 
-    logit = (
-        logit_params["intercept"] + logit_params["slope_per_dollar"] * revenues
-    )
+    logit = logit_params["intercept"] + logit_params["slope_per_dollar"] * revenues
 
     # Set p = 0 when simulated receipts == 0 (no revenue means no payroll)
-    pr_has_employees = np.where(
-        revenues == 0.0, 0.0, 1.0 / (1.0 + np.exp(-logit))
-    )
+    pr_has_employees = np.where(revenues == 0.0, 0.0, 1.0 / (1.0 + np.exp(-logit)))
     has_employees = rng.binomial(1, pr_has_employees)
 
     # Labor share simulation
@@ -128,8 +122,7 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     labor_ratios = np.where(
         is_rental,
         rng.beta(rental_beta_a, rental_beta_b, qbi.size) * rental_scale,
-        rng.beta(non_rental_beta_a, non_rental_beta_b, qbi.size)
-        * non_rental_scale,
+        rng.beta(non_rental_beta_a, non_rental_beta_b, qbi.size) * non_rental_scale,
     )
 
     w2_wages = revenues * labor_ratios * has_employees
@@ -158,9 +151,9 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
         print(f"Share with QBI > 0: {share_qbi_pos:6.2%}")
         print(f"Among those, share with W-2 wages: {share_wages:6.2%}")
         if np.any(w2_wages > 0):
-            print(f"Mean W-2 (if >0): ${np.mean(w2_wages[w2_wages>0]):,.0f}")
+            print(f"Mean W-2 (if >0): ${np.mean(w2_wages[w2_wages > 0]):,.0f}")
         if np.any(ubia > 0):
-            print(f"Median UBIA (if >0): ${np.median(ubia[ubia>0]):,.0f}")
+            print(f"Median UBIA (if >0): ${np.median(ubia[ubia > 0]):,.0f}")
 
     return w2_wages, ubia
 
@@ -205,9 +198,7 @@ def impute_missing_demographics(
         .fillna(0)
     )
 
-    puf_with_demographics = puf_with_demographics.sample(
-        n=10_000, random_state=0
-    )
+    puf_with_demographics = puf_with_demographics.sample(n=10_000, random_state=0)
 
     DEMOGRAPHIC_VARIABLES = [
         "AGEDP1",
@@ -394,9 +385,9 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf_qbi_sources_for_sstb = puf[QBI_PARAMS["sstb_prob_map_by_name"].keys()]
     largest_qbi_source_name = puf_qbi_sources_for_sstb.idxmax(axis=1)
 
-    pr_sstb = largest_qbi_source_name.map(
-        QBI_PARAMS["sstb_prob_map_by_name"]
-    ).fillna(0.0)
+    pr_sstb = largest_qbi_source_name.map(QBI_PARAMS["sstb_prob_map_by_name"]).fillna(
+        0.0
+    )
     puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
 
     reit_params = QBI_PARAMS["reit_ptp_income_distribution"]
@@ -522,9 +513,9 @@ class PUF(Dataset):
                     current_index = uprating[uprating.Variable == variable][
                         self.time_period
                     ].values[0]
-                    start_index = uprating[uprating.Variable == variable][
-                        2021
-                    ].values[0]
+                    start_index = uprating[uprating.Variable == variable][2021].values[
+                        0
+                    ]
                     growth = current_index / start_index
                     arrays[variable] = arrays[variable] * growth
             self.save_dataset(arrays)
@@ -594,9 +585,7 @@ class PUF(Dataset):
 
         for group in groups_assumed_to_be_tax_unit_like:
             self.holder[f"{group}_id"] = self.holder["tax_unit_id"]
-            self.holder[f"person_{group}_id"] = self.holder[
-                "person_tax_unit_id"
-            ]
+            self.holder[f"person_{group}_id"] = self.holder["person_tax_unit_id"]
 
         for key in self.holder:
             if key == "filing_status":
@@ -648,9 +637,7 @@ class PUF(Dataset):
 
         # Assume all of the interest deduction is the filer's deductible mortgage interest
 
-        self.holder["deductible_mortgage_interest"].append(
-            row["interest_deduction"]
-        )
+        self.holder["deductible_mortgage_interest"].append(row["interest_deduction"])
 
         for key in FINANCIAL_SUBSET:
             if key == "deductible_mortgage_interest":

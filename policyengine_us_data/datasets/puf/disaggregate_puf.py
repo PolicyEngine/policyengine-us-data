@@ -12,11 +12,12 @@ using a conservative approach:
   4. Exact weighted-total calibration
 """
 
-import yaml
+from importlib.resources import files
+
 import numpy as np
 import pandas as pd
-from importlib.resources import files
-from scipy import stats
+import yaml
+from scipy.stats import truncnorm
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -82,10 +83,7 @@ _MAX_AGI_DOMINANCE = 0.20
 # ---------------------------------------------------------------------------
 
 _YAML_PATH = (
-    files("policyengine_us_data")
-    / "datasets"
-    / "puf"
-    / "aggregate_record_totals.yaml"
+    files("policyengine_us_data") / "datasets" / "puf" / "aggregate_record_totals.yaml"
 )
 with open(_YAML_PATH, "r", encoding="utf-8") as _f:
     _META = yaml.safe_load(_f)
@@ -107,9 +105,7 @@ def _choose_n_synthetic(pop_weight: float) -> int:
     return int(min(40, max(20, round(pop_weight / 10))))
 
 
-def _assign_weights(
-    pop_weight: float, n: int, rng: np.random.Generator
-) -> np.ndarray:
+def _assign_weights(pop_weight: float, n: int, rng: np.random.Generator) -> np.ndarray:
     """Assign integer weights summing to pop_weight.
 
     Returns array of length n with values >= 3.
@@ -152,8 +148,6 @@ def _draw_truncated_lognormal(
     mu = np.log(max(target_mean, lower + 1)) - sigma**2 / 2
 
     # Draw from truncated lognormal via rejection sampling
-    log_lower = np.log(max(lower, 1))
-    log_upper = np.log(upper)
     vals = np.empty(n)
     for i in range(n):
         for _ in range(1000):
@@ -163,9 +157,7 @@ def _draw_truncated_lognormal(
                 break
         else:
             # Fallback: clamp
-            vals[i] = np.clip(
-                rng.lognormal(mean=mu, sigma=sigma), lower, upper
-            )
+            vals[i] = np.clip(rng.lognormal(mean=mu, sigma=sigma), lower, upper)
 
     # Rescale so weighted sum matches total
     current_weighted = (vals * weights).sum()
@@ -257,9 +249,7 @@ def disaggregate_aggregate_records(
     # Columns to carry through (all numeric PUF columns except meta)
     meta_cols = {"RECID", "S006", "MARS"}
     income_cols = [
-        c
-        for c in puf.columns
-        if c not in meta_cols and puf[c].dtype.kind in ("f", "i")
+        c for c in puf.columns if c not in meta_cols and puf[c].dtype.kind in ("f", "i")
     ]
 
     all_synthetic = []
@@ -268,7 +258,6 @@ def disaggregate_aggregate_records(
     for recid in AGGREGATE_RECIDS:
         row = agg_rows[agg_rows.RECID == recid].iloc[0]
         meta = BUCKET_META[recid]
-        pop_returns = meta["population_returns"]
         agi_lower = meta["agi_lower"]
         agi_upper = meta["agi_upper"]
 
@@ -283,9 +272,7 @@ def disaggregate_aggregate_records(
         # Step 2: Generate AGI
         sigma = _BUCKET_SIGMA[recid]
         if agi_upper <= 0:
-            synthetic_agi = _draw_lognormal_negative(
-                n_syn, total_agi, syn_weights, rng
-            )
+            synthetic_agi = _draw_lognormal_negative(n_syn, total_agi, syn_weights, rng)
         else:
             # Apply cap for open-ended bucket
             effective_upper = agi_upper
@@ -316,11 +303,7 @@ def disaggregate_aggregate_records(
                 if abs(current) > 0:
                     synthetic_agi *= total_agi / current
                     if agi_upper > 0:
-                        eff_u = (
-                            _AGI_CAP_100M_PLUS
-                            if np.isinf(agi_upper)
-                            else agi_upper
-                        )
+                        eff_u = _AGI_CAP_100M_PLUS if np.isinf(agi_upper) else agi_upper
                         synthetic_agi = np.clip(
                             synthetic_agi,
                             max(agi_lower, 1),

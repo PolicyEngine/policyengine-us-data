@@ -4,7 +4,6 @@ from typing import Type
 from policyengine_us_data.datasets.cps.cps import *
 from policyengine_us_data.datasets.puf import *
 import pandas as pd
-import os
 from microimpute.models.qrf import QRF
 import time
 import logging
@@ -180,9 +179,7 @@ class ExtendedCPS(Dataset):
         new_data = {}
 
         for variable in list(data) + IMPUTED_VARIABLES:
-            variable_metadata = cps_sim.tax_benefit_system.variables.get(
-                variable
-            )
+            variable_metadata = cps_sim.tax_benefit_system.variables.get(variable)
             if variable in data:
                 values = data[variable][...]
             else:
@@ -191,17 +188,17 @@ class ExtendedCPS(Dataset):
                 pred_values = y_cps_imputations[variable].values
                 entity = variable_metadata.entity.key
                 if entity != "person":
-                    pred_values = cps_sim.populations[
-                        entity
-                    ].value_from_first_person(pred_values)
+                    pred_values = cps_sim.populations[entity].value_from_first_person(
+                        pred_values
+                    )
                 values = np.concatenate([pred_values, pred_values])
             elif variable in IMPUTED_VARIABLES:
                 pred_values = y_full_imputations[variable].values
                 entity = variable_metadata.entity.key
                 if entity != "person":
-                    pred_values = cps_sim.populations[
-                        entity
-                    ].value_from_first_person(pred_values)
+                    pred_values = cps_sim.populations[entity].value_from_first_person(
+                        pred_values
+                    )
                 values = np.concatenate([values, pred_values])
             elif variable == "person_id":
                 values = np.concatenate([values, values + values.max()])
@@ -242,9 +239,7 @@ def impute_income_variables(
                 "recapture_of_investment_credit is missing from PUF calculation!"
             )
 
-    logging.info(
-        f"X_train shape: {X_train.shape}, columns: {len(X_train.columns)}"
-    )
+    logging.info(f"X_train shape: {X_train.shape}, columns: {len(X_train.columns)}")
 
     X_test = cps_sim.calculate_dataframe(predictors)
 
@@ -282,9 +277,7 @@ def impute_income_variables(
         _low_sampled = _low_pool.sample(n=_n_low_sample, random_state=42)
         if len(_high_pool) > _max_high:
             _high_pool = _high_pool.sample(n=_max_high, random_state=42)
-        X_train_sampled = pd.concat(
-            [_low_sampled, _high_pool], ignore_index=True
-        )
+        X_train_sampled = pd.concat([_low_sampled, _high_pool], ignore_index=True)
         logging.info(
             f"Stratified training sample: {_n_low_sample} "
             f"regular + {len(_high_pool)} high-income = "
@@ -293,8 +286,7 @@ def impute_income_variables(
     elif len(X_train) > sample_size:
         X_train_sampled = X_train.sample(n=sample_size, random_state=42)
         logging.info(
-            f"Sampling training data from {len(X_train)} "
-            f"to {sample_size} rows"
+            f"Sampling training data from {len(X_train)} to {sample_size} rows"
         )
     else:
         X_train_sampled = X_train
@@ -304,7 +296,7 @@ def impute_income_variables(
         batch_vars = available_outputs[batch_start:batch_end]
 
         logging.info(
-            f"Processing batch {batch_start//batch_size + 1}: variables {batch_start+1}-{batch_end} ({batch_vars})"
+            f"Processing batch {batch_start // batch_size + 1}: variables {batch_start + 1}-{batch_end} ({batch_vars})"
         )
 
         # Force garbage collection before each batch
@@ -342,7 +334,7 @@ def impute_income_variables(
         del batch_X_train
         gc.collect()
 
-        logging.info(f"Completed batch {batch_start//batch_size + 1}")
+        logging.info(f"Completed batch {batch_start // batch_size + 1}")
 
     # Add zeros for missing variables
     for var in missing_outputs:

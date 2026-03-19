@@ -169,7 +169,6 @@ class TestWeights:
     def test_weights_sum_per_bucket(self, mini_puf, result):
         """Weights should sum to original S006/100 per bucket."""
         from policyengine_us_data.datasets.puf.disaggregate_puf import (
-            BUCKET_META,
             _choose_n_synthetic,
             SYNTHETIC_RECID_START,
         )
@@ -215,9 +214,7 @@ class TestBucketBounds:
         n_neg = _choose_n_synthetic(179)
         n_10m = _choose_n_synthetic(324)
         start = SYNTHETIC_RECID_START + n_neg
-        bucket = result[
-            (result.RECID >= start) & (result.RECID < start + n_10m)
-        ]
+        bucket = result[(result.RECID >= start) & (result.RECID < start + n_10m)]
         assert (bucket.E00100 >= 0).all()
         assert (bucket.E00100 <= 10_000_000).all()
 
@@ -230,7 +227,6 @@ class TestBucketBounds:
     def test_no_record_dominates(self, mini_puf, result):
         """No single record should carry > 25% of bucket AGI."""
         from policyengine_us_data.datasets.puf.disaggregate_puf import (
-            BUCKET_META,
             _choose_n_synthetic,
             SYNTHETIC_RECID_START,
         )
@@ -252,7 +248,7 @@ class TestBucketBounds:
                 # Allow 25% (slightly more than the 20% target
                 # due to rescaling)
                 assert (weighted <= 0.25 * abs(total)).all(), (
-                    f"RECID {recid}: record dominance " f"exceeded 25%"
+                    f"RECID {recid}: record dominance exceeded 25%"
                 )
 
 
@@ -263,7 +259,6 @@ class TestCalibration:
     def test_agi_total_preserved(self, mini_puf, result):
         """Weighted AGI total should match per bucket."""
         from policyengine_us_data.datasets.puf.disaggregate_puf import (
-            BUCKET_META,
             _choose_n_synthetic,
             SYNTHETIC_RECID_START,
         )

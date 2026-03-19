@@ -21,7 +21,9 @@ def generate_county_fips_2020_dataset():
     # COUNTYFP - Three-digit county portion of FIPS (001 for Autauga County, AL, if STATEFP is 01)
     # COUNTYNAME - County name
 
-    COUNTY_FIPS_2020_URL = "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt"
+    COUNTY_FIPS_2020_URL = (
+        "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt"
+    )
 
     # Download the base tab-delimited data file
     response = requests.get(COUNTY_FIPS_2020_URL)
@@ -68,9 +70,7 @@ def generate_county_fips_2020_dataset():
     csv_buffer = BytesIO()
 
     # Save CSV into buffer object and reset pointer
-    county_fips.to_csv(
-        csv_buffer, index=False, compression="gzip", encoding="utf-8"
-    )
+    county_fips.to_csv(csv_buffer, index=False, compression="gzip", encoding="utf-8")
     csv_buffer.seek(0)
 
     # Upload to Hugging Face

@@ -50,9 +50,7 @@ def analyze_benefit_underreporting():
 
         # Participation
         participants = (benefit > 0).sum()
-        weighted_participants = (
-            (benefit > 0) * weight
-        ).sum() / 1e6  # millions
+        weighted_participants = ((benefit > 0) * weight).sum() / 1e6  # millions
 
         # Underreporting factor
         underreporting = info["admin_total"] / total if total > 0 else np.inf
@@ -168,9 +166,7 @@ def analyze_benefit_cliffs():
         earnings_change = earnings * pct_increase / 100
         net_change = reformed_net - original_net
 
-        emtr = np.where(
-            earnings_change > 0, 1 - (net_change / earnings_change), 0
-        )
+        emtr = np.where(earnings_change > 0, 1 - (net_change / earnings_change), 0)
 
         # Focus on sample
         sample_emtr = emtr[sample]
@@ -254,9 +250,7 @@ def analyze_aca_subsidies():
             total_ptc = (ptc[mask] * weight[mask]).sum() / 1e9
             recipients = ((ptc > 0) & mask).sum()
             weighted_recipients = (((ptc > 0) & mask) * weight).sum() / 1e6
-            mean_ptc = (
-                ptc[(ptc > 0) & mask].mean() if ((ptc > 0) & mask).any() else 0
-            )
+            mean_ptc = ptc[(ptc > 0) & mask].mean() if ((ptc > 0) & mask).any() else 0
 
             results.append(
                 {
@@ -307,9 +301,7 @@ def generate_benefit_validation_report():
     print("\n\n4. Top 10 States by SNAP Benefits")
     print("-" * 40)
     state_df = validate_state_benefits()
-    top_states = state_df.nlargest(10, "snap_billions")[
-        ["state_code", "snap_billions"]
-    ]
+    top_states = state_df.nlargest(10, "snap_billions")[["state_code", "snap_billions"]]
     print(top_states.to_string(index=False))
 
     # ACA analysis
@@ -319,9 +311,7 @@ def generate_benefit_validation_report():
     print(aca_df.to_string(index=False))
 
     # Save results
-    underreporting_df.to_csv(
-        "validation/benefit_underreporting.csv", index=False
-    )
+    underreporting_df.to_csv("validation/benefit_underreporting.csv", index=False)
     interactions_df.to_csv("validation/program_interactions.csv", index=False)
     emtr_df.to_csv("validation/effective_marginal_tax_rates.csv", index=False)
     state_df.to_csv("validation/state_benefit_totals.csv", index=False)

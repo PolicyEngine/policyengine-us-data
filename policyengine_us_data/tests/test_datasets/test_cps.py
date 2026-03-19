@@ -13,18 +13,11 @@ def test_cps_has_auto_loan_interest():
     RELATIVE_TOLERANCE = 0.4
 
     assert (
-        abs(
-            sim.calculate("auto_loan_interest").sum()
-            / AUTO_LOAN_INTEREST_TARGET
-            - 1
-        )
+        abs(sim.calculate("auto_loan_interest").sum() / AUTO_LOAN_INTEREST_TARGET - 1)
         < RELATIVE_TOLERANCE
     )
     assert (
-        abs(
-            sim.calculate("auto_loan_balance").sum() / AUTO_LOAN_BALANCE_TARGET
-            - 1
-        )
+        abs(sim.calculate("auto_loan_balance").sum() / AUTO_LOAN_BALANCE_TARGET - 1)
         < RELATIVE_TOLERANCE
     )
 
@@ -38,11 +31,7 @@ def test_cps_has_fsla_overtime_premium():
     OVERTIME_PREMIUM_TARGET = 70e9
     RELATIVE_TOLERANCE = 0.2
     assert (
-        abs(
-            sim.calculate("fsla_overtime_premium").sum()
-            / OVERTIME_PREMIUM_TARGET
-            - 1
-        )
+        abs(sim.calculate("fsla_overtime_premium").sum() / OVERTIME_PREMIUM_TARGET - 1)
         < RELATIVE_TOLERANCE
     )
 
@@ -61,17 +50,3 @@ def test_cps_has_net_worth():
         abs(sim.calculate("net_worth").sum() / NET_WORTH_TARGET - 1)
         < RELATIVE_TOLERANCE
     )
-
-
-def test_cps_2025_generates():
-    """Test that CPS_2025 can be generated via extrapolation from CPS_2024."""
-    from policyengine_us_data.datasets.cps import CPS_2025
-
-    # This should not raise an error
-    dataset = CPS_2025()
-    assert dataset.exists
-
-    # Basic sanity check - ensure it has data
-    data = dataset.load_dataset()
-    assert "person_id" in data
-    assert len(data["person_id"]) > 0

@@ -235,9 +235,7 @@ def main():
 
     print(f"\nResults saved to {results_dir}/")
     print("\nNOTE: All metrics marked as [TO BE CALCULATED] require full")
-    print(
-        "dataset generation and microsimulation runs to compute actual values."
-    )
+    print("dataset generation and microsimulation runs to compute actual values.")
 
 
 if __name__ == "__main__":

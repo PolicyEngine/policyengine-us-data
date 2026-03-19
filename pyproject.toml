@@ -8,28 +8,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "policyengine_us_data"
-version = "1.46.0"
+version = "1.73.0"
 description = "A package to create representative microdata for the US."
 readme = "README.md"
 authors = [
     {name = "PolicyEngine", email = "hello@policyengine.org"},
 ]
 license = {file = "LICENSE"}
-requires-python = ">=3.11, <3.14.0"
+requires-python = ">=3.12, <3.14.0"
 classifiers = [
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "policyengine-us>=1.353.0",
-    "policyengine-core>=3.19.0",
+    "policyengine-us>=1.572.5",
+    "policyengine-core>=3.23.6",
     "pandas>=2.3.1",
     "requests>=2.25.0",
     "tqdm>=4.60.0",
-    "microdf_python>=1.0.0",
+    "microdf_python>=1.2.1",
     "setuptools>=60",
-    "microimpute>=1.1.4",
+    "microimpute>=1.15.1",
     "pip-system-certs>=3.0",
     "google-cloud-storage>=2.0.0",
     "google-auth>=2.0.0",
@@ -42,21 +41,32 @@ dependencies = [
     "sqlalchemy>=2.0.41",
     "sqlmodel>=0.0.24",
     "xlrd>=2.0.2",
+    "spm-calculator>=0.1.0",
+    "tenacity>=8.0.0",
 ]
 
 [project.optional-dependencies]
+calibration = [
+    "samplics",
+]
+l0 = [
+    "l0-python",
+]
+
+[dependency-groups]
 dev = [
-    "black",
+    "ruff>=0.9.0",
     "pytest",
     "quantile-forest",
     "tabulate",
     "furo",
     "jupyter-book",
-    "mystmd",
+    "mystmd>=1.7.0",
     "yaml-changelog>=0.1.7",
     "build",
     "tomli",
-    "itables",
+    "itables",    "towncrier>=24.8.0",
+
 ]
 
 [tool.setuptools]
@@ -72,20 +82,35 @@ testpaths = [
     "policyengine_us_data/tests",
 ]
 
-[tool.black]
-line-length = 79
-target-version = ['py311', 'py312', 'py313']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
+[tool.towncrier]
+package = "policyengine_us_data"
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+title_format = "## [{version}] - {project_date}"
+issue_format = ""
+underlines = ["", "", ""]
+
+[[tool.towncrier.type]]
+directory = "breaking"
+name = "Breaking changes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "added"
+name = "Added"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "changed"
+name = "Changed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fixed"
+name = "Fixed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removed"
+name = "Removed"
+showcontent = true

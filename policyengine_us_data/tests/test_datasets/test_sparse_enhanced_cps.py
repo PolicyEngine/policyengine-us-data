@@ -17,7 +17,7 @@ from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
 
 @pytest.fixture(scope="session")
 def data():
-    return Dataset.from_file(STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5")
+    return Dataset.from_file(STORAGE_FOLDER / "enhanced_cps_2024.h5")
 
 
 @pytest.fixture(scope="session")
@@ -80,6 +80,20 @@ def test_sparse_ecps(sim):
     assert percent_within_10 > 60.0
 
 
+def test_sparse_ecps_employment_income_positive(sim):
+    """Direct check that employment income is in the trillions.
+
+    Unlike test_sparse_ecps which filters out zero targets via zero_mask,
+    this test would have caught the bug where employment_income_before_lsr
+    was dropped, zeroing out all employment income.
+    """
+    total = sim.calculate("employment_income").sum()
+    assert total > 5e12, (
+        f"employment_income sum is {total:.2e}, expected > 5T. "
+        "Likely missing employment_income_before_lsr in dataset."
+    )
+
+
 def test_sparse_ecps_has_mortgage_interest(sim):
     assert sim.calculate("deductible_mortgage_interest").sum() > 1
 
@@ -93,7 +107,7 @@ def test_sparse_ecps_has_tips(sim):
 
 def test_sparse_ecps_replicates_jct_tax_expenditures():
     calibration_log = pd.read_csv(
-        "calibration_log_sparse.csv",
+        "calibration_log.csv",
     )
 
     jct_rows = calibration_log[
@@ -101,10 +115,10 @@ def test_sparse_ecps_replicates_jct_tax_expenditures():
         & (calibration_log["epoch"] == calibration_log["epoch"].max())
     ]
 
-    assert (
-        jct_rows.rel_abs_error.max() < 0.5
-    ), "JCT tax expenditure targets not met (see the calibration log for details). Max relative error: {:.2%}".format(
-        jct_rows.rel_abs_error.max()
+    assert jct_rows.rel_abs_error.max() < 0.5, (
+        "JCT tax expenditure targets not met (see the calibration log for details). Max relative error: {:.2%}".format(
+            jct_rows.rel_abs_error.max()
+        )
     )
 
 
@@ -119,9 +133,7 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
     }
 
     baseline = sim
-    income_tax_b = baseline.calculate(
-        "income_tax", period=2024, map_to="household"
-    )
+    income_tax_b = baseline.calculate("income_tax", period=2024, map_to="household")
 
     for deduction, target in EXPENDITURE_TARGETS.items():
         # Create reform that neutralizes the deduction
@@ -131,9 +143,7 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
 
         # Run reform simulation
         reformed = Microsimulation(reform=RepealDeduction, dataset=sim.dataset)
-        income_tax_r = reformed.calculate(
-            "income_tax", period=2024, map_to="household"
-        )
+        income_tax_r = reformed.calculate("income_tax", period=2024, map_to="household")
 
         # Calculate tax expenditure
         tax_expenditure = (income_tax_r - income_tax_b).sum()
@@ -141,8 +151,8 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
         TOLERANCE = 0.4
 
         logging.info(
-            f"{deduction} tax expenditure {tax_expenditure/1e9:.1f}bn "
-            f"differs from target {target/1e9:.1f}bn by {pct_error:.2%}"
+            f"{deduction} tax expenditure {tax_expenditure / 1e9:.1f}bn "
+            f"differs from target {target / 1e9:.1f}bn by {pct_error:.2%}"
         )
         assert pct_error < TOLERANCE, deduction
 
@@ -174,9 +184,7 @@ def test_sparse_aca_calibration(sim):
     # Monthly to yearly
     targets["spending"] = targets["spending"] * 12
     # Adjust to match national target
-    targets["spending"] = targets["spending"] * (
-        98e9 / targets["spending"].sum()
-    )
+    targets["spending"] = targets["spending"] * (98e9 / targets["spending"].sum())
 
     state_code_hh = sim.calculate("state_code", map_to="household").values
     aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
@@ -190,17 +198,15 @@ def test_sparse_aca_calibration(sim):
 
         pct_error = abs(simulated - target_spending) / target_spending
         logging.info(
-            f"{state}: simulated ${simulated/1e9:.2f} bn  "
-            f"target ${target_spending/1e9:.2f} bn  "
+            f"{state}: simulated ${simulated / 1e9:.2f} bn  "
+            f"target ${target_spending / 1e9:.2f} bn  "
             f"error {pct_error:.2%}"
         )
 
         if pct_error > TOLERANCE:
             failed = True
 
-    assert (
-        not failed
-    ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    assert not failed, f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
 
 
 def test_sparse_medicaid_calibration(sim):
@@ -224,14 +230,12 @@ def test_sparse_medicaid_calibration(sim):
 
         pct_error = abs(simulated - target_enrollment) / target_enrollment
         logging.info(
-            f"{state}: simulated ${simulated/1e9:.2f} bn  "
-            f"target ${target_enrollment/1e9:.2f} bn  "
+            f"{state}: simulated ${simulated / 1e9:.2f} bn  "
+            f"target ${target_enrollment / 1e9:.2f} bn  "
             f"error {pct_error:.2%}"
         )
 
         if pct_error > TOLERANCE:
             failed = True
 
-    assert (
-        not failed
-    ), f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    assert not failed, f"One or more states exceeded tolerance of {TOLERANCE:.0%}."

@@ -1,9 +1,469 @@
+## [1.73.0] - 2026-03-12
+
+### Added
+
+- Add end-to-end test for calibration database build pipeline.
+- Unified calibration pipeline with GPU-accelerated L1/L0 solver, target config YAML, and CLI package validator.
+  Per-state and per-county precomputation replacing per-clone Microsimulation (51 sims instead of 436).
+  Parallel state, county, and clone loop processing via ProcessPoolExecutor.
+  Block-level takeup re-randomization with deterministic seeded draws.
+  Hierarchical uprating with ACA PTC state-level CSV factors and CD reconciliation.
+  Modal remote runner with Volume support, CUDA OOM fixes, and checkpointing.
+  H5 builder that filters calibrated clone weights by CD subset, uses pre-assigned random census blocks from `geography.npz` to derive full sub-state geography, and produces self-contained local area datasets.
+  Staging validation script (validate_staging.py) with sim.calculate() comparison and sanity checks.
+
+### Changed
+
+- Geography assignment now prevents clone-to-CD collisions.
+  County-dependent vars (aca_ptc) selectively precomputed per county; other vars use state-only path.
+  Target config switched to finest-grain include mode (~18K targets).
+- Migrated from changelog_entry.yaml to towncrier fragments to eliminate merge conflicts.
+
+### Fixed
+
+- Cross-state cache pollution in matrix builder precomputation.
+  Takeup draw ordering mismatch between matrix builder and stacked builder.
+  At-large district geoid mismatch (7 districts had 0 estimates).
+
+
+## [1.72.3] - 2026-03-09
+
+### Changed
+
+- Replaced batched QRF imputation with single sequential QRF via microimpute's fit_predict() API, preserving full covariance across all 85+ PUF income variables.
+
+
+## [1.72.2] - 2026-03-06
+
+### Changed
+
+- Switch from black to ruff format.
+
+
+## [1.72.1] - 2026-03-05
+
+### Fixed
+
+- Fixed double-weight application in dataset sanity tests: use `.values.sum()` for household_weight checks to avoid MicroSeries applying weights twice.
+
+
+## [1.72.0] - 2026-03-05
+
+### Added
+
+- Hardened data pipeline against corrupted dataset uploads: pre-upload validation gate, post-generation assertions in enhanced CPS and sparse builders, CI workflow safety guards, file size checks, and comprehensive sanity tests for all dataset variants (5 layers of defense).
+
+
+## [1.71.4] - 2026-03-04
+
+### Fixed
+
+- Fix create_sparse_ecps overwriting enhanced_cps_2024.h5 with sparse version that drops input variables like employment_income.
+
+
+## [1.71.3] - 2026-03-04
+
+### Changed
+
+- Prioritize reported benefit recipients in take-up assignment for SSI and SNAP.
+
+
+## [1.71.2] - 2026-03-04
+
+### Fixed
+
+- Reconcile SS sub-components after PUF imputation so they sum to social_security.
+
+
+## [1.71.1] - 2026-03-04
+
+### Changed
+
+- Read IRS retirement contribution limits from policyengine-us parameters instead of hard-coding them.
+
+
+## [1.71.0] - 2026-02-26
+
+### Added
+
+- Impute pregnancy in CPS microdata using CDC VSRR birth counts and Census ACS female population, with calibration targets per state.
+
+
+## [1.70.0] - 2026-02-26
+
+### Added
+
+- Add end-to-end test for calibration database build pipeline.
+
+
+## [1.69.4] - 2026-02-24
+
+### Changed
+
+- Migrated from changelog_entry.yaml to towncrier fragments to eliminate merge conflicts.
+
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), 
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.69.3] - 2026-02-19 16:34:50
+
+### Fixed
+
+- Add TANF takeup (22%) assignment to CPS data pipeline so takes_up_tanf_if_eligible is persisted in the dataset.
+
+## [1.69.2] - 2026-02-19 13:41:26
+
+### Changed
+
+- Bump policyengine-us to 1.570.7 to include TANF formula fixes and takes_up_tanf_if_eligible variable for calibration.
+
+## [1.69.1] - 2026-02-19 06:08:37
+
+### Added
+
+- Add TANF takeup rate parameter (22%) and register takes_up_tanf_if_eligible in the calibration pipeline's SIMPLE_TAKEUP_VARS.
+
+## [1.69.0] - 2026-02-18 21:11:01
+
+### Added
+
+- PUF clone + QRF imputation module (puf_impute.py) with state_fips predictor and stratified subsample preserving top 0.5% by AGI
+- ACS re-imputation module (source_impute.py) with state predictor; SIPP/SCF imputation without state (surveys lack state identifiers)
+- PUF and source impute integration into unified calibration pipeline (--puf-dataset, --skip-puf, --skip-source-impute flags)
+- 21 new tests for puf_impute and source_impute modules
+- DC_STATEHOOD=1 environment variable set in storage/__init__.py to ensure DC is included in state-based processing
+
+### Changed
+
+- Refactored extended_cps.py to delegate to puf_impute.puf_clone_dataset() (443 -> 75 lines)
+- PUF QRF training uses stratified subsample (20K target) instead of random subsample(10_000), force-including high-income tail
+- unified_calibration.py pipeline now supports optional source imputation and PUF cloning steps
+
+## [1.68.0] - 2026-02-17 15:26:04
+
+### Added
+
+- Census-block-first calibration pipeline (calibration/ package) ported from PR
+- Clone-and-assign module for population-weighted census block sampling
+- Unified matrix builder with clone-by-clone simulation, COO caching, and target_overview-based querying
+- Unified calibration CLI with L0 optimization and seeded takeup re-randomization
+- 28 new tests for the calibration pipeline
+- Integration test for build_matrix geographic masking (national/state/CD)
+- Tests for drop_target_groups utility
+- voluntary_filing.yaml takeup rate parameter
+
+### Changed
+
+- Rewrote local_area_calibration_setup.ipynb for clone-based pipeline
+- Renamed _get_geo_level to get_geo_level (now cross-module public API)
+
+### Fixed
+
+- Fix Jupyter import error in unified_calibration.py (OutStream.reconfigure moved to main)
+- Fix modal_app/remote_calibration_runner.py referencing deleted fit_calibration_weights.py
+- Fix _coo_parts stale state bug on build_matrix re-call after failure
+- Remove hardcoded voluntary_filing rate in favor of YAML parameter
+
+## [1.67.0] - 2026-02-12 18:56:57
+
+### Added
+
+- field_valid_values table in database as a source of truth for fields that have semantic meaning external to the database hierarchy (variable, constraint_variable, period, operation, active).
+- Event listeners that raise an error if inconsistent operations or parent-child relationships are attempted to be inserted into the database.
+- Source field in target table.
+
+## [1.66.0] - 2026-02-12 16:29:45
+
+### Added
+
+- Parallelization of data building steps.
+- Checkpointing mechanism to resume data builds and testing modules from last successful step in Modal runs.
+
+### Changed
+
+- Removed duplicate run of test_local_area_calibration tests.
+- Baked correct defaults into create_stratified_cps.py, removing hardcoded args from Makefile and Modal build.
+- DRYed up sequential build path to iterate SCRIPT_OUTPUTS instead of a redundant list.
+- Added thread-safe locking around volume.commit() for parallel checkpoint safety.
+
+## [1.65.0] - 2026-02-12 04:48:34
+
+### Added
+
+- Entity aware target calculations for correct entity counts.
+- Selection of targets closest to calibration time period and uprating logic for cohesive and comprehensive time-period coverage.
+- Hierarchical state-level uprating with CD reconciliation via hierarchy inconsistency factors (HIFs) and state-specific uprating factors (e.g., CMS/KFF ACA PTC multipliers).
+- stratum_domain and target_overview views for easier target inspection and debugging.
+- test_schema_views_and_lookups.py for testing the new views and lookups.
+- Calibration matrix diagnostic notebook (docs/calibration_matrix.ipynb).
+
+## [1.64.1] - 2026-02-09 17:47:49
+
+### Added
+
+- promote-dataset Makefile target
+- Year-mismatch warning in national targets ETL
+- Congress-session constants and warning in SOI district puller
+
+### Changed
+
+- Switch DEFAULT_DATASET to local storage path for database ETL scripts
+- Extract shared etl_argparser() to reduce boilerplate across 7 ETL scripts
+- Delete dead get_pseudo_input_variables() function
+
+## [1.64.0] - 2026-02-08 04:15:49
+
+### Added
+
+- Add voluntary tax filer variable and filer count calibration targets by AGI band.
+
+## [1.63.1] - 2026-02-08 02:59:10
+
+### Fixed
+
+- Immigration status mapping.
+
+## [1.63.0] - 2026-02-07 19:46:46
+
+### Added
+
+- Add liquid asset imputation from SIPP (bank accounts, stocks, bonds) for SSI and means-tested program modeling
+- Add SSI takeup rate parameter and takes_up_ssi_if_eligible draw
+
+## [1.62.0] - 2026-02-07 00:24:23
+
+### Added
+
+- Name-based seeding (seeded_rng) for order-independent reproducibility
+- State-specific Medicaid takeup rates (53%-99% range, 51 jurisdictions)
+- SSI resource test pass rate parameter (0.4)
+- WIC takeup and nutritional risk draw variables (float)
+- meets_ssi_resource_test boolean generation
+
+### Changed
+
+- Replaced shared RNG (seed=100) with per-variable name-based seeding
+- Medicaid takeup now uses state-specific rates instead of uniform 93%
+
+## [1.61.2] - 2026-02-01 20:58:21
+
+### Fixed
+
+- Fix etl_state_income_tax.py API mismatches with db_metadata utility functions
+
+## [1.61.1] - 2026-02-01 04:24:23
+
+### Added
+
+- cps_2024.h5 to HuggingFace upload list so the raw (unenhanced) 2024 CPS dataset is published
+
+## [1.61.0] - 2026-01-31 20:18:58
+
+### Added
+
+- Add state income tax calibration targets from Census STC FY2023 data
+
+## [1.60.0] - 2026-01-31 19:57:29
+
+### Changed
+
+- Use income_tax_positive instead of income_tax for CBO calibration target
+
+## [1.59.0] - 2026-01-31 19:54:59
+
+### Added
+
+- SSA benefit-type calibration targets for social_security_retirement, social_security_disability, social_security_survivors, and social_security_dependents
+- IRA contribution calibration targets for traditional_ira_contributions and roth_ira_contributions from IRS SOI data
+
+### Changed
+
+- Use CPS ASEC RESNSS1/RESNSS2 source codes to classify Social Security income into retirement, disability, survivors, and dependents (replacing age-62 heuristic)
+- Parameterize retirement contribution limits by year (2020-2025) instead of hardcoded 2022 values
+- Update taxable pension fraction from 1.0 to 0.590 based on SOI 2015 Table 1.4
+- Add age and is_male as QRF predictors for pension contribution imputation
+
+## [1.58.0] - 2026-01-31 19:53:18
+
+### Added
+
+- weeks_unemployed variable from CPS ASEC LKWEEKS
+- QRF-based imputation of weeks_unemployed for Extended CPS PUF copy
+
+## [1.57.0] - 2026-01-31 03:18:20
+
+### Added
+
+- Added CPS_2024_Full class for full-sample 2024 CPS generation
+- Added raw_cache utility for Census data caching
+- Added atomic parallel local area H5 publishing with Modal Volume staging
+- Added manifest validation with SHA256 checksums
+- Added HuggingFace retry logic with exponential backoff to fix timeout errors
+- Added staging folder approach for atomic HuggingFace deployments
+- Added national targets ETL for CBO projections and tax expenditure data
+- Added database hierarchy validation script
+- Added stratum_group_id migration utilities
+- Added db_metadata utilities for source and variable group management
+- Added DATABASE_GUIDE.md with comprehensive calibration database documentation
+
+### Changed
+
+- Migrated data pipeline from CPS 2023 to CPS 2024 (March 2025 ASEC)
+- Updated ExtendedCPS_2024 to use new CPS_2024_Full (full sample)
+- Updated local area calibration to use 2024 extended CPS data
+- Updated database ETL scripts for strata, IRS SOI, Medicaid, and SNAP
+- Expanded IRS SOI ETL with detailed income brackets and filing status breakdowns
+
+### Fixed
+
+- Fixed cross-state recalculation in sparse matrix builder by adding time_period to calculate() calls
+
+## [1.56.0] - 2026-01-26 22:41:56
+
+### Added
+
+- Census block-level geographic assignment for households in CD-stacked datasets
+- Comprehensive geography variables in output (block_geoid, tract_geoid, cbsa_code, sldu, sldl, place_fips, vtd, puma, zcta)
+- Block crosswalk file mapping 8.1M blocks to all Census geographies
+- Block-to-CD distribution file for population-weighted assignment
+- ZCTA (ZIP Code Tabulation Area) lookup from census block
+
+## [1.55.0] - 2026-01-26 16:45:05
+
+### Added
+
+- Support for health_insurance_premiums_without_medicare_part_b in local area calibration
+
+### Changed
+
+- Removed dense reweighting path from enhanced CPS; only sparse (L0) weights are produced
+- Eliminated TEST_LITE and LOCAL_AREA_CALIBRATION flags; all datasets generated unconditionally
+- Merged data-local-area Makefile target into data target
+
+### Fixed
+
+- Versioning workflow now runs uv lock after version bump to keep uv.lock in sync
+
+## [1.54.1] - 2026-01-26 02:49:11
+
+### Fixed
+
+- Derive partnership_se_income from PUF source columns using Yale Budget Lab's gross-up approach instead of looking for non-existent k1bx14 columns.
+
+## [1.54.0] - 2026-01-25 17:43:38
+
+### Added
+
+- partnership_se_income variable from Schedule K-1 Box 14 (k1bx14p + k1bx14s), representing partnership income subject to self-employment tax.
+
+## [1.53.1] - 2026-01-25 15:48:00
+
+### Changed
+
+- Bumped policyengine-core minimum version to 3.23.5 for pandas 3.0 compatibility
+
+## [1.53.0] - 2026-01-23 20:51:58
+
+### Changed
+
+- Added policyengine-claude plugin auto-install configuration.
+
+## [1.52.0] - 2026-01-22 20:50:13
+
+### Added
+
+- tests to verify SparseMatrixBuilder correctly calculates variables and constraints into the calibration matrix.
+
+## [1.51.1] - 2026-01-07 01:05:49
+
+### Fixed
+
+- Fixed Publish workflow by migrating dev dependencies to PEP 735 dependency-groups
+
+## [1.51.0] - 2026-01-01 17:39:26
+
+### Added
+
+- Sparse matrix builder for local area calibration with database-driven constraints
+- Local area calibration data pipeline (make data-local-area)
+- ExtendedCPS_2023 and PUF_2023 dataset classes
+- Stratified CPS sampling to preserve high-income households
+- Matrix verification tests for local area calibration
+- Population-weighted P(county|CD) distributions from Census block data
+- County assignment module for stacked dataset builder
+
+## [1.50.0] - 2025-12-23 15:15:35
+
+### Added
+
+- Added --use-tob flag for TOB (Taxation of Benefits) revenue calibration targeting OASDI and HI trust fund revenue
+
+## [1.49.0] - 2025-12-19 17:56:53
+
+### Added
+
+- SPM threshold calculation using policyengine/spm-calculator package
+- New utility module (policyengine_us_data/utils/spm.py) for SPM calculations
+
+### Changed
+
+- CPS datasets now calculate SPM thresholds using spm-calculator with Census-provided geographic adjustments
+- ACS datasets now calculate SPM thresholds using spm-calculator with national-level thresholds
+
+## [1.48.0] - 2025-12-08 19:52:21
+
+### Added
+
+- Sparse matrix builder for local area calibration with database-driven constraints
+- Local area calibration data pipeline (make data-local-area)
+- ExtendedCPS_2023 and PUF_2023 dataset classes
+- Stratified CPS sampling to preserve high-income households
+- Matrix verification tests for local area calibration
+
+## [1.47.1] - 2025-12-03 23:00:20
+
+### Added
+
+- Node.js 24 LTS setup to CI workflow for MyST builds
+- H6 Social Security reform calibration for long-term projections (phases out OASDI taxation 2045-2054)
+- H6 threshold crossover handling when OASDI thresholds exceed HI thresholds
+- start_year parameter to run_household_projection.py CLI
+- docs/README.md documenting MyST build output pitfall
+
+### Fixed
+
+- GitHub Pages documentation deployment (was deploying wrong directory causing blank pages)
+- Removed timeout and error suppression from documentation build
+
+## [1.47.0] - 2025-11-20 02:54:32
+
+### Added
+
+- Additional calibration based on SSA Trustees data that extends projections until 2100
+- Manual trigger capability for documentation deployment workflow
+- Documentation for SSA data sources in storage README
+
+### Changed
+
+- Renamed long-term projections notebook to clarify PWBM comparison scope (2025-2100)
+
+### Fixed
+
+- GitHub Pages documentation deployment path
+- Corrected number of imputed variables from 72 to 67 in documentation
+- Corrected calibration target count from 7,000+ to 2,813 across all docs
+- Removed inaccurate "two-stage" terminology in methodology descriptions
+
+## [1.46.1] - 2025-11-12 20:08:59
+
+### Changed
+
+- GitHub Actions workflow now uses self-hosted GCP runner to handle memory-intensive dataset builds
 
 ## [1.46.0] - 2025-09-10 20:30:41
 
@@ -717,6 +1177,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[1.69.3]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.69.2...1.69.3
+[1.69.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.69.1...1.69.2
+[1.69.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.69.0...1.69.1
+[1.69.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.68.0...1.69.0
+[1.68.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.67.0...1.68.0
+[1.67.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.66.0...1.67.0
+[1.66.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.65.0...1.66.0
+[1.65.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.64.1...1.65.0
+[1.64.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.64.0...1.64.1
+[1.64.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.63.1...1.64.0
+[1.63.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.63.0...1.63.1
+[1.63.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.62.0...1.63.0
+[1.62.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.61.2...1.62.0
+[1.61.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.61.1...1.61.2
+[1.61.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.61.0...1.61.1
+[1.61.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.60.0...1.61.0
+[1.60.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.59.0...1.60.0
+[1.59.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.58.0...1.59.0
+[1.58.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.57.0...1.58.0
+[1.57.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.56.0...1.57.0
+[1.56.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.55.0...1.56.0
+[1.55.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.54.1...1.55.0
+[1.54.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.54.0...1.54.1
+[1.54.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.53.1...1.54.0
+[1.53.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.53.0...1.53.1
+[1.53.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.52.0...1.53.0
+[1.52.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.51.1...1.52.0
+[1.51.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.51.0...1.51.1
+[1.51.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.50.0...1.51.0
+[1.50.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.49.0...1.50.0
+[1.49.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.48.0...1.49.0
+[1.48.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.47.1...1.48.0
+[1.47.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.47.0...1.47.1
+[1.47.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.46.1...1.47.0
+[1.46.1]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.46.0...1.46.1
 [1.46.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.45.0...1.46.0
 [1.45.0]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.44.2...1.45.0
 [1.44.2]: https://github.com/PolicyEngine/policyengine-us-data/compare/1.44.1...1.44.2

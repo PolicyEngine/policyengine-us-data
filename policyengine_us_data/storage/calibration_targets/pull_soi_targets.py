@@ -38,14 +38,24 @@ AGI_BOUNDS = {
     "$500,000 or more": (500_000, np.inf),
 }
 
+SOI_CONGRESS_PREFIX = "5001800US"  # 118th Congress
+SOI_DISTRICT_TAX_YEAR = 2022
+
 NON_VOTING_STATES = {"US", "AS", "GU", "MP", "PR", "VI", "OA"}
 NON_VOTING_GEO_IDS = {
     "0400000US72",  # Puerto Rico (state level)
+    # 118th Congress codes
     "5001800US7298",  # Puerto Rico
     "5001800US6098",  # American Samoa
     "5001800US6698",  # Guam
     "5001800US6998",  # Northern Mariana Islands
     "5001800US7898",  # U.S. Virgin Islands
+    # 119th Congress codes
+    "5001900US7298",  # Puerto Rico
+    "5001900US6098",  # American Samoa
+    "5001900US6698",  # Guam
+    "5001900US6998",  # Northern Mariana Islands
+    "5001900US7898",  # U.S. Virgin Islands
 }
 
 # after skipping the first 7 rows, the national SOI file has targets as row indices [COUNT_INDEX, AMOUNT_INDEX]
@@ -119,26 +129,17 @@ def pull_national_soi_variable(
     national_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Download and save national AGI totals."""
-    df = pd.read_excel(
-        "https://www.irs.gov/pub/irs-soi/22in54us.xlsx", skiprows=7
-    )
+    df = pd.read_excel("https://www.irs.gov/pub/irs-soi/22in54us.xlsx", skiprows=7)
 
     assert (
-        np.abs(
-            df.iloc[soi_variable_ident, 1]
-            - df.iloc[soi_variable_ident, 2:12].sum()
-        )
+        np.abs(df.iloc[soi_variable_ident, 1] - df.iloc[soi_variable_ident, 2:12].sum())
         < 100
     ), "Row 0 doesn't add up — check the file."
 
     agi_values = df.iloc[soi_variable_ident, 2:12].astype(int).to_numpy()
-    agi_values = np.concatenate(
-        [agi_values[:8], [agi_values[8] + agi_values[9]]]
-    )
+    agi_values = np.concatenate([agi_values[:8], [agi_values[8] + agi_values[9]]])
 
-    agi_brackets = [
-        AGI_STUB_TO_BAND[i] for i in range(1, len(SOI_COLUMNS) + 1)
-    ]
+    agi_brackets = [AGI_STUB_TO_BAND[i] for i in range(1, len(SOI_COLUMNS) + 1)]
 
     result = pd.DataFrame(
         {
@@ -151,9 +152,7 @@ def pull_national_soi_variable(
     )
 
     # final column order
-    result = result[
-        ["GEO_ID", "GEO_NAME", "LOWER_BOUND", "UPPER_BOUND", "VALUE"]
-    ]
+    result = result[["GEO_ID", "GEO_NAME", "LOWER_BOUND", "UPPER_BOUND", "VALUE"]]
     result["IS_COUNT"] = int(is_count)
     result["VARIABLE"] = variable_name
 
@@ -176,9 +175,7 @@ def pull_state_soi_variable(
     state_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Download and save state AGI totals."""
-    df = pd.read_csv(
-        "https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv", thousands=","
-    )
+    df = pd.read_csv("https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv", thousands=",")
 
     merged = (
         df[df["AGI_STUB"].isin([9, 10])]
@@ -201,17 +198,11 @@ def pull_state_soi_variable(
         ["GEO_ID", "GEO_NAME", "agi_bracket", soi_variable_ident],
     ].rename(columns={soi_variable_ident: "VALUE"})
 
-    result["LOWER_BOUND"] = result["agi_bracket"].map(
-        lambda b: AGI_BOUNDS[b][0]
-    )
-    result["UPPER_BOUND"] = result["agi_bracket"].map(
-        lambda b: AGI_BOUNDS[b][1]
-    )
+    result["LOWER_BOUND"] = result["agi_bracket"].map(lambda b: AGI_BOUNDS[b][0])
+    result["UPPER_BOUND"] = result["agi_bracket"].map(lambda b: AGI_BOUNDS[b][1])
 
     # final column order
-    result = result[
-        ["GEO_ID", "GEO_NAME", "LOWER_BOUND", "UPPER_BOUND", "VALUE"]
-    ]
+    result = result[["GEO_ID", "GEO_NAME", "LOWER_BOUND", "UPPER_BOUND", "VALUE"]]
     result["IS_COUNT"] = int(is_count)
     result["VARIABLE"] = variable_name
 
@@ -239,10 +230,16 @@ def pull_district_soi_variable(
     df = df[df["agi_stub"] != 0]
 
     df["STATEFIPS"] = df["STATEFIPS"].astype(int).astype(str).str.zfill(2)
-    df["CONG_DISTRICT"] = (
-        df["CONG_DISTRICT"].astype(int).astype(str).str.zfill(2)
-    )
-    df["GEO_ID"] = "5001800US" + df["STATEFIPS"] + df["CONG_DISTRICT"]
+    df["CONG_DISTRICT"] = df["CONG_DISTRICT"].astype(int).astype(str).str.zfill(2)
+    if SOI_DISTRICT_TAX_YEAR >= 2024:
+        raise RuntimeError(
+            f"SOI tax year {SOI_DISTRICT_TAX_YEAR} may need "
+            f"119th Congress districts (5001900US). Update "
+            f"SOI_CONGRESS_PREFIX and remove this check "
+            f"once verified."
+        )
+
+    df["GEO_ID"] = SOI_CONGRESS_PREFIX + df["STATEFIPS"] + df["CONG_DISTRICT"]
     df = df[~df["GEO_ID"].isin(NON_VOTING_GEO_IDS)]
 
     at_large_states = (
@@ -270,12 +267,8 @@ def pull_district_soi_variable(
         ]
     ].rename(columns={soi_variable_ident: "VALUE"})
 
-    result["LOWER_BOUND"] = result["agi_bracket"].map(
-        lambda b: AGI_BOUNDS[b][0]
-    )
-    result["UPPER_BOUND"] = result["agi_bracket"].map(
-        lambda b: AGI_BOUNDS[b][1]
-    )
+    result["LOWER_BOUND"] = result["agi_bracket"].map(lambda b: AGI_BOUNDS[b][0])
+    result["UPPER_BOUND"] = result["agi_bracket"].map(lambda b: AGI_BOUNDS[b][1])
 
     # if redistrict:
     # result = apply_redistricting(result, variable_name)
@@ -290,25 +283,23 @@ def pull_district_soi_variable(
         # Check that all GEO_IDs are valid
         produced_codes = set(result["GEO_ID"])
         invalid_codes = produced_codes - valid_district_codes
-        assert (
-            not invalid_codes
-        ), f"Invalid district codes after redistricting: {invalid_codes}"
+        assert not invalid_codes, (
+            f"Invalid district codes after redistricting: {invalid_codes}"
+        )
 
         # Check we have exactly 436 districts
-        assert (
-            len(produced_codes) == 436
-        ), f"Expected 436 districts after redistricting, got {len(produced_codes)}"
+        assert len(produced_codes) == 436, (
+            f"Expected 436 districts after redistricting, got {len(produced_codes)}"
+        )
 
         # Check that all GEO_IDs successfully mapped to names
         missing_names = result[result["GEO_NAME"].isna()]["GEO_ID"].unique()
-        assert (
-            len(missing_names) == 0
-        ), f"GEO_IDs without names in ID_TO_NAME mapping: {missing_names}"
+        assert len(missing_names) == 0, (
+            f"GEO_IDs without names in ID_TO_NAME mapping: {missing_names}"
+        )
 
     # final column order
-    result = result[
-        ["GEO_ID", "GEO_NAME", "LOWER_BOUND", "UPPER_BOUND", "VALUE"]
-    ]
+    result = result[["GEO_ID", "GEO_NAME", "LOWER_BOUND", "UPPER_BOUND", "VALUE"]]
     result["IS_COUNT"] = int(is_count)
     result["VARIABLE"] = variable_name
 
@@ -439,15 +430,11 @@ def combine_geography_levels(districts: Optional[bool] = False) -> None:
                     )
 
                 # Get state totals indexed by STATEFIPS
-                state_totals = state.loc[state_mask].set_index("STATEFIPS")[
-                    "VALUE"
-                ]
+                state_totals = state.loc[state_mask].set_index("STATEFIPS")["VALUE"]
 
                 # Get district totals grouped by STATEFIPS
                 district_totals = (
-                    district.loc[district_mask]
-                    .groupby("STATEFIPS")["VALUE"]
-                    .sum()
+                    district.loc[district_mask].groupby("STATEFIPS")["VALUE"].sum()
                 )
 
                 # Check and rescale districts for each state
@@ -462,12 +449,8 @@ def combine_geography_levels(districts: Optional[bool] = False) -> None:
                             f"Districts' sum does not match {fips} state total for {variable}/{count_type} "
                             f"in bracket [{lower}, {upper}]. Rescaling district targets."
                         )
-                        rescale_mask = district_mask & (
-                            district["STATEFIPS"] == fips
-                        )
-                        district.loc[rescale_mask, "VALUE"] *= (
-                            s_total / d_total
-                        )
+                        rescale_mask = district_mask & (district["STATEFIPS"] == fips)
+                        district.loc[rescale_mask, "VALUE"] *= s_total / d_total
 
     # Combine all data
     combined = pd.concat(

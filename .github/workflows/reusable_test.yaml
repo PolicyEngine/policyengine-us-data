@@ -23,16 +23,22 @@ on:
         required: false
       POLICYENGINE_US_DATA_GITHUB_TOKEN:
         required: false
+      MODAL_TOKEN_ID:
+        required: false
+      MODAL_TOKEN_SECRET:
+        required: false
 
 jobs:
   test:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required for GitHub Pages deploy
-      id-token: write  # Required for GCP auth
+      contents: write
+      id-token: write
     env:
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
       POLICYENGINE_US_DATA_GITHUB_TOKEN: ${{ secrets.POLICYENGINE_US_DATA_GITHUB_TOKEN }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -45,47 +51,31 @@ jobs:
         with:
           python-version: '3.13'
 
-      - uses: "google-github-actions/auth@v2"
-        if: inputs.upload_data
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          workload_identity_provider: "projects/322898545428/locations/global/workloadIdentityPools/policyengine-research-id-pool/providers/prod-github-provider"
-          service_account: "policyengine-research@policyengine-research.iam.gserviceaccount.com"
+          node-version: '24'
+
+      - name: Install Modal CLI
+        if: inputs.full_suite
+        run: pip install modal
+
+      - name: Run data build and tests on Modal
+        if: inputs.full_suite
+        run: |
+          modal run modal_app/data_build.py \
+            ${{ inputs.upload_data && '--upload' || '--no-upload' }} \
+            --branch=${{ github.head_ref || github.ref_name }}
 
       - name: Install package
-        run: uv pip install -e .[dev] --system
+        run: uv sync --dev
 
-      - name: Download data inputs
-        if: inputs.full_suite
-        run: make download
-
-      # Temporarily disabled - database target causing issues
-      # - name: Create and load calibration targets database 
-      #   if: inputs.full_suite
-      #   run: make database
-
-      - name: Build datasets
-        if: inputs.full_suite
-        run: make data
-        env:
-          TEST_LITE: ${{ !inputs.upload_data }}
-          PYTHON_LOG_LEVEL: INFO
-
-      - name: Save calibration log
-        if: inputs.full_suite
-        uses: actions/upload-artifact@v4
-        with:
-          name: calibration_log.csv
-          path: calibration_log.csv
-
-      - name: Run tests
-        run: pytest
-
-      - name: Upload data
-        if: inputs.upload_data
-        run: make upload
+      - name: Run basic tests
+        if: ${{ !inputs.full_suite }}
+        run: uv run pytest
 
       - name: Test documentation builds
-        run: make documentation
+        run: uv run make documentation
         env:
           BASE_URL: ${{ inputs.deploy_docs && '/policyengine-us-data' || '' }}
 

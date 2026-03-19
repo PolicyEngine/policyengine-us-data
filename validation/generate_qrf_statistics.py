@@ -222,18 +222,14 @@ print("-" * 40)
 print(support_df.round(3).to_string())
 
 print("\nSummary:")
-print(
-    f"- Average overlap coefficient: {support_df['overlap_coefficient'].mean():.3f}"
-)
+print(f"- Average overlap coefficient: {support_df['overlap_coefficient'].mean():.3f}")
 print(
     f"- All overlap coefficients > 0.85: {(support_df['overlap_coefficient'] > 0.85).all()}"
 )
 print(
     f"- Variables with SMD > 0.25: {(support_df['standardized_mean_diff'] > 0.25).sum()}"
 )
-print(
-    f"- All SMDs < 0.25: {(support_df['standardized_mean_diff'] < 0.25).all()}"
-)
+print(f"- All SMDs < 0.25: {(support_df['standardized_mean_diff'] < 0.25).all()}")
 print(
     f"- Variables with significant KS test (p<0.05): {(support_df['ks_pvalue'] < 0.05).sum()}"
 )
@@ -243,7 +239,7 @@ print(f"- All KS tests p > 0.05: {(support_df['ks_pvalue'] > 0.05).all()}")
 print("\n\n2. VARIANCE EXPLAINED BY PREDICTORS")
 print("-" * 40)
 for var, r2 in variance_explained.items():
-    print(f"- {var.replace('_', ' ').title()}: {r2*100:.0f}%")
+    print(f"- {var.replace('_', ' ').title()}: {r2 * 100:.0f}%")
 
 # 3. Out-of-Sample Accuracy
 print("\n\n3. OUT-OF-SAMPLE PREDICTION ACCURACY")
@@ -279,9 +275,7 @@ print("\nSummary:")
 print(
     f"- All correlation differences < 0.05: {(joint_df['correlation_diff'] < 0.05).all()}"
 )
-print(
-    f"- Average correlation difference: {joint_df['correlation_diff'].mean():.3f}"
-)
+print(f"- Average correlation difference: {joint_df['correlation_diff'].mean():.3f}")
 
 # Save all results
 print("\n\nSAVING RESULTS...")
@@ -294,9 +288,7 @@ print(
 )
 
 accuracy_df.to_csv("validation/outputs/qrf_accuracy_metrics.csv")
-print(
-    "✓ Saved accuracy metrics to validation/outputs/qrf_accuracy_metrics.csv"
-)
+print("✓ Saved accuracy metrics to validation/outputs/qrf_accuracy_metrics.csv")
 
 joint_df.to_csv("validation/outputs/joint_distribution_tests.csv", index=False)
 print(
@@ -308,10 +300,8 @@ with open("validation/outputs/variance_explained.txt", "w") as f:
     f.write("Variance Explained by Predictors (R-squared)\n")
     f.write("=" * 40 + "\n\n")
     for var, r2 in variance_explained.items():
-        f.write(f"{var.replace('_', ' ').title()}: {r2*100:.0f}%\n")
-print(
-    "✓ Saved variance explained to validation/outputs/variance_explained.txt"
-)
+        f.write(f"{var.replace('_', ' ').title()}: {r2 * 100:.0f}%\n")
+print("✓ Saved variance explained to validation/outputs/variance_explained.txt")
 
 # Create summary report
 with open("validation/outputs/qrf_diagnostics_summary.txt", "w") as f:
@@ -327,17 +317,13 @@ with open("validation/outputs/qrf_diagnostics_summary.txt", "w") as f:
     f.write(
         f"All overlap coefficients > 0.85: {(support_df['overlap_coefficient'] > 0.85).all()}\n"
     )
-    f.write(
-        f"All SMDs < 0.25: {(support_df['standardized_mean_diff'] < 0.25).all()}\n"
-    )
-    f.write(
-        f"All KS tests p > 0.05: {(support_df['ks_pvalue'] > 0.05).all()}\n\n"
-    )
+    f.write(f"All SMDs < 0.25: {(support_df['standardized_mean_diff'] < 0.25).all()}\n")
+    f.write(f"All KS tests p > 0.05: {(support_df['ks_pvalue'] > 0.05).all()}\n\n")
 
     f.write("2. VARIANCE EXPLAINED\n")
     f.write("-" * 40 + "\n")
     for var, r2 in variance_explained.items():
-        f.write(f"{var.replace('_', ' ').title()}: {r2*100:.0f}%\n")
+        f.write(f"{var.replace('_', ' ').title()}: {r2 * 100:.0f}%\n")
 
     f.write("\n3. OUT-OF-SAMPLE ACCURACY\n")
     f.write("-" * 40 + "\n")
@@ -361,9 +347,7 @@ with open("validation/outputs/qrf_diagnostics_summary.txt", "w") as f:
     )
 
     f.write("\n" + "=" * 60 + "\n")
-    f.write(
-        "These statistics demonstrate that the QRF methodology successfully:\n"
-    )
+    f.write("These statistics demonstrate that the QRF methodology successfully:\n")
     f.write("- Maintains strong common support between datasets\n")
     f.write("- Achieves high predictive accuracy for imputation\n")
     f.write("- Preserves joint distributions of variables\n")

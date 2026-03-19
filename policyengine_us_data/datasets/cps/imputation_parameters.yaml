@@ -7,12 +7,58 @@ taxable_interest_fraction: 0.680
 # SOI 2018 data
 qualified_dividend_fraction: 0.448
 
-# no SOI data, so arbitrary assumption
-taxable_pension_fraction: 1.0
+# SOI 2015 data (Table 1.4: taxable / total pension income)
+taxable_pension_fraction: 0.590
 taxable_401k_distribution_fraction: 1.0
 taxable_403b_distribution_fraction: 1.0
 taxable_ira_distribution_fraction: 1.0
 taxable_sep_distribution_fraction: 1.0
 
 # SOI 2012 data
-long_term_capgain_fraction: 0.880  
+long_term_capgain_fraction: 0.880
+
+# Retirement contribution allocation fractions.
+# Used to split CPS RETCB_VAL (a single bundled total) into
+# account-type-specific variables.
+#
+# DC vs IRA share of non-SE retirement contributions.
+# Employee DC: $567.9B (BEA/FRED Y351RC1A027NBEA minus W351RC0A144NBEA)
+# Total IRA: $57.5B (IRS SOI Tables 5 & 6, TY 2022)
+# Combined: $625.4B
+# https://fred.stlouisfed.org/series/Y351RC1A027NBEA
+# https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
+dc_share_of_retirement_contributions: 0.908
+ira_share_of_retirement_contributions: 0.092
+
+# Roth share of DC (401k/403b) contributions.
+# Vanguard How America Saves 2024: 18% of participants elect Roth.
+# PSCA 67th Annual Survey: 21% of participants make Roth contributions.
+# Estimated dollar share ~15% (Roth participants contribute slightly
+# less on average).
+# https://corporate.vanguard.com/content/dam/corp/research/pdf/how_america_saves_report_2024.pdf
+# https://www.psca.org/news/psca-news/2024/12/401k-savings-and-participation-rates-rise/
+roth_share_of_dc_contributions: 0.15
+
+# Traditional vs Roth share of IRA contributions.
+# IRS SOI IRA Accumulation Tables 5 & 6 (TY 2022):
+# Traditional: $22.5B (4.99M contributors), Roth: $35.0B (10.04M)
+# Traditional share: 22.5 / 57.5 = 39.2%
+# https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
+traditional_share_of_ira_contributions: 0.392
+
+# SE pension contribution cap.
+# SEP-IRA / Solo 401(k) contributions are capped at the lesser of
+# a percentage of net SE earnings and a dollar limit.
+# The 25% rate is technically ~20% for sole proprietors after the
+# deduction-for-half-of-SE-tax adjustment, but 25% is the standard
+# rate for corporate plans and a reasonable approximation given that
+# CPS SEMP_VAL is gross SE income.
+# https://www.irs.gov/retirement-plans/one-participant-401k-plans
+se_pension_contribution_rate: 0.25
+se_pension_contribution_dollar_limit:
+  2020: 57000
+  2021: 58000
+  2022: 61000
+  2023: 66000
+  2024: 69000
+  2025: 70000

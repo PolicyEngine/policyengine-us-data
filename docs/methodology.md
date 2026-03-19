@@ -1,6 +1,6 @@
 # Methodology
 
-We create the Enhanced CPS dataset through a two-stage process: imputation followed by reweighting. The imputation stage creates a copy of the CPS and uses Quantile Regression Forests to impute tax variables from the PUF onto this copy, creating the Extended CPS. The reweighting stage then optimizes household weights to match administrative targets, producing the Enhanced CPS with weights calibrated to statistics.
+PolicyEngine constructs its representative household dataset through a multi-stage pipeline. Survey data from the CPS is merged with tax detail from the IRS PUF, stratified, and supplemented with variables from ACS, SIPP, and SCF. The resulting dataset is then cloned to geographic variants, simulated through PolicyEngine US with stochastic take-up, and calibrated via L0-regularized optimization against administrative targets at the national, state, and congressional district levels. The pipeline produces 488 geographically representative H5 datasets.
 
 ```mermaid
 graph TD
@@ -11,73 +11,85 @@ graph TD
         SCF["SCF"]:::data
         ACS["ACS"]:::data
     end
-    
+
     Age("Age all to target year"):::process
-    
+
     subgraph aged["Aged Datasets"]
         AgedCPS["Aged CPS"]:::data
         AgedPUF["Aged PUF"]:::data
-        AgedSIPP["Aged SIPP"]:::data
-        AgedSCF["Aged SCF"]:::data
-        AgedACS["Aged ACS"]:::data
     end
-    
-    ImpOther("Impute SIPP/SCF/ACS variables to CPS"):::process
-    UpdatedCPS["CPS with additional vars"]:::data
-    
+
     Clone("Clone CPS"):::process
-    QRF("Train QRF"):::process
-    
-    Copy1["CPS Copy 1: Missing PUF variables filled from PUF"]:::data
-    Copy2["CPS Copy 2: Existing variables replaced from PUF"]:::data
-    
+    QRF("Train QRF on PUF"):::process
+
+    Copy1["CPS Copy 1: Missing PUF vars filled"]:::data
+    Copy2["CPS Copy 2: Income vars replaced"]:::data
+
     Impute("Apply QRF to impute variables"):::process
-    
     Concat("Concatenate both copies"):::process
-    
     Extended["Extended CPS - 2x households"]:::data
-    
-    Targets{{"Administrative Targets - 7000+"}}:::data
-    
-    Reweight("Reweight Optimization"):::process
-    
-    Enhanced{{"Enhanced CPS - Final Dataset"}}:::output
-    
+
+    Stratify("Stratified sampling"):::process
+    Stratified["Stratified CPS - ~12K households"]:::data
+
+    SourceImp("Source imputation: ACS, SIPP, SCF"):::process
+    SourceImputed["Source-Imputed Stratified CPS"]:::data
+
+    subgraph calib["Geography-Specific Calibration"]
+        GeoClone("Clone N x 430, assign census blocks"):::process
+        Simulate("Simulate per-state rules + takeup"):::process
+        Matrix("Build sparse calibration matrix"):::process
+        TargetDB{{"Target Database (IRS SOI, Census, SNAP, Medicaid)"}}:::data
+        L0("L0-regularized weight optimization"):::process
+    end
+
+    BuildH5("Build state/district/city H5 files"):::process
+    GeoDatasets{{"Geography-Specific Datasets"}}:::output
+
+    subgraph legacy["National (Legacy)"]
+        EnhReweight("Dropout reweighting"):::process
+        Enhanced{{"Enhanced CPS"}}:::output
+    end
+
     CPS --> Age
     PUF --> Age
-    SIPP --> Age
-    SCF --> Age
-    ACS --> Age
-    
+
     Age --> AgedCPS
     Age --> AgedPUF
-    Age --> AgedSIPP
-    Age --> AgedSCF
-    Age --> AgedACS
-    
-    AgedSIPP --> ImpOther
-    AgedSCF --> ImpOther
-    AgedACS --> ImpOther
-    AgedCPS --> ImpOther
+
+    AgedCPS --> Clone
     AgedPUF --> QRF
-    
-    ImpOther --> UpdatedCPS
-    UpdatedCPS --> Clone
-    
+
     Clone --> Copy1
     Clone --> Copy2
-    
+
     QRF --> Impute
     Copy1 --> Impute
     Copy2 --> Impute
-    
+
     Impute --> Concat
     Concat --> Extended
-    
-    Extended --> Reweight
-    Targets --> Reweight
-    Reweight --> Enhanced
-    
+
+    Extended --> Stratify
+    Stratify --> Stratified
+
+    SIPP --> SourceImp
+    SCF --> SourceImp
+    ACS --> SourceImp
+    Stratified --> SourceImp
+    SourceImp --> SourceImputed
+
+    SourceImputed --> GeoClone
+    GeoClone --> Simulate
+    Simulate --> Matrix
+    TargetDB --> Matrix
+    Matrix --> L0
+    L0 --> BuildH5
+    BuildH5 --> GeoDatasets
+
+    Extended --> EnhReweight
+    EnhReweight --> Enhanced
+
     classDef data fill:#2C6496,stroke:#2C6496,color:#FFFFFF
     classDef process fill:#39C6C0,stroke:#2C6496,color:#FFFFFF
     classDef output fill:#5091CC,stroke:#2C6496,color:#FFFFFF
@@ -101,9 +113,9 @@ We clone the aged CPS dataset to create two versions. The first copy retains ori
 
 This dual approach ensures that variables not collected in CPS are added from the PUF, while variables collected in CPS but with measurement error are replaced with more accurate PUF values. Most importantly, household structure and relationships are preserved in both copies.
 
-### Quantile Regression Forests
+### Quantile Random Forests
 
-Quantile Regression Forests (QRF) is an extension of random forests that estimates conditional quantiles rather than conditional means. QRF builds an ensemble of decision trees on the training data and stores all observations in leaf nodes rather than just their means. This enables estimation of any quantile of the conditional distribution at prediction time.
+Quantile Random Forests (QRF) is an extension of random forests that estimates conditional quantiles rather than conditional means. QRF builds an ensemble of decision trees on the training data and stores all observations in leaf nodes rather than just their means. This enables estimation of any quantile of the conditional distribution at prediction time.
 
 #### QRF Sampling Process
 
@@ -147,55 +159,131 @@ From the American Community Survey (ACS), we impute property taxes for homeowner
 
 ### Example: Tip Income Imputation
 
-To illustrate how QRF preserves conditional distributions, consider tip income imputation. The training data from SIPP contains workers with employment income and tip income. For a worker with predictors of $30,000 employment income, age 25, and no children, QRF finds that similar workers in SIPP have a conditional distribution ranging from $0 at the 10th percentile (no tips) to $2,000 at the median, $8,000 at the 90th percentile, and $15,000 at the 99th percentile. If the random quantile drawn is 0.85, the imputed tip income would be approximately $6,500. This approach ensures that some similar workers receive no tips while others receive substantial tips, preserving realistic variation.
+To illustrate how QRF preserves conditional distributions, consider tip income imputation. The training data from SIPP contains workers with employment income and tip income.
 
-## Stage 2: Reweighting
+For a worker with the following characteristics:
+- Employment income: \$30,000
+- Age: 25
+- Number of children: 0
 
-### Problem Formulation
+QRF finds that similar workers in SIPP have a conditional distribution of tip income:
+- 10th percentile: \$0 (no tips)
+- 50th percentile: \$2,000
+- 90th percentile: \$8,000
+- 99th percentile: \$15,000
 
-The reweighting stage adjusts household weights to ensure the enhanced dataset matches administrative totals. We optimize log-transformed weights given a loss matrix containing households' contributions to targets and a target vector of statistics to minimize mean squared relative error. The log transformation ensures positive weights while allowing unconstrained optimization.
+If the random quantile drawn is 0.85, the imputed tip income would be approximately \$6,500. This approach ensures that some similar workers receive no tips while others receive substantial tips, preserving realistic variation.
 
-### Optimization
+## Stage 2: Stratification and Source Imputation
 
-We use PyTorch for gradient-based optimization with the Adam optimizer. The implementation uses log-transformed weights to ensure positivity constraints are satisfied throughout the optimization process.
+After creating the Extended CPS, we reduce and enrich the dataset before calibration.
 
-### Dropout Regularization
+### Stratified Sampling
 
-To prevent overfitting to calibration targets, we apply dropout during optimization. We randomly mask weights each iteration and replace them with the mean of unmasked weights. This helps ensure that no single household receives excessive weight in matching targets.
+The Extended CPS contains roughly 400K person records after the PUF cloning step. Running full microsimulation on every clone of this dataset would be prohibitively expensive. We apply stratified sampling to reduce the dataset to approximately 12,000 households while preserving the tails of the income distribution.
 
-### Calibration Targets
+The stratification works in two steps. First, all households above the 99.5th percentile of adjusted gross income are retained unconditionally — this preserves the top 1% of the AGI distribution, which contributes disproportionately to tax revenue and is difficult to reconstruct from a uniform sample. Second, from the remaining households, we draw a uniform random sample to reach the target size. Weights are adjusted proportionally so that the stratified dataset still represents the full population.
 
-The loss matrix includes targets from six sources:
+### Source Imputation
 
-**IRS SOI**: Income by AGI bracket and filing status, counts of returns by category, aggregate income totals by source, deduction and credit utilization rates
+We then impute additional variables from three supplementary surveys onto the stratified CPS. These imputations use quantile regression forests with state of residence as a predictor, which allows the imputed values to reflect geographic variation.
 
-**Census**: Population by single year of age, state total populations, demographic distributions
+**ACS (American Community Survey)**: Rent, real estate taxes. State is included as a predictor, which is important because property tax rates and rent levels vary substantially across states.
 
-**CBO/Treasury**: SNAP participation and benefits, SSI recipient counts, EITC claims by family size, total federal revenues
+**SIPP (Survey of Income and Program Participation)**: Tip income, bank account assets, stock assets, bond assets. These financial variables are not available in CPS and are imputed from SIPP's more detailed wealth module.
 
-**JCT**: State and local taxes, charitable contributions, mortgage interest, medical expenses
+**SCF (Survey of Consumer Finances)**: Net worth, auto loan balances, auto loan interest. SCF provides the most comprehensive household balance sheet data among US surveys.
 
-**Healthcare**: Health insurance premiums, Medicare Part B premiums, medical expenses by age
+The output of this stage is the source-imputed stratified CPS (`source_imputed_stratified_extended_cps_2024.h5`), which serves as the input to the geography-specific calibration pipeline.
 
-**Other**: State program participation, income distributions by geography, local area statistics
+## Stage 3: Geography-Specific Calibration
 
-### Tax and Benefit Calculations
+The calibration stage adjusts household weights so that the dataset matches administrative totals at the national, state, and congressional district levels simultaneously. This is the core innovation of the pipeline: rather than calibrating a single national dataset, we create geographic variants of each household and optimize a single weight vector over all variants jointly.
 
-The calibration process incorporates tax and benefit calculations through PolicyEngine's microsimulation capabilities. This ensures that the reweighted dataset reflects income distributions and the interactions between tax liabilities and benefit eligibility.
+### Clone-Based Geography Assignment
 
-### Convergence
+Each household in the stratified CPS is cloned 430 times. Each clone is assigned a random census block drawn from a population-weighted distribution of all US census blocks. The block GEOID (a 15-character identifier in the format SSCCCTTTTTTBBBB) determines all higher-level geography: state, county, congressional district, tract, and other areas.
 
-The optimization converges within iterations. We monitor convergence through the loss value trajectory, weight stability across iterations, and target achievement rates.
+This approach means that the same household appears in many different states and districts, but with different weights. The optimizer can then increase the weight of a clone in states where that household's characteristics are needed and decrease it elsewhere.
+
+### Per-State Simulation
+
+For each clone, we simulate tax liabilities and benefit eligibility under the state rules corresponding to the clone's assigned geography. This is done clone-by-clone (equivalently, state-by-state): for each of the 51 state jurisdictions, we set every record's state FIPS to that state, run a full PolicyEngine US microsimulation, and extract the calculated variables.
+
+Benefit takeup is re-randomized per clone using block-level seeded random number generation. This ensures that takeup draws are deterministic given the geography assignment but vary across clones, reflecting the real-world variation in program participation.
+
+### Calibration Matrix
+
+The simulation results are assembled into a sparse calibration matrix of shape (n_targets, n_clones × n_records). Each row represents a calibration target (e.g., "total SNAP benefits in California"), and each column represents one clone of one household. The matrix entry is the household's contribution to that target — for example, the SNAP benefit amount for a household assigned to California.
+
+Geographic masking ensures that each target only involves the clones assigned to the relevant geography. A California SNAP target has nonzero entries only for clones whose census block falls in California. This makes the matrix very sparse: each target involves only a small fraction of all clones.
+
+### Target Database
+
+Calibration targets are stored in a SQLite database (`policy_data.db`) built from administrative sources:
+
+**IRS SOI**: Income by AGI bracket and filing status, return counts, aggregate income by source, deduction and credit utilization — at both national and state levels.
+
+**Census ACS**: Population by single year of age, state and district total populations.
+
+**USDA FNS SNAP**: Participation counts and benefit totals by state.
+
+**CMS Medicaid**: Enrollment by state.
+
+**Census STC**: Revenue by state from state tax agencies.
+
+**[CDC VSRR](data.cdc.gov/resource/hmz2-vwda)**: State-level birth and pregnancy counts.
+
+The database is built via ETL scripts (`policyengine_us_data/db/`) that download, transform, and load each source.
+
+### Hierarchical Uprating
+
+Some targets are available at the state level but not at the congressional district level, or vice versa. Hierarchical uprating reconciles these using two factors:
+
+The **hierarchy inconsistency factor (HIF)** adjusts district-level estimates so they sum to the known state total. If the sum of district estimates for a variable exceeds the state total, HIF scales them down proportionally.
+
+**State-specific uprating factors** adjust variables that depend on state-level policy parameters. For example, ACA premium tax credits depend on state-specific benchmark premiums from CMS and KFF data, so the uprating factor for PTC varies by state.
+
+### L0-Regularized Optimization
+
+The optimization finds a weight vector **w** such that the matrix-vector product **X · w** approximates the target vector **t**. The loss function minimizes the mean squared relative error between achieved and target values.
+
+L0 regularization encourages sparsity in the weight vector — pushing many clone weights to exactly zero. This is implemented via Hard Concrete gates {cite}`louizos2018learning`, a continuous relaxation of the L0 norm that is differentiable and compatible with gradient-based optimization. Each weight has an associated gate parameter; during training, gates are sampled from a stretched Hard Concrete distribution and thresholded to produce exact zeros.
+
+Two presets control the degree of sparsity:
+
+- **Local preset** (λ_L0 = 1e-8): Retains 3–4 million records with nonzero weight. Used for building state and district H5 files where geographic detail matters.
+- **National preset** (λ_L0 = 1e-4): Retains approximately 50,000 records. Used for the national web app dataset where fast computation is prioritized over geographic granularity.
+
+The optimizer is Adam with a learning rate of 0.15, running for 100–200 epochs. Training runs on GPU (A100 or T4) via Modal for production builds, or on CPU for local development.
+
+## Stage 4: Local Area Dataset Generation
+
+Calibrated weights are converted into geography-specific H5 datasets — one per state, congressional district, and city.
+
+### Subsetting by Geography
+
+For each target area (e.g., the state of California or congressional district NY-14), the builder selects the subset of clones whose assigned congressional district falls within that area. It filters the clone-level weight vector to only those clones and constructs an H5 file containing the corresponding household records with their calibrated weights.
+
+For city datasets, an additional county-level probability filter scales weights by the fraction of the city's population in each county, since cities may span multiple congressional districts.
+
+### Block-Level Geography Derivation
+
+Each record in the output H5 inherits its geographic variables from the census block assigned during cloning. The 15-character block GEOID determines state FIPS, county FIPS, tract, and — via crosswalk tables — CBSA, state legislative districts, place, PUMA, and ZCTA. This ensures geographic consistency: a record assigned to a block in Queens County will have the correct state (NY), county, congressional district, and city codes.
+
+### SPM Threshold Recalculation
+
+Supplemental Poverty Measure thresholds vary by housing tenure and metropolitan area. After geography assignment, SPM thresholds are recalculated for each record based on its assigned block's metro area, ensuring that poverty status reflects local cost of living.
+
+### Output
+
+The pipeline produces 488 H5 datasets: 51 state files (including DC), 435 congressional district files, a national file, and city files for New York City. Each file is a self-contained PolicyEngine dataset that can be loaded directly into `Microsimulation` for policy analysis.
 
 ## Validation
 
-### Cross-Validation
+We validate the pipeline at multiple stages. Imputation quality is checked via out-of-sample prediction on held-out records from source datasets. Calibration quality is measured by comparing achieved target values (**X · w**) against administrative totals, reported as relative error per target. The validation script (`validate_staging`) computes these metrics across all state and district H5 files, flagging any area where relative error exceeds acceptable thresholds.
 
-We validate the methodology through three approaches: cross-validation on calibration targets, testing stability across multiple random seeds, and validating imputation quality through out-of-sample prediction on held-out records from source datasets.
-
-### Quality Checks
-
-Quality checks ensure data integrity. Weights remain positive after optimization. We check weight magnitudes to ensure no single household receives excessive influence on aggregate statistics. Household structures remain intact, with all members of a household receiving the same weight adjustment factor.
+Structural integrity checks verify that weights are positive, that household structures remain intact (all members of a household receive the same weight), and that state populations sum to the national total.
 
 ## Implementation
 
@@ -203,6 +291,11 @@ The implementation is available at:
 [https://github.com/PolicyEngine/policyengine-us-data](https://github.com/PolicyEngine/policyengine-us-data)
 
 Key files:
-- `policyengine_us_data/datasets/cps/extended_cps.py` - Imputation stage
-- `policyengine_us_data/datasets/cps/enhanced_cps.py` - Reweighting stage
-- `policyengine_us_data/utils/loss.py` - Loss matrix construction
+- `policyengine_us_data/datasets/cps/extended_cps.py` — PUF imputation onto CPS
+- `policyengine_us_data/calibration/create_stratified_cps.py` — Stratified sampling
+- `policyengine_us_data/calibration/create_source_imputed_cps.py` — ACS/SIPP/SCF source imputation
+- `policyengine_us_data/calibration/unified_calibration.py` — L0 calibration orchestrator
+- `policyengine_us_data/calibration/unified_matrix_builder.py` — Sparse calibration matrix builder
+- `policyengine_us_data/calibration/clone_and_assign.py` — Geography cloning and block assignment
+- `policyengine_us_data/calibration/publish_local_area.py` — H5 file generation
+- `policyengine_us_data/db/` — Target database ETL scripts

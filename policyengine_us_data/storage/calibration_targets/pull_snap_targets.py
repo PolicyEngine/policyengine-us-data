@@ -9,7 +9,6 @@ from policyengine_us_data.storage.calibration_targets.pull_age_targets import (
     STATE_NAME_TO_ABBREV,
 )
 
-
 STATE_NAME_TO_FIPS = {
     "Alabama": "01",
     "Alaska": "02",
@@ -85,7 +84,9 @@ def extract_usda_snap_data(year=2023):
         session.headers.update(headers)
 
         # Try to visit the main page first to get any necessary cookies
-        main_page = "https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap"
+        main_page = (
+            "https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap"
+        )
         try:
             session.get(main_page, timeout=30)
         except:
@@ -168,9 +169,7 @@ def extract_usda_snap_data(year=2023):
         .reset_index(drop=True)
     )
     df_states["GEO_ID"] = "0400000US" + df_states["STATE_FIPS"]
-    df_states["GEO_NAME"] = "state_" + df_states["State"].map(
-        STATE_NAME_TO_ABBREV
-    )
+    df_states["GEO_NAME"] = "state_" + df_states["State"].map(STATE_NAME_TO_ABBREV)
 
     count_df = df_states[["GEO_ID", "GEO_NAME"]].copy()
     count_df["VALUE"] = df_states["Households"]

@@ -14,10 +14,8 @@ from policyengine_us_data.utils.uprating import (
 )
 from microimpute.models.qrf import QRF
 import logging
-
-
-test_lite = os.environ.get("TEST_LITE") == "true"
-print(f"TEST_LITE == {test_lite}")
+from policyengine_us_data.parameters import load_take_up_rate
+from policyengine_us_data.utils.randomness import seeded_rng
 
 
 class CPS(Dataset):
@@ -36,20 +34,11 @@ class CPS(Dataset):
             frac (float, optional): Fraction of the dataset to keep. Defaults to 1. Example: To downsample to 25% of dataset,
                 set frac=0.25.
         """
-
         if self.raw_cps is None:
-            # Extrapolate from previous year
-            if self.time_period == 2025:
-                cps_2024 = CPS_2024(require=True)
-                arrays = cps_2024.load_dataset()
-                arrays = uprate_cps_data(arrays, 2024, self.time_period)
-            else:
-                # Default to CPS 2023 for backward compatibility
-                cps_2023 = CPS_2023(require=True)
-                arrays = cps_2023.load_dataset()
-                arrays = uprate_cps_data(arrays, 2023, self.time_period)
-            self.save_dataset(arrays)
-            return
+            raise ValueError(
+                f"Cannot generate {self.name}: raw_cps is not defined. "
+                "For future years, use PolicyEngine's uprating at simulation time."
+            )
 
         raw_data = self.raw_cps(require=True).load()
         cps = {}
@@ -78,7 +67,7 @@ class CPS(Dataset):
             undocumented_students_target=0.21 * 1.9e6,
         )
         logging.info("Adding family variables")
-        add_spm_variables(cps, spm_unit)
+        add_spm_variables(self, cps, spm_unit)
         logging.info("Adding household variables")
         add_household_variables(cps, household)
         logging.info("Adding rent")
@@ -104,9 +93,7 @@ class CPS(Dataset):
 
         # Store original dtypes before modifying
         original_data: dict = self.load_dataset()
-        original_dtypes = {
-            key: original_data[key].dtype for key in original_data
-        }
+        original_dtypes = {key: original_data[key].dtype for key in original_data}
         sim = Microsimulation(dataset=self)
         sim.subsample(frac=frac)
 
@@ -204,28 +191,154 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
 def add_takeup(self):
     data = self.load_dataset()
 
-    from policyengine_us import system, Microsimulation
+    from policyengine_us import Microsimulation
 
     baseline = Microsimulation(dataset=self)
-    parameters = baseline.tax_benefit_system.parameters(self.time_period)
 
-    generator = np.random.default_rng(seed=100)
+    n_persons = len(data["person_id"])
+    n_tax_units = len(data["tax_unit_id"])
+    n_spm_units = len(data["spm_unit_id"])
 
-    eitc_takeup_rates = parameters.gov.irs.credits.eitc.takeup
+    # Load take-up rates
+    eitc_rates_by_children = load_take_up_rate("eitc", self.time_period)
+    dc_ptc_rate = load_take_up_rate("dc_ptc", self.time_period)
+    snap_rate = load_take_up_rate("snap", self.time_period)
+    aca_rate = load_take_up_rate("aca", self.time_period)
+    medicaid_rates_by_state = load_take_up_rate("medicaid", self.time_period)
+    head_start_rate = load_take_up_rate("head_start", self.time_period)
+    early_head_start_rate = load_take_up_rate("early_head_start", self.time_period)
+    ssi_rate = load_take_up_rate("ssi", self.time_period)
+
+    # EITC: varies by number of children
     eitc_child_count = baseline.calculate("eitc_child_count").values
-    eitc_takeup_rate = eitc_takeup_rates.calc(eitc_child_count)
-    data["takes_up_eitc"] = (
-        generator.random(len(data["tax_unit_id"])) < eitc_takeup_rate
+    eitc_takeup_rate = np.array(
+        [eitc_rates_by_children.get(min(int(c), 3), 0.85) for c in eitc_child_count]
     )
-    dc_ptc_takeup_rate = parameters.gov.states.dc.tax.income.credits.ptc.takeup
-    data["takes_up_dc_ptc"] = (
-        generator.random(len(data["tax_unit_id"])) < dc_ptc_takeup_rate
-    )
-    generator = np.random.default_rng(seed=100)
+    rng = seeded_rng("takes_up_eitc")
+    data["takes_up_eitc"] = rng.random(n_tax_units) < eitc_takeup_rate
 
-    data["snap_take_up_seed"] = generator.random(len(data["spm_unit_id"]))
-    data["aca_take_up_seed"] = generator.random(len(data["tax_unit_id"]))
-    data["medicaid_take_up_seed"] = generator.random(len(data["person_id"]))
+    # DC Property Tax Credit
+    rng = seeded_rng("takes_up_dc_ptc")
+    data["takes_up_dc_ptc"] = rng.random(n_tax_units) < dc_ptc_rate
+
+    # SNAP: prioritize reported recipients
+    rng = seeded_rng("takes_up_snap_if_eligible")
+    reported_snap = data["snap_reported"] > 0
+
+    # Calculate adjusted rate for non-reporters to hit target
+    n_snap_reporters = reported_snap.sum()
+    n_snap_non_reporters = (~reported_snap).sum()
+    target_snap_takeup_count = int(snap_rate * n_spm_units)
+    remaining_snap_needed = max(0, target_snap_takeup_count - n_snap_reporters)
+    snap_non_reporter_rate = (
+        remaining_snap_needed / n_snap_non_reporters if n_snap_non_reporters > 0 else 0
+    )
+
+    # Assign: all reporters + adjusted rate for non-reporters
+    data["takes_up_snap_if_eligible"] = reported_snap | (
+        (~reported_snap) & (rng.random(n_spm_units) < snap_non_reporter_rate)
+    )
+
+    # ACA
+    rng = seeded_rng("takes_up_aca_if_eligible")
+    data["takes_up_aca_if_eligible"] = rng.random(n_tax_units) < aca_rate
+
+    # Medicaid: state-specific rates
+    state_codes = baseline.calculate("state_code_str").values
+    hh_ids = data["household_id"]
+    person_hh_ids = data["person_household_id"]
+    hh_to_state = dict(zip(hh_ids, state_codes))
+    person_states = np.array([hh_to_state.get(hh_id, "CA") for hh_id in person_hh_ids])
+    medicaid_rate_by_person = np.array(
+        [medicaid_rates_by_state.get(s, 0.93) for s in person_states]
+    )
+    rng = seeded_rng("takes_up_medicaid_if_eligible")
+    data["takes_up_medicaid_if_eligible"] = (
+        rng.random(n_persons) < medicaid_rate_by_person
+    )
+
+    # Head Start
+    rng = seeded_rng("takes_up_head_start_if_eligible")
+    data["takes_up_head_start_if_eligible"] = rng.random(n_persons) < head_start_rate
+
+    # Early Head Start
+    rng = seeded_rng("takes_up_early_head_start_if_eligible")
+    data["takes_up_early_head_start_if_eligible"] = (
+        rng.random(n_persons) < early_head_start_rate
+    )
+
+    # SSI: prioritize reported recipients
+    rng = seeded_rng("takes_up_ssi_if_eligible")
+    reported_ssi = data["ssi_reported"] > 0
+
+    # Calculate adjusted rate for non-reporters to hit target
+    n_ssi_reporters = reported_ssi.sum()
+    n_ssi_non_reporters = (~reported_ssi).sum()
+    target_ssi_takeup_count = int(ssi_rate * n_persons)
+    remaining_ssi_needed = max(0, target_ssi_takeup_count - n_ssi_reporters)
+    ssi_non_reporter_rate = (
+        remaining_ssi_needed / n_ssi_non_reporters if n_ssi_non_reporters > 0 else 0
+    )
+
+    # Assign: all reporters + adjusted rate for non-reporters
+    data["takes_up_ssi_if_eligible"] = reported_ssi | (
+        (~reported_ssi) & (rng.random(n_persons) < ssi_non_reporter_rate)
+    )
+
+    # TANF
+    tanf_rate = load_take_up_rate("tanf", self.time_period)
+    rng = seeded_rng("takes_up_tanf_if_eligible")
+    data["takes_up_tanf_if_eligible"] = rng.random(n_spm_units) < tanf_rate
+
+    # WIC: resolve draws to bools using category-specific rates
+    wic_categories = baseline.calculate("wic_category_str").values
+    wic_takeup_rates = load_take_up_rate("wic_takeup", self.time_period)
+    wic_takeup_rate_by_person = np.array(
+        [wic_takeup_rates.get(c, 0) for c in wic_categories]
+    )
+    rng = seeded_rng("would_claim_wic")
+    data["would_claim_wic"] = rng.random(n_persons) < wic_takeup_rate_by_person
+
+    # WIC nutritional risk — fully resolved
+    wic_risk_rates = load_take_up_rate("wic_nutritional_risk", self.time_period)
+    wic_risk_rate_by_person = np.array(
+        [wic_risk_rates.get(c, 0) for c in wic_categories]
+    )
+    receives_wic = baseline.calculate("receives_wic").values
+    rng = seeded_rng("is_wic_at_nutritional_risk")
+    imputed_risk = rng.random(n_persons) < wic_risk_rate_by_person
+    data["is_wic_at_nutritional_risk"] = receives_wic | imputed_risk
+
+    # Pregnancy: stochastically assign is_pregnant to women 15-44
+    # using CDC/Census-derived state-level pregnancy rates.
+    # CPS does not ask about pregnancy; calibration will fine-tune.
+    from policyengine_us_data.db.etl_pregnancy import (
+        get_state_pregnancy_rates,
+    )
+
+    pregnancy_rates = get_state_pregnancy_rates()
+    national_rate = 0.041  # fallback
+    pregnancy_rate_by_person = np.array(
+        [pregnancy_rates.get(s, national_rate) for s in person_states]
+    )
+    ages = data["age"]
+    is_female = data["is_female"]
+    is_eligible = is_female & (ages >= 15) & (ages <= 44)
+    rng = seeded_rng("is_pregnant")
+    data["is_pregnant"] = is_eligible & (
+        rng.random(n_persons) < pregnancy_rate_by_person
+    )
+
+    # Voluntary tax filing: some people file even when not required and not
+    # seeking a refund. EITC take-up already captures refund-seeking behavior
+    # (if you take up EITC, you file). This variable captures people who file
+    # for other reasons: state requirements, documentation, habit.
+    # ~5% of tax units who don't take up EITC still file voluntarily.
+    voluntary_filing_rate = 0.05
+    rng = seeded_rng("would_file_taxes_voluntarily")
+    data["would_file_taxes_voluntarily"] = ~data["takes_up_eitc"] & (
+        rng.random(n_tax_units) < voluntary_filing_rate
+    )
 
     self.save_dataset(data)
 
@@ -234,12 +347,8 @@ def uprate_cps_data(data, from_period, to_period):
     uprating = create_policyengine_uprating_factors_table()
     for variable in uprating.index.unique():
         if variable in data:
-            current_index = uprating[uprating.index == variable][
-                to_period
-            ].values[0]
-            start_index = uprating[uprating.index == variable][
-                from_period
-            ].values[0]
+            current_index = uprating[uprating.index == variable][to_period].values[0]
+            start_index = uprating[uprating.index == variable][from_period].values[0]
             growth = current_index / start_index
             data[variable] = data[variable] * growth
 
@@ -281,9 +390,7 @@ def add_id_variables(
 
     # Marital units
 
-    marital_unit_id = person.PH_SEQ * 1e6 + np.maximum(
-        person.A_LINENO, person.A_SPOUSE
-    )
+    marital_unit_id = person.PH_SEQ * 1e6 + np.maximum(person.A_LINENO, person.A_SPOUSE)
 
     # marital_unit_id is not the household ID, zero padded and followed
     # by the index within household (of each person, or their spouse if
@@ -323,9 +430,7 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     # "Is...blind or does...have serious difficulty seeing even when Wearing
     #  glasses?" 1 -> Yes
     cps["is_blind"] = person.PEDISEYE == 1
-    DISABILITY_FLAGS = [
-        "PEDIS" + i for i in ["DRS", "EAR", "EYE", "OUT", "PHY", "REM"]
-    ]
+    DISABILITY_FLAGS = ["PEDIS" + i for i in ["DRS", "EAR", "EYE", "OUT", "PHY", "REM"]]
     cps["is_disabled"] = (person[DISABILITY_FLAGS] == 1).any(axis=1)
 
     def children_per_parent(col: str) -> pd.DataFrame:
@@ -347,9 +452,7 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
 
     # Aggregate to parent.
     res = (
-        pd.concat(
-            [children_per_parent("PEPAR1"), children_per_parent("PEPAR2")]
-        )
+        pd.concat([children_per_parent("PEPAR1"), children_per_parent("PEPAR2")])
         .groupby(["PH_SEQ", "A_LINENO"])
         .children.sum()
         .reset_index()
@@ -375,9 +478,7 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     add_overtime_occupation(cps, person)
 
 
-def add_personal_income_variables(
-    cps: h5py.File, person: DataFrame, year: int
-):
+def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     """Add income variables.
 
     Args:
@@ -400,48 +501,86 @@ def add_personal_income_variables(
     # Assign CPS variables.
     cps["employment_income"] = person.WSAL_VAL
 
-    cps["weekly_hours_worked"] = person.HRSWK * person.WKSWORK / 52
-    cps["hours_worked_last_week"] = person.A_HRS1 * person.WKSWORK / 52
+    cps["weekly_hours_worked"] = person.HRSWK
+    cps["hours_worked_last_week"] = person.A_HRS1
 
-    cps["taxable_interest_income"] = person.INT_VAL * (
-        p["taxable_interest_fraction"]
-    )
+    cps["taxable_interest_income"] = person.INT_VAL * (p["taxable_interest_fraction"])
     cps["tax_exempt_interest_income"] = person.INT_VAL * (
         1 - p["taxable_interest_fraction"]
     )
     cps["self_employment_income"] = person.SEMP_VAL
     cps["farm_income"] = person.FRSE_VAL
-    cps["qualified_dividend_income"] = person.DIV_VAL * (
-        p["qualified_dividend_fraction"]
+    cps["qualified_dividend_income"] = (
+        person.DIV_VAL * (p["qualified_dividend_fraction"])
     )
     cps["non_qualified_dividend_income"] = person.DIV_VAL * (
         1 - p["qualified_dividend_fraction"]
     )
     cps["rental_income"] = person.RNT_VAL
-    # Assign Social Security retirement benefits if at least 62.
+
+    # Classify Social Security income using CPS ASEC reason codes
+    # (RESNSS1 and RESNSS2). Reason code values:
+    #   1 = Retired
+    #   2 = Disabled (adult or child)
+    #   3 = Widowed
+    #   4 = Spouse
+    #   5 = Surviving child
+    #   6 = Dependent child
+    #   7 = On behalf of surviving/dependent/disabled child(ren)
+    #   8 = Other
+    is_retirement = (person.RESNSS1 == 1) | (person.RESNSS2 == 1)
+    is_disability = (person.RESNSS1 == 2) | (person.RESNSS2 == 2)
+    is_survivor = np.isin(person.RESNSS1, [3, 5]) | np.isin(person.RESNSS2, [3, 5])
+    is_dependent = np.isin(person.RESNSS1, [4, 6, 7]) | np.isin(
+        person.RESNSS2, [4, 6, 7]
+    )
+
+    # Primary classification: assign full SS_VAL to the highest-
+    # priority category when someone has multiple source codes.
+    cps["social_security_retirement"] = np.where(is_retirement, person.SS_VAL, 0)
+    cps["social_security_disability"] = np.where(
+        is_disability & ~is_retirement, person.SS_VAL, 0
+    )
+    cps["social_security_survivors"] = np.where(
+        is_survivor & ~is_retirement & ~is_disability,
+        person.SS_VAL,
+        0,
+    )
+    cps["social_security_dependents"] = np.where(
+        is_dependent & ~is_retirement & ~is_disability & ~is_survivor,
+        person.SS_VAL,
+        0,
+    )
+
+    # Fallback for records with SS income but no informative source
+    # code: use the age-62 heuristic (retirement vs. disability).
     MINIMUM_RETIREMENT_AGE = 62
-    cps["social_security_retirement"] = np.where(
-        person.A_AGE >= MINIMUM_RETIREMENT_AGE, person.SS_VAL, 0
+    unclassified = (
+        (person.SS_VAL > 0)
+        & ~is_retirement
+        & ~is_disability
+        & ~is_survivor
+        & ~is_dependent
     )
-    # Otherwise assign them to Social Security disability benefits.
-    cps["social_security_disability"] = (
-        person.SS_VAL - cps["social_security_retirement"]
+    cps["social_security_retirement"] += np.where(
+        unclassified & (person.A_AGE >= MINIMUM_RETIREMENT_AGE),
+        person.SS_VAL,
+        0,
     )
-    # Provide placeholders for other Social Security inputs to avoid creating
-    # NaNs as they're uprated.
-    cps["social_security_dependents"] = np.zeros_like(
-        cps["social_security_retirement"]
-    )
-    cps["social_security_survivors"] = np.zeros_like(
-        cps["social_security_retirement"]
+    cps["social_security_disability"] += np.where(
+        unclassified & (person.A_AGE < MINIMUM_RETIREMENT_AGE),
+        person.SS_VAL,
+        0,
     )
     cps["unemployment_compensation"] = person.UC_VAL
+    # Weeks looking for work during the year (Census variable LKWEEKS)
+    # LKWEEKS: -1 = NIU (Not In Universe), 0 = not looking, 1-52 = weeks
+    weeks_raw = person.LKWEEKS
+    cps["weeks_unemployed"] = np.where(weeks_raw == -1, 0, weeks_raw)
     # Add pensions and annuities.
     cps_pensions = person.PNSN_VAL + person.ANN_VAL
     # Assume a constant fraction of pension income is taxable.
-    cps["taxable_private_pension_income"] = (
-        cps_pensions * p["taxable_pension_fraction"]
-    )
+    cps["taxable_private_pension_income"] = cps_pensions * p["taxable_pension_fraction"]
     cps["tax_exempt_private_pension_income"] = cps_pensions * (
         1 - p["taxable_pension_fraction"]
     )
@@ -465,18 +604,11 @@ def add_personal_income_variables(
     for source_with_taxable_fraction in ["401k", "403b", "sep"]:
         cps[f"taxable_{source_with_taxable_fraction}_distributions"] = (
             cps[f"{source_with_taxable_fraction}_distributions"]
-            * p[
-                f"taxable_{source_with_taxable_fraction}_distribution_fraction"
-            ]
+            * p[f"taxable_{source_with_taxable_fraction}_distribution_fraction"]
         )
         cps[f"tax_exempt_{source_with_taxable_fraction}_distributions"] = cps[
             f"{source_with_taxable_fraction}_distributions"
-        ] * (
-            1
-            - p[
-                f"taxable_{source_with_taxable_fraction}_distribution_fraction"
-            ]
-        )
+        ] * (1 - p[f"taxable_{source_with_taxable_fraction}_distribution_fraction"])
         del cps[f"{source_with_taxable_fraction}_distributions"]
 
     # Assume all regular IRA distributions are taxable,
@@ -493,74 +625,78 @@ def add_personal_income_variables(
     # They could also include General Assistance.
     cps["tanf_reported"] = person.PAW_VAL
     cps["ssi_reported"] = person.SSI_VAL
-    # Assume all retirement contributions are traditional 401(k) for now.
-    # Procedure for allocating retirement contributions:
-    # 1) If they report any self-employment income, allocate entirely to
-    #    self-employed pension contributions.
-    # 2) If they report any wage and salary income, allocate in this order:
-    #    a) Traditional 401(k) contributions up to to limit
-    #    b) Roth 401(k) contributions up to the limit
-    #    c) IRA contributions up to the limit, split according to administrative fractions
-    #    d) Other retirement contributions
-    # Disregard reported pension contributions from people who report neither wage and salary
-    # nor self-employment income.
-    # Assume no 403(b) or 457 contributions for now.
-    LIMIT_401K_2022 = 20_500
-    LIMIT_401K_CATCH_UP_2022 = 6_500
-    LIMIT_IRA_2022 = 6_000
-    LIMIT_IRA_CATCH_UP_2022 = 1_000
-    CATCH_UP_AGE_2022 = 50
-    retirement_contributions = person.RETCB_VAL
-    cps["self_employed_pension_contributions"] = np.where(
-        person.SEMP_VAL > 0, retirement_contributions, 0
+    # Allocate CPS RETCB_VAL (a single bundled retirement contribution
+    # total) into account-type-specific variables using a proportional
+    # split based on administrative data.
+    #
+    # RETCB_VAL does not distinguish account type (Census only asks
+    # "how much did you contribute to retirement accounts?").  The old
+    # sequential waterfall gave 401(k) first priority, which consumed
+    # nearly all of RETCB_VAL and left IRA contributions at $0.
+    #
+    # The proportional approach uses BEA/FRED and IRS SOI shares to
+    # split contributions into DC (401k) and IRA pools, then splits
+    # each pool into traditional/Roth using administrative fractions.
+    # See imputation_parameters.yaml for sources.
+    from policyengine_us_data.utils.retirement_limits import (
+        get_retirement_limits,
     )
-    remaining_retirement_contributions = np.maximum(
+
+    limits = get_retirement_limits(year)
+    LIMIT_401K = limits["401k"]
+    LIMIT_401K_CATCH_UP = limits["401k_catch_up"]
+    LIMIT_IRA = limits["ira"]
+    LIMIT_IRA_CATCH_UP = limits["ira_catch_up"]
+    CATCH_UP_AGE = 50
+    catch_up_eligible = person.A_AGE >= CATCH_UP_AGE
+    limit_401k = LIMIT_401K + catch_up_eligible * LIMIT_401K_CATCH_UP
+    limit_ira = LIMIT_IRA + catch_up_eligible * LIMIT_IRA_CATCH_UP
+
+    retirement_contributions = person.RETCB_VAL
+    has_wages = person.WSAL_VAL > 0
+    has_se = person.SEMP_VAL > 0
+    has_earned_income = has_wages | has_se
+
+    # 1) Self-employed pension: cap at min(25% of SE income, dollar
+    #    limit) so dual-income filers keep a remainder for 401(k)/IRA.
+    se_rate = p["se_pension_contribution_rate"]
+    se_dollar_cap = p["se_pension_contribution_dollar_limit"][year]
+    se_pension_cap = np.minimum(person.SEMP_VAL * se_rate, se_dollar_cap)
+    cps["self_employed_pension_contributions"] = np.where(
+        has_se,
+        np.minimum(retirement_contributions, se_pension_cap),
+        0,
+    )
+    remaining = np.maximum(
         retirement_contributions - cps["self_employed_pension_contributions"],
         0,
     )
-    # Compute the 401(k) limit for the person's age.
-    catch_up_eligible = person.A_AGE >= CATCH_UP_AGE_2022
-    limit_401k = LIMIT_401K_2022 + catch_up_eligible * LIMIT_401K_CATCH_UP_2022
-    limit_ira = LIMIT_IRA_2022 + catch_up_eligible * LIMIT_IRA_CATCH_UP_2022
-    cps["traditional_401k_contributions"] = np.where(
-        person.WSAL_VAL > 0,
-        np.minimum(remaining_retirement_contributions, limit_401k),
-        0,
-    )
-    remaining_retirement_contributions = np.maximum(
-        remaining_retirement_contributions
-        - cps["traditional_401k_contributions"],
-        0,
-    )
-    cps["roth_401k_contributions"] = np.where(
-        person.WSAL_VAL > 0,
-        np.minimum(remaining_retirement_contributions, limit_401k),
-        0,
-    )
-    remaining_retirement_contributions = np.maximum(
-        remaining_retirement_contributions - cps["roth_401k_contributions"],
-        0,
-    )
-    cps["traditional_ira_contributions"] = np.where(
-        person.WSAL_VAL > 0,
-        np.minimum(remaining_retirement_contributions, limit_ira),
-        0,
-    )
-    remaining_retirement_contributions = np.maximum(
-        remaining_retirement_contributions
-        - cps["traditional_ira_contributions"],
-        0,
-    )
-    roth_ira_limit = limit_ira - cps["traditional_ira_contributions"]
-    cps["roth_ira_contributions"] = np.where(
-        person.WSAL_VAL > 0,
-        np.minimum(remaining_retirement_contributions, roth_ira_limit),
-        0,
-    )
+
+    # 2) Split remainder into DC and IRA pools.
+    # DC (401k) requires an employer, so gated on has_wages.
+    # IRA is available to anyone with earned income (wages or SE).
+    dc_share = p["dc_share_of_retirement_contributions"]
+    roth_dc_share = p["roth_share_of_dc_contributions"]
+    trad_ira_share = p["traditional_share_of_ira_contributions"]
+
+    dc_pool = np.where(has_wages, remaining * dc_share, 0)
+    # IRA gets whatever isn't allocated to DC, for anyone with
+    # earned income (including SE-only filers).
+    ira_pool = np.where(has_earned_income, remaining - dc_pool, 0)
+
+    # DC pool: split into traditional/Roth 401(k), cap at combined
+    # 401(k) limit.
+    dc_capped = np.minimum(dc_pool, limit_401k)
+    cps["traditional_401k_contributions"] = dc_capped * (1 - roth_dc_share)
+    cps["roth_401k_contributions"] = dc_capped * roth_dc_share
+
+    # IRA pool: split into traditional/Roth IRA, cap at combined
+    # IRA limit.
+    ira_capped = np.minimum(ira_pool, limit_ira)
+    cps["traditional_ira_contributions"] = ira_capped * trad_ira_share
+    cps["roth_ira_contributions"] = ira_capped * (1 - trad_ira_share)
     # Allocate capital gains into long-term and short-term based on aggregate split.
-    cps["long_term_capital_gains"] = person.CAP_VAL * (
-        p["long_term_capgain_fraction"]
-    )
+    cps["long_term_capital_gains"] = person.CAP_VAL * (p["long_term_capgain_fraction"])
     cps["short_term_capital_gains"] = person.CAP_VAL * (
         1 - p["long_term_capgain_fraction"]
     )
@@ -588,10 +724,7 @@ def add_personal_income_variables(
 
     # Get QBI simulation parameters ---
     yamlfilename = (
-        files("policyengine_us_data")
-        / "datasets"
-        / "puf"
-        / "qbi_assumptions.yaml"
+        files("policyengine_us_data") / "datasets" / "puf" / "qbi_assumptions.yaml"
     )
     with open(yamlfilename, "r", encoding="utf-8") as yamlfile:
         p = yaml.safe_load(yamlfile)
@@ -602,7 +735,11 @@ def add_personal_income_variables(
         cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
 
 
-def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
+def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
+    from policyengine_us_data.utils.spm import (
+        calculate_spm_thresholds_with_geoadj,
+    )
+
     SPM_RENAMES = dict(
         spm_unit_total_income_reported="SPM_TOTVAL",
         snap_reported="SPM_SNAPSUB",
@@ -616,7 +753,6 @@ def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
         # State tax includes refundable credits.
         spm_unit_state_tax_reported="SPM_STTAX",
         spm_unit_capped_work_childcare_expenses="SPM_CAPWKCCXPNS",
-        spm_unit_spm_threshold="SPM_POVTHRESHOLD",
         spm_unit_net_income_reported="SPM_RESOURCES",
         spm_unit_pre_subsidy_childcare_expenses="SPM_CHILDCAREXPNS",
     )
@@ -625,9 +761,27 @@ def add_spm_variables(cps: h5py.File, spm_unit: DataFrame) -> None:
         if asec_variable in spm_unit.columns:
             cps[openfisca_variable] = spm_unit[asec_variable]
 
-    cps["reduced_price_school_meals_reported"] = (
-        cps["free_school_meals_reported"] * 0
+    # Calculate SPM thresholds using spm-calculator with Census-provided
+    # geographic adjustment factors (SPM_GEOADJ)
+    cps["spm_unit_spm_threshold"] = calculate_spm_thresholds_with_geoadj(
+        num_adults=spm_unit["SPM_NUMADULTS"].values,
+        num_children=spm_unit["SPM_NUMKIDS"].values,
+        tenure_codes=spm_unit["SPM_TENMORTSTATUS"].values,
+        geoadj=spm_unit["SPM_GEOADJ"].values,
+        year=self.time_period,
     )
+
+    if "SPM_TENMORTSTATUS" in spm_unit.columns:
+        tenure_map = {
+            1: "OWNER_WITH_MORTGAGE",
+            2: "OWNER_WITHOUT_MORTGAGE",
+            3: "RENTER",
+        }
+        cps["spm_unit_tenure_type"] = (
+            spm_unit.SPM_TENMORTSTATUS.map(tenure_map).fillna("RENTER").astype("S")
+        )
+
+    cps["reduced_price_school_meals_reported"] = cps["free_school_meals_reported"] * 0
 
 
 def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
@@ -761,9 +915,7 @@ def add_ssn_card_type(
             share_to_move = min(share_to_move, 1.0)  # Cap at 100%
         else:
             # Calculate how much to move to reach target (for EAD case)
-            needed_weighted = (
-                current_weighted - target_weighted
-            )  # Will be negative
+            needed_weighted = current_weighted - target_weighted  # Will be negative
             total_weight = np.sum(person_weights[eligible_ids])
             share_to_move = abs(needed_weighted) / total_weight
             share_to_move = min(share_to_move, 1.0)  # Cap at 100%
@@ -1007,9 +1159,7 @@ def add_ssn_card_type(
     )
 
     # CONDITION 10: Government Employees
-    is_government_worker = np.isin(
-        person.PEIO1COW, [1, 2, 3]
-    )  # Fed/state/local gov
+    is_government_worker = np.isin(person.PEIO1COW, [1, 2, 3])  # Fed/state/local gov
     is_military_occupation = person.A_MJOCC == 11  # Military occupation
     is_government_employee = is_government_worker | is_military_occupation
     condition_10_mask = potentially_undocumented & is_government_employee
@@ -1123,12 +1273,8 @@ def add_ssn_card_type(
     undocumented_students_mask = (
         (ssn_card_type == 0) & noncitizens & (person.A_HSCOL == 2)
     )
-    undocumented_workers_count = np.sum(
-        person_weights[undocumented_workers_mask]
-    )
-    undocumented_students_count = np.sum(
-        person_weights[undocumented_students_mask]
-    )
+    undocumented_workers_count = np.sum(person_weights[undocumented_workers_mask])
+    undocumented_students_count = np.sum(person_weights[undocumented_students_mask])
 
     after_conditions_code_0 = np.sum(person_weights[ssn_card_type == 0])
     print(f"After conditions - Code 0 people: {after_conditions_code_0:,.0f}")
@@ -1323,15 +1469,11 @@ def add_ssn_card_type(
                     f"Selected {len(selected_indices)} people from {len(mixed_household_candidates)} candidates in mixed households"
                 )
             else:
-                print(
-                    "No additional family members selected (target already reached)"
-                )
+                print("No additional family members selected (target already reached)")
         else:
             print("No mixed-status households found for family correlation")
     else:
-        print(
-            "No additional undocumented people needed - target already reached"
-        )
+        print("No additional undocumented people needed - target already reached")
 
     # Calculate the weighted impact
     code_0_after = np.sum(person_weights[ssn_card_type == 0])
@@ -1406,9 +1548,10 @@ def add_ssn_card_type(
     age_at_entry = np.maximum(0, person.A_AGE - years_in_us)
 
     # start every non-citizen as LPR so no UNSET survives
-    immigration_status = np.full(
-        len(person), "LEGAL_PERMANENT_RESIDENT", dtype="U32"
-    )
+    immigration_status = np.full(len(person), "LEGAL_PERMANENT_RESIDENT", dtype="U32")
+
+    # Set citizens (SSN card type 1) to CITIZEN status
+    immigration_status[ssn_card_type == 1] = "CITIZEN"
 
     # 1. Undocumented: SSN card type 0 who arrived 1982 or later
     arrived_before_1982 = np.isin(person.PEINUSYR, [1, 2, 3, 4, 5, 6, 7])
@@ -1453,13 +1596,12 @@ def add_ssn_card_type(
     immigration_status[recent_refugee_mask] = "REFUGEE"
 
     # 6. Temp non-qualified (Code 2 not caught by DACA rule)
-    mask = (ssn_card_type == 2) & (
-        immigration_status == "LEGAL_PERMANENT_RESIDENT"
-    )
+    mask = (ssn_card_type == 2) & (immigration_status == "LEGAL_PERMANENT_RESIDENT")
     immigration_status[mask] = "TPS"
 
     # Final write (all values now in ImmigrationStatus Enum)
-    cps["immigration_status"] = immigration_status.astype("S")
+    # Save as immigration_status_str since that's what PolicyEngine expects
+    cps["immigration_status_str"] = immigration_status.astype("S")
     # ============================================================================
     # CONVERT TO STRING LABELS AND STORE
     # ============================================================================
@@ -1470,9 +1612,7 @@ def add_ssn_card_type(
         2: "NON_CITIZEN_VALID_EAD",  # Non-citizens with work/study authorization
         3: "OTHER_NON_CITIZEN",  # Non-citizens with indicators of legal status
     }
-    ssn_card_type_str = (
-        pd.Series(ssn_card_type).map(code_to_str).astype("S").values
-    )
+    ssn_card_type_str = pd.Series(ssn_card_type).map(code_to_str).astype("S").values
     cps["ssn_card_type"] = ssn_card_type_str
 
     # Final population summary
@@ -1538,25 +1678,63 @@ def _update_documentation_with_numbers(log_df, docs_dir):
 
     # Define replacements based on our logging structure
     replacements = {
-        "- **Step 0 - Initial**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **Step 0 - Initial**: Code 0 people = {data_map.get(('Step 0 - Initial', 'Code 0 people'), 0):,.0f}",
-        "- **Step 1 - Citizens**: Moved to Code 1 = *[Run cps.py to populate]*": lambda: f"- **Step 1 - Citizens**: Moved to Code 1 = {data_map.get(('Step 1 - Citizens', 'Moved to Code 1'), 0):,.0f}",
-        "- **ASEC Conditions**: Current Code 0 people = *[Run cps.py to populate]*": lambda: f"- **ASEC Conditions**: Current Code 0 people = {data_map.get(('ASEC Conditions', 'Current Code 0 people'), 0):,.0f}",
-        "- **After conditions**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After conditions**: Code 0 people = {data_map.get(('After conditions', 'Code 0 people'), 0):,.0f}",
-        "- **Before adjustment**: Undocumented workers = *[Run cps.py to populate]*": lambda: f"- **Before adjustment**: Undocumented workers = {data_map.get(('Before adjustment', 'Undocumented workers'), 0):,.0f}",
-        "- **Target**: Undocumented workers target = *[Run cps.py to populate]*": lambda: f"- **Target**: Undocumented workers target = {data_map.get(('Target', 'Undocumented workers target'), 0):,.0f}",
-        "- **Before adjustment**: Undocumented students = *[Run cps.py to populate]*": lambda: f"- **Before adjustment**: Undocumented students = {data_map.get(('Before adjustment', 'Undocumented students'), 0):,.0f}",
-        "- **Target**: Undocumented students target = *[Run cps.py to populate]*": lambda: f"- **Target**: Undocumented students target = {data_map.get(('Target', 'Undocumented students target'), 0):,.0f}",
-        "- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: f"- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = {data_map.get(('Step 3 - EAD workers', 'Moved from Code 0 to Code 2'), 0):,.0f}",
-        "- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: f"- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = {data_map.get(('Step 4 - EAD students', 'Moved from Code 0 to Code 2'), 0):,.0f}",
-        "- **After EAD assignment**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After EAD assignment**: Code 0 people = {data_map.get(('After EAD assignment', 'Code 0 people'), 0):,.0f}",
-        "- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = *[Run cps.py to populate]*": lambda: f"- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = {data_map.get(('Step 5 - Family correlation', 'Changed from Code 3 to Code 0'), 0):,.0f}",
-        "- **After family correlation**: Code 0 people = *[Run cps.py to populate]*": lambda: f"- **After family correlation**: Code 0 people = {data_map.get(('After family correlation', 'Code 0 people'), 0):,.0f}",
-        "- **Final**: Code 0 (NONE) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 0 (NONE) = {data_map.get(('Final', 'Code 0 (NONE)'), 0):,.0f}",
-        "- **Final**: Code 1 (CITIZEN) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 1 (CITIZEN) = {data_map.get(('Final', 'Code 1 (CITIZEN)'), 0):,.0f}",
-        "- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = {data_map.get(('Final', 'Code 2 (NON_CITIZEN_VALID_EAD)'), 0):,.0f}",
-        "- **Final**: Code 3 (OTHER_NON_CITIZEN) = *[Run cps.py to populate]*": lambda: f"- **Final**: Code 3 (OTHER_NON_CITIZEN) = {data_map.get(('Final', 'Code 3 (OTHER_NON_CITIZEN)'), 0):,.0f}",
-        "- **Final**: Total undocumented (Code 0) = *[Run cps.py to populate]*": lambda: f"- **Final**: Total undocumented (Code 0) = {data_map.get(('Final', 'Total undocumented (Code 0)'), 0):,.0f}",
-        "- **Final**: Undocumented target = *[Run cps.py to populate]*": lambda: f"- **Final**: Undocumented target = {data_map.get(('Final', 'Undocumented target'), 0):,.0f}",
+        "- **Step 0 - Initial**: Code 0 people = *[Run cps.py to populate]*": lambda: (
+            f"- **Step 0 - Initial**: Code 0 people = {data_map.get(('Step 0 - Initial', 'Code 0 people'), 0):,.0f}"
+        ),
+        "- **Step 1 - Citizens**: Moved to Code 1 = *[Run cps.py to populate]*": lambda: (
+            f"- **Step 1 - Citizens**: Moved to Code 1 = {data_map.get(('Step 1 - Citizens', 'Moved to Code 1'), 0):,.0f}"
+        ),
+        "- **ASEC Conditions**: Current Code 0 people = *[Run cps.py to populate]*": lambda: (
+            f"- **ASEC Conditions**: Current Code 0 people = {data_map.get(('ASEC Conditions', 'Current Code 0 people'), 0):,.0f}"
+        ),
+        "- **After conditions**: Code 0 people = *[Run cps.py to populate]*": lambda: (
+            f"- **After conditions**: Code 0 people = {data_map.get(('After conditions', 'Code 0 people'), 0):,.0f}"
+        ),
+        "- **Before adjustment**: Undocumented workers = *[Run cps.py to populate]*": lambda: (
+            f"- **Before adjustment**: Undocumented workers = {data_map.get(('Before adjustment', 'Undocumented workers'), 0):,.0f}"
+        ),
+        "- **Target**: Undocumented workers target = *[Run cps.py to populate]*": lambda: (
+            f"- **Target**: Undocumented workers target = {data_map.get(('Target', 'Undocumented workers target'), 0):,.0f}"
+        ),
+        "- **Before adjustment**: Undocumented students = *[Run cps.py to populate]*": lambda: (
+            f"- **Before adjustment**: Undocumented students = {data_map.get(('Before adjustment', 'Undocumented students'), 0):,.0f}"
+        ),
+        "- **Target**: Undocumented students target = *[Run cps.py to populate]*": lambda: (
+            f"- **Target**: Undocumented students target = {data_map.get(('Target', 'Undocumented students target'), 0):,.0f}"
+        ),
+        "- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: (
+            f"- **Step 3 - EAD workers**: Moved from Code 0 to Code 2 = {data_map.get(('Step 3 - EAD workers', 'Moved from Code 0 to Code 2'), 0):,.0f}"
+        ),
+        "- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = *[Run cps.py to populate]*": lambda: (
+            f"- **Step 4 - EAD students**: Moved from Code 0 to Code 2 = {data_map.get(('Step 4 - EAD students', 'Moved from Code 0 to Code 2'), 0):,.0f}"
+        ),
+        "- **After EAD assignment**: Code 0 people = *[Run cps.py to populate]*": lambda: (
+            f"- **After EAD assignment**: Code 0 people = {data_map.get(('After EAD assignment', 'Code 0 people'), 0):,.0f}"
+        ),
+        "- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = *[Run cps.py to populate]*": lambda: (
+            f"- **Step 5 - Family correlation**: Changed from Code 3 to Code 0 = {data_map.get(('Step 5 - Family correlation', 'Changed from Code 3 to Code 0'), 0):,.0f}"
+        ),
+        "- **After family correlation**: Code 0 people = *[Run cps.py to populate]*": lambda: (
+            f"- **After family correlation**: Code 0 people = {data_map.get(('After family correlation', 'Code 0 people'), 0):,.0f}"
+        ),
+        "- **Final**: Code 0 (NONE) = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Code 0 (NONE) = {data_map.get(('Final', 'Code 0 (NONE)'), 0):,.0f}"
+        ),
+        "- **Final**: Code 1 (CITIZEN) = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Code 1 (CITIZEN) = {data_map.get(('Final', 'Code 1 (CITIZEN)'), 0):,.0f}"
+        ),
+        "- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Code 2 (NON_CITIZEN_VALID_EAD) = {data_map.get(('Final', 'Code 2 (NON_CITIZEN_VALID_EAD)'), 0):,.0f}"
+        ),
+        "- **Final**: Code 3 (OTHER_NON_CITIZEN) = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Code 3 (OTHER_NON_CITIZEN) = {data_map.get(('Final', 'Code 3 (OTHER_NON_CITIZEN)'), 0):,.0f}"
+        ),
+        "- **Final**: Total undocumented (Code 0) = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Total undocumented (Code 0) = {data_map.get(('Final', 'Total undocumented (Code 0)'), 0):,.0f}"
+        ),
+        "- **Final**: Undocumented target = *[Run cps.py to populate]*": lambda: (
+            f"- **Final**: Undocumented target = {data_map.get(('Final', 'Undocumented target'), 0):,.0f}"
+        ),
     }
 
     # Apply replacements
@@ -1583,10 +1761,19 @@ def add_tips(self, cps: h5py.File):
             "employment_income",
             "age",
             "household_weight",
+            "is_female",
         ],
         2025,
     )
     cps = pd.DataFrame(cps)
+
+    # Get is_married from raw CPS data (A_MARITL codes: 1,2 = married)
+    # Note: is_married in policyengine-us is Family-level, but we need
+    # person-level for imputation models
+    raw_data = self.raw_cps(require=True).load()
+    raw_person = raw_data["person"]
+    cps["is_married"] = raw_person.A_MARITL.isin([1, 2]).values
+    raw_data.close()
 
     cps["is_under_18"] = cps.age < 18
     cps["is_under_6"] = cps.age < 6
@@ -1614,6 +1801,25 @@ def add_tips(self, cps: h5py.File):
         X_test=cps,
         mean_quantile=0.5,
     ).tip_income.values
+
+    # Impute liquid assets from SIPP (bank accounts, stocks, bonds)
+
+    from policyengine_us_data.datasets.sipp import get_asset_model
+
+    asset_model = get_asset_model()
+
+    asset_predictions = asset_model.predict(
+        X_test=cps,
+        mean_quantile=0.5,
+    )
+    cps["bank_account_assets"] = asset_predictions.bank_account_assets.values
+    cps["stock_assets"] = asset_predictions.stock_assets.values
+    cps["bond_assets"] = asset_predictions.bond_assets.values
+
+    # Drop temporary columns used only for imputation
+    # is_married is person-level here but policyengine-us defines it at Family
+    # level, so we must not save it
+    cps = cps.drop(columns=["is_married", "is_under_18", "is_under_6"], errors="ignore")
 
     self.save_dataset(cps)
 
@@ -1733,9 +1939,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         all_persons_data["is_female"] = (raw_person_data.A_SEX == 2).values
 
         # Add marital status (A_MARITL codes: 1,2 = married with spouse present/absent)
-        all_persons_data["is_married"] = raw_person_data.A_MARITL.isin(
-            [1, 2]
-        ).values
+        all_persons_data["is_married"] = raw_person_data.A_MARITL.isin([1, 2]).values
 
         # Define adults as age 18+
         all_persons_data["is_adult"] = all_persons_data["age"] >= 18
@@ -1754,8 +1958,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         # Identify couple households (households with exactly 2 married adults)
         married_adults_per_household = (
             all_persons_data[
-                (all_persons_data["is_adult"])
-                & (all_persons_data["is_married"])
+                (all_persons_data["is_adult"]) & (all_persons_data["is_married"])
             ]
             .groupby("person_household_id")
             .size()
@@ -1763,12 +1966,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
         couple_households = married_adults_per_household[
             (married_adults_per_household == 2)
-            & (
-                all_persons_data.groupby("person_household_id")[
-                    "n_adults"
-                ].first()
-                == 2
-            )
+            & (all_persons_data.groupby("person_household_id")["n_adults"].first() == 2)
         ].index
 
         all_persons_data["is_couple_household"] = all_persons_data[
@@ -1868,9 +2066,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     }
 
     # Apply the mapping to recode the race values
-    cps_data["cps_race"] = np.vectorize(CPS_RACE_MAPPING.get)(
-        cps_data["cps_race"]
-    )
+    cps_data["cps_race"] = np.vectorize(CPS_RACE_MAPPING.get)(cps_data["cps_race"])
 
     lengths = {k: len(v) for k, v in cps_data.items()}
     var_len = cps_data["person_household_id"].shape[0]
@@ -1902,9 +2098,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
     # Add is_married variable for household heads based on raw person data
     reference_persons = person_data[mask]
-    receiver_data["is_married"] = reference_persons.A_MARITL.isin(
-        [1, 2]
-    ).values
+    receiver_data["is_married"] = reference_persons.A_MARITL.isin([1, 2]).values
 
     # Impute auto loan balance from the SCF
     from policyengine_us_data.datasets.scf.scf import SCF_2022
@@ -1939,9 +2133,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     logging.getLogger("microimpute").setLevel(getattr(logging, log_level))
 
     qrf_model = QRF()
-    donor_data = donor_data.sample(frac=0.5, random_state=42).reset_index(
-        drop=True
-    )
+    donor_data = donor_data.sample(frac=0.5, random_state=42).reset_index(drop=True)
     fitted_model = qrf_model.fit(
         X_train=donor_data,
         predictors=PREDICTORS,
@@ -2020,114 +2212,15 @@ class CPS_2024(CPS):
     frac = 0.5
 
 
-class CPS_2025(CPS):
-    name = "cps_2025"
-    label = "CPS 2025 (2024-based)"
-    file_path = STORAGE_FOLDER / "cps_2025.h5"
-    time_period = 2025
-    frac = 1
-
-
-# The below datasets are a very naïve way of preventing downsampling in the
-# Pooled 3-Year CPS. They should be replaced by a more sustainable approach.
-# If these are still here on July 1, 2025, please open an issue and raise at standup.
-class CPS_2021_Full(CPS):
-    name = "cps_2021_full"
-    label = "CPS 2021 (full)"
-    raw_cps = CensusCPS_2021
-    previous_year_raw_cps = CensusCPS_2020
-    file_path = STORAGE_FOLDER / "cps_2021_full.h5"
-    time_period = 2021
-
-
-class CPS_2022_Full(CPS):
-    name = "cps_2022_full"
-    label = "CPS 2022 (full)"
-    raw_cps = CensusCPS_2022
-    previous_year_raw_cps = CensusCPS_2021
-    file_path = STORAGE_FOLDER / "cps_2022_full.h5"
-    time_period = 2022
-
-
-class CPS_2023_Full(CPS):
-    name = "cps_2023_full"
-    label = "CPS 2023 (full)"
-    raw_cps = CensusCPS_2023
-    previous_year_raw_cps = CensusCPS_2022
-    file_path = STORAGE_FOLDER / "cps_2023_full.h5"
-    time_period = 2023
-
-
-class PooledCPS(Dataset):
-    data_format = Dataset.ARRAYS
-    input_datasets: list
-    time_period: int
-
-    def generate(self):
-        data = [
-            input_dataset(require=True).load_dataset()
-            for input_dataset in self.input_datasets
-        ]
-        time_periods = [dataset.time_period for dataset in self.input_datasets]
-        data = [
-            uprate_cps_data(data, time_period, self.time_period)
-            for data, time_period in zip(data, time_periods)
-        ]
-
-        new_data = {}
-
-        for i in range(len(data)):
-            for variable in data[i]:
-                data_values = data[i][variable]
-                if variable not in new_data:
-                    new_data[variable] = data_values
-                elif "_id" in variable:
-                    previous_max = new_data[variable].max()
-                    new_data[variable] = np.concatenate(
-                        [
-                            new_data[variable],
-                            data_values + previous_max,
-                        ]
-                    )
-                else:
-                    new_data[variable] = np.concatenate(
-                        [
-                            new_data[variable],
-                            data_values,
-                        ]
-                    )
-
-        new_data["household_weight"] = new_data["household_weight"] / len(
-            self.input_datasets
-        )
-
-        self.save_dataset(new_data)
-
-
-class Pooled_3_Year_CPS_2023(PooledCPS):
-    label = "CPS 2023 (3-year pooled)"
-    name = "pooled_3_year_cps_2023"
-    file_path = STORAGE_FOLDER / "pooled_3_year_cps_2023.h5"
-    input_datasets = [
-        CPS_2021_Full,
-        CPS_2022_Full,
-        CPS_2023_Full,
-    ]
-    time_period = 2023
-    url = "hf://policyengine/policyengine-us-data/pooled_3_year_cps_2023.h5"
+class CPS_2024_Full(CPS):
+    name = "cps_2024_full"
+    label = "CPS 2024 (full)"
+    raw_cps = CensusCPS_2024
+    previous_year_raw_cps = CensusCPS_2023
+    file_path = STORAGE_FOLDER / "cps_2024_full.h5"
+    time_period = 2024
 
 
 if __name__ == "__main__":
-    if test_lite:
-        CPS_2024().generate()
-        CPS_2025().generate()
-    else:
-        CPS_2021().generate()
-        CPS_2022().generate()
-        CPS_2023().generate()
-        CPS_2024().generate()
-        CPS_2025().generate()
-        CPS_2021_Full().generate()
-        CPS_2022_Full().generate()
-        CPS_2023_Full().generate()
-        Pooled_3_Year_CPS_2023().generate()
+    CPS_2024_Full().generate()
+    CPS_2024().generate()

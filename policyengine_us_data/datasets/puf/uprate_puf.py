@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-
 ITMDED_GROW_RATE = 0.02  # annual growth rate in itemized deduction amounts
 
 USE_VARIABLE_SPECIFIC_POPULATION_GROWTH_DIVISORS = False

@@ -14,4 +14,15 @@ def test_small_ecps_loads(year: int):
         )
     )
 
+    # Basic load check
     assert not sim.calculate("household_net_income", 2025).isna().any()
+
+    # Employment income should be positive (not zero from missing vars)
+    emp_income = sim.calculate("employment_income", 2025).sum()
+    assert emp_income > 0, (
+        f"Small ECPS employment_income sum is {emp_income}, expected > 0."
+    )
+
+    # Should have a reasonable number of households
+    hh_count = len(sim.calculate("household_net_income", 2025))
+    assert hh_count > 100, f"Small ECPS has only {hh_count} households, expected > 100."

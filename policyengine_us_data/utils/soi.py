@@ -11,9 +11,7 @@ def pe_to_soi(pe_dataset, year):
     pe_sim.default_calculation_period = year
     df = pd.DataFrame()
 
-    pe = lambda variable: np.array(
-        pe_sim.calculate(variable, map_to="tax_unit")
-    )
+    pe = lambda variable: np.array(pe_sim.calculate(variable, map_to="tax_unit"))
 
     df["adjusted_gross_income"] = pe("adjusted_gross_income")
     df["exemption"] = pe("exemptions")
@@ -51,12 +49,8 @@ def pe_to_soi(pe_dataset, year):
     df["total_pension_income"] = pe("pension_income")
     df["taxable_pension_income"] = pe("taxable_pension_income")
     df["qualified_dividends"] = pe("qualified_dividend_income")
-    df["rent_and_royalty_net_income"] = pe("rental_income") * (
-        pe("rental_income") > 0
-    )
-    df["rent_and_royalty_net_losses"] = -pe("rental_income") * (
-        pe("rental_income") < 0
-    )
+    df["rent_and_royalty_net_income"] = pe("rental_income") * (pe("rental_income") > 0)
+    df["rent_and_royalty_net_losses"] = -pe("rental_income") * (pe("rental_income") < 0)
     df["total_social_security"] = pe("social_security")
     df["taxable_social_security"] = pe("taxable_social_security")
     df["income_tax_before_credits"] = pe("income_tax_before_credits")
@@ -170,14 +164,14 @@ def get_soi(year: int) -> pd.DataFrame:
     }
     soi = pd.read_csv(CALIBRATION_FOLDER / "soi_targets.csv")
     soi = soi[soi.Year == soi.Year.max()]
+    soi["Value"] = soi["Value"].astype(float)
 
     uprating_factors = {}
     for variable in uprating_map:
         pe_name = uprating_map.get(variable)
         if pe_name in uprating.index:
             uprating_factors[variable] = (
-                uprating.loc[pe_name, year]
-                / uprating.loc[pe_name, soi.Year.max()]
+                uprating.loc[pe_name, year] / uprating.loc[pe_name, soi.Year.max()]
             )
         else:
             uprating_factors[variable] = (
@@ -218,9 +212,7 @@ def compare_soi_replication_to_soi(df, soi):
         elif fs == "Head of Household":
             subset = subset[subset.filing_status == "HEAD_OF_HOUSEHOLD"]
         elif fs == "Married Filing Jointly/Surviving Spouse":
-            subset = subset[
-                subset.filing_status.isin(["JOINT", "SURVIVING_SPOUSE"])
-            ]
+            subset = subset[subset.filing_status.isin(["JOINT", "SURVIVING_SPOUSE"])]
         elif fs == "Married Filing Separately":
             subset = subset[subset.filing_status == "SEPARATE"]
 
@@ -258,17 +250,13 @@ def compare_soi_replication_to_soi(df, soi):
         }
     )
 
-    soi_replication["Error"] = (
-        soi_replication["Value"] - soi_replication["SOI Value"]
-    )
+    soi_replication["Error"] = soi_replication["Value"] - soi_replication["SOI Value"]
     soi_replication["Absolute error"] = soi_replication["Error"].abs()
     soi_replication["Relative error"] = (
         (soi_replication["Error"] / soi_replication["SOI Value"])
         .replace([np.inf, -np.inf], np.nan)
         .fillna(0)
     )
-    soi_replication["Absolute relative error"] = soi_replication[
-        "Relative error"
-    ].abs()
+    soi_replication["Absolute relative error"] = soi_replication["Relative error"].abs()
 
     return soi_replication

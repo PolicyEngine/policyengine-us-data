@@ -27,3 +27,9 @@ download(
     local_folder=FOLDER,
     version=None,
 )
+download(
+    repo="policyengine/policyengine-us-data",
+    repo_filename="calibration/policy_data.db",
+    local_folder=FOLDER,
+    version=None,
+)

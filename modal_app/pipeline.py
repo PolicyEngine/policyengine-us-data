@@ -52,8 +52,12 @@ app = modal.App("policyengine-us-data-pipeline")
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
-pipeline_volume = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
-staging_volume = modal.Volume.from_name("local-area-staging", create_if_missing=True)
+pipeline_volume = modal.Volume.from_name(
+    "pipeline-artifacts", create_if_missing=True
+)
+staging_volume = modal.Volume.from_name(
+    "local-area-staging", create_if_missing=True
+)
 
 image = (
     modal.Image.debian_slim(python_version="3.13")
@@ -126,7 +130,9 @@ def read_run_meta(
     vol.reload()
     meta_path = Path(RUNS_DIR) / run_id / "meta.json"
     if not meta_path.exists():
-        raise FileNotFoundError(f"No metadata found for run {run_id} at {meta_path}")
+        raise FileNotFoundError(
+            f"No metadata found for run {run_id} at {meta_path}"
+        )
     with open(meta_path) as f:
         return RunMetadata.from_dict(json.load(f))
 
@@ -144,7 +150,9 @@ def get_pinned_sha(branch: str) -> str:
         text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"Failed to get SHA for branch {branch}: {result.stderr}")
+        raise RuntimeError(
+            f"Failed to get SHA for branch {branch}: {result.stderr}"
+        )
     line = result.stdout.strip()
     if not line:
         raise RuntimeError(f"Branch {branch} not found in remote")
@@ -409,7 +417,8 @@ def upload_run_diagnostics(
     import json as _json
 
     file_entries = [
-        (str(f), f"calibration/runs/{run_id}/diagnostics/{f.name}") for f in files
+        (str(f), f"calibration/runs/{run_id}/diagnostics/{f.name}")
+        for f in files
     ]
     entries_json = _json.dumps(file_entries)
 
@@ -448,6 +457,148 @@ for local_path, repo_path in entries:
     if result.returncode != 0:
         raise RuntimeError(f"Diagnostics upload failed: {result.stderr}")
     print(f"  {result.stdout.strip()}")
+
+
+def _write_validation_diagnostics(
+    run_id: str,
+    regional_result,
+    national_result,
+    meta: RunMetadata,
+    vol: modal.Volume,
+) -> None:
+    """Aggregate validation rows into a diagnostics CSV.
+
+    Extracts validation_rows from coordinate_publish and
+    national_validation from coordinate_national_publish,
+    writes them to runs/{run_id}/diagnostics/validation_results.csv,
+    and records a summary in meta.json.
+    """
+    import csv
+
+    validation_rows = []
+
+    # Extract regional validation rows
+    if isinstance(regional_result, dict):
+        v_rows = regional_result.get("validation_rows", [])
+        if v_rows:
+            validation_rows.extend(v_rows)
+            print(f"  Collected {len(v_rows)} regional " f"validation rows")
+
+    # Extract national validation output
+    national_output = ""
+    if isinstance(national_result, dict):
+        national_output = national_result.get("national_validation", "")
+        if national_output:
+            print("  National validation output captured")
+
+    if not validation_rows and not national_output:
+        print("  No validation data to write")
+        return
+
+    diag_dir = Path(RUNS_DIR) / run_id / "diagnostics"
+    diag_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write regional validation CSV
+    if validation_rows:
+        csv_columns = [
+            "area_type",
+            "area_id",
+            "district",
+            "variable",
+            "target_name",
+            "period",
+            "target_value",
+            "sim_value",
+            "error",
+            "rel_error",
+            "abs_error",
+            "rel_abs_error",
+            "sanity_check",
+            "sanity_reason",
+            "in_training",
+        ]
+        csv_path = diag_dir / "validation_results.csv"
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=csv_columns)
+            writer.writeheader()
+            for row in validation_rows:
+                writer.writerow({k: row.get(k, "") for k in csv_columns})
+        print(f"  Wrote {len(validation_rows)} rows to " f"{csv_path}")
+
+        # Compute summary
+        n_sanity_fail = sum(
+            1 for r in validation_rows if r.get("sanity_check") == "FAIL"
+        )
+        rae_vals = [
+            r["rel_abs_error"]
+            for r in validation_rows
+            if isinstance(r.get("rel_abs_error"), (int, float))
+            and r["rel_abs_error"] != float("inf")
+        ]
+        mean_rae = sum(rae_vals) / len(rae_vals) if rae_vals else 0.0
+
+        # Per-area summaries for worst areas
+        area_stats = {}
+        for r in validation_rows:
+            key = f"{r.get('area_type', '')}:{r.get('area_id', '')}"
+            if key not in area_stats:
+                area_stats[key] = {"rae_vals": [], "fails": 0}
+            if r.get("sanity_check") == "FAIL":
+                area_stats[key]["fails"] += 1
+            rae = r.get("rel_abs_error")
+            if isinstance(rae, (int, float)) and rae != float("inf"):
+                area_stats[key]["rae_vals"].append(rae)
+
+        worst_areas = sorted(
+            area_stats.items(),
+            key=lambda x: (
+                sum(x[1]["rae_vals"]) / len(x[1]["rae_vals"])
+                if x[1]["rae_vals"]
+                else 0
+            ),
+            reverse=True,
+        )[:5]
+
+        validation_summary = {
+            "total_targets": len(validation_rows),
+            "sanity_failures": n_sanity_fail,
+            "mean_rel_abs_error": round(mean_rae, 4),
+            "worst_areas": [
+                {
+                    "area": k,
+                    "mean_rae": round(
+                        (
+                            sum(v["rae_vals"]) / len(v["rae_vals"])
+                            if v["rae_vals"]
+                            else 0
+                        ),
+                        4,
+                    ),
+                    "sanity_fails": v["fails"],
+                }
+                for k, v in worst_areas
+            ],
+        }
+
+        print(
+            f"  Validation summary: "
+            f"{len(validation_rows)} targets, "
+            f"{n_sanity_fail} sanity failures, "
+            f"mean RAE={mean_rae:.4f}"
+        )
+
+        # Record in meta.json
+        meta.step_timings["validation"] = validation_summary
+        write_run_meta(meta, vol)
+
+    # Write national validation output
+    if national_output:
+        nat_path = diag_dir / "national_validation.txt"
+        with open(nat_path, "w") as f:
+            f.write(national_output)
+        print(f"  Wrote national validation to {nat_path}")
+
+    vol.commit()
 
 
 # ── Orchestrator ─────────────────────────────────────────────────
@@ -549,9 +700,12 @@ def run_pipeline(
         print(f"  GPU:     {national_gpu} (national)")
     print(f"  Epochs:  {epochs}")
     print(f"  Workers: {num_workers}")
+    print(f"  Clones:  {n_clones}")
     if resume_run_id:
         completed = [
-            s for s, t in meta.step_timings.items() if t.get("status") == "completed"
+            s
+            for s, t in meta.step_timings.items()
+            if t.get("status") == "completed"
         ]
         print(f"  Resume:  skipping {completed}")
     print("=" * 60)
@@ -605,7 +759,9 @@ def run_pipeline(
                 step_start,
                 pipeline_volume,
             )
-            print(f"  Completed in {meta.step_timings['build_package']['duration_s']}s")
+            print(
+                f"  Completed in {meta.step_timings['build_package']['duration_s']}s"
+            )
         else:
             print("\n[Step 2/5] Build package (skipped - completed)")
 
@@ -695,7 +851,9 @@ def run_pipeline(
                 step_start,
                 pipeline_volume,
             )
-            print(f"  Completed in {meta.step_timings['fit_weights']['duration_s']}s")
+            print(
+                f"  Completed in {meta.step_timings['fit_weights']['duration_s']}s"
+            )
         else:
             print("\n[Step 3/5] Fit weights (skipped - completed)")
 
@@ -719,6 +877,7 @@ def run_pipeline(
                 num_workers=num_workers,
                 skip_upload=False,
                 n_clones=n_clones,
+                validate=True,
             )
 
             national_h5_handle = None
@@ -727,6 +886,7 @@ def run_pipeline(
                 national_h5_handle = coordinate_national_publish.spawn(
                     branch=branch,
                     n_clones=n_clones,
+                    validate=True,
                 )
 
             # While H5 builds run, stage base datasets
@@ -742,12 +902,32 @@ def run_pipeline(
             # Now wait for H5 builds to finish
             print("  Waiting for regional H5 build...")
             regional_h5_result = regional_h5_handle.get()
-            print(f"  Regional H5: {regional_h5_result}")
+            regional_msg = (
+                regional_h5_result.get("message", regional_h5_result)
+                if isinstance(regional_h5_result, dict)
+                else regional_h5_result
+            )
+            print(f"  Regional H5: {regional_msg}")
 
+            national_h5_result = None
             if national_h5_handle is not None:
                 print("  Waiting for national H5 build...")
                 national_h5_result = national_h5_handle.get()
-                print(f"  National H5: {national_h5_result}")
+                national_msg = (
+                    national_h5_result.get("message", national_h5_result)
+                    if isinstance(national_h5_result, dict)
+                    else national_h5_result
+                )
+                print(f"  National H5: {national_msg}")
+
+            # ── Aggregate validation results ──
+            _write_validation_diagnostics(
+                run_id=run_id,
+                regional_result=regional_h5_result,
+                national_result=national_h5_result,
+                meta=meta,
+                vol=pipeline_volume,
+            )
 
             _record_step(
                 meta,
@@ -1097,4 +1277,6 @@ def main(
         print(result)
 
     else:
-        raise ValueError(f"Unknown action: {action}. Use: run, status, promote")
+        raise ValueError(
+            f"Unknown action: {action}. Use: run, status, promote"
+        )

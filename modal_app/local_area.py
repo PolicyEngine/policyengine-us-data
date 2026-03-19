@@ -117,7 +117,9 @@ def validate_artifacts(
 
     artifacts = config.get("artifacts", {})
     if not artifacts:
-        print("WARNING: No artifacts section in run config, skipping validation")
+        print(
+            "WARNING: No artifacts section in run config, skipping validation"
+        )
         return
 
     for filename, expected_hash in artifacts.items():
@@ -139,7 +141,9 @@ def validate_artifacts(
                 f"  Actual:   {actual}"
             )
 
-    print(f"Validated {len(artifacts)} artifact(s) against run config checksums")
+    print(
+        f"Validated {len(artifacts)} artifact(s) against run config checksums"
+    )
 
 
 def get_version() -> str:
@@ -218,22 +222,29 @@ def run_phase(
     version: str,
     calibration_inputs: Dict[str, str],
     version_dir: Path,
+    validate: bool = True,
 ) -> tuple:
     """Run a single build phase, spawning workers and collecting results.
 
     Returns:
-        A tuple of (volume_completed, phase_errors) where phase_errors
-        is a list of error dicts from workers and crashes.
+        A tuple of (volume_completed, phase_errors, validation_rows)
+        where phase_errors is a list of error dicts from workers
+        and crashes, and validation_rows is a list of per-target
+        validation result dicts.
     """
-    work_chunks = partition_work(states, districts, cities, num_workers, completed)
+    work_chunks = partition_work(
+        states, districts, cities, num_workers, completed
+    )
     total_remaining = sum(len(c) for c in work_chunks)
 
     print(f"\n--- Phase: {phase_name} ---")
-    print(f"Remaining work: {total_remaining} items across {len(work_chunks)} workers")
+    print(
+        f"Remaining work: {total_remaining} items across {len(work_chunks)} workers"
+    )
 
     if total_remaining == 0:
         print(f"All {phase_name} items already built!")
-        return completed, []
+        return completed, [], []
 
     handles = []
     for i, chunk in enumerate(work_chunks):
@@ -243,12 +254,14 @@ def run_phase(
             version=version,
             work_items=chunk,
             calibration_inputs=calibration_inputs,
+            validate=validate,
         )
         handles.append(handle)
 
     print(f"Waiting for {phase_name} workers to complete...")
     all_results = []
     all_errors = []
+    all_validation_rows = []
 
     for i, handle in enumerate(handles):
         try:
@@ -260,6 +273,11 @@ def run_phase(
             )
             if result["errors"]:
                 all_errors.extend(result["errors"])
+            # Collect validation rows
+            v_rows = result.get("validation_rows", [])
+            if v_rows:
+                all_validation_rows.extend(v_rows)
+                print(f"  Worker {i}: {len(v_rows)} validation rows")
         except Exception as e:
             all_errors.append({"worker": i, "error": str(e)})
             print(f"  Worker {i}: CRASHED - {e}")
@@ -286,7 +304,7 @@ def run_phase(
         if len(all_errors) > 5:
             print(f"  ... and {len(all_errors) - 5} more")
 
-    return volume_completed, all_errors
+    return volume_completed, all_errors, all_validation_rows
 
 
 @app.function(
@@ -305,6 +323,7 @@ def build_areas_worker(
     version: str,
     work_items: List[Dict],
     calibration_inputs: Dict[str, str],
+    validate: bool = True,
 ) -> Dict:
     """
     Worker function that builds a subset of H5 files.
@@ -338,6 +357,22 @@ def build_areas_worker(
         worker_cmd.extend(["--n-clones", str(calibration_inputs["n_clones"])])
     if "seed" in calibration_inputs:
         worker_cmd.extend(["--seed", str(calibration_inputs["seed"])])
+    repo_root = Path("/root/policyengine-us-data")
+    cal_dir = repo_root / "policyengine_us_data" / "calibration"
+    worker_cmd.extend(
+        [
+            "--target-config",
+            str(cal_dir / "target_config.yaml"),
+        ]
+    )
+    worker_cmd.extend(
+        [
+            "--validation-config",
+            str(cal_dir / "target_config_full.yaml"),
+        ]
+    )
+    if not validate:
+        worker_cmd.append("--no-validate")
     result = subprocess.run(
         worker_cmd,
         capture_output=True,
@@ -414,7 +449,9 @@ print(json.dumps(manifest))
     print(f"  States: {manifest['totals']['states']}")
     print(f"  Districts: {manifest['totals']['districts']}")
     print(f"  Cities: {manifest['totals']['cities']}")
-    print(f"  Total size: {manifest['totals']['total_size_bytes'] / 1e9:.2f} GB")
+    print(
+        f"  Total size: {manifest['totals']['total_size_bytes'] / 1e9:.2f} GB"
+    )
 
     return manifest
 
@@ -573,9 +610,7 @@ print(f"Successfully published version {{version}}")
     if result.returncode != 0:
         raise RuntimeError(f"Promote failed: {result.stderr}")
 
-    return (
-        f"Successfully promoted version {version} with {len(manifest['files'])} files"
-    )
+    return f"Successfully promoted version {version} with {len(manifest['files'])} files"
 
 
 @app.function(
@@ -593,7 +628,8 @@ def coordinate_publish(
     num_workers: int = 8,
     skip_upload: bool = False,
     n_clones: int = 430,
-) -> str:
+    validate: bool = True,
+) -> Dict:
     """Coordinate the full publishing workflow."""
     setup_gcp_credentials()
     setup_repo(branch)
@@ -685,11 +721,13 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         version=version,
         calibration_inputs=calibration_inputs,
         version_dir=version_dir,
+        validate=validate,
     )
 
     accumulated_errors = []
+    accumulated_validation_rows = []
 
-    completed, phase_errors = run_phase(
+    completed, phase_errors, v_rows = run_phase(
         "States",
         states=states,
         districts=[],
@@ -698,8 +736,9 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         **phase_args,
     )
     accumulated_errors.extend(phase_errors)
+    accumulated_validation_rows.extend(v_rows)
 
-    completed, phase_errors = run_phase(
+    completed, phase_errors, v_rows = run_phase(
         "Districts",
         states=[],
         districts=districts,
@@ -708,8 +747,9 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         **phase_args,
     )
     accumulated_errors.extend(phase_errors)
+    accumulated_validation_rows.extend(v_rows)
 
-    completed, phase_errors = run_phase(
+    completed, phase_errors, v_rows = run_phase(
         "Cities",
         states=[],
         districts=[],
@@ -718,6 +758,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         **phase_args,
     )
     accumulated_errors.extend(phase_errors)
+    accumulated_validation_rows.extend(v_rows)
 
     # Fail if any workers crashed (not just missing files)
     if accumulated_errors:
@@ -740,7 +781,12 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
 
     if skip_upload:
         print("\nSkipping upload (--skip-upload flag set)")
-        return f"Build complete for version {version}. Upload skipped."
+        return {
+            "message": (
+                f"Build complete for version {version}. " f"Upload skipped."
+            ),
+            "validation_rows": accumulated_validation_rows,
+        }
 
     print("\nValidating staging...")
     manifest = validate_staging.remote(branch=branch, version=version)
@@ -753,10 +799,14 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
     )
 
     if actual_total < expected_total:
-        print(f"WARNING: Expected {expected_total} files, found {actual_total}")
+        print(
+            f"WARNING: Expected {expected_total} files, found {actual_total}"
+        )
 
     print("\nStarting upload to staging...")
-    result = upload_to_staging.remote(branch=branch, version=version, manifest=manifest)
+    result = upload_to_staging.remote(
+        branch=branch, version=version, manifest=manifest
+    )
     print(result)
 
     print("\n" + "=" * 60)
@@ -772,7 +822,10 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
     )
     print("=" * 60)
 
-    return result
+    return {
+        "message": result,
+        "validation_rows": accumulated_validation_rows,
+    }
 
 
 @app.local_entrypoint()
@@ -789,7 +842,10 @@ def main(
         skip_upload=skip_upload,
         n_clones=n_clones,
     )
-    print(result)
+    if isinstance(result, dict):
+        print(result.get("message", result))
+    else:
+        print(result)
 
 
 @app.function(
@@ -805,7 +861,8 @@ def main(
 def coordinate_national_publish(
     branch: str = "main",
     n_clones: int = 430,
-) -> str:
+    validate: bool = True,
+) -> Dict:
     """Build and upload a national US.h5 from national weights."""
     setup_gcp_credentials()
     setup_repo(branch)
@@ -853,6 +910,7 @@ def coordinate_national_publish(
         version=version,
         work_items=work_items,
         calibration_inputs=calibration_inputs,
+        validate=validate,
     )
 
     print(
@@ -878,7 +936,37 @@ def coordinate_national_publish(
             h.update(chunk)
     national_checksum = f"sha256:{h.hexdigest()}"
     national_size = national_h5.stat().st_size
-    print(f"National H5 checksum: {national_checksum} ({national_size:,} bytes)")
+    print(
+        f"National H5 checksum: {national_checksum} ({national_size:,} bytes)"
+    )
+
+    # ── National validation ──
+    national_validation_output = ""
+    if validate:
+        print("Running national H5 validation...")
+        val_result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "-m",
+                "policyengine_us_data.calibration.validate_national_h5",
+                "--h5-path",
+                str(national_h5),
+            ],
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+        )
+        national_validation_output = val_result.stdout
+        print(val_result.stdout)
+        if val_result.stderr:
+            print(val_result.stderr)
+        if val_result.returncode != 0:
+            print(
+                "WARNING: National validation returned "
+                f"non-zero exit code: {val_result.returncode}"
+            )
 
     print(f"Uploading {national_h5} to HF staging...")
     result = subprocess.run(
@@ -907,24 +995,34 @@ print("Done")
     # Verify the file still exists on the volume after upload
     staging_volume.reload()
     if not national_h5.exists():
-        raise RuntimeError("National H5 disappeared from staging volume after upload")
+        raise RuntimeError(
+            "National H5 disappeared from staging volume after upload"
+        )
     print(
         f"Post-upload verification passed: {national_h5} "
         f"(checksum: {national_checksum})"
     )
 
     print("National H5 staged. Run promote workflow to publish.")
-    return (
-        f"National US.h5 built and staged for version {version}. "
-        f"Run main_national_promote to publish."
-    )
+    return {
+        "message": (
+            f"National US.h5 built and staged for version "
+            f"{version}. Run main_national_promote to publish."
+        ),
+        "national_validation": national_validation_output,
+    }
 
 
 @app.local_entrypoint()
 def main_national(branch: str = "main", n_clones: int = 430):
     """Build and stage national US.h5."""
-    result = coordinate_national_publish.remote(branch=branch, n_clones=n_clones)
-    print(result)
+    result = coordinate_national_publish.remote(
+        branch=branch, n_clones=n_clones
+    )
+    if isinstance(result, dict):
+        print(result.get("message", result))
+    else:
+        print(result)
 
 
 @app.function(

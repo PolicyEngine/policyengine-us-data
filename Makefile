@@ -228,7 +228,7 @@ build-data-modal:
 	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload --skip-tests --skip-enhanced-cps
 
 pipeline:
-	modal run --detach modal_app/pipeline.py::main \
+	modal run --detach modal_app.pipeline::main \
 		--action run --branch $(BRANCH) --gpu $(GPU) \
 		--epochs $(EPOCHS) --national-gpu $(NATIONAL_GPU) \
 		--national-epochs $(NATIONAL_EPOCHS) \

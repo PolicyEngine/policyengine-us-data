@@ -188,7 +188,7 @@ def build_output_dataset(
         else f"{n_clones_total} clone rows"
     )
     print(f"\n{'=' * 60}")
-    print(f"Building {output_path.name} ({label}, {n_hh} households)")
+    print(f"Building {output_base.name} ({label}, {n_hh} households)")
     print(f"{'=' * 60}")
 
     # === Identify active clones ===

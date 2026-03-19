@@ -506,8 +506,8 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     )
     cps["self_employment_income"] = person.SEMP_VAL
     cps["farm_income"] = person.FRSE_VAL
-    cps["qualified_dividend_income"] = person.DIV_VAL * (
-        p["qualified_dividend_fraction"]
+    cps["qualified_dividend_income"] = (
+        person.DIV_VAL * (p["qualified_dividend_fraction"])
     )
     cps["non_qualified_dividend_income"] = person.DIV_VAL * (
         1 - p["qualified_dividend_fraction"]

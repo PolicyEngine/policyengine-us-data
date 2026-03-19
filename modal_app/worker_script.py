@@ -108,9 +108,9 @@ def _validate_h5_subprocess(
     if item_type == "city":
         # Match targets for any NYC CD
         nyc_cd_set = set(str(cd) for cd in cd_subset)
-        mask = (
-            validation_targets["geo_level"] == geo_level
-        ) & validation_targets["geographic_id"].astype(str).isin(nyc_cd_set)
+        mask = (validation_targets["geo_level"] == geo_level) & validation_targets[
+            "geographic_id"
+        ].astype(str).isin(nyc_cd_set)
     elif item_type == "national":
         mask = validation_targets["geo_level"] == geo_level
     else:
@@ -126,9 +126,7 @@ def _validate_h5_subprocess(
 
     # Filter constraints_map to relevant strata
     area_strata = area_targets["stratum_id"].unique().tolist()
-    area_constraints = {
-        int(s): constraints_map.get(int(s), []) for s in area_strata
-    }
+    area_constraints = {int(s): constraints_map.get(int(s), []) for s in area_strata}
 
     ctx = _mp.get_context("spawn")
     with ctx.Pool(1) as pool:
@@ -277,9 +275,7 @@ def main():
             inc_rules = val_cfg.get("include", [])
             if inc_rules:
                 inc_mask = _match_rules(validation_targets, inc_rules)
-                validation_targets = validation_targets[inc_mask].reset_index(
-                    drop=True
-                )
+                validation_targets = validation_targets[inc_mask].reset_index(drop=True)
 
         # Compute training mask from training config
         if args.target_config:
@@ -291,9 +287,7 @@ def main():
                     dtype=bool,
                 )
             else:
-                training_mask_full = np.ones(
-                    len(validation_targets), dtype=bool
-                )
+                training_mask_full = np.ones(len(validation_targets), dtype=bool)
         else:
             training_mask_full = np.ones(len(validation_targets), dtype=bool)
 
@@ -331,9 +325,7 @@ def main():
                 if state_fips is None:
                     raise ValueError(f"Unknown state code: {item_id}")
                 cd_subset = [
-                    cd
-                    for cd in cds_to_calibrate
-                    if int(cd) // 100 == state_fips
+                    cd for cd in cds_to_calibrate if int(cd) // 100 == state_fips
                 ]
                 if not cd_subset:
                     print(
@@ -461,12 +453,8 @@ def main():
                                 if item_type in ("state", "district")
                                 else None
                             ),
-                            candidate=(
-                                candidate if item_type == "district" else None
-                            ),
-                            cd_subset=(
-                                cd_subset if item_type == "city" else None
-                            ),
+                            candidate=(candidate if item_type == "district" else None),
+                            cd_subset=(cd_subset if item_type == "city" else None),
                             validation_targets=validation_targets,
                             training_mask_full=training_mask_full,
                             constraints_map=constraints_map,
@@ -476,9 +464,7 @@ def main():
                         results["validation_rows"].extend(v_rows)
                         key = f"{item_type}:{item_id}"
                         n_fail = sum(
-                            1
-                            for r in v_rows
-                            if r.get("sanity_check") == "FAIL"
+                            1 for r in v_rows if r.get("sanity_check") == "FAIL"
                         )
                         rae_vals = [
                             r["rel_abs_error"]
@@ -489,9 +475,7 @@ def main():
                             )
                             and r["rel_abs_error"] != float("inf")
                         ]
-                        mean_rae = (
-                            sum(rae_vals) / len(rae_vals) if rae_vals else 0.0
-                        )
+                        mean_rae = sum(rae_vals) / len(rae_vals) if rae_vals else 0.0
                         results["validation_summary"][key] = {
                             "n_targets": len(v_rows),
                             "n_sanity_fail": n_fail,
@@ -506,8 +490,7 @@ def main():
                         )
                     except Exception as ve:
                         print(
-                            f"  Validation failed for "
-                            f"{item_type}:{item_id}: {ve}",
+                            f"  Validation failed for {item_type}:{item_id}: {ve}",
                             file=sys.stderr,
                         )
 

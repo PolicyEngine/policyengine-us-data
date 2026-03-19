@@ -122,9 +122,7 @@ def validate_artifacts(
 
     artifacts = config.get("artifacts", {})
     if not artifacts:
-        print(
-            "WARNING: No artifacts section in run config, skipping validation"
-        )
+        print("WARNING: No artifacts section in run config, skipping validation")
         return
 
     remap = filename_remap or {}
@@ -148,9 +146,7 @@ def validate_artifacts(
                 f"  Actual:   {actual}"
             )
 
-    print(
-        f"Validated {len(artifacts)} artifact(s) against run config checksums"
-    )
+    print(f"Validated {len(artifacts)} artifact(s) against run config checksums")
 
 
 def get_version() -> str:
@@ -239,15 +235,11 @@ def run_phase(
         and crashes, and validation_rows is a list of per-target
         validation result dicts.
     """
-    work_chunks = partition_work(
-        states, districts, cities, num_workers, completed
-    )
+    work_chunks = partition_work(states, districts, cities, num_workers, completed)
     total_remaining = sum(len(c) for c in work_chunks)
 
     print(f"\n--- Phase: {phase_name} ---")
-    print(
-        f"Remaining work: {total_remaining} items across {len(work_chunks)} workers"
-    )
+    print(f"Remaining work: {total_remaining} items across {len(work_chunks)} workers")
 
     if total_remaining == 0:
         print(f"All {phase_name} items already built!")
@@ -456,9 +448,7 @@ print(json.dumps(manifest))
     print(f"  States: {manifest['totals']['states']}")
     print(f"  Districts: {manifest['totals']['districts']}")
     print(f"  Cities: {manifest['totals']['cities']}")
-    print(
-        f"  Total size: {manifest['totals']['total_size_bytes'] / 1e9:.2f} GB"
-    )
+    print(f"  Total size: {manifest['totals']['total_size_bytes'] / 1e9:.2f} GB")
 
     return manifest
 
@@ -617,7 +607,9 @@ print(f"Successfully published version {{version}}")
     if result.returncode != 0:
         raise RuntimeError(f"Promote failed: {result.stderr}")
 
-    return f"Successfully promoted version {version} with {len(manifest['files'])} files"
+    return (
+        f"Successfully promoted version {version} with {len(manifest['files'])} files"
+    )
 
 
 @app.function(
@@ -789,9 +781,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
     if skip_upload:
         print("\nSkipping upload (--skip-upload flag set)")
         return {
-            "message": (
-                f"Build complete for version {version}. " f"Upload skipped."
-            ),
+            "message": (f"Build complete for version {version}. Upload skipped."),
             "validation_rows": accumulated_validation_rows,
         }
 
@@ -806,14 +796,10 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
     )
 
     if actual_total < expected_total:
-        print(
-            f"WARNING: Expected {expected_total} files, found {actual_total}"
-        )
+        print(f"WARNING: Expected {expected_total} files, found {actual_total}")
 
     print("\nStarting upload to staging...")
-    result = upload_to_staging.remote(
-        branch=branch, version=version, manifest=manifest
-    )
+    result = upload_to_staging.remote(branch=branch, version=version, manifest=manifest)
     print(result)
 
     print("\n" + "=" * 60)
@@ -949,9 +935,7 @@ def coordinate_national_publish(
             h.update(chunk)
     national_checksum = f"sha256:{h.hexdigest()}"
     national_size = national_h5.stat().st_size
-    print(
-        f"National H5 checksum: {national_checksum} ({national_size:,} bytes)"
-    )
+    print(f"National H5 checksum: {national_checksum} ({national_size:,} bytes)")
 
     # ── National validation ──
     national_validation_output = ""
@@ -1008,9 +992,7 @@ print("Done")
     # Verify the file still exists on the volume after upload
     staging_volume.reload()
     if not national_h5.exists():
-        raise RuntimeError(
-            "National H5 disappeared from staging volume after upload"
-        )
+        raise RuntimeError("National H5 disappeared from staging volume after upload")
     print(
         f"Post-upload verification passed: {national_h5} "
         f"(checksum: {national_checksum})"
@@ -1029,9 +1011,7 @@ print("Done")
 @app.local_entrypoint()
 def main_national(branch: str = "main", n_clones: int = 430):
     """Build and stage national US.h5."""
-    result = coordinate_national_publish.remote(
-        branch=branch, n_clones=n_clones
-    )
+    result = coordinate_national_publish.remote(branch=branch, n_clones=n_clones)
     if isinstance(result, dict):
         print(result.get("message", result))
     else:

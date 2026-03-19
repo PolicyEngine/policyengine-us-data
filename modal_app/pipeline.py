@@ -18,7 +18,7 @@ changing, run individual steps manually instead.
 Usage:
     # Full pipeline run
     modal run --detach modal_app/pipeline.py::main \\
-        --action run --branch main --gpu A100-80GB --epochs 200
+        --action run --branch main --gpu T4 --epochs 200
 
     # Check status
     modal run modal_app/pipeline.py::main --action status
@@ -52,12 +52,8 @@ app = modal.App("policyengine-us-data-pipeline")
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
-pipeline_volume = modal.Volume.from_name(
-    "pipeline-artifacts", create_if_missing=True
-)
-staging_volume = modal.Volume.from_name(
-    "local-area-staging", create_if_missing=True
-)
+pipeline_volume = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
+staging_volume = modal.Volume.from_name("local-area-staging", create_if_missing=True)
 
 image = (
     modal.Image.debian_slim(python_version="3.13")
@@ -130,9 +126,7 @@ def read_run_meta(
     vol.reload()
     meta_path = Path(RUNS_DIR) / run_id / "meta.json"
     if not meta_path.exists():
-        raise FileNotFoundError(
-            f"No metadata found for run {run_id} at {meta_path}"
-        )
+        raise FileNotFoundError(f"No metadata found for run {run_id} at {meta_path}")
     with open(meta_path) as f:
         return RunMetadata.from_dict(json.load(f))
 
@@ -150,9 +144,7 @@ def get_pinned_sha(branch: str) -> str:
         text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"Failed to get SHA for branch {branch}: {result.stderr}"
-        )
+        raise RuntimeError(f"Failed to get SHA for branch {branch}: {result.stderr}")
     line = result.stdout.strip()
     if not line:
         raise RuntimeError(f"Branch {branch} not found in remote")
@@ -264,6 +256,15 @@ def _record_step(
 # app.include() merges functions from other apps into this one,
 # ensuring Modal mounts their files and registers their functions
 # (with their GPU/memory/volume configs) in the ephemeral run.
+#
+# Inside Modal containers the auto-mounted package root may not be
+# on sys.path when the module first loads; ensure it is importable.
+import sys
+from pathlib import Path as _Path
+
+_parent = str(_Path(__file__).resolve().parent.parent)
+if _parent not in sys.path:
+    sys.path.insert(0, _parent)
 
 from modal_app.data_build import app as _data_build_app
 from modal_app.data_build import build_datasets
@@ -418,8 +419,7 @@ def upload_run_diagnostics(
     import json as _json
 
     file_entries = [
-        (str(f), f"calibration/runs/{run_id}/diagnostics/{f.name}")
-        for f in files
+        (str(f), f"calibration/runs/{run_id}/diagnostics/{f.name}") for f in files
     ]
     entries_json = _json.dumps(file_entries)
 
@@ -484,7 +484,7 @@ def _write_validation_diagnostics(
         v_rows = regional_result.get("validation_rows", [])
         if v_rows:
             validation_rows.extend(v_rows)
-            print(f"  Collected {len(v_rows)} regional " f"validation rows")
+            print(f"  Collected {len(v_rows)} regional validation rows")
 
     # Extract national validation output
     national_output = ""
@@ -525,7 +525,7 @@ def _write_validation_diagnostics(
             writer.writeheader()
             for row in validation_rows:
                 writer.writerow({k: row.get(k, "") for k in csv_columns})
-        print(f"  Wrote {len(validation_rows)} rows to " f"{csv_path}")
+        print(f"  Wrote {len(validation_rows)} rows to {csv_path}")
 
         # Compute summary
         n_sanity_fail = sum(
@@ -554,9 +554,7 @@ def _write_validation_diagnostics(
         worst_areas = sorted(
             area_stats.items(),
             key=lambda x: (
-                sum(x[1]["rae_vals"]) / len(x[1]["rae_vals"])
-                if x[1]["rae_vals"]
-                else 0
+                sum(x[1]["rae_vals"]) / len(x[1]["rae_vals"]) if x[1]["rae_vals"] else 0
             ),
             reverse=True,
         )[:5]
@@ -619,10 +617,10 @@ def _write_validation_diagnostics(
 )
 def run_pipeline(
     branch: str = "main",
-    gpu: str = "A100-80GB",
+    gpu: str = "T4",
     epochs: int = 1000,
     national_gpu: str = "T4",
-    national_epochs: int = 1000,
+    national_epochs: int = 4000,
     num_workers: int = 8,
     n_clones: int = 430,
     skip_national: bool = False,
@@ -705,9 +703,7 @@ def run_pipeline(
     print(f"  Clones:  {n_clones}")
     if resume_run_id:
         completed = [
-            s
-            for s, t in meta.step_timings.items()
-            if t.get("status") == "completed"
+            s for s, t in meta.step_timings.items() if t.get("status") == "completed"
         ]
         print(f"  Resume:  skipping {completed}")
     print("=" * 60)
@@ -719,11 +715,11 @@ def run_pipeline(
             step_start = time.time()
 
             build_datasets.remote(
-                upload=False,
+                upload=True,
                 branch=branch,
                 sequential=False,
                 skip_tests=True,
-                skip_enhanced_cps=True,
+                skip_enhanced_cps=False,
             )
 
             # The build_datasets step produces files in its
@@ -761,9 +757,7 @@ def run_pipeline(
                 step_start,
                 pipeline_volume,
             )
-            print(
-                f"  Completed in {meta.step_timings['build_package']['duration_s']}s"
-            )
+            print(f"  Completed in {meta.step_timings['build_package']['duration_s']}s")
         else:
             print("\n[Step 2/5] Build package (skipped - completed)")
 
@@ -773,6 +767,7 @@ def run_pipeline(
             step_start = time.time()
 
             vol_path = "/pipeline/artifacts/calibration_package.pkl"
+            target_cfg = "policyengine_us_data/calibration/target_config.yaml"
 
             # Spawn regional fit
             regional_func = PACKAGE_GPU_FUNCTIONS[gpu]
@@ -781,6 +776,11 @@ def run_pipeline(
                 branch=branch,
                 epochs=epochs,
                 volume_package_path=vol_path,
+                target_config=target_cfg,
+                beta=0.65,
+                lambda_l0=1e-7,
+                lambda_l2=1e-8,
+                log_freq=500,
             )
 
             # Spawn national fit (if enabled)
@@ -796,7 +796,11 @@ def run_pipeline(
                     branch=branch,
                     epochs=national_epochs,
                     volume_package_path=vol_path,
-                    target_config=None,
+                    target_config=target_cfg,
+                    beta=0.65,
+                    lambda_l0=1e-4,
+                    lambda_l2=1e-12,
+                    log_freq=500,
                 )
 
             # Collect regional results
@@ -853,9 +857,7 @@ def run_pipeline(
                 step_start,
                 pipeline_volume,
             )
-            print(
-                f"  Completed in {meta.step_timings['fit_weights']['duration_s']}s"
-            )
+            print(f"  Completed in {meta.step_timings['fit_weights']['duration_s']}s")
         else:
             print("\n[Step 3/5] Fit weights (skipped - completed)")
 
@@ -1233,10 +1235,10 @@ def main(
     branch: str = "main",
     run_id: str = None,
     resume_run_id: str = None,
-    gpu: str = "A100-80GB",
+    gpu: str = "T4",
     epochs: int = 1000,
     national_gpu: str = "T4",
-    national_epochs: int = 1000,
+    national_epochs: int = 4000,
     num_workers: int = 8,
     n_clones: int = 430,
     skip_national: bool = False,
@@ -1279,6 +1281,4 @@ def main(
         print(result)
 
     else:
-        raise ValueError(
-            f"Unknown action: {action}. Use: run, status, promote"
-        )
+        raise ValueError(f"Unknown action: {action}. Use: run, status, promote")

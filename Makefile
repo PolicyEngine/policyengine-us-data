@@ -1,9 +1,9 @@
 .PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local
 
-GPU ?= A100-80GB
+GPU ?= T4
 EPOCHS ?= 1000
 NATIONAL_GPU ?= T4
-NATIONAL_EPOCHS ?= 1000
+NATIONAL_EPOCHS ?= 4000
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 NUM_WORKERS ?= 8
 N_CLONES ?= 430
@@ -176,12 +176,16 @@ build-matrices:
 calibrate-modal:
 	modal run --detach modal_app/remote_calibration_runner.py::main \
 		--branch $(BRANCH) --gpu $(GPU) --epochs $(EPOCHS) \
+		--beta 0.65 --lambda-l0 1e-7 --lambda-l2 1e-8 --log-freq 500 \
+		--target-config policyengine_us_data/calibration/target_config.yaml \
 		--push-results
 
 calibrate-modal-national:
 	modal run --detach modal_app/remote_calibration_runner.py::main \
 		--branch $(BRANCH) --gpu $(NATIONAL_GPU) \
 		--epochs $(NATIONAL_EPOCHS) \
+		--beta 0.65 --lambda-l0 1e-4 --lambda-l2 1e-12 --log-freq 500 \
+		--target-config policyengine_us_data/calibration/target_config.yaml \
 		--push-results --national
 
 calibrate-both:

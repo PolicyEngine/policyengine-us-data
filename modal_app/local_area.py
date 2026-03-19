@@ -91,12 +91,17 @@ def setup_repo(branch: str):
 def validate_artifacts(
     config_path: Path,
     artifact_dir: Path,
+    filename_remap: Dict[str, str] = None,
 ) -> None:
     """Verify artifact checksums against unified_run_config.json.
 
     Args:
         config_path: Path to unified_run_config.json.
         artifact_dir: Directory containing the artifact files.
+        filename_remap: Optional mapping from config filenames to
+            actual filenames on disk (e.g. national weights are
+            stored as national_calibration_weights.npy but the
+            config records calibration_weights.npy).
 
     Raises:
         RuntimeError: If any artifact is missing or has a
@@ -122,11 +127,13 @@ def validate_artifacts(
         )
         return
 
+    remap = filename_remap or {}
     for filename, expected_hash in artifacts.items():
-        filepath = artifact_dir / filename
+        actual_filename = remap.get(filename, filename)
+        filepath = artifact_dir / actual_filename
         if not filepath.exists():
             raise RuntimeError(
-                f"Artifact validation failed: {filename} not found in {artifact_dir}"
+                f"Artifact validation failed: {actual_filename} not found in {artifact_dir}"
             )
         h = hashlib.sha256()
         with open(filepath, "rb") as fh:
@@ -899,7 +906,13 @@ def coordinate_national_publish(
         "n_clones": n_clones,
         "seed": 42,
     }
-    validate_artifacts(config_json_path, artifacts)
+    validate_artifacts(
+        config_json_path,
+        artifacts,
+        filename_remap={
+            "calibration_weights.npy": "national_calibration_weights.npy",
+        },
+    )
     version_dir = staging_dir / version
     version_dir.mkdir(parents=True, exist_ok=True)
 

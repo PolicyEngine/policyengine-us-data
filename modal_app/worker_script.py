@@ -418,9 +418,24 @@ def main():
             elif item_type == "national":
                 national_dir = output_dir / "national"
                 national_dir.mkdir(parents=True, exist_ok=True)
+                n_clones_from_weights = weights.shape[0] // n_records
+                if n_clones_from_weights != geography.n_clones:
+                    print(
+                        f"National weights have {n_clones_from_weights} clones "
+                        f"but geography has {geography.n_clones}; "
+                        f"regenerating geography",
+                        file=sys.stderr,
+                    )
+                    national_geo = assign_random_geography(
+                        n_records=n_records,
+                        n_clones=n_clones_from_weights,
+                        seed=args.seed,
+                    )
+                else:
+                    national_geo = geography
                 path = build_h5(
                     weights=weights,
-                    geography=geography,
+                    geography=national_geo,
                     dataset_path=dataset_path,
                     output_path=national_dir / "US.h5",
                 )

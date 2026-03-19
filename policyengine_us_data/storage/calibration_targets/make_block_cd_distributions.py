@@ -77,8 +77,18 @@ def build_block_cd_distributions():
     df["state_fips"] = df["GEOID"].str[:2]
 
     # Create CD geoid in our format: state_fips * 100 + district
-    # Examples: AL-1 = 101, NY-10 = 3610, DC = 1198
-    df["cd_geoid"] = df["state_fips"].astype(int) * 100 + df["CD119"].astype(int)
+    # Examples: AL-1 = 101, NY-10 = 3610, DC = 1101
+    df["cd_geoid"] = df["state_fips"].astype(int) * 100 + df["CD119"].astype(
+        int
+    )
+
+    # Normalize at-large districts: Census uses 00 (and 98 for DC) → convert to 01
+    district_num = df["cd_geoid"] % 100
+    state_fips_int = df["state_fips"].astype(int)
+    at_large_mask = (district_num == 0) | (
+        (state_fips_int == 11) & (district_num == 98)
+    )
+    df.loc[at_large_mask, "cd_geoid"] = state_fips_int[at_large_mask] * 100 + 1
 
     # Step 4: Calculate P(block|CD)
     print("\nCalculating block probabilities...")
@@ -95,7 +105,9 @@ def build_block_cd_distributions():
     output = df[["cd_geoid", "GEOID", "probability"]].rename(
         columns={"GEOID": "block_geoid"}
     )
-    output = output.sort_values(["cd_geoid", "probability"], ascending=[True, False])
+    output = output.sort_values(
+        ["cd_geoid", "probability"], ascending=[True, False]
+    )
 
     # Step 6: Save as gzipped CSV (parquet requires pyarrow)
     output_path = STORAGE_FOLDER / "block_cd_distributions.csv.gz"

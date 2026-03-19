@@ -22,6 +22,37 @@ The following SSA data sources are used in this project:
 - [Single Year Supplementary Tables (2025)](https://www.ssa.gov/oact/tr/2025/lrIndex.html) - Long-range demographic and economic projections
 - [Single Year Age Demographic Projections (2024 - latest published)](https://www.ssa.gov/oact/HistEst/Population/2024/Population2024.html) - Source for `SSPopJul_TR2024.csv` population data
 
+## Pipeline Overview
+
+PolicyEngine constructs its representative household datasets through a multi-step pipeline. Public survey data is merged, stratified, and cloned to geographic variants per household. Each clone is simulated through PolicyEngine US with stochastic take-up, then calibrated via L0-regularized optimization against administrative targets at the national, state, and congressional district levels, producing geographically representative datasets.
+
+The Enhanced CPS (`make data-legacy`) produces a national-only calibrated dataset. For the current geography-specific pipeline, see [docs/calibration.md](docs/calibration.md).
+
+For detailed calibration usage, see [docs/calibration.md](docs/calibration.md) and [modal_app/README.md](modal_app/README.md).
+
+### Running the Full Pipeline
+
+The pipeline runs as sequential steps in Modal:
+
+```bash
+make pipeline   # prints the steps below
+
+# 1. Build data (CPS/PUF/ACS → source-imputed stratified CPS)
+make build-data-modal
+
+# 2. Build calibration matrices (CPU, ~10h)
+make build-matrices
+
+# 3. Fit weights (GPU, county + national in parallel)
+make calibrate-both
+
+# 4. Build H5 files (state/district/city + national in parallel)
+make stage-all-h5s
+
+# 5. Promote to versioned HF paths
+make promote
+```
+
 ## Building the Paper
 
 ### Prerequisites

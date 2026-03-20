@@ -36,6 +36,7 @@ image = (
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 VOLUME_MOUNT = "/staging"
+_DEFAULT_UV_HTTP_TIMEOUT = "1800"
 
 
 def setup_gcp_credentials():
@@ -48,6 +49,13 @@ def setup_gcp_credentials():
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
         return creds_path
     return None
+
+
+def _run_uv_sync(*args: str) -> None:
+    """Run uv sync with a higher default network timeout for large wheels."""
+    env = os.environ.copy()
+    env.setdefault("UV_HTTP_TIMEOUT", _DEFAULT_UV_HTTP_TIMEOUT)
+    subprocess.run(["uv", "sync", *args], check=True, env=env)
 
 
 def setup_repo(branch: str):
@@ -72,7 +80,7 @@ def setup_repo(branch: str):
         text=True,
     ).stdout.strip()
     print(f"Checked out {branch} at {sha[:8]}")
-    subprocess.run(["uv", "sync", "--locked"], check=True)
+    _run_uv_sync("--locked")
 
 
 def validate_artifacts(

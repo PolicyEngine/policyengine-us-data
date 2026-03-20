@@ -13,6 +13,7 @@ image = (
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 VOLUME_MOUNT = "/calibration-data"
+_DEFAULT_UV_HTTP_TIMEOUT = "1800"
 
 
 def _run_streaming(cmd, env=None, label=""):
@@ -40,12 +41,19 @@ def _run_streaming(cmd, env=None, label=""):
     return proc.returncode, lines
 
 
+def _run_uv_sync(*args: str) -> None:
+    """Run uv sync with a higher default network timeout for large wheels."""
+    env = os.environ.copy()
+    env.setdefault("UV_HTTP_TIMEOUT", _DEFAULT_UV_HTTP_TIMEOUT)
+    subprocess.run(["uv", "sync", *args], check=True, env=env)
+
+
 def _clone_and_install(branch: str):
     """Clone the repo and install dependencies."""
     os.chdir("/root")
     subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
     os.chdir("policyengine-us-data")
-    subprocess.run(["uv", "sync", "--extra", "l0"], check=True)
+    _run_uv_sync("--extra", "l0")
 
 
 def _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq=None):
@@ -1128,10 +1136,7 @@ def build_package(
         "========================================",
         flush=True,
     )
-    print(
-        f"Mode: building calibration package (CPU only)",
-        flush=True,
-    )
+    print("Mode: building calibration package (CPU only)", flush=True)
     print(f"Branch: {branch}", flush=True)
     print(
         "This builds the X matrix and saves it to a Modal volume.",

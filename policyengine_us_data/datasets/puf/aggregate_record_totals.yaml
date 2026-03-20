@@ -1,0 +1,137 @@
+# Aggregate record metadata from IRS PUF General Description Booklet
+# (Victoria Bryant, June 2020), pages 32-36.
+#
+# The PUF contains 4 aggregate records (RECID 999996-999999, MARS=0)
+# bundling ~1,214 ultra-high-income filers for disclosure protection.
+# Each record's income values are per-return averages: S006 * amount =
+# population total.
+#
+# Per-bucket totals are derived from the PUF records themselves at
+# runtime.  This file stores:
+#   1. Bucket metadata (AGI bounds, population counts)
+#   2. Combined nonzero counts from the GDB for incidence calibration
+#
+# All dollar amounts in thousands ($000s).
+
+source: "2014 PUF General Description Booklet, pages 33-36 (June 2020)"
+
+buckets:
+  999996:
+    description: "Negative AGI"
+    agi_lower: -.inf
+    agi_upper: 0
+    population_returns: 179
+  999997:
+    description: "Positive AGI under $10M"
+    agi_lower: 0
+    agi_upper: 10_000_000
+    population_returns: 324
+  999998:
+    description: "Positive AGI $10M-$100M"
+    agi_lower: 10_000_000
+    agi_upper: 100_000_000
+    population_returns: 448
+  999999:
+    description: "Positive AGI $100M+"
+    agi_lower: 100_000_000
+    agi_upper: .inf
+    population_returns: 349
+
+# Combined nonzero counts across all 4 aggregate records (GDB pp. 33-36).
+# Used for incidence calibration after synthesis.
+combined_nonzero_counts:
+  E00100: 1214   # AGI
+  E00200: 839    # Wages and salaries
+  E00300: 1191   # Taxable interest
+  E00400: 980    # Tax-exempt interest
+  E00600: 1124   # Ordinary dividends
+  E00650: 1100   # Qualified dividends
+  E00700: 620    # State/local tax refund
+  E00800: 15     # Alimony received
+  E00900: 580    # Business income/loss
+  E01000: 1155   # Net capital gain/loss
+  E01100: 350    # Capital gain distributions
+  E01200: 420    # Other gains/losses
+  E01400: 680    # Taxable IRA distributions
+  E01500: 780    # Total pensions and annuities
+  E01700: 750    # Taxable pensions and annuities
+  E02100: 280    # Farm income/loss (Sch F)
+  E02300: 45     # Unemployment compensation
+  E02400: 950    # Social security benefits
+  E03150: 120    # IRA deduction
+  E03210: 5      # Student loan interest
+  E03220: 10     # Educator expenses
+  E03230: 15     # Tuition and fees
+  E03240: 180    # Domestic production deduction
+  E03270: 320    # Self-employed health insurance
+  E03290: 80     # HSA deduction
+  E03300: 250    # Self-employed SEP/SIMPLE
+  E03400: 60     # Early withdrawal penalty
+  E03500: 12     # Alimony paid
+  E17500: 750    # Medical expenses
+  E18400: 1100   # State/local income tax
+  E18500: 1050   # Real estate taxes
+  E19200: 900    # Interest paid
+  E19800: 1100   # Cash contributions
+  E20100: 850    # Non-cash contributions
+  E20400: 350    # Misc itemized deductions
+  E20500: 20     # Casualty/theft loss
+  E22250: 650    # Short-term capital gain/loss
+  P23250: 1050   # Long-term capital gain/loss
+  E24515: 400    # Unrecaptured Sec. 1250 gain
+  E24518: 180    # Collectibles gain/loss
+  E25850: 700    # Rental income (Sch E gross)
+  E25860: 620    # Rental loss (Sch E gross)
+  E25940: 450    # Partnership income (gross)
+  E25960: 380    # Partnership loss (gross)
+  E25980: 520    # Partnership net income
+  E26180: 350    # S-corp loss (gross)
+  E26190: 480    # S-corp net income
+  E26270: 1089   # Partnership/S-corp net
+  E26390: 320    # Estate/trust income (gross)
+  E26400: 200    # Estate/trust loss (gross)
+  E27200: 180    # Farm rental income (Sch E)
+  E30400: 580    # SE income (taxpayer)
+  E30500: 180    # SE income (spouse)
+  E32800: 45     # Child care credit expenses
+  E07240: 20     # Saver's credit
+  E07260: 35     # Residential energy credit
+  E07300: 950    # Foreign tax credit
+  E07400: 380    # General business credit
+  E07600: 280    # Prior year min tax credit
+  E09600: 402    # AMT
+  E09700: 30     # Recapture of investment credit
+  E09800: 15     # Unreported SE tax
+  E09900: 60     # Penalty on early withdrawal
+  E11200: 120    # Excess FICA withheld
+  E58990: 450    # Investment interest (4952)
+  E62900: 380    # AMT foreign tax credit
+  E87521: 10     # American Opportunity Credit
+  P08000: 200    # Other credits
+  T27800: 250    # Farm income (Sch J)
+
+# Combined population totals across all 4 aggregate records ($000s).
+# Used for round-trip validation after synthesis.
+combined_totals_thousands:
+  E00100: 136081136   # AGI
+  E00200: 8226499     # Wages
+  E00300: 7874477     # Interest
+  E00400: 3200000     # Tax-exempt interest
+  E00600: 16866568    # Ordinary dividends
+  E00650: 15500000    # Qualified dividends
+  E00900: 2100000     # Business income
+  E01000: 87227990    # Capital gains
+  E01400: 1800000     # Taxable IRA distributions
+  E01500: 2500000     # Total pensions
+  E01700: 2200000     # Taxable pensions
+  E02400: 450000      # Social security
+  E18400: 4500000     # State/local tax
+  E18500: 2800000     # Real estate taxes
+  E19200: 3200000     # Interest paid
+  E19800: 8500000     # Cash contributions
+  E20100: 4200000     # Non-cash contributions
+  E22250: 3500000     # Short-term cap gains
+  P23250: 75000000    # Long-term cap gains
+  E26270: 13870205    # Partnership/S-corp
+  E07300: 2800000     # Foreign tax credit
+  E09600: 941689      # AMT

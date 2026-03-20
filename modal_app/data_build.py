@@ -123,8 +123,23 @@ def setup_gcp_credentials():
 
 @functools.cache
 def get_current_commit() -> str:
-    """Get the current git commit SHA (cached per process)."""
-    return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    """Get the current git commit SHA (cached per process).
+
+    Falls back to a hash of pyproject.toml version when .git
+    is not available (pre-baked Modal images exclude .git).
+    """
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        import hashlib
+
+        version_file = Path("/root/policyengine-us-data/pyproject.toml")
+        if version_file.exists():
+            content = version_file.read_bytes()
+            return hashlib.sha256(content).hexdigest()[:12]
+        return "unknown"
 
 
 def get_checkpoint_path(branch: str, output_file: str) -> Path:

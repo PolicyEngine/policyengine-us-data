@@ -24,12 +24,37 @@ from policyengine_us_data.datasets.org import (
     build_org_receiver_frame,
     predict_org_features,
 )
-from policyengine_us_data.utils.downsample import downsample_dataset_arrays
-from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_treasury_tipped_occupation_code,
     derive_is_tipped_occupation,
 )
+from policyengine_us_data.utils.downsample import downsample_dataset_arrays
+from policyengine_us_data.utils.randomness import seeded_rng
+from policyengine_us_data.utils.takeup import (
+    any_person_flag_by_entity,
+    assign_takeup_with_reported_anchors,
+)
+
+
+CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
+    "reported_has_direct_purchase_health_coverage_at_interview": "NOW_DIR",
+    "reported_has_marketplace_health_coverage_at_interview": "NOW_MRK",
+    "reported_has_subsidized_marketplace_health_coverage_at_interview": "NOW_MRKS",
+    "reported_has_unsubsidized_marketplace_health_coverage_at_interview": "NOW_MRKUN",
+    "reported_has_non_marketplace_direct_purchase_health_coverage_at_interview": (
+        "NOW_NONM"
+    ),
+    "reported_has_employer_sponsored_health_coverage_at_interview": "NOW_GRP",
+    "reported_has_medicare_health_coverage_at_interview": "NOW_MCARE",
+    "reported_has_medicaid_health_coverage_at_interview": "NOW_CAID",
+    "reported_has_means_tested_health_coverage_at_interview": "NOW_MCAID",
+    "reported_has_chip_health_coverage_at_interview": "NOW_PCHIP",
+    "reported_has_other_means_tested_health_coverage_at_interview": "NOW_OTHMT",
+    "reported_has_tricare_health_coverage_at_interview": "NOW_MIL",
+    "reported_has_champva_health_coverage_at_interview": "NOW_CHAMPVA",
+    "reported_has_va_health_coverage_at_interview": "NOW_VACARE",
+    "reported_has_indian_health_service_coverage_at_interview": "NOW_IHSFLG",
+}
 
 
 class CPS(Dataset):
@@ -235,7 +260,16 @@ def add_takeup(self):
 
     # ACA
     rng = seeded_rng("takes_up_aca_if_eligible")
-    data["takes_up_aca_if_eligible"] = rng.random(n_tax_units) < aca_rate
+    reported_marketplace_by_tax_unit = any_person_flag_by_entity(
+        data["person_tax_unit_id"],
+        data["tax_unit_id"],
+        data["reported_has_marketplace_health_coverage_at_interview"],
+    )
+    data["takes_up_aca_if_eligible"] = assign_takeup_with_reported_anchors(
+        rng.random(n_tax_units),
+        aca_rate,
+        reported_mask=reported_marketplace_by_tax_unit,
+    )
 
     # Medicaid: state-specific rates
     state_codes = baseline.calculate("state_code_str").values
@@ -247,8 +281,11 @@ def add_takeup(self):
         [medicaid_rates_by_state.get(s, 0.93) for s in person_states]
     )
     rng = seeded_rng("takes_up_medicaid_if_eligible")
-    data["takes_up_medicaid_if_eligible"] = (
-        rng.random(n_persons) < medicaid_rate_by_person
+    data["takes_up_medicaid_if_eligible"] = assign_takeup_with_reported_anchors(
+        rng.random(n_persons),
+        medicaid_rate_by_person,
+        reported_mask=data["reported_has_means_tested_health_coverage_at_interview"],
+        group_keys=person_states,
     )
 
     # Head Start
@@ -457,9 +494,38 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     )
     cps["own_children_in_household"] = tmp.children.fillna(0)
 
-    cps["has_marketplace_health_coverage"] = person.NOW_MRK == 1
+    for variable, cps_column in CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP.items():
+        cps[variable] = person[cps_column] == 1
 
-    cps["has_esi"] = person.NOW_GRP == 1
+    cps["reported_has_private_health_coverage_at_interview"] = person.NOW_PRIV == 1
+    cps["reported_has_public_health_coverage_at_interview"] = person.NOW_PUB == 1
+    cps["reported_is_insured_at_interview"] = person.NOW_COV == 1
+    cps["reported_is_uninsured_at_interview"] = person.NOW_COV != 1
+
+    coverage_families = np.column_stack(
+        [
+            cps["reported_has_employer_sponsored_health_coverage_at_interview"],
+            cps["reported_has_marketplace_health_coverage_at_interview"],
+            cps[
+                "reported_has_non_marketplace_direct_purchase_health_coverage_at_interview"
+            ],
+            cps["reported_has_medicare_health_coverage_at_interview"],
+            cps["reported_has_means_tested_health_coverage_at_interview"],
+            cps["reported_has_tricare_health_coverage_at_interview"],
+            cps["reported_has_champva_health_coverage_at_interview"],
+            cps["reported_has_va_health_coverage_at_interview"],
+            cps["reported_has_indian_health_service_coverage_at_interview"],
+        ]
+    )
+    cps["reported_has_multiple_health_coverage_at_interview"] = (
+        coverage_families.sum(axis=1) > 1
+    )
+
+    # Legacy aliases retained for compatibility until rules-side names catch up.
+    cps["has_marketplace_health_coverage"] = cps[
+        "reported_has_marketplace_health_coverage_at_interview"
+    ]
+    cps["has_esi"] = cps["reported_has_employer_sponsored_health_coverage_at_interview"]
 
     cps["cps_race"] = person.PRDTRACE
     cps["is_hispanic"] = person.PRDTHSP != 0

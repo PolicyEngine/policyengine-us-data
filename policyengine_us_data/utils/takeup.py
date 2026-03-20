@@ -146,6 +146,103 @@ _FIPS_TO_STATE_CODE = {
 }
 
 
+def any_person_flag_by_entity(
+    person_entity_ids: np.ndarray,
+    entity_ids: np.ndarray,
+    person_mask: np.ndarray,
+) -> np.ndarray:
+    """Aggregate a person-level boolean to any-covered at entity level."""
+    person_entity_ids = np.asarray(person_entity_ids)
+    entity_ids = np.asarray(entity_ids)
+    person_mask = np.asarray(person_mask, dtype=bool)
+    if len(person_entity_ids) != len(person_mask):
+        raise ValueError("person_entity_ids and person_mask must align")
+    if not person_mask.any():
+        return np.zeros(len(entity_ids), dtype=bool)
+    flagged_ids = np.unique(person_entity_ids[person_mask])
+    return np.isin(entity_ids, flagged_ids)
+
+
+def reported_subsidized_marketplace_by_tax_unit(
+    person_tax_unit_ids: np.ndarray,
+    tax_unit_ids: np.ndarray,
+    person_has_subsidized_marketplace_coverage: np.ndarray,
+) -> np.ndarray:
+    """Aggregate subsidized Marketplace coverage reports to tax units."""
+    return any_person_flag_by_entity(
+        person_tax_unit_ids,
+        tax_unit_ids,
+        person_has_subsidized_marketplace_coverage,
+    )
+
+
+def assign_takeup_with_reported_anchors(
+    draws: np.ndarray,
+    rates,
+    reported_mask: Optional[np.ndarray] = None,
+    group_keys: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Apply the SSI/SNAP-style reported-first takeup pattern.
+
+    Reported recipients are always assigned takeup=True. Remaining
+    non-reporters are filled probabilistically to reach the target count
+    implied by the rate, either globally or within each ``group_keys``
+    group.
+    """
+    draws = np.asarray(draws, dtype=np.float64)
+    if np.isscalar(rates):
+        rates_arr = np.full(len(draws), float(rates), dtype=np.float64)
+    else:
+        rates_arr = np.asarray(rates, dtype=np.float64)
+        if len(rates_arr) != len(draws):
+            raise ValueError("rates and draws must align")
+
+    baseline = draws < rates_arr
+    if reported_mask is None:
+        return baseline
+
+    reported_mask = np.asarray(reported_mask, dtype=bool)
+    if len(reported_mask) != len(draws):
+        raise ValueError("reported_mask and draws must align")
+
+    result = reported_mask.copy()
+
+    if group_keys is None:
+        unique_rates = np.unique(rates_arr)
+        if len(unique_rates) != 1:
+            raise ValueError("group_keys required when rates vary by entity")
+        target_count = int(unique_rates[0] * len(draws))
+        non_reporters = ~reported_mask
+        remaining_needed = max(0, target_count - int(reported_mask.sum()))
+        adjusted_rate = (
+            remaining_needed / int(non_reporters.sum()) if non_reporters.any() else 0
+        )
+        result |= non_reporters & (draws < adjusted_rate)
+        return result
+
+    group_keys = np.asarray(group_keys)
+    if len(group_keys) != len(draws):
+        raise ValueError("group_keys and draws must align")
+
+    for key in np.unique(group_keys):
+        group_mask = group_keys == key
+        group_rates = np.unique(rates_arr[group_mask])
+        if len(group_rates) != 1:
+            raise ValueError("Each takeup group must have a single rate")
+        target_count = int(group_rates[0] * int(group_mask.sum()))
+        group_reported = reported_mask[group_mask]
+        remaining_needed = max(0, target_count - int(group_reported.sum()))
+        group_non_reporters = group_mask & ~reported_mask
+        adjusted_rate = (
+            remaining_needed / int(group_non_reporters.sum())
+            if group_non_reporters.any()
+            else 0
+        )
+        result[group_non_reporters] = draws[group_non_reporters] < adjusted_rate
+
+    return result
+
+
 def _resolve_rate(
     rate_or_dict,
     state_fips: int,
@@ -211,6 +308,7 @@ def compute_block_takeup_for_entities(
     entity_blocks: np.ndarray,
     entity_hh_ids: np.ndarray = None,
     entity_clone_ids: np.ndarray = None,
+    reported_mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Compute boolean takeup via block-level seeded draws."""
     draws = compute_block_takeup_draws_for_entities(
@@ -227,7 +325,17 @@ def compute_block_takeup_for_entities(
         blk_mask = entity_blocks == block
         rates[blk_mask] = _resolve_rate(rate_or_dict, int(str(block)[:2]))
 
-    return draws < rates
+    group_keys = (
+        np.array([int(str(block)[:2]) for block in entity_blocks], dtype=np.int32)
+        if isinstance(rate_or_dict, dict)
+        else None
+    )
+    return assign_takeup_with_reported_anchors(
+        draws,
+        rates,
+        reported_mask=reported_mask,
+        group_keys=group_keys,
+    )
 
 
 def extend_aca_takeup_to_match_target(
@@ -276,6 +384,7 @@ def apply_block_takeup_to_arrays(
     time_period: int,
     takeup_filter: List[str] = None,
     precomputed_rates: Optional[Dict[str, Any]] = None,
+    reported_anchors: Optional[Dict[str, np.ndarray]] = None,
 ) -> Dict[str, np.ndarray]:
     """Compute takeup draws from raw arrays.
 
@@ -307,6 +416,7 @@ def apply_block_takeup_to_arrays(
     """
     filter_set = set(takeup_filter) if takeup_filter is not None else None
     result = {}
+    reported_anchors = reported_anchors or {}
 
     for spec in SIMPLE_TAKEUP_VARS:
         var_name = spec["variable"]
@@ -327,12 +437,16 @@ def apply_block_takeup_to_arrays(
             rate_or_dict = precomputed_rates[rate_key]
         else:
             rate_or_dict = load_take_up_rate(rate_key, time_period)
+        reported_mask = reported_anchors.get(var_name)
+        if reported_mask is not None and len(reported_mask) != n_ent:
+            raise ValueError(f"reported anchor for {var_name} has wrong length")
         bools = compute_block_takeup_for_entities(
             var_name,
             rate_or_dict,
             ent_blocks,
             ent_hh_ids,
             ent_clone_indices,
+            reported_mask=reported_mask,
         )
         result[var_name] = bools
 

@@ -2,6 +2,10 @@
 
 import numpy as np
 from policyengine_us_data.parameters import load_take_up_rate
+from policyengine_us_data.utils.takeup import (
+    any_person_flag_by_entity,
+    assign_takeup_with_reported_anchors,
+)
 from policyengine_us_data.utils.randomness import (
     _stable_string_hash,
     seeded_rng,
@@ -147,3 +151,39 @@ class TestTakeUpProportions:
         for state, expected_rate in [("UT", 0.53), ("CO", 0.99)]:
             take_up = draws[:10_000] < expected_rate
             assert abs(take_up.mean() - expected_rate) < 0.05
+
+
+class TestReportedTakeupAnchors:
+    def test_global_anchor_preserves_reported_and_fills_remaining(self):
+        draws = np.array([0.9, 0.2, 0.6, 0.9])
+        reported = np.array([True, False, False, False])
+        result = assign_takeup_with_reported_anchors(
+            draws,
+            0.5,
+            reported_mask=reported,
+        )
+        np.testing.assert_array_equal(result, [True, True, False, False])
+
+    def test_grouped_anchor_applies_within_each_group(self):
+        draws = np.array([0.9, 0.2, 0.1, 0.9])
+        rates = np.array([0.5, 0.5, 0.5, 0.5])
+        reported = np.array([True, False, False, False])
+        groups = np.array(["A", "A", "B", "B"])
+        result = assign_takeup_with_reported_anchors(
+            draws,
+            rates,
+            reported_mask=reported,
+            group_keys=groups,
+        )
+        np.testing.assert_array_equal(result, [True, False, True, False])
+
+    def test_any_person_flag_by_entity_aggregates_correctly(self):
+        person_tax_unit_ids = np.array([10, 10, 20, 30])
+        tax_unit_ids = np.array([10, 20, 30])
+        person_marketplace = np.array([False, True, False, True])
+        result = any_person_flag_by_entity(
+            person_tax_unit_ids,
+            tax_unit_ids,
+            person_marketplace,
+        )
+        np.testing.assert_array_equal(result, [True, False, True])

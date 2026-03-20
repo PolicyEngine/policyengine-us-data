@@ -38,6 +38,7 @@ from policyengine_us_data.calibration.clone_and_assign import (
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     apply_block_takeup_to_arrays,
+    any_person_flag_by_entity,
 )
 
 CHECKPOINT_FILE = Path("completed_states.txt")
@@ -155,6 +156,31 @@ def load_completed_cities() -> set:
 def record_completed_city(city_name: str):
     with open(CHECKPOINT_FILE_CITIES, "a") as f:
         f.write(f"{city_name}\n")
+
+
+def _build_reported_takeup_anchors(
+    data: dict, time_period: int
+) -> dict[str, np.ndarray]:
+    reported_anchors = {}
+    if (
+        "reported_has_marketplace_health_coverage_at_interview" in data
+        and time_period in data["reported_has_marketplace_health_coverage_at_interview"]
+    ):
+        reported_anchors["takes_up_aca_if_eligible"] = any_person_flag_by_entity(
+            data["person_tax_unit_id"][time_period],
+            data["tax_unit_id"][time_period],
+            data["reported_has_marketplace_health_coverage_at_interview"][
+                time_period
+            ],
+        )
+    if (
+        "reported_has_means_tested_health_coverage_at_interview" in data
+        and time_period in data["reported_has_means_tested_health_coverage_at_interview"]
+    ):
+        reported_anchors["takes_up_medicaid_if_eligible"] = data[
+            "reported_has_means_tested_health_coverage_at_interview"
+        ][time_period].astype(bool)
+    return reported_anchors
 
 
 def build_h5(
@@ -551,6 +577,7 @@ def build_h5(
         }
         hh_state_fips = clone_geo["state_fips"].astype(np.int32)
         original_hh_ids = household_ids[active_hh].astype(np.int64)
+        reported_anchors = _build_reported_takeup_anchors(data, time_period)
 
         takeup_results = apply_block_takeup_to_arrays(
             hh_blocks=active_blocks,
@@ -561,6 +588,7 @@ def build_h5(
             entity_counts=entity_counts,
             time_period=time_period,
             takeup_filter=takeup_filter,
+            reported_anchors=reported_anchors,
         )
         for var_name, bools in takeup_results.items():
             data[var_name] = {time_period: bools}

@@ -27,6 +27,7 @@ image = (
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 VOLUME_MOUNT = "/checkpoints"
 _volume_lock = threading.Lock()
+_DEFAULT_UV_HTTP_TIMEOUT = "300"
 
 # Script to output file mapping for checkpointing
 # Values can be a single file path (str) or a list of file paths
@@ -85,6 +86,13 @@ def setup_gcp_credentials():
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
         return creds_path
     return None
+
+
+def _run_uv_sync(*args: str) -> None:
+    """Run uv sync with a higher default network timeout for large wheels."""
+    env = os.environ.copy()
+    env.setdefault("UV_HTTP_TIMEOUT", _DEFAULT_UV_HTTP_TIMEOUT)
+    subprocess.run(["uv", "sync", *args], check=True, env=env)
 
 
 @functools.cache
@@ -315,8 +323,8 @@ def build_datasets(
                 print(f"Removed stale checkpoint dir: {entry.name[:12]}")
         checkpoint_volume.commit()
 
-    # Use uv sync to install exact versions from uv.lock
-    subprocess.run(["uv", "sync", "--locked"], check=True)
+    # Use uv sync to install exact versions from uv.lock.
+    _run_uv_sync("--locked")
 
     env = os.environ.copy()
 

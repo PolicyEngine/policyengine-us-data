@@ -33,7 +33,7 @@ def _base_image(extras: list[str] | None = None):
     return (
         modal.Image.debian_slim(python_version="3.13")
         .apt_install("git")
-        .pip_install("uv")
+        .pip_install("uv>=0.8")
         .add_local_dir(
             str(REPO_ROOT),
             remote_path="/root/policyengine-us-data",

@@ -42,7 +42,7 @@ def _base_image(extras: list[str] | None = None):
         )
         .run_commands(
             f"cd /root/policyengine-us-data && "
-            f"UV_HTTP_TIMEOUT=300 uv sync --locked {extra_flags}"
+            f"UV_HTTP_TIMEOUT=300 uv sync --frozen {extra_flags}"
         )
     )
 

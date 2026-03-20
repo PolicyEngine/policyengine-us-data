@@ -1,23 +1,24 @@
-"""Disaggregate PUF aggregate records into synthetic individual records.
+"""Disaggregate IRS aggregate PUF rows into synthetic extreme-tail donors.
 
-The IRS PUF has 4 aggregate records (MARS=0, RECID 999996-999999) that
-bundle ~1,214 ultra-high-income filers for disclosure protection.  The
-income values are per-return averages (weight x amount = population total).
+The IRS PUF replaces a small set of returns with four aggregate rows
+(`RECID` 999996-999999). Those rows are not ordinary AGI buckets: they are
+returns excluded because one or more amount fields were extremely large, then
+grouped by AGI. This module reconstructs them by:
 
-This module synthesizes ~120 weighted records (not 1,214 unit-weight)
-using a conservative approach:
-  1. Truncated lognormal AGI with hard bucket bounds
-  2. Donor-based variable templates
-  3. Dirichlet composition shares with high concentration
-  4. Exact weighted-total calibration
+1. Selecting non-aggregate donors from the same AGI bucket
+2. Upweighting donors that are extreme in at least one screened amount field
+3. Copying structural and flag variables directly from selected donors
+4. Calibrating only amount fields to match the published aggregate totals
 """
 
+from __future__ import annotations
+
 from importlib.resources import files
+import re
 
 import numpy as np
 import pandas as pd
 import yaml
-from scipy.stats import truncnorm
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -26,57 +27,30 @@ from scipy.stats import truncnorm
 AGGREGATE_RECIDS = [999996, 999997, 999998, 999999]
 SYNTHETIC_RECID_START = 1_000_000
 
-MAJOR_COMPONENTS = [
+SCREENED_FIELDS = [
     "E00200",  # Wages
     "P23250",  # Long-term capital gains
     "P22250",  # Short-term capital gains
     "E00650",  # Qualified dividends
     "E00300",  # Taxable interest
     "E26270",  # Partnership / S-corp
-    "E00900",  # Business income (Sch C)
-    "E02100",  # Farm income (Sch F)
+    "E00900",  # Business income
+    "E02100",  # Farm income
+    "E00400",  # Tax-exempt interest
+    "E00600",  # Ordinary dividends
 ]
 
-# MARS distribution for ultra-high-income filers (from SOI data).
-_MARS_VALUES = np.array([1, 2, 3, 4])
-_MARS_PROBS = np.array([0.20, 0.75, 0.03, 0.02])
+_STRUCTURAL_COLUMNS = {"MARS", "XTOT", "DSI", "EIC"}
+_AMOUNT_COLUMN_PATTERN = re.compile(r"^(?:[EPT]\d+|S\d{5})$")
 
-# Donor pool: regular records with |AGI| >= this threshold.
-DONOR_AGI_THRESHOLD = 2_000_000
-
-# Per-bucket lognormal sigma and AGI caps.
-_BUCKET_SIGMA = {
-    999996: 1.0,  # negative AGI: high dispersion
-    999997: 0.20,  # <$10M
-    999998: 0.30,  # $10M-$100M
-    999999: 0.35,  # $100M+
-}
-
-# Cap for the open-ended $100M+ bucket (3x typical mean).
+# Cap for the open-ended $100M+ bucket.
 _AGI_CAP_100M_PLUS = 1_250_000_000
-
-# Per-bucket Dirichlet concentration (higher = less noise).
-_BUCKET_CONCENTRATION = {
-    999996: 50,
-    999997: 80,
-    999998: 50,
-    999999: 35,
-}
-
-# Component-to-AGI caps (absolute value).
-_COMPONENT_CAPS = {
-    "E00200": 1.5,  # wages
-    "P23250": 2.0,  # LTCG
-    "P22250": 1.0,  # STCG
-    "E00650": 1.0,  # qual div
-    "E00300": 0.5,  # interest
-    "E26270": 1.0,  # partnership
-    "E00900": 0.75,  # business
-    "E02100": 0.5,  # farm
-}
 
 # Max share of bucket AGI any single record can carry.
 _MAX_AGI_DOMINANCE = 0.20
+
+_SELECTION_POWER = 24
+_NUMERIC_TOL = 1e-9
 
 # ---------------------------------------------------------------------------
 # Load YAML metadata
@@ -98,104 +72,316 @@ COMBINED_NONZERO = _META["combined_nonzero_counts"]
 
 
 def _choose_n_synthetic(pop_weight: float) -> int:
-    """Choose number of synthetic records for a bucket.
-
-    Target ~10 filers per synthetic record, clamped to [20, 40].
-    """
+    """Choose the number of synthetic records for an aggregate bucket."""
     return int(min(40, max(20, round(pop_weight / 10))))
 
 
 def _assign_weights(pop_weight: float, n: int, rng: np.random.Generator) -> np.ndarray:
-    """Assign integer weights summing to pop_weight.
+    """Assign integer synthetic weights summing to the published return count."""
+    total_weight = int(round(pop_weight))
+    base = max(total_weight // n, 3)
+    weights = np.full(n, base, dtype=int)
+    remainder = total_weight - weights.sum()
 
-    Returns array of length n with values >= 3.
-    """
-    w_int = int(round(pop_weight))
-    base = max(w_int // n, 3)
-    weights = np.full(n, base)
-    remainder = w_int - base * n
     if remainder > 0:
         bump_idx = rng.choice(n, size=remainder, replace=False)
         weights[bump_idx] += 1
     elif remainder < 0:
-        # Reduce some weights (but keep >= 3)
-        reduce_idx = rng.choice(n, size=-remainder, replace=False)
+        reducible = np.where(weights > 1)[0]
+        reduce_count = min(-remainder, len(reducible))
+        reduce_idx = rng.choice(reducible, size=reduce_count, replace=False)
         weights[reduce_idx] -= 1
-        weights = np.maximum(weights, 3)
+
+    gap = total_weight - weights.sum()
+    if gap != 0:
+        weights[0] += gap
+
     return weights
 
 
-def _draw_truncated_lognormal(
-    n: int,
-    lower: float,
-    upper: float,
-    sigma: float,
-    target_total: float,
-    weights: np.ndarray,
-    rng: np.random.Generator,
-) -> np.ndarray:
-    """Draw AGI values from truncated lognormal, rescaled to total.
+def _get_bucket_mask(df: pd.DataFrame, recid: int) -> pd.Series:
+    """Return the AGI-bucket mask for a given aggregate RECID."""
+    if recid == 999996:
+        return df.E00100 < 0
+    if recid == 999997:
+        return (df.E00100 >= 0) & (df.E00100 < 10_000_000)
+    if recid == 999998:
+        return (df.E00100 >= 10_000_000) & (df.E00100 < 100_000_000)
+    if recid == 999999:
+        return df.E00100 >= 100_000_000
+    raise ValueError(f"Unknown aggregate RECID {recid}")
 
-    Uses scipy's truncnorm in log-space to draw from a truncated
-    lognormal, then rescales draws to match exact weighted total.
+
+def _get_amount_columns(columns: pd.Index | list[str]) -> list[str]:
+    """Return raw PUF columns that behave like amount fields."""
+    return [c for c in columns if _AMOUNT_COLUMN_PATTERN.match(c)]
+
+
+def compute_aggregate_eligibility_scores(
+    df: pd.DataFrame,
+    screened_fields: list[str] | None = None,
+    reference_df: pd.DataFrame | None = None,
+) -> pd.Series:
+    """Score records on how 'aggregate-like' they are.
+
+    The IRS rule is partially disclosed: a return can be aggregated if one or
+    more amount fields are among the most extreme positive or negative values.
+    This proxy uses the maximum within-field tail percentile across a screened
+    set of uncapped amount fields.
     """
-    if n == 0:
-        return np.array([])
 
-    target_mean = target_total / weights.sum()
+    fields = screened_fields or SCREENED_FIELDS
+    reference = df if reference_df is None else reference_df
+    present_fields = [field for field in fields if field in df.columns]
+    if not present_fields:
+        return pd.Series(0.0, index=df.index, dtype=float)
 
-    # mu estimate (untruncated lognormal mean formula)
-    mu = np.log(max(target_mean, lower + 1)) - sigma**2 / 2
+    max_scores = np.zeros(len(df), dtype=float)
 
-    # Draw from truncated lognormal via scipy truncnorm in log-space
-    a = (np.log(lower) - mu) / sigma
-    b = (np.log(upper) - mu) / sigma
-    log_vals = truncnorm.rvs(a, b, loc=mu, scale=sigma, size=n, random_state=rng)
-    vals = np.exp(log_vals)
+    for field in present_fields:
+        values = pd.to_numeric(df[field], errors="coerce").fillna(0.0)
+        reference_values = pd.to_numeric(reference[field], errors="coerce").fillna(0.0)
+        field_scores = np.zeros(len(df), dtype=float)
 
-    # Rescale so weighted sum matches total
-    current_weighted = (vals * weights).sum()
-    if abs(current_weighted) > 0:
-        vals *= target_total / current_weighted
+        positive_mask = values > 0
+        reference_positive = np.sort(reference_values[reference_values > 0].to_numpy())
+        if positive_mask.any() and len(reference_positive) > 0:
+            positive_scores = np.searchsorted(
+                reference_positive,
+                values[positive_mask].to_numpy(),
+                side="right",
+            ) / len(reference_positive)
+            field_scores[positive_mask.to_numpy()] = positive_scores
 
-    # Reclip to bucket bounds
-    vals = np.clip(vals, lower, upper)
+        negative_mask = values < 0
+        reference_negative = np.sort(
+            (-reference_values[reference_values < 0]).to_numpy()
+        )
+        if negative_mask.any() and len(reference_negative) > 0:
+            negative_scores = np.searchsorted(
+                reference_negative,
+                (-values[negative_mask]).to_numpy(),
+                side="right",
+            ) / len(reference_negative)
+            field_scores[negative_mask.to_numpy()] = np.maximum(
+                field_scores[negative_mask.to_numpy()],
+                negative_scores,
+            )
 
-    # Final exact adjustment: distribute residual proportionally
-    residual = target_total - (vals * weights).sum()
-    if abs(residual) > 1:
-        vals += residual / weights.sum()
-        vals = np.clip(vals, lower, upper)
+        max_scores = np.maximum(max_scores, field_scores)
 
-    return vals
+    return pd.Series(max_scores, index=df.index, dtype=float)
 
 
-def _draw_lognormal_negative(
-    n: int,
-    target_total: float,
+def _project_weighted_sum_to_bounds(
+    values: np.ndarray,
     weights: np.ndarray,
-    rng: np.random.Generator,
+    target_total: float,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    max_iter: int = 50,
 ) -> np.ndarray:
-    """Draw negative AGI values from lognormal on |AGI|."""
-    if n == 0:
-        return np.array([])
-    mean_abs = abs(target_total / weights.sum())
-    sigma = 1.0
-    mu = np.log(max(mean_abs, 1)) - sigma**2 / 2
-    vals = -rng.lognormal(mean=mu, sigma=sigma, size=n)
-    # Rescale
-    current = (vals * weights).sum()
-    if abs(current) > 0:
-        vals *= target_total / current
-    return vals
+    """Adjust values so the weighted sum matches the target within bounds."""
+
+    projected = np.clip(values.astype(float), lower, upper)
+
+    for _ in range(max_iter):
+        residual = float(target_total - np.dot(projected, weights))
+        if abs(residual) <= 1e-6:
+            return projected
+
+        if residual > 0:
+            slack = upper - projected
+        else:
+            slack = projected - lower
+
+        free = slack > _NUMERIC_TOL
+        if not free.any():
+            break
+
+        basis = np.abs(projected[free])
+        if basis.sum() <= _NUMERIC_TOL:
+            basis = np.ones(free.sum(), dtype=float)
+
+        denom = float(np.dot(weights[free], basis))
+        if denom <= _NUMERIC_TOL:
+            basis = np.ones(free.sum(), dtype=float)
+            denom = float(weights[free].sum())
+
+        delta = residual * basis / denom
+
+        if residual > 0:
+            delta = np.minimum(delta, slack[free])
+        else:
+            delta = -np.minimum(-delta, slack[free])
+
+        projected[free] += delta
+        projected = np.clip(projected, lower, upper)
+
+    residual = float(target_total - np.dot(projected, weights))
+    if abs(residual) > 1e-6:
+        if residual > 0:
+            slack = upper - projected
+        else:
+            slack = projected - lower
+
+        free = np.where(slack > _NUMERIC_TOL)[0]
+        if len(free) > 0:
+            best = free[np.argmax(slack[free] * weights[free])]
+            projected[best] = np.clip(
+                projected[best] + residual / weights[best],
+                lower[best],
+                upper[best],
+            )
+
+    return projected
 
 
-def _compute_shares(row: pd.Series, components: list) -> dict:
-    """Compute income component shares of |AGI| for a donor row."""
-    agi = abs(row.get("E00100", 0))
-    if agi < 1:
-        agi = 1
-    return {c: row.get(c, 0) / agi for c in components}
+def _allocate_weighted_values(
+    base_values: np.ndarray,
+    weights: np.ndarray,
+    target_total: float,
+    lower: np.ndarray | float | None = None,
+    upper: np.ndarray | float | None = None,
+) -> np.ndarray:
+    """Allocate a weighted total across records using donor magnitudes."""
+
+    base_values = np.asarray(base_values, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    n = len(base_values)
+
+    if abs(target_total) <= 1e-6:
+        return np.zeros(n, dtype=float)
+
+    if target_total > 0 and np.any(base_values > 0):
+        active = base_values > 0
+    elif target_total < 0 and np.any(base_values < 0):
+        active = base_values < 0
+    elif np.any(np.abs(base_values) > _NUMERIC_TOL):
+        active = np.abs(base_values) > _NUMERIC_TOL
+    else:
+        active = np.ones(n, dtype=bool)
+
+    allocated = np.zeros(n, dtype=float)
+    magnitudes = np.abs(base_values[active])
+    if magnitudes.sum() <= _NUMERIC_TOL:
+        magnitudes = np.ones(active.sum(), dtype=float)
+
+    denom = float(np.dot(weights[active], magnitudes))
+    if denom <= _NUMERIC_TOL:
+        magnitudes = np.ones(active.sum(), dtype=float)
+        denom = float(weights[active].sum())
+
+    allocated[active] = np.sign(target_total) * magnitudes * abs(target_total) / denom
+
+    if lower is None and upper is None:
+        return allocated
+
+    if lower is None:
+        lower_array = np.full(n, -np.inf, dtype=float)
+    elif np.isscalar(lower):
+        lower_array = np.full(n, float(lower), dtype=float)
+    else:
+        lower_array = np.asarray(lower, dtype=float)
+
+    if upper is None:
+        upper_array = np.full(n, np.inf, dtype=float)
+    elif np.isscalar(upper):
+        upper_array = np.full(n, float(upper), dtype=float)
+    else:
+        upper_array = np.asarray(upper, dtype=float)
+
+    return _project_weighted_sum_to_bounds(
+        allocated,
+        weights,
+        target_total,
+        lower_array,
+        upper_array,
+    )
+
+
+def _allocate_agi_values(
+    donor_agi: np.ndarray,
+    weights: np.ndarray,
+    recid: int,
+    target_total: float,
+) -> np.ndarray:
+    """Allocate AGI values with bucket bounds and dominance constraints."""
+
+    donor_agi = np.asarray(donor_agi, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    n = len(donor_agi)
+    meta = BUCKET_META[recid]
+
+    dominance_cap = _MAX_AGI_DOMINANCE * abs(target_total) / weights
+
+    if recid == 999996:
+        lower = -dominance_cap
+        upper = np.zeros(n, dtype=float)
+    else:
+        bucket_lower = float(meta["agi_lower"])
+        bucket_upper = (
+            _AGI_CAP_100M_PLUS
+            if np.isinf(meta["agi_upper"])
+            else float(meta["agi_upper"])
+        )
+        lower = np.full(n, max(bucket_lower, 0.0), dtype=float)
+        upper = np.minimum(np.full(n, bucket_upper, dtype=float), dominance_cap)
+
+    base = np.abs(donor_agi)
+    return _allocate_weighted_values(
+        base_values=base,
+        weights=weights,
+        target_total=target_total,
+        lower=lower,
+        upper=upper,
+    )
+
+
+def _selection_probabilities(
+    donor_bucket: pd.DataFrame,
+    donor_scores: pd.Series,
+    target_mean_agi: float,
+) -> np.ndarray:
+    """Create donor-selection probabilities from extremeness and AGI proximity."""
+
+    scores = donor_scores.loc[donor_bucket.index].to_numpy(dtype=float)
+    score_mass = np.clip(scores, 1e-6, None) ** _SELECTION_POWER
+
+    donor_abs_agi = np.abs(donor_bucket.E00100.to_numpy(dtype=float))
+    target_abs_agi = max(abs(float(target_mean_agi)), 1.0)
+    agi_distance = np.abs(np.log1p(donor_abs_agi) - np.log1p(target_abs_agi))
+    agi_mass = 1.0 / (1.0 + agi_distance)
+
+    probabilities = score_mass * np.sqrt(agi_mass)
+    if not np.isfinite(probabilities).all() or probabilities.sum() <= 0:
+        probabilities = np.ones(len(donor_bucket), dtype=float)
+
+    return probabilities / probabilities.sum()
+
+
+def _sample_bucket_donors(
+    donor_bucket: pd.DataFrame,
+    donor_scores: pd.Series,
+    target_mean_agi: float,
+    n_syn: int,
+    rng: np.random.Generator,
+) -> pd.DataFrame:
+    """Sample donor templates for one aggregate bucket."""
+
+    probabilities = _selection_probabilities(
+        donor_bucket=donor_bucket,
+        donor_scores=donor_scores,
+        target_mean_agi=target_mean_agi,
+    )
+    replace = len(donor_bucket) < n_syn
+    selected_index = rng.choice(
+        donor_bucket.index.to_numpy(),
+        size=n_syn,
+        replace=replace,
+        p=probabilities,
+    )
+    return donor_bucket.loc[selected_index].reset_index(drop=True).copy()
 
 
 # ---------------------------------------------------------------------------
@@ -207,264 +393,90 @@ def disaggregate_aggregate_records(
     puf: pd.DataFrame,
     seed: int = 42,
 ) -> pd.DataFrame:
-    """Replace 4 aggregate PUF records with ~120 weighted synthetic records.
+    """Replace the four IRS aggregate rows with calibrated synthetic donors."""
 
-    Called BEFORE preprocess_puf, so S006 is still in raw hundredths.
-    Population total for each variable = (S006 / 100) * value.
-
-    Synthetic records get variable weights (S006 = weight * 100)
-    and MARS drawn from a high-income distribution.
-
-    Parameters
-    ----------
-    puf : pd.DataFrame
-        Raw PUF before preprocess (S006 in hundredths).
-    seed : int
-        Random seed for reproducibility.
-
-    Returns
-    -------
-    pd.DataFrame
-        PUF with aggregate rows removed and synthetic rows appended.
-    """
     rng = np.random.default_rng(seed)
 
     agg_mask = puf.RECID.isin(AGGREGATE_RECIDS)
     if agg_mask.sum() == 0:
         return puf
 
-    agg_rows = puf[agg_mask].copy()
+    agg_rows = puf[agg_mask].copy().set_index("RECID")
     regular = puf[~agg_mask].copy()
-
-    # Build donor pool
-    donor_mask = regular.E00100.abs() >= DONOR_AGI_THRESHOLD
-    donors = regular[donor_mask].copy()
-
-    # Columns to carry through (all numeric PUF columns except meta)
-    meta_cols = {"RECID", "S006", "MARS"}
-    income_cols = [
-        c for c in puf.columns if c not in meta_cols and puf[c].dtype.kind in ("f", "i")
-    ]
+    amount_columns = _get_amount_columns(puf.columns)
+    donor_scores = compute_aggregate_eligibility_scores(regular)
 
     all_synthetic = []
     next_recid = SYNTHETIC_RECID_START
 
     for recid in AGGREGATE_RECIDS:
-        row = agg_rows[agg_rows.RECID == recid].iloc[0]
-        meta = BUCKET_META[recid]
-        agi_lower = meta["agi_lower"]
-        agi_upper = meta["agi_upper"]
+        row = agg_rows.loc[recid]
+        pop_weight = float(row.S006) / 100
+        target_mean_agi = float(row.E00100)
+        target_total_agi = pop_weight * target_mean_agi
 
-        # True weight and population total
-        pop_weight = row.S006 / 100
-        total_agi = pop_weight * row.E00100
+        donor_bucket = regular[_get_bucket_mask(regular, recid)].copy()
+        if donor_bucket.empty:
+            donor_bucket = regular.copy()
 
-        # Step 1: Choose n synthetic records and assign weights
         n_syn = _choose_n_synthetic(pop_weight)
-        syn_weights = _assign_weights(pop_weight, n_syn, rng)
+        synthetic_weights = _assign_weights(pop_weight, n_syn, rng).astype(float)
 
-        # Step 2: Generate AGI
-        sigma = _BUCKET_SIGMA[recid]
-        if agi_upper <= 0:
-            synthetic_agi = _draw_lognormal_negative(n_syn, total_agi, syn_weights, rng)
-        else:
-            # Apply cap for open-ended bucket
-            effective_upper = agi_upper
-            if np.isinf(agi_upper):
-                effective_upper = _AGI_CAP_100M_PLUS
-            effective_lower = max(agi_lower, 1)
-
-            synthetic_agi = _draw_truncated_lognormal(
-                n_syn,
-                effective_lower,
-                effective_upper,
-                sigma,
-                total_agi,
-                syn_weights,
-                rng,
-            )
-
-        # Dominance check: no record > 20% of total
-        if abs(total_agi) > 0:
-            max_agi = _MAX_AGI_DOMINANCE * abs(total_agi)
-            over = np.abs(synthetic_agi * syn_weights) > max_agi
-            if over.any():
-                synthetic_agi[over] = np.sign(synthetic_agi[over]) * (
-                    max_agi / syn_weights[over]
-                )
-                # Re-calibrate
-                current = (synthetic_agi * syn_weights).sum()
-                if abs(current) > 0:
-                    synthetic_agi *= total_agi / current
-                    if agi_upper > 0:
-                        eff_u = _AGI_CAP_100M_PLUS if np.isinf(agi_upper) else agi_upper
-                        synthetic_agi = np.clip(
-                            synthetic_agi,
-                            max(agi_lower, 1),
-                            eff_u,
-                        )
-
-        # Step 3: Compute aggregate shares for Dirichlet
-        agg_shares = _compute_shares(row, MAJOR_COMPONENTS)
-        concentration = _BUCKET_CONCENTRATION[recid]
-
-        # Step 4: Sample donors by AGI proximity
-        donor_agis = donors.E00100.values
-        abs_diff = np.abs(donor_agis[:, None] - synthetic_agi[None, :])
-        proximity = 1.0 / (abs_diff + 1e6)
-        proximity /= proximity.sum(axis=0, keepdims=True)
-        donor_indices = np.array(
-            [rng.choice(len(donors), p=proximity[:, i]) for i in range(n_syn)]
+        selected = _sample_bucket_donors(
+            donor_bucket=donor_bucket,
+            donor_scores=donor_scores,
+            target_mean_agi=target_mean_agi,
+            n_syn=n_syn,
+            rng=rng,
         )
-        sampled_donors = donors.iloc[donor_indices]
+        selected = selected.astype(
+            {column: float for column in amount_columns if column in selected.columns}
+        )
 
-        # Step 5: Build synthetic records
-        synthetic_rows = []
-        for i in range(n_syn):
-            syn = {}
-            syn["RECID"] = next_recid
-            next_recid += 1
-            syn["S006"] = int(syn_weights[i]) * 100
-            syn["MARS"] = rng.choice(_MARS_VALUES, p=_MARS_PROBS)
+        synthetic = selected.copy()
+        synthetic["RECID"] = np.arange(next_recid, next_recid + n_syn, dtype=int)
+        synthetic["S006"] = (synthetic_weights.astype(int) * 100).astype(int)
+        next_recid += n_syn
 
-            syn_agi = synthetic_agi[i]
-            abs_agi = max(abs(syn_agi), 1)
-            donor_row = sampled_donors.iloc[i]
+        # Structural variables are donor templates, not scaled amounts.
+        for column in _STRUCTURAL_COLUMNS:
+            if column in synthetic.columns:
+                synthetic[column] = selected[column].round().astype(int)
 
-            # Dirichlet shares centered on aggregate shares
-            raw_shares = np.array(
-                [max(abs(agg_shares[c]), 0.001) for c in MAJOR_COMPONENTS]
+        if "MARS" in synthetic.columns and "XTOT" in synthetic.columns:
+            joint_mask = synthetic["MARS"] == 2
+            synthetic.loc[joint_mask, "XTOT"] = np.maximum(
+                synthetic.loc[joint_mask, "XTOT"],
+                2,
             )
-            noisy = rng.dirichlet(raw_shares * concentration)
+            synthetic["XTOT"] = synthetic["XTOT"].clip(lower=0, upper=5).astype(int)
 
-            # Apply to AGI with sign from aggregate record
-            for j, c in enumerate(MAJOR_COMPONENTS):
-                sign = np.sign(agg_shares[c]) if agg_shares[c] != 0 else 1
-                raw_val = noisy[j] * syn_agi * sign
-                # Cap component
-                cap = _COMPONENT_CAPS.get(c, 2.0)
-                raw_val = np.clip(raw_val, -cap * abs_agi, cap * abs_agi)
-                syn[c] = raw_val
+        synthetic["E00100"] = _allocate_agi_values(
+            donor_agi=selected["E00100"].to_numpy(dtype=float),
+            weights=synthetic_weights,
+            recid=recid,
+            target_total=target_total_agi,
+        )
 
-            # Wages must be non-negative for positive AGI
-            if syn_agi >= 0:
-                syn["E00200"] = max(syn.get("E00200", 0), 0)
+        for column in amount_columns:
+            if column == "E00100":
+                continue
 
-            # AGI
-            syn["E00100"] = syn_agi
+            target_total = pop_weight * float(row.get(column, 0))
+            synthetic[column] = _allocate_weighted_values(
+                base_values=selected[column].to_numpy(dtype=float),
+                weights=synthetic_weights,
+                target_total=target_total,
+            )
 
-            # Secondary variables via donor scaling
-            donor_agi = donor_row.E00100
-            if abs(donor_agi) < 1:
-                donor_agi = 1
-            scale_ratio = np.clip(syn_agi / donor_agi, -5, 5)
-
-            for c in income_cols:
-                if c in MAJOR_COMPONENTS or c == "E00100":
-                    continue
-                donor_val = donor_row.get(c, 0)
-                if pd.isna(donor_val):
-                    donor_val = 0
-                val = donor_val * scale_ratio
-                # Kill floating point noise
-                if abs(val) < 1e-6:
-                    val = 0
-                syn[c] = val
-
-            synthetic_rows.append(syn)
-
-        all_synthetic.append(pd.DataFrame(synthetic_rows))
+        all_synthetic.append(synthetic[puf.columns])
 
     synthetic_df = pd.concat(all_synthetic, ignore_index=True)
-
-    # ---- Weighted calibration ----
-    # 3 iterations of bounded multiplicative adjustment
-    offset = 0
-    for recid in AGGREGATE_RECIDS:
-        row = agg_rows[agg_rows.RECID == recid].iloc[0]
-        meta = BUCKET_META[recid]
-        pop_weight = row.S006 / 100
-        n_syn = _choose_n_synthetic(pop_weight)
-
-        bucket_start = SYNTHETIC_RECID_START + offset
-        bucket_end = bucket_start + n_syn
-        offset += n_syn
-
-        bucket_mask = (synthetic_df.RECID >= bucket_start) & (
-            synthetic_df.RECID < bucket_end
-        )
-        if bucket_mask.sum() == 0:
-            continue
-
-        # Weights for this bucket
-        bw = synthetic_df.loc[bucket_mask, "S006"].values / 100
-
-        for _ in range(3):
-            for c in income_cols:
-                target = pop_weight * row.get(c, 0)
-                if pd.isna(target):
-                    target = 0
-
-                vals = synthetic_df.loc[bucket_mask, c].values
-                current_total = (vals * bw).sum()
-
-                if abs(target) < 1:
-                    synthetic_df.loc[bucket_mask, c] = 0
-                    continue
-
-                if abs(current_total) < 1:
-                    # Distribute evenly
-                    synthetic_df.loc[bucket_mask, c] = target / bw.sum()
-                    continue
-
-                adj = np.clip(target / current_total, 0.5, 2.0)
-                synthetic_df.loc[bucket_mask, c] *= adj
-
-    # Final exact calibration pass
-    offset = 0
-    for recid in AGGREGATE_RECIDS:
-        row = agg_rows[agg_rows.RECID == recid].iloc[0]
-        meta = BUCKET_META[recid]
-        pop_weight = row.S006 / 100
-        n_syn = _choose_n_synthetic(pop_weight)
-
-        bucket_start = SYNTHETIC_RECID_START + offset
-        bucket_end = bucket_start + n_syn
-        offset += n_syn
-
-        bucket_mask = (synthetic_df.RECID >= bucket_start) & (
-            synthetic_df.RECID < bucket_end
-        )
-        if bucket_mask.sum() == 0:
-            continue
-
-        bw = synthetic_df.loc[bucket_mask, "S006"].values / 100
-
-        for c in income_cols:
-            target = pop_weight * row.get(c, 0)
-            if pd.isna(target):
-                target = 0
-            vals = synthetic_df.loc[bucket_mask, c].values
-            current_total = (vals * bw).sum()
-            if abs(target) < 1:
-                synthetic_df.loc[bucket_mask, c] = 0
-            elif abs(current_total) > 0:
-                synthetic_df.loc[bucket_mask, c] *= target / current_total
-
-    # Assemble output
-    for c in puf.columns:
-        if c not in synthetic_df.columns:
-            synthetic_df[c] = 0
-
-    synthetic_df = synthetic_df[puf.columns]
-
     result = pd.concat([regular, synthetic_df], ignore_index=True)
 
-    n_syn_total = len(synthetic_df)
-    n_removed = agg_mask.sum()
     print(
-        f"Disaggregated {n_removed} aggregate records into "
-        f"{n_syn_total} synthetic records"
+        f"Disaggregated {int(agg_mask.sum())} aggregate records into "
+        f"{len(synthetic_df)} synthetic records"
     )
 
     return result

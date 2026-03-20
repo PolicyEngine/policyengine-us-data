@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+modal = pytest.importorskip("modal")
+
 from modal_app.pipeline import (
     RunMetadata,
     _step_completed,

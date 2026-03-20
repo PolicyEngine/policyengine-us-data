@@ -36,7 +36,7 @@ image = (
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 VOLUME_MOUNT = "/staging"
-_DEFAULT_UV_HTTP_TIMEOUT = "300"
+_DEFAULT_UV_HTTP_TIMEOUT = "1800"
 
 
 def setup_gcp_credentials():

@@ -27,7 +27,7 @@ image = (
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 VOLUME_MOUNT = "/checkpoints"
 _volume_lock = threading.Lock()
-_DEFAULT_UV_HTTP_TIMEOUT = "300"
+_DEFAULT_UV_HTTP_TIMEOUT = "1800"
 
 # Script to output file mapping for checkpointing
 # Values can be a single file path (str) or a list of file paths

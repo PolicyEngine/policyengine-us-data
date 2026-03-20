@@ -33,15 +33,11 @@ pipeline_volume = modal.Volume.from_name(
     create_if_missing=True,
 )
 
-image = (
-    modal.Image.debian_slim(python_version="3.13")
-    .apt_install("git")
-    .pip_install("uv", "tomli")
-)
+from modal_app.images import cpu_image
 
-REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
+image = cpu_image
+
 VOLUME_MOUNT = "/staging"
-_DEFAULT_UV_HTTP_TIMEOUT = "1800"
 
 
 def setup_gcp_credentials():
@@ -56,36 +52,13 @@ def setup_gcp_credentials():
     return None
 
 
-def _run_uv_sync(*args: str) -> None:
-    """Run uv sync with a higher default network timeout for large wheels."""
-    env = os.environ.copy()
-    env.setdefault("UV_HTTP_TIMEOUT", _DEFAULT_UV_HTTP_TIMEOUT)
-    subprocess.run(["uv", "sync", *args], check=True, env=env)
-
-
 def setup_repo(branch: str):
-    """Clone the repo at the requested branch and install deps.
+    """Change to the pre-baked repo directory.
 
-    Always clones fresh from GitHub so every container runs the
-    latest code — no stale image cache issues.
+    The branch parameter is kept for API compatibility but is
+    no longer used for cloning -- code is baked into the image.
     """
-    repo_dir = Path("/root/policyengine-us-data")
-
-    if repo_dir.exists():
-        import shutil
-
-        shutil.rmtree(repo_dir)
-
-    os.chdir("/root")
-    subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
-    os.chdir("policyengine-us-data")
-    sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    print(f"Checked out {branch} at {sha[:8]}")
-    _run_uv_sync("--locked")
+    os.chdir("/root/policyengine-us-data")
 
 
 def validate_artifacts(

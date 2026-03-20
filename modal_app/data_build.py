@@ -27,14 +27,12 @@ pipeline_volume = modal.Volume.from_name(
 )
 PIPELINE_MOUNT = "/pipeline"
 
-image = (
-    modal.Image.debian_slim(python_version="3.13").apt_install("git").pip_install("uv")
-)
+from modal_app.images import cpu_image
 
-REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
+image = cpu_image
+
 VOLUME_MOUNT = "/checkpoints"
 _volume_lock = threading.Lock()
-_DEFAULT_UV_HTTP_TIMEOUT = "1800"
 
 # Script to output file mapping for checkpointing
 # Values can be a single file path (str) or a list of file paths
@@ -93,13 +91,6 @@ def setup_gcp_credentials():
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
         return creds_path
     return None
-
-
-def _run_uv_sync(*args: str) -> None:
-    """Run uv sync with a higher default network timeout for large wheels."""
-    env = os.environ.copy()
-    env.setdefault("UV_HTTP_TIMEOUT", _DEFAULT_UV_HTTP_TIMEOUT)
-    subprocess.run(["uv", "sync", *args], check=True, env=env)
 
 
 @functools.cache
@@ -324,9 +315,7 @@ def build_datasets(
             checkpoint_volume.commit()
         print(f"Cleared checkpoints for branch: {branch}")
 
-    os.chdir("/root")
-    subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
-    os.chdir("policyengine-us-data")
+    os.chdir("/root/policyengine-us-data")
 
     # Clean stale checkpoints from other commits
     branch_dir = Path(VOLUME_MOUNT) / branch
@@ -337,9 +326,6 @@ def build_datasets(
                 shutil.rmtree(entry)
                 print(f"Removed stale checkpoint dir: {entry.name[:12]}")
         checkpoint_volume.commit()
-
-    # Use uv sync to install exact versions from uv.lock.
-    _run_uv_sync("--locked")
 
     env = os.environ.copy()
 

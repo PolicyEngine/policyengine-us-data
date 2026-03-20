@@ -52,14 +52,16 @@ app = modal.App("policyengine-us-data-pipeline")
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
-pipeline_volume = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
-staging_volume = modal.Volume.from_name("local-area-staging", create_if_missing=True)
-
-image = (
-    modal.Image.debian_slim(python_version="3.13")
-    .apt_install("git")
-    .pip_install("uv", "tomli")
+pipeline_volume = modal.Volume.from_name(
+    "pipeline-artifacts", create_if_missing=True
 )
+staging_volume = modal.Volume.from_name(
+    "local-area-staging", create_if_missing=True
+)
+
+from modal_app.images import cpu_image
+
+image = cpu_image
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 PIPELINE_MOUNT = "/pipeline"
@@ -126,7 +128,9 @@ def read_run_meta(
     vol.reload()
     meta_path = Path(RUNS_DIR) / run_id / "meta.json"
     if not meta_path.exists():
-        raise FileNotFoundError(f"No metadata found for run {run_id} at {meta_path}")
+        raise FileNotFoundError(
+            f"No metadata found for run {run_id} at {meta_path}"
+        )
     with open(meta_path) as f:
         return RunMetadata.from_dict(json.load(f))
 
@@ -144,7 +148,9 @@ def get_pinned_sha(branch: str) -> str:
         text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"Failed to get SHA for branch {branch}: {result.stderr}")
+        raise RuntimeError(
+            f"Failed to get SHA for branch {branch}: {result.stderr}"
+        )
     line = result.stdout.strip()
     if not line:
         raise RuntimeError(f"Branch {branch} not found in remote")
@@ -152,53 +158,16 @@ def get_pinned_sha(branch: str) -> str:
 
 
 def get_version_from_branch(branch: str) -> str:
-    """Get the package version from pyproject.toml on a
-    branch by fetching just that file."""
-    result = subprocess.run(
-        [
-            "git",
-            "archive",
-            f"--remote={REPO_URL}",
-            branch,
-            "pyproject.toml",
-        ],
-        capture_output=True,
-    )
-    # git archive --remote may not work with HTTPS;
-    # fall back to cloning
-    if result.returncode != 0:
-        # Use a lightweight approach: fetch and read
-        clone_dir = "/tmp/version_check"
-        subprocess.run(
-            [
-                "git",
-                "clone",
-                "--depth=1",
-                "-b",
-                branch,
-                REPO_URL,
-                clone_dir,
-            ],
-            capture_output=True,
-        )
-        import tomli
+    """Get the package version from the pre-baked pyproject.toml.
 
-        with open(f"{clone_dir}/pyproject.toml", "rb") as f:
-            pyproject = tomli.load(f)
-        import shutil
-
-        shutil.rmtree(clone_dir, ignore_errors=True)
-        return pyproject["project"]["version"]
-
-    # Parse from tar
-    import io
-    import tarfile
-
-    tar = tarfile.open(fileobj=io.BytesIO(result.stdout))
-    member = tar.extractfile("pyproject.toml")
+    The branch parameter is kept for API compatibility but is
+    no longer used -- version comes from the baked source.
+    """
     import tomli
 
-    pyproject = tomli.load(member)
+    pyproject_path = "/root/policyengine-us-data/pyproject.toml"
+    with open(pyproject_path, "rb") as f:
+        pyproject = tomli.load(f)
     return pyproject["project"]["version"]
 
 
@@ -293,23 +262,9 @@ app.include(_local_area_app)
 # ── Stage base datasets ─────────────────────────────────────────
 
 
-def _clone_and_install(branch: str) -> None:
-    """Clone the repo and install deps in the orchestrator."""
-    repo_dir = Path("/root/policyengine-us-data")
-    if repo_dir.exists():
-        import shutil
-
-        shutil.rmtree(repo_dir)
-    subprocess.run(
-        ["git", "clone", "-b", branch, REPO_URL],
-        cwd="/root",
-        check=True,
-    )
-    subprocess.run(
-        ["uv", "sync", "--locked"],
-        cwd="/root/policyengine-us-data",
-        check=True,
-    )
+def _setup_repo() -> None:
+    """Change to the pre-baked repo directory."""
+    os.chdir("/root/policyengine-us-data")
 
 
 def stage_base_datasets(
@@ -355,7 +310,7 @@ def stage_base_datasets(
         print("  No base datasets to stage")
         return
 
-    _clone_and_install(branch)
+    _setup_repo()
 
     # Build the upload script as a Python snippet
     import json as _json
@@ -419,13 +374,12 @@ def upload_run_diagnostics(
     import json as _json
 
     file_entries = [
-        (str(f), f"calibration/runs/{run_id}/diagnostics/{f.name}") for f in files
+        (str(f), f"calibration/runs/{run_id}/diagnostics/{f.name}")
+        for f in files
     ]
     entries_json = _json.dumps(file_entries)
 
-    # Ensure repo is cloned (may already be from stage_base_datasets)
-    if not Path("/root/policyengine-us-data").exists():
-        _clone_and_install(branch)
+    _setup_repo()
 
     result = subprocess.run(
         [
@@ -554,7 +508,9 @@ def _write_validation_diagnostics(
         worst_areas = sorted(
             area_stats.items(),
             key=lambda x: (
-                sum(x[1]["rae_vals"]) / len(x[1]["rae_vals"]) if x[1]["rae_vals"] else 0
+                sum(x[1]["rae_vals"]) / len(x[1]["rae_vals"])
+                if x[1]["rae_vals"]
+                else 0
             ),
             reverse=True,
         )[:5]
@@ -703,7 +659,9 @@ def run_pipeline(
     print(f"  Clones:  {n_clones}")
     if resume_run_id:
         completed = [
-            s for s, t in meta.step_timings.items() if t.get("status") == "completed"
+            s
+            for s, t in meta.step_timings.items()
+            if t.get("status") == "completed"
         ]
         print(f"  Resume:  skipping {completed}")
     print("=" * 60)
@@ -757,7 +715,9 @@ def run_pipeline(
                 step_start,
                 pipeline_volume,
             )
-            print(f"  Completed in {meta.step_timings['build_package']['duration_s']}s")
+            print(
+                f"  Completed in {meta.step_timings['build_package']['duration_s']}s"
+            )
         else:
             print("\n[Step 2/5] Build package (skipped - completed)")
 
@@ -857,7 +817,9 @@ def run_pipeline(
                 step_start,
                 pipeline_volume,
             )
-            print(f"  Completed in {meta.step_timings['fit_weights']['duration_s']}s")
+            print(
+                f"  Completed in {meta.step_timings['fit_weights']['duration_s']}s"
+            )
         else:
             print("\n[Step 3/5] Fit weights (skipped - completed)")
 
@@ -1054,7 +1016,7 @@ def promote_run(
     print("=" * 60)
 
     # Clone repo for subprocess calls
-    _clone_and_install(meta.branch)
+    _setup_repo()
 
     # Promote base datasets from staging → production
     print("\nPromoting base datasets (staging → production)...")
@@ -1281,4 +1243,6 @@ def main(
         print(result)
 
     else:
-        raise ValueError(f"Unknown action: {action}. Use: run, status, promote")
+        raise ValueError(
+            f"Unknown action: {action}. Use: run, status, promote"
+        )

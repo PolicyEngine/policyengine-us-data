@@ -7,11 +7,10 @@ app = modal.App("policyengine-us-data-fit-weights")
 hf_secret = modal.Secret.from_name("huggingface-token")
 pipeline_vol = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
 
-image = (
-    modal.Image.debian_slim(python_version="3.11").apt_install("git").pip_install("uv")
-)
+from modal_app.images import gpu_image
 
-REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
+image = gpu_image
+
 PIPELINE_MOUNT = "/pipeline"
 
 
@@ -40,19 +39,9 @@ def _run_streaming(cmd, env=None, label=""):
     return proc.returncode, lines
 
 
-def _run_uv_sync(*args: str) -> None:
-    """Run uv sync with a higher default network timeout for large wheels."""
-    env = os.environ.copy()
-    env.setdefault("UV_HTTP_TIMEOUT", _DEFAULT_UV_HTTP_TIMEOUT)
-    subprocess.run(["uv", "sync", *args], check=True, env=env)
-
-
-def _clone_and_install(branch: str):
-    """Clone the repo and install dependencies."""
-    os.chdir("/root")
-    subprocess.run(["git", "clone", "-b", branch, REPO_URL], check=True)
-    os.chdir("policyengine-us-data")
-    _run_uv_sync("--extra", "l0")
+def _setup_repo():
+    """Change to the pre-baked repo directory."""
+    os.chdir("/root/policyengine-us-data")
 
 
 def _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq=None):
@@ -162,7 +151,7 @@ def _fit_weights_impl(
     workers: int = 8,
 ) -> dict:
     """Full pipeline: read data from pipeline volume, build matrix, fit."""
-    _clone_and_install(branch)
+    _setup_repo()
 
     pipeline_vol.reload()
     artifacts = f"{PIPELINE_MOUNT}/artifacts"
@@ -223,7 +212,7 @@ def _fit_from_package_impl(
     if not volume_package_path:
         raise ValueError("volume_package_path is required")
 
-    _clone_and_install(branch)
+    _setup_repo()
 
     pkg_path = "/root/calibration_package.pkl"
     import shutil
@@ -330,7 +319,7 @@ def _build_package_impl(
     n_clones: int = 430,
 ) -> str:
     """Read data from pipeline volume, build X matrix, save package."""
-    _clone_and_install(branch)
+    _setup_repo()
 
     pipeline_vol.reload()
     artifacts = f"{PIPELINE_MOUNT}/artifacts"

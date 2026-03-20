@@ -7,9 +7,40 @@ app = modal.App("policyengine-us-data-fit-weights")
 hf_secret = modal.Secret.from_name("huggingface-token")
 pipeline_vol = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
 
-from modal_app.images import gpu_image
+from pathlib import Path
 
-image = gpu_image
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_IGNORE = [
+    ".git",
+    "__pycache__",
+    "*.egg-info",
+    ".pytest_cache",
+    "*.h5",
+    "*.npy",
+    "*.pkl",
+    "*.db",
+    "node_modules",
+    "venv",
+    ".venv",
+    "docs/_build",
+    "paper",
+    "presentations",
+]
+image = (
+    modal.Image.debian_slim(python_version="3.13")
+    .apt_install("git")
+    .pip_install("uv>=0.8")
+    .add_local_dir(
+        str(_REPO_ROOT),
+        remote_path="/root/policyengine-us-data",
+        copy=True,
+        ignore=_IGNORE,
+    )
+    .run_commands(
+        "cd /root/policyengine-us-data && "
+        "UV_HTTP_TIMEOUT=300 uv sync --frozen --extra l0"
+    )
+)
 
 PIPELINE_MOUNT = "/pipeline"
 

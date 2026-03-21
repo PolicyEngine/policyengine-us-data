@@ -13,10 +13,6 @@ import numpy as np
 
 @pytest.fixture(scope="module")
 def ecps_sim():
-    from policyengine_us_data.storage import STORAGE_FOLDER
-
-    if not (STORAGE_FOLDER / "enhanced_cps_2024.h5").exists():
-        pytest.skip("enhanced_cps_2024.h5 not found (requires full data build)")
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation
 
@@ -25,10 +21,6 @@ def ecps_sim():
 
 @pytest.fixture(scope="module")
 def cps_sim():
-    from policyengine_us_data.storage import STORAGE_FOLDER
-
-    if not (STORAGE_FOLDER / "cps_2024.h5").exists():
-        pytest.skip("cps_2024.h5 not found (requires full data build)")
     from policyengine_us_data.datasets.cps import CPS_2024
     from policyengine_us import Microsimulation
 

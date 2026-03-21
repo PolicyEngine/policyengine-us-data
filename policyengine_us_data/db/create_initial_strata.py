@@ -50,6 +50,10 @@ def fetch_congressional_districts(year):
     df = df.drop(columns=["n_districts"])
 
     df.loc[df["district_number"] == 0, "district_number"] = 1
+    df.loc[
+        (df["state_fips"] == 11) & (df["district_number"] == 98),
+        "district_number",
+    ] = 1
     df["congressional_district_geoid"] = df["state_fips"] * 100 + df["district_number"]
 
     df = df[

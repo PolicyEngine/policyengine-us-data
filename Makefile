@@ -203,6 +203,8 @@ stage-all-h5s:
 	$(MAKE) stage-h5s & $(MAKE) stage-national-h5 & wait
 
 promote:
+	@echo "This will run the full Modal promote pipeline (local_area.py::main_promote)."
+	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || (echo "Aborted."; exit 1)
 	$(eval VERSION := $(or $(VERSION),$(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")))
 	modal run --detach modal_app/local_area.py::main_promote \
 		--branch $(BRANCH) --version $(VERSION)

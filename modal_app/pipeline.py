@@ -183,11 +183,11 @@ def get_version_from_branch(branch: str) -> str:
     The branch parameter is kept for API compatibility but is
     no longer used -- version comes from the baked source.
     """
-    import tomli
+    import tomllib
 
     pyproject_path = "/root/policyengine-us-data/pyproject.toml"
     with open(pyproject_path, "rb") as f:
-        pyproject = tomli.load(f)
+        pyproject = tomllib.load(f)
     return pyproject["project"]["version"]
 
 

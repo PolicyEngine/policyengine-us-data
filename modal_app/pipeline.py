@@ -253,6 +253,12 @@ import sys
 _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
+# The image bakes the repo at /root/policyengine-us-data, but Modal
+# auto-mounts the entrypoint elsewhere, so _parent may not contain
+# modal_app/.  Ensure the baked repo root is always importable.
+_baked = "/root/policyengine-us-data"
+if _baked not in sys.path:
+    sys.path.insert(0, _baked)
 
 from modal_app.data_build import app as _data_build_app
 from modal_app.data_build import build_datasets

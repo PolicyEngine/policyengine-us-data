@@ -603,7 +603,7 @@ def run_pipeline(
     n_clones: int = 430,
     skip_national: bool = False,
     resume_run_id: str = None,
-    clear_checkpoints: bool = True,
+    clear_checkpoints: bool = False,
 ) -> str:
     """Run the full pipeline end-to-end.
 
@@ -617,9 +617,11 @@ def run_pipeline(
         n_clones: Number of clones for H5 building.
         skip_national: Skip national calibration/H5.
         resume_run_id: Resume a previously failed run.
-        clear_checkpoints: Clear stale checkpoints before building
-            (default True). Pass False only to resume a known-good
-            partial build.
+        clear_checkpoints: Wipe ALL checkpoints before building
+            (default False). Normally not needed — checkpoints are
+            scoped by commit SHA, so stale ones from other commits
+            are cleaned automatically. Use True only to force a
+            full rebuild of the current commit.
 
     Returns:
         The run ID for use with promote.
@@ -1225,7 +1227,7 @@ def main(
     num_workers: int = 8,
     n_clones: int = 430,
     skip_national: bool = False,
-    clear_checkpoints: bool = True,
+    clear_checkpoints: bool = False,
     version: str = None,
 ):
     """Pipeline entrypoint.

@@ -152,10 +152,10 @@ def validate_artifacts(
 
 def get_version() -> str:
     """Get package version from pyproject.toml."""
-    import tomli
+    import tomllib
 
     with open("pyproject.toml", "rb") as f:
-        pyproject = tomli.load(f)
+        pyproject = tomllib.load(f)
     return pyproject["project"]["version"]
 
 

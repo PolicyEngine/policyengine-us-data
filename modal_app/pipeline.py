@@ -603,6 +603,7 @@ def run_pipeline(
     n_clones: int = 430,
     skip_national: bool = False,
     resume_run_id: str = None,
+    clear_checkpoints: bool = True,
 ) -> str:
     """Run the full pipeline end-to-end.
 
@@ -616,6 +617,9 @@ def run_pipeline(
         n_clones: Number of clones for H5 building.
         skip_national: Skip national calibration/H5.
         resume_run_id: Resume a previously failed run.
+        clear_checkpoints: Clear stale checkpoints before building
+            (default True). Pass False only to resume a known-good
+            partial build.
 
     Returns:
         The run ID for use with promote.
@@ -696,6 +700,7 @@ def run_pipeline(
                 upload=True,
                 branch=branch,
                 sequential=False,
+                clear_checkpoints=clear_checkpoints,
                 skip_tests=True,
                 skip_enhanced_cps=False,
             )
@@ -1220,6 +1225,7 @@ def main(
     num_workers: int = 8,
     n_clones: int = 430,
     skip_national: bool = False,
+    clear_checkpoints: bool = True,
     version: str = None,
 ):
     """Pipeline entrypoint.
@@ -1240,6 +1246,7 @@ def main(
             n_clones=n_clones,
             skip_national=skip_national,
             resume_run_id=resume_run_id,
+            clear_checkpoints=clear_checkpoints,
         )
         print(f"\nPipeline run complete: {result}")
 

@@ -28,6 +28,17 @@ pipeline_volume = modal.Volume.from_name(
 PIPELINE_MOUNT = "/pipeline"
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+
+try:
+    _LOCAL_SHA = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"],
+        text=True,
+        stderr=subprocess.DEVNULL,
+        cwd=str(_REPO_ROOT),
+    ).strip()
+except Exception:
+    _LOCAL_SHA = None
+
 _IGNORE = [
     ".git",
     "__pycache__",
@@ -54,6 +65,7 @@ image = (
         copy=True,
         ignore=_IGNORE,
     )
+    .env({"BUILD_COMMIT_SHA": _LOCAL_SHA or ""})
     .run_commands(
         "cd /root/policyengine-us-data && UV_HTTP_TIMEOUT=300 uv sync --frozen"
     )
@@ -125,9 +137,13 @@ def setup_gcp_credentials():
 def get_current_commit() -> str:
     """Get the current git commit SHA (cached per process).
 
-    Falls back to a hash of pyproject.toml version when .git
-    is not available (pre-baked Modal images exclude .git).
+    Checks BUILD_COMMIT_SHA env var first (set at image build time
+    from the local .git), then falls back to git and finally a hash
+    of pyproject.toml.
     """
+    env_sha = os.environ.get("BUILD_COMMIT_SHA")
+    if env_sha:
+        return env_sha
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL

@@ -138,6 +138,15 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
             3: "NONE",
         }
     ).astype("S")
+    if self.file_path.exists():
+        with h5py.File(self.file_path, "r") as _f:
+            stale_keys = [k for k in _f.keys() if k not in cps]
+            if stale_keys:
+                logging.warning(
+                    f"Stale H5 at {self.file_path} has {len(stale_keys)} "
+                    f"extra vars before first save: {stale_keys[:5]}"
+                )
+        self.file_path.unlink()
     self.save_dataset(cps)
 
     from policyengine_us_data.datasets.acs.acs import ACS_2022

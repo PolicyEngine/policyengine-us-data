@@ -642,10 +642,6 @@ def coordinate_publish(
 
     staging_dir = Path(VOLUME_MOUNT)
     version_dir = staging_dir / version
-    if version_dir.exists():
-        print(f"Clearing stale build directory: {version_dir}")
-        shutil.rmtree(version_dir)
-    version_dir.mkdir(parents=True, exist_ok=True)
 
     pipeline_volume.reload()
     artifacts = Path("/pipeline/artifacts")
@@ -675,6 +671,34 @@ def coordinate_publish(
         "seed": 42,
     }
     validate_artifacts(config_json_path, artifacts)
+
+    # Fingerprint-based cache invalidation
+    from policyengine_us_data.calibration.publish_local_area import (
+        compute_input_fingerprint,
+    )
+
+    fingerprint = compute_input_fingerprint(
+        weights_path, dataset_path, n_clones, seed=42
+    )
+    fingerprint_file = version_dir / "fingerprint.json"
+    if version_dir.exists():
+        if fingerprint_file.exists():
+            stored = json.loads(fingerprint_file.read_text())
+            if stored.get("fingerprint") == fingerprint:
+                print(f"Inputs unchanged ({fingerprint}), resuming...")
+            else:
+                print(
+                    f"Inputs changed "
+                    f"({stored.get('fingerprint')} -> {fingerprint}), "
+                    f"rebuilding..."
+                )
+                shutil.rmtree(version_dir)
+        else:
+            print("No fingerprint found, clearing stale directory...")
+            shutil.rmtree(version_dir)
+    version_dir.mkdir(parents=True, exist_ok=True)
+    fingerprint_file.write_text(json.dumps({"fingerprint": fingerprint}))
+    staging_volume.commit()
     result = subprocess.run(
         [
             "uv",

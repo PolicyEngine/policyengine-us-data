@@ -224,6 +224,40 @@ def _step_completed(meta: RunMetadata, step: str) -> bool:
     return timing.get("status") == "completed"
 
 
+def find_resumable_run(branch: str, sha: str, vol: modal.Volume) -> Optional[str]:
+    """Find an existing running run for the same branch+sha."""
+    vol.reload()
+    runs_dir = Path(RUNS_DIR)
+    if not runs_dir.exists():
+        return None
+
+    best_run_id = None
+    best_start = ""
+
+    for entry in runs_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        meta_path = entry / "meta.json"
+        if not meta_path.exists():
+            continue
+        try:
+            with open(meta_path) as f:
+                data = json.load(f)
+            if (
+                data.get("branch") == branch
+                and data.get("sha") == sha
+                and data.get("status") == "running"
+            ):
+                start = data.get("start_time", "")
+                if start > best_start:
+                    best_start = start
+                    best_run_id = data.get("run_id")
+        except (json.JSONDecodeError, KeyError):
+            continue
+
+    return best_run_id
+
+
 def _record_step(
     meta: RunMetadata,
     step: str,
@@ -592,6 +626,7 @@ def _write_validation_diagnostics(
         STAGING_MOUNT: staging_volume,
     },
     secrets=[hf_secret, gcp_secret],
+    nonpreemptible=True,
 )
 def run_pipeline(
     branch: str = "main",
@@ -637,6 +672,12 @@ def run_pipeline(
     # ── Initialize or resume run ──
     sha = get_pinned_sha(branch)
     version = get_version_from_branch(branch)
+
+    if not resume_run_id:
+        existing = find_resumable_run(branch, sha, pipeline_volume)
+        if existing:
+            print(f"Auto-resuming existing run {existing}")
+            resume_run_id = existing
 
     if resume_run_id:
         print(f"Resuming run {resume_run_id}...")
@@ -986,6 +1027,7 @@ def _print_step_timings(meta: RunMetadata) -> None:
         STAGING_MOUNT: staging_volume,
     },
     secrets=[hf_secret, gcp_secret],
+    nonpreemptible=True,
 )
 def promote_run(
     run_id: str,

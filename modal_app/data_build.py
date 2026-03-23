@@ -342,6 +342,7 @@ def run_tests_with_checkpoints(
     memory=32768,
     cpu=8.0,
     timeout=14400,
+    nonpreemptible=True,
 )
 def build_datasets(
     upload: bool = False,

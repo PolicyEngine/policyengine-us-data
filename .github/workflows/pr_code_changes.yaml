@@ -84,7 +84,7 @@ jobs:
     needs: [check-fork, Lint]
     uses: ./.github/workflows/reusable_test.yaml
     with:
-      full_suite: false
+      full_suite: true
       upload_data: false
       deploy_docs: false
     secrets: inherit

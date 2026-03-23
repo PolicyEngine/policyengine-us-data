@@ -622,6 +622,7 @@ print(f"Successfully published version {{version}}")
     },
     memory=8192,
     timeout=86400,
+    nonpreemptible=True,
 )
 def coordinate_publish(
     branch: str = "main",
@@ -875,6 +876,7 @@ def main(
     },
     memory=16384,
     timeout=14400,
+    nonpreemptible=True,
 )
 def coordinate_national_publish(
     branch: str = "main",

@@ -517,7 +517,6 @@ def check_volume_package() -> dict:
     gpu="T4",
     timeout=14400,
     volumes={PIPELINE_MOUNT: pipeline_vol},
-    nonpreemptible=True,
 )
 def fit_weights_t4(
     branch: str = "main",
@@ -553,7 +552,6 @@ def fit_weights_t4(
     gpu="A10",
     timeout=14400,
     volumes={PIPELINE_MOUNT: pipeline_vol},
-    nonpreemptible=True,
 )
 def fit_weights_a10(
     branch: str = "main",
@@ -589,7 +587,6 @@ def fit_weights_a10(
     gpu="A100-40GB",
     timeout=14400,
     volumes={PIPELINE_MOUNT: pipeline_vol},
-    nonpreemptible=True,
 )
 def fit_weights_a100_40(
     branch: str = "main",
@@ -625,7 +622,6 @@ def fit_weights_a100_40(
     gpu="A100-80GB",
     timeout=14400,
     volumes={PIPELINE_MOUNT: pipeline_vol},
-    nonpreemptible=True,
 )
 def fit_weights_a100_80(
     branch: str = "main",
@@ -661,7 +657,6 @@ def fit_weights_a100_80(
     gpu="H100",
     timeout=14400,
     volumes={PIPELINE_MOUNT: pipeline_vol},
-    nonpreemptible=True,
 )
 def fit_weights_h100(
     branch: str = "main",
@@ -708,7 +703,6 @@ GPU_FUNCTIONS = {
     gpu="T4",
     timeout=14400,
     volumes={PIPELINE_MOUNT: pipeline_vol},
-    nonpreemptible=True,
 )
 def fit_from_package_t4(
     branch: str = "main",
@@ -741,7 +735,6 @@ def fit_from_package_t4(
     gpu="A10",
     timeout=14400,
     volumes={PIPELINE_MOUNT: pipeline_vol},
-    nonpreemptible=True,
 )
 def fit_from_package_a10(
     branch: str = "main",
@@ -774,7 +767,6 @@ def fit_from_package_a10(
     gpu="A100-40GB",
     timeout=14400,
     volumes={PIPELINE_MOUNT: pipeline_vol},
-    nonpreemptible=True,
 )
 def fit_from_package_a100_40(
     branch: str = "main",
@@ -807,7 +799,6 @@ def fit_from_package_a100_40(
     gpu="A100-80GB",
     timeout=14400,
     volumes={PIPELINE_MOUNT: pipeline_vol},
-    nonpreemptible=True,
 )
 def fit_from_package_a100_80(
     branch: str = "main",
@@ -840,7 +831,6 @@ def fit_from_package_a100_80(
     gpu="H100",
     timeout=14400,
     volumes={PIPELINE_MOUNT: pipeline_vol},
-    nonpreemptible=True,
 )
 def fit_from_package_h100(
     branch: str = "main",

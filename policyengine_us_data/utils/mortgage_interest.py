@@ -327,7 +327,9 @@ def _build_tax_unit_mortgage_receiver(
     person_tax_unit_ids = np.asarray(person_tax_unit_ids)
     is_head = np.asarray(is_head, dtype=bool)
     n_tax_units = len(tax_unit_ids)
-    tax_unit_index = {int(tax_unit_id): idx for idx, tax_unit_id in enumerate(tax_unit_ids)}
+    tax_unit_index = {
+        int(tax_unit_id): idx for idx, tax_unit_id in enumerate(tax_unit_ids)
+    }
     person_tax_unit_idx = np.array(
         [tax_unit_index[int(tax_unit_id)] for tax_unit_id in person_tax_unit_ids],
         dtype=np.int32,
@@ -418,13 +420,9 @@ def _build_scf_mortgage_donor(scf: pd.DataFrame) -> pd.DataFrame:
     donor["is_female"] = _frame_column(scf, "is_female")
     donor["cps_race"] = _frame_column(scf, "cps_race")
     donor["is_married"] = _frame_column(scf, "is_married")
-    donor["own_children_in_household"] = _frame_column(
-        scf, "own_children_in_household"
-    )
+    donor["own_children_in_household"] = _frame_column(scf, "own_children_in_household")
     donor["employment_income"] = _frame_column(scf, "employment_income")
-    donor["interest_dividend_income"] = _frame_column(
-        scf, "interest_dividend_income"
-    )
+    donor["interest_dividend_income"] = _frame_column(scf, "interest_dividend_income")
     donor["social_security_pension_income"] = _frame_column(
         scf, "social_security_pension_income"
     )
@@ -527,7 +525,11 @@ def _tax_unit_mortgage_owner_status(
     spm_tenure = data.get("spm_unit_tenure_type", {}).get(time_period)
     person_spm_unit_id = data.get("person_spm_unit_id", {}).get(time_period)
     spm_unit_ids = data.get("spm_unit_id", {}).get(time_period)
-    if spm_tenure is not None and person_spm_unit_id is not None and spm_unit_ids is not None:
+    if (
+        spm_tenure is not None
+        and person_spm_unit_id is not None
+        and spm_unit_ids is not None
+    ):
         spm_map = {
             int(spm_unit_id): _decode_owner_status(value)
             for spm_unit_id, value in zip(spm_unit_ids, spm_tenure)
@@ -723,9 +725,13 @@ def _split_interest_by_balance(
 
     with_second = total_balance > 0
     first_interest[with_second] = (
-        total_interest[with_second] * first_balance[with_second] / total_balance[with_second]
+        total_interest[with_second]
+        * first_balance[with_second]
+        / total_balance[with_second]
     )
-    second_interest[with_second] = total_interest[with_second] - first_interest[with_second]
+    second_interest[with_second] = (
+        total_interest[with_second] - first_interest[with_second]
+    )
 
     no_second = second_balance == 0
     first_interest[no_second] = total_interest[no_second]

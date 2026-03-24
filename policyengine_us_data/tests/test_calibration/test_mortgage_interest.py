@@ -117,12 +117,8 @@ def test_structural_mortgage_conversion_keeps_balance_hints_for_non_itemizers():
 
     converted = convert_mortgage_interest_to_structural_inputs(data, 2024)
 
-    assert converted["first_home_mortgage_balance"][2024][0] == pytest.approx(
-        250_000.0
-    )
-    assert converted["second_home_mortgage_balance"][2024][0] == pytest.approx(
-        25_000.0
-    )
+    assert converted["first_home_mortgage_balance"][2024][0] == pytest.approx(250_000.0)
+    assert converted["second_home_mortgage_balance"][2024][0] == pytest.approx(25_000.0)
     assert converted["first_home_mortgage_interest"][2024][0] == 0
     assert converted["second_home_mortgage_interest"][2024][0] == 0
     assert converted["first_home_mortgage_origination_year"][2024][0] > 0

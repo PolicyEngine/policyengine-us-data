@@ -646,7 +646,10 @@ class PUF(Dataset):
                 self.holder[key] = np.array(self.holder[key]).astype(float)
                 assert not np.isnan(self.holder[key]).any(), f"{key} has NaNs."
 
-        holder_tp = {variable: {self.time_period: values} for variable, values in self.holder.items()}
+        holder_tp = {
+            variable: {self.time_period: values}
+            for variable, values in self.holder.items()
+        }
         holder_tp = convert_mortgage_interest_to_structural_inputs(
             holder_tp,
             self.time_period,

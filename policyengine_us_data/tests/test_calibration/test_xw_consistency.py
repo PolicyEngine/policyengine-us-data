@@ -45,7 +45,6 @@ def test_xw_matches_stacked_sim():
     )
     from policyengine_us_data.calibration.publish_local_area import (
         build_h5,
-        prepare_base_sim_data,
     )
     from policyengine_us_data.utils.takeup import (
         SIMPLE_TAKEUP_VARS,
@@ -98,14 +97,13 @@ def test_xw_matches_stacked_sim():
 
     check_vars = ["snap"]
     tmpdir = tempfile.mkdtemp()
-    base_data = prepare_base_sim_data(Path(DATASET_PATH))
 
     for cd in top_cds:
         h5_path = f"{tmpdir}/{cd}.h5"
         build_h5(
             weights=w,
             geography=geography,
-            base_data=base_data,
+            dataset_path=Path(DATASET_PATH),
             output_path=Path(h5_path),
             cd_subset=[cd],
             takeup_filter=takeup_filter,

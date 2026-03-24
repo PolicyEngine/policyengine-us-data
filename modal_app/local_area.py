@@ -397,12 +397,10 @@ def build_areas_worker(
         worker_cmd.append("--no-validate")
     result = subprocess.run(
         worker_cmd,
-        capture_output=True,
+        stdout=subprocess.PIPE,
         text=True,
         env=os.environ.copy(),
     )
-
-    print(result.stderr)
 
     if result.returncode != 0:
         return {

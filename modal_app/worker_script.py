@@ -208,7 +208,6 @@ def main():
 
     from policyengine_us_data.calibration.publish_local_area import (
         build_h5,
-        prepare_base_sim_data,
         NYC_COUNTIES,
         NYC_CDS,
         AT_LARGE_DISTRICTS,
@@ -222,8 +221,11 @@ def main():
 
     weights = np.load(weights_path)
 
-    base_data = prepare_base_sim_data(dataset_path)
-    n_records = base_data.n_hh
+    from policyengine_us import Microsimulation
+
+    _sim = Microsimulation(dataset=str(dataset_path))
+    n_records = len(_sim.calculate("household_id", map_to="household").values)
+    del _sim
 
     geography = assign_random_geography(
         n_records=n_records,
@@ -337,7 +339,7 @@ def main():
                 path = build_h5(
                     weights=weights,
                     geography=geography,
-                    base_data=base_data,
+                    dataset_path=dataset_path,
                     output_path=states_dir / f"{item_id}.h5",
                     cd_subset=cd_subset,
                     takeup_filter=takeup_filter,
@@ -380,7 +382,7 @@ def main():
                 path = build_h5(
                     weights=weights,
                     geography=geography,
-                    base_data=base_data,
+                    dataset_path=dataset_path,
                     output_path=districts_dir / f"{friendly_name}.h5",
                     cd_subset=[geoid],
                     takeup_filter=takeup_filter,
@@ -399,7 +401,7 @@ def main():
                 path = build_h5(
                     weights=weights,
                     geography=geography,
-                    base_data=base_data,
+                    dataset_path=dataset_path,
                     output_path=cities_dir / "NYC.h5",
                     cd_subset=cd_subset,
                     county_filter=NYC_COUNTIES,
@@ -427,7 +429,7 @@ def main():
                 path = build_h5(
                     weights=weights,
                     geography=national_geo,
-                    base_data=base_data,
+                    dataset_path=dataset_path,
                     output_path=national_dir / "US.h5",
                 )
             else:

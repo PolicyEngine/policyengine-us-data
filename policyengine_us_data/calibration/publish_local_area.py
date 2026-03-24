@@ -11,7 +11,7 @@ Usage:
 import hashlib
 import json
 import shutil
-from dataclasses import dataclass
+
 
 import numpy as np
 from pathlib import Path
@@ -114,160 +114,12 @@ def validate_or_clear_checkpoints(fingerprint: str):
     META_FILE.write_text(json.dumps({"fingerprint": fingerprint}))
 
 
-@dataclass
-class BaseSimData:
-    time_period: int
-    n_hh: int
-    household_ids: np.ndarray
-    person_hh_ids: np.ndarray
-    hh_id_to_idx: dict
-    hh_to_persons: dict
-    entity_id_arrays: dict
-    person_entity_id_arrays: dict
-    hh_to_entity: dict
-    vars_to_save: set
-    variable_data: dict
-    person_ages: np.ndarray
-    spm_tenure_raw: np.ndarray
-
-
 SUB_ENTITIES = [
     "tax_unit",
     "spm_unit",
     "family",
     "marital_unit",
 ]
-
-
-def prepare_base_sim_data(dataset_path: Path) -> BaseSimData:
-    from collections import defaultdict
-    from policyengine_core.enums import Enum
-
-    sim = Microsimulation(dataset=str(dataset_path))
-    time_period = int(sim.default_calculation_period)
-    household_ids = sim.calculate("household_id", map_to="household").values
-    n_hh = len(household_ids)
-
-    hh_id_to_idx = {int(hid): i for i, hid in enumerate(household_ids)}
-    person_hh_ids = sim.calculate("household_id", map_to="person").values
-
-    hh_to_persons = defaultdict(list)
-    for p_idx, p_hh_id in enumerate(person_hh_ids):
-        hh_to_persons[hh_id_to_idx[int(p_hh_id)]].append(p_idx)
-
-    hh_to_entity = {}
-    entity_id_arrays = {}
-    person_entity_id_arrays = {}
-
-    for ek in SUB_ENTITIES:
-        eids = sim.calculate(f"{ek}_id", map_to=ek).values
-        peids = sim.calculate(f"person_{ek}_id", map_to="person").values
-        entity_id_arrays[ek] = eids
-        person_entity_id_arrays[ek] = peids
-        eid_to_idx = {int(eid): i for i, eid in enumerate(eids)}
-
-        mapping = defaultdict(list)
-        seen = defaultdict(set)
-        for p_idx in range(len(person_hh_ids)):
-            hh_idx = hh_id_to_idx[int(person_hh_ids[p_idx])]
-            e_idx = eid_to_idx[int(peids[p_idx])]
-            if e_idx not in seen[hh_idx]:
-                seen[hh_idx].add(e_idx)
-                mapping[hh_idx].append(e_idx)
-        for hh_idx in mapping:
-            mapping[hh_idx].sort()
-        hh_to_entity[ek] = mapping
-
-    vars_to_save = set(sim.input_variables)
-    vars_to_save.add("county")
-    vars_to_save.add("spm_unit_spm_threshold")
-    vars_to_save.add("congressional_district_geoid")
-    for gv in [
-        "block_geoid",
-        "tract_geoid",
-        "cbsa_code",
-        "sldu",
-        "sldl",
-        "place_fips",
-        "vtd",
-        "puma",
-        "zcta",
-    ]:
-        vars_to_save.add(gv)
-
-    clone_idx_entities = {"household", "person"} | set(SUB_ENTITIES)
-    variable_data = {}
-
-    for variable in sim.tax_benefit_system.variables:
-        if variable not in vars_to_save:
-            continue
-        holder = sim.get_holder(variable)
-        periods = holder.get_known_periods()
-        if not periods:
-            continue
-        var_def = sim.tax_benefit_system.variables.get(variable)
-        entity_key = var_def.entity.key
-        if entity_key not in clone_idx_entities:
-            continue
-
-        var_periods = {}
-        for period in periods:
-            values = holder.get_array(period)
-            if hasattr(values, "_pa_array") or hasattr(values, "_ndarray"):
-                values = np.asarray(values)
-            if var_def.value_type in (Enum, str) and variable != "county_fips":
-                if hasattr(values, "decode_to_str"):
-                    values = values.decode_to_str().astype("S")
-                else:
-                    values = np.asarray(values).astype("S")
-            elif variable == "county_fips":
-                values = np.asarray(values).astype("int32")
-            else:
-                values = np.asarray(values)
-            var_periods[period] = values
-
-        if var_periods:
-            variable_data[variable] = {
-                "entity_key": entity_key,
-                "periods": var_periods,
-            }
-
-    person_ages = sim.calculate("age", map_to="person").values
-
-    spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
-    spm_tenure_periods = spm_tenure_holder.get_known_periods()
-    if spm_tenure_periods:
-        raw_tenure = spm_tenure_holder.get_array(spm_tenure_periods[0])
-        if hasattr(raw_tenure, "decode_to_str"):
-            raw_tenure = raw_tenure.decode_to_str().astype("S")
-        else:
-            raw_tenure = np.array(raw_tenure).astype("S")
-    else:
-        raw_tenure = np.full(
-            len(entity_id_arrays["spm_unit"]),
-            b"RENTER",
-            dtype="S30",
-        )
-
-    del sim
-
-    print(f"Base sim data prepared: {n_hh} households, {len(variable_data)} variables")
-
-    return BaseSimData(
-        time_period=time_period,
-        n_hh=n_hh,
-        household_ids=household_ids,
-        person_hh_ids=person_hh_ids,
-        hh_id_to_idx=hh_id_to_idx,
-        hh_to_persons=dict(hh_to_persons),
-        entity_id_arrays=entity_id_arrays,
-        person_entity_id_arrays=person_entity_id_arrays,
-        hh_to_entity=hh_to_entity,
-        vars_to_save=vars_to_save,
-        variable_data=variable_data,
-        person_ages=person_ages,
-        spm_tenure_raw=raw_tenure,
-    )
 
 
 def load_completed_states() -> set:
@@ -312,7 +164,7 @@ def record_completed_city(city_name: str):
 def build_h5(
     weights: np.ndarray,
     geography,
-    base_data: "BaseSimData",
+    dataset_path: Path,
     output_path: Path,
     cd_subset: List[str] = None,
     county_filter: set = None,
@@ -323,7 +175,7 @@ def build_h5(
     Args:
         weights: Clone-level weight vector, shape (n_clones_total * n_hh,).
         geography: GeographyAssignment from assign_random_geography.
-        base_data: Pre-loaded simulation data from prepare_base_sim_data().
+        dataset_path: Path to base dataset H5 file.
         output_path: Where to write the output H5 file.
         cd_subset: If provided, only include clones for these CDs.
         county_filter: If provided, scale weights by P(target|CD)
@@ -334,6 +186,8 @@ def build_h5(
         Path to the output H5 file.
     """
     import h5py
+    from collections import defaultdict
+    from policyengine_core.enums import Enum
     from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
         County,
     )
@@ -344,10 +198,11 @@ def build_h5(
     blocks = np.asarray(geography.block_geoid)
     clone_cds = np.asarray(geography.cd_geoid, dtype=str)
 
-    # === Read base simulation data ===
-    time_period = base_data.time_period
-    household_ids = base_data.household_ids
-    n_hh = base_data.n_hh
+    # === Load base simulation ===
+    sim = Microsimulation(dataset=str(dataset_path))
+    time_period = int(sim.default_calculation_period)
+    household_ids = sim.calculate("household_id", map_to="household").values
+    n_hh = len(household_ids)
 
     if weights.shape[0] % n_hh != 0:
         raise ValueError(
@@ -405,11 +260,36 @@ def build_h5(
     print(f"Active clones: {n_clones:,}")
     print(f"Total weight: {clone_weights.sum():,.0f}")
 
-    # === Read entity membership maps ===
-    hh_to_persons = base_data.hh_to_persons
-    hh_to_entity = base_data.hh_to_entity
-    entity_id_arrays = base_data.entity_id_arrays
-    person_entity_id_arrays = base_data.person_entity_id_arrays
+    # === Build entity membership maps ===
+    hh_id_to_idx = {int(hid): i for i, hid in enumerate(household_ids)}
+    person_hh_ids = sim.calculate("household_id", map_to="person").values
+
+    hh_to_persons = defaultdict(list)
+    for p_idx, p_hh_id in enumerate(person_hh_ids):
+        hh_to_persons[hh_id_to_idx[int(p_hh_id)]].append(p_idx)
+
+    hh_to_entity = {}
+    entity_id_arrays = {}
+    person_entity_id_arrays = {}
+
+    for ek in SUB_ENTITIES:
+        eids = sim.calculate(f"{ek}_id", map_to=ek).values
+        peids = sim.calculate(f"person_{ek}_id", map_to="person").values
+        entity_id_arrays[ek] = eids
+        person_entity_id_arrays[ek] = peids
+        eid_to_idx = {int(eid): i for i, eid in enumerate(eids)}
+
+        mapping = defaultdict(list)
+        seen = defaultdict(set)
+        for p_idx in range(len(person_hh_ids)):
+            hh_idx = hh_id_to_idx[int(person_hh_ids[p_idx])]
+            e_idx = eid_to_idx[int(peids[p_idx])]
+            if e_idx not in seen[hh_idx]:
+                seen[hh_idx].add(e_idx)
+                mapping[hh_idx].append(e_idx)
+        for hh_idx in mapping:
+            mapping[hh_idx].sort()
+        hh_to_entity[ek] = mapping
 
     # === Build clone index arrays ===
     hh_clone_idx = active_hh
@@ -481,6 +361,24 @@ def build_h5(
     unique_geo = derive_geography_from_blocks(unique_blocks)
     clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
+    # === Determine variables to save ===
+    vars_to_save = set(sim.input_variables)
+    vars_to_save.add("county")
+    vars_to_save.add("spm_unit_spm_threshold")
+    vars_to_save.add("congressional_district_geoid")
+    for gv in [
+        "block_geoid",
+        "tract_geoid",
+        "cbsa_code",
+        "sldu",
+        "sldl",
+        "place_fips",
+        "vtd",
+        "puma",
+        "zcta",
+    ]:
+        vars_to_save.add(gv)
+
     # === Clone variable arrays ===
     clone_idx_map = {
         "household": hh_clone_idx,
@@ -492,15 +390,42 @@ def build_h5(
     data = {}
     variables_saved = 0
 
-    for variable, var_info in base_data.variable_data.items():
-        entity_key = var_info["entity_key"]
+    for variable in sim.tax_benefit_system.variables:
+        if variable not in vars_to_save:
+            continue
+
+        holder = sim.get_holder(variable)
+        periods = holder.get_known_periods()
+        if not periods:
+            continue
+
+        var_def = sim.tax_benefit_system.variables.get(variable)
+        entity_key = var_def.entity.key
         if entity_key not in clone_idx_map:
             continue
+
         cidx = clone_idx_map[entity_key]
         var_data = {}
-        for period, values in var_info["periods"].items():
+
+        for period in periods:
+            values = holder.get_array(period)
+
+            if hasattr(values, "_pa_array") or hasattr(values, "_ndarray"):
+                values = np.asarray(values)
+
+            if var_def.value_type in (Enum, str) and variable != "county_fips":
+                if hasattr(values, "decode_to_str"):
+                    values = values.decode_to_str().astype("S")
+                else:
+                    values = np.asarray(values).astype("S")
+            elif variable == "county_fips":
+                values = np.asarray(values).astype("int32")
+            else:
+                values = np.asarray(values)
+
             var_data[period] = values[cidx]
             variables_saved += 1
+
         if var_data:
             data[variable] = var_data
 
@@ -583,8 +508,23 @@ def build_h5(
     )
 
     # Get cloned person ages and SPM tenure types
-    person_ages = base_data.person_ages[person_clone_idx]
-    spm_tenure_cloned = base_data.spm_tenure_raw[entity_clone_idx["spm_unit"]]
+    person_ages = sim.calculate("age", map_to="person").values[person_clone_idx]
+
+    spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
+    spm_tenure_periods = spm_tenure_holder.get_known_periods()
+    if spm_tenure_periods:
+        raw_tenure = spm_tenure_holder.get_array(spm_tenure_periods[0])
+        if hasattr(raw_tenure, "decode_to_str"):
+            raw_tenure = raw_tenure.decode_to_str().astype("S")
+        else:
+            raw_tenure = np.array(raw_tenure).astype("S")
+        spm_tenure_cloned = raw_tenure[entity_clone_idx["spm_unit"]]
+    else:
+        spm_tenure_cloned = np.full(
+            len(entity_clone_idx["spm_unit"]),
+            b"RENTER",
+            dtype="S30",
+        )
 
     new_spm_thresholds = calculate_spm_thresholds_vectorized(
         person_ages=person_ages,
@@ -678,7 +618,7 @@ def get_district_friendly_name(cd_geoid: str) -> str:
 
 def build_states(
     weights_path: Path,
-    base_data: "BaseSimData",
+    dataset_path: Path,
     geography,
     output_dir: Path,
     completed_states: set,
@@ -715,7 +655,7 @@ def build_states(
             build_h5(
                 weights=w,
                 geography=geography,
-                base_data=base_data,
+                dataset_path=dataset_path,
                 output_path=output_path,
                 cd_subset=cd_subset,
                 takeup_filter=takeup_filter,
@@ -745,7 +685,7 @@ def build_states(
 
 def build_districts(
     weights_path: Path,
-    base_data: "BaseSimData",
+    dataset_path: Path,
     geography,
     output_dir: Path,
     completed_districts: set,
@@ -783,7 +723,7 @@ def build_districts(
             build_h5(
                 weights=w,
                 geography=geography,
-                base_data=base_data,
+                dataset_path=dataset_path,
                 output_path=output_path,
                 cd_subset=[cd_geoid],
                 takeup_filter=takeup_filter,
@@ -813,7 +753,7 @@ def build_districts(
 
 def build_cities(
     weights_path: Path,
-    base_data: "BaseSimData",
+    dataset_path: Path,
     geography,
     output_dir: Path,
     completed_cities: set,
@@ -845,7 +785,7 @@ def build_cities(
                 build_h5(
                     weights=w,
                     geography=geography,
-                    base_data=base_data,
+                    dataset_path=dataset_path,
                     output_path=output_path,
                     cd_subset=cd_subset,
                     county_filter=NYC_COUNTIES,
@@ -966,9 +906,10 @@ def main():
     )
     validate_or_clear_checkpoints(fingerprint)
 
-    print("Loading base simulation data...")
-    base_data = prepare_base_sim_data(inputs["dataset"])
-    n_hh = base_data.n_hh
+    print("Loading base simulation to get household count...")
+    _sim = Microsimulation(dataset=str(inputs["dataset"]))
+    n_hh = len(_sim.calculate("household_id", map_to="household").values)
+    del _sim
     print(f"\nBase dataset has {n_hh:,} households")
 
     geo_cache = WORK_DIR / f"geography_{n_hh}x{args.n_clones}_s{args.seed}.npz"
@@ -1031,7 +972,7 @@ def main():
         print(f"Already completed: {len(completed_states)} states")
         build_states(
             inputs["weights"],
-            base_data,
+            inputs["dataset"],
             geography,
             WORK_DIR,
             completed_states,
@@ -1048,7 +989,7 @@ def main():
         print(f"Already completed: {len(completed_districts)} districts")
         build_districts(
             inputs["weights"],
-            base_data,
+            inputs["dataset"],
             geography,
             WORK_DIR,
             completed_districts,
@@ -1064,7 +1005,7 @@ def main():
         print(f"Already completed: {len(completed_cities)} cities")
         build_cities(
             inputs["weights"],
-            base_data,
+            inputs["dataset"],
             geography,
             WORK_DIR,
             completed_cities,

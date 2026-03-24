@@ -2,10 +2,12 @@ import functools
 import os
 import shutil
 import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import IO, Optional
 
 import modal
 
@@ -211,10 +213,35 @@ def cleanup_checkpoints(branch: str, volume: modal.Volume) -> None:
         print(f"Cleaned up checkpoints for branch: {branch}")
 
 
+def run_script_logged(
+    cmd: list,
+    log_file: IO,
+    env: dict,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Run a command, streaming output to both stdout and a log file."""
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+    )
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        log_file.write(line)
+    proc.wait()
+    if check and proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd)
+    return subprocess.CompletedProcess(cmd, proc.returncode)
+
+
 def run_script(
     script_path: str,
     args: Optional[list] = None,
     env: Optional[dict] = None,
+    log_file: IO = None,
 ) -> str:
     """Run a script with uv and return its path for logging.
 
@@ -229,11 +256,18 @@ def run_script(
     Raises:
         subprocess.CalledProcessError: If the script fails.
     """
-    cmd = ["uv", "run", "python", script_path]
+    cmd = ["uv", "run", "python", "-u", script_path]
     if args:
         cmd.extend(args)
+    run_env = env or os.environ.copy()
+    run_env["PYTHONUNBUFFERED"] = "1"
     print(f"Starting {script_path}...")
-    subprocess.run(cmd, check=True, env=env or os.environ.copy())
+    if log_file:
+        log_file.write(f"\n{'=' * 60}\nStarting {script_path}...\n{'=' * 60}\n")
+        log_file.flush()
+        run_script_logged(cmd, log_file, run_env)
+    else:
+        subprocess.run(cmd, check=True, env=run_env)
     print(f"Completed {script_path}")
     return script_path
 
@@ -245,6 +279,7 @@ def run_script_with_checkpoint(
     volume: modal.Volume,
     args: Optional[list] = None,
     env: Optional[dict] = None,
+    log_file: IO = None,
 ) -> str:
     """Run script if output not checkpointed, then checkpoint result.
 
@@ -275,7 +310,7 @@ def run_script_with_checkpoint(
         return script_path
 
     # Run the script
-    run_script(script_path, args=args, env=env)
+    run_script(script_path, args=args, env=env, log_file=log_file)
 
     # Checkpoint all outputs
     for output_file in output_files:
@@ -319,7 +354,7 @@ def run_tests_with_checkpoints(
 
         print(f"Running tests: {module}")
         result = subprocess.run(
-            ["uv", "run", "pytest", module, "-v"],
+            ["uv", "run", "python", "-u", "-m", "pytest", module, "-v"],
             env=env,
         )
 
@@ -341,7 +376,7 @@ def run_tests_with_checkpoints(
     },
     memory=32768,
     cpu=8.0,
-    timeout=14400,
+    timeout=28800,  # 8 hours
     nonpreemptible=True,
 )
 def build_datasets(
@@ -389,10 +424,26 @@ def build_datasets(
 
     env = os.environ.copy()
 
+    # Open persistent build log with provenance header
+    commit = get_current_commit()
+    log_path = Path("build_log.txt")
+    log_file = open(log_path, "w")
+    started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    log_file.write(
+        f"{'=' * 40}\n"
+        f" Data Build Log\n"
+        f" Branch:  {branch}\n"
+        f" Commit:  {commit[:8]}\n"
+        f" Started: {started}\n"
+        f"{'=' * 40}\n"
+    )
+    log_file.flush()
+
     # Download prerequisites
     run_script(
         "policyengine_us_data/storage/download_private_prerequisites.py",
         env=env,
+        log_file=log_file,
     )
     # Checkpoint policy_data.db immediately after download so it survives
     # test failures and can be restored on retries.
@@ -416,6 +467,7 @@ def build_datasets(
                 branch,
                 checkpoint_volume,
                 env=env,
+                log_file=log_file,
             )
     else:
         # Parallel execution based on dependency groups with checkpointing
@@ -444,6 +496,7 @@ def build_datasets(
                     branch,
                     checkpoint_volume,
                     env=env,
+                    log_file=log_file,
                 ): script
                 for script, output in group1
             }
@@ -472,6 +525,7 @@ def build_datasets(
                     branch,
                     checkpoint_volume,
                     env=env,
+                    log_file=log_file,
                 ): script
                 for script, output in group2
             }
@@ -486,6 +540,7 @@ def build_datasets(
             branch,
             checkpoint_volume,
             env=env,
+            log_file=log_file,
         )
 
         # GROUP 3: After extended_cps - run in parallel
@@ -504,6 +559,7 @@ def build_datasets(
                         branch,
                         checkpoint_volume,
                         env=env,
+                        log_file=log_file,
                     )
                 )
             else:
@@ -518,6 +574,7 @@ def build_datasets(
                     branch,
                     checkpoint_volume,
                     env=env,
+                    log_file=log_file,
                 )
             )
             for future in as_completed(phase4_futures):
@@ -542,6 +599,7 @@ def build_datasets(
                     branch,
                     checkpoint_volume,
                     env=env,
+                    log_file=log_file,
                 )
             )
             if not skip_enhanced_cps:
@@ -555,6 +613,7 @@ def build_datasets(
                         branch,
                         checkpoint_volume,
                         env=env,
+                        log_file=log_file,
                     )
                 )
             else:
@@ -562,12 +621,17 @@ def build_datasets(
             for future in as_completed(phase5_futures):
                 future.result()
 
+    # Checkpoint the build log so it survives preemption
+    log_file.flush()
+    save_checkpoint(branch, str(log_path), checkpoint_volume)
+
     # Copy pipeline artifacts to shared volume before tests so that a test
     # failure does not block downstream calibration steps.
     # Files selected:
     #   - source_imputed H5: main dataset for calibration and local area builds
     #   - policy_data.db: calibration target database
     #   - calibration_weights.npy: pre-existing weights for re-runs (if present)
+    #   - build_log.txt: persistent build log with provenance
     print("Copying pipeline artifacts to shared volume...")
     artifacts_dir = Path(PIPELINE_MOUNT) / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -586,6 +650,8 @@ def build_datasets(
             artifacts_dir / "calibration_weights.npy",
         )
         print("Copied existing calibration_weights.npy to pipeline volume")
+    shutil.copy2(log_path, artifacts_dir / "build_log.txt")
+    log_file.close()
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")
 

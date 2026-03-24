@@ -35,9 +35,7 @@ include:
   - variable: person_count
     geo_level: state
     domain_variable: medicaid_enrolled
-  - variable: person_count
-    geo_level: state
-    domain_variable: is_pregnant
+  # REMOVED: is_pregnant — 100% unachievable across all 51 state geos
   - variable: snap
     geo_level: state
 
@@ -64,8 +62,7 @@ include:
     geo_level: national
   - variable: rent
     geo_level: national
-  - variable: salt_deduction
-    geo_level: national
+  # REMOVED: salt_deduction — 11.3x overestimate, worst variable in model
   - variable: snap
     geo_level: national
   - variable: social_security
@@ -91,12 +88,8 @@ include:
   - variable: aca_ptc
     geo_level: national
     domain_variable: aca_ptc
-  - variable: dividend_income
-    geo_level: national
-    domain_variable: dividend_income
-  - variable: eitc
-    geo_level: national
-    domain_variable: eitc_child_count
+  # REMOVED: dividend_income dollars — tension with count (dollars +26%, count -47%)
+  # REMOVED: eitc by child_count dollars — tension with counts (dollars under, counts 1.6-5.4x over)
   - variable: income_tax_positive
     geo_level: national
   - variable: income_tax_before_credits
@@ -108,30 +101,22 @@ include:
   - variable: qualified_business_income_deduction
     geo_level: national
     domain_variable: qualified_business_income_deduction
-  - variable: qualified_dividend_income
-    geo_level: national
-    domain_variable: qualified_dividend_income
+  # REMOVED: qualified_dividend_income dollars — tension with count (dollars +29%, count -45%)
   - variable: refundable_ctc
     geo_level: national
     domain_variable: refundable_ctc
   - variable: rental_income
     geo_level: national
     domain_variable: rental_income
-  - variable: salt
-    geo_level: national
-    domain_variable: salt
+  # REMOVED: salt dollars — 1.02x over, filer count 7x over, distorts weights
   - variable: self_employment_income
     geo_level: national
     domain_variable: self_employment_income
-  - variable: tax_exempt_interest_income
-    geo_level: national
-    domain_variable: tax_exempt_interest_income
+  # REMOVED: tax_exempt_interest_income dollars — 61% over, filer count 2.9x over
   - variable: tax_unit_partnership_s_corp_income
     geo_level: national
     domain_variable: tax_unit_partnership_s_corp_income
-  - variable: taxable_interest_income
-    geo_level: national
-    domain_variable: taxable_interest_income
+  # REMOVED: taxable_interest_income dollars — tension with count (dollars +61%, count -23%)
   - variable: taxable_ira_distributions
     geo_level: national
     domain_variable: taxable_ira_distributions
@@ -164,9 +149,7 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: medical_expense_deduction
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: net_capital_gains
+  # REMOVED: tax_unit_count for net_capital_gains — dollars perfect (+0.5%) but count -68%, fighting uselessly
   - variable: tax_unit_count
     geo_level: national
     domain_variable: qualified_business_income_deduction
@@ -182,15 +165,11 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: rental_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: salt
+  # REMOVED: tax_unit_count for salt — 7x overestimate, no dollar target left to anchor it
   - variable: tax_unit_count
     geo_level: national
     domain_variable: self_employment_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: tax_exempt_interest_income
+  # REMOVED: tax_unit_count for tax_exempt_interest_income — 2.9x over, dollar target also removed
   - variable: tax_unit_count
     geo_level: national
     domain_variable: tax_unit_partnership_s_corp_income

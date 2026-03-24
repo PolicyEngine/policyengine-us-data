@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Optional
 
 import modal
+import subprocess as _sp
 
 # ── Modal resources ──────────────────────────────────────────────
 
@@ -56,6 +57,24 @@ pipeline_volume = modal.Volume.from_name("pipeline-artifacts", create_if_missing
 staging_volume = modal.Volume.from_name("local-area-staging", create_if_missing=True)
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+
+_GIT_ENV = {}
+try:
+    _GIT_ENV["GIT_COMMIT"] = (
+        _sp.check_output(["git", "rev-parse", "HEAD"], stderr=_sp.DEVNULL)
+        .decode()
+        .strip()
+    )
+    _GIT_ENV["GIT_BRANCH"] = (
+        _sp.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], stderr=_sp.DEVNULL
+        )
+        .decode()
+        .strip()
+    )
+except Exception:
+    pass
+
 _IGNORE = [
     ".git",
     "__pycache__",
@@ -82,6 +101,7 @@ image = (
         copy=True,
         ignore=_IGNORE,
     )
+    .env(_GIT_ENV)
     .run_commands(
         "cd /root/policyengine-us-data && UV_HTTP_TIMEOUT=300 uv sync --frozen"
     )

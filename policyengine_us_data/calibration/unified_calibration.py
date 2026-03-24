@@ -97,6 +97,12 @@ def get_git_provenance() -> dict:
         info["git_dirty"] = len(porcelain) > 0
     except Exception:
         pass
+    import os
+
+    if not info["git_commit"]:
+        info["git_commit"] = os.environ.get("GIT_COMMIT")
+    if not info["git_branch"]:
+        info["git_branch"] = os.environ.get("GIT_BRANCH")
     try:
         from policyengine_us_data.__version__ import __version__
 

@@ -13,6 +13,7 @@ Usage:
 
 import os
 import subprocess
+import subprocess as _sp
 import json
 import modal
 from pathlib import Path
@@ -34,6 +35,24 @@ pipeline_volume = modal.Volume.from_name(
 )
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+
+_GIT_ENV = {}
+try:
+    _GIT_ENV["GIT_COMMIT"] = (
+        _sp.check_output(["git", "rev-parse", "HEAD"], stderr=_sp.DEVNULL)
+        .decode()
+        .strip()
+    )
+    _GIT_ENV["GIT_BRANCH"] = (
+        _sp.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], stderr=_sp.DEVNULL
+        )
+        .decode()
+        .strip()
+    )
+except Exception:
+    pass
+
 _IGNORE = [
     ".git",
     "__pycache__",
@@ -60,6 +79,7 @@ image = (
         copy=True,
         ignore=_IGNORE,
     )
+    .env(_GIT_ENV)
     .run_commands(
         "cd /root/policyengine-us-data && UV_HTTP_TIMEOUT=300 uv sync --frozen"
     )

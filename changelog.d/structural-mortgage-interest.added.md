@@ -1,0 +1,1 @@
+Convert imputed deductible mortgage interest into structural mortgage balance, interest, and origination-year inputs when the installed `policyengine-us` supports federal MID cap modeling, while preserving total current-law interest deductions via residual investment interest inputs.

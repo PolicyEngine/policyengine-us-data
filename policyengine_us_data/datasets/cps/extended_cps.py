@@ -6,9 +6,14 @@ import numpy as np
 import pandas as pd
 from policyengine_core.data import Dataset
 
-from policyengine_us_data.datasets.cps.cps import *  # noqa: F403
-from policyengine_us_data.datasets.puf import *  # noqa: F403
+from policyengine_us_data.datasets.cps.cps import CPS, CPS_2024, CPS_2024_Full
+from policyengine_us_data.datasets.puf import PUF, PUF_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.mortgage_interest import (
+    convert_mortgage_interest_to_structural_inputs,
+    impute_tax_unit_mortgage_balance_hints,
+    supports_structural_mortgage_inputs,
+)
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
     get_se_pension_limits,
@@ -445,6 +450,14 @@ class ExtendedCPS(Dataset):
         )
 
         new_data = self._rename_imputed_to_inputs(new_data)
+        new_data = impute_tax_unit_mortgage_balance_hints(
+            new_data,
+            self.time_period,
+        )
+        new_data = convert_mortgage_interest_to_structural_inputs(
+            new_data,
+            self.time_period,
+        )
         new_data = self._drop_formula_variables(new_data)
         self.save_dataset(new_data)
 
@@ -472,10 +485,16 @@ class ExtendedCPS(Dataset):
     # due to entity shape mismatch.
     _KEEP_FORMULA_VARS = {
         "person_id",
-        "interest_deduction",
         "self_employed_pension_contribution_ald",
         "self_employed_health_insurance_ald",
     }
+
+    @classmethod
+    def _keep_formula_vars(cls):
+        keep = set(cls._KEEP_FORMULA_VARS)
+        if not supports_structural_mortgage_inputs():
+            keep.add("interest_deduction")
+        return keep
 
     # QRF imputes formula-level variables (e.g. taxable_pension_income)
     # but we must store them under leaf input names so
@@ -526,7 +545,7 @@ class ExtendedCPS(Dataset):
             if (hasattr(var, "formulas") and len(var.formulas) > 0)
             or getattr(var, "adds", None)
             or getattr(var, "subtracts", None)
-        } - cls._KEEP_FORMULA_VARS
+        } - cls._keep_formula_vars()
         dropped = sorted(set(data.keys()) & formula_vars)
         if dropped:
             logger.info(

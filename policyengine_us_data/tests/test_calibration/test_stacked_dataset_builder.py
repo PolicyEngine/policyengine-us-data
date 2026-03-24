@@ -10,6 +10,7 @@ from pathlib import Path
 from policyengine_us import Microsimulation
 from policyengine_us_data.calibration.publish_local_area import (
     build_h5,
+    prepare_base_sim_data,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
@@ -53,6 +54,11 @@ def _make_geography(n_hh, cds):
 
 
 @pytest.fixture(scope="module")
+def base_data():
+    return prepare_base_sim_data(Path(FIXTURE_PATH))
+
+
+@pytest.fixture(scope="module")
 def fixture_sim():
     return Microsimulation(dataset=FIXTURE_PATH)
 
@@ -79,7 +85,7 @@ def test_weights(n_households):
 
 
 @pytest.fixture(scope="module")
-def stacked_result(test_weights, n_households):
+def stacked_result(test_weights, n_households, base_data):
     """Run stacked dataset builder and return results."""
     geography = _make_geography(n_households, TEST_CDS)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -88,7 +94,7 @@ def stacked_result(test_weights, n_households):
         build_h5(
             weights=np.array(test_weights),
             geography=geography,
-            dataset_path=Path(FIXTURE_PATH),
+            base_data=base_data,
             output_path=Path(output_path),
             cd_subset=TEST_CDS,
         )
@@ -168,7 +174,7 @@ class TestStackedDatasetBuilder:
 
 
 @pytest.fixture(scope="module")
-def stacked_sim(test_weights, n_households):
+def stacked_sim(test_weights, n_households, base_data):
     """Run stacked dataset builder and return the simulation."""
     geography = _make_geography(n_households, TEST_CDS)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -177,7 +183,7 @@ def stacked_sim(test_weights, n_households):
         build_h5(
             weights=np.array(test_weights),
             geography=geography,
-            dataset_path=Path(FIXTURE_PATH),
+            base_data=base_data,
             output_path=Path(output_path),
             cd_subset=TEST_CDS,
         )
@@ -187,7 +193,7 @@ def stacked_sim(test_weights, n_households):
 
 
 @pytest.fixture(scope="module")
-def stacked_sim_with_overlap(n_households):
+def stacked_sim_with_overlap(n_households, base_data):
     """Stacked dataset where SAME households appear in BOTH CDs."""
     w = np.zeros(n_households * len(TEST_CDS), dtype=float)
     overlap_households = [0, 1, 2]
@@ -201,7 +207,7 @@ def stacked_sim_with_overlap(n_households):
         build_h5(
             weights=np.array(w),
             geography=geography,
-            dataset_path=Path(FIXTURE_PATH),
+            base_data=base_data,
             output_path=Path(output_path),
             cd_subset=TEST_CDS,
         )

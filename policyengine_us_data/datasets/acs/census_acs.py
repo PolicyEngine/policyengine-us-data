@@ -53,12 +53,15 @@ HOUSEHOLD_COLUMNS = [
     "TAXAMT",  # Property taxes
 ]
 
+HOUSEHOLD_COLUMN_ALIASES = {
+    "STATE": "ST",
+}
+
 
 class CensusACS(Dataset):
     data_format = Dataset.TABLES
 
     def generate(self) -> None:
-        spm_url = f"https://www2.census.gov/programs-surveys/supplemental-poverty-measure/datasets/spm/spm_{self.time_period}_pu.dta"
         person_url = f"https://www2.census.gov/programs-surveys/acs/data/pums/{self.time_period}/1-Year/csv_pus.zip"
         household_url = f"https://www2.census.gov/programs-surveys/acs/data/pums/{self.time_period}/1-Year/csv_hus.zip"
 
@@ -85,17 +88,19 @@ class CensusACS(Dataset):
                     f.write(chunk)
             f.seek(0)
             zf = ZipFile(f)
+            usecols = set(columns) | set(HOUSEHOLD_COLUMN_ALIASES)
             a = pd.read_csv(
                 zf.open(prefix + "a.csv"),
-                usecols=columns,
+                usecols=lambda c: c in usecols,
                 dtype={"SERIALNO": str},
             )
             b = pd.read_csv(
                 zf.open(prefix + "b.csv"),
-                usecols=columns,
+                usecols=lambda c: c in usecols,
                 dtype={"SERIALNO": str},
             )
         res = pd.concat([a, b]).fillna(0)
+        res = res.rename(columns=HOUSEHOLD_COLUMN_ALIASES)
         res.columns = res.columns.str.upper()
 
         # Ensure correct data types
@@ -198,3 +203,10 @@ class CensusACS_2022(CensusACS):
     name = "census_acs_2022.h5"
     file_path = STORAGE_FOLDER / "census_acs_2022.h5"
     time_period = 2022
+
+
+class CensusACS_2024(CensusACS):
+    label = "Census ACS (2024)"
+    name = "census_acs_2024.h5"
+    file_path = STORAGE_FOLDER / "census_acs_2024.h5"
+    time_period = 2024

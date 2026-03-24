@@ -18,8 +18,6 @@ exclude:
     geo_level: national
   - variable: medical_expense_deduction
     geo_level: national
-  - variable: net_worth
-    geo_level: national
   - variable: person_count
     geo_level: national
   - variable: real_estate_taxes

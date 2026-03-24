@@ -185,7 +185,7 @@ Loads pre-built matrices from Modal volume, fits L0-regularized weights on GPU.
 | **Modal CLI (national preset)** | `make calibrate-modal-national BRANCH=<branch>` |
 | **Both presets** | `make calibrate-both BRANCH=<branch>` |
 
-`make calibrate-modal` passes `--prebuilt-matrices --push-results` automatically. `make calibrate-modal-national` adds `--national`, which sets λ_L0=1e-4 for a smaller ~50K-record output. `make calibrate-both` runs both in parallel.
+`make calibrate-modal` passes `--prebuilt-matrices --push-results` automatically. `make calibrate-modal-national` adds `--national` and uses `policyengine_us_data/calibration/target_config_national.yaml`, which sets λ_L0=1e-4 for a smaller ~50K-record output and currently adds national `net_worth`. `make calibrate-both` runs both in parallel.
 
 Full example:
 ```
@@ -194,7 +194,7 @@ modal run modal_app/remote_calibration_runner.py::main \
   --gpu T4 --epochs 1000 \
   --beta 0.65 --lambda-l0 1e-6 --lambda-l2 1e-8 \
   --log-freq 500 \
-  --target-config policyengine_us_data/calibration/target_config.yaml \
+  --target-config policyengine_us_data/calibration/target_config_national.yaml \
   --prebuilt-matrices --push-results
 ```
 

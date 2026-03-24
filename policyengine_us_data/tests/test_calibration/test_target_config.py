@@ -1,5 +1,7 @@
 """Tests for target config filtering in unified calibration."""
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -133,6 +135,32 @@ class TestLoadTargetConfig:
         config_file.write_text("")
         config = load_target_config(str(config_file))
         assert config["exclude"] == []
+
+    def test_default_training_config_excludes_national_net_worth(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[2]
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+        assert {
+            "variable": "net_worth",
+            "geo_level": "national",
+        } not in config["include"]
+
+    def test_national_training_config_includes_national_net_worth(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[2]
+                / "calibration"
+                / "target_config_national.yaml"
+            )
+        )
+        assert {
+            "variable": "net_worth",
+            "geo_level": "national",
+        } in config["include"]
 
 
 class TestCalibrationPackageRoundTrip:

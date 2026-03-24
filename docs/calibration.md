@@ -182,12 +182,16 @@ weights = fit_l0_weights(
 
 ## Target Config
 
-The target config controls which targets reach the optimizer. It uses a YAML exclusion list:
+The target config controls which targets reach the optimizer. It can use either a YAML inclusion list or exclusion list:
 
 ```yaml
-exclude:
+include:
+  - variable: net_worth
+    geo_level: national
   - variable: rent
     geo_level: national
+
+exclude:
   - variable: eitc
     geo_level: district
   - variable: snap
@@ -195,7 +199,7 @@ exclude:
     domain_variable: snap   # optional: further narrow the match
 ```
 
-Each rule drops rows from the calibration matrix where **all** specified fields match. Unrecognized variables silently match nothing.
+`include` keeps only matching rows. `exclude` drops matching rows. If both are present, `include` is applied first and `exclude` removes from that set. Unrecognized variables silently match nothing.
 
 ### Fields
 
@@ -207,12 +211,11 @@ Each rule drops rows from the calibration matrix where **all** specified fields 
 
 ### Default config
 
-The checked-in config at `policyengine_us_data/calibration/target_config.yaml` reproduces the junkyard notebook's 22 excluded target groups. It drops:
+The default training config at `policyengine_us_data/calibration/target_config.yaml` is include-based. It defines the shared target subset used by local calibration and excludes national `net_worth`.
 
-- **13 national-level variables**: alimony, charitable deduction, child support, interest deduction, medical expense deduction, net worth, person count, real estate taxes, rent, social security dependents/survivors
-- **9 district-level variables**: ACA PTC, EITC, income tax before credits, medical expense deduction, net capital gains, rental income, tax unit count, partnership/S-corp income, taxable social security
+The national calibration preset uses `policyengine_us_data/calibration/target_config_national.yaml`, which is the same include-based target set plus national `net_worth`.
 
-Applying this config reduces targets from ~37K to ~21K, matching the junkyard's target selection.
+The checked-in backup config at `policyengine_us_data/calibration/target_config_full.yaml` preserves the earlier junkyard-style exclusion list for reference.
 
 ### Writing a custom config
 

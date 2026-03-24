@@ -276,6 +276,7 @@ def run_phase(
             calibration_inputs=calibration_inputs,
             validate=validate,
         )
+        print(f"    → fc: {handle.object_id}")
         handles.append(handle)
 
     print(f"Waiting for {phase_name} workers to complete...")
@@ -337,6 +338,7 @@ def run_phase(
     memory=16384,
     cpu=4.0,
     timeout=14400,
+    nonpreemptible=True,
 )
 def build_areas_worker(
     branch: str,
@@ -428,6 +430,7 @@ def build_areas_worker(
     volumes={VOLUME_MOUNT: staging_volume},
     memory=4096,
     timeout=1800,
+    nonpreemptible=True,
 )
 def validate_staging(branch: str, version: str) -> Dict:
     """Validate all expected files and generate manifest."""
@@ -480,6 +483,7 @@ print(json.dumps(manifest))
     volumes={VOLUME_MOUNT: staging_volume},
     memory=8192,
     timeout=14400,
+    nonpreemptible=True,
 )
 def upload_to_staging(branch: str, version: str, manifest: Dict) -> str:
     """
@@ -551,6 +555,7 @@ print(f"Staged version {{version}} for promotion")
     volumes={VOLUME_MOUNT: staging_volume},
     memory=4096,
     timeout=3600,
+    nonpreemptible=True,
 )
 def promote_publish(branch: str = "main", version: str = "") -> str:
     """
@@ -1084,6 +1089,7 @@ def main_national(branch: str = "main", n_clones: int = 430):
     volumes={VOLUME_MOUNT: staging_volume},
     memory=4096,
     timeout=3600,
+    nonpreemptible=True,
 )
 def promote_national_publish(
     branch: str = "main",

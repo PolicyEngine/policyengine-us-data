@@ -828,6 +828,7 @@ def run_pipeline(
                 lambda_l2=1e-8,
                 log_freq=500,
             )
+            print(f"    → regional fit fc: {regional_handle.object_id}")
 
             # Spawn national fit (if enabled)
             national_handle = None
@@ -848,6 +849,7 @@ def run_pipeline(
                     lambda_l2=1e-12,
                     log_freq=500,
                 )
+                print(f"    → national fit fc: {national_handle.object_id}")
 
             # Collect regional results
             print("  Waiting for regional fit...")
@@ -929,6 +931,7 @@ def run_pipeline(
                 n_clones=n_clones,
                 validate=True,
             )
+            print(f"    → coordinate_publish fc: {regional_h5_handle.object_id}")
 
             national_h5_handle = None
             if not skip_national:
@@ -937,6 +940,9 @@ def run_pipeline(
                     branch=branch,
                     n_clones=n_clones,
                     validate=True,
+                )
+                print(
+                    f"    → coordinate_national_publish fc: {national_h5_handle.object_id}"
                 )
 
             # While H5 builds run, stage base datasets

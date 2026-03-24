@@ -89,6 +89,26 @@ SCF_PREDICTORS = [
     "social_security_pension_income",
 ]
 
+SCF_DONOR_YEAR = 2022
+
+SCF_DONOR_UPRATING_MAP = {
+    "employment_income": ("employment_income",),
+    "interest_dividend_income": (
+        "taxable_interest_income",
+        "tax_exempt_interest_income",
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+    ),
+    "social_security_pension_income": ("social_security",),
+    "net_worth": ("net_worth",),
+    "auto_loan_balance": ("auto_loan_balance",),
+    "auto_loan_interest": ("auto_loan_interest",),
+}
+
+NET_WORTH_TOTAL_TARGETS = {
+    2024: 160e12,
+}
+
 
 TENURE_TYPE_MAP = {
     "OWNED_WITH_MORTGAGE": 1,
@@ -109,6 +129,63 @@ def _encode_tenure_type(df: pd.DataFrame) -> pd.DataFrame:
             .astype(np.float32)
         )
     return df
+
+
+def _uprating_ratio(variable_names: tuple[str, ...], from_year: int, to_year: int) -> float:
+    """Return a donor-to-recipient uprating ratio.
+
+    Uses the mean ratio across available variable-specific uprating series and
+    falls back to CPI-U when no series is available.
+    """
+    from policyengine_us.system import system
+
+    ratios: list[float] = []
+    for variable_name in variable_names:
+        variable = system.variables.get(variable_name)
+        if variable is None or variable.uprating is None:
+            continue
+        parameter = system.parameters.get_child(variable.uprating)
+        ratios.append(float(parameter(to_year) / parameter(from_year)))
+
+    if ratios:
+        return float(np.mean(ratios))
+
+    cpi = system.parameters.get_child("gov.bls.cpi.cpi_u")
+    return float(cpi(to_year) / cpi(from_year))
+
+
+def _uprate_scf_donor_frame(
+    donor: pd.DataFrame,
+    *,
+    from_year: int,
+    to_year: int,
+) -> pd.DataFrame:
+    """Uprate SCF donor money columns from donor year to recipient year."""
+    if from_year == to_year:
+        return donor
+
+    donor = donor.copy()
+    for column, variable_names in SCF_DONOR_UPRATING_MAP.items():
+        if column not in donor.columns:
+            continue
+        donor[column] = donor[column].astype(np.float32) * _uprating_ratio(
+            variable_names, from_year, to_year
+        )
+    return donor
+
+
+def _align_weighted_total(
+    values: np.ndarray,
+    weights: np.ndarray,
+    target_total: float,
+) -> np.ndarray:
+    """Scale values so their weighted total matches a target."""
+    current_total = float(np.dot(values.astype(np.float64), weights.astype(np.float64)))
+    if current_total <= 0 or target_total <= 0:
+        return values
+    return (values.astype(np.float64) * (target_total / current_total)).astype(
+        np.float32
+    )
 
 
 def impute_source_variables(
@@ -195,6 +272,183 @@ def _build_cps_receiver(
     return df
 
 
+def _household_values_from_data(
+    data: Dict[str, Dict[int, np.ndarray]],
+    variable: str,
+    time_period: int,
+    household_ids: np.ndarray,
+    person_household_ids: np.ndarray | None,
+    *,
+    how: str = "sum",
+    default: float = 0.0,
+) -> np.ndarray:
+    """Map a variable to one household-level value per household."""
+    values = data.get(variable, {}).get(time_period)
+    if values is None:
+        return np.full(len(household_ids), default, dtype=np.float32)
+
+    values = np.asarray(values)
+    household_ids = np.asarray(household_ids)
+
+    if len(values) == len(household_ids):
+        return values.astype(np.float32)
+
+    if person_household_ids is None or len(values) != len(person_household_ids):
+        return np.full(len(household_ids), default, dtype=np.float32)
+
+    frame = pd.DataFrame(
+        {
+            "household_id": person_household_ids,
+            "value": values,
+        }
+    )
+    if how == "first":
+        grouped = frame.groupby("household_id", sort=False)["value"].first()
+    elif how == "max":
+        grouped = frame.groupby("household_id", sort=False)["value"].max()
+    else:
+        grouped = frame.groupby("household_id", sort=False)["value"].sum()
+
+    return (
+        grouped.reindex(household_ids, fill_value=default).to_numpy(dtype=np.float32)
+    )
+
+
+def _build_household_scf_receiver(
+    data: Dict[str, Dict[int, np.ndarray]],
+    time_period: int,
+) -> pd.DataFrame:
+    """Build a household-level receiver frame for SCF wealth imputation."""
+    household_ids = np.asarray(data["household_id"][time_period])
+    person_household_ids = data.get("person_household_id", {}).get(time_period)
+    if person_household_ids is not None:
+        person_household_ids = np.asarray(person_household_ids)
+
+    receiver = pd.DataFrame({"household_id": household_ids})
+
+    receiver["age"] = _household_values_from_data(
+        data,
+        "age",
+        time_period,
+        household_ids,
+        person_household_ids,
+        how="first",
+    )
+
+    if "is_female" in data:
+        receiver["is_female"] = _household_values_from_data(
+            data,
+            "is_female",
+            time_period,
+            household_ids,
+            person_household_ids,
+            how="first",
+        )
+    elif "is_male" in data:
+        receiver["is_female"] = 1.0 - _household_values_from_data(
+            data,
+            "is_male",
+            time_period,
+            household_ids,
+            person_household_ids,
+            how="first",
+        )
+    else:
+        receiver["is_female"] = 0.0
+
+    receiver["cps_race"] = _household_values_from_data(
+        data,
+        "cps_race",
+        time_period,
+        household_ids,
+        person_household_ids,
+        how="first",
+    )
+    receiver["is_married"] = _household_values_from_data(
+        data,
+        "is_married",
+        time_period,
+        household_ids,
+        person_household_ids,
+        how="max",
+    )
+    receiver["own_children_in_household"] = _household_values_from_data(
+        data,
+        "own_children_in_household",
+        time_period,
+        household_ids,
+        person_household_ids,
+        how="max",
+    )
+    receiver["employment_income"] = _household_values_from_data(
+        data,
+        "employment_income",
+        time_period,
+        household_ids,
+        person_household_ids,
+        how="sum",
+    )
+
+    if "interest_dividend_income" in data:
+        interest_dividend_income = _household_values_from_data(
+            data,
+            "interest_dividend_income",
+            time_period,
+            household_ids,
+            person_household_ids,
+            how="sum",
+        )
+    else:
+        interest_dividend_income = np.zeros(len(household_ids), dtype=np.float32)
+        for variable in [
+            "taxable_interest_income",
+            "tax_exempt_interest_income",
+            "qualified_dividend_income",
+            "non_qualified_dividend_income",
+        ]:
+            interest_dividend_income += _household_values_from_data(
+                data,
+                variable,
+                time_period,
+                household_ids,
+                person_household_ids,
+                how="sum",
+            )
+    receiver["interest_dividend_income"] = interest_dividend_income
+
+    if "social_security_pension_income" in data:
+        social_security_pension_income = _household_values_from_data(
+            data,
+            "social_security_pension_income",
+            time_period,
+            household_ids,
+            person_household_ids,
+            how="sum",
+        )
+    else:
+        social_security_pension_income = np.zeros(
+            len(household_ids), dtype=np.float32
+        )
+        for variable in [
+            "tax_exempt_private_pension_income",
+            "taxable_private_pension_income",
+            "social_security_retirement",
+            "social_security",
+            "pension_income",
+        ]:
+            social_security_pension_income += _household_values_from_data(
+                data,
+                variable,
+                time_period,
+                household_ids,
+                person_household_ids,
+                how="sum",
+            )
+    receiver["social_security_pension_income"] = social_security_pension_income
+
+    return receiver
+
+
 def _get_variable_entity(variable_name: str) -> str:
     """Return the entity key for a PE variable."""
     from policyengine_us import CountryTaxBenefitSystem
@@ -256,9 +510,9 @@ def _impute_acs(
     from microimpute.models.qrf import QRF
     from policyengine_us import Microsimulation
 
-    from policyengine_us_data.datasets.acs.acs import ACS_2022
+    from policyengine_us_data.datasets.acs.acs import ACS_2024
 
-    acs = Microsimulation(dataset=ACS_2022)
+    acs = Microsimulation(dataset=ACS_2024)
     predictors = ACS_PREDICTORS + ["state_fips"]
 
     acs_df = acs.calculate_dataframe(ACS_PREDICTORS + ACS_IMPUTED_VARIABLES)
@@ -602,57 +856,13 @@ def _impute_scf(
     if weights is not None:
         donor["wgt"] = weights
     donor = donor.dropna(subset=scf_predictors)
+    donor = _uprate_scf_donor_frame(
+        donor,
+        from_year=SCF_DONOR_YEAR,
+        to_year=time_period,
+    )
     donor = donor.sample(frac=0.5, random_state=42).reset_index(drop=True)
-
-    pe_vars = [
-        "age",
-        "is_male",
-        "employment_income",
-    ]
-    cps_df = _build_cps_receiver(data, time_period, dataset_path, pe_vars)
-
-    if "is_male" in cps_df.columns:
-        cps_df["is_female"] = (~cps_df["is_male"].astype(bool)).astype(np.float32)
-    else:
-        cps_df["is_female"] = 0.0
-
-    for var in [
-        "cps_race",
-        "is_married",
-        "own_children_in_household",
-    ]:
-        if var in data:
-            cps_df[var] = data[var][time_period].astype(np.float32)
-        else:
-            cps_df[var] = 0.0
-
-    for var in [
-        "taxable_interest_income",
-        "tax_exempt_interest_income",
-        "qualified_dividend_income",
-        "non_qualified_dividend_income",
-    ]:
-        if var in data:
-            cps_df[var] = data[var][time_period].astype(np.float32)
-    cps_df["interest_dividend_income"] = (
-        cps_df.get("taxable_interest_income", 0)
-        + cps_df.get("tax_exempt_interest_income", 0)
-        + cps_df.get("qualified_dividend_income", 0)
-        + cps_df.get("non_qualified_dividend_income", 0)
-    ).astype(np.float32)
-
-    for var in [
-        "tax_exempt_private_pension_income",
-        "taxable_private_pension_income",
-        "social_security_retirement",
-    ]:
-        if var in data:
-            cps_df[var] = data[var][time_period].astype(np.float32)
-    cps_df["social_security_pension_income"] = (
-        cps_df.get("tax_exempt_private_pension_income", 0)
-        + cps_df.get("taxable_private_pension_income", 0)
-        + cps_df.get("social_security_retirement", 0)
-    ).astype(np.float32)
+    cps_df = _build_household_scf_receiver(data, time_period)
 
     qrf = QRF()
     logger.info(
@@ -670,30 +880,42 @@ def _impute_scf(
     )
     preds = fitted.predict(X_test=cps_df)
 
-    hh_ids = data["household_id"][time_period]
-    person_hh_ids = data.get("person_household_id", {}).get(time_period)
-
     for var in available_vars:
-        person_vals = preds[var].values
+        household_vals = preds[var].values.astype(np.float32)
         entity = _get_variable_entity(var)
-        if entity == "household" and person_hh_ids is not None:
-            hh_vals = np.zeros(len(hh_ids), dtype=np.float32)
-            hh_to_idx = {int(hid): i for i, hid in enumerate(hh_ids)}
-            seen = set()
-            for p_idx, p_hh in enumerate(person_hh_ids):
-                hh_key = int(p_hh)
-                if hh_key not in seen:
-                    seen.add(hh_key)
-                    hh_vals[hh_to_idx[hh_key]] = person_vals[p_idx]
-            data[var] = {time_period: hh_vals}
+        if entity == "household":
+            if var == "net_worth":
+                target_total = NET_WORTH_TOTAL_TARGETS.get(time_period)
+                household_weights = data.get("household_weight", {}).get(time_period)
+                if target_total is not None and household_weights is not None:
+                    household_vals = _align_weighted_total(
+                        household_vals,
+                        household_weights.astype(np.float32),
+                        target_total,
+                    )
+                    logger.info(
+                        "  %s: aligned household total to %.3e",
+                        var,
+                        target_total,
+                    )
+            data[var] = {time_period: household_vals}
             logger.info(
-                "  %s: person(%d) -> household(%d)",
+                "  %s: household(%d)",
                 var,
-                len(person_vals),
-                len(hh_vals),
+                len(household_vals),
             )
         else:
-            data[var] = {time_period: person_vals}
+            person_hh_ids = data.get("person_household_id", {}).get(time_period)
+            if person_hh_ids is None:
+                data[var] = {time_period: household_vals}
+            else:
+                hh_ids = data["household_id"][time_period]
+                hh_to_value = dict(zip(hh_ids, household_vals))
+                person_vals = np.array(
+                    [hh_to_value[int(hid)] for hid in person_hh_ids],
+                    dtype=np.float32,
+                )
+                data[var] = {time_period: person_vals}
 
     del fitted, preds
     gc.collect()

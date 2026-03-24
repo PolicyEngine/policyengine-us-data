@@ -1,10 +1,7 @@
 from policyengine_core.data import Dataset
 import pandas as pd
 from policyengine_us_data.utils import (
-    pe_to_soi,
-    get_soi,
     build_loss_matrix,
-    fmt,
     HardConcrete,
     print_reweighting_diagnostics,
     set_seeds,
@@ -14,10 +11,9 @@ import numpy as np
 from tqdm import trange
 from typing import Type
 from policyengine_us_data.storage import STORAGE_FOLDER
-from policyengine_us_data.datasets.cps.extended_cps import (
-    ExtendedCPS_2024,
-    ExtendedCPS_2024_Half,
-    CPS_2024,
+from policyengine_us_data.datasets.cps.cps import CPS_2024
+from policyengine_us_data.datasets.cps.source_imputed_cps import (
+    SourceImputedStratifiedExtendedCPS_2024,
 )
 import logging
 
@@ -88,7 +84,7 @@ def reweight(
         optimizer.zero_grad()
         masked = torch.exp(weights) * gates()
         l_main = loss(masked)
-        l = l_main + l0_lambda * gates.get_penalty()
+        total_loss = l_main + l0_lambda * gates.get_penalty()
         if (log_path is not None) and (i % 10 == 0):
             gates.eval()
             estimates = (torch.exp(weights) * gates()) @ loss_matrix
@@ -112,10 +108,12 @@ def reweight(
         if (log_path is not None) and (i % 1000 == 0):
             performance.to_csv(log_path, index=False)
         if start_loss is None:
-            start_loss = l.item()
-        loss_rel_change = (l.item() - start_loss) / start_loss
-        l.backward()
-        iterator.set_postfix({"loss": l.item(), "loss_rel_change": loss_rel_change})
+            start_loss = total_loss.item()
+        loss_rel_change = (total_loss.item() - start_loss) / start_loss
+        total_loss.backward()
+        iterator.set_postfix(
+            {"loss": total_loss.item(), "loss_rel_change": loss_rel_change}
+        )
         optimizer.step()
         if log_path is not None:
             performance.to_csv(log_path, index=False)
@@ -249,7 +247,7 @@ class ReweightedCPS_2024(Dataset):
 
 
 class EnhancedCPS_2024(EnhancedCPS):
-    input_dataset = ExtendedCPS_2024_Half
+    input_dataset = SourceImputedStratifiedExtendedCPS_2024
     start_year = 2024
     end_year = 2024
     name = "enhanced_cps_2024"

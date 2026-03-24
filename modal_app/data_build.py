@@ -36,7 +36,7 @@ SCRIPT_OUTPUTS = {
         "policyengine_us_data/storage/uprating_factors.csv"
     ),
     "policyengine_us_data/datasets/acs/acs.py": (
-        "policyengine_us_data/storage/acs_2022.h5"
+        "policyengine_us_data/storage/acs_2024.h5"
     ),
     "policyengine_us_data/datasets/puf/irs_puf.py": (
         "policyengine_us_data/storage/irs_puf_2015.h5"

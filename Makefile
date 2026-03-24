@@ -188,7 +188,8 @@ calibrate-modal-national:
 	modal run modal_app/remote_calibration_runner.py::main \
 		--branch $(BRANCH) --gpu $(NATIONAL_GPU) \
 		--epochs $(NATIONAL_EPOCHS) \
-		--push-results --national
+		--push-results --national \
+		--target-config policyengine_us_data/calibration/target_config_national.yaml
 
 calibrate-both:
 	$(MAKE) calibrate-modal & $(MAKE) calibrate-modal-national & wait

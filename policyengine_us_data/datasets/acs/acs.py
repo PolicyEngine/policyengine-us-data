@@ -1,7 +1,6 @@
-import logging
 from policyengine_core.data import Dataset
 import h5py
-from policyengine_us_data.datasets.acs.census_acs import CensusACS_2022
+from policyengine_us_data.datasets.acs.census_acs import CensusACS_2022, CensusACS_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
 from pandas import DataFrame
 import numpy as np
@@ -108,5 +107,13 @@ class ACS_2022(ACS):
     url = "release://PolicyEngine/policyengine-us-data/1.13.0/acs_2022.h5"
 
 
+class ACS_2024(ACS):
+    name = "acs_2024"
+    label = "ACS 2024"
+    time_period = 2024
+    file_path = STORAGE_FOLDER / "acs_2024.h5"
+    census_acs = CensusACS_2024
+
+
 if __name__ == "__main__":
-    ACS_2022().generate()
+    ACS_2024().generate()

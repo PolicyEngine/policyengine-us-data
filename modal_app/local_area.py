@@ -674,13 +674,26 @@ def coordinate_publish(
     validate_artifacts(config_json_path, artifacts)
 
     # Fingerprint-based cache invalidation
-    from policyengine_us_data.calibration.publish_local_area import (
-        compute_input_fingerprint,
+    fp_result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            f"""
+from policyengine_us_data.calibration.publish_local_area import (
+    compute_input_fingerprint,
+)
+print(compute_input_fingerprint("{weights_path}", "{dataset_path}", {n_clones}, seed=42))
+""",
+        ],
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
     )
-
-    fingerprint = compute_input_fingerprint(
-        weights_path, dataset_path, n_clones, seed=42
-    )
+    if fp_result.returncode != 0:
+        raise RuntimeError(f"Failed to compute fingerprint: {fp_result.stderr}")
+    fingerprint = fp_result.stdout.strip()
     fingerprint_file = version_dir / "fingerprint.json"
     if version_dir.exists():
         if fingerprint_file.exists():

@@ -14,8 +14,6 @@ Requires:
 import logging
 import sys
 
-import numpy as np
-import pandas as pd
 
 from policyengine_us_data.utils.loss import HARD_CODED_TOTALS
 from policyengine_us_data.utils.retirement_limits import (

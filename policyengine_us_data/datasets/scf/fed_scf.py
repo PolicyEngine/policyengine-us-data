@@ -1,6 +1,5 @@
 from policyengine_core.data import Dataset
 from tqdm import tqdm
-from typing import List, Optional, Union
 import requests
 from io import BytesIO
 from zipfile import ZipFile

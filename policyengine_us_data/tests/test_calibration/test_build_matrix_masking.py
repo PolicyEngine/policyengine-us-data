@@ -11,7 +11,6 @@ import os
 
 import numpy as np
 import pytest
-from scipy import sparse
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 

@@ -26,9 +26,6 @@ from policyengine_us_data.calibration.calibration_utils import (
     apply_op,
     get_geo_level,
 )
-from policyengine_us_data.calibration.block_assignment import (
-    get_county_enum_index_from_fips,
-)
 
 logger = logging.getLogger(__name__)
 

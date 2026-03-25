@@ -14,7 +14,6 @@ from sqlmodel import (
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.db.create_field_valid_values import (
     populate_field_valid_values,
-    FieldValidValues,
 )
 
 logging.basicConfig(

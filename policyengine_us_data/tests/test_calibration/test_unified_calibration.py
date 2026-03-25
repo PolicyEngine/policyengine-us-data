@@ -6,7 +6,6 @@ block-level takeup seeding, county precomputation, and CLI flags.
 """
 
 import numpy as np
-import pytest
 
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (

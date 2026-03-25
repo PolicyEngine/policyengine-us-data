@@ -591,18 +591,26 @@ def build_datasets(
 
     # Copy pipeline artifacts to shared volume before tests so that a test
     # failure does not block downstream calibration steps.
-    # Files selected:
-    #   - source_imputed H5: main dataset for calibration and local area builds
-    #   - policy_data.db: calibration target database
-    #   - calibration_weights.npy: pre-existing weights for re-runs (if present)
-    #   - build_log.txt: persistent build log with provenance
     print("Copying pipeline artifacts to shared volume...")
     artifacts_dir = Path(PIPELINE_MOUNT) / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(
-        "policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5",
-        artifacts_dir / "source_imputed_stratified_extended_cps.h5",
-    )
+
+    # Copy all intermediate H5 datasets for lineage tracing
+    for output in SCRIPT_OUTPUTS.values():
+        paths = output if isinstance(output, list) else [output]
+        for p in paths:
+            src = Path(p)
+            if src.suffix == ".h5" and src.exists():
+                shutil.copy2(src, artifacts_dir / src.name)
+                print(
+                    f"  Copied {src.name} ({src.stat().st_size / 1024 / 1024:.1f} MB)"
+                )
+
+    # Yearless alias for pipeline consumers (remote_calibration_runner, local_area)
+    si = artifacts_dir / "source_imputed_stratified_extended_cps_2024.h5"
+    if si.exists():
+        shutil.copy2(si, artifacts_dir / "source_imputed_stratified_extended_cps.h5")
+
     shutil.copy2(
         "policyengine_us_data/storage/calibration/policy_data.db",
         artifacts_dir / "policy_data.db",
@@ -613,7 +621,7 @@ def build_datasets(
             cal_weights,
             artifacts_dir / "calibration_weights.npy",
         )
-        print("Copied existing calibration_weights.npy to pipeline volume")
+        print("  Copied calibration_weights.npy")
     shutil.copy2(log_path, artifacts_dir / "build_log.txt")
     log_file.close()
     pipeline_volume.commit()

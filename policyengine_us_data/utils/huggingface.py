@@ -1,4 +1,4 @@
-from huggingface_hub import hf_hub_download, login, HfApi, CommitOperationAdd
+from huggingface_hub import hf_hub_download, HfApi, CommitOperationAdd
 import os
 
 TOKEN = os.environ.get("HUGGING_FACE_TOKEN")

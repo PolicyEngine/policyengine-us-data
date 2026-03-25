@@ -305,21 +305,19 @@ def stage_base_datasets(
     """
     artifacts = Path(ARTIFACTS_DIR)
 
-    source_imputed = artifacts / "source_imputed_stratified_extended_cps.h5"
-    policy_db = artifacts / "policy_data.db"
-
     files_with_paths = []
-    if source_imputed.exists():
-        files_with_paths.append(
-            (
-                str(source_imputed),
-                "calibration/source_imputed_stratified_extended_cps.h5",
-            )
-        )
-        print(f"  source_imputed: {source_imputed.stat().st_size:,} bytes")
-    else:
-        print("  WARNING: source_imputed not found, skipping")
 
+    # Stage all intermediate H5 datasets for lineage tracing
+    # source_imputed* goes to calibration/ (promote expects that path)
+    for h5_file in sorted(artifacts.glob("*.h5")):
+        if h5_file.name.startswith("source_imputed"):
+            repo_path = f"calibration/{h5_file.name}"
+        else:
+            repo_path = f"datasets/{h5_file.name}"
+        files_with_paths.append((str(h5_file), repo_path))
+        print(f"  {h5_file.name} -> {repo_path}: {h5_file.stat().st_size:,} bytes")
+
+    policy_db = artifacts / "policy_data.db"
     if policy_db.exists():
         files_with_paths.append((str(policy_db), "calibration/policy_data.db"))
         print(f"  policy_data.db: {policy_db.stat().st_size:,} bytes")

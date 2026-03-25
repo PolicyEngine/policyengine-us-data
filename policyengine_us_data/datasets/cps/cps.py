@@ -6,7 +6,6 @@ from policyengine_us_data.datasets.cps.census_cps import *
 from pandas import DataFrame, Series
 import numpy as np
 import pandas as pd
-import os
 import yaml
 from typing import Type
 from policyengine_us_data.utils.uprating import (

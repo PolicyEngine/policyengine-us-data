@@ -1,5 +1,4 @@
 import logging
-from typing import Dict
 
 import requests
 import pandas as pd

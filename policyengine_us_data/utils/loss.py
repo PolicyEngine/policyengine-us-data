@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import logging
 
-from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER
 from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
     STATE_ABBR_TO_FIPS,
 )

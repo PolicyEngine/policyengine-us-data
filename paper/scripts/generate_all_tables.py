@@ -6,9 +6,7 @@ ensuring reproducibility and preventing hard-coded values.
 """
 
 import pandas as pd
-import numpy as np
 from pathlib import Path
-import os
 
 
 def format_number(value, decimals=3):

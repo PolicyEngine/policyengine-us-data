@@ -5,7 +5,6 @@ and Microsimulation requires ~16GB RAM. These tests run inside
 Modal containers (32GB) during full_suite=true builds.
 """
 
-import pytest
 from policyengine_us_data.storage import STORAGE_FOLDER
 
 NEEDS_ECPS = not (STORAGE_FOLDER / "enhanced_cps_2024.h5").exists()

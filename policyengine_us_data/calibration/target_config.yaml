@@ -6,13 +6,11 @@ include:
     domain_variable: age
 
   # === DISTRICT — count targets ===
-  - variable: person_count
-    geo_level: district
-    domain_variable: adjusted_gross_income
+  # REMOVED: person_count by AGI — filer-gated, all AGI bins 100% underestimated
   - variable: household_count
     geo_level: district
 
-  # === DISTRICT — dollar targets (needed_w 7-41, compatible) ===
+  # === DISTRICT — dollar targets (all <8% mean error, restored) ===
   - variable: real_estate_taxes
     geo_level: district
   - variable: self_employment_income
@@ -24,7 +22,7 @@ include:
   - variable: unemployment_compensation
     geo_level: district
 
-  # === DISTRICT — ACA PTC ===
+  # === DISTRICT — ACA PTC (2% mean error, restored) ===
   - variable: aca_ptc
     geo_level: district
   - variable: tax_unit_count
@@ -40,14 +38,12 @@ include:
     geo_level: state
 
   # === NATIONAL — aggregate dollar targets ===
-  - variable: adjusted_gross_income
-    geo_level: national
+  # REMOVED: adjusted_gross_income — filer-gated
   - variable: child_support_expense
     geo_level: national
   - variable: child_support_received
     geo_level: national
-  - variable: eitc
-    geo_level: national
+  # REMOVED: eitc — filer-gated
   - variable: health_insurance_premiums_without_medicare_part_b
     geo_level: national
   - variable: medicaid
@@ -58,8 +54,7 @@ include:
     geo_level: national
   - variable: over_the_counter_health_expenses
     geo_level: national
-  - variable: qualified_business_income_deduction
-    geo_level: national
+  # REMOVED: qualified_business_income_deduction — filer-gated
   - variable: rent
     geo_level: national
   # REMOVED: salt_deduction — 11.3x overestimate, worst variable in model
@@ -79,112 +74,46 @@ include:
     geo_level: national
   - variable: tanf
     geo_level: national
-  - variable: tip_income
-    geo_level: national
+  # REMOVED: tip_income — filer-gated
   - variable: unemployment_compensation
     geo_level: national
 
-  # === NATIONAL — IRS SOI domain-constrained dollar targets ===
+  # === NATIONAL — IRS SOI domain-constrained dollar targets (restored: |rel_err| < 15%) ===
   - variable: aca_ptc
     geo_level: national
     domain_variable: aca_ptc
-  # REMOVED: dividend_income dollars — tension with count (dollars +26%, count -47%)
-  # REMOVED: eitc by child_count dollars — tension with counts (dollars under, counts 1.6-5.4x over)
-  - variable: income_tax_positive
-    geo_level: national
-  - variable: income_tax_before_credits
-    geo_level: national
-    domain_variable: income_tax_before_credits
   - variable: net_capital_gains
     geo_level: national
     domain_variable: net_capital_gains
-  - variable: qualified_business_income_deduction
-    geo_level: national
-    domain_variable: qualified_business_income_deduction
-  # REMOVED: qualified_dividend_income dollars — tension with count (dollars +29%, count -45%)
   - variable: refundable_ctc
     geo_level: national
     domain_variable: refundable_ctc
-  - variable: rental_income
-    geo_level: national
-    domain_variable: rental_income
-  # REMOVED: salt dollars — 1.02x over, filer count 7x over, distorts weights
   - variable: self_employment_income
     geo_level: national
     domain_variable: self_employment_income
-  # REMOVED: tax_exempt_interest_income dollars — 61% over, filer count 2.9x over
   - variable: tax_unit_partnership_s_corp_income
     geo_level: national
     domain_variable: tax_unit_partnership_s_corp_income
-  # REMOVED: taxable_interest_income dollars — tension with count (dollars +61%, count -23%)
-  - variable: taxable_ira_distributions
-    geo_level: national
-    domain_variable: taxable_ira_distributions
   - variable: taxable_pension_income
     geo_level: national
     domain_variable: taxable_pension_income
-  - variable: taxable_social_security
-    geo_level: national
-    domain_variable: taxable_social_security
   - variable: unemployment_compensation
     geo_level: national
     domain_variable: unemployment_compensation
+  # REMOVED (|rel_err| > 15% or tension with counts):
+  #   adjusted_gross_income (28%), dividend_income (26%, tension), eitc (23%),
+  #   eitc by child_count (14-77%, tension), income_tax_before_credits (21%),
+  #   income_tax_positive (22%), qualified_business_income_deduction (55-63%),
+  #   qualified_dividend_income (29%, tension), rental_income (20%),
+  #   salt (102%), salt_deduction (1130%), tax_exempt_interest_income (61%),
+  #   taxable_interest_income (61%), taxable_ira_distributions (68%),
+  #   taxable_social_security (55%)
 
-  # === NATIONAL — IRS SOI filer count targets ===
+  # === NATIONAL — IRS SOI filer count targets (restored: |rel_err| < 10%) ===
   - variable: tax_unit_count
     geo_level: national
     domain_variable: aca_ptc
   - variable: tax_unit_count
     geo_level: national
-    domain_variable: dividend_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: eitc_child_count
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: income_tax
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: income_tax_before_credits
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: medical_expense_deduction
-  # REMOVED: tax_unit_count for net_capital_gains — dollars perfect (+0.5%) but count -68%, fighting uselessly
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: qualified_business_income_deduction
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: qualified_dividend_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: real_estate_taxes
-  - variable: tax_unit_count
-    geo_level: national
     domain_variable: refundable_ctc
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: rental_income
-  # REMOVED: tax_unit_count for salt — 7x overestimate, no dollar target left to anchor it
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: self_employment_income
-  # REMOVED: tax_unit_count for tax_exempt_interest_income — 2.9x over, dollar target also removed
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: tax_unit_partnership_s_corp_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: taxable_interest_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: taxable_ira_distributions
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: taxable_pension_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: taxable_social_security
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: unemployment_compensation
+  # REMOVED (|rel_err| > 10%): all other filer count targets (22-706% error)

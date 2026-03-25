@@ -491,7 +491,6 @@ def get_cd_index_mapping(db_uri: str = None):
         tuple: (cd_to_index dict, index_to_cd dict, cds_ordered list)
     """
     from sqlalchemy import create_engine, text
-    from pathlib import Path
     from policyengine_us_data.storage import STORAGE_FOLDER
 
     if db_uri is None:

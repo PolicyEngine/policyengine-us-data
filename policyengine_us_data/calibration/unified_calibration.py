@@ -1157,8 +1157,6 @@ def main(argv=None):
     import json
     import time
 
-    import pandas as pd
-
     try:
         if not sys.stderr.isatty():
             sys.stderr.reconfigure(line_buffering=True)

@@ -250,7 +250,6 @@ def main():
         from policyengine_us_data.calibration.validate_staging import (
             _query_all_active_targets,
             _batch_stratum_constraints,
-            CSV_COLUMNS,
         )
         from policyengine_us_data.calibration.unified_calibration import (
             load_target_config,

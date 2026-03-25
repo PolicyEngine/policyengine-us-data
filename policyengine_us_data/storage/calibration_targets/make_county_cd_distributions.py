@@ -9,7 +9,6 @@ import requests
 import pandas as pd
 import us
 from io import StringIO
-from pathlib import Path
 
 from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
     County,

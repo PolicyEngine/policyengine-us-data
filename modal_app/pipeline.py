@@ -44,7 +44,8 @@ from pathlib import Path
 from typing import Optional
 
 import modal
-import subprocess as _sp
+
+from modal_app.images import cpu_image as image
 
 # ── Modal resources ──────────────────────────────────────────────
 
@@ -55,57 +56,6 @@ gcp_secret = modal.Secret.from_name("gcp-credentials")
 
 pipeline_volume = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
 staging_volume = modal.Volume.from_name("local-area-staging", create_if_missing=True)
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-
-_GIT_ENV = {}
-try:
-    _GIT_ENV["GIT_COMMIT"] = (
-        _sp.check_output(["git", "rev-parse", "HEAD"], stderr=_sp.DEVNULL)
-        .decode()
-        .strip()
-    )
-    _GIT_ENV["GIT_BRANCH"] = (
-        _sp.check_output(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"], stderr=_sp.DEVNULL
-        )
-        .decode()
-        .strip()
-    )
-except Exception:
-    pass
-
-_IGNORE = [
-    ".git",
-    "__pycache__",
-    "*.egg-info",
-    ".pytest_cache",
-    "*.h5",
-    "*.npy",
-    "*.pkl",
-    "*.db",
-    "node_modules",
-    "venv",
-    ".venv",
-    "docs/_build",
-    "paper",
-    "presentations",
-]
-image = (
-    modal.Image.debian_slim(python_version="3.13")
-    .apt_install("git")
-    .pip_install("uv>=0.8")
-    .add_local_dir(
-        str(_REPO_ROOT),
-        remote_path="/root/policyengine-us-data",
-        copy=True,
-        ignore=_IGNORE,
-    )
-    .env(_GIT_ENV)
-    .run_commands(
-        "cd /root/policyengine-us-data && UV_HTTP_TIMEOUT=300 uv sync --frozen"
-    )
-)
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 PIPELINE_MOUNT = "/pipeline"
@@ -143,12 +93,9 @@ class RunMetadata:
 
 
 def generate_run_id(version: str, sha: str) -> str:
-    """Generate a unique run ID.
+    from policyengine_us_data.utils.run_id import generate_run_id as _gen
 
-    Format: {version}_{sha[:8]}_{YYYYMMDD_HHMMSS}
-    """
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    return f"{version}_{sha[:8]}_{ts}"
+    return _gen(version, sha)
 
 
 def write_run_meta(
@@ -409,7 +356,7 @@ from policyengine_us_data.utils.data_upload import (
 
 pairs = json.loads('''{pairs_json}''')
 files_with_paths = [(p, r) for p, r in pairs]
-count = upload_to_staging_hf(files_with_paths, "{version}")
+count = upload_to_staging_hf(files_with_paths, "{version}", run_id="{run_id}")
 print(f"Staged {{count}} base dataset(s) to HF")
 """,
         ],
@@ -930,6 +877,7 @@ def run_pipeline(
                 skip_upload=False,
                 n_clones=n_clones,
                 validate=True,
+                run_id=run_id,
             )
             print(f"    → coordinate_publish fc: {regional_h5_handle.object_id}")
 
@@ -940,6 +888,7 @@ def run_pipeline(
                     branch=branch,
                     n_clones=n_clones,
                     validate=True,
+                    run_id=run_id,
                 )
                 print(
                     f"    → coordinate_national_publish fc: {national_h5_handle.object_id}"
@@ -1127,7 +1076,7 @@ base_files = [
     "calibration/source_imputed_stratified_extended_cps.h5",
     "calibration/policy_data.db",
 ]
-count = promote_staging_to_production_hf(base_files, "{version}")
+count = promote_staging_to_production_hf(base_files, "{version}", run_id="{run_id}")
 print(f"Promoted {{count}} base dataset(s)")
 """,
             ],
@@ -1148,6 +1097,7 @@ print(f"Promoted {{count}} base dataset(s)")
         regional_result = promote_publish.remote(
             branch=meta.branch,
             version=version,
+            run_id=run_id,
         )
         print(f"  {regional_result}")
     except Exception as e:
@@ -1157,6 +1107,7 @@ print(f"Promoted {{count}} base dataset(s)")
     try:
         national_result = promote_national_publish.remote(
             branch=meta.branch,
+            run_id=run_id,
         )
         print(f"  {national_result}")
     except Exception as e:

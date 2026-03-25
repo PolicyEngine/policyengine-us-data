@@ -54,7 +54,16 @@ def main(argv=None):
         default=DEFAULT_HF_PREFIX,
         help=f"HF path prefix for state H5 files (default: {DEFAULT_HF_PREFIX})",
     )
+    parser.add_argument(
+        "--run-id",
+        default="",
+        help="Run ID to scope HF staging prefix (e.g. staging/{run_id}/states/...)",
+    )
     args = parser.parse_args(argv)
+    if args.run_id and args.hf_prefix == DEFAULT_HF_PREFIX:
+        args.hf_prefix = (
+            f"hf://policyengine/policyengine-us-data/staging/{args.run_id}/states"
+        )
 
     from policyengine_us import Microsimulation
 

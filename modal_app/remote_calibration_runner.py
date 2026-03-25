@@ -1,66 +1,13 @@
 import os
 import subprocess
-import subprocess as _sp
 import modal
+
+from modal_app.images import gpu_image as image
 
 app = modal.App("policyengine-us-data-fit-weights")
 
 hf_secret = modal.Secret.from_name("huggingface-token")
 pipeline_vol = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
-
-from pathlib import Path
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-
-_GIT_ENV = {}
-try:
-    _GIT_ENV["GIT_COMMIT"] = (
-        _sp.check_output(["git", "rev-parse", "HEAD"], stderr=_sp.DEVNULL)
-        .decode()
-        .strip()
-    )
-    _GIT_ENV["GIT_BRANCH"] = (
-        _sp.check_output(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"], stderr=_sp.DEVNULL
-        )
-        .decode()
-        .strip()
-    )
-except Exception:
-    pass
-
-_IGNORE = [
-    ".git",
-    "__pycache__",
-    "*.egg-info",
-    ".pytest_cache",
-    "*.h5",
-    "*.npy",
-    "*.pkl",
-    "*.db",
-    "node_modules",
-    "venv",
-    ".venv",
-    "docs/_build",
-    "paper",
-    "presentations",
-]
-image = (
-    modal.Image.debian_slim(python_version="3.13")
-    .apt_install("git")
-    .pip_install("uv>=0.8")
-    .add_local_dir(
-        str(_REPO_ROOT),
-        remote_path="/root/policyengine-us-data",
-        copy=True,
-        ignore=_IGNORE,
-    )
-    .env(_GIT_ENV)
-    .run_commands(
-        "cd /root/policyengine-us-data && "
-        "UV_HTTP_TIMEOUT=300 uv sync --frozen --extra l0"
-    )
-)
 
 PIPELINE_MOUNT = "/pipeline"
 

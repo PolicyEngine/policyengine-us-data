@@ -11,6 +11,8 @@ from typing import IO, Optional
 
 import modal
 
+from modal_app.images import cpu_image as image
+
 app = modal.App("policyengine-us-data")
 
 hf_secret = modal.Secret.from_name("huggingface-token")
@@ -28,50 +30,6 @@ pipeline_volume = modal.Volume.from_name(
     create_if_missing=True,
 )
 PIPELINE_MOUNT = "/pipeline"
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-
-try:
-    _LOCAL_SHA = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"],
-        text=True,
-        stderr=subprocess.DEVNULL,
-        cwd=str(_REPO_ROOT),
-    ).strip()
-except Exception:
-    _LOCAL_SHA = None
-
-_IGNORE = [
-    ".git",
-    "__pycache__",
-    "*.egg-info",
-    ".pytest_cache",
-    "*.h5",
-    "*.npy",
-    "*.pkl",
-    "*.db",
-    "node_modules",
-    "venv",
-    ".venv",
-    "docs/_build",
-    "paper",
-    "presentations",
-]
-image = (
-    modal.Image.debian_slim(python_version="3.13")
-    .apt_install("git")
-    .pip_install("uv>=0.8")
-    .add_local_dir(
-        str(_REPO_ROOT),
-        remote_path="/root/policyengine-us-data",
-        copy=True,
-        ignore=_IGNORE,
-    )
-    .env({"BUILD_COMMIT_SHA": _LOCAL_SHA or ""})
-    .run_commands(
-        "cd /root/policyengine-us-data && UV_HTTP_TIMEOUT=300 uv sync --frozen"
-    )
-)
 
 VOLUME_MOUNT = "/checkpoints"
 _volume_lock = threading.Lock()

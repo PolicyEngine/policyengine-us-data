@@ -5,12 +5,32 @@ Modal caches layers by content hash of copied files -- if code
 changes, the image rebuilds; if not, the cached layer is reused.
 """
 
+import subprocess
 import modal
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-_ignore = [
+GIT_ENV = {}
+try:
+    GIT_ENV["GIT_COMMIT"] = (
+        subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL)
+        .decode()
+        .strip()
+    )
+    GIT_ENV["GIT_BRANCH"] = (
+        subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL,
+        )
+        .decode()
+        .strip()
+    )
+    GIT_ENV["BUILD_COMMIT_SHA"] = GIT_ENV["GIT_COMMIT"]
+except Exception:
+    pass
+
+_IGNORE = [
     ".git",
     "__pycache__",
     "*.egg-info",
@@ -38,8 +58,9 @@ def _base_image(extras: list[str] | None = None):
             str(REPO_ROOT),
             remote_path="/root/policyengine-us-data",
             copy=True,
-            ignore=_ignore,
+            ignore=_IGNORE,
         )
+        .env(GIT_ENV)
         .run_commands(
             f"cd /root/policyengine-us-data && "
             f"UV_HTTP_TIMEOUT=300 uv sync --frozen {extra_flags}"

@@ -211,11 +211,13 @@ promote:
 
 validate-staging:
 	python -m policyengine_us_data.calibration.validate_staging \
-		--area-type states --output validation_results.csv
+		--area-type states --output validation_results.csv \
+		$(if $(RUN_ID),--run-id $(RUN_ID))
 
 validate-staging-full:
 	python -m policyengine_us_data.calibration.validate_staging \
-		--area-type states,districts --output validation_results.csv
+		--area-type states,districts --output validation_results.csv \
+		$(if $(RUN_ID),--run-id $(RUN_ID))
 
 upload-validation:
 	python -c "from policyengine_us_data.utils.huggingface import upload; \
@@ -224,11 +226,13 @@ upload-validation:
 		'calibration/logs/validation_results.csv')"
 
 check-staging:
-	python -m policyengine_us_data.calibration.check_staging_sums
+	python -m policyengine_us_data.calibration.check_staging_sums \
+		$(if $(RUN_ID),--run-id $(RUN_ID))
 
 check-sanity:
 	python -m policyengine_us_data.calibration.validate_staging \
-		--sanity-only --area-type states --areas NC
+		--sanity-only --area-type states --areas NC \
+		$(if $(RUN_ID),--run-id $(RUN_ID))
 
 build-data-modal:
 	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload --skip-tests

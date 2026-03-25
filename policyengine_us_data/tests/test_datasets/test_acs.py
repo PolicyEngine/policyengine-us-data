@@ -1,5 +1,4 @@
 import pytest
-from policyengine_us import Microsimulation
 
 
 @pytest.mark.parametrize("year", [2022])

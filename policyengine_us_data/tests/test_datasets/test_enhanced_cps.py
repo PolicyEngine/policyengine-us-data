@@ -1,6 +1,3 @@
-import pytest
-
-
 def test_ecps_employment_income_direct():
     """Direct check that employment income from the actual dataset is > 5T.
 
@@ -97,7 +94,6 @@ def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
 def test_ssn_card_type_none_target():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation
-    import numpy as np
 
     TARGET_COUNT = 13e6
     TOLERANCE = 0.2  # Allow ±20% error

@@ -13,7 +13,6 @@ Usage:
 
 import argparse
 import csv
-import gc
 import logging
 import math
 import multiprocessing as mp
@@ -444,6 +443,11 @@ def parse_args(argv=None):
         help="Run only structural sanity checks (fast, no database needed)",
     )
     parser.add_argument(
+        "--run-id",
+        default="",
+        help="Run ID to scope HF staging prefix (e.g. staging/{run_id}/...)",
+    )
+    parser.add_argument(
         "--via-districts",
         action="store_true",
         help="Validate state targets by aggregating district "
@@ -456,7 +460,10 @@ def parse_args(argv=None):
         help="Max parallel district subprocesses "
         "(default: 4, used with --via-districts)",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.run_id and args.hf_prefix == DEFAULT_HF_PREFIX:
+        args.hf_prefix = f"hf://policyengine/policyengine-us-data/staging/{args.run_id}"
+    return args
 
 
 def _validate_single_area(
@@ -872,7 +879,6 @@ def _run_sanity_only(args):
 
                 if h5_url.startswith("hf://"):
                     from huggingface_hub import hf_hub_download
-                    import tempfile
 
                     parts = h5_url[5:].split("/", 2)
                     repo = f"{parts[0]}/{parts[1]}"

@@ -10,7 +10,6 @@ import numpy as np
 import pytest
 
 from policyengine_us_data.calibration.puf_impute import (
-    MINIMUM_RETIREMENT_AGE,
     _age_heuristic_ss_shares,
     _qrf_ss_shares,
     reconcile_ss_subcomponents,

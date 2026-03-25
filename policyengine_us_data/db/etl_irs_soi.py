@@ -4,7 +4,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, create_engine
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (
@@ -13,10 +13,6 @@ from policyengine_us_data.db.create_database_tables import (
     Target,
 )
 from policyengine_us_data.utils.db import (
-    get_stratum_by_id,
-    get_root_strata,
-    get_stratum_children,
-    get_stratum_parent,
     parse_ucgid,
     get_geographic_strata,
     etl_argparser,

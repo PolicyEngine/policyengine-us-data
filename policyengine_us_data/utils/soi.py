@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from .uprating import create_policyengine_uprating_factors_table
-from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER
 
 
 def pe_to_soi(pe_dataset, year):

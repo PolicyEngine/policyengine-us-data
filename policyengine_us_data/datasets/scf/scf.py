@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 import os
 import h5py
-from typing import List, Optional, Union, Type
+from typing import Type
 
 
 class SCF(Dataset):
@@ -230,7 +230,6 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
     import zipfile
     import io
     import logging
-    from tqdm import tqdm
 
     logger = logging.getLogger(__name__)
 

@@ -1,0 +1,58 @@
+name: Run Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      gpu:
+        description: "GPU type for regional calibration"
+        default: "T4"
+        type: string
+      epochs:
+        description: "Epochs for regional calibration"
+        default: "1000"
+        type: string
+      national_epochs:
+        description: "Epochs for national calibration"
+        default: "4000"
+        type: string
+      num_workers:
+        description: "Number of parallel H5 workers"
+        default: "8"
+        type: string
+      skip_national:
+        description: "Skip national calibration/H5"
+        default: false
+        type: boolean
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Modal
+        run: pip install modal
+
+      - name: Launch pipeline on Modal
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          ARGS="--action run --branch main"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ARGS="$ARGS --gpu ${{ inputs.gpu }}"
+            ARGS="$ARGS --epochs ${{ inputs.epochs }}"
+            ARGS="$ARGS --national-epochs ${{ inputs.national_epochs }}"
+            ARGS="$ARGS --num-workers ${{ inputs.num_workers }}"
+            if [ "${{ inputs.skip_national }}" = "true" ]; then
+              ARGS="$ARGS --skip-national"
+            fi
+          fi
+          modal run --detach modal_app/pipeline.py::main $ARGS

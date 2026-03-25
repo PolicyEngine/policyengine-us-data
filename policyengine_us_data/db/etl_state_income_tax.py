@@ -11,8 +11,7 @@ Data source: https://www.census.gov/programs-surveys/stc/data/datasets.html
 
 import logging
 import pandas as pd
-import numpy as np
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, create_engine
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (

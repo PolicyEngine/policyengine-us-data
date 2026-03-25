@@ -1,4 +1,3 @@
-import logging
 from policyengine_core.data import Dataset
 import h5py
 from policyengine_us_data.datasets.acs.census_acs import CensusACS_2022

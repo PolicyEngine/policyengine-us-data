@@ -51,6 +51,12 @@ def load_global_block_distribution():
 
     df = pd.read_csv(csv_path, dtype={"block_geoid": str})
 
+    # Normalize at-large districts: Census uses 00 (and 98 for DC) → 01
+    district_num = df["cd_geoid"] % 100
+    state_fips_col = df["cd_geoid"] // 100
+    at_large = (district_num == 0) | ((state_fips_col == 11) & (district_num == 98))
+    df.loc[at_large, "cd_geoid"] = state_fips_col[at_large] * 100 + 1
+
     block_geoids = df["block_geoid"].values
     cd_geoids = np.array(df["cd_geoid"].astype(str).tolist())
     state_fips = np.array([int(b[:2]) for b in block_geoids])

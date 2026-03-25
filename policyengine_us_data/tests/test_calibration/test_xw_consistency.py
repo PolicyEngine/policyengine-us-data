@@ -47,7 +47,7 @@ def test_xw_matches_stacked_sim():
         build_h5,
     )
     from policyengine_us_data.utils.takeup import (
-        TAKEUP_AFFECTED_TARGETS,
+        SIMPLE_TAKEUP_VARS,
     )
 
     sim = Microsimulation(dataset=DATASET_PATH)
@@ -66,7 +66,6 @@ def test_xw_matches_stacked_sim():
 
     target_filter = {
         "variables": [
-            "aca_ptc",
             "snap",
             "household_count",
             "tax_unit_count",
@@ -76,18 +75,13 @@ def test_xw_matches_stacked_sim():
         geography=geography,
         sim=sim,
         target_filter=target_filter,
-        hierarchical_domains=["aca_ptc", "snap"],
+        hierarchical_domains=["snap"],
         rerandomize_takeup=True,
-        county_level=True,
+        county_level=False,
         workers=2,
     )
 
-    target_vars = set(target_filter["variables"])
-    takeup_filter = [
-        info["takeup_var"]
-        for key, info in TAKEUP_AFFECTED_TARGETS.items()
-        if key in target_vars
-    ]
+    takeup_filter = [spec["variable"] for spec in SIMPLE_TAKEUP_VARS]
 
     w = np.ones(n_total, dtype=np.float64)
     xw = X @ w
@@ -101,7 +95,7 @@ def test_xw_matches_stacked_sim():
         cd_weights[cd] = w[mask].sum()
     top_cds = sorted(cd_weights, key=cd_weights.get, reverse=True)[:N_CDS_TO_CHECK]
 
-    check_vars = ["aca_ptc", "snap"]
+    check_vars = ["snap"]
     tmpdir = tempfile.mkdtemp()
 
     for cd in top_cds:

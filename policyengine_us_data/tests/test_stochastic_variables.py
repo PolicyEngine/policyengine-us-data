@@ -1,6 +1,5 @@
 """Tests for stochastic variable generation in the data package."""
 
-import pytest
 import numpy as np
 from policyengine_us_data.parameters import load_take_up_rate
 from policyengine_us_data.utils.randomness import (

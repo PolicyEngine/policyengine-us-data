@@ -8,6 +8,11 @@ Usage:
     python publish_local_area.py [--skip-download] [--states-only] [--upload]
 """
 
+import hashlib
+import json
+import shutil
+
+
 import numpy as np
 from pathlib import Path
 from typing import List
@@ -63,6 +68,57 @@ NYC_CDS = [
     "3614",
     "3615",
     "3616",
+]
+
+
+META_FILE = WORK_DIR / "checkpoint_meta.json"
+
+
+def compute_input_fingerprint(
+    weights_path: Path, dataset_path: Path, n_clones: int, seed: int
+) -> str:
+    h = hashlib.sha256()
+    for p in [weights_path, dataset_path]:
+        with open(p, "rb") as f:
+            while chunk := f.read(8192):
+                h.update(chunk)
+    h.update(f"{n_clones}:{seed}".encode())
+    return h.hexdigest()[:16]
+
+
+def validate_or_clear_checkpoints(fingerprint: str):
+    if META_FILE.exists():
+        stored = json.loads(META_FILE.read_text())
+        if stored.get("fingerprint") == fingerprint:
+            print(f"Inputs unchanged ({fingerprint}), resuming...")
+            return
+        print(
+            f"Inputs changed "
+            f"({stored.get('fingerprint')} -> {fingerprint}), "
+            f"clearing..."
+        )
+    else:
+        print(f"No checkpoint metadata, starting fresh ({fingerprint})")
+    for cp in [
+        CHECKPOINT_FILE,
+        CHECKPOINT_FILE_DISTRICTS,
+        CHECKPOINT_FILE_CITIES,
+    ]:
+        if cp.exists():
+            cp.unlink()
+    for subdir in ["states", "districts", "cities"]:
+        d = WORK_DIR / subdir
+        if d.exists():
+            shutil.rmtree(d)
+    META_FILE.parent.mkdir(parents=True, exist_ok=True)
+    META_FILE.write_text(json.dumps({"fingerprint": fingerprint}))
+
+
+SUB_ENTITIES = [
+    "tax_unit",
+    "spm_unit",
+    "family",
+    "marital_unit",
 ]
 
 
@@ -212,12 +268,6 @@ def build_h5(
     for p_idx, p_hh_id in enumerate(person_hh_ids):
         hh_to_persons[hh_id_to_idx[int(p_hh_id)]].append(p_idx)
 
-    SUB_ENTITIES = [
-        "tax_unit",
-        "spm_unit",
-        "family",
-        "marital_unit",
-    ]
     hh_to_entity = {}
     entity_id_arrays = {}
     person_entity_id_arrays = {}
@@ -311,22 +361,6 @@ def build_h5(
     unique_geo = derive_geography_from_blocks(unique_blocks)
     clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
-    # === Calculate weights for all entity levels ===
-    person_weights = np.repeat(clone_weights, persons_per_clone)
-    per_person_wt = clone_weights / np.maximum(persons_per_clone, 1)
-
-    entity_weights = {}
-    for ek in SUB_ENTITIES:
-        n_ents = len(entity_clone_idx[ek])
-        ent_person_counts = np.zeros(n_ents, dtype=np.int32)
-        np.add.at(
-            ent_person_counts,
-            new_person_entity_ids[ek],
-            1,
-        )
-        clone_ids_e = np.repeat(np.arange(n_clones), entities_per_clone[ek])
-        entity_weights[ek] = per_person_wt[clone_ids_e] * ent_person_counts
-
     # === Determine variables to save ===
     vars_to_save = set(sim.input_variables)
     vars_to_save.add("county")
@@ -376,7 +410,6 @@ def build_h5(
         for period in periods:
             values = holder.get_array(period)
 
-            # Convert Arrow-backed arrays to numpy before indexing
             if hasattr(values, "_pa_array") or hasattr(values, "_ndarray"):
                 values = np.asarray(values)
 
@@ -413,16 +446,12 @@ def build_h5(
         }
 
     # === Override weights ===
+    # Only write household_weight; sub-entity weights (tax_unit_weight,
+    # spm_unit_weight, person_weight, etc.) are formula variables in
+    # policyengine-us that derive from household_weight at runtime.
     data["household_weight"] = {
         time_period: clone_weights.astype(np.float32),
     }
-    data["person_weight"] = {
-        time_period: person_weights.astype(np.float32),
-    }
-    for ek in SUB_ENTITIES:
-        data[f"{ek}_weight"] = {
-            time_period: entity_weights[ek].astype(np.float32),
-        }
 
     # === Override geography ===
     data["state_fips"] = {
@@ -451,6 +480,13 @@ def build_h5(
                 time_period: clone_geo[gv].astype("S"),
             }
 
+    # === Set zip_code for LA County clones (ACA rating area fix) ===
+    la_mask = clone_geo["county_fips"].astype(str) == "06037"
+    if la_mask.any():
+        zip_codes = np.full(len(la_mask), "UNKNOWN")
+        zip_codes[la_mask] = "90001"
+        data["zip_code"] = {time_period: zip_codes.astype("S")}
+
     # === Gap 4: Congressional district GEOID ===
     clone_cd_geoids = np.array([int(cd) for cd in active_clone_cds], dtype=np.int32)
     data["congressional_district_geoid"] = {
@@ -471,10 +507,9 @@ def build_h5(
         dtype=np.float64,
     )
 
-    # Get cloned person ages and SPM unit IDs
+    # Get cloned person ages and SPM tenure types
     person_ages = sim.calculate("age", map_to="person").values[person_clone_idx]
 
-    # Get cloned tenure types
     spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
     spm_tenure_periods = spm_tenure_holder.get_known_periods()
     if spm_tenure_periods:
@@ -531,6 +566,7 @@ def build_h5(
             hh_blocks=active_blocks,
             hh_state_fips=hh_state_fips,
             hh_ids=original_hh_ids,
+            hh_clone_indices=active_geo.astype(np.int64),
             entity_hh_indices=entity_hh_indices,
             entity_counts=entity_counts,
             time_period=time_period,
@@ -861,9 +897,19 @@ def main():
 
     print(f"Using dataset: {inputs['dataset']}")
 
-    sim = Microsimulation(dataset=str(inputs["dataset"]))
-    n_hh = sim.calculate("household_id", map_to="household").shape[0]
-    del sim
+    print("Computing input fingerprint...")
+    fingerprint = compute_input_fingerprint(
+        inputs["weights"],
+        inputs["dataset"],
+        args.n_clones,
+        args.seed,
+    )
+    validate_or_clear_checkpoints(fingerprint)
+
+    print("Loading base simulation to get household count...")
+    _sim = Microsimulation(dataset=str(inputs["dataset"]))
+    n_hh = len(_sim.calculate("household_id", map_to="household").values)
+    del _sim
     print(f"\nBase dataset has {n_hh:,} households")
 
     geo_cache = WORK_DIR / f"geography_{n_hh}x{args.n_clones}_s{args.seed}.npz"

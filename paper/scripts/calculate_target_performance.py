@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import json
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 
 def calculate_target_achievement(

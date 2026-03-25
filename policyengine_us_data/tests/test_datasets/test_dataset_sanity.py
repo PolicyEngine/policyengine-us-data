@@ -8,7 +8,6 @@ employment_income_before_lsr was dropped, zeroing all income.
 """
 
 import pytest
-import numpy as np
 
 
 @pytest.fixture(scope="module")

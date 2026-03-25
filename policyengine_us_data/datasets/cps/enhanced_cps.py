@@ -1,10 +1,7 @@
 from policyengine_core.data import Dataset
 import pandas as pd
 from policyengine_us_data.utils import (
-    pe_to_soi,
-    get_soi,
     build_loss_matrix,
-    fmt,
     HardConcrete,
     print_reweighting_diagnostics,
     set_seeds,
@@ -15,7 +12,6 @@ from tqdm import trange
 from typing import Type
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.cps.extended_cps import (
-    ExtendedCPS_2024,
     ExtendedCPS_2024_Half,
     CPS_2024,
 )

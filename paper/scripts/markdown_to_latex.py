@@ -6,7 +6,6 @@ that appears in both the online Jupyter Book and the LaTeX paper.
 """
 
 import re
-import os
 from pathlib import Path
 
 

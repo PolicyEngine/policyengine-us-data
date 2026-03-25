@@ -2,7 +2,7 @@ import hashlib
 
 import pytest
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from policyengine_us_data.db.create_database_tables import (
     Stratum,

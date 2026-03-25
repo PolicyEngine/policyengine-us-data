@@ -1,13 +1,11 @@
 import pytest
 import pandas as pd
-from unittest.mock import patch, MagicMock, mock_open
-from io import StringIO, BytesIO
-from pathlib import Path
+from unittest.mock import patch, MagicMock
+from io import BytesIO
 
 # Import the function to test
 from policyengine_us_data.geography.county_fips import (
     generate_county_fips_2020_dataset,
-    LOCAL_FOLDER,
 )
 
 # Sample data that mimics the format from census.gov

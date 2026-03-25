@@ -12,7 +12,7 @@ from policyengine_us_data.utils import (
     build_loss_matrix,
     print_reweighting_diagnostics,
 )
-from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 
 
 @pytest.fixture(scope="session")

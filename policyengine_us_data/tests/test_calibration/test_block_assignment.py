@@ -5,7 +5,6 @@ assignment, allowing consistent lookup of all geographic variables from a
 single census block GEOID.
 """
 
-import pytest
 import numpy as np
 
 

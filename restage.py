@@ -7,7 +7,7 @@ version = "1.73.0"
 
 
 @app.local_entrypoint()
-def main():
+def restage():
     print(f"Validating {version} on Modal volume...")
     manifest = validate_staging.remote(branch=branch, version=version)
 
@@ -17,7 +17,5 @@ def main():
     print(f"  Cities:    {manifest['totals']['cities']}")
 
     print(f"\nUploading to HF staging...")
-    result = upload_to_staging.remote(
-        branch=branch, version=version, manifest=manifest
-    )
+    result = upload_to_staging.remote(branch=branch, version=version, manifest=manifest)
     print(result)

@@ -11,14 +11,11 @@ from typing import IO, Optional
 
 import modal
 
-import sys as _sys
-from pathlib import Path as _Path
-
 _baked = "/root/policyengine-us-data"
-_local = str(_Path(__file__).resolve().parent.parent)
+_local = str(Path(__file__).resolve().parent.parent)
 for _p in (_baked, _local):
-    if _p not in _sys.path:
-        _sys.path.insert(0, _p)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image
 

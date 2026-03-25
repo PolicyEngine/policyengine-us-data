@@ -1,5 +1,14 @@
 """Re-upload files from Modal staging volume to HF staging."""
 
+import sys
+from pathlib import Path
+
+_baked = "/root/policyengine-us-data"
+_local = str(Path(__file__).resolve().parent)
+for _p in (_baked, _local):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from modal_app.local_area import app, validate_staging, upload_to_staging
 
 branch = "fix-would-file-blend-and-entity-weights"

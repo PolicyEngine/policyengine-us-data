@@ -35,6 +35,7 @@ Usage:
 import json
 import os
 import subprocess
+import sys
 import time
 import traceback
 from dataclasses import asdict, dataclass, field
@@ -44,13 +45,12 @@ from pathlib import Path
 from typing import Optional
 
 import modal
-import sys as _sys
 
 _baked = "/root/policyengine-us-data"
 _local = str(Path(__file__).resolve().parent.parent)
 for _p in (_baked, _local):
-    if _p not in _sys.path:
-        _sys.path.insert(0, _p)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image
 
@@ -253,20 +253,7 @@ def _record_step(
 # app.include() merges functions from other apps into this one,
 # ensuring Modal mounts their files and registers their functions
 # (with their GPU/memory/volume configs) in the ephemeral run.
-#
-# Inside Modal containers the auto-mounted package root may not be
-# on sys.path when the module first loads; ensure it is importable.
-import sys
-
-_parent = str(Path(__file__).resolve().parent.parent)
-if _parent not in sys.path:
-    sys.path.insert(0, _parent)
-# The image bakes the repo at /root/policyengine-us-data, but Modal
-# auto-mounts the entrypoint elsewhere, so _parent may not contain
-# modal_app/.  Ensure the baked repo root is always importable.
-_baked = "/root/policyengine-us-data"
-if _baked not in sys.path:
-    sys.path.insert(0, _baked)
+# sys.path setup is handled at the top of this file.
 
 from modal_app.data_build import app as _data_build_app
 from modal_app.data_build import build_datasets

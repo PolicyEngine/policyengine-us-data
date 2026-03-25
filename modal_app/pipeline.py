@@ -100,9 +100,8 @@ class RunMetadata:
 
 
 def generate_run_id(version: str, sha: str) -> str:
-    from policyengine_us_data.utils.run_id import generate_run_id as _gen
-
-    return _gen(version, sha)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return f"{version}_{sha[:8]}_{ts}"
 
 
 def write_run_meta(

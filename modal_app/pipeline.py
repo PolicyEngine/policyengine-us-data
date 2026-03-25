@@ -44,6 +44,13 @@ from pathlib import Path
 from typing import Optional
 
 import modal
+import sys as _sys
+
+_baked = "/root/policyengine-us-data"
+_local = str(Path(__file__).resolve().parent.parent)
+for _p in (_baked, _local):
+    if _p not in _sys.path:
+        _sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image
 

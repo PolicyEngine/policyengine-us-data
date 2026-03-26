@@ -294,7 +294,7 @@ def run_phase(
     },
     memory=16384,
     cpu=4.0,
-    timeout=14400,
+    timeout=28800,
     nonpreemptible=True,
 )
 def build_areas_worker(
@@ -438,7 +438,7 @@ print(json.dumps(manifest))
     secrets=[hf_secret],
     volumes={VOLUME_MOUNT: staging_volume},
     memory=8192,
-    timeout=14400,
+    timeout=28800,
     nonpreemptible=True,
 )
 def upload_to_staging(
@@ -902,7 +902,7 @@ def main(
         "/pipeline": pipeline_volume,
     },
     memory=16384,
-    timeout=14400,
+    timeout=28800,
     nonpreemptible=True,
 )
 def coordinate_national_publish(

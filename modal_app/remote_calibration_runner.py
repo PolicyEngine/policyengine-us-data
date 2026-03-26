@@ -478,7 +478,7 @@ def check_volume_package(artifacts_dir: str = "") -> dict:
     memory=32768,
     cpu=8.0,
     gpu="T4",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_t4(
@@ -515,7 +515,7 @@ def fit_weights_t4(
     memory=32768,
     cpu=8.0,
     gpu="A10",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_a10(
@@ -552,7 +552,7 @@ def fit_weights_a10(
     memory=32768,
     cpu=8.0,
     gpu="A100-40GB",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_a100_40(
@@ -589,7 +589,7 @@ def fit_weights_a100_40(
     memory=32768,
     cpu=8.0,
     gpu="A100-80GB",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_a100_80(
@@ -626,7 +626,7 @@ def fit_weights_a100_80(
     memory=32768,
     cpu=8.0,
     gpu="H100",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_h100(
@@ -674,7 +674,7 @@ GPU_FUNCTIONS = {
     memory=32768,
     cpu=8.0,
     gpu="T4",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_t4(
@@ -706,7 +706,7 @@ def fit_from_package_t4(
     memory=32768,
     cpu=8.0,
     gpu="A10",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_a10(
@@ -738,7 +738,7 @@ def fit_from_package_a10(
     memory=32768,
     cpu=8.0,
     gpu="A100-40GB",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_a100_40(
@@ -770,7 +770,7 @@ def fit_from_package_a100_40(
     memory=32768,
     cpu=8.0,
     gpu="A100-80GB",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_a100_80(
@@ -802,7 +802,7 @@ def fit_from_package_a100_80(
     memory=32768,
     cpu=8.0,
     gpu="H100",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_h100(

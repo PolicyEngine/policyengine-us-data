@@ -40,19 +40,29 @@ jobs:
       - name: Install Modal
         run: pip install modal
 
-      - name: Launch pipeline on Modal
+      - name: Deploy and launch pipeline on Modal
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
-          ARGS="--action run --branch main"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            ARGS="$ARGS --gpu ${{ inputs.gpu }}"
-            ARGS="$ARGS --epochs ${{ inputs.epochs }}"
-            ARGS="$ARGS --national-epochs ${{ inputs.national_epochs }}"
-            ARGS="$ARGS --num-workers ${{ inputs.num_workers }}"
-            if [ "${{ inputs.skip_national }}" = "true" ]; then
-              ARGS="$ARGS --skip-national"
-            fi
-          fi
-          modal run --detach modal_app/pipeline.py::main $ARGS
+          modal deploy modal_app/pipeline.py
+
+          GPU="${{ inputs.gpu || 'T4' }}"
+          EPOCHS="${{ inputs.epochs || '1000' }}"
+          NATIONAL_EPOCHS="${{ inputs.national_epochs || '4000' }}"
+          NUM_WORKERS="${{ inputs.num_workers || '8' }}"
+          SKIP_NATIONAL="${{ inputs.skip_national || 'false' }}"
+
+          python -c "
+          import modal
+          run_pipeline = modal.Function.from_name('policyengine-us-data-pipeline', 'run_pipeline')
+          fc = run_pipeline.spawn(
+              branch='main',
+              gpu='${GPU}',
+              epochs=int('${EPOCHS}'),
+              national_epochs=int('${NATIONAL_EPOCHS}'),
+              num_workers=int('${NUM_WORKERS}'),
+              skip_national='${SKIP_NATIONAL}' == 'true',
+          )
+          print(f'Pipeline spawned. Monitor on the Modal dashboard.')
+          "

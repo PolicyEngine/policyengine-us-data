@@ -646,7 +646,9 @@ def coordinate_publish(
     version_dir = staging_dir / version
 
     pipeline_volume.reload()
-    artifacts = Path("/pipeline/artifacts")
+    artifacts = (
+        Path(f"/pipeline/artifacts/{run_id}") if run_id else Path("/pipeline/artifacts")
+    )
     weights_path = artifacts / "calibration_weights.npy"
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
@@ -929,7 +931,9 @@ def coordinate_national_publish(
     staging_dir = Path(VOLUME_MOUNT)
 
     pipeline_volume.reload()
-    artifacts = Path("/pipeline/artifacts")
+    artifacts = (
+        Path(f"/pipeline/artifacts/{run_id}") if run_id else Path("/pipeline/artifacts")
+    )
     weights_path = artifacts / "national_calibration_weights.npy"
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"

@@ -67,8 +67,19 @@ staging_volume = modal.Volume.from_name("local-area-staging", create_if_missing=
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 PIPELINE_MOUNT = "/pipeline"
 STAGING_MOUNT = "/staging"
-ARTIFACTS_DIR = f"{PIPELINE_MOUNT}/artifacts"
+ARTIFACTS_BASE = f"{PIPELINE_MOUNT}/artifacts"
 RUNS_DIR = f"{PIPELINE_MOUNT}/runs"
+
+
+def artifacts_dir_for_run(run_id: str) -> str:
+    """Return the run-scoped artifacts directory.
+
+    When run_id is empty, falls back to the flat base path
+    for backward compatibility with standalone invocations.
+    """
+    if run_id:
+        return f"{ARTIFACTS_BASE}/{run_id}"
+    return ARTIFACTS_BASE
 
 
 # ── Run metadata ─────────────────────────────────────────────────
@@ -302,7 +313,7 @@ def stage_base_datasets(
         version: Package version string for the commit.
         branch: Git branch for repo clone.
     """
-    artifacts = Path(ARTIFACTS_DIR)
+    artifacts = Path(artifacts_dir_for_run(run_id))
 
     files_with_paths = []
 
@@ -666,8 +677,8 @@ def run_pipeline(
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "diagnostics").mkdir(exist_ok=True)
 
-    # Create artifacts directory
-    Path(ARTIFACTS_DIR).mkdir(parents=True, exist_ok=True)
+    # Create run-scoped artifacts directory
+    Path(artifacts_dir_for_run(run_id)).mkdir(parents=True, exist_ok=True)
 
     write_run_meta(meta, pipeline_volume)
 
@@ -704,6 +715,7 @@ def run_pipeline(
                 clear_checkpoints=clear_checkpoints,
                 skip_tests=True,
                 skip_enhanced_cps=False,
+                run_id=run_id,
             )
 
             # The build_datasets step produces files in its
@@ -732,6 +744,7 @@ def run_pipeline(
                 branch=branch,
                 workers=num_workers,
                 n_clones=n_clones,
+                run_id=run_id,
             )
             print(f"  Package at: {pkg_path}")
 
@@ -750,7 +763,7 @@ def run_pipeline(
             print("\n[Step 3/5] Fitting calibration weights...")
             step_start = time.time()
 
-            vol_path = "/pipeline/artifacts/calibration_package.pkl"
+            vol_path = f"{artifacts_dir_for_run(run_id)}/calibration_package.pkl"
             target_cfg = "policyengine_us_data/calibration/target_config.yaml"
 
             # Spawn regional fit
@@ -794,16 +807,17 @@ def run_pipeline(
             regional_result = regional_handle.get()
             print("  Regional fit complete. Writing to volume...")
 
-            # Write regional results to pipeline volume
+            # Write regional results to pipeline volume (run-scoped)
+            artifacts_rel = f"artifacts/{run_id}" if run_id else "artifacts"
             with pipeline_volume.batch_upload(force=True) as batch:
                 batch.put_file(
                     BytesIO(regional_result["weights"]),
-                    "artifacts/calibration_weights.npy",
+                    f"{artifacts_rel}/calibration_weights.npy",
                 )
                 if regional_result.get("config"):
                     batch.put_file(
                         BytesIO(regional_result["config"]),
-                        "artifacts/unified_run_config.json",
+                        f"{artifacts_rel}/unified_run_config.json",
                     )
 
             archive_diagnostics(
@@ -822,12 +836,12 @@ def run_pipeline(
                 with pipeline_volume.batch_upload(force=True) as batch:
                     batch.put_file(
                         BytesIO(national_result["weights"]),
-                        "artifacts/national_calibration_weights.npy",
+                        f"{artifacts_rel}/national_calibration_weights.npy",
                     )
                     if national_result.get("config"):
                         batch.put_file(
                             BytesIO(national_result["config"]),
-                            "artifacts/national_unified_run_config.json",
+                            f"{artifacts_rel}/national_unified_run_config.json",
                         )
 
                 archive_diagnostics(

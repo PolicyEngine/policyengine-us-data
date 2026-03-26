@@ -49,6 +49,7 @@ def _create_test_db(db_path):
                 "target_id INTEGER PRIMARY KEY, "
                 "stratum_id INTEGER, "
                 "variable TEXT, "
+                "reform_id INTEGER DEFAULT 0, "
                 "value REAL, "
                 "period INTEGER, "
                 "active INTEGER DEFAULT 1)"
@@ -110,33 +111,41 @@ def _insert_aca_ptc_data(engine):
             )
 
         targets = [
-            (1, 1, "aca_ptc", 10000.0, 2022),
-            (2, 1, "tax_unit_count", 500.0, 2022),
-            (3, 2, "aca_ptc", 6000.0, 2022),
-            (4, 2, "tax_unit_count", 300.0, 2022),
-            (5, 3, "aca_ptc", 4000.0, 2022),
-            (6, 3, "tax_unit_count", 200.0, 2022),
-            (7, 4, "aca_ptc", 2000.0, 2022),
-            (8, 5, "aca_ptc", 2500.0, 2022),
-            (9, 6, "aca_ptc", 1500.0, 2022),
-            (10, 4, "tax_unit_count", 100.0, 2022),
-            (11, 5, "tax_unit_count", 120.0, 2022),
-            (12, 6, "tax_unit_count", 80.0, 2022),
-            (13, 7, "aca_ptc", 2200.0, 2022),
-            (14, 8, "aca_ptc", 1800.0, 2022),
-            (15, 7, "tax_unit_count", 110.0, 2022),
-            (16, 8, "tax_unit_count", 90.0, 2022),
-            (17, 9, "person_count", 19743689.0, 2024),
+            (1, 1, "aca_ptc", 0, 10000.0, 2022, 1),
+            (2, 1, "tax_unit_count", 0, 500.0, 2022, 1),
+            (3, 2, "aca_ptc", 0, 6000.0, 2022, 1),
+            (4, 2, "tax_unit_count", 0, 300.0, 2022, 1),
+            (5, 3, "aca_ptc", 0, 4000.0, 2022, 1),
+            (6, 3, "tax_unit_count", 0, 200.0, 2022, 1),
+            (7, 4, "aca_ptc", 0, 2000.0, 2022, 1),
+            (8, 5, "aca_ptc", 0, 2500.0, 2022, 1),
+            (9, 6, "aca_ptc", 0, 1500.0, 2022, 1),
+            (10, 4, "tax_unit_count", 0, 100.0, 2022, 1),
+            (11, 5, "tax_unit_count", 0, 120.0, 2022, 1),
+            (12, 6, "tax_unit_count", 0, 80.0, 2022, 1),
+            (13, 7, "aca_ptc", 0, 2200.0, 2022, 1),
+            (14, 8, "aca_ptc", 0, 1800.0, 2022, 1),
+            (15, 7, "tax_unit_count", 0, 110.0, 2022, 1),
+            (16, 8, "tax_unit_count", 0, 90.0, 2022, 1),
+            (17, 9, "person_count", 0, 19743689.0, 2024, 1),
+            (18, 1, "aca_ptc", 1, 999.0, 2022, 1),
+            (19, 1, "aca_ptc", 0, 12345.0, 2024, 0),
         ]
-        for tid, sid, var, val, period in targets:
+        for tid, sid, var, reform_id, val, period, active in targets:
             conn.execute(
-                text("INSERT INTO targets VALUES (:tid, :sid, :var, :val, :period, 1)"),
+                text(
+                    "INSERT INTO targets "
+                    "(target_id, stratum_id, variable, reform_id, value, period, active) "
+                    "VALUES (:tid, :sid, :var, :reform_id, :val, :period, :active)"
+                ),
                 {
                     "tid": tid,
                     "sid": sid,
                     "var": var,
+                    "reform_id": reform_id,
                     "val": val,
                     "period": period,
+                    "active": active,
                 },
             )
         conn.commit()
@@ -191,6 +200,30 @@ class TestQueryTargets(unittest.TestCase):
         self.assertTrue((national["geographic_id"] == "US").all())
         state_ca = df[(df["geo_level"] == "state") & (df["geographic_id"] == "6")]
         self.assertGreater(len(state_ca), 0)
+
+    def test_reform_targets_preserved(self):
+        b = self._make_builder()
+        df = b._query_targets({"domain_variables": ["aca_ptc"]})
+        reform_rows = df[(df["variable"] == "aca_ptc") & (df["reform_id"] == 1)]
+        baseline_rows = df[(df["variable"] == "aca_ptc") & (df["reform_id"] == 0)]
+        self.assertEqual(len(reform_rows), 1)
+        self.assertGreater(len(baseline_rows), 0)
+
+    def test_inactive_targets_are_excluded(self):
+        b = self._make_builder(time_period=2024)
+        df = b._query_targets({"stratum_ids": [1], "variables": ["aca_ptc"]})
+        baseline_rows = df[(df["variable"] == "aca_ptc") & (df["reform_id"] == 0)]
+        self.assertEqual(len(baseline_rows), 1)
+        self.assertEqual(int(baseline_rows.iloc[0]["period"]), 2022)
+        self.assertEqual(float(baseline_rows.iloc[0]["value"]), 10000.0)
+
+    def test_target_name_adds_expenditure_suffix_for_reforms(self):
+        name = UnifiedMatrixBuilder._make_target_name(
+            "salt_deduction",
+            [],
+            reform_id=1,
+        )
+        self.assertEqual(name, "national/salt_deduction_expenditure")
 
 
 class TestHierarchicalUprating(unittest.TestCase):

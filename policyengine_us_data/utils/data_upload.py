@@ -273,6 +273,73 @@ def hf_create_commit_with_retry(
     )
 
 
+def _batched_hf_upload(
+    files_with_repo_paths: List[Tuple[str, str]],
+    repo_id: str,
+    repo_type: str,
+    commit_message_prefix: str,
+    batch_size: int = 50,
+) -> int:
+    """Upload files to a HuggingFace repo in batches with retry.
+
+    Args:
+        files_with_repo_paths: List of (local_path, path_in_repo) tuples.
+        repo_id: HuggingFace repository ID.
+        repo_type: Repository type.
+        commit_message_prefix: Prefix for commit messages.
+        batch_size: Number of files per commit batch.
+
+    Returns:
+        Number of files uploaded.
+
+    Raises:
+        EnvironmentError: If HUGGING_FACE_TOKEN is not set.
+    """
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    if not token:
+        raise EnvironmentError(
+            "HUGGING_FACE_TOKEN environment variable is not set. "
+            "Cannot upload to HuggingFace."
+        )
+    api = HfApi()
+
+    total_uploaded = 0
+    for i in range(0, len(files_with_repo_paths), batch_size):
+        batch = files_with_repo_paths[i : i + batch_size]
+        operations = []
+        for local_path, repo_path in batch:
+            local_path = Path(local_path)
+            if not local_path.exists():
+                logging.warning(f"File {local_path} does not exist, skipping.")
+                continue
+            operations.append(
+                CommitOperationAdd(
+                    path_in_repo=repo_path,
+                    path_or_fileobj=str(local_path),
+                )
+            )
+
+        if not operations:
+            continue
+
+        batch_num = i // batch_size + 1
+        hf_create_commit_with_retry(
+            api=api,
+            operations=operations,
+            repo_id=repo_id,
+            repo_type=repo_type,
+            token=token,
+            commit_message=f"{commit_message_prefix}: batch {batch_num} ({len(operations)} files)",
+        )
+        total_uploaded += len(operations)
+        logging.info(
+            f"Uploaded batch {batch_num}: {len(operations)} files to {repo_id}"
+        )
+
+    logging.info(f"Total: uploaded {total_uploaded} files to {repo_id}")
+    return total_uploaded
+
+
 def upload_to_staging_hf(
     files_with_paths: List[Tuple[Path, str]],
     version: str,
@@ -295,44 +362,17 @@ def upload_to_staging_hf(
     Returns:
         Number of files uploaded
     """
-    token = os.environ.get("HUGGING_FACE_TOKEN")
-    api = HfApi()
-
-    total_uploaded = 0
-    for i in range(0, len(files_with_paths), batch_size):
-        batch = files_with_paths[i : i + batch_size]
-        operations = []
-        for local_path, rel_path in batch:
-            local_path = Path(local_path)
-            if not local_path.exists():
-                logging.warning(f"File {local_path} does not exist, skipping.")
-                continue
-            staging_prefix = f"staging/{run_id}" if run_id else "staging"
-            operations.append(
-                CommitOperationAdd(
-                    path_in_repo=f"{staging_prefix}/{rel_path}",
-                    path_or_fileobj=str(local_path),
-                )
-            )
-
-        if not operations:
-            continue
-
-        hf_create_commit_with_retry(
-            api=api,
-            operations=operations,
-            repo_id=hf_repo_name,
-            repo_type=hf_repo_type,
-            token=token,
-            commit_message=f"Upload batch {i // batch_size + 1} to staging for version {version}",
-        )
-        total_uploaded += len(operations)
-        logging.info(
-            f"Uploaded batch {i // batch_size + 1}: {len(operations)} files to staging/"
-        )
-
-    logging.info(f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace")
-    return total_uploaded
+    staging_prefix = f"staging/{run_id}" if run_id else "staging"
+    repo_paths = [
+        (str(local), f"{staging_prefix}/{rel}") for local, rel in files_with_paths
+    ]
+    return _batched_hf_upload(
+        repo_paths,
+        hf_repo_name,
+        hf_repo_type,
+        f"Upload to staging for version {version}",
+        batch_size,
+    )
 
 
 def promote_staging_to_production_hf(
@@ -491,47 +531,14 @@ def upload_to_pipeline_repo(
     Returns:
         Number of files uploaded.
     """
-    token = os.environ.get("HUGGING_FACE_TOKEN")
-    api = HfApi()
-
-    total_uploaded = 0
-    for i in range(0, len(files_with_paths), batch_size):
-        batch = files_with_paths[i : i + batch_size]
-        operations = []
-        for local_path, path_within_run in batch:
-            local_path = Path(local_path)
-            if not local_path.exists():
-                logging.warning(f"File {local_path} does not exist, skipping.")
-                continue
-            operations.append(
-                CommitOperationAdd(
-                    path_in_repo=f"{run_id}/{path_within_run}",
-                    path_or_fileobj=str(local_path),
-                )
-            )
-
-        if not operations:
-            continue
-
-        hf_create_commit_with_retry(
-            api=api,
-            operations=operations,
-            repo_id=repo_name,
-            repo_type=repo_type,
-            token=token,
-            commit_message=(
-                f"Archive run {run_id}: batch {i // batch_size + 1} "
-                f"({len(operations)} files)"
-            ),
-        )
-        total_uploaded += len(operations)
-        logging.info(
-            f"Uploaded batch {i // batch_size + 1}: "
-            f"{len(operations)} files to {repo_name}/{run_id}/"
-        )
-
-    logging.info(f"Total: uploaded {total_uploaded} files to {repo_name}/{run_id}/")
-    return total_uploaded
+    repo_paths = [(local, f"{run_id}/{path}") for local, path in files_with_paths]
+    return _batched_hf_upload(
+        repo_paths,
+        repo_name,
+        repo_type,
+        f"Archive run {run_id}",
+        batch_size,
+    )
 
 
 def upload_from_hf_staging_to_gcs(

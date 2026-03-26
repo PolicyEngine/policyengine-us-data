@@ -107,8 +107,17 @@ def generate_run_id(version: str, sha: str) -> str:
 def write_run_meta(
     meta: RunMetadata,
     vol: modal.Volume,
+    mirror: bool = True,
 ) -> None:
-    """Write run metadata to the pipeline volume and mirror to HF."""
+    """Write run metadata to the pipeline volume and optionally mirror to HF.
+
+    Args:
+        meta: Run metadata to persist.
+        vol: Modal volume to write to.
+        mirror: If True, also upload meta.json to the pipeline
+            archival HF repo. Set to False in error handlers to
+            avoid network calls that could hang.
+    """
     run_dir = Path(RUNS_DIR) / meta.run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     meta_path = run_dir / "meta.json"
@@ -116,10 +125,11 @@ def write_run_meta(
         json.dump(meta.to_dict(), f, indent=2)
     vol.commit()
 
-    _mirror_to_pipeline_repo(
-        meta.run_id,
-        [[str(meta_path), "meta.json"]],
-    )
+    if mirror:
+        _mirror_to_pipeline_repo(
+            meta.run_id,
+            [[str(meta_path), "meta.json"]],
+        )
 
 
 def read_run_meta(
@@ -261,13 +271,29 @@ def _record_step(
 # ── Pipeline repo archival ────────────────────────────────────────
 
 
+_MIRROR_SCRIPT = """\
+import os, json
+from policyengine_us_data.utils.data_upload import upload_to_pipeline_repo
+
+pairs = json.loads(os.environ["_MIRROR_PAIRS"])
+run_id = os.environ["_MIRROR_RUN_ID"]
+count = upload_to_pipeline_repo(pairs, run_id)
+print(f"Mirrored {count} file(s) to pipeline repo")
+"""
+
+# 10-minute timeout for non-critical archival subprocess calls.
+_MIRROR_TIMEOUT_S = 600
+
+
 def _mirror_to_pipeline_repo(
     run_id: str,
-    files_with_paths: list,
+    files_with_paths: list[list[str]],
 ) -> None:
     """Upload files to the pipeline archival HF repo.
 
     Non-fatal: logs warnings on failure but does not raise.
+    Uses environment variables (not f-string interpolation) to
+    pass data to the subprocess, avoiding injection risks.
 
     Args:
         run_id: Pipeline run identifier.
@@ -276,91 +302,75 @@ def _mirror_to_pipeline_repo(
     if not files_with_paths:
         return
 
-    existing = [[p, r] for p, r in files_with_paths if Path(p).exists()]
-    if not existing:
-        return
-
-    import json as _json
-
-    pairs_json = _json.dumps(existing)
+    env = os.environ.copy()
+    env["_MIRROR_PAIRS"] = json.dumps(files_with_paths)
+    env["_MIRROR_RUN_ID"] = run_id
 
     try:
         result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "python",
-                "-c",
-                f"""
-import json
-from policyengine_us_data.utils.data_upload import upload_to_pipeline_repo
-
-pairs = json.loads('''{pairs_json}''')
-count = upload_to_pipeline_repo(pairs, "{run_id}")
-print(f"Mirrored {{count}} file(s) to pipeline repo")
-""",
-            ],
+            ["uv", "run", "python", "-c", _MIRROR_SCRIPT],
             cwd="/root/policyengine-us-data",
             capture_output=True,
             text=True,
-            env=os.environ.copy(),
+            env=env,
+            timeout=_MIRROR_TIMEOUT_S,
         )
         if result.returncode != 0:
             print(f"  WARNING: Pipeline repo mirror failed: {result.stderr[:500]}")
-        else:
-            if result.stdout.strip():
-                print(f"  {result.stdout.strip()}")
-    except Exception as e:
+        elif result.stdout.strip():
+            print(f"  {result.stdout.strip()}")
+    except subprocess.TimeoutExpired:
+        print(f"  WARNING: Pipeline repo mirror timed out after {_MIRROR_TIMEOUT_S}s")
+    except (subprocess.SubprocessError, OSError) as e:
         print(f"  WARNING: Pipeline repo mirror error: {e}")
 
 
 # Intermediate artifacts from Step 1 to archive (not shipped elsewhere).
-INTERMEDIATE_ARTIFACTS = [
-    "acs_2022.h5",
-    "irs_puf_2015.h5",
-    "puf_2024.h5",
-    "extended_cps_2024.h5",
-    "stratified_extended_cps_2024.h5",
-    "build_log.txt",
-    "calibration_log.csv",
-    "uprating_factors.csv",
-]
+# Maps local filename -> repo-relative path inside artifacts/.
+STEP1_ARTIFACTS: dict[str, str] = {
+    "acs_2022.h5": "artifacts/acs_2022.h5",
+    "irs_puf_2015.h5": "artifacts/irs_puf_2015.h5",
+    "puf_2024.h5": "artifacts/puf_2024.h5",
+    "extended_cps_2024.h5": "artifacts/extended_cps_2024.h5",
+    "stratified_extended_cps_2024.h5": "artifacts/stratified_extended_cps_2024.h5",
+    "build_log.txt": "artifacts/build_log.txt",
+    "calibration_log.csv": "artifacts/calibration_log_legacy.csv",
+    "uprating_factors.csv": "artifacts/uprating_factors.csv",
+}
+
+STEP2_ARTIFACTS: dict[str, str] = {
+    "calibration_package_meta.json": "artifacts/calibration_package_meta.json",
+}
 
 
-def _archive_build_artifacts(run_id: str) -> None:
-    """Archive intermediate build artifacts to the pipeline HF repo."""
+def _archive_artifacts(
+    run_id: str,
+    artifact_names: dict[str, str],
+) -> None:
+    """Archive named artifacts from ARTIFACTS_DIR to the pipeline HF repo.
+
+    Args:
+        run_id: Pipeline run identifier.
+        artifact_names: Mapping of {local_filename: repo_relative_path}.
+    """
     artifacts_dir = Path(ARTIFACTS_DIR)
-    files = []
-    for name in INTERMEDIATE_ARTIFACTS:
+    files: list[list[str]] = []
+    for name, repo_path in artifact_names.items():
         path = artifacts_dir / name
-        if path.exists():
-            repo_name = name
-            if name == "calibration_log.csv":
-                repo_name = "calibration_log_legacy.csv"
-            files.append([str(path), f"artifacts/{repo_name}"])
-            print(f"  Archiving {name} ({path.stat().st_size:,} bytes)")
+        if not path.exists():
+            continue
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        files.append([str(path), repo_path])
+        print(f"  Archiving {name} ({size:,} bytes)")
 
     if files:
-        print(f"  Uploading {len(files)} intermediate artifact(s)...")
+        print(f"  Uploading {len(files)} artifact(s)...")
         _mirror_to_pipeline_repo(run_id, files)
     else:
-        print("  No intermediate artifacts found to archive")
-
-
-def _archive_package_artifacts(run_id: str) -> None:
-    """Archive calibration package metadata to the pipeline HF repo."""
-    meta_path = Path(ARTIFACTS_DIR) / "calibration_package_meta.json"
-    if meta_path.exists():
-        print(
-            f"  Archiving calibration_package_meta.json "
-            f"({meta_path.stat().st_size:,} bytes)"
-        )
-        _mirror_to_pipeline_repo(
-            run_id,
-            [[str(meta_path), "artifacts/calibration_package_meta.json"]],
-        )
-    else:
-        print("  No calibration_package_meta.json found")
+        print("  No artifacts found to archive")
 
 
 # ── Include other Modal apps ─────────────────────────────────────
@@ -585,6 +595,8 @@ def _write_validation_diagnostics(
     diag_dir = Path(RUNS_DIR) / run_id / "diagnostics"
     diag_dir.mkdir(parents=True, exist_ok=True)
 
+    mirror_files: list[list[str]] = []
+
     # Write regional validation CSV
     if validation_rows:
         csv_columns = [
@@ -611,6 +623,7 @@ def _write_validation_diagnostics(
             for row in validation_rows:
                 writer.writerow({k: row.get(k, "") for k in csv_columns})
         print(f"  Wrote {len(validation_rows)} rows to {csv_path}")
+        mirror_files.append([str(csv_path), "diagnostics/validation_results.csv"])
 
         # Compute summary
         n_sanity_fail = sum(
@@ -682,17 +695,11 @@ def _write_validation_diagnostics(
         with open(nat_path, "w") as f:
             f.write(national_output)
         print(f"  Wrote national validation to {nat_path}")
+        mirror_files.append([str(nat_path), "diagnostics/national_validation.txt"])
 
     vol.commit()
 
     # Mirror validation files to pipeline archival HF repo
-    mirror_files = []
-    csv_path = diag_dir / "validation_results.csv"
-    if csv_path.exists():
-        mirror_files.append([str(csv_path), "diagnostics/validation_results.csv"])
-    nat_path = diag_dir / "national_validation.txt"
-    if nat_path.exists():
-        mirror_files.append([str(nat_path), "diagnostics/national_validation.txt"])
     if mirror_files:
         _mirror_to_pipeline_repo(run_id, mirror_files)
 
@@ -845,7 +852,7 @@ def run_pipeline(
             # Archive intermediate build artifacts to pipeline HF repo
             print("  Archiving intermediate artifacts...")
             pipeline_volume.reload()
-            _archive_build_artifacts(run_id)
+            _archive_artifacts(run_id, STEP1_ARTIFACTS)
         else:
             print("\n[Step 1/5] Build datasets (skipped - completed)")
 
@@ -872,7 +879,7 @@ def run_pipeline(
             # Archive package metadata to pipeline HF repo
             print("  Archiving package metadata...")
             pipeline_volume.reload()
-            _archive_package_artifacts(run_id)
+            _archive_artifacts(run_id, STEP2_ARTIFACTS)
         else:
             print("\n[Step 2/5] Build package (skipped - completed)")
 
@@ -1093,7 +1100,7 @@ def run_pipeline(
     except Exception as e:
         meta.status = "failed"
         meta.error = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
-        write_run_meta(meta, pipeline_volume)
+        write_run_meta(meta, pipeline_volume, mirror=False)
         print(f"\nPIPELINE FAILED: {e}")
         print(f"Resume with: --resume-run-id {run_id}")
         raise

@@ -108,13 +108,18 @@ def write_run_meta(
     meta: RunMetadata,
     vol: modal.Volume,
 ) -> None:
-    """Write run metadata to the pipeline volume."""
+    """Write run metadata to the pipeline volume and mirror to HF."""
     run_dir = Path(RUNS_DIR) / meta.run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     meta_path = run_dir / "meta.json"
     with open(meta_path, "w") as f:
         json.dump(meta.to_dict(), f, indent=2)
     vol.commit()
+
+    _mirror_to_pipeline_repo(
+        meta.run_id,
+        [[str(meta_path), "meta.json"]],
+    )
 
 
 def read_run_meta(
@@ -170,7 +175,7 @@ def archive_diagnostics(
     vol: modal.Volume,
     prefix: str = "",
 ) -> None:
-    """Archive calibration diagnostics to the run directory."""
+    """Archive calibration diagnostics to the run directory and mirror to HF."""
     diag_dir = Path(RUNS_DIR) / run_id / "diagnostics"
     diag_dir.mkdir(parents=True, exist_ok=True)
 
@@ -180,6 +185,7 @@ def archive_diagnostics(
         "config": f"{prefix}unified_run_config.json",
     }
 
+    written_files = []
     for key, filename in file_map.items():
         data = result_bytes.get(key)
         if data:
@@ -187,8 +193,12 @@ def archive_diagnostics(
             with open(path, "wb") as f:
                 f.write(data)
             print(f"  Archived {filename} ({len(data):,} bytes)")
+            written_files.append([str(path), f"diagnostics/{filename}"])
 
     vol.commit()
+
+    if written_files:
+        _mirror_to_pipeline_repo(run_id, written_files)
 
 
 def _step_completed(meta: RunMetadata, step: str) -> bool:
@@ -246,6 +256,111 @@ def _record_step(
         "status": status,
     }
     write_run_meta(meta, vol)
+
+
+# ── Pipeline repo archival ────────────────────────────────────────
+
+
+def _mirror_to_pipeline_repo(
+    run_id: str,
+    files_with_paths: list,
+) -> None:
+    """Upload files to the pipeline archival HF repo.
+
+    Non-fatal: logs warnings on failure but does not raise.
+
+    Args:
+        run_id: Pipeline run identifier.
+        files_with_paths: List of [local_path, path_within_run] pairs.
+    """
+    if not files_with_paths:
+        return
+
+    existing = [[p, r] for p, r in files_with_paths if Path(p).exists()]
+    if not existing:
+        return
+
+    import json as _json
+
+    pairs_json = _json.dumps(existing)
+
+    try:
+        result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "-c",
+                f"""
+import json
+from policyengine_us_data.utils.data_upload import upload_to_pipeline_repo
+
+pairs = json.loads('''{pairs_json}''')
+count = upload_to_pipeline_repo(pairs, "{run_id}")
+print(f"Mirrored {{count}} file(s) to pipeline repo")
+""",
+            ],
+            cwd="/root/policyengine-us-data",
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+        )
+        if result.returncode != 0:
+            print(f"  WARNING: Pipeline repo mirror failed: {result.stderr[:500]}")
+        else:
+            if result.stdout.strip():
+                print(f"  {result.stdout.strip()}")
+    except Exception as e:
+        print(f"  WARNING: Pipeline repo mirror error: {e}")
+
+
+# Intermediate artifacts from Step 1 to archive (not shipped elsewhere).
+INTERMEDIATE_ARTIFACTS = [
+    "acs_2022.h5",
+    "irs_puf_2015.h5",
+    "puf_2024.h5",
+    "extended_cps_2024.h5",
+    "stratified_extended_cps_2024.h5",
+    "build_log.txt",
+    "calibration_log.csv",
+    "uprating_factors.csv",
+]
+
+
+def _archive_build_artifacts(run_id: str) -> None:
+    """Archive intermediate build artifacts to the pipeline HF repo."""
+    artifacts_dir = Path(ARTIFACTS_DIR)
+    files = []
+    for name in INTERMEDIATE_ARTIFACTS:
+        path = artifacts_dir / name
+        if path.exists():
+            repo_name = name
+            if name == "calibration_log.csv":
+                repo_name = "calibration_log_legacy.csv"
+            files.append([str(path), f"artifacts/{repo_name}"])
+            print(f"  Archiving {name} ({path.stat().st_size:,} bytes)")
+
+    if files:
+        print(f"  Uploading {len(files)} intermediate artifact(s)...")
+        _mirror_to_pipeline_repo(run_id, files)
+    else:
+        print("  No intermediate artifacts found to archive")
+
+
+def _archive_package_artifacts(run_id: str) -> None:
+    """Archive calibration package metadata to the pipeline HF repo."""
+    meta_path = Path(ARTIFACTS_DIR) / "calibration_package_meta.json"
+    if meta_path.exists():
+        print(
+            f"  Archiving calibration_package_meta.json "
+            f"({meta_path.stat().st_size:,} bytes)"
+        )
+        _mirror_to_pipeline_repo(
+            run_id,
+            [[str(meta_path), "artifacts/calibration_package_meta.json"]],
+        )
+    else:
+        print("  No calibration_package_meta.json found")
 
 
 # ── Include other Modal apps ─────────────────────────────────────
@@ -570,6 +685,17 @@ def _write_validation_diagnostics(
 
     vol.commit()
 
+    # Mirror validation files to pipeline archival HF repo
+    mirror_files = []
+    csv_path = diag_dir / "validation_results.csv"
+    if csv_path.exists():
+        mirror_files.append([str(csv_path), "diagnostics/validation_results.csv"])
+    nat_path = diag_dir / "national_validation.txt"
+    if nat_path.exists():
+        mirror_files.append([str(nat_path), "diagnostics/national_validation.txt"])
+    if mirror_files:
+        _mirror_to_pipeline_repo(run_id, mirror_files)
+
 
 # ── Orchestrator ─────────────────────────────────────────────────
 
@@ -706,11 +832,6 @@ def run_pipeline(
                 skip_enhanced_cps=False,
             )
 
-            # The build_datasets step produces files in its
-            # own volume. Key outputs (source_imputed,
-            # policy_data.db) are staged to HF in step 4.
-            # TODO(#617): When pipeline_artifacts.py lands,
-            # call mirror_to_pipeline() here for audit trail.
             _record_step(
                 meta,
                 "build_datasets",
@@ -720,6 +841,11 @@ def run_pipeline(
             print(
                 f"  Completed in {meta.step_timings['build_datasets']['duration_s']}s"
             )
+
+            # Archive intermediate build artifacts to pipeline HF repo
+            print("  Archiving intermediate artifacts...")
+            pipeline_volume.reload()
+            _archive_build_artifacts(run_id)
         else:
             print("\n[Step 1/5] Build datasets (skipped - completed)")
 
@@ -742,6 +868,11 @@ def run_pipeline(
                 pipeline_volume,
             )
             print(f"  Completed in {meta.step_timings['build_package']['duration_s']}s")
+
+            # Archive package metadata to pipeline HF repo
+            print("  Archiving package metadata...")
+            pipeline_volume.reload()
+            _archive_package_artifacts(run_id)
         else:
             print("\n[Step 2/5] Build package (skipped - completed)")
 

@@ -466,6 +466,74 @@ def cleanup_staging_hf(
     return len(files)
 
 
+PIPELINE_HF_REPO = "PolicyEngine/policyengine-us-data-pipeline"
+
+
+def upload_to_pipeline_repo(
+    files_with_paths: List[Tuple[str, str]],
+    run_id: str,
+    repo_name: str = PIPELINE_HF_REPO,
+    repo_type: str = "model",
+    batch_size: int = 10,
+) -> int:
+    """Upload files to the pipeline archival HF repo.
+
+    Each file is placed under {run_id}/{path_within_run} in the repo.
+
+    Args:
+        files_with_paths: List of (local_path, path_within_run) tuples.
+            path_within_run is like "meta.json" or "artifacts/acs_2022.h5".
+        run_id: Pipeline run identifier.
+        repo_name: HuggingFace repository name.
+        repo_type: Repository type.
+        batch_size: Number of files per commit batch.
+
+    Returns:
+        Number of files uploaded.
+    """
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    api = HfApi()
+
+    total_uploaded = 0
+    for i in range(0, len(files_with_paths), batch_size):
+        batch = files_with_paths[i : i + batch_size]
+        operations = []
+        for local_path, path_within_run in batch:
+            local_path = Path(local_path)
+            if not local_path.exists():
+                logging.warning(f"File {local_path} does not exist, skipping.")
+                continue
+            operations.append(
+                CommitOperationAdd(
+                    path_in_repo=f"{run_id}/{path_within_run}",
+                    path_or_fileobj=str(local_path),
+                )
+            )
+
+        if not operations:
+            continue
+
+        hf_create_commit_with_retry(
+            api=api,
+            operations=operations,
+            repo_id=repo_name,
+            repo_type=repo_type,
+            token=token,
+            commit_message=(
+                f"Archive run {run_id}: batch {i // batch_size + 1} "
+                f"({len(operations)} files)"
+            ),
+        )
+        total_uploaded += len(operations)
+        logging.info(
+            f"Uploaded batch {i // batch_size + 1}: "
+            f"{len(operations)} files to {repo_name}/{run_id}/"
+        )
+
+    logging.info(f"Total: uploaded {total_uploaded} files to {repo_name}/{run_id}/")
+    return total_uploaded
+
+
 def upload_from_hf_staging_to_gcs(
     rel_paths: List[str],
     version: str,

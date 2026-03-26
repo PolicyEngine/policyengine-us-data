@@ -33,17 +33,6 @@ MORTGAGE_IMPUTATION_PREDICTORS = [
 ]
 
 
-def supports_structural_mortgage_inputs() -> bool:
-    """Return whether the installed policyengine-us exposes structural MID inputs."""
-    try:
-        from policyengine_us import CountryTaxBenefitSystem
-    except ImportError:
-        return False
-
-    tbs = CountryTaxBenefitSystem()
-    return all(name in tbs.variables for name in STRUCTURAL_MORTGAGE_VARIABLES)
-
-
 def impute_tax_unit_mortgage_balance_hints(
     data: Dict[str, Dict[int, np.ndarray]],
     time_period: int,
@@ -55,9 +44,6 @@ def impute_tax_unit_mortgage_balance_hints(
     mortgage balance distribution without forcing the baseline to use mortgage
     interest for non-itemizers.
     """
-    if not supports_structural_mortgage_inputs():
-        return data
-
     receiver = _build_tax_unit_mortgage_receiver(data, time_period)
     if receiver.empty:
         return data
@@ -117,8 +103,7 @@ def convert_mortgage_interest_to_structural_inputs(
     The current us-data calibration pipeline imputes a person-level
     ``deductible_mortgage_interest`` and a tax-unit-level
     ``interest_deduction``. That short-circuits structural MID reforms in
-    policyengine-us. When structural mortgage inputs are available, convert
-    those imputed amounts into:
+    policyengine-us, so this converts those imputed amounts into:
 
     * tax-unit mortgage balances, interest, and origination years
     * person-level ``home_mortgage_interest`` for within-tax-unit allocation
@@ -131,9 +116,6 @@ def convert_mortgage_interest_to_structural_inputs(
     * the origination year is heuristic, because the current public pipeline
       does not carry a mortgage-vintage input
     """
-    if not supports_structural_mortgage_inputs():
-        return data
-
     tp = time_period
     person_ids = data.get("person_id", {}).get(tp)
     tax_unit_ids = data.get("tax_unit_id", {}).get(tp)

@@ -10,16 +10,22 @@ from policyengine_us_data.datasets.cps.cps import CPS, CPS_2024, CPS_2024_Full
 from policyengine_us_data.datasets.puf import PUF, PUF_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.mortgage_interest import (
+    STRUCTURAL_MORTGAGE_VARIABLES,
     convert_mortgage_interest_to_structural_inputs,
     impute_tax_unit_mortgage_balance_hints,
-    supports_structural_mortgage_inputs,
 )
+from policyengine_us_data.utils.policyengine import has_policyengine_us_variables
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
     get_se_pension_limits,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _supports_structural_mortgage_inputs() -> bool:
+    return has_policyengine_us_variables(*STRUCTURAL_MORTGAGE_VARIABLES)
+
 
 # CPS-only variables that should be QRF-imputed for the PUF clone half
 # instead of naively duplicated from the CPS donor. These are
@@ -450,14 +456,15 @@ class ExtendedCPS(Dataset):
         )
 
         new_data = self._rename_imputed_to_inputs(new_data)
-        new_data = impute_tax_unit_mortgage_balance_hints(
-            new_data,
-            self.time_period,
-        )
-        new_data = convert_mortgage_interest_to_structural_inputs(
-            new_data,
-            self.time_period,
-        )
+        if _supports_structural_mortgage_inputs():
+            new_data = impute_tax_unit_mortgage_balance_hints(
+                new_data,
+                self.time_period,
+            )
+            new_data = convert_mortgage_interest_to_structural_inputs(
+                new_data,
+                self.time_period,
+            )
         new_data = self._drop_formula_variables(new_data)
         self.save_dataset(new_data)
 
@@ -492,7 +499,7 @@ class ExtendedCPS(Dataset):
     @classmethod
     def _keep_formula_vars(cls):
         keep = set(cls._KEEP_FORMULA_VARS)
-        if not supports_structural_mortgage_inputs():
+        if not _supports_structural_mortgage_inputs():
             keep.add("interest_deduction")
         return keep
 

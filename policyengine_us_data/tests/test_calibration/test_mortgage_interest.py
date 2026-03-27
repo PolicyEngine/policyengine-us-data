@@ -5,6 +5,7 @@ import pytest
 from policyengine_us_data.utils.mortgage_interest import (
     STRUCTURAL_MORTGAGE_VARIABLES,
     _interest_implied_balance_floor,
+    _post_tcja_cap,
     convert_mortgage_interest_to_structural_inputs,
     impute_tax_unit_mortgage_balance_hints,
 )
@@ -313,3 +314,30 @@ def test_structural_mortgage_conversion_scales_hints_to_interest_floor():
         converted["first_home_mortgage_interest"][TIME_PERIOD][0]
         + converted["second_home_mortgage_interest"][TIME_PERIOD][0]
     )
+
+
+def test_post_tcja_cap_uses_mfs_limit():
+    assert _post_tcja_cap("SEPARATE") == pytest.approx(375_000.0)
+    assert _post_tcja_cap("MARRIED_FILING_SEPARATELY") == pytest.approx(375_000.0)
+
+
+@pytest.mark.skipif(
+    not HAS_STRUCTURAL_MORTGAGE_INPUTS,
+    reason="Installed policyengine-us does not yet expose structural MID inputs.",
+)
+def test_structural_mortgage_conversion_swaps_partial_hints():
+    data = _base_dataset_dict(
+        person_tax_unit_ids=[1, 1],
+        ages=[55, 53],
+        deductible_mortgage_interest=[0.0, 0.0],
+        interest_deduction=[0.0],
+        filing_status=[b"JOINT"],
+    )
+    _set_balance_hints(data, first=[0.0], second=[25_000.0])
+
+    converted = convert_mortgage_interest_to_structural_inputs(data, TIME_PERIOD)
+
+    assert converted["first_home_mortgage_balance"][TIME_PERIOD][0] == pytest.approx(
+        25_000.0
+    )
+    assert converted["second_home_mortgage_balance"][TIME_PERIOD][0] == 0

@@ -43,6 +43,11 @@ def impute_tax_unit_mortgage_balance_hints(
     data-layer hints that let the structural MID conversion reuse an SCF-like
     mortgage balance distribution without forcing the baseline to use mortgage
     interest for non-itemizers.
+
+    The second hint is a generic secondary acquisition-debt slot. In the
+    public SCF, HELOC balances are the best observable proxy for that slot even
+    though the downstream ``second_home_mortgage_*`` variables in
+    policyengine-us are named around a second home.
     """
     receiver = _build_tax_unit_mortgage_receiver(data, time_period)
     if receiver.empty:
@@ -118,6 +123,10 @@ def convert_mortgage_interest_to_structural_inputs(
       the observed deductible mortgage interest
     * the origination year is heuristic, because the current public pipeline
       does not carry a mortgage-vintage input
+
+    The structural model has two mortgage slots. In public data, we use those
+    slots for "first-lien" and "secondary acquisition debt" rather than trying
+    to identify literal primary-residence versus second-home mortgages.
     """
     tp = time_period
     person_ids = data.get("person_id", {}).get(tp)
@@ -228,6 +237,9 @@ def convert_mortgage_interest_to_structural_inputs(
     )
     second_origination_year = np.where(
         second_balance > 0,
+        # The public data's second slot is mainly a HELOC/secondary-debt proxy,
+        # so treat it as post-TCJA unless a richer vintage input becomes
+        # available.
         np.maximum(2018, origination_year),
         0,
     ).astype(np.int32)
@@ -435,6 +447,8 @@ def _build_scf_mortgage_donor(scf: pd.DataFrame) -> pd.DataFrame:
         2,
         np.where(owns_home, 1, 0),
     ).astype(np.float32)
+    # The second slot is not a literal second-home mortgage in SCF. We use
+    # HELOC balances as the best public proxy for secondary acquisition debt.
     donor["imputed_first_home_mortgage_balance_hint"] = np.maximum(
         total_mortgage - heloc,
         0,

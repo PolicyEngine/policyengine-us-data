@@ -153,6 +153,9 @@ def get_soi(year: int) -> pd.DataFrame:
         "partnership_and_s_corp_income": "partnership_s_corp_income",
         "qualified_dividends": "qualified_dividend_income",
         "taxable_interest_income": "taxable_interest_income",
+        # There is no separate published uprating factor for mortgage-interest
+        # deductions, so use total interest deductions as the closest available
+        # proxy.
         "mortgage_interest_deductions": "interest_deduction",
         "total_pension_income": "pension_income",
         "total_social_security": "social_security",

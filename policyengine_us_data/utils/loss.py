@@ -127,7 +127,6 @@ def build_loss_matrix(dataset: type, time_period):
         "partnership_and_s_corp_income",
         "qualified_dividends",
         "taxable_interest_income",
-        "mortgage_interest_deductions",
         "total_pension_income",
         "total_social_security",
     ]
@@ -142,6 +141,9 @@ def build_loss_matrix(dataset: type, time_period):
         "partnership_and_s_corp_losses",
         "rent_and_royalty_net_income",
         "rent_and_royalty_net_losses",
+        # The current SOI source only exposes taxable-only aggregate targets for
+        # mortgage-interest deductions, not the AGI-bin detail used above.
+        "mortgage_interest_deductions",
         "taxable_pension_income",
         "taxable_social_security",
         "unemployment_compensation",

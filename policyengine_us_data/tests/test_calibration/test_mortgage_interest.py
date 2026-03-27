@@ -4,6 +4,7 @@ import pytest
 
 from policyengine_us_data.utils.mortgage_interest import (
     STRUCTURAL_MORTGAGE_VARIABLES,
+    _interest_implied_balance_floor,
     convert_mortgage_interest_to_structural_inputs,
     impute_tax_unit_mortgage_balance_hints,
 )
@@ -21,6 +22,17 @@ def _at_time_period(values, dtype=None):
 
 def _time_period_variables(**variables):
     return {name: _at_time_period(values) for name, values in variables.items()}
+
+
+def _set_balance_hints(data, *, first, second):
+    data["imputed_first_home_mortgage_balance_hint"] = _at_time_period(
+        first,
+        dtype=np.float32,
+    )
+    data["imputed_second_home_mortgage_balance_hint"] = _at_time_period(
+        second,
+        dtype=np.float32,
+    )
 
 
 def _head_and_spouse_flags(person_tax_unit_ids):
@@ -184,12 +196,7 @@ def test_structural_mortgage_conversion_keeps_balance_hints_for_non_itemizers():
         interest_deduction=[0.0],
         filing_status=[b"JOINT"],
     )
-    data["imputed_first_home_mortgage_balance_hint"] = {
-        TIME_PERIOD: np.array([250_000.0], dtype=np.float32)
-    }
-    data["imputed_second_home_mortgage_balance_hint"] = {
-        TIME_PERIOD: np.array([25_000.0], dtype=np.float32)
-    }
+    _set_balance_hints(data, first=[250_000.0], second=[25_000.0])
 
     converted = convert_mortgage_interest_to_structural_inputs(data, TIME_PERIOD)
 
@@ -276,3 +283,33 @@ def test_scf_balance_hint_imputation_zeroes_non_mortgaged_owner(monkeypatch):
         20_000.0,
         0.0,
     ]
+
+
+@pytest.mark.skipif(
+    not HAS_STRUCTURAL_MORTGAGE_INPUTS,
+    reason="Installed policyengine-us does not yet expose structural MID inputs.",
+)
+def test_structural_mortgage_conversion_scales_hints_to_interest_floor():
+    data = _base_dataset_dict(
+        person_tax_unit_ids=[1, 1],
+        ages=[55, 53],
+        deductible_mortgage_interest=[30_000.0, 0.0],
+        interest_deduction=[30_000.0],
+        filing_status=[b"JOINT"],
+    )
+    _set_balance_hints(data, first=[200_000.0], second=[25_000.0])
+
+    converted = convert_mortgage_interest_to_structural_inputs(data, TIME_PERIOD)
+    first_balance = converted["first_home_mortgage_balance"][TIME_PERIOD][0]
+    second_balance = converted["second_home_mortgage_balance"][TIME_PERIOD][0]
+    expected_floor = _interest_implied_balance_floor(
+        np.array([30_000.0], dtype=np.float32),
+        TIME_PERIOD,
+    )[0]
+
+    assert first_balance + second_balance == pytest.approx(expected_floor)
+    assert first_balance / second_balance == pytest.approx(8.0)
+    assert converted["home_mortgage_interest"][TIME_PERIOD].sum() == pytest.approx(
+        converted["first_home_mortgage_interest"][TIME_PERIOD][0]
+        + converted["second_home_mortgage_interest"][TIME_PERIOD][0]
+    )

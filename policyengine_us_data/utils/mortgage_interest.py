@@ -113,6 +113,9 @@ def convert_mortgage_interest_to_structural_inputs(
     The conversion is intentionally conservative:
     * current-law deductible mortgage interest is preserved exactly
     * current-law total interest deduction is preserved exactly
+    * SCF-imputed first-lien and HELOC splits are preserved when available
+    * weak balance hints are lifted to a conservative lower bound implied by
+      the observed deductible mortgage interest
     * the origination year is heuristic, because the current public pipeline
       does not carry a mortgage-vintage input
     """
@@ -147,6 +150,8 @@ def convert_mortgage_interest_to_structural_inputs(
         first_balance_hint,
         second_balance_hint,
     ) = _get_tax_unit_mortgage_balance_hints(data, tp, n_tax_units)
+    hinted_total_balance = np.maximum(first_balance_hint + second_balance_hint, 0)
+    balance_floor = _interest_implied_balance_floor(tax_unit_deductible, tp)
 
     total_interest_deduction = _get_tax_unit_interest_deduction_target(
         data,
@@ -177,7 +182,7 @@ def convert_mortgage_interest_to_structural_inputs(
     )
 
     has_mortgage = tax_unit_deductible > 0
-    hinted_balance = np.maximum(first_balance_hint + second_balance_hint, 0)
+    hinted_balance = np.maximum(hinted_total_balance, balance_floor)
     balance, origination_year = _estimate_mortgage_balance_and_year(
         tax_unit_ids,
         tax_unit_deductible,
@@ -186,12 +191,17 @@ def convert_mortgage_interest_to_structural_inputs(
         tp,
         hinted_balance,
     )
-    use_balance_hint = hinted_balance > 0
+    use_balance_hint = hinted_total_balance > 0
     first_balance = np.where(use_balance_hint, first_balance_hint, balance).astype(
         np.float32
     )
     second_balance = np.where(use_balance_hint, second_balance_hint, 0).astype(
         np.float32
+    )
+    first_balance, second_balance = _apply_interest_implied_balance_floor(
+        first_balance,
+        second_balance,
+        balance_floor,
     )
 
     swap_mask = (first_balance == 0) & (second_balance > 0)
@@ -694,6 +704,56 @@ def _estimate_mortgage_balance_and_year(
         deductible_mortgage_interest[has_mortgage] / rate[has_mortgage],
     )
     return balance, year
+
+
+def _interest_implied_balance_floor(
+    deductible_mortgage_interest: np.ndarray,
+    time_period: int,
+) -> np.ndarray:
+    """Conservative balance lower bound implied by deductible interest.
+
+    Uses the current-period market mortgage rate as the denominator, so the
+    inferred balance is a lower bound rather than an aggressive reconstruction
+    of total acquisition debt.
+    """
+    current_market_rate = float(
+        _mortgage_rate(np.array([time_period], dtype=np.int32))[0]
+    )
+    if current_market_rate <= 0:
+        return np.zeros_like(deductible_mortgage_interest, dtype=np.float32)
+    return np.where(
+        deductible_mortgage_interest > 0,
+        deductible_mortgage_interest / current_market_rate,
+        0,
+    ).astype(np.float32)
+
+
+def _apply_interest_implied_balance_floor(
+    first_balance: np.ndarray,
+    second_balance: np.ndarray,
+    balance_floor: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Prevent donor balance hints from understating observed mortgage interest."""
+    first_balance = np.asarray(first_balance, dtype=np.float32).copy()
+    second_balance = np.asarray(second_balance, dtype=np.float32).copy()
+    balance_floor = np.maximum(np.asarray(balance_floor, dtype=np.float32), 0)
+
+    total_balance = first_balance + second_balance
+    needs_floor = balance_floor > total_balance
+    with_existing_split = needs_floor & (total_balance > 0)
+
+    scale = np.ones_like(total_balance, dtype=np.float32)
+    scale[with_existing_split] = (
+        balance_floor[with_existing_split] / total_balance[with_existing_split]
+    )
+    first_balance[with_existing_split] *= scale[with_existing_split]
+    second_balance[with_existing_split] *= scale[with_existing_split]
+
+    no_existing_balance = needs_floor & (total_balance == 0)
+    first_balance[no_existing_balance] = balance_floor[no_existing_balance]
+    second_balance[no_existing_balance] = 0
+
+    return first_balance.astype(np.float32), second_balance.astype(np.float32)
 
 
 def _split_interest_by_balance(

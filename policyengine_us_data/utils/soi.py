@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from .uprating import create_policyengine_uprating_factors_table
-from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER
 
 
 def pe_to_soi(pe_dataset, year):
@@ -11,7 +11,8 @@ def pe_to_soi(pe_dataset, year):
     pe_sim.default_calculation_period = year
     df = pd.DataFrame()
 
-    pe = lambda variable: np.array(pe_sim.calculate(variable, map_to="tax_unit"))
+    def pe(variable):
+        return np.array(pe_sim.calculate(variable, map_to="tax_unit"))
 
     df["adjusted_gross_income"] = pe("adjusted_gross_income")
     df["exemption"] = pe("exemptions")
@@ -62,6 +63,7 @@ def pe_to_soi(pe_dataset, year):
     )
     df["charitable_contributions_deduction"] = pe("charitable_deduction")
     df["interest_paid_deductions"] = pe("interest_deduction")
+    df["mortgage_interest_deductions"] = pe("deductible_mortgage_interest")
     df["medical_expense_deductions_uncapped"] = pe("medical_expense_deduction")
     df["state_and_local_tax_deductions"] = pe("salt_deduction")
     df["itemized_state_income_and_sales_tax_deductions"] = pe(
@@ -108,6 +110,11 @@ def puf_to_soi(puf, year):
     df["employment_income"] = puf.E00200
     df["charitable_contributions_deduction"] = puf.E19700
     df["interest_paid_deductions"] = puf.E19200
+    df["mortgage_interest_deductions"] = (
+        puf["deductible_mortgage_interest"]
+        if "deductible_mortgage_interest" in puf
+        else puf.E19200
+    )
     df["medical_expense_deductions_uncapped"] = puf.E17500
     df["itemized_state_income_and_sales_tax_deductions"] = puf.E18400
     df["itemized_real_estate_tax_deductions"] = puf.E18500
@@ -146,6 +153,7 @@ def get_soi(year: int) -> pd.DataFrame:
         "partnership_and_s_corp_income": "partnership_s_corp_income",
         "qualified_dividends": "qualified_dividend_income",
         "taxable_interest_income": "taxable_interest_income",
+        "mortgage_interest_deductions": "interest_deduction",
         "total_pension_income": "pension_income",
         "total_social_security": "social_security",
         "business_net_losses": "self_employment_income",

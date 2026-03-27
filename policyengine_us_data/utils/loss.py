@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import logging
 
-from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER
 from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
     STATE_ABBR_TO_FIPS,
 )
@@ -127,6 +127,7 @@ def build_loss_matrix(dataset: type, time_period):
         "partnership_and_s_corp_income",
         "qualified_dividends",
         "taxable_interest_income",
+        "mortgage_interest_deductions",
         "total_pension_income",
         "total_social_security",
     ]

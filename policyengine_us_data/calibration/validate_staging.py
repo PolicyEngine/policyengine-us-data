@@ -33,6 +33,7 @@ from policyengine_us_data.calibration.unified_matrix_builder import (
     UnifiedMatrixBuilder,
     _calculate_target_values_standalone,
     _GEO_VARS,
+    _make_neutralize_variable_reform,
 )
 from policyengine_us_data.calibration.calibration_utils import (
     STATE_CODES,
@@ -122,7 +123,7 @@ def _run_sanity_check(
 def _query_all_active_targets(engine, period: int) -> pd.DataFrame:
     query = """
     WITH best_periods AS (
-        SELECT stratum_id, variable,
+        SELECT stratum_id, variable, reform_id,
             CASE
                 WHEN MAX(CASE WHEN period <= :period
                          THEN period END) IS NOT NULL
@@ -132,15 +133,16 @@ def _query_all_active_targets(engine, period: int) -> pd.DataFrame:
             END as best_period
         FROM target_overview
         WHERE active = 1
-        GROUP BY stratum_id, variable
+        GROUP BY stratum_id, variable, reform_id
     )
-    SELECT tv.target_id, tv.stratum_id, tv.variable,
+    SELECT tv.target_id, tv.stratum_id, tv.variable, tv.reform_id,
            tv.value, tv.period, tv.geo_level,
            tv.geographic_id, tv.domain_variable
     FROM target_overview tv
     JOIN best_periods bp
         ON tv.stratum_id = bp.stratum_id
         AND tv.variable = bp.variable
+        AND tv.reform_id = bp.reform_id
         AND tv.period = bp.best_period
     WHERE tv.active = 1
     ORDER BY tv.target_id
@@ -268,6 +270,29 @@ def _build_entity_rel(sim) -> pd.DataFrame:
     )
 
 
+def _get_reform_household_values(
+    dataset_path: str,
+    period: int,
+    variable: str,
+    reform_hh_cache: dict,
+) -> np.ndarray:
+    if variable in reform_hh_cache:
+        return reform_hh_cache[variable]
+
+    from policyengine_us import Microsimulation
+
+    reform_sim = Microsimulation(
+        dataset=dataset_path,
+        reform=_make_neutralize_variable_reform(variable),
+    )
+    reform_hh_cache[variable] = reform_sim.calculate(
+        "income_tax",
+        map_to="household",
+        period=period,
+    ).values
+    return reform_hh_cache[variable]
+
+
 def validate_area(
     sim,
     targets_df: pd.DataFrame,
@@ -275,6 +300,7 @@ def validate_area(
     area_type: str,
     area_id: str,
     display_id: str,
+    dataset_path: str,
     period: int,
     training_mask: np.ndarray,
     variable_entity_map: dict,
@@ -291,6 +317,7 @@ def validate_area(
     ).values.astype(np.float64)
 
     hh_vars_cache = {}
+    reform_hh_cache = {}
     person_vars_cache = {}
 
     training_arr = np.asarray(training_mask, dtype=bool)
@@ -300,6 +327,7 @@ def validate_area(
     results = []
     for i, (idx, row) in enumerate(targets_df.iterrows()):
         variable = row["variable"]
+        reform_id = int(row.get("reform_id", 0))
         target_value = float(row["value"])
         stratum_id = int(row["stratum_id"])
 
@@ -336,15 +364,32 @@ def validate_area(
                 except Exception:
                     pass
 
+        if reform_id > 0 and "income_tax" not in hh_vars_cache:
+            hh_vars_cache["income_tax"] = sim.calculate(
+                "income_tax",
+                map_to="household",
+                period=period,
+            ).values
+        if reform_id > 0 and variable not in reform_hh_cache:
+            reform_income_tax = _get_reform_household_values(
+                dataset_path,
+                period,
+                variable,
+                reform_hh_cache,
+            )
+            reform_hh_cache[variable] = reform_income_tax - hh_vars_cache["income_tax"]
+
         per_hh = _calculate_target_values_standalone(
             target_variable=variable,
             non_geo_constraints=non_geo,
             n_households=n_households,
             hh_vars=hh_vars_cache,
+            reform_hh_vars=reform_hh_cache,
             person_vars=person_vars_cache,
             entity_rel=entity_rel,
             household_ids=household_ids,
             variable_entity_map=variable_entity_map,
+            reform_id=reform_id,
         )
 
         sim_value = float(np.dot(per_hh, hh_weight))
@@ -361,6 +406,7 @@ def validate_area(
         target_name = UnifiedMatrixBuilder._make_target_name(
             variable,
             constraints,
+            reform_id=reform_id,
         )
 
         sanity_check, sanity_reason = _run_sanity_check(
@@ -526,6 +572,7 @@ def _validate_single_area(
         area_type=area_type,
         area_id=area_id,
         display_id=display_id,
+        dataset_path=h5_path,
         period=period,
         training_mask=area_training,
         variable_entity_map=variable_entity_map,
@@ -580,11 +627,13 @@ def _compute_district_contributions(
     ).values.astype(np.float64)
 
     hh_vars_cache = {}
+    reform_hh_cache = {}
     person_vars_cache = {}
 
     results = []
     for i, (idx, row) in enumerate(state_targets_df.iterrows()):
         variable = row["variable"]
+        reform_id = int(row.get("reform_id", 0))
         stratum_id = int(row["stratum_id"])
 
         constraints = constraints_map.get(stratum_id, [])
@@ -615,15 +664,32 @@ def _compute_district_contributions(
                 except Exception:
                     pass
 
+        if reform_id > 0 and "income_tax" not in hh_vars_cache:
+            hh_vars_cache["income_tax"] = sim.calculate(
+                "income_tax",
+                map_to="household",
+                period=period,
+            ).values
+        if reform_id > 0 and variable not in reform_hh_cache:
+            reform_income_tax = _get_reform_household_values(
+                district_h5_path,
+                period,
+                variable,
+                reform_hh_cache,
+            )
+            reform_hh_cache[variable] = reform_income_tax - hh_vars_cache["income_tax"]
+
         per_hh = _calculate_target_values_standalone(
             target_variable=variable,
             non_geo_constraints=non_geo,
             n_households=n_households,
             hh_vars=hh_vars_cache,
+            reform_hh_vars=reform_hh_cache,
             person_vars=person_vars_cache,
             entity_rel=entity_rel,
             household_ids=household_ids,
             variable_entity_map=variable_entity_map,
+            reform_id=reform_id,
         )
 
         sim_value = float(np.dot(per_hh, hh_weight))
@@ -709,9 +775,14 @@ def _run_state_via_districts(
             row_data = state_targets.iloc[tidx]
             target_value = float(row_data["value"])
             variable = row_data["variable"]
+            reform_id = int(row_data.get("reform_id", 0))
             stratum_id = int(row_data["stratum_id"])
             constraints = constraints_map.get(stratum_id, [])
-            target_name = UnifiedMatrixBuilder._make_target_name(variable, constraints)
+            target_name = UnifiedMatrixBuilder._make_target_name(
+                variable,
+                constraints,
+                reform_id=reform_id,
+            )
 
             per_district_rows.append(
                 {
@@ -737,12 +808,17 @@ def _run_state_via_districts(
     for i in range(n_targets):
         row_data = state_targets.iloc[i]
         variable = row_data["variable"]
+        reform_id = int(row_data.get("reform_id", 0))
         target_value = float(row_data["value"])
         sim_value = float(aggregated[i])
         stratum_id = int(row_data["stratum_id"])
 
         constraints = constraints_map.get(stratum_id, [])
-        target_name = UnifiedMatrixBuilder._make_target_name(variable, constraints)
+        target_name = UnifiedMatrixBuilder._make_target_name(
+            variable,
+            constraints,
+            reform_id=reform_id,
+        )
 
         error = sim_value - target_value
         abs_error = abs(error)

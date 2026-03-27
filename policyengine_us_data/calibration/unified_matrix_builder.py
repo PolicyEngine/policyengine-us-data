@@ -40,6 +40,59 @@ COUNTY_DEPENDENT_VARS = {
 }
 
 
+def _make_neutralize_variable_reform(variable_name: str):
+    from policyengine_core.reforms import Reform
+
+    class NeutralizeVariable(Reform):
+        def apply(self):
+            self.neutralize_variable(variable_name)
+
+    NeutralizeVariable.__name__ = f"Neutralize_{variable_name}"
+    return NeutralizeVariable
+
+
+def _compute_reform_household_values(
+    dataset_path: str,
+    time_period: int,
+    state: int,
+    n_hh: int,
+    reform_vars: list,
+    baseline_income_tax: np.ndarray,
+) -> dict:
+    """Compute repeal-based household income tax deltas for target vars."""
+    from policyengine_us import Microsimulation
+
+    reform_hh = {}
+    if not reform_vars:
+        return reform_hh
+
+    state_input = np.full(n_hh, state, dtype=np.int32)
+    for var in reform_vars:
+        try:
+            reform_sim = Microsimulation(
+                dataset=dataset_path,
+                reform=_make_neutralize_variable_reform(var),
+            )
+            reform_sim.set_input("state_fips", time_period, state_input)
+            for calc_var in get_calculated_variables(reform_sim):
+                reform_sim.delete_arrays(calc_var)
+            reform_income_tax = reform_sim.calculate(
+                "income_tax",
+                time_period,
+                map_to="household",
+            ).values.astype(np.float32)
+            reform_hh[var] = reform_income_tax - baseline_income_tax
+        except Exception as exc:
+            logger.warning(
+                "Cannot calculate tax expenditure '%s' for state %d: %s",
+                var,
+                state,
+                exc,
+            )
+
+    return reform_hh
+
+
 def _compute_single_state(
     dataset_path: str,
     time_period: int,
@@ -47,6 +100,7 @@ def _compute_single_state(
     n_hh: int,
     target_vars: list,
     constraint_vars: list,
+    reform_vars: list,
     rerandomize_takeup: bool,
     affected_targets: dict,
 ):
@@ -118,6 +172,23 @@ def _compute_single_state(
                 exc,
             )
 
+    baseline_income_tax = None
+    reform_hh = {}
+    if reform_vars:
+        baseline_income_tax = state_sim.calculate(
+            "income_tax",
+            time_period,
+            map_to="household",
+        ).values.astype(np.float32)
+        reform_hh = _compute_reform_household_values(
+            dataset_path,
+            time_period,
+            state,
+            n_hh,
+            reform_vars,
+            baseline_income_tax,
+        )
+
     if rerandomize_takeup:
         for spec in SIMPLE_TAKEUP_VARS:
             entity = spec["entity"]
@@ -177,6 +248,7 @@ def _compute_single_state(
         {
             "hh": hh,
             "person": person,
+            "reform_hh": reform_hh,
             "entity": entity_vals,
             "entity_wf_false": entity_wf_false,
         },
@@ -347,6 +419,7 @@ def _assemble_clone_values_standalone(
     person_hh_indices: np.ndarray,
     target_vars: set,
     constraint_vars: set,
+    reform_vars: set = None,
     county_values: dict = None,
     clone_counties: np.ndarray = None,
     county_dependent_vars: set = None,
@@ -409,7 +482,27 @@ def _assemble_clone_values_standalone(
             arr[mask] = state_values[int(state)]["person"][var][mask]
         person_vars[var] = arr
 
-    return hh_vars, person_vars
+    reform_hh_vars: dict = {}
+    for var in reform_vars or set():
+        if not any(
+            var in state_values[int(state)].get("reform_hh", {})
+            for state in unique_clone_states
+        ):
+            continue
+        arr = np.zeros(n_records, dtype=np.float32)
+        for state in unique_clone_states:
+            mask = state_masks[int(state)]
+            arr[mask] = (
+                state_values[int(state)]
+                .get("reform_hh", {})
+                .get(
+                    var,
+                    np.zeros(mask.sum(), dtype=np.float32),
+                )
+            )
+        reform_hh_vars[var] = arr
+
+    return hh_vars, person_vars, reform_hh_vars
 
 
 def _evaluate_constraints_standalone(
@@ -452,10 +545,12 @@ def _calculate_target_values_standalone(
     non_geo_constraints: list,
     n_households: int,
     hh_vars: dict,
+    reform_hh_vars: dict,
     person_vars: dict,
     entity_rel: pd.DataFrame,
     household_ids: np.ndarray,
     variable_entity_map: dict,
+    reform_id: int = 0,
 ) -> np.ndarray:
     """Standalone target-value calculation (no class instance).
 
@@ -472,7 +567,8 @@ def _calculate_target_values_standalone(
             household_ids,
             n_households,
         )
-        vals = hh_vars.get(target_variable)
+        source_vars = reform_hh_vars if reform_id > 0 else hh_vars
+        vals = source_vars.get(target_variable)
         if vals is None:
             return np.zeros(n_households, dtype=np.float32)
         return (vals * mask).astype(np.float32)
@@ -559,8 +655,10 @@ def _process_single_clone(
     unique_constraint_vars = sd["unique_constraint_vars"]
     county_dep_targets = sd["county_dep_targets"]
     target_variables = sd["target_variables"]
+    target_reform_ids = sd["target_reform_ids"]
     target_geo_info = sd["target_geo_info"]
     non_geo_constraints_list = sd["non_geo_constraints_list"]
+    reform_vars = sd["reform_vars"]
     n_records = sd["n_records"]
     n_total = sd["n_total"]
     n_targets = sd["n_targets"]
@@ -580,12 +678,13 @@ def _process_single_clone(
     clone_counties = geo_counties[col_start:col_end]
 
     # Assemble hh/person values from precomputed state/county
-    hh_vars, person_vars = _assemble_clone_values_standalone(
+    hh_vars, person_vars, reform_hh_vars = _assemble_clone_values_standalone(
         state_values,
         clone_states,
         person_hh_indices,
         unique_variables,
         unique_constraint_vars,
+        reform_vars=reform_vars,
         county_values=county_values,
         clone_counties=clone_counties,
         county_dependent_vars=county_dep_targets,
@@ -715,6 +814,7 @@ def _process_single_clone(
 
     for row_idx in range(n_targets):
         variable = target_variables[row_idx]
+        reform_id = target_reform_ids[row_idx]
         geo_level, geo_id = target_geo_info[row_idx]
         non_geo = non_geo_constraints_list[row_idx]
 
@@ -758,6 +858,7 @@ def _process_single_clone(
                     non_geo,
                     n_records,
                     hh_vars,
+                    reform_hh_vars,
                     person_vars,
                     entity_rel,
                     household_ids,
@@ -765,7 +866,8 @@ def _process_single_clone(
                 )
             values = count_cache[vkey]
         else:
-            if variable not in hh_vars:
+            source_vars = reform_hh_vars if reform_id > 0 else hh_vars
+            if variable not in source_vars:
                 continue
             if constraint_key not in mask_cache:
                 mask_cache[constraint_key] = _evaluate_constraints_standalone(
@@ -776,7 +878,7 @@ def _process_single_clone(
                     n_records,
                 )
             mask = mask_cache[constraint_key]
-            values = hh_vars[variable] * mask
+            values = source_vars[variable] * mask
 
         vals = values[rec_indices]
         nonzero = vals != 0
@@ -857,6 +959,7 @@ class UnifiedMatrixBuilder:
         sim,
         target_vars: set,
         constraint_vars: set,
+        reform_vars: set,
         geography,
         rerandomize_takeup: bool = True,
         workers: int = 1,
@@ -919,6 +1022,7 @@ class UnifiedMatrixBuilder:
         # Convert sets to sorted lists for deterministic iteration
         target_vars_list = sorted(target_vars)
         constraint_vars_list = sorted(constraint_vars)
+        reform_vars_list = sorted(reform_vars)
 
         state_values = {}
 
@@ -942,6 +1046,7 @@ class UnifiedMatrixBuilder:
                         n_hh,
                         target_vars_list,
                         constraint_vars_list,
+                        reform_vars_list,
                         rerandomize_takeup,
                         affected_targets,
                     ): st
@@ -1015,6 +1120,22 @@ class UnifiedMatrixBuilder:
                             exc,
                         )
 
+                reform_hh = {}
+                if reform_vars_list:
+                    baseline_income_tax = state_sim.calculate(
+                        "income_tax",
+                        self.time_period,
+                        map_to="household",
+                    ).values.astype(np.float32)
+                    reform_hh = _compute_reform_household_values(
+                        self.dataset_path,
+                        self.time_period,
+                        state,
+                        n_hh,
+                        reform_vars_list,
+                        baseline_income_tax,
+                    )
+
                 if rerandomize_takeup:
                     for spec in SIMPLE_TAKEUP_VARS:
                         entity = spec["entity"]
@@ -1085,6 +1206,7 @@ class UnifiedMatrixBuilder:
                 state_values[state] = {
                     "hh": hh,
                     "person": person,
+                    "reform_hh": reform_hh,
                     "entity": entity_vals,
                     "entity_wf_false": entity_wf_false,
                 }
@@ -1272,6 +1394,7 @@ class UnifiedMatrixBuilder:
         person_hh_indices: np.ndarray,
         target_vars: set,
         constraint_vars: set,
+        reform_vars: set = None,
         county_values: dict = None,
         clone_counties: np.ndarray = None,
         county_dependent_vars: set = None,
@@ -1296,9 +1419,11 @@ class UnifiedMatrixBuilder:
                 be looked up by county instead of state.
 
         Returns:
-            (hh_vars, person_vars) where hh_vars maps variable
-            name to household-level float32 array and person_vars
-            maps constraint variable name to person-level array.
+            (hh_vars, person_vars, reform_hh_vars) where hh_vars maps
+            baseline variables to household-level float32 arrays,
+            person_vars maps constraint variables to person-level arrays,
+            and reform_hh_vars maps repeal-based expenditure targets to
+            household-level arrays.
         """
         n_records = len(clone_states)
         n_persons = len(person_hh_indices)
@@ -1353,7 +1478,27 @@ class UnifiedMatrixBuilder:
                 arr[mask] = state_values[int(state)]["person"][var][mask]
             person_vars[var] = arr
 
-        return hh_vars, person_vars
+        reform_hh_vars = {}
+        for var in reform_vars or set():
+            if not any(
+                var in state_values[int(state)].get("reform_hh", {})
+                for state in unique_clone_states
+            ):
+                continue
+            arr = np.zeros(n_records, dtype=np.float32)
+            for state in unique_clone_states:
+                mask = state_masks[int(state)]
+                arr[mask] = (
+                    state_values[int(state)]
+                    .get("reform_hh", {})
+                    .get(
+                        var,
+                        np.zeros(mask.sum(), dtype=np.float32),
+                    )
+                )
+            reform_hh_vars[var] = arr
+
+        return hh_vars, person_vars, reform_hh_vars
 
     # ---------------------------------------------------------------
     # Database queries
@@ -1402,14 +1547,15 @@ class UnifiedMatrixBuilder:
 
         query = f"""
         WITH filtered_targets AS (
-            SELECT tv.target_id, tv.stratum_id, tv.variable,
+            SELECT tv.target_id, tv.stratum_id, tv.variable, tv.reform_id,
                    tv.value, tv.period, tv.geo_level,
                    tv.geographic_id, tv.domain_variable
             FROM target_overview tv
-            WHERE {where_clause}
+            WHERE tv.active = 1
+              AND ({where_clause})
         ),
         best_periods AS (
-            SELECT stratum_id, variable,
+            SELECT stratum_id, variable, reform_id,
                 CASE
                     WHEN MAX(CASE WHEN period <= :time_period
                              THEN period END) IS NOT NULL
@@ -1418,13 +1564,14 @@ class UnifiedMatrixBuilder:
                     ELSE MIN(period)
                 END as best_period
             FROM filtered_targets
-            GROUP BY stratum_id, variable
+            GROUP BY stratum_id, variable, reform_id
         )
         SELECT ft.*
         FROM filtered_targets ft
         JOIN best_periods bp
             ON ft.stratum_id = bp.stratum_id
             AND ft.variable = bp.variable
+            AND ft.reform_id = bp.reform_id
             AND ft.period = bp.best_period
         ORDER BY ft.target_id
         """
@@ -1821,7 +1968,9 @@ class UnifiedMatrixBuilder:
 
         # 2. Sort targets by geographic level
         targets_df["_geo_level"] = targets_df["geographic_id"].apply(get_geo_level)
-        targets_df = targets_df.sort_values(["_geo_level", "variable", "geographic_id"])
+        targets_df = targets_df.sort_values(
+            ["_geo_level", "variable", "reform_id", "geographic_id"]
+        )
         targets_df = targets_df.drop(columns=["_geo_level"]).reset_index(drop=True)
 
         # 3. Build column index structures from geography
@@ -1838,6 +1987,7 @@ class UnifiedMatrixBuilder:
         target_geo_info: List[Tuple[str, str]] = []
         target_names: List[str] = []
         non_geo_constraints_list: List[List[dict]] = []
+        target_reform_ids: List[int] = []
 
         for _, row in targets_df.iterrows():
             sid = int(row["stratum_id"])
@@ -1851,12 +2001,23 @@ class UnifiedMatrixBuilder:
 
             non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
             non_geo_constraints_list.append(non_geo)
+            reform_id = int(row.get("reform_id", 0))
+            target_reform_ids.append(reform_id)
 
             target_names.append(
-                self._make_target_name(str(row["variable"]), constraints)
+                self._make_target_name(
+                    str(row["variable"]),
+                    constraints,
+                    reform_id=reform_id,
+                )
             )
 
         unique_variables = set(targets_df["variable"].values)
+        reform_variables = {
+            str(row["variable"])
+            for _, row in targets_df.iterrows()
+            if int(row.get("reform_id", 0)) > 0
+        }
 
         # 5a. Collect unique constraint variables
         unique_constraint_vars = set()
@@ -1870,6 +2031,7 @@ class UnifiedMatrixBuilder:
             sim,
             unique_variables,
             unique_constraint_vars,
+            reform_variables,
             geography,
             rerandomize_takeup=rerandomize_takeup,
             workers=workers,
@@ -2003,8 +2165,10 @@ class UnifiedMatrixBuilder:
                 "person_hh_indices": person_hh_indices,
                 "unique_variables": unique_variables,
                 "unique_constraint_vars": unique_constraint_vars,
+                "reform_vars": reform_variables,
                 "county_dep_targets": county_dep_targets,
                 "target_variables": target_variables,
+                "target_reform_ids": target_reform_ids,
                 "target_geo_info": target_geo_info,
                 "non_geo_constraints_list": (non_geo_constraints_list),
                 "n_records": n_records,
@@ -2103,12 +2267,13 @@ class UnifiedMatrixBuilder:
                         len(np.unique(clone_states)),
                     )
 
-                hh_vars, person_vars = self._assemble_clone_values(
+                hh_vars, person_vars, reform_hh_vars = self._assemble_clone_values(
                     state_values,
                     clone_states,
                     person_hh_indices,
                     unique_variables,
                     unique_constraint_vars,
+                    reform_vars=reform_variables,
                     county_values=county_values,
                     clone_counties=clone_counties,
                     county_dependent_vars=(county_dep_targets),
@@ -2245,6 +2410,7 @@ class UnifiedMatrixBuilder:
 
                 for row_idx in range(n_targets):
                     variable = str(targets_df.iloc[row_idx]["variable"])
+                    reform_id = int(targets_df.iloc[row_idx].get("reform_id", 0))
                     geo_level, geo_id = target_geo_info[row_idx]
                     non_geo = non_geo_constraints_list[row_idx]
 
@@ -2291,6 +2457,7 @@ class UnifiedMatrixBuilder:
                                 non_geo_constraints=non_geo,
                                 n_households=n_records,
                                 hh_vars=hh_vars,
+                                reform_hh_vars=reform_hh_vars,
                                 person_vars=person_vars,
                                 entity_rel=entity_rel,
                                 household_ids=household_ids,
@@ -2298,7 +2465,8 @@ class UnifiedMatrixBuilder:
                             )
                         values = count_cache[vkey]
                     else:
-                        if variable not in hh_vars:
+                        source_vars = reform_hh_vars if reform_id > 0 else hh_vars
+                        if variable not in source_vars:
                             continue
                         if constraint_key not in mask_cache:
                             mask_cache[constraint_key] = (
@@ -2311,7 +2479,7 @@ class UnifiedMatrixBuilder:
                                 )
                             )
                         mask = mask_cache[constraint_key]
-                        values = hh_vars[variable] * mask
+                        values = source_vars[variable] * mask
 
                     vals = values[rec_indices]
                     nonzero = vals != 0

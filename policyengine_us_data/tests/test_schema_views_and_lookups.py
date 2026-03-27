@@ -66,6 +66,7 @@ def _add_target(
     period: int,
     value: float,
     active: bool = True,
+    reform_id: int = 0,
 ) -> Target:
     """Insert a target row."""
     target = Target(
@@ -74,6 +75,7 @@ def _add_target(
         period=period,
         value=value,
         active=active,
+        reform_id=reform_id,
     )
     session.add(target)
     session.commit()
@@ -370,6 +372,32 @@ class TestSchemaViewsAndLookups(unittest.TestCase):
                 self.assertTrue(bool(r[active_idx]))
             elif r[var_idx] == "household_count":
                 self.assertFalse(bool(r[active_idx]))
+
+    def test_reform_id_passthrough(self):
+        """Reform targets retain their reform_id in target_overview."""
+        with Session(self.engine) as session:
+            _add_target(
+                session,
+                self.national_id,
+                "salt_deduction",
+                2024,
+                21.247e9,
+                reform_id=1,
+            )
+
+        rows = self._query_target_overview()
+        cols = self._overview_columns()
+        sid_idx = cols.index("stratum_id")
+        var_idx = cols.index("variable")
+        reform_idx = cols.index("reform_id")
+
+        matches = [
+            r
+            for r in rows
+            if r[sid_idx] == self.national_id and r[var_idx] == "salt_deduction"
+        ]
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0][reform_idx], 1)
 
     # ----------------------------------------------------------------
     # get_geographic_strata()

@@ -309,6 +309,7 @@ SELECT
     t.target_id,
     t.stratum_id,
     t.variable,
+    t.reform_id,
     t.value,
     t.period,
     t.active,
@@ -348,7 +349,7 @@ SELECT
 FROM targets t
 LEFT JOIN stratum_constraints sc ON t.stratum_id = sc.stratum_id
 GROUP BY t.target_id, t.stratum_id, t.variable,
-         t.value, t.period, t.active;
+         t.reform_id, t.value, t.period, t.active;
 """
 
 

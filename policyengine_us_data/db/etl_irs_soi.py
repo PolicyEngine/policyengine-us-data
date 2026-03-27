@@ -29,6 +29,11 @@ from policyengine_us_data.utils.raw_cache import (
 
 logger = logging.getLogger(__name__)
 
+ITEMIZED_DEDUCTION_VARIABLES = {
+    "salt",
+    "real_estate_taxes",
+    "medical_expense_deduction",
+}
 
 # IRS SOI data is typically available ~2 years after the tax year
 IRS_SOI_LAG_YEARS = 2
@@ -661,7 +666,11 @@ def load_soi_data(long_dfs, year):
 
             # Create child stratum with constraint for this IRS variable
             # Note: This stratum will have the constraint that amount_variable > 0
-            note = f"{geo_description} filers with {amount_variable_name} > 0"
+            is_itemized = amount_variable_name in ITEMIZED_DEDUCTION_VARIABLES
+            if is_itemized:
+                note = f"{geo_description} itemizing filers with {amount_variable_name} > 0"
+            else:
+                note = f"{geo_description} filers with {amount_variable_name} > 0"
 
             # Check if child stratum already exists
             existing_stratum = (
@@ -697,6 +706,15 @@ def load_soi_data(long_dfs, year):
                         ),
                     ]
                 )
+
+                if is_itemized:
+                    child_stratum.constraints_rel.append(
+                        StratumConstraint(
+                            constraint_variable="tax_unit_itemizes",
+                            operation="==",
+                            value="1",
+                        )
+                    )
 
                 # Add geographic constraints if applicable
                 if geo_info["type"] == "state":

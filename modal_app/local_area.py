@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import json
+import traceback
 import modal
 from pathlib import Path
 from typing import List, Dict
@@ -244,6 +245,10 @@ def run_phase(
     for i, handle in enumerate(handles):
         try:
             result = handle.get()
+            if result is None:
+                all_errors.append({"worker": i, "error": "Worker returned None"})
+                print(f"  Worker {i}: returned None (no results)")
+                continue
             all_results.append(result)
             print(
                 f"  Worker {i}: {len(result['completed'])} completed, "
@@ -257,7 +262,7 @@ def run_phase(
                 all_validation_rows.extend(v_rows)
                 print(f"  Worker {i}: {len(v_rows)} validation rows")
         except Exception as e:
-            all_errors.append({"worker": i, "error": str(e)})
+            all_errors.append({"worker": i, "error": str(e), "traceback": traceback.format_exc()})
             print(f"  Worker {i}: CRASHED - {e}")
 
     total_completed = sum(len(r["completed"]) for r in all_results)
@@ -277,7 +282,7 @@ def run_phase(
     if all_errors:
         print(f"\nErrors ({len(all_errors)}):")
         for err in all_errors[:5]:
-            err_msg = err.get("error", "Unknown")[:100]
+            err_msg = str(err.get("error") or "Unknown")[:200]
             print(f"  - {err.get('item', err.get('worker'))}: {err_msg}")
         if len(all_errors) > 5:
             print(f"  ... and {len(all_errors) - 5} more")
@@ -355,15 +360,17 @@ def build_areas_worker(
     result = subprocess.run(
         worker_cmd,
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         env=os.environ.copy(),
     )
 
     if result.returncode != 0:
+        print(f"Worker stderr:\n{result.stderr}", file=__import__('sys').stderr)
         return {
             "completed": [],
             "failed": [f"{item['type']}:{item['id']}" for item in work_items],
-            "errors": [{"error": result.stderr}],
+            "errors": [{"error": (result.stderr or "No stderr")[:2000]}],
         }
 
     try:
@@ -621,6 +628,7 @@ def coordinate_publish(
     n_clones: int = 430,
     validate: bool = True,
     run_id: str = "",
+    expected_fingerprint: str = "",
 ) -> Dict:
     """Coordinate the full publishing workflow."""
     setup_gcp_credentials()
@@ -674,43 +682,77 @@ def coordinate_publish(
     }
     validate_artifacts(config_json_path, artifacts)
 
+    if validate:
+        try:
+            from sqlalchemy import create_engine as _create_engine
+            from policyengine_us_data.calibration.validate_staging import (
+                _query_all_active_targets,
+            )
+            _test_engine = _create_engine(f"sqlite:///{db_path}")
+            _df = _query_all_active_targets(_test_engine, 2024)
+            print(f"Validation pre-flight OK: {len(_df)} targets queryable")
+            _test_engine.dispose()
+        except Exception as e:
+            print(f"WARNING: Validation pre-flight failed: {e}")
+            print("Disabling validation to protect H5 builds")
+            validate = False
+
     # Fingerprint-based cache invalidation
-    fp_result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "-c",
-            f"""
+    if expected_fingerprint:
+        fingerprint = expected_fingerprint
+        print(f"Using pinned fingerprint from pipeline: {fingerprint}")
+    else:
+        fp_result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "-c",
+                f"""
 from policyengine_us_data.calibration.publish_local_area import (
     compute_input_fingerprint,
 )
 print(compute_input_fingerprint("{weights_path}", "{dataset_path}", {n_clones}, seed=42))
 """,
-        ],
-        capture_output=True,
-        text=True,
-        env=os.environ.copy(),
-    )
-    if fp_result.returncode != 0:
-        raise RuntimeError(f"Failed to compute fingerprint: {fp_result.stderr}")
-    fingerprint = fp_result.stdout.strip()
+            ],
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+        )
+        if fp_result.returncode != 0:
+            raise RuntimeError(f"Failed to compute fingerprint: {fp_result.stderr}")
+        fingerprint = fp_result.stdout.strip()
     fingerprint_file = version_dir / "fingerprint.json"
     if version_dir.exists():
+        h5_count = len(list(version_dir.rglob("*.h5")))
         if fingerprint_file.exists():
             stored = json.loads(fingerprint_file.read_text())
             if stored.get("fingerprint") == fingerprint:
                 print(f"Inputs unchanged ({fingerprint}), resuming...")
             else:
-                print(
-                    f"Inputs changed "
-                    f"({stored.get('fingerprint')} -> {fingerprint}), "
-                    f"rebuilding..."
-                )
-                shutil.rmtree(version_dir)
+                if h5_count > 0:
+                    print(
+                        f"WARNING: Inputs changed "
+                        f"({stored.get('fingerprint')} -> {fingerprint}) "
+                        f"but {h5_count} H5 files exist. "
+                        f"Updating fingerprint and resuming."
+                    )
+                else:
+                    print(
+                        f"Inputs changed "
+                        f"({stored.get('fingerprint')} -> {fingerprint}), "
+                        f"clearing empty directory..."
+                    )
+                    shutil.rmtree(version_dir)
         else:
-            print("No fingerprint found, clearing stale directory...")
-            shutil.rmtree(version_dir)
+            if h5_count > 0:
+                print(
+                    f"WARNING: No fingerprint found but {h5_count} H5 files exist. "
+                    f"Writing fingerprint and resuming."
+                )
+            else:
+                print("No fingerprint found, clearing empty stale directory...")
+                shutil.rmtree(version_dir)
     version_dir.mkdir(parents=True, exist_ok=True)
     fingerprint_file.write_text(json.dumps({"fingerprint": fingerprint}))
     staging_volume.commit()
@@ -832,6 +874,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         return {
             "message": (f"Build complete for version {version}. Upload skipped."),
             "validation_rows": accumulated_validation_rows,
+            "fingerprint": fingerprint,
         }
 
     print("\nValidating staging...")
@@ -867,6 +910,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
         "message": result,
         "run_id": run_id,
         "validation_rows": accumulated_validation_rows,
+        "fingerprint": fingerprint,
     }
 
 

@@ -673,9 +673,7 @@ def load_national_targets(
                     existing_target.notes = combined_notes
                     existing_target.source = "PolicyEngine"
                     existing_target.active = True
-                    print(
-                        f"Updated tax expenditure target: {target_data['variable']}"
-                    )
+                    print(f"Updated tax expenditure target: {target_data['variable']}")
                 else:
                     target = Target(
                         stratum_id=us_stratum.stratum_id,
@@ -688,9 +686,7 @@ def load_national_targets(
                         notes=combined_notes,
                     )
                     session.add(target)
-                    print(
-                        f"Added tax expenditure target: {target_data['variable']}"
-                    )
+                    print(f"Added tax expenditure target: {target_data['variable']}")
 
         # Process conditional count targets (enrollment counts)
         for cond_target in conditional_targets:
@@ -817,9 +813,7 @@ def main():
         tax_filer_df,
         tax_expenditure_df,
         conditional_targets,
-    ) = transform_national_targets(
-        raw_targets
-    )
+    ) = transform_national_targets(raw_targets)
 
     # Load
     print("Loading targets into database...")

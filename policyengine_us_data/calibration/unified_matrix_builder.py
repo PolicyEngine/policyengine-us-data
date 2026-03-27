@@ -492,9 +492,13 @@ def _assemble_clone_values_standalone(
         arr = np.zeros(n_records, dtype=np.float32)
         for state in unique_clone_states:
             mask = state_masks[int(state)]
-            arr[mask] = state_values[int(state)].get("reform_hh", {}).get(
-                var,
-                np.zeros(mask.sum(), dtype=np.float32),
+            arr[mask] = (
+                state_values[int(state)]
+                .get("reform_hh", {})
+                .get(
+                    var,
+                    np.zeros(mask.sum(), dtype=np.float32),
+                )
             )
         reform_hh_vars[var] = arr
 
@@ -1484,9 +1488,13 @@ class UnifiedMatrixBuilder:
             arr = np.zeros(n_records, dtype=np.float32)
             for state in unique_clone_states:
                 mask = state_masks[int(state)]
-                arr[mask] = state_values[int(state)].get("reform_hh", {}).get(
-                    var,
-                    np.zeros(mask.sum(), dtype=np.float32),
+                arr[mask] = (
+                    state_values[int(state)]
+                    .get("reform_hh", {})
+                    .get(
+                        var,
+                        np.zeros(mask.sum(), dtype=np.float32),
+                    )
                 )
             reform_hh_vars[var] = arr
 

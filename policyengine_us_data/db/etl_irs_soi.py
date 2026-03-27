@@ -29,7 +29,11 @@ from policyengine_us_data.utils.raw_cache import (
 
 logger = logging.getLogger(__name__)
 
-ITEMIZED_DEDUCTION_VARIABLES = {"salt", "real_estate_taxes", "medical_expense_deduction"}
+ITEMIZED_DEDUCTION_VARIABLES = {
+    "salt",
+    "real_estate_taxes",
+    "medical_expense_deduction",
+}
 
 # IRS SOI data is typically available ~2 years after the tax year
 IRS_SOI_LAG_YEARS = 2

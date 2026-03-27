@@ -2,6 +2,17 @@
 
 Our methodology combines two primary data sources with calibration targets from administrative sources.
 
+## Data vintages
+
+| Dataset | Vintage | Notes |
+|---------|---------|-------|
+| CPS ASEC | 2024 (income year 2023) | Base microdata; pipeline ages values to target policy year |
+| IRS PUF | 2015 | Pipeline ages values to target policy year using income growth indices |
+| ACS | 2022 | Provides rent and real estate tax imputation targets |
+| SCF | 2022 | Provides wealth and debt variable imputation targets |
+| SIPP | 2023 | Provides tip income and asset imputation targets |
+| Calibration targets | Primarily 2023–2024 | Varies by source; see calibration data sources below |
+
 ## Primary Data Sources
 
 ### Current Population Survey (CPS)
@@ -19,6 +30,8 @@ The IRS Statistics of Income Public Use File contains tax return information tha
 The PUF provides tax-related variables drawn from filed tax returns. It provides breakdowns of income by source including wages, interest, dividends, capital gains, business income, and retirement distributions. The file includes itemized deductions such as mortgage interest, state and local taxes, and charitable contributions. The file includes tax credits that filers claim, from the earned income tax credit to education credits. The stratified sampling design oversamples high-income returns. Sampling weights allow researchers to produce population-representative estimates.
 
 The PUF has limitations for policy analysis. The file contains minimal demographic information, limited to filing status and exemptions claimed. The IRS removes geographic identifiers to protect taxpayer privacy, which prevents state-level analysis. The population excludes non-filers. The PUF lacks household structure, preventing analysis of how tax policies interact with transfer programs that operate at the household level.
+
+The enhanced dataset retains the full CPS population, including non-filers. CPS copy-1 records keep original CPS income values for all households, covering non-filers and low-income households absent from PUF. Only copy-2 records replace income variables with PUF imputations and represent the filer population. This structure preserves non-filer coverage while enriching the tax detail for filers.
 
 ## Additional Data Sources for Imputation
 

@@ -1,6 +1,6 @@
 # Methodology
 
-PolicyEngine constructs its representative household dataset through a multi-stage pipeline. Survey data from the CPS is merged with tax detail from the IRS PUF, stratified, and supplemented with variables from ACS, SIPP, and SCF. The resulting dataset is then cloned to geographic variants, simulated through PolicyEngine US with stochastic take-up, and calibrated via L0-regularized optimization against administrative targets at the national, state, and congressional district levels. The pipeline produces 488 geographically representative H5 datasets.
+PolicyEngine constructs its representative household dataset through a five-step pipeline that runs on Modal, preceded by a prerequisite database build. The database build (`make database`) populates a SQLite store of administrative calibration targets. The five Modal steps are: (1) build datasets — assemble the enhanced microdata from CPS, PUF, ACS, SIPP, and SCF; (2) build package — run PolicyEngine on every clone to construct a sparse calibration matrix; (3) fit weights — find household weights via L0-regularized optimization against the administrative targets; (4) build H5 files — write 488 geographically representative datasets; (5) promote — move the staged files to production on HuggingFace.
 
 ```mermaid
 graph TD
@@ -115,9 +115,9 @@ We clone the aged CPS dataset to create two versions. The first copy retains ori
 
 This dual approach ensures that variables not collected in CPS are added from the PUF, while variables collected in CPS but with measurement error are replaced with more accurate PUF values. Most importantly, household structure and relationships are preserved in both copies.
 
-### Quantile Random Forests
+### Quantile Regression Forests
 
-Quantile Random Forests (QRF) is an extension of random forests that estimates conditional quantiles rather than conditional means. QRF builds an ensemble of decision trees on the training data and stores all observations in leaf nodes rather than just their means. This enables estimation of any quantile of the conditional distribution at prediction time.
+Quantile Regression Forests (QRF) is an extension of random forests that estimates conditional quantiles rather than conditional means. QRF builds an ensemble of decision trees on the training data and stores all observations in leaf nodes rather than just their means. This enables estimation of any quantile of the conditional distribution at prediction time.
 
 #### QRF Sampling Process
 
@@ -149,16 +149,6 @@ For CPS Copy 2, we replace existing CPS income variables with more accurate PUF 
 
 We concatenate these two CPS copies to create the Extended CPS, effectively doubling the dataset size.
 
-### Additional Imputations
-
-Beyond PUF tax variables, we impute variables from three other data sources:
-
-From the Survey of Income and Program Participation (SIPP), we impute tip income using predictors including employment income, age, number of children under 18, and number of children under 6.
-
-From the Survey of Consumer Finances (SCF), we match auto loan balances based on household demographics and income, then calculate interest on auto loans from these imputed balances. We also impute various net worth components and wealth measures not available in CPS.
-
-From the American Community Survey (ACS), we impute property taxes for homeowners based on state of residence, household income, and demographic characteristics. We also impute rent values for specific tenure types where CPS data is incomplete, along with additional housing-related variables.
-
 ### Example: Tip Income Imputation
 
 To illustrate how QRF preserves conditional distributions, consider tip income imputation. The training data from SIPP contains workers with employment income and tip income.
@@ -188,13 +178,13 @@ The stratification works in two steps. First, all households above the 99.5th pe
 
 ### Source Imputation
 
-We then impute additional variables from three supplementary surveys onto the stratified CPS. These imputations use quantile regression forests with state of residence as a predictor, which allows the imputed values to reflect geographic variation.
+We then impute additional variables from three supplementary surveys onto the stratified CPS using quantile regression forests.
 
-**ACS (American Community Survey)**: Rent, real estate taxes. State is included as a predictor, which is important because property tax rates and rent levels vary substantially across states.
+**ACS (American Community Survey)**: Rent, real estate taxes. The ACS imputation includes state FIPS as a predictor, which allows the imputed values to reflect geographic variation in property tax rates and rent levels.
 
-**SIPP (Survey of Income and Program Participation)**: Tip income, bank account assets, stock assets, bond assets. These financial variables are not available in CPS and are imputed from SIPP's more detailed wealth module.
+**SIPP (Survey of Income and Program Participation)**: Tip income, bank account assets, stock assets, bond assets. The SIPP lacks state identifiers, so these imputations are state-blind at the microdata level — geographic variation in tip income and assets enters only through calibration weights, not through the imputed values themselves.
 
-**SCF (Survey of Consumer Finances)**: Net worth, auto loan balances, auto loan interest. SCF provides the most comprehensive household balance sheet data among US surveys.
+**SCF (Survey of Consumer Finances)**: Net worth, auto loan balances, auto loan interest. The SCF also lacks state identifiers, so these imputations are likewise state-blind.
 
 The output of this stage is the source-imputed stratified CPS (`source_imputed_stratified_extended_cps_2024.h5`), which serves as the input to the geography-specific calibration pipeline.
 
@@ -257,7 +247,7 @@ Two presets control the degree of sparsity:
 - **Local preset** (λ_L0 = 1e-8): Retains 3–4 million records with nonzero weight. Used for building state and district H5 files where geographic detail matters.
 - **National preset** (λ_L0 = 1e-4): Retains approximately 50,000 records. Used for the national web app dataset where fast computation is prioritized over geographic granularity.
 
-The optimizer is Adam with a learning rate of 0.15, running for 100–200 epochs. Training runs on GPU (A100 or T4) via Modal for production builds, or on CPU for local development.
+The optimizer is Adam with a learning rate of 0.15. The default epoch count is 100; production builds typically run 1000-1500 epochs to ensure convergence. Training runs on GPU (A100 or T4) via Modal for production builds, or on CPU for local development.
 
 ## Stage 4: Local Area Dataset Generation
 
@@ -281,9 +271,23 @@ Supplemental Poverty Measure thresholds vary by housing tenure and metropolitan 
 
 The pipeline produces 488 H5 datasets: 51 state files (including DC), 435 congressional district files, a national file, and city files for New York City. Each file is a self-contained PolicyEngine dataset that can be loaded directly into `Microsimulation` for policy analysis.
 
+## Key design decisions
+
+### Why 430 clones per household
+
+The pipeline clones each of the ~12,000 stratified households 430 times, producing approximately 5.2 million total records entering calibration. We chose 430 so that the population-weighted random block sampling covers every populated census block in the US with at least one clone in expectation. Fewer clones reduce geographic resolution; more clones increase memory and compute cost proportionally.
+
+### Why L0 regularization (not L1 or L2)
+
+L1 and L2 regularization shrink weights toward zero or toward uniform but retain all records with nonzero weight. Running PolicyEngine simulations at scale requires iterating over every nonzero-weight record, so retaining millions of records makes per-area simulation slow. L0 regularization drives most weights to *exactly* zero, producing a sparse weight vector where only a few hundred thousand records carry nonzero weight. The optimizer selects those records to collectively match the administrative targets, making per-area simulation fast while preserving calibration accuracy.
+
+### Why ~2,800 calibration targets
+
+We draw targets from every granular administrative source available: income by AGI bracket at the national and state level (IRS SOI), population by age and state (Census), benefit totals by program and state (USDA, CMS), and congressional district population counts. We chose this set empirically as the largest number of targets that converge stably given the number of clones — adding more targets increases distributional accuracy but risks optimization instability.
+
 ## Validation
 
-We validate the pipeline at multiple stages. Imputation quality is checked via out-of-sample prediction on held-out records from source datasets. Calibration quality is measured by comparing achieved target values (**X · w**) against administrative totals, reported as relative error per target. The validation script (`validate_staging`) computes these metrics across all state and district H5 files, flagging any area where relative error exceeds acceptable thresholds.
+We validate the pipeline at multiple stages. Imputation quality is checked via out-of-sample prediction on held-out records from source datasets. Calibration quality is measured by comparing achieved target values (**X · w**) against administrative totals, reported as relative error per target. The validation script (`validate_staging`) computes these metrics across all state and district H5 files, flagging any area where relative error exceeds a 10% threshold.
 
 Structural integrity checks verify that weights are positive, that household structures remain intact (all members of a household receive the same weight), and that state populations sum to the national total.
 
@@ -295,7 +299,7 @@ The implementation is available at:
 Key files:
 - `policyengine_us_data/datasets/cps/extended_cps.py` — PUF imputation onto CPS
 - `policyengine_us_data/calibration/create_stratified_cps.py` — Stratified sampling
-- `policyengine_us_data/calibration/create_source_imputed_cps.py` — ACS/SIPP/SCF source imputation
+- `policyengine_us_data/calibration/source_impute.py` — ACS/SIPP/SCF source imputation
 - `policyengine_us_data/calibration/unified_calibration.py` — L0 calibration orchestrator
 - `policyengine_us_data/calibration/unified_matrix_builder.py` — Sparse calibration matrix builder
 - `policyengine_us_data/calibration/clone_and_assign.py` — Geography cloning and block assignment

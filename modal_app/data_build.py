@@ -350,6 +350,7 @@ def build_datasets(
     clear_checkpoints: bool = False,
     skip_tests: bool = False,
     skip_enhanced_cps: bool = False,
+    run_id: str = "",
 ):
     """Build all datasets with preemption-resilient checkpointing.
 
@@ -593,6 +594,8 @@ def build_datasets(
     # failure does not block downstream calibration steps.
     print("Copying pipeline artifacts to shared volume...")
     artifacts_dir = Path(PIPELINE_MOUNT) / "artifacts"
+    if run_id:
+        artifacts_dir = artifacts_dir / run_id
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy all intermediate H5 datasets for lineage tracing

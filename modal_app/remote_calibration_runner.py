@@ -156,12 +156,13 @@ def _fit_weights_impl(
     log_freq: int = None,
     skip_county: bool = True,
     workers: int = 8,
+    artifacts_dir: str = "",
 ) -> dict:
     """Full pipeline: read data from pipeline volume, build matrix, fit."""
     _setup_repo()
 
     pipeline_vol.reload()
-    artifacts = f"{PIPELINE_MOUNT}/artifacts"
+    artifacts = artifacts_dir if artifacts_dir else f"{PIPELINE_MOUNT}/artifacts"
     db_path = f"{artifacts}/policy_data.db"
     dataset_path = f"{artifacts}/source_imputed_stratified_extended_cps.h5"
     for label, p in [("database", db_path), ("dataset", dataset_path)]:
@@ -324,12 +325,15 @@ def _build_package_impl(
     skip_county: bool = True,
     workers: int = 8,
     n_clones: int = 430,
+    run_id: str = "",
 ) -> str:
     """Read data from pipeline volume, build X matrix, save package."""
     _setup_repo()
 
     pipeline_vol.reload()
     artifacts = f"{PIPELINE_MOUNT}/artifacts"
+    if run_id:
+        artifacts = f"{artifacts}/{run_id}"
     db_path = f"{artifacts}/policy_data.db"
     dataset_path = f"{artifacts}/source_imputed_stratified_extended_cps.h5"
     for label, p in [("database", db_path), ("dataset", dataset_path)]:
@@ -338,7 +342,7 @@ def _build_package_impl(
                 f"Missing {label} on pipeline volume: {p}. Run data_build first."
             )
 
-    pkg_path = f"{PIPELINE_MOUNT}/artifacts/calibration_package.pkl"
+    pkg_path = f"{artifacts}/calibration_package.pkl"
     script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
         "uv",
@@ -405,6 +409,7 @@ def build_package_remote(
     skip_county: bool = True,
     workers: int = 8,
     n_clones: int = 430,
+    run_id: str = "",
 ) -> str:
     return _build_package_impl(
         branch,
@@ -412,6 +417,7 @@ def build_package_remote(
         skip_county=skip_county,
         workers=workers,
         n_clones=n_clones,
+        run_id=run_id,
     )
 
 
@@ -421,7 +427,7 @@ def build_package_remote(
     volumes={PIPELINE_MOUNT: pipeline_vol},
     nonpreemptible=True,
 )
-def check_volume_package() -> dict:
+def check_volume_package(artifacts_dir: str = "") -> dict:
     """Check if a calibration package exists on the volume.
 
     Reads the lightweight JSON sidecar for provenance fields.
@@ -430,8 +436,9 @@ def check_volume_package() -> dict:
     import datetime
     import json
 
-    pkg_path = f"{PIPELINE_MOUNT}/artifacts/calibration_package.pkl"
-    sidecar_path = f"{PIPELINE_MOUNT}/artifacts/calibration_package_meta.json"
+    base = artifacts_dir if artifacts_dir else f"{PIPELINE_MOUNT}/artifacts"
+    pkg_path = f"{base}/calibration_package.pkl"
+    sidecar_path = f"{base}/calibration_package_meta.json"
     if not os.path.exists(pkg_path):
         return {"exists": False}
 
@@ -471,7 +478,7 @@ def check_volume_package() -> dict:
     memory=32768,
     cpu=8.0,
     gpu="T4",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_t4(
@@ -485,6 +492,7 @@ def fit_weights_t4(
     log_freq: int = None,
     skip_county: bool = True,
     workers: int = 8,
+    artifacts_dir: str = "",
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -497,6 +505,7 @@ def fit_weights_t4(
         log_freq,
         skip_county=skip_county,
         workers=workers,
+        artifacts_dir=artifacts_dir,
     )
 
 
@@ -506,7 +515,7 @@ def fit_weights_t4(
     memory=32768,
     cpu=8.0,
     gpu="A10",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_a10(
@@ -520,6 +529,7 @@ def fit_weights_a10(
     log_freq: int = None,
     skip_county: bool = True,
     workers: int = 8,
+    artifacts_dir: str = "",
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -532,6 +542,7 @@ def fit_weights_a10(
         log_freq,
         skip_county=skip_county,
         workers=workers,
+        artifacts_dir=artifacts_dir,
     )
 
 
@@ -541,7 +552,7 @@ def fit_weights_a10(
     memory=32768,
     cpu=8.0,
     gpu="A100-40GB",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_a100_40(
@@ -555,6 +566,7 @@ def fit_weights_a100_40(
     log_freq: int = None,
     skip_county: bool = True,
     workers: int = 8,
+    artifacts_dir: str = "",
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -567,6 +579,7 @@ def fit_weights_a100_40(
         log_freq,
         skip_county=skip_county,
         workers=workers,
+        artifacts_dir=artifacts_dir,
     )
 
 
@@ -576,7 +589,7 @@ def fit_weights_a100_40(
     memory=32768,
     cpu=8.0,
     gpu="A100-80GB",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_a100_80(
@@ -590,6 +603,7 @@ def fit_weights_a100_80(
     log_freq: int = None,
     skip_county: bool = True,
     workers: int = 8,
+    artifacts_dir: str = "",
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -602,6 +616,7 @@ def fit_weights_a100_80(
         log_freq,
         skip_county=skip_county,
         workers=workers,
+        artifacts_dir=artifacts_dir,
     )
 
 
@@ -611,7 +626,7 @@ def fit_weights_a100_80(
     memory=32768,
     cpu=8.0,
     gpu="H100",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_weights_h100(
@@ -625,6 +640,7 @@ def fit_weights_h100(
     log_freq: int = None,
     skip_county: bool = True,
     workers: int = 8,
+    artifacts_dir: str = "",
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -637,6 +653,7 @@ def fit_weights_h100(
         log_freq,
         skip_county=skip_county,
         workers=workers,
+        artifacts_dir=artifacts_dir,
     )
 
 
@@ -657,7 +674,7 @@ GPU_FUNCTIONS = {
     memory=32768,
     cpu=8.0,
     gpu="T4",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_t4(
@@ -689,7 +706,7 @@ def fit_from_package_t4(
     memory=32768,
     cpu=8.0,
     gpu="A10",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_a10(
@@ -721,7 +738,7 @@ def fit_from_package_a10(
     memory=32768,
     cpu=8.0,
     gpu="A100-40GB",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_a100_40(
@@ -753,7 +770,7 @@ def fit_from_package_a100_40(
     memory=32768,
     cpu=8.0,
     gpu="A100-80GB",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_a100_80(
@@ -785,7 +802,7 @@ def fit_from_package_a100_80(
     memory=32768,
     cpu=8.0,
     gpu="H100",
-    timeout=14400,
+    timeout=28800,
     volumes={PIPELINE_MOUNT: pipeline_vol},
 )
 def fit_from_package_h100(

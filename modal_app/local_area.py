@@ -294,7 +294,7 @@ def run_phase(
     },
     memory=16384,
     cpu=4.0,
-    timeout=14400,
+    timeout=28800,
     nonpreemptible=True,
 )
 def build_areas_worker(
@@ -438,7 +438,7 @@ print(json.dumps(manifest))
     secrets=[hf_secret],
     volumes={VOLUME_MOUNT: staging_volume},
     memory=8192,
-    timeout=14400,
+    timeout=28800,
     nonpreemptible=True,
 )
 def upload_to_staging(
@@ -646,7 +646,9 @@ def coordinate_publish(
     version_dir = staging_dir / version
 
     pipeline_volume.reload()
-    artifacts = Path("/pipeline/artifacts")
+    artifacts = (
+        Path(f"/pipeline/artifacts/{run_id}") if run_id else Path("/pipeline/artifacts")
+    )
     weights_path = artifacts / "calibration_weights.npy"
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
@@ -900,7 +902,7 @@ def main(
         "/pipeline": pipeline_volume,
     },
     memory=16384,
-    timeout=14400,
+    timeout=28800,
     nonpreemptible=True,
 )
 def coordinate_national_publish(
@@ -929,7 +931,9 @@ def coordinate_national_publish(
     staging_dir = Path(VOLUME_MOUNT)
 
     pipeline_volume.reload()
-    artifacts = Path("/pipeline/artifacts")
+    artifacts = (
+        Path(f"/pipeline/artifacts/{run_id}") if run_id else Path("/pipeline/artifacts")
+    )
     weights_path = artifacts / "national_calibration_weights.npy"
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"

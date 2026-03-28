@@ -522,7 +522,6 @@ def create_or_replace_views(engine) -> None:
         conn.execute(text(TARGET_OVERVIEW_VIEW))
         conn.commit()
 
-
 def refresh_views_for_db_path(db_path: str | Path) -> None:
     """Refresh SQL views for an existing SQLite database file."""
     engine = create_engine(f"sqlite:///{Path(db_path)}")
@@ -530,7 +529,5 @@ def refresh_views_for_db_path(db_path: str | Path) -> None:
         create_or_replace_views(engine)
     finally:
         engine.dispose()
-
-
 if __name__ == "__main__":
     engine = create_database()

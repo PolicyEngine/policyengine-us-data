@@ -129,7 +129,7 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
         "salt_deduction": 21.247e9,
         "medical_expense_deduction": 11.4e9,
         "charitable_deduction": 65.301e9,
-        "interest_deduction": 24.8e9,
+        "deductible_mortgage_interest": 24.8e9,
     }
 
     baseline = sim

@@ -125,6 +125,25 @@ def test_national_targets_loaded(built_db):
         )
 
 
+def test_jct_mortgage_tax_expenditure_uses_mortgage_specific_variable(built_db):
+    """The mortgage JCT target should point at a mortgage-specific variable."""
+    conn = sqlite3.connect(str(built_db))
+    rows = conn.execute("""
+        SELECT DISTINCT t.variable, t.source, t.notes
+        FROM targets t
+        WHERE t.variable = 'deductible_mortgage_interest'
+        """).fetchall()
+    conn.close()
+
+    assert rows == [
+        (
+            "deductible_mortgage_interest",
+            "PolicyEngine",
+            "Mortgage interest deduction tax expenditure | Modeled as repeal-based income tax expenditure target | Source: Joint Committee on Taxation",
+        )
+    ]
+
+
 def test_state_income_tax_targets(built_db):
     """State income tax targets should cover all income-tax states."""
     conn = sqlite3.connect(str(built_db))

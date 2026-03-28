@@ -684,7 +684,7 @@ def _add_tax_expenditure_targets(
         "salt_deduction": 21.247e9,
         "medical_expense_deduction": 11.4e9,
         "charitable_deduction": 65.301e9,
-        "interest_deduction": 24.8e9,
+        "deductible_mortgage_interest": 24.8e9,
         "qualified_business_income_deduction": 63.1e9,
     }
 

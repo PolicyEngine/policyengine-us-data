@@ -87,7 +87,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "year": HARDCODED_YEAR,
         },
         {
-            "variable": "interest_deduction",
+            "variable": "deductible_mortgage_interest",
             "value": 24.8e9,
             "source": "Joint Committee on Taxation",
             "notes": "Mortgage interest deduction tax expenditure",

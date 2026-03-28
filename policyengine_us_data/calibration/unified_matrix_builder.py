@@ -931,6 +931,7 @@ class UnifiedMatrixBuilder:
         self.time_period = time_period
         self.dataset_path = dataset_path
         self._entity_rel_cache = None
+        self._target_overview_columns = None
 
     # ---------------------------------------------------------------
     # Entity relationships
@@ -959,8 +960,8 @@ class UnifiedMatrixBuilder:
         sim,
         target_vars: set,
         constraint_vars: set,
-        reform_vars: set,
-        geography,
+        reform_vars: set = None,
+        geography=None,
         rerandomize_takeup: bool = True,
         workers: int = 1,
     ) -> dict:
@@ -997,6 +998,9 @@ class UnifiedMatrixBuilder:
             TAKEUP_AFFECTED_TARGETS,
         )
 
+        if geography is None:
+            raise ValueError("geography is required")
+
         unique_states = sorted(set(int(s) for s in geography.state_fips))
         n_hh = geography.n_records
 
@@ -1022,7 +1026,7 @@ class UnifiedMatrixBuilder:
         # Convert sets to sorted lists for deterministic iteration
         target_vars_list = sorted(target_vars)
         constraint_vars_list = sorted(constraint_vars)
-        reform_vars_list = sorted(reform_vars)
+        reform_vars_list = sorted(reform_vars or set())
 
         state_values = {}
 
@@ -1518,63 +1522,103 @@ class UnifiedMatrixBuilder:
             )
         return df.to_dict("records")
 
+    def _get_target_overview_columns(self) -> set:
+        if self._target_overview_columns is None:
+            with self.engine.connect() as conn:
+                rows = conn.execute(
+                    text("PRAGMA table_info(target_overview)")
+                ).fetchall()
+            self._target_overview_columns = {row[1] for row in rows}
+        return self._target_overview_columns
+
     def _query_targets(self, target_filter: dict) -> pd.DataFrame:
         """Query targets via target_overview view with
         best-period selection."""
-        or_conditions = []
+        and_conditions = []
 
         if "domain_variables" in target_filter:
             dvs = target_filter["domain_variables"]
             ph = ",".join(f"'{dv}'" for dv in dvs)
-            or_conditions.append(f"tv.domain_variable IN ({ph})")
+            and_conditions.append(f"tv.domain_variable IN ({ph})")
 
         if "variables" in target_filter:
             vs = ",".join(f"'{v}'" for v in target_filter["variables"])
-            or_conditions.append(f"tv.variable IN ({vs})")
+            and_conditions.append(f"tv.variable IN ({vs})")
 
         if "target_ids" in target_filter:
             ids = ",".join(map(str, target_filter["target_ids"]))
-            or_conditions.append(f"tv.target_id IN ({ids})")
+            and_conditions.append(f"tv.target_id IN ({ids})")
 
         if "stratum_ids" in target_filter:
             ids = ",".join(map(str, target_filter["stratum_ids"]))
-            or_conditions.append(f"tv.stratum_id IN ({ids})")
+            and_conditions.append(f"tv.stratum_id IN ({ids})")
 
-        if not or_conditions:
+        if not and_conditions:
             where_clause = "1=1"
         else:
-            where_clause = " OR ".join(f"({c})" for c in or_conditions)
+            where_clause = " AND ".join(f"({c})" for c in and_conditions)
 
-        query = f"""
-        WITH filtered_targets AS (
-            SELECT tv.target_id, tv.stratum_id, tv.variable, tv.reform_id,
-                   tv.value, tv.period, tv.geo_level,
-                   tv.geographic_id, tv.domain_variable
-            FROM target_overview tv
-            WHERE tv.active = 1
-              AND ({where_clause})
-        ),
-        best_periods AS (
-            SELECT stratum_id, variable, reform_id,
-                CASE
-                    WHEN MAX(CASE WHEN period <= :time_period
-                             THEN period END) IS NOT NULL
-                    THEN MAX(CASE WHEN period <= :time_period
-                             THEN period END)
-                    ELSE MIN(period)
-                END as best_period
-            FROM filtered_targets
-            GROUP BY stratum_id, variable, reform_id
-        )
-        SELECT ft.*
-        FROM filtered_targets ft
-        JOIN best_periods bp
-            ON ft.stratum_id = bp.stratum_id
-            AND ft.variable = bp.variable
-            AND ft.reform_id = bp.reform_id
-            AND ft.period = bp.best_period
-        ORDER BY ft.target_id
-        """
+        if "reform_id" in self._get_target_overview_columns():
+            query = f"""
+            WITH filtered_targets AS (
+                SELECT tv.target_id, tv.stratum_id, tv.variable, tv.reform_id,
+                       tv.value, tv.period, tv.geo_level,
+                       tv.geographic_id, tv.domain_variable
+                FROM target_overview tv
+                WHERE tv.active = 1
+                  AND ({where_clause})
+            ),
+            best_periods AS (
+                SELECT stratum_id, variable, reform_id,
+                    CASE
+                        WHEN MAX(CASE WHEN period <= :time_period
+                                 THEN period END) IS NOT NULL
+                        THEN MAX(CASE WHEN period <= :time_period
+                                 THEN period END)
+                        ELSE MIN(period)
+                    END as best_period
+                FROM filtered_targets
+                GROUP BY stratum_id, variable, reform_id
+            )
+            SELECT ft.*
+            FROM filtered_targets ft
+            JOIN best_periods bp
+                ON ft.stratum_id = bp.stratum_id
+                AND ft.variable = bp.variable
+                AND ft.reform_id = bp.reform_id
+                AND ft.period = bp.best_period
+            ORDER BY ft.target_id
+            """
+        else:
+            query = f"""
+            WITH filtered_targets AS (
+                SELECT tv.target_id, tv.stratum_id, tv.variable,
+                       0 AS reform_id, tv.value, tv.period, tv.geo_level,
+                       tv.geographic_id, tv.domain_variable
+                FROM target_overview tv
+                WHERE tv.active = 1
+                  AND ({where_clause})
+            ),
+            best_periods AS (
+                SELECT stratum_id, variable,
+                    CASE
+                        WHEN MAX(CASE WHEN period <= :time_period
+                                 THEN period END) IS NOT NULL
+                        THEN MAX(CASE WHEN period <= :time_period
+                                 THEN period END)
+                        ELSE MIN(period)
+                    END as best_period
+                FROM filtered_targets
+                GROUP BY stratum_id, variable
+            )
+            SELECT ft.*
+            FROM filtered_targets ft
+            JOIN best_periods bp
+                ON ft.stratum_id = bp.stratum_id
+                AND ft.variable = bp.variable
+                AND ft.period = bp.best_period
+            ORDER BY ft.target_id
+            """
 
         with self.engine.connect() as conn:
             return pd.read_sql(

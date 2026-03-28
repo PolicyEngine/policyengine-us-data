@@ -165,7 +165,9 @@ def _validate_source_year(all_targets: pd.DataFrame, source_year: int) -> None:
         drop=True
     )
 
-    pd.testing.assert_frame_equal(expected, actual, check_dtype=False, check_exact=False)
+    pd.testing.assert_frame_equal(
+        expected, actual, check_dtype=False, check_exact=False
+    )
 
 
 def _serialize_bound(value: float) -> str:

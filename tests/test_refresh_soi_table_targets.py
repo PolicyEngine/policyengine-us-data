@@ -93,7 +93,9 @@ def test_build_target_year_rows_reads_standard_table_cells(monkeypatch):
 
     monkeypatch.setattr(module, "_load_workbook", lambda table, year: workbook)
 
-    refreshed = module.build_target_year_rows(targets, source_year=2021, target_year=2023)
+    refreshed = module.build_target_year_rows(
+        targets, source_year=2021, target_year=2023
+    )
 
     assert refreshed["Year"].tolist() == [2023, 2023]
     assert refreshed["Value"].tolist() == [123_000.0, 789.0]
@@ -157,12 +159,16 @@ def test_build_target_year_rows_sums_partnership_and_s_corp_components(monkeypat
 
     monkeypatch.setattr(module, "_load_workbook", lambda table, year: workbook)
 
-    refreshed = module.build_target_year_rows(targets, source_year=2021, target_year=2023)
+    refreshed = module.build_target_year_rows(
+        targets, source_year=2021, target_year=2023
+    )
 
     assert refreshed["Value"].tolist() == [30.0, 70_000.0, 11.0, 15_000.0]
 
 
-def test_build_target_year_rows_differences_top_tail_rows_and_updates_bounds(monkeypatch):
+def test_build_target_year_rows_differences_top_tail_rows_and_updates_bounds(
+    monkeypatch,
+):
     module = load_module()
     workbook = make_workbook(cols=25)
 
@@ -226,7 +232,9 @@ def test_build_target_year_rows_differences_top_tail_rows_and_updates_bounds(mon
 
     monkeypatch.setattr(module, "_load_workbook", lambda table, year: workbook)
 
-    refreshed = module.build_target_year_rows(targets, source_year=2021, target_year=2023)
+    refreshed = module.build_target_year_rows(
+        targets, source_year=2021, target_year=2023
+    )
 
     assert refreshed["Value"].tolist() == [10.0, 50.0, 200_000.0, 800_000.0]
     assert refreshed["AGI lower bound"].tolist() == [1_000.0, 400.0, 1_000.0, 400.0]

@@ -14,8 +14,6 @@ from policyengine_us_data.utils.db import (
     etl_argparser,
 )
 
-TAX_EXPENDITURE_REFORM_ID = 1
-
 
 def extract_national_targets(dataset: str = DEFAULT_DATASET):
     """
@@ -64,8 +62,9 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
     # These JCT values are tax expenditures, not baseline deduction totals.
     # They must be matched against repeal-based income tax deltas in the
     # unified calibration path.
-    tax_expenditure_targets = [
+    raw_tax_expenditure_targets = [
         {
+            "reform_id": 1,
             "variable": "salt_deduction",
             "value": 21.247e9,
             "source": "Joint Committee on Taxation",
@@ -73,6 +72,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "year": HARDCODED_YEAR,
         },
         {
+            "reform_id": 2,
             "variable": "medical_expense_deduction",
             "value": 11.4e9,
             "source": "Joint Committee on Taxation",
@@ -80,6 +80,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "year": HARDCODED_YEAR,
         },
         {
+            "reform_id": 3,
             "variable": "charitable_deduction",
             "value": 65.301e9,
             "source": "Joint Committee on Taxation",
@@ -87,6 +88,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "year": HARDCODED_YEAR,
         },
         {
+            "reform_id": 4,
             "variable": "deductible_mortgage_interest",
             "value": 24.8e9,
             "source": "Joint Committee on Taxation",
@@ -94,6 +96,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "year": HARDCODED_YEAR,
         },
         {
+            "reform_id": 5,
             "variable": "qualified_business_income_deduction",
             "value": 63.1e9,
             "source": "Joint Committee on Taxation",
@@ -101,6 +104,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "year": HARDCODED_YEAR,
         },
     ]
+    tax_expenditure_targets = [{**target} for target in raw_tax_expenditure_targets]
 
     direct_sum_targets = [
         {
@@ -493,7 +497,7 @@ def load_national_targets(
     with Session(engine) as session:
         # Get the national stratum
         us_stratum = (
-            session.query(Stratum).filter(Stratum.parent_stratum_id == None).first()
+            session.query(Stratum).filter(Stratum.parent_stratum_id.is_(None)).first()
         )
 
         if not us_stratum:
@@ -631,6 +635,7 @@ def load_national_targets(
 
             for _, target_data in tax_expenditure_df.iterrows():
                 target_year = target_data["year"]
+                target_reform_id = int(target_data["reform_id"])
 
                 # Clean up incorrectly scoped baseline rows from older DBs.
                 if migrated_stratum_ids:
@@ -641,7 +646,7 @@ def load_national_targets(
                             Target.variable == target_data["variable"],
                             Target.period == target_year,
                             Target.reform_id == 0,
-                            Target.active == True,
+                            Target.active,
                         )
                         .all()
                     )
@@ -654,7 +659,7 @@ def load_national_targets(
                         Target.stratum_id == us_stratum.stratum_id,
                         Target.variable == target_data["variable"],
                         Target.period == target_year,
-                        Target.reform_id == TAX_EXPENDITURE_REFORM_ID,
+                        Target.reform_id == target_reform_id,
                     )
                     .first()
                 )
@@ -679,7 +684,7 @@ def load_national_targets(
                         stratum_id=us_stratum.stratum_id,
                         variable=target_data["variable"],
                         period=target_year,
-                        reform_id=TAX_EXPENDITURE_REFORM_ID,
+                        reform_id=target_reform_id,
                         value=target_data["value"],
                         active=True,
                         source="PolicyEngine",

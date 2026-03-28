@@ -101,19 +101,19 @@ def test_build_target_year_rows_reads_standard_table_cells(monkeypatch):
     assert refreshed["Value"].tolist() == [123_000.0, 789.0]
 
 
-def test_build_target_year_rows_sums_partnership_and_s_corp_components(monkeypatch):
+def test_build_target_year_rows_uses_semantic_table_1_4_columns(monkeypatch):
     module = load_module()
     workbook = make_workbook(cols=80)
     row_index = 9  # Excel row 10
 
-    workbook.iat[row_index, module._column_index("BD")] = 10
-    workbook.iat[row_index, module._column_index("BE")] = 30
-    workbook.iat[row_index, module._column_index("BF")] = 5
-    workbook.iat[row_index, module._column_index("BG")] = 7
-    workbook.iat[row_index, module._column_index("BH")] = 20
-    workbook.iat[row_index, module._column_index("BI")] = 40
-    workbook.iat[row_index, module._column_index("BJ")] = 6
-    workbook.iat[row_index, module._column_index("BK")] = 8
+    workbook.iat[row_index, module._column_index("BP")] = 10
+    workbook.iat[row_index, module._column_index("BQ")] = 30
+    workbook.iat[row_index, module._column_index("BT")] = 20
+    workbook.iat[row_index, module._column_index("BU")] = 40
+    workbook.iat[row_index, module._column_index("BR")] = 5
+    workbook.iat[row_index, module._column_index("BS")] = 7
+    workbook.iat[row_index, module._column_index("BV")] = 6
+    workbook.iat[row_index, module._column_index("BW")] = 8
 
     targets = pd.DataFrame(
         [
@@ -164,6 +164,82 @@ def test_build_target_year_rows_sums_partnership_and_s_corp_components(monkeypat
     )
 
     assert refreshed["Value"].tolist() == [30.0, 70_000.0, 11.0, 15_000.0]
+    assert refreshed["XLSX column"].tolist() == ["BT", "BU", "BV", "BW"]
+
+
+def test_build_target_year_rows_maps_table_2_1_rows_and_columns(monkeypatch):
+    module = load_module()
+    workbook = make_workbook(rows=40, cols=110)
+    row_index = 32  # Excel row 33
+
+    workbook.iat[row_index, module._column_index("CU")] = 321
+    workbook.iat[row_index, module._column_index("CV")] = 654
+
+    targets = pd.DataFrame(
+        [
+            make_target_row(
+                **{
+                    "SOI table": "Table 2.1",
+                    "XLSX column": "CH",
+                    "XLSX row": 29,
+                    "Variable": "mortgage_interest_deductions",
+                    "Count": True,
+                    "Taxable only": True,
+                    "Full population": False,
+                }
+            ),
+            make_target_row(
+                **{
+                    "SOI table": "Table 2.1",
+                    "XLSX column": "CJ",
+                    "XLSX row": 29,
+                    "Variable": "mortgage_interest_deductions",
+                    "Count": False,
+                    "Taxable only": True,
+                    "Full population": False,
+                }
+            ),
+        ],
+        columns=TARGET_COLUMNS,
+    )
+
+    monkeypatch.setattr(module, "_load_workbook", lambda table, year: workbook)
+
+    refreshed = module.build_target_year_rows(
+        targets, source_year=2021, target_year=2023
+    )
+
+    assert refreshed["XLSX row"].tolist() == [33, 33]
+    assert refreshed["XLSX column"].tolist() == ["CU", "CV"]
+    assert refreshed["Value"].tolist() == [321.0, 654_000.0]
+
+
+def test_build_target_year_rows_skips_unsupported_rows(monkeypatch):
+    module = load_module()
+    workbook = make_workbook()
+
+    targets = pd.DataFrame(
+        [
+            make_target_row(
+                **{
+                    "SOI table": "Table 1.4",
+                    "XLSX column": "DX",
+                    "XLSX row": 9,
+                    "Variable": "count_of_exemptions",
+                    "Count": True,
+                }
+            )
+        ],
+        columns=TARGET_COLUMNS,
+    )
+
+    monkeypatch.setattr(module, "_load_workbook", lambda table, year: workbook)
+
+    refreshed = module.build_target_year_rows(
+        targets, source_year=2021, target_year=2023
+    )
+
+    assert refreshed.empty
 
 
 def test_build_target_year_rows_differences_top_tail_rows_and_updates_bounds(

@@ -8,6 +8,9 @@ from policyengine_us_data.storage import CALIBRATION_FOLDER
 from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
     STATE_ABBR_TO_FIPS,
 )
+from policyengine_us_data.storage.calibration_targets.soi_metadata import (
+    RETIREMENT_CONTRIBUTION_TARGETS,
+)
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
@@ -58,13 +61,15 @@ HARD_CODED_TOTALS = {
     # Retirement contribution calibration targets.
     #
     # traditional_ira_contributions: IRS SOI Publication 1304, Table 1.4
-    # (TY 2022), "IRA payments" deduction — $13.17B (col 124, row
+    # (TY 2023), "IRA payments" deduction — $13.77B (col DU, row
     # "All returns, total"). This is the actual above-the-line
     # deduction claimed on returns. The variable flows directly into
     # the ALD with no deductibility logic in policyengine-us, so the
     # target must match the deduction, not total contributions.
     # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
-    "traditional_ira_contributions": 13.2e9,
+    "traditional_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
+        "traditional_ira_contributions"
+    ]["value"],
     # traditional_401k_contributions & roth_401k_contributions:
     # BEA/FRED National Income Accounts. Total DC employer+employee
     # = $815.4B (Y351RC1A027NBEA), employer-only = $247.5B
@@ -80,18 +85,22 @@ HARD_CODED_TOTALS = {
     "traditional_401k_contributions": 482.7e9,
     "roth_401k_contributions": 85.2e9,
     # self_employed_pension_contribution_ald: IRS SOI Publication
-    # 1304, Table 1.4 (TY 2022), "Payments to a Keogh plan" —
-    # $29.48B (col 116, row "All returns, total"). Includes
+    # 1304, Table 1.4 (TY 2023), "Payments to a Keogh plan" —
+    # $30.13B (col DM, row "All returns, total"). Includes
     # SEP-IRAs, SIMPLE-IRAs, and traditional Keogh/HR-10 plans.
     # Targeting the ALD (not the input) because policyengine-us
     # applies a min(contributions, SE_income) cap.
     # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
-    "self_employed_pension_contribution_ald": 29.5e9,
+    "self_employed_pension_contribution_ald": RETIREMENT_CONTRIBUTION_TARGETS[
+        "self_employed_pension_contribution_ald"
+    ]["value"],
     # roth_ira_contributions: IRS SOI IRA Accumulation Tables 5 & 6
-    # (TY 2022). Total Roth IRA contributions = $35.0B (10.04M
-    # contributors). Direct administrative source.
+    # (TY 2022, latest published). Total Roth IRA contributions =
+    # $34.95B (10.04M contributors). Direct administrative source.
     # https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
-    "roth_ira_contributions": 35.0e9,
+    "roth_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
+        "roth_ira_contributions"
+    ]["value"],
 }
 
 

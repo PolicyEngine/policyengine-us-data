@@ -21,11 +21,16 @@ from policyengine_us_data.utils.census import TERRITORY_UCGIDS
 from policyengine_us_data.storage.calibration_targets.make_district_mapping import (
     get_district_mapping,
 )
+from policyengine_us_data.storage.calibration_targets.soi_metadata import (
+    LATEST_PUBLISHED_NATIONAL_SOI_YEAR,
+    LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR,
+)
 from policyengine_us_data.utils.raw_cache import (
     is_cached,
     cache_path,
     save_bytes,
 )
+from policyengine_us_data.utils.soi import get_tracked_soi_row
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +55,27 @@ AGI_STUB_TO_INCOME_RANGE = {
     7: (100_000, 200_000),  # $100,000 under $200,000
     8: (200_000, 500_000),  # $200,000 under $500,000
     9: (500_000, np.inf),  # $500,000 or more
+}
+
+# These variables map cleanly from Publication 1304 aggregate tables to the
+# existing national IRS-SOI domain strata. We intentionally leave `aca_ptc`
+# and `refundable_ctc` on the geography-file path for now because the
+# published 2023 workbook tables do not line up one-for-one with the current
+# `incd` national codes.
+WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
+    "dividend_income": "ordinary_dividends",
+    "income_tax_before_credits": "income_tax_before_credits",
+    "net_capital_gains": "capital_gains_gross",
+    "qualified_dividend_income": "qualified_dividends",
+    "rental_income": "rent_and_royalty_net_income",
+    "self_employment_income": "business_net_profits",
+    "tax_exempt_interest_income": "exempt_interest",
+    "tax_unit_partnership_s_corp_income": "partnership_and_s_corp_income",
+    "taxable_interest_income": "taxable_interest_income",
+    "taxable_ira_distributions": "ira_distributions",
+    "taxable_pension_income": "taxable_pension_income",
+    "taxable_social_security": "taxable_social_security",
+    "unemployment_compensation": "unemployment_compensation",
 }
 
 
@@ -183,18 +209,23 @@ def convert_district_data(
     return final_df
 
 
-def extract_soi_data() -> pd.DataFrame:
+def _year_prefix(year: int) -> str:
+    return f"{year % 100:02d}"
+
+
+def extract_soi_data(year: int) -> pd.DataFrame:
     """Download and save congressional district AGI totals.
 
-    In the file below, "22" is 2022, "in" is individual returns,
-    "cd" is congressional districts
+    In the file below, ``in`` is individual returns and ``cd`` is
+    congressional districts.
     """
-    cache_file = "irs_soi_22incd.csv"
+    year_prefix = _year_prefix(year)
+    cache_file = f"irs_soi_{year_prefix}incd.csv"
     if is_cached(cache_file):
         logger.info(f"Using cached {cache_file}")
         df = pd.read_csv(cache_path(cache_file))
     else:
-        url = "https://www.irs.gov/pub/irs-soi/22incd.csv"
+        url = f"https://www.irs.gov/pub/irs-soi/{year_prefix}incd.csv"
         import requests
 
         response = requests.get(url)
@@ -236,6 +267,132 @@ def extract_soi_data() -> pd.DataFrame:
             )
 
     return df
+
+
+def _upsert_target(
+    session: Session,
+    *,
+    stratum_id: int,
+    variable: str,
+    period: int,
+    value: float,
+    source: str,
+    notes: Optional[str] = None,
+) -> None:
+    existing_target = (
+        session.query(Target)
+        .filter(
+            Target.stratum_id == stratum_id,
+            Target.variable == variable,
+            Target.period == period,
+        )
+        .first()
+    )
+    if existing_target:
+        existing_target.value = value
+        existing_target.source = source
+        if notes is not None:
+            existing_target.notes = notes
+        return
+
+    session.add(
+        Target(
+            stratum_id=stratum_id,
+            variable=variable,
+            period=period,
+            value=value,
+            active=True,
+            source=source,
+            notes=notes,
+        )
+    )
+
+
+def _get_or_create_national_domain_stratum(
+    session: Session, national_filer_stratum_id: int, variable: str
+) -> Stratum:
+    note = f"National filers with {variable} > 0"
+    stratum = (
+        session.query(Stratum)
+        .filter(
+            Stratum.parent_stratum_id == national_filer_stratum_id,
+            Stratum.notes == note,
+        )
+        .first()
+    )
+    if stratum:
+        return stratum
+
+    stratum = Stratum(
+        parent_stratum_id=national_filer_stratum_id,
+        notes=note,
+    )
+    stratum.constraints_rel.extend(
+        [
+            StratumConstraint(
+                constraint_variable="tax_unit_is_filer",
+                operation="==",
+                value="1",
+            ),
+            StratumConstraint(
+                constraint_variable=variable,
+                operation=">",
+                value="0",
+            ),
+        ]
+    )
+    session.add(stratum)
+    session.flush()
+    return stratum
+
+
+def load_national_workbook_soi_targets(
+    session: Session, national_filer_stratum_id: int, target_year: int
+) -> None:
+    agi_row = get_tracked_soi_row("adjusted_gross_income", target_year, count=False)
+    agi_period = int(agi_row["Year"])
+    _upsert_target(
+        session,
+        stratum_id=national_filer_stratum_id,
+        variable="adjusted_gross_income",
+        period=agi_period,
+        value=float(agi_row["Value"]),
+        source="IRS SOI",
+        notes=f"Publication 1304 {agi_row['SOI table']} aggregate target",
+    )
+
+    for pe_variable, soi_variable in WORKBOOK_NATIONAL_DOMAIN_TARGETS.items():
+        amount_row = get_tracked_soi_row(soi_variable, target_year, count=False)
+        count_row = get_tracked_soi_row(soi_variable, target_year, count=True)
+        period = int(amount_row["Year"])
+        if period != int(count_row["Year"]):
+            raise ValueError(
+                f"Count and amount source years differ for {pe_variable}: "
+                f"{count_row['Year']} vs {amount_row['Year']}"
+            )
+
+        stratum = _get_or_create_national_domain_stratum(
+            session, national_filer_stratum_id, pe_variable
+        )
+        notes = f"Publication 1304 {amount_row['SOI table']} aggregate target"
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="tax_unit_count",
+            period=period,
+            value=float(count_row["Value"]),
+            source="IRS SOI",
+            notes=notes,
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable=pe_variable,
+            period=period,
+            value=float(amount_row["Value"]),
+            source="IRS SOI",
+            notes=notes,
+        )
 
 
 def transform_soi_data(raw_df):
@@ -370,7 +527,7 @@ def transform_soi_data(raw_df):
     return converted
 
 
-def load_soi_data(long_dfs, year):
+def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
     """Load a list of databases into the db, critically dependent on order"""
 
     DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
@@ -480,6 +637,13 @@ def load_soi_data(long_dfs, year):
             session.flush()
 
         filer_strata["district"][district_geoid] = district_filer_stratum.stratum_id
+
+    if national_year is not None:
+        load_national_workbook_soi_targets(
+            session,
+            filer_strata["national"],
+            national_year,
+        )
 
     session.commit()
 
@@ -1008,17 +1172,25 @@ def main():
         "ETL for IRS SOI calibration targets",
         extra_args_fn=add_lag_arg,
     )
-    year = dataset_year - args.lag
-    print(f"IRS SOI year: {year} (lag={args.lag})")
+    lagged_year = dataset_year - args.lag
+    geography_year = min(lagged_year, LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR)
+    national_year = min(dataset_year, LATEST_PUBLISHED_NATIONAL_SOI_YEAR)
+    print(f"IRS SOI geography year: {geography_year} (lag={args.lag})")
+    print(f"IRS SOI national workbook year: {national_year}")
+    if geography_year != lagged_year:
+        print(
+            "Clamped IRS SOI geography year to the latest published release: "
+            f"{LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR}"
+        )
 
     # Extract -----------------------
-    raw_df = extract_soi_data()
+    raw_df = extract_soi_data(geography_year)
 
     # Transform ---------------------
     long_dfs = transform_soi_data(raw_df)
 
     # Load ---------------------
-    load_soi_data(long_dfs, year)
+    load_soi_data(long_dfs, geography_year, national_year=national_year)
 
 
 if __name__ == "__main__":

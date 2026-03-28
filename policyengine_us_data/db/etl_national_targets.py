@@ -9,6 +9,9 @@ from policyengine_us_data.db.create_database_tables import (
     StratumConstraint,
     Target,
 )
+from policyengine_us_data.storage.calibration_targets.soi_metadata import (
+    RETIREMENT_CONTRIBUTION_TARGETS,
+)
 from policyengine_us_data.utils.db import (
     DEFAULT_DATASET,
     etl_argparser,
@@ -248,9 +251,15 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         # Retirement contribution targets — see issue #553
         {
             "variable": "traditional_ira_contributions",
-            "value": 13.2e9,
-            "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
-            "notes": "SOI 1304 Table 1.4 (TY 2022) 'IRA payments' deduction, col 124",
+            "value": RETIREMENT_CONTRIBUTION_TARGETS[
+                "traditional_ira_contributions"
+            ]["value"],
+            "source": RETIREMENT_CONTRIBUTION_TARGETS[
+                "traditional_ira_contributions"
+            ]["source"],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS[
+                "traditional_ira_contributions"
+            ]["notes"],
             "year": HARDCODED_YEAR,
         },
         {
@@ -269,16 +278,28 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         },
         {
             "variable": "self_employed_pension_contribution_ald",
-            "value": 29.5e9,
-            "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
-            "notes": "SOI 1304 Table 1.4 (TY 2022) 'Payments to a Keogh plan', col 116",
+            "value": RETIREMENT_CONTRIBUTION_TARGETS[
+                "self_employed_pension_contribution_ald"
+            ]["value"],
+            "source": RETIREMENT_CONTRIBUTION_TARGETS[
+                "self_employed_pension_contribution_ald"
+            ]["source"],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS[
+                "self_employed_pension_contribution_ald"
+            ]["notes"],
             "year": HARDCODED_YEAR,
         },
         {
             "variable": "roth_ira_contributions",
-            "value": 35.0e9,
-            "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
-            "notes": "IRS SOI IRA Accumulation Tables 5 & 6 (TY 2022), 10.04M contributors",
+            "value": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
+                "value"
+            ],
+            "source": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
+                "source"
+            ],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
+                "notes"
+            ],
             "year": HARDCODED_YEAR,
         },
     ]

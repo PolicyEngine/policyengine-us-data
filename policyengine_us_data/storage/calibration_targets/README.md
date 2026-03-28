@@ -4,4 +4,10 @@ This directory contains all data sources of the targets that will be calibrated 
 
 DATA_SOURCE,GEO_ID,GEO_NAME,VARIABLE,VALUE,IS_COUNT,BREAKDOWN_VARIABLE,LOWER_BOUND,UPPER_BOUND
 
-To see the newly formatted target files run `make targets`.
+To refresh the tracked SOI table targets from the latest IRS workbook release, run:
+
+`make refresh-soi-targets SOI_TARGET_YEAR=2023`
+
+This refresh path covers the tracked workbook-based SOI table targets in
+`soi_targets.csv`. The separate state/district AGI pulls still rely on the IRS
+`in54`, `in55cm`, and `incd` files.

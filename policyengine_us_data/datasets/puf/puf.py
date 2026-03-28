@@ -12,6 +12,11 @@ from policyengine_us_data.datasets.puf.irs_puf import IRS_PUF_2015
 from policyengine_us_data.datasets.puf.disaggregate_puf import (
     disaggregate_aggregate_records,
 )
+from policyengine_us_data.utils.mortgage_interest import (
+    STRUCTURAL_MORTGAGE_VARIABLES,
+    convert_mortgage_interest_to_structural_inputs,
+)
+from policyengine_us_data.utils.policyengine import has_policyengine_us_variables
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
@@ -643,6 +648,18 @@ class PUF(Dataset):
                 self.holder[key] = np.array(self.holder[key]).astype(float)
                 assert not np.isnan(self.holder[key]).any(), f"{key} has NaNs."
 
+        holder_tp = {
+            variable: {self.time_period: values}
+            for variable, values in self.holder.items()
+        }
+        if has_policyengine_us_variables(*STRUCTURAL_MORTGAGE_VARIABLES):
+            holder_tp = convert_mortgage_interest_to_structural_inputs(
+                holder_tp,
+                self.time_period,
+            )
+        self.holder = {
+            variable: values[self.time_period] for variable, values in holder_tp.items()
+        }
         self.save_dataset(self.holder)
 
     def add_tax_unit(self, row, tax_unit_id):

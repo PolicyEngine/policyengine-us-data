@@ -1,1 +1,1 @@
-Donor-impute race, Hispanic status, sex, and occupation-based CPS features onto the PUF clone half of the extended CPS so subgroup and overtime-eligibility inputs better align with PUF-imputed incomes.
+Donor-impute race, Hispanic status, sex, and occupation-based CPS features onto the PUF clone half of the extended CPS so subgroup analyses and overtime-eligibility inputs better align with PUF-imputed incomes.

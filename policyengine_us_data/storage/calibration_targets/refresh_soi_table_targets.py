@@ -259,7 +259,10 @@ def build_target_year_rows(
         refreshed["Year"] = target_year
 
         semantic_columns = _semantic_columns(refreshed)
-        if refreshed["SOI table"] in {"Table 1.4", "Table 2.1"} and semantic_columns is None:
+        if (
+            refreshed["SOI table"] in {"Table 1.4", "Table 2.1"}
+            and semantic_columns is None
+        ):
             skipped_rows.append((refreshed["SOI table"], refreshed["Variable"]))
             continue
 
@@ -283,7 +286,9 @@ def build_target_year_rows(
         refreshed_rows.append(refreshed)
 
     if skipped_rows:
-        skipped = ", ".join(sorted({f"{table}/{variable}" for table, variable in skipped_rows}))
+        skipped = ", ".join(
+            sorted({f"{table}/{variable}" for table, variable in skipped_rows})
+        )
         print(f"Skipped unsupported SOI rows for {target_year}: {skipped}")
 
     return pd.DataFrame(refreshed_rows, columns=all_targets.columns)

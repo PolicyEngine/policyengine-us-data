@@ -116,9 +116,7 @@ def test_get_soi_uses_best_available_year_per_variable(monkeypatch):
         index=["interest_deduction", "taxable_interest_income"],
     )
 
-    monkeypatch.setattr(
-        soi_module, "load_tracked_soi_targets", lambda: fake_soi.copy()
-    )
+    monkeypatch.setattr(soi_module, "load_tracked_soi_targets", lambda: fake_soi.copy())
     monkeypatch.setattr(
         soi_module,
         "create_policyengine_uprating_factors_table",
@@ -176,16 +174,10 @@ def test_get_tracked_soi_row_selects_requested_best_year(monkeypatch):
             },
         ]
     )
-    monkeypatch.setattr(
-        soi_module, "load_tracked_soi_targets", lambda: fake_soi.copy()
-    )
+    monkeypatch.setattr(soi_module, "load_tracked_soi_targets", lambda: fake_soi.copy())
 
-    row_2022 = soi_module.get_tracked_soi_row(
-        "business_net_profits", 2022, count=False
-    )
-    row_2024 = soi_module.get_tracked_soi_row(
-        "business_net_profits", 2024, count=False
-    )
+    row_2022 = soi_module.get_tracked_soi_row("business_net_profits", 2022, count=False)
+    row_2024 = soi_module.get_tracked_soi_row("business_net_profits", 2024, count=False)
 
     assert row_2022["Year"] == 2021
     assert row_2024["Year"] == 2023
@@ -225,9 +217,7 @@ def test_get_national_soi_aggregate_rows_filters_to_all_returns(monkeypatch):
             },
         ]
     )
-    monkeypatch.setattr(
-        soi_module, "load_tracked_soi_targets", lambda: fake_soi.copy()
-    )
+    monkeypatch.setattr(soi_module, "load_tracked_soi_targets", lambda: fake_soi.copy())
 
     result = soi_module.get_national_soi_aggregate_rows(2024)
 

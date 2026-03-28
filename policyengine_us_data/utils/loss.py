@@ -98,9 +98,9 @@ HARD_CODED_TOTALS = {
     # (TY 2022, latest published). Total Roth IRA contributions =
     # $34.95B (10.04M contributors). Direct administrative source.
     # https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
-    "roth_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
-        "roth_ira_contributions"
-    ]["value"],
+    "roth_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
+        "value"
+    ],
 }
 
 

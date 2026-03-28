@@ -248,24 +248,26 @@ def get_soi(year: int) -> pd.DataFrame:
     latest_uprating_year = int(uprating_years.max())
 
     uprating_factors = {}
-    for variable, source_year in soi[["Variable", "Year"]].drop_duplicates().itertuples(
-        index=False
+    for variable, source_year in (
+        soi[["Variable", "Year"]].drop_duplicates().itertuples(index=False)
     ):
         source_year_for_uprating = min(
             max(int(source_year), earliest_uprating_year),
             latest_uprating_year,
         )
-        target_year_for_uprating = min(max(int(year), earliest_uprating_year), latest_uprating_year)
+        target_year_for_uprating = min(
+            max(int(year), earliest_uprating_year), latest_uprating_year
+        )
         pe_name = SOI_UPRATING_MAP.get(variable)
         if pe_name in uprating.index:
-            uprating_factors[variable] = uprating.loc[
-                pe_name, target_year_for_uprating
-            ] / uprating.loc[pe_name, source_year_for_uprating]
+            uprating_factors[variable] = (
+                uprating.loc[pe_name, target_year_for_uprating]
+                / uprating.loc[pe_name, source_year_for_uprating]
+            )
         else:
-            uprating_factors[variable] = uprating.loc[
-                "employment_income", target_year_for_uprating
-            ] / (
-                uprating.loc["employment_income", source_year_for_uprating]
+            uprating_factors[variable] = (
+                uprating.loc["employment_income", target_year_for_uprating]
+                / (uprating.loc["employment_income", source_year_for_uprating])
             )
 
     for variable, uprating_factor in uprating_factors.items():

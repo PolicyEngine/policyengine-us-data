@@ -251,15 +251,15 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         # Retirement contribution targets — see issue #553
         {
             "variable": "traditional_ira_contributions",
-            "value": RETIREMENT_CONTRIBUTION_TARGETS[
-                "traditional_ira_contributions"
-            ]["value"],
-            "source": RETIREMENT_CONTRIBUTION_TARGETS[
-                "traditional_ira_contributions"
-            ]["source"],
-            "notes": RETIREMENT_CONTRIBUTION_TARGETS[
-                "traditional_ira_contributions"
-            ]["notes"],
+            "value": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
+                "value"
+            ],
+            "source": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
+                "source"
+            ],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
+                "notes"
+            ],
             "year": HARDCODED_YEAR,
         },
         {
@@ -291,15 +291,11 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         },
         {
             "variable": "roth_ira_contributions",
-            "value": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
-                "value"
-            ],
+            "value": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"]["value"],
             "source": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
                 "source"
             ],
-            "notes": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
-                "notes"
-            ],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"]["notes"],
             "year": HARDCODED_YEAR,
         },
     ]

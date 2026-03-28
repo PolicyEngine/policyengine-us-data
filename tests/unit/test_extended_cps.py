@@ -451,9 +451,7 @@ class TestCloneFeatureImputation:
             "employment_income": {
                 tp: np.array([20_000, 35_000, 90_000, 150_000], dtype=np.float32)
             },
-            "self_employment_income": {
-                tp: np.zeros(4, dtype=np.float32)
-            },
+            "self_employment_income": {tp: np.zeros(4, dtype=np.float32)},
             "social_security": {tp: np.zeros(4, dtype=np.float32)},
             "is_tax_unit_head": {tp: np.ones(4, dtype=bool)},
             "is_tax_unit_spouse": {tp: np.zeros(4, dtype=bool)},
@@ -474,9 +472,7 @@ class TestCloneFeatureImputation:
         assert result["tax_unit_is_joint"].tolist() == [0, 1]
 
     def test_derive_overtime_occupation_inputs(self):
-        derived = _derive_overtime_occupation_inputs(
-            np.array([53, 52, 8, 41, 1, 99])
-        )
+        derived = _derive_overtime_occupation_inputs(np.array([53, 52, 8, 41, 1, 99]))
 
         assert derived["has_never_worked"].tolist() == [
             True,
@@ -564,7 +560,9 @@ class TestCloneFeatureImputation:
             "is_tax_unit_head": {tp: np.array([1, 0, 1, 0], dtype=bool)},
             "is_tax_unit_spouse": {tp: np.zeros(4, dtype=bool)},
             "is_tax_unit_dependent": {tp: np.array([0, 1, 0, 1], dtype=bool)},
-            "employment_income": {tp: np.array([95_000, 0, 97_000, 0], dtype=np.float32)},
+            "employment_income": {
+                tp: np.array([95_000, 0, 97_000, 0], dtype=np.float32)
+            },
             "self_employment_income": {tp: np.zeros(4, dtype=np.float32)},
             "social_security": {tp: np.zeros(4, dtype=np.float32)},
         }

@@ -26,8 +26,10 @@ from policyengine_us_data.utils.retirement_limits import (
 
 logger = logging.getLogger(__name__)
 
+
 def _supports_structural_mortgage_inputs() -> bool:
     return has_policyengine_us_variables(*STRUCTURAL_MORTGAGE_VARIABLES)
+
 
 # CPS-only categorical features to donor-impute onto the PUF clone half.
 # These drive subgroup analysis and occupation-based logic, so naive donor
@@ -204,7 +206,9 @@ def _clone_half_person_values(data: dict, variable: str, time_period: int):
             continue
         entity_half = len(entity_ids) // 2
         clone_entity_ids = entity_ids[entity_half:]
-        clone_person_entity_ids = data[person_entity_id_var][time_period][n_persons_half:]
+        clone_person_entity_ids = data[person_entity_id_var][time_period][
+            n_persons_half:
+        ]
         value_map = dict(zip(clone_entity_ids, values[entity_half:]))
         return np.array([value_map[idx] for idx in clone_person_entity_ids])
 
@@ -277,7 +281,9 @@ def _impute_clone_cps_features(
         CPS_CLONE_FEATURE_PREDICTORS + CPS_CLONE_FEATURE_VARIABLES
     )
     available_outputs = [
-        variable for variable in CPS_CLONE_FEATURE_VARIABLES if variable in X_train.columns
+        variable
+        for variable in CPS_CLONE_FEATURE_VARIABLES
+        if variable in X_train.columns
     ]
     if not available_outputs:
         n_half = len(data["person_id"][time_period]) // 2
@@ -330,8 +336,12 @@ def _impute_clone_cps_features(
         predictions.loc[test_mask, available_outputs] = donor_outputs.to_numpy()
 
     if "detailed_occupation_recode" in predictions:
-        occupation_codes = predictions["detailed_occupation_recode"].astype(float).to_numpy()
-        for column, values in _derive_overtime_occupation_inputs(occupation_codes).items():
+        occupation_codes = (
+            predictions["detailed_occupation_recode"].astype(float).to_numpy()
+        )
+        for column, values in _derive_overtime_occupation_inputs(
+            occupation_codes
+        ).items():
             predictions[column] = values
 
     return predictions

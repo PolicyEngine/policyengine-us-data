@@ -41,6 +41,7 @@ from policyengine_us_data.calibration.calibration_utils import (
 from policyengine_us_data.calibration.sanity_checks import (
     run_sanity_checks,
 )
+from policyengine_us_data.db.create_database_tables import create_or_replace_views
 
 logger = logging.getLogger(__name__)
 
@@ -537,6 +538,7 @@ def _validate_single_area(
     from sqlalchemy import create_engine as _create_engine
 
     engine = _create_engine(f"sqlite:///{db_path}")
+    create_or_replace_views(engine)
 
     logger.info("Loading sim from %s", h5_path)
     try:
@@ -1015,6 +1017,7 @@ def main(argv=None):
     from policyengine_us import Microsimulation
 
     engine = create_engine(f"sqlite:///{args.db_path}")
+    create_or_replace_views(engine)
 
     all_targets = _query_all_active_targets(engine, args.period)
     logger.info("Loaded %d active targets from DB", len(all_targets))

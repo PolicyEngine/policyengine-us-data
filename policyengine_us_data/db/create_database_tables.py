@@ -353,7 +353,6 @@ GROUP BY t.target_id, t.stratum_id, t.variable,
          t.reform_id, t.value, t.period, t.active;
 """
 
-
 def create_validation_triggers(engine) -> None:
     """Create SQL triggers that validate fields against field_valid_values.
 

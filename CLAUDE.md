@@ -28,12 +28,13 @@
 - **CRITICAL**: NEVER create PRs from personal forks - ALL PRs MUST be created from branches pushed to the upstream PolicyEngine repository
 - CI requires access to secrets that are not available to fork PRs for security reasons
 - Fork PRs will fail on data download steps and cannot be merged
+- Before opening a PR, always run `make push-pr-branch` from the repo root. This pushes the current branch to the `upstream` remote and sets the upstream tracking branch correctly for PR creation.
 - Always create branches directly on the upstream repository:
   ```bash
   git checkout main
   git pull upstream main
   git checkout -b your-branch-name
-  git push -u upstream your-branch-name
+  make push-pr-branch
   ```
 - Use descriptive branch names like `fix-issue-123` or `add-feature-name`
 - Always run `make format` before committing

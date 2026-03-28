@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local refresh-soi-targets
+.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch
 
 GPU ?= T4
 EPOCHS ?= 1000
@@ -146,6 +146,13 @@ refresh-soi-targets:
 		--source-year $(SOI_SOURCE_YEAR) \
 		--target-year $(SOI_TARGET_YEAR) \
 		--validate-source-year
+
+push-pr-branch:
+	@if [ "$(BRANCH)" = "main" ]; then \
+		echo "Refusing to push main as a PR branch."; \
+		exit 1; \
+	fi
+	@git push -u upstream $(BRANCH)
 
 upload-calibration:
 	python -c "from policyengine_us_data.utils.huggingface import upload_calibration_artifacts; \

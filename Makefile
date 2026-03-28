@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local
+.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local refresh-soi-targets
 
 GPU ?= T4
 EPOCHS ?= 1000
@@ -8,6 +8,8 @@ BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 NUM_WORKERS ?= 8
 N_CLONES ?= 430
 VERSION ?=
+SOI_SOURCE_YEAR ?= 2021
+SOI_TARGET_YEAR ?= 2023
 
 HF_CLONE_DIR ?= $(HOME)/huggingface/policyengine-us-data
 
@@ -138,6 +140,12 @@ validate-local:
 
 validate-data:
 	python -c "from policyengine_us_data.storage.upload_completed_datasets import validate_all_datasets; validate_all_datasets()"
+
+refresh-soi-targets:
+	python policyengine_us_data/storage/calibration_targets/refresh_soi_table_targets.py \
+		--source-year $(SOI_SOURCE_YEAR) \
+		--target-year $(SOI_TARGET_YEAR) \
+		--validate-source-year
 
 upload-calibration:
 	python -c "from policyengine_us_data.utils.huggingface import upload_calibration_artifacts; \

@@ -285,6 +285,7 @@ def _upsert_target(
             Target.stratum_id == stratum_id,
             Target.variable == variable,
             Target.period == period,
+            Target.reform_id == 0,
         )
         .first()
     )

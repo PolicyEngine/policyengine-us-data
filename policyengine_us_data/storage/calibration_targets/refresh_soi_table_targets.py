@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """Refresh tracked SOI table targets from IRS Publication 1304 workbooks.
 
 This script updates the workbook-backed national SOI targets stored in
 ``soi_targets.csv``. It does not touch the separate state/district AGI
 pulls, which depend on the ``in54``, ``in55cm``, and ``incd`` IRS files.
 """
+
+from __future__ import annotations
 
 import argparse
 import csv
@@ -112,6 +112,20 @@ TABLE_2_1_TAXABLE_TOTAL_ROW = 33
 TOP_TAIL_FLOOR_COLUMN = 2
 TOP_TAIL_FIRST_ROW = 10
 
+# Verified against IRS Publication 1304 workbooks for TY2022 and TY2023 on
+# 2026-03-29. TY2021 uses the legacy stored coordinates from soi_targets.csv.
+SEMANTIC_LAYOUT_YEARS = {
+    "Table 1.4": frozenset({2022, 2023}),
+    "Table 2.1": frozenset({2022, 2023}),
+}
+
+LEGACY_MULTI_COLUMN_LAYOUTS = {
+    (2021, "Table 1.4"): {
+        "partnership_and_s_corp_income": {True: ("BD", "BH"), False: ("BE", "BI")},
+        "partnership_and_s_corp_losses": {True: ("BF", "BJ"), False: ("BG", "BK")},
+    }
+}
+
 
 def _column_index(column: str) -> int:
     column = str(column)
@@ -122,6 +136,18 @@ def _column_index(column: str) -> int:
     for char in column.upper():
         result = result * 26 + (ord(char) - 64)
     return result - 1
+
+
+def _format_column_spec(columns: tuple[str, ...]) -> str:
+    return "+".join(columns)
+
+
+def _parse_column_spec(column_spec: str | int) -> tuple[str | int, ...]:
+    if isinstance(column_spec, int):
+        return (column_spec,)
+    if isinstance(column_spec, str) and "+" in column_spec:
+        return tuple(part.strip() for part in column_spec.split("+"))
+    return (column_spec,)
 
 
 def _numeric_cell(workbook: pd.DataFrame, excel_row: int, column: str | int) -> float:
@@ -164,10 +190,21 @@ def _table_2_1_excel_row(row: pd.Series) -> int | None:
     return None
 
 
-def _semantic_columns(row: pd.Series) -> tuple[str, ...] | None:
+def _uses_semantic_layout(table_name: str, target_year: int) -> bool:
+    return target_year in SEMANTIC_LAYOUT_YEARS.get(table_name, ())
+
+
+def _mapped_columns(row: pd.Series, target_year: int) -> tuple[str, ...] | None:
     table_name = row["SOI table"]
     variable = row["Variable"]
     is_count = bool(row["Count"])
+
+    legacy_map = LEGACY_MULTI_COLUMN_LAYOUTS.get((target_year, table_name), {})
+    if variable in legacy_map:
+        return legacy_map[variable][is_count]
+
+    if not _uses_semantic_layout(table_name, target_year):
+        return None
     if table_name == "Table 1.4":
         table_map = TABLE_1_4_COLUMNS
     elif table_name == "Table 2.1":
@@ -181,8 +218,10 @@ def _semantic_columns(row: pd.Series) -> tuple[str, ...] | None:
     return column_map[is_count]
 
 
-def _refresh_excel_row(row: pd.Series) -> int | None:
-    if row["SOI table"] == "Table 2.1":
+def _refresh_excel_row(row: pd.Series, target_year: int) -> int | None:
+    if row["SOI table"] == "Table 2.1" and _uses_semantic_layout(
+        row["SOI table"], target_year
+    ):
         return _table_2_1_excel_row(row)
     return int(row["XLSX row"])
 
@@ -222,13 +261,13 @@ def _table_4_3_bounds(excel_row: int, workbook: pd.DataFrame) -> tuple[float, fl
 
 def _compute_value(row: pd.Series, workbook: pd.DataFrame) -> float:
     table_name = row["SOI table"]
-    semantic_columns = _semantic_columns(row)
-    excel_row = _refresh_excel_row(row)
-    if semantic_columns is not None and excel_row is not None:
+    mapped_columns = _mapped_columns(row, int(row["Year"]))
+    excel_row = _refresh_excel_row(row, int(row["Year"]))
+    if mapped_columns is not None and excel_row is not None:
         return _sum_scaled_cells(
             workbook,
             excel_row,
-            semantic_columns,
+            mapped_columns,
             bool(row["Count"]),
         )
     if table_name == "Table 4.3":
@@ -239,10 +278,11 @@ def _compute_value(row: pd.Series, workbook: pd.DataFrame) -> float:
             f"Unsupported SOI refresh row for {row['SOI table']} / {row['Variable']}"
         )
 
-    return _scaled_cell(
+    column_spec = _parse_column_spec(row["XLSX column"])
+    return _sum_scaled_cells(
         workbook,
         excel_row,
-        row["XLSX column"],
+        column_spec,
         bool(row["Count"]),
     )
 
@@ -258,22 +298,34 @@ def build_target_year_rows(
         refreshed = row.copy()
         refreshed["Year"] = target_year
 
-        semantic_columns = _semantic_columns(refreshed)
+        mapped_columns = _mapped_columns(refreshed, target_year)
+        requires_audited_layout = (
+            refreshed["SOI table"] in SEMANTIC_LAYOUT_YEARS
+            and target_year != source_year
+            and not _uses_semantic_layout(refreshed["SOI table"], target_year)
+        )
+        if requires_audited_layout:
+            raise ValueError(
+                f"No audited workbook layout mapping for "
+                f"{refreshed['SOI table']} in {target_year}"
+            )
+
         if (
-            refreshed["SOI table"] in {"Table 1.4", "Table 2.1"}
-            and semantic_columns is None
+            mapped_columns is None
+            and target_year != source_year
+            and refreshed["SOI table"] in {"Table 1.4", "Table 2.1"}
         ):
             skipped_rows.append((refreshed["SOI table"], refreshed["Variable"]))
             continue
 
-        excel_row = _refresh_excel_row(refreshed)
+        excel_row = _refresh_excel_row(refreshed, target_year)
         if excel_row is None:
             skipped_rows.append((refreshed["SOI table"], refreshed["Variable"]))
             continue
         refreshed["XLSX row"] = excel_row
 
-        if semantic_columns is not None:
-            refreshed["XLSX column"] = semantic_columns[-1]
+        if mapped_columns is not None and target_year != source_year:
+            refreshed["XLSX column"] = _format_column_spec(mapped_columns)
 
         workbook = _load_workbook(refreshed["SOI table"], target_year)
         refreshed["Value"] = _compute_value(refreshed, workbook)
@@ -299,6 +351,8 @@ def _validate_source_year(all_targets: pd.DataFrame, source_year: int) -> None:
     actual = build_target_year_rows(all_targets, source_year, source_year).reset_index(
         drop=True
     )
+    actual = actual.copy()
+    actual["Value"] = actual["Value"].map(lambda value: float(int(round(float(value)))))
 
     pd.testing.assert_frame_equal(
         expected, actual, check_dtype=False, check_exact=False

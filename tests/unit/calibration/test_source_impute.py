@@ -4,6 +4,7 @@ Uses skip flags to avoid loading real donor data.
 """
 
 import numpy as np
+import pandas as pd
 
 from policyengine_us_data.calibration.source_impute import (
     ACS_IMPUTED_VARIABLES,
@@ -20,6 +21,10 @@ from policyengine_us_data.calibration.source_impute import (
     _impute_sipp,
     _person_state_fips,
     impute_source_variables,
+)
+from policyengine_us_data.datasets.cps.tipped_occupation import (
+    derive_any_treasury_tipped_occupation_code,
+    derive_is_tipped_occupation,
 )
 from policyengine_us_data.datasets.org import ORG_IMPUTED_VARIABLES
 
@@ -42,6 +47,9 @@ def _make_data_dict(n_persons=20, time_period=2024):
         },
         "employment_income": {
             time_period: rng.uniform(0, 100000, n_persons).astype(np.float32),
+        },
+        "treasury_tipped_occupation_code": {
+            time_period: np.zeros(n_persons, dtype=np.int16),
         },
         "rent": {time_period: np.zeros(n_persons)},
         "real_estate_taxes": {time_period: np.zeros(n_persons)},
@@ -99,6 +107,9 @@ class TestPredictorLists:
 
     def test_sipp_tips_has_income(self):
         assert "employment_income" in SIPP_TIPS_PREDICTORS
+
+    def test_sipp_tips_uses_tipped_occupation_status(self):
+        assert "is_tipped_occupation" in SIPP_TIPS_PREDICTORS
 
     def test_sipp_assets_has_income(self):
         assert "employment_income" in SIPP_ASSETS_PREDICTORS
@@ -228,3 +239,19 @@ class TestSubfunctions:
 
     def test_impute_scf_exists(self):
         assert callable(_impute_scf)
+
+
+class TestTippedOccupationHelpers:
+    def test_derive_any_treasury_tipped_occupation_code(self):
+        occupations = pd.DataFrame(
+            {
+                "TJB1_OCC": [4040, 1021, np.nan],
+                "TJB2_OCC": [np.nan, 4110, 9620],
+            }
+        )
+        derived = derive_any_treasury_tipped_occupation_code(occupations)
+        np.testing.assert_array_equal(derived, np.array([101, 102, 809]))
+
+    def test_derive_is_tipped_occupation(self):
+        derived = derive_is_tipped_occupation(np.array([0, 101, 809]))
+        np.testing.assert_array_equal(derived, np.array([False, True, True]))

@@ -79,3 +79,32 @@ def derive_treasury_tipped_occupation_code(
     return (
         values.map(CENSUS_OCCUPATION_CODE_TO_TTOC).fillna(0).astype(np.int16).to_numpy()
     )
+
+
+def derive_any_treasury_tipped_occupation_code(
+    occupation_columns: pd.DataFrame,
+) -> np.ndarray:
+    """Collapse multiple job occupation columns to one person-level tipped code."""
+
+    if occupation_columns.shape[1] == 0:
+        return np.zeros(len(occupation_columns), dtype=np.int16)
+
+    mapped_columns = [
+        derive_treasury_tipped_occupation_code(occupation_columns[column])
+        for column in occupation_columns.columns
+    ]
+    return np.column_stack(mapped_columns).max(axis=1).astype(np.int16)
+
+
+def derive_is_tipped_occupation(
+    treasury_tipped_occupation_codes: pd.Series | np.ndarray,
+) -> np.ndarray:
+    """Return a boolean indicator for whether any Treasury tipped code is present."""
+
+    return (
+        pd.Series(treasury_tipped_occupation_codes, copy=False)
+        .fillna(0)
+        .astype(np.int16)
+        .gt(0)
+        .to_numpy()
+    )

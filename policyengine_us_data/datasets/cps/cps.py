@@ -28,6 +28,7 @@ from policyengine_us_data.utils.downsample import downsample_dataset_arrays
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_treasury_tipped_occupation_code,
+    derive_is_tipped_occupation,
 )
 
 
@@ -1790,6 +1791,9 @@ def add_tips(self, cps: h5py.File):
         .values
     )
     cps = pd.DataFrame(cps)
+    cps["is_tipped_occupation"] = derive_is_tipped_occupation(
+        cps["treasury_tipped_occupation_code"]
+    )
 
     # Impute tips
 

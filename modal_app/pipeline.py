@@ -53,6 +53,7 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image
+from modal_app.resilience import ensure_resume_sha_compatible
 
 # ── Modal resources ──────────────────────────────────────────────
 
@@ -101,6 +102,8 @@ class RunMetadata:
     status: str  # running | completed | failed | promoted
     step_timings: dict = field(default_factory=dict)
     error: Optional[str] = None
+    resume_history: list = field(default_factory=list)
+    fingerprint: Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -651,14 +654,24 @@ def run_pipeline(
     if resume_run_id:
         print(f"Resuming run {resume_run_id}...")
         meta = read_run_meta(resume_run_id, pipeline_volume)
-        if meta.sha != sha:
-            raise RuntimeError(
-                f"Branch {branch} has moved since run "
-                f"started.\n"
-                f"  Run SHA:     {meta.sha[:12]}\n"
-                f"  Current SHA: {sha[:12]}\n"
-                f"Start a fresh run instead."
-            )
+        current_sha = sha
+        ensure_resume_sha_compatible(
+            branch=branch,
+            run_sha=meta.sha,
+            current_sha=current_sha,
+        )
+        sha = meta.sha
+        version = meta.version
+        if not hasattr(meta, "resume_history") or meta.resume_history is None:
+            meta.resume_history = []
+        meta.resume_history.append(
+            {
+                "resumed_at": datetime.now(timezone.utc).isoformat(),
+                "code_sha": current_sha,
+                "original_sha": meta.sha,
+                "branch": branch,
+            }
+        )
         meta.status = "running"
         run_id = resume_run_id
     else:
@@ -883,6 +896,7 @@ def run_pipeline(
                 n_clones=n_clones,
                 validate=True,
                 run_id=run_id,
+                expected_fingerprint=meta.fingerprint or "",
             )
             print(f"    → coordinate_publish fc: {regional_h5_handle.object_id}")
 
@@ -918,6 +932,12 @@ def run_pipeline(
                 else regional_h5_result
             )
             print(f"  Regional H5: {regional_msg}")
+
+            if isinstance(regional_h5_result, dict) and regional_h5_result.get(
+                "fingerprint"
+            ):
+                meta.fingerprint = regional_h5_result["fingerprint"]
+                write_run_meta(meta, pipeline_volume)
 
             national_h5_result = None
             if national_h5_handle is not None:

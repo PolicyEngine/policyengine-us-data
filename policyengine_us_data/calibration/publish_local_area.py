@@ -99,17 +99,36 @@ def validate_or_clear_checkpoints(fingerprint: str):
         )
     else:
         print(f"No checkpoint metadata, starting fresh ({fingerprint})")
-    for cp in [
-        CHECKPOINT_FILE,
-        CHECKPOINT_FILE_DISTRICTS,
-        CHECKPOINT_FILE_CITIES,
-    ]:
-        if cp.exists():
-            cp.unlink()
-    for subdir in ["states", "districts", "cities"]:
-        d = WORK_DIR / subdir
-        if d.exists():
-            shutil.rmtree(d)
+    h5_count = sum(
+        1
+        for subdir in ["states", "districts", "cities"]
+        if (WORK_DIR / subdir).exists()
+        for _ in (WORK_DIR / subdir).rglob("*.h5")
+    )
+    if h5_count > 0:
+        print(
+            f"WARNING: {h5_count} H5 files exist. "
+            f"Clearing only checkpoint files, preserving H5s."
+        )
+        for cp in [
+            CHECKPOINT_FILE,
+            CHECKPOINT_FILE_DISTRICTS,
+            CHECKPOINT_FILE_CITIES,
+        ]:
+            if cp.exists():
+                cp.unlink()
+    else:
+        for cp in [
+            CHECKPOINT_FILE,
+            CHECKPOINT_FILE_DISTRICTS,
+            CHECKPOINT_FILE_CITIES,
+        ]:
+            if cp.exists():
+                cp.unlink()
+        for subdir in ["states", "districts", "cities"]:
+            d = WORK_DIR / subdir
+            if d.exists():
+                shutil.rmtree(d)
     META_FILE.parent.mkdir(parents=True, exist_ok=True)
     META_FILE.write_text(json.dumps({"fingerprint": fingerprint}))
 

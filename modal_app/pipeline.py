@@ -53,6 +53,7 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image
+from modal_app.resilience import ensure_resume_sha_compatible
 
 # ── Modal resources ──────────────────────────────────────────────
 
@@ -654,23 +655,23 @@ def run_pipeline(
         print(f"Resuming run {resume_run_id}...")
         meta = read_run_meta(resume_run_id, pipeline_volume)
         current_sha = sha
-        if meta.sha != sha:
-            print(
-                f"WARNING: Branch {branch} has moved since run started.\n"
-                f"  Run SHA:     {meta.sha[:12]}\n"
-                f"  Current SHA: {sha[:12]}\n"
-                f"  Resuming with original run artifacts, current code."
-            )
+        ensure_resume_sha_compatible(
+            branch=branch,
+            run_sha=meta.sha,
+            current_sha=current_sha,
+        )
         sha = meta.sha
         version = meta.version
         if not hasattr(meta, "resume_history") or meta.resume_history is None:
             meta.resume_history = []
-        meta.resume_history.append({
-            "resumed_at": datetime.now(timezone.utc).isoformat(),
-            "code_sha": current_sha,
-            "original_sha": meta.sha,
-            "branch": branch,
-        })
+        meta.resume_history.append(
+            {
+                "resumed_at": datetime.now(timezone.utc).isoformat(),
+                "code_sha": current_sha,
+                "original_sha": meta.sha,
+                "branch": branch,
+            }
+        )
         meta.status = "running"
         run_id = resume_run_id
     else:
@@ -932,7 +933,9 @@ def run_pipeline(
             )
             print(f"  Regional H5: {regional_msg}")
 
-            if isinstance(regional_h5_result, dict) and regional_h5_result.get("fingerprint"):
+            if isinstance(regional_h5_result, dict) and regional_h5_result.get(
+                "fingerprint"
+            ):
                 meta.fingerprint = regional_h5_result["fingerprint"]
                 write_run_meta(meta, pipeline_volume)
 

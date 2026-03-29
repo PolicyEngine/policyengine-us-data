@@ -11,14 +11,15 @@ Usage:
     modal run modal_app/local_area.py --branch=main --num-workers=8
 """
 
+import json
 import os
 import subprocess
 import sys
-import json
 import traceback
-import modal
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict, List
+
+import modal
 
 _baked = "/root/policyengine-us-data"
 _local = str(Path(__file__).resolve().parent.parent)
@@ -27,6 +28,7 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image
+from modal_app.resilience import reconcile_version_dir_fingerprint
 
 app = modal.App("policyengine-us-data-local-area")
 
@@ -262,7 +264,9 @@ def run_phase(
                 all_validation_rows.extend(v_rows)
                 print(f"  Worker {i}: {len(v_rows)} validation rows")
         except Exception as e:
-            all_errors.append({"worker": i, "error": str(e), "traceback": traceback.format_exc()})
+            all_errors.append(
+                {"worker": i, "error": str(e), "traceback": traceback.format_exc()}
+            )
             print(f"  Worker {i}: CRASHED - {e}")
 
     total_completed = sum(len(r["completed"]) for r in all_results)
@@ -366,7 +370,7 @@ def build_areas_worker(
     )
 
     if result.returncode != 0:
-        print(f"Worker stderr:\n{result.stderr}", file=__import__('sys').stderr)
+        print(f"Worker stderr:\n{result.stderr}", file=__import__("sys").stderr)
         return {
             "completed": [],
             "failed": [f"{item['type']}:{item['id']}" for item in work_items],
@@ -648,8 +652,6 @@ def coordinate_publish(
     print(f"Publishing version {version} from branch {branch}")
     print(f"Using {num_workers} parallel workers")
 
-    import shutil
-
     staging_dir = Path(VOLUME_MOUNT)
     version_dir = staging_dir / version
 
@@ -690,6 +692,7 @@ def coordinate_publish(
             from policyengine_us_data.calibration.validate_staging import (
                 _query_all_active_targets,
             )
+
             _test_engine = _create_engine(f"sqlite:///{db_path}")
             _df = _query_all_active_targets(_test_engine, 2024)
             print(f"Validation pre-flight OK: {len(_df)} targets queryable")
@@ -724,39 +727,11 @@ print(compute_input_fingerprint("{weights_path}", "{dataset_path}", {n_clones}, 
         if fp_result.returncode != 0:
             raise RuntimeError(f"Failed to compute fingerprint: {fp_result.stderr}")
         fingerprint = fp_result.stdout.strip()
-    fingerprint_file = version_dir / "fingerprint.json"
-    if version_dir.exists():
-        h5_count = len(list(version_dir.rglob("*.h5")))
-        if fingerprint_file.exists():
-            stored = json.loads(fingerprint_file.read_text())
-            if stored.get("fingerprint") == fingerprint:
-                print(f"Inputs unchanged ({fingerprint}), resuming...")
-            else:
-                if h5_count > 0:
-                    print(
-                        f"WARNING: Inputs changed "
-                        f"({stored.get('fingerprint')} -> {fingerprint}) "
-                        f"but {h5_count} H5 files exist. "
-                        f"Updating fingerprint and resuming."
-                    )
-                else:
-                    print(
-                        f"Inputs changed "
-                        f"({stored.get('fingerprint')} -> {fingerprint}), "
-                        f"clearing empty directory..."
-                    )
-                    shutil.rmtree(version_dir)
-        else:
-            if h5_count > 0:
-                print(
-                    f"WARNING: No fingerprint found but {h5_count} H5 files exist. "
-                    f"Writing fingerprint and resuming."
-                )
-            else:
-                print("No fingerprint found, clearing empty stale directory...")
-                shutil.rmtree(version_dir)
-    version_dir.mkdir(parents=True, exist_ok=True)
-    fingerprint_file.write_text(json.dumps({"fingerprint": fingerprint}))
+    reconcile_action = reconcile_version_dir_fingerprint(version_dir, fingerprint)
+    if reconcile_action == "resume":
+        print(f"Inputs unchanged ({fingerprint}), resuming...")
+    else:
+        print(f"Prepared staging directory for fingerprint {fingerprint}")
     staging_volume.commit()
     result = subprocess.run(
         [

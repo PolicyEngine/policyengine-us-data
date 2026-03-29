@@ -75,8 +75,6 @@ jobs:
 
           full_suite_label = "full-data-ci"
           critical_patterns = [
-              ".github/workflows/pr_code_changes.yaml",
-              ".github/workflows/reusable_test.yaml",
               "modal_app/**",
               "policyengine_us_data/calibration/**",
               "policyengine_us_data/datasets/**",

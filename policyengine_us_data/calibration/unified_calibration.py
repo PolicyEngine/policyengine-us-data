@@ -656,7 +656,7 @@ def fit_l0_weights(
                 lambda_l2=lambda_l2,
                 lr=learning_rate,
                 epochs=chunk,
-                loss_type="relative",
+                loss_type="capped_relative",
                 verbose=False,
             )
 
@@ -744,7 +744,7 @@ def fit_l0_weights(
                 lambda_l2=lambda_l2,
                 lr=learning_rate,
                 epochs=epochs,
-                loss_type="relative",
+                loss_type="capped_relative",
                 verbose=True,
                 verbose_freq=verbose_freq,
             )

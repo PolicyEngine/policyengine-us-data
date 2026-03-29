@@ -6,11 +6,15 @@ include:
     domain_variable: age
 
   # === DISTRICT — count targets ===
-  # REMOVED: person_count by AGI — filer-gated, all AGI bins 100% underestimated
+  - variable: person_count
+    geo_level: district
+    domain_variable: adjusted_gross_income
   - variable: household_count
     geo_level: district
 
-  # === DISTRICT — dollar targets (all <8% mean error, restored) ===
+  # === DISTRICT — dollar targets ===
+  - variable: adjusted_gross_income
+    geo_level: district
   - variable: real_estate_taxes
     geo_level: district
   - variable: self_employment_income
@@ -36,14 +40,28 @@ include:
   # REMOVED: is_pregnant — 100% unachievable across all 51 state geos
   - variable: snap
     geo_level: state
+  - variable: adjusted_gross_income
+    geo_level: state
+  # REMOVED: state_income_tax — ETL hardcodes $0 for WA and NH, but
+  # PolicyEngine correctly computes non-zero tax (WA capital gains tax,
+  # NH interest/dividends tax). The $0 targets produce catastrophic loss
+  # that crushes WA/NH weights to zero. Fix the ETL before re-enabling.
+  # - variable: state_income_tax
+  #   geo_level: state
 
   # === NATIONAL — aggregate dollar targets ===
-  # REMOVED: adjusted_gross_income — filer-gated
+  - variable: adjusted_gross_income
+    geo_level: national
+  - variable: alimony_expense
+    geo_level: national
+  - variable: alimony_income
+    geo_level: national
   - variable: child_support_expense
     geo_level: national
   - variable: child_support_received
     geo_level: national
-  # REMOVED: eitc — filer-gated
+  - variable: eitc
+    geo_level: national
   - variable: health_insurance_premiums_without_medicare_part_b
     geo_level: national
   - variable: medicaid
@@ -54,17 +72,21 @@ include:
     geo_level: national
   - variable: over_the_counter_health_expenses
     geo_level: national
-  # REMOVED: qualified_business_income_deduction — filer-gated
+  - variable: real_estate_taxes
+    geo_level: national
   - variable: rent
     geo_level: national
-  # REMOVED: salt_deduction — 11.3x overestimate, worst variable in model
   - variable: snap
     geo_level: national
   - variable: social_security
     geo_level: national
+  - variable: social_security_dependents
+    geo_level: national
   - variable: social_security_disability
     geo_level: national
   - variable: social_security_retirement
+    geo_level: national
+  - variable: social_security_survivors
     geo_level: national
   - variable: spm_unit_capped_housing_subsidy
     geo_level: national
@@ -74,8 +96,21 @@ include:
     geo_level: national
   - variable: tanf
     geo_level: national
-  # REMOVED: tip_income — filer-gated
+  - variable: tip_income
+    geo_level: national
   - variable: unemployment_compensation
+    geo_level: national
+
+  # === NATIONAL — retirement contribution targets ===
+  - variable: traditional_ira_contributions
+    geo_level: national
+  - variable: traditional_401k_contributions
+    geo_level: national
+  - variable: roth_401k_contributions
+    geo_level: national
+  - variable: roth_ira_contributions
+    geo_level: national
+  - variable: self_employed_pension_contribution_ald
     geo_level: national
 
   # === NATIONAL — IRS SOI domain-constrained dollar targets (restored: |rel_err| < 15%) ===
@@ -100,14 +135,6 @@ include:
   - variable: unemployment_compensation
     geo_level: national
     domain_variable: unemployment_compensation
-  # REMOVED (|rel_err| > 15% or tension with counts):
-  #   adjusted_gross_income (28%), dividend_income (26%, tension), eitc (23%),
-  #   eitc by child_count (14-77%, tension), income_tax_before_credits (21%),
-  #   income_tax_positive (22%), qualified_business_income_deduction (55-63%),
-  #   qualified_dividend_income (29%, tension), rental_income (20%),
-  #   salt (102%), salt_deduction (1130%), tax_exempt_interest_income (61%),
-  #   taxable_interest_income (61%), taxable_ira_distributions (68%),
-  #   taxable_social_security (55%)
 
   # === NATIONAL — IRS SOI filer count targets (restored: |rel_err| < 10%) ===
   - variable: tax_unit_count
@@ -116,4 +143,32 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: refundable_ctc
-  # REMOVED (|rel_err| > 10%): all other filer count targets (22-706% error)
+
+  # === NATIONAL — SOI deduction totals (non-reform) ===
+  - variable: medical_expense_deduction
+    geo_level: national
+    domain_variable: medical_expense_deduction,tax_unit_itemizes
+  - variable: qualified_business_income_deduction
+    geo_level: national
+    domain_variable: qualified_business_income_deduction
+
+  # === NATIONAL — JCT tax expenditure targets (reform_id=1) ===
+  - variable: salt_deduction
+    geo_level: national
+  - variable: charitable_deduction
+    geo_level: national
+  - variable: interest_deduction
+    geo_level: national
+  - variable: medical_expense_deduction
+    geo_level: national
+  - variable: qualified_business_income_deduction
+    geo_level: national
+
+  # NOT INCLUDED — high error or tension (from prior validation)
+  # =====================================================================
+  # dividend_income (26%, tension), qualified_dividend_income (29%, tension),
+  # eitc by child_count (14-77%, tension), rental_income (20%),
+  # income_tax_before_credits (21%), income_tax_positive (22%),
+  # salt SOI (102%), taxable_interest_income (61%),
+  # tax_exempt_interest_income (61%), taxable_ira_distributions (68%),
+  # taxable_social_security (55%), person_count by AGI bins (100%)

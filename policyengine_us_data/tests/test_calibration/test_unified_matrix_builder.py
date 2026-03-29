@@ -212,7 +212,11 @@ class TestQueryTargets(unittest.TestCase):
     def test_inactive_targets_are_excluded(self):
         b = self._make_builder(time_period=2024)
         df = b._query_targets({"stratum_ids": [1], "variables": ["aca_ptc"]})
-        baseline_rows = df[(df["variable"] == "aca_ptc") & (df["reform_id"] == 0)]
+        baseline_rows = df[
+            (df["variable"] == "aca_ptc")
+            & (df["reform_id"] == 0)
+            & (df["stratum_id"] == 1)
+        ]
         self.assertEqual(len(baseline_rows), 1)
         self.assertEqual(int(baseline_rows.iloc[0]["period"]), 2022)
         self.assertEqual(float(baseline_rows.iloc[0]["value"]), 10000.0)
@@ -526,6 +530,7 @@ class TestBuildStateValues(unittest.TestCase):
             sim=None,
             target_vars={"snap"},
             constraint_vars={"income"},
+            reform_vars=set(),
             geography=geo,
             rerandomize_takeup=False,
         )
@@ -560,6 +565,7 @@ class TestBuildStateValues(unittest.TestCase):
             sim=None,
             target_vars={"snap"},
             constraint_vars=set(),
+            reform_vars=set(),
             geography=geo,
             rerandomize_takeup=False,
         )
@@ -582,6 +588,7 @@ class TestBuildStateValues(unittest.TestCase):
             sim=None,
             target_vars={"snap"},
             constraint_vars=set(),
+            reform_vars=set(),
             geography=geo,
             rerandomize_takeup=False,
         )
@@ -617,6 +624,7 @@ class TestBuildStateValues(unittest.TestCase):
             sim=None,
             target_vars={"snap"},
             constraint_vars=set(),
+            reform_vars=set(),
             geography=geo,
             rerandomize_takeup=True,
         )
@@ -664,6 +672,7 @@ class TestBuildStateValues(unittest.TestCase):
             sim=None,
             target_vars={"snap", "snap_count"},
             constraint_vars=set(),
+            reform_vars=set(),
             geography=geo,
             rerandomize_takeup=False,
         )
@@ -914,6 +923,7 @@ class TestBuildStateValuesParallel(unittest.TestCase):
                 sim=None,
                 target_vars={"snap"},
                 constraint_vars=set(),
+                reform_vars=set(),
                 geography=geo,
                 rerandomize_takeup=False,
                 workers=2,
@@ -939,6 +949,7 @@ class TestBuildStateValuesParallel(unittest.TestCase):
                 sim=None,
                 target_vars={"snap"},
                 constraint_vars=set(),
+                reform_vars=set(),
                 geography=geo,
                 rerandomize_takeup=False,
                 workers=1,

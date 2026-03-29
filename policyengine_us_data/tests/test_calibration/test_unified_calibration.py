@@ -459,7 +459,7 @@ class TestAssembleCloneValuesCounty:
         person_hh_idx = np.array([0, 1, 2, 3])
 
         builder = UnifiedMatrixBuilder.__new__(UnifiedMatrixBuilder)
-        hh_vars, _ = builder._assemble_clone_values(
+        hh_vars, _, _ = builder._assemble_clone_values(
             state_values,
             clone_states,
             person_hh_idx,
@@ -499,7 +499,7 @@ class TestAssembleCloneValuesCounty:
         person_hh_idx = np.array([0, 1, 2, 3])
 
         builder = UnifiedMatrixBuilder.__new__(UnifiedMatrixBuilder)
-        hh_vars, _ = builder._assemble_clone_values(
+        hh_vars, _, _ = builder._assemble_clone_values(
             state_values,
             clone_states,
             person_hh_idx,

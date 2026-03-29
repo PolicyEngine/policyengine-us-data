@@ -41,6 +41,7 @@ from policyengine_us_data.calibration.calibration_utils import (
 from policyengine_us_data.calibration.sanity_checks import (
     run_sanity_checks,
 )
+from policyengine_us_data.db.create_database_tables import create_or_replace_views
 
 logger = logging.getLogger(__name__)
 
@@ -270,14 +271,15 @@ def _build_entity_rel(sim) -> pd.DataFrame:
     )
 
 
-def _get_reform_household_values(
+def _get_reform_income_tax_delta(
     dataset_path: str,
     period: int,
     variable: str,
-    reform_hh_cache: dict,
+    baseline_income_tax: np.ndarray,
+    reform_delta_cache: dict,
 ) -> np.ndarray:
-    if variable in reform_hh_cache:
-        return reform_hh_cache[variable]
+    if variable in reform_delta_cache:
+        return reform_delta_cache[variable]
 
     from policyengine_us import Microsimulation
 
@@ -285,12 +287,13 @@ def _get_reform_household_values(
         dataset=dataset_path,
         reform=_make_neutralize_variable_reform(variable),
     )
-    reform_hh_cache[variable] = reform_sim.calculate(
+    reform_income_tax = reform_sim.calculate(
         "income_tax",
         map_to="household",
         period=period,
     ).values
-    return reform_hh_cache[variable]
+    reform_delta_cache[variable] = reform_income_tax - baseline_income_tax
+    return reform_delta_cache[variable]
 
 
 def validate_area(
@@ -370,14 +373,14 @@ def validate_area(
                 map_to="household",
                 period=period,
             ).values
-        if reform_id > 0 and variable not in reform_hh_cache:
-            reform_income_tax = _get_reform_household_values(
+        if reform_id > 0:
+            reform_hh_cache[variable] = _get_reform_income_tax_delta(
                 dataset_path,
                 period,
                 variable,
+                hh_vars_cache["income_tax"],
                 reform_hh_cache,
             )
-            reform_hh_cache[variable] = reform_income_tax - hh_vars_cache["income_tax"]
 
         per_hh = _calculate_target_values_standalone(
             target_variable=variable,
@@ -535,6 +538,7 @@ def _validate_single_area(
     from sqlalchemy import create_engine as _create_engine
 
     engine = _create_engine(f"sqlite:///{db_path}")
+    create_or_replace_views(engine)
 
     logger.info("Loading sim from %s", h5_path)
     try:
@@ -670,14 +674,14 @@ def _compute_district_contributions(
                 map_to="household",
                 period=period,
             ).values
-        if reform_id > 0 and variable not in reform_hh_cache:
-            reform_income_tax = _get_reform_household_values(
+        if reform_id > 0:
+            reform_hh_cache[variable] = _get_reform_income_tax_delta(
                 district_h5_path,
                 period,
                 variable,
+                hh_vars_cache["income_tax"],
                 reform_hh_cache,
             )
-            reform_hh_cache[variable] = reform_income_tax - hh_vars_cache["income_tax"]
 
         per_hh = _calculate_target_values_standalone(
             target_variable=variable,
@@ -1013,6 +1017,7 @@ def main(argv=None):
     from policyengine_us import Microsimulation
 
     engine = create_engine(f"sqlite:///{args.db_path}")
+    create_or_replace_views(engine)
 
     all_targets = _query_all_active_targets(engine, args.period)
     logger.info("Loaded %d active targets from DB", len(all_targets))

@@ -11,12 +11,14 @@ import os
 import tempfile
 import unittest
 
+from sqlalchemy import text
 from sqlmodel import Session
 
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
+    create_or_replace_views,
     create_database,
 )
 from policyengine_us_data.utils.db import get_geographic_strata
@@ -398,6 +400,24 @@ class TestSchemaViewsAndLookups(unittest.TestCase):
         ]
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0][reform_idx], 1)
+
+    def test_create_or_replace_views_updates_existing_target_overview(self):
+        """Refreshing views updates stale target_overview definitions."""
+        with self.engine.connect() as conn:
+            conn.execute(text("DROP VIEW IF EXISTS target_overview"))
+            conn.execute(
+                text(
+                    "CREATE VIEW target_overview AS "
+                    "SELECT target_id, stratum_id, variable, value, period, active "
+                    "FROM targets"
+                )
+            )
+            conn.commit()
+
+        create_or_replace_views(self.engine)
+
+        cols = self._overview_columns()
+        self.assertIn("reform_id", cols)
 
     # ----------------------------------------------------------------
     # get_geographic_strata()

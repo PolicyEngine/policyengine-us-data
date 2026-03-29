@@ -19,6 +19,7 @@ import pandas as pd
 from scipy import sparse
 from sqlalchemy import create_engine, text
 
+from policyengine_us_data.db.create_database_tables import create_or_replace_views
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.census import STATE_NAME_TO_FIPS
 from policyengine_us_data.calibration.calibration_utils import (
@@ -928,6 +929,8 @@ class UnifiedMatrixBuilder:
     ):
         self.db_uri = db_uri
         self.engine = create_engine(db_uri)
+        # Existing SQLite checkpoints may carry an older target_overview view.
+        create_or_replace_views(self.engine)
         self.time_period = time_period
         self.dataset_path = dataset_path
         self._entity_rel_cache = None

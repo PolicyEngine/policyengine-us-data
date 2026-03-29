@@ -1,5 +1,6 @@
-import logging
 import hashlib
+import logging
+from pathlib import Path
 from typing import List, Optional
 
 from sqlalchemy import event, text, UniqueConstraint
@@ -506,14 +507,29 @@ def create_database(
     # Create validation triggers
     create_validation_triggers(engine)
 
-    # Create SQL views
+    create_or_replace_views(engine)
+
+    logger.info(f"Database and tables created successfully at {db_uri}")
+    return engine
+
+
+def create_or_replace_views(engine) -> None:
+    """Refresh SQL views so existing databases pick up schema changes."""
     with engine.connect() as conn:
+        conn.execute(text("DROP VIEW IF EXISTS stratum_domain"))
+        conn.execute(text("DROP VIEW IF EXISTS target_overview"))
         conn.execute(text(STRATUM_DOMAIN_VIEW))
         conn.execute(text(TARGET_OVERVIEW_VIEW))
         conn.commit()
 
-    logger.info(f"Database and tables created successfully at {db_uri}")
-    return engine
+
+def refresh_views_for_db_path(db_path: str | Path) -> None:
+    """Refresh SQL views for an existing SQLite database file."""
+    engine = create_engine(f"sqlite:///{Path(db_path)}")
+    try:
+        create_or_replace_views(engine)
+    finally:
+        engine.dispose()
 
 
 if __name__ == "__main__":

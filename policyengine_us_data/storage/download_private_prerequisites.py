@@ -1,7 +1,10 @@
 import os
 
-from policyengine_us_data.utils.huggingface import download
 from pathlib import Path
+from policyengine_us_data.db.create_database_tables import (
+    refresh_views_for_db_path,
+)
+from policyengine_us_data.utils.huggingface import download
 
 FOLDER = Path(__file__).parent
 
@@ -41,3 +44,4 @@ else:
         local_folder=FOLDER,
         version=None,
     )
+    refresh_views_for_db_path(FOLDER / "calibration" / "policy_data.db")

@@ -77,8 +77,5 @@ def derive_treasury_tipped_occupation_code(
     values = pd.Series(census_occupation_codes, copy=False)
     values = pd.to_numeric(values, errors="coerce").fillna(-1).astype(int)
     return (
-        values.map(CENSUS_OCCUPATION_CODE_TO_TTOC)
-        .fillna(0)
-        .astype(np.int16)
-        .to_numpy()
+        values.map(CENSUS_OCCUPATION_CODE_TO_TTOC).fillna(0).astype(np.int16).to_numpy()
     )

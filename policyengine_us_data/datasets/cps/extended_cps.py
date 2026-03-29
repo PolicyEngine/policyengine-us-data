@@ -41,6 +41,8 @@ CPS_CLONE_FEATURE_VARIABLES = [
     "is_hispanic",
     "detailed_occupation_recode",
 ]
+if has_policyengine_us_variables("treasury_tipped_occupation_code"):
+    CPS_CLONE_FEATURE_VARIABLES.append("treasury_tipped_occupation_code")
 
 # Predictors used to rematch CPS features onto the PUF clone half.
 # These are all available on the CPS half and on the doubled extended CPS.

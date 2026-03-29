@@ -27,6 +27,9 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     derive_clone_capped_childcare_expenses,
     reconcile_ss_subcomponents,
 )
+from policyengine_us_data.datasets.cps.tipped_occupation import (
+    derive_treasury_tipped_occupation_code,
+)
 from policyengine_us_data.datasets.org import ORG_IMPUTED_VARIABLES
 
 
@@ -288,6 +291,15 @@ class TestRetirementConstraints:
         ).all(), "SE pension should be zero without SE income"
 
 
+class TestTreasuryTippedOccupationCode:
+    def test_derive_treasury_tipped_occupation_code(self):
+        derived = derive_treasury_tipped_occupation_code(
+            np.array([4040, 4110, 4230, 2770, -1, 9999])
+        )
+
+        assert derived.tolist() == [101, 102, 304, 208, 0, 0]
+
+
 class TestSSReconciliation:
     """Post-processing SS normalization ensures sub-components sum to total."""
 
@@ -536,6 +548,7 @@ class TestCloneFeatureImputation:
                 "cps_race": [2, 1],
                 "is_hispanic": [0, 1],
                 "detailed_occupation_recode": [8, 41],
+                "treasury_tipped_occupation_code": [101, 304],
             }
         )
 
@@ -573,5 +586,7 @@ class TestCloneFeatureImputation:
         assert result["is_male"].tolist() == [1, 0]
         assert result["cps_race"].tolist() == [2, 1]
         assert result["is_hispanic"].tolist() == [0, 1]
+        if "treasury_tipped_occupation_code" in result.columns:
+            assert result["treasury_tipped_occupation_code"].tolist() == [101, 304]
         assert result["is_computer_scientist"].tolist() == [True, False]
         assert result["is_farmer_fisher"].tolist() == [False, True]

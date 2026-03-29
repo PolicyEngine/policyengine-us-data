@@ -26,6 +26,9 @@ from policyengine_us_data.datasets.org import (
 )
 from policyengine_us_data.utils.downsample import downsample_dataset_arrays
 from policyengine_us_data.utils.randomness import seeded_rng
+from policyengine_us_data.datasets.cps.tipped_occupation import (
+    derive_treasury_tipped_occupation_code,
+)
 
 
 class CPS(Dataset):
@@ -466,6 +469,9 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     cps["is_full_time_college_student"] = person.A_HSCOL == 2
 
     cps["detailed_occupation_recode"] = person.POCCU2
+    cps["treasury_tipped_occupation_code"] = derive_treasury_tipped_occupation_code(
+        person.PEIOOCC
+    )
     add_overtime_occupation(cps, person)
 
 

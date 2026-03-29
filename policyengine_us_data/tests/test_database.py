@@ -1,4 +1,5 @@
 import hashlib
+from sqlalchemy import text
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -8,6 +9,7 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
     Target,
+    create_or_replace_views,
     create_database,
 )
 
@@ -224,6 +226,38 @@ def test_target_with_null_source(engine):
 
         retrieved = session.get(Target, stratum.targets_rel[0].target_id)
         assert retrieved.source is None
+
+
+def test_create_database_refreshes_existing_views(tmp_path):
+    db_uri = f"sqlite:///{tmp_path / 'test.db'}"
+    engine = create_database(db_uri)
+
+    with engine.connect() as conn:
+        conn.execute(text("DROP VIEW target_overview"))
+        conn.execute(
+            text(
+                """
+                CREATE VIEW target_overview AS
+                SELECT
+                    t.target_id,
+                    t.stratum_id,
+                    t.variable,
+                    t.value,
+                    t.period,
+                    t.active
+                FROM targets t
+                """
+            )
+        )
+        conn.commit()
+
+    create_or_replace_views(engine)
+
+    with engine.connect() as conn:
+        cursor = conn.execute(text("SELECT * FROM target_overview LIMIT 0"))
+        columns = [desc[0] for desc in cursor.cursor.description]
+
+    assert "reform_id" in columns
 
 
 def test_valid_geographic_hierarchy(engine):

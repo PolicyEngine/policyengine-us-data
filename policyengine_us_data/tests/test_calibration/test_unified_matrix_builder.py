@@ -61,6 +61,59 @@ def _create_test_db(db_path):
     return db_uri, engine
 
 
+def _create_legacy_target_overview(engine):
+    legacy_view = """\
+CREATE VIEW target_overview AS
+SELECT
+    t.target_id,
+    t.stratum_id,
+    t.variable,
+    t.value,
+    t.period,
+    t.active,
+    CASE
+        WHEN MAX(CASE
+            WHEN sc.constraint_variable = 'congressional_district_geoid'
+                THEN 1
+            WHEN sc.constraint_variable = 'ucgid_str'
+                AND length(sc.value) = 13 THEN 1
+            ELSE 0 END) = 1 THEN 'district'
+        WHEN MAX(CASE
+            WHEN sc.constraint_variable = 'state_fips' THEN 1
+            WHEN sc.constraint_variable = 'ucgid_str'
+                AND length(sc.value) = 11 THEN 1
+            ELSE 0 END) = 1 THEN 'state'
+        ELSE 'national'
+    END AS geo_level,
+    COALESCE(
+        MAX(CASE
+            WHEN sc.constraint_variable = 'congressional_district_geoid'
+            THEN sc.value END),
+        MAX(CASE
+            WHEN sc.constraint_variable = 'state_fips'
+            THEN sc.value END),
+        MAX(CASE
+            WHEN sc.constraint_variable = 'ucgid_str'
+            THEN sc.value END),
+        'US'
+    ) AS geographic_id,
+    GROUP_CONCAT(DISTINCT CASE
+        WHEN sc.constraint_variable NOT IN (
+            'state_fips', 'congressional_district_geoid',
+            'tax_unit_is_filer', 'ucgid_str'
+        ) THEN sc.constraint_variable
+    END) AS domain_variable
+FROM targets t
+LEFT JOIN stratum_constraints sc ON t.stratum_id = sc.stratum_id
+GROUP BY t.target_id, t.stratum_id, t.variable,
+         t.value, t.period, t.active;
+"""
+    with engine.connect() as conn:
+        conn.execute(text("DROP VIEW target_overview"))
+        conn.execute(text(legacy_view))
+        conn.commit()
+
+
 def _insert_aca_ptc_data(engine):
     with engine.connect() as conn:
         strata = [1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -220,6 +273,20 @@ class TestQueryTargets(unittest.TestCase):
         self.assertEqual(len(baseline_rows), 1)
         self.assertEqual(int(baseline_rows.iloc[0]["period"]), 2022)
         self.assertEqual(float(baseline_rows.iloc[0]["value"]), 10000.0)
+
+    def test_legacy_target_overview_without_reform_id(self):
+        _create_legacy_target_overview(self.engine)
+        try:
+            b = self._make_builder()
+            df = b._query_targets({"domain_variables": ["aca_ptc"]})
+            self.assertGreater(len(df), 0)
+            self.assertIn("reform_id", df.columns)
+            self.assertTrue((df["reform_id"] == 0).all())
+        finally:
+            with self.engine.connect() as conn:
+                conn.execute(text("DROP VIEW target_overview"))
+                conn.execute(text(TARGET_OVERVIEW_VIEW))
+                conn.commit()
 
     def test_target_name_adds_expenditure_suffix_for_reforms(self):
         name = UnifiedMatrixBuilder._make_target_name(

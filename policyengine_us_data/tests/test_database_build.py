@@ -166,6 +166,7 @@ def test_jct_tax_expenditure_targets_have_distinct_reform_ids(built_db):
 
     assert rows == expected
 
+
 def test_state_income_tax_targets(built_db):
     """State income tax targets should cover all income-tax states."""
     conn = sqlite3.connect(str(built_db))

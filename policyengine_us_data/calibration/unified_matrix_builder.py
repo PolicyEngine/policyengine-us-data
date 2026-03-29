@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 
 from policyengine_us_data.db.create_database_tables import create_or_replace_views
 from policyengine_us_data.storage import STORAGE_FOLDER
-from policyengine_us_data.utils.census import STATE_NAME_TO_FIPS
+from policyengine_us_data.utils.census import STATE_ABBREV_TO_FIPS, STATE_NAME_TO_FIPS
 from policyengine_us_data.calibration.calibration_utils import (
     get_calculated_variables,
     apply_op,
@@ -1689,11 +1689,22 @@ class UnifiedMatrixBuilder:
     def _load_aca_ptc_factors(
         self,
     ) -> Dict[int, Dict[str, float]]:
-        csv_path = STORAGE_FOLDER / "aca_ptc_multipliers_2022_2024.csv"
+        csv_candidates = {}
+        for path in STORAGE_FOLDER.glob("aca_ptc_multipliers_2022_*.csv"):
+            suffix = path.stem.removeprefix("aca_ptc_multipliers_2022_")
+            if suffix.isdigit():
+                csv_candidates[int(suffix)] = path
+
+        eligible_years = [
+            year for year in csv_candidates if year <= self.time_period
+        ] or sorted(csv_candidates)
+        csv_path = csv_candidates[max(eligible_years)]
         df = pd.read_csv(csv_path)
         result = {}
         for _, row in df.iterrows():
             fips_str = STATE_NAME_TO_FIPS.get(row["state"])
+            if fips_str is None:
+                fips_str = STATE_ABBREV_TO_FIPS.get(row["state"])
             if fips_str is None:
                 continue
             fips_int = int(fips_str)

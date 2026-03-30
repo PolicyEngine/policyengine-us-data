@@ -63,6 +63,7 @@ jobs:
               national_epochs=int('${NATIONAL_EPOCHS}'),
               num_workers=int('${NUM_WORKERS}'),
               skip_national='${SKIP_NATIONAL}' == 'true',
+              scope='${SCOPE}',
           )
           print(f'Pipeline spawned. Monitor on the Modal dashboard.')
           "

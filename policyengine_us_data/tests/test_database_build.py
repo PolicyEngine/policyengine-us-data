@@ -168,7 +168,7 @@ def test_jct_tax_expenditure_targets_have_distinct_reform_ids(built_db):
 
 
 def test_state_income_tax_targets(built_db):
-    """State income tax targets should cover all income-tax states."""
+    """State income tax targets should match the official FY2023 Census T40 row."""
     conn = sqlite3.connect(str(built_db))
     rows = conn.execute("""
         SELECT sc.value, t.value
@@ -185,12 +185,20 @@ def test_state_income_tax_targets(built_db):
     n = len(state_totals)
     assert n >= 42, f"Expected >= 42 state income tax targets, got {n}"
 
-    # California should be the largest, over $100B.
+    # Values come from Census STC FY2023 Table 1 / item T40
+    # (Individual Income Taxes), reported in thousands of dollars.
     ca_val = state_totals.get("06") or state_totals.get("6")
     assert ca_val is not None, "California (FIPS 06) target missing"
-    assert ca_val > 100e9, (
-        f"California income tax should be > $100B, got ${ca_val / 1e9:.1f}B"
-    )
+    assert ca_val == 96_379_294_000
+
+    wa_val = state_totals.get("53")
+    assert wa_val == 846_835_000
+
+    nh_val = state_totals.get("33")
+    assert nh_val == 149_485_000
+
+    tn_val = state_totals.get("47")
+    assert tn_val == 2_926_000
 
 
 def test_congressional_district_strata(built_db):

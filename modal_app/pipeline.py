@@ -340,6 +340,7 @@ STEP1_ARTIFACTS: dict[str, str] = {
 
 STEP2_ARTIFACTS: dict[str, str] = {
     "calibration_package_meta.json": "artifacts/calibration_package_meta.json",
+    "calibration_package.pkl": "artifacts/calibration_package.pkl",
 }
 
 

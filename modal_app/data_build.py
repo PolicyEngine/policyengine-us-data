@@ -79,11 +79,8 @@ SCRIPT_OUTPUTS = {
 
 # Test modules to run individually for checkpoint tracking
 TEST_MODULES = [
-    "policyengine_us_data/tests/test_import.py",
-    "policyengine_us_data/tests/test_database.py",
-    "policyengine_us_data/tests/test_pandas3_compatibility.py",
-    "policyengine_us_data/tests/test_datasets/",
-    "policyengine_us_data/tests/test_calibration/",
+    "policyengine_us_data/tests/unit/",
+    "policyengine_us_data/tests/integration/",
 ]
 
 

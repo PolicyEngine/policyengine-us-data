@@ -1,4 +1,4 @@
-.PHONY: all format test install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch
+.PHONY: all format test test-unit test-integration install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch
 
 SOI_SOURCE_YEAR ?= 2021
 SOI_TARGET_YEAR ?= 2023
@@ -23,6 +23,12 @@ format:
 
 test:
 	pytest
+
+test-unit:
+	pytest policyengine_us_data/tests/unit/
+
+test-integration:
+	pytest policyengine_us_data/tests/integration/
 
 install:
 	pip install policyengine-us

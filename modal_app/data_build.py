@@ -98,6 +98,17 @@ SCRIPT_SHORT_NAMES = {
     "small_enhanced_cps": "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
 }
 
+# Files downloaded by download_private_prerequisites.py that must be
+# checkpointed so subsequent --script calls in separate containers
+# can access them.
+PREREQUISITE_FILES = [
+    "policyengine_us_data/storage/puf_2015.csv",
+    "policyengine_us_data/storage/demographics_2015.csv",
+    "policyengine_us_data/storage/soi.csv",
+    "policyengine_us_data/storage/np2023_d5_mid.csv",
+    "policyengine_us_data/storage/calibration/policy_data.db",
+]
+
 
 def setup_gcp_credentials():
     """Write GCP credentials JSON to a temp file for google.auth.default()."""
@@ -700,7 +711,10 @@ def run_single_script(
     # Handle download_prerequisites specially (no SCRIPT_OUTPUTS entry)
     if script_name == "download_prerequisites":
         run_script(script_path)
-        checkpoint_volume.commit()
+        # Checkpoint prerequisite files so subsequent containers can
+        # restore them.
+        for prereq in PREREQUISITE_FILES:
+            save_checkpoint(branch, prereq, checkpoint_volume)
         return f"Completed {script_name}"
 
     output_files = SCRIPT_OUTPUTS.get(script_path)
@@ -709,6 +723,10 @@ def run_single_script(
             f"Unknown script: {script_name}. "
             f"Valid names: {', '.join(SCRIPT_SHORT_NAMES.keys())}"
         )
+
+    # Restore prerequisite files from checkpoint volume
+    for prereq in PREREQUISITE_FILES:
+        restore_from_checkpoint(branch, prereq)
 
     # Restore any existing checkpoints for dependencies
     for dep_path, dep_outputs in SCRIPT_OUTPUTS.items():

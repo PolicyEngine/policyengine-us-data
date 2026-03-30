@@ -83,6 +83,21 @@ TEST_MODULES = [
     "policyengine_us_data/tests/integration/",
 ]
 
+# Short names for --script mode (maps to SCRIPT_OUTPUTS keys)
+SCRIPT_SHORT_NAMES = {
+    "download_prerequisites": "policyengine_us_data/storage/download_private_prerequisites.py",
+    "uprating": "policyengine_us_data/utils/uprating.py",
+    "acs": "policyengine_us_data/datasets/acs/acs.py",
+    "irs_puf": "policyengine_us_data/datasets/puf/irs_puf.py",
+    "cps": "policyengine_us_data/datasets/cps/cps.py",
+    "puf": "policyengine_us_data/datasets/puf/puf.py",
+    "extended_cps": "policyengine_us_data/datasets/cps/extended_cps.py",
+    "enhanced_cps": "policyengine_us_data/datasets/cps/enhanced_cps.py",
+    "stratified_cps": "policyengine_us_data/calibration/create_stratified_cps.py",
+    "source_imputed_cps": "policyengine_us_data/calibration/create_source_imputed_cps.py",
+    "small_enhanced_cps": "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+}
+
 
 def setup_gcp_credentials():
     """Write GCP credentials JSON to a temp file for google.auth.default()."""
@@ -651,6 +666,68 @@ def build_datasets(
     return "Data build completed successfully"
 
 
+@app.function(
+    image=image,
+    secrets=[hf_secret, gcp_secret],
+    volumes={
+        VOLUME_MOUNT: checkpoint_volume,
+        PIPELINE_MOUNT: pipeline_volume,
+    },
+    memory=32768,
+    cpu=8.0,
+    timeout=14400,
+    nonpreemptible=True,
+)
+def run_single_script(
+    script_name: str,
+    branch: str = "main",
+) -> str:
+    """Run a single dataset build script with checkpointing.
+
+    Args:
+        script_name: Short name (e.g. 'cps') or full path to the script.
+        branch: Git branch for checkpoint scoping.
+
+    Returns:
+        Status message.
+    """
+    setup_gcp_credentials()
+    os.chdir("/root/policyengine-us-data")
+
+    # Resolve short name to full path
+    script_path = SCRIPT_SHORT_NAMES.get(script_name, script_name)
+
+    # Handle download_prerequisites specially (no SCRIPT_OUTPUTS entry)
+    if script_name == "download_prerequisites":
+        run_script(script_path)
+        checkpoint_volume.commit()
+        return f"Completed {script_name}"
+
+    output_files = SCRIPT_OUTPUTS.get(script_path)
+    if output_files is None:
+        raise ValueError(
+            f"Unknown script: {script_name}. "
+            f"Valid names: {', '.join(SCRIPT_SHORT_NAMES.keys())}"
+        )
+
+    # Restore any existing checkpoints for dependencies
+    for dep_path, dep_outputs in SCRIPT_OUTPUTS.items():
+        if dep_path == script_path:
+            continue
+        if isinstance(dep_outputs, str):
+            dep_outputs = [dep_outputs]
+        for dep_output in dep_outputs:
+            restore_from_checkpoint(branch, dep_output)
+
+    run_script_with_checkpoint(
+        script_path,
+        output_files,
+        branch,
+        checkpoint_volume,
+    )
+    return f"Completed {script_name}"
+
+
 @app.local_entrypoint()
 def main(
     upload: bool = False,
@@ -659,13 +736,21 @@ def main(
     clear_checkpoints: bool = False,
     skip_tests: bool = False,
     skip_enhanced_cps: bool = False,
+    script: str = "",
 ):
-    result = build_datasets.remote(
-        upload=upload,
-        branch=branch,
-        sequential=sequential,
-        clear_checkpoints=clear_checkpoints,
-        skip_tests=skip_tests,
-        skip_enhanced_cps=skip_enhanced_cps,
-    )
-    print(result)
+    if script:
+        result = run_single_script.remote(
+            script_name=script,
+            branch=branch,
+        )
+        print(result)
+    else:
+        result = build_datasets.remote(
+            upload=upload,
+            branch=branch,
+            sequential=sequential,
+            clear_checkpoints=clear_checkpoints,
+            skip_tests=skip_tests,
+            skip_enhanced_cps=skip_enhanced_cps,
+        )
+        print(result)

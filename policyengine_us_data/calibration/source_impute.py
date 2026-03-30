@@ -392,9 +392,7 @@ def _impute_sipp(
     sipp_df["household_weight"] = sipp_df.WPFINWGT
     sipp_df["household_id"] = sipp_df.SSUID
     sipp_df["treasury_tipped_occupation_code"] = (
-        derive_any_treasury_tipped_occupation_code(
-            sipp_df[SIPP_JOB_OCCUPATION_COLUMNS]
-        )
+        derive_any_treasury_tipped_occupation_code(sipp_df[SIPP_JOB_OCCUPATION_COLUMNS])
     )
     sipp_df["is_tipped_occupation"] = derive_is_tipped_occupation(
         sipp_df["treasury_tipped_occupation_code"]

@@ -65,7 +65,9 @@ dev = [
     "yaml-changelog>=0.1.7",
     "build",
     "tomli",
-    "itables",    "towncrier>=24.8.0",
+    "itables",
+    "towncrier>=24.8.0",
+    "pytest-cov",
 
 ]
 
@@ -79,7 +81,8 @@ include-package-data = true
 [tool.pytest.ini_options]
 addopts = "-v"
 testpaths = [
-    "policyengine_us_data/tests",
+    "policyengine_us_data/tests/unit",
+    "policyengine_us_data/tests/integration",
 ]
 
 [tool.towncrier]

@@ -70,6 +70,8 @@ jobs:
       - name: Install package
         run: uv sync --dev
       - name: Run unit tests with coverage
+        env:
+          HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
         run: >
           uv run pytest policyengine_us_data/tests/unit/
           --cov=policyengine_us_data

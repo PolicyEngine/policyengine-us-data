@@ -6,9 +6,29 @@
 - `make data` - Generate project datasets
 
 ## Testing
-- `pytest` - Run all tests
-- `pytest path/to/test_file.py::test_function` - Run a specific test
-- `make test` - Also runs all tests
+
+### Running Tests
+- `make test-unit` - Run unit tests only (fast, no data dependencies)
+- `make test-integration` - Run integration tests (requires built H5 datasets)
+- `make test` - Run all tests
+- `pytest policyengine_us_data/tests/unit/ -v` - Unit tests directly
+- `pytest policyengine_us_data/tests/integration/test_cps.py -v` - Specific integration test
+
+### Test Organization
+Tests are split into two directories:
+
+- **`policyengine_us_data/tests/unit/`** — Self-contained tests that use synthetic data, mocks, patches, or checked-in fixtures. Run in seconds with no external dependencies.
+  - `unit/datasets/` — unit tests for dataset code (no `test_` prefix on folder)
+  - `unit/calibration/` — unit tests for calibration code (no `test_` prefix on folder)
+
+- **`policyengine_us_data/tests/integration/`** — Tests that require built H5 datasets, HuggingFace downloads, Microsimulation objects, or database ETL. Named after the dataset they test.
+
+### Test Placement Rules
+- **NEVER** put tests that require H5 files or Microsimulation in `unit/`
+- **NEVER** put tests that use only synthetic data or mocks in `integration/`
+- Integration test files are named after their dataset dependency: `test_cps.py` tests `cps_2024.h5`
+- Sanity checks (value ranges, population counts) belong in the per-dataset integration test file, not in a separate sanity file
+- When adding a new integration test, add it to the existing per-dataset file if one exists
 
 ## Formatting
 - `make format` - Format all code using ruff
@@ -22,7 +42,17 @@
 - **Documentation**: Google-style docstrings with Args and Returns sections
 - **Error Handling**: Use validation checks with specific error messages
 - **Line Length**: ruff default (see pyproject.toml for any override)
-- **Python Version**: Targeting Python 3.11
+- **Python Version**: Targeting Python 3.12-3.13
+
+## CI/CD Structure
+Four workflow files in `.github/workflows/`:
+
+- **`pr.yaml`** — Runs on every PR to main: fork check, lint, uv.lock freshness, changelog fragment, unit tests with Codecov, smoke test. ~2-3 minutes.
+- **`push.yaml`** — Runs on push to main. Two paths:
+  - Version bump commits (`Update package version`): build and publish to PyPI
+  - All other commits: per-dataset Modal build with integration tests after each stage → manual approval gate → pipeline dispatch
+- **`pipeline.yaml`** — Dispatch only. Spawns the H5 generation pipeline on Modal with scope filtering (all/national/state/congressional/local/test).
+- **`versioning.yaml`** — Auto-bumps version when changelog.d fragments are merged. Commits `Update package version` which triggers the publish path in push.yaml.
 
 ## Git and PR Guidelines
 - **CRITICAL**: NEVER create PRs from personal forks - ALL PRs MUST be created from branches pushed to the upstream PolicyEngine repository

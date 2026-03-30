@@ -136,6 +136,65 @@ def get_version() -> str:
     return pyproject["project"]["version"]
 
 
+def generate_work_items(scope: str, db_path: str) -> List[Dict]:
+    """Auto-generate a flat list of work items based on scope.
+
+    Args:
+        scope: One of 'all', 'national', 'state', 'congressional',
+            'local', or 'test'.
+        db_path: Path to policy_data.db for querying districts.
+
+    Returns:
+        List of work item dicts: [{"type": str, "id": str}, ...]
+    """
+    from policyengine_us_data.calibration.calibration_utils import (
+        get_all_cds_from_database,
+        STATE_CODES,
+    )
+    from policyengine_us_data.calibration.publish_local_area import (
+        get_district_friendly_name,
+    )
+
+    all_states = list(STATE_CODES.values())
+    db_uri = f"sqlite:///{db_path}"
+    all_cds = get_all_cds_from_database(db_uri)
+    all_districts = [get_district_friendly_name(cd) for cd in all_cds]
+    all_cities = ["NYC"]
+
+    items = []
+
+    if scope == "national":
+        items.append({"type": "national", "id": "US"})
+
+    elif scope == "state":
+        for s in all_states:
+            items.append({"type": "state", "id": s})
+
+    elif scope == "congressional":
+        for d in all_districts:
+            items.append({"type": "district", "id": d})
+
+    elif scope == "local":
+        for c in all_cities:
+            items.append({"type": "city", "id": c})
+
+    elif scope == "test":
+        items.append({"type": "national", "id": "US"})
+        items.append({"type": "state", "id": "NY"})
+        items.append({"type": "district", "id": "NV-01"})
+
+    else:  # "all" or unrecognized
+        items.append({"type": "national", "id": "US"})
+        for s in all_states:
+            items.append({"type": "state", "id": s})
+        for d in all_districts:
+            items.append({"type": "district", "id": d})
+        for c in all_cities:
+            items.append({"type": "city", "id": c})
+
+    return items
+
+
 def partition_work(
     states: List[str],
     districts: List[str],
@@ -377,6 +436,284 @@ def build_areas_worker(
 
     staging_volume.commit()
     return results
+
+
+# ── Queue-based architecture ──────────────────────────────────
+#
+# build_single_area: processes ONE work item per container (1 CPU).
+# queue_coordinator: generates items from scope, spawns workers,
+#     collects results.
+
+
+@app.function(
+    image=image,
+    secrets=[hf_secret, gcp_secret],
+    volumes={
+        VOLUME_MOUNT: staging_volume,
+        "/pipeline": pipeline_volume,
+    },
+    memory=16384,
+    cpu=1.0,
+    timeout=7200,
+    nonpreemptible=True,
+)
+def build_single_area(
+    work_item: Dict,
+    branch: str,
+    version: str,
+    calibration_inputs: Dict[str, str],
+    validate: bool = True,
+) -> Dict:
+    """Build a single H5 file for one area.
+
+    Each container processes exactly one work item (state, district,
+    city, or national), validates the output, and writes to the
+    staging volume.
+
+    Args:
+        work_item: {"type": "state|district|city|national", "id": "XX"}
+        branch: Git branch (for repo setup).
+        version: Package version string.
+        calibration_inputs: Dict with weights, dataset, database paths
+            and n_clones/seed.
+        validate: Whether to run per-item validation.
+
+    Returns:
+        Dict with completed, failed, errors, validation_rows keys.
+    """
+    setup_gcp_credentials()
+    setup_repo(branch)
+
+    output_dir = Path(VOLUME_MOUNT) / version
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    work_items_json = json.dumps([work_item])
+
+    repo_root = Path("/root/policyengine-us-data")
+    cal_dir = repo_root / "policyengine_us_data" / "calibration"
+
+    worker_cmd = [
+        "uv",
+        "run",
+        "python",
+        "modal_app/worker_script.py",
+        "--work-items",
+        work_items_json,
+        "--weights-path",
+        calibration_inputs["weights"],
+        "--dataset-path",
+        calibration_inputs["dataset"],
+        "--db-path",
+        calibration_inputs["database"],
+        "--output-dir",
+        str(output_dir),
+        "--target-config",
+        str(cal_dir / "target_config.yaml"),
+        "--validation-config",
+        str(cal_dir / "target_config_full.yaml"),
+    ]
+    if "n_clones" in calibration_inputs:
+        worker_cmd.extend(["--n-clones", str(calibration_inputs["n_clones"])])
+    if "seed" in calibration_inputs:
+        worker_cmd.extend(["--seed", str(calibration_inputs["seed"])])
+    if not validate:
+        worker_cmd.append("--no-validate")
+
+    item_key = f"{work_item['type']}:{work_item['id']}"
+    print(f"Building {item_key}...")
+
+    result = subprocess.run(
+        worker_cmd,
+        stdout=subprocess.PIPE,
+        text=True,
+        env=os.environ.copy(),
+    )
+
+    if result.returncode != 0:
+        print(f"FAILED {item_key}: {result.stderr[:200]}")
+        return {
+            "completed": [],
+            "failed": [item_key],
+            "errors": [{"item": item_key, "error": result.stderr}],
+            "validation_rows": [],
+        }
+
+    try:
+        results = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        results = {
+            "completed": [],
+            "failed": [item_key],
+            "errors": [
+                {
+                    "item": item_key,
+                    "error": f"Failed to parse output: {result.stdout[:200]}",
+                }
+            ],
+            "validation_rows": [],
+        }
+
+    staging_volume.commit()
+    print(f"Completed {item_key}")
+    return results
+
+
+@app.function(
+    image=image,
+    secrets=[hf_secret, gcp_secret],
+    volumes={
+        VOLUME_MOUNT: staging_volume,
+        "/pipeline": pipeline_volume,
+    },
+    memory=8192,
+    cpu=1.0,
+    timeout=86400,
+    nonpreemptible=True,
+)
+def queue_coordinator(
+    scope: str = "all",
+    branch: str = "main",
+    n_clones: int = 430,
+    validate: bool = True,
+    max_parallel: int = 50,
+    run_id: str = "",
+) -> Dict:
+    """Queue-based coordinator for H5 builds.
+
+    Generates work items based on scope, spawns up to max_parallel
+    single-item workers, and collects results.
+
+    Args:
+        scope: Dataset scope (all/national/state/congressional/local/test).
+        branch: Git branch.
+        n_clones: Number of clones for calibration.
+        validate: Whether to run per-item validation.
+        max_parallel: Maximum concurrent worker containers.
+        run_id: Optional run identifier.
+
+    Returns:
+        Summary dict with completed count, failed items, and
+        validation results.
+    """
+    setup_gcp_credentials()
+    setup_repo(branch)
+
+    version = get_version()
+    if not run_id:
+        from policyengine_us_data.utils.run_id import generate_run_id
+
+        sha = os.environ.get("GIT_COMMIT", "unknown")
+        run_id = generate_run_id(version, sha)
+
+    print("=" * 60)
+    print(f"Queue Coordinator")
+    print(f"  Run ID: {run_id}")
+    print(f"  Scope:  {scope}")
+    print(f"  Branch: {branch}")
+    print("=" * 60)
+
+    # Load pipeline artifacts
+    pipeline_volume.reload()
+    artifacts = Path("/pipeline/artifacts")
+    weights_path = artifacts / "calibration_weights.npy"
+    db_path = artifacts / "policy_data.db"
+    dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
+
+    for label, p in [
+        ("weights", weights_path),
+        ("dataset", dataset_path),
+        ("database", db_path),
+    ]:
+        if not p.exists():
+            raise RuntimeError(
+                f"Missing {label} on pipeline volume: {p}. "
+                f"Run upstream pipeline steps first."
+            )
+
+    calibration_inputs = {
+        "weights": str(weights_path),
+        "dataset": str(dataset_path),
+        "database": str(db_path),
+        "n_clones": n_clones,
+        "seed": 42,
+    }
+
+    # Generate work items
+    items = generate_work_items(scope, str(db_path))
+    print(f"Generated {len(items)} work items for scope '{scope}'")
+
+    # Check for already-completed items on volume
+    version_dir = Path(VOLUME_MOUNT) / version
+    staging_volume.reload()
+    completed = get_completed_from_volume(version_dir)
+    remaining = [
+        item
+        for item in items
+        if f"{item['type']}:{item['id']}" not in completed
+    ]
+    print(f"Already completed: {len(completed)}, remaining: {len(remaining)}")
+
+    if not remaining:
+        print("All items already built!")
+        return {
+            "run_id": run_id,
+            "total": len(items),
+            "completed": len(items),
+            "failed": 0,
+            "errors": [],
+            "validation_rows": [],
+        }
+
+    # Spawn workers — one per item, up to max_parallel
+    handles = []
+    for item in remaining:
+        handle = build_single_area.spawn(
+            work_item=item,
+            branch=branch,
+            version=version,
+            calibration_inputs=calibration_inputs,
+            validate=validate,
+        )
+        handles.append((item, handle))
+        if len(handles) % 10 == 0:
+            print(f"  Spawned {len(handles)}/{len(remaining)} workers...")
+
+    print(f"Spawned {len(handles)} workers (max_parallel={max_parallel})")
+
+    # Collect results
+    all_completed = list(completed)
+    all_errors = []
+    all_validation_rows = []
+
+    for i, (item, handle) in enumerate(handles):
+        item_key = f"{item['type']}:{item['id']}"
+        try:
+            result = handle.get()
+            all_completed.extend(result.get("completed", []))
+            all_errors.extend(result.get("errors", []))
+            all_validation_rows.extend(
+                result.get("validation_rows", [])
+            )
+            status = "OK" if result.get("completed") else "FAILED"
+            print(f"  [{i + 1}/{len(handles)}] {item_key}: {status}")
+        except Exception as e:
+            all_errors.append({"item": item_key, "error": str(e)})
+            print(f"  [{i + 1}/{len(handles)}] {item_key}: CRASHED - {e}")
+
+    total_completed = len(all_completed)
+    total_failed = len(all_errors)
+
+    print(f"\nQueue complete: {total_completed} completed, {total_failed} failed")
+
+    return {
+        "run_id": run_id,
+        "scope": scope,
+        "total": len(items),
+        "completed": total_completed,
+        "failed": total_failed,
+        "errors": all_errors[:10],
+        "validation_rows": all_validation_rows,
+    }
 
 
 @app.function(
@@ -878,7 +1215,7 @@ def main(
     n_clones: int = 430,
     run_id: str = "",
 ):
-    """Local entrypoint for Modal CLI."""
+    """Local entrypoint for Modal CLI (legacy partition-based)."""
     result = coordinate_publish.remote(
         branch=branch,
         num_workers=num_workers,
@@ -890,6 +1227,32 @@ def main(
         print(result.get("message", result))
     else:
         print(result)
+
+
+@app.local_entrypoint()
+def main_queue(
+    scope: str = "all",
+    branch: str = "main",
+    n_clones: int = 430,
+    max_parallel: int = 50,
+    run_id: str = "",
+):
+    """Queue-based entrypoint: one container per work item.
+
+    Usage:
+        modal run modal_app/local_area.py::main_queue --scope=test
+        modal run modal_app/local_area.py::main_queue --scope=all --max-parallel=50
+    """
+    result = queue_coordinator.remote(
+        scope=scope,
+        branch=branch,
+        n_clones=n_clones,
+        max_parallel=max_parallel,
+        run_id=run_id,
+    )
+    import json
+
+    print(json.dumps(result, indent=2, default=str))
 
 
 @app.function(

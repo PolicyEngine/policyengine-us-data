@@ -273,6 +273,7 @@ from modal_app.local_area import (
     coordinate_national_publish,
     promote_publish,
     promote_national_publish,
+    queue_coordinator,
 )
 
 app.include(_local_area_app)
@@ -597,6 +598,7 @@ def run_pipeline(
     skip_national: bool = False,
     resume_run_id: str = None,
     clear_checkpoints: bool = False,
+    scope: str = "all",
 ) -> str:
     """Run the full pipeline end-to-end.
 
@@ -861,16 +863,29 @@ def run_pipeline(
             step_start = time.time()
 
             # Spawn H5 builds (run on separate Modal containers)
-            print(f"  Spawning regional H5 build ({num_workers} workers)...")
-            regional_h5_handle = coordinate_publish.spawn(
-                branch=branch,
-                num_workers=num_workers,
-                skip_upload=False,
-                n_clones=n_clones,
-                validate=True,
-                run_id=run_id,
-            )
-            print(f"    → coordinate_publish fc: {regional_h5_handle.object_id}")
+            if scope != "all":
+                # Queue-based: one container per item, filtered by scope
+                print(f"  Spawning queue-based H5 build (scope={scope})...")
+                regional_h5_handle = queue_coordinator.spawn(
+                    scope=scope,
+                    branch=branch,
+                    n_clones=n_clones,
+                    validate=True,
+                    run_id=run_id,
+                )
+                print(f"    → queue_coordinator fc: {regional_h5_handle.object_id}")
+            else:
+                # Legacy partition-based: N workers with chunked items
+                print(f"  Spawning regional H5 build ({num_workers} workers)...")
+                regional_h5_handle = coordinate_publish.spawn(
+                    branch=branch,
+                    num_workers=num_workers,
+                    skip_upload=False,
+                    n_clones=n_clones,
+                    validate=True,
+                    run_id=run_id,
+                )
+                print(f"    → coordinate_publish fc: {regional_h5_handle.object_id}")
 
             national_h5_handle = None
             if not skip_national:

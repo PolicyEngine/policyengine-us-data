@@ -1,0 +1,238 @@
+name: Push to main
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  # ── Lint ────────────────────────────────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ruff
+        run: pip install ruff>=0.9.0
+      - name: Check formatting
+        run: ruff format --check .
+
+  # ── Per-dataset build and test on Modal ─────────────────────
+  build-and-test:
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event.head_commit.message != 'Update package version'
+    timeout-minutes: 240
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install Modal CLI
+        run: pip install modal
+      - name: Install package
+        run: uv sync --dev
+
+      - name: Initialize summary
+        run: |
+          echo "## Data Build & Integration Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|----------|" >> $GITHUB_STEP_SUMMARY
+
+      # ── Phase 1: Download prerequisites ───────────────────
+      - name: "Build: download prerequisites"
+        run: |
+          START=$(date +%s)
+          modal run modal_app/data_build.py --script download_prerequisites \
+            --branch=${{ github.ref_name }}
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "| download_prerequisites | :white_check_mark: | ${ELAPSED}s |" >> $GITHUB_STEP_SUMMARY
+
+      # ── Phase 1: Independent datasets (sequential) ────────
+      - name: "Build: uprating"
+        run: |
+          START=$(date +%s)
+          modal run modal_app/data_build.py --script uprating \
+            --branch=${{ github.ref_name }}
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "| uprating | :white_check_mark: | ${ELAPSED}s |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Build: acs"
+        run: |
+          START=$(date +%s)
+          modal run modal_app/data_build.py --script acs \
+            --branch=${{ github.ref_name }}
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "| acs | :white_check_mark: | ${ELAPSED}s |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Test: acs"
+        run: |
+          uv run pytest policyengine_us_data/tests/integration/test_acs.py -v
+          echo "| test_acs | :white_check_mark: | - |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Build: irs_puf"
+        run: |
+          START=$(date +%s)
+          modal run modal_app/data_build.py --script irs_puf \
+            --branch=${{ github.ref_name }}
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "| irs_puf | :white_check_mark: | ${ELAPSED}s |" >> $GITHUB_STEP_SUMMARY
+
+      # ── Phase 2: CPS and PUF (depend on Phase 1) ─────────
+      - name: "Build: cps"
+        run: |
+          START=$(date +%s)
+          modal run modal_app/data_build.py --script cps \
+            --branch=${{ github.ref_name }}
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "| cps | :white_check_mark: | ${ELAPSED}s |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Test: cps"
+        run: |
+          uv run pytest policyengine_us_data/tests/integration/test_cps.py -v
+          echo "| test_cps | :white_check_mark: | - |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Build: puf"
+        run: |
+          START=$(date +%s)
+          modal run modal_app/data_build.py --script puf \
+            --branch=${{ github.ref_name }}
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "| puf | :white_check_mark: | ${ELAPSED}s |" >> $GITHUB_STEP_SUMMARY
+
+      # ── Phase 3: Extended CPS (depends on CPS + PUF) ─────
+      - name: "Build: extended_cps"
+        run: |
+          START=$(date +%s)
+          modal run modal_app/data_build.py --script extended_cps \
+            --branch=${{ github.ref_name }}
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "| extended_cps | :white_check_mark: | ${ELAPSED}s |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Test: extended_cps"
+        run: |
+          uv run pytest policyengine_us_data/tests/integration/test_extended_cps.py -v
+          echo "| test_extended_cps | :white_check_mark: | - |" >> $GITHUB_STEP_SUMMARY
+
+      # ── Phase 4: Enhanced + Stratified CPS ────────────────
+      - name: "Build: enhanced_cps"
+        run: |
+          START=$(date +%s)
+          modal run modal_app/data_build.py --script enhanced_cps \
+            --branch=${{ github.ref_name }}
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "| enhanced_cps | :white_check_mark: | ${ELAPSED}s |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Test: enhanced_cps"
+        run: |
+          uv run pytest policyengine_us_data/tests/integration/test_enhanced_cps.py -v
+          echo "| test_enhanced_cps | :white_check_mark: | - |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Build: stratified_cps"
+        run: |
+          START=$(date +%s)
+          modal run modal_app/data_build.py --script stratified_cps \
+            --branch=${{ github.ref_name }}
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "| stratified_cps | :white_check_mark: | ${ELAPSED}s |" >> $GITHUB_STEP_SUMMARY
+
+      # ── Phase 5: Source imputed + Small enhanced CPS ──────
+      - name: "Build: source_imputed_cps"
+        run: |
+          START=$(date +%s)
+          modal run modal_app/data_build.py --script source_imputed_cps \
+            --branch=${{ github.ref_name }}
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "| source_imputed_cps | :white_check_mark: | ${ELAPSED}s |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Test: source_imputed_cps"
+        run: |
+          uv run pytest policyengine_us_data/tests/integration/test_source_imputed_cps_masking.py policyengine_us_data/tests/integration/test_source_imputed_cps_consistency.py -v
+          echo "| test_source_imputed_cps | :white_check_mark: | - |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Build: small_enhanced_cps"
+        run: |
+          START=$(date +%s)
+          modal run modal_app/data_build.py --script small_enhanced_cps \
+            --branch=${{ github.ref_name }}
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "| small_enhanced_cps | :white_check_mark: | ${ELAPSED}s |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Test: small_enhanced_cps"
+        run: |
+          uv run pytest policyengine_us_data/tests/integration/test_small_enhanced_cps.py -v
+          echo "| test_small_enhanced_cps | :white_check_mark: | - |" >> $GITHUB_STEP_SUMMARY
+
+      # ── Remaining integration tests ───────────────────────
+      - name: "Test: sparse_enhanced_cps"
+        run: |
+          uv run pytest policyengine_us_data/tests/integration/test_sparse_enhanced_cps.py -v
+          echo "| test_sparse_enhanced_cps | :white_check_mark: | - |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Test: sipp_assets"
+        run: |
+          uv run pytest policyengine_us_data/tests/integration/test_sipp_assets.py -v
+          echo "| test_sipp_assets | :white_check_mark: | - |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Test: census_cps"
+        run: |
+          uv run pytest policyengine_us_data/tests/integration/test_census_cps.py -v
+          echo "| test_census_cps | :white_check_mark: | - |" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Test: database_build"
+        run: |
+          uv run pytest policyengine_us_data/tests/integration/test_database_build.py -v
+          echo "| test_database_build | :white_check_mark: | - |" >> $GITHUB_STEP_SUMMARY
+
+  # ── Manual approval gate ────────────────────────────────────
+  approval-gate:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    environment: pipeline-approval
+    steps:
+      - run: echo "Pipeline approved. Dispatching H5 build."
+
+  # ── Dispatch pipeline ───────────────────────────────────────
+  trigger-pipeline:
+    needs: approval-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger pipeline workflow
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'pipeline.yaml',
+              ref: 'main',
+              inputs: { scope: 'all' }
+            })
+            console.log('Pipeline dispatched with scope=all')
+
+  # ── PyPI publish (version bump commits only) ────────────────
+  publish:
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event.head_commit.message == 'Update package version'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install package
+        run: uv sync --dev
+      - name: Build package
+        run: uv run python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI }}
+          skip-existing: true

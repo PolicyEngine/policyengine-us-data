@@ -1,1 +1,1 @@
-Migrated versioning workflow from expired PAT to GitHub App token for reliable PyPI publishing.
+Migrated versioning workflow from expired PAT to GitHub App token for reliable PyPI publishing. Reorganized tests into unit/ and integration/ directories. Consolidated CI/CD from 9 workflow files down to 4 (pr.yaml, push.yaml, pipeline.yaml, versioning.yaml). Added queue-based Modal architecture with scope filtering for H5 builds. Added Codecov integration and per-dataset build timing in GitHub Actions summaries.

@@ -4,9 +4,9 @@ from pathlib import Path
 import pandas as pd
 
 
+# Navigate from tests/unit/ up to policyengine_us_data/
 MODULE_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "policyengine_us_data"
+    Path(__file__).resolve().parent.parent.parent
     / "storage"
     / "calibration_targets"
     / "refresh_soi_table_targets.py"

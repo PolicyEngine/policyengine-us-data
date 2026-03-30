@@ -7,8 +7,9 @@ import numpy as np
 import pandas as pd
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-PACKAGE_ROOT = REPO_ROOT / "policyengine_us_data"
+# Navigate from tests/unit/ up to policyengine_us_data/, then up to repo root
+PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = PACKAGE_ROOT.parent
 
 
 def load_soi_module():

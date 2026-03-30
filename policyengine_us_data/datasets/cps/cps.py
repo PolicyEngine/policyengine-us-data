@@ -1774,6 +1774,9 @@ def add_tips(self, cps: h5py.File):
     raw_data = self.raw_cps(require=True).load()
     raw_person = raw_data["person"]
     cps["is_married"] = raw_person.A_MARITL.isin([1, 2]).values
+    cps["is_tipped_occupation"] = derive_is_tipped_occupation(
+        derive_treasury_tipped_occupation_code(raw_person.PEIOOCC)
+    )
     raw_data.close()
 
     cps["is_under_18"] = cps.age < 18
@@ -1791,9 +1794,6 @@ def add_tips(self, cps: h5py.File):
         .values
     )
     cps = pd.DataFrame(cps)
-    cps["is_tipped_occupation"] = derive_is_tipped_occupation(
-        cps["treasury_tipped_occupation_code"]
-    )
 
     # Impute tips
 

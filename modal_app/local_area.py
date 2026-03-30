@@ -658,9 +658,7 @@ def queue_coordinator(
     staging_volume.reload()
     completed = get_completed_from_volume(version_dir)
     remaining = [
-        item
-        for item in items
-        if f"{item['type']}:{item['id']}" not in completed
+        item for item in items if f"{item['type']}:{item['id']}" not in completed
     ]
     print(f"Already completed: {len(completed)}, remaining: {len(remaining)}")
 
@@ -702,9 +700,7 @@ def queue_coordinator(
             result = handle.get()
             all_completed.extend(result.get("completed", []))
             all_errors.extend(result.get("errors", []))
-            all_validation_rows.extend(
-                result.get("validation_rows", [])
-            )
+            all_validation_rows.extend(result.get("validation_rows", []))
             status = "OK" if result.get("completed") else "FAILED"
             print(f"  [{i + 1}/{len(handles)}] {item_key}: {status}")
         except Exception as e:

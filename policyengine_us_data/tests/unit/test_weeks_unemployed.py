@@ -29,9 +29,7 @@ class TestWeeksUnemployed:
     def test_cps_uses_lkweeks(self):
         """Test that cps.py uses LKWEEKS, not WKSUNEM."""
         # Navigate from tests/unit/ up to policyengine_us_data/
-        cps_path = Path(__file__).parent.parent.parent / (
-            "datasets/cps/cps.py"
-        )
+        cps_path = Path(__file__).parent.parent.parent / ("datasets/cps/cps.py")
         content = cps_path.read_text()
 
         # Check for correct variable reference

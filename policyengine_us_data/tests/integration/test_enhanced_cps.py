@@ -38,9 +38,7 @@ def test_ecps_household_count(ecps_sim):
 
 def test_ecps_person_count(ecps_sim):
     """Weighted person count should be roughly 330M."""
-    total_people = ecps_sim.calculate(
-        "household_weight", map_to="person"
-    ).values.sum()
+    total_people = ecps_sim.calculate("household_weight", map_to="person").values.sum()
     assert 250e6 < total_people < 400e6, (
         f"Total people = {total_people:.2e}, expected 250M-400M."
     )

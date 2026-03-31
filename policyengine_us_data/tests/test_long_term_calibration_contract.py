@@ -33,11 +33,47 @@ from policyengine_us_data.datasets.cps.long_term.ssa_data import (
     describe_long_term_target_source,
     load_taxable_payroll_projections,
 )
+from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
+    AgeShiftCloneRule,
+    SupportAugmentationProfile,
+    augment_input_dataframe,
+    household_support_summary,
+    select_donor_households,
+)
 
 
 class ExplodingCalibrator:
     def calibrate(self, **kwargs):
         raise RuntimeError("boom")
+
+
+def _toy_support_dataframe():
+    return json.loads(
+        json.dumps(
+            {
+                "person_id__2024": [101, 102, 201, 202, 301],
+                "household_id__2024": [1, 1, 2, 2, 3],
+                "person_household_id__2024": [1, 1, 2, 2, 3],
+                "family_id__2024": [11.0, 11.0, 21.0, 21.0, 31.0],
+                "person_family_id__2024": [11, 11, 21, 21, 31],
+                "tax_unit_id__2024": [101, 101, 201, 202, 301],
+                "person_tax_unit_id__2024": [101, 101, 201, 202, 301],
+                "spm_unit_id__2024": [1001, 1001, 2001, 2001, 3001],
+                "person_spm_unit_id__2024": [1001, 1001, 2001, 2001, 3001],
+                "marital_unit_id__2024": [501, 501, 601, 602, 701],
+                "person_marital_unit_id__2024": [501, 501, 601, 602, 701],
+                "age__2024": [70.0, 68.0, 80.0, 77.0, 60.0],
+                "household_weight__2024": [10.0, 10.0, 8.0, 8.0, 5.0],
+                "person_weight__2024": [10.0, 10.0, 8.0, 8.0, 5.0],
+                "social_security_retirement__2024": [20_000.0, 0.0, 30_000.0, 0.0, 0.0],
+                "social_security_disability__2024": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "social_security_survivors__2024": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "social_security_dependents__2024": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "employment_income_before_lsr__2024": [5_000.0, 0.0, 12_000.0, 0.0, 50_000.0],
+                "self_employment_income_before_lsr__2024": [0.0, 0.0, 0.0, 0.0, 0.0],
+            }
+        )
+    )
 
 
 def test_named_profile_lookup():
@@ -54,6 +90,57 @@ def test_named_profile_lookup():
     assert profile.min_effective_sample_size == 75.0
     assert profile.max_top_10_weight_share_pct == 25.0
     assert profile.max_top_100_weight_share_pct == 95.0
+
+
+def test_support_augmentation_selects_expected_donors():
+    import pandas as pd
+
+    df = pd.DataFrame(_toy_support_dataframe())
+    summary = household_support_summary(df, base_year=2024)
+    rule = AgeShiftCloneRule(
+        name="older_ss_pay",
+        min_max_age=65,
+        max_max_age=74,
+        age_shift=10,
+        ss_state="positive",
+        payroll_state="positive",
+    )
+    donors = select_donor_households(summary, rule)
+    assert list(donors) == [1]
+
+
+def test_support_augmentation_clones_households_with_new_ids():
+    import pandas as pd
+
+    df = pd.DataFrame(_toy_support_dataframe())
+    profile = SupportAugmentationProfile(
+        name="test-profile",
+        description="Toy support augmentation profile.",
+        rules=(
+            AgeShiftCloneRule(
+                name="older_ss_pay",
+                min_max_age=65,
+                max_max_age=74,
+                age_shift=10,
+                ss_state="positive",
+                payroll_state="positive",
+                clone_weight_scale=0.5,
+            ),
+        ),
+    )
+    augmented_df, report = augment_input_dataframe(
+        df,
+        base_year=2024,
+        profile=profile,
+    )
+    assert report["base_household_count"] == 3
+    assert report["augmented_household_count"] == 4
+    cloned_household_ids = set(augmented_df["household_id__2024"].unique()) - {1, 2, 3}
+    assert len(cloned_household_ids) == 1
+    cloned_rows = augmented_df[augmented_df["household_id__2024"].isin(cloned_household_ids)]
+    assert cloned_rows["age__2024"].max() == pytest.approx(80.0)
+    assert cloned_rows["household_weight__2024"].iloc[0] == pytest.approx(5.0)
+    assert cloned_rows["person_id__2024"].min() > df["person_id__2024"].max()
 
 
 def test_age_bin_helpers_preserve_population_totals():

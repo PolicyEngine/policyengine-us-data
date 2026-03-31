@@ -181,6 +181,7 @@ python run_household_projection_parallel.py \
 **Local files** (in `policyengine_us_data/storage/`):
 - `SSPopJul_TR2024.csv` - Population projections 2025-2100 by single year of age
 - `long_term_target_sources/trustees_2025_current_law.csv` - explicit frozen Trustees/current-law package
+- `long_term_target_sources/oact_2025_08_05_provisional.csv` - OACT-updated TOB package with provisional HI bridge
 - `long_term_target_sources/sources.json` - provenance metadata for named source packages
 - `ASSUMPTION_COMPARISON.md` - side-by-side summary of our calibration assumptions versus Trustees/OACT
 
@@ -205,6 +206,7 @@ python run_household_projection_parallel.py \
 - **`run_household_projection.py`** - Main projection script (see Quick Start)
 - **`calibration.py`** - IPF and GREG weight calibration implementations
 - **`ssa_data.py`** - Load SSA population and named long-term target source projections
+- **`build_long_term_target_sources.py`** - Rebuild named long-term target source packages
 - **`projection_utils.py`** - Utility functions (age matrix builder, H5 file creator)
 - **`extract_ssa_costs.py`** - One-time script to extract SSA data from Excel (already run)
 

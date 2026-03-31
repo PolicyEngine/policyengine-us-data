@@ -35,6 +35,7 @@ from policyengine_us_data.datasets.cps.long_term.ssa_data import (
 )
 from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
     AgeShiftCloneRule,
+    CompositePayrollRule,
     SupportAugmentationProfile,
     augment_input_dataframe,
     household_support_summary,
@@ -141,6 +142,44 @@ def test_support_augmentation_clones_households_with_new_ids():
     assert cloned_rows["age__2024"].max() == pytest.approx(80.0)
     assert cloned_rows["household_weight__2024"].iloc[0] == pytest.approx(5.0)
     assert cloned_rows["person_id__2024"].min() > df["person_id__2024"].max()
+
+
+def test_support_augmentation_synthesizes_composite_payroll_household():
+    import pandas as pd
+
+    df = pd.DataFrame(_toy_support_dataframe())
+    profile = SupportAugmentationProfile(
+        name="composite-profile",
+        description="Toy composite support augmentation profile.",
+        rules=(
+            CompositePayrollRule(
+                name="older_ss_only_plus_payroll",
+                recipient_min_max_age=75,
+                recipient_max_max_age=84,
+                donor_min_max_age=55,
+                donor_max_max_age=64,
+                recipient_ss_state="positive",
+                recipient_payroll_state="positive",
+                donor_ss_state="nonpositive",
+                donor_payroll_state="positive",
+                payroll_transfer_scale=0.5,
+                clone_weight_scale=0.25,
+            ),
+        ),
+    )
+    augmented_df, report = augment_input_dataframe(
+        df,
+        base_year=2024,
+        profile=profile,
+    )
+    assert report["base_household_count"] == 3
+    assert report["augmented_household_count"] == 4
+    cloned_household_ids = set(augmented_df["household_id__2024"].unique()) - {1, 2, 3}
+    assert len(cloned_household_ids) == 1
+    cloned_rows = augmented_df[augmented_df["household_id__2024"].isin(cloned_household_ids)]
+    assert cloned_rows["age__2024"].max() == pytest.approx(80.0)
+    assert cloned_rows["social_security_retirement__2024"].sum() == pytest.approx(30_000.0)
+    assert cloned_rows["employment_income_before_lsr__2024"].sum() == pytest.approx(37_000.0)
 
 
 def test_age_bin_helpers_preserve_population_totals():

@@ -39,6 +39,55 @@ def build_household_age_matrix(sim, n_ages=86):
     return X, household_ids_unique, hh_id_to_idx
 
 
+def build_age_bins(n_ages=86, bucket_size=None):
+    """
+    Build age-bucket ranges over the single-year age target vector.
+
+    The final bucket always preserves the open-ended 85+ slot.
+    """
+    if bucket_size is None or bucket_size <= 1:
+        return [(age_idx, age_idx + 1) for age_idx in range(n_ages)]
+
+    bins = []
+    upper_single_age = max(n_ages - 1, 0)
+    for start in range(0, upper_single_age, bucket_size):
+        end = min(start + bucket_size, upper_single_age)
+        bins.append((start, end))
+    bins.append((upper_single_age, n_ages))
+    return bins
+
+
+def aggregate_household_age_matrix(X, age_bins):
+    """
+    Aggregate a single-year household age matrix into coarser age buckets.
+    """
+    if len(age_bins) == X.shape[1] and all(end - start == 1 for start, end in age_bins):
+        return X
+    return np.column_stack([X[:, start:end].sum(axis=1) for start, end in age_bins])
+
+
+def aggregate_age_targets(targets, age_bins):
+    """
+    Aggregate age targets over the first axis.
+
+    Accepts either a single target vector `(n_ages,)` or a matrix
+    `(n_ages, n_years)`.
+    """
+    targets = np.asarray(targets, dtype=float)
+    if targets.ndim == 1:
+        return np.array(
+            [targets[start:end].sum() for start, end in age_bins],
+            dtype=float,
+        )
+
+    return np.vstack(
+        [
+            targets[start:end, :].sum(axis=0)
+            for start, end in age_bins
+        ]
+    )
+
+
 def get_pseudo_input_variables(sim):
     """
     Identify variables that appear as inputs but aggregate calculated values.

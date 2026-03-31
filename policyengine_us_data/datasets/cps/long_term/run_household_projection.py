@@ -50,6 +50,9 @@ from calibration_profiles import (
     validate_calibration_audit,
 )
 from projection_utils import (
+    aggregate_age_targets,
+    aggregate_household_age_matrix,
+    build_age_bins,
     build_household_age_matrix,
     create_household_year_h5,
 )
@@ -417,6 +420,7 @@ print("=" * 70)
 sim = Microsimulation(dataset=BASE_DATASET_PATH)
 X, household_ids_unique, hh_id_to_idx = build_household_age_matrix(sim, n_ages)
 n_households = len(household_ids_unique)
+aggregated_age_cache: dict[int, tuple[np.ndarray, np.ndarray]] = {}
 
 print(f"\nLoaded {n_households:,} households")
 print(f"Household age matrix shape: {X.shape}")
@@ -568,11 +572,28 @@ for year_idx in range(n_years):
                 f"  [DEBUG {year}] HI TOB baseline: ${hi_baseline / 1e9:.1f}B, target: ${hi_tob_target / 1e9:.1f}B"
             )
 
-    y_target = target_matrix[:, year_idx]
     approximate_window = approximate_window_for_year(PROFILE, year)
+    age_bucket_size = (
+        approximate_window.age_bucket_size
+        if approximate_window is not None
+        else None
+    )
+    if age_bucket_size and age_bucket_size > 1:
+        if age_bucket_size not in aggregated_age_cache:
+            age_bins = build_age_bins(n_ages=n_ages, bucket_size=age_bucket_size)
+            aggregated_age_cache[age_bucket_size] = (
+                aggregate_household_age_matrix(X, age_bins),
+                aggregate_age_targets(target_matrix, age_bins),
+            )
+        X_current, aggregated_target_matrix = aggregated_age_cache[age_bucket_size]
+        y_target = aggregated_target_matrix[:, year_idx]
+    else:
+        X_current = X
+        y_target = target_matrix[:, year_idx]
+        age_bucket_size = 1
 
     w_new, iterations, calibration_event = calibrate_weights(
-        X=X,
+        X=X_current,
         y_target=y_target,
         baseline_weights=baseline_weights,
         method=CALIBRATION_METHOD,
@@ -587,7 +608,7 @@ for year_idx in range(n_years):
         oasdi_tob_target=oasdi_tob_target,
         hi_tob_values=hi_tob_values,
         hi_tob_target=hi_tob_target,
-        n_ages=n_ages,
+        n_ages=X_current.shape[1],
         max_iters=100,
         tol=1e-6,
         verbose=False,
@@ -601,7 +622,7 @@ for year_idx in range(n_years):
     )
 
     calibration_audit = build_calibration_audit(
-        X=X,
+        X=X_current,
         y_target=y_target,
         weights=w_new,
         baseline_weights=baseline_weights,
@@ -622,6 +643,8 @@ for year_idx in range(n_years):
         PROFILE,
         year=year,
     )
+    calibration_audit["age_bucket_size"] = age_bucket_size
+    calibration_audit["age_bucket_count"] = int(X_current.shape[1])
 
     validation_issues = validate_calibration_audit(
         calibration_audit,

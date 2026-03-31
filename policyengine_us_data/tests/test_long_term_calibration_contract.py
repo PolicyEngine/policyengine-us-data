@@ -23,6 +23,11 @@ from policyengine_us_data.datasets.cps.long_term.calibration_profiles import (
     get_profile,
     validate_calibration_audit,
 )
+from policyengine_us_data.datasets.cps.long_term.projection_utils import (
+    aggregate_age_targets,
+    aggregate_household_age_matrix,
+    build_age_bins,
+)
 from policyengine_us_data.datasets.cps.long_term.ssa_data import (
     available_long_term_target_sources,
     describe_long_term_target_source,
@@ -44,6 +49,29 @@ def test_named_profile_lookup():
     assert profile.use_tob is True
     assert profile.use_h6_reform is False
     assert profile.max_negative_weight_pct == 0.0
+    assert profile.approximate_windows[0].age_bucket_size == 5
+
+
+def test_age_bin_helpers_preserve_population_totals():
+    bins = build_age_bins(n_ages=86, bucket_size=5)
+    assert bins[0] == (0, 5)
+    assert bins[-1] == (85, 86)
+
+    X = np.eye(86)
+    y = np.arange(86, dtype=float)
+    X_coarse = aggregate_household_age_matrix(X, bins)
+    y_coarse = aggregate_age_targets(y, bins)
+
+    assert X_coarse.shape == (86, 18)
+    assert y_coarse.shape == (18,)
+    assert X_coarse.sum() == pytest.approx(X.sum())
+    assert y_coarse.sum() == pytest.approx(y.sum())
+
+    target_matrix = np.column_stack([y, y * 2])
+    aggregated_target_matrix = aggregate_age_targets(target_matrix, bins)
+    assert aggregated_target_matrix.shape == (18, 2)
+    assert aggregated_target_matrix[:, 0].sum() == pytest.approx(y.sum())
+    assert aggregated_target_matrix[:, 1].sum() == pytest.approx((y * 2).sum())
 
 
 def test_legacy_flags_map_to_named_profile():

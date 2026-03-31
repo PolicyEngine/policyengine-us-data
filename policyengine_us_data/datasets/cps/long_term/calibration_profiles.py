@@ -11,6 +11,7 @@ class ApproximateCalibrationWindow:
     max_constraint_error_pct: float
     max_age_error_pct: float
     max_negative_weight_pct: float | None = 0.0
+    age_bucket_size: int | None = None
 
     def applies(self, year: int) -> bool:
         if year < self.start_year:
@@ -49,6 +50,7 @@ DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS = (
         max_constraint_error_pct=0.5,
         max_age_error_pct=0.5,
         max_negative_weight_pct=0.0,
+        age_bucket_size=5,
     ),
     ApproximateCalibrationWindow(
         start_year=2079,
@@ -56,6 +58,7 @@ DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS = (
         max_constraint_error_pct=10.0,
         max_age_error_pct=10.0,
         max_negative_weight_pct=0.0,
+        age_bucket_size=5,
     ),
     ApproximateCalibrationWindow(
         start_year=2086,
@@ -63,6 +66,7 @@ DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS = (
         max_constraint_error_pct=20.0,
         max_age_error_pct=20.0,
         max_negative_weight_pct=0.0,
+        age_bucket_size=5,
     ),
     ApproximateCalibrationWindow(
         start_year=2096,
@@ -70,6 +74,7 @@ DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS = (
         max_constraint_error_pct=35.0,
         max_age_error_pct=35.0,
         max_negative_weight_pct=0.0,
+        age_bucket_size=5,
     ),
 )
 

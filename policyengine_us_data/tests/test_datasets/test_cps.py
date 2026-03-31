@@ -26,8 +26,9 @@ def test_cps_has_fsla_overtime_premium():
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=CPS_2024)
-    # Ensure we impute around 70 billion in overtime premium with 20% error bounds.
-    OVERTIME_PREMIUM_TARGET = 70e9
+    # ORG-backed hourly-pay data materially increases modeled overtime premium.
+    # Keep a broad sanity band around the new CPS aggregate level.
+    OVERTIME_PREMIUM_TARGET = 130e9
     RELATIVE_TOLERANCE = 0.2
     assert (
         abs(sim.calculate("fsla_overtime_premium").sum() / OVERTIME_PREMIUM_TARGET - 1)

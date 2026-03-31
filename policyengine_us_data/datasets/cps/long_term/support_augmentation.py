@@ -62,10 +62,30 @@ class CompositePayrollRule:
 
 
 @dataclass(frozen=True)
+class SinglePersonSyntheticGridRule:
+    name: str
+    template_min_max_age: int
+    template_max_max_age: int
+    target_ages: tuple[int, ...]
+    ss_quantiles: tuple[float, ...]
+    payroll_quantiles: tuple[float, ...]
+    template_ss_state: ConstraintState = "positive"
+    template_payroll_state: ConstraintState = "any"
+    payroll_donor_min_max_age: int = 45
+    payroll_donor_max_max_age: int = 64
+    payroll_donor_ss_state: ConstraintState = "nonpositive"
+    payroll_donor_payroll_state: ConstraintState = "positive"
+    payroll_scale_factors: tuple[float, ...] = (1.0,)
+    clone_weight_scale: float = 0.1
+
+
+@dataclass(frozen=True)
 class SupportAugmentationProfile:
     name: str
     description: str
-    rules: tuple[AgeShiftCloneRule | CompositePayrollRule, ...]
+    rules: tuple[
+        AgeShiftCloneRule | CompositePayrollRule | SinglePersonSyntheticGridRule, ...
+    ]
 
 
 LATE_CLONE_V1 = SupportAugmentationProfile(
@@ -259,12 +279,88 @@ LATE_COMPOSITE_V2 = SupportAugmentationProfile(
     ),
 )
 
+LATE_SYNTHETIC_GRID_V1 = SupportAugmentationProfile(
+    name="late-synthetic-grid-v1",
+    description=(
+        "Appended synthetic single-person older households on an explicit "
+        "age/SS/payroll grid, preserving the base CPS support untouched."
+    ),
+    rules=(
+        SinglePersonSyntheticGridRule(
+            name="single_75_84_grid",
+            template_min_max_age=75,
+            template_max_max_age=84,
+            target_ages=(77, 82),
+            ss_quantiles=(0.25, 0.5, 0.75),
+            payroll_quantiles=(0.25, 0.5, 0.75),
+            template_ss_state="positive",
+            template_payroll_state="any",
+            payroll_donor_min_max_age=45,
+            payroll_donor_max_max_age=64,
+            clone_weight_scale=0.1,
+        ),
+        SinglePersonSyntheticGridRule(
+            name="single_85_plus_grid",
+            template_min_max_age=85,
+            template_max_max_age=85,
+            target_ages=(85,),
+            ss_quantiles=(0.25, 0.5, 0.75),
+            payroll_quantiles=(0.25, 0.5, 0.75),
+            template_ss_state="positive",
+            template_payroll_state="any",
+            payroll_donor_min_max_age=45,
+            payroll_donor_max_max_age=64,
+            clone_weight_scale=0.08,
+        ),
+    ),
+)
+
+LATE_SYNTHETIC_GRID_V2 = SupportAugmentationProfile(
+    name="late-synthetic-grid-v2",
+    description=(
+        "Appended synthetic older-worker grid with more extreme payroll levels "
+        "to test whether older payroll intensity alone can move the late frontier."
+    ),
+    rules=(
+        SinglePersonSyntheticGridRule(
+            name="single_75_84_extreme_grid",
+            template_min_max_age=75,
+            template_max_max_age=84,
+            target_ages=(77, 82),
+            ss_quantiles=(0.25, 0.5, 0.75),
+            payroll_quantiles=(0.25, 0.5, 0.75),
+            payroll_scale_factors=(1.0, 2.0, 4.0),
+            template_ss_state="positive",
+            template_payroll_state="any",
+            payroll_donor_min_max_age=45,
+            payroll_donor_max_max_age=64,
+            clone_weight_scale=0.08,
+        ),
+        SinglePersonSyntheticGridRule(
+            name="single_85_plus_extreme_grid",
+            template_min_max_age=85,
+            template_max_max_age=85,
+            target_ages=(85,),
+            ss_quantiles=(0.25, 0.5, 0.75),
+            payroll_quantiles=(0.25, 0.5, 0.75),
+            payroll_scale_factors=(1.0, 2.0, 4.0),
+            template_ss_state="positive",
+            template_payroll_state="any",
+            payroll_donor_min_max_age=45,
+            payroll_donor_max_max_age=64,
+            clone_weight_scale=0.06,
+        ),
+    ),
+)
+
 
 NAMED_SUPPORT_AUGMENTATION_PROFILES = {
     LATE_CLONE_V1.name: LATE_CLONE_V1,
     LATE_CLONE_V2.name: LATE_CLONE_V2,
     LATE_COMPOSITE_V1.name: LATE_COMPOSITE_V1,
     LATE_COMPOSITE_V2.name: LATE_COMPOSITE_V2,
+    LATE_SYNTHETIC_GRID_V1.name: LATE_SYNTHETIC_GRID_V1,
+    LATE_SYNTHETIC_GRID_V2.name: LATE_SYNTHETIC_GRID_V2,
 }
 
 
@@ -330,6 +426,11 @@ def household_support_summary(
     summary["payroll_total"] = summary[
         [_period_column(component, base_year) for component in PAYROLL_COMPONENTS]
     ].sum(axis=1)
+    summary["household_size"] = (
+        input_df.groupby(household_id_col, sort=False)
+        [_period_column(PERSON_ID_COLUMN, base_year)]
+        .count()
+    )
     return summary
 
 
@@ -343,11 +444,26 @@ def _match_state(values: pd.Series, state: ConstraintState) -> pd.Series:
     raise ValueError(f"Unsupported state '{state}'")
 
 
+def _age_range_mask(
+    ages: pd.Series,
+    *,
+    min_max_age: int,
+    max_max_age: int,
+) -> pd.Series:
+    if min_max_age == 85 and max_max_age == 85:
+        return ages >= 85
+    return ages.between(min_max_age, max_max_age)
+
+
 def select_donor_households(
     summary: pd.DataFrame,
     rule: AgeShiftCloneRule,
 ) -> pd.Index:
-    age_mask = summary["max_age"].between(rule.min_max_age, rule.max_max_age)
+    age_mask = _age_range_mask(
+        summary["max_age"],
+        min_max_age=rule.min_max_age,
+        max_max_age=rule.max_max_age,
+    )
     positive_weight_mask = summary["baseline_weight"] > 0
     ss_mask = _match_state(summary["ss_total"], rule.ss_state)
     payroll_mask = _match_state(summary["payroll_total"], rule.payroll_state)
@@ -362,7 +478,11 @@ def select_households_for_composite_rule(
     ss_state: ConstraintState,
     payroll_state: ConstraintState,
 ) -> pd.Index:
-    age_mask = summary["max_age"].between(min_max_age, max_max_age)
+    age_mask = _age_range_mask(
+        summary["max_age"],
+        min_max_age=min_max_age,
+        max_max_age=max_max_age,
+    )
     positive_weight_mask = summary["baseline_weight"] > 0
     ss_mask = _match_state(summary["ss_total"], ss_state)
     payroll_mask = _match_state(summary["payroll_total"], payroll_state)
@@ -643,6 +763,141 @@ def synthesize_composite_households(
     )
 
 
+def synthesize_single_person_grid_households(
+    input_df: pd.DataFrame,
+    *,
+    base_year: int,
+    summary: pd.DataFrame,
+    rule: SinglePersonSyntheticGridRule,
+    id_counters: dict[str, int] | None = None,
+) -> tuple[pd.DataFrame, dict[str, int], dict[str, Any]]:
+    template_ids = select_households_for_composite_rule(
+        summary[summary["household_size"] == 1],
+        min_max_age=rule.template_min_max_age,
+        max_max_age=rule.template_max_max_age,
+        ss_state=rule.template_ss_state,
+        payroll_state=rule.template_payroll_state,
+    )
+    donor_ids = select_households_for_composite_rule(
+        summary[summary["household_size"] == 1],
+        min_max_age=rule.payroll_donor_min_max_age,
+        max_max_age=rule.payroll_donor_max_max_age,
+        ss_state=rule.payroll_donor_ss_state,
+        payroll_state=rule.payroll_donor_payroll_state,
+    )
+    if template_ids.empty or donor_ids.empty:
+        return (
+            input_df.iloc[0:0].copy(),
+            id_counters.copy() if id_counters is not None else {},
+            {
+                "rule": rule.name,
+                "template_household_count": int(len(template_ids)),
+                "payroll_donor_household_count": int(len(donor_ids)),
+                "synthetic_household_count": 0,
+                "synthetic_person_count": 0,
+            },
+        )
+
+    household_id_col = _period_column("household_id", base_year)
+    age_col = _period_column("age", base_year)
+    person_id_col = _period_column(PERSON_ID_COLUMN, base_year)
+    household_weight_col = _period_column("household_weight", base_year)
+    person_weight_col = _period_column("person_weight", base_year)
+    employment_col = _period_column("employment_income_before_lsr", base_year)
+    self_employment_col = _period_column("self_employment_income_before_lsr", base_year)
+    qbi_col = _period_column("w2_wages_from_qualified_business", base_year)
+
+    template_rows = (
+        input_df[input_df[household_id_col].isin(template_ids)]
+        .sort_values([age_col, household_id_col])
+        .copy()
+    )
+    ss_values = summary.loc[template_ids, "ss_total"].astype(float)
+    payroll_values = summary.loc[donor_ids, "payroll_total"].astype(float)
+    ss_targets = [float(ss_values.quantile(q)) for q in rule.ss_quantiles]
+    payroll_targets = [
+        float(payroll_values.quantile(q) * scale_factor)
+        for q in rule.payroll_quantiles
+        for scale_factor in rule.payroll_scale_factors
+    ]
+
+    next_ids = (
+        id_counters.copy()
+        if id_counters is not None
+        else {
+            entity_name: _next_entity_id(
+                input_df[_period_column(columns[0], base_year)]
+            )
+            for entity_name, columns in ENTITY_ID_COLUMNS.items()
+        }
+    )
+    if "person" not in next_ids:
+        next_ids["person"] = _next_entity_id(input_df[person_id_col])
+
+    synthetic_rows = []
+    template_records = template_rows.to_dict("records")
+    template_index = 0
+    for target_age in rule.target_ages:
+        for ss_target in ss_targets:
+            for payroll_target in payroll_targets:
+                base_row = template_records[template_index % len(template_records)].copy()
+                template_index += 1
+                household_id = next_ids["household"]
+                next_ids["household"] += 1
+                person_id = next_ids["person"]
+                next_ids["person"] += 1
+
+                for entity_name, columns in ENTITY_ID_COLUMNS.items():
+                    entity_id = next_ids[entity_name]
+                    next_ids[entity_name] += 1
+                    for raw_column in columns:
+                        column = _period_column(raw_column, base_year)
+                        base_row[column] = entity_id
+
+                base_row[household_id_col] = household_id
+                base_row[_period_column("person_household_id", base_year)] = household_id
+                base_row[person_id_col] = person_id
+                base_row[age_col] = float(target_age)
+                base_row[_period_column("social_security_retirement", base_year)] = float(
+                    ss_target
+                )
+                base_row[_period_column("social_security_disability", base_year)] = 0.0
+                base_row[_period_column("social_security_survivors", base_year)] = 0.0
+                base_row[_period_column("social_security_dependents", base_year)] = 0.0
+                base_row[employment_col] = float(payroll_target)
+                base_row[self_employment_col] = 0.0
+                if qbi_col in base_row:
+                    base_row[qbi_col] = 0.0
+                if household_weight_col in base_row:
+                    base_row[household_weight_col] = (
+                        float(base_row[household_weight_col]) * rule.clone_weight_scale
+                    )
+                if person_weight_col in base_row:
+                    base_row[person_weight_col] = (
+                        float(base_row[person_weight_col]) * rule.clone_weight_scale
+                    )
+                synthetic_rows.append(base_row)
+
+    synthetic_df = pd.DataFrame(synthetic_rows, columns=input_df.columns)
+    return (
+        synthetic_df,
+        next_ids,
+        {
+            "rule": rule.name,
+            "template_household_count": int(len(template_ids)),
+            "payroll_donor_household_count": int(len(donor_ids)),
+            "synthetic_household_count": int(
+                synthetic_df[household_id_col].nunique()
+            ),
+            "synthetic_person_count": int(len(synthetic_df)),
+            "target_age_count": int(len(rule.target_ages)),
+            "ss_grid_size": int(len(rule.ss_quantiles)),
+            "payroll_grid_size": int(len(rule.payroll_quantiles)),
+            "payroll_scale_factor_count": int(len(rule.payroll_scale_factors)),
+        },
+    )
+
+
 def augment_input_dataframe(
     input_df: pd.DataFrame,
     *,
@@ -693,15 +948,27 @@ def augment_input_dataframe(
             )
             continue
 
-        composite_df, id_counters, composite_report = synthesize_composite_households(
+        if isinstance(rule, CompositePayrollRule):
+            composite_df, id_counters, composite_report = synthesize_composite_households(
+                input_df,
+                base_year=base_year,
+                summary=summary,
+                rule=rule,
+                id_counters=id_counters,
+            )
+            clone_frames.append(composite_df)
+            rule_reports.append(composite_report)
+            continue
+
+        synthetic_df, id_counters, synthetic_report = synthesize_single_person_grid_households(
             input_df,
             base_year=base_year,
             summary=summary,
             rule=rule,
             id_counters=id_counters,
         )
-        clone_frames.append(composite_df)
-        rule_reports.append(composite_report)
+        clone_frames.append(synthetic_df)
+        rule_reports.append(synthetic_report)
 
     if clone_frames:
         augmented_df = pd.concat([input_df, *clone_frames], ignore_index=True)

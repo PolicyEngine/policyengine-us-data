@@ -36,6 +36,7 @@ from policyengine_us_data.datasets.cps.long_term.ssa_data import (
 from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
     AgeShiftCloneRule,
     CompositePayrollRule,
+    SinglePersonSyntheticGridRule,
     SupportAugmentationProfile,
     augment_input_dataframe,
     household_support_summary,
@@ -180,6 +181,68 @@ def test_support_augmentation_synthesizes_composite_payroll_household():
     assert cloned_rows["age__2024"].max() == pytest.approx(80.0)
     assert cloned_rows["social_security_retirement__2024"].sum() == pytest.approx(30_000.0)
     assert cloned_rows["employment_income_before_lsr__2024"].sum() == pytest.approx(37_000.0)
+
+
+def test_support_augmentation_appends_single_person_synthetic_grid_households():
+    import pandas as pd
+
+    df = pd.DataFrame(
+        {
+            "person_id__2024": [101, 201, 301],
+            "household_id__2024": [1, 2, 3],
+            "person_household_id__2024": [1, 2, 3],
+            "family_id__2024": [11.0, 21.0, 31.0],
+            "person_family_id__2024": [11, 21, 31],
+            "tax_unit_id__2024": [101, 201, 301],
+            "person_tax_unit_id__2024": [101, 201, 301],
+            "spm_unit_id__2024": [1001, 2001, 3001],
+            "person_spm_unit_id__2024": [1001, 2001, 3001],
+            "marital_unit_id__2024": [501, 601, 701],
+            "person_marital_unit_id__2024": [501, 601, 701],
+            "age__2024": [78.0, 86.0, 60.0],
+            "household_weight__2024": [10.0, 8.0, 5.0],
+            "person_weight__2024": [10.0, 8.0, 5.0],
+            "social_security_retirement__2024": [20_000.0, 24_000.0, 0.0],
+            "social_security_disability__2024": [0.0, 0.0, 0.0],
+            "social_security_survivors__2024": [0.0, 0.0, 0.0],
+            "social_security_dependents__2024": [0.0, 0.0, 0.0],
+            "employment_income_before_lsr__2024": [0.0, 0.0, 50_000.0],
+            "self_employment_income_before_lsr__2024": [0.0, 0.0, 0.0],
+            "w2_wages_from_qualified_business__2024": [0.0, 0.0, 0.0],
+        }
+    )
+    profile = SupportAugmentationProfile(
+        name="grid-profile",
+        description="Toy single-person synthetic grid.",
+        rules=(
+                SinglePersonSyntheticGridRule(
+                    name="older_grid",
+                    template_min_max_age=75,
+                    template_max_max_age=86,
+                    target_ages=(77, 85),
+                    ss_quantiles=(0.5,),
+                    payroll_quantiles=(0.5,),
+                template_ss_state="positive",
+                template_payroll_state="any",
+                payroll_donor_min_max_age=55,
+                payroll_donor_max_max_age=64,
+                clone_weight_scale=0.2,
+            ),
+        ),
+    )
+    augmented_df, report = augment_input_dataframe(
+        df,
+        base_year=2024,
+        profile=profile,
+    )
+    assert report["base_household_count"] == 3
+    assert report["augmented_household_count"] == 5
+    synthetic_household_ids = set(augmented_df["household_id__2024"].unique()) - {1, 2, 3}
+    assert len(synthetic_household_ids) == 2
+    synthetic_rows = augmented_df[augmented_df["household_id__2024"].isin(synthetic_household_ids)]
+    assert set(synthetic_rows["age__2024"].tolist()) == {77.0, 85.0}
+    assert set(synthetic_rows["social_security_retirement__2024"].tolist()) == {22_000.0}
+    assert set(synthetic_rows["employment_income_before_lsr__2024"].tolist()) == {50_000.0}
 
 
 def test_age_bin_helpers_preserve_population_totals():

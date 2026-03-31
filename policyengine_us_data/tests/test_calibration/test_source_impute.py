@@ -15,11 +15,13 @@ from policyengine_us_data.calibration.source_impute import (
     SIPP_IMPUTED_VARIABLES,
     SIPP_TIPS_PREDICTORS,
     _impute_acs,
+    _impute_org,
     _impute_scf,
     _impute_sipp,
     _person_state_fips,
     impute_source_variables,
 )
+from policyengine_us_data.datasets.org import ORG_IMPUTED_VARIABLES
 
 
 def _make_data_dict(n_persons=20, time_period=2024):
@@ -47,6 +49,11 @@ def _make_data_dict(n_persons=20, time_period=2024):
         "bank_account_assets": {time_period: np.zeros(n_persons)},
         "stock_assets": {time_period: np.zeros(n_persons)},
         "bond_assets": {time_period: np.zeros(n_persons)},
+        "hourly_wage": {time_period: np.zeros(n_persons)},
+        "is_paid_hourly": {time_period: np.zeros(n_persons, dtype=bool)},
+        "is_union_member_or_covered": {
+            time_period: np.zeros(n_persons, dtype=bool),
+        },
         "net_worth": {time_period: np.zeros(n_persons)},
         "auto_loan_balance": {time_period: np.zeros(n_persons)},
         "auto_loan_interest": {time_period: np.zeros(n_persons)},
@@ -69,9 +76,17 @@ class TestConstants:
         assert "auto_loan_balance" in SCF_IMPUTED_VARIABLES
         assert "auto_loan_interest" in SCF_IMPUTED_VARIABLES
 
+    def test_org_variables_defined(self):
+        assert "hourly_wage" in ORG_IMPUTED_VARIABLES
+        assert "is_paid_hourly" in ORG_IMPUTED_VARIABLES
+        assert "is_union_member_or_covered" in ORG_IMPUTED_VARIABLES
+
     def test_all_source_variables_defined(self):
         expected = (
-            ACS_IMPUTED_VARIABLES + SIPP_IMPUTED_VARIABLES + SCF_IMPUTED_VARIABLES
+            ACS_IMPUTED_VARIABLES
+            + SIPP_IMPUTED_VARIABLES
+            + ORG_IMPUTED_VARIABLES
+            + SCF_IMPUTED_VARIABLES
         )
         assert ALL_SOURCE_VARIABLES == expected
 
@@ -115,6 +130,7 @@ class TestImputeSourceVariables:
             time_period=2024,
             skip_acs=True,
             skip_sipp=True,
+            skip_org=True,
             skip_scf=True,
         )
         assert isinstance(result, dict)
@@ -131,6 +147,7 @@ class TestImputeSourceVariables:
             time_period=2024,
             skip_acs=True,
             skip_sipp=True,
+            skip_org=True,
             skip_scf=True,
         )
 
@@ -138,6 +155,8 @@ class TestImputeSourceVariables:
             "rent",
             "real_estate_taxes",
             "tip_income",
+            "hourly_wage",
+            "is_union_member_or_covered",
             "net_worth",
         ]:
             np.testing.assert_array_equal(result[var][2024], data[var][2024])
@@ -152,6 +171,7 @@ class TestImputeSourceVariables:
             time_period=2024,
             skip_acs=True,
             skip_sipp=True,
+            skip_org=True,
             skip_scf=True,
         )
 
@@ -202,6 +222,9 @@ class TestSubfunctions:
 
     def test_impute_sipp_exists(self):
         assert callable(_impute_sipp)
+
+    def test_impute_org_exists(self):
+        assert callable(_impute_org)
 
     def test_impute_scf_exists(self):
         assert callable(_impute_scf)

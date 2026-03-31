@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+from policyengine_us_data.datasets.cps import cps as cps_module
 from policyengine_us_data.datasets.org import (
     apply_org_domain_constraints,
     build_org_receiver_frame,
@@ -196,3 +197,58 @@ def test_predict_union_coverage_from_bls_tables_matches_state_targets():
     assert int(first[:n_california].sum()) == 3
     assert int(first[n_california : n_california + n_north_carolina].sum()) == 1
     assert first[-1] == 0
+
+
+def test_add_org_labor_market_inputs_handles_nonsequential_household_index(
+    monkeypatch,
+):
+    cps = {
+        "household_id": np.array([10, 20], dtype=np.int64),
+        "person_household_id": np.array([20, 10], dtype=np.int64),
+        "state_fips": pd.Series([6.0, 36.0], index=[100, 200]),
+        "age": np.array([30.0, 40.0]),
+        "is_female": np.array([0.0, 1.0]),
+        "is_hispanic": np.array([0.0, 0.0]),
+        "cps_race": np.array([1.0, 2.0]),
+        "employment_income": np.array([50_000.0, 60_000.0]),
+        "weekly_hours_worked": np.array([40.0, 40.0]),
+    }
+    captured_state_fips = {}
+
+    def fake_build_org_receiver_frame(**kwargs):
+        captured_state_fips["value"] = kwargs["state_fips"]
+        return pd.DataFrame(kwargs)
+
+    def fake_predict_org_features(receiver, self_employment_income):
+        assert np.array_equal(self_employment_income, np.zeros(len(receiver)))
+        return pd.DataFrame(
+            {
+                "hourly_wage": np.array([20.0, 30.0]),
+                "is_paid_hourly": np.array([1.0, 0.0]),
+                "is_union_member_or_covered": np.array([0.0, 1.0]),
+            }
+        )
+
+    monkeypatch.setattr(
+        cps_module,
+        "build_org_receiver_frame",
+        fake_build_org_receiver_frame,
+    )
+    monkeypatch.setattr(
+        cps_module,
+        "predict_org_features",
+        fake_predict_org_features,
+    )
+
+    cps_module.add_org_labor_market_inputs(cps)
+
+    np.testing.assert_array_equal(
+        captured_state_fips["value"],
+        np.array([36.0, 6.0], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(cps["hourly_wage"], np.array([20.0, 30.0]))
+    np.testing.assert_array_equal(cps["is_paid_hourly"], np.array([True, False]))
+    np.testing.assert_array_equal(
+        cps["is_union_member_or_covered"],
+        np.array([False, True]),
+    )

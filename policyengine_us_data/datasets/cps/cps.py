@@ -1838,9 +1838,12 @@ def add_tips(self, cps: h5py.File):
 
 def add_org_labor_market_inputs(cps: h5py.File) -> None:
     """Impute ORG-derived wage and union inputs onto CPS persons."""
-    household_ids = cps["household_id"]
-    person_household_ids = cps["person_household_id"]
-    household_state_fips = cps["state_fips"]
+    household_ids = np.asarray(cps["household_id"], dtype=np.int64)
+    person_household_ids = np.asarray(
+        cps["person_household_id"],
+        dtype=np.int64,
+    )
+    household_state_fips = np.asarray(cps["state_fips"], dtype=np.float32)
     household_index = {
         int(household_id): i for i, household_id in enumerate(household_ids)
     }

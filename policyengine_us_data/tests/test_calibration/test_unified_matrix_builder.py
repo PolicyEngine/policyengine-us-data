@@ -275,9 +275,10 @@ class TestQueryTargets(unittest.TestCase):
         self.assertEqual(float(baseline_rows.iloc[0]["value"]), 10000.0)
 
     def test_legacy_target_overview_without_reform_id(self):
+        b = self._make_builder()
         _create_legacy_target_overview(self.engine)
         try:
-            b = self._make_builder()
+            b._target_overview_columns = None
             df = b._query_targets({"domain_variables": ["aca_ptc"]})
             self.assertGreater(len(df), 0)
             self.assertIn("reform_id", df.columns)

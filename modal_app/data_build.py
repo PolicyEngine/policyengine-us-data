@@ -167,10 +167,32 @@ def get_current_commit() -> str:
         return "unknown"
 
 
+def _get_storage_folder() -> Path:
+    """Resolve the installed package's STORAGE_FOLDER path.
+
+    This is where Dataset classes (CPS_2024, etc.) look for H5 files.
+    In an editable install it matches the source tree; in a regular
+    install it's inside .venv/lib/.../site-packages/.
+    """
+    try:
+        from policyengine_us_data.storage import STORAGE_FOLDER
+
+        return Path(STORAGE_FOLDER)
+    except ImportError:
+        # Fallback if package not importable (shouldn't happen in
+        # the Modal image, but safe for local dev)
+        return Path("policyengine_us_data/storage")
+
+
 def get_checkpoint_path(branch: str, output_file: str) -> Path:
-    """Get the checkpoint path for an output file, scoped by branch and commit."""
+    """Get the checkpoint path for an output file, scoped by branch and commit.
+
+    Preserves the relative path structure to avoid filename collisions
+    (e.g., calibration/policy_data.db stays distinct from policy_data.db).
+    """
     commit = get_current_commit()
-    return Path(VOLUME_MOUNT) / branch / commit / Path(output_file).name
+    # Use the relative path as-is (not just filename) to avoid collisions
+    return Path(VOLUME_MOUNT) / branch / commit / output_file
 
 
 def is_checkpointed(branch: str, output_file: str) -> bool:
@@ -183,13 +205,44 @@ def is_checkpointed(branch: str, output_file: str) -> bool:
     return False
 
 
+def _resolve_local_path(output_file: str) -> Path:
+    """Resolve where a checkpointed file should be restored to.
+
+    Maps the relative source-tree path to the installed package's
+    STORAGE_FOLDER so that Dataset classes can find the files.
+    """
+    output_path = Path(output_file)
+    storage_folder = _get_storage_folder()
+
+    # Files under policyengine_us_data/storage/ get mapped to
+    # the installed package's STORAGE_FOLDER
+    storage_prefix = Path("policyengine_us_data/storage")
+    try:
+        relative = output_path.relative_to(storage_prefix)
+        return storage_folder / relative
+    except ValueError:
+        # Not under storage/ — use the path as-is (relative to cwd)
+        return output_path
+
+
 def restore_from_checkpoint(branch: str, output_file: str) -> bool:
-    """Restore output file from checkpoint volume if it exists."""
+    """Restore output file from checkpoint volume to STORAGE_FOLDER.
+
+    Writes to the installed package's storage directory so that
+    Dataset classes (which use STORAGE_FOLDER) can find the files.
+    """
     checkpoint_path = get_checkpoint_path(branch, output_file)
     if checkpoint_path.exists() and checkpoint_path.stat().st_size > 0:
-        local_path = Path(output_file)
+        local_path = _resolve_local_path(output_file)
         local_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(checkpoint_path, local_path)
+        # Also restore to the source-tree relative path so that
+        # scripts run via subprocess (which use cwd-relative paths)
+        # can find the file.
+        source_path = Path(output_file)
+        if source_path != local_path:
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(checkpoint_path, source_path)
         print(f"Restored from checkpoint: {output_file}")
         return True
     return False
@@ -200,12 +253,24 @@ def save_checkpoint(
     output_file: str,
     volume: modal.Volume,
 ) -> None:
-    """Save output file to checkpoint volume."""
-    local_path = Path(output_file)
+    """Save output file to checkpoint volume.
+
+    Checks both the installed package path and the source-tree
+    relative path to find the file.
+    """
+    local_path = _resolve_local_path(output_file)
+    source_path = Path(output_file)
+    # Try installed path first, fall back to source-tree path
+    actual_path = None
     if local_path.exists() and local_path.stat().st_size > 0:
+        actual_path = local_path
+    elif source_path.exists() and source_path.stat().st_size > 0:
+        actual_path = source_path
+
+    if actual_path:
         checkpoint_path = get_checkpoint_path(branch, output_file)
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(local_path, checkpoint_path)
+        shutil.copy2(actual_path, checkpoint_path)
         with _volume_lock:
             volume.commit()
         print(f"Checkpointed: {output_file}")
@@ -734,6 +799,9 @@ def run_single_script(
     setup_gcp_credentials()
     os.chdir("/root/policyengine-us-data")
 
+    # Reload volume to see writes from prior --script containers
+    checkpoint_volume.reload()
+
     # Resolve short name to full path
     script_path = SCRIPT_SHORT_NAMES.get(script_name, script_name)
 
@@ -821,6 +889,9 @@ def run_integration_test(
     """
     setup_gcp_credentials()
     os.chdir("/root/policyengine-us-data")
+
+    # Reload volume to see writes from prior containers
+    checkpoint_volume.reload()
 
     # Restore all prerequisites and dataset outputs
     for prereq in PREREQUISITE_FILES:

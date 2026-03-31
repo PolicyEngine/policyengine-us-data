@@ -9,6 +9,7 @@ from policyengine_us_data.datasets.cps.long_term.calibration import (
     assess_nonnegative_feasibility,
     build_calibration_audit,
     calibrate_entropy,
+    calibrate_entropy_bounded,
     calibrate_weights,
 )
 from policyengine_us_data.datasets.cps.long_term.calibration_artifacts import (
@@ -608,7 +609,29 @@ def test_entropy_calibration_produces_nonnegative_weights_and_hits_targets():
     np.testing.assert_allclose(np.dot(payroll_values, weights), payroll_target, rtol=1e-8, atol=1e-8)
 
 
-def test_entropy_calibration_can_fall_back_to_lp_approximate_solution():
+def test_bounded_entropy_calibration_returns_positive_approximate_weights():
+    X = np.array(
+        [
+            [1.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ]
+    )
+    y_target = np.array([1.0, 1.0, 3.0])
+    baseline_weights = np.array([1.0, 1.0])
+
+    weights, _, info = calibrate_entropy_bounded(
+        X=X,
+        y_target=y_target,
+        baseline_weights=baseline_weights,
+        n_ages=3,
+        max_constraint_error_pct=40.0,
+    )
+
+    assert info["best_case_max_pct_error"] <= 40.0
+    assert np.all(weights > 0)
+
+
+def test_entropy_calibration_prefers_bounded_entropy_over_lp_approximate_solution():
     X = np.array(
         [
             [1.0, 0.0, 1.0],
@@ -629,9 +652,9 @@ def test_entropy_calibration_can_fall_back_to_lp_approximate_solution():
     )
 
     assert audit["approximate_solution_used"] is True
-    assert audit["approximation_method"] == "lp_minimax"
+    assert audit["approximation_method"] == "bounded_entropy"
     assert audit["approximate_solution_error_pct"] > 10.0
-    assert np.all(weights >= 0)
+    assert np.all(weights > 0)
 
 
 def test_entropy_calibration_uses_lp_exact_fallback_even_before_approximate_window(
@@ -644,7 +667,7 @@ def test_entropy_calibration_uses_lp_exact_fallback_even_before_approximate_wind
     )
     monkeypatch.setattr(
         calibration_module,
-        "calibrate_entropy_approximate",
+        "calibrate_lp_minimax",
         lambda *args, **kwargs: (
             np.array([1.0, 2.0]),
             1,

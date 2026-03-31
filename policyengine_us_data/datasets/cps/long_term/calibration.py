@@ -383,7 +383,223 @@ def calibrate_entropy(
     return weights, iterations
 
 
-def calibrate_entropy_approximate(
+def calibrate_entropy_bounded(
+    X,
+    y_target,
+    baseline_weights,
+    ss_values=None,
+    ss_target=None,
+    payroll_values=None,
+    payroll_target=None,
+    h6_income_values=None,
+    h6_revenue_target=None,
+    oasdi_tob_values=None,
+    oasdi_tob_target=None,
+    hi_tob_values=None,
+    hi_tob_target=None,
+    n_ages=86,
+    max_constraint_error_pct=0.0,
+    max_iters=500,
+    tol=1e-9,
+    warm_weights=None,
+):
+    """
+    Approximate positive calibration via entropy balancing inside an error box.
+
+    This keeps the entropy objective, but relaxes the constraints to
+    `|A'w - y| / scale <= epsilon` where `epsilon` is the allowed maximum
+    percent error and `scale = max(|target|, 1)`. It is much denser than the
+    LP minimax solution and is therefore a better approximate microsimulation
+    fallback when exact calibration is infeasible.
+    """
+
+    aux_df, controls = _build_constraint_dataframe_and_controls(
+        X,
+        y_target,
+        ss_values=ss_values,
+        ss_target=ss_target,
+        payroll_values=payroll_values,
+        payroll_target=payroll_target,
+        h6_income_values=h6_income_values,
+        h6_revenue_target=h6_revenue_target,
+        oasdi_tob_values=oasdi_tob_values,
+        oasdi_tob_target=oasdi_tob_target,
+        hi_tob_values=hi_tob_values,
+        hi_tob_target=hi_tob_target,
+        n_ages=n_ages,
+    )
+
+    A = aux_df.to_numpy(dtype=float)
+    targets = np.array(list(controls.values()), dtype=float)
+    baseline_weights = np.asarray(baseline_weights, dtype=float)
+
+    epsilon = max(float(max_constraint_error_pct) / 100.0, 0.0)
+    scales = np.maximum(np.abs(targets), 1.0)
+    A_scaled = A / scales
+    targets_scaled = targets / scales
+    lower_bounds = targets_scaled - epsilon
+    upper_bounds = targets_scaled + epsilon
+
+    gram = A_scaled.T @ (baseline_weights[:, None] * A_scaled)
+    gram += np.eye(gram.shape[0]) * 1e-12
+    beta0 = np.linalg.solve(
+        gram,
+        targets_scaled - (A_scaled.T @ baseline_weights),
+    )
+
+    def objective_and_gradient(z):
+        n_constraints = len(targets_scaled)
+        alpha = z[:n_constraints]
+        gamma = z[n_constraints:]
+        beta = gamma - alpha
+        eta = np.clip(A_scaled @ beta, -700, 700)
+        exp_eta = np.exp(eta)
+        weights = baseline_weights * exp_eta
+        achieved = A_scaled.T @ weights
+        objective = float(np.sum(weights) + upper_bounds @ alpha - lower_bounds @ gamma)
+        gradient = np.concatenate(
+            [
+                upper_bounds - achieved,
+                achieved - lower_bounds,
+            ]
+        )
+        return objective, gradient, weights
+
+    starts = [
+        np.zeros(len(targets_scaled) * 2, dtype=float),
+        np.concatenate(
+            [
+                np.maximum(-beta0, 0.0),
+                np.maximum(beta0, 0.0),
+            ]
+        ),
+    ]
+
+    for weights_start in warm_weights or []:
+        weights_start = np.asarray(weights_start, dtype=float)
+        if weights_start.shape != baseline_weights.shape:
+            continue
+        ratios = np.clip(
+            weights_start / np.maximum(baseline_weights, 1e-300),
+            1e-300,
+            1e300,
+        )
+        beta_start, *_ = np.linalg.lstsq(
+            A_scaled,
+            np.log(ratios),
+            rcond=None,
+        )
+        starts.append(
+            np.concatenate(
+                [
+                    np.maximum(-beta_start, 0.0),
+                    np.maximum(beta_start, 0.0),
+                ]
+            )
+        )
+
+    best_result = None
+    best_weights = None
+    best_max_error_pct = float("inf")
+
+    for start in starts:
+        result = optimize.minimize(
+            lambda z: objective_and_gradient(z)[0],
+            start,
+            jac=lambda z: objective_and_gradient(z)[1],
+            method="L-BFGS-B",
+            bounds=[(0.0, None)] * len(start),
+            options={"maxiter": max_iters, "ftol": tol},
+        )
+
+        objective, gradient, weights = objective_and_gradient(result.x)
+        achieved = A_scaled.T @ weights
+        max_error_pct = float(
+            np.max(np.abs(achieved - targets_scaled)) * 100
+        )
+
+        if max_error_pct < best_max_error_pct:
+            best_result = result
+            best_weights = weights
+            best_max_error_pct = max_error_pct
+
+        if result.success and max_error_pct <= max_constraint_error_pct + 1e-6:
+            return (
+                np.asarray(weights, dtype=float),
+                int(result.nit),
+                {
+                    "success": True,
+                    "best_case_max_pct_error": max_error_pct,
+                    "status": int(result.status),
+                    "message": result.message,
+                },
+            )
+
+    if best_result is None or best_weights is None:
+        raise RuntimeError("Approximate bounded entropy calibration did not run.")
+
+    raise RuntimeError(
+        "Approximate bounded entropy calibration failed: "
+        f"best achieved max relative constraint error was "
+        f"{best_max_error_pct:.3f}%"
+    )
+
+
+def densify_lp_solution(
+    A,
+    targets,
+    baseline_weights,
+    lp_weights,
+    max_constraint_error_pct,
+    *,
+    iterations=30,
+):
+    """
+    Blend an LP solution back toward the baseline while staying inside the
+    allowed error band.
+
+    This preserves feasibility while avoiding the most extreme support collapse
+    of a pure LP basic-feasible-point solution.
+    """
+
+    A = np.asarray(A, dtype=float)
+    targets = np.asarray(targets, dtype=float)
+    baseline_weights = np.asarray(baseline_weights, dtype=float)
+    lp_weights = np.asarray(lp_weights, dtype=float)
+
+    scales = np.maximum(np.abs(targets), 1.0)
+    A_scaled = A / scales
+    targets_scaled = targets / scales
+
+    best_lambda = 0.0
+    best_weights = lp_weights.copy()
+    best_error_pct = float(
+        np.max(np.abs(A_scaled.T @ best_weights - targets_scaled)) * 100
+    )
+
+    lo = 0.0
+    hi = 1.0
+    for _ in range(iterations):
+        lam = (lo + hi) / 2.0
+        candidate_weights = (1.0 - lam) * lp_weights + lam * baseline_weights
+        candidate_error_pct = float(
+            np.max(np.abs(A_scaled.T @ candidate_weights - targets_scaled)) * 100
+        )
+        if candidate_error_pct <= max_constraint_error_pct + 1e-6:
+            best_lambda = lam
+            best_weights = candidate_weights
+            best_error_pct = candidate_error_pct
+            lo = lam
+        else:
+            hi = lam
+
+    return best_weights, {
+        "blend_lambda": best_lambda,
+        "best_case_max_pct_error": best_error_pct,
+    }
+
+
+def calibrate_lp_minimax(
     X,
     y_target,
     baseline_weights,
@@ -402,9 +618,9 @@ def calibrate_entropy_approximate(
     """
     Approximate nonnegative calibration via minimax relative-error LP.
 
-    This is the robust fallback when exact positive entropy calibration is
-    infeasible under the current support. It returns the best nonnegative
-    weight vector available under the requested constraints.
+    This is a robust feasibility fallback and certificate, but it tends to
+    produce sparse extreme-point solutions. Prefer bounded entropy when we want
+    approximate weights to remain usable as microsimulation support.
     """
 
     aux_df, controls = _build_constraint_dataframe_and_controls(
@@ -553,6 +769,8 @@ def calibrate_weights(
         "method_used": method,
         "greg_attempted": method == "greg",
         "greg_error": None,
+        "entropy_error": None,
+        "approximate_entropy_error": None,
         "fell_back_to_ipf": False,
         "lp_fallback_used": False,
         "approximate_solution_used": False,
@@ -619,7 +837,7 @@ def calibrate_weights(
             return w_new, iterations, audit
         except RuntimeError as error:
             audit["entropy_error"] = str(error)
-            w_new, iterations, feasibility = calibrate_entropy_approximate(
+            w_new, iterations, feasibility = calibrate_lp_minimax(
                 X,
                 y_target,
                 baseline_weights,
@@ -653,6 +871,81 @@ def calibrate_weights(
                     "Approximate entropy fallback exceeded allowable error: "
                     f"{approximate_error_pct:.3f}% > {approximate_max_error_pct:.3f}%"
                 ) from error
+
+            dense_lp_weights = None
+            dense_lp_info = None
+            try:
+                aux_df, controls = _build_constraint_dataframe_and_controls(
+                    X,
+                    y_target,
+                    ss_values=ss_values,
+                    ss_target=ss_target,
+                    payroll_values=payroll_values,
+                    payroll_target=payroll_target,
+                    h6_income_values=h6_income_values,
+                    h6_revenue_target=h6_revenue_target,
+                    oasdi_tob_values=oasdi_tob_values,
+                    oasdi_tob_target=oasdi_tob_target,
+                    hi_tob_values=hi_tob_values,
+                    hi_tob_target=hi_tob_target,
+                    n_ages=n_ages,
+                )
+                dense_lp_weights, dense_lp_info = densify_lp_solution(
+                    aux_df.to_numpy(dtype=float),
+                    np.array(list(controls.values()), dtype=float),
+                    baseline_weights,
+                    w_new,
+                    approximate_max_error_pct,
+                )
+            except Exception:
+                dense_lp_weights = None
+                dense_lp_info = None
+
+            if approximate_max_error_pct is not None:
+                try:
+                    warm_weights = [w_new]
+                    if dense_lp_weights is not None:
+                        warm_weights.insert(0, dense_lp_weights)
+                    bounded_weights, bounded_iterations, bounded_feasibility = (
+                        calibrate_entropy_bounded(
+                            X,
+                            y_target,
+                            baseline_weights,
+                            ss_values=ss_values,
+                            ss_target=ss_target,
+                            payroll_values=payroll_values,
+                            payroll_target=payroll_target,
+                            h6_income_values=h6_income_values,
+                            h6_revenue_target=h6_revenue_target,
+                            oasdi_tob_values=oasdi_tob_values,
+                            oasdi_tob_target=oasdi_tob_target,
+                            hi_tob_values=hi_tob_values,
+                            hi_tob_target=hi_tob_target,
+                            n_ages=n_ages,
+                            max_constraint_error_pct=approximate_max_error_pct,
+                            max_iters=max_iters * 10,
+                            tol=max(tol, 1e-10),
+                            warm_weights=warm_weights,
+                        )
+                    )
+                    audit["approximate_solution_used"] = True
+                    audit["approximation_method"] = "bounded_entropy"
+                    audit["approximate_solution_error_pct"] = float(
+                        bounded_feasibility["best_case_max_pct_error"]
+                    )
+                    return bounded_weights, bounded_iterations, audit
+                except RuntimeError as bounded_error:
+                    audit["approximate_entropy_error"] = str(bounded_error)
+
+            if dense_lp_weights is not None and dense_lp_info is not None:
+                audit["lp_fallback_used"] = True
+                audit["approximate_solution_used"] = True
+                audit["approximation_method"] = "lp_blend"
+                audit["approximate_solution_error_pct"] = float(
+                    dense_lp_info["best_case_max_pct_error"]
+                )
+                audit["lp_blend_lambda"] = float(dense_lp_info["blend_lambda"])
+                return dense_lp_weights, iterations, audit
 
             audit["lp_fallback_used"] = True
             audit["approximate_solution_used"] = True

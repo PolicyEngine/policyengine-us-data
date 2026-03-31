@@ -80,11 +80,30 @@ class SinglePersonSyntheticGridRule:
 
 
 @dataclass(frozen=True)
+class MixedAgeAppendRule:
+    name: str
+    recipient_min_max_age: int
+    recipient_max_max_age: int
+    donor_min_max_age: int
+    donor_max_max_age: int
+    recipient_ss_state: ConstraintState = "positive"
+    recipient_payroll_state: ConstraintState = "any"
+    donor_ss_state: ConstraintState = "nonpositive"
+    donor_payroll_state: ConstraintState = "positive"
+    donor_age_shift: int = 0
+    clone_weight_scale: float = 0.15
+
+
+@dataclass(frozen=True)
 class SupportAugmentationProfile:
     name: str
     description: str
     rules: tuple[
-        AgeShiftCloneRule | CompositePayrollRule | SinglePersonSyntheticGridRule, ...
+        AgeShiftCloneRule
+        | CompositePayrollRule
+        | SinglePersonSyntheticGridRule
+        | MixedAgeAppendRule,
+        ...
     ]
 
 
@@ -353,6 +372,41 @@ LATE_SYNTHETIC_GRID_V2 = SupportAugmentationProfile(
     ),
 )
 
+LATE_MIXED_HOUSEHOLD_V1 = SupportAugmentationProfile(
+    name="late-mixed-household-v1",
+    description=(
+        "Append synthetic mixed-age households by combining older beneficiary "
+        "households with a younger payroll-rich donor person as a separate "
+        "subunit in the same household."
+    ),
+    rules=(
+        MixedAgeAppendRule(
+            name="older_75_84_plus_prime_age_earner",
+            recipient_min_max_age=75,
+            recipient_max_max_age=84,
+            donor_min_max_age=35,
+            donor_max_max_age=64,
+            recipient_ss_state="positive",
+            recipient_payroll_state="any",
+            donor_ss_state="nonpositive",
+            donor_payroll_state="positive",
+            clone_weight_scale=0.12,
+        ),
+        MixedAgeAppendRule(
+            name="older_85_plus_prime_age_earner",
+            recipient_min_max_age=85,
+            recipient_max_max_age=85,
+            donor_min_max_age=35,
+            donor_max_max_age=64,
+            recipient_ss_state="positive",
+            recipient_payroll_state="any",
+            donor_ss_state="nonpositive",
+            donor_payroll_state="positive",
+            clone_weight_scale=0.08,
+        ),
+    ),
+)
+
 
 NAMED_SUPPORT_AUGMENTATION_PROFILES = {
     LATE_CLONE_V1.name: LATE_CLONE_V1,
@@ -361,6 +415,7 @@ NAMED_SUPPORT_AUGMENTATION_PROFILES = {
     LATE_COMPOSITE_V2.name: LATE_COMPOSITE_V2,
     LATE_SYNTHETIC_GRID_V1.name: LATE_SYNTHETIC_GRID_V1,
     LATE_SYNTHETIC_GRID_V2.name: LATE_SYNTHETIC_GRID_V2,
+    LATE_MIXED_HOUSEHOLD_V1.name: LATE_MIXED_HOUSEHOLD_V1,
 }
 
 
@@ -658,6 +713,47 @@ def _select_payroll_target_row(
     return adults[age_col].astype(float).idxmax()
 
 
+def _clone_single_donor_person_row(
+    donor_row: pd.Series,
+    *,
+    base_year: int,
+    shared_household_id: int,
+    household_weight: float,
+    person_weight: float,
+    donor_age_shift: int,
+    id_counters: dict[str, int],
+) -> tuple[pd.Series, dict[str, int]]:
+    cloned = donor_row.copy()
+    person_id_col = _period_column(PERSON_ID_COLUMN, base_year)
+    household_weight_col = _period_column("household_weight", base_year)
+    person_weight_col = _period_column("person_weight", base_year)
+    age_col = _period_column("age", base_year)
+
+    cloned[person_id_col] = id_counters["person"]
+    id_counters["person"] += 1
+
+    for raw_column in ENTITY_ID_COLUMNS["household"]:
+        column = _period_column(raw_column, base_year)
+        cloned[column] = shared_household_id
+
+    for entity_name, columns in ENTITY_ID_COLUMNS.items():
+        if entity_name == "household":
+            continue
+        entity_id = id_counters[entity_name]
+        id_counters[entity_name] += 1
+        for raw_column in columns:
+            column = _period_column(raw_column, base_year)
+            if column in cloned.index:
+                cloned[column] = entity_id
+
+    cloned[age_col] = min(float(cloned[age_col]) + donor_age_shift, 85)
+    if household_weight_col in cloned.index:
+        cloned[household_weight_col] = household_weight
+    if person_weight_col in cloned.index:
+        cloned[person_weight_col] = person_weight
+    return cloned, id_counters
+
+
 def synthesize_composite_households(
     input_df: pd.DataFrame,
     *,
@@ -898,6 +994,113 @@ def synthesize_single_person_grid_households(
     )
 
 
+def synthesize_mixed_age_households(
+    input_df: pd.DataFrame,
+    *,
+    base_year: int,
+    summary: pd.DataFrame,
+    rule: MixedAgeAppendRule,
+    id_counters: dict[str, int] | None = None,
+) -> tuple[pd.DataFrame, dict[str, int], dict[str, Any]]:
+    recipient_ids = select_households_for_composite_rule(
+        summary,
+        min_max_age=rule.recipient_min_max_age,
+        max_max_age=rule.recipient_max_max_age,
+        ss_state=rule.recipient_ss_state,
+        payroll_state=rule.recipient_payroll_state,
+    )
+    donor_ids = select_households_for_composite_rule(
+        summary,
+        min_max_age=rule.donor_min_max_age,
+        max_max_age=rule.donor_max_max_age,
+        ss_state=rule.donor_ss_state,
+        payroll_state=rule.donor_payroll_state,
+    )
+    recipient_pairs = _quantile_pair_households(recipient_ids, donor_ids, summary)
+    if not recipient_pairs:
+        return (
+            input_df.iloc[0:0].copy(),
+            id_counters.copy() if id_counters is not None else {},
+            {
+                "rule": rule.name,
+                "recipient_household_count": int(len(recipient_ids)),
+                "donor_household_count": int(len(donor_ids)),
+                "synthetic_household_count": 0,
+                "synthetic_person_count": 0,
+            },
+        )
+
+    recipient_clone_df, next_ids = clone_households_with_age_shift(
+        input_df,
+        base_year=base_year,
+        household_ids=pd.Index([recipient for recipient, _ in recipient_pairs]),
+        age_shift=0,
+        clone_weight_scale=rule.clone_weight_scale,
+        id_counters=id_counters,
+    )
+
+    household_id_col = _period_column("household_id", base_year)
+    person_weight_col = _period_column("person_weight", base_year)
+
+    original_recipients = pd.unique(
+        input_df[
+            input_df[household_id_col].isin(
+                [recipient for recipient, _ in recipient_pairs]
+            )
+        ][household_id_col]
+    )
+    cloned_household_ids = pd.unique(recipient_clone_df[household_id_col])
+    cloned_mapping = {
+        int(original): int(cloned)
+        for original, cloned in zip(original_recipients, cloned_household_ids)
+    }
+
+    donor_person_rows: list[pd.Series] = []
+    for recipient_household_id, donor_household_id in recipient_pairs:
+        cloned_household_id = cloned_mapping[int(recipient_household_id)]
+        cloned_household_rows = recipient_clone_df[
+            recipient_clone_df[household_id_col] == cloned_household_id
+        ]
+        donor_rows = input_df[input_df[household_id_col] == int(donor_household_id)]
+        donor_row_idx = _select_payroll_target_row(
+            donor_rows,
+            base_year=base_year,
+        )
+        household_weight = float(cloned_household_rows.iloc[0][_period_column("household_weight", base_year)])
+        person_weight = (
+            float(cloned_household_rows.iloc[0][person_weight_col])
+            if person_weight_col in cloned_household_rows.columns
+            else household_weight
+        )
+        donor_row, next_ids = _clone_single_donor_person_row(
+            donor_rows.loc[donor_row_idx],
+            base_year=base_year,
+            shared_household_id=cloned_household_id,
+            household_weight=household_weight,
+            person_weight=person_weight,
+            donor_age_shift=rule.donor_age_shift,
+            id_counters=next_ids,
+        )
+        donor_person_rows.append(donor_row)
+
+    donor_df = pd.DataFrame(donor_person_rows, columns=input_df.columns)
+    synthetic_df = pd.concat([recipient_clone_df, donor_df], ignore_index=True)
+    return (
+        synthetic_df,
+        next_ids,
+        {
+            "rule": rule.name,
+            "recipient_household_count": int(len(recipient_ids)),
+            "donor_household_count": int(len(donor_ids)),
+            "synthetic_household_count": int(
+                synthetic_df[household_id_col].nunique()
+            ),
+            "synthetic_person_count": int(len(synthetic_df)),
+            "donor_age_shift": rule.donor_age_shift,
+        },
+    )
+
+
 def augment_input_dataframe(
     input_df: pd.DataFrame,
     *,
@@ -958,6 +1161,18 @@ def augment_input_dataframe(
             )
             clone_frames.append(composite_df)
             rule_reports.append(composite_report)
+            continue
+
+        if isinstance(rule, MixedAgeAppendRule):
+            mixed_df, id_counters, mixed_report = synthesize_mixed_age_households(
+                input_df,
+                base_year=base_year,
+                summary=summary,
+                rule=rule,
+                id_counters=id_counters,
+            )
+            clone_frames.append(mixed_df)
+            rule_reports.append(mixed_report)
             continue
 
         synthetic_df, id_counters, synthetic_report = synthesize_single_person_grid_households(

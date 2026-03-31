@@ -40,6 +40,7 @@ from policyengine_us_data.datasets.cps.long_term.ssa_data import (
 from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
     AgeShiftCloneRule,
     CompositePayrollRule,
+    MixedAgeAppendRule,
     SinglePersonSyntheticGridRule,
     SupportAugmentationProfile,
     augment_input_dataframe,
@@ -290,6 +291,52 @@ def test_support_augmentation_appends_single_person_synthetic_grid_households():
     assert set(
         synthetic_rows["employment_income_before_lsr__2024"].tolist()
     ) == {50_000.0}
+
+
+def test_support_augmentation_appends_mixed_age_household():
+    import pandas as pd
+
+    df = pd.DataFrame(_toy_support_dataframe())
+    profile = SupportAugmentationProfile(
+        name="mixed-age-profile",
+        description="Toy mixed-age household support augmentation profile.",
+        rules=(
+            MixedAgeAppendRule(
+                name="older_plus_younger_earner",
+                recipient_min_max_age=75,
+                recipient_max_max_age=84,
+                donor_min_max_age=55,
+                donor_max_max_age=64,
+                recipient_ss_state="positive",
+                recipient_payroll_state="any",
+                donor_ss_state="nonpositive",
+                donor_payroll_state="positive",
+                clone_weight_scale=0.2,
+            ),
+        ),
+    )
+    augmented_df, report = augment_input_dataframe(
+        df,
+        base_year=2024,
+        profile=profile,
+    )
+    assert report["base_household_count"] == 3
+    assert report["augmented_household_count"] == 4
+    synthetic_household_ids = set(
+        augmented_df["household_id__2024"].unique()
+    ) - {1, 2, 3}
+    assert len(synthetic_household_ids) == 1
+    synthetic_rows = augmented_df[
+        augmented_df["household_id__2024"].isin(synthetic_household_ids)
+    ]
+    assert sorted(synthetic_rows["age__2024"].tolist()) == [60.0, 77.0, 80.0]
+    assert synthetic_rows["social_security_retirement__2024"].sum() == pytest.approx(
+        30_000.0
+    )
+    assert synthetic_rows["employment_income_before_lsr__2024"].sum() == pytest.approx(
+        62_000.0
+    )
+    assert synthetic_rows["tax_unit_id__2024"].nunique() == 3
 
 
 def test_age_bin_helpers_preserve_population_totals():

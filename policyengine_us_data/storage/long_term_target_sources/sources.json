@@ -1,0 +1,18 @@
+{
+  "default_source": "trustees_2025_current_law",
+  "sources": {
+    "trustees_2025_current_law": {
+      "description": "2025 Trustees current-law baseline used by the legacy long-term calibration stack.",
+      "file": "trustees_2025_current_law.csv",
+      "name": "trustees_2025_current_law",
+      "notes": [
+        "Generated from social_security_aux.csv for explicit source selection."
+      ],
+      "source_urls": [
+        "https://www.ssa.gov/oact/tr/2025/lrIndex.html",
+        "https://www.ssa.gov/oact/solvency/provisions/tables/table_run133.html"
+      ],
+      "type": "trustees_current_law"
+    }
+  }
+}

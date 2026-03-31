@@ -30,6 +30,13 @@
      - `https://www.ssa.gov/oact/solvency/provisions/tables/table_run133.html`
   • Notes: Contains OASDI cost projections and taxable payroll data (2025-2100)
 
+- **long_term_target_sources/**
+  • Source packages for long-term CPS calibration targets
+  • Files:
+     - `trustees_2025_current_law.csv`: explicit frozen copy of the legacy Trustees/current-law target path
+     - `sources.json`: provenance and source metadata for each named package
+  • Notes: `run_household_projection.py --target-source ...` selects from these packages instead of relying on branch-specific data files
+
 - **national_and_district_rents_2023.csv**
   • Source: Census ACS 5-year estimates (2023), median 2BR rent by congressional district
   • Created by: `fetch_cd_rents.py` (requires `CENSUS_API_KEY` environment variable)

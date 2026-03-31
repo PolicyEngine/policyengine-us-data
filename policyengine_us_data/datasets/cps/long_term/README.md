@@ -6,23 +6,42 @@
 Run projections using `run_household_projection.py`:
 
 ```bash
-# Recommended: GREG with all constraint types
-python run_household_projection.py 2100 --greg --use-ss --use-payroll --use-tob --save-h5
+# Recommended: named profile with all constraint types
+python run_household_projection.py 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --save-h5
 
 # IPF with only age distribution constraints (faster, less accurate)
-python run_household_projection.py 2050
+python run_household_projection.py 2050 --profile age-only
 
 # GREG with age + Social Security only
-python run_household_projection.py 2100 --greg --use-ss
+python run_household_projection.py 2100 --profile ss
 ```
 
 **Arguments:**
 - `END_YEAR`: Target year for projection (default: 2035)
+- `--profile`: Named calibration contract. Recommended over legacy flags.
+- `--target-source`: Named long-term target source package.
+- `--output-dir`: Output directory for generated H5 files and metadata sidecars.
 - `--greg`: Use GREG calibration instead of IPF
 - `--use-ss`: Include Social Security benefit totals as calibration target (requires `--greg`)
 - `--use-payroll`: Include taxable payroll totals as calibration target (requires `--greg`)
 - `--use-tob`: Include TOB (Taxation of Benefits) revenue as calibration target (requires `--greg`)
 - `--save-h5`: Save year-specific .h5 files to `./projected_datasets/` directory
+
+**Named profiles:**
+- `age-only`: IPF age-only calibration
+- `ss`: positive entropy calibration with age + Social Security
+- `ss-payroll`: positive entropy calibration with age + Social Security + taxable payroll
+- `ss-payroll-tob`: positive entropy calibration with age + Social Security + taxable payroll + TOB
+- `ss-payroll-tob-h6`: positive entropy calibration with age + Social Security + taxable payroll + TOB + H6
+
+**Validation contract:**
+- Economic-targeted profiles no longer silently pretend an IPF fallback is equivalent to GREG.
+- Named economic profiles must produce non-negative weights.
+- Each generated H5 now gets a `YYYY.h5.metadata.json` sidecar with profile and calibration audit details.
+- Each generated H5 sidecar now records the named long-term target source used for the build.
+- Each output directory now gets a `calibration_manifest.json` file describing the
+  profile/base dataset contract for the full artifact set.
+- Profiles validate achieved constraint errors before writing output.
 
 **Estimated runtime:** ~2 minutes/year without `--save-h5`, ~3 minutes/year with `--save-h5`
 
@@ -35,11 +54,16 @@ python run_household_projection.py 2100 --greg --use-ss
 - Fast and simple, but cannot enforce Social Security or payroll totals
 - Converges iteratively (typically 20-40 iterations)
 
-**GREG (Generalized Regression Estimator)**
-- Solves for weights matching multiple constraints simultaneously
+**Positive Entropy Calibration**
+- Solves for strictly positive weights matching multiple constraints simultaneously
 - Can enforce age distribution + Social Security benefits + taxable payroll + TOB revenue
-- One-shot solution using `samplics` package
-- **Recommended** for accurate long-term projections
+- Uses dual optimization to minimize divergence from baseline weights
+- **Recommended** for publishable long-term projections
+
+**GREG (Generalized Regression Estimator)**
+- Legacy linear calibration path retained for explicit flag-based runs
+- Can hit constraints exactly, but may produce negative weights in far-horizon years
+- No longer the default for named economic calibration profiles
 
 ---
 
@@ -51,18 +75,18 @@ python run_household_projection.py 2100 --greg --use-ss
 
 2. **Social Security Benefits** (`--use-ss`, GREG only)
    - Total OASDI benefit payments (nominal dollars)
-   - Source: SSA Trustee Report 2024 (`social_security_aux.csv`)
+   - Source: selected long-term target source package
 
 3. **Taxable Payroll** (`--use-payroll`, GREG only)
    - W-2 wages capped at wage base + SE income within remaining cap room
    - Calculated as: `taxable_earnings_for_social_security` + `social_security_taxable_self_employment_income`
-   - Source: SSA Trustee Report 2024 (`social_security_aux.csv`)
+   - Source: selected long-term target source package
 
 4. **TOB Revenue** (`--use-tob`, GREG only)
    - Taxation of Benefits revenue for OASDI and Medicare HI trust funds
    - OASDI: `tob_revenue_oasdi` (tier 1 taxation, 0-50% of benefits)
    - HI: `tob_revenue_medicare_hi` (tier 2 taxation, 50-85% of benefits)
-   - Source: SSA Trustee Report 2024 (`social_security_aux.csv`)
+   - Source: selected long-term target source package
 
 ---
 
@@ -80,7 +104,8 @@ python run_household_projection.py 2100 --greg --use-ss
 
 **Local files** (in `policyengine_us_data/storage/`):
 - `SSPopJul_TR2024.csv` - Population projections 2025-2100 by single year of age
-- `social_security_aux.csv` - OASDI costs, taxable payroll, and TOB revenue projections 2025-2100
+- `long_term_target_sources/trustees_2025_current_law.csv` - explicit frozen Trustees/current-law package
+- `long_term_target_sources/sources.json` - provenance metadata for named source packages
 
 ---
 
@@ -102,7 +127,7 @@ python run_household_projection.py 2100 --greg --use-ss
 
 - **`run_household_projection.py`** - Main projection script (see Quick Start)
 - **`calibration.py`** - IPF and GREG weight calibration implementations
-- **`ssa_data.py`** - Load SSA population, benefit, and payroll projections
+- **`ssa_data.py`** - Load SSA population and named long-term target source projections
 - **`projection_utils.py`** - Utility functions (age matrix builder, H5 file creator)
 - **`extract_ssa_costs.py`** - One-time script to extract SSA data from Excel (already run)
 

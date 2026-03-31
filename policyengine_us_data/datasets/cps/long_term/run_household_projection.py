@@ -3,10 +3,14 @@ Household-level projection pathway for income tax revenue 2025-2100.
 
 
 Usage:
+    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--output-dir DIR] [--save-h5]
     python run_household_projection.py [START_YEAR] [END_YEAR] [--greg] [--use-ss] [--use-payroll] [--use-h6-reform] [--use-tob] [--save-h5]
 
     START_YEAR: Optional starting year (default: 2025)
     END_YEAR: Optional ending year (default: 2035)
+    --profile: Named calibration contract (recommended)
+    --target-source: Named long-term target source package
+    --output-dir: Output directory for generated H5 files and metadata
     --greg: Use GREG calibration instead of IPF (optional)
     --use-ss: Include Social Security benefit totals as calibration target (requires --greg)
     --use-payroll: Include taxable payroll totals as calibration target (requires --greg)
@@ -15,8 +19,8 @@ Usage:
     --save-h5: Save year-specific .h5 files with calibrated weights to ./projected_datasets/
 
 Examples:
-    python run_household_projection.py 2045 2045 --greg --use-ss  # single year
-    python run_household_projection.py 2025 2100 --greg --use-ss --use-payroll --use-tob --save-h5
+    python run_household_projection.py 2045 2045 --profile ss --target-source trustees_2025_current_law --save-h5
+    python run_household_projection.py 2025 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --save-h5
 """
 
 import sys
@@ -29,11 +33,22 @@ import numpy as np
 from policyengine_us import Microsimulation
 
 from ssa_data import (
+    describe_long_term_target_source,
+    get_long_term_target_source,
     load_ssa_age_projections,
     load_ssa_benefit_projections,
     load_taxable_payroll_projections,
+    set_long_term_target_source,
 )
-from calibration import calibrate_weights
+from calibration import build_calibration_audit, calibrate_weights
+from calibration_artifacts import update_dataset_manifest, write_year_metadata
+from calibration_profiles import (
+    approximate_window_for_year,
+    build_profile_from_flags,
+    classify_calibration_quality,
+    get_profile,
+    validate_calibration_audit,
+)
 from projection_utils import (
     build_household_age_matrix,
     create_household_year_h5,
@@ -227,6 +242,31 @@ BASE_DATASET_PATH = DATASET_OPTIONS[SELECTED_DATASET]["path"]
 BASE_YEAR = DATASET_OPTIONS[SELECTED_DATASET]["base_year"]
 
 
+PROFILE_NAME = None
+if "--profile" in sys.argv:
+    profile_index = sys.argv.index("--profile")
+    if profile_index + 1 >= len(sys.argv):
+        raise ValueError("--profile requires a profile name")
+    PROFILE_NAME = sys.argv[profile_index + 1]
+    del sys.argv[profile_index : profile_index + 2]
+
+TARGET_SOURCE = None
+if "--target-source" in sys.argv:
+    source_index = sys.argv.index("--target-source")
+    if source_index + 1 >= len(sys.argv):
+        raise ValueError("--target-source requires a source name")
+    TARGET_SOURCE = sys.argv[source_index + 1]
+    del sys.argv[source_index : source_index + 2]
+
+OUTPUT_DIR = "./projected_datasets"
+if "--output-dir" in sys.argv:
+    output_dir_index = sys.argv.index("--output-dir")
+    if output_dir_index + 1 >= len(sys.argv):
+        raise ValueError("--output-dir requires a directory path")
+    OUTPUT_DIR = sys.argv[output_dir_index + 1]
+    del sys.argv[output_dir_index : output_dir_index + 2]
+
+
 USE_GREG = "--greg" in sys.argv
 if USE_GREG:
     sys.argv.remove("--greg")
@@ -251,7 +291,6 @@ if USE_H6_REFORM:
     if not USE_GREG:
         print("Warning: --use-h6-reform requires --greg, enabling GREG automatically")
         USE_GREG = True
-    from ssa_data import load_h6_income_rate_change
 
 USE_TOB = "--use-tob" in sys.argv
 if USE_TOB:
@@ -259,7 +298,6 @@ if USE_TOB:
     if not USE_GREG:
         print("Warning: --use-tob requires --greg, enabling GREG automatically")
         USE_GREG = True
-    from ssa_data import load_oasdi_tob_projections, load_hi_tob_projections
 
 SAVE_H5 = "--save-h5" in sys.argv
 if SAVE_H5:
@@ -267,6 +305,39 @@ if SAVE_H5:
 
 START_YEAR = int(sys.argv[1]) if len(sys.argv) > 1 else 2025
 END_YEAR = int(sys.argv[2]) if len(sys.argv) > 2 else 2035
+
+legacy_flags_used = any([USE_GREG, USE_SS, USE_PAYROLL, USE_H6_REFORM, USE_TOB])
+if PROFILE_NAME and legacy_flags_used:
+    raise ValueError("Use either --profile or legacy calibration flags, not both.")
+
+if PROFILE_NAME:
+    PROFILE = get_profile(PROFILE_NAME)
+else:
+    PROFILE = build_profile_from_flags(
+        use_greg=USE_GREG,
+        use_ss=USE_SS,
+        use_payroll=USE_PAYROLL,
+        use_h6_reform=USE_H6_REFORM,
+        use_tob=USE_TOB,
+    )
+
+if TARGET_SOURCE:
+    set_long_term_target_source(TARGET_SOURCE)
+TARGET_SOURCE = get_long_term_target_source()
+TARGET_SOURCE_METADATA = describe_long_term_target_source(TARGET_SOURCE)
+
+CALIBRATION_METHOD = PROFILE.calibration_method
+USE_GREG = CALIBRATION_METHOD == "greg"
+USE_SS = PROFILE.use_ss
+USE_PAYROLL = PROFILE.use_payroll
+USE_H6_REFORM = PROFILE.use_h6_reform
+USE_TOB = PROFILE.use_tob
+
+if USE_H6_REFORM:
+    from ssa_data import load_h6_income_rate_change
+
+if USE_TOB:
+    from ssa_data import load_hi_tob_projections, load_oasdi_tob_projections
 
 if USE_GREG:
     try:
@@ -280,8 +351,6 @@ if USE_GREG:
 else:
     calibrator = None
 
-OUTPUT_DIR = "./projected_datasets"
-
 print("=" * 70)
 print(f"HOUSEHOLD-LEVEL INCOME TAX PROJECTION: {START_YEAR}-{END_YEAR}")
 print("=" * 70)
@@ -289,7 +358,10 @@ print(f"\nConfiguration:")
 print(f"  Base year: {BASE_YEAR} (CPS microdata)")
 print(f"  Projection: {START_YEAR}-{END_YEAR}")
 print(f"  Calculation level: HOUSEHOLD ONLY (simplified)")
-print(f"  Calibration method: {'GREG' if USE_GREG else 'IPF'}")
+print(f"  Calibration profile: {PROFILE.name}")
+print(f"  Profile description: {PROFILE.description}")
+print(f"  Target source: {TARGET_SOURCE}")
+print(f"  Calibration method: {CALIBRATION_METHOD.upper()}")
 if USE_SS:
     print(f"  Including Social Security benefits constraint: Yes")
 if USE_PAYROLL:
@@ -497,12 +569,13 @@ for year_idx in range(n_years):
             )
 
     y_target = target_matrix[:, year_idx]
+    approximate_window = approximate_window_for_year(PROFILE, year)
 
-    w_new, iterations = calibrate_weights(
+    w_new, iterations, calibration_event = calibrate_weights(
         X=X,
         y_target=y_target,
         baseline_weights=baseline_weights,
-        method="greg" if USE_GREG else "ipf",
+        method=CALIBRATION_METHOD,
         calibrator=calibrator,
         ss_values=ss_values,
         ss_target=ss_target,
@@ -518,14 +591,52 @@ for year_idx in range(n_years):
         max_iters=100,
         tol=1e-6,
         verbose=False,
+        allow_fallback_to_ipf=PROFILE.allow_greg_fallback,
+        allow_approximate_entropy=approximate_window is not None,
+        approximate_max_error_pct=(
+            approximate_window.max_constraint_error_pct
+            if approximate_window is not None
+            else None
+        ),
     )
 
-    if year in display_years and USE_GREG:
-        neg_mask = w_new < 0
-        n_neg = neg_mask.sum()
+    calibration_audit = build_calibration_audit(
+        X=X,
+        y_target=y_target,
+        weights=w_new,
+        baseline_weights=baseline_weights,
+        calibration_event=calibration_event,
+        ss_values=ss_values,
+        ss_target=ss_target,
+        payroll_values=payroll_values,
+        payroll_target=payroll_target,
+        h6_income_values=h6_income_values,
+        h6_revenue_target=h6_revenue_target,
+        oasdi_tob_values=oasdi_tob_values,
+        oasdi_tob_target=oasdi_tob_target,
+        hi_tob_values=hi_tob_values,
+        hi_tob_target=hi_tob_target,
+    )
+    calibration_audit["calibration_quality"] = classify_calibration_quality(
+        calibration_audit,
+        PROFILE,
+        year=year,
+    )
+
+    validation_issues = validate_calibration_audit(
+        calibration_audit,
+        PROFILE,
+        year=year,
+    )
+    if validation_issues:
+        issue_text = "; ".join(validation_issues)
+        raise RuntimeError(f"Calibration validation failed for {year}: {issue_text}")
+
+    if year in display_years and CALIBRATION_METHOD in {"greg", "entropy"}:
+        n_neg = calibration_audit["negative_weight_count"]
         if n_neg > 0:
-            pct_neg = 100 * n_neg / len(w_new)
-            max_neg = np.abs(w_new[neg_mask]).max()
+            pct_neg = calibration_audit["negative_weight_pct"]
+            max_neg = calibration_audit["largest_negative_weight"]
             print(
                 f"  [DEBUG {year}] Negative weights: {n_neg} ({pct_neg:.2f}%), "
                 f"largest: {max_neg:,.0f}"
@@ -535,33 +646,38 @@ for year_idx in range(n_years):
 
     if year in display_years and (USE_SS or USE_PAYROLL or USE_H6_REFORM or USE_TOB):
         if USE_SS:
-            ss_achieved = np.sum(ss_values * w_new)
+            ss_stats = calibration_audit["constraints"]["ss_total"]
             print(
-                f"  [DEBUG {year}] SS achieved: ${ss_achieved / 1e9:.1f}B (error: ${abs(ss_achieved - ss_target) / 1e6:.1f}M, {(ss_achieved - ss_target) / ss_target * 100:.3f}%)"
+                f"  [DEBUG {year}] SS achieved: ${ss_stats['achieved'] / 1e9:.1f}B "
+                f"(error: ${abs(ss_stats['error']) / 1e6:.1f}M, "
+                f"{ss_stats['pct_error']:.3f}%)"
             )
         if USE_PAYROLL:
-            payroll_achieved = np.sum(payroll_values * w_new)
+            payroll_stats = calibration_audit["constraints"]["payroll_total"]
             print(
-                f"  [DEBUG {year}] Payroll achieved: ${payroll_achieved / 1e9:.1f}B (error: ${abs(payroll_achieved - payroll_target) / 1e6:.1f}M, {(payroll_achieved - payroll_target) / payroll_target * 100:.3f}%)"
+                f"  [DEBUG {year}] Payroll achieved: ${payroll_stats['achieved'] / 1e9:.1f}B "
+                f"(error: ${abs(payroll_stats['error']) / 1e6:.1f}M, "
+                f"{payroll_stats['pct_error']:.3f}%)"
             )
         if USE_H6_REFORM and h6_revenue_target is not None:
-            h6_revenue_achieved = np.sum(h6_income_values * w_new)
-            error_pct = (
-                (h6_revenue_achieved - h6_revenue_target) / abs(h6_revenue_target) * 100
-                if h6_revenue_target != 0
-                else 0
-            )
+            h6_stats = calibration_audit["constraints"]["h6_revenue"]
             print(
-                f"  [DEBUG {year}] H6 achieved revenue: ${h6_revenue_achieved / 1e9:.3f}B (error: ${abs(h6_revenue_achieved - h6_revenue_target) / 1e6:.1f}M, {error_pct:.3f}%)"
+                f"  [DEBUG {year}] H6 achieved revenue: ${h6_stats['achieved'] / 1e9:.3f}B "
+                f"(error: ${abs(h6_stats['error']) / 1e6:.1f}M, "
+                f"{h6_stats['pct_error']:.3f}%)"
             )
         if USE_TOB:
-            oasdi_achieved = np.sum(oasdi_tob_values * w_new)
-            hi_achieved = np.sum(hi_tob_values * w_new)
+            oasdi_stats = calibration_audit["constraints"]["oasdi_tob"]
+            hi_stats = calibration_audit["constraints"]["hi_tob"]
             print(
-                f"  [DEBUG {year}] OASDI TOB achieved: ${oasdi_achieved / 1e9:.1f}B (error: ${abs(oasdi_achieved - oasdi_tob_target) / 1e6:.1f}M, {(oasdi_achieved - oasdi_tob_target) / oasdi_tob_target * 100:.3f}%)"
+                f"  [DEBUG {year}] OASDI TOB achieved: ${oasdi_stats['achieved'] / 1e9:.1f}B "
+                f"(error: ${abs(oasdi_stats['error']) / 1e6:.1f}M, "
+                f"{oasdi_stats['pct_error']:.3f}%)"
             )
             print(
-                f"  [DEBUG {year}] HI TOB achieved: ${hi_achieved / 1e9:.1f}B (error: ${abs(hi_achieved - hi_tob_target) / 1e6:.1f}M, {(hi_achieved - hi_tob_target) / hi_tob_target * 100:.3f}%)"
+                f"  [DEBUG {year}] HI TOB achieved: ${hi_stats['achieved'] / 1e9:.1f}B "
+                f"(error: ${abs(hi_stats['error']) / 1e6:.1f}M, "
+                f"{hi_stats['pct_error']:.3f}%)"
             )
 
     weights_matrix[:, year_idx] = w_new
@@ -572,8 +688,26 @@ for year_idx in range(n_years):
 
     if SAVE_H5:
         h5_path = create_household_year_h5(year, w_new, BASE_DATASET_PATH, OUTPUT_DIR)
+        metadata_path = write_year_metadata(
+            h5_path,
+            year=year,
+            base_dataset_path=BASE_DATASET_PATH,
+            profile=PROFILE.to_dict(),
+            calibration_audit=calibration_audit,
+            target_source=TARGET_SOURCE_METADATA,
+        )
+        update_dataset_manifest(
+            OUTPUT_DIR,
+            year=year,
+            h5_path=h5_path,
+            metadata_path=metadata_path,
+            base_dataset_path=BASE_DATASET_PATH,
+            profile=PROFILE.to_dict(),
+            calibration_audit=calibration_audit,
+            target_source=TARGET_SOURCE_METADATA,
+        )
         if year in display_years:
-            print(f"  Saved {year}.h5")
+            print(f"  Saved {year}.h5 and metadata")
 
     del sim
     gc.collect()

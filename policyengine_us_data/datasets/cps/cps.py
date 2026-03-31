@@ -1841,7 +1841,9 @@ def add_org_labor_market_inputs(cps: h5py.File) -> None:
     household_ids = cps["household_id"]
     person_household_ids = cps["person_household_id"]
     household_state_fips = cps["state_fips"]
-    household_index = {int(household_id): i for i, household_id in enumerate(household_ids)}
+    household_index = {
+        int(household_id): i for i, household_id in enumerate(household_ids)
+    }
     person_state_fips = np.array(
         [
             household_state_fips[household_index[int(household_id)]]

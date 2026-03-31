@@ -241,9 +241,7 @@ def build_org_receiver_frame(
     receiver = pd.DataFrame(
         {
             "employment_income": np.asarray(employment_income, dtype=np.float32),
-            "weekly_hours_worked": np.asarray(
-                weekly_hours_worked, dtype=np.float32
-            ),
+            "weekly_hours_worked": np.asarray(weekly_hours_worked, dtype=np.float32),
             "age": np.asarray(age, dtype=np.float32),
             "is_female": np.asarray(is_female, dtype=np.float32),
             "is_hispanic": np.asarray(is_hispanic, dtype=np.float32),
@@ -348,19 +346,13 @@ def _predict_union_coverage_from_bls_tables(
         dtype=np.float32,
     )
     age = np.asarray(receiver["age"], dtype=np.float32)
-    eligible = (
-        (employment_income > 0)
-        & (weekly_hours_worked > 0)
-        & (age >= 16)
-    )
+    eligible = (employment_income > 0) & (weekly_hours_worked > 0) & (age >= 16)
     if self_employment_income is not None:
         self_employment_income = np.asarray(
             self_employment_income,
             dtype=np.float32,
         )
-        eligible &= ~(
-            (self_employment_income > 0) & (employment_income <= 0)
-        )
+        eligible &= ~((self_employment_income > 0) & (employment_income <= 0))
 
     if not eligible.any():
         return result
@@ -448,9 +440,7 @@ def apply_org_domain_constraints(
         )
 
     if "hourly_wage" in result:
-        result["hourly_wage"] = result["hourly_wage"].clip(lower=0).astype(
-            np.float32
-        )
+        result["hourly_wage"] = result["hourly_wage"].clip(lower=0).astype(np.float32)
         result.loc[inactive, "hourly_wage"] = 0
 
     for col in ORG_BOOL_VARIABLES:
@@ -472,11 +462,9 @@ def predict_org_features(
         raise ValueError(f"ORG receiver frame missing required columns: {missing}")
 
     predictions = get_org_model().predict(X_test=receiver[ORG_PREDICTORS])
-    predictions["is_union_member_or_covered"] = (
-        _predict_union_coverage_from_bls_tables(
-            receiver,
-            self_employment_income=self_employment_income,
-        )
+    predictions["is_union_member_or_covered"] = _predict_union_coverage_from_bls_tables(
+        receiver,
+        self_employment_income=self_employment_income,
     )
     return apply_org_domain_constraints(
         predictions=predictions,

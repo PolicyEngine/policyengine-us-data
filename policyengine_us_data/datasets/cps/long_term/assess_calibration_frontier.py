@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--profile",
-        default="ss-payroll-tob",
+        default="ss-payroll",
         help="Named calibration profile to assess.",
     )
     parser.add_argument(

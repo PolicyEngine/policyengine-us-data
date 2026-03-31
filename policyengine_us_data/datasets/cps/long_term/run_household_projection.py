@@ -15,7 +15,7 @@ Usage:
     --use-ss: Include Social Security benefit totals as calibration target (requires --greg)
     --use-payroll: Include taxable payroll totals as calibration target (requires --greg)
     --use-h6-reform: Include H6 reform income impact ratio as calibration target (requires --greg)
-    --use-tob: Include TOB (Taxation of Benefits) revenue as calibration target (requires --greg)
+    --use-tob: Include TOB (Taxation of Benefits) revenue as a hard calibration target (requires --greg)
     --save-h5: Save year-specific .h5 files with calibrated weights to ./projected_datasets/
 
 Examples:
@@ -335,11 +335,12 @@ USE_SS = PROFILE.use_ss
 USE_PAYROLL = PROFILE.use_payroll
 USE_H6_REFORM = PROFILE.use_h6_reform
 USE_TOB = PROFILE.use_tob
+BENCHMARK_TOB = PROFILE.benchmark_tob
 
 if USE_H6_REFORM:
     from ssa_data import load_h6_income_rate_change
 
-if USE_TOB:
+if USE_TOB or BENCHMARK_TOB:
     from ssa_data import load_hi_tob_projections, load_oasdi_tob_projections
 
 if USE_GREG:
@@ -373,6 +374,8 @@ if USE_H6_REFORM:
     print(f"  Including H6 reform income impact constraint: Yes")
 if USE_TOB:
     print(f"  Including TOB revenue constraint: Yes")
+elif BENCHMARK_TOB:
+    print(f"  Benchmarking TOB after calibration: Yes")
 if SAVE_H5:
     print(f"  Saving year-specific .h5 files: Yes (to {OUTPUT_DIR}/)")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -549,7 +552,7 @@ for year_idx in range(n_years):
     oasdi_tob_target = None
     hi_tob_values = None
     hi_tob_target = None
-    if USE_TOB:
+    if USE_TOB or BENCHMARK_TOB:
         oasdi_tob_hh = sim.calculate(
             "tob_revenue_oasdi", period=year, map_to="household"
         )
@@ -604,10 +607,10 @@ for year_idx in range(n_years):
         payroll_target=payroll_target,
         h6_income_values=h6_income_values,
         h6_revenue_target=h6_revenue_target,
-        oasdi_tob_values=oasdi_tob_values,
-        oasdi_tob_target=oasdi_tob_target,
-        hi_tob_values=hi_tob_values,
-        hi_tob_target=hi_tob_target,
+        oasdi_tob_values=oasdi_tob_values if USE_TOB else None,
+        oasdi_tob_target=oasdi_tob_target if USE_TOB else None,
+        hi_tob_values=hi_tob_values if USE_TOB else None,
+        hi_tob_target=hi_tob_target if USE_TOB else None,
         n_ages=X_current.shape[1],
         max_iters=100,
         tol=1e-6,
@@ -633,11 +636,30 @@ for year_idx in range(n_years):
         payroll_target=payroll_target,
         h6_income_values=h6_income_values,
         h6_revenue_target=h6_revenue_target,
-        oasdi_tob_values=oasdi_tob_values,
-        oasdi_tob_target=oasdi_tob_target,
-        hi_tob_values=hi_tob_values,
-        hi_tob_target=hi_tob_target,
+        oasdi_tob_values=oasdi_tob_values if USE_TOB else None,
+        oasdi_tob_target=oasdi_tob_target if USE_TOB else None,
+        hi_tob_values=hi_tob_values if USE_TOB else None,
+        hi_tob_target=hi_tob_target if USE_TOB else None,
     )
+    if BENCHMARK_TOB and oasdi_tob_values is not None and hi_tob_values is not None:
+        calibration_audit["benchmarks"] = {
+            "oasdi_tob": {
+                "target": float(oasdi_tob_target),
+                "achieved": float(np.sum(oasdi_tob_values * w_new)),
+            },
+            "hi_tob": {
+                "target": float(hi_tob_target),
+                "achieved": float(np.sum(hi_tob_values * w_new)),
+            },
+        }
+        for benchmark in calibration_audit["benchmarks"].values():
+            benchmark["error"] = benchmark["achieved"] - benchmark["target"]
+            benchmark["pct_error"] = (
+                0.0
+                if benchmark["target"] == 0
+                else (benchmark["error"] / benchmark["target"] * 100)
+            )
+            benchmark["source"] = TARGET_SOURCE
     calibration_audit["calibration_quality"] = classify_calibration_quality(
         calibration_audit,
         PROFILE,
@@ -702,6 +724,19 @@ for year_idx in range(n_years):
                 f"(error: ${abs(hi_stats['error']) / 1e6:.1f}M, "
                 f"{hi_stats['pct_error']:.3f}%)"
             )
+    if year in display_years and BENCHMARK_TOB:
+        oasdi_stats = calibration_audit["benchmarks"]["oasdi_tob"]
+        hi_stats = calibration_audit["benchmarks"]["hi_tob"]
+        print(
+            f"  [DEBUG {year}] OASDI TOB benchmark: ${oasdi_stats['achieved'] / 1e9:.1f}B "
+            f"(gap: ${abs(oasdi_stats['error']) / 1e6:.1f}M, "
+            f"{oasdi_stats['pct_error']:.3f}%)"
+        )
+        print(
+            f"  [DEBUG {year}] HI TOB benchmark: ${hi_stats['achieved'] / 1e9:.1f}B "
+            f"(gap: ${abs(hi_stats['error']) / 1e6:.1f}M, "
+            f"{hi_stats['pct_error']:.3f}%)"
+        )
 
     weights_matrix[:, year_idx] = w_new
     baseline_weights_matrix[:, year_idx] = baseline_weights

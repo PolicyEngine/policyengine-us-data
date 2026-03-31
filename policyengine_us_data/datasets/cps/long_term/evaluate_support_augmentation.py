@@ -148,7 +148,7 @@ def main() -> None:
     parser.add_argument("year", type=int, help="Projection year to evaluate.")
     parser.add_argument(
         "--profile",
-        default="ss-payroll-tob",
+        default="ss-payroll",
         help="Calibration profile to evaluate.",
     )
     parser.add_argument(

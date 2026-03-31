@@ -6,7 +6,7 @@
 Run projections using `run_household_projection.py`:
 
 ```bash
-# Recommended: named profile with all constraint types
+# Recommended: named profile with TOB benchmarked post-calibration
 python run_household_projection.py 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --save-h5
 
 # IPF with only age distribution constraints (faster, less accurate)
@@ -31,8 +31,8 @@ python run_household_projection.py 2100 --profile ss
 - `age-only`: IPF age-only calibration
 - `ss`: positive entropy calibration with age + Social Security
 - `ss-payroll`: positive entropy calibration with age + Social Security + taxable payroll
-- `ss-payroll-tob`: positive entropy calibration with age + Social Security + taxable payroll + TOB
-- `ss-payroll-tob-h6`: positive entropy calibration with age + Social Security + taxable payroll + TOB + H6
+- `ss-payroll-tob`: positive entropy calibration with age + Social Security + taxable payroll, with TOB benchmarked after calibration
+- `ss-payroll-tob-h6`: positive entropy calibration with age + Social Security + taxable payroll + H6, with TOB benchmarked after calibration
 
 **Validation contract:**
 - Economic-targeted profiles no longer silently pretend an IPF fallback is equivalent to GREG.
@@ -56,7 +56,7 @@ python run_household_projection.py 2100 --profile ss
 
 **Positive Entropy Calibration**
 - Solves for strictly positive weights matching multiple constraints simultaneously
-- Can enforce age distribution + Social Security benefits + taxable payroll + TOB revenue
+- Can enforce age distribution + Social Security benefits + taxable payroll
 - Uses dual optimization to minimize divergence from baseline weights
 - **Recommended** for publishable long-term projections
 
@@ -82,11 +82,12 @@ python run_household_projection.py 2100 --profile ss
    - Calculated as: `taxable_earnings_for_social_security` + `social_security_taxable_self_employment_income`
    - Source: selected long-term target source package
 
-4. **TOB Revenue** (`--use-tob`, GREG only)
+4. **TOB Revenue** (`--use-tob`, legacy hard-target mode only)
    - Taxation of Benefits revenue for OASDI and Medicare HI trust funds
    - OASDI: `tob_revenue_oasdi` (tier 1 taxation, 0-50% of benefits)
    - HI: `tob_revenue_medicare_hi` (tier 2 taxation, 50-85% of benefits)
    - Source: selected long-term target source package
+   - Recommended usage: benchmark after calibration rather than use as a hard weight target
 
 ---
 
@@ -106,6 +107,7 @@ python run_household_projection.py 2100 --profile ss
 - `SSPopJul_TR2024.csv` - Population projections 2025-2100 by single year of age
 - `long_term_target_sources/trustees_2025_current_law.csv` - explicit frozen Trustees/current-law package
 - `long_term_target_sources/sources.json` - provenance metadata for named source packages
+- `ASSUMPTION_COMPARISON.md` - side-by-side summary of our calibration assumptions versus Trustees/OACT
 
 ---
 
@@ -141,7 +143,8 @@ For each projection year (2025-2100):
 2. **Uprate variables** - PolicyEngine automatically uprates income, thresholds, etc. to target year
 3. **Calculate values** - Income tax, Social Security, taxable payroll at household level
 4. **Calibrate weights** - Adjust household weights to match SSA demographic/economic targets
-5. **Aggregate results** - Apply calibrated weights to calculate national totals
+5. **Benchmark TOB** - Compare modeled OASDI/HI TOB to the selected target source without forcing it into the weights
+6. **Aggregate results** - Apply calibrated weights to calculate national totals
 
 **Key innovation:** Household-level calculations avoid person→household aggregation issues, maintaining consistency across all variables.
 

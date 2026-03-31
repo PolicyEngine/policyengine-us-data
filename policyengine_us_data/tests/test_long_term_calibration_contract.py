@@ -84,7 +84,8 @@ def test_named_profile_lookup():
     assert profile.use_greg is False
     assert profile.use_ss is True
     assert profile.use_payroll is True
-    assert profile.use_tob is True
+    assert profile.use_tob is False
+    assert profile.benchmark_tob is True
     assert profile.use_h6_reform is False
     assert profile.max_negative_weight_pct == 0.0
     assert profile.approximate_windows[0].age_bucket_size == 5
@@ -275,8 +276,8 @@ def test_legacy_flags_map_to_named_profile():
         use_h6_reform=False,
         use_tob=True,
     )
-    assert profile.name == "ss-payroll-tob"
-    assert profile.calibration_method == "entropy"
+    assert profile.name == "custom-ss-payroll-tob"
+    assert profile.calibration_method == "ipf"
 
 
 def test_strict_greg_failure_raises():
@@ -356,9 +357,7 @@ def test_classify_calibration_quality_marks_invalid_audit_approximate():
             "negative_weight_pct": 0.0,
             "constraints": {
                 "ss_total": {"pct_error": 0.0},
-                "payroll_total": {"pct_error": 0.0},
-                "oasdi_tob": {"pct_error": 0.5},
-                "hi_tob": {"pct_error": 0.0},
+                "payroll_total": {"pct_error": 0.5},
             },
         },
         profile,
@@ -377,8 +376,6 @@ def test_entropy_profile_rejects_negative_weights():
             "constraints": {
                 "ss_total": {"pct_error": 0.0},
                 "payroll_total": {"pct_error": 0.0},
-                "oasdi_tob": {"pct_error": 0.0},
-                "hi_tob": {"pct_error": 0.0},
             },
         },
         profile,
@@ -400,8 +397,6 @@ def test_support_thresholds_reject_concentrated_weights():
             "constraints": {
                 "ss_total": {"pct_error": 0.0},
                 "payroll_total": {"pct_error": 0.0},
-                "oasdi_tob": {"pct_error": 0.0},
-                "hi_tob": {"pct_error": 0.0},
             },
         },
         profile,
@@ -427,8 +422,6 @@ def test_classify_calibration_quality_marks_support_collapse_aggregate():
             "constraints": {
                 "ss_total": {"pct_error": 0.0},
                 "payroll_total": {"pct_error": 0.0},
-                "oasdi_tob": {"pct_error": 0.0},
-                "hi_tob": {"pct_error": 0.0},
             },
         },
         profile,
@@ -447,8 +440,6 @@ def test_approximate_window_is_year_bounded():
             "constraints": {
                 "ss_total": {"pct_error": 0.0},
                 "payroll_total": {"pct_error": 3.0},
-                "oasdi_tob": {"pct_error": 3.0},
-                "hi_tob": {"pct_error": 3.0},
             },
         },
         profile,
@@ -464,8 +455,6 @@ def test_approximate_window_is_year_bounded():
             "constraints": {
                 "ss_total": {"pct_error": 0.0},
                 "payroll_total": {"pct_error": 3.0},
-                "oasdi_tob": {"pct_error": 3.0},
-                "hi_tob": {"pct_error": 3.0},
             },
         },
         profile,
@@ -490,8 +479,6 @@ def test_normalize_metadata_harmonizes_lp_fallback_labels():
                 "constraints": {
                     "ss_total": {"pct_error": 0.368},
                     "payroll_total": {"pct_error": 0.0},
-                    "oasdi_tob": {"pct_error": 0.0},
-                    "hi_tob": {"pct_error": 0.0},
                 },
             },
         }
@@ -570,6 +557,28 @@ def test_manifest_updates_and_rejects_profile_mismatch(tmp_path):
     rebuilt_path = rebuild_dataset_manifest(tmp_path)
     rebuilt = json.loads(rebuilt_path.read_text(encoding="utf-8"))
     assert rebuilt["years"] == [2026, 2027]
+
+
+def test_benchmarked_tob_does_not_affect_quality_classification():
+    profile = get_profile("ss-payroll-tob")
+    quality = classify_calibration_quality(
+        {
+            "fell_back_to_ipf": False,
+            "age_max_pct_error": 0.0,
+            "negative_weight_pct": 0.0,
+            "constraints": {
+                "ss_total": {"pct_error": 0.0},
+                "payroll_total": {"pct_error": 0.0},
+            },
+            "benchmarks": {
+                "oasdi_tob": {"pct_error": 12.0},
+                "hi_tob": {"pct_error": -9.0},
+            },
+        },
+        profile,
+        year=2035,
+    )
+    assert quality == "exact"
 
 
 def test_entropy_calibration_produces_nonnegative_weights_and_hits_targets():

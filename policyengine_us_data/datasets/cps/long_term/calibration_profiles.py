@@ -35,6 +35,7 @@ class CalibrationProfile:
     use_payroll: bool
     use_h6_reform: bool
     use_tob: bool
+    benchmark_tob: bool = False
     allow_greg_fallback: bool = False
     max_constraint_error_pct: float = 0.1
     max_age_error_pct: float = 0.1
@@ -113,6 +114,7 @@ NAMED_PROFILES: dict[str, CalibrationProfile] = {
         use_payroll=False,
         use_h6_reform=False,
         use_tob=False,
+        benchmark_tob=False,
         allow_greg_fallback=False,
         min_positive_household_count=1000,
         min_effective_sample_size=75.0,
@@ -128,6 +130,7 @@ NAMED_PROFILES: dict[str, CalibrationProfile] = {
         use_payroll=False,
         use_h6_reform=False,
         use_tob=False,
+        benchmark_tob=False,
         max_negative_weight_pct=0.0,
         min_positive_household_count=1000,
         min_effective_sample_size=75.0,
@@ -144,6 +147,7 @@ NAMED_PROFILES: dict[str, CalibrationProfile] = {
         use_payroll=True,
         use_h6_reform=False,
         use_tob=False,
+        benchmark_tob=False,
         max_negative_weight_pct=0.0,
         min_positive_household_count=1000,
         min_effective_sample_size=75.0,
@@ -153,13 +157,14 @@ NAMED_PROFILES: dict[str, CalibrationProfile] = {
     ),
     "ss-payroll-tob": CalibrationProfile(
         name="ss-payroll-tob",
-        description="Age, Social Security, taxable payroll, and TOB using positive entropy calibration.",
+        description="Age, Social Security, and taxable payroll using positive entropy calibration, with TOB benchmarked post-calibration against the selected long-term target source.",
         calibration_method="entropy",
         use_greg=False,
         use_ss=True,
         use_payroll=True,
         use_h6_reform=False,
-        use_tob=True,
+        use_tob=False,
+        benchmark_tob=True,
         max_negative_weight_pct=0.0,
         min_positive_household_count=1000,
         min_effective_sample_size=75.0,
@@ -169,13 +174,14 @@ NAMED_PROFILES: dict[str, CalibrationProfile] = {
     ),
     "ss-payroll-tob-h6": CalibrationProfile(
         name="ss-payroll-tob-h6",
-        description="Age, Social Security, taxable payroll, TOB, and H6 using positive entropy calibration.",
+        description="Age, Social Security, taxable payroll, and H6 using positive entropy calibration, with TOB benchmarked post-calibration against the selected long-term target source.",
         calibration_method="entropy",
         use_greg=False,
         use_ss=True,
         use_payroll=True,
         use_h6_reform=True,
-        use_tob=True,
+        use_tob=False,
+        benchmark_tob=True,
         max_negative_weight_pct=0.0,
         min_positive_household_count=1000,
         min_effective_sample_size=75.0,
@@ -275,6 +281,7 @@ def build_profile_from_flags(
         use_payroll=use_payroll,
         use_h6_reform=use_h6_reform,
         use_tob=use_tob,
+        benchmark_tob=False,
     )
 
 

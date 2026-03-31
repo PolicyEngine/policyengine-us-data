@@ -656,7 +656,7 @@ def fit_l0_weights(
                 lambda_l2=lambda_l2,
                 lr=learning_rate,
                 epochs=chunk,
-                loss_type="capped_relative",
+                loss_type="relative",
                 verbose=False,
             )
 
@@ -744,7 +744,7 @@ def fit_l0_weights(
                 lambda_l2=lambda_l2,
                 lr=learning_rate,
                 epochs=epochs,
-                loss_type="capped_relative",
+                loss_type="relative",
                 verbose=True,
                 verbose_freq=verbose_freq,
             )
@@ -931,6 +931,33 @@ def run_calibration(
         time_period,
     )
 
+    # Compute base household AGI for conditional geographic assignment
+    base_agi = sim.calculate("adjusted_gross_income", map_to="household").values.astype(
+        np.float64
+    )
+
+    # Load CD-level AGI targets from database
+    import sqlite3
+
+    from policyengine_us_data.storage import STORAGE_FOLDER
+
+    db_path = str(STORAGE_FOLDER / "calibration" / "policy_data.db")
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute(
+        "SELECT sc.value, t.value "
+        "FROM targets t "
+        "JOIN stratum_constraints sc ON t.stratum_id = sc.stratum_id "
+        "WHERE t.variable = 'adjusted_gross_income' "
+        "AND sc.constraint_variable = 'congressional_district_geoid' "
+        "AND t.active = 1"
+    ).fetchall()
+    conn.close()
+    cd_agi_targets = {str(row[0]): float(row[1]) for row in rows}
+    logger.info(
+        "Loaded %d CD AGI targets for conditional assignment",
+        len(cd_agi_targets),
+    )
+
     # Step 2: Clone and assign geography
     logger.info(
         "Assigning geography: %d x %d = %d total",
@@ -942,6 +969,8 @@ def run_calibration(
         n_records=n_records,
         n_clones=n_clones,
         seed=seed,
+        household_agi=base_agi,
+        cd_agi_targets=cd_agi_targets,
     )
 
     # Step 3: Source imputation (if requested)

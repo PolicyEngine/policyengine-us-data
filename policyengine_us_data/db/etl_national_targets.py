@@ -708,6 +708,22 @@ def load_national_targets(
                         notes=combined_notes,
                     )
                     session.add(target)
+                    session.flush()
+
+                    persisted = (
+                        session.query(Target)
+                        .filter(Target.target_id == target.target_id)
+                        .first()
+                    )
+                    if persisted.reform_id != target_reform_id:
+                        print(
+                            f"  WARNING: {target_data['variable']} persisted "
+                            f"with reform_id={persisted.reform_id}, "
+                            f"correcting to {target_reform_id}"
+                        )
+                        persisted.reform_id = target_reform_id
+                        session.flush()
+
                     print(f"Added tax expenditure target: {target_data['variable']}")
 
         # Process conditional count targets (enrollment counts)
@@ -804,6 +820,31 @@ def load_national_targets(
                 print(f"Created stratum and target for {constraint_var} enrollment")
 
         session.commit()
+
+        tax_exp_vars = [
+            "salt_deduction",
+            "charitable_deduction",
+            "deductible_mortgage_interest",
+            "medical_expense_deduction",
+            "qualified_business_income_deduction",
+        ]
+        bad_targets = (
+            session.query(Target)
+            .join(Stratum, Target.stratum_id == Stratum.stratum_id)
+            .filter(
+                Target.variable.in_(tax_exp_vars),
+                Target.active == True,
+                Stratum.parent_stratum_id == None,
+                Target.reform_id == 0,
+            )
+            .all()
+        )
+        if bad_targets:
+            bad_names = [t.variable for t in bad_targets]
+            raise ValueError(
+                f"Post-commit check failed: tax expenditure targets "
+                f"have reform_id=0 in root stratum: {bad_names}"
+            )
 
         total_targets = (
             len(direct_targets_df)

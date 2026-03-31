@@ -152,12 +152,12 @@ include:
     geo_level: national
     domain_variable: qualified_business_income_deduction
 
-  # === NATIONAL — JCT tax expenditure targets (reform_id=1) ===
+  # === NATIONAL — JCT tax expenditure targets (reform_id=1..5) ===
   - variable: salt_deduction
     geo_level: national
   - variable: charitable_deduction
     geo_level: national
-  - variable: interest_deduction
+  - variable: deductible_mortgage_interest
     geo_level: national
   - variable: medical_expense_deduction
     geo_level: national

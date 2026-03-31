@@ -19,7 +19,7 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image
 
-app = modal.App(os.environ.get("MODAL_APP_NAME", "policyengine-us-data"))
+app = modal.App("policyengine-us-data")
 
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")

@@ -15,16 +15,15 @@ jobs:
       - name: Check formatting
         run: ruff format --check .
 
-  # ── Deploy Modal app (build image once) ─────────────────────
-  deploy-modal:
+  # ── Download prerequisites ──────────────────────────────────
+  download-prerequisites:
     runs-on: ubuntu-latest
     needs: lint
     if: github.event.head_commit.message != 'Update package version'
-    outputs:
-      app-name: ${{ steps.deploy.outputs.app_name }}
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,42 +31,15 @@ jobs:
           python-version: "3.13"
       - name: Install Modal CLI
         run: pip install modal
-      - name: Deploy Modal app
-        id: deploy
-        run: |
-          APP_NAME="policyengine-us-data-ci-${{ github.run_id }}"
-          echo "app_name=${APP_NAME}" >> "$GITHUB_OUTPUT"
-          MODAL_APP_NAME="${APP_NAME}" modal deploy modal_app/data_build.py
-
-  # ── Download prerequisites ──────────────────────────────────
-  download-prerequisites:
-    runs-on: ubuntu-latest
-    needs: deploy-modal
-    env:
-      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-    steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - name: Install Modal CLI
-        run: pip install modal
       - name: Download prerequisites on Modal
         run: |
-          python -c "
-          import modal
-          with modal.enable_output():
-              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-              result = fn.remote(
-                  script_name='download_prerequisites',
-                  branch='${{ github.ref_name }}',
-              )
-          print(result)
-          "
+          modal run modal_app/data_build.py \
+            --script download_prerequisites \
+            --branch=${{ github.ref_name }}
 
   # ── Phase 1: Independent datasets (parallel) ───────────────
   phase1:
-    needs: [deploy-modal, download-prerequisites]
+    needs: download-prerequisites
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
@@ -76,7 +48,9 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -84,21 +58,14 @@ jobs:
         run: pip install modal
       - name: "Build + test: ${{ matrix.dataset }}"
         run: |
-          python -c "
-          import modal
-          with modal.enable_output():
-              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-              result = fn.remote(
-                  script_name='${{ matrix.dataset }}',
-                  branch='${{ github.ref_name }}',
-                  run_tests=True,
-              )
-          print(result)
-          "
+          modal run modal_app/data_build.py \
+            --script ${{ matrix.dataset }} \
+            --run-tests \
+            --branch=${{ github.ref_name }}
 
   # ── Phase 2: CPS + PUF (depend on Phase 1) ─────────────────
   phase2:
-    needs: [deploy-modal, phase1]
+    needs: phase1
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
@@ -107,7 +74,9 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -115,26 +84,21 @@ jobs:
         run: pip install modal
       - name: "Build + test: ${{ matrix.dataset }}"
         run: |
-          python -c "
-          import modal
-          with modal.enable_output():
-              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-              result = fn.remote(
-                  script_name='${{ matrix.dataset }}',
-                  branch='${{ github.ref_name }}',
-                  run_tests=True,
-              )
-          print(result)
-          "
+          modal run modal_app/data_build.py \
+            --script ${{ matrix.dataset }} \
+            --run-tests \
+            --branch=${{ github.ref_name }}
 
   # ── Phase 3: Extended CPS (depends on Phase 2) ─────────────
   phase3:
-    needs: [deploy-modal, phase2]
+    needs: phase2
     runs-on: ubuntu-latest
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -142,21 +106,14 @@ jobs:
         run: pip install modal
       - name: "Build + test: extended_cps"
         run: |
-          python -c "
-          import modal
-          with modal.enable_output():
-              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-              result = fn.remote(
-                  script_name='extended_cps',
-                  branch='${{ github.ref_name }}',
-                  run_tests=True,
-              )
-          print(result)
-          "
+          modal run modal_app/data_build.py \
+            --script extended_cps \
+            --run-tests \
+            --branch=${{ github.ref_name }}
 
   # ── Phase 4: Enhanced + Stratified CPS (depend on Phase 3) ─
   phase4:
-    needs: [deploy-modal, phase3]
+    needs: phase3
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
@@ -165,7 +122,9 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -173,21 +132,14 @@ jobs:
         run: pip install modal
       - name: "Build + test: ${{ matrix.dataset }}"
         run: |
-          python -c "
-          import modal
-          with modal.enable_output():
-              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-              result = fn.remote(
-                  script_name='${{ matrix.dataset }}',
-                  branch='${{ github.ref_name }}',
-                  run_tests=True,
-              )
-          print(result)
-          "
+          modal run modal_app/data_build.py \
+            --script ${{ matrix.dataset }} \
+            --run-tests \
+            --branch=${{ github.ref_name }}
 
   # ── Phase 5: Source imputed + Small enhanced (depend on 4) ──
   phase5:
-    needs: [deploy-modal, phase4]
+    needs: phase4
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
@@ -196,7 +148,9 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -204,21 +158,14 @@ jobs:
         run: pip install modal
       - name: "Build + test: ${{ matrix.dataset }}"
         run: |
-          python -c "
-          import modal
-          with modal.enable_output():
-              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-              result = fn.remote(
-                  script_name='${{ matrix.dataset }}',
-                  branch='${{ github.ref_name }}',
-                  run_tests=True,
-              )
-          print(result)
-          "
+          modal run modal_app/data_build.py \
+            --script ${{ matrix.dataset }} \
+            --run-tests \
+            --branch=${{ github.ref_name }}
 
   # ── Remaining integration tests (depend on Phase 4) ─────────
   remaining-tests:
-    needs: [deploy-modal, phase4]
+    needs: phase4
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -229,7 +176,9 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -237,33 +186,9 @@ jobs:
         run: pip install modal
       - name: "Test: ${{ matrix.test }}"
         run: |
-          python -c "
-          import modal
-          with modal.enable_output():
-              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_integration_test')
-              result = fn.remote(
-                  test_path='${{ matrix.test }}',
-                  branch='${{ github.ref_name }}',
-              )
-          print(result)
-          "
-
-  # ── Cleanup Modal deployment ────────────────────────────────
-  cleanup-modal:
-    needs: [deploy-modal, phase5, remaining-tests]
-    runs-on: ubuntu-latest
-    if: always()
-    env:
-      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-    steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - name: Install Modal CLI
-        run: pip install modal
-      - name: Stop deployed app
-        run: modal app stop ${{ needs.deploy-modal.outputs.app-name }} 2>/dev/null || true
+          modal run modal_app/data_build.py \
+            --test ${{ matrix.test }} \
+            --branch=${{ github.ref_name }}
 
   # ── Manual approval gate ────────────────────────────────────
   approval-gate:

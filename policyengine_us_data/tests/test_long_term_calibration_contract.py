@@ -50,6 +50,10 @@ def test_named_profile_lookup():
     assert profile.use_h6_reform is False
     assert profile.max_negative_weight_pct == 0.0
     assert profile.approximate_windows[0].age_bucket_size == 5
+    assert profile.min_positive_household_count == 1000
+    assert profile.min_effective_sample_size == 75.0
+    assert profile.max_top_10_weight_share_pct == 25.0
+    assert profile.max_top_100_weight_share_pct == 95.0
 
 
 def test_age_bin_helpers_preserve_population_totals():
@@ -191,6 +195,57 @@ def test_entropy_profile_rejects_negative_weights():
         profile,
     )
     assert any("Negative weight share" in issue for issue in issues)
+
+
+def test_support_thresholds_reject_concentrated_weights():
+    profile = get_profile("ss-payroll-tob")
+    issues = validate_calibration_audit(
+        {
+            "fell_back_to_ipf": False,
+            "age_max_pct_error": 0.0,
+            "negative_weight_pct": 0.0,
+            "positive_weight_count": 90,
+            "effective_sample_size": 57.6,
+            "top_10_weight_share_pct": 26.6,
+            "top_100_weight_share_pct": 100.0,
+            "constraints": {
+                "ss_total": {"pct_error": 0.0},
+                "payroll_total": {"pct_error": 0.0},
+                "oasdi_tob": {"pct_error": 0.0},
+                "hi_tob": {"pct_error": 0.0},
+            },
+        },
+        profile,
+        year=2075,
+        quality="exact",
+    )
+    assert any("Positive household count" in issue for issue in issues)
+    assert any("Top-10 weight share" in issue for issue in issues)
+    assert any("Top-100 weight share" in issue for issue in issues)
+
+
+def test_classify_calibration_quality_marks_support_collapse_aggregate():
+    profile = get_profile("ss-payroll-tob")
+    quality = classify_calibration_quality(
+        {
+            "fell_back_to_ipf": False,
+            "age_max_pct_error": 0.0,
+            "negative_weight_pct": 0.0,
+            "positive_weight_count": 6840,
+            "effective_sample_size": 24.98,
+            "top_10_weight_share_pct": 54.8,
+            "top_100_weight_share_pct": 97.4,
+            "constraints": {
+                "ss_total": {"pct_error": 0.0},
+                "payroll_total": {"pct_error": 0.0},
+                "oasdi_tob": {"pct_error": 0.0},
+                "hi_tob": {"pct_error": 0.0},
+            },
+        },
+        profile,
+        year=2075,
+    )
+    assert quality == "aggregate"
 
 
 def test_approximate_window_is_year_bounded():

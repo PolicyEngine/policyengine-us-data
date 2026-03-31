@@ -12,6 +12,10 @@ class ApproximateCalibrationWindow:
     max_age_error_pct: float
     max_negative_weight_pct: float | None = 0.0
     age_bucket_size: int | None = None
+    min_positive_household_count: int | None = None
+    min_effective_sample_size: float | None = None
+    max_top_10_weight_share_pct: float | None = None
+    max_top_100_weight_share_pct: float | None = None
 
     def applies(self, year: int) -> bool:
         if year < self.start_year:
@@ -35,6 +39,10 @@ class CalibrationProfile:
     max_constraint_error_pct: float = 0.1
     max_age_error_pct: float = 0.1
     max_negative_weight_pct: float | None = None
+    min_positive_household_count: int | None = None
+    min_effective_sample_size: float | None = None
+    max_top_10_weight_share_pct: float | None = None
+    max_top_100_weight_share_pct: float | None = None
     approximate_windows: tuple[ApproximateCalibrationWindow, ...] = field(
         default_factory=tuple
     )
@@ -51,6 +59,10 @@ DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS = (
         max_age_error_pct=0.5,
         max_negative_weight_pct=0.0,
         age_bucket_size=5,
+        min_positive_household_count=1000,
+        min_effective_sample_size=75.0,
+        max_top_10_weight_share_pct=25.0,
+        max_top_100_weight_share_pct=95.0,
     ),
     ApproximateCalibrationWindow(
         start_year=2079,
@@ -59,6 +71,10 @@ DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS = (
         max_age_error_pct=10.0,
         max_negative_weight_pct=0.0,
         age_bucket_size=5,
+        min_positive_household_count=1000,
+        min_effective_sample_size=75.0,
+        max_top_10_weight_share_pct=25.0,
+        max_top_100_weight_share_pct=95.0,
     ),
     ApproximateCalibrationWindow(
         start_year=2086,
@@ -67,6 +83,10 @@ DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS = (
         max_age_error_pct=20.0,
         max_negative_weight_pct=0.0,
         age_bucket_size=5,
+        min_positive_household_count=1000,
+        min_effective_sample_size=75.0,
+        max_top_10_weight_share_pct=25.0,
+        max_top_100_weight_share_pct=95.0,
     ),
     ApproximateCalibrationWindow(
         start_year=2096,
@@ -75,6 +95,10 @@ DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS = (
         max_age_error_pct=35.0,
         max_negative_weight_pct=0.0,
         age_bucket_size=5,
+        min_positive_household_count=1000,
+        min_effective_sample_size=75.0,
+        max_top_10_weight_share_pct=25.0,
+        max_top_100_weight_share_pct=95.0,
     ),
 )
 
@@ -90,6 +114,10 @@ NAMED_PROFILES: dict[str, CalibrationProfile] = {
         use_h6_reform=False,
         use_tob=False,
         allow_greg_fallback=False,
+        min_positive_household_count=1000,
+        min_effective_sample_size=75.0,
+        max_top_10_weight_share_pct=25.0,
+        max_top_100_weight_share_pct=95.0,
     ),
     "ss": CalibrationProfile(
         name="ss",
@@ -101,6 +129,10 @@ NAMED_PROFILES: dict[str, CalibrationProfile] = {
         use_h6_reform=False,
         use_tob=False,
         max_negative_weight_pct=0.0,
+        min_positive_household_count=1000,
+        min_effective_sample_size=75.0,
+        max_top_10_weight_share_pct=25.0,
+        max_top_100_weight_share_pct=95.0,
         approximate_windows=DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS,
     ),
     "ss-payroll": CalibrationProfile(
@@ -113,6 +145,10 @@ NAMED_PROFILES: dict[str, CalibrationProfile] = {
         use_h6_reform=False,
         use_tob=False,
         max_negative_weight_pct=0.0,
+        min_positive_household_count=1000,
+        min_effective_sample_size=75.0,
+        max_top_10_weight_share_pct=25.0,
+        max_top_100_weight_share_pct=95.0,
         approximate_windows=DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS,
     ),
     "ss-payroll-tob": CalibrationProfile(
@@ -125,6 +161,10 @@ NAMED_PROFILES: dict[str, CalibrationProfile] = {
         use_h6_reform=False,
         use_tob=True,
         max_negative_weight_pct=0.0,
+        min_positive_household_count=1000,
+        min_effective_sample_size=75.0,
+        max_top_10_weight_share_pct=25.0,
+        max_top_100_weight_share_pct=95.0,
         approximate_windows=DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS,
     ),
     "ss-payroll-tob-h6": CalibrationProfile(
@@ -137,6 +177,10 @@ NAMED_PROFILES: dict[str, CalibrationProfile] = {
         use_h6_reform=True,
         use_tob=True,
         max_negative_weight_pct=0.0,
+        min_positive_household_count=1000,
+        min_effective_sample_size=75.0,
+        max_top_10_weight_share_pct=25.0,
+        max_top_100_weight_share_pct=95.0,
         approximate_windows=DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS,
     ),
 }
@@ -249,12 +293,33 @@ def validate_calibration_audit(
         )
 
     if quality == "exact":
+        window = approximate_window_for_year(profile, year)
         return _collect_threshold_issues(
             audit,
             profile,
             max_constraint_error_pct=profile.max_constraint_error_pct,
             max_age_error_pct=profile.max_age_error_pct,
             max_negative_weight_pct=profile.max_negative_weight_pct,
+            min_positive_household_count=(
+                window.min_positive_household_count
+                if window is not None
+                else profile.min_positive_household_count
+            ),
+            min_effective_sample_size=(
+                window.min_effective_sample_size
+                if window is not None
+                else profile.min_effective_sample_size
+            ),
+            max_top_10_weight_share_pct=(
+                window.max_top_10_weight_share_pct
+                if window is not None
+                else profile.max_top_10_weight_share_pct
+            ),
+            max_top_100_weight_share_pct=(
+                window.max_top_100_weight_share_pct
+                if window is not None
+                else profile.max_top_100_weight_share_pct
+            ),
         )
 
     if quality == "approximate":
@@ -266,6 +331,10 @@ def validate_calibration_audit(
                 max_constraint_error_pct=profile.max_constraint_error_pct,
                 max_age_error_pct=profile.max_age_error_pct,
                 max_negative_weight_pct=profile.max_negative_weight_pct,
+                min_positive_household_count=profile.min_positive_household_count,
+                min_effective_sample_size=profile.min_effective_sample_size,
+                max_top_10_weight_share_pct=profile.max_top_10_weight_share_pct,
+                max_top_100_weight_share_pct=profile.max_top_100_weight_share_pct,
             )
             issues.append(
                 "Approximate calibration is not permitted for this profile/year"
@@ -277,6 +346,10 @@ def validate_calibration_audit(
             max_constraint_error_pct=window.max_constraint_error_pct,
             max_age_error_pct=window.max_age_error_pct,
             max_negative_weight_pct=window.max_negative_weight_pct,
+            min_positive_household_count=window.min_positive_household_count,
+            min_effective_sample_size=window.min_effective_sample_size,
+            max_top_10_weight_share_pct=window.max_top_10_weight_share_pct,
+            max_top_100_weight_share_pct=window.max_top_100_weight_share_pct,
         )
 
     exact_issues = _collect_threshold_issues(
@@ -285,6 +358,10 @@ def validate_calibration_audit(
         max_constraint_error_pct=profile.max_constraint_error_pct,
         max_age_error_pct=profile.max_age_error_pct,
         max_negative_weight_pct=profile.max_negative_weight_pct,
+        min_positive_household_count=profile.min_positive_household_count,
+        min_effective_sample_size=profile.min_effective_sample_size,
+        max_top_10_weight_share_pct=profile.max_top_10_weight_share_pct,
+        max_top_100_weight_share_pct=profile.max_top_100_weight_share_pct,
     )
     window = approximate_window_for_year(profile, year)
     if window is None:
@@ -297,6 +374,10 @@ def validate_calibration_audit(
         max_constraint_error_pct=window.max_constraint_error_pct,
         max_age_error_pct=window.max_age_error_pct,
         max_negative_weight_pct=window.max_negative_weight_pct,
+        min_positive_household_count=window.min_positive_household_count,
+        min_effective_sample_size=window.min_effective_sample_size,
+        max_top_10_weight_share_pct=window.max_top_10_weight_share_pct,
+        max_top_100_weight_share_pct=window.max_top_100_weight_share_pct,
     )
     return approximate_issues + [
         "Calibration quality aggregate exceeds approximate thresholds"
@@ -310,6 +391,10 @@ def _collect_threshold_issues(
     max_constraint_error_pct: float | None,
     max_age_error_pct: float | None,
     max_negative_weight_pct: float | None,
+    min_positive_household_count: int | None,
+    min_effective_sample_size: float | None,
+    max_top_10_weight_share_pct: float | None,
+    max_top_100_weight_share_pct: float | None,
 ) -> list[str]:
     issues: list[str] = []
 
@@ -346,6 +431,50 @@ def _collect_threshold_issues(
                 f"{max_negative_weight_pct:.3f}%"
             )
 
+    positive_count = audit.get("positive_weight_count")
+    if (
+        min_positive_household_count is not None
+        and positive_count is not None
+        and positive_count < min_positive_household_count
+    ):
+        issues.append(
+            f"Positive household count {positive_count} is below "
+            f"{min_positive_household_count}"
+        )
+
+    ess = audit.get("effective_sample_size")
+    if (
+        min_effective_sample_size is not None
+        and ess is not None
+        and ess < min_effective_sample_size
+    ):
+        issues.append(
+            f"Effective sample size {ess:.3f} is below "
+            f"{min_effective_sample_size:.3f}"
+        )
+
+    top_10_share = audit.get("top_10_weight_share_pct")
+    if (
+        max_top_10_weight_share_pct is not None
+        and top_10_share is not None
+        and top_10_share > max_top_10_weight_share_pct
+    ):
+        issues.append(
+            f"Top-10 weight share {top_10_share:.3f}% exceeds "
+            f"{max_top_10_weight_share_pct:.3f}%"
+        )
+
+    top_100_share = audit.get("top_100_weight_share_pct")
+    if (
+        max_top_100_weight_share_pct is not None
+        and top_100_share is not None
+        and top_100_share > max_top_100_weight_share_pct
+    ):
+        issues.append(
+            f"Top-100 weight share {top_100_share:.3f}% exceeds "
+            f"{max_top_100_weight_share_pct:.3f}%"
+        )
+
     return issues
 
 
@@ -361,6 +490,10 @@ def classify_calibration_quality(
         max_constraint_error_pct=profile.max_constraint_error_pct,
         max_age_error_pct=profile.max_age_error_pct,
         max_negative_weight_pct=profile.max_negative_weight_pct,
+        min_positive_household_count=profile.min_positive_household_count,
+        min_effective_sample_size=profile.min_effective_sample_size,
+        max_top_10_weight_share_pct=profile.max_top_10_weight_share_pct,
+        max_top_100_weight_share_pct=profile.max_top_100_weight_share_pct,
     )
     if not exact_issues:
         return "exact"
@@ -377,6 +510,10 @@ def classify_calibration_quality(
         max_constraint_error_pct=window.max_constraint_error_pct,
         max_age_error_pct=window.max_age_error_pct,
         max_negative_weight_pct=window.max_negative_weight_pct,
+        min_positive_household_count=window.min_positive_household_count,
+        min_effective_sample_size=window.min_effective_sample_size,
+        max_top_10_weight_share_pct=window.max_top_10_weight_share_pct,
+        max_top_100_weight_share_pct=window.max_top_100_weight_share_pct,
     )
     if not approximate_issues:
         return "approximate"

@@ -19,6 +19,7 @@ from policyengine_us_data.datasets.cps.long_term.calibration_artifacts import (
     write_year_metadata,
 )
 from policyengine_us_data.datasets.cps.long_term.calibration_profiles import (
+    approximate_window_for_year,
     build_profile_from_flags,
     classify_calibration_quality,
     get_profile,
@@ -277,8 +278,17 @@ def test_legacy_flags_map_to_named_profile():
         use_h6_reform=False,
         use_tob=True,
     )
-    assert profile.name == "custom-ss-payroll-tob"
-    assert profile.calibration_method == "ipf"
+    assert profile.name == "custom-greg-ss-payroll-tob"
+    assert profile.calibration_method == "greg"
+    assert profile.use_greg is True
+
+
+def test_approximate_window_none_selects_open_ended_tail():
+    profile = get_profile("ss-payroll-tob")
+    window = approximate_window_for_year(profile, None)
+    assert window is not None
+    assert window.start_year == 2096
+    assert window.end_year is None
 
 
 def test_strict_greg_failure_raises():
@@ -322,6 +332,7 @@ def test_build_calibration_audit_reports_constraint_error():
     assert audit["constraints"]["payroll_total"]["pct_error"] == -50.0
     assert audit["positive_weight_count"] == 2
     assert audit["positive_weight_pct"] == 100.0
+    assert audit["negative_weight_household_pct"] == 0.0
     assert audit["effective_sample_size"] == pytest.approx(2.0)
     assert audit["top_10_weight_share_pct"] == pytest.approx(100.0)
     assert audit["top_100_weight_share_pct"] == pytest.approx(100.0)

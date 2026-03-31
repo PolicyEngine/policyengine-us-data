@@ -1,5 +1,6 @@
 import os
 import gc
+import sys
 import numpy as np
 import h5py
 
@@ -178,9 +179,20 @@ def create_household_year_h5(year, household_weights, base_dataset_path, output_
                     df[col_name_new] = uprated_values
                     df.drop(columns=[col], inplace=True)
                 else:
+                    print(
+                        f"Warning: uprating {var_name} for {year} returned "
+                        f"{len(uprated_values)} rows instead of {len(df)}; "
+                        "renaming the base-year column without recalculation.",
+                        file=sys.stderr,
+                    )
                     df.rename(columns={col: col_name_new}, inplace=True)
 
-            except:
+            except Exception as error:
+                print(
+                    f"Warning: failed to uprate {var_name} for {year}: {error}; "
+                    "renaming the base-year column without recalculation.",
+                    file=sys.stderr,
+                )
                 df.rename(columns={col: col_name_new}, inplace=True)
 
     dataset = Dataset.from_dataframe(df, year)
@@ -203,7 +215,7 @@ def create_household_year_h5(year, household_weights, base_dataset_path, output_
                 if values.dtype == np.object_:
                     try:
                         values = values.astype("S")
-                    except:
+                    except (TypeError, ValueError):
                         continue
 
                 data[variable][period] = values

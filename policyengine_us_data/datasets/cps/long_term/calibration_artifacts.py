@@ -158,6 +158,11 @@ def update_dataset_manifest(
         "age_max_pct_error": calibration_audit.get("age_max_pct_error"),
         "max_constraint_pct_error": calibration_audit.get("max_constraint_pct_error"),
         "negative_weight_pct": calibration_audit.get("negative_weight_pct"),
+        "negative_weight_household_pct": calibration_audit.get(
+            "negative_weight_household_pct"
+        ),
+        "validation_passed": calibration_audit.get("validation_passed"),
+        "validation_issue_count": len(calibration_audit.get("validation_issues", [])),
     }
 
     year_set = {int(value) for value in manifest.get("years", [])}

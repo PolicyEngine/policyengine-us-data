@@ -3,7 +3,7 @@ Household-level projection pathway for income tax revenue 2025-2100.
 
 
 Usage:
-    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--output-dir DIR] [--save-h5]
+    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--output-dir DIR] [--save-h5] [--allow-validation-failures]
     python run_household_projection.py [START_YEAR] [END_YEAR] [--greg] [--use-ss] [--use-payroll] [--use-h6-reform] [--use-tob] [--save-h5]
 
     START_YEAR: Optional starting year (default: 2025)
@@ -11,6 +11,7 @@ Usage:
     --profile: Named calibration contract (recommended)
     --target-source: Named long-term target source package
     --output-dir: Output directory for generated H5 files and metadata
+    --allow-validation-failures: Record validation issues in metadata and continue instead of aborting the run
     --greg: Use GREG calibration instead of IPF (optional)
     --use-ss: Include Social Security benefit totals as calibration target (requires --greg)
     --use-payroll: Include taxable payroll totals as calibration target (requires --greg)
@@ -268,6 +269,13 @@ if "--output-dir" in sys.argv:
         raise ValueError("--output-dir requires a directory path")
     OUTPUT_DIR = sys.argv[output_dir_index + 1]
     del sys.argv[output_dir_index : output_dir_index + 2]
+
+ALLOW_VALIDATION_FAILURES = "--allow-validation-failures" in sys.argv
+if ALLOW_VALIDATION_FAILURES:
+    sys.argv.remove("--allow-validation-failures")
+ALLOW_VALIDATION_FAILURES = ALLOW_VALIDATION_FAILURES or (
+    os.environ.get("PEUD_ALLOW_INVALID_ARTIFACTS", "").lower() in {"1", "true", "yes"}
+)
 
 
 USE_GREG = "--greg" in sys.argv
@@ -673,17 +681,26 @@ for year_idx in range(n_years):
         PROFILE,
         year=year,
     )
+    calibration_audit["validation_issues"] = validation_issues
+    calibration_audit["validation_passed"] = not bool(validation_issues)
     if validation_issues:
         issue_text = "; ".join(validation_issues)
-        raise RuntimeError(f"Calibration validation failed for {year}: {issue_text}")
+        if not ALLOW_VALIDATION_FAILURES:
+            raise RuntimeError(f"Calibration validation failed for {year}: {issue_text}")
+        print(
+            f"  [WARN {year}] Validation issues recorded but not fatal: {issue_text}",
+            file=sys.stderr,
+        )
 
     if year in display_years and CALIBRATION_METHOD in {"greg", "entropy"}:
         n_neg = calibration_audit["negative_weight_count"]
         if n_neg > 0:
             pct_neg = calibration_audit["negative_weight_pct"]
+            hh_pct_neg = calibration_audit.get("negative_weight_household_pct", 0.0)
             max_neg = calibration_audit["largest_negative_weight"]
             print(
-                f"  [DEBUG {year}] Negative weights: {n_neg} ({pct_neg:.2f}%), "
+                f"  [DEBUG {year}] Negative weights: {n_neg} households "
+                f"({hh_pct_neg:.2f}% of households, {pct_neg:.2f}% of weight mass), "
                 f"largest: {max_neg:,.0f}"
             )
         else:

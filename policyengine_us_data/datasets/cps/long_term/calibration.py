@@ -503,10 +503,14 @@ def calibrate_entropy_bounded(
     best_max_error_pct = float("inf")
 
     for start in starts:
+        def objective_with_gradient(z):
+            objective, gradient, _ = objective_and_gradient(z)
+            return objective, gradient
+
         result = optimize.minimize(
-            lambda z: objective_and_gradient(z)[0],
+            objective_with_gradient,
             start,
-            jac=lambda z: objective_and_gradient(z)[1],
+            jac=True,
             method="L-BFGS-B",
             bounds=[(0.0, None)] * len(start),
             options={"maxiter": max_iters, "ftol": tol},
@@ -984,6 +988,7 @@ def build_calibration_audit(
     negative_values = np.abs(weights[neg_mask])
     positive_mask = weights > 0
     weight_sum = float(np.sum(weights))
+    abs_weight_sum = float(np.sum(np.abs(weights)))
     if weight_sum > 0:
         sorted_weights = np.sort(weights)
         top_10_weight_share_pct = float(sorted_weights[-10:].sum() / weight_sum * 100)
@@ -1002,7 +1007,12 @@ def build_calibration_audit(
         {
             "age_max_pct_error": float(age_errors.max()),
             "negative_weight_count": int(neg_mask.sum()),
-            "negative_weight_pct": float(100 * neg_mask.sum() / len(weights)),
+            "negative_weight_household_pct": float(100 * neg_mask.sum() / len(weights)),
+            "negative_weight_pct": float(
+                100 * negative_values.sum() / abs_weight_sum
+            )
+            if abs_weight_sum > 0
+            else 0.0,
             "largest_negative_weight": float(negative_values.max()) if negative_values.size else 0.0,
             "positive_weight_count": int(positive_mask.sum()),
             "positive_weight_pct": float(100 * positive_mask.sum() / len(weights)),

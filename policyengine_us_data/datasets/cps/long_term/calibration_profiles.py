@@ -217,7 +217,7 @@ def approximate_window_for_year(
         return max(
             profile.approximate_windows,
             key=lambda window: (
-                float("-inf") if window.end_year is None else window.end_year,
+                float("inf") if window.end_year is None else window.end_year,
                 window.max_constraint_error_pct,
                 window.max_age_error_pct,
             ),
@@ -237,6 +237,9 @@ def build_profile_from_flags(
     use_h6_reform: bool,
     use_tob: bool,
 ) -> CalibrationProfile:
+    if use_tob and not use_greg:
+        use_greg = True
+
     if not use_greg:
         for profile in NAMED_PROFILES.values():
             if (

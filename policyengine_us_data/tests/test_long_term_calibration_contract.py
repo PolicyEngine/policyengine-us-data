@@ -4,7 +4,9 @@ import json
 import numpy as np
 import pytest
 
-from policyengine_us_data.datasets.cps.long_term import calibration as calibration_module
+from policyengine_us_data.datasets.cps.long_term import (
+    calibration as calibration_module,
+)
 from policyengine_us_data.datasets.cps.long_term.calibration import (
     assess_nonnegative_feasibility,
     build_calibration_audit,
@@ -69,12 +71,30 @@ def _toy_support_dataframe():
                 "age__2024": [70.0, 68.0, 80.0, 77.0, 60.0],
                 "household_weight__2024": [10.0, 10.0, 8.0, 8.0, 5.0],
                 "person_weight__2024": [10.0, 10.0, 8.0, 8.0, 5.0],
-                "social_security_retirement__2024": [20_000.0, 0.0, 30_000.0, 0.0, 0.0],
+                "social_security_retirement__2024": [
+                    20_000.0,
+                    0.0,
+                    30_000.0,
+                    0.0,
+                    0.0,
+                ],
                 "social_security_disability__2024": [0.0, 0.0, 0.0, 0.0, 0.0],
                 "social_security_survivors__2024": [0.0, 0.0, 0.0, 0.0, 0.0],
                 "social_security_dependents__2024": [0.0, 0.0, 0.0, 0.0, 0.0],
-                "employment_income_before_lsr__2024": [5_000.0, 0.0, 12_000.0, 0.0, 50_000.0],
-                "self_employment_income_before_lsr__2024": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "employment_income_before_lsr__2024": [
+                    5_000.0,
+                    0.0,
+                    12_000.0,
+                    0.0,
+                    50_000.0,
+                ],
+                "self_employment_income_before_lsr__2024": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
             }
         )
     )
@@ -140,9 +160,15 @@ def test_support_augmentation_clones_households_with_new_ids():
     )
     assert report["base_household_count"] == 3
     assert report["augmented_household_count"] == 4
-    cloned_household_ids = set(augmented_df["household_id__2024"].unique()) - {1, 2, 3}
+    cloned_household_ids = set(augmented_df["household_id__2024"].unique()) - {
+        1,
+        2,
+        3,
+    }
     assert len(cloned_household_ids) == 1
-    cloned_rows = augmented_df[augmented_df["household_id__2024"].isin(cloned_household_ids)]
+    cloned_rows = augmented_df[
+        augmented_df["household_id__2024"].isin(cloned_household_ids)
+    ]
     assert cloned_rows["age__2024"].max() == pytest.approx(80.0)
     assert cloned_rows["household_weight__2024"].iloc[0] == pytest.approx(5.0)
     assert cloned_rows["person_id__2024"].min() > df["person_id__2024"].max()
@@ -178,12 +204,22 @@ def test_support_augmentation_synthesizes_composite_payroll_household():
     )
     assert report["base_household_count"] == 3
     assert report["augmented_household_count"] == 4
-    cloned_household_ids = set(augmented_df["household_id__2024"].unique()) - {1, 2, 3}
+    cloned_household_ids = set(augmented_df["household_id__2024"].unique()) - {
+        1,
+        2,
+        3,
+    }
     assert len(cloned_household_ids) == 1
-    cloned_rows = augmented_df[augmented_df["household_id__2024"].isin(cloned_household_ids)]
+    cloned_rows = augmented_df[
+        augmented_df["household_id__2024"].isin(cloned_household_ids)
+    ]
     assert cloned_rows["age__2024"].max() == pytest.approx(80.0)
-    assert cloned_rows["social_security_retirement__2024"].sum() == pytest.approx(30_000.0)
-    assert cloned_rows["employment_income_before_lsr__2024"].sum() == pytest.approx(37_000.0)
+    assert cloned_rows[
+        "social_security_retirement__2024"
+    ].sum() == pytest.approx(30_000.0)
+    assert cloned_rows[
+        "employment_income_before_lsr__2024"
+    ].sum() == pytest.approx(37_000.0)
 
 
 def test_support_augmentation_appends_single_person_synthetic_grid_households():
@@ -218,13 +254,13 @@ def test_support_augmentation_appends_single_person_synthetic_grid_households():
         name="grid-profile",
         description="Toy single-person synthetic grid.",
         rules=(
-                SinglePersonSyntheticGridRule(
-                    name="older_grid",
-                    template_min_max_age=75,
-                    template_max_max_age=86,
-                    target_ages=(77, 85),
-                    ss_quantiles=(0.5,),
-                    payroll_quantiles=(0.5,),
+            SinglePersonSyntheticGridRule(
+                name="older_grid",
+                template_min_max_age=75,
+                template_max_max_age=86,
+                target_ages=(77, 85),
+                ss_quantiles=(0.5,),
+                payroll_quantiles=(0.5,),
                 template_ss_state="positive",
                 template_payroll_state="any",
                 payroll_donor_min_max_age=55,
@@ -240,12 +276,20 @@ def test_support_augmentation_appends_single_person_synthetic_grid_households():
     )
     assert report["base_household_count"] == 3
     assert report["augmented_household_count"] == 5
-    synthetic_household_ids = set(augmented_df["household_id__2024"].unique()) - {1, 2, 3}
+    synthetic_household_ids = set(
+        augmented_df["household_id__2024"].unique()
+    ) - {1, 2, 3}
     assert len(synthetic_household_ids) == 2
-    synthetic_rows = augmented_df[augmented_df["household_id__2024"].isin(synthetic_household_ids)]
+    synthetic_rows = augmented_df[
+        augmented_df["household_id__2024"].isin(synthetic_household_ids)
+    ]
     assert set(synthetic_rows["age__2024"].tolist()) == {77.0, 85.0}
-    assert set(synthetic_rows["social_security_retirement__2024"].tolist()) == {22_000.0}
-    assert set(synthetic_rows["employment_income_before_lsr__2024"].tolist()) == {50_000.0}
+    assert set(
+        synthetic_rows["social_security_retirement__2024"].tolist()
+    ) == {22_000.0}
+    assert set(
+        synthetic_rows["employment_income_before_lsr__2024"].tolist()
+    ) == {50_000.0}
 
 
 def test_age_bin_helpers_preserve_population_totals():
@@ -617,7 +661,9 @@ def test_entropy_calibration_produces_nonnegative_weights_and_hits_targets():
 
     assert np.all(weights > 0)
     np.testing.assert_allclose(X.T @ weights, y_target, rtol=1e-8, atol=1e-8)
-    np.testing.assert_allclose(np.dot(payroll_values, weights), payroll_target, rtol=1e-8, atol=1e-8)
+    np.testing.assert_allclose(
+        np.dot(payroll_values, weights), payroll_target, rtol=1e-8, atol=1e-8
+    )
 
 
 def test_bounded_entropy_calibration_returns_positive_approximate_weights():
@@ -674,7 +720,9 @@ def test_entropy_calibration_uses_lp_exact_fallback_even_before_approximate_wind
     monkeypatch.setattr(
         calibration_module,
         "calibrate_entropy",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("entropy stalled")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("entropy stalled")
+        ),
     )
     monkeypatch.setattr(
         calibration_module,
@@ -722,7 +770,9 @@ def test_nonnegative_feasibility_diagnostic_distinguishes_feasible_and_infeasibl
         ]
     )
     infeasible_targets = np.array([1.0, 1.0, 3.0])
-    infeasible = assess_nonnegative_feasibility(infeasible_A, infeasible_targets)
+    infeasible = assess_nonnegative_feasibility(
+        infeasible_A, infeasible_targets
+    )
     assert infeasible["success"] is True
     assert infeasible["best_case_max_pct_error"] > 10.0
 
@@ -739,3 +789,115 @@ def test_long_term_target_sources_are_available_and_distinct():
         source_name="trustees_2025_current_law",
     )
     assert payroll_2026 == pytest.approx(11_129_000_000_000.0)
+
+
+def test_normalize_metadata_backfills_validation_passed():
+    metadata = normalize_metadata(
+        {
+            "year": 2091,
+            "profile": {"name": "ss-payroll-tob"},
+            "calibration_audit": {
+                "lp_fallback_used": True,
+                "approximation_method": "lp_blend",
+                "approximate_solution_error_pct": 16.0,
+                "max_constraint_pct_error": 16.0,
+                "age_max_pct_error": 14.5,
+                "negative_weight_pct": 0.0,
+                "positive_weight_count": 6840,
+                "effective_sample_size": 12.0,
+                "top_10_weight_share_pct": 80.0,
+                "top_100_weight_share_pct": 99.0,
+                "constraints": {
+                    "ss_total": {"pct_error": 14.5},
+                    "payroll_total": {"pct_error": 16.0},
+                },
+            },
+        }
+    )
+
+    audit = metadata["calibration_audit"]
+    assert audit["validation_passed"] is False
+    assert isinstance(audit["validation_issues"], list)
+    assert len(audit["validation_issues"]) > 0
+
+
+def test_manifest_contains_invalid_artifacts_flag(tmp_path):
+    profile = get_profile("ss-payroll-tob")
+
+    valid_audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+    }
+
+    invalid_audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 14.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 6840,
+        "effective_sample_size": 12.0,
+        "top_10_weight_share_pct": 80.0,
+        "top_100_weight_share_pct": 99.0,
+        "max_constraint_pct_error": 16.0,
+        "constraints": {"payroll_total": {"pct_error": 16.0}},
+        "validation_passed": False,
+        "validation_issues": ["ESS too low"],
+    }
+
+    # First year: valid
+    year_2030 = tmp_path / "2030.h5"
+    year_2030.write_text("", encoding="utf-8")
+    metadata_2030 = write_year_metadata(
+        year_2030,
+        year=2030,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=valid_audit,
+    )
+    manifest_path = update_dataset_manifest(
+        tmp_path,
+        year=2030,
+        h5_path=year_2030,
+        metadata_path=metadata_2030,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=valid_audit,
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["contains_invalid_artifacts"] is False
+
+    # Second year: invalid
+    year_2091 = tmp_path / "2091.h5"
+    year_2091.write_text("", encoding="utf-8")
+    metadata_2091 = write_year_metadata(
+        year_2091,
+        year=2091,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=invalid_audit,
+    )
+    update_dataset_manifest(
+        tmp_path,
+        year=2091,
+        h5_path=year_2091,
+        metadata_path=metadata_2091,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=invalid_audit,
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["contains_invalid_artifacts"] is True
+    assert manifest["datasets"]["2030"]["validation_passed"] is True
+    assert manifest["datasets"]["2091"]["validation_passed"] is False

@@ -6,9 +6,17 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .calibration_profiles import classify_calibration_quality, get_profile
+    from .calibration_profiles import (
+        classify_calibration_quality,
+        get_profile,
+        validate_calibration_audit,
+    )
 except ImportError:  # pragma: no cover - script execution fallback
-    from calibration_profiles import classify_calibration_quality, get_profile
+    from calibration_profiles import (
+        classify_calibration_quality,
+        get_profile,
+        validate_calibration_audit,
+    )
 
 
 CONTRACT_VERSION = 1
@@ -29,7 +37,13 @@ def normalize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
 
     if "max_constraint_pct_error" not in audit:
         audit["max_constraint_pct_error"] = float(
-            max((abs(stats.get("pct_error", 0.0)) for stats in constraints.values()), default=0.0)
+            max(
+                (
+                    abs(stats.get("pct_error", 0.0))
+                    for stats in constraints.values()
+                ),
+                default=0.0,
+            )
         )
 
     if audit.get("lp_fallback_used"):
@@ -62,6 +76,20 @@ def normalize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         elif quality == "approximate":
             audit["approximation_method"] = "lp_minimax"
             audit["approximate_solution_used"] = True
+
+    if "validation_passed" not in audit and profile_data.get("name"):
+        try:
+            profile = get_profile(profile_data["name"])
+        except ValueError:
+            profile = None
+        if profile is not None:
+            issues = validate_calibration_audit(
+                audit,
+                profile,
+                year=normalized.get("year"),
+            )
+            audit["validation_passed"] = not bool(issues)
+            audit.setdefault("validation_issues", issues)
 
     return normalized
 
@@ -129,10 +157,10 @@ def update_dataset_manifest(
         )
     manifest_profile = json.loads(json.dumps(manifest["profile"]))
     if manifest_profile != profile:
-        if (
-            manifest_profile.get("name") == profile.get("name")
-            and manifest_profile.get("calibration_method")
-            == profile.get("calibration_method")
+        if manifest_profile.get("name") == profile.get(
+            "name"
+        ) and manifest_profile.get("calibration_method") == profile.get(
+            "calibration_method"
         ):
             manifest["profile"] = profile
         else:
@@ -156,13 +184,17 @@ def update_dataset_manifest(
         "method_used": calibration_audit.get("method_used"),
         "fell_back_to_ipf": calibration_audit.get("fell_back_to_ipf"),
         "age_max_pct_error": calibration_audit.get("age_max_pct_error"),
-        "max_constraint_pct_error": calibration_audit.get("max_constraint_pct_error"),
+        "max_constraint_pct_error": calibration_audit.get(
+            "max_constraint_pct_error"
+        ),
         "negative_weight_pct": calibration_audit.get("negative_weight_pct"),
         "negative_weight_household_pct": calibration_audit.get(
             "negative_weight_household_pct"
         ),
         "validation_passed": calibration_audit.get("validation_passed"),
-        "validation_issue_count": len(calibration_audit.get("validation_issues", [])),
+        "validation_issue_count": len(
+            calibration_audit.get("validation_issues", [])
+        ),
     }
 
     year_set = {int(value) for value in manifest.get("years", [])}
@@ -173,6 +205,9 @@ def update_dataset_manifest(
         "end": max(year_set),
     }
     manifest["generated_at"] = datetime.now(timezone.utc).isoformat()
+    manifest["contains_invalid_artifacts"] = any(
+        entry.get("validation_passed") is False for entry in datasets.values()
+    )
 
     manifest_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",

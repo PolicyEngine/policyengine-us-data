@@ -279,7 +279,9 @@ def calibrate_entropy(
     baseline_weights = np.asarray(baseline_weights, dtype=float)
     gram = A_scaled.T @ (baseline_weights[:, None] * A_scaled)
     gram += np.eye(gram.shape[0]) * 1e-12
-    beta0 = np.linalg.solve(gram, targets_scaled - (A_scaled.T @ baseline_weights))
+    beta0 = np.linalg.solve(
+        gram, targets_scaled - (A_scaled.T @ baseline_weights)
+    )
 
     def objective_gradient_hessian(beta):
         eta = np.clip(A_scaled @ beta, -700, 700)
@@ -291,10 +293,19 @@ def calibrate_entropy(
         return objective, gradient, hessian
 
     def solve_with_root(beta_start):
+        _cache = {}
+
+        def _cached_ogh(z):
+            key = z.tobytes()
+            if key not in _cache:
+                _cache.clear()
+                _cache[key] = objective_gradient_hessian(z)
+            return _cache[key]
+
         result = optimize.root(
-            lambda z: objective_gradient_hessian(z)[1],
+            lambda z: _cached_ogh(z)[1],
             beta_start,
-            jac=lambda z: objective_gradient_hessian(z)[2],
+            jac=lambda z: _cached_ogh(z)[2],
             method="hybr",
             options={"xtol": tol},
         )
@@ -302,7 +313,11 @@ def calibrate_entropy(
             return None
         _, gradient, _ = objective_gradient_hessian(result.x)
         max_error = float(
-            np.max(100 * np.abs(gradient) / np.maximum(np.abs(targets_scaled), 1e-12))
+            np.max(
+                100
+                * np.abs(gradient)
+                / np.maximum(np.abs(targets_scaled), 1e-12)
+            )
         )
         if max_error > tol * 100:
             return None
@@ -328,7 +343,11 @@ def calibrate_entropy(
     for iterations in range(1, max_iters + 1):
         objective, gradient, hessian = objective_gradient_hessian(beta)
         final_max_error = float(
-            np.max(100 * np.abs(gradient) / np.maximum(np.abs(targets_scaled), 1e-12))
+            np.max(
+                100
+                * np.abs(gradient)
+                / np.maximum(np.abs(targets_scaled), 1e-12)
+            )
         )
         if final_max_error <= tol * 100:
             break
@@ -342,7 +361,9 @@ def calibrate_entropy(
         step = 1.0
         while step >= 1e-8:
             candidate = beta - step * delta
-            candidate_objective, candidate_gradient, _ = objective_gradient_hessian(candidate)
+            candidate_objective, candidate_gradient, _ = (
+                objective_gradient_hessian(candidate)
+            )
             candidate_max_error = float(
                 np.max(
                     100
@@ -456,7 +477,9 @@ def calibrate_entropy_bounded(
         exp_eta = np.exp(eta)
         weights = baseline_weights * exp_eta
         achieved = A_scaled.T @ weights
-        objective = float(np.sum(weights) + upper_bounds @ alpha - lower_bounds @ gamma)
+        objective = float(
+            np.sum(weights) + upper_bounds @ alpha - lower_bounds @ gamma
+        )
         gradient = np.concatenate(
             [
                 upper_bounds - achieved,
@@ -498,15 +521,15 @@ def calibrate_entropy_bounded(
             )
         )
 
+    def objective_with_gradient(z):
+        objective, gradient, _ = objective_and_gradient(z)
+        return objective, gradient
+
     best_result = None
     best_weights = None
     best_max_error_pct = float("inf")
 
     for start in starts:
-        def objective_with_gradient(z):
-            objective, gradient, _ = objective_and_gradient(z)
-            return objective, gradient
-
         result = optimize.minimize(
             objective_with_gradient,
             start,
@@ -518,9 +541,7 @@ def calibrate_entropy_bounded(
 
         objective, gradient, weights = objective_and_gradient(result.x)
         achieved = A_scaled.T @ weights
-        max_error_pct = float(
-            np.max(np.abs(achieved - targets_scaled)) * 100
-        )
+        max_error_pct = float(np.max(np.abs(achieved - targets_scaled)) * 100)
 
         if max_error_pct < best_max_error_pct:
             best_result = result
@@ -540,7 +561,9 @@ def calibrate_entropy_bounded(
             )
 
     if best_result is None or best_weights is None:
-        raise RuntimeError("Approximate bounded entropy calibration did not run.")
+        raise RuntimeError(
+            "Approximate bounded entropy calibration did not run."
+        )
 
     raise RuntimeError(
         "Approximate bounded entropy calibration failed: "
@@ -587,7 +610,8 @@ def densify_lp_solution(
         lam = (lo + hi) / 2.0
         candidate_weights = (1.0 - lam) * lp_weights + lam * baseline_weights
         candidate_error_pct = float(
-            np.max(np.abs(A_scaled.T @ candidate_weights - targets_scaled)) * 100
+            np.max(np.abs(A_scaled.T @ candidate_weights - targets_scaled))
+            * 100
         )
         if candidate_error_pct <= max_constraint_error_pct + 1e-6:
             best_lambda = lam
@@ -600,6 +624,7 @@ def densify_lp_solution(
     return best_weights, {
         "blend_lambda": best_lambda,
         "best_case_max_pct_error": best_error_pct,
+        "densification_effective": best_lambda > 0.0,
     }
 
 
@@ -645,7 +670,9 @@ def calibrate_lp_minimax(
 
     A = aux_df.to_numpy(dtype=float)
     targets = np.array(list(controls.values()), dtype=float)
-    feasibility = assess_nonnegative_feasibility(A, targets, return_weights=True)
+    feasibility = assess_nonnegative_feasibility(
+        A, targets, return_weights=True
+    )
     weights = feasibility.get("weights")
     if not feasibility["success"] or weights is None:
         raise RuntimeError(
@@ -679,7 +706,9 @@ def assess_nonnegative_feasibility(A, targets, *, return_weights=False):
     b_rel = targets / scales
 
     constraint_matrix = sparse.csr_matrix(A_rel)
-    epsilon_column = sparse.csc_matrix(np.ones((constraint_matrix.shape[0], 1)))
+    epsilon_column = sparse.csc_matrix(
+        np.ones((constraint_matrix.shape[0], 1))
+    )
     A_ub = sparse.vstack(
         [
             sparse.hstack([constraint_matrix, -epsilon_column]),
@@ -857,7 +886,9 @@ def calibrate_weights(
                 hi_tob_target=hi_tob_target,
                 n_ages=n_ages,
             )
-            approximate_error_pct = float(feasibility["best_case_max_pct_error"])
+            approximate_error_pct = float(
+                feasibility["best_case_max_pct_error"]
+            )
             if approximate_error_pct <= max(tol * 100, 1e-6):
                 audit["lp_fallback_used"] = True
                 audit["approximation_method"] = "lp_minimax_exact"
@@ -910,27 +941,29 @@ def calibrate_weights(
                     warm_weights = [w_new]
                     if dense_lp_weights is not None:
                         warm_weights.insert(0, dense_lp_weights)
-                    bounded_weights, bounded_iterations, bounded_feasibility = (
-                        calibrate_entropy_bounded(
-                            X,
-                            y_target,
-                            baseline_weights,
-                            ss_values=ss_values,
-                            ss_target=ss_target,
-                            payroll_values=payroll_values,
-                            payroll_target=payroll_target,
-                            h6_income_values=h6_income_values,
-                            h6_revenue_target=h6_revenue_target,
-                            oasdi_tob_values=oasdi_tob_values,
-                            oasdi_tob_target=oasdi_tob_target,
-                            hi_tob_values=hi_tob_values,
-                            hi_tob_target=hi_tob_target,
-                            n_ages=n_ages,
-                            max_constraint_error_pct=approximate_max_error_pct,
-                            max_iters=max_iters * 10,
-                            tol=max(tol, 1e-10),
-                            warm_weights=warm_weights,
-                        )
+                    (
+                        bounded_weights,
+                        bounded_iterations,
+                        bounded_feasibility,
+                    ) = calibrate_entropy_bounded(
+                        X,
+                        y_target,
+                        baseline_weights,
+                        ss_values=ss_values,
+                        ss_target=ss_target,
+                        payroll_values=payroll_values,
+                        payroll_target=payroll_target,
+                        h6_income_values=h6_income_values,
+                        h6_revenue_target=h6_revenue_target,
+                        oasdi_tob_values=oasdi_tob_values,
+                        oasdi_tob_target=oasdi_tob_target,
+                        hi_tob_values=hi_tob_values,
+                        hi_tob_target=hi_tob_target,
+                        n_ages=n_ages,
+                        max_constraint_error_pct=approximate_max_error_pct,
+                        max_iters=max_iters * 10,
+                        tol=max(tol, 1e-10),
+                        warm_weights=warm_weights,
                     )
                     audit["approximate_solution_used"] = True
                     audit["approximation_method"] = "bounded_entropy"
@@ -944,7 +977,10 @@ def calibrate_weights(
             if dense_lp_weights is not None and dense_lp_info is not None:
                 audit["lp_fallback_used"] = True
                 audit["approximate_solution_used"] = True
-                audit["approximation_method"] = "lp_blend"
+                densified = dense_lp_info.get("densification_effective", False)
+                audit["approximation_method"] = (
+                    "lp_blend" if densified else "lp_minimax"
+                )
                 audit["approximate_solution_error_pct"] = float(
                     dense_lp_info["best_case_max_pct_error"]
                 )
@@ -982,7 +1018,11 @@ def build_calibration_audit(
     hi_tob_target=None,
 ):
     achieved_ages = X.T @ weights
-    age_errors = np.abs(achieved_ages - y_target) / np.maximum(np.abs(y_target), 1e-10) * 100
+    age_errors = (
+        np.abs(achieved_ages - y_target)
+        / np.maximum(np.abs(y_target), 1e-10)
+        * 100
+    )
 
     neg_mask = weights < 0
     negative_values = np.abs(weights[neg_mask])
@@ -991,8 +1031,12 @@ def build_calibration_audit(
     abs_weight_sum = float(np.sum(np.abs(weights)))
     if weight_sum > 0:
         sorted_weights = np.sort(weights)
-        top_10_weight_share_pct = float(sorted_weights[-10:].sum() / weight_sum * 100)
-        top_100_weight_share_pct = float(sorted_weights[-100:].sum() / weight_sum * 100)
+        top_10_weight_share_pct = float(
+            sorted_weights[-10:].sum() / weight_sum * 100
+        )
+        top_100_weight_share_pct = float(
+            sorted_weights[-100:].sum() / weight_sum * 100
+        )
     else:
         top_10_weight_share_pct = 0.0
         top_100_weight_share_pct = 0.0
@@ -1007,15 +1051,21 @@ def build_calibration_audit(
         {
             "age_max_pct_error": float(age_errors.max()),
             "negative_weight_count": int(neg_mask.sum()),
-            "negative_weight_household_pct": float(100 * neg_mask.sum() / len(weights)),
-            "negative_weight_pct": float(
-                100 * negative_values.sum() / abs_weight_sum
-            )
-            if abs_weight_sum > 0
-            else 0.0,
-            "largest_negative_weight": float(negative_values.max()) if negative_values.size else 0.0,
+            "negative_weight_household_pct": float(
+                100 * neg_mask.sum() / len(weights)
+            ),
+            "negative_weight_pct": (
+                float(100 * negative_values.sum() / abs_weight_sum)
+                if abs_weight_sum > 0
+                else 0.0
+            ),
+            "largest_negative_weight": (
+                float(negative_values.max()) if negative_values.size else 0.0
+            ),
             "positive_weight_count": int(positive_mask.sum()),
-            "positive_weight_pct": float(100 * positive_mask.sum() / len(weights)),
+            "positive_weight_pct": float(
+                100 * positive_mask.sum() / len(weights)
+            ),
             "effective_sample_size": effective_sample_size,
             "top_10_weight_share_pct": top_10_weight_share_pct,
             "top_100_weight_share_pct": top_100_weight_share_pct,

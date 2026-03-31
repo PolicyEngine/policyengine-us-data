@@ -109,6 +109,26 @@ PREREQUISITE_FILES = [
     "policyengine_us_data/storage/calibration/policy_data.db",
 ]
 
+# Integration tests to run after each script build.
+# Scripts not listed here have no associated tests.
+SCRIPT_TESTS = {
+    "acs": ["policyengine_us_data/tests/integration/test_acs.py"],
+    "cps": ["policyengine_us_data/tests/integration/test_cps.py"],
+    "extended_cps": ["policyengine_us_data/tests/integration/test_extended_cps.py"],
+    "enhanced_cps": [
+        "policyengine_us_data/tests/integration/test_enhanced_cps.py",
+        "policyengine_us_data/tests/integration/test_sparse_enhanced_cps.py",
+        "policyengine_us_data/tests/integration/test_sipp_assets.py",
+    ],
+    "source_imputed_cps": [
+        "policyengine_us_data/tests/integration/test_source_imputed_cps_masking.py",
+        "policyengine_us_data/tests/integration/test_source_imputed_cps_consistency.py",
+    ],
+    "small_enhanced_cps": [
+        "policyengine_us_data/tests/integration/test_small_enhanced_cps.py",
+    ],
+}
+
 
 def setup_gcp_credentials():
     """Write GCP credentials JSON to a temp file for google.auth.default()."""
@@ -692,15 +712,24 @@ def build_datasets(
 def run_single_script(
     script_name: str,
     branch: str = "main",
+    run_tests: bool = False,
 ) -> str:
     """Run a single dataset build script with checkpointing.
+
+    Optionally runs associated integration tests after the build,
+    inside the same container where the data was just created.
 
     Args:
         script_name: Short name (e.g. 'cps') or full path to the script.
         branch: Git branch for checkpoint scoping.
+        run_tests: If True, run integration tests for this dataset
+            after building.
 
     Returns:
         Status message.
+
+    Raises:
+        subprocess.CalledProcessError: If the build or tests fail.
     """
     setup_gcp_credentials()
     os.chdir("/root/policyengine-us-data")
@@ -743,7 +772,69 @@ def run_single_script(
         branch,
         checkpoint_volume,
     )
+
+    # Run associated integration tests inside this container
+    if run_tests:
+        test_paths = SCRIPT_TESTS.get(script_name, [])
+        if test_paths:
+            print(f"\n=== Running integration tests for {script_name} ===")
+            cmd = ["uv", "run", "python", "-m", "pytest", "-v", "--tb=short"]
+            cmd.extend(test_paths)
+            subprocess.run(cmd, check=True, env=os.environ.copy())
+            print(f"=== Tests passed for {script_name} ===")
+        else:
+            print(f"No integration tests defined for {script_name}")
+
     return f"Completed {script_name}"
+
+
+@app.function(
+    image=image,
+    secrets=[hf_secret, gcp_secret],
+    volumes={
+        VOLUME_MOUNT: checkpoint_volume,
+        PIPELINE_MOUNT: pipeline_volume,
+    },
+    memory=32768,
+    cpu=8.0,
+    timeout=3600,
+    nonpreemptible=True,
+)
+def run_integration_test(
+    test_path: str,
+    branch: str = "main",
+) -> str:
+    """Run integration tests inside Modal where built data exists.
+
+    Restores all checkpointed artifacts (prerequisites + datasets),
+    then runs pytest on the given test path.
+
+    Args:
+        test_path: Path to a test file or directory.
+        branch: Git branch for checkpoint scoping.
+
+    Returns:
+        Status message.
+
+    Raises:
+        subprocess.CalledProcessError: If tests fail.
+    """
+    setup_gcp_credentials()
+    os.chdir("/root/policyengine-us-data")
+
+    # Restore all prerequisites and dataset outputs
+    for prereq in PREREQUISITE_FILES:
+        restore_from_checkpoint(branch, prereq)
+    for dep_path, dep_outputs in SCRIPT_OUTPUTS.items():
+        if isinstance(dep_outputs, str):
+            dep_outputs = [dep_outputs]
+        for dep_output in dep_outputs:
+            restore_from_checkpoint(branch, dep_output)
+
+    print(f"\n=== Running integration test: {test_path} ===")
+    cmd = ["uv", "run", "python", "-m", "pytest", test_path, "-v", "--tb=short"]
+    subprocess.run(cmd, check=True, env=os.environ.copy())
+    return f"Tests passed: {test_path}"
 
 
 @app.local_entrypoint()
@@ -755,11 +846,20 @@ def main(
     skip_tests: bool = False,
     skip_enhanced_cps: bool = False,
     script: str = "",
+    run_tests: bool = False,
+    test: str = "",
 ):
-    if script:
+    if test:
+        result = run_integration_test.remote(
+            test_path=test,
+            branch=branch,
+        )
+        print(result)
+    elif script:
         result = run_single_script.remote(
             script_name=script,
             branch=branch,
+            run_tests=run_tests,
         )
         print(result)
     else:

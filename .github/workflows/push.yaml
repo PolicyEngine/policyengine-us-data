@@ -56,11 +56,12 @@ jobs:
         run: |
           python -c "
           import modal
-          fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-          result = fn.remote(
-              script_name='download_prerequisites',
-              branch='${{ github.ref_name }}',
-          )
+          with modal.enable_output():
+              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
+              result = fn.remote(
+                  script_name='download_prerequisites',
+                  branch='${{ github.ref_name }}',
+              )
           print(result)
           "
 
@@ -85,12 +86,13 @@ jobs:
         run: |
           python -c "
           import modal
-          fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-          result = fn.remote(
-              script_name='${{ matrix.dataset }}',
-              branch='${{ github.ref_name }}',
-              run_tests=True,
-          )
+          with modal.enable_output():
+              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
+              result = fn.remote(
+                  script_name='${{ matrix.dataset }}',
+                  branch='${{ github.ref_name }}',
+                  run_tests=True,
+              )
           print(result)
           "
 
@@ -115,12 +117,13 @@ jobs:
         run: |
           python -c "
           import modal
-          fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-          result = fn.remote(
-              script_name='${{ matrix.dataset }}',
-              branch='${{ github.ref_name }}',
-              run_tests=True,
-          )
+          with modal.enable_output():
+              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
+              result = fn.remote(
+                  script_name='${{ matrix.dataset }}',
+                  branch='${{ github.ref_name }}',
+                  run_tests=True,
+              )
           print(result)
           "
 
@@ -141,12 +144,13 @@ jobs:
         run: |
           python -c "
           import modal
-          fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-          result = fn.remote(
-              script_name='extended_cps',
-              branch='${{ github.ref_name }}',
-              run_tests=True,
-          )
+          with modal.enable_output():
+              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
+              result = fn.remote(
+                  script_name='extended_cps',
+                  branch='${{ github.ref_name }}',
+                  run_tests=True,
+              )
           print(result)
           "
 
@@ -171,12 +175,13 @@ jobs:
         run: |
           python -c "
           import modal
-          fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-          result = fn.remote(
-              script_name='${{ matrix.dataset }}',
-              branch='${{ github.ref_name }}',
-              run_tests=True,
-          )
+          with modal.enable_output():
+              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
+              result = fn.remote(
+                  script_name='${{ matrix.dataset }}',
+                  branch='${{ github.ref_name }}',
+                  run_tests=True,
+              )
           print(result)
           "
 
@@ -201,12 +206,13 @@ jobs:
         run: |
           python -c "
           import modal
-          fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
-          result = fn.remote(
-              script_name='${{ matrix.dataset }}',
-              branch='${{ github.ref_name }}',
-              run_tests=True,
-          )
+          with modal.enable_output():
+              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_single_script')
+              result = fn.remote(
+                  script_name='${{ matrix.dataset }}',
+                  branch='${{ github.ref_name }}',
+                  run_tests=True,
+              )
           print(result)
           "
 
@@ -233,11 +239,12 @@ jobs:
         run: |
           python -c "
           import modal
-          fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_integration_test')
-          result = fn.remote(
-              test_path='${{ matrix.test }}',
-              branch='${{ github.ref_name }}',
-          )
+          with modal.enable_output():
+              fn = modal.Function.from_name('${{ needs.deploy-modal.outputs.app-name }}', 'run_integration_test')
+              result = fn.remote(
+                  test_path='${{ matrix.test }}',
+                  branch='${{ github.ref_name }}',
+              )
           print(result)
           "
 

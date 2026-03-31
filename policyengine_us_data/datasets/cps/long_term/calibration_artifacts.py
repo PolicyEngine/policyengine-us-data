@@ -32,6 +32,12 @@ def normalize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
             max((abs(stats.get("pct_error", 0.0)) for stats in constraints.values()), default=0.0)
         )
 
+    if audit.get("lp_fallback_used"):
+        realized_error = float(audit.get("max_constraint_pct_error", 0.0))
+        stored_error = audit.get("approximate_solution_error_pct")
+        if stored_error is None or float(stored_error) < realized_error:
+            audit["approximate_solution_error_pct"] = realized_error
+
     if "calibration_quality" not in audit and profile_data.get("name"):
         try:
             profile = get_profile(profile_data["name"])
@@ -47,6 +53,15 @@ def normalize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
                 profile,
                 year=normalized.get("year"),
             )
+
+    if audit.get("lp_fallback_used"):
+        quality = audit.get("calibration_quality")
+        if quality == "exact":
+            audit["approximation_method"] = "lp_minimax_exact"
+            audit["approximate_solution_used"] = False
+        elif quality == "approximate":
+            audit["approximation_method"] = "lp_minimax"
+            audit["approximate_solution_used"] = True
 
     return normalized
 

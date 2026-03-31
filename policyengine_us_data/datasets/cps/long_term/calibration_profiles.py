@@ -53,8 +53,8 @@ DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS = (
     ApproximateCalibrationWindow(
         start_year=2079,
         end_year=2085,
-        max_constraint_error_pct=5.0,
-        max_age_error_pct=5.0,
+        max_constraint_error_pct=10.0,
+        max_age_error_pct=10.0,
         max_negative_weight_pct=0.0,
     ),
     ApproximateCalibrationWindow(

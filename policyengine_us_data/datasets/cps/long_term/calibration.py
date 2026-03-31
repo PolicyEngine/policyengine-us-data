@@ -689,6 +689,20 @@ def build_calibration_audit(
 
     neg_mask = weights < 0
     negative_values = np.abs(weights[neg_mask])
+    positive_mask = weights > 0
+    weight_sum = float(np.sum(weights))
+    if weight_sum > 0:
+        sorted_weights = np.sort(weights)
+        top_10_weight_share_pct = float(sorted_weights[-10:].sum() / weight_sum * 100)
+        top_100_weight_share_pct = float(sorted_weights[-100:].sum() / weight_sum * 100)
+    else:
+        top_10_weight_share_pct = 0.0
+        top_100_weight_share_pct = 0.0
+
+    if weight_sum > 0 and float(np.dot(weights, weights)) > 0:
+        effective_sample_size = float(weight_sum**2 / np.dot(weights, weights))
+    else:
+        effective_sample_size = 0.0
 
     audit = dict(calibration_event)
     audit.update(
@@ -697,9 +711,14 @@ def build_calibration_audit(
             "negative_weight_count": int(neg_mask.sum()),
             "negative_weight_pct": float(100 * neg_mask.sum() / len(weights)),
             "largest_negative_weight": float(negative_values.max()) if negative_values.size else 0.0,
+            "positive_weight_count": int(positive_mask.sum()),
+            "positive_weight_pct": float(100 * positive_mask.sum() / len(weights)),
+            "effective_sample_size": effective_sample_size,
+            "top_10_weight_share_pct": top_10_weight_share_pct,
+            "top_100_weight_share_pct": top_100_weight_share_pct,
             "constraints": {},
             "baseline_weight_sum": float(np.sum(baseline_weights)),
-            "calibrated_weight_sum": float(np.sum(weights)),
+            "calibrated_weight_sum": weight_sum,
             "max_constraint_pct_error": 0.0,
         }
     )

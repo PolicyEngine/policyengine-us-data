@@ -12,6 +12,7 @@ from policyengine_us_data.datasets.cps.long_term.calibration import (
     calibrate_weights,
 )
 from policyengine_us_data.datasets.cps.long_term.calibration_artifacts import (
+    normalize_metadata,
     rebuild_dataset_manifest,
     update_dataset_manifest,
     write_year_metadata,
@@ -96,6 +97,11 @@ def test_build_calibration_audit_reports_constraint_error():
 
     assert audit["constraints"]["payroll_total"]["achieved"] == 10.0
     assert audit["constraints"]["payroll_total"]["pct_error"] == -50.0
+    assert audit["positive_weight_count"] == 2
+    assert audit["positive_weight_pct"] == 100.0
+    assert audit["effective_sample_size"] == pytest.approx(2.0)
+    assert audit["top_10_weight_share_pct"] == pytest.approx(100.0)
+    assert audit["top_100_weight_share_pct"] == pytest.approx(100.0)
 
 
 def test_profile_validation_rejects_fallback_and_large_error():
@@ -194,6 +200,36 @@ def test_approximate_window_is_year_bounded():
         year=2035,
     )
     assert quality == "aggregate"
+
+
+def test_normalize_metadata_harmonizes_lp_fallback_labels():
+    profile = get_profile("ss-payroll-tob")
+    metadata = normalize_metadata(
+        {
+            "year": 2075,
+            "profile": profile.to_dict(),
+            "calibration_audit": {
+                "lp_fallback_used": True,
+                "approximation_method": "lp_minimax_exact",
+                "approximate_solution_error_pct": 0.0,
+                "max_constraint_pct_error": 0.368,
+                "age_max_pct_error": 0.0,
+                "negative_weight_pct": 0.0,
+                "constraints": {
+                    "ss_total": {"pct_error": 0.368},
+                    "payroll_total": {"pct_error": 0.0},
+                    "oasdi_tob": {"pct_error": 0.0},
+                    "hi_tob": {"pct_error": 0.0},
+                },
+            },
+        }
+    )
+
+    audit = metadata["calibration_audit"]
+    assert audit["calibration_quality"] == "approximate"
+    assert audit["approximation_method"] == "lp_minimax"
+    assert audit["approximate_solution_used"] is True
+    assert audit["approximate_solution_error_pct"] == pytest.approx(0.368)
 
 
 def test_manifest_updates_and_rejects_profile_mismatch(tmp_path):

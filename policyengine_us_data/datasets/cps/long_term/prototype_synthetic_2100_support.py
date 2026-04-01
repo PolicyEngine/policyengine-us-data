@@ -37,6 +37,10 @@ class SyntheticTemplate:
     dividend_source: str
     ss_split: tuple[float, float]
     payroll_split: tuple[float, float]
+    ss_scale_factors: tuple[float, ...] = (1.0,)
+    payroll_scale_factors: tuple[float, ...] = (1.0,)
+    pension_scale_factors: tuple[float, ...] = (1.0,)
+    dividend_scale_factors: tuple[float, ...] = (1.0,)
 
 
 @dataclass(frozen=True)
@@ -102,7 +106,7 @@ class SyntheticCandidate:
 TEMPLATES = (
     SyntheticTemplate(
         name="older_beneficiary_single",
-        head_ages=(67, 75, 85),
+        head_ages=(62, 67, 72, 77, 82, 85),
         spouse_age_offsets=(None,),
         dependent_age_sets=((),),
         ss_source="older_beneficiary",
@@ -111,11 +115,14 @@ TEMPLATES = (
         dividend_source="older_asset",
         ss_split=(1.0, 0.0),
         payroll_split=(0.0, 0.0),
+        ss_scale_factors=(0.75, 1.0, 1.25),
+        pension_scale_factors=(0.0, 1.0),
+        dividend_scale_factors=(0.0, 1.0),
     ),
     SyntheticTemplate(
         name="older_beneficiary_couple",
-        head_ages=(67, 75, 85),
-        spouse_age_offsets=(-2, -5),
+        head_ages=(62, 67, 72, 77, 82, 85),
+        spouse_age_offsets=(-2, -5, -8),
         dependent_age_sets=((),),
         ss_source="older_couple_beneficiary",
         payroll_source="zero",
@@ -123,10 +130,13 @@ TEMPLATES = (
         dividend_source="older_asset",
         ss_split=(0.55, 0.45),
         payroll_split=(0.0, 0.0),
+        ss_scale_factors=(0.75, 1.0, 1.25),
+        pension_scale_factors=(0.0, 1.0),
+        dividend_scale_factors=(0.0, 1.0),
     ),
     SyntheticTemplate(
         name="older_worker_single",
-        head_ages=(67, 75, 80),
+        head_ages=(62, 65, 67, 70, 75, 80),
         spouse_age_offsets=(None,),
         dependent_age_sets=((),),
         ss_source="older_worker",
@@ -135,11 +145,15 @@ TEMPLATES = (
         dividend_source="older_asset",
         ss_split=(1.0, 0.0),
         payroll_split=(1.0, 0.0),
+        ss_scale_factors=(0.5, 0.75, 1.0, 1.25),
+        payroll_scale_factors=(0.5, 1.0, 1.5, 2.0),
+        pension_scale_factors=(0.0, 1.0),
+        dividend_scale_factors=(0.0, 1.0),
     ),
     SyntheticTemplate(
         name="older_worker_couple",
-        head_ages=(67, 75, 80),
-        spouse_age_offsets=(-2,),
+        head_ages=(62, 65, 67, 70, 75, 80),
+        spouse_age_offsets=(-2, -5),
         dependent_age_sets=((),),
         ss_source="older_worker",
         payroll_source="older_worker",
@@ -147,11 +161,15 @@ TEMPLATES = (
         dividend_source="older_asset",
         ss_split=(0.55, 0.45),
         payroll_split=(0.55, 0.45),
+        ss_scale_factors=(0.5, 0.75, 1.0, 1.25),
+        payroll_scale_factors=(0.5, 1.0, 1.5, 2.0),
+        pension_scale_factors=(0.0, 1.0),
+        dividend_scale_factors=(0.0, 1.0),
     ),
     SyntheticTemplate(
         name="mixed_retiree_worker_couple",
-        head_ages=(67, 75, 85),
-        spouse_age_offsets=(-20, -25, -35),
+        head_ages=(62, 67, 72, 77, 82, 85),
+        spouse_age_offsets=(-10, -15, -20, -25, -35),
         dependent_age_sets=((),),
         ss_source="older_beneficiary",
         payroll_source="prime_worker",
@@ -159,10 +177,14 @@ TEMPLATES = (
         dividend_source="older_asset",
         ss_split=(1.0, 0.0),
         payroll_split=(0.0, 1.0),
+        ss_scale_factors=(0.5, 0.75, 1.0, 1.25),
+        payroll_scale_factors=(0.5, 1.0, 1.5, 2.0),
+        pension_scale_factors=(0.0, 1.0),
+        dividend_scale_factors=(0.0, 1.0),
     ),
     SyntheticTemplate(
         name="prime_worker_single",
-        head_ages=(22, 27, 35, 45, 60),
+        head_ages=(20, 22, 25, 27, 30, 35, 40, 45, 50, 55, 60, 64),
         spouse_age_offsets=(None,),
         dependent_age_sets=((),),
         ss_source="zero",
@@ -171,11 +193,14 @@ TEMPLATES = (
         dividend_source="prime_asset",
         ss_split=(0.0, 0.0),
         payroll_split=(1.0, 0.0),
+        payroll_scale_factors=(0.5, 1.0, 1.5, 2.0),
+        pension_scale_factors=(0.0, 1.0),
+        dividend_scale_factors=(0.0, 1.0),
     ),
     SyntheticTemplate(
         name="prime_worker_couple",
-        head_ages=(27, 40, 55),
-        spouse_age_offsets=(-2,),
+        head_ages=(25, 30, 35, 40, 45, 50, 55, 60),
+        spouse_age_offsets=(-2, -5, -8),
         dependent_age_sets=((),),
         ss_source="zero",
         payroll_source="prime_worker",
@@ -183,30 +208,72 @@ TEMPLATES = (
         dividend_source="prime_asset",
         ss_split=(0.0, 0.0),
         payroll_split=(0.6, 0.4),
+        payroll_scale_factors=(0.5, 1.0, 1.5, 2.0),
+        pension_scale_factors=(0.0, 1.0),
+        dividend_scale_factors=(0.0, 1.0),
     ),
     SyntheticTemplate(
         name="prime_worker_family",
-        head_ages=(27, 40, 55),
+        head_ages=(25, 30, 35, 40, 45, 50, 55),
         spouse_age_offsets=(-2,),
-        dependent_age_sets=((1, 3), (6, 11), (15, 17)),
+        dependent_age_sets=((0,), (3,), (7,), (12,), (16,), (4, 9), (11, 16)),
         ss_source="zero",
         payroll_source="prime_worker_family",
         pension_source="prime_asset",
         dividend_source="prime_asset",
         ss_split=(0.0, 0.0),
         payroll_split=(0.6, 0.4),
+        payroll_scale_factors=(0.5, 1.0, 1.5, 2.0),
+        pension_scale_factors=(0.0, 1.0),
+        dividend_scale_factors=(0.0, 1.0),
     ),
     SyntheticTemplate(
         name="older_plus_prime_worker_family",
-        head_ages=(67, 75, 85),
-        spouse_age_offsets=(-25, -35),
-        dependent_age_sets=((1, 3), (10, 15)),
+        head_ages=(62, 67, 72, 77, 82, 85),
+        spouse_age_offsets=(-15, -25, -35),
+        dependent_age_sets=((0,), (7,), (15,), (4, 9), (11, 16)),
         ss_source="older_beneficiary",
         payroll_source="prime_worker_family",
         pension_source="older_asset",
         dividend_source="older_asset",
         ss_split=(1.0, 0.0),
         payroll_split=(0.0, 1.0),
+        ss_scale_factors=(0.5, 0.75, 1.0, 1.25),
+        payroll_scale_factors=(0.5, 1.0, 1.5, 2.0),
+        pension_scale_factors=(0.0, 1.0),
+        dividend_scale_factors=(0.0, 1.0),
+    ),
+    SyntheticTemplate(
+        name="late_worker_couple",
+        head_ages=(58, 60, 62, 64, 66, 68),
+        spouse_age_offsets=(-2, -5),
+        dependent_age_sets=((),),
+        ss_source="older_worker",
+        payroll_source="prime_worker",
+        pension_source="prime_asset",
+        dividend_source="prime_asset",
+        ss_split=(0.6, 0.4),
+        payroll_split=(0.6, 0.4),
+        ss_scale_factors=(0.25, 0.5, 0.75, 1.0),
+        payroll_scale_factors=(0.5, 1.0, 1.5, 2.0),
+        pension_scale_factors=(0.0, 1.0),
+        dividend_scale_factors=(0.0, 1.0),
+    ),
+    SyntheticTemplate(
+        name="late_worker_single",
+        head_ages=(58, 60, 62, 64, 66, 68),
+        spouse_age_offsets=(None,),
+        dependent_age_sets=((),),
+        ss_source="older_worker",
+        payroll_source="prime_worker",
+        pension_source="prime_asset",
+        dividend_source="prime_asset",
+        ss_split=(1.0, 0.0),
+        payroll_split=(1.0, 0.0),
+        ss_scale_factors=(0.25, 0.5, 0.75, 1.0),
+        payroll_scale_factors=(0.5, 1.0, 1.5, 2.0),
+        pension_scale_factors=(0.0, 1.0),
+        dividend_scale_factors=(0.0, 1.0),
     ),
 )
 
@@ -442,7 +509,7 @@ def build_quantile_pools(
             "ss": _scale_levels(
                 quantile_levels(
                     subset["ss_total"],
-                    quantiles=(0.25, 0.5, 0.75),
+                    quantiles=(0.1, 0.25, 0.5, 0.75, 0.9),
                     include_zero=(name == "zero"),
                     positive_only=(name != "zero"),
                 ),
@@ -451,7 +518,7 @@ def build_quantile_pools(
             "payroll": _scale_levels(
                 quantile_levels(
                     subset["payroll_total"],
-                    quantiles=(0.25, 0.5, 0.75),
+                    quantiles=(0.1, 0.25, 0.5, 0.75, 0.9),
                     include_zero=(
                         name
                         in {
@@ -468,7 +535,7 @@ def build_quantile_pools(
             "pension": _scale_levels(
                 quantile_levels(
                     subset["pension_income"],
-                    quantiles=(0.5, 0.9),
+                    quantiles=(0.25, 0.5, 0.75, 0.9),
                     include_zero=True,
                     positive_only=True,
                 ),
@@ -477,7 +544,7 @@ def build_quantile_pools(
             "dividend": _scale_levels(
                 quantile_levels(
                     subset["dividend_income"],
-                    quantiles=(0.5, 0.9),
+                    quantiles=(0.25, 0.5, 0.75, 0.9),
                     include_zero=True,
                     positive_only=True,
                 ),
@@ -503,27 +570,45 @@ def generate_synthetic_candidates(
                 )
                 for dependent_ages in template.dependent_age_sets:
                     for ss_total in ss_levels:
-                        for payroll_total in payroll_levels:
-                            for pension_income in pension_levels:
-                                for dividend_income in dividend_levels:
-                                    head_ss = ss_total * template.ss_split[0]
-                                    spouse_ss = ss_total * template.ss_split[1]
-                                    head_wages = payroll_total * template.payroll_split[0]
-                                    spouse_wages = payroll_total * template.payroll_split[1]
-                                    candidates.append(
-                                        SyntheticCandidate(
-                                            archetype=template.name,
-                                            head_age=head_age,
-                                            spouse_age=spouse_age,
-                                            dependent_ages=tuple(dependent_ages),
-                                            head_wages=head_wages,
-                                            spouse_wages=spouse_wages,
-                                            head_ss=head_ss,
-                                            spouse_ss=spouse_ss,
-                                            pension_income=pension_income,
-                                            dividend_income=dividend_income,
-                                        )
-                                    )
+                        for ss_scale in template.ss_scale_factors:
+                            for payroll_total in payroll_levels:
+                                for payroll_scale in template.payroll_scale_factors:
+                                    for pension_income in pension_levels:
+                                        for pension_scale in template.pension_scale_factors:
+                                            for dividend_income in dividend_levels:
+                                                for dividend_scale in template.dividend_scale_factors:
+                                                    scaled_ss_total = ss_total * ss_scale
+                                                    scaled_payroll_total = payroll_total * payroll_scale
+                                                    scaled_pension_income = pension_income * pension_scale
+                                                    scaled_dividend_income = dividend_income * dividend_scale
+                                                    head_ss = (
+                                                        scaled_ss_total * template.ss_split[0]
+                                                    )
+                                                    spouse_ss = (
+                                                        scaled_ss_total * template.ss_split[1]
+                                                    )
+                                                    head_wages = (
+                                                        scaled_payroll_total
+                                                        * template.payroll_split[0]
+                                                    )
+                                                    spouse_wages = (
+                                                        scaled_payroll_total
+                                                        * template.payroll_split[1]
+                                                    )
+                                                    candidates.append(
+                                                        SyntheticCandidate(
+                                                            archetype=template.name,
+                                                            head_age=head_age,
+                                                            spouse_age=spouse_age,
+                                                            dependent_ages=tuple(dependent_ages),
+                                                            head_wages=head_wages,
+                                                            spouse_wages=spouse_wages,
+                                                            head_ss=head_ss,
+                                                            spouse_ss=spouse_ss,
+                                                            pension_income=scaled_pension_income,
+                                                            dividend_income=scaled_dividend_income,
+                                                        )
+                                                    )
     # Deduplicate exact duplicates caused by repeated quantiles.
     deduped: dict[tuple[object, ...], SyntheticCandidate] = {}
     for candidate in candidates:
@@ -644,6 +729,24 @@ def summarize_solution(
         candidate_df["synthetic_weight"] / weight_sum * 100 if weight_sum > 0 else 0.0
     )
     candidate_df = candidate_df.sort_values("synthetic_weight", ascending=False)
+    positive_weights = candidate_df.loc[
+        candidate_df["synthetic_weight"] > 0,
+        "synthetic_weight",
+    ].to_numpy(dtype=float)
+    if positive_weights.size > 0:
+        effective_sample_size = float(
+            (positive_weights.sum() ** 2) / np.sum(positive_weights**2)
+        )
+        top_10_weight_share_pct = float(
+            positive_weights[:10].sum() / positive_weights.sum() * 100
+        )
+        top_20_weight_share_pct = float(
+            positive_weights[:20].sum() / positive_weights.sum() * 100
+        )
+    else:
+        effective_sample_size = 0.0
+        top_10_weight_share_pct = 0.0
+        top_20_weight_share_pct = 0.0
 
     def _weighted_mean(group: pd.DataFrame, column: str) -> float:
         total = float(group["synthetic_weight"].sum())
@@ -757,6 +860,9 @@ def summarize_solution(
     return {
         "synthetic_candidate_count": int(len(candidate_df)),
         "positive_weight_candidate_count": int((candidate_df["synthetic_weight"] > 0).sum()),
+        "effective_sample_size": effective_sample_size,
+        "top_10_weight_share_pct": top_10_weight_share_pct,
+        "top_20_weight_share_pct": top_20_weight_share_pct,
         "top_candidates": candidate_df.head(20).to_dict("records"),
         "synthetic_archetypes": synthetic_archetypes.to_dict("records"),
         "actual_support_archetypes": actual_archetypes.to_dict("records"),

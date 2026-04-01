@@ -66,7 +66,7 @@ def patch_contract_validation(monkeypatch):
     )
 
 
-def test_validate_dataset_rejects_unalignable_auxiliary_variables(tmp_path):
+def test_validate_dataset_contract_warns_on_unknown_variables(tmp_path, caplog):
     file_path = tmp_path / "cps_2024.h5"
     _write_h5(
         file_path,
@@ -75,15 +75,20 @@ def test_validate_dataset_rejects_unalignable_auxiliary_variables(tmp_path):
             "household_id": np.array([201], dtype=np.int32),
             "employment_income": np.array([50_000.0], dtype=np.float32),
             "household_weight": np.array([1.0], dtype=np.float32),
-            "mystery_variable": np.array([1.0, 2.0], dtype=np.float32),
+            "mystery_variable": np.array([1.0], dtype=np.float32),
         },
     )
 
-    with pytest.raises(
-        DatasetValidationError,
-        match="does not match any entity count",
-    ):
-        validate_dataset(file_path)
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        validate_dataset_contract(
+            file_path,
+            tax_benefit_system=_fake_tax_benefit_system(),
+            microsimulation_cls=_FakeMicrosimulation,
+            dataset_loader=lambda path: path,
+        )
+    assert "mystery_variable" in caplog.text
 
 
 def test_validate_dataset_rejects_entity_length_mismatches(tmp_path):

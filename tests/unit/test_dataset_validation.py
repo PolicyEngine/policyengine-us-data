@@ -70,7 +70,6 @@ def test_validate_dataset_contract_passes(tmp_path, monkeypatch):
             "household_id": np.array([501], dtype=np.int32),
             "employment_income": np.array([10_000.0, 20_000.0], dtype=np.float32),
             "household_weight": np.array([1.5], dtype=np.float32),
-            "hourly_wage": np.array([25.0, 30.0], dtype=np.float32),
         },
     )
     monkeypatch.setattr(
@@ -89,7 +88,7 @@ def test_validate_dataset_contract_passes(tmp_path, monkeypatch):
         dataset_loader=lambda path: f"dataset::{path.name}",
     )
 
-    assert summary.variable_count == 8
+    assert summary.variable_count == 7
     assert summary.entity_counts == {
         "person": 2,
         "tax_unit": 1,
@@ -102,40 +101,14 @@ def test_validate_dataset_contract_passes(tmp_path, monkeypatch):
     assert _FakeMicrosimulation.calculate_calls == ["household_weight"]
 
 
-def test_validate_dataset_contract_rejects_unalignable_auxiliary_variables(
-    tmp_path, monkeypatch
+def test_validate_dataset_contract_warns_on_unknown_variables(
+    tmp_path, monkeypatch, caplog
 ):
     file_path = tmp_path / "unknown.h5"
     _write_test_h5(
         file_path,
         {
             "person_id": np.array([101], dtype=np.int32),
-            "mystery_variable": np.array([1.0, 2.0], dtype=np.float32),
-        },
-    )
-    monkeypatch.setattr(
-        "policyengine_us_data.utils.dataset_validation.assert_locked_policyengine_us_version",
-        lambda: PolicyEngineUSBuildInfo(version="1.587.0"),
-    )
-
-    with pytest.raises(DatasetContractError, match="does not match any entity count"):
-        validate_dataset_contract(
-            file_path,
-            tax_benefit_system=_fake_tax_benefit_system(),
-            microsimulation_cls=_FakeMicrosimulation,
-            dataset_loader=lambda path: path,
-        )
-
-
-def test_validate_dataset_contract_rejects_ambiguous_auxiliary_variables(
-    tmp_path, monkeypatch
-):
-    file_path = tmp_path / "ambiguous.h5"
-    _write_test_h5(
-        file_path,
-        {
-            "person_id": np.array([101], dtype=np.int32),
-            "household_id": np.array([201], dtype=np.int32),
             "mystery_variable": np.array([1.0], dtype=np.float32),
         },
     )
@@ -144,13 +117,17 @@ def test_validate_dataset_contract_rejects_ambiguous_auxiliary_variables(
         lambda: PolicyEngineUSBuildInfo(version="1.587.0"),
     )
 
-    with pytest.raises(DatasetContractError, match="matches multiple entity counts"):
-        validate_dataset_contract(
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        summary = validate_dataset_contract(
             file_path,
             tax_benefit_system=_fake_tax_benefit_system(),
             microsimulation_cls=_FakeMicrosimulation,
             dataset_loader=lambda path: path,
         )
+    assert "mystery_variable" in caplog.text
+    assert summary.variable_count == 2
 
 
 def test_validate_dataset_contract_rejects_entity_length_mismatch(

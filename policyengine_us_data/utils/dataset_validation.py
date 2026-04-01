@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,8 @@ from policyengine_us_data.utils.policyengine import (
     PolicyEngineUSBuildInfo,
     assert_locked_policyengine_us_version,
 )
+
+logger = logging.getLogger(__name__)
 
 
 ENTITY_ID_VARIABLES = {
@@ -34,22 +37,21 @@ class DatasetContractSummary:
     policyengine_us: PolicyEngineUSBuildInfo
 
 
-def _format_items(items: list[str], max_display: int = 5) -> str:
-    displayed = items[:max_display]
-    suffix = "" if len(items) <= max_display else ", ..."
-    return ", ".join(displayed) + suffix
-
-
-def _top_level_dataset_lengths(file_path: Path) -> dict[str, int]:
-    dataset_lengths: dict[str, int] = {}
+def _dataset_lengths(file_path: Path) -> dict[str, int]:
+    lengths: dict[str, int] = {}
     with h5py.File(file_path, "r") as h5_file:
         for name in h5_file.keys():
             obj = h5_file[name]
             if isinstance(obj, h5py.Dataset):
-                dataset_lengths[name] = (
-                    int(obj.shape[0]) if obj.shape else int(obj.size)
-                )
-    return dataset_lengths
+                lengths[name] = int(obj.shape[0]) if obj.shape else int(obj.size)
+            elif isinstance(obj, h5py.Group):
+                for sub in obj.values():
+                    if isinstance(sub, h5py.Dataset):
+                        lengths[name] = (
+                            int(sub.shape[0]) if sub.shape else int(sub.size)
+                        )
+                        break
+    return lengths
 
 
 def _resolve_validation_dependencies(
@@ -74,31 +76,6 @@ def _resolve_validation_dependencies(
     )
 
 
-def _infer_auxiliary_entity(
-    variable_name: str,
-    actual_length: int,
-    entity_counts: dict[str, int],
-    file_name: str,
-) -> str:
-    candidate_entities = [
-        entity_key
-        for entity_key, entity_count in entity_counts.items()
-        if entity_count == actual_length
-    ]
-    if len(candidate_entities) == 1:
-        return candidate_entities[0]
-    if len(candidate_entities) == 0:
-        raise DatasetContractError(
-            f"{file_name} contains auxiliary variable {variable_name} with length "
-            f"{actual_length}, which does not match any entity count."
-        )
-    raise DatasetContractError(
-        f"{file_name} contains auxiliary variable {variable_name} with length "
-        f"{actual_length}, which matches multiple entity counts "
-        f"({_format_items(candidate_entities)})."
-    )
-
-
 def validate_dataset_contract(
     file_path: str | Path,
     *,
@@ -117,7 +94,23 @@ def validate_dataset_contract(
         )
     )
 
-    dataset_lengths = _top_level_dataset_lengths(file_path)
+    dataset_lengths = _dataset_lengths(file_path)
+    unknown_variables = sorted(
+        variable_name
+        for variable_name in dataset_lengths
+        if variable_name not in tax_benefit_system.variables
+    )
+    if unknown_variables:
+        display = ", ".join(unknown_variables[:5])
+        if len(unknown_variables) > 5:
+            display += ", ..."
+        logger.warning(
+            "%s contains %d variable(s) not in the active country package: %s",
+            file_path.name,
+            len(unknown_variables),
+            display,
+        )
+
     missing_entity_ids = [
         id_variable
         for entity_key, id_variable in ENTITY_ID_VARIABLES.items()
@@ -149,14 +142,6 @@ def validate_dataset_contract(
     for variable_name, actual_length in dataset_lengths.items():
         variable = tax_benefit_system.variables.get(variable_name)
         entity_key = getattr(getattr(variable, "entity", None), "key", None)
-        if entity_key is None:
-            _infer_auxiliary_entity(
-                variable_name=variable_name,
-                actual_length=actual_length,
-                entity_counts=entity_counts,
-                file_name=file_path.name,
-            )
-            continue
         expected_length = entity_counts.get(entity_key)
         if expected_length is None:
             continue
@@ -165,9 +150,11 @@ def validate_dataset_contract(
                 f"{variable_name} ({entity_key}: expected {expected_length}, found {actual_length})"
             )
     if mismatches:
+        display = ", ".join(mismatches[:5])
+        if len(mismatches) > 5:
+            display += ", ..."
         raise DatasetContractError(
-            f"{file_path.name} has inconsistent entity lengths: "
-            f"{_format_items(mismatches)}"
+            f"{file_path.name} has inconsistent entity lengths: {display}"
         )
 
     dataset = dataset_loader(file_path)

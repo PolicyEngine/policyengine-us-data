@@ -350,8 +350,6 @@ def stage_base_datasets(
     pairs_json = _json.dumps(files_with_paths)
     result = subprocess.run(
         [
-            "uv",
-            "run",
             "python",
             "-c",
             f"""
@@ -414,8 +412,6 @@ def upload_run_diagnostics(
 
     result = subprocess.run(
         [
-            "uv",
-            "run",
             "python",
             "-c",
             f"""
@@ -1103,8 +1099,6 @@ def promote_run(
     try:
         result = subprocess.run(
             [
-                "uv",
-                "run",
                 "python",
                 "-c",
                 f"""
@@ -1158,8 +1152,6 @@ print(f"Promoted {{count}} base dataset(s)")
     try:
         result = subprocess.run(
             [
-                "uv",
-                "run",
                 "python",
                 "-c",
                 f"""

@@ -173,8 +173,6 @@ def _fit_weights_impl(
 
     script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
-        "uv",
-        "run",
         "python",
         script_path,
         "--device",
@@ -234,8 +232,6 @@ def _fit_from_package_impl(
 
     script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
-        "uv",
-        "run",
         "python",
         script_path,
         "--device",
@@ -345,8 +341,6 @@ def _build_package_impl(
     pkg_path = f"{artifacts}/calibration_package.pkl"
     script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
-        "uv",
-        "run",
         "python",
         script_path,
         "--device",

@@ -3,6 +3,11 @@
 Bakes source code and dependencies into image layers at build time.
 Modal caches layers by content hash of copied files -- if code
 changes, the image rebuilds; if not, the cached layer is reused.
+
+Uses `uv pip install --system` to install packages directly into
+the system Python (no venv). This matches the policyengine-api-v2
+simulation-api pattern: containers start with everything already
+importable, no `uv run` wrapper needed.
 """
 
 import subprocess
@@ -63,7 +68,7 @@ def _base_image(extras: list[str] | None = None):
         .env(GIT_ENV)
         .run_commands(
             f"cd /root/policyengine-us-data && "
-            f"UV_HTTP_TIMEOUT=300 uv sync --frozen {extra_flags}"
+            f"UV_HTTP_TIMEOUT=300 uv pip install --system -e '.[dev]' {extra_flags}"
         )
     )
 

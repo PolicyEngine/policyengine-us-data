@@ -328,7 +328,7 @@ def run_script(
     Raises:
         subprocess.CalledProcessError: If the script fails.
     """
-    cmd = ["uv", "run", "python", "-u", script_path]
+    cmd = ["python", "-u", script_path]
     if args:
         cmd.extend(args)
     run_env = env or os.environ.copy()
@@ -426,7 +426,7 @@ def run_tests_with_checkpoints(
 
         print(f"Running tests: {module}")
         result = subprocess.run(
-            ["uv", "run", "python", "-u", "-m", "pytest", module, "-v"],
+            ["python", "-u", "-m", "pytest", module, "-v"],
             env=env,
         )
 
@@ -846,7 +846,7 @@ def run_single_script(
         test_paths = SCRIPT_TESTS.get(script_name, [])
         if test_paths:
             print(f"\n=== Running integration tests for {script_name} ===")
-            cmd = ["uv", "run", "python", "-m", "pytest", "-v", "--tb=short"]
+            cmd = ["python", "-m", "pytest", "-v", "--tb=short"]
             cmd.extend(test_paths)
             subprocess.run(cmd, check=True, env=os.environ.copy())
             print(f"=== Tests passed for {script_name} ===")
@@ -903,7 +903,7 @@ def run_integration_test(
             restore_from_checkpoint(branch, dep_output)
 
     print(f"\n=== Running integration test: {test_path} ===")
-    cmd = ["uv", "run", "python", "-m", "pytest", test_path, "-v", "--tb=short"]
+    cmd = ["python", "-m", "pytest", test_path, "-v", "--tb=short"]
     subprocess.run(cmd, check=True, env=os.environ.copy())
     return f"Tests passed: {test_path}"
 

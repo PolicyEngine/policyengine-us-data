@@ -948,3 +948,61 @@ def test_manifest_contains_invalid_artifacts_flag(tmp_path):
     assert manifest["contains_invalid_artifacts"] is True
     assert manifest["datasets"]["2030"]["validation_passed"] is True
     assert manifest["datasets"]["2091"]["validation_passed"] is False
+
+
+def test_manifest_persists_support_augmentation_metadata(tmp_path):
+    profile = get_profile("ss-payroll-tob")
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+    }
+    support_augmentation = {
+        "name": "donor-backed-synthetic-v1",
+        "activation_start_year": 2075,
+        "target_year": 2100,
+        "report_summary": {
+            "base_household_count": 41314,
+            "augmented_household_count": 41326,
+        },
+    }
+
+    year_2100 = tmp_path / "2100.h5"
+    year_2100.write_text("", encoding="utf-8")
+    metadata_path = write_year_metadata(
+        year_2100,
+        year=2100,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        support_augmentation=support_augmentation,
+    )
+    manifest_path = update_dataset_manifest(
+        tmp_path,
+        year=2100,
+        h5_path=year_2100,
+        metadata_path=metadata_path,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        support_augmentation=support_augmentation,
+    )
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert metadata["support_augmentation"]["name"] == "donor-backed-synthetic-v1"
+    assert (
+        manifest["support_augmentation"]["report_summary"][
+            "augmented_household_count"
+        ]
+        == 41326
+    )

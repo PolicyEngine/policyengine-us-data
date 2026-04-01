@@ -102,6 +102,7 @@ def write_year_metadata(
     profile: dict[str, Any],
     calibration_audit: dict[str, Any],
     target_source: dict[str, Any] | None = None,
+    support_augmentation: dict[str, Any] | None = None,
 ) -> Path:
     metadata = {
         "contract_version": CONTRACT_VERSION,
@@ -112,6 +113,8 @@ def write_year_metadata(
     }
     if target_source is not None:
         metadata["target_source"] = target_source
+    if support_augmentation is not None:
+        metadata["support_augmentation"] = support_augmentation
     metadata = normalize_metadata(metadata)
     metadata_path = metadata_path_for(h5_path)
     metadata_path.write_text(
@@ -131,11 +134,13 @@ def update_dataset_manifest(
     profile: dict[str, Any],
     calibration_audit: dict[str, Any],
     target_source: dict[str, Any] | None = None,
+    support_augmentation: dict[str, Any] | None = None,
 ) -> Path:
     output_dir = Path(output_dir)
     manifest_path = output_dir / MANIFEST_FILENAME
     profile = json.loads(json.dumps(profile))
     target_source = json.loads(json.dumps(target_source))
+    support_augmentation = json.loads(json.dumps(support_augmentation))
 
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -146,6 +151,7 @@ def update_dataset_manifest(
             "base_dataset_path": base_dataset_path,
             "profile": profile,
             "target_source": target_source,
+            "support_augmentation": support_augmentation,
             "years": [],
             "datasets": {},
         }
@@ -174,6 +180,16 @@ def update_dataset_manifest(
         raise ValueError(
             "Output directory already contains a different target source: "
             f"{manifest.get('target_source')} != {target_source}"
+        )
+    if (
+        manifest.get("support_augmentation") is None
+        and support_augmentation is not None
+    ):
+        manifest["support_augmentation"] = support_augmentation
+    elif manifest.get("support_augmentation") != support_augmentation:
+        raise ValueError(
+            "Output directory already contains a different support augmentation: "
+            f"{manifest.get('support_augmentation')} != {support_augmentation}"
         )
 
     datasets = manifest.setdefault("datasets", {})
@@ -251,6 +267,7 @@ def rebuild_dataset_manifest_with_target_source(
             profile=metadata["profile"],
             calibration_audit=metadata["calibration_audit"],
             target_source=metadata.get("target_source"),
+            support_augmentation=metadata.get("support_augmentation"),
         )
 
     assert manifest_path is not None

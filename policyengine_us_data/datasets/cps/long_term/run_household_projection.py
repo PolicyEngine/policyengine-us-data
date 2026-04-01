@@ -4,6 +4,7 @@ Household-level projection pathway for income tax revenue 2025-2100.
 
 Usage:
     python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--output-dir DIR] [--save-h5] [--allow-validation-failures]
+    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--support-augmentation-profile donor-backed-synthetic-v1] [--support-augmentation-target-year YEAR]
     python run_household_projection.py [START_YEAR] [END_YEAR] [--greg] [--use-ss] [--use-payroll] [--use-h6-reform] [--use-tob] [--save-h5]
 
     START_YEAR: Optional starting year (default: 2025)
@@ -12,6 +13,8 @@ Usage:
     --target-source: Named long-term target source package
     --output-dir: Output directory for generated H5 files and metadata
     --allow-validation-failures: Record validation issues in metadata and continue instead of aborting the run
+    --support-augmentation-profile: Experimental late-year support expansion profile
+    --support-augmentation-target-year: Year whose extreme support is used to build the supplement
     --greg: Use GREG calibration instead of IPF (optional)
     --use-ss: Include Social Security benefit totals as calibration target (requires --greg)
     --use-payroll: Include taxable payroll totals as calibration target (requires --greg)
@@ -22,6 +25,7 @@ Usage:
 Examples:
     python run_household_projection.py 2045 2045 --profile ss --target-source trustees_2025_current_law --save-h5
     python run_household_projection.py 2025 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --save-h5
+    python run_household_projection.py 2075 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-synthetic-v1 --support-augmentation-target-year 2100 --allow-validation-failures
 """
 
 import sys
@@ -56,6 +60,9 @@ from projection_utils import (
     build_age_bins,
     build_household_age_matrix,
     create_household_year_h5,
+)
+from prototype_synthetic_2100_support import (
+    build_donor_backed_augmented_dataset,
 )
 
 
@@ -245,6 +252,8 @@ SELECTED_DATASET = "enhanced_cps_2024"
 BASE_DATASET_PATH = DATASET_OPTIONS[SELECTED_DATASET]["path"]
 BASE_YEAR = DATASET_OPTIONS[SELECTED_DATASET]["base_year"]
 
+SUPPORTED_AUGMENTATION_PROFILES = {"donor-backed-synthetic-v1"}
+
 
 PROFILE_NAME = None
 if "--profile" in sys.argv:
@@ -269,6 +278,80 @@ if "--output-dir" in sys.argv:
         raise ValueError("--output-dir requires a directory path")
     OUTPUT_DIR = sys.argv[output_dir_index + 1]
     del sys.argv[output_dir_index : output_dir_index + 2]
+
+SUPPORT_AUGMENTATION_PROFILE = None
+if "--support-augmentation-profile" in sys.argv:
+    augmentation_index = sys.argv.index("--support-augmentation-profile")
+    if augmentation_index + 1 >= len(sys.argv):
+        raise ValueError(
+            "--support-augmentation-profile requires a profile name"
+        )
+    SUPPORT_AUGMENTATION_PROFILE = sys.argv[augmentation_index + 1]
+    del sys.argv[augmentation_index : augmentation_index + 2]
+
+SUPPORT_AUGMENTATION_TARGET_YEAR = None
+if "--support-augmentation-target-year" in sys.argv:
+    target_year_index = sys.argv.index("--support-augmentation-target-year")
+    if target_year_index + 1 >= len(sys.argv):
+        raise ValueError(
+            "--support-augmentation-target-year requires a year"
+        )
+    SUPPORT_AUGMENTATION_TARGET_YEAR = int(sys.argv[target_year_index + 1])
+    del sys.argv[target_year_index : target_year_index + 2]
+
+SUPPORT_AUGMENTATION_START_YEAR = 2075
+if "--support-augmentation-start-year" in sys.argv:
+    start_year_index = sys.argv.index("--support-augmentation-start-year")
+    if start_year_index + 1 >= len(sys.argv):
+        raise ValueError(
+            "--support-augmentation-start-year requires a year"
+        )
+    SUPPORT_AUGMENTATION_START_YEAR = int(sys.argv[start_year_index + 1])
+    del sys.argv[start_year_index : start_year_index + 2]
+
+SUPPORT_AUGMENTATION_TOP_N_TARGETS = 20
+if "--support-augmentation-top-n-targets" in sys.argv:
+    top_n_index = sys.argv.index("--support-augmentation-top-n-targets")
+    if top_n_index + 1 >= len(sys.argv):
+        raise ValueError(
+            "--support-augmentation-top-n-targets requires an integer"
+        )
+    SUPPORT_AUGMENTATION_TOP_N_TARGETS = int(sys.argv[top_n_index + 1])
+    del sys.argv[top_n_index : top_n_index + 2]
+
+SUPPORT_AUGMENTATION_DONORS_PER_TARGET = 5
+if "--support-augmentation-donors-per-target" in sys.argv:
+    donor_index = sys.argv.index("--support-augmentation-donors-per-target")
+    if donor_index + 1 >= len(sys.argv):
+        raise ValueError(
+            "--support-augmentation-donors-per-target requires an integer"
+        )
+    SUPPORT_AUGMENTATION_DONORS_PER_TARGET = int(sys.argv[donor_index + 1])
+    del sys.argv[donor_index : donor_index + 2]
+
+SUPPORT_AUGMENTATION_MAX_DISTANCE = 3.0
+if "--support-augmentation-max-distance" in sys.argv:
+    distance_index = sys.argv.index("--support-augmentation-max-distance")
+    if distance_index + 1 >= len(sys.argv):
+        raise ValueError(
+            "--support-augmentation-max-distance requires a float"
+        )
+    SUPPORT_AUGMENTATION_MAX_DISTANCE = float(sys.argv[distance_index + 1])
+    del sys.argv[distance_index : distance_index + 2]
+
+SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE = 0.1
+if "--support-augmentation-clone-weight-scale" in sys.argv:
+    weight_scale_index = sys.argv.index(
+        "--support-augmentation-clone-weight-scale"
+    )
+    if weight_scale_index + 1 >= len(sys.argv):
+        raise ValueError(
+            "--support-augmentation-clone-weight-scale requires a float"
+        )
+    SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE = float(
+        sys.argv[weight_scale_index + 1]
+    )
+    del sys.argv[weight_scale_index : weight_scale_index + 2]
 
 ALLOW_VALIDATION_FAILURES = "--allow-validation-failures" in sys.argv
 if ALLOW_VALIDATION_FAILURES:
@@ -317,6 +400,22 @@ if SAVE_H5:
 START_YEAR = int(sys.argv[1]) if len(sys.argv) > 1 else 2025
 END_YEAR = int(sys.argv[2]) if len(sys.argv) > 2 else 2035
 
+if SUPPORT_AUGMENTATION_TARGET_YEAR is None:
+    SUPPORT_AUGMENTATION_TARGET_YEAR = END_YEAR
+
+if SUPPORT_AUGMENTATION_PROFILE is not None:
+    if SUPPORT_AUGMENTATION_PROFILE not in SUPPORTED_AUGMENTATION_PROFILES:
+        raise ValueError(
+            "Unsupported support augmentation profile: "
+            f"{SUPPORT_AUGMENTATION_PROFILE}"
+        )
+    if START_YEAR < SUPPORT_AUGMENTATION_START_YEAR:
+        raise ValueError(
+            "Support augmentation is only supported for late-year runs. "
+            f"Received START_YEAR={START_YEAR}, requires >= "
+            f"{SUPPORT_AUGMENTATION_START_YEAR}."
+        )
+
 legacy_flags_used = any([USE_GREG, USE_SS, USE_PAYROLL, USE_H6_REFORM, USE_TOB])
 if PROFILE_NAME and legacy_flags_used:
     raise ValueError("Use either --profile or legacy calibration flags, not both.")
@@ -336,6 +435,9 @@ if TARGET_SOURCE:
     set_long_term_target_source(TARGET_SOURCE)
 TARGET_SOURCE = get_long_term_target_source()
 TARGET_SOURCE_METADATA = describe_long_term_target_source(TARGET_SOURCE)
+
+BASE_DATASET = BASE_DATASET_PATH
+SUPPORT_AUGMENTATION_METADATA = None
 
 CALIBRATION_METHOD = PROFILE.calibration_method
 USE_GREG = CALIBRATION_METHOD == "greg"
@@ -374,6 +476,12 @@ print(f"  Calibration profile: {PROFILE.name}")
 print(f"  Profile description: {PROFILE.description}")
 print(f"  Target source: {TARGET_SOURCE}")
 print(f"  Calibration method: {CALIBRATION_METHOD.upper()}")
+if SUPPORT_AUGMENTATION_PROFILE:
+    print(f"  Support augmentation: {SUPPORT_AUGMENTATION_PROFILE}")
+    print(
+        "  Support augmentation target year: "
+        f"{SUPPORT_AUGMENTATION_TARGET_YEAR}"
+    )
 if USE_SS:
     print(f"  Including Social Security benefits constraint: Yes")
 if USE_PAYROLL:
@@ -421,6 +529,64 @@ for y in display_years:
         pop = target_matrix[:, idx].sum()
         print(f"  {y}: {pop / 1e6:6.1f}M")
 
+if SUPPORT_AUGMENTATION_PROFILE == "donor-backed-synthetic-v1":
+    print("\n" + "=" * 70)
+    print("STEP 1B: BUILD DONOR-BACKED LATE-YEAR SUPPORT")
+    print("=" * 70)
+    BASE_DATASET, augmentation_report = build_donor_backed_augmented_dataset(
+        base_dataset=BASE_DATASET_PATH,
+        base_year=BASE_YEAR,
+        target_year=SUPPORT_AUGMENTATION_TARGET_YEAR,
+        top_n_targets=SUPPORT_AUGMENTATION_TOP_N_TARGETS,
+        donors_per_target=SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
+        max_distance_for_clone=SUPPORT_AUGMENTATION_MAX_DISTANCE,
+        clone_weight_scale=SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
+    )
+    SUPPORT_AUGMENTATION_METADATA = {
+        "name": SUPPORT_AUGMENTATION_PROFILE,
+        "activation_start_year": SUPPORT_AUGMENTATION_START_YEAR,
+        "target_year": SUPPORT_AUGMENTATION_TARGET_YEAR,
+        "top_n_targets": SUPPORT_AUGMENTATION_TOP_N_TARGETS,
+        "donors_per_target": SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
+        "max_distance_for_clone": SUPPORT_AUGMENTATION_MAX_DISTANCE,
+        "clone_weight_scale": SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
+        "report_summary": {
+            "base_household_count": augmentation_report["base_household_count"],
+            "augmented_household_count": augmentation_report[
+                "augmented_household_count"
+            ],
+            "base_person_count": augmentation_report["base_person_count"],
+            "augmented_person_count": augmentation_report[
+                "augmented_person_count"
+            ],
+            "successful_target_count": sum(
+                report["successful_clone_count"] > 0
+                for report in augmentation_report["target_reports"]
+            ),
+            "skipped_target_count": len(
+                augmentation_report["skipped_targets"]
+            ),
+        },
+    }
+    print(
+        "  Base households -> augmented households: "
+        f"{augmentation_report['base_household_count']:,} -> "
+        f"{augmentation_report['augmented_household_count']:,}"
+    )
+    print(
+        "  Base people -> augmented people: "
+        f"{augmentation_report['base_person_count']:,} -> "
+        f"{augmentation_report['augmented_person_count']:,}"
+    )
+    print(
+        "  Successful target clones: "
+        f"{sum(report['successful_clone_count'] > 0 for report in augmentation_report['target_reports'])}"
+    )
+    print(
+        "  Skipped synthetic targets: "
+        f"{len(augmentation_report['skipped_targets'])}"
+    )
+
 # =========================================================================
 # STEP 2: BUILD HOUSEHOLD AGE MATRIX
 # =========================================================================
@@ -428,7 +594,7 @@ print("\n" + "=" * 70)
 print("STEP 2: BUILDING HOUSEHOLD AGE COMPOSITION")
 print("=" * 70)
 
-sim = Microsimulation(dataset=BASE_DATASET_PATH)
+sim = Microsimulation(dataset=BASE_DATASET)
 X, household_ids_unique, hh_id_to_idx = build_household_age_matrix(sim, n_ages)
 n_households = len(household_ids_unique)
 aggregated_age_cache: dict[int, tuple[np.ndarray, np.ndarray]] = {}
@@ -467,7 +633,7 @@ print("-" * 65)
 for year_idx in range(n_years):
     year = START_YEAR + year_idx
 
-    sim = Microsimulation(dataset=BASE_DATASET_PATH)
+    sim = Microsimulation(dataset=BASE_DATASET)
 
     income_tax_hh = sim.calculate("income_tax", period=year, map_to="household")
     income_tax_baseline_total = income_tax_hh.sum()
@@ -527,7 +693,7 @@ for year_idx in range(n_years):
         else:
             # Create and apply H6 reform
             h6_reform = create_h6_reform()
-            reform_sim = Microsimulation(dataset=BASE_DATASET_PATH, reform=h6_reform)
+            reform_sim = Microsimulation(dataset=BASE_DATASET, reform=h6_reform)
 
             # Calculate reform income tax
             income_tax_reform_hh = reform_sim.calculate(
@@ -762,7 +928,7 @@ for year_idx in range(n_years):
     total_population[year_idx] = np.sum(y_target)
 
     if SAVE_H5:
-        h5_path = create_household_year_h5(year, w_new, BASE_DATASET_PATH, OUTPUT_DIR)
+        h5_path = create_household_year_h5(year, w_new, BASE_DATASET, OUTPUT_DIR)
         metadata_path = write_year_metadata(
             h5_path,
             year=year,
@@ -770,6 +936,7 @@ for year_idx in range(n_years):
             profile=PROFILE.to_dict(),
             calibration_audit=calibration_audit,
             target_source=TARGET_SOURCE_METADATA,
+            support_augmentation=SUPPORT_AUGMENTATION_METADATA,
         )
         update_dataset_manifest(
             OUTPUT_DIR,
@@ -780,6 +947,7 @@ for year_idx in range(n_years):
             profile=PROFILE.to_dict(),
             calibration_audit=calibration_audit,
             target_source=TARGET_SOURCE_METADATA,
+            support_augmentation=SUPPORT_AUGMENTATION_METADATA,
         )
         if year in display_years:
             print(f"  Saved {year}.h5 and metadata")

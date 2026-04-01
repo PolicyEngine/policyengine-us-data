@@ -9,6 +9,9 @@ Run projections using `run_household_projection.py`:
 # Recommended: named profile with TOB benchmarked post-calibration
 python run_household_projection.py 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --save-h5
 
+# Experimental: donor-backed late-year support augmentation for tail-year runs
+python run_household_projection.py 2075 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-synthetic-v1 --support-augmentation-target-year 2100 --allow-validation-failures
+
 # IPF with only age distribution constraints (faster, less accurate)
 python run_household_projection.py 2050 --profile age-only
 
@@ -21,6 +24,13 @@ python run_household_projection.py 2100 --profile ss
 - `--profile`: Named calibration contract. Recommended over legacy flags.
 - `--target-source`: Named long-term target source package.
 - `--output-dir`: Output directory for generated H5 files and metadata sidecars.
+- `--support-augmentation-profile`: Experimental late-year support expansion mode. Currently supports `donor-backed-synthetic-v1`.
+- `--support-augmentation-target-year`: Extreme year used to build the donor-backed supplement (defaults to `END_YEAR`).
+- `--support-augmentation-start-year`: Earliest run year allowed for augmentation (defaults to `2075`).
+- `--support-augmentation-top-n-targets`: Number of dominant synthetic target types to map back to real donors (default `20`).
+- `--support-augmentation-donors-per-target`: Number of nearest real donor tax units per synthetic target (default `5`).
+- `--support-augmentation-max-distance`: Maximum donor-match distance retained for cloning (default `3.0`).
+- `--support-augmentation-clone-weight-scale`: Baseline weight multiplier applied to each donor-backed clone (default `0.1`).
 - `--greg`: Use GREG calibration instead of IPF
 - `--use-ss`: Include Social Security benefit totals as calibration target (requires `--greg`)
 - `--use-payroll`: Include taxable payroll totals as calibration target (requires `--greg`)
@@ -42,6 +52,7 @@ python run_household_projection.py 2100 --profile ss
 - Each output directory now gets a `calibration_manifest.json` file describing the
   profile/base dataset contract for the full artifact set.
 - Profiles validate achieved constraint errors before writing output.
+- Experimental donor-backed augmentation is stamped into each year sidecar and the directory manifest via `support_augmentation`.
 
 **Estimated runtime:** ~2 minutes/year without `--save-h5`, ~3 minutes/year with `--save-h5`
 
@@ -59,6 +70,14 @@ python run_household_projection.py 2100 --profile ss
 - Can enforce age distribution + Social Security benefits + taxable payroll
 - Uses dual optimization to minimize divergence from baseline weights
 - **Recommended** for publishable long-term projections
+
+**Donor-Backed Late-Year Support Augmentation**
+- Experimental late-tail option for `2075+` runs
+- Uses the `2100` synthetic-support prototype to identify dominant missing household types
+- Maps those synthetic targets back to nearest real 2024 donor tax units
+- Clones and perturbs the donor tax units to create a small augmented support without replacing the base CPS sample
+- Intended to test whether donor-backed synthetic support improves late-year microsim feasibility without resorting to fully free synthetic records
+- Current status: integrated into the runner and fully auditable in metadata, but still diagnostic. The first `2100` end-to-end run did not materially improve the late-tail calibration frontier or support-concentration metrics.
 
 **GREG (Generalized Regression Estimator)**
 - Legacy linear calibration path retained for explicit flag-based runs
@@ -145,6 +164,8 @@ For each projection year (2025-2100):
 4. **Calibrate weights** - Adjust household weights to match SSA demographic/economic targets
 5. **Benchmark TOB** - Compare modeled OASDI/HI TOB to the selected target source without forcing it into the weights
 6. **Aggregate results** - Apply calibrated weights to calculate national totals
+
+When donor-backed augmentation is enabled, step 1 uses the original 2024 CPS support and step 2 inserts a tagged late-year supplement derived from nearest real donors before the calibration loop begins. The underlying base dataset path remains unchanged in metadata; the augmentation details are recorded separately in `support_augmentation`.
 
 **Key innovation:** Household-level calculations avoid person→household aggregation issues, maintaining consistency across all variables.
 

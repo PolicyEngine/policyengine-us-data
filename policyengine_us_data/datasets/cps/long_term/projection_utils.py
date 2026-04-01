@@ -115,7 +115,7 @@ def get_pseudo_input_variables(sim):
     return pseudo_inputs
 
 
-def create_household_year_h5(year, household_weights, base_dataset_path, output_dir):
+def create_household_year_h5(year, household_weights, base_dataset, output_dir):
     """
     Create a year-specific .h5 file with calibrated household weights.
 
@@ -125,7 +125,7 @@ def create_household_year_h5(year, household_weights, base_dataset_path, output_
     Args:
         year: The year for this dataset
         household_weights: Calibrated household weights for this year
-        base_dataset_path: Path to base dataset
+        base_dataset: Path to base dataset or in-memory Dataset instance
         output_dir: Directory to save the .h5 file
 
     Returns:
@@ -133,7 +133,7 @@ def create_household_year_h5(year, household_weights, base_dataset_path, output_
     """
     output_path = os.path.join(output_dir, f"{year}.h5")
 
-    sim = Microsimulation(dataset=base_dataset_path)
+    sim = Microsimulation(dataset=base_dataset)
     base_period = int(sim.default_calculation_period)
 
     df = sim.to_input_dataframe()

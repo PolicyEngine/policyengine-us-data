@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from policyengine_core.data.dataset import Dataset
 from policyengine_us import Microsimulation
 
 from calibration import (
@@ -28,6 +29,24 @@ from ssa_data import (
 DEFAULT_DATASET = "hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5"
 DEFAULT_YEAR = 2100
 BASE_YEAR = 2024
+ENTITY_ID_COLUMNS = {
+    "household": ("household_id", "person_household_id"),
+    "family": ("family_id", "person_family_id"),
+    "tax_unit": ("tax_unit_id", "person_tax_unit_id"),
+    "spm_unit": ("spm_unit_id", "person_spm_unit_id"),
+    "marital_unit": ("marital_unit_id", "person_marital_unit_id"),
+}
+PERSON_ID_COLUMN = "person_id"
+SS_COMPONENTS = (
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_survivors",
+    "social_security_dependents",
+)
+PAYROLL_COMPONENTS = (
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+)
 
 
 @dataclass(frozen=True)
@@ -340,6 +359,10 @@ def parse_epsilon_path(value: str) -> tuple[float, ...]:
     return tuple(float(part.strip()) for part in value.split(",") if part.strip())
 
 
+def _period_column(name: str, base_year: int) -> str:
+    return f"{name}__{base_year}"
+
+
 def classify_archetype(
     *,
     head_age: float,
@@ -425,6 +448,7 @@ def build_actual_tax_unit_summary(base_dataset: str) -> pd.DataFrame:
             float(spouses["age"].iloc[0]) if not spouses.empty else None
         )
         dependent_count = int(len(dependents))
+        adult_count = int((group["age"] >= 18).sum())
         dependent_ages = tuple(sorted(int(age) for age in dependents["age"].tolist()))
         head_payroll = float(heads["payroll"].sum()) if not heads.empty else 0.0
         spouse_payroll = float(spouses["payroll"].sum()) if not spouses.empty else 0.0
@@ -436,6 +460,7 @@ def build_actual_tax_unit_summary(base_dataset: str) -> pd.DataFrame:
             "tax_unit_id": int(tax_unit_id),
             "head_age": head_age,
             "spouse_age": spouse_age,
+            "adult_count": adult_count,
             "dependent_count": dependent_count,
             "dependent_ages": dependent_ages,
             "head_payroll": head_payroll,
@@ -780,9 +805,16 @@ def match_real_donors_for_target(
 ) -> pd.DataFrame:
     target_spouse_present = pd.notna(target_row["spouse_age"])
     target_spouse_age = -1 if not target_spouse_present else target_row["spouse_age"]
+    target_adult_count = 2 if target_spouse_present else 1
     subset = scaled_actual_summary[
         scaled_actual_summary["spouse_present"].eq(target_spouse_present)
+        & scaled_actual_summary["adult_count"].eq(target_adult_count)
+        & scaled_actual_summary["dependent_count"].eq(int(target_row["dependent_count"]))
     ].copy()
+    if subset.empty:
+        subset = scaled_actual_summary[
+            scaled_actual_summary["adult_count"].ge(target_adult_count)
+        ].copy()
     if subset.empty:
         subset = scaled_actual_summary.copy()
     subset["distance"] = (
@@ -902,6 +934,308 @@ def summarize_donor_probe(
             ]
         ].to_dict("records"),
     }
+
+
+def _next_entity_id(values: pd.Series) -> int:
+    non_null = values.dropna()
+    if non_null.empty:
+        return 1
+    return int(non_null.max()) + 1
+
+
+def _cast_mapped_ids(series: pd.Series, mapped: pd.Series) -> pd.Series:
+    dtype = series.dtype
+    if pd.api.types.is_integer_dtype(dtype):
+        return mapped.astype(dtype)
+    if pd.api.types.is_float_dtype(dtype):
+        return mapped.astype(dtype)
+    return mapped
+
+
+def _scale_person_components(
+    row: pd.Series,
+    columns: tuple[str, ...],
+    target_total: float,
+) -> pd.Series:
+    available = [column for column in columns if column in row.index]
+    if not available:
+        return row
+    target_total = float(target_total)
+    if target_total <= 0:
+        for column in available:
+            row[column] = 0.0
+        return row
+    current_total = float(sum(float(row[column]) for column in available))
+    if current_total > 0:
+        scale = target_total / current_total
+        for column in available:
+            row[column] = float(row[column]) * scale
+        return row
+    row[available[0]] = target_total
+    for column in available[1:]:
+        row[column] = 0.0
+    return row
+
+
+def _clone_tax_unit_rows_to_target(
+    donor_rows: pd.DataFrame,
+    *,
+    base_year: int,
+    target_candidate: SyntheticCandidate,
+    ss_scale: float,
+    earnings_scale: float,
+    id_counters: dict[str, int],
+    clone_weight_scale: float,
+    clone_weight_divisor: int,
+) -> tuple[pd.DataFrame, dict[str, int]] | tuple[None, dict[str, int]]:
+    age_col = _period_column("age", base_year)
+    household_weight_col = _period_column("household_weight", base_year)
+    person_weight_col = _period_column("person_weight", base_year)
+    person_id_col = _period_column(PERSON_ID_COLUMN, base_year)
+
+    adults = donor_rows[donor_rows[age_col] >= 18].sort_values(age_col, ascending=False)
+    dependents = donor_rows[donor_rows[age_col] < 18].sort_values(age_col, ascending=False)
+    target_has_spouse = target_candidate.spouse_age is not None
+    target_adult_count = 2 if target_has_spouse else 1
+    if len(adults) < target_adult_count or len(dependents) != len(target_candidate.dependent_ages):
+        return None, id_counters
+
+    cloned = donor_rows.copy()
+    household_id = id_counters["household"]
+    id_counters["household"] += 1
+    for entity_name, columns in ENTITY_ID_COLUMNS.items():
+        entity_id = id_counters[entity_name]
+        id_counters[entity_name] += 1
+        for raw_column in columns:
+            column = _period_column(raw_column, base_year)
+            if column in cloned.columns:
+                cloned[column] = entity_id if entity_name != "household" else household_id
+    cloned[_period_column("household_id", base_year)] = household_id
+    cloned[_period_column("person_household_id", base_year)] = household_id
+
+    person_ids = range(id_counters["person"], id_counters["person"] + len(cloned))
+    id_counters["person"] += len(cloned)
+    cloned[person_id_col] = _cast_mapped_ids(
+        cloned[person_id_col],
+        pd.Series(list(person_ids), index=cloned.index),
+    )
+
+    if household_weight_col in cloned.columns:
+        cloned[household_weight_col] = (
+            cloned[household_weight_col].astype(float)
+            * clone_weight_scale
+            / max(clone_weight_divisor, 1)
+        )
+    if person_weight_col in cloned.columns:
+        cloned[person_weight_col] = (
+            cloned[person_weight_col].astype(float)
+            * clone_weight_scale
+            / max(clone_weight_divisor, 1)
+        )
+
+    adult_indices = adults.index.tolist()
+    head_idx = adult_indices[0]
+    spouse_idx = adult_indices[1] if target_has_spouse else None
+    dependent_indices = dependents.index.tolist()
+
+    cloned.loc[head_idx, age_col] = float(target_candidate.head_age)
+    if spouse_idx is not None:
+        cloned.loc[spouse_idx, age_col] = float(target_candidate.spouse_age)
+    for dep_idx, dep_age in zip(dependent_indices, target_candidate.dependent_ages):
+        cloned.loc[dep_idx, age_col] = float(dep_age)
+
+    payroll_columns = tuple(_period_column(component, base_year) for component in PAYROLL_COMPONENTS)
+    ss_columns = tuple(_period_column(component, base_year) for component in SS_COMPONENTS)
+    qbi_col = _period_column("w2_wages_from_qualified_business", base_year)
+
+    target_head_payroll = float(target_candidate.head_wages) / max(earnings_scale, 1e-12)
+    target_spouse_payroll = float(target_candidate.spouse_wages) / max(earnings_scale, 1e-12)
+    target_head_ss = float(target_candidate.head_ss) / max(ss_scale, 1e-12)
+    target_spouse_ss = float(target_candidate.spouse_ss) / max(ss_scale, 1e-12)
+
+    cloned.loc[head_idx] = _scale_person_components(
+        cloned.loc[head_idx].copy(),
+        payroll_columns,
+        target_head_payroll,
+    )
+    cloned.loc[head_idx] = _scale_person_components(
+        cloned.loc[head_idx].copy(),
+        ss_columns,
+        target_head_ss,
+    )
+    if spouse_idx is not None:
+        cloned.loc[spouse_idx] = _scale_person_components(
+            cloned.loc[spouse_idx].copy(),
+            payroll_columns,
+            target_spouse_payroll,
+        )
+        cloned.loc[spouse_idx] = _scale_person_components(
+            cloned.loc[spouse_idx].copy(),
+            ss_columns,
+            target_spouse_ss,
+        )
+
+    for dep_idx in dependent_indices:
+        cloned.loc[dep_idx] = _scale_person_components(
+            cloned.loc[dep_idx].copy(),
+            payroll_columns,
+            0.0,
+        )
+        cloned.loc[dep_idx] = _scale_person_components(
+            cloned.loc[dep_idx].copy(),
+            ss_columns,
+            0.0,
+        )
+        if qbi_col in cloned.columns:
+            cloned.loc[dep_idx, qbi_col] = 0.0
+
+    if qbi_col in cloned.columns and head_idx in cloned.index:
+        cloned.loc[head_idx, qbi_col] = 0.0
+        if spouse_idx is not None:
+            cloned.loc[spouse_idx, qbi_col] = 0.0
+
+    return cloned, id_counters
+
+
+def build_donor_backed_augmented_input_dataframe(
+    *,
+    base_dataset: str,
+    base_year: int,
+    target_year: int,
+    top_n_targets: int = 20,
+    donors_per_target: int = 5,
+    max_distance_for_clone: float = 3.0,
+    clone_weight_scale: float = 0.1,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    sim = Microsimulation(dataset=base_dataset)
+    input_df = sim.to_input_dataframe()
+    actual_summary = build_actual_tax_unit_summary(base_dataset)
+    base_aggregates = load_base_aggregates(base_dataset)
+    ss_scale = load_ssa_benefit_projections(target_year) / max(
+        base_aggregates["weighted_ss_total"],
+        1.0,
+    )
+    earnings_scale = load_taxable_payroll_projections(target_year) / max(
+        base_aggregates["weighted_payroll_total"],
+        1.0,
+    )
+    pools = build_quantile_pools(
+        actual_summary,
+        ss_scale=ss_scale,
+        earnings_scale=earnings_scale,
+    )
+    candidates = generate_synthetic_candidates(pools)
+    exact_weights, solve_info = solve_synthetic_support(candidates, year=target_year)
+    exact_df = summarize_exact_candidates(candidates, exact_weights)
+    target_df = exact_df[exact_df["synthetic_weight"] > 0].head(top_n_targets).copy()
+    scaled_actual = build_scaled_actual_summary(
+        actual_summary,
+        ss_scale=ss_scale,
+        earnings_scale=earnings_scale,
+    )
+
+    tax_unit_id_col = _period_column("person_tax_unit_id", base_year)
+    id_counters = {
+        entity_name: _next_entity_id(input_df[_period_column(columns[0], base_year)])
+        for entity_name, columns in ENTITY_ID_COLUMNS.items()
+    }
+    id_counters["person"] = _next_entity_id(input_df[_period_column(PERSON_ID_COLUMN, base_year)])
+
+    clone_frames = []
+    target_reports = []
+    skipped_targets = []
+
+    for _, target_row in target_df.iterrows():
+        target_candidate = candidates[int(target_row["candidate_idx"])]
+        donor_matches = match_real_donors_for_target(
+            target_row,
+            scaled_actual,
+            donors_per_target=donors_per_target,
+        )
+        usable = donor_matches[donor_matches["distance"] <= max_distance_for_clone].copy()
+        if usable.empty:
+            skipped_targets.append(
+                {
+                    "candidate_idx": int(target_row["candidate_idx"]),
+                    "archetype": target_candidate.archetype,
+                    "weight_share_pct": float(target_row["weight_share_pct"]),
+                    "best_distance": float(donor_matches["distance"].min()),
+                }
+            )
+            continue
+
+        successful_clone_count = 0
+        for _, donor_row in usable.iterrows():
+            donor_rows = input_df[input_df[tax_unit_id_col] == int(donor_row["tax_unit_id"])].copy()
+            clone_df, id_counters = _clone_tax_unit_rows_to_target(
+                donor_rows,
+                base_year=base_year,
+                target_candidate=target_candidate,
+                ss_scale=ss_scale,
+                earnings_scale=earnings_scale,
+                id_counters=id_counters,
+                clone_weight_scale=clone_weight_scale,
+                clone_weight_divisor=len(usable),
+            )
+            if clone_df is None:
+                continue
+            clone_frames.append(clone_df)
+            successful_clone_count += 1
+        target_reports.append(
+            {
+                "candidate_idx": int(target_row["candidate_idx"]),
+                "archetype": target_candidate.archetype,
+                "weight_share_pct": float(target_row["weight_share_pct"]),
+                "requested_donor_count": int(len(usable)),
+                "successful_clone_count": int(successful_clone_count),
+            }
+        )
+
+    augmented_df = (
+        pd.concat([input_df, *clone_frames], ignore_index=True)
+        if clone_frames
+        else input_df.copy()
+    )
+    report = {
+        "base_dataset": base_dataset,
+        "base_year": int(base_year),
+        "target_year": int(target_year),
+        "target_source": get_long_term_target_source(),
+        "solve_info": solve_info,
+        "top_n_targets": int(top_n_targets),
+        "donors_per_target": int(donors_per_target),
+        "max_distance_for_clone": float(max_distance_for_clone),
+        "clone_weight_scale": float(clone_weight_scale),
+        "base_household_count": int(input_df[_period_column("household_id", base_year)].nunique()),
+        "augmented_household_count": int(augmented_df[_period_column("household_id", base_year)].nunique()),
+        "base_person_count": int(len(input_df)),
+        "augmented_person_count": int(len(augmented_df)),
+        "target_reports": target_reports,
+        "skipped_targets": skipped_targets,
+    }
+    return augmented_df, report
+
+
+def build_donor_backed_augmented_dataset(
+    *,
+    base_dataset: str,
+    base_year: int,
+    target_year: int,
+    top_n_targets: int = 20,
+    donors_per_target: int = 5,
+    max_distance_for_clone: float = 3.0,
+    clone_weight_scale: float = 0.1,
+) -> tuple[Dataset, dict[str, object]]:
+    augmented_df, report = build_donor_backed_augmented_input_dataframe(
+        base_dataset=base_dataset,
+        base_year=base_year,
+        target_year=target_year,
+        top_n_targets=top_n_targets,
+        donors_per_target=donors_per_target,
+        max_distance_for_clone=max_distance_for_clone,
+        clone_weight_scale=clone_weight_scale,
+    )
+    return Dataset.from_dataframe(augmented_df, base_year), report
 
 
 def _safe_split(numerator: float, denominator: float, fallback: float) -> float:

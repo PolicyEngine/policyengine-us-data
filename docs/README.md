@@ -5,7 +5,7 @@ This project uses [MyST Markdown](https://mystmd.org/) for documentation.
 ## Building Locally
 
 ### Requirements
-- Python 3.13+ with dev dependencies: `uv pip install -e .[dev] --system`
+- Python 3.14+ with dev dependencies: `uv pip install -e .[dev] --system`
 - Node.js 20+ (required by MyST)
 
 ### Commands

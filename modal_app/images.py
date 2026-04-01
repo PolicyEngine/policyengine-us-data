@@ -51,7 +51,7 @@ _IGNORE = [
 def _base_image(extras: list[str] | None = None):
     extra_flags = " ".join(f"--extra {e}" for e in (extras or []))
     return (
-        modal.Image.debian_slim(python_version="3.13")
+        modal.Image.debian_slim(python_version="3.14")
         .apt_install("git")
         .pip_install("uv>=0.8")
         .add_local_dir(

@@ -7,6 +7,10 @@ import pandas as pd
 from policyengine_core.data import Dataset
 
 from policyengine_us_data.datasets.cps.cps import CPS, CPS_2024, CPS_2024_Full
+from policyengine_us_data.datasets.org import (
+    ORG_IMPUTED_VARIABLES,
+    apply_org_domain_constraints,
+)
 from policyengine_us_data.datasets.puf import PUF, PUF_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.mortgage_interest import (
@@ -85,6 +89,10 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     # Hours/employment
     "weekly_hours_worked",
     "hours_worked_last_week",
+    # ORG labor-market variables
+    "hourly_wage",
+    "is_paid_hourly",
+    "is_union_member_or_covered",
     # Previous year income
     "employment_income_last_year",
     "self_employment_income_last_year",
@@ -335,6 +343,28 @@ def _apply_post_processing(predictions, X_test, time_period, data):
         reconciled = reconcile_ss_subcomponents(predictions[ss_cols], total_ss)
         for col in ss_cols:
             predictions[col] = reconciled[col]
+
+    org_cols = [c for c in predictions.columns if c in ORG_IMPUTED_VARIABLES]
+    if org_cols:
+        n_half = len(data["person_id"][time_period]) // 2
+        weekly_hours = (
+            predictions["weekly_hours_worked"].values
+            if "weekly_hours_worked" in predictions.columns
+            else data["weekly_hours_worked"][time_period][n_half:]
+        )
+        receiver = pd.DataFrame(
+            {
+                "employment_income": X_test["employment_income"].values,
+                "weekly_hours_worked": np.asarray(weekly_hours, dtype=np.float32),
+            }
+        )
+        constrained = apply_org_domain_constraints(
+            predictions[org_cols],
+            receiver,
+            self_employment_income=X_test["self_employment_income"].values,
+        )
+        for col in org_cols:
+            predictions[col] = constrained[col]
 
     return predictions
 

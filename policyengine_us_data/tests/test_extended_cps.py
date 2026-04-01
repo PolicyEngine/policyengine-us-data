@@ -21,6 +21,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     apply_retirement_constraints,
     reconcile_ss_subcomponents,
 )
+from policyengine_us_data.datasets.org import ORG_IMPUTED_VARIABLES
 
 
 class TestVariableListConsistency:
@@ -86,6 +87,11 @@ class TestVariableListConsistency:
         assert missing == set(), (
             f"SS sub-component vars missing from CPS_ONLY: {missing}"
         )
+
+    def test_org_variables_in_cps_only(self):
+        """ORG labor-market inputs should be re-imputed for PUF clones."""
+        missing = set(ORG_IMPUTED_VARIABLES) - set(CPS_ONLY_IMPUTED_VARIABLES)
+        assert missing == set(), f"ORG vars missing from CPS_ONLY: {missing}"
 
     def test_nonexistent_vars_not_in_cps_only(self):
         """Variables that don't exist in policyengine-us should not be

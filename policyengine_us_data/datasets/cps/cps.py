@@ -18,6 +18,12 @@ from policyengine_us_data.datasets.cps.takeup import (
     align_reported_ssi_disability,
     prioritize_reported_recipients,
 )
+from policyengine_us_data.datasets.org import (
+    ORG_BOOL_VARIABLES,
+    ORG_IMPUTED_VARIABLES,
+    build_org_receiver_frame,
+    predict_org_features,
+)
 from policyengine_us_data.utils.randomness import seeded_rng
 
 
@@ -77,6 +83,8 @@ class CPS(Dataset):
         add_rent(self, cps, person, household)
         logging.info("Adding tips")
         add_tips(self, cps)
+        logging.info("Adding ORG labor-market inputs")
+        add_org_labor_market_inputs(cps)
         logging.info("Adding auto loan balance, interest and wealth")
         add_auto_loan_interest_and_net_worth(self, cps)
         logging.info("Added all variables")
@@ -1826,6 +1834,54 @@ def add_tips(self, cps: h5py.File):
     cps = cps.drop(columns=["is_married", "is_under_18", "is_under_6"], errors="ignore")
 
     self.save_dataset(cps)
+
+
+def add_org_labor_market_inputs(cps: h5py.File) -> None:
+    """Impute ORG-derived wage and union inputs onto CPS persons."""
+    household_ids = np.asarray(cps["household_id"], dtype=np.int64)
+    person_household_ids = np.asarray(
+        cps["person_household_id"],
+        dtype=np.int64,
+    )
+    household_state_fips = np.asarray(cps["state_fips"], dtype=np.float32)
+    household_index = {
+        int(household_id): i for i, household_id in enumerate(household_ids)
+    }
+    person_state_fips = np.array(
+        [
+            household_state_fips[household_index[int(household_id)]]
+            for household_id in person_household_ids
+        ],
+        dtype=np.float32,
+    )
+
+    receiver = build_org_receiver_frame(
+        age=cps["age"],
+        is_female=cps["is_female"],
+        is_hispanic=cps["is_hispanic"],
+        cps_race=cps["cps_race"],
+        state_fips=person_state_fips,
+        employment_income=cps["employment_income"],
+        weekly_hours_worked=cps["weekly_hours_worked"],
+    )
+    self_employment_income = np.asarray(
+        cps.get(
+            "self_employment_income",
+            np.zeros(len(receiver), dtype=np.float32),
+        ),
+        dtype=np.float32,
+    )
+    predictions = predict_org_features(
+        receiver,
+        self_employment_income=self_employment_income,
+    )
+
+    for variable in ORG_IMPUTED_VARIABLES:
+        values = predictions[variable].values
+        if variable in ORG_BOOL_VARIABLES:
+            cps[variable] = values.astype(bool)
+        else:
+            cps[variable] = values.astype(np.float32)
 
 
 def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:

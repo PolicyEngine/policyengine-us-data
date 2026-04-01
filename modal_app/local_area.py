@@ -140,35 +140,27 @@ def get_version() -> str:
 
 
 def partition_work(
-    states: List[str],
-    districts: List[str],
-    cities: List[str],
+    work_items: List[Dict],
     num_workers: int,
     completed: set,
 ) -> List[List[Dict]]:
-    """Partition work items across N workers."""
-    remaining = []
-
-    for s in states:
-        item_id = f"state:{s}"
-        if item_id not in completed:
-            remaining.append({"type": "state", "id": s, "weight": 5})
-
-    for d in districts:
-        item_id = f"district:{d}"
-        if item_id not in completed:
-            remaining.append({"type": "district", "id": d, "weight": 1})
-
-    for c in cities:
-        item_id = f"city:{c}"
-        if item_id not in completed:
-            remaining.append({"type": "city", "id": c, "weight": 3})
-
+    """Partition work items across N workers using LPT scheduling."""
+    remaining = [
+        item for item in work_items if f"{item['type']}:{item['id']}" not in completed
+    ]
     remaining.sort(key=lambda x: -x["weight"])
 
-    chunks = [[] for _ in range(num_workers)]
-    for i, item in enumerate(remaining):
-        chunks[i % num_workers].append(item)
+    n_workers = min(num_workers, len(remaining))
+    if n_workers == 0:
+        return []
+
+    heap = [(0, i) for i in range(n_workers)]
+    chunks = [[] for _ in range(n_workers)]
+
+    for item in remaining:
+        load, idx = heapq.heappop(heap)
+        chunks[idx].append(item)
+        heapq.heappush(heap, (load + item["weight"], idx))
 
     return [c for c in chunks if c]
 
@@ -197,9 +189,7 @@ def get_completed_from_volume(version_dir: Path) -> set:
 
 def run_phase(
     phase_name: str,
-    states: List[str],
-    districts: List[str],
-    cities: List[str],
+    work_items: List[Dict],
     num_workers: int,
     completed: set,
     branch: str,
@@ -216,7 +206,7 @@ def run_phase(
         and crashes, and validation_rows is a list of per-target
         validation result dicts.
     """
-    work_chunks = partition_work(states, districts, cities, num_workers, completed)
+    work_chunks = partition_work(work_items, num_workers, completed)
     total_remaining = sum(len(c) for c in work_chunks)
 
     print(f"\n--- Phase: {phase_name} ---")
@@ -228,7 +218,8 @@ def run_phase(
 
     handles = []
     for i, chunk in enumerate(work_chunks):
-        print(f"  Worker {i}: {len(chunk)} items")
+        total_weight = sum(item["weight"] for item in chunk)
+        print(f"  Worker {i}: {len(chunk)} items, weight {total_weight}")
         handle = build_areas_worker.spawn(
             branch=branch,
             version=version,
@@ -753,7 +744,7 @@ db_uri = "sqlite:///{db_path}"
 cds = get_all_cds_from_database(db_uri)
 states = list(STATE_CODES.values())
 districts = [get_district_friendly_name(cd) for cd in cds]
-print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}))
+print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], "cds": cds}}))
 """,
         ],
         capture_output=True,
@@ -768,6 +759,22 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
     states = work_info["states"]
     districts = work_info["districts"]
     cities = work_info["cities"]
+
+    from collections import Counter
+    from policyengine_us_data.calibration.calibration_utils import STATE_CODES
+
+    raw_cds = work_info["cds"]
+    cds_per_state = Counter(STATE_CODES.get(int(cd) // 100, "??") for cd in raw_cds)
+
+    CITY_WEIGHTS = {"NYC": 11}
+
+    work_items = []
+    for s in states:
+        work_items.append({"type": "state", "id": s, "weight": cds_per_state.get(s, 1)})
+    for d in districts:
+        work_items.append({"type": "district", "id": d, "weight": 1})
+    for c in cities:
+        work_items.append({"type": "city", "id": c, "weight": CITY_WEIGHTS.get(c, 3)})
 
     staging_volume.reload()
     completed = get_completed_from_volume(version_dir)
@@ -786,32 +793,8 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"]}}
     accumulated_validation_rows = []
 
     completed, phase_errors, v_rows = run_phase(
-        "States",
-        states=states,
-        districts=[],
-        cities=[],
-        completed=completed,
-        **phase_args,
-    )
-    accumulated_errors.extend(phase_errors)
-    accumulated_validation_rows.extend(v_rows)
-
-    completed, phase_errors, v_rows = run_phase(
-        "Districts",
-        states=[],
-        districts=districts,
-        cities=[],
-        completed=completed,
-        **phase_args,
-    )
-    accumulated_errors.extend(phase_errors)
-    accumulated_validation_rows.extend(v_rows)
-
-    completed, phase_errors, v_rows = run_phase(
-        "Cities",
-        states=[],
-        districts=[],
-        cities=cities,
+        "All areas",
+        work_items=work_items,
         completed=completed,
         **phase_args,
     )

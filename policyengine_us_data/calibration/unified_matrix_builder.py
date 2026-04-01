@@ -493,14 +493,9 @@ def _assemble_clone_values_standalone(
         arr = np.zeros(n_records, dtype=np.float32)
         for state in unique_clone_states:
             mask = state_masks[int(state)]
-            arr[mask] = (
-                state_values[int(state)]
-                .get("reform_hh", {})
-                .get(
-                    var,
-                    np.zeros(mask.sum(), dtype=np.float32),
-                )
-            )
+            reform_data = state_values[int(state)].get("reform_hh", {})
+            if var in reform_data:
+                arr[mask] = reform_data[var][mask]
         reform_hh_vars[var] = arr
 
     return hh_vars, person_vars, reform_hh_vars
@@ -852,7 +847,7 @@ def _process_single_clone(
         )
 
         if variable.endswith("_count"):
-            vkey = (variable, constraint_key)
+            vkey = (variable, constraint_key, reform_id)
             if vkey not in count_cache:
                 count_cache[vkey] = _calculate_target_values_standalone(
                     variable,
@@ -864,6 +859,7 @@ def _process_single_clone(
                     entity_rel,
                     household_ids,
                     variable_entity_map,
+                    reform_id=reform_id,
                 )
             values = count_cache[vkey]
         else:
@@ -1495,14 +1491,9 @@ class UnifiedMatrixBuilder:
             arr = np.zeros(n_records, dtype=np.float32)
             for state in unique_clone_states:
                 mask = state_masks[int(state)]
-                arr[mask] = (
-                    state_values[int(state)]
-                    .get("reform_hh", {})
-                    .get(
-                        var,
-                        np.zeros(mask.sum(), dtype=np.float32),
-                    )
-                )
+                reform_data = state_values[int(state)].get("reform_hh", {})
+                if var in reform_data:
+                    arr[mask] = reform_data[var][mask]
             reform_hh_vars[var] = arr
 
         return hh_vars, person_vars, reform_hh_vars
@@ -2497,6 +2488,7 @@ class UnifiedMatrixBuilder:
                         vkey = (
                             variable,
                             constraint_key,
+                            reform_id,
                         )
                         if vkey not in count_cache:
                             count_cache[vkey] = _calculate_target_values_standalone(
@@ -2509,6 +2501,7 @@ class UnifiedMatrixBuilder:
                                 entity_rel=entity_rel,
                                 household_ids=household_ids,
                                 variable_entity_map=variable_entity_map,
+                                reform_id=reform_id,
                             )
                         values = count_cache[vkey]
                     else:

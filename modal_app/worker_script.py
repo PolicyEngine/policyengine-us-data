@@ -208,8 +208,7 @@ def main():
 
     from policyengine_us_data.calibration.publish_local_area import (
         build_h5,
-        NYC_COUNTIES,
-        NYC_CDS,
+        NYC_COUNTY_FIPS,
         AT_LARGE_DISTRICTS,
     )
     from policyengine_us_data.calibration.calibration_utils import (
@@ -388,13 +387,6 @@ def main():
                 )
 
             elif item_type == "city":
-                cd_subset = [cd for cd in cds_to_calibrate if cd in NYC_CDS]
-                if not cd_subset:
-                    print(
-                        "No NYC CDs found, skipping",
-                        file=sys.stderr,
-                    )
-                    continue
                 cities_dir = output_dir / "cities"
                 cities_dir.mkdir(parents=True, exist_ok=True)
                 path = build_h5(
@@ -402,8 +394,7 @@ def main():
                     geography=geography,
                     dataset_path=dataset_path,
                     output_path=cities_dir / "NYC.h5",
-                    cd_subset=cd_subset,
-                    county_filter=NYC_COUNTIES,
+                    county_fips_filter=NYC_COUNTY_FIPS,
                     takeup_filter=takeup_filter,
                 )
 

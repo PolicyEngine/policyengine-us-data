@@ -30,7 +30,6 @@ from policyengine_us_data.calibration.calibration_utils import (
 )
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
-    get_county_filter_probability,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
@@ -46,29 +45,7 @@ CHECKPOINT_FILE_DISTRICTS = Path("completed_districts.txt")
 CHECKPOINT_FILE_CITIES = Path("completed_cities.txt")
 WORK_DIR = Path("local_area_build")
 
-NYC_COUNTIES = {
-    "QUEENS_COUNTY_NY",
-    "BRONX_COUNTY_NY",
-    "RICHMOND_COUNTY_NY",
-    "NEW_YORK_COUNTY_NY",
-    "KINGS_COUNTY_NY",
-}
-
-NYC_CDS = [
-    "3603",
-    "3605",
-    "3606",
-    "3607",
-    "3608",
-    "3609",
-    "3610",
-    "3611",
-    "3612",
-    "3613",
-    "3614",
-    "3615",
-    "3616",
-]
+NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
 
 
 META_FILE = WORK_DIR / "checkpoint_meta.json"
@@ -186,7 +163,7 @@ def build_h5(
     dataset_path: Path,
     output_path: Path,
     cd_subset: List[str] = None,
-    county_filter: set = None,
+    county_fips_filter: set = None,
     takeup_filter: List[str] = None,
 ) -> Path:
     """Build an H5 file by cloning records for each nonzero weight.
@@ -197,8 +174,8 @@ def build_h5(
         dataset_path: Path to base dataset H5 file.
         output_path: Where to write the output H5 file.
         cd_subset: If provided, only include clones for these CDs.
-        county_filter: If provided, scale weights by P(target|CD)
-            for city datasets.
+        county_fips_filter: If provided, zero out weights for clones
+            whose county FIPS is not in this set.
         takeup_filter: List of takeup vars to apply.
 
     Returns:
@@ -239,17 +216,11 @@ def build_h5(
         cd_mask = np.vectorize(lambda cd: cd in cd_subset_set)(clone_cds_matrix)
         W[~cd_mask] = 0
 
-    # County filtering: scale weights by P(target_counties | CD)
-    if county_filter is not None:
-        unique_cds = np.unique(clone_cds_matrix)
-        cd_prob = {
-            cd: get_county_filter_probability(cd, county_filter) for cd in unique_cds
-        }
-        p_matrix = np.vectorize(
-            cd_prob.__getitem__,
-            otypes=[float],
-        )(clone_cds_matrix)
-        W *= p_matrix
+    # County FIPS filtering: zero out clones not in target counties
+    if county_fips_filter is not None:
+        fips_array = np.asarray(geography.county_fips).reshape(n_clones_total, n_hh)
+        fips_mask = np.isin(fips_array, list(county_fips_filter))
+        W[~fips_mask] = 0
 
     label = (
         f"CD subset {cd_subset}"
@@ -266,7 +237,7 @@ def build_h5(
     if n_clones == 0:
         raise ValueError(
             f"No active clones after filtering. "
-            f"cd_subset={cd_subset}, county_filter={county_filter}"
+            f"cd_subset={cd_subset}, county_fips_filter={county_fips_filter}"
         )
     clone_weights = W[active_geo, active_hh]
     active_blocks = blocks.reshape(n_clones_total, n_hh)[active_geo, active_hh]
@@ -783,8 +754,6 @@ def build_cities(
     """Build city H5 files with checkpointing, optionally uploading."""
     w = np.load(weights_path)
 
-    all_cds = sorted(set(geography.cd_geoid.astype(str)))
-
     cities_dir = output_dir / "cities"
     cities_dir.mkdir(parents=True, exist_ok=True)
 
@@ -794,34 +763,29 @@ def build_cities(
     if "NYC" in completed_cities:
         print("Skipping NYC (already completed)")
     else:
-        cd_subset = [cd for cd in all_cds if cd in NYC_CDS]
-        if not cd_subset:
-            print("No NYC-related CDs found, skipping")
-        else:
-            output_path = cities_dir / "NYC.h5"
+        output_path = cities_dir / "NYC.h5"
 
-            try:
-                build_h5(
-                    weights=w,
-                    geography=geography,
-                    dataset_path=dataset_path,
-                    output_path=output_path,
-                    cd_subset=cd_subset,
-                    county_filter=NYC_COUNTIES,
-                    takeup_filter=takeup_filter,
-                )
+        try:
+            build_h5(
+                weights=w,
+                geography=geography,
+                dataset_path=dataset_path,
+                output_path=output_path,
+                county_fips_filter=NYC_COUNTY_FIPS,
+                takeup_filter=takeup_filter,
+            )
 
-                if upload:
-                    print("Uploading NYC.h5 to GCP...")
-                    upload_local_area_file(str(output_path), "cities", skip_hf=True)
-                    hf_queue.append((str(output_path), "cities"))
+            if upload:
+                print("Uploading NYC.h5 to GCP...")
+                upload_local_area_file(str(output_path), "cities", skip_hf=True)
+                hf_queue.append((str(output_path), "cities"))
 
-                record_completed_city("NYC")
-                print("Completed NYC")
+            record_completed_city("NYC")
+            print("Completed NYC")
 
-            except Exception as e:
-                print(f"ERROR building NYC: {e}")
-                raise
+        except Exception as e:
+            print(f"ERROR building NYC: {e}")
+            raise
 
     if upload and hf_queue:
         print(f"\nUploading batch of {len(hf_queue)} city files to HuggingFace...")

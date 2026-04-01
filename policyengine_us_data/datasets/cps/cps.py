@@ -24,6 +24,7 @@ from policyengine_us_data.datasets.org import (
     build_org_receiver_frame,
     predict_org_features,
 )
+from policyengine_us_data.utils.downsample import downsample_dataset_arrays
 from policyengine_us_data.utils.randomness import seeded_rng
 
 
@@ -102,44 +103,16 @@ class CPS(Dataset):
     def downsample(self, frac: float):
         from policyengine_us import Microsimulation
 
-        # Store original dtypes before modifying
         original_data: dict = self.load_dataset()
-        original_dtypes = {key: original_data[key].dtype for key in original_data}
         sim = Microsimulation(dataset=self)
         sim.subsample(frac=frac)
-
-        keys_to_drop = []
-        for key in original_data:
-            if key not in sim.tax_benefit_system.variables:
-                logging.warning(
-                    f"Dropping variable {key} during downsample: "
-                    f"not in the current country package."
-                )
-                keys_to_drop.append(key)
-                continue
-            values = sim.calculate(key).values
-
-            # Preserve the original dtype if possible
-            if (
-                key in original_dtypes
-                and hasattr(values, "dtype")
-                and values.dtype != original_dtypes[key]
-            ):
-                try:
-                    original_data[key] = values.astype(original_dtypes[key])
-                except:
-                    # If conversion fails, log it but continue
-                    logging.warning(
-                        f"Could not convert {key} back to {original_dtypes[key]}"
-                    )
-                    original_data[key] = values
-            else:
-                original_data[key] = values
-
-        for key in keys_to_drop:
-            del original_data[key]
-
-        self.save_dataset(original_data)
+        self.save_dataset(
+            downsample_dataset_arrays(
+                original_data=original_data,
+                sim=sim,
+                dataset_name=self.name,
+            )
+        )
 
 
 def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):

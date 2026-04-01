@@ -46,7 +46,11 @@ from ssa_data import (
     set_long_term_target_source,
 )
 from calibration import build_calibration_audit, calibrate_weights
-from calibration_artifacts import update_dataset_manifest, write_year_metadata
+from calibration_artifacts import (
+    update_dataset_manifest,
+    write_support_augmentation_report,
+    write_year_metadata,
+)
 from calibration_profiles import (
     approximate_window_for_year,
     build_profile_from_flags,
@@ -561,6 +565,10 @@ if SUPPORT_AUGMENTATION_PROFILE in {
             max_worker_distance=SUPPORT_AUGMENTATION_MAX_DISTANCE,
             clone_weight_scale=SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
         )
+    support_augmentation_report_path = write_support_augmentation_report(
+        OUTPUT_DIR,
+        augmentation_report,
+    )
     SUPPORT_AUGMENTATION_METADATA = {
         "name": SUPPORT_AUGMENTATION_PROFILE,
         "activation_start_year": SUPPORT_AUGMENTATION_START_YEAR,
@@ -569,6 +577,7 @@ if SUPPORT_AUGMENTATION_PROFILE in {
         "donors_per_target": SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
         "max_distance_for_clone": SUPPORT_AUGMENTATION_MAX_DISTANCE,
         "clone_weight_scale": SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
+        "report_file": support_augmentation_report_path.name,
         "report_summary": {
             "base_household_count": augmentation_report["base_household_count"],
             "augmented_household_count": augmentation_report[
@@ -578,6 +587,7 @@ if SUPPORT_AUGMENTATION_PROFILE in {
             "augmented_person_count": augmentation_report[
                 "augmented_person_count"
             ],
+            "clone_household_count": augmentation_report.get("clone_household_count", 0),
             "successful_target_count": sum(
                 report["successful_clone_count"] > 0
                 for report in augmentation_report["target_reports"]

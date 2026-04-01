@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import numpy as np
 import pytest
+from policyengine_core.data.dataset import Dataset
 
 from policyengine_us_data.datasets.cps.long_term import (
     calibration as calibration_module,
@@ -18,6 +19,7 @@ from policyengine_us_data.datasets.cps.long_term.calibration_artifacts import (
     normalize_metadata,
     rebuild_dataset_manifest,
     update_dataset_manifest,
+    write_support_augmentation_report,
     write_year_metadata,
 )
 from policyengine_us_data.datasets.cps.long_term.calibration_profiles import (
@@ -50,6 +52,7 @@ from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
 from policyengine_us_data.datasets.cps.long_term.prototype_synthetic_2100_support import (
     SyntheticCandidate,
     build_role_donor_composites,
+    summarize_realized_clone_translation,
 )
 
 
@@ -1053,6 +1056,7 @@ def test_manifest_persists_support_augmentation_metadata(tmp_path):
         "name": "donor-backed-synthetic-v1",
         "activation_start_year": 2075,
         "target_year": 2100,
+        "report_file": "support_augmentation_report.json",
         "report_summary": {
             "base_household_count": 41314,
             "augmented_household_count": 41326,
@@ -1083,9 +1087,54 @@ def test_manifest_persists_support_augmentation_metadata(tmp_path):
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert metadata["support_augmentation"]["name"] == "donor-backed-synthetic-v1"
+    assert metadata["support_augmentation"]["report_file"] == "support_augmentation_report.json"
     assert (
         manifest["support_augmentation"]["report_summary"][
             "augmented_household_count"
         ]
         == 41326
     )
+
+
+def test_write_support_augmentation_report(tmp_path):
+    report = {
+        "name": "donor-backed-composite-v1",
+        "clone_household_count": 2,
+        "clone_household_reports": [{"clone_household_id": 1001}],
+    }
+    report_path = write_support_augmentation_report(tmp_path, report)
+    assert report_path == tmp_path / "support_augmentation_report.json"
+    loaded = json.loads(report_path.read_text(encoding="utf-8"))
+    assert loaded["clone_household_count"] == 2
+    assert loaded["clone_household_reports"][0]["clone_household_id"] == 1001
+
+
+def test_summarize_realized_clone_translation_matches_toy_clone():
+    import pandas as pd
+
+    dataset = Dataset.from_dataframe(pd.DataFrame(_toy_support_dataframe()), 2024)
+    augmentation_report = {
+        "clone_household_reports": [
+            {
+                "candidate_idx": 0,
+                "archetype": "older_worker_couple",
+                "clone_household_id": 1,
+                "clone_tax_unit_id": 101,
+                "target_head_age": 70,
+                "target_spouse_age": 68,
+                "target_dependent_ages": [],
+                "target_payroll_total": 5_000.0,
+                "target_ss_total": 20_000.0,
+            }
+        ]
+    }
+    summary = summarize_realized_clone_translation(
+        dataset,
+        period=2024,
+        augmentation_report=augmentation_report,
+        age_bucket_size=5,
+    )
+    assert summary["matched_clone_household_count"] == 1
+    assert summary["aggregate_ss_pct_error"] == pytest.approx(0.0)
+    assert summary["aggregate_payroll_pct_error"] == pytest.approx(0.0)
+    assert summary["per_clone"][0]["realized_ages"] == [70, 68]

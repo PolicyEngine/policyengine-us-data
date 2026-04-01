@@ -56,6 +56,7 @@ python run_household_projection.py 2100 --profile ss
   profile/base dataset contract for the full artifact set.
 - Profiles validate achieved constraint errors before writing output.
 - Experimental donor-backed augmentation is stamped into each year sidecar and the directory manifest via `support_augmentation`.
+- Donor-backed runs now also write a shared `support_augmentation_report.json` artifact with per-clone provenance so late-year translation failures can be inspected directly.
 
 **Estimated runtime:** ~2 minutes/year without `--save-h5`, ~3 minutes/year with `--save-h5`
 
@@ -80,7 +81,7 @@ python run_household_projection.py 2100 --profile ss
 - Maps those synthetic targets back to nearest real 2024 donor tax units
 - Clones and perturbs the donor tax units to create a small augmented support without replacing the base CPS sample
 - Intended to test whether donor-backed synthetic support improves late-year microsim feasibility without resorting to fully free synthetic records
-- Current status: integrated into the runner and fully auditable in metadata, but still diagnostic. The first `2100` end-to-end run did not materially improve the late-tail calibration frontier or support-concentration metrics.
+- Current status: integrated into the runner and fully auditable in metadata, but still diagnostic. The first `2100` end-to-end run did not materially improve the late-tail calibration frontier or support-concentration metrics. After adding clone-provenance diagnostics and donor-specific inverse uprating, the realized clone households now match their intended `2100` age/SS/payroll targets closely; the remaining blocker is how much synthetic support is injected, not whether the actual-row translation works.
 
 **Role-Based Donor Composites**
 - Experimental structural extension of the donor-backed approach
@@ -175,7 +176,15 @@ For each projection year (2025-2100):
 5. **Benchmark TOB** - Compare modeled OASDI/HI TOB to the selected target source without forcing it into the weights
 6. **Aggregate results** - Apply calibrated weights to calculate national totals
 
-When donor-backed augmentation is enabled, step 1 uses the original 2024 CPS support and step 2 inserts a tagged late-year supplement derived from nearest real donors before the calibration loop begins. The underlying base dataset path remains unchanged in metadata; the augmentation details are recorded separately in `support_augmentation`.
+When donor-backed augmentation is enabled, step 1 uses the original 2024 CPS support and step 2 inserts a tagged late-year supplement derived from nearest real donors before the calibration loop begins. The underlying base dataset path remains unchanged in metadata; the augmentation details are recorded separately in `support_augmentation`, and the full augmentation build report is written once per output directory to `support_augmentation_report.json`.
+
+To compare the intended clone targets with the realized output H5, run:
+
+```bash
+uv run python policyengine_us_data/datasets/cps/long_term/diagnose_support_augmentation_translation.py \
+  ./projected_datasets/2100.h5 \
+  --year 2100
+```
 
 **Key innovation:** Household-level calculations avoid person→household aggregation issues, maintaining consistency across all variables.
 

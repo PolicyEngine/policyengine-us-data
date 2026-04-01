@@ -21,6 +21,7 @@ except ImportError:  # pragma: no cover - script execution fallback
 
 CONTRACT_VERSION = 1
 MANIFEST_FILENAME = "calibration_manifest.json"
+SUPPORT_AUGMENTATION_REPORT_FILENAME = "support_augmentation_report.json"
 
 
 def metadata_path_for(h5_path: str | Path) -> Path:
@@ -122,6 +123,19 @@ def write_year_metadata(
         encoding="utf-8",
     )
     return metadata_path
+
+
+def write_support_augmentation_report(
+    output_dir: str | Path, report: dict[str, Any]
+) -> Path:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / SUPPORT_AUGMENTATION_REPORT_FILENAME
+    report_path.write_text(
+        json.dumps(json.loads(json.dumps(report)), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return report_path
 
 
 def update_dataset_manifest(

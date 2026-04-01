@@ -461,13 +461,24 @@ def predict_org_features(
     if missing:
         raise ValueError(f"ORG receiver frame missing required columns: {missing}")
 
+    n_receiver = len(receiver)
     predictions = get_org_model().predict(X_test=receiver[ORG_PREDICTORS])
+    if len(predictions) != n_receiver:
+        raise ValueError(
+            f"ORG QRF returned {len(predictions)} rows but receiver has "
+            f"{n_receiver} rows; predictions must match receiver length"
+        )
     predictions["is_union_member_or_covered"] = _predict_union_coverage_from_bls_tables(
         receiver,
         self_employment_income=self_employment_income,
     )
-    return apply_org_domain_constraints(
+    result = apply_org_domain_constraints(
         predictions=predictions,
         receiver=receiver,
         self_employment_income=self_employment_income,
     )
+    if len(result) != n_receiver:
+        raise ValueError(
+            f"ORG post-processing changed row count from {n_receiver} to {len(result)}"
+        )
+    return result

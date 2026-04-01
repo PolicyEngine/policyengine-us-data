@@ -24,6 +24,7 @@ from policyengine_us_data.datasets.org import (
     build_org_receiver_frame,
     predict_org_features,
 )
+from policyengine_us_data.utils.downsample import downsample_dataset_arrays
 from policyengine_us_data.utils.randomness import seeded_rng
 
 
@@ -102,38 +103,16 @@ class CPS(Dataset):
     def downsample(self, frac: float):
         from policyengine_us import Microsimulation
 
-        # Store original dtypes before modifying
         original_data: dict = self.load_dataset()
-        original_dtypes = {key: original_data[key].dtype for key in original_data}
         sim = Microsimulation(dataset=self)
         sim.subsample(frac=frac)
-
-        for key in original_data:
-            if key not in sim.tax_benefit_system.variables:
-                logging.warning(
-                    f"Attempting to downsample the variable {key} but failing because it is not in the given country package."
-                )
-                continue
-            values = sim.calculate(key).values
-
-            # Preserve the original dtype if possible
-            if (
-                key in original_dtypes
-                and hasattr(values, "dtype")
-                and values.dtype != original_dtypes[key]
-            ):
-                try:
-                    original_data[key] = values.astype(original_dtypes[key])
-                except:
-                    # If conversion fails, log it but continue
-                    logging.warning(
-                        f"Could not convert {key} back to {original_dtypes[key]}"
-                    )
-                    original_data[key] = values
-            else:
-                original_data[key] = values
-
-        self.save_dataset(original_data)
+        self.save_dataset(
+            downsample_dataset_arrays(
+                original_data=original_data,
+                sim=sim,
+                dataset_name=self.name,
+            )
+        )
 
 
 def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
@@ -1838,6 +1817,7 @@ def add_tips(self, cps: h5py.File):
 
 def add_org_labor_market_inputs(cps: h5py.File) -> None:
     """Impute ORG-derived wage and union inputs onto CPS persons."""
+    n_persons = len(np.asarray(cps["age"]))
     household_ids = np.asarray(cps["household_id"], dtype=np.int64)
     person_household_ids = np.asarray(
         cps["person_household_id"],
@@ -1864,6 +1844,11 @@ def add_org_labor_market_inputs(cps: h5py.File) -> None:
         employment_income=cps["employment_income"],
         weekly_hours_worked=cps["weekly_hours_worked"],
     )
+    if len(receiver) != n_persons:
+        raise ValueError(
+            f"ORG receiver frame has {len(receiver)} rows but CPS has "
+            f"{n_persons} persons"
+        )
     self_employment_income = np.asarray(
         cps.get(
             "self_employment_income",
@@ -1878,6 +1863,11 @@ def add_org_labor_market_inputs(cps: h5py.File) -> None:
 
     for variable in ORG_IMPUTED_VARIABLES:
         values = predictions[variable].values
+        if len(values) != n_persons:
+            raise ValueError(
+                f"ORG prediction for '{variable}' has {len(values)} entries "
+                f"but CPS has {n_persons} persons"
+            )
         if variable in ORG_BOOL_VARIABLES:
             cps[variable] = values.astype(bool)
         else:

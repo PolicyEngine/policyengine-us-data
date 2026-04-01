@@ -13,6 +13,8 @@ import h5py
 from typing import Type
 from filelock import FileLock
 
+from policyengine_us_data.utils.downsample import downsample_dataset_arrays
+
 
 class SCF(Dataset):
     """Dataset containing processed Survey of Consumer Finances data."""
@@ -115,36 +117,16 @@ class SCF(Dataset):
         """
         from policyengine_us import Microsimulation
 
-        # Store original dtypes before modifying
         original_data: dict = self.load_dataset()
-        original_dtypes = {key: original_data[key].dtype for key in original_data}
-
         sim = Microsimulation(dataset=self)
         sim.subsample(frac=frac)
-
-        for key in original_data:
-            if key not in sim.tax_benefit_system.variables:
-                continue
-            values = sim.calculate(key).values
-
-            # Preserve the original dtype if possible
-            if (
-                key in original_dtypes
-                and hasattr(values, "dtype")
-                and values.dtype != original_dtypes[key]
-            ):
-                try:
-                    original_data[key] = values.astype(original_dtypes[key])
-                except:
-                    # If conversion fails, log it but continue
-                    print(
-                        f"Warning: Could not convert {key} back to {original_dtypes[key]}"
-                    )
-                    original_data[key] = values
-            else:
-                original_data[key] = values
-
-        self.save_dataset(original_data)
+        self.save_dataset(
+            downsample_dataset_arrays(
+                original_data=original_data,
+                sim=sim,
+                dataset_name=self.name,
+            )
+        )
 
     def _lock(self) -> FileLock:
         return FileLock(f"{self.file_path}.lock", timeout=600)

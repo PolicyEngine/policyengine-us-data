@@ -761,6 +761,7 @@ def _impute_org(
         if "self_employment_income" in cps_df.columns
         else None
     )
+    n_persons = len(data["person_id"][time_period])
     predictions = predict_org_features(
         receiver,
         self_employment_income=self_employment_income,
@@ -768,6 +769,11 @@ def _impute_org(
 
     for var in ORG_IMPUTED_VARIABLES:
         values = predictions[var].values
+        if len(values) != n_persons:
+            raise ValueError(
+                f"ORG prediction for '{var}' has {len(values)} entries "
+                f"but dataset has {n_persons} persons"
+            )
         if var in ORG_BOOL_VARIABLES:
             data[var] = {time_period: values.astype(bool)}
         else:

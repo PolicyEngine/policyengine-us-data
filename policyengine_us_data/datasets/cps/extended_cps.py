@@ -418,6 +418,11 @@ def _splice_cps_only_predictions(
             )
 
         n_half = entity_half_lengths.get(entity_key, len(data[var][time_period]) // 2)
+        if len(pred_values) != n_half:
+            raise ValueError(
+                f"Stage-2 prediction for '{var}' has {len(pred_values)} "
+                f"entries but expected {n_half} (half of {entity_key})"
+            )
         values = data[var][time_period]
         # First half: keep original CPS values.
         # Second half: replace with QRF predictions.

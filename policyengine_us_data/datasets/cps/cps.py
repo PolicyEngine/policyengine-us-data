@@ -108,11 +108,14 @@ class CPS(Dataset):
         sim = Microsimulation(dataset=self)
         sim.subsample(frac=frac)
 
+        keys_to_drop = []
         for key in original_data:
             if key not in sim.tax_benefit_system.variables:
                 logging.warning(
-                    f"Attempting to downsample the variable {key} but failing because it is not in the given country package."
+                    f"Dropping variable {key} during downsample: "
+                    f"not in the current country package."
                 )
+                keys_to_drop.append(key)
                 continue
             values = sim.calculate(key).values
 
@@ -132,6 +135,9 @@ class CPS(Dataset):
                     original_data[key] = values
             else:
                 original_data[key] = values
+
+        for key in keys_to_drop:
+            del original_data[key]
 
         self.save_dataset(original_data)
 
@@ -1838,6 +1844,7 @@ def add_tips(self, cps: h5py.File):
 
 def add_org_labor_market_inputs(cps: h5py.File) -> None:
     """Impute ORG-derived wage and union inputs onto CPS persons."""
+    n_persons = len(np.asarray(cps["age"]))
     household_ids = np.asarray(cps["household_id"], dtype=np.int64)
     person_household_ids = np.asarray(
         cps["person_household_id"],
@@ -1864,6 +1871,11 @@ def add_org_labor_market_inputs(cps: h5py.File) -> None:
         employment_income=cps["employment_income"],
         weekly_hours_worked=cps["weekly_hours_worked"],
     )
+    if len(receiver) != n_persons:
+        raise ValueError(
+            f"ORG receiver frame has {len(receiver)} rows but CPS has "
+            f"{n_persons} persons"
+        )
     self_employment_income = np.asarray(
         cps.get(
             "self_employment_income",
@@ -1878,6 +1890,11 @@ def add_org_labor_market_inputs(cps: h5py.File) -> None:
 
     for variable in ORG_IMPUTED_VARIABLES:
         values = predictions[variable].values
+        if len(values) != n_persons:
+            raise ValueError(
+                f"ORG prediction for '{variable}' has {len(values)} entries "
+                f"but CPS has {n_persons} persons"
+            )
         if variable in ORG_BOOL_VARIABLES:
             cps[variable] = values.astype(bool)
         else:

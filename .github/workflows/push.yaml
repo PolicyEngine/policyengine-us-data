@@ -1,0 +1,82 @@
+name: Push to main
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install ruff>=0.9.0
+      - run: ruff format --check .
+
+  # ── Build datasets and run integration tests ────────────────
+  build-and-test:
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event.head_commit.message != 'Update package version'
+    timeout-minutes: 240
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install modal
+      - name: Build datasets and run integration tests on Modal
+        run: |
+          modal run modal_app/data_build.py \
+            --upload \
+            --branch=${{ github.ref_name }}
+
+  # ── Manual approval gate ────────────────────────────────────
+  approval-gate:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    environment: pipeline-approval
+    steps:
+      - run: echo "Pipeline approved. Dispatching H5 build."
+
+  # ── Dispatch pipeline ───────────────────────────────────────
+  trigger-pipeline:
+    needs: approval-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger pipeline workflow
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'pipeline.yaml',
+              ref: 'main',
+              inputs: { scope: 'all' }
+            })
+            console.log('Pipeline dispatched with scope=all')
+
+  # ── PyPI publish (version bump commits only) ────────────────
+  publish:
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event.head_commit.message == 'Update package version'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev
+      - run: uv run python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI }}
+          skip-existing: true

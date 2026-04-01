@@ -14,7 +14,7 @@ class TestWeeksUnemployed:
     def test_lkweeks_in_person_columns(self):
         """Test that LKWEEKS is in PERSON_COLUMNS, not WKSUNEM."""
         # Read the source file directly to check column names
-        census_cps_path = Path(__file__).parent.parent / (
+        census_cps_path = Path(__file__).parent.parent.parent / (
             "policyengine_us_data/datasets/cps/census_cps.py"
         )
         content = census_cps_path.read_text()
@@ -27,7 +27,7 @@ class TestWeeksUnemployed:
 
     def test_cps_uses_lkweeks(self):
         """Test that cps.py uses LKWEEKS, not WKSUNEM."""
-        cps_path = Path(__file__).parent.parent / (
+        cps_path = Path(__file__).parent.parent.parent / (
             "policyengine_us_data/datasets/cps/cps.py"
         )
         content = cps_path.read_text()

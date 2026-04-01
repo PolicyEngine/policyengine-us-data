@@ -8,7 +8,6 @@ from policyengine_us_data.db.create_database_tables import (
     create_database,
 )
 from policyengine_us_data.db.etl_national_targets import (
-    TAX_EXPENDITURE_REFORM_ID,
     load_national_targets,
 )
 
@@ -90,6 +89,7 @@ def test_load_national_targets_deactivates_stale_baseline_rows(tmp_path, monkeyp
     tax_expenditure_df = pd.DataFrame(
         [
             {
+                "reform_id": 1,
                 "variable": "salt_deduction",
                 "value": 21.247e9,
                 "source": "Joint Committee on Taxation",
@@ -97,6 +97,7 @@ def test_load_national_targets_deactivates_stale_baseline_rows(tmp_path, monkeyp
                 "year": 2024,
             },
             {
+                "reform_id": 5,
                 "variable": "qualified_business_income_deduction",
                 "value": 63.1e9,
                 "source": "Joint Committee on Taxation",
@@ -124,16 +125,12 @@ def test_load_national_targets_deactivates_stale_baseline_rows(tmp_path, monkeyp
         assert stale_rows
         assert all(not target.active for target in stale_rows)
 
-        reform_rows = (
-            session.query(Target)
-            .filter(Target.reform_id == TAX_EXPENDITURE_REFORM_ID)
-            .all()
-        )
+        reform_rows = session.query(Target).filter(Target.reform_id > 0).all()
         assert len(reform_rows) == 2
         assert all(target.active for target in reform_rows)
-        assert {target.variable for target in reform_rows} == {
-            "salt_deduction",
-            "qualified_business_income_deduction",
+        assert {(target.variable, target.reform_id) for target in reform_rows} == {
+            ("salt_deduction", 1),
+            ("qualified_business_income_deduction", 5),
         }
         assert all(
             "Modeled as repeal-based income tax expenditure target"

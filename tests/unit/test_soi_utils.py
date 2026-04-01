@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PACKAGE_ROOT = REPO_ROOT / "policyengine_us_data"
 
 

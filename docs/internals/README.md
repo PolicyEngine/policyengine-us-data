@@ -6,11 +6,11 @@ Internal notebooks for the policyengine-us-data calibration pipeline. Not publis
 
 ## Notebooks
 
-| Notebook | Stages | Inputs & runtime |
+| Notebook | Stages | Required files / inputs |
 |---|---|---|
-| [`data_build_internals.ipynb`](data_build_internals.ipynb) | Stage 1: build_datasets | <1 min — small inputs (20 records, 3 clones); donor QRF cells need ACS/SIPP/SCF files |
-| [`calibration_package_internals.ipynb`](calibration_package_internals.ipynb) | Stage 2: build_package | <1 min — Part 1 uses a toy sparse matrix; Parts 2–5 use static excerpts or fast toy demos |
-| [`local_dataset_assembly_internals.ipynb`](local_dataset_assembly_internals.ipynb) | Stages 3–4: fit_weights, publish_and_stage | <2 min — L0 toy runs in <30s; diagnostic cells need a completed run's CSV output |
+| [`data_build_internals.ipynb`](data_build_internals.ipynb) | Stage 1: build_datasets | donor QRF cells need ACS/SIPP/SCF files |
+| [`calibration_package_internals.ipynb`](calibration_package_internals.ipynb) | Stage 2: build_package | Part 1 uses a toy sparse matrix; Parts 2–5 use static excerpts or toy demos |
+| [`local_dataset_assembly_internals.ipynb`](local_dataset_assembly_internals.ipynb) | Stages 3–4: fit_weights, publish_and_stage | L0 toy run; diagnostic cells need a completed run's CSV output |
 
 ### Which notebook to open
 
@@ -187,3 +187,45 @@ modal run modal_app/pipeline.py::main \
 ```
 
 Promote moves staged H5s to their production paths on HuggingFace. It does not re-run any computation. After promotion, the run's `status` in `meta.json` changes to `"promoted"`.
+
+---
+
+## File reference
+
+> **Note:** This reference reflects the codebase as of the time of writing. File responsibilities may shift as the pipeline evolves — use this as a starting point, then read the file to confirm.
+
+### `policyengine_us_data/calibration/`
+
+| File | Purpose |
+|---|---|
+| `unified_calibration.py` | Main calibration entry point: clones CPS, assigns geography, builds matrix, runs L0 optimizer, saves weights. Start here for the end-to-end flow. |
+| `unified_matrix_builder.py` | Builds the sparse calibration matrix. Per-state simulation, clone loop, domain constraints, takeup re-randomization, COO assembly. |
+| `clone_and_assign.py` | Clones CPS records N times, assigns each clone a random census block with no-CD-collision constraint and AGI-conditional routing. |
+| `block_assignment.py` | Per-CD block assignment and geographic variable derivation (county, tract, CBSA, SLDU, SLDL, place, PUMA, VTD, ZCTA) from block GEOIDs. |
+| `county_assignment.py` | Legacy/fallback: assigns counties within CDs using P(county \| CD). Only called by `block_assignment.py::_generate_fallback_blocks()` when a CD is missing from the pre-computed block distribution (primarily in tests). Not used in production pipeline runs. |
+| `puf_impute.py` | PUF cloning: doubles the dataset, imputes 70+ tax variables via sequential QRF, reconciles Social Security sub-components. |
+| `source_impute.py` | Re-imputes housing and asset variables from ACS, SIPP, and SCF donor surveys using QRF. |
+| `create_source_imputed_cps.py` | Standalone script that runs `source_impute.py` on the stratified extended CPS to produce the dataset used by calibration. |
+| `create_stratified_cps.py` | Creates a stratified CPS sample preserving all high-income households while maintaining low-income diversity. |
+| `publish_local_area.py` | Builds per-area H5 files (states, districts, cities) from calibrated weights. Weight expansion, entity cloning, geography override, SPM recalculation, takeup draws. |
+| `calibration_utils.py` | Shared utilities: state mappings, SPM threshold calculation, geographic adjustment factors, target group functions, initial weight computation. |
+| `target_config.yaml` | Include rules that gate which DB targets enter calibration (applied post-matrix-build). The training config. |
+| `target_config_full.yaml` | Broader include rules used for validation — includes targets not in the training set for holdout evaluation. |
+| `validate_staging.py` | Validates built H5 files by running `sim.calculate()` and comparing weighted aggregates against DB targets. Produces `validation_results.csv`. |
+| `validate_national_h5.py` | Validates the national `US.h5` against known national totals and runs structural sanity checks. |
+| `validate_package.py` | Validates a calibration package (matrix + targets) before uploading to Modal — checks structure, achievability, and provenance. |
+| `sanity_checks.py` | Structural integrity checks on H5 files: weights, monetary variable ranges, takeup booleans, entity ID consistency. |
+| `check_staging_sums.py` | Standalone CLI utility (not part of the automated pipeline): sums key variables across all 51 state H5 files and compares to national references. Run manually via `make check-staging` or `python -m ...`. |
+| `promote_local_h5s.py` | Standalone CLI utility (not part of the automated pipeline): promotes locally-built H5 files to production via HuggingFace staging and GCS upload. Used for manual local builds outside Modal. |
+
+### `modal_app/`
+
+| File | Purpose |
+|---|---|
+| `pipeline.py` | End-to-end pipeline orchestrator: chains dataset build → matrix build → weight fitting → H5 publish → promote. Manages run IDs, resume, and diagnostics upload. |
+| `data_build.py` | Modal app for Stage 1: parallel dataset building (CPS extraction, PUF cloning, source imputation) with checkpoint persistence. |
+| `remote_calibration_runner.py` | Modal app for Stages 2–3: builds calibration package and/or runs L0 optimizer on GPU. Supports `build_package` and `fit_from_package` workflows. |
+| `local_area.py` | Modal app for Stage 4: parallel H5 building with distributed worker coordination, LPT scheduling, and validation aggregation. |
+| `worker_script.py` | Subprocess worker called by `local_area.py` to build individual H5 files. Runs in a separate process to avoid import conflicts. |
+| `images.py` | Defines pre-baked Modal container images with source code, dependencies, and Git metadata for reproducibility. |
+| `resilience.py` | Retry and resume utilities for Modal workflows (exponential backoff, idempotent step execution). |

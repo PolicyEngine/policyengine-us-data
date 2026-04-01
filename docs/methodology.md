@@ -97,7 +97,7 @@ graph TD
 
 The current production calibration path is the geography-specific target-database pipeline shown above. The legacy national-only Enhanced CPS reweighting branch remains in the repo for reproduction, so calibration-target changes that must affect both paths need updates in both the unified database pipeline and the older `EnhancedCPS` / `build_loss_matrix()` flow.
 
-## Stage 1: Variable Imputation
+## Stage 1: Baseline Dataset Build through Variable Imputation
 
 The imputation process begins by aging both the CPS and PUF datasets to the target year, then creating a copy of the aged CPS dataset. This allows us to preserve the original CPS structure while adding imputed tax variables.
 
@@ -166,13 +166,9 @@ QRF finds that similar workers in SIPP have a conditional distribution of tip in
 
 If the random quantile drawn is 0.85, the imputed tip income would be approximately \$6,500. This approach ensures that some similar workers receive no tips while others receive substantial tips, preserving realistic variation.
 
-## Stage 2: Stratification and Source Imputation
-
-After creating the Extended CPS, we reduce and enrich the dataset before calibration.
-
 ### Stratified Sampling
 
-The Extended CPS contains roughly 400K person records after the PUF cloning step. Running full microsimulation on every clone of this dataset would be prohibitively expensive. We apply stratified sampling to reduce the dataset to approximately 12,000 households while preserving the tails of the income distribution.
+The Extended CPS contains roughly 400K person records after the PUF cloning step. Running full microsimulation on every clone of this dataset would be prohibitively expensive. Before calibration we apply stratified sampling to reduce the dataset to approximately 12,000 households while preserving the tails of the income distribution.
 
 The stratification works in two steps. First, all households above the 99.5th percentile of adjusted gross income are retained unconditionally — this preserves the top 1% of the AGI distribution, which contributes disproportionately to tax revenue and is difficult to reconstruct from a uniform sample. Second, from the remaining households, we draw a uniform random sample to reach the target size. Weights are adjusted proportionally so that the stratified dataset still represents the full population.
 
@@ -188,7 +184,7 @@ We then impute additional variables from three supplementary surveys onto the st
 
 The output of this stage is the source-imputed stratified CPS (`source_imputed_stratified_extended_cps_2024.h5`), which serves as the input to the geography-specific calibration pipeline.
 
-## Stage 3: Geography-Specific Calibration
+## Stage 2: Geography-Specific Calibration Setup
 
 The calibration stage adjusts household weights so that the dataset matches administrative totals at the national, state, and congressional district levels simultaneously. This is the core innovation of the pipeline: rather than calibrating a single national dataset, we create geographic variants of each household and optimize a single weight vector over all variants jointly.
 
@@ -236,6 +232,10 @@ The **hierarchy inconsistency factor (HIF)** adjusts district-level estimates so
 
 **State-specific uprating factors** adjust variables that depend on state-level policy parameters. For example, ACA premium tax credits depend on state-specific benchmark premiums from CMS and KFF data, so the uprating factor for PTC varies by state.
 
+## Stage 3: Calibration Weight-Fitting
+
+Once the matrix is built, we use it to fit household weights to calibration targets.
+
 ### L0-Regularized Optimization
 
 The optimization finds a weight vector **w** such that the matrix-vector product **X · w** approximates the target vector **t**. The loss function minimizes the mean squared relative error between achieved and target values.
@@ -249,7 +249,7 @@ Two presets control the degree of sparsity:
 
 The optimizer is Adam with a learning rate of 0.15. The default epoch count is 100; production builds typically run 1000-1500 epochs to ensure convergence. Training runs on GPU (A100 or T4) via Modal for production builds, or on CPU for local development.
 
-## Stage 4: Local Area Dataset Generation
+## Stage 4: Local Area Calibrated Dataset Generation
 
 Calibrated weights are converted into geography-specific H5 datasets — one per state, congressional district, and city.
 
@@ -269,7 +269,7 @@ Supplemental Poverty Measure thresholds vary by housing tenure and metropolitan 
 
 ### Output
 
-The pipeline produces 488 H5 datasets: 51 state files (including DC), 435 congressional district files, a national file, and city files for New York City. Each file is a self-contained PolicyEngine dataset that can be loaded directly into `Microsimulation` for policy analysis.
+The pipeline produces 488 local H5 datasets: 51 state files (including DC), 435 congressional district files, a national file, and city files for New York City. Each file is a self-contained PolicyEngine dataset that can be loaded directly into `Microsimulation` for policy analysis.
 
 ## Key design decisions
 

@@ -15,11 +15,22 @@ jobs:
         if: (github.event.head_commit.message != 'Update package version')
         runs-on: ubuntu-latest
         steps:
+          # Checkout requires a PAT (POLICYENGINE_GITHUB) with repo write
+          # access so the workflow can push the version-bump commit back to
+          # main.  If the secret is missing or expired the step fails with a
+          # cryptic git-auth error.  See issue #677 for PAT rotation.
           - name: Checkout repo
+            id: checkout
+            continue-on-error: true
             uses: actions/checkout@v4
             with:
               token: ${{ secrets.POLICYENGINE_GITHUB }}
               fetch-depth: 0
+          - name: Abort if checkout failed (PAT issue)
+            if: steps.checkout.outcome == 'failure'
+            run: |
+              echo "::error ::Checkout failed — the POLICYENGINE_GITHUB PAT is likely expired or missing. See https://github.com/PolicyEngine/policyengine-us-data/issues/677"
+              exit 1
           - name: Setup Python
             uses: actions/setup-python@v5
             with:

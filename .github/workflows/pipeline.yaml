@@ -64,5 +64,7 @@ jobs:
               num_workers=int('${NUM_WORKERS}'),
               skip_national='${SKIP_NATIONAL}' == 'true',
           )
-          print(f'Pipeline spawned. Monitor on the Modal dashboard.')
+          print(f'::notice ::Modal call ID: {fc.object_id}')
+          print(f'::notice ::Dashboard: https://modal.com/apps/policyengine/main/deployed/policyengine-us-data-pipeline')
+          print(f'Pipeline spawned. Call ID: {fc.object_id}')
           "

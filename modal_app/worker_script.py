@@ -211,6 +211,7 @@ def main():
         NYC_COUNTY_FIPS,
         AT_LARGE_DISTRICTS,
     )
+    from policyengine_us_data.utils.validate_h5 import validate_h5_or_raise
     from policyengine_us_data.calibration.calibration_utils import (
         STATE_CODES,
     )
@@ -426,6 +427,11 @@ def main():
                 raise ValueError(f"Unknown item type: {item_type}")
 
             if path:
+                validate_h5_or_raise(
+                    path,
+                    label=f"{item_type}:{item_id}",
+                    period=args.period,
+                )
                 results["completed"].append(f"{item_type}:{item_id}")
                 print(
                     f"Completed {item_type}:{item_id}",

@@ -14,6 +14,27 @@ import numpy as np
 from policyengine_us_data.utils.downsample import ENTITY_ID_VARIABLES
 
 
+def _read_array(f: h5py.File, var_name: str, period: int):
+    """Read a variable array, handling both H5 layouts.
+
+    Pipeline-built files use ``variable/period`` nesting (groups at top level,
+    datasets underneath keyed by year).  Storage flat files store datasets
+    directly at the top level with no period sub-key.
+
+    Returns None if the variable is not found.
+    """
+    if var_name not in f:
+        return None
+    item = f[var_name]
+    if isinstance(item, h5py.Dataset):
+        return item
+    # Group — look for period sub-key
+    period_key = str(period)
+    if period_key in item:
+        return item[period_key]
+    return None
+
+
 def validate_h5_entity_dimensions(
     h5_path: str | Path, period: int = 2024
 ) -> list[dict]:
@@ -21,10 +42,10 @@ def validate_h5_entity_dimensions(
 
     Args:
         h5_path: Path to an H5 dataset file.
-        period: Tax year key inside the H5 (top-level group).
+        period: Tax year key inside the H5.
 
     Returns:
-        List of ``{check, status, detail}`` dicts.
+        List of ``{check, status, detail}`` dicts (empty means all OK).
     """
     from policyengine_us import CountryTaxBenefitSystem
 
@@ -33,15 +54,14 @@ def validate_h5_entity_dimensions(
     h5_path = Path(h5_path)
 
     with h5py.File(h5_path, "r") as f:
-        group = f[str(period)]
-        variable_names = list(group.keys())
+        variable_names = list(f.keys())
 
         entity_counts: dict[str, int] = {}
         for entity_key, id_var in ENTITY_ID_VARIABLES.items():
-            if id_var in group:
-                entity_counts[entity_key] = len(group[id_var])
+            arr = _read_array(f, id_var, period)
+            if arr is not None:
+                entity_counts[entity_key] = len(arr)
 
-        # Dimension checks
         for var_name in variable_names:
             variable_meta = tbs.variables.get(var_name)
             if variable_meta is None:
@@ -50,7 +70,10 @@ def validate_h5_entity_dimensions(
             expected = entity_counts.get(entity_key)
             if expected is None:
                 continue
-            actual = len(group[var_name])
+            arr = _read_array(f, var_name, period)
+            if arr is None:
+                continue
+            actual = len(arr)
             if actual != expected:
                 results.append(
                     {
@@ -63,8 +86,9 @@ def validate_h5_entity_dimensions(
                     }
                 )
 
-        # household_weight existence
-        if "household_weight" not in group:
+        # household_weight existence and sanity
+        hw = _read_array(f, "household_weight", period)
+        if hw is None:
             results.append(
                 {
                     "check": "household_weight_exists",
@@ -73,8 +97,7 @@ def validate_h5_entity_dimensions(
                 }
             )
         else:
-            weights = np.asarray(group["household_weight"])
-            if np.all(weights == 0):
+            if np.all(np.asarray(hw) == 0):
                 results.append(
                     {
                         "check": "household_weight_nonzero",
@@ -83,7 +106,6 @@ def validate_h5_entity_dimensions(
                     }
                 )
 
-        # Reasonable household count
         hh_count = entity_counts.get("household", 0)
         if hh_count == 0:
             results.append(

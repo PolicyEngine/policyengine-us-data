@@ -63,6 +63,7 @@ from projection_utils import (
 )
 from prototype_synthetic_2100_support import (
     build_donor_backed_augmented_dataset,
+    build_role_composite_augmented_dataset,
 )
 
 
@@ -252,7 +253,10 @@ SELECTED_DATASET = "enhanced_cps_2024"
 BASE_DATASET_PATH = DATASET_OPTIONS[SELECTED_DATASET]["path"]
 BASE_YEAR = DATASET_OPTIONS[SELECTED_DATASET]["base_year"]
 
-SUPPORTED_AUGMENTATION_PROFILES = {"donor-backed-synthetic-v1"}
+SUPPORTED_AUGMENTATION_PROFILES = {
+    "donor-backed-synthetic-v1",
+    "donor-backed-composite-v1",
+}
 
 
 PROFILE_NAME = None
@@ -529,19 +533,34 @@ for y in display_years:
         pop = target_matrix[:, idx].sum()
         print(f"  {y}: {pop / 1e6:6.1f}M")
 
-if SUPPORT_AUGMENTATION_PROFILE == "donor-backed-synthetic-v1":
+if SUPPORT_AUGMENTATION_PROFILE in {
+    "donor-backed-synthetic-v1",
+    "donor-backed-composite-v1",
+}:
     print("\n" + "=" * 70)
     print("STEP 1B: BUILD DONOR-BACKED LATE-YEAR SUPPORT")
     print("=" * 70)
-    BASE_DATASET, augmentation_report = build_donor_backed_augmented_dataset(
-        base_dataset=BASE_DATASET_PATH,
-        base_year=BASE_YEAR,
-        target_year=SUPPORT_AUGMENTATION_TARGET_YEAR,
-        top_n_targets=SUPPORT_AUGMENTATION_TOP_N_TARGETS,
-        donors_per_target=SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
-        max_distance_for_clone=SUPPORT_AUGMENTATION_MAX_DISTANCE,
-        clone_weight_scale=SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
-    )
+    if SUPPORT_AUGMENTATION_PROFILE == "donor-backed-synthetic-v1":
+        BASE_DATASET, augmentation_report = build_donor_backed_augmented_dataset(
+            base_dataset=BASE_DATASET_PATH,
+            base_year=BASE_YEAR,
+            target_year=SUPPORT_AUGMENTATION_TARGET_YEAR,
+            top_n_targets=SUPPORT_AUGMENTATION_TOP_N_TARGETS,
+            donors_per_target=SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
+            max_distance_for_clone=SUPPORT_AUGMENTATION_MAX_DISTANCE,
+            clone_weight_scale=SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
+        )
+    else:
+        BASE_DATASET, augmentation_report = build_role_composite_augmented_dataset(
+            base_dataset=BASE_DATASET_PATH,
+            base_year=BASE_YEAR,
+            target_year=SUPPORT_AUGMENTATION_TARGET_YEAR,
+            top_n_targets=SUPPORT_AUGMENTATION_TOP_N_TARGETS,
+            donors_per_target=SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
+            max_older_distance=SUPPORT_AUGMENTATION_MAX_DISTANCE,
+            max_worker_distance=SUPPORT_AUGMENTATION_MAX_DISTANCE,
+            clone_weight_scale=SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
+        )
     SUPPORT_AUGMENTATION_METADATA = {
         "name": SUPPORT_AUGMENTATION_PROFILE,
         "activation_start_year": SUPPORT_AUGMENTATION_START_YEAR,

@@ -47,6 +47,10 @@ from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
     household_support_summary,
     select_donor_households,
 )
+from policyengine_us_data.datasets.cps.long_term.prototype_synthetic_2100_support import (
+    SyntheticCandidate,
+    build_role_donor_composites,
+)
 
 
 class ExplodingCalibrator:
@@ -337,6 +341,85 @@ def test_support_augmentation_appends_mixed_age_household():
         62_000.0
     )
     assert synthetic_rows["tax_unit_id__2024"].nunique() == 3
+
+
+def test_role_donor_composites_build_structural_candidate_from_role_donors():
+    import pandas as pd
+
+    candidates = [
+        SyntheticCandidate(
+            archetype="older_plus_prime_worker_family",
+            head_age=67,
+            spouse_age=42,
+            dependent_ages=(10,),
+            head_wages=0.0,
+            spouse_wages=100_000.0,
+            head_ss=40_000.0,
+            spouse_ss=0.0,
+            pension_income=0.0,
+            dividend_income=0.0,
+        )
+    ]
+    actual_summary = pd.DataFrame(
+        [
+            {
+                "tax_unit_id": 1,
+                "head_age": 70.0,
+                "spouse_age": None,
+                "adult_count": 1,
+                "dependent_count": 0,
+                "dependent_ages": (),
+                "head_payroll": 0.0,
+                "spouse_payroll": 0.0,
+                "head_ss": 40_000.0,
+                "spouse_ss": 0.0,
+                "payroll_total": 0.0,
+                "ss_total": 40_000.0,
+                "dividend_income": 2_000.0,
+                "pension_income": 8_000.0,
+                "support_count_weight": 1.0,
+                "person_weight_proxy": 1.0,
+                "archetype": "older_beneficiary_single",
+            },
+            {
+                "tax_unit_id": 2,
+                "head_age": 41.0,
+                "spouse_age": 39.0,
+                "adult_count": 2,
+                "dependent_count": 1,
+                "dependent_ages": (10,),
+                "head_payroll": 60_000.0,
+                "spouse_payroll": 40_000.0,
+                "head_ss": 0.0,
+                "spouse_ss": 0.0,
+                "payroll_total": 100_000.0,
+                "ss_total": 0.0,
+                "dividend_income": 0.0,
+                "pension_income": 0.0,
+                "support_count_weight": 1.0,
+                "person_weight_proxy": 1.0,
+                "archetype": "prime_worker_family",
+            },
+        ]
+    )
+
+    composite_candidates, prior_weights, report = build_role_donor_composites(
+        candidates,
+        np.array([1.0]),
+        actual_summary,
+        ss_scale=1.0,
+        earnings_scale=1.0,
+        top_n_targets=1,
+        older_donors_per_target=1,
+        worker_donors_per_target=1,
+    )
+
+    assert len(composite_candidates) == 1
+    assert composite_candidates[0].archetype.endswith("_role_donor")
+    assert composite_candidates[0].spouse_wages == pytest.approx(100_000.0)
+    assert composite_candidates[0].head_ss == pytest.approx(40_000.0)
+    assert prior_weights.tolist() == pytest.approx([1.0])
+    assert report["skipped_targets"] == []
 
 
 def test_age_bin_helpers_preserve_population_totals():

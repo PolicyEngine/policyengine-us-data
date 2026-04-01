@@ -12,6 +12,9 @@ python run_household_projection.py 2100 --profile ss-payroll-tob --target-source
 # Experimental: donor-backed late-year support augmentation for tail-year runs
 python run_household_projection.py 2075 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-synthetic-v1 --support-augmentation-target-year 2100 --allow-validation-failures
 
+# Experimental: role-based donor composites assembled into late-year support
+python run_household_projection.py 2075 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-composite-v1 --support-augmentation-target-year 2100 --allow-validation-failures
+
 # IPF with only age distribution constraints (faster, less accurate)
 python run_household_projection.py 2050 --profile age-only
 
@@ -24,7 +27,7 @@ python run_household_projection.py 2100 --profile ss
 - `--profile`: Named calibration contract. Recommended over legacy flags.
 - `--target-source`: Named long-term target source package.
 - `--output-dir`: Output directory for generated H5 files and metadata sidecars.
-- `--support-augmentation-profile`: Experimental late-year support expansion mode. Currently supports `donor-backed-synthetic-v1`.
+- `--support-augmentation-profile`: Experimental late-year support expansion mode. Currently supports `donor-backed-synthetic-v1` and `donor-backed-composite-v1`.
 - `--support-augmentation-target-year`: Extreme year used to build the donor-backed supplement (defaults to `END_YEAR`).
 - `--support-augmentation-start-year`: Earliest run year allowed for augmentation (defaults to `2075`).
 - `--support-augmentation-top-n-targets`: Number of dominant synthetic target types to map back to real donors (default `20`).
@@ -78,6 +81,13 @@ python run_household_projection.py 2100 --profile ss
 - Clones and perturbs the donor tax units to create a small augmented support without replacing the base CPS sample
 - Intended to test whether donor-backed synthetic support improves late-year microsim feasibility without resorting to fully free synthetic records
 - Current status: integrated into the runner and fully auditable in metadata, but still diagnostic. The first `2100` end-to-end run did not materially improve the late-tail calibration frontier or support-concentration metrics.
+
+**Role-Based Donor Composites**
+- Experimental structural extension of the donor-backed approach
+- Recombines older-beneficiary donors, payroll-rich worker donors, and dependent structure into synthetic household candidates before assembling actual augmented rows
+- In the synthetic support lab, this materially improves the `2100` exact-fit basis: exact entropy fit with `360` positive candidates, ESS about `95.8`, and top-10 weight share about `25.6%`
+- The actual-row augmented dataset builder is now available in the runner as `donor-backed-composite-v1`
+- Current runner status: the first full `2100` end-to-end run with the default composite supplement added `270` structural clones and modestly improved support concentration (`ESS 11.4 -> 13.3`, top-10 share `84.9% -> 79.4%`, lower TOB overshoot), but it did not yet move the main `SS + payroll` frontier off the current `-33.8% / -35.0%` late-tail bound
 
 **GREG (Generalized Regression Estimator)**
 - Legacy linear calibration path retained for explicit flag-based runs

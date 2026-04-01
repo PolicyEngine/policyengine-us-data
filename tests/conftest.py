@@ -11,6 +11,7 @@ from policyengine_us_data.utils.version_manifest import (
     VersionManifest,
     VersionRegistry,
 )
+from policyengine_us_data.utils.policyengine import PolicyEngineUSBuildInfo
 
 # -- Fixtures ------------------------------------------------------
 
@@ -33,9 +34,20 @@ def sample_hf_info() -> HFVersionInfo:
 
 
 @pytest.fixture
+def sample_policyengine_us_info() -> PolicyEngineUSBuildInfo:
+    return PolicyEngineUSBuildInfo(
+        version="1.587.0",
+        locked_version="1.587.0",
+        git_commit="deadbeef1234",
+        source_path="/tmp/policyengine-us",
+    )
+
+
+@pytest.fixture
 def sample_manifest(
     sample_generations: dict[str, int],
     sample_hf_info: HFVersionInfo,
+    sample_policyengine_us_info: PolicyEngineUSBuildInfo,
 ) -> VersionManifest:
     return VersionManifest(
         version="1.72.3",
@@ -45,6 +57,7 @@ def sample_manifest(
             bucket="policyengine-us-data",
             generations=sample_generations,
         ),
+        policyengine_us=sample_policyengine_us_info,
     )
 
 

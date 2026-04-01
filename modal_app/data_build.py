@@ -17,7 +17,7 @@ for _p in (_baked, _local):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from modal_app.images import cpu_image as image
+from modal_app.images import cpu_image as image  # noqa: E402
 
 app = modal.App("policyengine-us-data")
 
@@ -633,6 +633,17 @@ def build_datasets(
     else:
         print("=== Running tests with checkpointing ===")
         run_tests_with_checkpoints(branch, checkpoint_volume, env)
+
+    validation_args = ["--validate-only"]
+    if skip_enhanced_cps:
+        validation_args.append("--no-require-enhanced-cps")
+
+    print("=== Validating built datasets ===")
+    run_script(
+        "policyengine_us_data/storage/upload_completed_datasets.py",
+        args=validation_args,
+        env=env,
+    )
 
     # Upload if requested (HF publication only)
     if upload:

@@ -1,23 +1,22 @@
-import h5py
 from pathlib import Path
 
-from policyengine_us_data.datasets import (
-    EnhancedCPS_2024,
-)
+import h5py
+from policyengine_core.data import Dataset
+
+from policyengine_us_data.datasets import EnhancedCPS_2024
 from policyengine_us_data.datasets.cps.cps import CPS_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.data_upload import upload_data_files
+from policyengine_us_data.utils.dataset_validation import (
+    DatasetContractError,
+    validate_dataset_contract,
+)
 
 # Datasets that require full validation before upload.
 # These are the main datasets used in production simulations.
 VALIDATED_FILENAMES = {
     "enhanced_cps_2024.h5",
     "cps_2024.h5",
-}
-
-FILENAME_TO_DATASET = {
-    "enhanced_cps_2024.h5": EnhancedCPS_2024,
-    "cps_2024.h5": CPS_2024,
 }
 
 # Minimum file sizes in bytes for validated datasets.
@@ -118,15 +117,21 @@ def validate_dataset(file_path: Path) -> None:
             + "\n".join(f"  - {e}" for e in errors)
         )
 
+    try:
+        contract_summary = validate_dataset_contract(file_path)
+    except DatasetContractError as e:
+        errors.append(f"Dataset contract validation failed: {e}")
+        raise DatasetValidationError(
+            f"Validation failed for {filename}:\n"
+            + "\n".join(f"  - {e}" for e in errors)
+        ) from e
+
     # 3. Aggregate statistics check via Microsimulation
     # Import here to avoid heavy import at module level.
     from policyengine_us import Microsimulation
 
     try:
-        dataset_cls = FILENAME_TO_DATASET.get(filename)
-        if dataset_cls is None:
-            raise DatasetValidationError(f"No dataset class registered for {filename}")
-        sim = Microsimulation(dataset=dataset_cls)
+        sim = Microsimulation(dataset=Dataset.from_file(file_path))
         year = 2024
 
         emp_income = sim.calculate("employment_income", year).sum()
@@ -159,6 +164,15 @@ def validate_dataset(file_path: Path) -> None:
 
     print(f"  ✓ Validation passed for {filename}")
     print(f"    File size: {file_size / 1024 / 1024:.1f} MB")
+    print(
+        "    policyengine-us: "
+        f"{contract_summary.policyengine_us.version}"
+        + (
+            f" (locked {contract_summary.policyengine_us.locked_version})"
+            if contract_summary.policyengine_us.locked_version
+            else ""
+        )
+    )
     print(f"    employment_income sum: ${emp_income:,.0f}")
     print(f"    Household weight sum: {hh_weight:,.0f}")
 
@@ -210,14 +224,18 @@ def upload_datasets(require_enhanced_cps: bool = True):
 
 def validate_all_datasets():
     """Validate all main datasets in storage. Called by `make validate-data`."""
-    for filename in VALIDATED_FILENAMES:
-        file_path = STORAGE_FOLDER / filename
-        if file_path.exists():
-            validate_dataset(file_path)
-        else:
-            raise FileNotFoundError(
-                f"Expected dataset {filename} not found at {file_path}"
-            )
+    validate_built_datasets(require_enhanced_cps=True)
+
+
+def validate_built_datasets(require_enhanced_cps: bool = True):
+    required_files = [CPS_2024.file_path]
+    if require_enhanced_cps:
+        required_files.append(EnhancedCPS_2024.file_path)
+
+    for file_path in required_files:
+        if not file_path.exists():
+            raise FileNotFoundError(f"Expected dataset not found at {file_path}")
+        validate_dataset(file_path)
     print("\nAll dataset validations passed.")
 
 
@@ -230,5 +248,13 @@ if __name__ == "__main__":
         action="store_true",
         help="Treat enhanced_cps and small_enhanced_cps as optional.",
     )
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Validate built datasets without uploading them.",
+    )
     args = parser.parse_args()
-    upload_datasets(require_enhanced_cps=not args.no_require_enhanced_cps)
+    if args.validate_only:
+        validate_built_datasets(require_enhanced_cps=not args.no_require_enhanced_cps)
+    else:
+        upload_datasets(require_enhanced_cps=not args.no_require_enhanced_cps)

@@ -9,6 +9,7 @@ from policyengine_us_data.storage.upload_completed_datasets import (
     DatasetValidationError,
     validate_dataset,
 )
+import policyengine_us_data.utils.dataset_validation as _dv_mod
 from policyengine_us_data.utils.dataset_validation import validate_dataset_contract
 from policyengine_us_data.utils.policyengine import PolicyEngineUSBuildInfo
 
@@ -77,7 +78,8 @@ def _write_h5(path, datasets: dict[str, np.ndarray]) -> None:
 def patch_contract_validation(monkeypatch):
     monkeypatch.setitem(upload_module.MIN_FILE_SIZES, "cps_2024.h5", 0)
     monkeypatch.setattr(
-        "policyengine_us_data.utils.dataset_validation.assert_locked_policyengine_us_version",
+        _dv_mod,
+        "assert_locked_policyengine_us_version",
         lambda: PolicyEngineUSBuildInfo(version="1.587.0", locked_version="1.587.0"),
     )
     monkeypatch.setattr(

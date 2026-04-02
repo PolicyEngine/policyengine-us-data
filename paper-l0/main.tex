@@ -1,0 +1,47 @@
+\documentclass[11pt]{article}
+
+\usepackage{ijm}
+\input{macros}
+
+\title{$L_0$ regularization for subnational microsimulation calibration}
+
+\author{
+    Maria Juaristi\thanks{PolicyEngine. Corresponding author: maria@policyengine.org} \and
+    Nikhil Woodruff\footnotemark[1] \and
+    Ben Ogorek\footnotemark[1] \and
+    Max Ghenis\footnotemark[1]
+}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/background}
+\input{sections/data}
+\input{sections/methodology}
+\input{sections/results}
+\input{sections/discussion}
+\input{sections/conclusion}
+
+% --- Required end-matter statements ---
+\section*{Conflict of interest}
+The authors declare no conflict of interest.
+
+\section*{Funding}
+This work was supported by PolicyEngine, a 501(c)(3) nonprofit organization.
+
+\section*{Data and code availability}
+The calibration pipeline, including the \lzero{} optimizer, is open source at \url{https://github.com/PolicyEngine/policyengine-us-data}. The \texttt{l0-python} PyTorch package is available at \url{https://github.com/PolicyEngine/l0-python}. Calibrated datasets are hosted on HuggingFace at \texttt{policyengine/policyengine-us-data}. The IRS Public Use File requires a restricted-access agreement; all other data sources are publicly available.
+
+\section*{Use of generative AI}
+The authors used Claude (Anthropic) for code assistance and manuscript drafting. All technical content, methodology, and analysis were designed and validated by the authors.
+
+\bibliographystyle{plainnat}
+\bibliography{./bibliography/references}
+
+\input{sections/appendix}
+
+\end{document}

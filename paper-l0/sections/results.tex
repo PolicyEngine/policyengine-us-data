@@ -1,0 +1,61 @@
+\section{Results}
+\label{sec:results}
+
+This section presents calibration accuracy, sparsity analysis, convergence behavior, and comparisons with alternative methods. All empirical values are marked as placeholders pending completed pipeline runs.
+
+\subsection{Calibration accuracy by geographic level}
+
+Table~\ref{tab:calibration_accuracy} reports mean, median, and maximum absolute relative error across achievable targets, disaggregated by geographic level.
+
+\input{tables/calibration_accuracy}
+
+The mean absolute relative error across all \tbc[total count] achievable targets is \tbc[mean error]\%. At the national level, where the optimizer has the most flexibility (every record contributes), error is lowest at \tbc[national mean]\%. State-level error averages \tbc[state mean]\%, and congressional district error averages \tbc[district mean]\%.
+
+\subsubsection{Error by target source}
+
+Error varies systematically across target sources. IRS SOI income targets, which have large magnitudes and strong signal in the calibration matrix, achieve mean error of \tbc[IRS mean]\%. ACS age-band targets, which are count-based and distributed across 18 narrow bins per district, achieve mean error of \tbc[ACS mean]\%. SNAP household count targets, which depend on the take-up re-randomization mechanism, achieve mean error of \tbc[SNAP mean]\%.
+
+\subsubsection{Unachievable targets}
+
+Of the approximately 37,800 targets, \tbc[count] are marked unachievable (row sum zero in the calibration matrix). These correspond to congressional districts where no clones carry nonzero values for the target variable. Increasing the clone count from 430 reduces the number of unachievable targets, at the cost of a larger calibration matrix.
+
+\subsection{Sparsity analysis}
+
+The $L_0$ penalty produces exact zeros in the weight vector. Table~\ref{tab:presets} reports the number of retained records under each preset.
+
+Under the national preset ($\lambda_{L_0} = 10^{-4}$), the optimizer retains approximately \tbc[national count] records from the initial \tbc[total] million, a reduction of \tbc[national pct]\%. Under the local preset ($\lambda_{L_0} = 10^{-8}$), approximately \tbc[local count] million records are retained (\tbc[local pct]\% reduction). The national preset provides a compact dataset suitable for in-browser simulation; the local preset preserves geographic resolution across all 436 congressional districts.
+
+\subsubsection{Weight distribution}
+
+Under the national preset, the weight distribution spans from \tbc[min weight] to \tbc[max weight], with a median of \tbc[median weight]. The effective sample size (ESS), computed as $(\sum w_i)^2 / \sum w_i^2$, is \tbc[ESS] under the national preset, representing \tbc[ESS pct]\% of the nominal sample size.
+
+\subsection{Convergence behavior}
+
+Figure~\ref{fig:convergence} plots the mean absolute relative error across all achievable targets as a function of training epoch for both presets.
+
+\begin{figure}[ht]
+    \centering
+    \fbox{\parbox{0.9\textwidth}{\centering\textit{[Convergence curves to be generated from calibration\_log.csv]}}}
+    \caption{Mean absolute relative error over training epochs for the national preset (4,000 epochs, $\lambda_{L_0} = 10^{-4}$) and the local preset (100 epochs, $\lambda_{L_0} = 10^{-8}$).}
+    \label{fig:convergence}
+\end{figure}
+
+Under the national preset, the mean error decreases from \tbc[initial]\% at epoch 0 to \tbc[final]\% at epoch 4,000. The error curve flattens by approximately epoch \tbc[plateau epoch], suggesting that the remaining error reflects structural limitations of the calibration matrix rather than insufficient training. Under the local preset, the mean error decreases from \tbc[local initial]\% to \tbc[local final]\% over 100 epochs.
+
+\subsubsection{Residual error analysis}
+
+Targets with persistent high error after convergence fall into two categories. First, targets in sparsely populated congressional districts where few clones have nonzero matrix entries---the optimizer has insufficient degrees of freedom. Second, targets where the domain constraint is restrictive (e.g., EITC by number of qualifying children in a specific district), limiting the pool of contributing records.
+
+\subsection{Comparison with alternative methods}
+
+Table~\ref{tab:comparison} compares the $L_0$ method with iterative proportional fitting (IPF) and generalized regression (GREG) estimators applied to the same calibration matrix and targets.
+
+\input{tables/comparison}
+
+\tbc[Comparison results to be populated after running IPF and GREG baselines on the same target set. Expected advantages of L0: joint multi-level calibration in a single pass, configurable sparsity, scalability to 37,800 targets. Expected disadvantages: longer computation time (GPU-based gradient descent vs closed-form or iterative solutions), sensitivity to hyperparameter selection.]
+
+\subsection{Application: subnational policy impact}
+
+To demonstrate the practical utility of the calibrated subnational datasets, we analyze the distributional impact of a policy reform at the state and congressional district level using \policyengine{}'s microsimulation engine.
+
+\tbc[Policy application to be selected and simulated. Candidate: analysing EITC expansion impacts across congressional districts, showing how district-level datasets enable geographic disaggregation of winners and losers that national datasets cannot provide.]

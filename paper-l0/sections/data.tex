@@ -1,0 +1,89 @@
+\section{Data}
+\label{sec:data}
+
+The calibration pipeline consumes two categories of input: base microdata from household surveys, and administrative targets from government agencies. This section describes both.
+
+\subsection{Base microdata}
+
+\subsubsection{Current Population Survey}
+
+The primary microdata source is the Current Population Survey Annual Social and Economic Supplement \citep[CPS ASEC;][]{census2024}, a nationally representative household survey of approximately 200,000 persons conducted jointly by the US Census Bureau and the Bureau of Labor Statistics. The CPS ASEC contains detailed demographic variables (age, sex, race, household composition, state of residence), income variables (earnings, Social Security, pension, unemployment compensation), and program participation indicators (SNAP, Medicaid, SSI, TANF).
+
+The CPS has well-documented limitations for tax microsimulation. Top incomes are truncated for privacy protection, causing underestimation of capital gains, partnership income, and other high-income components \citep{burkhauser2012}. Benefit receipt is underreported relative to administrative totals \citep{rothbaum2021, meyer2021}. Tax-specific variables---itemized deductions, tax credits, and filing-status-dependent calculations---are either absent or imprecisely measured.
+
+\subsubsection{IRS Public Use File imputation}
+
+To address these gaps, we impute 72 tax variables from the IRS Public Use File \citep[PUF;][]{bryant2023a} onto CPS records following the methodology of \citet{woodruff2024}. The PUF contains individual tax return data with detailed income components, deductions, and credits, but lacks household structure and demographic detail.
+
+The imputation uses quantile regression forests \citep[QRF;][]{meinshausen2006quantile} trained on the PUF and applied to CPS records. To preserve the joint distribution across the 72 variables, QRF models are applied sequentially: each variable is imputed conditional on all previously imputed variables in the sequence. A stratified subsample of PUF training records preserves the top 0.5\% of the AGI distribution (retaining all records above the 99.5th percentile) alongside a random sample of 20,000 records from the remainder.
+
+The imputation overwrites a subset of 44 unreliable CPS variables with PUF predictions, while retaining original CPS values for all other variables. Each CPS record receives QRF-imputed values for the 72 tax variables, producing an enhanced dataset that combines the demographic detail of the CPS with the tax fidelity of the PUF.
+
+Social Security income, which appears as a single total in the PUF, is decomposed into four sub-components (retirement, disability, survivors, dependents) using a QRF model trained on CPS records where all four components are observed. An age-based heuristic serves as a fallback: records with age 62 or above receive 100\% retirement allocation; younger records receive 100\% disability allocation.
+
+\subsubsection{Source imputation from additional surveys}
+
+Nine additional variables are imputed from three external surveys to fill gaps in CPS measurement:
+
+\begin{itemize}
+    \item \textbf{American Community Survey (ACS) 2022}: rent and real estate taxes, imputed with state FIPS as a predictor. Because geography is assigned before source imputation (Section~\ref{sec:stage1}), the ACS QRF conditions on the clone's assigned state, producing state-aware housing cost predictions.
+    \item \textbf{Survey of Income and Program Participation (SIPP) 2023}: tip income, bank account assets, stock assets, and bond assets. SIPP public-use files lack state identifiers, so these imputations are state-blind.
+    \item \textbf{Survey of Consumer Finances (SCF) 2022}: net worth, auto loan balance, and auto loan interest. SCF also lacks state identifiers; imputations are state-blind.
+\end{itemize}
+
+Training sample sizes are 10,000 household heads for ACS, up to 20,000 weighted-probability records for SIPP, and 50\% of SCF records.
+
+\subsection{Calibration targets}
+
+The optimizer calibrates against approximately 37,800 targets spanning three geographic levels and multiple administrative sources. Table~\ref{tab:target_summary} summarizes the target structure.
+
+\input{tables/target_summary}
+
+\subsubsection{Congressional district targets}
+
+At the district level (436 congressional districts), targets come from two sources:
+
+\begin{itemize}
+    \item \textbf{IRS Statistics of Income (SOI)}: adjusted gross income, income tax, EITC by number of qualifying children, capital gains, self-employment income, pension income, and other income and deduction categories. These are available at the ZIP code level and aggregated to congressional districts.
+    \item \textbf{Census ACS}: age distributions in 18 bands (0--4, 5--9, \ldots, 80--84, 85+), providing demographic structure within each district.
+    \item \textbf{SNAP household counts}: district-level counts of SNAP-receiving households from USDA administrative data.
+\end{itemize}
+
+\subsubsection{State targets}
+
+At the state level (50 states plus DC), additional targets include:
+
+\begin{itemize}
+    \item \textbf{USDA}: administrative SNAP spending by state.
+    \item \textbf{CMS}: Medicaid enrollment by state.
+    \item \textbf{Census Bureau}: state income tax collections.
+\end{itemize}
+
+\subsubsection{National targets}
+
+National targets provide top-level fiscal and demographic constraints:
+
+\begin{itemize}
+    \item \textbf{CBO}: federal budget projections for program spending and revenue.
+    \item \textbf{JCT}: tax expenditure estimates for major deductions and credits.
+    \item \textbf{SSA}: benefit totals by program (retirement, disability, survivors, SSI).
+    \item Additional administrative totals for healthcare spending and demographic benchmarks.
+\end{itemize}
+
+\subsection{Hierarchical uprating}
+\label{sec:uprating}
+
+Calibration targets originate from different sources with different reference periods. IRS SOI district data may reference tax year 2022, while USDA SNAP data references fiscal year 2024 and CBO projections reference the current budget year. Two adjustments reconcile these differences.
+
+The \textit{uprating factor} (UF) bridges the time gap between the source data period and the calibration year. For most domains, dollar-denominated targets use the Consumer Price Index and count targets use Census population growth projections. For ACA premium tax credits, state-specific uprating factors derived from CMS/KFF enrollment data capture state-level variation in marketplace enrollment growth.
+
+The \textit{hierarchy inconsistency factor} (HIF) corrects for district-level totals that do not sum exactly to state-level totals, which occurs when district and state data come from different administrative sources or use different collection methodologies. For each state $s$ and variable $v$, the HIF is:
+\begin{equation}
+    \text{HIF}_{s,v} = \frac{T_{s,v}^{\text{state}}}{\sum_{d \in s} T_{d,v}^{\text{district}}}
+\end{equation}
+where $T_{s,v}^{\text{state}}$ is the state-level target and $T_{d,v}^{\text{district}}$ is the district-level target for district $d$ within state $s$. Each district target is then adjusted as $T_{d,v}^{\text{adj}} = T_{d,v}^{\text{district}} \times \text{HIF}_{s,v} \times \text{UF}_{s,v}$, ensuring that adjusted district targets sum exactly to the uprated state total:
+\begin{equation}
+    \sum_{d \in s} T_{d,v}^{\text{adj}} = \text{UF}_{s,v} \times T_{s,v}^{\text{state}}
+\end{equation}
+
+For IRS SOI data, where district totals are constructed from ZIP-code-level data that sums exactly to state totals, the HIF equals 1.0. For SNAP household counts, where district estimates from one source substantially undercount state administrative totals from another, HIFs range from 1.2 to 1.7 across states.

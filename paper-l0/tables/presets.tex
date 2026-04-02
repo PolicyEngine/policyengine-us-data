@@ -1,0 +1,16 @@
+\begin{table}[ht]
+\centering
+{\tablefont
+\begin{tabular}{llrrl}
+\toprule
+Preset & $\lambda_{L_0}$ & Epochs & Retained records & Use case \\
+\midrule
+National & $10^{-4}$ & 4,000 & $\sim$50,000 & Web-based interactive simulation \\
+Local & $10^{-8}$ & 100 & $\sim$3--4 million & Subnational policy analysis \\
+\bottomrule
+\end{tabular}
+}
+\caption{Sparsity presets. The only difference between presets is $\lambda_{L_0}$ and epoch count; all other hyperparameters (Table~\ref{tab:hyperparameters}) are shared.}
+\label{tab:presets}
+\tablenote{Note: Retained record counts are approximate and vary with the base CPS size and clone count.}
+\end{table}

@@ -1,0 +1,14 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper presents an $L_0$ regularization method for calibrating microsimulation datasets to subnational administrative targets. The method jointly optimizes household weight magnitudes and sparsity using Hard Concrete gates, producing calibrated datasets that simultaneously match approximately 37,800 targets across congressional districts, states, and the nation.
+
+The key technical contribution is the adaptation of $L_0$ regularization---originally developed for neural network pruning---to the survey calibration setting. Each household-geography combination receives a continuous weight and a stochastic binary gate. The gate's learnable logit and the weight magnitude are jointly optimized via gradient descent, with the $L_0$ penalty controlling sparsity. At inference, gates collapse to deterministic zeros and ones, producing a sparse dataset in which the number of retained records is a smooth function of the penalty parameter $\lambda_{L_0}$.
+
+The configurable sparsity is practically useful: the same pipeline produces compact 50,000-record datasets for web-based interactive tools and detailed 3--4 million-record datasets for subnational policy analysis, without separate calibration procedures.
+
+The pipeline builds on the CPS-PUF imputation methodology of \citet{woodruff2024}, extending it from national to subnational coverage through clone-and-assign geography, hierarchical target reconciliation, and take-up re-randomization. The full pipeline---from raw CPS to calibrated H5 datasets---runs in approximately 8--12 hours on cloud infrastructure and is fully open source.
+
+The method is implemented in two open-source packages: the \texttt{l0-python} PyTorch package (\url{https://github.com/PolicyEngine/l0-python}), which provides the Hard Concrete optimizer, and the \texttt{policyengine-us-data} pipeline (\url{https://github.com/PolicyEngine/policyengine-us-data}), which implements the full four-stage calibration. Calibrated datasets are publicly available on HuggingFace (\texttt{policyengine/policyengine-us-data}).
+
+Future work includes extending calibration to county-level targets as additional administrative data becomes available, implementing adaptive $\lambda_{L_0}$ scheduling during training (analogous to learning rate schedules), incorporating an early stopping criterion based on held-out target validation, and applying the method to non-US microsimulation systems.

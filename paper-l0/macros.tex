@@ -1,0 +1,30 @@
+% Custom commands and mathematics macros
+
+% --- Acronyms ---
+\newcommand{\policyengine}{\textsc{PolicyEngine}}
+\newcommand{\cps}{\textsc{CPS}}
+\newcommand{\puf}{\textsc{PUF}}
+\newcommand{\acs}{\textsc{ACS}}
+\newcommand{\sipp}{\textsc{SIPP}}
+\newcommand{\scf}{\textsc{SCF}}
+
+% --- L0 / Hard Concrete notation ---
+\newcommand{\lzero}{$L_0$}
+\newcommand{\ltwo}{$L_2$}
+\newcommand{\hc}{Hard Concrete}
+
+% --- Placeholder for empirical results ---
+\newcommand{\tbc}[1][]{%
+  \textbf{[TBC%
+    \def\temparg{#1}%
+    \ifx\temparg\empty\else: #1\fi
+  ]}%
+}
+
+% --- Math shortcuts ---
+\newcommand{\E}{\mathbb{E}}
+\DeclareMathOperator{\clip}{clip}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\newcommand{\bw}{\mathbf{w}}
+\newcommand{\balpha}{\boldsymbol{\alpha}}
+\newcommand{\R}{\mathbb{R}}

@@ -9,6 +9,7 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.data_upload import upload_data_files
 from policyengine_us_data.utils.dataset_validation import (
     DatasetContractError,
+    load_dataset_for_validation,
     validate_dataset_contract,
 )
 
@@ -131,7 +132,9 @@ def validate_dataset(file_path: Path) -> None:
     from policyengine_us import Microsimulation
 
     try:
-        sim = Microsimulation(dataset=Dataset.from_file(file_path))
+        sim = Microsimulation(
+            dataset=load_dataset_for_validation(file_path, Dataset.from_file)
+        )
         year = 2024
 
         emp_income = sim.calculate("employment_income", year).sum()

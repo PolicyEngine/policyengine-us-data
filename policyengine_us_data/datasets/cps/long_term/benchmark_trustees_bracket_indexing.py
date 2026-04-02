@@ -35,7 +35,15 @@ def round_amount(amount: float, rounding: dict | None) -> float:
     raise ValueError(f"Unsupported rounding type: {rounding_type}")
 
 
-def _iter_updatable_parameters(root) -> list:
+def _uprating_parameter_name(parameter) -> str | None:
+    metadata = getattr(parameter, "metadata", {})
+    uprating = metadata.get("uprating")
+    if isinstance(uprating, dict):
+        return uprating.get("parameter")
+    return uprating
+
+
+def _iter_updatable_parameters(root, uprating_parameter: str | None = None) -> list:
     candidates = [root]
     if hasattr(root, "get_descendants"):
         candidates.extend(root.get_descendants())
@@ -44,9 +52,12 @@ def _iter_updatable_parameters(root) -> list:
     for candidate in candidates:
         if candidate.__class__.__name__ != "Parameter":
             continue
-        uprating = getattr(candidate, "metadata", {}).get("uprating")
-        if uprating is not None:
-            result.append(candidate)
+        uprating_name = _uprating_parameter_name(candidate)
+        if uprating_name is None:
+            continue
+        if uprating_parameter is not None and uprating_name != uprating_parameter:
+            continue
+        result.append(candidate)
     return result
 
 
@@ -152,16 +163,19 @@ def create_wage_indexed_irs_uprating_reform(
 
     def modify_parameters(parameters):
         nawi = parameters.gov.ssa.nawi
-        irs_uprating = parameters.gov.irs.uprating
-
-        for year in range(start_year, end_year + 1):
-            previous_value = float(irs_uprating(f"{year - 1}-01-01"))
-            wage_growth = float(nawi(f"{year - 1}-01-01")) / float(
-                nawi(f"{year - 2}-01-01")
-            )
-            irs_uprating.update(
-                period=f"year:{year}-01-01:1",
-                value=previous_value * wage_growth,
+        seen = set()
+        for parameter in _iter_updatable_parameters(
+            parameters.gov.irs,
+            uprating_parameter="gov.irs.uprating",
+        ):
+            if parameter.name in seen:
+                continue
+            seen.add(parameter.name)
+            _apply_wage_growth_to_parameter(
+                parameter,
+                nawi=nawi,
+                start_year=start_year,
+                end_year=end_year,
             )
         return parameters
 

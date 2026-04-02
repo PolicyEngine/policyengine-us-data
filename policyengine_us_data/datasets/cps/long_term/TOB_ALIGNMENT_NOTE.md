@@ -121,6 +121,32 @@ Interpretation:
   beneficiary income mix, filing composition, or other Treasury-ratio modeling
   differences.
 
+## Full IRS-uprating upper bound
+
+Finally, we ran an upper-bound sensitivity that rewrites every materialized IRS
+parameter leaf that currently inherits from `gov.irs.uprating`, replacing
+post-`2034` `C-CPI-U` growth with `NAWI` growth.
+
+This is broader than the public Trustees text justifies, but it provides a
+useful ceiling on how much of the TOB gap could plausibly be explained by the
+IRS uprating family alone.
+
+| Year | Baseline OASDI | Full IRS-uprating OASDI | Trustees target | Remaining gap |
+| --- | ---: | ---: | ---: | ---: |
+| 2075 | 9.43% | 7.46% | 6.01% | +1.45 pp |
+| 2090 | 10.52% | 7.17% | 6.08% | +1.09 pp |
+| 2100 | 11.16% | 8.16% | 6.10% | +2.06 pp |
+
+Interpretation:
+
+- The full IRS-uprating upper bound is only slightly lower than the narrower
+  core-threshold bundle.
+- That implies most of the tax-side movement is already coming from the core
+  federal threshold families, not from the rest of the CPI-uprated IRS
+  parameter tree.
+- Even under this broad upper bound, the model still remains above the
+  Trustees OASDI-only TOB path, especially in `2100`.
+
 ## DYNASIM public benchmark
 
 Urban's 2024 appendix says DYNASIM's revenue from taxing Social Security

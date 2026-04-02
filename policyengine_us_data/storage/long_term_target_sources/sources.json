@@ -1,6 +1,23 @@
 {
   "default_source": "trustees_2025_current_law",
   "sources": {
+    "oact_2025_08_05_provisional": {
+      "derived_from": "trustees_2025_current_law",
+      "description": "Post-OBBBA SSA OACT baseline overlay with provisional HI bridge for long-term calibration experiments.",
+      "file": "oact_2025_08_05_provisional.csv",
+      "hi_method": "match_oasdi_pct_change",
+      "name": "oact_2025_08_05_provisional",
+      "notes": [
+        "OASDI TOB nominal deltas are taken from the August 5, 2025 OACT letter.",
+        "2100 OASDI delta is carried forward from 2099 because the published delta table ends at 2099.",
+        "HI TOB series is provisional: it applies the same percentage change as OASDI TOB to preserve the OASDI/HI share split until a published annual HI replacement series is available."
+      ],
+      "source_urls": [
+        "https://www.ssa.gov/OACT/solvency/RWyden_20250805.pdf",
+        "https://www.ssa.gov/oact/tr/2025/lrIndex.html"
+      ],
+      "type": "oact_override"
+    },
     "trustees_2025_current_law": {
       "description": "2025 Trustees current-law baseline used by the legacy long-term calibration stack.",
       "file": "trustees_2025_current_law.csv",

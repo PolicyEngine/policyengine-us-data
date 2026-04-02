@@ -38,6 +38,7 @@ from policyengine_us_data.datasets.cps.long_term.projection_utils import (
 from policyengine_us_data.datasets.cps.long_term.ssa_data import (
     available_long_term_target_sources,
     describe_long_term_target_source,
+    load_oasdi_tob_projections,
     load_taxable_payroll_projections,
 )
 from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
@@ -977,6 +978,7 @@ def test_nonnegative_feasibility_diagnostic_distinguishes_feasible_and_infeasibl
 def test_long_term_target_sources_are_available_and_distinct():
     sources = available_long_term_target_sources()
     assert "trustees_2025_current_law" in sources
+    assert "oact_2025_08_05_provisional" in sources
 
     trustees = describe_long_term_target_source("trustees_2025_current_law")
     assert trustees["file"] == "trustees_2025_current_law.csv"
@@ -986,6 +988,16 @@ def test_long_term_target_sources_are_available_and_distinct():
         source_name="trustees_2025_current_law",
     )
     assert payroll_2026 == pytest.approx(11_129_000_000_000.0)
+
+    trustees_oasdi_2026 = load_oasdi_tob_projections(
+        2026,
+        source_name="trustees_2025_current_law",
+    )
+    oact_oasdi_2026 = load_oasdi_tob_projections(
+        2026,
+        source_name="oact_2025_08_05_provisional",
+    )
+    assert oact_oasdi_2026 < trustees_oasdi_2026
 
 
 def test_normalize_metadata_backfills_validation_passed():

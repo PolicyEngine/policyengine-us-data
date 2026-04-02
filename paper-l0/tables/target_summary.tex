@@ -1,0 +1,32 @@
+\begin{table}[ht]
+\centering
+{\tablefont
+\begin{tabular}{p{0.55\textwidth}rr}
+\toprule
+Source & Targets & Geographies \\
+\midrule
+\multicolumn{3}{l}{\textit{Congressional district level}} \\
+IRS SOI (AGI, income tax, EITC, 21 income/ded.\ domains) & 25{,}288 & 436 CDs \\
+Census ACS S0101 (person count by 18 age bands) & 7{,}848 & 436 CDs \\
+Census ACS S2201 (SNAP household count) & 436 & 436 CDs \\
+\midrule
+\multicolumn{3}{l}{\textit{State level}} \\
+IRS SOI (same domains as district) & 2{,}958 & 51 states \\
+Census ACS S0101 (person count by 18 age bands) & 918 & 51 states \\
+USDA FNS SNAP (spending + household count) & 102 & 51 states \\
+CMS Medicaid (enrollment) & 51 & 51 states \\
+Census STC (state income tax collections) & 51 & 51 states \\
+\midrule
+\multicolumn{3}{l}{\textit{National level}} \\
+IRS SOI (domain-constrained aggregates, EITC) & 51 & 1 \\
+Curated totals (CBO, JCT, SSA, CMS, Census) & 37 & 1 \\
+Census ACS S0101 (person count by 18 age bands) & 18 & 1 \\
+\midrule
+\textbf{Total} & \textbf{37{,}758} & \\
+\bottomrule
+\end{tabular}
+}
+\caption{Calibration targets by geographic level and source. District targets dominate by count. Full variable listing in Appendix~\ref{app:targets}.}
+\label{tab:target_summary}
+\tablenote{Source: \texttt{policy\_data.db} active target count.}
+\end{table}

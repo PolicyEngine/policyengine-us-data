@@ -1,0 +1,158 @@
+\section{Methodology}
+\label{sec:methodology}
+
+The calibration pipeline transforms raw CPS microdata into a calibrated subnational dataset through four stages: (1) clone creation and geographic assignment, (2) calibration matrix construction, (3) $L_0$-regularized weight optimization, and (4) dataset assembly. Figure~\ref{fig:pipeline} provides an overview.
+
+\begin{figure}[ht]
+    \centering
+    \fbox{\parbox{0.9\textwidth}{\centering\textit{[Pipeline overview diagram to be inserted]}}}
+    \caption{Four-stage calibration pipeline. Stage 1 clones CPS records and assigns geography. Stage 2 builds the sparse calibration matrix by simulating each clone through the tax-benefit engine. Stage 3 runs the $L_0$ optimizer to find calibrated weights with configurable sparsity. Stage 4 expands the flat weight vector into per-area H5 dataset files.}
+    \label{fig:pipeline}
+\end{figure}
+
+\subsection{Stage 1: clone creation and geographic assignment}
+\label{sec:stage1}
+
+The base CPS contains approximately 100,000 household records, each with a single state of residence. A stratified subsampling step reduces this to approximately 12,000 households, preserving the top 0.5\% of the AGI distribution in full while uniformly sampling from the remainder. This reduction makes downstream microsimulation computationally feasible while retaining distributional diversity.
+
+To cover 436 congressional districts and 50 states, we replicate each of the approximately 12,000 households $N$ times ($N = 430$ in the default configuration) and assign each clone a random census block from a population-weighted distribution. Although the clone count is slightly below the number of congressional districts, every record is replicated 430 times across different geographic areas, providing the optimizer with sufficient degrees of freedom to place each household type wherever targets require it.
+
+\subsubsection{Block sampling}
+
+Census blocks are the finest geographic unit in the decennial census. Each block maps deterministically to a congressional district, county, tract, and state. The sampling distribution $P_{\text{pop}}(\text{block})$ is proportional to the block's share of the national population. Drawing blocks rather than congressional districts ensures fine-grained geographic variation within districts and enables derivation of county-level variables (Section~\ref{sec:stage4}).
+
+\subsubsection{AGI-conditional routing}
+
+High-income households are routed toward high-AGI congressional districts using a modified sampling distribution. Let $A_d$ denote the aggregate adjusted gross income target for district $d$ from IRS SOI data, and let $P_{\text{pop}}(b)$ denote the population-weighted block probability for block $b$ in district $d$. For households with AGI above the 90th percentile, the sampling distribution is:
+\begin{equation}
+    P_{\text{AGI}}(b) \propto P_{\text{pop}}(b) \cdot A_{d(b)}
+\end{equation}
+where $d(b)$ is the congressional district containing block $b$. This makes blocks in high-AGI districts more likely targets for high-income households, improving the initial geographic allocation before optimization. Without AGI-conditional routing, the optimizer would need to zero out high-income records that landed in low-AGI districts by chance, wasting capacity for population and demographic targets in those districts.
+
+\subsubsection{No-collision constraint}
+
+The same CPS household must not appear in the same congressional district in two different clones. If household $h$ in clone $c_1$ lands in district $d$, then household $h$ in clone $c_2$ must land in a different district. This prevents a high-weight household from dominating a small district's targets. The constraint is enforced by resampling: clone 0 draws blocks freely; each subsequent clone checks for collisions against all previous clones and resamples colliding records for up to 50 retries. Residual collisions after 50 retries are accepted; these are rare with 430 clones and the large block distribution.
+
+After cloning, the total number of household-geography combinations is $N_{\text{clones}} \times n_{\text{records}}$. With 430 clones and approximately 12,000 base households (after stratified subsampling), this produces approximately 5.2 million column positions in the calibration matrix.
+
+\subsection{Stage 2: calibration matrix construction}
+\label{sec:stage2}
+
+The calibration matrix $\mathbf{M} \in \R^{m \times n}$ maps $n$ household-geography combinations (columns) to $m$ calibration targets (rows). Entry $M_{ji}$ is the contribution of record $i$ to target $j$---for dollar targets, this is the household's simulated value of the target variable; for count targets, it is 1 if the household satisfies the target's domain constraint and 0 otherwise.
+
+\subsubsection{Per-state parallel simulation}
+
+The matrix is populated by running each household through \policyengine{}'s tax-benefit microsimulation engine. Because many target variables depend on state-specific tax and benefit rules, a separate simulation is required for each state. A parallel dispatcher sends one job per unique state FIPS code to a pool of worker processes. Each worker creates a fresh \texttt{Microsimulation} instance, overwrites every household's \texttt{state\_fips} with the target state, invalidates cached downstream variables, and calculates all target variables at the household and person levels, accounting for differences in state legislation.
+
+For county-dependent variables---currently limited to ACA premium tax credits, where eligibility depends on county-level benchmark plan premiums---an additional simulation loop iterates over counties within each state, setting the county FIPS for each iteration.
+
+\subsubsection{Take-up re-randomization}
+\label{sec:takeup}
+
+Several benefit programs require a stochastic take-up decision: whether an eligible household actually participates. To construct the matrix correctly under take-up uncertainty, the pipeline runs three simulations per state: (a) a baseline simulation with original take-up values; (b) an all-take-up-true simulation that computes each entity's benefit value assuming full participation; and (c) a would-file-false simulation for tax unit variables.
+
+The take-up rate for each program is resolved at the state level from the clone's assigned census block. Programs with take-up re-randomization include SNAP, ACA premium tax credits, Medicaid, SSI, TANF, Head Start, and Early Head Start. The pipeline draws take-up booleans per (variable, household, clone) triple using a deterministic seeded random number generator. The seed is derived from the variable name, original household ID, and clone index, ensuring that draws are reproducible and independent across clones. Different clones of the same household may have different take-up draws, reflecting the fact that the same household placed in a different geographic area would face a different local take-up rate.
+
+\subsubsection{Clone loop and COO assembly}
+
+After all per-state simulations and take-up preparation complete, a clone loop iterates over each of the $N$ clones. For each clone $c$:
+
+\begin{enumerate}
+    \item Read the geographic slice: which state and district each record maps to in clone $c$.
+    \item Draw per-clone take-up booleans for each benefit program using the clone's geographic assignment and the deterministic seed.
+    \item Assemble per-record values by looking up the appropriate state simulation results for each record's assigned state. For take-up-dependent variables, entity-level values from the all-take-up-true simulation are multiplied by the per-clone take-up draw to produce the matrix entry for that clone.
+    \item Evaluate domain constraints---predicates that determine whether a record contributes to a particular target (e.g., ``SNAP $> 0$'' for SNAP dollar targets, ``age $\geq 18$'' for adult population counts).
+    \item Emit nonzero entries as coordinate (COO) triples $(\text{row}, \text{col}, \text{value})$, where $\text{col} = c \times n_{\text{records}} + i$ for record $i$ in clone $c$.
+\end{enumerate}
+
+The COO entries from all clones are concatenated and converted to a compressed sparse row (CSR) matrix. Typical density is below 1\%, as most records contribute to targets only in their assigned geographic area. This ordering ensures that the matrix accurately represents what the calibrated weights will reproduce when applied to the final dataset.
+
+\subsubsection{Target configuration}
+
+After the full unfiltered matrix is built, a configuration file (\texttt{target\_config.yaml}) selects the subset of targets used for optimization. Each rule specifies a variable name, geographic level, and optionally a domain variable. This separation allows the same expensive matrix to be reused with different target configurations without rebuilding.
+
+Targets with zero row sums---meaning no record can contribute---are marked as unachievable and excluded from the loss function.
+
+\subsection{Stage 3: $L_0$-regularized weight optimization}
+\label{sec:stage3}
+
+\subsubsection{Loss function}
+
+Given the sparse calibration matrix $\mathbf{M}$, a vector of target values $\mathbf{t} \in \R^m$, and a weight vector $\bw \in \R^n$, the optimizer minimizes:
+\begin{equation}
+    \mathcal{L}(\bw, \balpha) = \frac{1}{m}\sum_{j=1}^{m}\left(\frac{\hat{t}_j - t_j}{|t_j|}\right)^2 + \lambda_{L_0}\sum_{i=1}^{n}\bar{z}_i + \lambda_{L_2}\|\bw\|_2^2
+    \label{eq:loss}
+\end{equation}
+where the weighted estimate for target $j$ is:
+\begin{equation}
+    \hat{t}_j = \sum_{i=1}^{n} M_{ji} \cdot w_i \cdot z_i
+    \label{eq:estimate}
+\end{equation}
+$z_i \in [0, 1]$ is the Hard Concrete gate for record $i$ (Equations~1--4 in Section~\ref{sec:background}), $\bar{z}_i = \sigma(\log \alpha_i - \beta \log(-\gamma/\zeta))$ is the expected gate activation used as the $L_0$ penalty, $\lambda_{L_0}$ controls the sparsity-accuracy trade-off, and $\lambda_{L_2}$ provides mild weight regularization.
+
+The calibration loss uses \textit{relative} errors: a 1\% miss on a \$1 billion SNAP target receives the same gradient signal as a 1\% miss on a \$9 trillion employment income target. This scale-invariant formulation prevents large-magnitude targets from dominating the loss.
+
+\subsubsection{Hyperparameters}
+
+Table~\ref{tab:hyperparameters} lists the optimization hyperparameters with their values and roles. The stretch parameters $\gamma = -0.1$ and $\zeta = 1.1$ follow the original Hard Concrete paper, placing approximately 9\% of the sigmoid's mass below 0 and above 1, which is what allows clipping to produce exact zeros and ones.
+
+\input{tables/hyperparameters}
+
+\subsubsection{Initialization}
+
+Weights are initialized from age-bin population targets rather than uniformly. For each congressional district, the sum of age-bin target values gives the district's total population. The initial weight for each record assigned to that district is set to the district population divided by the number of active records in the district. This gives the optimizer a demographically grounded starting point: records in high-population districts begin with higher weights. Small Gaussian jitter in log-weight space ($\sigma = 0.05$) and log-alpha space ($\sigma = 0.01$) breaks symmetry between duplicate CPS records.
+
+Gate logits are initialized so that $P(z_i > 0) \approx 0.999$---nearly every record starts active. The optimizer begins from a dense, approximately calibrated state and prunes as the $L_0$ penalty accumulates over training epochs.
+
+\subsubsection{Presets}
+
+Two presets control the sparsity-accuracy trade-off via $\lambda_{L_0}$:
+
+\input{tables/presets}
+
+The only difference between presets is $\lambda_{L_0}$. All other hyperparameters are shared. A higher $\lambda_{L_0}$ increases the gradient signal pushing gate logits below zero, pruning more records.
+
+\subsubsection{Optimization loop}
+
+The optimizer uses the Adam algorithm \citep{kingma2015} with learning rate 0.15. At each epoch:
+
+\begin{enumerate}
+    \item Sample Hard Concrete gates $z_i$ (stochastic during training).
+    \item Compute effective weights: $w_i^{\text{eff}} = \exp(\log w_i) \cdot z_i$.
+    \item Compute predictions: $\hat{t}_j = \sum_i M_{ji} \cdot w_i^{\text{eff}}$.
+    \item Evaluate the loss (Equation~\ref{eq:loss}).
+    \item Backpropagate and update $\{\log w_i, \log \alpha_i\}$ via Adam.
+\end{enumerate}
+
+At inference, stochastic gates are replaced by their deterministic counterparts. Records where $z_i^{\text{det}} = 0$ are excluded from the output dataset.
+
+The current implementation runs for a fixed number of epochs (100 for regional fits, 4,000 for national fits) without early stopping. Convergence is assessed post hoc from diagnostic outputs.
+
+\subsection{Stage 4: weight expansion and dataset assembly}
+\label{sec:stage4}
+
+The optimizer returns a flat weight vector of length $N_{\text{clones}} \times n_{\text{records}}$. Stage 4 expands this into complete H5 dataset files suitable for microsimulation.
+
+\subsubsection{Weight reshaping and geographic filtering}
+
+The flat vector is reshaped to a matrix $\mathbf{W} \in \R^{N_{\text{clones}} \times n_{\text{records}}}$. Most entries are zero. For per-area datasets (e.g., a state dataset for California), clones whose congressional district falls outside the target area are zeroed out. For city datasets (e.g., New York City), clones whose county FIPS is not in the city's set of counties are zeroed out. The nonzero entries---typically 3--4 million for the local preset or approximately 50,000 for the national preset---identify the active (clone, household) pairs.
+
+\subsubsection{Entity membership preservation}
+
+Each CPS household contains persons who belong to sub-entities: tax units, SPM units, families, and marital units. The assembly step looks up the membership mapping for each active household and concatenates the corresponding person and sub-entity indices across all active clones. Entity IDs are reassigned to globally unique values using a compound key $(\text{clone\_id} \times \text{offset} + \text{old\_id})$ with binary search remapping, achieving $O(n \log n)$ performance.
+
+\subsubsection{Geographic variable derivation}
+
+Each active clone carries a census block GEOID from the geography assignment. The assembly step derives state FIPS, county, tract, CBSA, SLDU, SLDL, place, VTD, PUMA, and ZCTA from the block GEOID. Because many clones share the same block (especially in dense urban areas), block GEOIDs are deduplicated before derivation and results are broadcast back via an inverse index.
+
+\subsubsection{SPM threshold recalculation}
+
+The Supplemental Poverty Measure threshold depends on local housing costs via a geographic adjustment factor. Because each clone's geography differs from the base dataset, SPM thresholds are recomputed using:
+\begin{equation}
+    \text{threshold}_k = \text{base\_threshold}(\text{tenure}_k) \times \text{equiv}(n_{\text{adults}}, n_{\text{children}}) \times \text{geoadj}(\text{CD}_k)
+\end{equation}
+where the geographic adjustment factor for each congressional district is derived from median two-bedroom rent ratios from the Census Bureau.
+
+\subsubsection{Take-up consistency}
+
+The H5 assembly must produce identical take-up draws as the matrix builder for every (variable, household, clone) triple. Both stages call the same function (\texttt{compute\_block\_takeup\_for\_entities}) with the same seed derived from (variable name, original household ID, clone index). Any divergence would mean the matrix targeted a different subpopulation than what appears in the final dataset.

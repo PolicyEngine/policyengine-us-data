@@ -1,0 +1,40 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Configurable sparsity trade-off}
+
+The $\lambda_{L_0}$ parameter provides a continuous sparsity-accuracy dial. At one extreme, $\lambda_{L_0} = 10^{-4}$ produces a compact dataset of approximately 50,000 records that loads in seconds for web-based simulation tools, where users expect near-instant feedback. At the other extreme, $\lambda_{L_0} = 10^{-8}$ retains 3--4 million records with fine geographic resolution across all 436 congressional districts. Intermediate values produce datasets of intermediate size.
+
+This trade-off does not exist in classical calibration methods. IPF and GREG produce a single set of weights without sparsity control. To reduce dataset size, researchers must discard records post hoc or apply ad hoc thresholding---neither of which jointly optimizes accuracy and sparsity. The Hard Concrete gate provides a principled mechanism for this joint optimization, with $\lambda_{L_0}$ serving as the researcher's preference parameter over the Pareto frontier.
+
+\subsection{Computational cost}
+
+The pipeline runs on Modal, a cloud compute platform, using T4 GPUs for the optimization step. Stage 1 (clone creation and imputation) requires approximately 2--3 hours of CPU time. Stage 2 (matrix construction) requires approximately 2--3 hours across parallel workers, dominated by running \policyengine{} simulations for each of the 51 state-level configurations. Stage 3 (optimization) requires approximately 30--60 minutes of GPU time for the national preset (4,000 epochs) and 5--15 minutes for the local preset (1,000 epochs). Stage 4 (H5 assembly) requires approximately 4--5 hours across parallel workers for all 488 (436 CDs, 50 states plus DC, NYC and a national) H5 builds.
+
+Total wall-clock time for a complete pipeline run is approximately 8--12 hours. This exceeds the cost of a single IPF or GREG calibration, which takes minutes. However, the pipeline amortizes the expensive matrix construction step: once built, the calibration package can be reused with different $\lambda_{L_0}$ presets or target configurations without rebuilding.
+
+\subsection{Limitations}
+
+\subsubsection{Temporal gap between PUF and CPS}
+
+The most recent publicly available PUF references tax year 2015 \citep{bryant2023a}. The CPS ASEC is updated annually. Imputing 2015 tax return variables onto 2024 CPS records introduces a temporal mismatch. The QRF imputation conditions on demographic and income variables that are available in both datasets, partially mitigating the gap, but structural changes in the tax code since 2015---such as the Tax Cuts and Jobs Act of 2017---may not be fully captured.
+
+\subsubsection{No early stopping}
+
+The current implementation runs for a fixed number of epochs without an automatic convergence criterion. Convergence is assessed post hoc from diagnostic outputs. An adaptive stopping rule based on validation loss on held-out targets (excluded from training via \texttt{target\_config.yaml}) could reduce computation time and prevent overfitting to the training target set.
+
+\subsubsection{Target selection sensitivity}
+
+The choice of which targets to include in the optimization affects calibration accuracy on excluded targets. The \texttt{target\_config.yaml} mechanism provides flexibility but also introduces a modeling decision: including too many targets may overfit the weights to specific administrative totals, while excluding targets leaves them uncalibrated. The current configuration was developed iteratively through validation against held-out targets, but a more systematic approach to target selection---analogous to feature selection in supervised learning---could improve robustness.
+
+\subsubsection{Take-up uncertainty}
+
+Programme take-up draws are stochastic, introducing noise into the calibration matrix entries for take-up-dependent targets. Different random seeds produce different take-up assignments, which produce different calibrated weights. The pipeline uses deterministic seeds for reproducibility but does not currently quantify the sensitivity of calibration accuracy to the take-up random seed.
+
+\subsubsection{Geographic resolution}
+
+The current pipeline calibrates at three levels: congressional district, state, and national. Finer geographic levels---counties, metropolitan areas, school districts---are feasible in principle but would require additional target data and a larger calibration matrix. The census block assignment already provides the geographic foundation; the constraint is the availability of administrative targets at finer levels.
+
+\subsection{Generalizability}
+
+The method is not specific to the United States or to any particular tax-benefit system. Any setting where (a) a household survey must be calibrated to (b) administrative targets at (c) multiple geographic levels is a candidate for $L_0$-regularized calibration. The UK Family Resources Survey calibrated to HMRC tax data across local authorities, or the EU Statistics on Income and Living Conditions calibrated to Eurostat regional benchmarks, are plausible applications. The \texttt{l0-python} package implements the Hard Concrete optimizer independently of the \policyengine{} framework.

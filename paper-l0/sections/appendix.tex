@@ -1,0 +1,199 @@
+\appendix
+
+\section{Optimization hyperparameters}
+\label{app:hyperparameters}
+
+Table~\ref{tab:hyperparameters_full} lists all hyperparameters used in the $L_0$ optimization with their default values, code-level names, and roles.
+
+\begin{table}[ht]
+\centering
+{\tablefont
+\begin{tabular}{llll}
+\toprule
+Parameter & Code name & Value & Role \\
+\midrule
+Gate temperature & \texttt{BETA} & 0.35 & Controls sharpness of 0/1 gate transition \\
+Left stretch & \texttt{GAMMA} & $-0.1$ & Enables exact-zero gates after clipping \\
+Right stretch & \texttt{ZETA} & 1.1 & Enables exact-one gates after clipping \\
+Initial keep probability & \texttt{INIT\_KEEP\_PROB} & 0.999 & All records start nearly fully active \\
+Weight jitter SD & \texttt{LOG\_WEIGHT\_JITTER\_SD} & 0.05 & Log-space noise on weights at init \\
+Logit jitter SD & \texttt{LOG\_ALPHA\_JITTER\_SD} & 0.01 & Log-space noise on gate logits at init \\
+$L_2$ penalty & \texttt{LAMBDA\_L2} & $10^{-12}$ & Mild weight regularization \\
+Learning rate & \texttt{LEARNING\_RATE} & 0.15 & Adam optimizer step size \\
+Default epochs & \texttt{DEFAULT\_EPOCHS} & 100 & Training iterations (local preset) \\
+Default clones & \texttt{DEFAULT\_N\_CLONES} & 430 & CPS copies before optimization \\
+$\lambda_{L_0}$ (local) & \texttt{PRESETS[``local'']} & $10^{-8}$ & Sparsity penalty for local-area datasets \\
+$\lambda_{L_0}$ (national) & \texttt{PRESETS[``national'']} & $10^{-4}$ & Sparsity penalty for national dataset \\
+National epochs & (pipeline default) & 4{,}000 & Training iterations (national preset) \\
+\bottomrule
+\end{tabular}
+}
+\caption{Complete hyperparameter table for $L_0$ optimization. Source: \texttt{unified\_calibration.py}.}
+\label{tab:hyperparameters_full}
+\end{table}
+
+\section{Calibration target variables}
+\label{app:targets}
+
+The calibration pipeline draws targets from seven administrative sources across three geographic levels. The database contains 37,758 active targets in total. The following tables list every target domain included in the \texttt{policy\_data.db} database, grouped by geographic level.
+
+\subsection{Congressional district targets (33,572)}
+
+\begin{table}[H]
+\centering
+{\tablefont
+\begin{tabular}{p{0.55\textwidth}lr}
+\toprule
+Target domain & Type & Count \\
+\midrule
+\multicolumn{3}{l}{\textit{Census ACS S0101}} \\
+Person count by age band (18 bands $\times$ 436 CDs) & count & 7{,}848 \\
+\midrule
+\multicolumn{3}{l}{\textit{IRS SOI}} \\
+Person count by AGI bracket (9 bins $\times$ 436 CDs) & count & 3{,}924 \\
+EITC dollars by qualifying children (4 bins $\times$ 436 CDs) & \$ & 1{,}744 \\
+Tax unit count by qualifying children (4 bins $\times$ 436 CDs) & count & 1{,}744 \\
+Aggregate AGI (unconditional, $\times$ 436 CDs) & \$ & 436 \\
+21 income/deduction dollar totals, each with domain $> 0$ ($\times$ 436 CDs) & \$ & 9{,}156 \\
+Tax unit count for each of the 21 domains ($\times$ 436 CDs) & count & 9{,}156 \\
+\midrule
+\multicolumn{3}{l}{\textit{Census ACS S2201}} \\
+SNAP household count ($\times$ 436 CDs) & count & 436 \\
+\midrule
+& & \textbf{33{,}572} \\
+\bottomrule
+\end{tabular}
+}
+\caption{Congressional district calibration targets (436 CDs). Each row is replicated across all 436 districts. IRS SOI provides paired dollar and count targets for each income/deduction domain.}
+\label{tab:cd_targets}
+\end{table}
+
+\subsection{State targets (4,080)}
+
+\begin{table}[H]
+\centering
+{\tablefont
+\begin{tabular}{p{0.55\textwidth}lr}
+\toprule
+Target domain & Type & Count \\
+\midrule
+\multicolumn{3}{l}{\textit{Census ACS S0101}} \\
+Person count by age band (18 bands $\times$ 51 states) & count & 918 \\
+\midrule
+\multicolumn{3}{l}{\textit{IRS SOI}} \\
+Person count by AGI bracket (9 bins $\times$ 51 states) & count & 459 \\
+EITC dollars by qualifying children (4 bins $\times$ 51) & \$ & 204 \\
+Tax unit count by qualifying children (4 bins $\times$ 51) & count & 204 \\
+Aggregate AGI (unconditional, $\times$ 51 states) & \$ & 51 \\
+20 income/deduction dollar totals (domain $> 0$, $\times$ 51) & \$ & 1{,}020 \\
+Tax unit count for each of the 21 domains ($\times$ 51) & count & 1{,}071 \\
+\midrule
+\multicolumn{3}{l}{\textit{USDA FNS SNAP}} \\
+SNAP spending ($\times$ 51 states) & \$ & 51 \\
+SNAP household count ($\times$ 51 states) & count & 51 \\
+\midrule
+\multicolumn{3}{l}{\textit{CMS Medicaid}} \\
+Medicaid enrollment ($\times$ 51 states) & count & 51 \\
+\midrule
+\multicolumn{3}{l}{\textit{Census STC}} \\
+State income tax collections ($\times$ 51 states) & \$ & 51 \\
+\midrule
+& & \textbf{4{,}080} \\
+\bottomrule
+\end{tabular}
+}
+\caption{State-level calibration targets (50 states + DC). IRS SOI variables mirror the district structure. USDA provides both SNAP spending and household counts; CMS provides Medicaid enrollment.}
+\label{tab:state_targets}
+\end{table}
+
+\subsection{National targets (106)}
+
+\begin{table}[H]
+\centering
+{\tablefont
+\begin{tabular}{p{0.55\textwidth}lr}
+\toprule
+Target domain & Type & Count \\
+\midrule
+\multicolumn{3}{l}{\textit{Demographics (Census ACS + curated)}} \\
+Person count by age band (18 bands) & count & 18 \\
+Person count by SSN card type (4 categories) & count & 4 \\
+Person count: Medicaid enrolled & count & 1 \\
+Person count: ACA PTC recipients & count & 1 \\
+\midrule
+\multicolumn{3}{l}{\textit{IRS SOI --- domain-constrained aggregates}} \\
+AGI (unconditional) & \$ & 1 \\
+EITC by qualifying children (0--3+) & \$ & 4 \\
+Tax unit count by qualifying children (0--3+) & count & 4 \\
+21 income/deduction dollar totals (domain $> 0$) & \$ & 21 \\
+Tax unit count for each of the 21 domains & count & 21 \\
+\midrule
+\multicolumn{3}{l}{\textit{CBO budget projections}} \\
+SNAP, Social Security, SSI, unemployment comp., income tax & \$ & 5 \\
+\midrule
+\multicolumn{3}{l}{\textit{SSA benefit decomposition}} \\
+Retirement, disability, survivors, dependents & \$ & 4 \\
+\midrule
+\multicolumn{3}{l}{\textit{JCT tax expenditure estimates}} \\
+SALT ded., charitable ded., mortgage interest ded., medical expense ded., QBI ded., EITC & \$ & 6 \\
+\midrule
+\multicolumn{3}{l}{\textit{Healthcare spending (MEPS/NHEA/CMS)}} \\
+Medicaid, health insurance premiums, Medicare Part B, other medical expenses, OTC health & \$ & 5 \\
+\midrule
+\multicolumn{3}{l}{\textit{Housing, transfers, and other}} \\
+Rent, real estate taxes, housing subsidy, work/childcare expenses, TANF, alimony (paid + received), child support (paid + received), tip income, net worth & \$ & 10 \\
+\midrule
+\multicolumn{3}{l}{\textit{Retirement contributions (IRS SOI)}} \\
+Traditional IRA, Roth IRA contributions & \$ & 2 \\
+\midrule
+& & \textbf{106} \\
+\bottomrule
+\end{tabular}
+}
+\caption{National-level calibration targets. CBO, JCT, SSA, CMS, and Census values are curated from the cited administrative sources and stored in the ETL pipeline. Dollar values are inflation-adjusted to the calibration year.}
+\label{tab:national_targets}
+\end{table}
+
+\section{Algorithm pseudocode}
+\label{app:algorithm}
+
+Algorithm~\ref{alg:l0} presents the complete $L_0$-regularized calibration procedure.
+
+\begin{algorithm}[ht]
+\caption{$L_0$-regularized calibration with Hard Concrete gates}
+\label{alg:l0}
+\begin{algorithmic}[1]
+\Require Calibration matrix $\mathbf{M} \in \R^{m \times n}$, targets $\mathbf{t} \in \R^m$, initial weights $\mathbf{w}_0 \in \R^n$
+\Require Hyperparameters: $\lambda_{L_0}$, $\lambda_{L_2}$, $\beta$, $\gamma$, $\zeta$, learning rate $\eta$, epochs $E$
+\Ensure Calibrated sparse weight vector $\hat{\mathbf{w}} \in \R^n$
+
+\State Initialize $\log w_i \gets \log w_{0,i} + \mathcal{N}(0, 0.05^2)$ for all $i$
+\State Initialize $\log \alpha_i \gets \text{logit}(0.999) + \mathcal{N}(0, 0.01^2)$ for all $i$
+\State Initialize Adam optimizer with parameters $\{\log w_i, \log \alpha_i\}$ and learning rate $\eta$
+
+\For{epoch $= 1$ to $E$}
+    \State \textbf{Sample Hard Concrete gates (training):}
+    \For{$i = 1$ to $n$}
+        \State $u_i \sim \text{Uniform}(\epsilon, 1-\epsilon)$
+        \State $\bar{s}_i \gets \sigma\!\left(\frac{\log u_i - \log(1-u_i) + \log \alpha_i}{\beta}\right)$
+        \State $s_i \gets \bar{s}_i(\zeta - \gamma) + \gamma$
+        \State $z_i \gets \min(1, \max(0, s_i))$
+    \EndFor
+    \State $w_i^{\text{eff}} \gets \exp(\log w_i) \cdot z_i$ for all $i$
+    \State $\hat{t}_j \gets \sum_i M_{ji} \cdot w_i^{\text{eff}}$ for all $j$
+    \State $\mathcal{L}_{\text{cal}} \gets \frac{1}{m}\sum_{j=1}^{m}\left(\frac{\hat{t}_j - t_j}{|t_j|}\right)^2$
+    \State $\mathcal{L}_{L_0} \gets \sum_{i=1}^{n} \sigma\!\left(\log \alpha_i - \beta \log \frac{-\gamma}{\zeta}\right)$
+    \State $\mathcal{L}_{L_2} \gets \sum_{i=1}^{n} w_i^2$
+    \State $\mathcal{L} \gets \mathcal{L}_{\text{cal}} + \lambda_{L_0} \mathcal{L}_{L_0} + \lambda_{L_2} \mathcal{L}_{L_2}$
+    \State Backpropagate $\nabla_{\log w, \log \alpha} \mathcal{L}$
+    \State Adam step
+\EndFor
+
+\State \textbf{Deterministic inference:}
+\For{$i = 1$ to $n$}
+    \State $z_i^{\text{det}} \gets \min\!\left(1, \max\!\left(0,\; \sigma(\log \alpha_i)(\zeta - \gamma) + \gamma\right)\right)$
+    \State $\hat{w}_i \gets \exp(\log w_i) \cdot z_i^{\text{det}}$
+\EndFor
+\State \Return $\hat{\mathbf{w}}$
+\end{algorithmic}
+\end{algorithm}

@@ -19,7 +19,7 @@ on:
         type: string
       num_workers:
         description: "Number of parallel H5 workers"
-        default: "8"
+        default: "50"
         type: string
       skip_national:
         description: "Skip national calibration/H5"

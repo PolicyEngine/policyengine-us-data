@@ -6,6 +6,9 @@ block-level takeup seeding, county precomputation, and CLI flags.
 """
 
 import numpy as np
+import pytest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
@@ -350,6 +353,68 @@ class TestGeographyAssignmentCountyFips:
         )
         assert len(ga.county_fips) == 5
         assert all(len(c) == 5 for c in ga.county_fips)
+
+
+class TestRunCalibrationAgiTargets:
+    def test_uses_requested_db_for_district_agi_targets(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            run_calibration,
+        )
+
+        captured = {}
+
+        class StopAfterAssignment(RuntimeError):
+            pass
+
+        class FakeMicrosimulation:
+            def __init__(self, dataset, reform=None):
+                self.dataset = SimpleNamespace(
+                    load_dataset=lambda: {"household_id": {2024: np.array([1, 2])}}
+                )
+
+            def calculate(self, variable, *args, **kwargs):
+                if variable == "household_id":
+                    return SimpleNamespace(values=np.array([1, 2], dtype=np.int64))
+                if variable == "adjusted_gross_income":
+                    return SimpleNamespace(
+                        values=np.array([100.0, 200.0], dtype=np.float64)
+                    )
+                raise AssertionError(f"Unexpected calculate({variable!r})")
+
+        class FakeBuilder:
+            def __init__(self, db_uri, time_period, dataset_path=None):
+                captured["db_uri"] = db_uri
+                captured["time_period"] = time_period
+                captured["dataset_path_at_init"] = dataset_path
+
+            def get_district_agi_targets(self):
+                return {"601": 123.0}
+
+        def fake_assign_random_geography(**kwargs):
+            captured["assign_kwargs"] = kwargs
+            raise StopAfterAssignment
+
+        with (
+            patch("policyengine_us.Microsimulation", FakeMicrosimulation),
+            patch(
+                "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder",
+                FakeBuilder,
+            ),
+            patch(
+                "policyengine_us_data.calibration.clone_and_assign.assign_random_geography",
+                fake_assign_random_geography,
+            ),
+        ):
+            with pytest.raises(StopAfterAssignment):
+                run_calibration(
+                    dataset_path="input.h5",
+                    db_path="/tmp/custom-policy-data.db",
+                    n_clones=2,
+                )
+
+        assert captured["db_uri"] == "sqlite:////tmp/custom-policy-data.db"
+        assert captured["time_period"] == 2024
+        assert captured["assign_kwargs"]["cd_agi_targets"] == {"601": 123.0}
 
 
 class TestBlockTakeupSeeding:

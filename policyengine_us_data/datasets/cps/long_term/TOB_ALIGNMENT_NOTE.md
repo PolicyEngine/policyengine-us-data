@@ -57,6 +57,38 @@ Interpretation:
   but they should not be compared directly to the public `5.6%` / `8.5%`
   figures.
 
+## Trustees-style bracket-growth sensitivity
+
+We also ran a narrow tax-side sensitivity that keeps the calibrated household
+weights fixed and changes only one assumption in the tax model:
+
+- after `2034`, ordinary federal income-tax bracket thresholds are uprated with
+  `NAWI` instead of `C-CPI-U`
+- the Social Security benefit-tax thresholds remain fixed
+
+This is intended as a best-public approximation to the Trustees statement that
+ordinary income-tax brackets "rise with average wages" after the tenth
+projection year.
+
+| Year | Baseline OASDI | Wage-indexed-brackets OASDI | Trustees target | Remaining gap |
+| --- | ---: | ---: | ---: | ---: |
+| 2075 | 9.43% | 8.41% | 6.01% | +2.40 pp |
+| 2090 | 10.52% | 7.85% | 6.08% | +1.76 pp |
+| 2100 | 11.16% | 9.46% | 6.10% | +3.36 pp |
+
+Interpretation:
+
+- This tax-side assumption moves the modeled OASDI-only TOB share materially in
+  the right direction.
+- It explains a substantial share of the excess over the Trustees target,
+  especially around `2090`.
+- It does not explain the whole gap. Even with wage-indexed ordinary brackets,
+  the long-run `2100` OASDI-only share remains well above the Trustees-style
+  `~6.1%` path.
+- Relative to Urban's public DYNASIM endpoint of `8.5%` in `2095`, the
+  wage-indexed-brackets sensitivity lands in the same rough range by `2090`,
+  but is still above that public number by `2100`.
+
 ## DYNASIM public benchmark
 
 Urban's 2024 appendix says DYNASIM's revenue from taxing Social Security
@@ -78,6 +110,7 @@ Important caveats:
 The comparison script is:
 
 - [compare_tob_shares.py](./compare_tob_shares.py)
+- [benchmark_trustees_bracket_indexing.py](./benchmark_trustees_bracket_indexing.py)
 
 Example:
 
@@ -86,6 +119,12 @@ uv run python policyengine_us_data/datasets/cps/long_term/compare_tob_shares.py 
   /path/to/2075-output-dir \
   /path/to/2090-output-dir \
   /path/to/2100-output-dir
+
+uv run python policyengine_us_data/datasets/cps/long_term/benchmark_trustees_bracket_indexing.py \
+  /path/to/2075-output-dir \
+  /path/to/2090-output-dir \
+  /path/to/2100-output-dir \
+  --policyengine-us-path /path/to/local/policyengine-us
 ```
 
 The script expects metadata sidecars containing:

@@ -34,6 +34,12 @@ class DatasetContractSummary:
     policyengine_us: PolicyEngineUSBuildInfo
 
 
+def _format_items(items: list[str], max_display: int = 5) -> str:
+    displayed = items[:max_display]
+    suffix = "" if len(items) <= max_display else ", ..."
+    return ", ".join(displayed) + suffix
+
+
 def _top_level_dataset_lengths(file_path: Path) -> dict[str, int]:
     dataset_lengths: dict[str, int] = {}
     with h5py.File(file_path, "r") as h5_file:
@@ -68,6 +74,31 @@ def _resolve_validation_dependencies(
     )
 
 
+def _infer_auxiliary_entity(
+    variable_name: str,
+    actual_length: int,
+    entity_counts: dict[str, int],
+    file_name: str,
+) -> str:
+    candidate_entities = [
+        entity_key
+        for entity_key, entity_count in entity_counts.items()
+        if entity_count == actual_length
+    ]
+    if len(candidate_entities) == 1:
+        return candidate_entities[0]
+    if len(candidate_entities) == 0:
+        raise DatasetContractError(
+            f"{file_name} contains auxiliary variable {variable_name} with length "
+            f"{actual_length}, which does not match any entity count."
+        )
+    raise DatasetContractError(
+        f"{file_name} contains auxiliary variable {variable_name} with length "
+        f"{actual_length}, which matches multiple entity counts "
+        f"({_format_items(candidate_entities)})."
+    )
+
+
 def validate_dataset_contract(
     file_path: str | Path,
     *,
@@ -87,20 +118,6 @@ def validate_dataset_contract(
     )
 
     dataset_lengths = _top_level_dataset_lengths(file_path)
-    unknown_variables = sorted(
-        variable_name
-        for variable_name in dataset_lengths
-        if variable_name not in tax_benefit_system.variables
-    )
-    if unknown_variables:
-        display = ", ".join(unknown_variables[:5])
-        if len(unknown_variables) > 5:
-            display += ", ..."
-        raise DatasetContractError(
-            f"{file_path.name} contains {len(unknown_variables)} variable(s) missing "
-            f"from the active country package: {display}"
-        )
-
     missing_entity_ids = [
         id_variable
         for entity_key, id_variable in ENTITY_ID_VARIABLES.items()
@@ -132,6 +149,14 @@ def validate_dataset_contract(
     for variable_name, actual_length in dataset_lengths.items():
         variable = tax_benefit_system.variables.get(variable_name)
         entity_key = getattr(getattr(variable, "entity", None), "key", None)
+        if entity_key is None:
+            _infer_auxiliary_entity(
+                variable_name=variable_name,
+                actual_length=actual_length,
+                entity_counts=entity_counts,
+                file_name=file_path.name,
+            )
+            continue
         expected_length = entity_counts.get(entity_key)
         if expected_length is None:
             continue
@@ -140,11 +165,9 @@ def validate_dataset_contract(
                 f"{variable_name} ({entity_key}: expected {expected_length}, found {actual_length})"
             )
     if mismatches:
-        display = ", ".join(mismatches[:5])
-        if len(mismatches) > 5:
-            display += ", ..."
         raise DatasetContractError(
-            f"{file_path.name} has inconsistent entity lengths: {display}"
+            f"{file_path.name} has inconsistent entity lengths: "
+            f"{_format_items(mismatches)}"
         )
 
     dataset = dataset_loader(file_path)

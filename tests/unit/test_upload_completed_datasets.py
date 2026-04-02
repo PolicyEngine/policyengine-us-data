@@ -66,7 +66,7 @@ def patch_contract_validation(monkeypatch):
     )
 
 
-def test_validate_dataset_rejects_unknown_variables(tmp_path):
+def test_validate_dataset_rejects_unalignable_auxiliary_variables(tmp_path):
     file_path = tmp_path / "cps_2024.h5"
     _write_h5(
         file_path,
@@ -75,13 +75,13 @@ def test_validate_dataset_rejects_unknown_variables(tmp_path):
             "household_id": np.array([201], dtype=np.int32),
             "employment_income": np.array([50_000.0], dtype=np.float32),
             "household_weight": np.array([1.0], dtype=np.float32),
-            "mystery_variable": np.array([1.0], dtype=np.float32),
+            "mystery_variable": np.array([1.0, 2.0], dtype=np.float32),
         },
     )
 
     with pytest.raises(
         DatasetValidationError,
-        match="missing from the active country package",
+        match="does not match any entity count",
     ):
         validate_dataset(file_path)
 

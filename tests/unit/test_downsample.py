@@ -58,17 +58,59 @@ def test_downsample_dataset_arrays_preserves_original_dtypes():
     )
 
 
-def test_downsample_dataset_arrays_fails_closed_on_unknown_variables():
+def test_downsample_dataset_arrays_resamples_auxiliary_variables():
     original_data = {
         "person_id": np.array([101, 102], dtype=np.int32),
+        "household_id": np.array([202], dtype=np.int32),
+        "employment_income": np.array([100.0, 200.0], dtype=np.float32),
         "hourly_wage": np.array([25.0, 30.0], dtype=np.float32),
+        "count_under_18": np.array([0], dtype=np.int32),
     }
     sim = _FakeMicrosimulation(
-        variable_entities={"person_id": "person"},
-        calculated_values={"person_id": np.array([101], dtype=np.int64)},
+        variable_entities={
+            "person_id": "person",
+            "household_id": "household",
+            "employment_income": "person",
+        },
+        calculated_values={
+            "person_id": np.array([102], dtype=np.int64),
+            "household_id": np.array([202], dtype=np.int64),
+            "employment_income": np.array([200.0], dtype=np.float64),
+        },
     )
 
-    with pytest.raises(ValueError, match="out of sync"):
+    resampled = downsample_dataset_arrays(
+        original_data=original_data,
+        sim=sim,
+        dataset_name="cps",
+    )
+
+    np.testing.assert_array_equal(
+        resampled["hourly_wage"], np.array([30.0], dtype=np.float32)
+    )
+    np.testing.assert_array_equal(
+        resampled["count_under_18"], np.array([0], dtype=np.int32)
+    )
+
+
+def test_downsample_dataset_arrays_rejects_ambiguous_auxiliary_variable_lengths():
+    original_data = {
+        "person_id": np.array([101], dtype=np.int32),
+        "household_id": np.array([201], dtype=np.int32),
+        "mystery_variable": np.array([5.0], dtype=np.float32),
+    }
+    sim = _FakeMicrosimulation(
+        variable_entities={
+            "person_id": "person",
+            "household_id": "household",
+        },
+        calculated_values={
+            "person_id": np.array([101], dtype=np.int64),
+            "household_id": np.array([201], dtype=np.int64),
+        },
+    )
+
+    with pytest.raises(ValueError, match="matches multiple entity sizes"):
         downsample_dataset_arrays(
             original_data=original_data,
             sim=sim,

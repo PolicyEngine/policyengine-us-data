@@ -103,6 +103,7 @@ def write_year_metadata(
     profile: dict[str, Any],
     calibration_audit: dict[str, Any],
     target_source: dict[str, Any] | None = None,
+    tax_assumption: dict[str, Any] | None = None,
     support_augmentation: dict[str, Any] | None = None,
 ) -> Path:
     metadata = {
@@ -114,6 +115,8 @@ def write_year_metadata(
     }
     if target_source is not None:
         metadata["target_source"] = target_source
+    if tax_assumption is not None:
+        metadata["tax_assumption"] = tax_assumption
     if support_augmentation is not None:
         metadata["support_augmentation"] = support_augmentation
     metadata = normalize_metadata(metadata)
@@ -126,11 +129,14 @@ def write_year_metadata(
 
 
 def write_support_augmentation_report(
-    output_dir: str | Path, report: dict[str, Any]
+    output_dir: str | Path,
+    report: dict[str, Any],
+    *,
+    filename: str = SUPPORT_AUGMENTATION_REPORT_FILENAME,
 ) -> Path:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    report_path = output_dir / SUPPORT_AUGMENTATION_REPORT_FILENAME
+    report_path = output_dir / filename
     report_path.write_text(
         json.dumps(json.loads(json.dumps(report)), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -148,12 +154,14 @@ def update_dataset_manifest(
     profile: dict[str, Any],
     calibration_audit: dict[str, Any],
     target_source: dict[str, Any] | None = None,
+    tax_assumption: dict[str, Any] | None = None,
     support_augmentation: dict[str, Any] | None = None,
 ) -> Path:
     output_dir = Path(output_dir)
     manifest_path = output_dir / MANIFEST_FILENAME
     profile = json.loads(json.dumps(profile))
     target_source = json.loads(json.dumps(target_source))
+    tax_assumption = json.loads(json.dumps(tax_assumption))
     support_augmentation = json.loads(json.dumps(support_augmentation))
 
     if manifest_path.exists():
@@ -165,6 +173,7 @@ def update_dataset_manifest(
             "base_dataset_path": base_dataset_path,
             "profile": profile,
             "target_source": target_source,
+            "tax_assumption": tax_assumption,
             "support_augmentation": support_augmentation,
             "years": [],
             "datasets": {},
@@ -194,6 +203,13 @@ def update_dataset_manifest(
         raise ValueError(
             "Output directory already contains a different target source: "
             f"{manifest.get('target_source')} != {target_source}"
+        )
+    if manifest.get("tax_assumption") is None and tax_assumption is not None:
+        manifest["tax_assumption"] = tax_assumption
+    elif manifest.get("tax_assumption") != tax_assumption:
+        raise ValueError(
+            "Output directory already contains a different tax assumption: "
+            f"{manifest.get('tax_assumption')} != {tax_assumption}"
         )
     if (
         manifest.get("support_augmentation") is None
@@ -281,6 +297,7 @@ def rebuild_dataset_manifest_with_target_source(
             profile=metadata["profile"],
             calibration_audit=metadata["calibration_audit"],
             target_source=metadata.get("target_source"),
+            tax_assumption=metadata.get("tax_assumption"),
             support_augmentation=metadata.get("support_augmentation"),
         )
 

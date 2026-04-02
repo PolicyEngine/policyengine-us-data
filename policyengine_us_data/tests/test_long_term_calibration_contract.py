@@ -33,6 +33,7 @@ from policyengine_us_data.datasets.cps.long_term.projection_utils import (
     aggregate_age_targets,
     aggregate_household_age_matrix,
     build_age_bins,
+    validate_projected_social_security_cap,
 )
 from policyengine_us_data.datasets.cps.long_term.ssa_data import (
     available_long_term_target_sources,
@@ -51,6 +52,8 @@ from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
 )
 from policyengine_us_data.datasets.cps.long_term.prototype_synthetic_2100_support import (
     SyntheticCandidate,
+    _compose_role_donor_rows_to_target,
+    build_role_composite_calibration_blueprint,
     build_role_donor_composites,
     summarize_realized_clone_translation,
 )
@@ -114,8 +117,8 @@ def test_named_profile_lookup():
     assert profile.use_greg is False
     assert profile.use_ss is True
     assert profile.use_payroll is True
-    assert profile.use_tob is False
-    assert profile.benchmark_tob is True
+    assert profile.use_tob is True
+    assert profile.benchmark_tob is False
     assert profile.use_h6_reform is False
     assert profile.max_negative_weight_pct == 0.0
     assert profile.approximate_windows[0].age_bucket_size == 5
@@ -447,6 +450,69 @@ def test_age_bin_helpers_preserve_population_totals():
     assert aggregated_target_matrix[:, 1].sum() == pytest.approx((y * 2).sum())
 
 
+def test_validate_projected_social_security_cap_rejects_flat_tail():
+    from types import SimpleNamespace
+
+    def accessor(year: int):
+        cap = 254_400.0 if year >= 2035 else 186_000.0
+        return SimpleNamespace(
+            gov=SimpleNamespace(
+                irs=SimpleNamespace(
+                    payroll=SimpleNamespace(
+                        social_security=SimpleNamespace(cap=cap)
+                    )
+                )
+            )
+        )
+
+    with pytest.raises(RuntimeError, match="flat after 2035"):
+        validate_projected_social_security_cap(accessor, 2100)
+
+
+def test_role_composite_calibration_blueprint_reweights_clone_priors():
+    report = {
+        "target_year": 2100,
+        "clone_household_reports": [
+            {
+                "clone_household_id": 1001,
+                "target_head_age": 70,
+                "target_spouse_age": 68,
+                "target_dependent_ages": [12],
+                "target_ss_total": 20_000.0,
+                "target_payroll_total": 50_000.0,
+                "per_clone_weight_share_pct": 60.0,
+            },
+            {
+                "clone_household_id": 1002,
+                "target_head_age": 80,
+                "target_spouse_age": None,
+                "target_dependent_ages": [],
+                "target_ss_total": 30_000.0,
+                "target_payroll_total": 10_000.0,
+                "per_clone_weight_share_pct": 40.0,
+            },
+        ],
+    }
+    baseline_weights = np.array([10.0, 20.0, 30.0], dtype=float)
+    blueprint = build_role_composite_calibration_blueprint(
+        report,
+        year=2100,
+        age_bins=build_age_bins(n_ages=86, bucket_size=5),
+        hh_id_to_idx={999: 0, 1001: 1, 1002: 2},
+        baseline_weights=baseline_weights,
+        base_weight_scale=0.5,
+    )
+
+    assert blueprint is not None
+    assert blueprint["baseline_weights"].tolist() == pytest.approx([5.0, 36.0, 24.0])
+    assert blueprint["ss_overrides"] == {1: 20_000.0, 2: 30_000.0}
+    assert blueprint["payroll_overrides"] == {1: 50_000.0, 2: 10_000.0}
+    assert blueprint["age_overrides"][1].sum() == pytest.approx(3.0)
+    assert blueprint["age_overrides"][2].sum() == pytest.approx(1.0)
+    assert blueprint["summary"]["clone_household_count"] == 2
+    assert blueprint["summary"]["base_weight_scale"] == pytest.approx(0.5)
+
+
 def test_legacy_flags_map_to_named_profile():
     profile = build_profile_from_flags(
         use_greg=False,
@@ -748,7 +814,7 @@ def test_manifest_updates_and_rejects_profile_mismatch(tmp_path):
     assert rebuilt["years"] == [2026, 2027]
 
 
-def test_benchmarked_tob_does_not_affect_quality_classification():
+def test_hard_target_tob_affects_quality_classification():
     profile = get_profile("ss-payroll-tob")
     quality = classify_calibration_quality(
         {
@@ -758,8 +824,6 @@ def test_benchmarked_tob_does_not_affect_quality_classification():
             "constraints": {
                 "ss_total": {"pct_error": 0.0},
                 "payroll_total": {"pct_error": 0.0},
-            },
-            "benchmarks": {
                 "oasdi_tob": {"pct_error": 12.0},
                 "hi_tob": {"pct_error": -9.0},
             },
@@ -767,7 +831,7 @@ def test_benchmarked_tob_does_not_affect_quality_classification():
         profile,
         year=2035,
     )
-    assert quality == "exact"
+    assert quality == "aggregate"
 
 
 def test_entropy_calibration_produces_nonnegative_weights_and_hits_targets():
@@ -1096,6 +1160,55 @@ def test_manifest_persists_support_augmentation_metadata(tmp_path):
     )
 
 
+def test_manifest_persists_tax_assumption_metadata(tmp_path):
+    profile = get_profile("ss-payroll-tob")
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+    }
+    tax_assumption = {
+        "name": "trustees-core-thresholds-v1",
+        "start_year": 2035,
+        "end_year": 2100,
+    }
+
+    year_2100 = tmp_path / "2100.h5"
+    year_2100.write_text("", encoding="utf-8")
+    metadata_path = write_year_metadata(
+        year_2100,
+        year=2100,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        tax_assumption=tax_assumption,
+    )
+    manifest_path = update_dataset_manifest(
+        tmp_path,
+        year=2100,
+        h5_path=year_2100,
+        metadata_path=metadata_path,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        tax_assumption=tax_assumption,
+    )
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert metadata["tax_assumption"]["name"] == "trustees-core-thresholds-v1"
+    assert manifest["tax_assumption"]["end_year"] == 2100
+
+
 def test_write_support_augmentation_report(tmp_path):
     report = {
         "name": "donor-backed-composite-v1",
@@ -1107,6 +1220,18 @@ def test_write_support_augmentation_report(tmp_path):
     loaded = json.loads(report_path.read_text(encoding="utf-8"))
     assert loaded["clone_household_count"] == 2
     assert loaded["clone_household_reports"][0]["clone_household_id"] == 1001
+
+
+def test_write_support_augmentation_report_custom_filename(tmp_path):
+    report = {"name": "dynamic-augmentation", "target_year": 2090}
+    report_path = write_support_augmentation_report(
+        tmp_path,
+        report,
+        filename="support_augmentation_report_2090.json",
+    )
+    assert report_path == tmp_path / "support_augmentation_report_2090.json"
+    loaded = json.loads(report_path.read_text(encoding="utf-8"))
+    assert loaded["target_year"] == 2090
 
 
 def test_summarize_realized_clone_translation_matches_toy_clone():
@@ -1138,3 +1263,47 @@ def test_summarize_realized_clone_translation_matches_toy_clone():
     assert summary["aggregate_ss_pct_error"] == pytest.approx(0.0)
     assert summary["aggregate_payroll_pct_error"] == pytest.approx(0.0)
     assert summary["per_clone"][0]["realized_ages"] == [70, 68]
+
+
+def test_compose_role_donor_rows_falls_back_for_missing_dependents():
+    import pandas as pd
+
+    df = pd.DataFrame(_toy_support_dataframe())
+    enriched = df.copy()
+    enriched["__pe_payroll_uprating_factor"] = 2.0
+    enriched["__pe_ss_uprating_factor"] = 3.0
+
+    older_rows = enriched[enriched["person_tax_unit_id__2024"] == 201].copy()
+    worker_rows = enriched[enriched["person_tax_unit_id__2024"] == 301].copy()
+    candidate = SyntheticCandidate(
+        archetype="older_plus_prime_worker_family_role_donor",
+        head_age=80,
+        spouse_age=60,
+        dependent_ages=(12,),
+        head_wages=0.0,
+        spouse_wages=100_000.0,
+        head_ss=60_000.0,
+        spouse_ss=0.0,
+        pension_income=0.0,
+        dividend_income=0.0,
+    )
+    clone_df, _ = _compose_role_donor_rows_to_target(
+        older_rows,
+        worker_rows,
+        base_year=2024,
+        target_candidate=candidate,
+        ss_scale=3.0,
+        earnings_scale=2.0,
+        id_counters={
+            "household": 100,
+            "family": 200,
+            "tax_unit": 300,
+            "spm_unit": 400,
+            "marital_unit": 500,
+            "person": 600,
+        },
+        clone_weight_scale=0.1,
+        clone_weight_divisor=1,
+    )
+    assert clone_df is not None
+    assert sorted(clone_df["age__2024"].astype(int).tolist()) == [12, 60, 80]

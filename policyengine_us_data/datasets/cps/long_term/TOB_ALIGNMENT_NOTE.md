@@ -29,6 +29,33 @@ not the latter.
   `trustees_2025_current_law.csv` target package imply OASDI-only TOB shares
   of about `6.0%` to `6.1%` of OASDI benefits in the late horizon.
 
+## Current contract decision
+
+As of `2026-04-02`, the branch adopts the `trustees-core-thresholds-v1`
+tax-side assumption for long-run TOB work and re-enables TOB as a hard target
+in the `ss-payroll-tob` profiles.
+
+That assumption:
+
+- keeps the Social Security benefit-tax thresholds fixed
+- wage-indexes a core federal threshold bundle after `2034`
+  - ordinary income-tax brackets
+  - standard deduction
+  - aged/blind additional standard deduction
+  - capital-gains thresholds
+  - AMT thresholds / exemptions
+
+On a `2100` smoke run with donor-composite support augmentation and the local
+`policyengine-us` wage-base fix, this produces a validation-passing artifact
+with:
+
+- `ss_total`: essentially exact
+- `oasdi_tob`: essentially exact
+- `hi_tob`: essentially exact
+- `payroll_total`: `-2.95%`
+- `ESS`: `173.1`
+- `top-10 weight share`: `17.7%`
+
 ## Current branch-local comparison
 
 The table below uses one-year probe outputs produced on `2026-04-02` with:
@@ -185,11 +212,11 @@ uv run python policyengine_us_data/datasets/cps/long_term/benchmark_trustees_bra
   --policyengine-us-path /path/to/local/policyengine-us
 ```
 
-The script expects metadata sidecars containing:
+The scripts expect metadata sidecars containing:
 
 - `calibration_audit.constraints.ss_total`
-- `calibration_audit.benchmarks.oasdi_tob`
-- `calibration_audit.benchmarks.hi_tob`
+- `calibration_audit.constraints.oasdi_tob` or `calibration_audit.benchmarks.oasdi_tob`
+- `calibration_audit.constraints.hi_tob` or `calibration_audit.benchmarks.hi_tob`
 
 To regenerate the underlying sidecars from scratch, first ensure that
 `policyengine-us` includes the Social Security wage-base extension from

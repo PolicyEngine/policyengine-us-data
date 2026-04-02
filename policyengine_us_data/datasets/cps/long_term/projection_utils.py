@@ -8,6 +8,36 @@ from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 
 
+def validate_projected_social_security_cap(
+    parameter_accessor,
+    year: int,
+    *,
+    reference_year: int = 2035,
+) -> float:
+    """
+    Ensure the Social Security taxable earnings cap keeps growing beyond the
+    last explicitly projected year.
+
+    The long-run calibration and diagnostics use taxable payroll targets
+    through 2100. If the payroll cap flattens after the reference year, the
+    late-year taxable payroll problem becomes mechanically distorted.
+    """
+    current_cap = float(
+        parameter_accessor(year).gov.irs.payroll.social_security.cap
+    )
+    reference_cap = float(
+        parameter_accessor(reference_year).gov.irs.payroll.social_security.cap
+    )
+    if year > reference_year and current_cap <= reference_cap * (1 + 1e-12):
+        raise RuntimeError(
+            "Social Security payroll cap is flat after "
+            f"{reference_year}: {current_cap:,.2f} in {year}. "
+            "This usually means policyengine-us is missing the long-run NAWI/"
+            "payroll-cap extension."
+        )
+    return current_cap
+
+
 def build_household_age_matrix(sim, n_ages=86):
     """
     Build household age composition matrix from simulation.
@@ -115,7 +145,14 @@ def get_pseudo_input_variables(sim):
     return pseudo_inputs
 
 
-def create_household_year_h5(year, household_weights, base_dataset, output_dir):
+def create_household_year_h5(
+    year,
+    household_weights,
+    base_dataset,
+    output_dir,
+    *,
+    reform=None,
+):
     """
     Create a year-specific .h5 file with calibrated household weights.
 
@@ -127,13 +164,14 @@ def create_household_year_h5(year, household_weights, base_dataset, output_dir):
         household_weights: Calibrated household weights for this year
         base_dataset: Path to base dataset or in-memory Dataset instance
         output_dir: Directory to save the .h5 file
+        reform: Optional reform to apply when materializing year-specific values
 
     Returns:
         Path to the created .h5 file
     """
     output_path = os.path.join(output_dir, f"{year}.h5")
 
-    sim = Microsimulation(dataset=base_dataset)
+    sim = Microsimulation(dataset=base_dataset, reform=reform)
     base_period = int(sim.default_calculation_period)
 
     df = sim.to_input_dataframe()

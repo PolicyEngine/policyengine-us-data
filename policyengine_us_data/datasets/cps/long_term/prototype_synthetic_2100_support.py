@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 import json
 from pathlib import Path
 
@@ -17,7 +18,11 @@ try:
         calibrate_entropy_bounded,
         densify_lp_solution,
     )
-    from .projection_utils import aggregate_age_targets, build_age_bins
+    from .projection_utils import (
+        aggregate_age_targets,
+        build_age_bins,
+        validate_projected_social_security_cap,
+    )
     from .ssa_data import (
         get_long_term_target_source,
         load_ssa_age_projections,
@@ -32,7 +37,11 @@ except ImportError:  # pragma: no cover - script execution fallback
         calibrate_entropy_bounded,
         densify_lp_solution,
     )
-    from projection_utils import aggregate_age_targets, build_age_bins
+    from projection_utils import (
+        aggregate_age_targets,
+        build_age_bins,
+        validate_projected_social_security_cap,
+    )
     from ssa_data import (
         get_long_term_target_source,
         load_ssa_age_projections,
@@ -101,6 +110,11 @@ class SyntheticCandidate:
     @property
     def payroll_total(self) -> float:
         return float(self.head_wages + self.spouse_wages)
+
+    def taxable_payroll_total(self, payroll_cap: float) -> float:
+        return float(
+            min(self.head_wages, payroll_cap) + min(self.spouse_wages, payroll_cap)
+        )
 
     @property
     def ss_total(self) -> float:
@@ -441,9 +455,11 @@ def build_tax_unit_summary(
                 "social_security", period=period
             ).values,
             "payroll": (
-                sim.calculate("employment_income_before_lsr", period=period).values
+                sim.calculate(
+                    "taxable_earnings_for_social_security", period=period
+                ).values
                 + sim.calculate(
-                    "self_employment_income_before_lsr", period=period
+                    "social_security_taxable_self_employment_income", period=period
                 ).values
             ),
             "dividend_income": sim.calculate(
@@ -618,6 +634,40 @@ def _scale_levels(levels: list[float], scale: float) -> list[float]:
     return [round(level * scale, 2) for level in levels]
 
 
+@lru_cache(maxsize=None)
+def load_policyengine_social_security_cap(year: int) -> float:
+    sim = Microsimulation(dataset=DEFAULT_DATASET)
+    return validate_projected_social_security_cap(
+        sim.tax_benefit_system.parameters,
+        year,
+    )
+
+
+def allocate_taxable_payroll_wages(
+    total_taxable_payroll: float,
+    payroll_split: tuple[float, float],
+    payroll_cap: float,
+    *,
+    has_spouse: bool,
+) -> tuple[float, float]:
+    total_taxable_payroll = max(float(total_taxable_payroll), 0.0)
+    positive_earner_count = int(payroll_split[0] > 0) + int(
+        has_spouse and payroll_split[1] > 0
+    )
+    if not has_spouse or positive_earner_count <= 1:
+        if has_spouse and payroll_split[1] > payroll_split[0]:
+            return 0.0, min(total_taxable_payroll, payroll_cap)
+        return min(total_taxable_payroll, payroll_cap), 0.0
+
+    total_taxable_payroll = min(total_taxable_payroll, positive_earner_count * payroll_cap)
+    preferred_head = total_taxable_payroll * float(payroll_split[0])
+    lower = max(0.0, total_taxable_payroll - payroll_cap)
+    upper = min(payroll_cap, total_taxable_payroll)
+    head_taxable = min(max(preferred_head, lower), upper)
+    spouse_taxable = total_taxable_payroll - head_taxable
+    return float(head_taxable), float(spouse_taxable)
+
+
 def build_quantile_pools(
     actual_summary: pd.DataFrame,
     *,
@@ -705,6 +755,8 @@ def build_quantile_pools(
 
 def generate_synthetic_candidates(
     pools: dict[str, dict[str, list[float]]],
+    *,
+    payroll_cap: float,
 ) -> list[SyntheticCandidate]:
     candidates: list[SyntheticCandidate] = []
     for template in TEMPLATES:
@@ -736,13 +788,11 @@ def generate_synthetic_candidates(
                                                     spouse_ss = (
                                                         scaled_ss_total * template.ss_split[1]
                                                     )
-                                                    head_wages = (
-                                                        scaled_payroll_total
-                                                        * template.payroll_split[0]
-                                                    )
-                                                    spouse_wages = (
-                                                        scaled_payroll_total
-                                                        * template.payroll_split[1]
+                                                    head_wages, spouse_wages = allocate_taxable_payroll_wages(
+                                                        scaled_payroll_total,
+                                                        template.payroll_split,
+                                                        payroll_cap,
+                                                        has_spouse=spouse_age is not None,
                                                     )
                                                     candidates.append(
                                                         SyntheticCandidate(
@@ -788,6 +838,80 @@ def age_bucket_vector(ages: list[int], age_bins: list[tuple[int, int]]) -> np.nd
                 vector[idx] += 1.0
                 break
     return vector
+
+
+def build_role_composite_calibration_blueprint(
+    augmentation_report: dict[str, object],
+    *,
+    year: int,
+    age_bins: list[tuple[int, int]],
+    hh_id_to_idx: dict[int, int],
+    baseline_weights: np.ndarray,
+    base_weight_scale: float = 0.5,
+) -> dict[str, object] | None:
+    """
+    Build target-year calibration overrides for donor-composite clones.
+
+    Donor-composite augmentation produces realized microdata rows that are close
+    to the synthetic target support but not numerically identical. At the
+    augmentation target year we can calibrate against the exact clone
+    blueprints, using the synthetic solution as priors, while still applying
+    the resulting household weights to the realized rows.
+    """
+    target_year = augmentation_report.get("target_year")
+    clone_reports = augmentation_report.get("clone_household_reports")
+    if target_year is None or int(target_year) != int(year):
+        return None
+    if not clone_reports:
+        return None
+
+    baseline_weights = np.asarray(baseline_weights, dtype=float)
+    if baseline_weights.ndim != 1:
+        raise ValueError("baseline_weights must be one-dimensional")
+
+    prior_weights = np.maximum(
+        baseline_weights * float(base_weight_scale),
+        1e-12,
+    )
+    clone_total_prior_weight = max(float(baseline_weights.sum()), 1.0)
+    age_overrides: dict[int, np.ndarray] = {}
+    ss_overrides: dict[int, float] = {}
+    payroll_overrides: dict[int, float] = {}
+    applied_clone_households = 0
+
+    for clone_report in clone_reports:
+        household_id = int(clone_report["clone_household_id"])
+        idx = hh_id_to_idx.get(household_id)
+        if idx is None:
+            continue
+        ages = [int(clone_report["target_head_age"])]
+        spouse_age = clone_report.get("target_spouse_age")
+        if spouse_age is not None:
+            ages.append(int(spouse_age))
+        ages.extend(int(age) for age in clone_report.get("target_dependent_ages", []))
+        age_overrides[idx] = age_bucket_vector(ages, age_bins)
+        ss_overrides[idx] = float(clone_report["target_ss_total"])
+        payroll_overrides[idx] = float(clone_report["target_payroll_total"])
+        prior_weights[idx] = (
+            clone_total_prior_weight
+            * float(clone_report["per_clone_weight_share_pct"])
+            / 100.0
+        )
+        applied_clone_households += 1
+
+    return {
+        "baseline_weights": np.maximum(prior_weights, 1e-12),
+        "age_overrides": age_overrides,
+        "ss_overrides": ss_overrides,
+        "payroll_overrides": payroll_overrides,
+        "summary": {
+            "mode": "target_year_role_composite_blueprint",
+            "target_year": int(target_year),
+            "clone_household_count": int(applied_clone_households),
+            "base_weight_scale": float(base_weight_scale),
+            "clone_total_prior_weight": float(clone_total_prior_weight),
+        },
+    }
 
 
 def _ages_from_summary_row(row: pd.Series) -> list[int]:
@@ -1017,13 +1141,14 @@ def build_synthetic_constraint_problem(
     year: int,
     baseline_weights: np.ndarray | None = None,
 ) -> dict[str, object]:
+    payroll_cap = load_policyengine_social_security_cap(year)
     age_targets = load_ssa_age_projections(start_year=year, end_year=year)
     age_bins = build_age_bins(n_ages=age_targets.shape[0], bucket_size=5)
     aggregated_age_targets = aggregate_age_targets(age_targets, age_bins)[:, 0]
     X = np.vstack([age_bucket_vector(candidate.ages(), age_bins) for candidate in candidates])
     ss_values = np.array([candidate.ss_total for candidate in candidates], dtype=float)
     payroll_values = np.array(
-        [candidate.payroll_total for candidate in candidates],
+        [candidate.taxable_payroll_total(payroll_cap) for candidate in candidates],
         dtype=float,
     )
     if baseline_weights is None:
@@ -1040,6 +1165,7 @@ def build_synthetic_constraint_problem(
         "ss_target": float(load_ssa_benefit_projections(year)),
         "payroll_values": payroll_values,
         "payroll_target": float(load_taxable_payroll_projections(year)),
+        "payroll_cap": float(payroll_cap),
         "baseline_weights": baseline_weights,
     }
 
@@ -1339,6 +1465,7 @@ def build_role_donor_composites(
                 composite_weights.append(per_candidate_weight)
                 composite_records.append(
                     {
+                        "composite_idx": int(len(composite_candidates) - 1),
                         "candidate_idx": int(target_row["candidate_idx"]),
                         "archetype": target_candidate.archetype,
                         "older_tax_unit_id": (
@@ -1383,7 +1510,7 @@ def build_role_donor_composites(
             "max_older_distance": float(max_older_distance),
             "max_worker_distance": float(max_worker_distance),
             "skipped_targets": skipped_targets,
-            "composite_records": composite_records[:100],
+            "composite_records": composite_records,
             "prior_summary": probe_summary,
         },
     )
@@ -1834,22 +1961,34 @@ def _compose_role_donor_rows_to_target(
         elif len(older_adults) >= 2:
             spouse_row = older_adults.iloc[1].copy()
         if spouse_row is None:
-            return None, id_counters
+            fallback_spouse_pool = worker_adults if not worker_adults.empty else older_adults
+            if fallback_spouse_pool.empty:
+                return None, id_counters
+            spouse_row = fallback_spouse_pool.iloc[0].copy()
         selected_rows.append(spouse_row)
 
     if len(target_candidate.dependent_ages) > 0:
-        if len(worker_dependents) < len(target_candidate.dependent_ages):
-            return None, id_counters
-        selected_rows.extend(
-            [
-                row.copy()
-                for _, row in worker_dependents.iloc[
-                    : len(target_candidate.dependent_ages)
-                ].iterrows()
-            ]
-        )
+        dependent_rows = [row.copy() for _, row in worker_dependents.iterrows()]
+        if not dependent_rows:
+            fallback_source = None
+            if worker_donor_rows is not None and not worker_donor_rows.empty:
+                fallback_source = worker_donor_rows.sort_values(age_col, ascending=True).iloc[
+                    0
+                ].copy()
+            elif older_donor_rows is not None and not older_donor_rows.empty:
+                fallback_source = older_donor_rows.sort_values(age_col, ascending=True).iloc[
+                    0
+                ].copy()
+            if fallback_source is None:
+                return None, id_counters
+            dependent_rows = [fallback_source.copy()]
+        while len(dependent_rows) < len(target_candidate.dependent_ages):
+            dependent_rows.append(dependent_rows[-1].copy())
+        selected_rows.extend(dependent_rows[: len(target_candidate.dependent_ages)])
 
-    cloned = pd.DataFrame(selected_rows).copy()
+    # Reset duplicate donor indices so later row-specific retargeting only touches
+    # the intended clone row.
+    cloned = pd.DataFrame(selected_rows).reset_index(drop=True).copy()
     household_id = id_counters["household"]
     id_counters["household"] += 1
     for entity_name, columns in ENTITY_ID_COLUMNS.items():
@@ -1989,7 +2128,10 @@ def build_donor_backed_augmented_input_dataframe(
         ss_scale=ss_scale,
         earnings_scale=earnings_scale,
     )
-    candidates = generate_synthetic_candidates(pools)
+    candidates = generate_synthetic_candidates(
+        pools,
+        payroll_cap=load_policyengine_social_security_cap(target_year),
+    )
     exact_weights, solve_info = solve_synthetic_support(candidates, year=target_year)
     exact_df = summarize_exact_candidates(candidates, exact_weights)
     target_df = exact_df[exact_df["synthetic_weight"] > 0].head(top_n_targets).copy()
@@ -2121,15 +2263,48 @@ def build_role_composite_augmented_input_dataframe(
         ss_scale=ss_scale,
         earnings_scale=earnings_scale,
     )
-    candidates = generate_synthetic_candidates(pools)
+    candidates = generate_synthetic_candidates(
+        pools,
+        payroll_cap=load_policyengine_social_security_cap(target_year),
+    )
     exact_weights, solve_info = solve_synthetic_support(candidates, year=target_year)
-    exact_df = summarize_exact_candidates(candidates, exact_weights)
-    target_df = exact_df[exact_df["synthetic_weight"] > 0].head(top_n_targets).copy()
     scaled_actual = build_scaled_actual_summary(
         actual_summary,
         ss_scale=ss_scale,
         earnings_scale=earnings_scale,
     )
+    (
+        role_composite_candidates,
+        role_composite_prior,
+        role_composite_probe,
+    ) = build_role_donor_composites(
+        candidates,
+        exact_weights,
+        actual_summary,
+        ss_scale=ss_scale,
+        earnings_scale=earnings_scale,
+        top_n_targets=top_n_targets,
+        older_donors_per_target=donors_per_target,
+        worker_donors_per_target=donors_per_target,
+        max_older_distance=max_older_distance,
+        max_worker_distance=max_worker_distance,
+    )
+    role_composite_weights, role_composite_solve_info = solve_synthetic_support(
+        role_composite_candidates,
+        year=target_year,
+        baseline_weights=role_composite_prior,
+    )
+    role_composite_df = summarize_exact_candidates(
+        role_composite_candidates,
+        role_composite_weights,
+    )
+    selected_composite_df = role_composite_df[
+        role_composite_df["synthetic_weight"] > 0
+    ].copy()
+    composite_records_by_idx = {
+        int(record["composite_idx"]): record
+        for record in role_composite_probe["composite_records"]
+    }
 
     tax_unit_id_col = _period_column("person_tax_unit_id", base_year)
     id_counters = {
@@ -2145,96 +2320,85 @@ def build_role_composite_augmented_input_dataframe(
     target_reports = []
     skipped_targets = []
 
-    for _, target_row in target_df.iterrows():
-        target_candidate = candidates[int(target_row["candidate_idx"])]
-        older_matches = (
-            match_older_role_donors(
-                target_candidate,
-                scaled_actual,
-                donors_per_target=donors_per_target,
-            )
-            if target_candidate.ss_total > 0
-            else pd.DataFrame([{}])
-        )
-        worker_matches = (
-            match_worker_role_donors(
-                target_candidate,
-                scaled_actual,
-                donors_per_target=donors_per_target,
-            )
-            if target_candidate.payroll_total > 0
-            else pd.DataFrame([{}])
-        )
-        if target_candidate.ss_total > 0:
-            older_matches = older_matches[
-                older_matches["distance"] <= max_older_distance
-            ].copy()
-        if target_candidate.payroll_total > 0:
-            worker_matches = worker_matches[
-                worker_matches["distance"] <= max_worker_distance
-            ].copy()
-        if older_matches.empty or worker_matches.empty:
+    for _, target_row in selected_composite_df.iterrows():
+        composite_idx = int(target_row["candidate_idx"])
+        target_candidate = role_composite_candidates[composite_idx]
+        composite_record = composite_records_by_idx.get(composite_idx)
+        if composite_record is None:
             skipped_targets.append(
                 {
-                    "candidate_idx": int(target_row["candidate_idx"]),
+                    "candidate_idx": composite_idx,
                     "archetype": target_candidate.archetype,
                     "weight_share_pct": float(target_row["weight_share_pct"]),
-                    "older_match_count": int(len(older_matches)),
-                    "worker_match_count": int(len(worker_matches)),
+                    "reason": "missing_composite_record",
                 }
             )
             continue
 
-        successful_clone_count = 0
-        combination_count = len(older_matches) * len(worker_matches)
-        for _, older_row in older_matches.iterrows():
-            older_rows = (
-                input_df[input_df[tax_unit_id_col] == int(older_row["tax_unit_id"])].copy()
-                if target_candidate.ss_total > 0
-                else None
+        older_tax_unit_id = composite_record.get("older_tax_unit_id")
+        worker_tax_unit_id = composite_record.get("worker_tax_unit_id")
+        older_row = None
+        worker_row = None
+        older_rows = None
+        worker_rows = None
+        if older_tax_unit_id is not None:
+            older_row = scaled_actual[
+                scaled_actual["tax_unit_id"].eq(int(older_tax_unit_id))
+            ].iloc[0]
+            older_rows = input_df[
+                input_df[tax_unit_id_col] == int(older_tax_unit_id)
+            ].copy()
+        if worker_tax_unit_id is not None:
+            worker_row = scaled_actual[
+                scaled_actual["tax_unit_id"].eq(int(worker_tax_unit_id))
+            ].iloc[0]
+            worker_rows = input_df[
+                input_df[tax_unit_id_col] == int(worker_tax_unit_id)
+            ].copy()
+
+        clone_df, id_counters = _compose_role_donor_rows_to_target(
+            older_rows,
+            worker_rows,
+            base_year=base_year,
+            target_candidate=target_candidate,
+            ss_scale=ss_scale,
+            earnings_scale=earnings_scale,
+            id_counters=id_counters,
+            clone_weight_scale=clone_weight_scale,
+            clone_weight_divisor=1,
+        )
+        if clone_df is None:
+            skipped_targets.append(
+                {
+                    "candidate_idx": composite_idx,
+                    "archetype": target_candidate.archetype,
+                    "weight_share_pct": float(target_row["weight_share_pct"]),
+                    "reason": "clone_build_failed",
+                }
             )
-            for _, worker_row in worker_matches.iterrows():
-                worker_rows = (
-                    input_df[input_df[tax_unit_id_col] == int(worker_row["tax_unit_id"])].copy()
-                    if target_candidate.payroll_total > 0
-                    else None
-                )
-                clone_df, id_counters = _compose_role_donor_rows_to_target(
-                    older_rows,
-                    worker_rows,
-                    base_year=base_year,
-                    target_candidate=target_candidate,
-                    ss_scale=ss_scale,
-                    earnings_scale=earnings_scale,
-                    id_counters=id_counters,
-                    clone_weight_scale=clone_weight_scale,
-                    clone_weight_divisor=combination_count,
-                )
-                if clone_df is None:
-                    continue
-                clone_frames.append(clone_df)
-                clone_household_reports.append(
-                    _clone_report_record(
-                        clone_df=clone_df,
-                        base_year=base_year,
-                        target_candidate=target_candidate,
-                        candidate_idx=int(target_row["candidate_idx"]),
-                        target_weight_share_pct=float(target_row["weight_share_pct"]),
-                        clone_weight_scale=clone_weight_scale,
-                        combination_count=combination_count,
-                        older_donor_row=older_row if target_candidate.ss_total > 0 else None,
-                        worker_donor_row=worker_row if target_candidate.payroll_total > 0 else None,
-                    )
-                )
-                successful_clone_count += 1
+            continue
+        clone_frames.append(clone_df)
+        clone_household_reports.append(
+            _clone_report_record(
+                clone_df=clone_df,
+                base_year=base_year,
+                target_candidate=target_candidate,
+                candidate_idx=composite_idx,
+                target_weight_share_pct=float(target_row["weight_share_pct"]),
+                clone_weight_scale=clone_weight_scale,
+                combination_count=1,
+                older_donor_row=older_row,
+                worker_donor_row=worker_row,
+            )
+        )
         target_reports.append(
             {
-                "candidate_idx": int(target_row["candidate_idx"]),
+                "candidate_idx": composite_idx,
                 "archetype": target_candidate.archetype,
                 "weight_share_pct": float(target_row["weight_share_pct"]),
-                "older_match_count": int(len(older_matches)),
-                "worker_match_count": int(len(worker_matches)),
-                "successful_clone_count": int(successful_clone_count),
+                "older_match_count": int(older_tax_unit_id is not None),
+                "worker_match_count": int(worker_tax_unit_id is not None),
+                "successful_clone_count": 1,
             }
         )
 
@@ -2255,6 +2419,8 @@ def build_role_composite_augmented_input_dataframe(
         "target_year": int(target_year),
         "target_source": get_long_term_target_source(),
         "solve_info": solve_info,
+        "role_composite_solve_info": role_composite_solve_info,
+        "selection_strategy": "role_composite_positive_support",
         "top_n_targets": int(top_n_targets),
         "donors_per_target": int(donors_per_target),
         "max_older_distance": float(max_older_distance),
@@ -2268,6 +2434,8 @@ def build_role_composite_augmented_input_dataframe(
         ),
         "base_person_count": int(len(input_df)),
         "augmented_person_count": int(len(augmented_df)),
+        "role_composite_candidate_count": int(len(role_composite_candidates)),
+        "selected_role_composite_count": int(len(selected_composite_df)),
         "clone_household_count": int(len(clone_household_reports)),
         "clone_household_reports": clone_household_reports,
         "target_reports": target_reports,
@@ -2818,7 +2986,10 @@ def main() -> int:
         ss_scale=ss_scale,
         earnings_scale=earnings_scale,
     )
-    candidates = generate_synthetic_candidates(pools)
+    candidates = generate_synthetic_candidates(
+        pools,
+        payroll_cap=load_policyengine_social_security_cap(args.year),
+    )
     weights, solve_info = solve_synthetic_support(candidates, year=args.year)
     solution_summary = summarize_solution(candidates, weights, actual_summary)
     donor_probe = summarize_donor_probe(

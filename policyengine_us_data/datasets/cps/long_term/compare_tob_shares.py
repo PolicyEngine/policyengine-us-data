@@ -26,14 +26,14 @@ def _load_record(path: Path) -> dict:
     metadata = json.loads(path.read_text(encoding="utf-8"))
     audit = metadata["calibration_audit"]
     constraints = audit["constraints"]
-    benchmarks = audit["benchmarks"]
+    tob_section = audit.get("benchmarks") or audit.get("constraints")
 
     ss_actual = float(constraints["ss_total"]["achieved"])
     ss_target = float(constraints["ss_total"]["target"])
-    oasdi_actual = float(benchmarks["oasdi_tob"]["achieved"])
-    oasdi_target = float(benchmarks["oasdi_tob"]["target"])
-    hi_actual = float(benchmarks["hi_tob"]["achieved"])
-    hi_target = float(benchmarks["hi_tob"]["target"])
+    oasdi_actual = float(tob_section["oasdi_tob"]["achieved"])
+    oasdi_target = float(tob_section["oasdi_tob"]["target"])
+    hi_actual = float(tob_section["hi_tob"]["achieved"])
+    hi_target = float(tob_section["hi_tob"]["target"])
 
     combined_actual = oasdi_actual + hi_actual
     combined_target = oasdi_target + hi_target

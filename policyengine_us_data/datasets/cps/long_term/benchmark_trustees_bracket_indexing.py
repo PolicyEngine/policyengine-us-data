@@ -6,6 +6,17 @@ import math
 import sys
 from pathlib import Path
 
+try:
+    from .tax_assumptions import (
+        create_wage_indexed_core_thresholds_reform,
+        create_wage_indexed_full_irs_uprating_reform,
+    )
+except ImportError:  # pragma: no cover - script execution fallback
+    from tax_assumptions import (
+        create_wage_indexed_core_thresholds_reform,
+        create_wage_indexed_full_irs_uprating_reform,
+    )
+
 
 FILING_STATUSES = [
     "SINGLE",
@@ -18,64 +29,6 @@ FILING_STATUSES = [
 
 def round_down(amount: float, interval: float) -> float:
     return math.floor(amount / interval) * interval
-
-
-def round_amount(amount: float, rounding: dict | None) -> float:
-    if not rounding:
-        return amount
-
-    interval = float(rounding["interval"])
-    rounding_type = rounding["type"]
-
-    if rounding_type == "downwards":
-        return math.floor(amount / interval) * interval
-    if rounding_type == "nearest":
-        return math.floor(amount / interval + 0.5) * interval
-
-    raise ValueError(f"Unsupported rounding type: {rounding_type}")
-
-
-def _uprating_parameter_name(parameter) -> str | None:
-    metadata = getattr(parameter, "metadata", {})
-    uprating = metadata.get("uprating")
-    if isinstance(uprating, dict):
-        return uprating.get("parameter")
-    return uprating
-
-
-def _iter_updatable_parameters(root, uprating_parameter: str | None = None) -> list:
-    candidates = [root]
-    if hasattr(root, "get_descendants"):
-        candidates.extend(root.get_descendants())
-
-    result = []
-    for candidate in candidates:
-        if candidate.__class__.__name__ != "Parameter":
-            continue
-        uprating_name = _uprating_parameter_name(candidate)
-        if uprating_name is None:
-            continue
-        if uprating_parameter is not None and uprating_name != uprating_parameter:
-            continue
-        result.append(candidate)
-    return result
-
-
-def _apply_wage_growth_to_parameter(parameter, nawi, start_year: int, end_year: int):
-    metadata = getattr(parameter, "metadata", {})
-    uprating = metadata.get("uprating")
-    rounding = uprating.get("rounding") if isinstance(uprating, dict) else None
-
-    for year in range(start_year, end_year + 1):
-        previous_value = float(parameter(f"{year - 1}-01-01"))
-        wage_growth = float(nawi(f"{year - 1}-01-01")) / float(
-            nawi(f"{year - 2}-01-01")
-        )
-        updated_value = round_amount(previous_value * wage_growth, rounding)
-        parameter.update(
-            period=f"year:{year}-01-01:1",
-            value=updated_value,
-        )
 
 
 def create_wage_indexed_brackets_reform(
@@ -113,79 +66,6 @@ def create_wage_indexed_brackets_reform(
             self.modify_parameters(modify_parameters)
 
     return reform
-
-
-def create_wage_indexed_core_thresholds_reform(
-    start_year: int = 2035,
-    end_year: int = 2100,
-):
-    from policyengine_us.model_api import Reform
-
-    def modify_parameters(parameters):
-        nawi = parameters.gov.ssa.nawi
-        roots = [
-            parameters.gov.irs.income.bracket.thresholds,
-            parameters.gov.irs.deductions.standard.amount,
-            parameters.gov.irs.deductions.standard.aged_or_blind.amount,
-            parameters.gov.irs.capital_gains.thresholds,
-            parameters.gov.irs.income.amt.brackets,
-            parameters.gov.irs.income.amt.exemption.amount,
-            parameters.gov.irs.income.amt.exemption.phase_out.start,
-            parameters.gov.irs.income.amt.exemption.separate_limit,
-        ]
-
-        seen = set()
-        for root in roots:
-            for parameter in _iter_updatable_parameters(root):
-                if parameter.name in seen:
-                    continue
-                seen.add(parameter.name)
-                _apply_wage_growth_to_parameter(
-                    parameter,
-                    nawi=nawi,
-                    start_year=start_year,
-                    end_year=end_year,
-                )
-        return parameters
-
-    class reform(Reform):
-        def apply(self):
-            self.modify_parameters(modify_parameters)
-
-    return reform
-
-
-def create_wage_indexed_irs_uprating_reform(
-    start_year: int = 2035,
-    end_year: int = 2100,
-):
-    from policyengine_us.model_api import Reform
-
-    def modify_parameters(parameters):
-        nawi = parameters.gov.ssa.nawi
-        seen = set()
-        for parameter in _iter_updatable_parameters(
-            parameters.gov.irs,
-            uprating_parameter="gov.irs.uprating",
-        ):
-            if parameter.name in seen:
-                continue
-            seen.add(parameter.name)
-            _apply_wage_growth_to_parameter(
-                parameter,
-                nawi=nawi,
-                start_year=start_year,
-                end_year=end_year,
-            )
-        return parameters
-
-    class reform(Reform):
-        def apply(self):
-            self.modify_parameters(modify_parameters)
-
-    return reform
-
-
 def _coerce_h5_path(raw: str) -> Path:
     path = Path(raw).expanduser()
     if path.is_dir():
@@ -219,9 +99,10 @@ def _baseline_record(h5_path: Path, metadata: dict | None) -> dict:
     audit = metadata["calibration_audit"]
     ss_total = float(audit["constraints"]["ss_total"]["achieved"])
     ss_target = float(audit["constraints"]["ss_total"]["target"])
-    oasdi_actual = float(audit["benchmarks"]["oasdi_tob"]["achieved"])
-    hi_actual = float(audit["benchmarks"]["hi_tob"]["achieved"])
-    oasdi_target = float(audit["benchmarks"]["oasdi_tob"]["target"])
+    tob_section = audit.get("benchmarks") or audit.get("constraints")
+    oasdi_actual = float(tob_section["oasdi_tob"]["achieved"])
+    hi_actual = float(tob_section["hi_tob"]["achieved"])
+    oasdi_target = float(tob_section["oasdi_tob"]["target"])
 
     return {
         "year": int(metadata["year"]),
@@ -250,7 +131,7 @@ def _compute_reformed_shares(
             end_year=end_year,
         )
     elif scenario == "irs-uprating":
-        reform = create_wage_indexed_irs_uprating_reform(
+        reform = create_wage_indexed_full_irs_uprating_reform(
             start_year=start_year,
             end_year=end_year,
         )

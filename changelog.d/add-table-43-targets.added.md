@@ -1,1 +1,0 @@
-Added SOI Table 4.3 top-tail calibration targets for the top 0.001%, 0.001-0.01%, 0.01-0.1%, and 0.1-1% AGI percentile intervals, covering 9 variables (count, AGI, wages, interest, dividends, capital gains, business income, and partnership/S-corp income).

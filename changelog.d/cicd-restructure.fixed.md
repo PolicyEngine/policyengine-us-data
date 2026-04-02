@@ -1,1 +1,0 @@
-Restructured CI/CD pipeline: migrated versioning from expired PAT to GitHub App token, moved tests to top-level tests/ with unit/integration split, consolidated 9 workflow files into 4 (pr.yaml, push.yaml, pipeline.yaml, versioning.yaml), added Codecov integration. Integration tests now only run on PRs with the run-integration label.

@@ -89,6 +89,38 @@ Interpretation:
   wage-indexed-brackets sensitivity lands in the same rough range by `2090`,
   but is still above that public number by `2100`.
 
+## Broader core-threshold sensitivity
+
+We also ran a broader but still targeted tax-side sensitivity that switches a
+core set of federal thresholds from `C-CPI-U` to `NAWI` after `2034`:
+
+- ordinary income-tax brackets
+- standard deduction
+- aged/blind additional standard deduction
+- capital-gains rate thresholds
+- AMT bracket threshold and exemption thresholds
+
+This is broader than the minimum public Trustees approximation, but still
+narrower than switching the entire `gov.irs.uprating` family to wages.
+
+| Year | Baseline OASDI | Core-threshold OASDI | Trustees target | Remaining gap |
+| --- | ---: | ---: | ---: | ---: |
+| 2075 | 9.43% | 7.65% | 6.01% | +1.64 pp |
+| 2090 | 10.52% | 7.31% | 6.08% | +1.22 pp |
+| 2100 | 11.16% | 8.15% | 6.10% | +2.05 pp |
+
+Interpretation:
+
+- The broader threshold bundle explains more of the TOB gap than brackets
+  alone.
+- The additional movement is meaningful, especially in `2100`, where the
+  OASDI-only share falls from `9.46%` under brackets-only to `8.15%` under the
+  broader core-threshold sensitivity.
+- Even this broader sensitivity still does not fully reconcile the modeled TOB
+  path to the Trustees target, so some remaining gap likely reflects
+  beneficiary income mix, filing composition, or other Treasury-ratio modeling
+  differences.
+
 ## DYNASIM public benchmark
 
 Urban's 2024 appendix says DYNASIM's revenue from taxing Social Security

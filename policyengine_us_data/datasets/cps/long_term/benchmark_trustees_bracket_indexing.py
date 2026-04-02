@@ -20,6 +20,53 @@ def round_down(amount: float, interval: float) -> float:
     return math.floor(amount / interval) * interval
 
 
+def round_amount(amount: float, rounding: dict | None) -> float:
+    if not rounding:
+        return amount
+
+    interval = float(rounding["interval"])
+    rounding_type = rounding["type"]
+
+    if rounding_type == "downwards":
+        return math.floor(amount / interval) * interval
+    if rounding_type == "nearest":
+        return math.floor(amount / interval + 0.5) * interval
+
+    raise ValueError(f"Unsupported rounding type: {rounding_type}")
+
+
+def _iter_updatable_parameters(root) -> list:
+    candidates = [root]
+    if hasattr(root, "get_descendants"):
+        candidates.extend(root.get_descendants())
+
+    result = []
+    for candidate in candidates:
+        if candidate.__class__.__name__ != "Parameter":
+            continue
+        uprating = getattr(candidate, "metadata", {}).get("uprating")
+        if uprating is not None:
+            result.append(candidate)
+    return result
+
+
+def _apply_wage_growth_to_parameter(parameter, nawi, start_year: int, end_year: int):
+    metadata = getattr(parameter, "metadata", {})
+    uprating = metadata.get("uprating")
+    rounding = uprating.get("rounding") if isinstance(uprating, dict) else None
+
+    for year in range(start_year, end_year + 1):
+        previous_value = float(parameter(f"{year - 1}-01-01"))
+        wage_growth = float(nawi(f"{year - 1}-01-01")) / float(
+            nawi(f"{year - 2}-01-01")
+        )
+        updated_value = round_amount(previous_value * wage_growth, rounding)
+        parameter.update(
+            period=f"year:{year}-01-01:1",
+            value=updated_value,
+        )
+
+
 def create_wage_indexed_brackets_reform(
     start_year: int = 2035,
     end_year: int = 2100,
@@ -48,6 +95,74 @@ def create_wage_indexed_brackets_reform(
                         period=f"year:{year}-01-01:1",
                         value=updated_value,
                     )
+        return parameters
+
+    class reform(Reform):
+        def apply(self):
+            self.modify_parameters(modify_parameters)
+
+    return reform
+
+
+def create_wage_indexed_core_thresholds_reform(
+    start_year: int = 2035,
+    end_year: int = 2100,
+):
+    from policyengine_us.model_api import Reform
+
+    def modify_parameters(parameters):
+        nawi = parameters.gov.ssa.nawi
+        roots = [
+            parameters.gov.irs.income.bracket.thresholds,
+            parameters.gov.irs.deductions.standard.amount,
+            parameters.gov.irs.deductions.standard.aged_or_blind.amount,
+            parameters.gov.irs.capital_gains.thresholds,
+            parameters.gov.irs.income.amt.brackets,
+            parameters.gov.irs.income.amt.exemption.amount,
+            parameters.gov.irs.income.amt.exemption.phase_out.start,
+            parameters.gov.irs.income.amt.exemption.separate_limit,
+        ]
+
+        seen = set()
+        for root in roots:
+            for parameter in _iter_updatable_parameters(root):
+                if parameter.name in seen:
+                    continue
+                seen.add(parameter.name)
+                _apply_wage_growth_to_parameter(
+                    parameter,
+                    nawi=nawi,
+                    start_year=start_year,
+                    end_year=end_year,
+                )
+        return parameters
+
+    class reform(Reform):
+        def apply(self):
+            self.modify_parameters(modify_parameters)
+
+    return reform
+
+
+def create_wage_indexed_irs_uprating_reform(
+    start_year: int = 2035,
+    end_year: int = 2100,
+):
+    from policyengine_us.model_api import Reform
+
+    def modify_parameters(parameters):
+        nawi = parameters.gov.ssa.nawi
+        irs_uprating = parameters.gov.irs.uprating
+
+        for year in range(start_year, end_year + 1):
+            previous_value = float(irs_uprating(f"{year - 1}-01-01"))
+            wage_growth = float(nawi(f"{year - 1}-01-01")) / float(
+                nawi(f"{year - 2}-01-01")
+            )
+            irs_uprating.update(
+                period=f"year:{year}-01-01:1",
+                value=previous_value * wage_growth,
+            )
         return parameters
 
     class reform(Reform):
@@ -106,13 +221,28 @@ def _compute_reformed_shares(
     h5_path: Path,
     start_year: int,
     end_year: int,
+    scenario: str,
 ) -> dict:
     from policyengine_us import Microsimulation
 
-    reform = create_wage_indexed_brackets_reform(
-        start_year=start_year,
-        end_year=end_year,
-    )
+    if scenario == "brackets":
+        reform = create_wage_indexed_brackets_reform(
+            start_year=start_year,
+            end_year=end_year,
+        )
+    elif scenario == "core-thresholds":
+        reform = create_wage_indexed_core_thresholds_reform(
+            start_year=start_year,
+            end_year=end_year,
+        )
+    elif scenario == "irs-uprating":
+        reform = create_wage_indexed_irs_uprating_reform(
+            start_year=start_year,
+            end_year=end_year,
+        )
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}")
+
     sim = Microsimulation(dataset=str(h5_path), reform=reform)
     ss_total = float(sim.calculate("social_security").sum())
     oasdi_tob = float(sim.calculate("tob_revenue_oasdi").sum())
@@ -125,9 +255,9 @@ def _compute_reformed_shares(
 
 def _format_markdown(records: list[dict]) -> str:
     header = (
-        "| Year | Trustees OASDI target | Baseline OASDI | Wage-indexed OASDI | "
-        "OASDI delta | Baseline combined | Wage-indexed combined |\n"
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"
+        "| Year | Scenario | Trustees OASDI target | Baseline OASDI | "
+        "Reformed OASDI | OASDI delta | Baseline combined | Reformed combined |\n"
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |"
     )
     rows = []
     for record in records:
@@ -136,9 +266,10 @@ def _format_markdown(records: list[dict]) -> str:
         baseline_combined = record["baseline_combined_share_pct"]
         reformed_combined = record["reformed_combined_share_pct"]
         rows.append(
-            "| {year} | {target:.2f}% | {base_o:.2f}% | {reform_o:.2f}% | {delta:+.2f} pp | "
+            "| {year} | {scenario} | {target:.2f}% | {base_o:.2f}% | {reform_o:.2f}% | {delta:+.2f} pp | "
             "{base_c:.2f}% | {reform_c:.2f}% |".format(
                 year=record["year"],
+                scenario=record["scenario"],
                 target=record["target_oasdi_share_pct"],
                 base_o=baseline_oasdi,
                 reform_o=reformed_oasdi,
@@ -178,14 +309,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--end-year",
         type=int,
-        default=2100,
-        help="Last year to extend the wage-indexed bracket sensitivity through.",
+        help=(
+            "Last year to extend the wage-indexed sensitivity through. "
+            "Defaults to the maximum year among the input H5s."
+        ),
     )
     parser.add_argument(
         "--format",
         choices=("markdown", "json"),
         default="markdown",
         help="Output format.",
+    )
+    parser.add_argument(
+        "--scenario",
+        choices=("brackets", "core-thresholds", "irs-uprating"),
+        default="brackets",
+        help=(
+            "Tax-side sensitivity to run: wage-index only ordinary bracket "
+            "thresholds, wage-index a core threshold set, or wage-index the "
+            "full IRS uprating path."
+        ),
     )
     return parser.parse_args()
 
@@ -196,22 +339,25 @@ def main() -> int:
         sys.path.insert(0, str(Path(args.policyengine_us_path).expanduser()))
 
     h5_paths = [_coerce_h5_path(path) for path in args.paths]
+    end_year = args.end_year or max(int(path.stem) for path in h5_paths)
     records = []
 
     for h5_path in h5_paths:
         metadata = _load_metadata(h5_path)
         baseline = _baseline_record(h5_path, metadata)
         print(
-            f"[{baseline['year']}] benchmarking wage-indexed federal brackets on {h5_path}",
+            f"[{baseline['year']}] benchmarking {args.scenario} on {h5_path}",
             file=sys.stderr,
             flush=True,
         )
         reformed = _compute_reformed_shares(
             h5_path,
             start_year=args.start_year,
-            end_year=args.end_year,
+            end_year=end_year,
+            scenario=args.scenario,
         )
         baseline.update(reformed)
+        baseline["scenario"] = args.scenario
         records.append(baseline)
 
     records.sort(key=lambda record: record["year"])

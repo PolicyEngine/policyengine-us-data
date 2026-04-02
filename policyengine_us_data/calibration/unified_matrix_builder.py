@@ -2168,12 +2168,11 @@ class UnifiedMatrixBuilder:
             with h5py.File(self.dataset_path, "r") as f:
                 period_key = str(self.time_period)
                 if (
-                    "reported_has_marketplace_health_coverage_at_interview" in f
-                    and period_key
-                    in f["reported_has_marketplace_health_coverage_at_interview"]
+                    "has_marketplace_health_coverage_at_interview" in f
+                    and period_key in f["has_marketplace_health_coverage_at_interview"]
                 ):
                     person_marketplace = f[
-                        "reported_has_marketplace_health_coverage_at_interview"
+                        "has_marketplace_health_coverage_at_interview"
                     ][period_key][...].astype(bool)
                     person_tax_unit_ids = f["person_tax_unit_id"][period_key][...]
                     tax_unit_ids = f["tax_unit_id"][period_key][...]
@@ -2185,12 +2184,11 @@ class UnifiedMatrixBuilder:
                         )
                     )
                 if (
-                    "reported_has_means_tested_health_coverage_at_interview" in f
-                    and period_key
-                    in f["reported_has_means_tested_health_coverage_at_interview"]
+                    "has_medicaid_health_coverage_at_interview" in f
+                    and period_key in f["has_medicaid_health_coverage_at_interview"]
                 ):
                     reported_takeup_anchors["takes_up_medicaid_if_eligible"] = f[
-                        "reported_has_means_tested_health_coverage_at_interview"
+                        "has_medicaid_health_coverage_at_interview"
                     ][period_key][...].astype(bool)
 
             entity_to_person_idx = {}

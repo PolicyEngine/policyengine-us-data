@@ -163,22 +163,20 @@ def _build_reported_takeup_anchors(
 ) -> dict[str, np.ndarray]:
     reported_anchors = {}
     if (
-        "reported_has_marketplace_health_coverage_at_interview" in data
-        and time_period in data["reported_has_marketplace_health_coverage_at_interview"]
+        "has_marketplace_health_coverage_at_interview" in data
+        and time_period in data["has_marketplace_health_coverage_at_interview"]
     ):
         reported_anchors["takes_up_aca_if_eligible"] = any_person_flag_by_entity(
             data["person_tax_unit_id"][time_period],
             data["tax_unit_id"][time_period],
-            data["reported_has_marketplace_health_coverage_at_interview"][
-                time_period
-            ],
+            data["has_marketplace_health_coverage_at_interview"][time_period],
         )
     if (
-        "reported_has_means_tested_health_coverage_at_interview" in data
-        and time_period in data["reported_has_means_tested_health_coverage_at_interview"]
+        "has_medicaid_health_coverage_at_interview" in data
+        and time_period in data["has_medicaid_health_coverage_at_interview"]
     ):
         reported_anchors["takes_up_medicaid_if_eligible"] = data[
-            "reported_has_means_tested_health_coverage_at_interview"
+            "has_medicaid_health_coverage_at_interview"
         ][time_period].astype(bool)
     return reported_anchors
 
@@ -577,7 +575,21 @@ def build_h5(
         }
         hh_state_fips = clone_geo["state_fips"].astype(np.int32)
         original_hh_ids = household_ids[active_hh].astype(np.int64)
+<<<<<<< HEAD
         reported_anchors = _build_reported_takeup_anchors(data, time_period)
+=======
+        reported_anchors = {}
+        if "has_marketplace_health_coverage_at_interview" in data:
+            reported_anchors["takes_up_aca_if_eligible"] = any_person_flag_by_entity(
+                data["person_tax_unit_id"][time_period],
+                data["tax_unit_id"][time_period],
+                data["has_marketplace_health_coverage_at_interview"][time_period],
+            )
+        if "has_medicaid_health_coverage_at_interview" in data:
+            reported_anchors["takes_up_medicaid_if_eligible"] = data[
+                "has_medicaid_health_coverage_at_interview"
+            ][time_period].astype(bool)
+>>>>>>> b0eca6f0 (Align health coverage anchors with rules inputs)
 
         takeup_results = apply_block_takeup_to_arrays(
             hh_blocks=active_blocks,

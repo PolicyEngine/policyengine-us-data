@@ -56,6 +56,33 @@ CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
     "reported_has_indian_health_service_coverage_at_interview": "NOW_IHSFLG",
 }
 
+CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP = {
+    "has_marketplace_health_coverage_at_interview": (
+        "reported_has_marketplace_health_coverage_at_interview"
+    ),
+    "has_non_marketplace_direct_purchase_health_coverage_at_interview": (
+        "reported_has_non_marketplace_direct_purchase_health_coverage_at_interview"
+    ),
+    "has_medicaid_health_coverage_at_interview": (
+        "reported_has_medicaid_health_coverage_at_interview"
+    ),
+    "has_other_means_tested_health_coverage_at_interview": (
+        "reported_has_other_means_tested_health_coverage_at_interview"
+    ),
+    "has_tricare_health_coverage_at_interview": (
+        "reported_has_tricare_health_coverage_at_interview"
+    ),
+    "has_champva_health_coverage_at_interview": (
+        "reported_has_champva_health_coverage_at_interview"
+    ),
+    "has_va_health_coverage_at_interview": (
+        "reported_has_va_health_coverage_at_interview"
+    ),
+    "has_indian_health_service_coverage_at_interview": (
+        "reported_has_indian_health_service_coverage_at_interview"
+    ),
+}
+
 
 class CPS(Dataset):
     name = "cps"
@@ -263,7 +290,7 @@ def add_takeup(self):
     reported_marketplace_by_tax_unit = any_person_flag_by_entity(
         data["person_tax_unit_id"],
         data["tax_unit_id"],
-        data["reported_has_marketplace_health_coverage_at_interview"],
+        data["has_marketplace_health_coverage_at_interview"],
     )
     data["takes_up_aca_if_eligible"] = assign_takeup_with_reported_anchors(
         rng.random(n_tax_units),
@@ -284,7 +311,7 @@ def add_takeup(self):
     data["takes_up_medicaid_if_eligible"] = assign_takeup_with_reported_anchors(
         rng.random(n_persons),
         medicaid_rate_by_person,
-        reported_mask=data["reported_has_means_tested_health_coverage_at_interview"],
+        reported_mask=data["has_medicaid_health_coverage_at_interview"],
         group_keys=person_states,
     )
 
@@ -496,6 +523,12 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
 
     for variable, cps_column in CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP.items():
         cps[variable] = person[cps_column] == 1
+
+    for (
+        variable,
+        reported_variable,
+    ) in CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP.items():
+        cps[variable] = cps[reported_variable]
 
     cps["reported_has_private_health_coverage_at_interview"] = person.NOW_PRIV == 1
     cps["reported_has_public_health_coverage_at_interview"] = person.NOW_PUB == 1

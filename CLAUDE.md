@@ -45,14 +45,17 @@ Tests are in the top-level `tests/` directory, split into two sub-directories:
 - **Python Version**: Targeting Python 3.12-3.14
 
 ## CI/CD Structure
-Four workflow files in `.github/workflows/`:
+Six workflow files in `.github/workflows/`:
 
-- **`pr.yaml`** — Runs on every PR to main: fork check, lint, uv.lock freshness, changelog fragment, unit tests with Codecov, smoke test. Integration tests run only with `run-integration` label. ~2-3 minutes.
+- **`pr.yaml`** — Runs on every PR to main: fork check, lint, uv.lock freshness, changelog fragment, unit tests with Codecov, smoke test, and docs build. Integration tests trigger automatically when the PR changes files in `policyengine_us_data/`, `modal_app/`, or `tests/integration/`. ~2-3 minutes for unit tests.
 - **`push.yaml`** — Runs on push to main. Two paths:
   - Version bump commits (`Update package version`): build and publish to PyPI
   - All other commits: full Modal data build with integration tests → manual approval gate → pipeline dispatch
-- **`pipeline.yaml`** — Dispatch only. Spawns the H5 generation pipeline on Modal with scope filtering (all/national/state/congressional/local/test).
+  - Docs build and deploy to gh-pages runs unconditionally on every push.
+- **`pipeline.yaml`** — Dispatch only. Spawns the H5 generation pipeline on Modal with configurable GPU, epochs, and worker count.
 - **`versioning.yaml`** — Auto-bumps version when changelog.d fragments are merged. Commits `Update package version` which triggers the publish path in push.yaml.
+- **`local_area_publish.yaml`** — Manual dispatch. Builds and stages local area H5 files on Modal, then validates staged files.
+- **`local_area_promote.yaml`** — Manual dispatch. Promotes staged local area H5 files to production.
 
 ## Git and PR Guidelines
 - **CRITICAL**: NEVER create PRs from personal forks - ALL PRs MUST be created from branches pushed to the upstream PolicyEngine repository

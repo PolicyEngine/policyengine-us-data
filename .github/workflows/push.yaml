@@ -57,9 +57,34 @@ jobs:
               repo: context.repo.repo,
               workflow_id: 'pipeline.yaml',
               ref: 'main',
-              inputs: { scope: 'all' }
             })
-            console.log('Pipeline dispatched with scope=all')
+            console.log('Pipeline dispatched')
+
+  # ── Documentation ──────────────────────────────────────────
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev
+      - name: Build documentation
+        run: uv run make documentation
+        env:
+          BASE_URL: /policyengine-us-data
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: docs/_build/html
+          clean: true
 
   # ── PyPI publish (version bump commits only) ────────────────
   publish:

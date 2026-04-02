@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   check-fork:
     runs-on: ubuntu-latest
@@ -92,12 +96,45 @@ jobs:
       - run: python -c "import policyengine_us_data; print('OK')"
       - run: python -c "from policyengine_core.data import Dataset; print('OK')"
 
+  docs-build:
+    runs-on: ubuntu-latest
+    needs: [check-fork]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev
+      - name: Test documentation builds
+        run: uv run make documentation
+
+  decide-test-scope:
+    runs-on: ubuntu-latest
+    needs: check-fork
+    outputs:
+      run_integration: ${{ steps.check.outputs.run_integration }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check changed files for integration scope
+        id: check
+        run: |
+          CHANGED=$(git diff --name-only origin/main...HEAD)
+          if echo "$CHANGED" | grep -qE '^(policyengine_us_data/|modal_app/|tests/integration/)'; then
+            echo "run_integration=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_integration=false" >> "$GITHUB_OUTPUT"
+          fi
+
   integration-tests:
     runs-on: ubuntu-latest
-    needs: [check-fork, lint]
-    if: >-
-      contains(github.event.pull_request.labels.*.name, 'run-integration') ||
-      github.event.pull_request.head.ref == 'main'
+    needs: [check-fork, lint, decide-test-scope]
+    if: needs.decide-test-scope.outputs.run_integration == 'true'
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}

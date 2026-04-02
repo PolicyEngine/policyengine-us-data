@@ -1,6 +1,8 @@
 name: Run Pipeline
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       gpu:
@@ -27,7 +29,6 @@ on:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 

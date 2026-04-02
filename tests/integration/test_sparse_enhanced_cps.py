@@ -1,3 +1,5 @@
+"""Integration tests for Sparse Enhanced CPS dataset (requires enhanced_cps_2024.h5)."""
+
 import pytest
 from pathlib import Path
 import logging
@@ -23,6 +25,33 @@ def data():
 @pytest.fixture(scope="session")
 def sim(data):
     return Microsimulation(dataset=data)
+
+
+@pytest.fixture(scope="module")
+def sparse_sim():
+    path = STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5"
+    if not path.exists():
+        pytest.skip("sparse_enhanced_cps_2024.h5 not found")
+    return Microsimulation(dataset=Dataset.from_file(path))
+
+
+# ── Sparse dataset sanity checks ──────────────────────────────
+
+
+def test_sparse_household_count(sparse_sim):
+    total_hh = sparse_sim.calculate("household_weight").values.sum()
+    assert 100e6 < total_hh < 200e6, (
+        f"Sparse total households = {total_hh:.2e}, expected 100M-200M."
+    )
+
+
+def test_sparse_poverty_rate_reasonable(sparse_sim):
+    in_poverty = sparse_sim.calculate("person_in_poverty", map_to="person")
+    rate = in_poverty.mean()
+    assert 0.05 < rate < 0.30, f"Sparse poverty rate = {rate:.1%}, expected 5-30%."
+
+
+# ── Reweighting and calibration checks ────────────────────────
 
 
 @pytest.mark.filterwarnings("ignore:DataFrame is highly fragmented")

@@ -1,0 +1,81 @@
+name: Push to main
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install ruff>=0.9.0
+      - run: ruff format --check .
+
+  # ── Build datasets and run integration tests ────────────────
+  build-and-test:
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event.head_commit.message != 'Update package version'
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install modal
+      - name: Build datasets and run integration tests on Modal
+        run: |
+          modal run modal_app/data_build.py \
+            --upload \
+            --branch=${{ github.ref_name }}
+
+  # ── Documentation ──────────────────────────────────────────
+  docs:
+    runs-on: ubuntu-latest
+    if: github.event.head_commit.message != 'Update package version'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev
+      - name: Build documentation
+        run: uv run make documentation
+        env:
+          BASE_URL: /policyengine-us-data
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: docs/_build/html
+          clean: true
+
+  # ── PyPI publish (version bump commits only) ────────────────
+  publish:
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event.head_commit.message == 'Update package version'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev
+      - run: uv run python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI }}
+          skip-existing: true

@@ -5,7 +5,7 @@ import pandas as pd
 
 
 MODULE_PATH = (
-    Path(__file__).resolve().parent.parent
+    Path(__file__).resolve().parent.parent.parent
     / "policyengine_us_data"
     / "storage"
     / "calibration_targets"

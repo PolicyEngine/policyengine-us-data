@@ -277,8 +277,8 @@ class TestQueryTargets(unittest.TestCase):
     def test_legacy_target_overview_without_reform_id(self):
         b = self._make_builder()
         _create_legacy_target_overview(self.engine)
+        b._target_overview_columns = None
         try:
-            b._target_overview_columns = None
             df = b._query_targets({"domain_variables": ["aca_ptc"]})
             self.assertGreater(len(df), 0)
             self.assertIn("reform_id", df.columns)

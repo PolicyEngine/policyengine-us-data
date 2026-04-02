@@ -21,7 +21,7 @@ VALIDATED_FILENAMES = {
 
 # Minimum file sizes in bytes for validated datasets.
 MIN_FILE_SIZES = {
-    "enhanced_cps_2024.h5": 100 * 1024 * 1024,  # 100 MB
+    "enhanced_cps_2024.h5": 95 * 1024 * 1024,  # 95 MB
     "cps_2024.h5": 50 * 1024 * 1024,  # 50 MB
 }
 

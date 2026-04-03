@@ -49,9 +49,7 @@ def _evaluate_dataset(
 
     approximate_window = approximate_window_for_year(profile, year)
     age_bucket_size = (
-        approximate_window.age_bucket_size
-        if approximate_window is not None
-        else None
+        approximate_window.age_bucket_size if approximate_window is not None else None
     )
     if age_bucket_size and age_bucket_size > 1:
         age_bins = build_age_bins(n_ages=n_ages, bucket_size=age_bucket_size)
@@ -68,7 +66,9 @@ def _evaluate_dataset(
     ss_values = None
     ss_target = None
     if profile.use_ss:
-        ss_values = sim.calculate("social_security", period=year, map_to="household").values
+        ss_values = sim.calculate(
+            "social_security", period=year, map_to="household"
+        ).values
         ss_target = load_ssa_benefit_projections(year)
 
     payroll_values = None

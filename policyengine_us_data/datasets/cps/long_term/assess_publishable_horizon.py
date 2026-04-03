@@ -119,9 +119,7 @@ def benchmark_tob_values(
             else (oasdi_achieved - oasdi_target) / oasdi_target * 100
         ),
         "hi_tob_benchmark_pct_error": (
-            0.0
-            if hi_target == 0
-            else (hi_achieved - hi_target) / hi_target * 100
+            0.0 if hi_target == 0 else (hi_achieved - hi_target) / hi_target * 100
         ),
     }
 
@@ -287,9 +285,7 @@ def assess_years(
                 "validation_issues": str(error),
                 "runtime_error": str(error),
             }
-            best_case_match = re.search(
-                r"([0-9.]+)%\s*>\s*([0-9.]+)%", str(error)
-            )
+            best_case_match = re.search(r"([0-9.]+)%\s*>\s*([0-9.]+)%", str(error))
             if best_case_match:
                 row["reported_best_case_constraint_error_pct"] = float(
                     best_case_match.group(1)
@@ -315,7 +311,9 @@ def assess_years(
             h6_income_values=None,
             h6_revenue_target=None,
             oasdi_tob_values=oasdi_tob_values if profile.use_tob else None,
-            oasdi_tob_target=load_oasdi_tob_projections(year) if profile.use_tob else None,
+            oasdi_tob_target=load_oasdi_tob_projections(year)
+            if profile.use_tob
+            else None,
             hi_tob_values=hi_tob_values if profile.use_tob else None,
             hi_tob_target=load_hi_tob_projections(year) if profile.use_tob else None,
         )

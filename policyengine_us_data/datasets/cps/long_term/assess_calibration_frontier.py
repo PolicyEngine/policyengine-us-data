@@ -86,13 +86,17 @@ def reorder_to_households(values, order, n_households: int) -> np.ndarray:
     return ordered
 
 
-def build_constraint_inputs(year: int, hh_id_to_idx: dict, n_households: int, profile) -> dict:
+def build_constraint_inputs(
+    year: int, hh_id_to_idx: dict, n_households: int, profile
+) -> dict:
     sim = Microsimulation(dataset=BASE_DATASET_PATH)
     if profile.use_h6_reform:
         raise NotImplementedError(
             "Frontier assessment for H6-enabled profiles is not yet implemented."
         )
-    household_ids = sim.calculate("household_id", period=year, map_to="household").values
+    household_ids = sim.calculate(
+        "household_id", period=year, map_to="household"
+    ).values
     if len(household_ids) != n_households:
         raise ValueError(
             f"Household count mismatch for {year}: {len(household_ids)} vs {n_households}"
@@ -226,10 +230,7 @@ def main() -> int:
         }
         rows.append(row)
         best_case_display = "n/a" if best_case is None else f"{best_case:.3f}%"
-        print(
-            f"{year}: best-case max error {best_case_display} -> "
-            f"{row['quality']}"
-        )
+        print(f"{year}: best-case max error {best_case_display} -> {row['quality']}")
 
     if args.output:
         output_path = Path(args.output)

@@ -203,7 +203,9 @@ def get_profile(name: str) -> CalibrationProfile:
         return NAMED_PROFILES[name]
     except KeyError as error:
         valid = ", ".join(sorted(NAMED_PROFILES))
-        raise ValueError(f"Unknown calibration profile '{name}'. Valid profiles: {valid}") from error
+        raise ValueError(
+            f"Unknown calibration profile '{name}'. Valid profiles: {valid}"
+        ) from error
 
 
 def approximate_window_for_year(
@@ -459,8 +461,7 @@ def _collect_threshold_issues(
         and ess < min_effective_sample_size
     ):
         issues.append(
-            f"Effective sample size {ess:.3f} is below "
-            f"{min_effective_sample_size:.3f}"
+            f"Effective sample size {ess:.3f} is below {min_effective_sample_size:.3f}"
         )
 
     top_10_share = audit.get("top_10_weight_share_pct")

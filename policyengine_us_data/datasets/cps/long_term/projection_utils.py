@@ -22,9 +22,7 @@ def validate_projected_social_security_cap(
     through 2100. If the payroll cap flattens after the reference year, the
     late-year taxable payroll problem becomes mechanically distorted.
     """
-    current_cap = float(
-        parameter_accessor(year).gov.irs.payroll.social_security.cap
-    )
+    current_cap = float(parameter_accessor(year).gov.irs.payroll.social_security.cap)
     reference_cap = float(
         parameter_accessor(reference_year).gov.irs.payroll.social_security.cap
     )
@@ -111,12 +109,7 @@ def aggregate_age_targets(targets, age_bins):
             dtype=float,
         )
 
-    return np.vstack(
-        [
-            targets[start:end, :].sum(axis=0)
-            for start, end in age_bins
-        ]
-    )
+    return np.vstack([targets[start:end, :].sum(axis=0) for start, end in age_bins])
 
 
 def get_pseudo_input_variables(sim):

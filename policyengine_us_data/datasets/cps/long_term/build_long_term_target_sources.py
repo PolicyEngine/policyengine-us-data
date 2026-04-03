@@ -45,9 +45,7 @@ def build_oact_source(trustees: pd.DataFrame) -> pd.DataFrame:
         missing_years = merged.loc[
             merged["oasdi_nominal_delta_billions"].isna(), "year"
         ].tolist()
-        raise ValueError(
-            f"Missing OACT OASDI deltas for years: {missing_years}"
-        )
+        raise ValueError(f"Missing OACT OASDI deltas for years: {missing_years}")
 
     merged["oasdi_tob_billions_nominal_usd"] = (
         merged["oasdi_tob_billions_nominal_usd"]

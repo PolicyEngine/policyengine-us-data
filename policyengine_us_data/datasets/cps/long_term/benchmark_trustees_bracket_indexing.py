@@ -45,9 +45,7 @@ def create_wage_indexed_brackets_reform(
             bracket_node = thresholds.get_child(bracket)
             for filing_status in FILING_STATUSES:
                 parameter = bracket_node.get_child(filing_status)
-                interval = float(
-                    parameter.metadata["uprating"]["rounding"]["interval"]
-                )
+                interval = float(parameter.metadata["uprating"]["rounding"]["interval"])
 
                 for year in range(start_year, end_year + 1):
                     previous_value = float(parameter(f"{year - 1}-01-01"))
@@ -66,6 +64,8 @@ def create_wage_indexed_brackets_reform(
             self.modify_parameters(modify_parameters)
 
     return reform
+
+
 def _coerce_h5_path(raw: str) -> Path:
     path = Path(raw).expanduser()
     if path.is_dir():

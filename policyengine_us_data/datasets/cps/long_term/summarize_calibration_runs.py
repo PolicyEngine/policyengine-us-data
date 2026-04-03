@@ -29,7 +29,9 @@ def parse_args() -> argparse.Namespace:
         )
     )
     parser.add_argument("left", type=Path, help="First projected dataset directory.")
-    parser.add_argument("right", type=Path, nargs="?", help="Optional second directory to compare.")
+    parser.add_argument(
+        "right", type=Path, nargs="?", help="Optional second directory to compare."
+    )
     parser.add_argument(
         "--years",
         help="Optional comma-separated list of years to include. Defaults to all years found.",
@@ -60,12 +62,11 @@ def metadata_for(directory: Path, year: int) -> dict[str, Any] | None:
     return normalize_metadata(json.loads(metadata_path.read_text(encoding="utf-8")))
 
 
-def support_metrics(directory: Path, year: int, metadata: dict[str, Any] | None, *, profile: bool) -> dict[str, Any]:
+def support_metrics(
+    directory: Path, year: int, metadata: dict[str, Any] | None, *, profile: bool
+) -> dict[str, Any]:
     audit = (metadata or {}).get("calibration_audit", {})
-    metrics = {
-        field: audit.get(field)
-        for field in SUPPORT_FIELDS
-    }
+    metrics = {field: audit.get(field) for field in SUPPORT_FIELDS}
     if not profile or all(value is not None for value in metrics.values()):
         return metrics
 
@@ -80,11 +81,15 @@ def support_metrics(directory: Path, year: int, metadata: dict[str, Any] | None,
         "top_10_weight_share_pct": profiled["top_10_weight_share_pct"],
         "top_100_weight_share_pct": profiled["top_100_weight_share_pct"],
         "weighted_nonworking_share_pct": profiled["weighted_nonworking_share_pct"],
-        "weighted_nonworking_share_85_plus_pct": profiled["weighted_nonworking_share_85_plus_pct"],
+        "weighted_nonworking_share_85_plus_pct": profiled[
+            "weighted_nonworking_share_85_plus_pct"
+        ],
     }
 
 
-def summarize_directory(directory: Path, years: list[int] | None, *, profile: bool) -> dict[int, dict[str, Any]]:
+def summarize_directory(
+    directory: Path, years: list[int] | None, *, profile: bool
+) -> dict[int, dict[str, Any]]:
     if years is None:
         years = sorted(
             int(path.name.split(".")[0])

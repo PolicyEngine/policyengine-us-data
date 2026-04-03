@@ -39,10 +39,7 @@ def normalize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     if "max_constraint_pct_error" not in audit:
         audit["max_constraint_pct_error"] = float(
             max(
-                (
-                    abs(stats.get("pct_error", 0.0))
-                    for stats in constraints.values()
-                ),
+                (abs(stats.get("pct_error", 0.0)) for stats in constraints.values()),
                 default=0.0,
             )
         )
@@ -186,11 +183,9 @@ def update_dataset_manifest(
         )
     manifest_profile = json.loads(json.dumps(manifest["profile"]))
     if manifest_profile != profile:
-        if manifest_profile.get("name") == profile.get(
-            "name"
-        ) and manifest_profile.get("calibration_method") == profile.get(
+        if manifest_profile.get("name") == profile.get("name") and manifest_profile.get(
             "calibration_method"
-        ):
+        ) == profile.get("calibration_method"):
             manifest["profile"] = profile
         else:
             raise ValueError(
@@ -230,17 +225,13 @@ def update_dataset_manifest(
         "method_used": calibration_audit.get("method_used"),
         "fell_back_to_ipf": calibration_audit.get("fell_back_to_ipf"),
         "age_max_pct_error": calibration_audit.get("age_max_pct_error"),
-        "max_constraint_pct_error": calibration_audit.get(
-            "max_constraint_pct_error"
-        ),
+        "max_constraint_pct_error": calibration_audit.get("max_constraint_pct_error"),
         "negative_weight_pct": calibration_audit.get("negative_weight_pct"),
         "negative_weight_household_pct": calibration_audit.get(
             "negative_weight_household_pct"
         ),
         "validation_passed": calibration_audit.get("validation_passed"),
-        "validation_issue_count": len(
-            calibration_audit.get("validation_issues", [])
-        ),
+        "validation_issue_count": len(calibration_audit.get("validation_issues", [])),
     }
 
     year_set = {int(value) for value in manifest.get("years", [])}

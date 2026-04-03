@@ -308,9 +308,7 @@ SUPPORT_AUGMENTATION_PROFILE = None
 if "--support-augmentation-profile" in sys.argv:
     augmentation_index = sys.argv.index("--support-augmentation-profile")
     if augmentation_index + 1 >= len(sys.argv):
-        raise ValueError(
-            "--support-augmentation-profile requires a profile name"
-        )
+        raise ValueError("--support-augmentation-profile requires a profile name")
     SUPPORT_AUGMENTATION_PROFILE = sys.argv[augmentation_index + 1]
     del sys.argv[augmentation_index : augmentation_index + 2]
 
@@ -318,9 +316,7 @@ SUPPORT_AUGMENTATION_TARGET_YEAR = None
 if "--support-augmentation-target-year" in sys.argv:
     target_year_index = sys.argv.index("--support-augmentation-target-year")
     if target_year_index + 1 >= len(sys.argv):
-        raise ValueError(
-            "--support-augmentation-target-year requires a year"
-        )
+        raise ValueError("--support-augmentation-target-year requires a year")
     SUPPORT_AUGMENTATION_TARGET_YEAR = int(sys.argv[target_year_index + 1])
     del sys.argv[target_year_index : target_year_index + 2]
 
@@ -334,9 +330,7 @@ SUPPORT_AUGMENTATION_START_YEAR = 2075
 if "--support-augmentation-start-year" in sys.argv:
     start_year_index = sys.argv.index("--support-augmentation-start-year")
     if start_year_index + 1 >= len(sys.argv):
-        raise ValueError(
-            "--support-augmentation-start-year requires a year"
-        )
+        raise ValueError("--support-augmentation-start-year requires a year")
     SUPPORT_AUGMENTATION_START_YEAR = int(sys.argv[start_year_index + 1])
     del sys.argv[start_year_index : start_year_index + 2]
 
@@ -344,9 +338,7 @@ SUPPORT_AUGMENTATION_TOP_N_TARGETS = 20
 if "--support-augmentation-top-n-targets" in sys.argv:
     top_n_index = sys.argv.index("--support-augmentation-top-n-targets")
     if top_n_index + 1 >= len(sys.argv):
-        raise ValueError(
-            "--support-augmentation-top-n-targets requires an integer"
-        )
+        raise ValueError("--support-augmentation-top-n-targets requires an integer")
     SUPPORT_AUGMENTATION_TOP_N_TARGETS = int(sys.argv[top_n_index + 1])
     del sys.argv[top_n_index : top_n_index + 2]
 
@@ -354,9 +346,7 @@ SUPPORT_AUGMENTATION_DONORS_PER_TARGET = 5
 if "--support-augmentation-donors-per-target" in sys.argv:
     donor_index = sys.argv.index("--support-augmentation-donors-per-target")
     if donor_index + 1 >= len(sys.argv):
-        raise ValueError(
-            "--support-augmentation-donors-per-target requires an integer"
-        )
+        raise ValueError("--support-augmentation-donors-per-target requires an integer")
     SUPPORT_AUGMENTATION_DONORS_PER_TARGET = int(sys.argv[donor_index + 1])
     del sys.argv[donor_index : donor_index + 2]
 
@@ -364,24 +354,16 @@ SUPPORT_AUGMENTATION_MAX_DISTANCE = 3.0
 if "--support-augmentation-max-distance" in sys.argv:
     distance_index = sys.argv.index("--support-augmentation-max-distance")
     if distance_index + 1 >= len(sys.argv):
-        raise ValueError(
-            "--support-augmentation-max-distance requires a float"
-        )
+        raise ValueError("--support-augmentation-max-distance requires a float")
     SUPPORT_AUGMENTATION_MAX_DISTANCE = float(sys.argv[distance_index + 1])
     del sys.argv[distance_index : distance_index + 2]
 
 SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE = 0.1
 if "--support-augmentation-clone-weight-scale" in sys.argv:
-    weight_scale_index = sys.argv.index(
-        "--support-augmentation-clone-weight-scale"
-    )
+    weight_scale_index = sys.argv.index("--support-augmentation-clone-weight-scale")
     if weight_scale_index + 1 >= len(sys.argv):
-        raise ValueError(
-            "--support-augmentation-clone-weight-scale requires a float"
-        )
-    SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE = float(
-        sys.argv[weight_scale_index + 1]
-    )
+        raise ValueError("--support-augmentation-clone-weight-scale requires a float")
+    SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE = float(sys.argv[weight_scale_index + 1])
     del sys.argv[weight_scale_index : weight_scale_index + 2]
 
 SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE = 0.5
@@ -464,8 +446,7 @@ if SUPPORT_AUGMENTATION_TARGET_YEAR is None:
 if SUPPORT_AUGMENTATION_PROFILE is not None:
     if SUPPORT_AUGMENTATION_PROFILE not in SUPPORTED_AUGMENTATION_PROFILES:
         raise ValueError(
-            "Unsupported support augmentation profile: "
-            f"{SUPPORT_AUGMENTATION_PROFILE}"
+            f"Unsupported support augmentation profile: {SUPPORT_AUGMENTATION_PROFILE}"
         )
     if START_YEAR < SUPPORT_AUGMENTATION_START_YEAR:
         raise ValueError(
@@ -574,10 +555,7 @@ if SUPPORT_AUGMENTATION_PROFILE:
     if SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR:
         print("  Support augmentation target year: each run year")
     else:
-        print(
-            "  Support augmentation target year: "
-            f"{SUPPORT_AUGMENTATION_TARGET_YEAR}"
-        )
+        print(f"  Support augmentation target year: {SUPPORT_AUGMENTATION_TARGET_YEAR}")
     print(
         "  Support augmentation blueprint base-weight scale: "
         f"{SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE}"
@@ -662,9 +640,7 @@ def _build_support_augmentation(
                 "augmented_household_count"
             ],
             "base_person_count": augmentation_report["base_person_count"],
-            "augmented_person_count": augmentation_report[
-                "augmented_person_count"
-            ],
+            "augmented_person_count": augmentation_report["augmented_person_count"],
             "clone_household_count": augmentation_report.get(
                 "clone_household_count", 0
             ),
@@ -692,9 +668,7 @@ def _build_support_augmentation(
             SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE
         ),
         "report_file": (
-            None
-            if SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR
-            else report_path.name
+            None if SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR else report_path.name
         ),
     }
     return augmented_dataset, augmentation_report, year_metadata, manifest_metadata
@@ -715,10 +689,8 @@ def _print_support_augmentation_summary(augmentation_report: dict) -> None:
         "  Successful target clones: "
         f"{sum(report['successful_clone_count'] > 0 for report in augmentation_report['target_reports'])}"
     )
-    print(
-        "  Skipped synthetic targets: "
-        f"{len(augmentation_report['skipped_targets'])}"
-    )
+    print(f"  Skipped synthetic targets: {len(augmentation_report['skipped_targets'])}")
+
 
 # =========================================================================
 # STEP 1: LOAD SSA DEMOGRAPHIC PROJECTIONS
@@ -808,7 +780,9 @@ print("STEP 2: BUILDING HOUSEHOLD AGE COMPOSITION")
 print("=" * 70)
 
 if SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR:
-    print("\nDynamic augmentation enabled; base support will be used before the activation year and rebuilt per-year after that.")
+    print(
+        "\nDynamic augmentation enabled; base support will be used before the activation year and rebuilt per-year after that."
+    )
 
 sim = Microsimulation(dataset=BASE_DATASET)
 X, household_ids_unique, hh_id_to_idx = build_household_age_matrix(sim, n_ages)
@@ -870,9 +844,7 @@ for year_idx in range(n_years):
             _,
         ) = cached
         if year in display_years:
-            print(
-                f"  [DEBUG {year}] Rebuilt support augmentation for run year {year}"
-            )
+            print(f"  [DEBUG {year}] Rebuilt support augmentation for run year {year}")
             _print_support_augmentation_summary(current_support_augmentation_report)
         sim = Microsimulation(
             dataset=current_dataset,
@@ -933,9 +905,7 @@ for year_idx in range(n_years):
         payroll_target = load_taxable_payroll_projections(year)
         if year in display_years:
             payroll_baseline = np.sum(payroll_values * baseline_weights)
-            print(
-                f"  [DEBUG {year}] Payroll cap: ${payroll_cap:,.0f}"
-            )
+            print(f"  [DEBUG {year}] Payroll cap: ${payroll_cap:,.0f}")
             print(
                 f"  [DEBUG {year}] Payroll baseline: ${payroll_baseline / 1e9:.1f}B, target: ${payroll_target / 1e9:.1f}B"
             )
@@ -1015,12 +985,13 @@ for year_idx in range(n_years):
 
     approximate_window = approximate_window_for_year(PROFILE, year)
     age_bucket_size = (
-        approximate_window.age_bucket_size
-        if approximate_window is not None
-        else None
+        approximate_window.age_bucket_size if approximate_window is not None else None
     )
     if age_bucket_size and age_bucket_size > 1:
-        if SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR and current_support_augmentation_report is not None:
+        if (
+            SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR
+            and current_support_augmentation_report is not None
+        ):
             age_bins = build_age_bins(n_ages=n_ages, bucket_size=age_bucket_size)
             X_current = aggregate_household_age_matrix(current_X, age_bins)
             aggregated_target_matrix = aggregate_age_targets(target_matrix, age_bins)
@@ -1053,7 +1024,7 @@ for year_idx in range(n_years):
     )
     blueprint_summary = None
     if (
-            SUPPORT_AUGMENTATION_PROFILE == "donor-backed-composite-v1"
+        SUPPORT_AUGMENTATION_PROFILE == "donor-backed-composite-v1"
         and current_support_augmentation_report is not None
         and year >= SUPPORT_AUGMENTATION_START_YEAR
     ):
@@ -1170,7 +1141,9 @@ for year_idx in range(n_years):
     if validation_issues:
         issue_text = "; ".join(validation_issues)
         if not ALLOW_VALIDATION_FAILURES:
-            raise RuntimeError(f"Calibration validation failed for {year}: {issue_text}")
+            raise RuntimeError(
+                f"Calibration validation failed for {year}: {issue_text}"
+            )
         print(
             f"  [WARN {year}] Validation issues recorded but not fatal: {issue_text}",
             file=sys.stderr,

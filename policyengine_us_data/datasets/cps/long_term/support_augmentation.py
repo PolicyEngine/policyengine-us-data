@@ -19,9 +19,7 @@ PAYROLL_COMPONENTS = (
     "employment_income_before_lsr",
     "self_employment_income_before_lsr",
 )
-PAYROLL_TRANSFER_COMPONENTS = PAYROLL_COMPONENTS + (
-    "w2_wages_from_qualified_business",
-)
+PAYROLL_TRANSFER_COMPONENTS = PAYROLL_COMPONENTS + ("w2_wages_from_qualified_business",)
 ENTITY_ID_COLUMNS = {
     "household": ("household_id", "person_household_id"),
     "family": ("family_id", "person_family_id"),
@@ -103,7 +101,7 @@ class SupportAugmentationProfile:
         | CompositePayrollRule
         | SinglePersonSyntheticGridRule
         | MixedAgeAppendRule,
-        ...
+        ...,
     ]
 
 
@@ -462,7 +460,10 @@ def household_support_summary(
         {_period_column(component, base_year): "sum" for component in SS_COMPONENTS}
     )
     aggregations.update(
-        {_period_column(component, base_year): "sum" for component in PAYROLL_COMPONENTS}
+        {
+            _period_column(component, base_year): "sum"
+            for component in PAYROLL_COMPONENTS
+        }
     )
 
     summary = (
@@ -481,11 +482,9 @@ def household_support_summary(
     summary["payroll_total"] = summary[
         [_period_column(component, base_year) for component in PAYROLL_COMPONENTS]
     ].sum(axis=1)
-    summary["household_size"] = (
-        input_df.groupby(household_id_col, sort=False)
-        [_period_column(PERSON_ID_COLUMN, base_year)]
-        .count()
-    )
+    summary["household_size"] = input_df.groupby(household_id_col, sort=False)[
+        _period_column(PERSON_ID_COLUMN, base_year)
+    ].count()
     return summary
 
 
@@ -673,20 +672,28 @@ def _quantile_pair_households(
 ) -> list[tuple[int, int]]:
     if recipient_ids.empty or donor_ids.empty:
         return []
-    recipient_order = summary.loc[recipient_ids].sort_values(
-        ["ss_total", "baseline_weight", "max_age"]
-    ).index.to_list()
-    donor_order = summary.loc[donor_ids].sort_values(
-        ["payroll_total", "baseline_weight", "max_age"]
-    ).index.to_list()
+    recipient_order = (
+        summary.loc[recipient_ids]
+        .sort_values(["ss_total", "baseline_weight", "max_age"])
+        .index.to_list()
+    )
+    donor_order = (
+        summary.loc[donor_ids]
+        .sort_values(["payroll_total", "baseline_weight", "max_age"])
+        .index.to_list()
+    )
     if len(donor_order) == 1:
         donor_positions = np.zeros(len(recipient_order), dtype=int)
     else:
-        donor_positions = np.linspace(
-            0,
-            len(donor_order) - 1,
-            num=len(recipient_order),
-        ).round().astype(int)
+        donor_positions = (
+            np.linspace(
+                0,
+                len(donor_order) - 1,
+                num=len(recipient_order),
+            )
+            .round()
+            .astype(int)
+        )
     return [
         (int(recipient_household_id), int(donor_order[position]))
         for recipient_household_id, position in zip(recipient_order, donor_positions)
@@ -704,10 +711,9 @@ def _select_payroll_target_row(
     adults = household_rows[household_rows[age_col] >= 18]
     if adults.empty:
         adults = household_rows
-    existing_payroll = (
-        adults.get(employment_col, 0).astype(float)
-        + adults.get(self_employment_col, 0).astype(float)
-    )
+    existing_payroll = adults.get(employment_col, 0).astype(float) + adults.get(
+        self_employment_col, 0
+    ).astype(float)
     if existing_payroll.gt(0).any():
         return existing_payroll.idxmax()
     return adults[age_col].astype(float).idxmax()
@@ -808,9 +814,11 @@ def synthesize_composite_households(
     )
 
     original_recipients = pd.unique(
-        input_df[input_df[household_id_col].isin([recipient for recipient, _ in recipient_pairs])][
-            household_id_col
-        ]
+        input_df[
+            input_df[household_id_col].isin(
+                [recipient for recipient, _ in recipient_pairs]
+            )
+        ][household_id_col]
     )
     cloned_household_ids = pd.unique(clone_df[household_id_col])
     cloned_mapping = {
@@ -936,7 +944,9 @@ def synthesize_single_person_grid_households(
     for target_age in rule.target_ages:
         for ss_target in ss_targets:
             for payroll_target in payroll_targets:
-                base_row = template_records[template_index % len(template_records)].copy()
+                base_row = template_records[
+                    template_index % len(template_records)
+                ].copy()
                 template_index += 1
                 household_id = next_ids["household"]
                 next_ids["household"] += 1
@@ -951,11 +961,13 @@ def synthesize_single_person_grid_households(
                         base_row[column] = entity_id
 
                 base_row[household_id_col] = household_id
-                base_row[_period_column("person_household_id", base_year)] = household_id
+                base_row[_period_column("person_household_id", base_year)] = (
+                    household_id
+                )
                 base_row[person_id_col] = person_id
                 base_row[age_col] = float(target_age)
-                base_row[_period_column("social_security_retirement", base_year)] = float(
-                    ss_target
+                base_row[_period_column("social_security_retirement", base_year)] = (
+                    float(ss_target)
                 )
                 base_row[_period_column("social_security_disability", base_year)] = 0.0
                 base_row[_period_column("social_security_survivors", base_year)] = 0.0
@@ -982,9 +994,7 @@ def synthesize_single_person_grid_households(
             "rule": rule.name,
             "template_household_count": int(len(template_ids)),
             "payroll_donor_household_count": int(len(donor_ids)),
-            "synthetic_household_count": int(
-                synthetic_df[household_id_col].nunique()
-            ),
+            "synthetic_household_count": int(synthetic_df[household_id_col].nunique()),
             "synthetic_person_count": int(len(synthetic_df)),
             "target_age_count": int(len(rule.target_ages)),
             "ss_grid_size": int(len(rule.ss_quantiles)),
@@ -1066,7 +1076,9 @@ def synthesize_mixed_age_households(
             donor_rows,
             base_year=base_year,
         )
-        household_weight = float(cloned_household_rows.iloc[0][_period_column("household_weight", base_year)])
+        household_weight = float(
+            cloned_household_rows.iloc[0][_period_column("household_weight", base_year)]
+        )
         person_weight = (
             float(cloned_household_rows.iloc[0][person_weight_col])
             if person_weight_col in cloned_household_rows.columns
@@ -1092,9 +1104,7 @@ def synthesize_mixed_age_households(
             "rule": rule.name,
             "recipient_household_count": int(len(recipient_ids)),
             "donor_household_count": int(len(donor_ids)),
-            "synthetic_household_count": int(
-                synthetic_df[household_id_col].nunique()
-            ),
+            "synthetic_household_count": int(synthetic_df[household_id_col].nunique()),
             "synthetic_person_count": int(len(synthetic_df)),
             "donor_age_shift": rule.donor_age_shift,
         },
@@ -1152,12 +1162,14 @@ def augment_input_dataframe(
             continue
 
         if isinstance(rule, CompositePayrollRule):
-            composite_df, id_counters, composite_report = synthesize_composite_households(
-                input_df,
-                base_year=base_year,
-                summary=summary,
-                rule=rule,
-                id_counters=id_counters,
+            composite_df, id_counters, composite_report = (
+                synthesize_composite_households(
+                    input_df,
+                    base_year=base_year,
+                    summary=summary,
+                    rule=rule,
+                    id_counters=id_counters,
+                )
             )
             clone_frames.append(composite_df)
             rule_reports.append(composite_report)
@@ -1175,12 +1187,14 @@ def augment_input_dataframe(
             rule_reports.append(mixed_report)
             continue
 
-        synthetic_df, id_counters, synthetic_report = synthesize_single_person_grid_households(
-            input_df,
-            base_year=base_year,
-            summary=summary,
-            rule=rule,
-            id_counters=id_counters,
+        synthetic_df, id_counters, synthetic_report = (
+            synthesize_single_person_grid_households(
+                input_df,
+                base_year=base_year,
+                summary=summary,
+                rule=rule,
+                id_counters=id_counters,
+            )
         )
         clone_frames.append(synthetic_df)
         rule_reports.append(synthetic_report)

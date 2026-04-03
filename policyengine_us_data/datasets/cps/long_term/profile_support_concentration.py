@@ -30,7 +30,11 @@ def _build_household_lookup(household_ids: np.ndarray) -> tuple[np.ndarray, np.n
     return sorted_ids, order
 
 
-def _household_index(sorted_household_ids: np.ndarray, order: np.ndarray, person_household_ids: np.ndarray) -> np.ndarray:
+def _household_index(
+    sorted_household_ids: np.ndarray,
+    order: np.ndarray,
+    person_household_ids: np.ndarray,
+) -> np.ndarray:
     positions = np.searchsorted(sorted_household_ids, person_household_ids)
     if np.any(positions >= len(sorted_household_ids)):
         raise ValueError("Person household ids exceed household id support")
@@ -43,8 +47,12 @@ def _household_index(sorted_household_ids: np.ndarray, order: np.ndarray, person
 def _load_year(path: Path, year: int) -> dict[str, np.ndarray]:
     with h5py.File(path, "r") as store:
         household_ids = _read_year_array(store, "household_id", year).astype(np.int64)
-        household_weights = _read_year_array(store, "household_weight", year).astype(float)
-        person_household_ids = _read_year_array(store, "person_household_id", year).astype(np.int64)
+        household_weights = _read_year_array(store, "household_weight", year).astype(
+            float
+        )
+        person_household_ids = _read_year_array(
+            store, "person_household_id", year
+        ).astype(np.int64)
         ages = _read_year_array(store, "age", year).astype(float)
         payroll = np.zeros_like(ages, dtype=float)
         for component in PAYROLL_COMPONENTS:
@@ -117,8 +125,12 @@ def profile_support(path: Path, year: int, *, top_n: int) -> dict[str, object]:
         "positive_household_count": int(positive_mask.sum()),
         "positive_household_pct": float(positive_mask.mean() * 100),
         "effective_sample_size": _effective_sample_size(household_weights),
-        "top_10_weight_share_pct": float(sorted_weights[-10:].sum() / household_weights.sum() * 100),
-        "top_100_weight_share_pct": float(sorted_weights[-100:].sum() / household_weights.sum() * 100),
+        "top_10_weight_share_pct": float(
+            sorted_weights[-10:].sum() / household_weights.sum() * 100
+        ),
+        "top_100_weight_share_pct": float(
+            sorted_weights[-100:].sum() / household_weights.sum() * 100
+        ),
         "weighted_nonworking_share_pct": float(
             person_weights[overall_nonworking].sum() / person_weights.sum() * 100
         ),
@@ -137,9 +149,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Profile late-year support concentration in projected household datasets."
     )
-    parser.add_argument("dataset", type=Path, help="Projected year-specific H5 dataset.")
+    parser.add_argument(
+        "dataset", type=Path, help="Projected year-specific H5 dataset."
+    )
     parser.add_argument("year", type=int, help="Projection year stored in the dataset.")
-    parser.add_argument("--top-n", type=int, default=20, help="Number of top households to emit.")
+    parser.add_argument(
+        "--top-n", type=int, default=20, help="Number of top households to emit."
+    )
     args = parser.parse_args()
 
     report = profile_support(args.dataset, args.year, top_n=args.top_n)

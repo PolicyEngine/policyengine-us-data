@@ -36,7 +36,9 @@ def main() -> int:
             "report_file named in metadata, or <output_dir>/support_augmentation_report.json."
         ),
     )
-    parser.add_argument("--year", type=int, required=True, help="Output year to inspect.")
+    parser.add_argument(
+        "--year", type=int, required=True, help="Output year to inspect."
+    )
     parser.add_argument(
         "--age-bucket-size",
         type=int,

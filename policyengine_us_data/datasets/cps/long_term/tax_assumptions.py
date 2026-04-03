@@ -175,4 +175,3 @@ def get_long_run_tax_assumption_metadata(
     metadata = dict(TRUSTEES_CORE_THRESHOLD_ASSUMPTION)
     metadata["end_year"] = int(end_year)
     return metadata
-

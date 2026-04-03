@@ -226,12 +226,12 @@ def test_support_augmentation_synthesizes_composite_payroll_household():
         augmented_df["household_id__2024"].isin(cloned_household_ids)
     ]
     assert cloned_rows["age__2024"].max() == pytest.approx(80.0)
-    assert cloned_rows[
-        "social_security_retirement__2024"
-    ].sum() == pytest.approx(30_000.0)
-    assert cloned_rows[
-        "employment_income_before_lsr__2024"
-    ].sum() == pytest.approx(37_000.0)
+    assert cloned_rows["social_security_retirement__2024"].sum() == pytest.approx(
+        30_000.0
+    )
+    assert cloned_rows["employment_income_before_lsr__2024"].sum() == pytest.approx(
+        37_000.0
+    )
 
 
 def test_support_augmentation_appends_single_person_synthetic_grid_households():
@@ -288,20 +288,22 @@ def test_support_augmentation_appends_single_person_synthetic_grid_households():
     )
     assert report["base_household_count"] == 3
     assert report["augmented_household_count"] == 5
-    synthetic_household_ids = set(
-        augmented_df["household_id__2024"].unique()
-    ) - {1, 2, 3}
+    synthetic_household_ids = set(augmented_df["household_id__2024"].unique()) - {
+        1,
+        2,
+        3,
+    }
     assert len(synthetic_household_ids) == 2
     synthetic_rows = augmented_df[
         augmented_df["household_id__2024"].isin(synthetic_household_ids)
     ]
     assert set(synthetic_rows["age__2024"].tolist()) == {77.0, 85.0}
-    assert set(
-        synthetic_rows["social_security_retirement__2024"].tolist()
-    ) == {22_000.0}
-    assert set(
-        synthetic_rows["employment_income_before_lsr__2024"].tolist()
-    ) == {50_000.0}
+    assert set(synthetic_rows["social_security_retirement__2024"].tolist()) == {
+        22_000.0
+    }
+    assert set(synthetic_rows["employment_income_before_lsr__2024"].tolist()) == {
+        50_000.0
+    }
 
 
 def test_support_augmentation_appends_mixed_age_household():
@@ -333,9 +335,11 @@ def test_support_augmentation_appends_mixed_age_household():
     )
     assert report["base_household_count"] == 3
     assert report["augmented_household_count"] == 4
-    synthetic_household_ids = set(
-        augmented_df["household_id__2024"].unique()
-    ) - {1, 2, 3}
+    synthetic_household_ids = set(augmented_df["household_id__2024"].unique()) - {
+        1,
+        2,
+        3,
+    }
     assert len(synthetic_household_ids) == 1
     synthetic_rows = augmented_df[
         augmented_df["household_id__2024"].isin(synthetic_household_ids)
@@ -459,9 +463,7 @@ def test_validate_projected_social_security_cap_rejects_flat_tail():
         return SimpleNamespace(
             gov=SimpleNamespace(
                 irs=SimpleNamespace(
-                    payroll=SimpleNamespace(
-                        social_security=SimpleNamespace(cap=cap)
-                    )
+                    payroll=SimpleNamespace(social_security=SimpleNamespace(cap=cap))
                 )
             )
         )
@@ -918,9 +920,7 @@ def test_entropy_calibration_uses_lp_exact_fallback_even_before_approximate_wind
     monkeypatch.setattr(
         calibration_module,
         "calibrate_entropy",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            RuntimeError("entropy stalled")
-        ),
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("entropy stalled")),
     )
     monkeypatch.setattr(
         calibration_module,
@@ -968,9 +968,7 @@ def test_nonnegative_feasibility_diagnostic_distinguishes_feasible_and_infeasibl
         ]
     )
     infeasible_targets = np.array([1.0, 1.0, 3.0])
-    infeasible = assess_nonnegative_feasibility(
-        infeasible_A, infeasible_targets
-    )
+    infeasible = assess_nonnegative_feasibility(infeasible_A, infeasible_targets)
     assert infeasible["success"] is True
     assert infeasible["best_case_max_pct_error"] > 10.0
 
@@ -1163,11 +1161,12 @@ def test_manifest_persists_support_augmentation_metadata(tmp_path):
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert metadata["support_augmentation"]["name"] == "donor-backed-synthetic-v1"
-    assert metadata["support_augmentation"]["report_file"] == "support_augmentation_report.json"
     assert (
-        manifest["support_augmentation"]["report_summary"][
-            "augmented_household_count"
-        ]
+        metadata["support_augmentation"]["report_file"]
+        == "support_augmentation_report.json"
+    )
+    assert (
+        manifest["support_augmentation"]["report_summary"]["augmented_household_count"]
         == 41326
     )
 

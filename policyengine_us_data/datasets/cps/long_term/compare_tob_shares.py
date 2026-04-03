@@ -83,9 +83,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "paths",
         nargs="+",
-        help=(
-            "Metadata files or directories containing *.metadata.json sidecars."
-        ),
+        help=("Metadata files or directories containing *.metadata.json sidecars."),
     )
     parser.add_argument(
         "--format",

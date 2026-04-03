@@ -36,6 +36,8 @@ def _dataset_available():
     reason="Base dataset or DB not available",
 )
 def test_xw_matches_stacked_sim():
+    if not _dataset_available():
+        pytest.skip("Base dataset or DB not available at runtime")
     from policyengine_us import Microsimulation
     from policyengine_us_data.calibration.clone_and_assign import (
         assign_random_geography,

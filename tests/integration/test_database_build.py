@@ -40,7 +40,7 @@ PIPELINE_SCRIPTS = [
     ("db/validate_database.py", []),
 ]
 
-PKG_ROOT = Path(__file__).resolve().parent.parent  # policyengine_us_data/
+PKG_ROOT = STORAGE_FOLDER.parent
 
 
 def _run_script(

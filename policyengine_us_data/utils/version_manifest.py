@@ -25,6 +25,11 @@ from huggingface_hub import (
     hf_hub_download,
 )
 
+from policyengine_us_data.utils.policyengine import (
+    PolicyEngineUSBuildInfo,
+    get_policyengine_us_build_info,
+)
+
 # -- Configuration -------------------------------------------------
 
 REGISTRY_BLOB = "version_manifest.json"
@@ -90,6 +95,7 @@ class VersionManifest:
     roll_back_version: Optional[str] = None
     pipeline_run_id: Optional[str] = None
     diagnostics_path: Optional[str] = None
+    policyengine_us: Optional[PolicyEngineUSBuildInfo] = None
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -106,6 +112,8 @@ class VersionManifest:
             result["pipeline_run_id"] = self.pipeline_run_id
         if self.diagnostics_path is not None:
             result["diagnostics_path"] = self.diagnostics_path
+        if self.policyengine_us is not None:
+            result["policyengine_us"] = self.policyengine_us.to_dict()
         return result
 
     @classmethod
@@ -120,6 +128,11 @@ class VersionManifest:
             roll_back_version=data.get("roll_back_version"),
             pipeline_run_id=data.get("pipeline_run_id"),
             diagnostics_path=data.get("diagnostics_path"),
+            policyengine_us=(
+                PolicyEngineUSBuildInfo.from_dict(data["policyengine_us"])
+                if data.get("policyengine_us")
+                else None
+            ),
         )
 
 
@@ -334,6 +347,7 @@ def build_manifest(
     version: str,
     blob_names: list[str],
     hf_info: Optional[HFVersionInfo] = None,
+    policyengine_us_info: Optional[PolicyEngineUSBuildInfo] = None,
 ) -> VersionManifest:
     """Build a version manifest by reading generation
     numbers from uploaded blobs.
@@ -365,6 +379,7 @@ def build_manifest(
             bucket=bucket.name,
             generations=generations,
         ),
+        policyengine_us=policyengine_us_info or get_policyengine_us_build_info(),
     )
 
 
@@ -515,6 +530,7 @@ def rollback(
         ),
         special_operation="roll-back",
         roll_back_version=target_version,
+        policyengine_us=get_policyengine_us_build_info(),
     )
     upload_manifest(manifest)
 

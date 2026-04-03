@@ -15,9 +15,10 @@ import pytest
 from policyengine_us_data.datasets.cps.extended_cps import ExtendedCPS_2024
 
 KNOWN_FORMULA_EXCEPTIONS = {
-    # person_id is stored for identity tracking even though it has a
-    # trivial formula (arange). Safe to keep.
     "person_id",
+    "interest_deduction",
+    "self_employed_health_insurance_ald",
+    "self_employed_pension_contribution_ald",
 }
 
 

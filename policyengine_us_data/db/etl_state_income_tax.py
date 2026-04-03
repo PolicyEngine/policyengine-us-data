@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 CENSUS_STC_FLAT_FILE_URLS = {
     2023: "https://www2.census.gov/programs-surveys/stc/datasets/2023/FY2023-Flat-File.txt",
 }
+LATEST_STC_YEAR = max(CENSUS_STC_FLAT_FILE_URLS)
 CENSUS_STC_INDIVIDUAL_INCOME_TAX_ITEM = "T40"
 CENSUS_STC_NOT_AVAILABLE = "X"
 
@@ -179,7 +180,9 @@ def transform_state_income_tax_data(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
+def load_state_income_tax_data(
+    df: pd.DataFrame, year: int, source_year: int | None = None
+) -> dict:
     """
     Load state income tax targets into the calibration database.
 
@@ -241,7 +244,7 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
                     value=row["income_tax_collections"],
                     active=True,
                     source="Census STC",
-                    notes=f"Census STC FY{year}",
+                    notes=f"Census STC FY{source_year or year}",
                 )
             )
 
@@ -263,14 +266,22 @@ def main():
     )
     _, year = etl_argparser("ETL for state income tax calibration targets")
 
-    logger.info(f"Extracting Census STC data for FY{year}...")
-    raw_df = extract_state_income_tax_data(year)
+    data_year = min(year, LATEST_STC_YEAR)
+    if data_year != year:
+        logger.warning(
+            f"Census STC data not available for {year}; "
+            f"using latest available year ({LATEST_STC_YEAR})"
+        )
+    logger.info(f"Extracting Census STC data for FY{data_year}...")
+    raw_df = extract_state_income_tax_data(data_year)
 
     logger.info("Transforming data...")
     transformed_df = transform_state_income_tax_data(raw_df)
 
     logger.info(f"Loading {len(transformed_df)} state income tax targets...")
-    stratum_lookup = load_state_income_tax_data(transformed_df, year)
+    stratum_lookup = load_state_income_tax_data(
+        transformed_df, year, source_year=data_year
+    )
 
     # Print summary
     total_collections = transformed_df["income_tax_collections"].sum()

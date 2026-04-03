@@ -84,7 +84,7 @@ def reweight(
         optimizer.zero_grad()
         masked = torch.exp(weights) * gates()
         l_main = loss(masked)
-        l = l_main + l0_lambda * gates.get_penalty()
+        total_loss = l_main + l0_lambda * gates.get_penalty()
         if (log_path is not None) and (i % 10 == 0):
             gates.eval()
             estimates = (torch.exp(weights) * gates()) @ loss_matrix
@@ -108,10 +108,12 @@ def reweight(
         if (log_path is not None) and (i % 1000 == 0):
             performance.to_csv(log_path, index=False)
         if start_loss is None:
-            start_loss = l.item()
-        loss_rel_change = (l.item() - start_loss) / start_loss
-        l.backward()
-        iterator.set_postfix({"loss": l.item(), "loss_rel_change": loss_rel_change})
+            start_loss = total_loss.item()
+        loss_rel_change = (total_loss.item() - start_loss) / start_loss
+        total_loss.backward()
+        iterator.set_postfix(
+            {"loss": total_loss.item(), "loss_rel_change": loss_rel_change}
+        )
         optimizer.step()
         if log_path is not None:
             performance.to_csv(log_path, index=False)
@@ -248,6 +250,7 @@ class EnhancedCPS_2024(EnhancedCPS):
     input_dataset = ExtendedCPS_2024_Half
     start_year = 2024
     end_year = 2024
+    time_period = 2024
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
     file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"

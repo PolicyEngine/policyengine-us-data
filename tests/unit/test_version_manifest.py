@@ -41,6 +41,8 @@ class TestVersionManifestSerialization:
         assert result["hf"]["commit"] == "abc123def456"
         assert result["gcs"]["bucket"] == ("policyengine-us-data")
         assert result["gcs"]["generations"]["enhanced_cps_2024.h5"] == 1710203948123456
+        assert result["policyengine_us"]["version"] == "1.587.0"
+        assert result["policyengine_us"]["git_commit"] == "deadbeef1234"
 
     def test_from_dict(self, sample_manifest):
         data = {
@@ -66,6 +68,7 @@ class TestVersionManifestSerialization:
         assert result.hf.repo == ("policyengine/policyengine-us-data")
         assert result.gcs.generations["enhanced_cps_2024.h5"] == 1710203948123456
         assert result.gcs.bucket == "policyengine-us-data"
+        assert result.policyengine_us is None
 
     def test_roundtrip(self, sample_manifest):
         roundtripped = VersionManifest.from_dict(sample_manifest.to_dict())
@@ -76,6 +79,7 @@ class TestVersionManifestSerialization:
         assert roundtripped.hf.commit == (sample_manifest.hf.commit)
         assert roundtripped.gcs.bucket == (sample_manifest.gcs.bucket)
         assert roundtripped.gcs.generations == (sample_manifest.gcs.generations)
+        assert roundtripped.policyengine_us == sample_manifest.policyengine_us
 
     def test_without_hf(self, sample_generations):
         manifest = VersionManifest(
@@ -240,8 +244,16 @@ class TestVersionRegistrySerialization:
 
 
 class TestBuildManifest:
+    @patch(f"{_MOD}.get_policyengine_us_build_info")
     @patch(f"{_MOD}._get_gcs_bucket")
-    def test_structure(self, mock_get_bucket, mock_bucket):
+    def test_structure(
+        self,
+        mock_get_bucket,
+        mock_get_policyengine_us_build_info,
+        mock_bucket,
+        sample_policyengine_us_info,
+    ):
+        mock_get_policyengine_us_build_info.return_value = sample_policyengine_us_info
         mock_get_bucket.return_value = mock_bucket
         blob_names = [
             "file_a.h5",
@@ -266,9 +278,18 @@ class TestBuildManifest:
         }
         assert result.gcs.bucket == "policyengine-us-data"
         assert result.hf is None
+        assert result.policyengine_us == sample_policyengine_us_info
 
+    @patch(f"{_MOD}.get_policyengine_us_build_info")
     @patch(f"{_MOD}._get_gcs_bucket")
-    def test_with_subdirectories(self, mock_get_bucket, mock_bucket):
+    def test_with_subdirectories(
+        self,
+        mock_get_bucket,
+        mock_get_policyengine_us_build_info,
+        mock_bucket,
+        sample_policyengine_us_info,
+    ):
+        mock_get_policyengine_us_build_info.return_value = sample_policyengine_us_info
         mock_get_bucket.return_value = mock_bucket
         blob_names = [
             "states/AL.h5",
@@ -286,13 +307,17 @@ class TestBuildManifest:
         assert result.gcs.generations["states/AL.h5"] == 111
         assert result.gcs.generations["districts/CA-01.h5"] == 222
 
+    @patch(f"{_MOD}.get_policyengine_us_build_info")
     @patch(f"{_MOD}._get_gcs_bucket")
     def test_with_hf_info(
         self,
         mock_get_bucket,
+        mock_get_policyengine_us_build_info,
         mock_bucket,
         sample_hf_info,
+        sample_policyengine_us_info,
     ):
+        mock_get_policyengine_us_build_info.return_value = sample_policyengine_us_info
         mock_get_bucket.return_value = mock_bucket
         mock_bucket.get_blob.return_value = make_mock_blob(999)
 
@@ -305,9 +330,18 @@ class TestBuildManifest:
         assert result.hf is not None
         assert result.hf.commit == "abc123def456"
         assert result.hf.repo == ("policyengine/policyengine-us-data")
+        assert result.policyengine_us == sample_policyengine_us_info
 
+    @patch(f"{_MOD}.get_policyengine_us_build_info")
     @patch(f"{_MOD}._get_gcs_bucket")
-    def test_missing_blob_raises(self, mock_get_bucket, mock_bucket):
+    def test_missing_blob_raises(
+        self,
+        mock_get_bucket,
+        mock_get_policyengine_us_build_info,
+        mock_bucket,
+        sample_policyengine_us_info,
+    ):
+        mock_get_policyengine_us_build_info.return_value = sample_policyengine_us_info
         mock_get_bucket.return_value = mock_bucket
         mock_bucket.get_blob.return_value = None
 

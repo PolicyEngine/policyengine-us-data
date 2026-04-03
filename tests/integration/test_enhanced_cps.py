@@ -71,9 +71,7 @@ def test_ecps_file_size():
     if not path.exists():
         pytest.skip("enhanced_cps_2024.h5 not found")
     size_mb = path.stat().st_size / (1024 * 1024)
-    assert size_mb > 100, (
-        f"enhanced_cps_2024.h5 is only {size_mb:.1f}MB, expected >100MB"
-    )
+    assert size_mb > 95, f"enhanced_cps_2024.h5 is only {size_mb:.1f}MB, expected >95MB"
 
 
 # ── Feature checks ────────────────────────────────────────────

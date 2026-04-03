@@ -17,7 +17,7 @@ for _p in (_baked, _local):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from modal_app.images import cpu_image as image
+from modal_app.images import cpu_image as image  # noqa: E402
 
 app = modal.App("policyengine-us-data")
 
@@ -231,6 +231,34 @@ def run_script(
         subprocess.run(cmd, check=True, env=run_env)
     print(f"Completed {script_path}")
     return script_path
+
+
+def validate_and_maybe_upload_datasets(
+    *,
+    upload: bool,
+    skip_enhanced_cps: bool,
+    env: dict,
+) -> None:
+    validation_args = ["--validate-only"]
+    if skip_enhanced_cps:
+        validation_args.append("--no-require-enhanced-cps")
+
+    print("=== Validating built datasets ===")
+    run_script(
+        "policyengine_us_data/storage/upload_completed_datasets.py",
+        args=validation_args,
+        env=env,
+    )
+
+    if upload:
+        upload_args = []
+        if skip_enhanced_cps:
+            upload_args.append("--no-require-enhanced-cps")
+        run_script(
+            "policyengine_us_data/storage/upload_completed_datasets.py",
+            args=upload_args,
+            env=env,
+        )
 
 
 def run_script_with_checkpoint(
@@ -634,16 +662,11 @@ def build_datasets(
         print("=== Running tests with checkpointing ===")
         run_tests_with_checkpoints(branch, checkpoint_volume, env)
 
-    # Upload if requested (HF publication only)
-    if upload:
-        upload_args = []
-        if skip_enhanced_cps:
-            upload_args.append("--no-require-enhanced-cps")
-        run_script(
-            "policyengine_us_data/storage/upload_completed_datasets.py",
-            args=upload_args,
-            env=env,
-        )
+    validate_and_maybe_upload_datasets(
+        upload=upload,
+        skip_enhanced_cps=skip_enhanced_cps,
+        env=env,
+    )
 
     # Clean up checkpoints after successful completion
     cleanup_checkpoints(branch, checkpoint_volume)

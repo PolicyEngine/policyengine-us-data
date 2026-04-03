@@ -68,12 +68,28 @@ def load_global_block_distribution():
 
 
 def _build_agi_block_probs(cds, pop_probs, cd_agi_targets):
-    """Multiply population block probs by CD AGI target weights."""
+    """Reweight block probabilities to match district AGI target shares.
+
+    District totals should be proportional to ``cd_agi_targets``, while
+    block shares within each district should preserve the original
+    population-weighted distribution.
+    """
     agi_weights = np.array([cd_agi_targets.get(cd, 0.0) for cd in cds])
     agi_weights = np.maximum(agi_weights, 0.0)
     if agi_weights.sum() == 0:
         return pop_probs
-    agi_probs = pop_probs * agi_weights
+
+    district_pop_mass = (
+        pd.Series(pop_probs, copy=False).groupby(cds).transform("sum").to_numpy()
+    )
+    agi_probs = np.divide(
+        pop_probs * agi_weights,
+        district_pop_mass,
+        out=np.zeros_like(pop_probs, dtype=np.float64),
+        where=district_pop_mass > 0,
+    )
+    if agi_probs.sum() == 0:
+        return pop_probs
     return agi_probs / agi_probs.sum()
 
 

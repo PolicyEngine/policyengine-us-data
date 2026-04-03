@@ -931,28 +931,19 @@ def run_calibration(
         time_period,
     )
 
+    db_uri = f"sqlite:///{db_path}"
+    builder = UnifiedMatrixBuilder(
+        db_uri=db_uri,
+        time_period=time_period,
+    )
+
     # Compute base household AGI for conditional geographic assignment
     base_agi = sim.calculate("adjusted_gross_income", map_to="household").values.astype(
         np.float64
     )
 
     # Load CD-level AGI targets from database
-    import sqlite3
-
-    from policyengine_us_data.storage import STORAGE_FOLDER
-
-    db_path = str(STORAGE_FOLDER / "calibration" / "policy_data.db")
-    conn = sqlite3.connect(db_path)
-    rows = conn.execute(
-        "SELECT sc.value, t.value "
-        "FROM targets t "
-        "JOIN stratum_constraints sc ON t.stratum_id = sc.stratum_id "
-        "WHERE t.variable = 'adjusted_gross_income' "
-        "AND sc.constraint_variable = 'congressional_district_geoid' "
-        "AND t.active = 1"
-    ).fetchall()
-    conn.close()
-    cd_agi_targets = {str(row[0]): float(row[1]) for row in rows}
+    cd_agi_targets = builder.get_district_agi_targets()
     logger.info(
         "Loaded %d CD AGI targets for conditional assignment",
         len(cd_agi_targets),
@@ -1033,12 +1024,7 @@ def run_calibration(
     # Step 6: Build sparse calibration matrix
     do_rerandomize = not skip_takeup_rerandomize
     t_matrix = time.time()
-    db_uri = f"sqlite:///{db_path}"
-    builder = UnifiedMatrixBuilder(
-        db_uri=db_uri,
-        time_period=time_period,
-        dataset_path=dataset_for_matrix,
-    )
+    builder.dataset_path = dataset_for_matrix
     targets_df, X_sparse, target_names = builder.build_matrix(
         geography=geography,
         sim=sim,

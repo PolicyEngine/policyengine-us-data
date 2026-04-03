@@ -48,24 +48,24 @@ def collect_files(local_dir: Path, area_types: list) -> list:
     return files
 
 
-def stage(files: list, version: str):
+def stage(files: list, version: str, run_id: str = ""):
     logger.info("Uploading %d files to HF staging/...", len(files))
-    n = upload_to_staging_hf(files, version=version)
+    n = upload_to_staging_hf(files, version=version, run_id=run_id)
     logger.info("Staged %d files", n)
 
 
-def promote(rel_paths: list, version: str):
+def promote(rel_paths: list, version: str, run_id: str = ""):
     logger.info(
         "Promoting %d files from staging/ to production...",
         len(rel_paths),
     )
-    promote_staging_to_production_hf(rel_paths, version=version)
+    promote_staging_to_production_hf(rel_paths, version=version, run_id=run_id)
 
     logger.info("Uploading %d files to GCS from HF staging...", len(rel_paths))
-    upload_from_hf_staging_to_gcs(rel_paths, version=version)
+    upload_from_hf_staging_to_gcs(rel_paths, version=version, run_id=run_id)
 
     logger.info("Cleaning up staging/...")
-    cleanup_staging_hf(rel_paths, version=version)
+    cleanup_staging_hf(rel_paths, version=version, run_id=run_id)
     logger.info("Done — %d files promoted to production", len(rel_paths))
 
 
@@ -98,6 +98,11 @@ def parse_args(argv=None):
         action="store_true",
         help="Promote previously staged files (skip upload to staging)",
     )
+    parser.add_argument(
+        "--run-id",
+        default="",
+        help="Run ID to scope HF staging paths (e.g. staging/{run_id}/...)",
+    )
     return parser.parse_args(argv)
 
 
@@ -123,13 +128,15 @@ def main(argv=None):
 
     rel_paths = [rp for _, rp in files]
 
+    run_id = args.run_id
+
     if args.promote_only:
-        promote(rel_paths, version)
+        promote(rel_paths, version, run_id=run_id)
     elif args.stage_only:
-        stage(files, version)
+        stage(files, version, run_id=run_id)
     else:
-        stage(files, version)
-        promote(rel_paths, version)
+        stage(files, version, run_id=run_id)
+        promote(rel_paths, version, run_id=run_id)
 
 
 if __name__ == "__main__":

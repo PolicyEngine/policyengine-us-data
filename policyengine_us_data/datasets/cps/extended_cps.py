@@ -6,15 +6,30 @@ import numpy as np
 import pandas as pd
 from policyengine_core.data import Dataset
 
-from policyengine_us_data.datasets.cps.cps import *  # noqa: F403
-from policyengine_us_data.datasets.puf import *  # noqa: F403
+from policyengine_us_data.datasets.cps.cps import CPS, CPS_2024, CPS_2024_Full
+from policyengine_us_data.datasets.org import (
+    ORG_IMPUTED_VARIABLES,
+    apply_org_domain_constraints,
+)
+from policyengine_us_data.datasets.puf import PUF, PUF_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.mortgage_interest import (
+    STRUCTURAL_MORTGAGE_VARIABLES,
+    convert_mortgage_interest_to_structural_inputs,
+    impute_tax_unit_mortgage_balance_hints,
+)
+from policyengine_us_data.utils.policyengine import has_policyengine_us_variables
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
     get_se_pension_limits,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _supports_structural_mortgage_inputs() -> bool:
+    return has_policyengine_us_variables(*STRUCTURAL_MORTGAGE_VARIABLES)
+
 
 # CPS-only variables that should be QRF-imputed for the PUF clone half
 # instead of naively duplicated from the CPS donor. These are
@@ -74,6 +89,10 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     # Hours/employment
     "weekly_hours_worked",
     "hours_worked_last_week",
+    # ORG labor-market variables
+    "hourly_wage",
+    "is_paid_hourly",
+    "is_union_member_or_covered",
     # Previous year income
     "employment_income_last_year",
     "self_employment_income_last_year",
@@ -325,6 +344,28 @@ def _apply_post_processing(predictions, X_test, time_period, data):
         for col in ss_cols:
             predictions[col] = reconciled[col]
 
+    org_cols = [c for c in predictions.columns if c in ORG_IMPUTED_VARIABLES]
+    if org_cols:
+        n_half = len(data["person_id"][time_period]) // 2
+        weekly_hours = (
+            predictions["weekly_hours_worked"].values
+            if "weekly_hours_worked" in predictions.columns
+            else data["weekly_hours_worked"][time_period][n_half:]
+        )
+        receiver = pd.DataFrame(
+            {
+                "employment_income": X_test["employment_income"].values,
+                "weekly_hours_worked": np.asarray(weekly_hours, dtype=np.float32),
+            }
+        )
+        constrained = apply_org_domain_constraints(
+            predictions[org_cols],
+            receiver,
+            self_employment_income=X_test["self_employment_income"].values,
+        )
+        for col in org_cols:
+            predictions[col] = constrained[col]
+
     return predictions
 
 
@@ -377,6 +418,11 @@ def _splice_cps_only_predictions(
             )
 
         n_half = entity_half_lengths.get(entity_key, len(data[var][time_period]) // 2)
+        if len(pred_values) != n_half:
+            raise ValueError(
+                f"Stage-2 prediction for '{var}' has {len(pred_values)} "
+                f"entries but expected {n_half} (half of {entity_key})"
+            )
         values = data[var][time_period]
         # First half: keep original CPS values.
         # Second half: replace with QRF predictions.
@@ -445,6 +491,15 @@ class ExtendedCPS(Dataset):
         )
 
         new_data = self._rename_imputed_to_inputs(new_data)
+        if _supports_structural_mortgage_inputs():
+            new_data = impute_tax_unit_mortgage_balance_hints(
+                new_data,
+                self.time_period,
+            )
+            new_data = convert_mortgage_interest_to_structural_inputs(
+                new_data,
+                self.time_period,
+            )
         new_data = self._drop_formula_variables(new_data)
         self.save_dataset(new_data)
 
@@ -472,10 +527,16 @@ class ExtendedCPS(Dataset):
     # due to entity shape mismatch.
     _KEEP_FORMULA_VARS = {
         "person_id",
-        "interest_deduction",
         "self_employed_pension_contribution_ald",
         "self_employed_health_insurance_ald",
     }
+
+    @classmethod
+    def _keep_formula_vars(cls):
+        keep = set(cls._KEEP_FORMULA_VARS)
+        if not _supports_structural_mortgage_inputs():
+            keep.add("interest_deduction")
+        return keep
 
     # QRF imputes formula-level variables (e.g. taxable_pension_income)
     # but we must store them under leaf input names so
@@ -526,7 +587,7 @@ class ExtendedCPS(Dataset):
             if (hasattr(var, "formulas") and len(var.formulas) > 0)
             or getattr(var, "adds", None)
             or getattr(var, "subtracts", None)
-        } - cls._KEEP_FORMULA_VARS
+        } - cls._keep_formula_vars()
         dropped = sorted(set(data.keys()) & formula_vars)
         if dropped:
             logger.info(

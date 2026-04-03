@@ -10,7 +10,10 @@ import pandas as pd
 import numpy as np
 import os
 import h5py
-from typing import List, Optional, Union, Type
+from typing import Type
+from filelock import FileLock
+
+from policyengine_us_data.utils.downsample import downsample_dataset_arrays
 
 
 class SCF(Dataset):
@@ -24,6 +27,10 @@ class SCF(Dataset):
     frac: float | None = 1
 
     def generate(self):
+        with self._lock():
+            self._generate_unlocked()
+
+    def _generate_unlocked(self):
         """Generates the SCF dataset for PolicyEngine US microsimulations.
 
         Downloads the raw SCF data and processes it for use in PolicyEngine.
@@ -64,6 +71,10 @@ class SCF(Dataset):
             self.downsample(frac=self.frac)
 
     def load_dataset(self):
+        with self._lock():
+            return self._load_dataset_unlocked()
+
+    def _load_dataset_unlocked(self):
         """Loads the processed SCF dataset.
 
         Returns:
@@ -72,7 +83,7 @@ class SCF(Dataset):
         # Check if file exists
         if not os.path.exists(self.file_path):
             print(f"SCF dataset file not found. Generating it.")
-            self.generate()
+            self._generate_unlocked()
 
         # Open the HDF5 file and handle potential errors
         try:
@@ -94,7 +105,7 @@ class SCF(Dataset):
                 print("Regenerating dataset...")
                 if os.path.exists(self.file_path):
                     os.remove(self.file_path)
-                self.generate()
+                self._generate_unlocked()
                 with h5py.File(self.file_path, "r") as f:
                     return {key: f[key][()] for key in f.keys()}
 
@@ -106,36 +117,19 @@ class SCF(Dataset):
         """
         from policyengine_us import Microsimulation
 
-        # Store original dtypes before modifying
         original_data: dict = self.load_dataset()
-        original_dtypes = {key: original_data[key].dtype for key in original_data}
-
         sim = Microsimulation(dataset=self)
         sim.subsample(frac=frac)
+        self.save_dataset(
+            downsample_dataset_arrays(
+                original_data=original_data,
+                sim=sim,
+                dataset_name=self.name,
+            )
+        )
 
-        for key in original_data:
-            if key not in sim.tax_benefit_system.variables:
-                continue
-            values = sim.calculate(key).values
-
-            # Preserve the original dtype if possible
-            if (
-                key in original_dtypes
-                and hasattr(values, "dtype")
-                and values.dtype != original_dtypes[key]
-            ):
-                try:
-                    original_data[key] = values.astype(original_dtypes[key])
-                except:
-                    # If conversion fails, log it but continue
-                    print(
-                        f"Warning: Could not convert {key} back to {original_dtypes[key]}"
-                    )
-                    original_data[key] = values
-            else:
-                original_data[key] = values
-
-        self.save_dataset(original_data)
+    def _lock(self) -> FileLock:
+        return FileLock(f"{self.file_path}.lock", timeout=600)
 
 
 def add_variables_to_dict(scf: dict, raw_data: pd.DataFrame) -> None:
@@ -230,7 +224,6 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
     import zipfile
     import io
     import logging
-    from tqdm import tqdm
 
     logger = logging.getLogger(__name__)
 

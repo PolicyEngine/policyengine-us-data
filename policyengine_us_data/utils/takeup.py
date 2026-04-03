@@ -22,90 +22,66 @@ SIMPLE_TAKEUP_VARS = [
         "variable": "takes_up_snap_if_eligible",
         "entity": "spm_unit",
         "rate_key": "snap",
+        "target": "snap",
     },
     {
         "variable": "takes_up_aca_if_eligible",
         "entity": "tax_unit",
         "rate_key": "aca",
+        "target": "aca_ptc",
     },
     {
         "variable": "takes_up_dc_ptc",
         "entity": "tax_unit",
         "rate_key": "dc_ptc",
+        "target": "dc_property_tax_credit",
     },
     {
         "variable": "takes_up_head_start_if_eligible",
         "entity": "person",
         "rate_key": "head_start",
+        "target": "head_start",
     },
     {
         "variable": "takes_up_early_head_start_if_eligible",
         "entity": "person",
         "rate_key": "early_head_start",
+        "target": "early_head_start",
     },
     {
         "variable": "takes_up_ssi_if_eligible",
         "entity": "person",
         "rate_key": "ssi",
+        "target": "ssi",
     },
     {
         "variable": "would_file_taxes_voluntarily",
         "entity": "tax_unit",
         "rate_key": "voluntary_filing",
+        "target": None,
     },
     {
         "variable": "takes_up_medicaid_if_eligible",
         "entity": "person",
         "rate_key": "medicaid",
+        "target": "medicaid",
     },
     {
         "variable": "takes_up_tanf_if_eligible",
         "entity": "spm_unit",
         "rate_key": "tanf",
+        "target": "tanf",
     },
 ]
 
 TAKEUP_AFFECTED_TARGETS: Dict[str, dict] = {
-    "snap": {
-        "takeup_var": "takes_up_snap_if_eligible",
-        "entity": "spm_unit",
-        "rate_key": "snap",
-    },
-    "tanf": {
-        "takeup_var": "takes_up_tanf_if_eligible",
-        "entity": "spm_unit",
-        "rate_key": "tanf",
-    },
-    "aca_ptc": {
-        "takeup_var": "takes_up_aca_if_eligible",
-        "entity": "tax_unit",
-        "rate_key": "aca",
-    },
-    "ssi": {
-        "takeup_var": "takes_up_ssi_if_eligible",
-        "entity": "person",
-        "rate_key": "ssi",
-    },
-    "medicaid": {
-        "takeup_var": "takes_up_medicaid_if_eligible",
-        "entity": "person",
-        "rate_key": "medicaid",
-    },
-    "head_start": {
-        "takeup_var": "takes_up_head_start_if_eligible",
-        "entity": "person",
-        "rate_key": "head_start",
-    },
-    "early_head_start": {
-        "takeup_var": "takes_up_early_head_start_if_eligible",
-        "entity": "person",
-        "rate_key": "early_head_start",
-    },
-    "dc_property_tax_credit": {
-        "takeup_var": "takes_up_dc_ptc",
-        "entity": "tax_unit",
-        "rate_key": "dc_ptc",
-    },
+    spec["target"]: {
+        "takeup_var": spec["variable"],
+        "entity": spec["entity"],
+        "rate_key": spec["rate_key"],
+    }
+    for spec in SIMPLE_TAKEUP_VARS
+    if spec.get("target") is not None
 }
 
 # CMS 2025 Marketplace OEP State-Level Public Use File, Total / All row.
@@ -187,66 +163,44 @@ def _resolve_rate(
 def compute_block_takeup_draws_for_entities(
     var_name: str,
     entity_blocks: np.ndarray,
-    entity_hh_ids: np.ndarray = None,
-    entity_clone_ids: np.ndarray = None,
+    entity_hh_ids: np.ndarray,
+    entity_clone_indices: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Compute deterministic uniform draws for block-level takeup.
+    """Compute deterministic uniform draws for entity-level takeup.
 
-    Each unique (block, household) pair gets its own seeded RNG,
-    producing reproducible draws regardless of how many households
-    share the same block across clones.
-
-    When multiple clones share the same (block, hh_id), the draws
-    are generated once for a single clone's entity count and tiled
-    so every clone gets identical draws — matching the matrix
-    builder, which processes each clone independently.
-
-    State FIPS for rate resolution is derived from the first two
-    characters of each block GEOID in the downstream boolean step.
+    Each unique (household id, clone index) pair gets its own seeded RNG,
+    producing reproducible draws that are stable for a given donor household
+    and independent across clones. Rates are applied separately by the caller
+    after resolving state FIPS from the block GEOID.
 
     Args:
         var_name: Takeup variable name.
         entity_blocks: Block GEOID per entity (str array).
-        entity_hh_ids: Household ID per entity (int array).
-            When provided, seeds per (block, household) for
-            clone-independent draws.
-        entity_clone_ids: Clone index per entity (int array).
-            When provided, draws are tiled across clones sharing
-            the same (block, hh_id) so each clone gets identical
-            takeup decisions.
+        entity_hh_ids: Original household ID per entity.
+        entity_clone_indices: Clone index per entity.
 
     Returns:
         Float array of shape (n_entities,) in [0, 1).
     """
     n = len(entity_blocks)
     draws = np.zeros(n, dtype=np.float64)
+    if entity_clone_indices is None:
+        entity_clone_indices = np.zeros(n, dtype=np.int64)
 
+    # Iterate block groups first so draws stay stable within geography slices.
     for block in np.unique(entity_blocks):
         if block == "":
             continue
         blk_mask = entity_blocks == block
 
-        if entity_hh_ids is not None:
-            for hh_id in np.unique(entity_hh_ids[blk_mask]):
-                hh_mask = blk_mask & (entity_hh_ids == hh_id)
-                n_total = int(hh_mask.sum())
-                rng = seeded_rng(var_name, salt=f"{block}:{int(hh_id)}")
-
-                if entity_clone_ids is not None and n_total > 1:
-                    clone_ids = entity_clone_ids[hh_mask]
-                    first_clone = clone_ids[0]
-                    n_per_clone = int((clone_ids == first_clone).sum())
-                    if n_per_clone < n_total:
-                        base_draws = rng.random(n_per_clone)
-                        n_copies = n_total // n_per_clone
-                        draws[hh_mask] = np.tile(base_draws, n_copies)
-                    else:
-                        draws[hh_mask] = rng.random(n_total)
-                else:
-                    draws[hh_mask] = rng.random(n_total)
-        else:
-            rng = seeded_rng(var_name, salt=str(block))
-            draws[blk_mask] = rng.random(int(blk_mask.sum()))
+    # Draw per (hh_id, clone_idx) pair
+    for hh_id in np.unique(entity_hh_ids):
+        hh_mask = entity_hh_ids == hh_id
+        for ci in np.unique(entity_clone_indices[hh_mask]):
+            ci_mask = hh_mask & (entity_clone_indices == ci)
+            n_ent = int(ci_mask.sum())
+            rng = seeded_rng(var_name, salt=f"{int(hh_id)}:{int(ci)}")
+            draws[ci_mask] = rng.random(n_ent)
 
     return draws
 
@@ -316,13 +270,14 @@ def apply_block_takeup_to_arrays(
     hh_blocks: np.ndarray,
     hh_state_fips: np.ndarray,
     hh_ids: np.ndarray,
+    hh_clone_indices: np.ndarray,
     entity_hh_indices: Dict[str, np.ndarray],
     entity_counts: Dict[str, int],
     time_period: int,
     takeup_filter: List[str] = None,
     precomputed_rates: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, np.ndarray]:
-    """Compute block-level takeup draws from raw arrays.
+    """Compute takeup draws from raw arrays.
 
     Works without a Microsimulation instance. For each takeup
     variable, maps entity-level arrays from household-level block/
@@ -332,7 +287,8 @@ def apply_block_takeup_to_arrays(
     Args:
         hh_blocks: Block GEOID per cloned household (str array).
         hh_state_fips: State FIPS per cloned household (int array).
-        hh_ids: Household ID per cloned household (int array).
+        hh_ids: Original household ID per cloned household.
+        hh_clone_indices: Clone index per cloned household.
         entity_hh_indices: {entity_key: array} mapping each entity
             instance to its household index. Keys: "person",
             "tax_unit", "spm_unit".
@@ -365,7 +321,7 @@ def apply_block_takeup_to_arrays(
         ent_hh_idx = entity_hh_indices[entity]
         ent_blocks = hh_blocks[ent_hh_idx].astype(str)
         ent_hh_ids = hh_ids[ent_hh_idx]
-        ent_clone_ids = ent_hh_idx
+        ent_clone_indices = hh_clone_indices[ent_hh_idx]
 
         if precomputed_rates is not None and rate_key in precomputed_rates:
             rate_or_dict = precomputed_rates[rate_key]
@@ -376,7 +332,7 @@ def apply_block_takeup_to_arrays(
             rate_or_dict,
             ent_blocks,
             ent_hh_ids,
-            entity_clone_ids=ent_clone_ids,
+            ent_clone_indices,
         )
         result[var_name] = bools
 

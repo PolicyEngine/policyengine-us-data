@@ -97,6 +97,12 @@ def get_git_provenance() -> dict:
         info["git_dirty"] = len(porcelain) > 0
     except Exception:
         pass
+    import os
+
+    if not info["git_commit"]:
+        info["git_commit"] = os.environ.get("GIT_COMMIT")
+    if not info["git_branch"]:
+        info["git_branch"] = os.environ.get("GIT_BRANCH")
     try:
         from policyengine_us_data.__version__ import __version__
 
@@ -925,6 +931,33 @@ def run_calibration(
         time_period,
     )
 
+    # Compute base household AGI for conditional geographic assignment
+    base_agi = sim.calculate("adjusted_gross_income", map_to="household").values.astype(
+        np.float64
+    )
+
+    # Load CD-level AGI targets from database
+    import sqlite3
+
+    from policyengine_us_data.storage import STORAGE_FOLDER
+
+    db_path = str(STORAGE_FOLDER / "calibration" / "policy_data.db")
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute(
+        "SELECT sc.value, t.value "
+        "FROM targets t "
+        "JOIN stratum_constraints sc ON t.stratum_id = sc.stratum_id "
+        "WHERE t.variable = 'adjusted_gross_income' "
+        "AND sc.constraint_variable = 'congressional_district_geoid' "
+        "AND t.active = 1"
+    ).fetchall()
+    conn.close()
+    cd_agi_targets = {str(row[0]): float(row[1]) for row in rows}
+    logger.info(
+        "Loaded %d CD AGI targets for conditional assignment",
+        len(cd_agi_targets),
+    )
+
     # Step 2: Clone and assign geography
     logger.info(
         "Assigning geography: %d x %d = %d total",
@@ -936,6 +969,8 @@ def run_calibration(
         n_records=n_records,
         n_clones=n_clones,
         seed=seed,
+        household_agi=base_agi,
+        cd_agi_targets=cd_agi_targets,
     )
 
     # Step 3: Source imputation (if requested)
@@ -1151,8 +1186,6 @@ def main(argv=None):
     import json
     import time
 
-    import pandas as pd
-
     try:
         if not sys.stderr.isatty():
             sys.stderr.reconfigure(line_buffering=True)
@@ -1274,29 +1307,7 @@ def main(argv=None):
     logger.info("Weights saved to %s", output_path)
     print(f"OUTPUT_PATH:{output_path}")
 
-    # Save full geography for local-area pipeline
-    from policyengine_us_data.calibration.clone_and_assign import (
-        GeographyAssignment,
-        save_geography,
-    )
-
-    geography = GeographyAssignment(
-        block_geoid=geography_info["block_geoid"],
-        cd_geoid=geography_info["cd_geoid"],
-        county_fips=np.array([b[:5] for b in geography_info["block_geoid"]]),
-        state_fips=np.array(
-            [int(b[:2]) for b in geography_info["block_geoid"]],
-            dtype=np.int32,
-        ),
-        n_records=geography_info["base_n_records"],
-        n_clones=len(sorted(set(geography_info["cd_geoid"].astype(str)))),
-    )
-    geo_path = output_dir / "geography.npz"
-    save_geography(geography, geo_path)
-    logger.info("Geography saved to %s", geo_path)
-    print(f"GEOGRAPHY_PATH:{geo_path}")
-
-    # Also save legacy artifacts for backward compatibility
+    # Save legacy block artifact for backward compatibility
     blocks_path = output_dir / "stacked_blocks.npy"
     np.save(str(blocks_path), geography_info["block_geoid"])
     logger.info("Blocks saved to %s", blocks_path)
@@ -1348,7 +1359,6 @@ def main(argv=None):
         "elapsed_seconds": round(t_end - t_start, 1),
         "artifacts": {
             "calibration_weights.npy": _sha256(output_path),
-            "geography.npz": _sha256(geo_path),
         },
     }
     run_config.update(get_git_provenance())

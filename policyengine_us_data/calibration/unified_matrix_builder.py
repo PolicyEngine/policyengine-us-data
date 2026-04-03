@@ -19,15 +19,13 @@ import pandas as pd
 from scipy import sparse
 from sqlalchemy import create_engine, text
 
+from policyengine_us_data.db.create_database_tables import create_or_replace_views
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.census import STATE_NAME_TO_FIPS
 from policyengine_us_data.calibration.calibration_utils import (
     get_calculated_variables,
     apply_op,
     get_geo_level,
-)
-from policyengine_us_data.calibration.block_assignment import (
-    get_county_enum_index_from_fips,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,6 +41,59 @@ COUNTY_DEPENDENT_VARS = {
 }
 
 
+def _make_neutralize_variable_reform(variable_name: str):
+    from policyengine_core.reforms import Reform
+
+    class NeutralizeVariable(Reform):
+        def apply(self):
+            self.neutralize_variable(variable_name)
+
+    NeutralizeVariable.__name__ = f"Neutralize_{variable_name}"
+    return NeutralizeVariable
+
+
+def _compute_reform_household_values(
+    dataset_path: str,
+    time_period: int,
+    state: int,
+    n_hh: int,
+    reform_vars: list,
+    baseline_income_tax: np.ndarray,
+) -> dict:
+    """Compute repeal-based household income tax deltas for target vars."""
+    from policyengine_us import Microsimulation
+
+    reform_hh = {}
+    if not reform_vars:
+        return reform_hh
+
+    state_input = np.full(n_hh, state, dtype=np.int32)
+    for var in reform_vars:
+        try:
+            reform_sim = Microsimulation(
+                dataset=dataset_path,
+                reform=_make_neutralize_variable_reform(var),
+            )
+            reform_sim.set_input("state_fips", time_period, state_input)
+            for calc_var in get_calculated_variables(reform_sim):
+                reform_sim.delete_arrays(calc_var)
+            reform_income_tax = reform_sim.calculate(
+                "income_tax",
+                time_period,
+                map_to="household",
+            ).values.astype(np.float32)
+            reform_hh[var] = reform_income_tax - baseline_income_tax
+        except Exception as exc:
+            logger.warning(
+                "Cannot calculate tax expenditure '%s' for state %d: %s",
+                var,
+                state,
+                exc,
+            )
+
+    return reform_hh
+
+
 def _compute_single_state(
     dataset_path: str,
     time_period: int,
@@ -50,6 +101,7 @@ def _compute_single_state(
     n_hh: int,
     target_vars: list,
     constraint_vars: list,
+    reform_vars: list,
     rerandomize_takeup: bool,
     affected_targets: dict,
 ):
@@ -121,6 +173,23 @@ def _compute_single_state(
                 exc,
             )
 
+    baseline_income_tax = None
+    reform_hh = {}
+    if reform_vars:
+        baseline_income_tax = state_sim.calculate(
+            "income_tax",
+            time_period,
+            map_to="household",
+        ).values.astype(np.float32)
+        reform_hh = _compute_reform_household_values(
+            dataset_path,
+            time_period,
+            state,
+            n_hh,
+            reform_vars,
+            baseline_income_tax,
+        )
+
     if rerandomize_takeup:
         for spec in SIMPLE_TAKEUP_VARS:
             entity = spec["entity"]
@@ -152,7 +221,39 @@ def _compute_single_state(
                     exc,
                 )
 
-    return (state, {"hh": hh, "person": person, "entity": entity_vals})
+    entity_wf_false = {}
+    if rerandomize_takeup:
+        has_tu_target = any(
+            info["entity"] == "tax_unit" for info in affected_targets.values()
+        )
+        if has_tu_target:
+            n_tu = len(state_sim.calculate("tax_unit_id", map_to="tax_unit").values)
+            state_sim.set_input(
+                "would_file_taxes_voluntarily",
+                time_period,
+                np.zeros(n_tu, dtype=bool),
+            )
+            for var in get_calculated_variables(state_sim):
+                state_sim.delete_arrays(var)
+            for tvar, info in affected_targets.items():
+                if info["entity"] != "tax_unit":
+                    continue
+                entity_wf_false[tvar] = state_sim.calculate(
+                    tvar,
+                    time_period,
+                    map_to="tax_unit",
+                ).values.astype(np.float32)
+
+    return (
+        state,
+        {
+            "hh": hh,
+            "person": person,
+            "reform_hh": reform_hh,
+            "entity": entity_vals,
+            "entity_wf_false": entity_wf_false,
+        },
+    )
 
 
 def _compute_single_state_group_counties(
@@ -222,11 +323,17 @@ def _compute_single_state_group_counties(
             time_period,
             np.full(n_hh, county_idx, dtype=np.int32),
         )
+        if county_fips == "06037":
+            state_sim.set_input(
+                "zip_code",
+                time_period,
+                np.full(n_hh, "90001"),
+            )
         if rerandomize_takeup:
             for vname, (ent, orig) in original_takeup.items():
                 state_sim.set_input(vname, time_period, orig)
         for var in get_calculated_variables(state_sim):
-            if var != "county":
+            if var not in ("county", "zip_code"):
                 state_sim.delete_arrays(var)
 
         hh = {}
@@ -257,7 +364,7 @@ def _compute_single_state_group_counties(
                     np.ones(n_ent, dtype=bool),
                 )
             for var in get_calculated_variables(state_sim):
-                if var != "county":
+                if var not in ("county", "zip_code"):
                     state_sim.delete_arrays(var)
 
         entity_vals = {}
@@ -278,7 +385,15 @@ def _compute_single_state_group_counties(
                         exc,
                     )
 
-        results.append((county_fips, {"hh": hh, "entity": entity_vals}))
+        results.append(
+            (
+                county_fips,
+                {
+                    "hh": hh,
+                    "entity": entity_vals,
+                },
+            )
+        )
 
     return results
 
@@ -305,6 +420,7 @@ def _assemble_clone_values_standalone(
     person_hh_indices: np.ndarray,
     target_vars: set,
     constraint_vars: set,
+    reform_vars: set = None,
     county_values: dict = None,
     clone_counties: np.ndarray = None,
     county_dependent_vars: set = None,
@@ -367,7 +483,22 @@ def _assemble_clone_values_standalone(
             arr[mask] = state_values[int(state)]["person"][var][mask]
         person_vars[var] = arr
 
-    return hh_vars, person_vars
+    reform_hh_vars: dict = {}
+    for var in reform_vars or set():
+        if not any(
+            var in state_values[int(state)].get("reform_hh", {})
+            for state in unique_clone_states
+        ):
+            continue
+        arr = np.zeros(n_records, dtype=np.float32)
+        for state in unique_clone_states:
+            mask = state_masks[int(state)]
+            reform_data = state_values[int(state)].get("reform_hh", {})
+            if var in reform_data:
+                arr[mask] = reform_data[var][mask]
+        reform_hh_vars[var] = arr
+
+    return hh_vars, person_vars, reform_hh_vars
 
 
 def _evaluate_constraints_standalone(
@@ -410,10 +541,12 @@ def _calculate_target_values_standalone(
     non_geo_constraints: list,
     n_households: int,
     hh_vars: dict,
+    reform_hh_vars: dict,
     person_vars: dict,
     entity_rel: pd.DataFrame,
     household_ids: np.ndarray,
     variable_entity_map: dict,
+    reform_id: int = 0,
 ) -> np.ndarray:
     """Standalone target-value calculation (no class instance).
 
@@ -430,7 +563,8 @@ def _calculate_target_values_standalone(
             household_ids,
             n_households,
         )
-        vals = hh_vars.get(target_variable)
+        source_vars = reform_hh_vars if reform_id > 0 else hh_vars
+        vals = source_vars.get(target_variable)
         if vals is None:
             return np.zeros(n_households, dtype=np.float32)
         return (vals * mask).astype(np.float32)
@@ -517,8 +651,10 @@ def _process_single_clone(
     unique_constraint_vars = sd["unique_constraint_vars"]
     county_dep_targets = sd["county_dep_targets"]
     target_variables = sd["target_variables"]
+    target_reform_ids = sd["target_reform_ids"]
     target_geo_info = sd["target_geo_info"]
     non_geo_constraints_list = sd["non_geo_constraints_list"]
+    reform_vars = sd["reform_vars"]
     n_records = sd["n_records"]
     n_total = sd["n_total"]
     n_targets = sd["n_targets"]
@@ -538,12 +674,13 @@ def _process_single_clone(
     clone_counties = geo_counties[col_start:col_end]
 
     # Assemble hh/person values from precomputed state/county
-    hh_vars, person_vars = _assemble_clone_values_standalone(
+    hh_vars, person_vars, reform_hh_vars = _assemble_clone_values_standalone(
         state_values,
         clone_states,
         person_hh_indices,
         unique_variables,
         unique_constraint_vars,
+        reform_vars=reform_vars,
         county_values=county_values,
         clone_counties=clone_counties,
         county_dependent_vars=county_dep_targets,
@@ -552,11 +689,39 @@ def _process_single_clone(
     # Takeup re-randomisation
     if do_takeup and affected_target_info:
         from policyengine_us_data.utils.takeup import (
+            SIMPLE_TAKEUP_VARS,
             compute_block_takeup_for_entities,
         )
 
         clone_blocks = geo_blocks[col_start:col_end]
 
+        # Phase 1: compute non-target draws (would_file) FIRST
+        wf_draws = {}
+        for spec in SIMPLE_TAKEUP_VARS:
+            if spec.get("target") is not None:
+                continue
+            var_name = spec["variable"]
+            entity = spec["entity"]
+            rate_key = spec["rate_key"]
+            if rate_key not in precomputed_rates:
+                continue
+            ent_hh = entity_hh_idx_map[entity]
+            ent_blocks = clone_blocks[ent_hh]
+            ent_hh_ids = household_ids[ent_hh]
+            ent_ci = np.full(len(ent_hh), clone_idx, dtype=np.int64)
+            draws = compute_block_takeup_for_entities(
+                var_name,
+                precomputed_rates[rate_key],
+                ent_blocks,
+                ent_hh_ids,
+                ent_ci,
+            )
+            wf_draws[entity] = draws
+            if var_name in person_vars:
+                pidx = entity_to_person_idx[entity]
+                person_vars[var_name] = draws[pidx].astype(np.float32)
+
+        # Phase 2: target loop with would_file blending
         for tvar, info in affected_target_info.items():
             if tvar.endswith("_count"):
                 continue
@@ -586,14 +751,44 @@ def _process_single_clone(
                     if tvar in sv:
                         ent_eligible[m] = sv[tvar][m]
 
+            # Blend: for tax_unit targets, select between
+            # all-takeup-true and would_file=false values
+            if entity_level == "tax_unit" and "tax_unit" in wf_draws:
+                ent_wf_false = np.zeros(n_ent, dtype=np.float32)
+                if tvar in county_dep_targets and county_values:
+                    ent_counties = clone_counties[ent_hh]
+                    for cfips in np.unique(ent_counties):
+                        m = ent_counties == cfips
+                        cv = county_values.get(cfips, {}).get("entity_wf_false", {})
+                        if tvar in cv:
+                            ent_wf_false[m] = cv[tvar][m]
+                        else:
+                            st = int(cfips[:2])
+                            sv = state_values[st].get("entity_wf_false", {})
+                            if tvar in sv:
+                                ent_wf_false[m] = sv[tvar][m]
+                else:
+                    for st in np.unique(ent_states):
+                        m = ent_states == st
+                        sv = state_values[int(st)].get("entity_wf_false", {})
+                        if tvar in sv:
+                            ent_wf_false[m] = sv[tvar][m]
+                ent_eligible = np.where(
+                    wf_draws["tax_unit"],
+                    ent_eligible,
+                    ent_wf_false,
+                )
+
             ent_blocks = clone_blocks[ent_hh]
             ent_hh_ids = household_ids[ent_hh]
+            ent_ci = np.full(n_ent, clone_idx, dtype=np.int64)
 
             ent_takeup = compute_block_takeup_for_entities(
                 takeup_var,
                 precomputed_rates[info["rate_key"]],
                 ent_blocks,
                 ent_hh_ids,
+                ent_ci,
             )
 
             ent_values = (ent_eligible * ent_takeup).astype(np.float32)
@@ -615,6 +810,7 @@ def _process_single_clone(
 
     for row_idx in range(n_targets):
         variable = target_variables[row_idx]
+        reform_id = target_reform_ids[row_idx]
         geo_level, geo_id = target_geo_info[row_idx]
         non_geo = non_geo_constraints_list[row_idx]
 
@@ -651,21 +847,24 @@ def _process_single_clone(
         )
 
         if variable.endswith("_count"):
-            vkey = (variable, constraint_key)
+            vkey = (variable, constraint_key, reform_id)
             if vkey not in count_cache:
                 count_cache[vkey] = _calculate_target_values_standalone(
                     variable,
                     non_geo,
                     n_records,
                     hh_vars,
+                    reform_hh_vars,
                     person_vars,
                     entity_rel,
                     household_ids,
                     variable_entity_map,
+                    reform_id=reform_id,
                 )
             values = count_cache[vkey]
         else:
-            if variable not in hh_vars:
+            source_vars = reform_hh_vars if reform_id > 0 else hh_vars
+            if variable not in source_vars:
                 continue
             if constraint_key not in mask_cache:
                 mask_cache[constraint_key] = _evaluate_constraints_standalone(
@@ -676,7 +875,7 @@ def _process_single_clone(
                     n_records,
                 )
             mask = mask_cache[constraint_key]
-            values = hh_vars[variable] * mask
+            values = source_vars[variable] * mask
 
         vals = values[rec_indices]
         nonzero = vals != 0
@@ -726,9 +925,12 @@ class UnifiedMatrixBuilder:
     ):
         self.db_uri = db_uri
         self.engine = create_engine(db_uri)
+        # Existing SQLite checkpoints may carry an older target_overview view.
+        create_or_replace_views(self.engine)
         self.time_period = time_period
         self.dataset_path = dataset_path
         self._entity_rel_cache = None
+        self._target_overview_columns = None
 
     # ---------------------------------------------------------------
     # Entity relationships
@@ -757,7 +959,8 @@ class UnifiedMatrixBuilder:
         sim,
         target_vars: set,
         constraint_vars: set,
-        geography,
+        reform_vars: set = None,
+        geography=None,
         rerandomize_takeup: bool = True,
         workers: int = 1,
     ) -> dict:
@@ -794,6 +997,9 @@ class UnifiedMatrixBuilder:
             TAKEUP_AFFECTED_TARGETS,
         )
 
+        if geography is None:
+            raise ValueError("geography is required")
+
         unique_states = sorted(set(int(s) for s in geography.state_fips))
         n_hh = geography.n_records
 
@@ -819,6 +1025,7 @@ class UnifiedMatrixBuilder:
         # Convert sets to sorted lists for deterministic iteration
         target_vars_list = sorted(target_vars)
         constraint_vars_list = sorted(constraint_vars)
+        reform_vars_list = sorted(reform_vars or set())
 
         state_values = {}
 
@@ -842,6 +1049,7 @@ class UnifiedMatrixBuilder:
                         n_hh,
                         target_vars_list,
                         constraint_vars_list,
+                        reform_vars_list,
                         rerandomize_takeup,
                         affected_targets,
                     ): st
@@ -915,6 +1123,22 @@ class UnifiedMatrixBuilder:
                             exc,
                         )
 
+                reform_hh = {}
+                if reform_vars_list:
+                    baseline_income_tax = state_sim.calculate(
+                        "income_tax",
+                        self.time_period,
+                        map_to="household",
+                    ).values.astype(np.float32)
+                    reform_hh = _compute_reform_household_values(
+                        self.dataset_path,
+                        self.time_period,
+                        state,
+                        n_hh,
+                        reform_vars_list,
+                        baseline_income_tax,
+                    )
+
                 if rerandomize_takeup:
                     for spec in SIMPLE_TAKEUP_VARS:
                         entity = spec["entity"]
@@ -950,10 +1174,44 @@ class UnifiedMatrixBuilder:
                                 exc,
                             )
 
+                entity_wf_false = {}
+                if rerandomize_takeup:
+                    has_tu_target = any(
+                        info["entity"] == "tax_unit"
+                        for info in affected_targets.values()
+                    )
+                    if has_tu_target:
+                        n_tu = len(
+                            state_sim.calculate(
+                                "tax_unit_id",
+                                map_to="tax_unit",
+                            ).values
+                        )
+                        state_sim.set_input(
+                            "would_file_taxes_voluntarily",
+                            self.time_period,
+                            np.zeros(n_tu, dtype=bool),
+                        )
+                        for var in get_calculated_variables(state_sim):
+                            state_sim.delete_arrays(var)
+                        for (
+                            tvar,
+                            info,
+                        ) in affected_targets.items():
+                            if info["entity"] != "tax_unit":
+                                continue
+                            entity_wf_false[tvar] = state_sim.calculate(
+                                tvar,
+                                self.time_period,
+                                map_to="tax_unit",
+                            ).values.astype(np.float32)
+
                 state_values[state] = {
                     "hh": hh,
                     "person": person,
+                    "reform_hh": reform_hh,
                     "entity": entity_vals,
+                    "entity_wf_false": entity_wf_false,
                 }
                 if (i + 1) % 10 == 0 or i == 0:
                     logger.info(
@@ -1104,122 +1362,20 @@ class UnifiedMatrixBuilder:
                             f.cancel()
                         raise RuntimeError(f"State group {sf} failed: {exc}") from exc
         else:
-            from policyengine_us import Microsimulation
-            from policyengine_us_data.utils.takeup import (
-                SIMPLE_TAKEUP_VARS,
-            )
-
             county_count = 0
-            for state_fips, counties in sorted(state_to_counties.items()):
-                state_sim = Microsimulation(dataset=self.dataset_path)
-
-                state_sim.set_input(
-                    "state_fips",
+            for sf, counties in sorted(state_to_counties.items()):
+                results = _compute_single_state_group_counties(
+                    self.dataset_path,
                     self.time_period,
-                    np.full(n_hh, state_fips, dtype=np.int32),
+                    sf,
+                    counties,
+                    n_hh,
+                    county_dep_targets_list,
+                    rerandomize_takeup,
+                    affected_targets,
                 )
-
-                original_takeup = {}
-                if rerandomize_takeup:
-                    for spec in SIMPLE_TAKEUP_VARS:
-                        entity = spec["entity"]
-                        original_takeup[spec["variable"]] = (
-                            entity,
-                            state_sim.calculate(
-                                spec["variable"],
-                                self.time_period,
-                                map_to=entity,
-                            ).values.copy(),
-                        )
-
-                for county_fips in counties:
-                    county_idx = get_county_enum_index_from_fips(county_fips)
-                    state_sim.set_input(
-                        "county",
-                        self.time_period,
-                        np.full(
-                            n_hh,
-                            county_idx,
-                            dtype=np.int32,
-                        ),
-                    )
-                    if rerandomize_takeup:
-                        for vname, (
-                            ent,
-                            orig,
-                        ) in original_takeup.items():
-                            state_sim.set_input(
-                                vname,
-                                self.time_period,
-                                orig,
-                            )
-                    for var in get_calculated_variables(state_sim):
-                        if var != "county":
-                            state_sim.delete_arrays(var)
-
-                    hh = {}
-                    for var in county_dep_targets:
-                        if var.endswith("_count"):
-                            continue
-                        try:
-                            hh[var] = state_sim.calculate(
-                                var,
-                                self.time_period,
-                                map_to="household",
-                            ).values.astype(np.float32)
-                        except Exception as exc:
-                            logger.warning(
-                                "Cannot calculate '%s' for county %s: %s",
-                                var,
-                                county_fips,
-                                exc,
-                            )
-
-                    if rerandomize_takeup:
-                        for spec in SIMPLE_TAKEUP_VARS:
-                            entity = spec["entity"]
-                            n_ent = len(
-                                state_sim.calculate(
-                                    f"{entity}_id",
-                                    map_to=entity,
-                                ).values
-                            )
-                            state_sim.set_input(
-                                spec["variable"],
-                                self.time_period,
-                                np.ones(n_ent, dtype=bool),
-                            )
-                        for var in get_calculated_variables(state_sim):
-                            if var != "county":
-                                state_sim.delete_arrays(var)
-
-                    entity_vals = {}
-                    if rerandomize_takeup:
-                        for (
-                            tvar,
-                            info,
-                        ) in affected_targets.items():
-                            entity_level = info["entity"]
-                            try:
-                                entity_vals[tvar] = state_sim.calculate(
-                                    tvar,
-                                    self.time_period,
-                                    map_to=entity_level,
-                                ).values.astype(np.float32)
-                            except Exception as exc:
-                                logger.warning(
-                                    "Cannot calculate "
-                                    "entity-level '%s' "
-                                    "for county %s: %s",
-                                    tvar,
-                                    county_fips,
-                                    exc,
-                                )
-
-                    county_values[county_fips] = {
-                        "hh": hh,
-                        "entity": entity_vals,
-                    }
+                for county_fips, vals in results:
+                    county_values[county_fips] = vals
                     county_count += 1
                     if county_count % 500 == 0 or county_count == 1:
                         logger.info(
@@ -1241,6 +1397,7 @@ class UnifiedMatrixBuilder:
         person_hh_indices: np.ndarray,
         target_vars: set,
         constraint_vars: set,
+        reform_vars: set = None,
         county_values: dict = None,
         clone_counties: np.ndarray = None,
         county_dependent_vars: set = None,
@@ -1265,9 +1422,11 @@ class UnifiedMatrixBuilder:
                 be looked up by county instead of state.
 
         Returns:
-            (hh_vars, person_vars) where hh_vars maps variable
-            name to household-level float32 array and person_vars
-            maps constraint variable name to person-level array.
+            (hh_vars, person_vars, reform_hh_vars) where hh_vars maps
+            baseline variables to household-level float32 arrays,
+            person_vars maps constraint variables to person-level arrays,
+            and reform_hh_vars maps repeal-based expenditure targets to
+            household-level arrays.
         """
         n_records = len(clone_states)
         n_persons = len(person_hh_indices)
@@ -1322,7 +1481,22 @@ class UnifiedMatrixBuilder:
                 arr[mask] = state_values[int(state)]["person"][var][mask]
             person_vars[var] = arr
 
-        return hh_vars, person_vars
+        reform_hh_vars = {}
+        for var in reform_vars or set():
+            if not any(
+                var in state_values[int(state)].get("reform_hh", {})
+                for state in unique_clone_states
+            ):
+                continue
+            arr = np.zeros(n_records, dtype=np.float32)
+            for state in unique_clone_states:
+                mask = state_masks[int(state)]
+                reform_data = state_values[int(state)].get("reform_hh", {})
+                if var in reform_data:
+                    arr[mask] = reform_data[var][mask]
+            reform_hh_vars[var] = arr
+
+        return hh_vars, person_vars, reform_hh_vars
 
     # ---------------------------------------------------------------
     # Database queries
@@ -1342,61 +1516,103 @@ class UnifiedMatrixBuilder:
             )
         return df.to_dict("records")
 
+    def _get_target_overview_columns(self) -> set:
+        if self._target_overview_columns is None:
+            with self.engine.connect() as conn:
+                rows = conn.execute(
+                    text("PRAGMA table_info(target_overview)")
+                ).fetchall()
+            self._target_overview_columns = {row[1] for row in rows}
+        return self._target_overview_columns
+
     def _query_targets(self, target_filter: dict) -> pd.DataFrame:
         """Query targets via target_overview view with
         best-period selection."""
-        or_conditions = []
+        and_conditions = []
 
         if "domain_variables" in target_filter:
             dvs = target_filter["domain_variables"]
             ph = ",".join(f"'{dv}'" for dv in dvs)
-            or_conditions.append(f"tv.domain_variable IN ({ph})")
+            and_conditions.append(f"tv.domain_variable IN ({ph})")
 
         if "variables" in target_filter:
             vs = ",".join(f"'{v}'" for v in target_filter["variables"])
-            or_conditions.append(f"tv.variable IN ({vs})")
+            and_conditions.append(f"tv.variable IN ({vs})")
 
         if "target_ids" in target_filter:
             ids = ",".join(map(str, target_filter["target_ids"]))
-            or_conditions.append(f"tv.target_id IN ({ids})")
+            and_conditions.append(f"tv.target_id IN ({ids})")
 
         if "stratum_ids" in target_filter:
             ids = ",".join(map(str, target_filter["stratum_ids"]))
-            or_conditions.append(f"tv.stratum_id IN ({ids})")
+            and_conditions.append(f"tv.stratum_id IN ({ids})")
 
-        if not or_conditions:
+        if not and_conditions:
             where_clause = "1=1"
         else:
-            where_clause = " OR ".join(f"({c})" for c in or_conditions)
+            where_clause = " AND ".join(f"({c})" for c in and_conditions)
 
-        query = f"""
-        WITH filtered_targets AS (
-            SELECT tv.target_id, tv.stratum_id, tv.variable,
-                   tv.value, tv.period, tv.geo_level,
-                   tv.geographic_id, tv.domain_variable
-            FROM target_overview tv
-            WHERE {where_clause}
-        ),
-        best_periods AS (
-            SELECT stratum_id, variable,
-                CASE
-                    WHEN MAX(CASE WHEN period <= :time_period
-                             THEN period END) IS NOT NULL
-                    THEN MAX(CASE WHEN period <= :time_period
-                             THEN period END)
-                    ELSE MIN(period)
-                END as best_period
-            FROM filtered_targets
-            GROUP BY stratum_id, variable
-        )
-        SELECT ft.*
-        FROM filtered_targets ft
-        JOIN best_periods bp
-            ON ft.stratum_id = bp.stratum_id
-            AND ft.variable = bp.variable
-            AND ft.period = bp.best_period
-        ORDER BY ft.target_id
-        """
+        if "reform_id" in self._get_target_overview_columns():
+            query = f"""
+            WITH filtered_targets AS (
+                SELECT tv.target_id, tv.stratum_id, tv.variable, tv.reform_id,
+                       tv.value, tv.period, tv.geo_level,
+                       tv.geographic_id, tv.domain_variable
+                FROM target_overview tv
+                WHERE tv.active = 1
+                  AND ({where_clause})
+            ),
+            best_periods AS (
+                SELECT stratum_id, variable, reform_id,
+                    CASE
+                        WHEN MAX(CASE WHEN period <= :time_period
+                                 THEN period END) IS NOT NULL
+                        THEN MAX(CASE WHEN period <= :time_period
+                                 THEN period END)
+                        ELSE MIN(period)
+                    END as best_period
+                FROM filtered_targets
+                GROUP BY stratum_id, variable, reform_id
+            )
+            SELECT ft.*
+            FROM filtered_targets ft
+            JOIN best_periods bp
+                ON ft.stratum_id = bp.stratum_id
+                AND ft.variable = bp.variable
+                AND ft.reform_id = bp.reform_id
+                AND ft.period = bp.best_period
+            ORDER BY ft.target_id
+            """
+        else:
+            query = f"""
+            WITH filtered_targets AS (
+                SELECT tv.target_id, tv.stratum_id, tv.variable,
+                       0 AS reform_id, tv.value, tv.period, tv.geo_level,
+                       tv.geographic_id, tv.domain_variable
+                FROM target_overview tv
+                WHERE tv.active = 1
+                  AND ({where_clause})
+            ),
+            best_periods AS (
+                SELECT stratum_id, variable,
+                    CASE
+                        WHEN MAX(CASE WHEN period <= :time_period
+                                 THEN period END) IS NOT NULL
+                        THEN MAX(CASE WHEN period <= :time_period
+                                 THEN period END)
+                        ELSE MIN(period)
+                    END as best_period
+                FROM filtered_targets
+                GROUP BY stratum_id, variable
+            )
+            SELECT ft.*
+            FROM filtered_targets ft
+            JOIN best_periods bp
+                ON ft.stratum_id = bp.stratum_id
+                AND ft.variable = bp.variable
+                AND ft.period = bp.best_period
+            ORDER BY ft.target_id
+            """
 
         with self.engine.connect() as conn:
             return pd.read_sql(
@@ -1790,7 +2006,9 @@ class UnifiedMatrixBuilder:
 
         # 2. Sort targets by geographic level
         targets_df["_geo_level"] = targets_df["geographic_id"].apply(get_geo_level)
-        targets_df = targets_df.sort_values(["_geo_level", "variable", "geographic_id"])
+        targets_df = targets_df.sort_values(
+            ["_geo_level", "variable", "reform_id", "geographic_id"]
+        )
         targets_df = targets_df.drop(columns=["_geo_level"]).reset_index(drop=True)
 
         # 3. Build column index structures from geography
@@ -1807,6 +2025,7 @@ class UnifiedMatrixBuilder:
         target_geo_info: List[Tuple[str, str]] = []
         target_names: List[str] = []
         non_geo_constraints_list: List[List[dict]] = []
+        target_reform_ids: List[int] = []
 
         for _, row in targets_df.iterrows():
             sid = int(row["stratum_id"])
@@ -1820,12 +2039,23 @@ class UnifiedMatrixBuilder:
 
             non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
             non_geo_constraints_list.append(non_geo)
+            reform_id = int(row.get("reform_id", 0))
+            target_reform_ids.append(reform_id)
 
             target_names.append(
-                self._make_target_name(str(row["variable"]), constraints)
+                self._make_target_name(
+                    str(row["variable"]),
+                    constraints,
+                    reform_id=reform_id,
+                )
             )
 
         unique_variables = set(targets_df["variable"].values)
+        reform_variables = {
+            str(row["variable"])
+            for _, row in targets_df.iterrows()
+            if int(row.get("reform_id", 0)) > 0
+        }
 
         # 5a. Collect unique constraint variables
         unique_constraint_vars = set()
@@ -1839,6 +2069,7 @@ class UnifiedMatrixBuilder:
             sim,
             unique_variables,
             unique_constraint_vars,
+            reform_variables,
             geography,
             rerandomize_takeup=rerandomize_takeup,
             workers=workers,
@@ -1928,10 +2159,14 @@ class UnifiedMatrixBuilder:
                 len(affected_target_info),
             )
 
-            # Pre-compute takeup rates (constant across clones)
+            # Pre-compute takeup rates for ALL takeup vars
+            from policyengine_us_data.utils.takeup import (
+                SIMPLE_TAKEUP_VARS as _ALL_TAKEUP,
+            )
+
             precomputed_rates = {}
-            for tvar, info in affected_target_info.items():
-                rk = info["rate_key"]
+            for spec in _ALL_TAKEUP:
+                rk = spec["rate_key"]
                 if rk not in precomputed_rates:
                     precomputed_rates[rk] = load_take_up_rate(rk, self.time_period)
 
@@ -1968,8 +2203,10 @@ class UnifiedMatrixBuilder:
                 "person_hh_indices": person_hh_indices,
                 "unique_variables": unique_variables,
                 "unique_constraint_vars": unique_constraint_vars,
+                "reform_vars": reform_variables,
                 "county_dep_targets": county_dep_targets,
                 "target_variables": target_variables,
+                "target_reform_ids": target_reform_ids,
                 "target_geo_info": target_geo_info,
                 "non_geo_constraints_list": (non_geo_constraints_list),
                 "n_records": n_records,
@@ -2068,12 +2305,13 @@ class UnifiedMatrixBuilder:
                         len(np.unique(clone_states)),
                     )
 
-                hh_vars, person_vars = self._assemble_clone_values(
+                hh_vars, person_vars, reform_hh_vars = self._assemble_clone_values(
                     state_values,
                     clone_states,
                     person_hh_indices,
                     unique_variables,
                     unique_constraint_vars,
+                    reform_vars=reform_variables,
                     county_values=county_values,
                     clone_counties=clone_counties,
                     county_dependent_vars=(county_dep_targets),
@@ -2083,6 +2321,38 @@ class UnifiedMatrixBuilder:
                 # for affected target variables
                 if rerandomize_takeup and affected_target_info:
                     clone_blocks = geography.block_geoid[col_start:col_end]
+
+                    from policyengine_us_data.utils.takeup import (
+                        SIMPLE_TAKEUP_VARS as _SEQ_TAKEUP,
+                    )
+
+                    # Phase 1: non-target draws (would_file) FIRST
+                    wf_draws = {}
+                    for spec in _SEQ_TAKEUP:
+                        if spec.get("target") is not None:
+                            continue
+                        var_name = spec["variable"]
+                        entity = spec["entity"]
+                        rate_key = spec["rate_key"]
+                        if rate_key not in precomputed_rates:
+                            continue
+                        ent_hh = entity_hh_idx_map[entity]
+                        ent_blocks = clone_blocks[ent_hh]
+                        ent_hh_ids = household_ids[ent_hh]
+                        ent_ci = np.full(len(ent_hh), clone_idx, dtype=np.int64)
+                        draws = compute_block_takeup_for_entities(
+                            var_name,
+                            precomputed_rates[rate_key],
+                            ent_blocks,
+                            ent_hh_ids,
+                            ent_ci,
+                        )
+                        wf_draws[entity] = draws
+                        if var_name in person_vars:
+                            pidx = entity_to_person_idx[entity]
+                            person_vars[var_name] = draws[pidx].astype(np.float32)
+
+                    # Phase 2: target loop with would_file blending
                     for (
                         tvar,
                         info,
@@ -2116,14 +2386,47 @@ class UnifiedMatrixBuilder:
                                 if tvar in sv:
                                     ent_eligible[m] = sv[tvar][m]
 
+                        # Blend for tax_unit targets
+                        if entity_level == "tax_unit" and "tax_unit" in wf_draws:
+                            ent_wf_false = np.zeros(n_ent, dtype=np.float32)
+                            if tvar in county_dep_targets and county_values:
+                                ent_counties = clone_counties[ent_hh]
+                                for cfips in np.unique(ent_counties):
+                                    m = ent_counties == cfips
+                                    cv = county_values.get(cfips, {}).get(
+                                        "entity_wf_false", {}
+                                    )
+                                    if tvar in cv:
+                                        ent_wf_false[m] = cv[tvar][m]
+                                    else:
+                                        st = int(cfips[:2])
+                                        sv = state_values[st].get("entity_wf_false", {})
+                                        if tvar in sv:
+                                            ent_wf_false[m] = sv[tvar][m]
+                            else:
+                                for st in np.unique(ent_states):
+                                    m = ent_states == st
+                                    sv = state_values[int(st)].get(
+                                        "entity_wf_false", {}
+                                    )
+                                    if tvar in sv:
+                                        ent_wf_false[m] = sv[tvar][m]
+                            ent_eligible = np.where(
+                                wf_draws["tax_unit"],
+                                ent_eligible,
+                                ent_wf_false,
+                            )
+
                         ent_blocks = clone_blocks[ent_hh]
                         ent_hh_ids = household_ids[ent_hh]
+                        ent_ci = np.full(n_ent, clone_idx, dtype=np.int64)
 
                         ent_takeup = compute_block_takeup_for_entities(
                             takeup_var,
                             precomputed_rates[info["rate_key"]],
                             ent_blocks,
                             ent_hh_ids,
+                            ent_ci,
                         )
 
                         ent_values = (ent_eligible * ent_takeup).astype(np.float32)
@@ -2145,6 +2448,7 @@ class UnifiedMatrixBuilder:
 
                 for row_idx in range(n_targets):
                     variable = str(targets_df.iloc[row_idx]["variable"])
+                    reform_id = int(targets_df.iloc[row_idx].get("reform_id", 0))
                     geo_level, geo_id = target_geo_info[row_idx]
                     non_geo = non_geo_constraints_list[row_idx]
 
@@ -2184,6 +2488,7 @@ class UnifiedMatrixBuilder:
                         vkey = (
                             variable,
                             constraint_key,
+                            reform_id,
                         )
                         if vkey not in count_cache:
                             count_cache[vkey] = _calculate_target_values_standalone(
@@ -2191,14 +2496,17 @@ class UnifiedMatrixBuilder:
                                 non_geo_constraints=non_geo,
                                 n_households=n_records,
                                 hh_vars=hh_vars,
+                                reform_hh_vars=reform_hh_vars,
                                 person_vars=person_vars,
                                 entity_rel=entity_rel,
                                 household_ids=household_ids,
                                 variable_entity_map=variable_entity_map,
+                                reform_id=reform_id,
                             )
                         values = count_cache[vkey]
                     else:
-                        if variable not in hh_vars:
+                        source_vars = reform_hh_vars if reform_id > 0 else hh_vars
+                        if variable not in source_vars:
                             continue
                         if constraint_key not in mask_cache:
                             mask_cache[constraint_key] = (
@@ -2211,7 +2519,7 @@ class UnifiedMatrixBuilder:
                                 )
                             )
                         mask = mask_cache[constraint_key]
-                        values = hh_vars[variable] * mask
+                        values = source_vars[variable] * mask
 
                     vals = values[rec_indices]
                     nonzero = vals != 0

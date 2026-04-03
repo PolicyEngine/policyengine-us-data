@@ -7,7 +7,6 @@ for inclusion in the paper.
 """
 
 import pandas as pd
-import numpy as np
 from policyengine_us import Microsimulation
 from policyengine_us_data.datasets.cps.enhanced_cps import EnhancedCPS
 from policyengine_us_data.datasets.cps.cps import CPS

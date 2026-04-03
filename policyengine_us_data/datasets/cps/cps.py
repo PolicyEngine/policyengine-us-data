@@ -6,7 +6,6 @@ from policyengine_us_data.datasets.cps.census_cps import *
 from pandas import DataFrame, Series
 import numpy as np
 import pandas as pd
-import os
 import yaml
 from typing import Type
 from policyengine_us_data.utils.uprating import (
@@ -15,6 +14,17 @@ from policyengine_us_data.utils.uprating import (
 from microimpute.models.qrf import QRF
 import logging
 from policyengine_us_data.parameters import load_take_up_rate
+from policyengine_us_data.datasets.cps.takeup import (
+    align_reported_ssi_disability,
+    prioritize_reported_recipients,
+)
+from policyengine_us_data.datasets.org import (
+    ORG_BOOL_VARIABLES,
+    ORG_IMPUTED_VARIABLES,
+    build_org_receiver_frame,
+    predict_org_features,
+)
+from policyengine_us_data.utils.downsample import downsample_dataset_arrays
 from policyengine_us_data.utils.randomness import seeded_rng
 
 
@@ -74,6 +84,8 @@ class CPS(Dataset):
         add_rent(self, cps, person, household)
         logging.info("Adding tips")
         add_tips(self, cps)
+        logging.info("Adding ORG labor-market inputs")
+        add_org_labor_market_inputs(cps)
         logging.info("Adding auto loan balance, interest and wealth")
         add_auto_loan_interest_and_net_worth(self, cps)
         logging.info("Added all variables")
@@ -91,38 +103,16 @@ class CPS(Dataset):
     def downsample(self, frac: float):
         from policyengine_us import Microsimulation
 
-        # Store original dtypes before modifying
         original_data: dict = self.load_dataset()
-        original_dtypes = {key: original_data[key].dtype for key in original_data}
         sim = Microsimulation(dataset=self)
         sim.subsample(frac=frac)
-
-        for key in original_data:
-            if key not in sim.tax_benefit_system.variables:
-                logging.warning(
-                    f"Attempting to downsample the variable {key} but failing because it is not in the given country package."
-                )
-                continue
-            values = sim.calculate(key).values
-
-            # Preserve the original dtype if possible
-            if (
-                key in original_dtypes
-                and hasattr(values, "dtype")
-                and values.dtype != original_dtypes[key]
-            ):
-                try:
-                    original_data[key] = values.astype(original_dtypes[key])
-                except:
-                    # If conversion fails, log it but continue
-                    logging.warning(
-                        f"Could not convert {key} back to {original_dtypes[key]}"
-                    )
-                    original_data[key] = values
-            else:
-                original_data[key] = values
-
-        self.save_dataset(original_data)
+        self.save_dataset(
+            downsample_dataset_arrays(
+                original_data=original_data,
+                sim=sim,
+                dataset_name=self.name,
+            )
+        )
 
 
 def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
@@ -134,6 +124,15 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
             3: "NONE",
         }
     ).astype("S")
+    if self.file_path.exists():
+        with h5py.File(self.file_path, "r") as _f:
+            stale_keys = [k for k in _f.keys() if k not in cps]
+            if stale_keys:
+                logging.warning(
+                    f"Stale H5 at {self.file_path} has {len(stale_keys)} "
+                    f"extra vars before first save: {stale_keys[:5]}"
+                )
+        self.file_path.unlink()
     self.save_dataset(cps)
 
     from policyengine_us_data.datasets.acs.acs import ACS_2022
@@ -224,19 +223,10 @@ def add_takeup(self):
     # SNAP: prioritize reported recipients
     rng = seeded_rng("takes_up_snap_if_eligible")
     reported_snap = data["snap_reported"] > 0
-
-    # Calculate adjusted rate for non-reporters to hit target
-    n_snap_reporters = reported_snap.sum()
-    n_snap_non_reporters = (~reported_snap).sum()
-    target_snap_takeup_count = int(snap_rate * n_spm_units)
-    remaining_snap_needed = max(0, target_snap_takeup_count - n_snap_reporters)
-    snap_non_reporter_rate = (
-        remaining_snap_needed / n_snap_non_reporters if n_snap_non_reporters > 0 else 0
-    )
-
-    # Assign: all reporters + adjusted rate for non-reporters
-    data["takes_up_snap_if_eligible"] = reported_snap | (
-        (~reported_snap) & (rng.random(n_spm_units) < snap_non_reporter_rate)
+    data["takes_up_snap_if_eligible"] = prioritize_reported_recipients(
+        reported_snap,
+        snap_rate,
+        rng.random(n_spm_units),
     )
 
     # ACA
@@ -270,19 +260,10 @@ def add_takeup(self):
     # SSI: prioritize reported recipients
     rng = seeded_rng("takes_up_ssi_if_eligible")
     reported_ssi = data["ssi_reported"] > 0
-
-    # Calculate adjusted rate for non-reporters to hit target
-    n_ssi_reporters = reported_ssi.sum()
-    n_ssi_non_reporters = (~reported_ssi).sum()
-    target_ssi_takeup_count = int(ssi_rate * n_persons)
-    remaining_ssi_needed = max(0, target_ssi_takeup_count - n_ssi_reporters)
-    ssi_non_reporter_rate = (
-        remaining_ssi_needed / n_ssi_non_reporters if n_ssi_non_reporters > 0 else 0
-    )
-
-    # Assign: all reporters + adjusted rate for non-reporters
-    data["takes_up_ssi_if_eligible"] = reported_ssi | (
-        (~reported_ssi) & (rng.random(n_persons) < ssi_non_reporter_rate)
+    data["takes_up_ssi_if_eligible"] = prioritize_reported_recipients(
+        reported_ssi,
+        ssi_rate,
+        rng.random(n_persons),
     )
 
     # TANF
@@ -338,6 +319,16 @@ def add_takeup(self):
     rng = seeded_rng("would_file_taxes_voluntarily")
     data["would_file_taxes_voluntarily"] = ~data["takes_up_eitc"] & (
         rng.random(n_tax_units) < voluntary_filing_rate
+    )
+
+    # --- SSI: align disability to CPS-reported receipt ---
+    # CPS disability flags miss some under-65 SSI recipients, but SSI
+    # requires under-65 recipients to be disabled or blind.
+    reported_ssi = data["ssi_reported"] > 0
+    data["is_disabled"] = align_reported_ssi_disability(
+        data["is_disabled"],
+        reported_ssi,
+        data["age"],
     )
 
     self.save_dataset(data)
@@ -1822,6 +1813,65 @@ def add_tips(self, cps: h5py.File):
     cps = cps.drop(columns=["is_married", "is_under_18", "is_under_6"], errors="ignore")
 
     self.save_dataset(cps)
+
+
+def add_org_labor_market_inputs(cps: h5py.File) -> None:
+    """Impute ORG-derived wage and union inputs onto CPS persons."""
+    n_persons = len(np.asarray(cps["age"]))
+    household_ids = np.asarray(cps["household_id"], dtype=np.int64)
+    person_household_ids = np.asarray(
+        cps["person_household_id"],
+        dtype=np.int64,
+    )
+    household_state_fips = np.asarray(cps["state_fips"], dtype=np.float32)
+    household_index = {
+        int(household_id): i for i, household_id in enumerate(household_ids)
+    }
+    person_state_fips = np.array(
+        [
+            household_state_fips[household_index[int(household_id)]]
+            for household_id in person_household_ids
+        ],
+        dtype=np.float32,
+    )
+
+    receiver = build_org_receiver_frame(
+        age=cps["age"],
+        is_female=cps["is_female"],
+        is_hispanic=cps["is_hispanic"],
+        cps_race=cps["cps_race"],
+        state_fips=person_state_fips,
+        employment_income=cps["employment_income"],
+        weekly_hours_worked=cps["weekly_hours_worked"],
+    )
+    if len(receiver) != n_persons:
+        raise ValueError(
+            f"ORG receiver frame has {len(receiver)} rows but CPS has "
+            f"{n_persons} persons"
+        )
+    self_employment_income = np.asarray(
+        cps.get(
+            "self_employment_income",
+            np.zeros(len(receiver), dtype=np.float32),
+        ),
+        dtype=np.float32,
+    )
+    predictions = predict_org_features(
+        receiver,
+        self_employment_income=self_employment_income,
+    )
+
+    for variable in ORG_IMPUTED_VARIABLES:
+        values = predictions[variable].values
+        if len(values) != n_persons:
+            raise ValueError(
+                f"ORG prediction for '{variable}' has {len(values)} entries "
+                f"but CPS has {n_persons} persons"
+            )
+        if variable in ORG_BOOL_VARIABLES:
+            cps[variable] = values.astype(bool)
+        else:
+            cps[variable] = values.astype(np.float32)
 
 
 def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:

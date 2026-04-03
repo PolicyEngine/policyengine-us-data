@@ -1,9 +1,7 @@
 import logging
-import pathlib
 import requests
 
 import pandas as pd
-import numpy as np
 
 from policyengine_us_data.utils.raw_cache import (
     is_cached,

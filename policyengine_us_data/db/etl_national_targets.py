@@ -9,6 +9,9 @@ from policyengine_us_data.db.create_database_tables import (
     StratumConstraint,
     Target,
 )
+from policyengine_us_data.storage.calibration_targets.soi_metadata import (
+    RETIREMENT_CONTRIBUTION_TARGETS,
+)
 from policyengine_us_data.utils.db import (
     DEFAULT_DATASET,
     etl_argparser,
@@ -31,6 +34,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         Dictionary containing:
         - direct_sum_targets: Variables that can be summed directly
         - tax_filer_targets: Tax-related variables requiring filer constraint
+        - tax_expenditure_targets: Variables targeted via repeal-based tax expenditures
         - conditional_count_targets: Enrollment counts requiring constraints
         - cbo_targets: List of CBO projection targets
         - treasury_targets: List of Treasury/JCT targets
@@ -56,8 +60,14 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         )
 
     # Separate tax-related targets that need filer constraint
-    tax_filer_targets = [
+    tax_filer_targets = []
+
+    # These JCT values are tax expenditures, not baseline deduction totals.
+    # They must be matched against repeal-based income tax deltas in the
+    # unified calibration path.
+    raw_tax_expenditure_targets = [
         {
+            "reform_id": 1,
             "variable": "salt_deduction",
             "value": 21.247e9,
             "source": "Joint Committee on Taxation",
@@ -65,6 +75,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "year": HARDCODED_YEAR,
         },
         {
+            "reform_id": 2,
             "variable": "medical_expense_deduction",
             "value": 11.4e9,
             "source": "Joint Committee on Taxation",
@@ -72,6 +83,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "year": HARDCODED_YEAR,
         },
         {
+            "reform_id": 3,
             "variable": "charitable_deduction",
             "value": 65.301e9,
             "source": "Joint Committee on Taxation",
@@ -79,13 +91,15 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "year": HARDCODED_YEAR,
         },
         {
-            "variable": "interest_deduction",
+            "reform_id": 4,
+            "variable": "deductible_mortgage_interest",
             "value": 24.8e9,
             "source": "Joint Committee on Taxation",
             "notes": "Mortgage interest deduction tax expenditure",
             "year": HARDCODED_YEAR,
         },
         {
+            "reform_id": 5,
             "variable": "qualified_business_income_deduction",
             "value": 63.1e9,
             "source": "Joint Committee on Taxation",
@@ -93,6 +107,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "year": HARDCODED_YEAR,
         },
     ]
+    tax_expenditure_targets = [{**target} for target in raw_tax_expenditure_targets]
 
     direct_sum_targets = [
         {
@@ -240,9 +255,15 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         # Retirement contribution targets — see issue #553
         {
             "variable": "traditional_ira_contributions",
-            "value": 13.2e9,
-            "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
-            "notes": "SOI 1304 Table 1.4 (TY 2022) 'IRA payments' deduction, col 124",
+            "value": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
+                "value"
+            ],
+            "source": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
+                "source"
+            ],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
+                "notes"
+            ],
             "year": HARDCODED_YEAR,
         },
         {
@@ -261,16 +282,24 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         },
         {
             "variable": "self_employed_pension_contribution_ald",
-            "value": 29.5e9,
-            "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
-            "notes": "SOI 1304 Table 1.4 (TY 2022) 'Payments to a Keogh plan', col 116",
+            "value": RETIREMENT_CONTRIBUTION_TARGETS[
+                "self_employed_pension_contribution_ald"
+            ]["value"],
+            "source": RETIREMENT_CONTRIBUTION_TARGETS[
+                "self_employed_pension_contribution_ald"
+            ]["source"],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS[
+                "self_employed_pension_contribution_ald"
+            ]["notes"],
             "year": HARDCODED_YEAR,
         },
         {
             "variable": "roth_ira_contributions",
-            "value": 35.0e9,
-            "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
-            "notes": "IRS SOI IRA Accumulation Tables 5 & 6 (TY 2022), 10.04M contributors",
+            "value": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"]["value"],
+            "source": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
+                "source"
+            ],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"]["notes"],
             "year": HARDCODED_YEAR,
         },
     ]
@@ -394,6 +423,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
     return {
         "direct_sum_targets": direct_sum_targets,
         "tax_filer_targets": tax_filer_targets,
+        "tax_expenditure_targets": tax_expenditure_targets,
         "conditional_count_targets": conditional_count_targets,
         "cbo_targets": cbo_targets,
         "treasury_targets": treasury_targets,
@@ -413,9 +443,10 @@ def transform_national_targets(raw_targets):
     Returns
     -------
     tuple
-        (direct_targets_df, tax_filer_df, conditional_targets)
+        (direct_targets_df, tax_filer_df, tax_expenditure_df, conditional_targets)
         - direct_targets_df: DataFrame with direct sum targets
         - tax_filer_df: DataFrame with tax-related targets needing filer constraint
+        - tax_expenditure_df: DataFrame with reform-based tax expenditure targets
         - conditional_targets: List of conditional count targets
     """
 
@@ -444,14 +475,24 @@ def transform_national_targets(raw_targets):
     tax_filer_df = (
         pd.DataFrame(all_tax_filer_targets) if all_tax_filer_targets else pd.DataFrame()
     )
+    tax_expenditure_df = (
+        pd.DataFrame(raw_targets["tax_expenditure_targets"])
+        if raw_targets["tax_expenditure_targets"]
+        else pd.DataFrame()
+    )
 
     # Conditional targets stay as list for special processing
     conditional_targets = raw_targets["conditional_count_targets"]
 
-    return direct_df, tax_filer_df, conditional_targets
+    return direct_df, tax_filer_df, tax_expenditure_df, conditional_targets
 
 
-def load_national_targets(direct_targets_df, tax_filer_df, conditional_targets):
+def load_national_targets(
+    direct_targets_df,
+    tax_filer_df,
+    tax_expenditure_df,
+    conditional_targets,
+):
     """
     Load national targets into the database.
 
@@ -461,6 +502,8 @@ def load_national_targets(direct_targets_df, tax_filer_df, conditional_targets):
         DataFrame with direct sum target data
     tax_filer_df : pd.DataFrame
         DataFrame with tax-related targets needing filer constraint
+    tax_expenditure_df : pd.DataFrame
+        DataFrame with reform-based tax expenditure targets
     conditional_targets : list
         List of conditional count targets requiring strata
     """
@@ -471,7 +514,7 @@ def load_national_targets(direct_targets_df, tax_filer_df, conditional_targets):
     with Session(engine) as session:
         # Get the national stratum
         us_stratum = (
-            session.query(Stratum).filter(Stratum.parent_stratum_id == None).first()
+            session.query(Stratum).filter(Stratum.parent_stratum_id.is_(None)).first()
         )
 
         if not us_stratum:
@@ -590,6 +633,99 @@ def load_national_targets(direct_targets_df, tax_filer_df, conditional_targets):
                     session.add(target)
                     print(f"Added filer target: {target_data['variable']}")
 
+        # Process reform-based tax expenditure targets.
+        if not tax_expenditure_df.empty:
+            migrated_strata = (
+                session.query(Stratum)
+                .filter(
+                    Stratum.parent_stratum_id == us_stratum.stratum_id,
+                    Stratum.notes.in_(
+                        [
+                            "United States - Tax Filers",
+                            "United States - Itemizing Tax Filers",
+                        ]
+                    ),
+                )
+                .all()
+            )
+            migrated_stratum_ids = [s.stratum_id for s in migrated_strata]
+
+            for _, target_data in tax_expenditure_df.iterrows():
+                target_year = target_data["year"]
+                target_reform_id = int(target_data["reform_id"])
+
+                # Clean up incorrectly scoped baseline rows from older DBs.
+                if migrated_stratum_ids:
+                    stale_targets = (
+                        session.query(Target)
+                        .filter(
+                            Target.stratum_id.in_(migrated_stratum_ids),
+                            Target.variable == target_data["variable"],
+                            Target.period == target_year,
+                            Target.reform_id == 0,
+                            Target.active,
+                        )
+                        .all()
+                    )
+                    for stale_target in stale_targets:
+                        stale_target.active = False
+
+                existing_target = (
+                    session.query(Target)
+                    .filter(
+                        Target.stratum_id == us_stratum.stratum_id,
+                        Target.variable == target_data["variable"],
+                        Target.period == target_year,
+                        Target.reform_id == target_reform_id,
+                    )
+                    .first()
+                )
+
+                notes_parts = []
+                if pd.notna(target_data.get("notes")):
+                    notes_parts.append(target_data["notes"])
+                notes_parts.append(
+                    "Modeled as repeal-based income tax expenditure target"
+                )
+                notes_parts.append(f"Source: {target_data.get('source', 'Unknown')}")
+                combined_notes = " | ".join(notes_parts)
+
+                if existing_target:
+                    existing_target.value = target_data["value"]
+                    existing_target.notes = combined_notes
+                    existing_target.source = "PolicyEngine"
+                    existing_target.active = True
+                    print(f"Updated tax expenditure target: {target_data['variable']}")
+                else:
+                    target = Target(
+                        stratum_id=us_stratum.stratum_id,
+                        variable=target_data["variable"],
+                        period=target_year,
+                        reform_id=target_reform_id,
+                        value=target_data["value"],
+                        active=True,
+                        source="PolicyEngine",
+                        notes=combined_notes,
+                    )
+                    session.add(target)
+                    session.flush()
+
+                    persisted = (
+                        session.query(Target)
+                        .filter(Target.target_id == target.target_id)
+                        .first()
+                    )
+                    if persisted.reform_id != target_reform_id:
+                        print(
+                            f"  WARNING: {target_data['variable']} persisted "
+                            f"with reform_id={persisted.reform_id}, "
+                            f"correcting to {target_reform_id}"
+                        )
+                        persisted.reform_id = target_reform_id
+                        session.flush()
+
+                    print(f"Added tax expenditure target: {target_data['variable']}")
+
         # Process conditional count targets (enrollment counts)
         for cond_target in conditional_targets:
             constraint_var = cond_target["constraint_variable"]
@@ -685,12 +821,41 @@ def load_national_targets(direct_targets_df, tax_filer_df, conditional_targets):
 
         session.commit()
 
+        tax_exp_vars = [
+            "salt_deduction",
+            "charitable_deduction",
+            "deductible_mortgage_interest",
+            "medical_expense_deduction",
+            "qualified_business_income_deduction",
+        ]
+        bad_targets = (
+            session.query(Target)
+            .join(Stratum, Target.stratum_id == Stratum.stratum_id)
+            .filter(
+                Target.variable.in_(tax_exp_vars),
+                Target.active == True,
+                Stratum.parent_stratum_id == None,
+                Target.reform_id == 0,
+            )
+            .all()
+        )
+        if bad_targets:
+            bad_names = [t.variable for t in bad_targets]
+            raise ValueError(
+                f"Post-commit check failed: tax expenditure targets "
+                f"have reform_id=0 in root stratum: {bad_names}"
+            )
+
         total_targets = (
-            len(direct_targets_df) + len(tax_filer_df) + len(conditional_targets)
+            len(direct_targets_df)
+            + len(tax_filer_df)
+            + len(tax_expenditure_df)
+            + len(conditional_targets)
         )
         print(f"\nSuccessfully loaded {total_targets} national targets")
         print(f"  - {len(direct_targets_df)} direct sum targets")
         print(f"  - {len(tax_filer_df)} tax filer targets")
+        print(f"  - {len(tax_expenditure_df)} tax expenditure targets")
         print(f"  - {len(conditional_targets)} enrollment count targets (as strata)")
 
 
@@ -706,13 +871,21 @@ def main():
 
     # Transform
     print("Transforming targets...")
-    direct_targets_df, tax_filer_df, conditional_targets = transform_national_targets(
-        raw_targets
-    )
+    (
+        direct_targets_df,
+        tax_filer_df,
+        tax_expenditure_df,
+        conditional_targets,
+    ) = transform_national_targets(raw_targets)
 
     # Load
     print("Loading targets into database...")
-    load_national_targets(direct_targets_df, tax_filer_df, conditional_targets)
+    load_national_targets(
+        direct_targets_df,
+        tax_filer_df,
+        tax_expenditure_df,
+        conditional_targets,
+    )
 
     print("\nETL pipeline complete!")
 

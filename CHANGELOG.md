@@ -1,3 +1,34 @@
+## [1.74.0] - 2026-04-02
+
+### Added
+
+- Convert imputed deductible mortgage interest into structural mortgage balance, interest, and origination-year inputs when the installed `policyengine-us` supports federal MID cap modeling, while preserving total current-law interest deductions via residual investment interest inputs.
+- Added SOI Table 4.3 top-tail calibration targets for the top 0.001%, 0.001-0.01%, 0.01-0.1%, and 0.1-1% AGI percentile intervals, covering 9 variables (count, AGI, wages, interest, dividends, capital gains, business income, and partnership/S-corp income).
+
+### Changed
+
+- Align SSI takeup and disability flags to CPS-reported receipt.
+- Upgrade CI and Modal runtime defaults to Python 3.14 and declare package
+  support for Python 3.14.
+- Refresh tracked national SOI workbook targets through TY2023, backfill TY2022,
+  teach `get_soi()` to pick the best available source year per variable, and
+  overlay the national DB IRS-SOI targets that can now use the newer workbook
+  release instead of staying stuck on the TY2022 geography file.
+
+### Fixed
+
+- Reduce unnecessary PR CI spend by canceling superseded runs and limiting
+  the Modal-backed full data build to labeled or high-risk data-pipeline changes.
+- Restructured CI/CD pipeline: migrated versioning from expired PAT to GitHub App token, moved tests to top-level tests/ with unit/integration split, consolidated 9 workflow files into 4 (pr.yaml, push.yaml, pipeline.yaml, versioning.yaml), added Codecov integration. Integration tests now only run on PRs with the run-integration label.
+- Assign distinct `reform_id` values to each national JCT tax expenditure target instead of reusing a single generic reform id for all of them.
+- Fix SOI uprating dtype error on newer pandas and add defensive non-negativity clip for retirement/SS variables in splice step.
+- Fix the state income tax ETL to parse the official FY2023 Census STC `T40`
+  row instead of using a mismatched hardcoded table, correcting Washington,
+  New Hampshire, Tennessee, California, and other state targets.
+- Use a mortgage-specific deduction variable for the JCT mortgage tax expenditure target instead of broad interest deductions.
+- Scope pipeline artifact directory by run ID to prevent concurrent runs from clobbering each other's H5 files, calibration packages, and weights.
+
+
 ## [1.73.0] - 2026-03-12
 
 ### Added

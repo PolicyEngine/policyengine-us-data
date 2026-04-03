@@ -1,7 +1,46 @@
 import pandas as pd
 import numpy as np
 from .uprating import create_policyengine_uprating_factors_table
-from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER
+
+SOI_UPRATING_MAP = {
+    "adjusted_gross_income": "adjusted_gross_income",
+    "count": "population",
+    "employment_income": "employment_income",
+    "business_net_profits": "self_employment_income",
+    "capital_gains_gross": "long_term_capital_gains",
+    "ordinary_dividends": "non_qualified_dividend_income",
+    "partnership_and_s_corp_income": "partnership_s_corp_income",
+    "qualified_dividends": "qualified_dividend_income",
+    "taxable_interest_income": "taxable_interest_income",
+    # There is no separate published uprating factor for mortgage-interest
+    # deductions, so use total interest deductions as the closest available
+    # proxy.
+    "mortgage_interest_deductions": "interest_deduction",
+    "total_pension_income": "pension_income",
+    "total_social_security": "social_security",
+    "business_net_losses": "self_employment_income",
+    "capital_gains_distributions": "long_term_capital_gains",
+    "capital_gains_losses": "long_term_capital_gains",
+    "estate_income": "estate_income",
+    "estate_losses": "estate_income",
+    "exempt_interest": "tax_exempt_interest_income",
+    "ira_distributions": "taxable_ira_distributions",
+    "partnership_and_s_corp_losses": "partnership_s_corp_income",
+    "rent_and_royalty_net_income": "rental_income",
+    "rent_and_royalty_net_losses": "rental_income",
+    "taxable_pension_income": "taxable_pension_income",
+    "taxable_social_security": "taxable_social_security",
+    "unemployment_compensation": "unemployment_compensation",
+}
+
+NATIONAL_SOI_AGGREGATE_FILTER = {
+    "Filing status": "All",
+    "AGI lower bound": -np.inf,
+    "AGI upper bound": np.inf,
+    "Taxable only": False,
+    "Full population": True,
+}
 
 
 def pe_to_soi(pe_dataset, year):
@@ -11,7 +50,8 @@ def pe_to_soi(pe_dataset, year):
     pe_sim.default_calculation_period = year
     df = pd.DataFrame()
 
-    pe = lambda variable: np.array(pe_sim.calculate(variable, map_to="tax_unit"))
+    def pe(variable):
+        return np.array(pe_sim.calculate(variable, map_to="tax_unit"))
 
     df["adjusted_gross_income"] = pe("adjusted_gross_income")
     df["exemption"] = pe("exemptions")
@@ -62,6 +102,7 @@ def pe_to_soi(pe_dataset, year):
     )
     df["charitable_contributions_deduction"] = pe("charitable_deduction")
     df["interest_paid_deductions"] = pe("interest_deduction")
+    df["mortgage_interest_deductions"] = pe("deductible_mortgage_interest")
     df["medical_expense_deductions_uncapped"] = pe("medical_expense_deduction")
     df["state_and_local_tax_deductions"] = pe("salt_deduction")
     df["itemized_state_income_and_sales_tax_deductions"] = pe(
@@ -108,6 +149,11 @@ def puf_to_soi(puf, year):
     df["employment_income"] = puf.E00200
     df["charitable_contributions_deduction"] = puf.E19700
     df["interest_paid_deductions"] = puf.E19200
+    df["mortgage_interest_deductions"] = (
+        puf["deductible_mortgage_interest"]
+        if "deductible_mortgage_interest" in puf
+        else puf.E19200
+    )
     df["medical_expense_deductions_uncapped"] = puf.E17500
     df["itemized_state_income_and_sales_tax_deductions"] = puf.E18400
     df["itemized_real_estate_tax_deductions"] = puf.E18500
@@ -133,50 +179,95 @@ def puf_to_soi(puf, year):
     return df
 
 
+def load_tracked_soi_targets() -> pd.DataFrame:
+    soi = pd.read_csv(CALIBRATION_FOLDER / "soi_targets.csv")
+    soi["Value"] = soi["Value"].astype(float)
+    return soi
+
+
+def select_best_tracked_soi_rows(
+    soi: pd.DataFrame, requested_year: int
+) -> pd.DataFrame:
+    def best_year(years: pd.Series) -> int:
+        candidates = years[years <= requested_year]
+        if not candidates.empty:
+            return int(candidates.max())
+        return int(years.min())
+
+    best_year_by_variable = soi.groupby("Variable")["Year"].transform(best_year)
+    return soi[soi["Year"] == best_year_by_variable].copy()
+
+
+def get_tracked_soi_row(
+    variable: str,
+    requested_year: int,
+    *,
+    count: bool,
+    filing_status: str = "All",
+    agi_lower_bound: float = -np.inf,
+    agi_upper_bound: float = np.inf,
+    taxable_only: bool = False,
+    full_population: bool = True,
+) -> pd.Series:
+    soi = select_best_tracked_soi_rows(load_tracked_soi_targets(), requested_year)
+    matches = soi[
+        (soi["Variable"] == variable)
+        & (soi["Count"] == count)
+        & (soi["Filing status"] == filing_status)
+        & (soi["AGI lower bound"] == agi_lower_bound)
+        & (soi["AGI upper bound"] == agi_upper_bound)
+        & (soi["Taxable only"] == taxable_only)
+        & (soi["Full population"] == full_population)
+    ]
+    if matches.empty:
+        raise KeyError(
+            "No tracked SOI row for "
+            f"{variable=} {requested_year=} {count=} {filing_status=} "
+            f"{agi_lower_bound=} {agi_upper_bound=} {taxable_only=} "
+            f"{full_population=}"
+        )
+    if len(matches) > 1:
+        raise ValueError(
+            f"Expected one tracked SOI row for {variable}, found {len(matches)}"
+        )
+    return matches.iloc[0]
+
+
+def get_national_soi_aggregate_rows(requested_year: int) -> pd.DataFrame:
+    soi = select_best_tracked_soi_rows(load_tracked_soi_targets(), requested_year)
+    for column, value in NATIONAL_SOI_AGGREGATE_FILTER.items():
+        soi = soi[soi[column] == value]
+    return soi.copy()
+
+
 def get_soi(year: int) -> pd.DataFrame:
     uprating = create_policyengine_uprating_factors_table()
-
-    uprating_map = {
-        "adjusted_gross_income": "adjusted_gross_income",
-        "count": "population",
-        "employment_income": "employment_income",
-        "business_net_profits": "self_employment_income",
-        "capital_gains_gross": "long_term_capital_gains",
-        "ordinary_dividends": "non_qualified_dividend_income",
-        "partnership_and_s_corp_income": "partnership_s_corp_income",
-        "qualified_dividends": "qualified_dividend_income",
-        "taxable_interest_income": "taxable_interest_income",
-        "total_pension_income": "pension_income",
-        "total_social_security": "social_security",
-        "business_net_losses": "self_employment_income",
-        "capital_gains_distributions": "long_term_capital_gains",
-        "capital_gains_losses": "long_term_capital_gains",
-        "estate_income": "estate_income",
-        "estate_losses": "estate_income",
-        "exempt_interest": "tax_exempt_interest_income",
-        "ira_distributions": "taxable_ira_distributions",
-        "partnership_and_s_corp_losses": "partnership_s_corp_income",
-        "rent_and_royalty_net_income": "rental_income",
-        "rent_and_royalty_net_losses": "rental_income",
-        "taxable_pension_income": "taxable_pension_income",
-        "taxable_social_security": "taxable_social_security",
-        "unemployment_compensation": "unemployment_compensation",
-    }
-    soi = pd.read_csv(CALIBRATION_FOLDER / "soi_targets.csv")
-    soi = soi[soi.Year == soi.Year.max()]
-    soi["Value"] = soi["Value"].astype(float)
+    soi = select_best_tracked_soi_rows(load_tracked_soi_targets(), year)
+    uprating_years = uprating.columns.astype(int)
+    earliest_uprating_year = int(uprating_years.min())
+    latest_uprating_year = int(uprating_years.max())
 
     uprating_factors = {}
-    for variable in uprating_map:
-        pe_name = uprating_map.get(variable)
+    for variable, source_year in (
+        soi[["Variable", "Year"]].drop_duplicates().itertuples(index=False)
+    ):
+        source_year_for_uprating = min(
+            max(int(source_year), earliest_uprating_year),
+            latest_uprating_year,
+        )
+        target_year_for_uprating = min(
+            max(int(year), earliest_uprating_year), latest_uprating_year
+        )
+        pe_name = SOI_UPRATING_MAP.get(variable)
         if pe_name in uprating.index:
             uprating_factors[variable] = (
-                uprating.loc[pe_name, year] / uprating.loc[pe_name, soi.Year.max()]
+                uprating.loc[pe_name, target_year_for_uprating]
+                / uprating.loc[pe_name, source_year_for_uprating]
             )
         else:
             uprating_factors[variable] = (
-                uprating.loc["employment_income", year]
-                / uprating.loc["employment_income", soi.Year.max()]
+                uprating.loc["employment_income", target_year_for_uprating]
+                / (uprating.loc["employment_income", source_year_for_uprating])
             )
 
     for variable, uprating_factor in uprating_factors.items():

@@ -122,8 +122,7 @@ def run_year(
 
     if completed.returncode != 0:
         raise RuntimeError(
-            f"Year {year} failed with exit code {completed.returncode}. "
-            f"See {log_path}."
+            f"Year {year} failed with exit code {completed.returncode}. See {log_path}."
         )
 
     expected_h5 = output_dir / f"{year}.h5"
@@ -137,7 +136,9 @@ def run_year(
 
 
 def copy_support_reports(temp_output_dir: Path, final_output_dir: Path) -> None:
-    for report_path in sorted(temp_output_dir.glob("support_augmentation_report*.json")):
+    for report_path in sorted(
+        temp_output_dir.glob("support_augmentation_report*.json")
+    ):
         target_path = final_output_dir / report_path.name
         if not target_path.exists():
             shutil.copy2(report_path, target_path)

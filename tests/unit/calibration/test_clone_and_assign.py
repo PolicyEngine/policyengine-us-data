@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
+    _build_agi_block_probs,
     load_global_block_distribution,
     assign_random_geography,
     double_geography_for_puf,
@@ -87,6 +88,25 @@ class TestLoadGlobalBlockDistribution:
 
 
 class TestAssignRandomGeography:
+    def test_build_agi_block_probs_matches_district_target_shares(self):
+        cds = np.array(["101", "101", "102", "102"])
+        pop_probs = np.array([0.45, 0.45, 0.05, 0.05], dtype=np.float64)
+        agi_targets = {"101": 1.0, "102": 3.0}
+
+        agi_probs = _build_agi_block_probs(cds, pop_probs, agi_targets)
+
+        by_cd = {cd: agi_probs[cds == cd].sum() for cd in np.unique(cds)}
+        np.testing.assert_allclose(by_cd["101"], 0.25)
+        np.testing.assert_allclose(by_cd["102"], 0.75)
+        np.testing.assert_allclose(
+            agi_probs[cds == "101"] / agi_probs[cds == "101"].sum(),
+            pop_probs[cds == "101"] / pop_probs[cds == "101"].sum(),
+        )
+        np.testing.assert_allclose(
+            agi_probs[cds == "102"] / agi_probs[cds == "102"].sum(),
+            pop_probs[cds == "102"] / pop_probs[cds == "102"].sum(),
+        )
+
     @patch(
         "policyengine_us_data.calibration.clone_and_assign"
         ".load_global_block_distribution"

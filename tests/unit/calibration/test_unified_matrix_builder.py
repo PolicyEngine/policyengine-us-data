@@ -116,7 +116,7 @@ GROUP BY t.target_id, t.stratum_id, t.variable,
 
 def _insert_aca_ptc_data(engine):
     with engine.connect() as conn:
-        strata = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+        strata = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
         for sid in strata:
             conn.execute(
                 text(
@@ -147,6 +147,8 @@ def _insert_aca_ptc_data(engine):
             (14, 8, "aca_ptc", ">", "0"),
             (15, 8, "congressional_district_geoid", "=", "3702"),
             (16, 9, "aca_ptc", ">", "0"),
+            (17, 10, "congressional_district_geoid", "=", "601"),
+            (18, 11, "congressional_district_geoid", "=", "602"),
         ]
         for cid, sid, var, op, val in constraints:
             conn.execute(
@@ -183,6 +185,9 @@ def _insert_aca_ptc_data(engine):
             (17, 9, "person_count", 0, 19743689.0, 2024, 1),
             (18, 1, "aca_ptc", 1, 999.0, 2022, 1),
             (19, 1, "aca_ptc", 0, 12345.0, 2024, 0),
+            (20, 10, "adjusted_gross_income", 0, 1000.0, 2021, 1),
+            (21, 10, "adjusted_gross_income", 0, 1500.0, 2022, 1),
+            (22, 11, "adjusted_gross_income", 0, 800.0, 2022, 1),
         ]
         for tid, sid, var, reform_id, val, period, active in targets:
             conn.execute(
@@ -296,6 +301,13 @@ class TestQueryTargets(unittest.TestCase):
             reform_id=1,
         )
         self.assertEqual(name, "national/salt_deduction_expenditure")
+
+    def test_get_district_agi_targets_uses_requested_db_periods(self):
+        b = self._make_builder(time_period=2024)
+        self.assertEqual(
+            b.get_district_agi_targets(),
+            {"601": 1500.0, "602": 800.0},
+        )
 
 
 class TestHierarchicalUprating(unittest.TestCase):

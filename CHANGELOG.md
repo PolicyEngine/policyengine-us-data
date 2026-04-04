@@ -1,3 +1,10 @@
+## [1.74.2] - 2026-04-03
+
+### Fixed
+
+- Fix district AGI geography assignment to match target shares and use the requested calibration database when loading district AGI targets.
+
+
 ## [1.74.1] - 2026-04-03
 
 ### Fixed

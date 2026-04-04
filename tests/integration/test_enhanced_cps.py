@@ -1,5 +1,6 @@
 """Integration tests for Enhanced CPS dataset (requires enhanced_cps_2024.h5)."""
 
+import numpy as np
 import pytest
 
 
@@ -257,6 +258,25 @@ def test_aca_calibration():
             failed = True
 
     assert not failed, f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+
+
+def test_aca_2025_takeup_override_helper():
+    from policyengine_us_data.datasets.cps.enhanced_cps import (
+        create_aca_2025_takeup_override,
+    )
+
+    result = create_aca_2025_takeup_override(
+        base_takeup=np.array([True, False, False], dtype=bool),
+        person_enrolled_if_takeup=np.array([True, True, True, True], dtype=bool),
+        person_weights=np.array([2.0, 1.0, 3.0, 4.0], dtype=np.float64),
+        person_tax_unit_ids=np.array([10, 10, 11, 12], dtype=np.int64),
+        tax_unit_ids=np.array([10, 11, 12], dtype=np.int64),
+        target_people=6.0,
+    )
+
+    assert np.all(np.array([True, False, False]) <= result)
+    assert result.dtype == bool
+    assert result.sum() == 2
 
 
 def test_immigration_status_diversity():

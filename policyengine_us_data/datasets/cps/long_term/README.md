@@ -23,6 +23,14 @@ python run_household_projection.py 2050 --profile age-only
 
 # GREG with age + Social Security only
 python run_household_projection.py 2100 --profile ss
+
+# Parallel year-level H5 construction with one subprocess per year
+python run_household_projection_parallel.py \
+  --years 2026-2035,2045,2049,2062,2063,2070 \
+  --jobs 6 \
+  --output-dir ./projected_datasets_parallel \
+  --profile ss-payroll-tob \
+  --target-source oact_2025_08_05_provisional
 ```
 
 **Arguments:**
@@ -45,6 +53,11 @@ python run_household_projection.py 2100 --profile ss
 - `--use-payroll`: Include taxable payroll totals as calibration target (requires `--greg`)
 - `--use-tob`: Include TOB (Taxation of Benefits) revenue as calibration target (requires `--greg`)
 - `--save-h5`: Save year-specific .h5 files to `./projected_datasets/` directory
+
+**Parallel wrapper:**
+- `run_household_projection_parallel.py` runs one `run_household_projection.py YEAR YEAR ...` subprocess per year and merges the resulting H5 artifacts into one output directory.
+- The wrapper forces `--save-h5` and controls `--output-dir` itself, so those flags should not be forwarded to the inner runner.
+- Per-year stdout/stderr logs are written under `OUTPUT_DIR/.parallel_logs/`.
 
 **Named profiles:**
 - `age-only`: IPF age-only calibration

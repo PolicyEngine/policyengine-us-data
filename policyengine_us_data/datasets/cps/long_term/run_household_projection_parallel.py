@@ -8,7 +8,10 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from calibration_artifacts import update_dataset_manifest
+try:
+    from .calibration_artifacts import update_dataset_manifest
+except ImportError:  # pragma: no cover - script execution fallback
+    from calibration_artifacts import update_dataset_manifest
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent

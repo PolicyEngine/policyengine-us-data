@@ -3,7 +3,7 @@ from functools import lru_cache
 import numpy as np
 import pandas as pd
 
-from policyengine_us_data.storage import CALIBRATION_FOLDER, STORAGE_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER
 
 ITMDED_GROW_RATE = 0.02  # annual growth rate in itemized deduction amounts
 
@@ -93,18 +93,12 @@ REMAINING_VARIABLES = [
 
 @lru_cache(maxsize=1)
 def load_soi_aggregates() -> pd.DataFrame:
-    for path in (
-        STORAGE_FOLDER / "soi.csv",
-        CALIBRATION_FOLDER / "soi_targets.csv",
-    ):
-        if path.exists():
-            soi = pd.read_csv(path)
-            soi["Value"] = soi["Value"].astype(float)
-            return soi
-    raise FileNotFoundError(
-        "No SOI aggregate file found in "
-        f"{STORAGE_FOLDER / 'soi.csv'} or {CALIBRATION_FOLDER / 'soi_targets.csv'}"
-    )
+    path = CALIBRATION_FOLDER / "soi_targets.csv"
+    if not path.exists():
+        raise FileNotFoundError(f"No SOI aggregate file found at {path}")
+    soi = pd.read_csv(path)
+    soi["Value"] = soi["Value"].astype(float)
+    return soi
 
 
 def get_soi_aggregate(variable, year, is_count):

@@ -86,7 +86,7 @@ def write_soi_targets(path: Path) -> None:
     ).to_csv(path, index=False)
 
 
-def test_get_soi_aggregate_falls_back_to_calibration_targets(tmp_path: Path):
+def test_get_soi_aggregate_reads_tracked_soi_targets(tmp_path: Path):
     write_soi_targets(tmp_path / "calibration_targets" / "soi_targets.csv")
     module = load_uprate_puf_module(tmp_path)
 
@@ -97,5 +97,5 @@ def test_get_soi_aggregate_falls_back_to_calibration_targets(tmp_path: Path):
 def test_get_soi_aggregate_raises_clear_error_when_missing(tmp_path: Path):
     module = load_uprate_puf_module(tmp_path)
 
-    with pytest.raises(FileNotFoundError, match="soi_targets.csv"):
+    with pytest.raises(FileNotFoundError, match="No SOI aggregate file found at"):
         module.load_soi_aggregates()

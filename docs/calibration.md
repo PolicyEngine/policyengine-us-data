@@ -2,6 +2,8 @@
 
 The unified calibration pipeline reweights cloned CPS records to match administrative targets using L0-regularized optimization. This guide covers the main workflows: lightweight build-then-fit, full pipeline with PUF, and fitting from a saved package.
 
+This is the current production calibration path. The older national-only Enhanced CPS path (`make data-legacy`) remains in the repo for legacy reproduction and uses a separate `EnhancedCPS` / `build_loss_matrix()` flow.
+
 ## Quick Start
 
 ```bash

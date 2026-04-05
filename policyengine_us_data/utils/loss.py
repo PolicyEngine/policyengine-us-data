@@ -3,8 +3,9 @@ import gc
 import pandas as pd
 import numpy as np
 import logging
+import sqlite3
 
-from policyengine_us_data.storage import CALIBRATION_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER, STORAGE_FOLDER
 from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
     STATE_ABBR_TO_FIPS,
 )
@@ -116,6 +117,133 @@ def fmt(x):
     if x < 1e9:
         return f"{x / 1e6:.0f}m"
     return f"{x / 1e9:.1f}bn"
+
+
+def _parse_constraint_value(value):
+    if value == "True":
+        return True
+    if value == "False":
+        return False
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return value
+
+
+def _apply_constraint(values, operation: str, raw_value: str):
+    if operation == "in":
+        allowed_values = [part.strip() for part in raw_value.split("|")]
+        return np.isin(values, allowed_values)
+
+    value = _parse_constraint_value(raw_value)
+    if operation in ("equals", "==", "="):
+        return values == value
+    if operation in ("greater_than", ">"):
+        return values > value
+    if operation in ("greater_than_or_equal", ">="):
+        return values >= value
+    if operation in ("less_than", "<"):
+        return values < value
+    if operation in ("less_than_or_equal", "<="):
+        return values <= value
+    if operation in ("not_equals", "!=", "<>"):
+        return values != value
+
+    raise ValueError(f"Unsupported stratum constraint operation: {operation}")
+
+
+def _geo_label_from_ucgid(ucgid_str: str) -> str:
+    if ucgid_str in (None, "", "0100000US"):
+        return "nation"
+    return f"geo/{ucgid_str}"
+
+
+def _add_liheap_targets_from_db(loss_matrix, targets_list, sim, time_period):
+    db_path = STORAGE_FOLDER / "calibration" / "policy_data.db"
+    if not db_path.exists():
+        return targets_list, loss_matrix
+
+    query = """
+        SELECT
+            t.target_id,
+            t.variable,
+            t.value AS target_value,
+            s.notes,
+            sc.constraint_variable,
+            sc.operation,
+            sc.value AS constraint_value
+        FROM targets t
+        JOIN strata s
+            ON s.stratum_id = t.stratum_id
+        JOIN stratum_constraints sc
+            ON sc.stratum_id = s.stratum_id
+        WHERE
+            t.active = 1
+            AND t.reform_id = 0
+            AND t.period = ?
+            AND s.notes LIKE '%LIHEAP%'
+        ORDER BY t.target_id
+    """
+
+    with sqlite3.connect(db_path) as conn:
+        target_rows = pd.read_sql_query(query, conn, params=[time_period])
+
+    if target_rows.empty:
+        return targets_list, loss_matrix
+
+    household_values_cache = {
+        "household_weight": sim.calculate("household_weight").values
+    }
+
+    def get_household_values(variable: str):
+        if variable not in household_values_cache:
+            household_values_cache[variable] = sim.calculate(
+                variable,
+                map_to="household",
+            ).values
+        return household_values_cache[variable]
+
+    n_households = len(household_values_cache["household_weight"])
+
+    for _, target_df in target_rows.groupby("target_id", sort=False):
+        mask = np.ones(n_households, dtype=bool)
+        for row in target_df.itertuples(index=False):
+            if (
+                row.constraint_variable == "ucgid_str"
+                and row.constraint_value == "0100000US"
+            ):
+                continue
+            values = get_household_values(row.constraint_variable)
+            mask &= _apply_constraint(
+                values,
+                row.operation,
+                row.constraint_value,
+            )
+
+        variable = target_df["variable"].iat[0]
+        if variable == "household_count":
+            metric = mask.astype(float)
+        else:
+            metric = np.where(mask, get_household_values(variable), 0.0)
+
+        ucgid_constraints = target_df.loc[
+            target_df.constraint_variable == "ucgid_str", "constraint_value"
+        ]
+        geo_label = _geo_label_from_ucgid(
+            ucgid_constraints.iat[0] if not ucgid_constraints.empty else None
+        )
+        label = f"{geo_label}/db/liheap/{variable}"
+        loss_matrix[label] = metric
+        targets_list.append(target_df["target_value"].iat[0])
+
+    logging.info(
+        f"Loaded {target_rows['target_id'].nunique()} LIHEAP targets from the local targets DB"
+    )
+
+    return targets_list, loss_matrix
 
 
 def build_loss_matrix(dataset: type, time_period):
@@ -666,6 +794,10 @@ def build_loss_matrix(dataset: type, time_period):
     snap_state_target_names, snap_state_targets = _add_snap_state_targets(sim)
     targets_array.extend(snap_state_targets)
     loss_matrix = _add_snap_metric_columns(loss_matrix, sim)
+
+    targets_array, loss_matrix = _add_liheap_targets_from_db(
+        loss_matrix, targets_array, sim, time_period
+    )
 
     del sim, df
     gc.collect()

@@ -137,3 +137,67 @@ def test_load_national_targets_deactivates_stale_baseline_rows(tmp_path, monkeyp
             in (target.notes or "")
             for target in reform_rows
         )
+
+
+def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkeypatch):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        national = _make_stratum(session, notes="United States")
+        assert national is not None
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    conditional_targets = [
+        {
+            "constraint_variable": "spm_unit_energy_subsidy_reported",
+            "target_variable": "household_count",
+            "household_count": 5_876_646,
+            "source": "https://example.com/liheap-2024.pdf",
+            "notes": "LIHEAP total households served by state programs",
+            "year": 2024,
+        }
+    ]
+
+    load_national_targets(
+        direct_targets_df=pd.DataFrame(),
+        tax_filer_df=pd.DataFrame(),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=conditional_targets,
+    )
+
+    with Session(engine) as session:
+        liheap_stratum = (
+            session.query(Stratum)
+            .filter(Stratum.notes == "National LIHEAP Recipient Households")
+            .first()
+        )
+        assert liheap_stratum is not None
+
+        constraints = {
+            (
+                constraint.constraint_variable,
+                constraint.operation,
+                constraint.value,
+            )
+            for constraint in liheap_stratum.constraints_rel
+        }
+        assert ("spm_unit_energy_subsidy_reported", ">", "0") in constraints
+
+        liheap_target = (
+            session.query(Target)
+            .filter(
+                Target.stratum_id == liheap_stratum.stratum_id,
+                Target.variable == "household_count",
+                Target.period == 2024,
+            )
+            .first()
+        )
+        assert liheap_target is not None
+        assert liheap_target.value == 5_876_646

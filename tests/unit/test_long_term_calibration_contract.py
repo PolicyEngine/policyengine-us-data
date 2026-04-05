@@ -58,6 +58,12 @@ from policyengine_us_data.datasets.cps.long_term.prototype_synthetic_2100_suppor
     build_role_donor_composites,
     summarize_realized_clone_translation,
 )
+from policyengine_us_data.datasets.cps.long_term.run_household_projection_parallel import (
+    merge_outputs,
+    parse_years,
+    validate_forwarded_args,
+    year_output_dir,
+)
 
 
 class ExplodingCalibrator:
@@ -1243,6 +1249,155 @@ def test_write_support_augmentation_report_custom_filename(tmp_path):
     assert report_path == tmp_path / "support_augmentation_report_2090.json"
     loaded = json.loads(report_path.read_text(encoding="utf-8"))
     assert loaded["target_year"] == 2090
+
+
+def test_parallel_projection_parse_years_supports_ranges_and_sorting():
+    assert parse_years("2030,2028-2029,2030,2027") == [2027, 2028, 2029, 2030]
+
+
+def test_parallel_projection_validate_forwarded_args_rejects_wrapper_flags():
+    with pytest.raises(ValueError, match="--output-dir"):
+        validate_forwarded_args(["--output-dir", "/tmp/out"])
+    with pytest.raises(ValueError, match="--save-h5"):
+        validate_forwarded_args(["--save-h5"])
+
+
+def _write_parallel_temp_year(
+    *,
+    root,
+    year,
+    profile,
+    audit,
+    target_source=None,
+    tax_assumption=None,
+    support_augmentation=None,
+):
+    temp_output_dir = year_output_dir(root, year)
+    temp_output_dir.mkdir(parents=True, exist_ok=True)
+    year_h5 = temp_output_dir / f"{year}.h5"
+    year_h5.write_text("", encoding="utf-8")
+    metadata_path = write_year_metadata(
+        year_h5,
+        year=year,
+        base_dataset_path="test.h5",
+        profile=profile,
+        calibration_audit=audit,
+        target_source=target_source,
+        tax_assumption=tax_assumption,
+        support_augmentation=support_augmentation,
+    )
+    update_dataset_manifest(
+        temp_output_dir,
+        year=year,
+        h5_path=year_h5,
+        metadata_path=metadata_path,
+        base_dataset_path="test.h5",
+        profile=profile,
+        calibration_audit=audit,
+        target_source=target_source,
+        tax_assumption=tax_assumption,
+        support_augmentation=support_augmentation,
+    )
+
+
+def test_parallel_projection_merge_outputs_rebuilds_manifest(tmp_path):
+    profile = get_profile("ss-payroll-tob").to_dict()
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+        "calibration_quality": "exact",
+    }
+    target_source = {
+        "name": "oact_2025_08_05_provisional",
+        "source_type": "oact_note",
+    }
+    tax_assumption = {
+        "name": "trustees-core-thresholds-v1",
+        "start_year": 2035,
+        "end_year": 2100,
+    }
+
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2045,
+        profile=profile,
+        audit=audit,
+        target_source=target_source,
+        tax_assumption=tax_assumption,
+    )
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2049,
+        profile=profile,
+        audit=audit,
+        target_source=target_source,
+        tax_assumption=tax_assumption,
+    )
+
+    manifest_path = merge_outputs(
+        years=[2045, 2049],
+        output_root=tmp_path,
+        keep_temp=False,
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["years"] == [2045, 2049]
+    assert manifest["target_source"]["name"] == "oact_2025_08_05_provisional"
+    assert manifest["tax_assumption"]["name"] == "trustees-core-thresholds-v1"
+    assert (tmp_path / "2045.h5").exists()
+    assert (tmp_path / "2049.h5.metadata.json").exists()
+    assert not (tmp_path / ".parallel_tmp").exists()
+
+
+def test_parallel_projection_merge_outputs_rejects_mismatched_contract(tmp_path):
+    profile = get_profile("ss-payroll-tob").to_dict()
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+        "calibration_quality": "exact",
+    }
+
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2062,
+        profile=profile,
+        audit=audit,
+        tax_assumption={"name": "trustees-core-thresholds-v1"},
+    )
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2063,
+        profile=profile,
+        audit=audit,
+        tax_assumption={"name": "different-tax-assumption"},
+    )
+
+    with pytest.raises(ValueError, match="Temp manifest mismatch for tax_assumption"):
+        merge_outputs(
+            years=[2062, 2063],
+            output_root=tmp_path,
+            keep_temp=True,
+        )
 
 
 def test_summarize_realized_clone_translation_matches_toy_clone():

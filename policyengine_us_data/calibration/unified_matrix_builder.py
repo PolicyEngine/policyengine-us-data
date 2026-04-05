@@ -1621,6 +1621,19 @@ class UnifiedMatrixBuilder:
                 params={"time_period": self.time_period},
             )
 
+    def get_district_agi_targets(self) -> Dict[str, float]:
+        """Return current-law district AGI targets for geography assignment."""
+        targets_df = self._query_targets({"variables": ["adjusted_gross_income"]})
+        district_rows = targets_df[
+            (targets_df["geo_level"] == "district")
+            & (targets_df["reform_id"] == 0)
+            & (targets_df["domain_variable"].fillna("") == "")
+        ]
+        return {
+            str(row["geographic_id"]): float(row["value"])
+            for _, row in district_rows.iterrows()
+        }
+
     # ---------------------------------------------------------------
     # Uprating
     # ---------------------------------------------------------------

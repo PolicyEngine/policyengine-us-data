@@ -6,13 +6,18 @@ block-level takeup seeding, county precomputation, and CLI flags.
 """
 
 import numpy as np
+import pytest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     TAKEUP_AFFECTED_TARGETS,
-    compute_block_takeup_for_entities,
     apply_block_takeup_to_arrays,
+    compute_block_takeup_draws_for_entities,
+    compute_block_takeup_for_entities,
+    extend_aca_takeup_to_match_target,
     _resolve_rate,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
@@ -196,6 +201,43 @@ class TestApplyBlockTakeupToArrays:
         assert differs
 
 
+class TestAcaTakeupTargeting:
+    """Verify ACA post-calibration targeting helpers."""
+
+    def test_draw_helper_matches_boolean_helper(self):
+        blocks = np.array(["370010001001001"] * 25)
+        hh_ids = np.arange(25, dtype=np.int64)
+        draws = compute_block_takeup_draws_for_entities(
+            "takes_up_aca_if_eligible",
+            blocks,
+            hh_ids,
+        )
+        result = compute_block_takeup_for_entities(
+            "takes_up_aca_if_eligible",
+            0.7,
+            blocks,
+            hh_ids,
+        )
+        np.testing.assert_array_equal(result, draws < 0.7)
+
+    def test_extend_only_adds_true_values_until_target(self):
+        base_takeup = np.array([True, False, False, False], dtype=bool)
+        entity_draws = np.array([0.10, 0.40, 0.20, 0.30], dtype=np.float64)
+        enrolled_person_weights = np.array([2.0, 1.0, 3.0, 4.0], dtype=np.float64)
+
+        result = extend_aca_takeup_to_match_target(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            target_people=6.0,
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([True, False, True, True], dtype=bool),
+        )
+
+
 class TestResolveRate:
     """Verify _resolve_rate handles scalar and dict rates."""
 
@@ -350,6 +392,68 @@ class TestGeographyAssignmentCountyFips:
         )
         assert len(ga.county_fips) == 5
         assert all(len(c) == 5 for c in ga.county_fips)
+
+
+class TestRunCalibrationAgiTargets:
+    def test_uses_requested_db_for_district_agi_targets(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            run_calibration,
+        )
+
+        captured = {}
+
+        class StopAfterAssignment(RuntimeError):
+            pass
+
+        class FakeMicrosimulation:
+            def __init__(self, dataset, reform=None):
+                self.dataset = SimpleNamespace(
+                    load_dataset=lambda: {"household_id": {2024: np.array([1, 2])}}
+                )
+
+            def calculate(self, variable, *args, **kwargs):
+                if variable == "household_id":
+                    return SimpleNamespace(values=np.array([1, 2], dtype=np.int64))
+                if variable == "adjusted_gross_income":
+                    return SimpleNamespace(
+                        values=np.array([100.0, 200.0], dtype=np.float64)
+                    )
+                raise AssertionError(f"Unexpected calculate({variable!r})")
+
+        class FakeBuilder:
+            def __init__(self, db_uri, time_period, dataset_path=None):
+                captured["db_uri"] = db_uri
+                captured["time_period"] = time_period
+                captured["dataset_path_at_init"] = dataset_path
+
+            def get_district_agi_targets(self):
+                return {"601": 123.0}
+
+        def fake_assign_random_geography(**kwargs):
+            captured["assign_kwargs"] = kwargs
+            raise StopAfterAssignment
+
+        with (
+            patch("policyengine_us.Microsimulation", FakeMicrosimulation),
+            patch(
+                "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder",
+                FakeBuilder,
+            ),
+            patch(
+                "policyengine_us_data.calibration.clone_and_assign.assign_random_geography",
+                fake_assign_random_geography,
+            ),
+        ):
+            with pytest.raises(StopAfterAssignment):
+                run_calibration(
+                    dataset_path="input.h5",
+                    db_path="/tmp/custom-policy-data.db",
+                    n_clones=2,
+                )
+
+        assert captured["db_uri"] == "sqlite:////tmp/custom-policy-data.db"
+        assert captured["time_period"] == 2024
+        assert captured["assign_kwargs"]["cd_agi_targets"] == {"601": 123.0}
 
 
 class TestBlockTakeupSeeding:
@@ -562,7 +666,6 @@ class TestTakeupDrawConsistency:
     def test_aggregation_entity_to_household(self):
         """np.add.at aggregation matches manual per-HH sum."""
         n_hh = 3
-        n_ent = 6
         ent_hh = np.array([0, 0, 1, 1, 1, 2])
         eligible = np.array(
             [100.0, 200.0, 50.0, 150.0, 100.0, 300.0],

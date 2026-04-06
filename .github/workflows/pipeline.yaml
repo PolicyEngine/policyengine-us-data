@@ -49,7 +49,7 @@ jobs:
           GPU="${{ inputs.gpu || 'T4' }}"
           EPOCHS="${{ inputs.epochs || '1000' }}"
           NATIONAL_EPOCHS="${{ inputs.national_epochs || '4000' }}"
-          NUM_WORKERS="${{ inputs.num_workers || '8' }}"
+          NUM_WORKERS="${{ inputs.num_workers || '50' }}"
           SKIP_NATIONAL="${{ inputs.skip_national || 'false' }}"
 
           python -c "

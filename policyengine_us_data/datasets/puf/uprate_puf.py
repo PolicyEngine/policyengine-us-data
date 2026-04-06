@@ -1,6 +1,9 @@
-import pandas as pd
+from functools import lru_cache
+
 import numpy as np
-from policyengine_us_data.storage import STORAGE_FOLDER
+import pandas as pd
+
+from policyengine_us_data.storage import CALIBRATION_FOLDER
 
 ITMDED_GROW_RATE = 0.02  # annual growth rate in itemized deduction amounts
 
@@ -87,11 +90,19 @@ REMAINING_VARIABLES = [
     "E09800",
 ]
 
-if (STORAGE_FOLDER / "soi.csv").exists():
-    soi = pd.read_csv(STORAGE_FOLDER / "soi.csv")
+
+@lru_cache(maxsize=1)
+def load_soi_aggregates() -> pd.DataFrame:
+    path = CALIBRATION_FOLDER / "soi_targets.csv"
+    if not path.exists():
+        raise FileNotFoundError(f"No SOI aggregate file found at {path}")
+    soi = pd.read_csv(path)
+    soi["Value"] = soi["Value"].astype(float)
+    return soi
 
 
 def get_soi_aggregate(variable, year, is_count):
+    soi = load_soi_aggregates()
     if variable == "adjusted_gross_income" and is_count:
         # AGI isn't treated like the other variables
         return get_soi_aggregate("count", year, True)
@@ -101,7 +112,7 @@ def get_soi_aggregate(variable, year, is_count):
     agi_lower = soi["AGI lower bound"] == -np.inf
     agi_upper = soi["AGI upper bound"] == np.inf
     count_status = soi["Count"] == is_count
-    non_taxable_only = soi["Taxable only"] == False
+    non_taxable_only = ~soi["Taxable only"]
 
     return (
         soi[

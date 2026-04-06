@@ -22,12 +22,6 @@ download(
 )
 download(
     repo="policyengine/irs-soi-puf",
-    repo_filename="soi.csv",
-    local_folder=FOLDER,
-    version=None,
-)
-download(
-    repo="policyengine/irs-soi-puf",
     repo_filename="np2023_d5_mid.csv",
     local_folder=FOLDER,
     version=None,

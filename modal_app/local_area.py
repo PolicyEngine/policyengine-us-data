@@ -293,8 +293,9 @@ def run_phase(
         "/pipeline": pipeline_volume,
     },
     memory=16384,
-    cpu=4.0,
+    cpu=1.0,
     timeout=28800,
+    max_containers=50,
     nonpreemptible=True,
 )
 def build_areas_worker(
@@ -618,7 +619,7 @@ print(f"Successfully published version {{version}}")
 )
 def coordinate_publish(
     branch: str = "main",
-    num_workers: int = 8,
+    num_workers: int = 50,
     skip_upload: bool = False,
     n_clones: int = 430,
     validate: bool = True,
@@ -877,7 +878,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
 @app.local_entrypoint()
 def main(
     branch: str = "main",
-    num_workers: int = 8,
+    num_workers: int = 50,
     skip_upload: bool = False,
     n_clones: int = 430,
     run_id: str = "",

@@ -106,13 +106,13 @@ class CPS(Dataset):
                 "For future years, use PolicyEngine's uprating at simulation time."
             )
 
-        raw_data = self.raw_cps(require=True).load()
         cps = {}
 
         ENTITIES = ("person", "tax_unit", "family", "spm_unit", "household")
-        person, tax_unit, family, spm_unit, household = [
-            raw_data[entity] for entity in ENTITIES
-        ]
+        with self.raw_cps(require=True).load() as raw_data:
+            person, tax_unit, family, spm_unit, household = [
+                raw_data[entity] for entity in ENTITIES
+            ]
 
         logging.info("Adding ID variables")
         add_id_variables(cps, person, tax_unit, family, spm_unit, household)
@@ -146,7 +146,6 @@ class CPS(Dataset):
         add_auto_loan_interest_and_net_worth(self, cps)
         logging.info("Added all variables")
 
-        raw_data.close()
         self.save_dataset(cps)
         logging.info("Adding takeup")
         add_takeup(self)
@@ -911,39 +910,40 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
         )
         return
 
-    cps_current_year_data = self.raw_cps(require=True).load()
-    cps_previous_year_data = self.previous_year_raw_cps(require=True).load()
-    cps_previous_year = cps_previous_year_data.person.set_index(
-        cps_previous_year_data.person.PERIDNUM
-    )
-    cps_current_year = cps_current_year_data.person.set_index(
-        cps_current_year_data.person.PERIDNUM
-    )
+    with self.raw_cps(require=True).load() as cps_current_year_data, self.previous_year_raw_cps(
+        require=True
+    ).load() as cps_previous_year_data:
+        cps_previous_year = cps_previous_year_data.person.set_index(
+            cps_previous_year_data.person.PERIDNUM
+        )
+        cps_current_year = cps_current_year_data.person.set_index(
+            cps_current_year_data.person.PERIDNUM
+        )
 
-    previous_year_data = cps_previous_year[
-        ["WSAL_VAL", "SEMP_VAL", "I_ERNVAL", "I_SEVAL"]
-    ].rename(
-        {
-            "WSAL_VAL": "employment_income_last_year",
-            "SEMP_VAL": "self_employment_income_last_year",
-        },
-        axis=1,
-    )
+        previous_year_data = cps_previous_year[
+            ["WSAL_VAL", "SEMP_VAL", "I_ERNVAL", "I_SEVAL"]
+        ].rename(
+            {
+                "WSAL_VAL": "employment_income_last_year",
+                "SEMP_VAL": "self_employment_income_last_year",
+            },
+            axis=1,
+        )
 
-    previous_year_data = previous_year_data[
-        (previous_year_data.I_ERNVAL == 0) & (previous_year_data.I_SEVAL == 0)
-    ]
-
-    previous_year_data.drop(["I_ERNVAL", "I_SEVAL"], axis=1, inplace=True)
-
-    joined_data = cps_current_year.join(previous_year_data)[
-        [
-            "employment_income_last_year",
-            "self_employment_income_last_year",
-            "I_ERNVAL",
-            "I_SEVAL",
+        previous_year_data = previous_year_data[
+            (previous_year_data.I_ERNVAL == 0) & (previous_year_data.I_SEVAL == 0)
         ]
-    ]
+
+        previous_year_data.drop(["I_ERNVAL", "I_SEVAL"], axis=1, inplace=True)
+
+        joined_data = cps_current_year.join(previous_year_data)[
+            [
+                "employment_income_last_year",
+                "self_employment_income_last_year",
+                "I_ERNVAL",
+                "I_SEVAL",
+            ]
+        ]
     joined_data["previous_year_income_available"] = (
         ~joined_data.employment_income_last_year.isna()
         & ~joined_data.self_employment_income_last_year.isna()
@@ -1870,13 +1870,12 @@ def add_tips(self, cps: h5py.File):
     # Get is_married from raw CPS data (A_MARITL codes: 1,2 = married)
     # Note: is_married in policyengine-us is Family-level, but we need
     # person-level for imputation models
-    raw_data = self.raw_cps(require=True).load()
-    raw_person = raw_data["person"]
-    cps["is_married"] = raw_person.A_MARITL.isin([1, 2]).values
-    cps["is_tipped_occupation"] = derive_is_tipped_occupation(
-        derive_treasury_tipped_occupation_code(raw_person.PEIOOCC)
-    )
-    raw_data.close()
+    with self.raw_cps(require=True).load() as raw_data:
+        raw_person = raw_data["person"]
+        cps["is_married"] = raw_person.A_MARITL.isin([1, 2]).values
+        cps["is_tipped_occupation"] = derive_is_tipped_occupation(
+            derive_treasury_tipped_occupation_code(raw_person.PEIOOCC)
+        )
 
     cps["is_under_18"] = cps.age < 18
     cps["is_under_6"] = cps.age < 6
@@ -2261,6 +2260,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     # Add is_married variable for household heads based on raw person data
     reference_persons = person_data[mask]
     receiver_data["is_married"] = reference_persons.A_MARITL.isin([1, 2]).values
+    raw_data.close()
 
     # Impute auto loan balance from the SCF
     from policyengine_us_data.datasets.scf.scf import SCF_2022

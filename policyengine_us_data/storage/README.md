@@ -34,6 +34,8 @@
   • Source packages for long-term CPS calibration targets
   • Files:
      - `trustees_2025_current_law.csv`: explicit frozen copy of the legacy Trustees/current-law target path
+     - `oact_2025_08_05_provisional.csv`: OACT-updated TOB path with provisional HI bridge
+     - `oasdi_oact_20250805_nominal_delta.csv`: raw OASDI TOB deltas from the August 5, 2025 OACT letter
      - `sources.json`: provenance and source metadata for each named package
   • Notes: `run_household_projection.py --target-source ...` selects from these packages instead of relying on branch-specific data files
 

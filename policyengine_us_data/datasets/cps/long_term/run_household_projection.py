@@ -32,6 +32,7 @@ Examples:
     python run_household_projection.py 2075 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-synthetic-v1 --support-augmentation-target-year 2100 --allow-validation-failures
     python run_household_projection.py 2100 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-composite-v1 --support-augmentation-target-year 2100 --support-augmentation-blueprint-base-weight-scale 0.5 --allow-validation-failures --save-h5
     python run_household_projection.py 2075 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-composite-v1 --support-augmentation-align-to-run-year --support-augmentation-blueprint-base-weight-scale 0.5 --allow-validation-failures
+    python run_household_projection.py 2025 2100 --profile ss-payroll-tob --target-source oact_2025_08_05_provisional --save-h5
 """
 
 import sys

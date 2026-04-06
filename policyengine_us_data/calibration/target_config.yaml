@@ -12,6 +12,11 @@ include:
   - variable: household_count
     geo_level: district
 
+  # === DISTRICT — SNAP household counts (ACS S2201) ===
+  - variable: household_count
+    geo_level: district
+    domain_variable: snap
+
   # === DISTRICT — dollar targets ===
   - variable: adjusted_gross_income
     geo_level: district
@@ -42,12 +47,32 @@ include:
     geo_level: state
   - variable: adjusted_gross_income
     geo_level: state
+
+  # === STATE — fine AGI bracket targets (stubs 9/10 from in55cmcsv) ===
+  - variable: person_count
+    geo_level: state
+    domain_variable: adjusted_gross_income
+  - variable: adjusted_gross_income
+    geo_level: state
+    domain_variable: adjusted_gross_income
   # REMOVED: state_income_tax — ETL hardcodes $0 for WA and NH, but
   # PolicyEngine correctly computes non-zero tax (WA capital gains tax,
   # NH interest/dividends tax). The $0 targets produce catastrophic loss
   # that crushes WA/NH weights to zero. Fix the ETL before re-enabling.
   # - variable: state_income_tax
   #   geo_level: state
+
+  # === NATIONAL — fine AGI bracket targets (Table 1.4) ===
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income
+  - variable: adjusted_gross_income
+    geo_level: national
+    domain_variable: adjusted_gross_income
+
+  # === NATIONAL — wealth target (Federal Reserve SCF, no filer filter) ===
+  - variable: net_worth
+    geo_level: national
 
   # === NATIONAL — aggregate dollar targets ===
   - variable: adjusted_gross_income
@@ -164,11 +189,15 @@ include:
   - variable: qualified_business_income_deduction
     geo_level: national
 
+  # === NATIONAL — CBO income tax target (re-enabled: 22% error < 54% unconstrained) ===
+  - variable: income_tax_positive
+    geo_level: national
+
   # NOT INCLUDED — high error or tension (from prior validation)
   # =====================================================================
   # dividend_income (26%, tension), qualified_dividend_income (29%, tension),
   # eitc by child_count (14-77%, tension), rental_income (20%),
-  # income_tax_before_credits (21%), income_tax_positive (22%),
+  # income_tax_before_credits (21%),
   # salt SOI (102%), taxable_interest_income (61%),
   # tax_exempt_interest_income (61%), taxable_ira_distributions (68%),
   # taxable_social_security (55%), person_count by AGI bins (100%)

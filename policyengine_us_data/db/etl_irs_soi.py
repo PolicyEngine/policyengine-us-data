@@ -31,6 +31,13 @@ from policyengine_us_data.utils.raw_cache import (
     save_bytes,
 )
 from policyengine_us_data.utils.soi import get_tracked_soi_row
+from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
+    STATE_ABBR_TO_FIPS,
+)
+from policyengine_us_data.storage.calibration_targets.refresh_soi_table_targets import (
+    _load_workbook,
+    _scaled_cell,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +62,20 @@ AGI_STUB_TO_INCOME_RANGE = {
     7: (100_000, 200_000),  # $100,000 under $200,000
     8: (200_000, 500_000),  # $200,000 under $500,000
     9: (500_000, np.inf),  # $500,000 or more
+}
+
+STATE_FINE_AGI_STUBS = {
+    9: (500_000, 1_000_000),  # $500,000 under $1,000,000
+    10: (1_000_000, np.inf),  # $1,000,000 or more
+}
+
+NATIONAL_FINE_AGI_BRACKETS = {
+    23: (500_000, 1_000_000),  # Table 1.4 row 23
+    24: (1_000_000, 1_500_000),  # row 24
+    25: (1_500_000, 2_000_000),  # row 25
+    26: (2_000_000, 5_000_000),  # row 26
+    27: (5_000_000, 10_000_000),  # row 27
+    28: (10_000_000, np.inf),  # row 28
 }
 
 # These variables map cleanly from Publication 1304 aggregate tables to the
@@ -396,6 +417,179 @@ def load_national_workbook_soi_targets(
         )
 
 
+def extract_state_fine_agi_data(year: int) -> pd.DataFrame:
+    """Download the state-level SOI file (in55cmcsv) with stubs 9 and 10."""
+    year_prefix = _year_prefix(year)
+    cache_file = f"irs_soi_{year_prefix}in55cmcsv.csv"
+    if is_cached(cache_file):
+        logger.info(f"Using cached {cache_file}")
+        df = pd.read_csv(cache_path(cache_file), thousands=",")
+    else:
+        import requests
+
+        url = f"https://www.irs.gov/pub/irs-soi/{year_prefix}in55cmcsv.csv"
+        response = requests.get(url)
+        response.raise_for_status()
+        save_bytes(cache_file, response.content)
+        df = pd.read_csv(cache_path(cache_file), thousands=",")
+
+    df = df[df["AGI_STUB"].isin(STATE_FINE_AGI_STUBS.keys())]
+    df = df[df["STATE"].isin(STATE_ABBR_TO_FIPS.keys())]
+    return df
+
+
+def load_state_fine_agi_targets(
+    session: Session, filer_strata: dict, year: int
+) -> None:
+    """Create strata and targets for state-level fine AGI brackets (stubs 9/10)."""
+    df = extract_state_fine_agi_data(year)
+
+    for _, row in df.iterrows():
+        state_abbr = row["STATE"]
+        stub = int(row["AGI_STUB"])
+        fips_str = STATE_ABBR_TO_FIPS[state_abbr]
+        fips_int = int(fips_str)
+        lower, upper = STATE_FINE_AGI_STUBS[stub]
+
+        parent_stratum_id = filer_strata["state"][fips_int]
+        note = f"State FIPS {fips_int} filers, AGI >= {lower}, AGI < {upper}"
+
+        existing = (
+            session.query(Stratum)
+            .filter(
+                Stratum.parent_stratum_id == parent_stratum_id,
+                Stratum.notes == note,
+            )
+            .first()
+        )
+
+        if existing:
+            stratum = existing
+        else:
+            stratum = Stratum(
+                parent_stratum_id=parent_stratum_id,
+                notes=note,
+            )
+            stratum.constraints_rel.extend(
+                [
+                    StratumConstraint(
+                        constraint_variable="tax_unit_is_filer",
+                        operation="==",
+                        value="1",
+                    ),
+                    StratumConstraint(
+                        constraint_variable="state_fips",
+                        operation="==",
+                        value=str(fips_int),
+                    ),
+                    StratumConstraint(
+                        constraint_variable="adjusted_gross_income",
+                        operation=">=",
+                        value=str(lower),
+                    ),
+                    StratumConstraint(
+                        constraint_variable="adjusted_gross_income",
+                        operation="<",
+                        value=str(upper),
+                    ),
+                ]
+            )
+            session.add(stratum)
+            session.flush()
+
+        person_count = float(row["N2"])
+        agi_amount = float(row["A00100"]) * 1000
+
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="person_count",
+            period=year,
+            value=person_count,
+            source="IRS SOI",
+            notes=f"State fine AGI stub {stub} from in55cmcsv",
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="adjusted_gross_income",
+            period=year,
+            value=agi_amount,
+            source="IRS SOI",
+            notes=f"State fine AGI stub {stub} from in55cmcsv",
+        )
+
+
+def load_national_fine_agi_targets(
+    session: Session, national_filer_stratum_id: int, target_year: int
+) -> None:
+    """Create strata and targets for national fine AGI brackets from Table 1.4."""
+    workbook = _load_workbook("Table 1.4", target_year)
+
+    for excel_row, (lower, upper) in NATIONAL_FINE_AGI_BRACKETS.items():
+        note = f"National filers, AGI >= {lower}, AGI < {upper}"
+
+        existing = (
+            session.query(Stratum)
+            .filter(
+                Stratum.parent_stratum_id == national_filer_stratum_id,
+                Stratum.notes == note,
+            )
+            .first()
+        )
+
+        if existing:
+            stratum = existing
+        else:
+            stratum = Stratum(
+                parent_stratum_id=national_filer_stratum_id,
+                notes=note,
+            )
+            stratum.constraints_rel.extend(
+                [
+                    StratumConstraint(
+                        constraint_variable="tax_unit_is_filer",
+                        operation="==",
+                        value="1",
+                    ),
+                    StratumConstraint(
+                        constraint_variable="adjusted_gross_income",
+                        operation=">=",
+                        value=str(lower),
+                    ),
+                    StratumConstraint(
+                        constraint_variable="adjusted_gross_income",
+                        operation="<",
+                        value=str(upper),
+                    ),
+                ]
+            )
+            session.add(stratum)
+            session.flush()
+
+        count_value = _scaled_cell(workbook, excel_row, "B", is_count=True)
+        agi_value = _scaled_cell(workbook, excel_row, "C", is_count=False)
+
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="tax_unit_count",
+            period=target_year,
+            value=count_value,
+            source="IRS SOI",
+            notes=f"Table 1.4 row {excel_row} fine AGI bracket",
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="adjusted_gross_income",
+            period=target_year,
+            value=agi_value,
+            source="IRS SOI",
+            notes=f"Table 1.4 row {excel_row} fine AGI bracket",
+        )
+
+
 def transform_soi_data(raw_df):
 
     TARGETS = [
@@ -645,7 +839,9 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
             filer_strata["national"],
             national_year,
         )
+        load_national_fine_agi_targets(session, filer_strata["national"], national_year)
 
+    load_state_fine_agi_targets(session, filer_strata, year)
     session.commit()
 
     # Load EITC data --------------------------------------------------------

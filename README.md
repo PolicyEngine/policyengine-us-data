@@ -28,6 +28,10 @@ PolicyEngine constructs its representative household datasets through a multi-st
 
 The Enhanced CPS (`make data-legacy`) produces a national-only calibrated dataset. For the current geography-specific pipeline, see [docs/calibration.md](docs/calibration.md).
 
+The repo currently contains two calibration tracks:
+- Legacy Enhanced CPS (`make data-legacy`), which uses the older `EnhancedCPS` / `build_loss_matrix()` path for national-only calibration.
+- Unified calibration (`docs/calibration.md`), which uses `storage/calibration/policy_data.db` and the sparse matrix + L0 pipeline for current national and geography-specific builds.
+
 For detailed calibration usage, see [docs/calibration.md](docs/calibration.md) and [modal_app/README.md](modal_app/README.md).
 
 ### Running the Full Pipeline

@@ -95,6 +95,8 @@ graph TD
     classDef output fill:#5091CC,stroke:#2C6496,color:#FFFFFF
 ```
 
+The current production calibration path is the geography-specific target-database pipeline shown above. The legacy national-only Enhanced CPS reweighting branch remains in the repo for reproduction, so calibration-target changes that must affect both paths need updates in both the unified database pipeline and the older `EnhancedCPS` / `build_loss_matrix()` flow.
+
 ## Stage 1: Variable Imputation
 
 The imputation process begins by aging both the CPS and PUF datasets to the target year, then creating a copy of the aged CPS dataset. This allows us to preserve the original CPS structure while adding imputed tax variables.

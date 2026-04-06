@@ -321,6 +321,22 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
             "notes": "ACA Premium Tax Credit recipients",
             "year": HARDCODED_YEAR,
         },
+        {
+            "constraint_variable": "spm_unit_energy_subsidy_reported",
+            "target_variable": "household_count",
+            "household_count": 5_939_605,
+            "source": "https://liheappm.acf.gov/sites/default/files/private/congress/profiles/2023/FY2023AllStates%28National%29Profile-508Compliant.pdf",
+            "notes": "LIHEAP total households served by state programs",
+            "year": 2023,
+        },
+        {
+            "constraint_variable": "spm_unit_energy_subsidy_reported",
+            "target_variable": "household_count",
+            "household_count": 5_876_646,
+            "source": "https://liheappm.acf.gov/sites/default/files/private/congress/profiles/2024/FY2024_AllStates%28National%29_Profile.pdf",
+            "notes": "LIHEAP total households served by state programs",
+            "year": 2024,
+        },
     ]
 
     # Add SSN card type NONE targets for multiple years
@@ -730,6 +746,8 @@ def load_national_targets(
         for cond_target in conditional_targets:
             constraint_var = cond_target["constraint_variable"]
             target_year = cond_target["year"]
+            target_variable = cond_target.get("target_variable", "person_count")
+            target_value = cond_target.get(target_variable)
 
             # Determine constraint details
             if constraint_var == "medicaid":
@@ -738,6 +756,10 @@ def load_national_targets(
                 constraint_value = "0"
             elif constraint_var == "aca_ptc":
                 stratum_notes = "National ACA Premium Tax Credit Recipients"
+                constraint_operation = ">"
+                constraint_value = "0"
+            elif constraint_var == "spm_unit_energy_subsidy_reported":
+                stratum_notes = "National LIHEAP Recipient Households"
                 constraint_operation = ">"
                 constraint_value = "0"
             elif constraint_var == "ssn_card_type":
@@ -765,23 +787,23 @@ def load_national_targets(
                     session.query(Target)
                     .filter(
                         Target.stratum_id == existing_stratum.stratum_id,
-                        Target.variable == "person_count",
+                        Target.variable == target_variable,
                         Target.period == target_year,
                     )
                     .first()
                 )
 
                 if existing_target:
-                    existing_target.value = cond_target["person_count"]
+                    existing_target.value = target_value
                     existing_target.source = "PolicyEngine"
                     print(f"Updated enrollment target for {constraint_var}")
                 else:
                     # Add new target to existing stratum
                     new_target = Target(
                         stratum_id=existing_stratum.stratum_id,
-                        variable="person_count",
+                        variable=target_variable,
                         period=target_year,
-                        value=cond_target["person_count"],
+                        value=target_value,
                         active=True,
                         source="PolicyEngine",
                         notes=f"{cond_target['notes']} | Source: {cond_target['source']}",
@@ -807,9 +829,9 @@ def load_national_targets(
                 # Add target
                 new_stratum.targets_rel = [
                     Target(
-                        variable="person_count",
+                        variable=target_variable,
                         period=target_year,
-                        value=cond_target["person_count"],
+                        value=target_value,
                         active=True,
                         source="PolicyEngine",
                         notes=f"{cond_target['notes']} | Source: {cond_target['source']}",

@@ -1695,10 +1695,11 @@ class UnifiedMatrixBuilder:
             if suffix.isdigit():
                 csv_candidates[int(suffix)] = path
 
-        eligible_years = [
-            year for year in csv_candidates if year <= self.time_period
-        ] or sorted(csv_candidates)
-        csv_path = csv_candidates[max(eligible_years)]
+        eligible_years = [year for year in csv_candidates if year <= self.time_period]
+        if eligible_years:
+            csv_path = csv_candidates[max(eligible_years)]
+        else:
+            csv_path = csv_candidates[min(csv_candidates)]
         df = pd.read_csv(csv_path)
         result = {}
         for _, row in df.iterrows():

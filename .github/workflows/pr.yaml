@@ -48,13 +48,15 @@ jobs:
     needs: check-fork
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev
       - name: Check for changelog fragment
-        run: |
-          FRAGMENTS=$(find changelog.d -type f ! -name '.gitkeep' | wc -l)
-          if [ "$FRAGMENTS" -eq 0 ]; then
-            echo "::error::No changelog fragment in changelog.d/"
-            exit 1
-          fi
+        run: uv run towncrier check --compare-with origin/main
 
   unit-tests:
     runs-on: ubuntu-latest

@@ -1,3 +1,10 @@
+## [1.74.3] - 2026-04-07
+
+### Fixed
+
+- Fix the PR changelog fragment check to validate fragments added by the pull request rather than pre-existing files.
+
+
 ## [1.74.2] - 2026-04-03
 
 ### Fixed

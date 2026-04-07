@@ -25,10 +25,25 @@ on:
         description: "Skip national calibration/H5"
         default: false
         type: boolean
+      resume_run_id:
+        description: "Resume a failed run by ID (allows mixed provenance)"
+        default: ""
+        type: string
+      version_override:
+        description: "Override version (default: read from pyproject.toml)"
+        default: ""
+        type: string
+
+concurrency:
+  group: pipeline-main
+  cancel-in-progress: false
 
 jobs:
   pipeline:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.head_commit.message == 'Update package version'
     steps:
       - uses: actions/checkout@v4
 
@@ -51,6 +66,8 @@ jobs:
           NATIONAL_EPOCHS="${{ inputs.national_epochs || '4000' }}"
           NUM_WORKERS="${{ inputs.num_workers || '50' }}"
           SKIP_NATIONAL="${{ inputs.skip_national || 'false' }}"
+          RESUME_RUN_ID="${{ inputs.resume_run_id || '' }}"
+          VERSION_OVERRIDE="${{ inputs.version_override || '' }}"
 
           python -c "
           import modal
@@ -62,6 +79,8 @@ jobs:
               national_epochs=int('${NATIONAL_EPOCHS}'),
               num_workers=int('${NUM_WORKERS}'),
               skip_national='${SKIP_NATIONAL}' == 'true',
+              resume_run_id='${RESUME_RUN_ID}' or None,
+              version_override='${VERSION_OVERRIDE}' or '',
           )
           print(f'Pipeline spawned.')
           print(f'Function call ID: {fc.object_id}')

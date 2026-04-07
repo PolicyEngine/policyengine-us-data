@@ -283,27 +283,21 @@ def test_immigration_status_diversity():
     """Test that immigration statuses show appropriate diversity (not all citizens)."""
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation
-    import numpy as np
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
 
-    # Get immigration status for all persons (already weighted MicroSeries)
+    # Get immigration status for all persons (weighted MicroSeries)
     immigration_status = sim.calculate("immigration_status", 2024)
 
-    # Count different statuses
-    unique_statuses, counts = np.unique(immigration_status, return_counts=True)
+    # Weighted counts by status
+    weighted_counts = immigration_status.weights.groupby(immigration_status).sum()
+    total_weighted = weighted_counts.sum()
 
-    # Calculate percentages using the weights directly
-    total_population = len(immigration_status)
-    status_percentages = {}
+    for status, wt in weighted_counts.items():
+        pct = 100 * wt / total_weighted
+        print(f"  {status}: {wt:,.0f} ({pct:.1f}%)")
 
-    for status, count in zip(unique_statuses, counts):
-        pct = 100 * count / total_population
-        status_percentages[status] = pct
-        print(f"  {status}: {count:,} ({pct:.1f}%)")
-
-    # Test that not everyone is a citizen (would indicate default value being used)
-    citizen_pct = status_percentages.get("CITIZEN", 0)
+    citizen_pct = 100 * weighted_counts.get("CITIZEN", 0) / total_weighted
 
     # Fail if more than 99% are citizens (indicating the default is being used)
     assert citizen_pct < 99, (

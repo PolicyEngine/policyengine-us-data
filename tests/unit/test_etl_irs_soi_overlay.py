@@ -11,6 +11,7 @@ from policyengine_us_data.db.create_database_tables import (
     create_database,
 )
 from policyengine_us_data.db.etl_irs_soi import (
+    _skip_coarse_state_agi_person_count_target,
     _get_or_create_national_domain_stratum,
     _upsert_target,
     load_national_workbook_soi_targets,
@@ -180,3 +181,10 @@ def test_workbook_overlay_wins_best_period_selection(monkeypatch, tmp_path):
     assert len(count_rows) == 1
     assert int(count_rows.iloc[0]["period"]) == 2023
     assert float(count_rows.iloc[0]["value"]) == 50.0
+
+
+def test_skip_coarse_state_agi_person_count_target_only_for_state_stub_9():
+    assert _skip_coarse_state_agi_person_count_target("state", 9) is True
+    assert _skip_coarse_state_agi_person_count_target("state", 8) is False
+    assert _skip_coarse_state_agi_person_count_target("district", 9) is False
+    assert _skip_coarse_state_agi_person_count_target("national", 9) is False

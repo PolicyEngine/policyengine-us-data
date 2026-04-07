@@ -9,41 +9,75 @@ import pandas as pd
 import numpy as np
 from policyengine_us import Microsimulation
 from policyengine_us_data.datasets.cps.enhanced_cps import EnhancedCPS
+from policyengine_us_data.utils.census_spm import (
+    build_census_spm_capped_housing_subsidy_target,
+)
+from policyengine_us_data.utils.hud_housing import (
+    build_hud_user_housing_assistance_benchmark,
+)
+
+
+def get_program_benchmarks(year: int):
+    housing_spm_target = build_census_spm_capped_housing_subsidy_target(year)
+    housing_hud_target = build_hud_user_housing_assistance_benchmark(year)
+    return {
+        "snap": {
+            "variable": "snap",
+            "benchmark_total": 114.1,  # billions, from USDA
+            "benchmark_source": "USDA",
+            "participation_rate": 0.82,  # from USDA
+            "weight_variable": "spm_unit_weight",
+        },
+        "ssi": {
+            "variable": "ssi",
+            "benchmark_total": 56.7,  # from SSA
+            "benchmark_source": "SSA",
+            "participation_rate": 0.93,
+            "weight_variable": "spm_unit_weight",
+        },
+        "tanf": {
+            "variable": "tanf",
+            "benchmark_total": 7.1,  # from HHS
+            "benchmark_source": "HHS",
+            "participation_rate": 0.23,
+            "weight_variable": "spm_unit_weight",
+        },
+        "housing_spm_capped": {
+            "variable": "spm_unit_capped_housing_subsidy",
+            "benchmark_total": housing_spm_target["value"] / 1e9,
+            "benchmark_source": housing_spm_target["source"],
+            "participation_rate": np.nan,
+            "weight_variable": "spm_unit_weight",
+        },
+        "housing_assistance_hud_user": {
+            "variable": "housing_assistance",
+            "benchmark_total": housing_hud_target["annual_spending_total"] / 1e9,
+            "benchmark_source": housing_hud_target["source"],
+            "benchmark_participants_millions": (
+                housing_hud_target["reported_households"] / 1e6
+            ),
+            "participation_rate": np.nan,
+            "weight_variable": "household_weight",
+            "map_to": "household",
+        },
+    }
 
 
 def analyze_benefit_underreporting():
     """Analyze impact of CPS benefit underreporting on results."""
 
-    sim = Microsimulation(dataset=EnhancedCPS, dataset_year=2022)
-
-    programs = {
-        "snap": {
-            "variable": "snap",
-            "admin_total": 114.1,  # billions, from USDA
-            "participation_rate": 0.82,  # from USDA
-        },
-        "ssi": {
-            "variable": "ssi",
-            "admin_total": 56.7,  # from SSA
-            "participation_rate": 0.93,
-        },
-        "tanf": {
-            "variable": "tanf",
-            "admin_total": 7.1,  # from HHS
-            "participation_rate": 0.23,
-        },
-        "housing": {
-            "variable": "housing_benefit",
-            "admin_total": 50.3,  # from HUD
-            "participation_rate": 0.76,
-        },
-    }
+    year = 2022
+    sim = Microsimulation(dataset=EnhancedCPS, dataset_year=year)
+    programs = get_program_benchmarks(year)
 
     results = []
     for program, info in programs.items():
         # Calculate totals
-        benefit = sim.calculate(info["variable"], 2022)
-        weight = sim.calculate("household_weight", 2022)
+        benefit_kwargs = {}
+        if info.get("map_to"):
+            benefit_kwargs["map_to"] = info["map_to"]
+        benefit = sim.calculate(info["variable"], year, **benefit_kwargs)
+        weight = sim.calculate(info["weight_variable"], year)
 
         # Total benefits
         total = (benefit * weight).sum() / 1e9  # billions
@@ -53,15 +87,26 @@ def analyze_benefit_underreporting():
         weighted_participants = ((benefit > 0) * weight).sum() / 1e6  # millions
 
         # Underreporting factor
-        underreporting = info["admin_total"] / total if total > 0 else np.inf
+        benchmark_ratio = (
+            info["benchmark_total"] / total if total > 0 else np.inf
+        )
+        benchmark_participants = info.get("benchmark_participants_millions")
+        participant_ratio = (
+            weighted_participants / benchmark_participants
+            if benchmark_participants not in (None, 0)
+            else np.nan
+        )
 
         results.append(
             {
                 "program": program,
                 "enhanced_cps_total": total,
-                "admin_total": info["admin_total"],
-                "underreporting_factor": underreporting,
+                "benchmark_total": info["benchmark_total"],
+                "benchmark_source": info["benchmark_source"],
+                "benchmark_ratio": benchmark_ratio,
                 "participants_millions": weighted_participants,
+                "benchmark_participants_millions": benchmark_participants,
+                "participant_ratio": participant_ratio,
                 "mean_benefit": (
                     benefit[benefit > 0].mean() if (benefit > 0).any() else 0
                 ),
@@ -77,11 +122,11 @@ def validate_program_interactions():
     sim = Microsimulation(dataset=EnhancedCPS, dataset_year=2022)
 
     # Get program benefits
-    snap = sim.calculate("snap", 2022) > 0
-    medicaid = sim.calculate("medicaid", 2022) > 0
-    ssi = sim.calculate("ssi", 2022) > 0
-    tanf = sim.calculate("tanf", 2022) > 0
-    housing = sim.calculate("housing_benefit", 2022) > 0
+    snap = sim.calculate("snap", 2022, map_to="household") > 0
+    medicaid = sim.calculate("medicaid", 2022, map_to="household") > 0
+    ssi = sim.calculate("ssi", 2022, map_to="household") > 0
+    tanf = sim.calculate("tanf", 2022, map_to="household") > 0
+    housing = sim.calculate("housing_assistance", 2022, map_to="household") > 0
 
     weight = sim.calculate("household_weight", 2022)
 

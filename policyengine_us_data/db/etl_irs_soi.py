@@ -78,6 +78,19 @@ NATIONAL_FINE_AGI_BRACKETS = {
     28: (10_000_000, np.inf),  # row 28
 }
 
+
+def _skip_coarse_state_agi_person_count_target(geo_type: str, agi_stub: int) -> bool:
+    """Skip the coarse state 500k+ count target when fine state bins are loaded.
+
+    The standard geography-file SOI feed only has a top-coded state AGI stub 9
+    (500k+). We separately load `in55cmcsv`, which splits that state tail into
+    500k-1m and 1m+. Keeping the coarse state count target alongside the fine
+    rows would double-constrain the same top-tail population in calibration.
+    """
+
+    return geo_type == "state" and agi_stub == 9
+
+
 # These variables map cleanly from Publication 1304 aggregate tables to the
 # existing national IRS-SOI domain strata. We intentionally leave `aca_ptc`
 # and `refundable_ctc` on the geography-file path for now because the
@@ -1243,6 +1256,9 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
             ucgid_i = agi_df[["ucgid_str"]].iloc[i].values[0]
             geo_info = parse_ucgid(ucgid_i)
             person_count = agi_df.iloc[i][["target_value"]].values[0]
+
+            if _skip_coarse_state_agi_person_count_target(geo_info["type"], agi_stub):
+                continue
 
             if geo_info["type"] == "state":
                 parent_stratum_id = filer_strata["state"][geo_info["state_fips"]]

@@ -7,10 +7,12 @@ import json
 import numpy as np
 import pandas as pd
 
-from spm_calculator import SPMCalculator, spm_equivalence_scale
-from spm_calculator.geoadj import calculate_geoadj_from_rent
-
-from policyengine_us_data.utils.spm import TENURE_CODE_MAP
+from policyengine_us_data.utils.spm import (
+    TENURE_CODE_MAP,
+    calculate_geoadj_from_rent,
+    get_spm_reference_thresholds,
+    spm_equivalence_scale,
+)
 from policyengine_us.variables.household.demographic.geographic.state_name import (
     StateName,
 )
@@ -491,6 +493,7 @@ def get_cd_index_mapping(db_uri: str = None):
         tuple: (cd_to_index dict, index_to_cd dict, cds_ordered list)
     """
     from sqlalchemy import create_engine, text
+    from pathlib import Path
     from policyengine_us_data.storage import STORAGE_FOLDER
 
     if db_uri is None:
@@ -531,7 +534,7 @@ def load_geo_labels(path) -> List[str]:
 
 def load_cd_geoadj_values(
     cds_to_calibrate: List[str],
-) -> Dict[str, float]:
+) -> Dict[str, Dict[str, float]]:
     """
     Load geographic adjustment factors from rent data CSV.
     Uses median 2BR rent by CD vs national median to compute geoadj.
@@ -550,11 +553,18 @@ def load_cd_geoadj_values(
     # Build lookup from rent data
     rent_lookup = {}
     for _, row in rent_df.iterrows():
-        geoadj = calculate_geoadj_from_rent(
-            local_rent=row["median_2br_rent"],
-            national_rent=row["national_median_2br_rent"],
-        )
-        rent_lookup[row["cd_geoid"]] = geoadj
+        rent_lookup[row["cd_geoid"]] = {
+            tenure: calculate_geoadj_from_rent(
+                local_rent=row["median_2br_rent"],
+                national_rent=row["national_median_2br_rent"],
+                tenure=tenure,
+            )
+            for tenure in (
+                "owner_with_mortgage",
+                "owner_without_mortgage",
+                "renter",
+            )
+        }
 
     geoadj_dict = {}
     for cd in cds_to_calibrate:
@@ -562,7 +572,11 @@ def load_cd_geoadj_values(
             geoadj_dict[cd] = rent_lookup[cd]
         else:
             print(f"Warning: No rent data for CD {cd}, using geoadj=1.0")
-            geoadj_dict[cd] = 1.0
+            geoadj_dict[cd] = {
+                "owner_with_mortgage": 1.0,
+                "owner_without_mortgage": 1.0,
+                "renter": 1.0,
+            }
 
     return geoadj_dict
 
@@ -593,6 +607,11 @@ def calculate_spm_thresholds_vectorized(
     Returns:
         Float32 array of SPM thresholds, one per SPM unit.
     """
+    person_ages = np.asarray(person_ages)
+    person_spm_unit_ids = np.asarray(person_spm_unit_ids)
+    spm_unit_tenure_types = np.asarray(spm_unit_tenure_types)
+    spm_unit_geoadj = np.asarray(spm_unit_geoadj, dtype=np.float64)
+
     n_units = len(spm_unit_tenure_types)
 
     # Count adults and children per SPM unit
@@ -614,8 +633,7 @@ def calculate_spm_thresholds_vectorized(
         tenure_codes[mask] = code
 
     # Look up base thresholds
-    calc = SPMCalculator(year=year)
-    base_thresholds = calc.get_base_thresholds()
+    base_thresholds = get_spm_reference_thresholds(year)
 
     thresholds = np.zeros(n_units, dtype=np.float32)
     for i in range(n_units):

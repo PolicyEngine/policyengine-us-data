@@ -579,10 +579,7 @@ def build_h5(
         reported_anchors = _build_reported_takeup_anchors(data, time_period)
 =======
         reported_anchors = {}
-        if (
-            "reported_has_subsidized_marketplace_health_coverage_at_interview"
-            in data
-        ):
+        if "reported_has_subsidized_marketplace_health_coverage_at_interview" in data:
             reported_anchors["takes_up_aca_if_eligible"] = (
                 reported_subsidized_marketplace_by_tax_unit(
                     data["person_tax_unit_id"][time_period],

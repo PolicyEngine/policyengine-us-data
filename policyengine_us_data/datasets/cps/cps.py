@@ -287,14 +287,10 @@ def add_takeup(self):
 
     # ACA
     rng = seeded_rng("takes_up_aca_if_eligible")
-    reported_marketplace_by_tax_unit = (
-        reported_subsidized_marketplace_by_tax_unit(
-            data["person_tax_unit_id"],
-            data["tax_unit_id"],
-            data[
-                "reported_has_subsidized_marketplace_health_coverage_at_interview"
-            ],
-        )
+    reported_marketplace_by_tax_unit = reported_subsidized_marketplace_by_tax_unit(
+        data["person_tax_unit_id"],
+        data["tax_unit_id"],
+        data["reported_has_subsidized_marketplace_health_coverage_at_interview"],
     )
     data["takes_up_aca_if_eligible"] = assign_takeup_with_reported_anchors(
         rng.random(n_tax_units),

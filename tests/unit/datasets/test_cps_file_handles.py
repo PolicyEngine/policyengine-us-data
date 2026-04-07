@@ -11,6 +11,13 @@ class _FakeStore:
         self.person = person
         self.closed = False
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
+
     def close(self):
         self.closed = True
 

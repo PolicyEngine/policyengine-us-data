@@ -15,7 +15,6 @@ cd ~/devl/sep/policyengine-us-data
 
 make database           # Build (uses cached downloads if available)
 make database-refresh   # Force re-download all sources and rebuild
-make promote-database   # Copy DB + raw inputs to HuggingFace clone
 ```
 
 ### Pipeline Stages
@@ -43,19 +42,6 @@ Set `PE_REFRESH_RAW=1` to force re-download:
 ```bash
 PE_REFRESH_RAW=1 make database
 ```
-
-### Promotion to HuggingFace
-
-After building and validating:
-```bash
-make promote-database
-cd ~/devl/huggingface/policyengine-us-data
-git add calibration/policy_data.db calibration/raw_inputs/
-git commit -m "Update policy_data.db - <description>"
-git push
-```
-
-This copies both the database and the raw inputs that built it, preserving provenance in the HF repo's git history.
 
 ### Recovery
 
@@ -286,4 +272,4 @@ ORDER BY geographic_id;
 
 `policyengine_us_data/storage/calibration/policy_data.db`
 
-Downloaded from HuggingFace by `download_private_prerequisites.py` and `download_calibration_inputs()` in `utils/huggingface.py`.
+Built from source via `make database`. See [Building the Database](#building-the-database) above.

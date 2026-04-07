@@ -1,4 +1,4 @@
-.PHONY: all format test test-unit test-integration install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch
+.PHONY: all format test test-unit test-integration install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch
 
 SOI_SOURCE_YEAR ?= 2021
 SOI_TARGET_YEAR ?= 2023
@@ -90,15 +90,6 @@ database-refresh:
 	rm -rf policyengine_us_data/storage/calibration/raw_inputs/
 	$(MAKE) database
 
-promote-database:
-	sqlite3 policyengine_us_data/storage/calibration/policy_data.db "PRAGMA wal_checkpoint(TRUNCATE);"
-	cp policyengine_us_data/storage/calibration/policy_data.db \
-		$(HF_CLONE_DIR)/calibration/policy_data.db
-	rm -rf $(HF_CLONE_DIR)/calibration/raw_inputs
-	cp -r policyengine_us_data/storage/calibration/raw_inputs \
-		$(HF_CLONE_DIR)/calibration/raw_inputs
-	@echo "Copied DB and raw_inputs to HF clone. Now cd to HF repo, commit, and push."
-
 promote-dataset:
 	python -c "from policyengine_us_data.utils.huggingface import upload; \
 		upload('policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5', \
@@ -106,7 +97,7 @@ promote-dataset:
 		'calibration/source_imputed_stratified_extended_cps.h5')"
 	@echo "Dataset promoted to HF."
 
-data: download
+data: download database
 	python policyengine_us_data/utils/uprating.py
 	python policyengine_us_data/datasets/acs/acs.py
 	python policyengine_us_data/datasets/cps/cps.py
@@ -173,13 +164,6 @@ upload-dataset:
 		'policyengine/policyengine-us-data', \
 		'calibration/source_imputed_stratified_extended_cps.h5')"
 	@echo "Dataset uploaded to HF."
-
-upload-database:
-	python -c "from policyengine_us_data.utils.huggingface import upload; \
-		upload('policyengine_us_data/storage/calibration/policy_data.db', \
-		'policyengine/policyengine-us-data', \
-		'calibration/policy_data.db')"
-	@echo "Database uploaded to HF."
 
 push-to-modal:
 	modal volume put pipeline-artifacts \

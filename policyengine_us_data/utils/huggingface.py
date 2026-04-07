@@ -50,7 +50,7 @@ def download_calibration_inputs(
             (e.g. "national_")
 
     Returns:
-        dict with keys 'weights', 'dataset', 'database' mapping to local paths
+        dict with keys 'weights', 'dataset' mapping to local paths
     """
     from pathlib import Path
 
@@ -60,7 +60,6 @@ def download_calibration_inputs(
     # Core inputs needed by both calibration and local area pipelines
     files = {
         "dataset": ("calibration/source_imputed_stratified_extended_cps.h5"),
-        "database": "calibration/policy_data.db",
     }
 
     paths = {}

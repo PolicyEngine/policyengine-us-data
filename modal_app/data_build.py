@@ -435,7 +435,14 @@ def build_datasets(
         env=env,
         log_file=log_file,
     )
-    # Checkpoint policy_data.db immediately after download so it survives
+    # Build policy_data.db from source
+    subprocess.run(
+        ["uv", "run", "make", "database"],
+        check=True,
+        cwd="/root/policyengine-us-data",
+        env=env,
+    )
+    # Checkpoint policy_data.db immediately after build so it survives
     # test failures and can be restored on retries.
     save_checkpoint(
         branch,

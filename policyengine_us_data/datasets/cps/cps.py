@@ -31,8 +31,8 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
 from policyengine_us_data.utils.downsample import downsample_dataset_arrays
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
-    any_person_flag_by_entity,
     assign_takeup_with_reported_anchors,
+    reported_subsidized_marketplace_by_tax_unit,
 )
 
 
@@ -287,10 +287,14 @@ def add_takeup(self):
 
     # ACA
     rng = seeded_rng("takes_up_aca_if_eligible")
-    reported_marketplace_by_tax_unit = any_person_flag_by_entity(
-        data["person_tax_unit_id"],
-        data["tax_unit_id"],
-        data["has_marketplace_health_coverage_at_interview"],
+    reported_marketplace_by_tax_unit = (
+        reported_subsidized_marketplace_by_tax_unit(
+            data["person_tax_unit_id"],
+            data["tax_unit_id"],
+            data[
+                "reported_has_subsidized_marketplace_health_coverage_at_interview"
+            ],
+        )
     )
     data["takes_up_aca_if_eligible"] = assign_takeup_with_reported_anchors(
         rng.random(n_tax_units),

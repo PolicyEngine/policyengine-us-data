@@ -2135,7 +2135,7 @@ class UnifiedMatrixBuilder:
             from policyengine_us_data.utils.takeup import (
                 TAKEUP_AFFECTED_TARGETS,
                 compute_block_takeup_for_entities,
-                any_person_flag_by_entity,
+                reported_subsidized_marketplace_by_tax_unit,
             )
             from policyengine_us_data.parameters import (
                 load_take_up_rate,
@@ -2168,16 +2168,20 @@ class UnifiedMatrixBuilder:
             with h5py.File(self.dataset_path, "r") as f:
                 period_key = str(self.time_period)
                 if (
-                    "has_marketplace_health_coverage_at_interview" in f
-                    and period_key in f["has_marketplace_health_coverage_at_interview"]
+                    "reported_has_subsidized_marketplace_health_coverage_at_interview"
+                    in f
+                    and period_key
+                    in f[
+                        "reported_has_subsidized_marketplace_health_coverage_at_interview"
+                    ]
                 ):
                     person_marketplace = f[
-                        "has_marketplace_health_coverage_at_interview"
+                        "reported_has_subsidized_marketplace_health_coverage_at_interview"
                     ][period_key][...].astype(bool)
                     person_tax_unit_ids = f["person_tax_unit_id"][period_key][...]
                     tax_unit_ids = f["tax_unit_id"][period_key][...]
                     reported_takeup_anchors["takes_up_aca_if_eligible"] = (
-                        any_person_flag_by_entity(
+                        reported_subsidized_marketplace_by_tax_unit(
                             person_tax_unit_ids,
                             tax_unit_ids,
                             person_marketplace,

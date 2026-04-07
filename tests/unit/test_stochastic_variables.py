@@ -5,6 +5,7 @@ from policyengine_us_data.parameters import load_take_up_rate
 from policyengine_us_data.utils.takeup import (
     any_person_flag_by_entity,
     assign_takeup_with_reported_anchors,
+    reported_subsidized_marketplace_by_tax_unit,
 )
 from policyengine_us_data.utils.randomness import (
     _stable_string_hash,
@@ -187,3 +188,14 @@ class TestReportedTakeupAnchors:
             person_marketplace,
         )
         np.testing.assert_array_equal(result, [True, False, True])
+
+    def test_subsidized_marketplace_anchor_excludes_unsubsidized_only(self):
+        person_tax_unit_ids = np.array([10, 10, 20, 30])
+        tax_unit_ids = np.array([10, 20, 30])
+        person_subsidized_marketplace = np.array([False, False, False, True])
+        result = reported_subsidized_marketplace_by_tax_unit(
+            person_tax_unit_ids,
+            tax_unit_ids,
+            person_subsidized_marketplace,
+        )
+        np.testing.assert_array_equal(result, [False, False, True])

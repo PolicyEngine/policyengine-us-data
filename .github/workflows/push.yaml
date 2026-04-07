@@ -60,6 +60,38 @@ jobs:
           folder: docs/_build/html
           clean: true
 
+  # ── Versioning (bump + changelog on non-version-bump pushes) ──
+  versioning:
+    runs-on: ubuntu-latest
+    if: github.event.head_commit.message != 'Update package version'
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v5
+      - run: pip install towncrier
+      - name: Bump version and build changelog
+        run: |
+          python .github/bump_version.py
+          towncrier build --yes --version $(python -c "import re; print(re.search(r'version = \"(.+?)\"', open('pyproject.toml').read()).group(1))")
+      - name: Update lockfile
+        run: uv lock
+      - name: Update changelog
+        uses: EndBug/add-and-commit@v9
+        with:
+          add: "."
+          message: Update package version
+
   # ── PyPI publish (version bump commits only) ────────────────
   publish:
     runs-on: ubuntu-latest

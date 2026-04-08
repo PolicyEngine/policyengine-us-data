@@ -1,7 +1,12 @@
+from pathlib import Path
+
 import pytest
 
 from policyengine_us_data.datasets.cps.enhanced_cps import (
+    build_clone_diagnostics_payload,
     compute_clone_diagnostics_summary,
+    clone_diagnostics_path,
+    refresh_clone_diagnostics_report,
 )
 
 
@@ -35,3 +40,46 @@ def test_compute_clone_diagnostics_summary():
     assert diagnostics["clone_taxes_exceed_market_income_share_pct"] == pytest.approx(
         37.5
     )
+
+
+def test_build_clone_diagnostics_payload_single_period():
+    payload = build_clone_diagnostics_payload(
+        {2024: {"clone_person_weight_share_pct": 12.5}}
+    )
+
+    assert payload == {
+        "period": 2024,
+        "clone_person_weight_share_pct": 12.5,
+    }
+
+
+def test_build_clone_diagnostics_payload_multiple_periods():
+    payload = build_clone_diagnostics_payload(
+        {
+            2026: {"clone_person_weight_share_pct": 20.0},
+            2024: {"clone_person_weight_share_pct": 10.0},
+        }
+    )
+
+    assert payload == {
+        "periods": {
+            "2024": {"clone_person_weight_share_pct": 10.0},
+            "2026": {"clone_person_weight_share_pct": 20.0},
+        }
+    }
+
+
+def test_refresh_clone_diagnostics_report_removes_stale_sidecar_on_failure(tmp_path):
+    file_path = tmp_path / "enhanced_cps_2024.h5"
+    file_path.write_text("placeholder")
+    stale_path = clone_diagnostics_path(file_path)
+    stale_path.write_text("stale")
+
+    def _raise():
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        refresh_clone_diagnostics_report(file_path, _raise)
+
+    assert stale_path == Path(file_path).with_suffix(".clone_diagnostics.json")
+    assert not stale_path.exists()

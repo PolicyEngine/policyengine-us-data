@@ -14,6 +14,11 @@ from .contracts import (
     WorkerResult,
 )
 from .partitioning import partition_weighted_work_items, work_item_key
+from .validation import (
+    make_validation_error,
+    summarize_validation_rows,
+    validation_geo_level_for_area_type,
+)
 
 __all__ = [
     "AreaBuildRequest",
@@ -27,6 +32,9 @@ __all__ = [
     "ValidationResult",
     "ValidationStatus",
     "WorkerResult",
+    "make_validation_error",
     "partition_weighted_work_items",
+    "summarize_validation_rows",
+    "validation_geo_level_for_area_type",
     "work_item_key",
 ]

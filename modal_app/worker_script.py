@@ -53,12 +53,38 @@ def _validate_in_subprocess(
         area_type=area_type,
         area_id=area_id,
         display_id=display_id,
+        dataset_path=h5_path,
         period=period,
         training_mask=area_training,
         variable_entity_map=variable_entity_map,
         constraints_map=constraints_map,
     )
     return results
+
+
+def _record_validation_success(results, item_key, validation_rows):
+    """Record validation rows and derived summary for one built H5."""
+    from policyengine_us_data.calibration.local_h5.validation import (
+        summarize_validation_rows,
+    )
+
+    results["validation_rows"].extend(validation_rows)
+    results["validation_summary"][item_key] = summarize_validation_rows(validation_rows)
+
+
+def _record_validation_error(results, item_key, error):
+    """Record a structured validation error without converting it into a build failure."""
+    from policyengine_us_data.calibration.local_h5.validation import (
+        make_validation_error,
+    )
+
+    error_entry = make_validation_error(
+        item_key=item_key,
+        error=error,
+        traceback_text=traceback.format_exc(),
+    )
+    results["validation_errors"].append(error_entry)
+    return error_entry
 
 
 def _validate_h5_subprocess(
@@ -303,6 +329,7 @@ def main():
         "completed": [],
         "failed": [],
         "errors": [],
+        "validation_errors": [],
         "validation_rows": [],
         "validation_summary": {},
     }
@@ -434,6 +461,7 @@ def main():
 
                 # ── Per-item validation ──
                 if not args.no_validate and validation_targets is not None:
+                    key = f"{item_type}:{item_id}"
                     try:
                         v_rows = _validate_h5_subprocess(
                             h5_path=str(path),
@@ -452,36 +480,20 @@ def main():
                             db_path=str(db_path),
                             period=args.period,
                         )
-                        results["validation_rows"].extend(v_rows)
-                        key = f"{item_type}:{item_id}"
-                        n_fail = sum(
-                            1 for r in v_rows if r.get("sanity_check") == "FAIL"
-                        )
-                        rae_vals = [
-                            r["rel_abs_error"]
-                            for r in v_rows
-                            if isinstance(
-                                r.get("rel_abs_error"),
-                                (int, float),
-                            )
-                            and r["rel_abs_error"] != float("inf")
-                        ]
-                        mean_rae = sum(rae_vals) / len(rae_vals) if rae_vals else 0.0
-                        results["validation_summary"][key] = {
-                            "n_targets": len(v_rows),
-                            "n_sanity_fail": n_fail,
-                            "mean_rel_abs_error": round(mean_rae, 4),
-                        }
+                        _record_validation_success(results, key, v_rows)
+                        summary = results["validation_summary"][key]
                         print(
                             f"  Validated {key}: "
-                            f"{len(v_rows)} targets, "
-                            f"{n_fail} sanity fails, "
-                            f"mean RAE={mean_rae:.4f}",
+                            f"{summary['n_targets']} targets, "
+                            f"{summary['n_sanity_fail']} sanity fails, "
+                            f"mean RAE={summary['mean_rel_abs_error']:.4f}",
                             file=sys.stderr,
                         )
                     except Exception as ve:
+                        error_entry = _record_validation_error(results, key, ve)
                         print(
-                            f"  Validation failed for {item_type}:{item_id}: {ve}",
+                            f"  Validation failed for {item_type}:{item_id}: "
+                            f"{error_entry['error']}",
                             file=sys.stderr,
                         )
 

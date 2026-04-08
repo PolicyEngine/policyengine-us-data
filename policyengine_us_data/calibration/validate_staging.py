@@ -38,6 +38,9 @@ from policyengine_us_data.calibration.unified_matrix_builder import (
 from policyengine_us_data.calibration.calibration_utils import (
     STATE_CODES,
 )
+from policyengine_us_data.calibration.local_h5.validation import (
+    validation_geo_level_for_area_type,
+)
 from policyengine_us_data.calibration.sanity_checks import (
     run_sanity_checks,
 )
@@ -325,7 +328,7 @@ def validate_area(
 
     training_arr = np.asarray(training_mask, dtype=bool)
 
-    geo_level = "state" if area_type == "states" else "district"
+    geo_level = validation_geo_level_for_area_type(area_type)
 
     results = []
     for i, (idx, row) in enumerate(targets_df.iterrows()):
@@ -1059,7 +1062,7 @@ def main(argv=None):
     all_results = []
 
     for area_type in area_types:
-        geo_level = "state" if area_type == "states" else "district"
+        geo_level = validation_geo_level_for_area_type(area_type)
         geo_mask = (all_targets["geo_level"] == geo_level).values
         level_targets = all_targets[geo_mask].reset_index(drop=True)
         level_training = training_mask[geo_mask]

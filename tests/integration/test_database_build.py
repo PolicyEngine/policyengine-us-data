@@ -10,7 +10,6 @@ errors that unit tests on individual tables would miss.
 import sqlite3
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -20,23 +19,18 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 DB_DIR = STORAGE_FOLDER / "calibration"
 DB_PATH = DB_DIR / "policy_data.db"
 
-# HuggingFace URL for the stratified CPS dataset.
-# ETL scripts use this only to derive the time period (2024).
-HF_DATASET = (
-    "hf://policyengine/policyengine-us-data/calibration/stratified_extended_cps.h5"
-)
-
 # Scripts run in the same order as `make database` in the Makefile.
-# create_database_tables.py does not use etl_argparser.
+# create_database_tables.py and validate_database.py do not use etl_argparser.
 PIPELINE_SCRIPTS = [
     ("db/create_database_tables.py", []),
-    ("db/create_initial_strata.py", ["--dataset", HF_DATASET]),
-    ("db/etl_national_targets.py", ["--dataset", HF_DATASET]),
-    ("db/etl_age.py", ["--dataset", HF_DATASET]),
-    ("db/etl_medicaid.py", ["--dataset", HF_DATASET]),
-    ("db/etl_snap.py", ["--dataset", HF_DATASET]),
-    ("db/etl_state_income_tax.py", ["--dataset", HF_DATASET]),
-    ("db/etl_irs_soi.py", ["--dataset", HF_DATASET]),
+    ("db/create_initial_strata.py", ["--year", "2024"]),
+    ("db/etl_national_targets.py", ["--year", "2024"]),
+    ("db/etl_age.py", ["--year", "2024"]),
+    ("db/etl_medicaid.py", ["--year", "2024"]),
+    ("db/etl_snap.py", ["--year", "2024"]),
+    ("db/etl_state_income_tax.py", ["--year", "2024"]),
+    ("db/etl_irs_soi.py", ["--year", "2024"]),
+    ("db/etl_pregnancy.py", ["--year", "2024"]),
     ("db/validate_database.py", []),
 ]
 

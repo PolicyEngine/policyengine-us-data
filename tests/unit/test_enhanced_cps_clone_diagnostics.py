@@ -22,15 +22,15 @@ def test_compute_clone_diagnostics_summary():
     )
 
     assert diagnostics["clone_household_weight_share_pct"] == pytest.approx(10.0)
-    assert diagnostics["clone_poor_modeled_only_person_weight_share_pct"] == pytest.approx(
-        30.0
-    )
-    assert diagnostics["poor_modeled_only_within_clone_person_weight_share_pct"] == pytest.approx(
-        50.0
-    )
-    assert diagnostics["clone_childcare_exceeds_pre_subsidy_share_pct"] == pytest.approx(
-        37.5
-    )
+    assert diagnostics[
+        "clone_poor_modeled_only_person_weight_share_pct"
+    ] == pytest.approx(30.0)
+    assert diagnostics[
+        "poor_modeled_only_within_clone_person_weight_share_pct"
+    ] == pytest.approx(50.0)
+    assert diagnostics[
+        "clone_childcare_exceeds_pre_subsidy_share_pct"
+    ] == pytest.approx(37.5)
     assert diagnostics["clone_childcare_above_5000_share_pct"] == pytest.approx(100.0)
     assert diagnostics["clone_taxes_exceed_market_income_share_pct"] == pytest.approx(
         37.5

@@ -28,8 +28,14 @@ for _p in (_baked, _local):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from modal_app.images import cpu_image as image
+    from modal_app.images import cpu_image as image
 from modal_app.resilience import reconcile_run_dir_fingerprint
+from policyengine_us_data.calibration.local_h5.fingerprinting import (
+    FingerprintService,
+)
+from policyengine_us_data.calibration.local_h5.package_geography import (
+    require_calibration_package_path,
+)
 from policyengine_us_data.calibration.local_h5.partitioning import (
     partition_weighted_work_items,
 )
@@ -179,10 +185,12 @@ def run_phase(
     """Run a single build phase, spawning workers and collecting results.
 
     Returns:
-        A tuple of (volume_completed, phase_errors, validation_rows)
+        A tuple of (volume_completed, phase_errors, validation_rows,
+        validation_errors)
         where phase_errors is a list of error dicts from workers
-        and crashes, and validation_rows is a list of per-target
-        validation result dicts.
+        and crashes, validation_rows is a list of per-target
+        validation result dicts, and validation_errors is a list
+        of structured validation execution failures.
     """
     work_chunks = partition_weighted_work_items(work_items, num_workers, completed)
     total_remaining = sum(len(c) for c in work_chunks)
@@ -192,7 +200,7 @@ def run_phase(
 
     if total_remaining == 0:
         print(f"All {phase_name} items already built!")
-        return completed, [], []
+        return completed, [], [], []
 
     handles = []
     for i, chunk in enumerate(work_chunks):
@@ -212,6 +220,7 @@ def run_phase(
     all_results = []
     all_errors = []
     all_validation_rows = []
+    all_validation_errors = []
 
     for i, handle in enumerate(handles):
         try:
@@ -232,6 +241,10 @@ def run_phase(
             if v_rows:
                 all_validation_rows.extend(v_rows)
                 print(f"  Worker {i}: {len(v_rows)} validation rows")
+            v_errors = result.get("validation_errors", [])
+            if v_errors:
+                all_validation_errors.extend(v_errors)
+                print(f"  Worker {i}: {len(v_errors)} validation errors")
         except Exception as e:
             all_errors.append(
                 {"worker": i, "error": str(e), "traceback": traceback.format_exc()}
@@ -260,7 +273,7 @@ def run_phase(
         if len(all_errors) > 5:
             print(f"  ... and {len(all_errors) - 5} more")
 
-    return volume_completed, all_errors, all_validation_rows
+    return volume_completed, all_errors, all_validation_rows, all_validation_errors
 
 
 @app.function(
@@ -349,6 +362,8 @@ def build_areas_worker(
             "completed": [],
             "failed": [f"{item['type']}:{item['id']}" for item in work_items],
             "errors": [{"error": (result.stderr or "No stderr")[:2000]}],
+            "validation_errors": [],
+            "validation_rows": [],
         }
 
     try:
@@ -358,7 +373,15 @@ def build_areas_worker(
             "completed": [],
             "failed": [],
             "errors": [{"error": f"Failed to parse output: {result.stdout}"}],
+            "validation_errors": [],
+            "validation_rows": [],
         }
+    results.setdefault("completed", [])
+    results.setdefault("failed", [])
+    results.setdefault("errors", [])
+    results.setdefault("validation_errors", [])
+    results.setdefault("validation_rows", [])
+    results.setdefault("validation_summary", {})
 
     staging_volume.commit()
     return results
@@ -642,7 +665,9 @@ def coordinate_publish(
     weights_path = artifacts / "calibration_weights.npy"
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
-    package_path = artifacts / "calibration_package.pkl"
+    package_path = require_calibration_package_path(
+        artifacts / "calibration_package.pkl"
+    )
     config_json_path = artifacts / "unified_run_config.json"
 
     required = {
@@ -664,15 +689,9 @@ def coordinate_publish(
         "database": str(db_path),
         "n_clones": n_clones,
         "seed": 42,
+        "package": str(package_path),
     }
-    if package_path.exists():
-        calibration_inputs["package"] = str(package_path)
-        print(f"Using calibration package geography from {package_path}")
-    else:
-        print(
-            f"WARNING: calibration package not found at {package_path}; "
-            f"workers will fall back to seed-based geography",
-        )
+    print(f"Using calibration package geography from {package_path}")
     validate_artifacts(config_json_path, artifacts)
 
     if validate:
@@ -693,42 +712,27 @@ def coordinate_publish(
 
     # Fingerprint-based cache invalidation
     if expected_fingerprint:
-        fingerprint = expected_fingerprint
-        print(f"Using pinned fingerprint from pipeline: {fingerprint}")
-    else:
-        package_arg = (
-            f', calibration_package_path="{package_path}"'
-            if package_path.exists()
-            else ""
-        )
-        fp_result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "python",
-                "-c",
-                f"""
-from policyengine_us_data.calibration.publish_local_area import (
-    compute_input_fingerprint,
-)
-print(
-    compute_input_fingerprint(
-        "{weights_path}",
-        "{dataset_path}",
-        {n_clones},
-        seed=42{package_arg},
+        print(f"Using pinned fingerprint from pipeline: {expected_fingerprint}")
+
+    fingerprint_service = FingerprintService()
+    fingerprint_record = fingerprint_service.create_publish_fingerprint(
+        weights_path=weights_path,
+        dataset_path=dataset_path,
+        calibration_package_path=package_path,
+        n_clones=n_clones,
+        seed=42,
     )
-)
-""",
-            ],
-            capture_output=True,
-            text=True,
-            env=os.environ.copy(),
+    fingerprint = fingerprint_record.digest
+
+    if expected_fingerprint and expected_fingerprint != fingerprint:
+        raise RuntimeError(
+            "Pinned fingerprint does not match current publish inputs.\n"
+            f"  Expected: {expected_fingerprint}\n"
+            f"  Current:  {fingerprint}\n"
+            "Start a fresh run instead of resuming."
         )
-        if fp_result.returncode != 0:
-            raise RuntimeError(f"Failed to compute fingerprint: {fp_result.stderr}")
-        fingerprint = fp_result.stdout.strip()
-    reconcile_action = reconcile_run_dir_fingerprint(run_dir, fingerprint)
+
+    reconcile_action = reconcile_run_dir_fingerprint(run_dir, fingerprint_record)
     if reconcile_action == "resume":
         print(f"Inputs unchanged ({fingerprint}), resuming...")
     else:
@@ -799,8 +803,9 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
 
     accumulated_errors = []
     accumulated_validation_rows = []
+    accumulated_validation_errors = []
 
-    completed, phase_errors, v_rows = run_phase(
+    completed, phase_errors, v_rows, v_errors = run_phase(
         "All areas",
         work_items=work_items,
         completed=completed,
@@ -808,6 +813,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
     )
     accumulated_errors.extend(phase_errors)
     accumulated_validation_rows.extend(v_rows)
+    accumulated_validation_errors.extend(v_errors)
 
     expected_total = len(states) + len(districts) + len(cities)
 
@@ -842,6 +848,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
         return {
             "message": (f"Build complete for version {version}. Upload skipped."),
             "validation_rows": accumulated_validation_rows,
+            "validation_errors": accumulated_validation_errors,
             "fingerprint": fingerprint,
         }
 
@@ -878,6 +885,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
         "message": result,
         "run_id": run_id,
         "validation_rows": accumulated_validation_rows,
+        "validation_errors": accumulated_validation_errors,
         "fingerprint": fingerprint,
     }
 
@@ -947,7 +955,9 @@ def coordinate_national_publish(
     weights_path = artifacts / "national_calibration_weights.npy"
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
-    package_path = artifacts / "calibration_package.pkl"
+    package_path = require_calibration_package_path(
+        artifacts / "calibration_package.pkl"
+    )
     config_json_path = artifacts / "national_unified_run_config.json"
 
     required = {
@@ -969,15 +979,9 @@ def coordinate_national_publish(
         "database": str(db_path),
         "n_clones": n_clones,
         "seed": 42,
+        "package": str(package_path),
     }
-    if package_path.exists():
-        calibration_inputs["package"] = str(package_path)
-        print(f"Using calibration package geography from {package_path}")
-    else:
-        print(
-            f"WARNING: calibration package not found at {package_path}; "
-            f"worker will fall back to seed-based geography",
-        )
+    print(f"Using calibration package geography from {package_path}")
     validate_artifacts(
         config_json_path,
         artifacts,
@@ -1093,6 +1097,7 @@ print("Done")
         ),
         "run_id": run_id,
         "national_validation": national_validation_output,
+        "validation_errors": worker_result.get("validation_errors", []),
     }
 
 

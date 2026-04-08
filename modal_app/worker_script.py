@@ -232,6 +232,14 @@ def main():
         if args.calibration_package_path
         else None
     )
+    if calibration_package_path is not None:
+        from policyengine_us_data.calibration.local_h5.package_geography import (
+            require_calibration_package_path,
+        )
+
+        calibration_package_path = require_calibration_package_path(
+            calibration_package_path
+        )
 
     from policyengine_us_data.utils.takeup import (
         SIMPLE_TAKEUP_VARS,

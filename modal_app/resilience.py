@@ -1,6 +1,5 @@
 """Helpers for retry and resume safety in Modal workflows."""
 
-import json
 import shutil
 import subprocess
 import time
@@ -91,7 +90,7 @@ def ensure_resume_sha_compatible(
 
 def reconcile_run_dir_fingerprint(
     run_dir: Path,
-    fingerprint: str,
+    fingerprint,
 ) -> str:
     """Prepare a staging run directory for a specific fingerprint.
 
@@ -100,24 +99,34 @@ def reconcile_run_dir_fingerprint(
     - changed or missing fingerprint with existing H5s: stop and preserve
     - changed or missing fingerprint without H5s: clear stale directory
     """
+    from policyengine_us_data.calibration.local_h5.fingerprinting import (
+        FingerprintRecord,
+        FingerprintService,
+    )
+
+    service = FingerprintService()
+    if isinstance(fingerprint, FingerprintRecord):
+        current = fingerprint
+    else:
+        current = service.legacy_record(str(fingerprint))
     fingerprint_file = run_dir / "fingerprint.json"
 
     if not run_dir.exists():
         run_dir.mkdir(parents=True, exist_ok=True)
-        fingerprint_file.write_text(json.dumps({"fingerprint": fingerprint}))
+        service.write_record(fingerprint_file, current)
         return "initialized"
 
     h5_count = len(list(run_dir.rglob("*.h5")))
     if fingerprint_file.exists():
-        stored = json.loads(fingerprint_file.read_text())
-        stored_fingerprint = stored.get("fingerprint")
-        if stored_fingerprint == fingerprint:
+        stored = service.read_record(fingerprint_file)
+        stored_fingerprint = stored.digest
+        if service.matches(stored, current):
             return "resume"
         if h5_count > 0:
             raise RuntimeError(
                 "Fingerprint mismatch with existing staged H5 files.\n"
                 f"  Stored:  {stored_fingerprint}\n"
-                f"  Current: {fingerprint}\n"
+                f"  Current: {current.digest}\n"
                 f"  H5 files preserved: {h5_count}\n"
                 "Start a fresh version or clear the stale outputs explicitly."
             )
@@ -132,5 +141,5 @@ def reconcile_run_dir_fingerprint(
         shutil.rmtree(run_dir)
 
     run_dir.mkdir(parents=True, exist_ok=True)
-    fingerprint_file.write_text(json.dumps({"fingerprint": fingerprint}))
+    service.write_record(fingerprint_file, current)
     return "initialized"

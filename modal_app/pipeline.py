@@ -457,11 +457,17 @@ def _write_validation_diagnostics(
     Extracts validation_rows from coordinate_publish and
     national_validation from coordinate_national_publish,
     writes them to runs/{run_id}/diagnostics/validation_results.csv,
+    writes validation execution failures to
+    runs/{run_id}/diagnostics/validation_errors.json,
     and records a summary in meta.json.
     """
     import csv
+    from policyengine_us_data.calibration.local_h5.validation import (
+        tag_validation_errors,
+    )
 
     validation_rows = []
+    validation_errors = []
 
     # Extract regional validation rows
     if isinstance(regional_result, dict):
@@ -469,6 +475,12 @@ def _write_validation_diagnostics(
         if v_rows:
             validation_rows.extend(v_rows)
             print(f"  Collected {len(v_rows)} regional validation rows")
+        v_errors = regional_result.get("validation_errors", [])
+        if v_errors:
+            validation_errors.extend(
+                tag_validation_errors(v_errors, source="regional")
+            )
+            print(f"  Collected {len(v_errors)} regional validation errors")
 
     # Extract national validation output
     national_output = ""
@@ -476,8 +488,14 @@ def _write_validation_diagnostics(
         national_output = national_result.get("national_validation", "")
         if national_output:
             print("  National validation output captured")
+        v_errors = national_result.get("validation_errors", [])
+        if v_errors:
+            validation_errors.extend(
+                tag_validation_errors(v_errors, source="national")
+            )
+            print(f"  Collected {len(v_errors)} national validation errors")
 
-    if not validation_rows and not national_output:
+    if not validation_rows and not national_output and not validation_errors:
         print("  No validation data to write")
         return
 
@@ -547,6 +565,7 @@ def _write_validation_diagnostics(
             "total_targets": len(validation_rows),
             "sanity_failures": n_sanity_fail,
             "mean_rel_abs_error": round(mean_rae, 4),
+            "validation_errors": len(validation_errors),
             "worst_areas": [
                 {
                     "area": k,
@@ -571,9 +590,7 @@ def _write_validation_diagnostics(
             f"mean RAE={mean_rae:.4f}"
         )
 
-        # Record in meta.json
         meta.step_timings["validation"] = validation_summary
-        write_run_meta(meta, vol)
 
     # Write national validation output
     if national_output:
@@ -581,6 +598,17 @@ def _write_validation_diagnostics(
         with open(nat_path, "w") as f:
             f.write(national_output)
         print(f"  Wrote national validation to {nat_path}")
+
+    if validation_errors:
+        errors_path = diag_dir / "validation_errors.json"
+        with open(errors_path, "w") as f:
+            json.dump(validation_errors, f, indent=2)
+        print(f"  Wrote {len(validation_errors)} validation errors to {errors_path}")
+        meta.step_timings.setdefault("validation", {})
+        meta.step_timings["validation"]["validation_errors"] = len(validation_errors)
+
+    if validation_rows or validation_errors:
+        write_run_meta(meta, vol)
 
     vol.commit()
 

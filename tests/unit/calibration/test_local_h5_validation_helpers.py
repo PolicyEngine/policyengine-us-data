@@ -23,6 +23,7 @@ def _load_validation_module():
 validation = _load_validation_module()
 make_validation_error = validation.make_validation_error
 summarize_validation_rows = validation.summarize_validation_rows
+tag_validation_errors = validation.tag_validation_errors
 validation_geo_level_for_area_type = validation.validation_geo_level_for_area_type
 
 
@@ -61,3 +62,25 @@ def test_make_validation_error_returns_structured_payload():
         "error": "validator crashed",
         "traceback": "traceback lines",
     }
+
+
+def test_tag_validation_errors_attaches_source_without_dropping_fields():
+    tagged = tag_validation_errors(
+        (
+            {
+                "item": "district:CA-12",
+                "error": "validator crashed",
+                "traceback": "traceback lines",
+            },
+        ),
+        source="regional",
+    )
+
+    assert tagged == [
+        {
+            "item": "district:CA-12",
+            "error": "validator crashed",
+            "traceback": "traceback lines",
+            "source": "regional",
+        }
+    ]

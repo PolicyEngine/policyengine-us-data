@@ -48,3 +48,18 @@ def make_validation_error(
         "error": str(error),
         "traceback": traceback_text or "",
     }
+
+
+def tag_validation_errors(
+    validation_errors: Sequence[Mapping[str, Any]],
+    *,
+    source: str,
+) -> list[dict[str, Any]]:
+    """Attach a diagnostics source label to structured validation errors."""
+
+    tagged = []
+    for error in validation_errors:
+        item = dict(error)
+        item["source"] = source
+        tagged.append(item)
+    return tagged

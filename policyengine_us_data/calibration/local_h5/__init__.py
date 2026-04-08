@@ -13,14 +13,22 @@ from .contracts import (
     ValidationStatus,
     WorkerResult,
 )
+from .fingerprinting import (
+    FingerprintComponents,
+    FingerprintInputs,
+    FingerprintRecord,
+    FingerprintService,
+)
 from .partitioning import partition_weighted_work_items, work_item_key
 from .package_geography import (
     CalibrationPackageGeographyLoader,
     LoadedPackageGeography,
+    require_calibration_package_path,
 )
 from .validation import (
     make_validation_error,
     summarize_validation_rows,
+    tag_validation_errors,
     validation_geo_level_for_area_type,
 )
 
@@ -30,6 +38,10 @@ __all__ = [
     "AreaFilter",
     "BuildStatus",
     "CalibrationPackageGeographyLoader",
+    "FingerprintComponents",
+    "FingerprintInputs",
+    "FingerprintRecord",
+    "FingerprintService",
     "FilterOp",
     "LoadedPackageGeography",
     "PublishingInputBundle",
@@ -40,7 +52,9 @@ __all__ = [
     "WorkerResult",
     "make_validation_error",
     "partition_weighted_work_items",
+    "require_calibration_package_path",
     "summarize_validation_rows",
+    "tag_validation_errors",
     "validation_geo_level_for_area_type",
     "work_item_key",
 ]

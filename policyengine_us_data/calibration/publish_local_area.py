@@ -8,7 +8,6 @@ Usage:
     python publish_local_area.py [--skip-download] [--states-only] [--upload]
 """
 
-import hashlib
 import json
 import shutil
 
@@ -59,31 +58,56 @@ def compute_input_fingerprint(
     seed: int,
     calibration_package_path: Path | None = None,
 ) -> str:
-    h = hashlib.sha256()
-    paths = [weights_path, dataset_path]
-    if calibration_package_path is not None:
-        paths.append(calibration_package_path)
-    for p in paths:
-        with open(p, "rb") as f:
-            while chunk := f.read(8192):
-                h.update(chunk)
-    h.update(f"{n_clones}:{seed}".encode())
-    return h.hexdigest()[:16]
+    if calibration_package_path is None:
+        import hashlib
+
+        h = hashlib.sha256()
+        for p in [weights_path, dataset_path]:
+            with open(p, "rb") as f:
+                while chunk := f.read(8192):
+                    h.update(chunk)
+        h.update(f"{n_clones}:{seed}".encode())
+        return h.hexdigest()[:16]
+
+    from policyengine_us_data.calibration.local_h5.fingerprinting import (
+        FingerprintService,
+    )
+
+    service = FingerprintService()
+    record = service.create_publish_fingerprint(
+        weights_path=weights_path,
+        dataset_path=dataset_path,
+        calibration_package_path=calibration_package_path,
+        n_clones=n_clones,
+        seed=seed,
+    )
+    return record.digest
 
 
-def validate_or_clear_checkpoints(fingerprint: str):
+def validate_or_clear_checkpoints(fingerprint):
+    from policyengine_us_data.calibration.local_h5.fingerprinting import (
+        FingerprintRecord,
+        FingerprintService,
+    )
+
+    service = FingerprintService()
+    if isinstance(fingerprint, FingerprintRecord):
+        record = fingerprint
+    else:
+        record = service.legacy_record(str(fingerprint))
+
     if META_FILE.exists():
-        stored = json.loads(META_FILE.read_text())
-        if stored.get("fingerprint") == fingerprint:
-            print(f"Inputs unchanged ({fingerprint}), resuming...")
+        stored = service.read_record(META_FILE)
+        if service.matches(stored, record):
+            print(f"Inputs unchanged ({record.digest}), resuming...")
             return
         print(
             f"Inputs changed "
-            f"({stored.get('fingerprint')} -> {fingerprint}), "
+            f"({stored.digest} -> {record.digest}), "
             f"clearing..."
         )
     else:
-        print(f"No checkpoint metadata, starting fresh ({fingerprint})")
+        print(f"No checkpoint metadata, starting fresh ({record.digest})")
     h5_count = sum(
         1
         for subdir in ["states", "districts", "cities"]
@@ -115,7 +139,7 @@ def validate_or_clear_checkpoints(fingerprint: str):
             if d.exists():
                 shutil.rmtree(d)
     META_FILE.parent.mkdir(parents=True, exist_ok=True)
-    META_FILE.write_text(json.dumps({"fingerprint": fingerprint}))
+    service.write_record(META_FILE, record)
 
 
 SUB_ENTITIES = [
@@ -929,14 +953,36 @@ def main():
         if args.calibration_package_path
         else None
     )
-    fingerprint = compute_input_fingerprint(
-        inputs["weights"],
-        inputs["dataset"],
-        args.n_clones,
-        args.seed,
-        calibration_package_path=calibration_package_path,
-    )
-    validate_or_clear_checkpoints(fingerprint)
+    if calibration_package_path is not None:
+        from policyengine_us_data.calibration.local_h5.fingerprinting import (
+            FingerprintService,
+        )
+        from policyengine_us_data.calibration.local_h5.package_geography import (
+            require_calibration_package_path,
+        )
+
+        calibration_package_path = require_calibration_package_path(
+            calibration_package_path
+        )
+        fingerprint_service = FingerprintService()
+        fingerprint_record = fingerprint_service.create_publish_fingerprint(
+            weights_path=inputs["weights"],
+            dataset_path=inputs["dataset"],
+            calibration_package_path=calibration_package_path,
+            n_clones=args.n_clones,
+            seed=args.seed,
+        )
+        fingerprint = fingerprint_record.digest
+        validate_or_clear_checkpoints(fingerprint_record)
+    else:
+        fingerprint = compute_input_fingerprint(
+            inputs["weights"],
+            inputs["dataset"],
+            args.n_clones,
+            args.seed,
+            calibration_package_path=calibration_package_path,
+        )
+        validate_or_clear_checkpoints(fingerprint)
 
     print("Loading base simulation to get household count...")
     _sim = Microsimulation(dataset=str(inputs["dataset"]))

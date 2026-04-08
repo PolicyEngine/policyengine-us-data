@@ -79,6 +79,7 @@ def _install_fake_clone_and_assign(monkeypatch):
 
 package_geography = _load_package_geography_module()
 CalibrationPackageGeographyLoader = package_geography.CalibrationPackageGeographyLoader
+require_calibration_package_path = package_geography.require_calibration_package_path
 
 
 def test_serialize_and_load_serialized_package_geography(monkeypatch):
@@ -176,3 +177,14 @@ def test_resolve_for_weights_falls_back_when_package_geography_length_mismatches
     assert resolved.geography.n_records == 2
     assert resolved.geography.n_clones == 3
     assert any("does not match weights length" in warning for warning in resolved.warnings)
+
+
+def test_require_calibration_package_path_raises_for_missing_file(tmp_path):
+    missing = tmp_path / "missing.pkl"
+
+    try:
+        require_calibration_package_path(missing)
+    except FileNotFoundError as error:
+        assert "Required calibration package not found" in str(error)
+    else:
+        raise AssertionError("Expected FileNotFoundError for missing package")

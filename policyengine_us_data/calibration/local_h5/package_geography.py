@@ -9,6 +9,19 @@ from typing import Any, Mapping
 import numpy as np
 
 
+def require_calibration_package_path(package_path: str | Path) -> Path:
+    """Require that a calibration package file exists."""
+
+    package_path = Path(package_path)
+    if not package_path.is_file():
+        raise FileNotFoundError(
+            "Required calibration package not found at "
+            f"{package_path}. H5 publishing now requires the exact "
+            "calibration_package.pkl so geography is not regenerated from seed."
+        )
+    return package_path
+
+
 @dataclass(frozen=True)
 class LoadedPackageGeography:
     """Resolved geography plus provenance for publisher logging/tests."""

@@ -6,7 +6,7 @@ the schema, and exports pipeline.json for React visualization.
 
 Usage:
     python scripts/extract_pipeline.py
-    python scripts/extract_pipeline.py --output docs/pipeline-diagrams/pipeline.json
+    python scripts/extract_pipeline.py --output docs/pipeline-diagrams/app/pipeline.json
 """
 
 import ast
@@ -20,7 +20,9 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STAGES_YAML = REPO_ROOT / "pipeline_stages.yaml"
-DEFAULT_OUTPUT = REPO_ROOT / "docs" / "pipeline-diagrams" / "pipeline.json"
+DEFAULT_OUTPUT = (
+    REPO_ROOT / "docs" / "pipeline-diagrams" / "app" / "pipeline.json"
+)
 
 # Valid node and edge types (from pipeline_schema.py)
 VALID_NODE_TYPES = {

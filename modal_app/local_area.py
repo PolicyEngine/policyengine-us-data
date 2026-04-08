@@ -11,6 +11,7 @@ Usage:
     modal run modal_app/local_area.py --branch=main --num-workers=8
 """
 
+import heapq
 import json
 import os
 import subprocess

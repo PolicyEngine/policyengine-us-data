@@ -1,9 +1,5 @@
-import os
-
 from pathlib import Path
-from policyengine_us_data.db.create_database_tables import (
-    refresh_views_for_db_path,
-)
+
 from policyengine_us_data.utils.huggingface import download
 
 FOLDER = Path(__file__).parent
@@ -26,16 +22,3 @@ download(
     local_folder=FOLDER,
     version=None,
 )
-if os.environ.get("SKIP_POLICY_DB_DOWNLOAD"):
-    print(
-        "SKIP_POLICY_DB_DOWNLOAD set — skipping "
-        "policy_data.db download from HuggingFace"
-    )
-else:
-    download(
-        repo="policyengine/policyengine-us-data",
-        repo_filename="calibration/policy_data.db",
-        local_folder=FOLDER,
-        version=None,
-    )
-    refresh_views_for_db_path(FOLDER / "calibration" / "policy_data.db")

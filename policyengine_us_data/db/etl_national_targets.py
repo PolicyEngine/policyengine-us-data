@@ -13,20 +13,19 @@ from policyengine_us_data.storage.calibration_targets.soi_metadata import (
     RETIREMENT_CONTRIBUTION_TARGETS,
 )
 from policyengine_us_data.utils.db import (
-    DEFAULT_DATASET,
+    DEFAULT_YEAR,
     etl_argparser,
 )
 
 
-def extract_national_targets(dataset: str = DEFAULT_DATASET):
+def extract_national_targets(year: int = DEFAULT_YEAR):
     """
     Extract national calibration targets from various sources.
 
     Parameters
     ----------
-    dataset : str
-        Path to the calibration dataset (local path or HuggingFace URL).
-        The time period is derived from the dataset's default_calculation_period.
+    year : int
+        Target year for calibration data.
 
     Returns
     -------
@@ -38,15 +37,14 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
         - conditional_count_targets: Enrollment counts requiring constraints
         - cbo_targets: List of CBO projection targets
         - treasury_targets: List of Treasury/JCT targets
-        - time_period: The year derived from the dataset
+        - time_period: The target year
     """
-    from policyengine_us import Microsimulation
+    from policyengine_us import CountryTaxBenefitSystem
 
-    print(f"Loading dataset: {dataset}")
-    sim = Microsimulation(dataset=dataset)
+    time_period = year
+    print(f"Using time_period: {time_period}")
 
-    time_period = int(sim.default_calculation_period)
-    print(f"Derived time_period from dataset: {time_period}")
+    tax_benefit_system = CountryTaxBenefitSystem()
 
     # Hardcoded dollar targets are specific to 2024 and should be
     # labeled as such.  Only CBO/Treasury parameter lookups use the
@@ -400,7 +398,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
     for variable_name in cbo_vars:
         param_name = cbo_param_name_map.get(variable_name, variable_name)
         try:
-            value = sim.tax_benefit_system.parameters(
+            value = tax_benefit_system.parameters(
                 time_period
             ).calibration.gov.cbo._children[param_name]
             cbo_targets.append(
@@ -420,7 +418,7 @@ def extract_national_targets(dataset: str = DEFAULT_DATASET):
 
     # Treasury/JCT targets (EITC) - use time_period derived from dataset
     try:
-        eitc_value = sim.tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc(
+        eitc_value = tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc(
             time_period
         )
         treasury_targets = [
@@ -883,11 +881,11 @@ def load_national_targets(
 
 def main():
     """Main ETL pipeline for national targets."""
-    args, _ = etl_argparser("ETL for national calibration targets")
+    _, year = etl_argparser("ETL for national calibration targets")
 
     # Extract
     print("Extracting national targets...")
-    raw_targets = extract_national_targets(dataset=args.dataset)
+    raw_targets = extract_national_targets(year=year)
     time_period = raw_targets["time_period"]
     print(f"Using time_period={time_period} for CBO/Treasury targets")
 

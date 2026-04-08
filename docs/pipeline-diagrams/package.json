@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^3.0.0",
     "@xyflow/react": "^12.10.2",
     "elkjs": "^0.11.1",
     "next": "16.2.2",

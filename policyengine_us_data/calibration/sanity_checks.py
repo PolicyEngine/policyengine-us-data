@@ -12,6 +12,9 @@ from typing import List
 import h5py
 import numpy as np
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
+
 logger = logging.getLogger(__name__)
 
 KEY_MONETARY_VARS = [
@@ -36,6 +39,13 @@ TAKEUP_VARS = [
 ]
 
 
+@pipeline_node(PipelineNode(
+    id="v2",
+    label="Layer 2: Structural Sanity",
+    node_type="process",
+    description="Weight non-negativity, entity ID uniqueness, no NaN/Inf, mapping integrity",
+    source_file="policyengine_us_data/calibration/sanity_checks.py",
+))
 def run_sanity_checks(
     h5_path: str,
     period: int = 2024,

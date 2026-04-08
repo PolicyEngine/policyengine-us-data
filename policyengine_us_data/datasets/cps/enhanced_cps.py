@@ -21,6 +21,8 @@ from policyengine_us_data.utils.takeup import (
     extend_aca_takeup_to_match_target,
 )
 import logging
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 try:
     import torch
@@ -98,8 +100,13 @@ def create_aca_2025_takeup_override(
         enrolled_person_weights=enrolled_person_weights,
         target_people=target_people,
     )
-
-
+@pipeline_node(PipelineNode(
+    id="reweight",
+    label="reweight()",
+    node_type="process",
+    description="PyTorch Adam + L0 HardConcrete — 500 epochs, lr=0.2",
+    source_file="policyengine_us_data/datasets/cps/enhanced_cps.py",
+))
 def reweight(
     original_weights,
     loss_matrix,

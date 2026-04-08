@@ -13,8 +13,17 @@ import h5py
 from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 from policyengine_core.enums import Enum
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 
+@pipeline_node(PipelineNode(
+    id="create_stratified",
+    label="Stratified CPS Dataset",
+    node_type="process",
+    description="AGI calculation, top 1% retention, uniform sample of remaining 99%",
+    source_file="policyengine_us_data/calibration/create_stratified_cps.py",
+))
 def create_stratified_cps_dataset(
     target_households=30_000,
     high_income_percentile=99,

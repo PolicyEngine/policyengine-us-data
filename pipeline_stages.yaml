@@ -271,46 +271,10 @@ stages:
         label: "Geography Assignment"
         node_type: process
         description: "assign_random_geography() — population-weighted block draw"
-      - id: record_double
-        label: "Record Doubling"
-        node_type: process
-        description: "puf_clone_dataset() — CPS half keeps originals, PUF half starts with zero weight"
-      - id: qrf_pass1
-        label: "QRF Pass 1: Full Imputation"
-        node_type: process
-        description: "64 income variables — training on PUF ~20K records, 7 demographic predictors"
-      - id: qrf_pass2
-        label: "QRF Pass 2: Override Imputation"
-        node_type: process
-        description: "51 variables (both halves) — partnership, S-corp, charitable, mortgage, credits"
-      - id: retire_impute
-        label: "Retirement Contribution Imputation"
-        node_type: process
-        description: "401k, IRA, SE pension — IRS limits + catch-up applied"
-      - id: weeks_impute
-        label: "Weeks Unemployed Imputation"
-        node_type: process
-        description: "QRF on CPS weeks_unemployed — clips [0, 52], zero if no UC"
-      - id: ss_reconcile
-        label: "SS Sub-component Reconciliation"
-        node_type: process
-        description: "Retirement/Disability/Survivors/Dependents — scaled to match PUF total"
-      - id: cps_only
-        label: "CPS-Only Variable Re-imputation"
-        node_type: process
-        description: "80 variables for PUF half — transfers, SPM, medical, hours, retirement"
-      - id: formula_drop
-        label: "Formula Variable Dropping"
-        node_type: process
-        description: "Remove PE-computed variables, rename employment_income → employment_income_before_lsr"
       - id: out_ext
         label: "extended_cps_2024.h5"
         node_type: output
         description: "~260K households (doubled), CPS half + PUF half"
-      - id: util_puf_clone
-        label: "puf_clone_dataset()"
-        node_type: utility
-        description: "calibration/puf_impute.py"
       - id: util_qrf_s2
         label: "microimpute QRF"
         node_type: utility
@@ -330,40 +294,19 @@ stages:
       - { source: ss_reconcile, target: cps_only, edge_type: data_flow }
       - { source: cps_only, target: formula_drop, edge_type: data_flow }
       - { source: formula_drop, target: out_ext, edge_type: produces_artifact }
-      - { source: util_puf_clone, target: record_double, edge_type: uses_utility }
       - { source: util_qrf_s2, target: qrf_pass1, edge_type: uses_utility }
       - { source: util_qrf_s2, target: qrf_pass2, edge_type: uses_utility }
       - { source: util_qrf_s2, target: cps_only, edge_type: uses_utility }
 
   # ══════════════════════════════════════════════════════════════
-  # Stage 3: Stratified CPS + Enhanced CPS Reweighting
+  # Stage 3a: Enhanced CPS Reweighting (ECPS — deprecated)
   # ══════════════════════════════════════════════════════════════
-  - id: 3
-    label: "Stage 3"
-    title: "Stage 3: Stratified CPS + Enhanced CPS Reweighting"
-    description: "Stratify by income (keep top 1%), reweight to match calibration targets"
+  - id: "3a"
+    label: "Stage 3a"
+    title: "Stage 3a: Enhanced CPS Reweighting"
+    description: "Reweight Extended CPS to match national IRS/Census/CBO targets (deprecated ECPS pathway)"
     country: us
     extra_nodes:
-      - id: in_ext_cps
-        label: "extended_cps_2024.h5"
-        node_type: input
-        description: "From Stage 2 (~260K HH)"
-      - id: calc_agi
-        label: "Calculate AGI"
-        node_type: process
-        description: "Microsimulation.calculate() — adjusted_gross_income mapped to household"
-      - id: strat_top
-        label: "Retain Top 1% by AGI"
-        node_type: process
-        description: "All high-income households kept — preserves tail representation"
-      - id: strat_sample
-        label: "Uniform Sample Remaining 99%"
-        node_type: process
-        description: "Target: ~12,000 households — optional 1.5x oversample of bottom 25%"
-      - id: out_strat
-        label: "stratified_extended_cps_2024.h5"
-        node_type: output
-        description: "~12K households — input to Stages 4-6"
       - id: in_ext_half
         label: "ExtendedCPS_2024_Half"
         node_type: input
@@ -392,10 +335,6 @@ stages:
         label: "JCT Tax Expenditures"
         node_type: external
         description: "SALT, medical, charitable — counterfactual simulations"
-      - id: reweight
-        label: "reweight()"
-        node_type: process
-        description: "PyTorch Adam + L0 HardConcrete — 500 epochs, lr=0.2"
       - id: weight_validate
         label: "Weight Validation"
         node_type: process
@@ -413,11 +352,6 @@ stages:
         node_type: utility
         description: "utils/l0.py"
     edges:
-      - { source: in_ext_cps, target: calc_agi, edge_type: data_flow }
-      - { source: calc_agi, target: strat_top, edge_type: data_flow }
-      - { source: strat_top, target: strat_sample, edge_type: data_flow }
-      - { source: strat_top, target: out_strat, edge_type: data_flow, label: "top 1%" }
-      - { source: strat_sample, target: out_strat, edge_type: data_flow, label: "sampled 99%" }
       - { source: in_ext_half, target: build_loss, edge_type: data_flow }
       - { source: t_soi, target: build_loss, edge_type: external_source }
       - { source: t_census, target: build_loss, edge_type: external_source }
@@ -429,6 +363,42 @@ stages:
       - { source: weight_validate, target: out_enhanced, edge_type: produces_artifact }
       - { source: util_loss, target: build_loss, edge_type: uses_utility }
       - { source: util_l0_s3, target: reweight, edge_type: uses_utility }
+
+  # ══════════════════════════════════════════════════════════════
+  # Stage 3b: Stratified CPS (Local area pathway)
+  # ══════════════════════════════════════════════════════════════
+  - id: "3b"
+    label: "Stage 3b"
+    title: "Stage 3b: Stratified CPS"
+    description: "Stratify Extended CPS by income — keep top 1%, sample remaining 99%"
+    country: us
+    extra_nodes:
+      - id: in_ext_cps
+        label: "extended_cps_2024.h5"
+        node_type: input
+        description: "From Stage 2 (~260K HH)"
+      - id: calc_agi
+        label: "Calculate AGI"
+        node_type: process
+        description: "Microsimulation.calculate() — adjusted_gross_income mapped to household"
+      - id: strat_top
+        label: "Retain Top 1% by AGI"
+        node_type: process
+        description: "All high-income households kept — preserves tail representation"
+      - id: strat_sample
+        label: "Uniform Sample Remaining 99%"
+        node_type: process
+        description: "Target: ~12,000 households — optional 1.5x oversample of bottom 25%"
+      - id: out_strat
+        label: "stratified_extended_cps_2024.h5"
+        node_type: output
+        description: "~12K households — input to Stages 4-8"
+    edges:
+      - { source: in_ext_cps, target: calc_agi, edge_type: data_flow }
+      - { source: calc_agi, target: strat_top, edge_type: data_flow }
+      - { source: strat_top, target: strat_sample, edge_type: data_flow }
+      - { source: strat_top, target: out_strat, edge_type: data_flow, label: "top 1%" }
+      - { source: strat_sample, target: out_strat, edge_type: data_flow, label: "sampled 99%" }
 
   # ══════════════════════════════════════════════════════════════
   # Stage 4: Source Imputation (ACS + SIPP + SCF)
@@ -455,26 +425,10 @@ stages:
         label: "SCF_2022"
         node_type: input
         description: "Survey of Consumer Finances — 50% random subsample"
-      - id: geo_assign_s4
-        label: "Geography Assignment"
-        node_type: process
-        description: "assign_random_geography(n_clones=1) — block draw + state FIPS"
-      - id: acs_qrf
-        label: "ACS QRF Imputation"
-        node_type: process
-        description: "10 predictors incl. state_fips — imputes rent, real_estate_taxes"
-      - id: sipp_tips_qrf
-        label: "SIPP Tips QRF"
-        node_type: process
-        description: "4 predictors, NO state — imputes tip_income"
       - id: sipp_assets_qrf
         label: "SIPP Assets QRF"
         node_type: process
         description: "5 predictors — imputes bank_account_assets, stock_assets, bond_assets"
-      - id: scf_qrf
-        label: "SCF QRF Imputation"
-        node_type: process
-        description: "8 predictors — imputes net_worth, auto_loan_balance, auto_loan_interest"
       - id: out_imputed
         label: "source_imputed_stratified_extended_cps.h5"
         node_type: output
@@ -545,14 +499,6 @@ stages:
         label: "Constraint Resolution"
         node_type: process
         description: "Non-geographic constraints from DB (age, medicaid, filer)"
-      - id: state_precomp
-        label: "Per-State Precomputation"
-        node_type: us_specific
-        description: "51 fresh Microsimulations — most expensive step"
-      - id: clone_assembly
-        label: "Clone Assembly"
-        node_type: process
-        description: "430 clones × 12K records = 5.16M columns"
       - id: takeup_rerand
         label: "Block-Level Takeup Re-randomization"
         node_type: process
@@ -617,18 +563,10 @@ stages:
         label: "Modal GPU Container"
         node_type: external
         description: "T4 / A10 / A100 / H100 — 32GB RAM, 8 CPU"
-      - id: init_weights
-        label: "Compute Initial Weights"
-        node_type: process
-        description: "Population-proportional per CD"
       - id: create_model
         label: "Create SparseCalibrationWeights"
         node_type: process
         description: "n_features = 5.16M, init_keep_prob = 0.999"
-      - id: fit_model
-        label: "model.fit()"
-        node_type: process
-        description: "Adam optimizer — loss = RSE + λ₀·L0(w) + λ₂·‖w‖²"
       - id: extract_weights
         label: "Extract Weights"
         node_type: process
@@ -699,30 +637,10 @@ stages:
         label: "Partition Work"
         node_type: process
         description: "50 workers — weights: state by CD count, city=11, district=1"
-      - id: phase1
-        label: "Phase 1: States"
-        node_type: us_specific
-        description: "51 state H5 files (50 + DC) — workers in parallel"
-      - id: phase2
-        label: "Phase 2: Districts"
-        node_type: us_specific
-        description: "~435 congressional district H5 files — workers in parallel"
-      - id: phase3
-        label: "Phase 3: Cities"
-        node_type: us_specific
-        description: "NYC (5 counties, 13 CDs) — city probability filtering"
-      - id: build_h5
-        label: "build_h5() — Core Logic"
-        node_type: process
-        description: "18-step H5 construction — load, reshape, filter, clone, derive geo, SPM, takeup, write"
       - id: worker_s7
         label: "Modal Worker Container"
         node_type: external
         description: "16GB RAM, 1 CPU each, 8-hour timeout"
-      - id: geo_derive
-        label: "derive_geography_from_blocks()"
-        node_type: process
-        description: "15 geographic variables from block GEOID"
       - id: spm_recalc
         label: "SPM Threshold Recalculation"
         node_type: process
@@ -798,14 +716,6 @@ stages:
         label: "Layer 1: Manifest Verification"
         node_type: process
         description: "SHA256 checksums per file — catches corruption"
-      - id: v2
-        label: "Layer 2: Structural Sanity"
-        node_type: process
-        description: "Weight non-negativity, entity ID uniqueness, no NaN/Inf, mapping integrity"
-      - id: v3
-        label: "Layer 3: Target-Based Validation"
-        node_type: process
-        description: "Full Microsimulation per area — compare sim values to targets"
       - id: v4
         label: "Layer 4: Smoke Test"
         node_type: process
@@ -822,14 +732,6 @@ stages:
         label: "Layer 7: Package Validation"
         node_type: process
         description: "Matrix achievability, target ratio analysis, zero-row detection"
-      - id: staging_upload
-        label: "Upload to Staging"
-        node_type: process
-        description: "upload_to_staging_hf() — batches of 50 files/commit"
-      - id: atomic_promote
-        label: "Atomic Promotion"
-        node_type: process
-        description: "promote_staging_to_production_hf() — single CommitOperationCopy commit"
       - id: gcs_upload
         label: "GCS Parallel Upload"
         node_type: external

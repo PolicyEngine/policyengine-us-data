@@ -19,6 +19,8 @@ from policyengine_us_data.utils.mortgage_interest import (
     impute_tax_unit_mortgage_balance_hints,
 )
 from policyengine_us_data.utils.policyengine import has_policyengine_us_variables
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
     get_se_pension_limits,
@@ -181,7 +183,6 @@ CPS_STAGE2_INCOME_PREDICTORS = [
     "self_employment_income",
     "social_security",
 ]
-
 
 def _clone_half_person_values(data: dict, variable: str, time_period: int):
     """Return clone-half values for ``variable`` mapped to person rows."""
@@ -371,6 +372,13 @@ def _splice_clone_feature_predictions(
     return data
 
 
+@pipeline_node(PipelineNode(
+    id="cps_only",
+    label="CPS-Only Variable Re-imputation",
+    node_type="process",
+    description="80 variables for PUF half — transfers, SPM, medical, hours, retirement",
+    source_file="policyengine_us_data/datasets/cps/extended_cps.py",
+))
 def _impute_cps_only_variables(
     data: dict,
     time_period: int,
@@ -741,6 +749,13 @@ def _apply_post_processing(predictions, X_test, time_period, data):
     return predictions
 
 
+@pipeline_node(PipelineNode(
+    id="qrf_pass2",
+    label="QRF Pass 2: Override Imputation",
+    node_type="process",
+    description="51 variables (both halves) — partnership, S-corp, charitable, mortgage, credits",
+    source_file="policyengine_us_data/datasets/cps/extended_cps.py",
+))
 def _splice_cps_only_predictions(
     data: dict,
     predictions: pd.DataFrame,
@@ -952,6 +967,13 @@ class ExtendedCPS(Dataset):
         "tax_exempt_pension_income": "tax_exempt_private_pension_income",
     }
 
+    @pipeline_node(PipelineNode(
+        id="formula_drop",
+        label="Formula Variable Dropping",
+        node_type="process",
+        description="Remove PE-computed variables, rename employment_income → employment_income_before_lsr",
+        source_file="policyengine_us_data/datasets/cps/extended_cps.py",
+    ))
     @classmethod
     def _drop_formula_variables(cls, data):
         """Remove variables that are computed by policyengine-us.

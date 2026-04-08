@@ -28,6 +28,8 @@ from policyengine_us_data.calibration.calibration_utils import (
     apply_op,
     get_geo_level,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +95,13 @@ def _compute_reform_household_values(
             )
 
     return reform_hh
-
-
+@pipeline_node(PipelineNode(
+    id="state_precomp",
+    label="Per-State Precomputation",
+    node_type="us_specific",
+    description="51 fresh Microsimulations — most expensive step",
+    source_file="policyengine_us_data/calibration/unified_matrix_builder.py",
+))
 def _compute_single_state(
     dataset_path: str,
     time_period: int,
@@ -415,6 +422,13 @@ def _init_clone_worker(shared_data: dict) -> None:
     _CLONE_SHARED.update(shared_data)
 
 
+@pipeline_node(PipelineNode(
+    id="clone_assembly",
+    label="Clone Assembly",
+    node_type="process",
+    description="430 clones × 12K records = 5.16M columns",
+    source_file="policyengine_us_data/calibration/unified_matrix_builder.py",
+))
 def _assemble_clone_values_standalone(
     state_values: dict,
     clone_states: np.ndarray,

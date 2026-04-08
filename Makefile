@@ -298,3 +298,6 @@ presentations/nta_2024_11/nta_2024_slides.pdf: presentations/nta_2024_11/main.te
 	cd presentations/nta_2024_11 && \
 		pdflatex -jobname=nta_2024_slides main && \
 		pdflatex -jobname=nta_2024_slides main
+
+diagrams:
+	cd docs/pipeline-diagrams && npx next dev

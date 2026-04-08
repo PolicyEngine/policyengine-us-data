@@ -19,6 +19,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
 )
@@ -373,6 +375,13 @@ def _age_heuristic_ss_shares(
     return shares
 
 
+@pipeline_node(PipelineNode(
+    id="ss_reconcile",
+    label="SS Sub-component Reconciliation",
+    node_type="process",
+    description="Retirement/Disability/Survivors/Dependents — scaled to match PUF total",
+    source_file="policyengine_us_data/calibration/puf_impute.py",
+))
 def reconcile_ss_subcomponents(
     data: Dict[str, Dict[int, np.ndarray]],
     n_cps: int,
@@ -425,6 +434,13 @@ def reconcile_ss_subcomponents(
         data[sub][time_period] = arr
 
 
+@pipeline_node(PipelineNode(
+    id="record_double",
+    label="Record Doubling",
+    node_type="process",
+    description="puf_clone_dataset() — CPS half keeps originals, PUF half starts with zero weight",
+    source_file="policyengine_us_data/calibration/puf_impute.py",
+))
 def puf_clone_dataset(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
@@ -552,6 +568,13 @@ def puf_clone_dataset(
     return new_data
 
 
+@pipeline_node(PipelineNode(
+    id="weeks_impute",
+    label="Weeks Unemployed Imputation",
+    node_type="process",
+    description="QRF on CPS weeks_unemployed — clips [0, 52], zero if no UC",
+    source_file="policyengine_us_data/calibration/puf_impute.py",
+))
 def _impute_weeks_unemployed(
     data: Dict[str, Dict[int, np.ndarray]],
     puf_imputations: Dict[str, np.ndarray],
@@ -644,6 +667,13 @@ def _impute_weeks_unemployed(
     return imputed_weeks
 
 
+@pipeline_node(PipelineNode(
+    id="retire_impute",
+    label="Retirement Contribution Imputation",
+    node_type="process",
+    description="401k, IRA, SE pension — IRS limits + catch-up applied",
+    source_file="policyengine_us_data/calibration/puf_impute.py",
+))
 def _impute_retirement_contributions(
     data: Dict[str, Dict[int, np.ndarray]],
     puf_imputations: Dict[str, np.ndarray],
@@ -770,6 +800,13 @@ def _impute_retirement_contributions(
     return result
 
 
+@pipeline_node(PipelineNode(
+    id="qrf_pass1",
+    label="QRF Pass 1: Full Imputation",
+    node_type="process",
+    description="64 income variables — training on PUF ~20K records, 7 demographic predictors",
+    source_file="policyengine_us_data/calibration/puf_impute.py",
+))
 def _run_qrf_imputation(
     data: Dict[str, Dict[int, np.ndarray]],
     time_period: int,

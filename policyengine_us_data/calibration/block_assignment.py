@@ -35,6 +35,8 @@ from policyengine_us.variables.household.demographic.geographic.county.county_en
     County,
 )
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 # === GEOID Parsing Functions ===
 # Block GEOID format: SSCCCTTTTTTBBBB (15 chars)
@@ -510,6 +512,13 @@ def assign_geography_for_cd(
     }
 
 
+@pipeline_node(PipelineNode(
+    id="geo_derive",
+    label="derive_geography_from_blocks()",
+    node_type="process",
+    description="15 geographic variables from block GEOID",
+    source_file="policyengine_us_data/calibration/block_assignment.py",
+))
 def derive_geography_from_blocks(
     block_geoids: np.ndarray,
 ) -> Dict[str, np.ndarray]:

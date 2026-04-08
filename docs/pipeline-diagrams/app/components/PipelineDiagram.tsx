@@ -39,7 +39,7 @@ const ELK_OPTIONS: Record<string, string> = {
 };
 
 interface StageData {
-  id: number;
+  id: number | string;
   label: string;
   title: string;
   description: string;
@@ -240,12 +240,13 @@ function DiagramInner({ stage }: { stage: StageData }) {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
         fitView
         fitViewOptions={{ padding: 0.15 }}
         minZoom={0.1}

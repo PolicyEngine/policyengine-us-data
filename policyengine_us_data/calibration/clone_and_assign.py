@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +93,13 @@ def _build_agi_block_probs(cds, pop_probs, cd_agi_targets):
     if agi_probs.sum() == 0:
         return pop_probs
     return agi_probs / agi_probs.sum()
-
-
+@pipeline_node(PipelineNode(
+    id="geo_assign_s4",
+    label="Geography Assignment",
+    node_type="process",
+    description="assign_random_geography() — population-weighted block draw",
+    source_file="policyengine_us_data/calibration/clone_and_assign.py",
+))
 def assign_random_geography(
     n_records: int,
     n_clones: int = 10,

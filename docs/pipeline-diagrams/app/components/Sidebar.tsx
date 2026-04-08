@@ -25,10 +25,17 @@ const EDGE_LEGEND = [
   { type: "informational", label: "Informational" },
 ];
 
+const META_STAGES = [
+  { label: "Shared build", stageIds: [0, 1, 2] },
+  { label: "ECPS pathway (deprecated)", stageIds: ["3a"] },
+  { label: "Local area pathway", stageIds: ["3b", 4, 5, 6, 7, 8] },
+];
+
 export default function Sidebar() {
   const pathname = usePathname();
   const country = "us";
   const stages = pipelineData.stages;
+  const stageMap = Object.fromEntries(stages.map((s) => [String(s.id), s]));
 
   return (
     <aside
@@ -64,11 +71,6 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.1em] px-3 mb-2"
-          style={{ color: "var(--pe-text-tertiary)" }}>
-          Navigation
-        </p>
-
         <Link
           href={`/${country}`}
           className="flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors duration-150"
@@ -80,45 +82,58 @@ export default function Sidebar() {
           Overview
         </Link>
 
-        <p className="text-[10px] font-semibold uppercase tracking-[0.1em] px-3 mb-2 mt-5"
-          style={{ color: "var(--pe-text-tertiary)" }}>
-          Stages
-        </p>
+        {META_STAGES.map((meta, metaIdx) => (
+          <div key={meta.label} className={metaIdx === 0 ? "mt-4" : "mt-1"}>
+            <p
+              className="text-[10px] font-semibold uppercase tracking-[0.1em] px-3 mb-1.5 mt-3"
+              style={{ color: "var(--pe-text-tertiary)" }}
+            >
+              {meta.label}
+            </p>
 
-        <div className="space-y-0.5">
-          {stages.map((stage) => {
-            const isActive = pathname === `/${country}/stage/${stage.id}`;
-            return (
-              <Link
-                key={stage.id}
-                href={`/${country}/stage/${stage.id}`}
-                className="flex items-start gap-2.5 px-3 py-2 rounded-md transition-colors duration-150"
-                style={{
-                  color: isActive ? "var(--pe-primary-600)" : "var(--pe-text-secondary)",
-                  background: isActive ? "var(--pe-primary-50)" : "transparent",
-                }}
-              >
-                <span
-                  className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold flex-shrink-0 mt-px"
-                  style={{
-                    background: isActive ? "var(--pe-primary-500)" : "var(--pe-gray-100)",
-                    color: isActive ? "#FFFFFF" : "var(--pe-text-tertiary)",
-                  }}
-                >
-                  {stage.id}
-                </span>
-                <div className="min-w-0">
-                  <div className="text-[12px] font-medium leading-tight truncate">
-                    {stage.description}
-                  </div>
-                  <div className="text-[10px] mt-0.5" style={{ color: "var(--pe-text-tertiary)" }}>
-                    {stage.nodes.length} nodes · {stage.edges.length} edges
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+            <div className="space-y-0.5">
+              {meta.stageIds.map((stageId) => {
+                const stage = stageMap[String(stageId)];
+                if (!stage) return null;
+                const isActive = pathname === `/${country}/stage/${stage.id}`;
+                return (
+                  <Link
+                    key={`${meta.label}-${stage.id}`}
+                    href={`/${country}/stage/${stage.id}`}
+                    className="flex items-start gap-2.5 px-3 py-2 rounded-md transition-colors duration-150"
+                    style={{
+                      color: isActive ? "var(--pe-primary-600)" : "var(--pe-text-secondary)",
+                      background: isActive ? "var(--pe-primary-50)" : "transparent",
+                    }}
+                  >
+                    <span
+                      className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold flex-shrink-0 mt-px"
+                      style={{
+                        background: isActive ? "var(--pe-primary-500)" : "var(--pe-gray-100)",
+                        color: isActive ? "#FFFFFF" : "var(--pe-text-tertiary)",
+                      }}
+                    >
+                      {stage.id}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-[12px] font-medium leading-tight truncate">
+                        {stage.description}
+                      </div>
+                      <div className="text-[10px] mt-0.5" style={{ color: "var(--pe-text-tertiary)" }}>
+                        {stage.nodes.length} nodes · {stage.edges.length} edges
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+
+            {/* Divider between meta-stages */}
+            {metaIdx < META_STAGES.length - 1 && (
+              <div className="mx-3 mt-3" style={{ borderBottom: "1px solid var(--pe-gray-200)" }} />
+            )}
+          </div>
+        ))}
       </nav>
 
       {/* Legend */}

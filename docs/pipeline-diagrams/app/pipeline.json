@@ -301,41 +301,18 @@
           "description": "IRS contribution limits"
         },
         {
-          "id": "add_rent",
-          "label": "Rent Imputation (QRF)",
+          "id": "add_household_variables",
+          "label": "Household Variables",
           "node_type": "process",
-          "description": "Impute rent and real estate taxes using QRF from ACS 2022",
-          "details": "10K sampled household heads as training data",
+          "description": "State FIPS, county FIPS, NYC flag from county codes",
           "source_file": "policyengine_us_data/datasets/cps/cps.py"
         },
         {
-          "id": "impute_puf_demographics",
-          "label": "Impute PUF Demographics",
-          "node_type": "process",
-          "description": "QRF imputation for age, gender, and earnings split",
-          "source_file": "policyengine_us_data/datasets/puf/puf.py"
-        },
-        {
-          "id": "add_ssn_card_type",
-          "label": "SSN Card Type",
+          "id": "add_takeup",
+          "label": "Benefit Takeup",
           "node_type": "us_specific",
-          "description": "US immigration classification from 14 ASEC conditions",
-          "details": "Undocumented target: 13M; SSN card types 0-3",
-          "source_file": "policyengine_us_data/datasets/cps/cps.py"
-        },
-        {
-          "id": "add_personal_variables",
-          "label": "Add Personal Variables",
-          "node_type": "process",
-          "description": "Age, sex, disability, occupation, overtime flags",
-          "details": "80+ ages randomized to 80-84; 12 overtime occupation flags",
-          "source_file": "policyengine_us_data/datasets/cps/cps.py"
-        },
-        {
-          "id": "add_id_variables",
-          "label": "Add ID Variables",
-          "node_type": "process",
-          "description": "Create person_id, household_id, tax_unit_id, spm_unit_id, marital_unit_id",
+          "description": "Stochastic takeup for 9 benefit programs",
+          "details": "SNAP, ACA, Medicaid, EITC, SSI, TANF, WIC, Head Start; state-specific Medicaid rates",
           "source_file": "policyengine_us_data/datasets/cps/cps.py"
         },
         {
@@ -347,6 +324,37 @@
           "source_file": "policyengine_us_data/datasets/cps/cps.py"
         },
         {
+          "id": "downsample",
+          "label": "Downsampling",
+          "node_type": "process",
+          "description": "frac=0.5 for CPS_2024 using Microsimulation.subsample()",
+          "source_file": "policyengine_us_data/datasets/cps/cps.py"
+        },
+        {
+          "id": "add_personal_income_variables",
+          "label": "Add Income Variables",
+          "node_type": "process",
+          "description": "30+ income types with splits",
+          "details": "SS classified by reason codes; retirement split by account type; capital gains 88% LT / 12% ST",
+          "source_file": "policyengine_us_data/datasets/cps/cps.py"
+        },
+        {
+          "id": "add_personal_variables",
+          "label": "Add Personal Variables",
+          "node_type": "process",
+          "description": "Age, sex, disability, occupation, overtime flags",
+          "details": "80+ ages randomized to 80-84; 12 overtime occupation flags",
+          "source_file": "policyengine_us_data/datasets/cps/cps.py"
+        },
+        {
+          "id": "add_rent",
+          "label": "Rent Imputation (QRF)",
+          "node_type": "process",
+          "description": "Impute rent and real estate taxes using QRF from ACS 2022",
+          "details": "10K sampled household heads as training data",
+          "source_file": "policyengine_us_data/datasets/cps/cps.py"
+        },
+        {
           "id": "add_auto_loan",
           "label": "Auto Loan / Net Worth (QRF)",
           "node_type": "process",
@@ -354,11 +362,33 @@
           "source_file": "policyengine_us_data/datasets/cps/cps.py"
         },
         {
-          "id": "simulate_qbi",
-          "label": "QBI Simulation",
+          "id": "add_previous_year_income",
+          "label": "Previous Year Income",
           "node_type": "process",
-          "description": "Simulate W-2 wages, UBIA, and SSTB for Section 199A",
+          "description": "Cross-year PERIDNUM linking for prior-year income",
+          "source_file": "policyengine_us_data/datasets/cps/cps.py"
+        },
+        {
+          "id": "impute_puf_demographics",
+          "label": "Impute PUF Demographics",
+          "node_type": "process",
+          "description": "QRF imputation for age, gender, and earnings split",
           "source_file": "policyengine_us_data/datasets/puf/puf.py"
+        },
+        {
+          "id": "add_id_variables",
+          "label": "Add ID Variables",
+          "node_type": "process",
+          "description": "Create person_id, household_id, tax_unit_id, spm_unit_id, marital_unit_id",
+          "source_file": "policyengine_us_data/datasets/cps/cps.py"
+        },
+        {
+          "id": "add_ssn_card_type",
+          "label": "SSN Card Type",
+          "node_type": "us_specific",
+          "description": "US immigration classification from 14 ASEC conditions",
+          "details": "Undocumented target: 13M; SSN card types 0-3",
+          "source_file": "policyengine_us_data/datasets/cps/cps.py"
         },
         {
           "id": "add_spm_variables",
@@ -376,41 +406,11 @@
           "source_file": "policyengine_us_data/datasets/puf/puf.py"
         },
         {
-          "id": "add_personal_income_variables",
-          "label": "Add Income Variables",
+          "id": "simulate_qbi",
+          "label": "QBI Simulation",
           "node_type": "process",
-          "description": "30+ income types with splits",
-          "details": "SS classified by reason codes; retirement split by account type; capital gains 88% LT / 12% ST",
-          "source_file": "policyengine_us_data/datasets/cps/cps.py"
-        },
-        {
-          "id": "add_previous_year_income",
-          "label": "Previous Year Income",
-          "node_type": "process",
-          "description": "Cross-year PERIDNUM linking for prior-year income",
-          "source_file": "policyengine_us_data/datasets/cps/cps.py"
-        },
-        {
-          "id": "add_household_variables",
-          "label": "Household Variables",
-          "node_type": "process",
-          "description": "State FIPS, county FIPS, NYC flag from county codes",
-          "source_file": "policyengine_us_data/datasets/cps/cps.py"
-        },
-        {
-          "id": "add_takeup",
-          "label": "Benefit Takeup",
-          "node_type": "us_specific",
-          "description": "Stochastic takeup for 9 benefit programs",
-          "details": "SNAP, ACA, Medicaid, EITC, SSI, TANF, WIC, Head Start; state-specific Medicaid rates",
-          "source_file": "policyengine_us_data/datasets/cps/cps.py"
-        },
-        {
-          "id": "downsample",
-          "label": "Downsampling",
-          "node_type": "process",
-          "description": "frac=0.5 for CPS_2024 using Microsimulation.subsample()",
-          "source_file": "policyengine_us_data/datasets/cps/cps.py"
+          "description": "Simulate W-2 wages, UBIA, and SSTB for Section 199A",
+          "source_file": "policyengine_us_data/datasets/puf/puf.py"
         }
       ],
       "edges": [
@@ -603,70 +603,72 @@
           "description": "assign_random_geography() \u2014 population-weighted block draw"
         },
         {
-          "id": "record_double",
-          "label": "Record Doubling",
-          "node_type": "process",
-          "description": "puf_clone_dataset() \u2014 CPS half keeps originals, PUF half starts with zero weight"
-        },
-        {
-          "id": "qrf_pass1",
-          "label": "QRF Pass 1: Full Imputation",
-          "node_type": "process",
-          "description": "64 income variables \u2014 training on PUF ~20K records, 7 demographic predictors"
-        },
-        {
-          "id": "qrf_pass2",
-          "label": "QRF Pass 2: Override Imputation",
-          "node_type": "process",
-          "description": "51 variables (both halves) \u2014 partnership, S-corp, charitable, mortgage, credits"
-        },
-        {
-          "id": "retire_impute",
-          "label": "Retirement Contribution Imputation",
-          "node_type": "process",
-          "description": "401k, IRA, SE pension \u2014 IRS limits + catch-up applied"
-        },
-        {
-          "id": "weeks_impute",
-          "label": "Weeks Unemployed Imputation",
-          "node_type": "process",
-          "description": "QRF on CPS weeks_unemployed \u2014 clips [0, 52], zero if no UC"
-        },
-        {
-          "id": "ss_reconcile",
-          "label": "SS Sub-component Reconciliation",
-          "node_type": "process",
-          "description": "Retirement/Disability/Survivors/Dependents \u2014 scaled to match PUF total"
-        },
-        {
-          "id": "cps_only",
-          "label": "CPS-Only Variable Re-imputation",
-          "node_type": "process",
-          "description": "80 variables for PUF half \u2014 transfers, SPM, medical, hours, retirement"
-        },
-        {
-          "id": "formula_drop",
-          "label": "Formula Variable Dropping",
-          "node_type": "process",
-          "description": "Remove PE-computed variables, rename employment_income \u2192 employment_income_before_lsr"
-        },
-        {
           "id": "out_ext",
           "label": "extended_cps_2024.h5",
           "node_type": "output",
           "description": "~260K households (doubled), CPS half + PUF half"
         },
         {
-          "id": "util_puf_clone",
-          "label": "puf_clone_dataset()",
-          "node_type": "utility",
-          "description": "calibration/puf_impute.py"
-        },
-        {
           "id": "util_qrf_s2",
           "label": "microimpute QRF",
           "node_type": "utility",
           "description": "fit_predict() for sequential imputation"
+        },
+        {
+          "id": "weeks_impute",
+          "label": "Weeks Unemployed Imputation",
+          "node_type": "process",
+          "description": "QRF on CPS weeks_unemployed \u2014 clips [0, 52], zero if no UC",
+          "source_file": "policyengine_us_data/calibration/puf_impute.py"
+        },
+        {
+          "id": "ss_reconcile",
+          "label": "SS Sub-component Reconciliation",
+          "node_type": "process",
+          "description": "Retirement/Disability/Survivors/Dependents \u2014 scaled to match PUF total",
+          "source_file": "policyengine_us_data/calibration/puf_impute.py"
+        },
+        {
+          "id": "formula_drop",
+          "label": "Formula Variable Dropping",
+          "node_type": "process",
+          "description": "Remove PE-computed variables, rename employment_income \u2192 employment_income_before_lsr",
+          "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
+        },
+        {
+          "id": "record_double",
+          "label": "Record Doubling",
+          "node_type": "process",
+          "description": "puf_clone_dataset() \u2014 CPS half keeps originals, PUF half starts with zero weight",
+          "source_file": "policyengine_us_data/calibration/puf_impute.py"
+        },
+        {
+          "id": "cps_only",
+          "label": "CPS-Only Variable Re-imputation",
+          "node_type": "process",
+          "description": "80 variables for PUF half \u2014 transfers, SPM, medical, hours, retirement",
+          "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
+        },
+        {
+          "id": "retire_impute",
+          "label": "Retirement Contribution Imputation",
+          "node_type": "process",
+          "description": "401k, IRA, SE pension \u2014 IRS limits + catch-up applied",
+          "source_file": "policyengine_us_data/calibration/puf_impute.py"
+        },
+        {
+          "id": "qrf_pass1",
+          "label": "QRF Pass 1: Full Imputation",
+          "node_type": "process",
+          "description": "64 income variables \u2014 training on PUF ~20K records, 7 demographic predictors",
+          "source_file": "policyengine_us_data/calibration/puf_impute.py"
+        },
+        {
+          "id": "qrf_pass2",
+          "label": "QRF Pass 2: Override Imputation",
+          "node_type": "process",
+          "description": "51 variables (both halves) \u2014 partnership, S-corp, charitable, mortgage, credits",
+          "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
         }
       ],
       "edges": [
@@ -745,11 +747,6 @@
           "edge_type": "produces_artifact"
         },
         {
-          "source": "util_puf_clone",
-          "target": "record_double",
-          "edge_type": "uses_utility"
-        },
-        {
           "source": "util_qrf_s2",
           "target": "qrf_pass1",
           "edge_type": "uses_utility"
@@ -767,42 +764,12 @@
       ]
     },
     {
-      "id": 3,
-      "label": "Stage 3",
-      "title": "Stage 3: Stratified CPS + Enhanced CPS Reweighting",
-      "description": "Stratify by income (keep top 1%), reweight to match calibration targets",
+      "id": "3a",
+      "label": "Stage 3a",
+      "title": "Stage 3a: Enhanced CPS Reweighting",
+      "description": "Reweight Extended CPS to match national IRS/Census/CBO targets (deprecated ECPS pathway)",
       "country": "us",
       "nodes": [
-        {
-          "id": "in_ext_cps",
-          "label": "extended_cps_2024.h5",
-          "node_type": "input",
-          "description": "From Stage 2 (~260K HH)"
-        },
-        {
-          "id": "calc_agi",
-          "label": "Calculate AGI",
-          "node_type": "process",
-          "description": "Microsimulation.calculate() \u2014 adjusted_gross_income mapped to household"
-        },
-        {
-          "id": "strat_top",
-          "label": "Retain Top 1% by AGI",
-          "node_type": "process",
-          "description": "All high-income households kept \u2014 preserves tail representation"
-        },
-        {
-          "id": "strat_sample",
-          "label": "Uniform Sample Remaining 99%",
-          "node_type": "process",
-          "description": "Target: ~12,000 households \u2014 optional 1.5x oversample of bottom 25%"
-        },
-        {
-          "id": "out_strat",
-          "label": "stratified_extended_cps_2024.h5",
-          "node_type": "output",
-          "description": "~12K households \u2014 input to Stages 4-6"
-        },
         {
           "id": "in_ext_half",
           "label": "ExtendedCPS_2024_Half",
@@ -846,12 +813,6 @@
           "description": "SALT, medical, charitable \u2014 counterfactual simulations"
         },
         {
-          "id": "reweight",
-          "label": "reweight()",
-          "node_type": "process",
-          "description": "PyTorch Adam + L0 HardConcrete \u2014 500 epochs, lr=0.2"
-        },
-        {
           "id": "weight_validate",
           "label": "Weight Validation",
           "node_type": "process",
@@ -874,36 +835,16 @@
           "label": "HardConcrete L0",
           "node_type": "utility",
           "description": "utils/l0.py"
+        },
+        {
+          "id": "reweight",
+          "label": "reweight()",
+          "node_type": "process",
+          "description": "PyTorch Adam + L0 HardConcrete \u2014 500 epochs, lr=0.2",
+          "source_file": "policyengine_us_data/datasets/cps/enhanced_cps.py"
         }
       ],
       "edges": [
-        {
-          "source": "in_ext_cps",
-          "target": "calc_agi",
-          "edge_type": "data_flow"
-        },
-        {
-          "source": "calc_agi",
-          "target": "strat_top",
-          "edge_type": "data_flow"
-        },
-        {
-          "source": "strat_top",
-          "target": "strat_sample",
-          "edge_type": "data_flow"
-        },
-        {
-          "source": "strat_top",
-          "target": "out_strat",
-          "edge_type": "data_flow",
-          "label": "top 1%"
-        },
-        {
-          "source": "strat_sample",
-          "target": "out_strat",
-          "edge_type": "data_flow",
-          "label": "sampled 99%"
-        },
         {
           "source": "in_ext_half",
           "target": "build_loss",
@@ -963,6 +904,74 @@
       ]
     },
     {
+      "id": "3b",
+      "label": "Stage 3b",
+      "title": "Stage 3b: Stratified CPS",
+      "description": "Stratify Extended CPS by income \u2014 keep top 1%, sample remaining 99%",
+      "country": "us",
+      "nodes": [
+        {
+          "id": "in_ext_cps",
+          "label": "extended_cps_2024.h5",
+          "node_type": "input",
+          "description": "From Stage 2 (~260K HH)"
+        },
+        {
+          "id": "calc_agi",
+          "label": "Calculate AGI",
+          "node_type": "process",
+          "description": "Microsimulation.calculate() \u2014 adjusted_gross_income mapped to household"
+        },
+        {
+          "id": "strat_top",
+          "label": "Retain Top 1% by AGI",
+          "node_type": "process",
+          "description": "All high-income households kept \u2014 preserves tail representation"
+        },
+        {
+          "id": "strat_sample",
+          "label": "Uniform Sample Remaining 99%",
+          "node_type": "process",
+          "description": "Target: ~12,000 households \u2014 optional 1.5x oversample of bottom 25%"
+        },
+        {
+          "id": "out_strat",
+          "label": "stratified_extended_cps_2024.h5",
+          "node_type": "output",
+          "description": "~12K households \u2014 input to Stages 4-8"
+        }
+      ],
+      "edges": [
+        {
+          "source": "in_ext_cps",
+          "target": "calc_agi",
+          "edge_type": "data_flow"
+        },
+        {
+          "source": "calc_agi",
+          "target": "strat_top",
+          "edge_type": "data_flow"
+        },
+        {
+          "source": "strat_top",
+          "target": "strat_sample",
+          "edge_type": "data_flow"
+        },
+        {
+          "source": "strat_top",
+          "target": "out_strat",
+          "edge_type": "data_flow",
+          "label": "top 1%"
+        },
+        {
+          "source": "strat_sample",
+          "target": "out_strat",
+          "edge_type": "data_flow",
+          "label": "sampled 99%"
+        }
+      ]
+    },
+    {
       "id": 4,
       "label": "Stage 4",
       "title": "Stage 4: Source Imputation (ACS + SIPP + SCF)",
@@ -994,34 +1003,10 @@
           "description": "Survey of Consumer Finances \u2014 50% random subsample"
         },
         {
-          "id": "geo_assign_s4",
-          "label": "Geography Assignment",
-          "node_type": "process",
-          "description": "assign_random_geography(n_clones=1) \u2014 block draw + state FIPS"
-        },
-        {
-          "id": "acs_qrf",
-          "label": "ACS QRF Imputation",
-          "node_type": "process",
-          "description": "10 predictors incl. state_fips \u2014 imputes rent, real_estate_taxes"
-        },
-        {
-          "id": "sipp_tips_qrf",
-          "label": "SIPP Tips QRF",
-          "node_type": "process",
-          "description": "4 predictors, NO state \u2014 imputes tip_income"
-        },
-        {
           "id": "sipp_assets_qrf",
           "label": "SIPP Assets QRF",
           "node_type": "process",
           "description": "5 predictors \u2014 imputes bank_account_assets, stock_assets, bond_assets"
-        },
-        {
-          "id": "scf_qrf",
-          "label": "SCF QRF Imputation",
-          "node_type": "process",
-          "description": "8 predictors \u2014 imputes net_worth, auto_loan_balance, auto_loan_interest"
         },
         {
           "id": "out_imputed",
@@ -1040,6 +1025,34 @@
           "label": "microimpute QRF",
           "node_type": "utility",
           "description": "fit_predict() for sequential imputation"
+        },
+        {
+          "id": "geo_assign_s4",
+          "label": "Geography Assignment",
+          "node_type": "process",
+          "description": "assign_random_geography() \u2014 population-weighted block draw",
+          "source_file": "policyengine_us_data/calibration/clone_and_assign.py"
+        },
+        {
+          "id": "scf_qrf",
+          "label": "SCF QRF Imputation",
+          "node_type": "process",
+          "description": "8 predictors \u2014 imputes net_worth, auto_loan_balance, auto_loan_interest",
+          "source_file": "policyengine_us_data/calibration/source_impute.py"
+        },
+        {
+          "id": "sipp_tips_qrf",
+          "label": "SIPP Tips QRF",
+          "node_type": "process",
+          "description": "4 predictors, NO state \u2014 imputes tip_income",
+          "source_file": "policyengine_us_data/calibration/source_impute.py"
+        },
+        {
+          "id": "acs_qrf",
+          "label": "ACS QRF Imputation",
+          "node_type": "process",
+          "description": "10 predictors incl. state_fips \u2014 imputes rent, real_estate_taxes",
+          "source_file": "policyengine_us_data/calibration/source_impute.py"
         }
       ],
       "edges": [
@@ -1180,18 +1193,6 @@
           "description": "Non-geographic constraints from DB (age, medicaid, filer)"
         },
         {
-          "id": "state_precomp",
-          "label": "Per-State Precomputation",
-          "node_type": "us_specific",
-          "description": "51 fresh Microsimulations \u2014 most expensive step"
-        },
-        {
-          "id": "clone_assembly",
-          "label": "Clone Assembly",
-          "node_type": "process",
-          "description": "430 clones \u00d7 12K records = 5.16M columns"
-        },
-        {
           "id": "takeup_rerand",
           "label": "Block-Level Takeup Re-randomization",
           "node_type": "process",
@@ -1232,6 +1233,20 @@
           "label": "scipy.sparse",
           "node_type": "utility",
           "description": "CSR/COO matrix construction"
+        },
+        {
+          "id": "clone_assembly",
+          "label": "Clone Assembly",
+          "node_type": "process",
+          "description": "430 clones \u00d7 12K records = 5.16M columns",
+          "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py"
+        },
+        {
+          "id": "state_precomp",
+          "label": "Per-State Precomputation",
+          "node_type": "us_specific",
+          "description": "51 fresh Microsimulations \u2014 most expensive step",
+          "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py"
         }
       ],
       "edges": [
@@ -1346,22 +1361,10 @@
           "description": "T4 / A10 / A100 / H100 \u2014 32GB RAM, 8 CPU"
         },
         {
-          "id": "init_weights",
-          "label": "Compute Initial Weights",
-          "node_type": "process",
-          "description": "Population-proportional per CD"
-        },
-        {
           "id": "create_model",
           "label": "Create SparseCalibrationWeights",
           "node_type": "process",
           "description": "n_features = 5.16M, init_keep_prob = 0.999"
-        },
-        {
-          "id": "fit_model",
-          "label": "model.fit()",
-          "node_type": "process",
-          "description": "Adam optimizer \u2014 loss = RSE + \u03bb\u2080\u00b7L0(w) + \u03bb\u2082\u00b7\u2016w\u2016\u00b2"
         },
         {
           "id": "extract_weights",
@@ -1404,6 +1407,20 @@
           "label": "PyTorch",
           "node_type": "utility",
           "description": "Adam optimizer, autograd, CUDA"
+        },
+        {
+          "id": "fit_model",
+          "label": "model.fit()",
+          "node_type": "process",
+          "description": "Adam optimizer \u2014 loss = RSE + \u03bb\u2080\u00b7L0(w) + \u03bb\u2082\u00b7\u2016w\u2016\u00b2",
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py"
+        },
+        {
+          "id": "init_weights",
+          "label": "Compute Initial Weights",
+          "node_type": "process",
+          "description": "Population-proportional per CD",
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py"
         }
       ],
       "edges": [
@@ -1503,40 +1520,10 @@
           "description": "50 workers \u2014 weights: state by CD count, city=11, district=1"
         },
         {
-          "id": "phase1",
-          "label": "Phase 1: States",
-          "node_type": "us_specific",
-          "description": "51 state H5 files (50 + DC) \u2014 workers in parallel"
-        },
-        {
-          "id": "phase2",
-          "label": "Phase 2: Districts",
-          "node_type": "us_specific",
-          "description": "~435 congressional district H5 files \u2014 workers in parallel"
-        },
-        {
-          "id": "phase3",
-          "label": "Phase 3: Cities",
-          "node_type": "us_specific",
-          "description": "NYC (5 counties, 13 CDs) \u2014 city probability filtering"
-        },
-        {
-          "id": "build_h5",
-          "label": "build_h5() \u2014 Core Logic",
-          "node_type": "process",
-          "description": "18-step H5 construction \u2014 load, reshape, filter, clone, derive geo, SPM, takeup, write"
-        },
-        {
           "id": "worker_s7",
           "label": "Modal Worker Container",
           "node_type": "external",
           "description": "16GB RAM, 1 CPU each, 8-hour timeout"
-        },
-        {
-          "id": "geo_derive",
-          "label": "derive_geography_from_blocks()",
-          "node_type": "process",
-          "description": "15 geographic variables from block GEOID"
         },
         {
           "id": "spm_recalc",
@@ -1585,6 +1572,41 @@
           "label": "apply_block_takeup_to_arrays()",
           "node_type": "utility",
           "description": "utils/takeup.py"
+        },
+        {
+          "id": "build_h5",
+          "label": "build_h5() \u2014 Core Logic",
+          "node_type": "process",
+          "description": "18-step H5 construction \u2014 load, reshape, filter, clone, derive geo, SPM, takeup, write",
+          "source_file": "policyengine_us_data/calibration/publish_local_area.py"
+        },
+        {
+          "id": "geo_derive",
+          "label": "derive_geography_from_blocks()",
+          "node_type": "process",
+          "description": "15 geographic variables from block GEOID",
+          "source_file": "policyengine_us_data/calibration/block_assignment.py"
+        },
+        {
+          "id": "phase2",
+          "label": "Phase 2: Districts",
+          "node_type": "us_specific",
+          "description": "~435 congressional district H5 files \u2014 workers in parallel",
+          "source_file": "policyengine_us_data/calibration/publish_local_area.py"
+        },
+        {
+          "id": "phase3",
+          "label": "Phase 3: Cities",
+          "node_type": "us_specific",
+          "description": "NYC (5 counties, 13 CDs) \u2014 city probability filtering",
+          "source_file": "policyengine_us_data/calibration/publish_local_area.py"
+        },
+        {
+          "id": "phase1",
+          "label": "Phase 1: States",
+          "node_type": "us_specific",
+          "description": "51 state H5 files (50 + DC) \u2014 workers in parallel",
+          "source_file": "policyengine_us_data/calibration/publish_local_area.py"
         }
       ],
       "edges": [
@@ -1722,18 +1744,6 @@
           "description": "SHA256 checksums per file \u2014 catches corruption"
         },
         {
-          "id": "v2",
-          "label": "Layer 2: Structural Sanity",
-          "node_type": "process",
-          "description": "Weight non-negativity, entity ID uniqueness, no NaN/Inf, mapping integrity"
-        },
-        {
-          "id": "v3",
-          "label": "Layer 3: Target-Based Validation",
-          "node_type": "process",
-          "description": "Full Microsimulation per area \u2014 compare sim values to targets"
-        },
-        {
           "id": "v4",
           "label": "Layer 4: Smoke Test",
           "node_type": "process",
@@ -1756,18 +1766,6 @@
           "label": "Layer 7: Package Validation",
           "node_type": "process",
           "description": "Matrix achievability, target ratio analysis, zero-row detection"
-        },
-        {
-          "id": "staging_upload",
-          "label": "Upload to Staging",
-          "node_type": "process",
-          "description": "upload_to_staging_hf() \u2014 batches of 50 files/commit"
-        },
-        {
-          "id": "atomic_promote",
-          "label": "Atomic Promotion",
-          "node_type": "process",
-          "description": "promote_staging_to_production_hf() \u2014 single CommitOperationCopy commit"
         },
         {
           "id": "gcs_upload",
@@ -1816,6 +1814,34 @@
           "label": "data_upload.py",
           "node_type": "utility",
           "description": "staging/promote/cleanup"
+        },
+        {
+          "id": "atomic_promote",
+          "label": "Atomic Promotion",
+          "node_type": "process",
+          "description": "promote_staging_to_production_hf() \u2014 single CommitOperationCopy commit",
+          "source_file": "policyengine_us_data/calibration/promote_local_h5s.py"
+        },
+        {
+          "id": "staging_upload",
+          "label": "Upload to Staging",
+          "node_type": "process",
+          "description": "upload_to_staging_hf() \u2014 batches of 50 files/commit",
+          "source_file": "policyengine_us_data/calibration/promote_local_h5s.py"
+        },
+        {
+          "id": "v3",
+          "label": "Layer 3: Target-Based Validation",
+          "node_type": "process",
+          "description": "Full Microsimulation per area \u2014 compare sim values to targets",
+          "source_file": "policyengine_us_data/calibration/validate_staging.py"
+        },
+        {
+          "id": "v2",
+          "label": "Layer 2: Structural Sanity",
+          "node_type": "process",
+          "description": "Weight non-negativity, entity ID uniqueness, no NaN/Inf, mapping integrity",
+          "source_file": "policyengine_us_data/calibration/sanity_checks.py"
         }
       ],
       "edges": [
@@ -1915,8 +1941,8 @@
     }
   ],
   "metadata": {
-    "generated_at": "2026-04-06T18:47:05.119469+00:00",
-    "total_nodes": 157,
-    "total_edges": 160
+    "generated_at": "2026-04-06T21:55:32.466182+00:00",
+    "total_nodes": 156,
+    "total_edges": 159
   }
 }

@@ -10,8 +10,7 @@ export default function StagePage({
   params: Promise<{ country: string; stageId: string }>;
 }) {
   const { stageId } = use(params);
-  const stageIdNum = parseInt(stageId, 10);
-  const stage = pipelineData.stages.find((s) => s.id === stageIdNum);
+  const stage = pipelineData.stages.find((s) => String(s.id) === stageId);
 
   if (!stage) {
     return (

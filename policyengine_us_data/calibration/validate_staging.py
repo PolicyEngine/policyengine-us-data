@@ -42,6 +42,8 @@ from policyengine_us_data.calibration.sanity_checks import (
     run_sanity_checks,
 )
 from policyengine_us_data.db.create_database_tables import create_or_replace_views
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -294,8 +296,13 @@ def _get_reform_income_tax_delta(
     ).values
     reform_delta_cache[variable] = reform_income_tax - baseline_income_tax
     return reform_delta_cache[variable]
-
-
+@pipeline_node(PipelineNode(
+    id="v3",
+    label="Layer 3: Target-Based Validation",
+    node_type="process",
+    description="Full Microsimulation per area — compare sim values to targets",
+    source_file="policyengine_us_data/calibration/validate_staging.py",
+))
 def validate_area(
     sim,
     targets_df: pd.DataFrame,

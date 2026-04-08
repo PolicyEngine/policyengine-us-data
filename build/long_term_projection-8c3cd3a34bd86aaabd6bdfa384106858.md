@@ -1,27 +1,37 @@
 # Long Term Projections
+
 ## Integrating Economic Uprating with Demographic Reweighting
 
 ## Executive Summary
 
-This document outlines an innovative approach for projecting federal income tax revenue through 2100 that uniquely combines sophisticated economic microsimulation with demographic reweighting. By harmonizing PolicyEngine's state-of-the-art tax modeling with Social Security Administration demographic projections, we can isolate and quantify the fiscal impact of population aging while preserving the full complexity of the tax code.
+This document outlines an innovative approach for projecting federal income tax revenue through 2100
+that uniquely combines sophisticated economic microsimulation with demographic reweighting. By
+harmonizing PolicyEngine's state-of-the-art tax modeling with Social Security Administration
+demographic projections, we can isolate and quantify the fiscal impact of population aging while
+preserving the full complexity of the tax code.
 
 ## The Challenge
 
-Projecting tax revenue over a 75-year horizon requires simultaneously modeling two distinct but interrelated dynamics:
+Projecting tax revenue over a 75-year horizon requires simultaneously modeling two distinct but
+interrelated dynamics:
 
 **Economic Evolution**: How incomes, prices, and tax parameters change over time
+
 - Wage growth and income distribution shifts
 - Inflation affecting brackets and deductions
 - Legislative changes and indexing rules
 - Behavioral responses to tax policy
 
 **Demographic Transformation**: How the population structure evolves
+
 - Baby boom generation aging through retirement
 - Declining birth rates reducing working-age population
 - Increasing longevity extending retirement duration
 - Shifting household composition patterns
 
-Traditional approaches typically sacrifice either economic sophistication (using simplified tax calculations) or demographic realism (holding age distributions constant). Our methodology preserves both.
+Traditional approaches typically sacrifice either economic sophistication (using simplified tax
+calculations) or demographic realism (holding age distributions constant). Our methodology preserves
+both.
 
 ## Running Projections
 
@@ -33,6 +43,7 @@ python ../policyengine_us_data/datasets/cps/long_term/run_household_projection.p
 ```
 
 **Arguments:**
+
 - `END_YEAR`: Target year for projection (default: 2035)
 - `--greg`: Use GREG calibration instead of IPF (optional)
 - `--use-ss`: Include Social Security benefit totals as calibration target (requires --greg)
@@ -44,11 +55,14 @@ python ../policyengine_us_data/datasets/cps/long_term/run_household_projection.p
 The long-term projections use two key SSA datasets:
 
 1. **SSA Population Projections** (`SSPopJul_TR2024.csv`)
-   - Source: [SSA 2024 Trustees Report - Single Year Age Demographic Projections](https://www.ssa.gov/oact/HistEst/Population/2024/Population2024.html)
+
+   - Source:
+     [SSA 2024 Trustees Report - Single Year Age Demographic Projections](https://www.ssa.gov/oact/HistEst/Population/2024/Population2024.html)
    - Contains age-specific population projections through 2100
    - Used for demographic reweighting to match future population structure
 
-2. **Social Security Cost Projections** (`social_security_aux.csv`)
+1. **Social Security Cost Projections** (`social_security_aux.csv`)
+
    - Source: [SSA 2025 Trustees Report, Table VI.G9](https://www.ssa.gov/oact/TR/2025/index.html)
    - Contains OASDI benefit cost projections in CPI-indexed 2025 dollars
    - Used as calibration target in GREG method to ensure fiscal consistency
@@ -78,13 +92,16 @@ Our approach operates in two complementary stages:
 
 ### Stage 1: Economic Uprating
 
-PolicyEngine's microsimulation engine projects each household's economic circumstances forward using:
+PolicyEngine's microsimulation engine projects each household's economic circumstances forward
+using:
 
 **Sophisticated Income Modeling**
 
-The system models 17 distinct income categories, each uprated according to its economic fundamentals:
+The system models 17 distinct income categories, each uprated according to its economic
+fundamentals:
 
 *Primary Categories with Specific Projections:*
+
 - Employment income (wages) - follows CBO wage growth projections
 - Self-employment income - follows CBO business income projections
 - Capital gains - follows CBO asset appreciation projections
@@ -98,12 +115,14 @@ The system models 17 distinct income categories, each uprated according to its e
 We offer two calibration methods for adjusting household weights to match SSA projections:
 
 **Method 1: Iterative Proportional Fitting (IPF)**
+
 - Traditional raking approach using Kullback-Leibler divergence
 - Iteratively adjusts weights to match marginal distributions
 - Robust to specification and always produces non-negative weights
 - Default method for backward compatibility
 
 **Method 2: Generalized Regression (GREG) Calibration**
+
 - Modern calibration using chi-squared distance minimization
 - Enables simultaneous calibration to categorical AND continuous variables
 - Direct solution via matrix operations (no iteration needed)
@@ -131,30 +150,48 @@ print(f"\nSocial Security benefit target for {year}: ${ss_target / 1e9:.1f}B")
 
 ## PWBM Analysis: Eliminating Income Taxes on Social Security Benefits
 
-**Source:** [Eliminating Income Taxes on Social Security Benefits](https://budgetmodel.wharton.upenn.edu/issues/2025/2/10/eliminating-income-taxes-on-social-security-benefits) (Penn Wharton Budget Model, February 10, 2025)
+**Source:**
+[Eliminating Income Taxes on Social Security Benefits](https://budgetmodel.wharton.upenn.edu/issues/2025/2/10/eliminating-income-taxes-on-social-security-benefits)
+(Penn Wharton Budget Model, February 10, 2025)
 
----
+______________________________________________________________________
 
 ### Policy Analyzed
-The Penn Wharton Budget Model (PWBM) analyzed a policy proposal to permanently eliminate all income taxes on Social Security benefits, effective January 1, 2025.
+
+The Penn Wharton Budget Model (PWBM) analyzed a policy proposal to permanently eliminate all income
+taxes on Social Security benefits, effective January 1, 2025.
 
 ### Key Findings
 
-* **Budgetary Impact:** The policy is projected to reduce federal revenues by **$1.45 trillion** over the 10-year budget window (2025-2034). Over the long term, it is projected to increase federal debt by 7 percent by 2054, relative to the current baseline.
+- **Budgetary Impact:** The policy is projected to reduce federal revenues by **$1.45 trillion**
+  over the 10-year budget window (2025-2034). Over the long term, it is projected to increase
+  federal debt by 7 percent by 2054, relative to the current baseline.
 
-* **Macroeconomic Impact:** The analysis finds the policy would have negative long-term effects on the economy.
-    * It reduces incentives for households to save for retirement and to work.
-    * This leads to a smaller capital stock (projected to be 4.2% lower by 2054).
-    * The smaller capital stock results in lower average wages (1.8% lower by 2054) and lower GDP (2.1% lower by 2054).
+- **Macroeconomic Impact:** The analysis finds the policy would have negative long-term effects on
+  the economy.
 
-* **Conventional Distributional Impact (Your Table):** The table you shared shows the annual "conventional" effects on household after-tax income.
-    * The largest average *dollar* tax cuts go to households in the top 20 percent of the income distribution (quintiles 80-100%).
-    * The largest *relative* gains (as a percentage of income) go to households in the fourth quintile (60-80%), who see a 1.6% increase in after-tax income by 2054.
-    * The dollar amounts shown are in **nominal dollars** for each specified year, not adjusted to a single base year.
+  - It reduces incentives for households to save for retirement and to work.
+  - This leads to a smaller capital stock (projected to be 4.2% lower by 2054).
+  - The smaller capital stock results in lower average wages (1.8% lower by 2054) and lower GDP
+    (2.1% lower by 2054).
 
-* **Dynamic (Lifetime) Impact:** When analyzing the policy's effects over a household's entire lifetime, PWBM finds:
-    * The policy primarily benefits high-income households who are nearing or in retirement.
-    * It negatively impacts all households under the age of 30 and all future generations, who would experience a net welfare loss due to the long-term effects of lower wages and higher federal debt.
+- **Conventional Distributional Impact (Your Table):** The table you shared shows the annual
+  "conventional" effects on household after-tax income.
+
+  - The largest average *dollar* tax cuts go to households in the top 20 percent of the income
+    distribution (quintiles 80-100%).
+  - The largest *relative* gains (as a percentage of income) go to households in the fourth quintile
+    (60-80%), who see a 1.6% increase in after-tax income by 2054.
+  - The dollar amounts shown are in **nominal dollars** for each specified year, not adjusted to a
+    single base year.
+
+- **Dynamic (Lifetime) Impact:** When analyzing the policy's effects over a household's entire
+  lifetime, PWBM finds:
+
+  - The policy primarily benefits high-income households who are nearing or in retirement.
+  - It negatively impacts all households under the age of 30 and all future generations, who would
+    experience a net welfare loss due to the long-term effects of lower wages and higher federal
+    debt.
 
 ## PolicyEngine's Analysis of Eliminating Income Taxes on Social Security Benefits
 

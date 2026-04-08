@@ -2,8 +2,15 @@
 
 import { EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from "@xyflow/react";
 
+type ElkLabelPosition = {
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+};
+
 /**
- * Custom edge that renders using ELK's computed bend points when available,
+ * Custom edge that renders using ELK's computed edge section when available,
  * falling back to smoothstep for edges without routes.
  */
 export default function ElkEdge({
@@ -22,29 +29,41 @@ export default function ElkEdge({
   let edgePath: string;
   let labelX: number;
   let labelY: number;
+  let elkLabel: ElkLabelPosition | null = null;
 
   if (data?.elkRoute) {
-    const { bendPoints = [] } = data.elkRoute as {
+    const { startPoint, endPoint, bendPoints = [] } = data.elkRoute as {
+      startPoint?: { x: number; y: number };
+      endPoint?: { x: number; y: number };
       bendPoints?: { x: number; y: number }[];
     };
-    const points = [
-      { x: sourceX, y: sourceY },
-      ...bendPoints,
-      { x: targetX, y: targetY },
-    ];
+    const points = startPoint && endPoint ? [startPoint, ...bendPoints, endPoint] : [];
 
-    edgePath = points
-      .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
-      .join(" ");
+    if (points.length > 0) {
+      edgePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
 
-    if (points.length === 2) {
-      labelX = (points[0].x + points[1].x) / 2;
-      labelY = (points[0].y + points[1].y) / 2;
+      if (points.length === 2) {
+        labelX = (points[0].x + points[1].x) / 2;
+        labelY = (points[0].y + points[1].y) / 2;
+      } else {
+        const mid = Math.floor(points.length / 2);
+        labelX = points[mid].x;
+        labelY = points[mid].y;
+      }
     } else {
-      const mid = Math.floor(points.length / 2);
-      labelX = points[mid].x;
-      labelY = points[mid].y;
+      const [path, lx, ly] = getSmoothStepPath({
+        sourceX,
+        sourceY,
+        targetX,
+        targetY,
+        sourcePosition,
+        targetPosition,
+      });
+      edgePath = path;
+      labelX = lx;
+      labelY = ly;
     }
+    elkLabel = (data.elkLabel as ElkLabelPosition | null) || null;
   } else {
     // Fallback to smoothstep
     const [path, lx, ly] = getSmoothStepPath({
@@ -75,13 +94,17 @@ export default function ElkEdge({
           <div
             style={{
               position: "absolute",
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              transform: elkLabel
+                ? `translate(${elkLabel.x}px, ${elkLabel.y}px)`
+                : `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
               pointerEvents: "all",
+              zIndex: 10,
             }}
             className="nodrag nopan"
           >
             <span
               style={{
+                display: "inline-block",
                 fontSize: 10,
                 fontWeight: 500,
                 background: "rgba(255,255,255,0.85)",
@@ -90,6 +113,8 @@ export default function ElkEdge({
                 color: (style as React.CSSProperties)?.stroke?.toString() || "#334155",
                 whiteSpace: "nowrap",
                 fontFamily: "var(--pe-font-primary)",
+                minWidth: elkLabel?.width,
+                minHeight: elkLabel?.height,
               }}
             >
               {label}

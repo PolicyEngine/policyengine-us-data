@@ -27,6 +27,11 @@ const edgeTypes = { elk: ElkEdge };
 const NODE_WIDTH = 240;
 const NODE_HEIGHT = 64;
 const NODE_HEIGHT_COMPACT = 58;
+const ELK_PORT_SIZE = 0;
+const EDGE_LABEL_HEIGHT = 16;
+const EDGE_LABEL_MIN_WIDTH = 40;
+const EDGE_LABEL_MAX_WIDTH = 180;
+const EDGE_LABEL_CHAR_WIDTH = 6;
 
 const ELK_OPTIONS: Record<string, string> = {
   "elk.algorithm": "layered",
@@ -71,15 +76,52 @@ interface Point {
   y: number;
 }
 
+type HandleId = "tt" | "st" | "tr" | "sr" | "tb" | "sb" | "tl" | "sl";
+type PortSide = "NORTH" | "EAST" | "SOUTH" | "WEST";
+
 interface ElkRoute {
   startPoint?: Point;
   endPoint?: Point;
   bendPoints?: Point[];
 }
 
+interface ElkLabel extends Point {
+  width?: number;
+  height?: number;
+  text?: string;
+}
+
 interface ElkLayoutEdge {
   id?: string;
   sections?: ElkRoute[];
+  labels?: ElkLabel[];
+}
+
+interface NodeSize {
+  width: number;
+  height: number;
+}
+
+interface PositionedNode extends NodeSize {
+  x: number;
+  y: number;
+}
+
+interface EdgeHandleAssignment {
+  sourceHandle: HandleId;
+  targetHandle: HandleId;
+}
+
+interface ElkPortSpec {
+  id: string;
+  side: PortSide;
+}
+
+interface EdgePortAssignment extends EdgeHandleAssignment {
+  sourcePortId: string;
+  targetPortId: string;
+  sourceSide: PortSide;
+  targetSide: PortSide;
 }
 
 type PipelineNodeData = Record<string, unknown> & {
@@ -94,6 +136,7 @@ type PipelineNodeData = Record<string, unknown> & {
 
 type PipelineEdgeData = Record<string, unknown> & {
   elkRoute: ElkRoute | null;
+  elkLabel: ElkLabel | null;
 };
 
 type PipelineFlowNode = Node<PipelineNodeData, "pipeline">;
@@ -110,15 +153,65 @@ function estimateNodeSize(node: PipelineJsonNode) {
   };
 }
 
+function estimateEdgeLabelSize(label: string) {
+  return {
+    width: Math.min(
+      EDGE_LABEL_MAX_WIDTH,
+      Math.max(EDGE_LABEL_MIN_WIDTH, label.length * EDGE_LABEL_CHAR_WIDTH)
+    ),
+    height: EDGE_LABEL_HEIGHT,
+  };
+}
+
+function elkPortId(nodeId: string, edgeId: string, role: "source" | "target") {
+  return `${nodeId}::${edgeId}::${role}`;
+}
+
+function sideForHandle(handleId: HandleId): PortSide {
+  switch (handleId) {
+    case "tt":
+    case "st":
+      return "NORTH";
+    case "tr":
+    case "sr":
+      return "EAST";
+    case "tb":
+    case "sb":
+      return "SOUTH";
+    case "tl":
+    case "sl":
+      return "WEST";
+  }
+}
+
+function elkPortsForNode(ports: ElkPortSpec[]) {
+  return ports.map((port) => ({
+    id: port.id,
+    width: ELK_PORT_SIZE,
+    height: ELK_PORT_SIZE,
+    layoutOptions: {
+      "org.eclipse.elk.port.side": port.side,
+    },
+  }));
+}
+
 /**
  * Assign sourceHandle/targetHandle based on relative node positions.
  */
 function assignHandles(
-  sourcePos: { x: number; y: number },
-  targetPos: { x: number; y: number }
-) {
-  const dx = targetPos.x - sourcePos.x;
-  const dy = targetPos.y - sourcePos.y;
+  sourceNode: PositionedNode,
+  targetNode: PositionedNode
+): EdgeHandleAssignment {
+  const sourceCenter = {
+    x: sourceNode.x + sourceNode.width / 2,
+    y: sourceNode.y + sourceNode.height / 2,
+  };
+  const targetCenter = {
+    x: targetNode.x + targetNode.width / 2,
+    y: targetNode.y + targetNode.height / 2,
+  };
+  const dx = targetCenter.x - sourceCenter.x;
+  const dy = targetCenter.y - sourceCenter.y;
 
   if (Math.abs(dx) >= Math.abs(dy)) {
     return dx >= 0
@@ -130,39 +223,150 @@ function assignHandles(
     : { sourceHandle: "st", targetHandle: "tb" };
 }
 
+function assignEdgePorts(
+  edgeId: string,
+  edge: PipelineJsonEdge,
+  sourceNode: PositionedNode,
+  targetNode: PositionedNode
+): EdgePortAssignment {
+  const handles = assignHandles(sourceNode, targetNode);
+
+  return {
+    ...handles,
+    sourcePortId: elkPortId(edge.source, edgeId, "source"),
+    targetPortId: elkPortId(edge.target, edgeId, "target"),
+    sourceSide: sideForHandle(handles.sourceHandle),
+    targetSide: sideForHandle(handles.targetHandle),
+  };
+}
+
+function getPositionMap(
+  children: Array<{ id: string; x?: number; y?: number }> | undefined,
+  nodeSizeMap: Record<string, NodeSize>
+) {
+  const positionMap: Record<string, PositionedNode> = {};
+
+  for (const child of children || []) {
+    const size = nodeSizeMap[child.id] || { width: NODE_WIDTH, height: NODE_HEIGHT };
+    positionMap[child.id] = {
+      x: child.x || 0,
+      y: child.y || 0,
+      width: size.width,
+      height: size.height,
+    };
+  }
+
+  return positionMap;
+}
+
+function buildNodePortMap(
+  pipelineEdges: PipelineJsonEdge[],
+  edgePorts: Record<string, EdgePortAssignment>
+) {
+  const nodePortMap: Record<string, ElkPortSpec[]> = {};
+
+  pipelineEdges.forEach((edge, i: number) => {
+    const edgeId = `e-${i}`;
+    const assignment = edgePorts[edgeId];
+    if (!assignment) return;
+
+    nodePortMap[edge.source] = [
+      ...(nodePortMap[edge.source] || []),
+      { id: assignment.sourcePortId, side: assignment.sourceSide },
+    ];
+    nodePortMap[edge.target] = [
+      ...(nodePortMap[edge.target] || []),
+      { id: assignment.targetPortId, side: assignment.targetSide },
+    ];
+  });
+
+  return nodePortMap;
+}
+
+function buildElkGraph(
+  pipelineNodes: PipelineJsonNode[],
+  pipelineEdges: PipelineJsonEdge[],
+  nodeSizeMap: Record<string, NodeSize>,
+  edgePorts?: Record<string, EdgePortAssignment>
+) {
+  const usePorts = Boolean(edgePorts);
+  const nodePortMap = edgePorts ? buildNodePortMap(pipelineEdges, edgePorts) : {};
+
+  return {
+    id: "root",
+    layoutOptions: ELK_OPTIONS,
+    children: pipelineNodes.map((n) => {
+      const size = nodeSizeMap[n.id];
+
+      return {
+        id: n.id,
+        width: size.width,
+        height: size.height,
+        ...(usePorts
+          ? {
+              layoutOptions: {
+                "org.eclipse.elk.portConstraints": "FIXED_SIDE",
+              },
+              ports: elkPortsForNode(nodePortMap[n.id] || []),
+            }
+          : {}),
+      };
+    }),
+    edges: pipelineEdges.map((e, i: number) => {
+      const edgeId = `e-${i}`;
+      const ports = edgePorts?.[edgeId];
+
+      return {
+        id: edgeId,
+        sources: [ports ? ports.sourcePortId : e.source],
+        targets: [ports ? ports.targetPortId : e.target],
+        ...(e.label
+          ? {
+              labels: [
+                {
+                  text: e.label,
+                  ...estimateEdgeLabelSize(e.label),
+                },
+              ],
+            }
+          : {}),
+      };
+    }),
+  };
+}
+
 async function runElkLayout(
   pipelineNodes: PipelineJsonNode[],
   pipelineEdges: PipelineJsonEdge[]
 ): Promise<{ nodes: PipelineFlowNode[]; edges: PipelineFlowEdge[] }> {
-  const nodeSizeMap: Record<string, { width: number; height: number }> = {};
-  const graph = {
-    id: "root",
-    layoutOptions: ELK_OPTIONS,
-    children: pipelineNodes.map((n) => {
-      const size = estimateNodeSize(n);
-      nodeSizeMap[n.id] = size;
-      return { id: n.id, width: size.width, height: size.height };
-    }),
-    edges: pipelineEdges.map((e, i: number) => ({
-      id: `e-${i}`,
-      sources: [e.source],
-      targets: [e.target],
-    })),
-  };
-
-  const result = await elk.layout(graph);
-
-  // Build position map
-  const positionMap: Record<string, { x: number; y: number }> = {};
-  for (const child of result.children || []) {
-    positionMap[child.id] = { x: child.x || 0, y: child.y || 0 };
+  const nodeSizeMap: Record<string, NodeSize> = {};
+  for (const node of pipelineNodes) {
+    nodeSizeMap[node.id] = estimateNodeSize(node);
   }
+
+  const initialResult = await elk.layout(buildElkGraph(pipelineNodes, pipelineEdges, nodeSizeMap));
+  const initialPositionMap = getPositionMap(initialResult.children, nodeSizeMap);
+  const edgePorts: Record<string, EdgePortAssignment> = {};
+
+  pipelineEdges.forEach((e, i: number) => {
+    const edgeId = `e-${i}`;
+    const sourceNode = initialPositionMap[e.source] || { x: 0, y: 0, ...nodeSizeMap[e.source] };
+    const targetNode = initialPositionMap[e.target] || { x: 0, y: 0, ...nodeSizeMap[e.target] };
+    edgePorts[edgeId] = assignEdgePorts(edgeId, e, sourceNode, targetNode);
+  });
+
+  const result = await elk.layout(buildElkGraph(pipelineNodes, pipelineEdges, nodeSizeMap, edgePorts));
+  const positionMap = getPositionMap(result.children, nodeSizeMap);
 
   // Build edge route map from ELK sections
   const routeMap: Record<string, ElkRoute> = {};
+  const labelMap: Record<string, ElkLabel> = {};
   for (const edge of (result.edges || []) as ElkLayoutEdge[]) {
     if (edge.id && edge.sections && edge.sections.length > 0) {
       routeMap[edge.id] = edge.sections[0];
+    }
+    if (edge.id && edge.labels && edge.labels.length > 0) {
+      labelMap[edge.id] = edge.labels[0];
     }
   }
 
@@ -189,9 +393,7 @@ async function runElkLayout(
   // Enrich edges with handles + ELK routes
   const edges: PipelineFlowEdge[] = pipelineEdges.map((e, i: number) => {
     const edgeId = `e-${i}`;
-    const srcPos = positionMap[e.source] || { x: 0, y: 0 };
-    const tgtPos = positionMap[e.target] || { x: 0, y: 0 };
-    const handles = assignHandles(srcPos, tgtPos);
+    const ports = edgePorts[edgeId];
     const route = routeMap[edgeId];
     const edgeStyle = EDGE_STYLES[e.edge_type ?? "data_flow"] || EDGE_STYLES.data_flow;
 
@@ -199,11 +401,13 @@ async function runElkLayout(
       id: edgeId,
       source: e.source,
       target: e.target,
-      ...handles,
+      sourceHandle: ports.sourceHandle,
+      targetHandle: ports.targetHandle,
       type: "elk",
       label: e.label || undefined,
       data: {
         elkRoute: route || null,
+        elkLabel: labelMap[edgeId] || null,
       },
       style: {
         stroke: edgeStyle.color,

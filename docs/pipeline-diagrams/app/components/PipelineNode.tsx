@@ -1,9 +1,11 @@
 "use client";
 
 import { Handle, Position } from "@xyflow/react";
+import type { CSSProperties } from "react";
 import { NODE_COLORS } from "../colors";
 
 const handleClass = "!w-2 !h-2 !border-none";
+const hiddenHandleStyle: CSSProperties = { opacity: 0, pointerEvents: "none" };
 
 interface PipelineNodeData {
   label: string;
@@ -14,6 +16,9 @@ interface PipelineNodeData {
 }
 
 /**
+ * ReactFlow handles are kept for edge bookkeeping. ELK ports own the
+ * visible attachment geometry, so these handles stay hidden.
+ *
  * 8 handles — source + target on each of 4 sides.
  * Handle ID convention:
  *   "sr" = source-right,  "tl" = target-left   (horizontal flow →)
@@ -22,7 +27,7 @@ interface PipelineNodeData {
  *   "sl" = source-left,   "tr" = target-right   (leftward flow ←)
  */
 function AllHandles({ color }: { color: string }) {
-  const s = { background: color };
+  const s: CSSProperties = { background: color, ...hiddenHandleStyle };
   return (
     <>
       <Handle type="target" position={Position.Top} id="tt" className={handleClass} style={s} />

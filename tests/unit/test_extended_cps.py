@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from policyengine_us_data.datasets.cps.enhanced_cps import initialize_weight_priors
 from policyengine_us_data.calibration.puf_impute import (
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
@@ -19,6 +20,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_ONLY_IMPUTED_VARIABLES,
     CPS_STAGE2_INCOME_PREDICTORS,
     apply_retirement_constraints,
+    rebuild_cloned_spm_thresholds,
     reconcile_ss_subcomponents,
 )
 from policyengine_us_data.datasets.org import ORG_IMPUTED_VARIABLES
@@ -110,11 +112,55 @@ class TestVariableListConsistency:
         should_not_be_here = {
             "taxable_private_pension_income",
             "tax_exempt_private_pension_income",
+            "spm_unit_spm_threshold",
         }
         present = should_not_be_here & set(CPS_ONLY_IMPUTED_VARIABLES)
         assert present == set(), (
             f"Pension income vars should not be in CPS_ONLY: {present}"
         )
+
+
+class TestDeterministicSpmThresholdRebuild:
+    def test_rebuild_cloned_spm_thresholds_uses_donor_geoadj(self):
+        data = {
+            "age": {2024: np.array([40, 12, 70, 40, 12, 70], dtype=np.int32)},
+            "person_spm_unit_id": {2024: np.array([10, 10, 20, 30, 30, 40], dtype=np.int32)},
+            "spm_unit_id": {2024: np.array([10, 20, 30, 40], dtype=np.int32)},
+            "spm_unit_tenure_type": {
+                2024: np.array(
+                    [b"RENTER", b"OWNER_WITHOUT_MORTGAGE", b"RENTER", b"OWNER_WITHOUT_MORTGAGE"]
+                )
+            },
+            "spm_unit_spm_threshold": {
+                2024: np.array([20_000.0, 15_000.0, 999_999.0, 999_999.0], dtype=np.float64)
+            },
+        }
+
+        rebuilt = rebuild_cloned_spm_thresholds(data, 2024)
+
+        np.testing.assert_allclose(rebuilt[:2], np.array([20_000.0, 15_000.0]))
+        np.testing.assert_allclose(rebuilt[2:], np.array([20_000.0, 15_000.0]))
+
+
+class TestWeightPriorInitialization:
+    def test_initialize_weight_priors_keeps_zero_weight_records_near_zero(self):
+        weights = np.array([1_500.0, 0.0, 625.0, 0.0], dtype=np.float64)
+
+        priors = initialize_weight_priors(weights, seed=123)
+
+        assert np.all(priors > 0)
+        assert priors[1] < 1e-4
+        assert priors[3] < 1e-4
+        assert priors[0] == pytest.approx(1_500.0, rel=0.05)
+        assert priors[2] == pytest.approx(625.0, rel=0.05)
+
+    def test_initialize_weight_priors_is_reproducible(self):
+        weights = np.array([400.0, 0.0, 100.0], dtype=np.float64)
+
+        priors_a = initialize_weight_priors(weights, seed=77)
+        priors_b = initialize_weight_priors(weights, seed=77)
+
+        np.testing.assert_allclose(priors_a, priors_b)
 
 
 class TestRetirementConstraints:

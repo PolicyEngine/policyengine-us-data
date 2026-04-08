@@ -28,6 +28,42 @@ except ImportError:
     torch = None
 
 
+def initialize_weight_priors(
+    original_weights: np.ndarray,
+    seed: int = 1456,
+    epsilon: float = 1e-6,
+    positive_jitter_scale: float = 0.01,
+) -> np.ndarray:
+    """Build deterministic positive priors for sparse reweighting.
+
+    Original CPS households should keep priors close to their survey
+    weights. Clone-half households start with zero weight on purpose, so
+    they should receive only a tiny positive epsilon to keep the log
+    optimization well-defined without giving them a meaningful head start.
+    """
+
+    weights = np.asarray(original_weights, dtype=np.float64)
+    if np.any(weights < 0):
+        raise ValueError("original_weights must be non-negative")
+
+    rng = np.random.default_rng(seed)
+    priors = np.empty_like(weights, dtype=np.float64)
+
+    positive_mask = weights > 0
+    if positive_mask.any():
+        jitter = np.maximum(
+            rng.normal(loc=1.0, scale=positive_jitter_scale, size=positive_mask.sum()),
+            0.5,
+        )
+        priors[positive_mask] = np.maximum(weights[positive_mask] * jitter, epsilon)
+
+    zero_mask = ~positive_mask
+    if zero_mask.any():
+        priors[zero_mask] = epsilon * rng.uniform(1.0, 2.0, size=zero_mask.sum())
+
+    return priors
+
+
 def _get_period_array(period_values: dict, period: int) -> np.ndarray:
     """Get a period array from a TIME_PERIOD_ARRAYS variable dict."""
     value = period_values.get(period)
@@ -191,9 +227,9 @@ class EnhancedCPS(Dataset):
         data = sim.dataset.load_dataset()
         base_year = int(sim.default_calculation_period)
         data["household_weight"] = {}
-        original_weights = sim.calculate("household_weight")
-        original_weights = original_weights.values + np.random.normal(
-            1, 0.1, len(original_weights)
+        original_weights = initialize_weight_priors(
+            sim.calculate("household_weight").values,
+            seed=1456,
         )
 
         bad_targets = [
@@ -328,9 +364,9 @@ class ReweightedCPS_2024(Dataset):
 
         sim = Microsimulation(dataset=self.input_dataset)
         data = sim.dataset.load_dataset()
-        original_weights = sim.calculate("household_weight")
-        original_weights = original_weights.values + np.random.normal(
-            1, 0.1, len(original_weights)
+        original_weights = initialize_weight_priors(
+            sim.calculate("household_weight").values,
+            seed=1456,
         )
         for year in [2024]:
             loss_matrix, targets_array = build_loss_matrix(self.input_dataset, year)

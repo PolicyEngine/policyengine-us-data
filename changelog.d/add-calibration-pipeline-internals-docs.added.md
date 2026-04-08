@@ -1,1 +1,0 @@
-Add `docs/internals/` developer reference: three notebooks covering all nine pipeline stages (Stage 1 data build, Stage 2 calibration matrix assembly, Stages 3–4 L0 optimization and H5 assembly) plus a README with pipeline orchestration reference, run ID format, Modal volume layout, and HuggingFace artifact paths.

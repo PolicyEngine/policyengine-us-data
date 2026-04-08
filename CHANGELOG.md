@@ -1,3 +1,10 @@
+## [1.75.1] - 2026-04-08
+
+### Changed
+
+- Build policy_data.db from source instead of downloading from HuggingFace, replace H5 dataset dependency with a --year CLI flag for all database ETL scripts, fix Modal data build ordering (CPS before PUF), and add missing heapq import in local area builder.
+
+
 ## [1.75.0] - 2026-04-08
 
 ### Added

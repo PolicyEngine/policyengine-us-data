@@ -150,6 +150,22 @@ class TestDeterministicSpmThresholdRebuild:
         np.testing.assert_allclose(rebuilt[:2], np.array([20_000.0, 15_000.0]))
         np.testing.assert_allclose(rebuilt[2:], np.array([20_000.0, 15_000.0]))
 
+    def test_rebuild_cloned_spm_thresholds_rejects_unknown_tenure(self):
+        data = {
+            "age": {2024: np.array([40, 12, 40, 12], dtype=np.int32)},
+            "person_spm_unit_id": {2024: np.array([10, 10, 20, 20], dtype=np.int32)},
+            "spm_unit_id": {2024: np.array([10, 20], dtype=np.int32)},
+            "spm_unit_tenure_type": {
+                2024: np.array([b"RENTER", b"UNRECOGNIZED"], dtype="|S12")
+            },
+            "spm_unit_spm_threshold": {
+                2024: np.array([20_000.0, 20_000.0], dtype=np.float64)
+            },
+        }
+
+        with pytest.raises(ValueError, match="Unsupported spm_unit_tenure_type"):
+            rebuild_cloned_spm_thresholds(data, 2024)
+
 
 class TestWeightPriorInitialization:
     def test_initialize_weight_priors_keeps_zero_weight_records_near_zero(self):
@@ -160,8 +176,15 @@ class TestWeightPriorInitialization:
         assert np.all(priors > 0)
         assert priors[1] < 1e-4
         assert priors[3] < 1e-4
-        assert priors[0] == pytest.approx(1_500.0, rel=0.05)
-        assert priors[2] == pytest.approx(625.0, rel=0.05)
+        assert priors[0] == pytest.approx(1_500.0)
+        assert priors[2] == pytest.approx(625.0)
+
+    def test_initialize_weight_priors_preserves_positive_weights_exactly(self):
+        weights = np.array([1_500.0, 625.0, 42.0], dtype=np.float64)
+
+        priors = initialize_weight_priors(weights, seed=123)
+
+        np.testing.assert_array_equal(priors, weights)
 
     def test_initialize_weight_priors_is_reproducible(self):
         weights = np.array([400.0, 0.0, 100.0], dtype=np.float64)

@@ -32,13 +32,12 @@ def initialize_weight_priors(
     original_weights: np.ndarray,
     seed: int = 1456,
     epsilon: float = 1e-6,
-    positive_jitter_scale: float = 0.01,
 ) -> np.ndarray:
     """Build deterministic positive priors for sparse reweighting.
 
-    Original CPS households should keep priors close to their survey
-    weights. Clone-half households start with zero weight on purpose, so
-    they should receive only a tiny positive epsilon to keep the log
+    Original CPS households should keep their survey weights unchanged.
+    Clone-half households start with zero weight on purpose, so they
+    should receive only a tiny positive epsilon to keep the log
     optimization well-defined without giving them a meaningful head start.
     """
 
@@ -51,11 +50,7 @@ def initialize_weight_priors(
 
     positive_mask = weights > 0
     if positive_mask.any():
-        jitter = np.maximum(
-            rng.normal(loc=1.0, scale=positive_jitter_scale, size=positive_mask.sum()),
-            0.5,
-        )
-        priors[positive_mask] = np.maximum(weights[positive_mask] * jitter, epsilon)
+        priors[positive_mask] = weights[positive_mask]
 
     zero_mask = ~positive_mask
     if zero_mask.any():

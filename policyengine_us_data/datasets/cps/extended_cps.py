@@ -338,6 +338,16 @@ _SPM_TENURE_TO_REFERENCE_KEY = {
 }
 
 
+def _reference_threshold_key_for_tenure(tenure_type) -> str:
+    reference_key = _SPM_TENURE_TO_REFERENCE_KEY.get(tenure_type)
+    if reference_key is None:
+        raise ValueError(
+            "Unsupported spm_unit_tenure_type for cloned threshold rebuild: "
+            f"{tenure_type!r}"
+        )
+    return reference_key
+
+
 def _apply_post_processing(predictions, X_test, time_period, data):
     """Apply retirement constraints and SS reconciliation."""
     ret_cols = [c for c in predictions.columns if c in _RETIREMENT_VARS]
@@ -430,7 +440,7 @@ def rebuild_cloned_spm_thresholds(data: dict, time_period: int) -> np.ndarray:
     thresholds_by_tenure = get_spm_reference_thresholds(time_period)
     reference_base = np.array(
         [
-            thresholds_by_tenure[_SPM_TENURE_TO_REFERENCE_KEY.get(tenure, "renter")]
+            thresholds_by_tenure[_reference_threshold_key_for_tenure(tenure)]
             for tenure in tenure_types
         ],
         dtype=float,

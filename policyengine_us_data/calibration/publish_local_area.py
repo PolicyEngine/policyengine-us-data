@@ -490,11 +490,7 @@ def build_h5(
     spm_unit_geoadj = np.array(
         [
             cd_geoadj_values[active_clone_cds[clone_id]][
-                (
-                    spm_tenure_cloned[spm_unit_index]
-                    .decode()
-                    .lower()
-                )
+                (spm_tenure_cloned[spm_unit_index].decode().lower())
             ]
             for spm_unit_index, clone_id in enumerate(spm_clone_ids)
         ],

@@ -90,15 +90,12 @@ def spm_equivalence_scale(num_adults, num_children):
 
     single_adult_with_children = with_children & (adults <= 1)
     raw[single_adult_with_children] = (
-        1.0
-        + 0.8
-        + 0.5 * np.maximum(children[single_adult_with_children] - 1, 0)
+        1.0 + 0.8 + 0.5 * np.maximum(children[single_adult_with_children] - 1, 0)
     ) ** 0.7
 
     multi_adult_with_children = with_children & ~single_adult_with_children
     raw[multi_adult_with_children] = (
-        adults[multi_adult_with_children]
-        + 0.5 * children[multi_adult_with_children]
+        adults[multi_adult_with_children] + 0.5 * children[multi_adult_with_children]
     ) ** 0.7
 
     no_children = has_people & ~with_children
@@ -125,16 +122,12 @@ def get_spm_reference_thresholds(year: int) -> dict[str, float]:
 
     cpi_u = _get_cpi_u_parameter()
     factor = float(
-        cpi_u(f"{year}-02-01")
-        / cpi_u(f"{LATEST_PUBLISHED_SPM_THRESHOLD_YEAR}-02-01")
+        cpi_u(f"{year}-02-01") / cpi_u(f"{LATEST_PUBLISHED_SPM_THRESHOLD_YEAR}-02-01")
     )
     latest_thresholds = PUBLISHED_SPM_REFERENCE_THRESHOLDS[
         LATEST_PUBLISHED_SPM_THRESHOLD_YEAR
     ]
-    return {
-        tenure: value * factor
-        for tenure, value in latest_thresholds.items()
-    }
+    return {tenure: value * factor for tenure, value in latest_thresholds.items()}
 
 
 def calculate_geoadj_from_rent(

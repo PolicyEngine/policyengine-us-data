@@ -87,9 +87,7 @@ def analyze_benefit_underreporting():
         weighted_participants = ((benefit > 0) * weight).sum() / 1e6  # millions
 
         # Underreporting factor
-        benchmark_ratio = (
-            info["benchmark_total"] / total if total > 0 else np.inf
-        )
+        benchmark_ratio = info["benchmark_total"] / total if total > 0 else np.inf
         benchmark_participants = info.get("benchmark_participants_millions")
         participant_ratio = (
             weighted_participants / benchmark_participants

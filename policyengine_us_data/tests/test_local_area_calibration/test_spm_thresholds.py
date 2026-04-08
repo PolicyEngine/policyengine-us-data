@@ -31,9 +31,7 @@ def test_load_cd_geoadj_values_returns_tenure_specific_lookup(monkeypatch):
 
     assert geoadj_lookup["101"]["renter"] == pytest.approx(1.2215)
     assert geoadj_lookup["101"]["owner_with_mortgage"] == pytest.approx(1.217)
-    assert geoadj_lookup["101"]["owner_without_mortgage"] == pytest.approx(
-        1.1615
-    )
+    assert geoadj_lookup["101"]["owner_without_mortgage"] == pytest.approx(1.1615)
 
 
 def test_calculate_spm_thresholds_vectorized_matches_policyengine_us_future_path():

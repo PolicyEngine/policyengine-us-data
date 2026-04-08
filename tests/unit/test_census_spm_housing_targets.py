@@ -35,9 +35,7 @@ def test_get_census_spm_capped_housing_subsidy_total_uses_raw_cps_spm_values(
 ):
     _write_census_cps(tmp_path)
 
-    total = get_census_spm_capped_housing_subsidy_total(
-        2024, storage_folder=tmp_path
-    )
+    total = get_census_spm_capped_housing_subsidy_total(2024, storage_folder=tmp_path)
 
     expected = (1_000 * 150 + 0 * 250 + 2_000 * 100) / 100
     assert total == expected
@@ -147,13 +145,19 @@ def test_get_program_benchmarks_keeps_housing_concepts_separate(monkeypatch):
 
     benchmarks = benefit_validation.get_program_benchmarks(2022)
 
-    assert benchmarks["housing_spm_capped"]["variable"] == "spm_unit_capped_housing_subsidy"
+    assert (
+        benchmarks["housing_spm_capped"]["variable"]
+        == "spm_unit_capped_housing_subsidy"
+    )
     assert benchmarks["housing_spm_capped"]["benchmark_total"] == 111
     assert benchmarks["housing_spm_capped"]["benchmark_source"] == "Census benchmark"
 
     assert benchmarks["housing_assistance_hud_user"]["variable"] == "housing_assistance"
     assert benchmarks["housing_assistance_hud_user"]["benchmark_total"] == 222
-    assert benchmarks["housing_assistance_hud_user"]["benchmark_source"] == "HUD USER benchmark"
+    assert (
+        benchmarks["housing_assistance_hud_user"]["benchmark_source"]
+        == "HUD USER benchmark"
+    )
     assert (
         benchmarks["housing_assistance_hud_user"]["benchmark_participants_millions"]
         == 3

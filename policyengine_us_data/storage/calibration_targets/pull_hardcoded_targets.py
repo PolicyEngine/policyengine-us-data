@@ -10,6 +10,7 @@ Hardcoded targets for the year 2024 from CPS-derived statistics and other
 sources. Housing uses the Census SPM capped subsidy concept, not HUD spending.
 """
 
+
 def get_hard_coded_totals(
     year: int = 2024,
     storage_folder=None,

@@ -351,6 +351,35 @@ The optimizer is Adam with a learning rate of 0.15. The default epoch count is 1
 builds typically run 1000-1500 epochs to ensure convergence. Training runs on GPU (A100 or T4) via
 Modal for production builds, or on CPU for local development.
 
+To reproduce the local-area calibration fit:
+
+```bash
+python -m policyengine_us_data.calibration.unified_calibration \
+    --package-path policyengine_us_data/storage/calibration/calibration_package.pkl \
+    --epochs 1000 \
+    --beta 0.65 \
+    --lambda-l0 1e-7 \
+    --lambda-l2 1e-8 \
+    --log-freq 500 \
+    --target-config policyengine_us_data/calibration/target_config.yaml \
+    --device cpu
+```
+
+To reproduce the national calibration fit:
+
+```bash
+python -m policyengine_us_data.calibration.unified_calibration \
+    --package-path policyengine_us_data/storage/calibration/calibration_package.pkl \
+    --epochs 4000 \
+    --beta 0.65 \
+    --lambda-l0 1e-4 \
+    --lambda-l2 1e-12 \
+    --log-freq 500 \
+    --target-config policyengine_us_data/calibration/target_config.yaml \
+    --device cpu \
+    --output policyengine_us_data/storage/calibration/national/weights.npy
+```
+
 ## Stage 4: Local Area Calibrated Dataset Generation
 
 Calibrated weights are converted into geography-specific H5 datasets — one per state, congressional
@@ -383,7 +412,7 @@ metro area, ensuring that poverty status reflects local cost of living.
 ### Output
 
 The pipeline produces 488 local H5 datasets: 51 state files (including DC), 435 congressional
-district files, a national file, and city files for New York City. Each file is a self-contained
+district files, a national file, and city files (eg, New York City). Each file is a self-contained
 PolicyEngine dataset that can be loaded directly into `Microsimulation` for policy analysis.
 
 ## Key design decisions
@@ -391,28 +420,31 @@ PolicyEngine dataset that can be loaded directly into `Microsimulation` for poli
 ### Why 430 clones per household
 
 The pipeline clones each of the ~12,000 stratified households 430 times, producing approximately 5.2
-million total records entering calibration. We chose 430 so that the population-weighted random
-block sampling covers every populated census block in the US with at least one clone in expectation.
-Fewer clones reduce geographic resolution; more clones increase memory and compute cost
-proportionally.
+million total records entering calibration. We chose 430 so that population-weighted random block
+sampling provides broad geographic coverage — more populated blocks receive more donors, and the
+count balances geographic resolution against memory and compute cost.
 
-### Why L0 regularization (not L1 or L2)
+### Why L0 regularization (coupled with L2)
 
-L1 and L2 regularization shrink weights toward zero or toward uniform but retain all records with
-nonzero weight. Running PolicyEngine simulations at scale requires iterating over every
-nonzero-weight record, so retaining millions of records makes per-area simulation slow. L0
-regularization drives most weights to *exactly* zero, producing a sparse weight vector where only a
-few hundred thousand records carry nonzero weight. The optimizer selects those records to
-collectively match the administrative targets, making per-area simulation fast while preserving
-calibration accuracy.
+L1 regularization (the LASSO) can zero out weights but also shrinks the surviving non-zero weights,
+which would reduce flexibility by coupling sparsity and magnitude control. Our L0 regularization
+approach drives most weights to *exactly* zero without shrinking the survivors, giving independent
+control over sparsity and magnitude. Running PolicyEngine simulations at scale requires iterating
+over every nonzero-weight record, so retaining millions of records makes per-area simulation slow.
+We use the L0 penalty produces a sparse weight vector where only a few hundred thousand records
+carry nonzero weight, while the separate L2 penalty allows us to control the magnitude of the
+remaining non-zero weights. The optimizer selects those records to collectively match the
+administrative targets, making per-area simulation fast while preserving calibration accuracy.
 
-### Why ~2,800 calibration targets
+### Why ~13,000 calibration targets (~3,000 in the legacy national calibration)
 
 We draw targets from every granular administrative source available: income by AGI bracket at the
 national and state level (IRS SOI), population by age and state (Census), benefit totals by program
 and state (USDA, CMS), and congressional district population counts. We chose this set empirically
 as the largest number of targets that converge stably given the number of clones — adding more
-targets increases distributional accuracy but risks optimization instability.
+targets increases distributional accuracy but risks optimization instability. We have ~37,000 total
+targets in our database. We will continue to be incorporate more as data quality checks and accurate
+modeling are ensured.
 
 ## Validation
 

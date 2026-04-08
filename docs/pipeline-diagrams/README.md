@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pipeline Diagrams
 
-## Getting Started
+Interactive ReactFlow documentation for the PolicyEngine US data pipeline.
 
-First, run the development server:
+## Data Flow
+
+The rendered graph is generated from two sources:
+
+- `@pipeline_node(PipelineNode(...))` decorators in `policyengine_us_data/**/*.py`
+- stage groupings, extra nodes, and edges in `pipeline_stages.yaml`
+
+Regenerate the app-consumed JSON from the repository root:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+python scripts/extract_pipeline.py
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The extractor writes `docs/pipeline-diagrams/app/pipeline.json`. Do not edit that
+file by hand.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Local App
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Use Node.js 20.9 or newer. CI uses Node.js 24.
 
-## Learn More
+```bash
+cd docs/pipeline-diagrams
+npm ci
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open http://localhost:3000/us.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Checks
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Run the generator and TypeScript check before committing diagram metadata:
 
-## Deploy on Vercel
+```bash
+python scripts/extract_pipeline.py
+cd docs/pipeline-diagrams
+npx tsc --noEmit
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`npm run lint` currently includes renderer cleanup work outside the generation
+path, so the automated update workflow uses the TypeScript check only.

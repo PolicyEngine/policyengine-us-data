@@ -12,8 +12,6 @@ Usage:
 import ast
 import json
 import sys
-from dataclasses import asdict
-from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -32,6 +30,13 @@ VALID_NODE_TYPES = {
 VALID_EDGE_TYPES = {
     "data_flow", "produces_artifact", "uses_utility",
     "external_source", "runs_on_infra", "informational",
+}
+
+# Decorated code nodes that are intentionally not rendered as graph nodes.
+# The diagrams document these flows through finer-grained YAML nodes instead.
+IGNORED_CODE_NODE_IDS = {
+    "create_stratified": "Stage 3b is expanded into AGI/top-1%/sample steps",
+    "run_calibration": "Stages 5-6 are expanded into build/fit/output steps",
 }
 
 
@@ -140,6 +145,7 @@ def build_pipeline_json(output_path: Path = DEFAULT_OUTPUT):
 
     # Step 3: Merge code nodes with YAML stages
     stages_output = []
+    used_code_node_ids = set()
     for stage_def in stages_data:
         stage = {
             "id": stage_def["id"],
@@ -163,18 +169,15 @@ def build_pipeline_json(output_path: Path = DEFAULT_OUTPUT):
 
         # Add code-defined nodes that belong to this stage
         # (matched by presence in the YAML edges as source or target)
-        edge_node_ids = set()
+        existing_ids = {n["id"] for n in stage["nodes"]}
         for edge in stage_def.get("edges", []):
-            edge_node_ids.add(edge["source"])
-            edge_node_ids.add(edge["target"])
-
-        for node_id in edge_node_ids:
-            if node_id in all_code_nodes:
-                code_node = all_code_nodes[node_id]
-                # Don't duplicate if already in extra_nodes
-                existing_ids = {n["id"] for n in stage["nodes"]}
+            for node_id in (edge["source"], edge["target"]):
+                if node_id not in all_code_nodes:
+                    continue
+                used_code_node_ids.add(node_id)
                 if node_id not in existing_ids:
-                    stage["nodes"].append(code_node)
+                    stage["nodes"].append(all_code_nodes[node_id])
+                    existing_ids.add(node_id)
 
         # Add edges
         for edge in stage_def.get("edges", []):
@@ -191,6 +194,24 @@ def build_pipeline_json(output_path: Path = DEFAULT_OUTPUT):
 
     # Step 4: Validate
     errors = 0
+    unused_code_node_ids = set(all_code_nodes) - used_code_node_ids
+    ignored_unused = unused_code_node_ids & set(IGNORED_CODE_NODE_IDS)
+    unexpected_unused = unused_code_node_ids - set(IGNORED_CODE_NODE_IDS)
+
+    for node_id in sorted(ignored_unused):
+        print(
+            f"  INFO: Decorated node '{node_id}' is intentionally omitted: "
+            f"{IGNORED_CODE_NODE_IDS[node_id]}"
+        )
+
+    for node_id in sorted(unexpected_unused):
+        print(
+            f"  ERROR: Decorated node '{node_id}' is not referenced by "
+            "pipeline_stages.yaml edges and is not in IGNORED_CODE_NODE_IDS",
+            file=sys.stderr,
+        )
+        errors += 1
+
     for stage in stages_output:
         node_ids = {n["id"] for n in stage["nodes"]}
         for edge in stage["edges"]:
@@ -210,13 +231,12 @@ def build_pipeline_json(output_path: Path = DEFAULT_OUTPUT):
                 errors += 1
 
     if errors:
-        print(f"\n  {errors} validation error(s) found", file=sys.stderr)
+        raise SystemExit(f"\n  {errors} validation error(s) found")
 
     # Step 5: Build output
     pipeline_json = {
         "stages": stages_output,
         "metadata": {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
             "total_nodes": sum(len(s["nodes"]) for s in stages_output),
             "total_edges": sum(len(s["edges"]) for s in stages_output),
         },
@@ -226,6 +246,7 @@ def build_pipeline_json(output_path: Path = DEFAULT_OUTPUT):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(pipeline_json, f, indent=2)
+        f.write("\n")
 
     print(f"\nWrote {output_path}")
     print(

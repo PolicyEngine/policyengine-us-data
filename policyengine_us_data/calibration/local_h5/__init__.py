@@ -13,6 +13,7 @@ from .contracts import (
     ValidationStatus,
     WorkerResult,
 )
+from .partitioning import partition_weighted_work_items, work_item_key
 
 __all__ = [
     "AreaBuildRequest",
@@ -26,4 +27,6 @@ __all__ = [
     "ValidationResult",
     "ValidationStatus",
     "WorkerResult",
+    "partition_weighted_work_items",
+    "work_item_key",
 ]

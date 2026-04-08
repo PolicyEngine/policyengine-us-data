@@ -20,6 +20,8 @@ from policyengine_us_data.utils.policyengine import has_policyengine_us_variable
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 rng = np.random.default_rng(seed=64)
 
@@ -57,6 +59,13 @@ def conditionally_sample_lognormal(flag, target_mean, log_sigma, rng):
     )
 
 
+@pipeline_node(PipelineNode(
+    id="simulate_qbi",
+    label="QBI Simulation",
+    node_type="process",
+    description="Simulate W-2 wages, UBIA, and SSTB for Section 199A",
+    source_file="policyengine_us_data/datasets/puf/puf.py",
+))
 def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     """
     Simulate two Section 199A guard-rail quantities for every record
@@ -206,6 +215,13 @@ def impute_pension_contributions_to_puf(puf_df):
     return predictions["pre_tax_contributions"]
 
 
+@pipeline_node(PipelineNode(
+    id="impute_puf_demographics",
+    label="Impute PUF Demographics",
+    node_type="process",
+    description="QRF imputation for age, gender, and earnings split",
+    source_file="policyengine_us_data/datasets/puf/puf.py",
+))
 def impute_missing_demographics(
     puf: pd.DataFrame, demographics: pd.DataFrame
 ) -> pd.DataFrame:
@@ -313,6 +329,14 @@ def decode_age_dependent(age_range: int) -> int:
     return rng.integers(low=lower, high=upper, endpoint=False)
 
 
+@pipeline_node(PipelineNode(
+    id="preprocess_puf",
+    label="Preprocess PUF",
+    node_type="process",
+    description="Rename 60+ IRS variables to PolicyEngine names",
+    details="E00200 → employment_income, etc.",
+    source_file="policyengine_us_data/datasets/puf/puf.py",
+))
 def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Add variable renames
     puf.S006 = puf.S006 / 100

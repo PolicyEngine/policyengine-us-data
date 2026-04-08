@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-pe-primary-50: #E6FFFA;
+  --color-pe-primary-400: #38B2AC;
+  --color-pe-primary-500: #319795;
+  --color-pe-primary-600: #2C7A7B;
+  --color-pe-primary-700: #285E61;
+  --color-pe-primary-800: #234E52;
+  --color-pe-gray-50: #F9FAFB;
+  --color-pe-gray-100: #F2F4F7;
+  --color-pe-gray-200: #E2E8F0;
+  --color-pe-gray-500: #6B7280;
+  --color-pe-gray-600: #4B5563;
+  --color-pe-gray-700: #344054;
+}
+
+:root {
+  /* PolicyEngine design tokens */
+  --pe-primary-50: #E6FFFA;
+  --pe-primary-400: #38B2AC;
+  --pe-primary-500: #319795;
+  --pe-primary-600: #2C7A7B;
+  --pe-primary-700: #285E61;
+  --pe-primary-800: #234E52;
+
+  --pe-gray-50: #F9FAFB;
+  --pe-gray-100: #F2F4F7;
+  --pe-gray-200: #E2E8F0;
+  --pe-gray-500: #6B7280;
+  --pe-gray-600: #4B5563;
+  --pe-gray-700: #344054;
+
+  --pe-text-primary: #000000;
+  --pe-text-secondary: #5A5A5A;
+  --pe-text-tertiary: #9CA3AF;
+
+  --pe-bg-primary: #FFFFFF;
+  --pe-bg-secondary: #F5F9FF;
+  --pe-bg-tertiary: #F1F5F9;
+
+  --pe-blue-500: #0EA5E9;
+  --pe-success: #22C55E;
+  --pe-error: #EF4444;
+  --pe-warning: #FEC601;
+
+  --pe-font-primary: 'Inter', system-ui, sans-serif;
+  --pe-font-mono: 'JetBrains Mono', monospace;
+
+  --pe-radius-sm: 4px;
+  --pe-radius-md: 6px;
+  --pe-radius-lg: 8px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--pe-bg-primary);
+  color: var(--pe-text-primary);
+  font-family: var(--pe-font-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* React Flow overrides */
+.react-flow__background {
+  background-color: var(--pe-bg-secondary) !important;
+}
+
+.react-flow__controls {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+  border: 1px solid var(--pe-gray-200) !important;
+  border-radius: var(--pe-radius-lg) !important;
+  overflow: hidden !important;
+}
+
+.react-flow__controls-button {
+  border-bottom: 1px solid var(--pe-gray-100) !important;
+  background: white !important;
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--pe-gray-50) !important;
+}
+
+.react-flow__minimap {
+  border-radius: var(--pe-radius-lg) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+  border: 1px solid var(--pe-gray-200) !important;
+  background: white !important;
+}
+
+.react-flow__edge-text {
+  font-family: var(--pe-font-primary) !important;
+  font-size: 10px !important;
+}
+
+/* Sidebar scrollbar */
+aside::-webkit-scrollbar { width: 3px; }
+aside::-webkit-scrollbar-track { background: transparent; }
+aside::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 3px; }
+aside::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.15); }

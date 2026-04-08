@@ -34,6 +34,8 @@ from policyengine_us_data.utils.takeup import (
     assign_takeup_with_reported_anchors,
     reported_subsidized_marketplace_by_tax_unit,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 
 CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
@@ -156,6 +158,13 @@ class CPS(Dataset):
         if self.frac is not None and self.frac < 1.0:
             self.downsample(frac=self.frac)
 
+    @pipeline_node(PipelineNode(
+        id="downsample",
+        label="Downsampling",
+        node_type="process",
+        description="frac=0.5 for CPS_2024 using Microsimulation.subsample()",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+    ))
     def downsample(self, frac: float):
         from policyengine_us import Microsimulation
 
@@ -171,6 +180,14 @@ class CPS(Dataset):
         )
 
 
+@pipeline_node(PipelineNode(
+    id="add_rent",
+    label="Rent Imputation (QRF)",
+    node_type="process",
+    description="Impute rent and real estate taxes using QRF from ACS 2022",
+    details="10K sampled household heads as training data",
+    source_file="policyengine_us_data/datasets/cps/cps.py",
+))
 def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["tenure_type"] = household.H_TENURE.map(
         {
@@ -243,6 +260,14 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
 
+@pipeline_node(PipelineNode(
+    id="add_takeup",
+    label="Benefit Takeup",
+    node_type="us_specific",
+    description="Stochastic takeup for 9 benefit programs",
+    details="SNAP, ACA, Medicaid, EITC, SSI, TANF, WIC, Head Start; state-specific Medicaid rates",
+    source_file="policyengine_us_data/datasets/cps/cps.py",
+))
 def add_takeup(self):
     data = self.load_dataset()
 
@@ -414,6 +439,13 @@ def uprate_cps_data(data, from_period, to_period):
     return data
 
 
+@pipeline_node(PipelineNode(
+    id="add_id_variables",
+    label="Add ID Variables",
+    node_type="process",
+    description="Create person_id, household_id, tax_unit_id, spm_unit_id, marital_unit_id",
+    source_file="policyengine_us_data/datasets/cps/cps.py",
+))
 def add_id_variables(
     cps: h5py.File,
     person: DataFrame,
@@ -463,6 +495,14 @@ def add_id_variables(
     cps["marital_unit_id"] = marital_unit_id.drop_duplicates().values
 
 
+@pipeline_node(PipelineNode(
+    id="add_personal_variables",
+    label="Add Personal Variables",
+    node_type="process",
+    description="Age, sex, disability, occupation, overtime flags",
+    details="80+ ages randomized to 80-84; 12 overtime occupation flags",
+    source_file="policyengine_us_data/datasets/cps/cps.py",
+))
 def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     """Add personal demographic variables.
 
@@ -575,6 +615,14 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     add_overtime_occupation(cps, person)
 
 
+@pipeline_node(PipelineNode(
+    id="add_personal_income_variables",
+    label="Add Income Variables",
+    node_type="process",
+    description="30+ income types with splits",
+    details="SS classified by reason codes; retirement split by account type; capital gains 88% LT / 12% ST",
+    source_file="policyengine_us_data/datasets/cps/cps.py",
+))
 def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     """Add income variables.
 
@@ -832,6 +880,13 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
         cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
 
 
+@pipeline_node(PipelineNode(
+    id="add_spm_variables",
+    label="SPM Variables",
+    node_type="process",
+    description="SPM thresholds and transfers (SNAP, housing, energy subsidies)",
+    source_file="policyengine_us_data/datasets/cps/cps.py",
+))
 def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     from policyengine_us_data.utils.spm import (
         calculate_spm_thresholds_with_geoadj,
@@ -881,6 +936,13 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     cps["reduced_price_school_meals_reported"] = cps["free_school_meals_reported"] * 0
 
 
+@pipeline_node(PipelineNode(
+    id="add_household_variables",
+    label="Household Variables",
+    node_type="process",
+    description="State FIPS, county FIPS, NYC flag from county codes",
+    source_file="policyengine_us_data/datasets/cps/cps.py",
+))
 def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
     cps["state_fips"] = household.GESTFIPS
     cps["county_fips"] = household.GTCO
@@ -904,6 +966,13 @@ def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
     cps["in_nyc"] = np.isin(state_county_fips, nyc_full_county_fips)
 
 
+@pipeline_node(PipelineNode(
+    id="add_previous_year_income",
+    label="Previous Year Income",
+    node_type="process",
+    description="Cross-year PERIDNUM linking for prior-year income",
+    source_file="policyengine_us_data/datasets/cps/cps.py",
+))
 def add_previous_year_income(self, cps: h5py.File) -> None:
     if self.previous_year_raw_cps is None:
         logging.info(
@@ -964,6 +1033,14 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
     ].values
 
 
+@pipeline_node(PipelineNode(
+    id="add_ssn_card_type",
+    label="SSN Card Type",
+    node_type="us_specific",
+    description="US immigration classification from 14 ASEC conditions",
+    details="Undocumented target: 13M; SSN card types 0-3",
+    source_file="policyengine_us_data/datasets/cps/cps.py",
+))
 def add_ssn_card_type(
     cps: h5py.File,
     person: pd.DataFrame,
@@ -1846,6 +1923,14 @@ def _update_documentation_with_numbers(log_df, docs_dir):
     print(f"Documentation updated with population numbers: {doc_path}")
 
 
+@pipeline_node(PipelineNode(
+    id="add_tips",
+    label="Tips Imputation (QRF)",
+    node_type="process",
+    description="Impute tip income and liquid assets from SIPP 2023",
+    details="Models cached as pickle; QRF fit_predict()",
+    source_file="policyengine_us_data/datasets/cps/cps.py",
+))
 def add_tips(self, cps: h5py.File):
     self.save_dataset(cps)
     from policyengine_us import Microsimulation
@@ -2030,6 +2115,13 @@ def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
     )
 
 
+@pipeline_node(PipelineNode(
+    id="add_auto_loan",
+    label="Auto Loan / Net Worth (QRF)",
+    node_type="process",
+    description="Impute auto loan balance, interest, and net worth from SCF 2022",
+    source_file="policyengine_us_data/datasets/cps/cps.py",
+))
 def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     """ "Add auto loan balance, interest and net_worth variable."""
     self.save_dataset(cps)

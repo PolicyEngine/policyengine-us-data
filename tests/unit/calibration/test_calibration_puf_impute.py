@@ -34,9 +34,11 @@ def _make_mock_data(n_persons=20, n_households=5, time_period=2024):
         "household_id": {time_period: np.arange(1, n_households + 1)},
         "tax_unit_id": {time_period: np.arange(1, n_households + 1)},
         "spm_unit_id": {time_period: np.arange(1, n_households + 1)},
+        "family_id": {time_period: np.arange(1, n_households + 1)},
         "person_household_id": {time_period: household_ids_person},
         "person_tax_unit_id": {time_period: tax_unit_ids_person},
         "person_spm_unit_id": {time_period: spm_unit_ids_person},
+        "person_family_id": {time_period: household_ids_person},
         "age": {time_period: ages.astype(np.float32)},
         "is_male": {time_period: is_male.astype(np.float32)},
         "household_weight": {time_period: np.ones(n_households) * 1000},
@@ -134,6 +136,31 @@ class TestPufCloneDataset:
     def test_overridden_subset_of_imputed(self):
         for var in OVERRIDDEN_IMPUTED_VARIABLES:
             assert var in IMPUTED_VARIABLES
+
+    def test_clone_origin_flags_are_added(self):
+        data = _make_mock_data(n_persons=20, n_households=5)
+        state_fips = np.array([1, 2, 36, 6, 48])
+
+        result = puf_clone_dataset(
+            data=data,
+            state_fips=state_fips,
+            time_period=2024,
+            skip_qrf=True,
+        )
+
+        expected_lengths = {
+            "person_is_puf_clone": 20,
+            "tax_unit_is_puf_clone": 5,
+            "spm_unit_is_puf_clone": 5,
+            "family_is_puf_clone": 5,
+            "household_is_puf_clone": 5,
+        }
+
+        for variable_name, half_length in expected_lengths.items():
+            values = result[variable_name][2024]
+            assert values.dtype == np.int8
+            np.testing.assert_array_equal(values[:half_length], 0)
+            np.testing.assert_array_equal(values[half_length:], 1)
 
 
 class TestStratifiedSubsample:

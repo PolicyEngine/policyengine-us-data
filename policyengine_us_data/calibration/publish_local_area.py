@@ -53,10 +53,17 @@ META_FILE = WORK_DIR / "checkpoint_meta.json"
 
 
 def compute_input_fingerprint(
-    weights_path: Path, dataset_path: Path, n_clones: int, seed: int
+    weights_path: Path,
+    dataset_path: Path,
+    n_clones: int,
+    seed: int,
+    calibration_package_path: Path | None = None,
 ) -> str:
     h = hashlib.sha256()
-    for p in [weights_path, dataset_path]:
+    paths = [weights_path, dataset_path]
+    if calibration_package_path is not None:
+        paths.append(calibration_package_path)
+    for p in paths:
         with open(p, "rb") as f:
             while chunk := f.read(8192):
                 h.update(chunk)
@@ -881,6 +888,11 @@ def main():
         action="store_true",
         help="Upload to GCP and HuggingFace (default: build locally only)",
     )
+    parser.add_argument(
+        "--calibration-package-path",
+        type=str,
+        help="Optional calibration package path for exact geography reuse",
+    )
     args = parser.parse_args()
 
     WORK_DIR.mkdir(parents=True, exist_ok=True)
@@ -912,11 +924,17 @@ def main():
     print(f"Using dataset: {inputs['dataset']}")
 
     print("Computing input fingerprint...")
+    calibration_package_path = (
+        Path(args.calibration_package_path)
+        if args.calibration_package_path
+        else None
+    )
     fingerprint = compute_input_fingerprint(
         inputs["weights"],
         inputs["dataset"],
         args.n_clones,
         args.seed,
+        calibration_package_path=calibration_package_path,
     )
     validate_or_clear_checkpoints(fingerprint)
 
@@ -927,7 +945,29 @@ def main():
     print(f"\nBase dataset has {n_hh:,} households")
 
     geo_cache = WORK_DIR / f"geography_{n_hh}x{args.n_clones}_s{args.seed}.npz"
-    if geo_cache.exists():
+    if calibration_package_path is not None and calibration_package_path.exists():
+        from policyengine_us_data.calibration.local_h5.package_geography import (
+            CalibrationPackageGeographyLoader,
+        )
+
+        loader = CalibrationPackageGeographyLoader()
+        weights = np.load(inputs["weights"], mmap_mode="r")
+        if weights.shape[0] % n_hh != 0:
+            raise ValueError(
+                f"Weight vector length {weights.shape[0]} is not divisible by n_hh={n_hh}"
+            )
+        resolved = loader.resolve_for_weights(
+            package_path=calibration_package_path,
+            weights_length=weights.shape[0],
+            n_records=n_hh,
+            n_clones=weights.shape[0] // n_hh,
+            seed=args.seed,
+        )
+        geography = resolved.geography
+        print(f"Loaded geography from {resolved.source}")
+        for warning in resolved.warnings:
+            print(f"WARNING: {warning}")
+    elif geo_cache.exists():
         print(f"Loading cached geography from {geo_cache}")
         npz = np.load(geo_cache, allow_pickle=True)
         geography = GeographyAssignment(

@@ -14,6 +14,10 @@ from .contracts import (
     WorkerResult,
 )
 from .partitioning import partition_weighted_work_items, work_item_key
+from .package_geography import (
+    CalibrationPackageGeographyLoader,
+    LoadedPackageGeography,
+)
 from .validation import (
     make_validation_error,
     summarize_validation_rows,
@@ -25,7 +29,9 @@ __all__ = [
     "AreaBuildResult",
     "AreaFilter",
     "BuildStatus",
+    "CalibrationPackageGeographyLoader",
     "FilterOp",
+    "LoadedPackageGeography",
     "PublishingInputBundle",
     "ValidationIssue",
     "ValidationPolicy",

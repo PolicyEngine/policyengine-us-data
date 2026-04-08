@@ -72,7 +72,7 @@ def test_publishing_input_bundle_required_paths_and_json_dict():
         weights_path=Path("/tmp/weights.npy"),
         source_dataset_path=Path("/tmp/source.h5"),
         target_db_path=Path("/tmp/policy_data.db"),
-        calibration_package_path=None,
+        calibration_package_path=Path("/tmp/calibration_package.pkl"),
         run_config_path=Path("/tmp/config.json"),
         run_id="1.0.0_abc",
         version="1.0.0",
@@ -84,6 +84,7 @@ def test_publishing_input_bundle_required_paths_and_json_dict():
         Path("/tmp/weights.npy"),
         Path("/tmp/source.h5"),
         Path("/tmp/policy_data.db"),
+        Path("/tmp/calibration_package.pkl"),
     )
     assert json.loads(json.dumps(bundle.to_dict()))["version"] == "1.0.0"
 

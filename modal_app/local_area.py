@@ -311,6 +311,10 @@ def build_areas_worker(
         "--output-dir",
         str(output_dir),
     ]
+    if "package" in calibration_inputs:
+        worker_cmd.extend(
+            ["--calibration-package-path", calibration_inputs["package"]]
+        )
     if "n_clones" in calibration_inputs:
         worker_cmd.extend(["--n-clones", str(calibration_inputs["n_clones"])])
     if "seed" in calibration_inputs:
@@ -638,6 +642,7 @@ def coordinate_publish(
     weights_path = artifacts / "calibration_weights.npy"
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
+    package_path = artifacts / "calibration_package.pkl"
     config_json_path = artifacts / "unified_run_config.json"
 
     required = {
@@ -660,6 +665,14 @@ def coordinate_publish(
         "n_clones": n_clones,
         "seed": 42,
     }
+    if package_path.exists():
+        calibration_inputs["package"] = str(package_path)
+        print(f"Using calibration package geography from {package_path}")
+    else:
+        print(
+            f"WARNING: calibration package not found at {package_path}; "
+            f"workers will fall back to seed-based geography",
+        )
     validate_artifacts(config_json_path, artifacts)
 
     if validate:
@@ -683,6 +696,11 @@ def coordinate_publish(
         fingerprint = expected_fingerprint
         print(f"Using pinned fingerprint from pipeline: {fingerprint}")
     else:
+        package_arg = (
+            f', calibration_package_path="{package_path}"'
+            if package_path.exists()
+            else ""
+        )
         fp_result = subprocess.run(
             [
                 "uv",
@@ -693,7 +711,14 @@ def coordinate_publish(
 from policyengine_us_data.calibration.publish_local_area import (
     compute_input_fingerprint,
 )
-print(compute_input_fingerprint("{weights_path}", "{dataset_path}", {n_clones}, seed=42))
+print(
+    compute_input_fingerprint(
+        "{weights_path}",
+        "{dataset_path}",
+        {n_clones},
+        seed=42{package_arg},
+    )
+)
 """,
             ],
             capture_output=True,
@@ -922,6 +947,7 @@ def coordinate_national_publish(
     weights_path = artifacts / "national_calibration_weights.npy"
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
+    package_path = artifacts / "calibration_package.pkl"
     config_json_path = artifacts / "national_unified_run_config.json"
 
     required = {
@@ -944,6 +970,14 @@ def coordinate_national_publish(
         "n_clones": n_clones,
         "seed": 42,
     }
+    if package_path.exists():
+        calibration_inputs["package"] = str(package_path)
+        print(f"Using calibration package geography from {package_path}")
+    else:
+        print(
+            f"WARNING: calibration package not found at {package_path}; "
+            f"worker will fall back to seed-based geography",
+        )
     validate_artifacts(
         config_json_path,
         artifacts,

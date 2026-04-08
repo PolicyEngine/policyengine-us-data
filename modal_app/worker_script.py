@@ -182,6 +182,11 @@ def main():
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
+        "--calibration-package-path",
+        default=None,
+        help="Optional calibration package path for exact geography reuse",
+    )
+    parser.add_argument(
         "--n-clones",
         type=int,
         default=430,
@@ -222,6 +227,11 @@ def main():
     dataset_path = Path(args.dataset_path)
     db_path = Path(args.db_path)
     output_dir = Path(args.output_dir)
+    calibration_package_path = (
+        Path(args.calibration_package_path)
+        if args.calibration_package_path
+        else None
+    )
 
     from policyengine_us_data.utils.takeup import (
         SIMPLE_TAKEUP_VARS,
@@ -240,8 +250,8 @@ def main():
     from policyengine_us_data.calibration.calibration_utils import (
         STATE_CODES,
     )
-    from policyengine_us_data.calibration.clone_and_assign import (
-        assign_random_geography,
+    from policyengine_us_data.calibration.local_h5.package_geography import (
+        CalibrationPackageGeographyLoader,
     )
 
     weights = np.load(weights_path)
@@ -252,19 +262,37 @@ def main():
     n_records = len(_sim.calculate("household_id", map_to="household").values)
     del _sim
 
-    geography = assign_random_geography(
+    if weights.shape[0] % n_records != 0:
+        raise ValueError(
+            f"Weight vector length {weights.shape[0]} is not divisible by n_records={n_records}"
+        )
+    n_clones_from_weights = weights.shape[0] // n_records
+    if n_clones_from_weights != args.n_clones:
+        print(
+            f"WARNING: weights imply {n_clones_from_weights} clones "
+            f"but --n-clones={args.n_clones}; using weights-derived value",
+            file=sys.stderr,
+        )
+
+    geography_loader = CalibrationPackageGeographyLoader()
+    geography_resolution = geography_loader.resolve_for_weights(
+        package_path=calibration_package_path,
+        weights_length=weights.shape[0],
         n_records=n_records,
-        n_clones=args.n_clones,
+        n_clones=n_clones_from_weights,
         seed=args.seed,
     )
+    geography = geography_resolution.geography
     cds_to_calibrate = sorted(set(geography.cd_geoid.astype(str)))
     geo_labels = cds_to_calibrate
     print(
-        f"Generated geography: "
+        f"Loaded geography from {geography_resolution.source}: "
         f"{geography.n_clones} clones x "
         f"{geography.n_records} records",
         file=sys.stderr,
     )
+    for warning in geography_resolution.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
 
     # ── Validation setup (once per worker) ──
     validation_targets = None
@@ -428,24 +456,9 @@ def main():
             elif item_type == "national":
                 national_dir = output_dir / "national"
                 national_dir.mkdir(parents=True, exist_ok=True)
-                n_clones_from_weights = weights.shape[0] // n_records
-                if n_clones_from_weights != geography.n_clones:
-                    print(
-                        f"National weights have {n_clones_from_weights} clones "
-                        f"but geography has {geography.n_clones}; "
-                        f"regenerating geography",
-                        file=sys.stderr,
-                    )
-                    national_geo = assign_random_geography(
-                        n_records=n_records,
-                        n_clones=n_clones_from_weights,
-                        seed=args.seed,
-                    )
-                else:
-                    national_geo = geography
                 path = build_h5(
                     weights=weights,
-                    geography=national_geo,
+                    geography=geography,
                     dataset_path=dataset_path,
                     output_path=national_dir / "US.h5",
                 )

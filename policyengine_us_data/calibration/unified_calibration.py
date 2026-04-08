@@ -416,6 +416,7 @@ def save_calibration_package(
     targets_df: "pd.DataFrame",
     target_names: list,
     metadata: dict,
+    geography=None,
     initial_weights: np.ndarray = None,
     cd_geoid: np.ndarray = None,
     block_geoid: np.ndarray = None,
@@ -428,11 +429,25 @@ def save_calibration_package(
         targets_df: Targets DataFrame.
         target_names: Target name list.
         metadata: Run metadata dict.
+        geography: Optional GeographyAssignment to serialize.
         initial_weights: Pre-computed initial weight array.
         cd_geoid: CD GEOID array from geography assignment.
         block_geoid: Block GEOID array from geography assignment.
     """
     import pickle
+
+    serialized_geography = None
+    if geography is not None:
+        from policyengine_us_data.calibration.local_h5.package_geography import (
+            CalibrationPackageGeographyLoader,
+        )
+
+        loader = CalibrationPackageGeographyLoader()
+        serialized_geography = loader.serialize_geography(geography)
+        if cd_geoid is None:
+            cd_geoid = geography.cd_geoid
+        if block_geoid is None:
+            block_geoid = geography.block_geoid
 
     package = {
         "X_sparse": X_sparse,
@@ -440,6 +455,7 @@ def save_calibration_package(
         "target_names": target_names,
         "metadata": metadata,
         "initial_weights": initial_weights,
+        "geography": serialized_geography,
         "cd_geoid": cd_geoid,
         "block_geoid": block_geoid,
     }
@@ -462,6 +478,18 @@ def load_calibration_package(path: str) -> dict:
 
     with open(path, "rb") as f:
         package = pickle.load(f)
+    if package.get("geography") is None:
+        from policyengine_us_data.calibration.local_h5.package_geography import (
+            CalibrationPackageGeographyLoader,
+        )
+
+        loader = CalibrationPackageGeographyLoader()
+        try:
+            loaded = loader.load_from_package_dict(package)
+        except ValueError:
+            loaded = None
+        if loaded is not None:
+            package["geography"] = loader.serialize_geography(loaded.geography)
     logger.info(
         "Loaded package: %d targets, %d records",
         package["X_sparse"].shape[0],
@@ -1076,9 +1104,8 @@ def run_calibration(
             targets_df,
             target_names,
             metadata,
+            geography=geography,
             initial_weights=full_initial_weights,
-            cd_geoid=geography.cd_geoid,
-            block_geoid=geography.block_geoid,
         )
 
     # Step 6c: Apply target config filtering (for fit or validation)

@@ -126,6 +126,8 @@ class PublishingInputBundle:
         required = [self.weights_path, self.source_dataset_path]
         if self.target_db_path is not None:
             required.append(self.target_db_path)
+        if self.calibration_package_path is not None:
+            required.append(self.calibration_package_path)
         return tuple(required)
 
     def to_dict(self) -> dict[str, Any]:

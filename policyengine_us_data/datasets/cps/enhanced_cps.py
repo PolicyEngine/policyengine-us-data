@@ -178,9 +178,7 @@ def build_clone_diagnostics_for_saved_dataset(
             dataset_path, "person_is_puf_clone", period
         ),
         person_weight=_to_numpy(sim.calculate("person_weight", period=period)),
-        person_in_poverty=_to_numpy(
-            sim.calculate("person_in_poverty", period=period)
-        ),
+        person_in_poverty=_to_numpy(sim.calculate("person_in_poverty", period=period)),
         person_reported_in_poverty=person_reported_in_poverty,
         spm_unit_is_puf_clone=_load_saved_period_array(
             dataset_path, "spm_unit_is_puf_clone", period

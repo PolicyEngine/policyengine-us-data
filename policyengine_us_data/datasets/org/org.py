@@ -1,4 +1,3 @@
-import logging
 from functools import lru_cache
 
 from microimpute.models.qrf import QRF
@@ -393,13 +392,7 @@ def load_org_training_data() -> pd.DataFrame:
     """Load ORG donor rows built from official CPS basic monthly files."""
     cache_path = STORAGE_FOLDER / ORG_FILENAME
     if cache_path.exists():
-        try:
-            return pd.read_csv(cache_path)
-        except (EOFError, pd.errors.ParserError):
-            logging.warning(
-                "Corrupt ORG cache %s — deleting and rebuilding", cache_path
-            )
-            cache_path.unlink()
+        return pd.read_csv(cache_path)
 
     months = []
     for month in ORG_MONTHS:

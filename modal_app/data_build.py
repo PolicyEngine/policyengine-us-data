@@ -493,27 +493,49 @@ def build_datasets(
             for future in as_completed(futures):
                 future.result()  # Raises if script failed
 
-        # GROUP 2: Sequential chain — each step depends on the previous.
-        # cps.py needs acs; puf.py needs irs_puf + uprating + cps
-        # (pension imputation); extended_cps.py needs both cps and puf.
-        print("=== Phase 2: Building CPS → PUF → extended CPS ===")
-        for script in (
-            "policyengine_us_data/datasets/cps/cps.py",
-            "policyengine_us_data/datasets/puf/puf.py",
+        # GROUP 2: Depends on Group 1 - run in parallel
+        # cps.py needs acs, puf.py needs irs_puf + uprating
+        print("=== Phase 2: Building CPS and PUF (parallel) ===")
+        group2 = [
+            (
+                "policyengine_us_data/datasets/cps/cps.py",
+                SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/cps.py"],
+            ),
+            (
+                "policyengine_us_data/datasets/puf/puf.py",
+                SCRIPT_OUTPUTS["policyengine_us_data/datasets/puf/puf.py"],
+            ),
+        ]
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {
+                executor.submit(
+                    run_script_with_checkpoint,
+                    script,
+                    output,
+                    branch,
+                    checkpoint_volume,
+                    env=env,
+                    log_file=log_file,
+                ): script
+                for script, output in group2
+            }
+            for future in as_completed(futures):
+                future.result()
+
+        # SEQUENTIAL: Extended CPS (needs both cps and puf)
+        print("=== Phase 3: Building extended CPS ===")
+        run_script_with_checkpoint(
             "policyengine_us_data/datasets/cps/extended_cps.py",
-        ):
-            run_script_with_checkpoint(
-                script,
-                SCRIPT_OUTPUTS[script],
-                branch,
-                checkpoint_volume,
-                env=env,
-                log_file=log_file,
-            )
+            SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/extended_cps.py"],
+            branch,
+            checkpoint_volume,
+            env=env,
+            log_file=log_file,
+        )
 
         # GROUP 3: After extended_cps - run in parallel
         # enhanced_cps and stratified_cps both depend on extended_cps
-        print("=== Phase 3: Building enhanced and stratified CPS (parallel) ===")
+        print("=== Phase 4: Building enhanced and stratified CPS (parallel) ===")
         phase4_futures = []
         with ThreadPoolExecutor(max_workers=2) as executor:
             if not skip_enhanced_cps:
@@ -548,11 +570,11 @@ def build_datasets(
             for future in as_completed(phase4_futures):
                 future.result()
 
-        # GROUP 4: After Phase 3 - run in parallel
+        # GROUP 4: After Phase 4 - run in parallel
         # create_source_imputed_cps needs stratified_cps
         # small_enhanced_cps needs enhanced_cps
         print(
-            "=== Phase 4: Building source imputed CPS "
+            "=== Phase 5: Building source imputed CPS "
             "and small enhanced CPS (parallel) ==="
         )
         phase5_futures = []

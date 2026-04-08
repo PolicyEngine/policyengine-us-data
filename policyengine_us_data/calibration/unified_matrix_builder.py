@@ -2287,7 +2287,7 @@ class UnifiedMatrixBuilder:
                         raise RuntimeError(f"Clone {ci} failed: {exc}") from exc
 
         else:
-            # ---- Sequential clone processing (unchanged) ----
+            # ---- Sequential clone processing ----
             clone_dir = Path(cache_dir) if cache_dir else None
             if clone_dir:
                 clone_dir.mkdir(parents=True, exist_ok=True)

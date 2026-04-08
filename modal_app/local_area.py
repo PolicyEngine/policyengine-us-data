@@ -28,7 +28,7 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image
-from modal_app.resilience import reconcile_version_dir_fingerprint
+from modal_app.resilience import reconcile_run_dir_fingerprint
 
 app = modal.App("policyengine-us-data-local-area")
 
@@ -165,21 +165,21 @@ def partition_work(
     return [c for c in chunks if c]
 
 
-def get_completed_from_volume(version_dir: Path) -> set:
+def get_completed_from_volume(run_dir: Path) -> set:
     """Scan volume to find already-built files."""
     completed = set()
 
-    states_dir = version_dir / "states"
+    states_dir = run_dir / "states"
     if states_dir.exists():
         for f in states_dir.glob("*.h5"):
             completed.add(f"state:{f.stem}")
 
-    districts_dir = version_dir / "districts"
+    districts_dir = run_dir / "districts"
     if districts_dir.exists():
         for f in districts_dir.glob("*.h5"):
             completed.add(f"district:{f.stem}")
 
-    cities_dir = version_dir / "cities"
+    cities_dir = run_dir / "cities"
     if cities_dir.exists():
         for f in cities_dir.glob("*.h5"):
             completed.add(f"city:{f.stem}")
@@ -193,9 +193,9 @@ def run_phase(
     num_workers: int,
     completed: set,
     branch: str,
-    version: str,
+    run_id: str,
     calibration_inputs: Dict[str, str],
-    version_dir: Path,
+    run_dir: Path,
     validate: bool = True,
 ) -> tuple:
     """Run a single build phase, spawning workers and collecting results.
@@ -222,7 +222,7 @@ def run_phase(
         print(f"  Worker {i}: {len(chunk)} items, weight {total_weight}")
         handle = build_areas_worker.spawn(
             branch=branch,
-            version=version,
+            run_id=run_id,
             work_items=chunk,
             calibration_inputs=calibration_inputs,
             validate=validate,
@@ -264,7 +264,7 @@ def run_phase(
     total_failed = sum(len(r["failed"]) for r in all_results)
 
     staging_volume.reload()
-    volume_completed = get_completed_from_volume(version_dir)
+    volume_completed = get_completed_from_volume(run_dir)
     volume_new = volume_completed - completed
 
     print(f"\n{phase_name} summary (worker-reported):")
@@ -300,7 +300,7 @@ def run_phase(
 )
 def build_areas_worker(
     branch: str,
-    version: str,
+    run_id: str,
     work_items: List[Dict],
     calibration_inputs: Dict[str, str],
     validate: bool = True,
@@ -312,7 +312,7 @@ def build_areas_worker(
     setup_gcp_credentials()
     setup_repo(branch)
 
-    output_dir = Path(VOLUME_MOUNT) / version
+    output_dir = Path(VOLUME_MOUNT) / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
     work_items_json = json.dumps(work_items)
@@ -390,9 +390,12 @@ def build_areas_worker(
     timeout=1800,
     nonpreemptible=True,
 )
-def validate_staging(branch: str, version: str, run_id: str = "") -> Dict:
+def validate_staging(branch: str, run_id: str, version: str = "") -> Dict:
     """Validate all expected files and generate manifest."""
     setup_repo(branch)
+
+    if not version:
+        version = run_id.split("_", 1)[0]
 
     result = subprocess.run(
         [
@@ -406,10 +409,11 @@ from pathlib import Path
 from policyengine_us_data.utils.manifest import generate_manifest, save_manifest
 
 staging_dir = Path("{VOLUME_MOUNT}")
+run_id = "{run_id}"
 version = "{version}"
-manifest = generate_manifest(staging_dir, version)
-manifest["run_id"] = "{run_id}"
-manifest_path = staging_dir / version / "manifest.json"
+manifest = generate_manifest(staging_dir, run_id, version=version)
+manifest["run_id"] = run_id
+manifest_path = staging_dir / run_id / "manifest.json"
 save_manifest(manifest, manifest_path)
 print(json.dumps(manifest))
 """,
@@ -471,11 +475,12 @@ from policyengine_us_data.utils.data_upload import upload_to_staging_hf
 
 manifest = json.loads('''{manifest_json}''')
 version = "{version}"
+run_id = "{run_id}"
 staging_dir = Path("{VOLUME_MOUNT}")
-version_dir = staging_dir / version
+run_dir = staging_dir / run_id
 
 print("Verifying manifest before upload...")
-verification = verify_manifest(staging_dir, manifest)
+verification = verify_manifest(staging_dir, manifest, subdir=run_id)
 if not verification["valid"]:
     print(
         f"WARNING: Manifest verification issues: "
@@ -488,11 +493,10 @@ else:
 
 files_with_paths = []
 for rel_path in manifest["files"].keys():
-    local_path = version_dir / rel_path
+    local_path = run_dir / rel_path
     files_with_paths.append((local_path, rel_path))
 
 # Upload to HuggingFace staging/
-run_id = "{run_id}"
 print(f"Uploading {{len(files_with_paths)}} files to HuggingFace staging/...")
 hf_count = upload_to_staging_hf(files_with_paths, version, run_id=run_id)
 print(f"Uploaded {{hf_count}} files to HuggingFace staging/")
@@ -532,10 +536,15 @@ def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -
     setup_gcp_credentials()
     setup_repo(branch)
 
+    if not run_id:
+        raise ValueError("--run-id is required for promote")
+    if not version:
+        version = run_id.split("_", 1)[0]
+
     staging_dir = Path(VOLUME_MOUNT)
     staging_volume.reload()
 
-    manifest_path = staging_dir / version / "manifest.json"
+    manifest_path = staging_dir / run_id / "manifest.json"
     if not manifest_path.exists():
         raise RuntimeError(
             f"No manifest found at {manifest_path}. Run build+stage workflow first."
@@ -543,9 +552,6 @@ def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -
 
     with open(manifest_path) as f:
         manifest = json.load(f)
-
-    if not run_id:
-        run_id = manifest.get("run_id", "")
 
     rel_paths_json = json.dumps(list(manifest["files"].keys()))
 
@@ -566,9 +572,9 @@ from policyengine_us_data.utils.data_upload import (
 
 rel_paths = json.loads('''{rel_paths_json}''')
 version = "{version}"
-version_dir = Path("{VOLUME_MOUNT}") / version
-
 run_id = "{run_id}"
+run_dir = Path("{VOLUME_MOUNT}") / run_id
+
 print(f"Promoting {{len(rel_paths)}} files from staging/ to production (run_id={{run_id!r}})...")
 promoted = promote_staging_to_production_hf(rel_paths, version, run_id=run_id)
 print(f"Promoted {{promoted}} files to HuggingFace production")
@@ -576,7 +582,7 @@ print(f"Promoted {{promoted}} files to HuggingFace production")
 print(f"Uploading {{len(rel_paths)}} files to GCS...")
 gcs_count = 0
 for rel_path in rel_paths:
-    local_path = version_dir / rel_path
+    local_path = run_dir / rel_path
     subdirectory = str(Path(rel_path).parent)
     upload_local_area_file(
         str(local_path),
@@ -645,7 +651,7 @@ def coordinate_publish(
     print(f"Using {num_workers} parallel workers")
 
     staging_dir = Path(VOLUME_MOUNT)
-    version_dir = staging_dir / version
+    run_dir = staging_dir / run_id
 
     pipeline_volume.reload()
     artifacts = (
@@ -719,7 +725,7 @@ print(compute_input_fingerprint("{weights_path}", "{dataset_path}", {n_clones}, 
         if fp_result.returncode != 0:
             raise RuntimeError(f"Failed to compute fingerprint: {fp_result.stderr}")
         fingerprint = fp_result.stdout.strip()
-    reconcile_action = reconcile_version_dir_fingerprint(version_dir, fingerprint)
+    reconcile_action = reconcile_run_dir_fingerprint(run_dir, fingerprint)
     if reconcile_action == "resume":
         print(f"Inputs unchanged ({fingerprint}), resuming...")
     else:
@@ -762,10 +768,8 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
     cities = work_info["cities"]
 
     from collections import Counter
-    from policyengine_us_data.calibration.calibration_utils import STATE_CODES
 
-    raw_cds = work_info["cds"]
-    cds_per_state = Counter(STATE_CODES.get(int(cd) // 100, "??") for cd in raw_cds)
+    cds_per_state = Counter(d.split("-")[0] for d in districts)
 
     CITY_WEIGHTS = {"NYC": 11}
 
@@ -778,15 +782,15 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
         work_items.append({"type": "city", "id": c, "weight": CITY_WEIGHTS.get(c, 3)})
 
     staging_volume.reload()
-    completed = get_completed_from_volume(version_dir)
+    completed = get_completed_from_volume(run_dir)
     print(f"Found {len(completed)} already-completed items on volume")
 
     phase_args = dict(
         num_workers=num_workers,
         branch=branch,
-        version=version,
+        run_id=run_id,
         calibration_inputs=calibration_inputs,
-        version_dir=version_dir,
+        run_dir=run_dir,
         validate=validate,
     )
 
@@ -839,7 +843,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
         }
 
     print("\nValidating staging...")
-    manifest = validate_staging.remote(branch=branch, version=version, run_id=run_id)
+    manifest = validate_staging.remote(branch=branch, run_id=run_id, version=version)
 
     expected_total = len(states) + len(districts) + len(cities)
     actual_total = (
@@ -969,14 +973,14 @@ def coordinate_national_publish(
             "calibration_weights.npy": "national_calibration_weights.npy",
         },
     )
-    version_dir = staging_dir / version
-    version_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = staging_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
 
     work_items = [{"type": "national", "id": "US"}]
     print("Spawning worker for national H5 build...")
     worker_result = build_areas_worker.remote(
         branch=branch,
-        version=version,
+        run_id=run_id,
         work_items=work_items,
         calibration_inputs=calibration_inputs,
         validate=validate,
@@ -992,7 +996,7 @@ def coordinate_national_publish(
         raise RuntimeError(f"National build failed: {worker_result['errors']}")
 
     staging_volume.reload()
-    national_h5 = version_dir / "national" / "US.h5"
+    national_h5 = run_dir / "national" / "US.h5"
     if not national_h5.exists():
         raise RuntimeError(f"Expected {national_h5} not found after build")
 
@@ -1102,13 +1106,17 @@ def main_national(branch: str = "main", n_clones: int = 430, run_id: str = ""):
 )
 def promote_national_publish(
     branch: str = "main",
+    version: str = "",
     run_id: str = "",
 ) -> str:
     """Promote national US.h5 from HF staging to production + GCS."""
     setup_gcp_credentials()
     setup_repo(branch)
 
-    version = get_version()
+    if not run_id:
+        raise ValueError("--run-id is required for promote")
+    if not version:
+        version = run_id.split("_", 1)[0]
     rel_paths = ["national/US.h5"]
 
     result = subprocess.run(
@@ -1127,15 +1135,15 @@ from policyengine_us_data.utils.data_upload import (
 )
 
 version = "{version}"
-rel_paths = {json.dumps(rel_paths)}
-version_dir = Path("{VOLUME_MOUNT}") / version
-
 run_id = "{run_id}"
+rel_paths = {json.dumps(rel_paths)}
+run_dir = Path("{VOLUME_MOUNT}") / run_id
+
 print(f"Promoting national H5 from staging to production (run_id={{run_id!r}})...")
 promoted = promote_staging_to_production_hf(rel_paths, version, run_id=run_id)
 print(f"Promoted {{promoted}} files to HuggingFace production")
 
-national_h5 = version_dir / "national" / "US.h5"
+national_h5 = run_dir / "national" / "US.h5"
 if national_h5.exists():
     print("Uploading national H5 to GCS...")
     upload_local_area_file(
@@ -1169,12 +1177,11 @@ def main_national_promote(branch: str = "main", run_id: str = ""):
 
 @app.local_entrypoint()
 def main_promote(
-    version: str = "",
-    branch: str = "main",
     run_id: str = "",
+    branch: str = "main",
 ):
     """Promote staged files to HuggingFace production."""
-    if not version:
-        raise ValueError("--version is required")
-    result = promote_publish.remote(branch=branch, version=version, run_id=run_id)
+    if not run_id:
+        raise ValueError("--run-id is required")
+    result = promote_publish.remote(branch=branch, run_id=run_id)
     print(result)

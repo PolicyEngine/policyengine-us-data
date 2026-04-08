@@ -611,6 +611,7 @@ def run_pipeline(
     skip_national: bool = False,
     resume_run_id: str = None,
     clear_checkpoints: bool = False,
+    version_override: str = "",
 ) -> str:
     """Run the full pipeline end-to-end.
 
@@ -643,7 +644,9 @@ def run_pipeline(
 
     # ── Initialize or resume run ──
     sha = get_pinned_sha(branch)
-    version = get_version_from_branch(branch)
+    version = version_override or get_version_from_branch(branch)
+
+    explicit_resume = bool(resume_run_id)
 
     if not resume_run_id:
         existing = find_resumable_run(branch, sha, pipeline_volume)
@@ -655,10 +658,11 @@ def run_pipeline(
         print(f"Resuming run {resume_run_id}...")
         meta = read_run_meta(resume_run_id, pipeline_volume)
         current_sha = sha
-        ensure_resume_sha_compatible(
+        sha_match = ensure_resume_sha_compatible(
             branch=branch,
             run_sha=meta.sha,
             current_sha=current_sha,
+            force=explicit_resume,
         )
         sha = meta.sha
         version = meta.version
@@ -670,6 +674,7 @@ def run_pipeline(
                 "code_sha": current_sha,
                 "original_sha": meta.sha,
                 "branch": branch,
+                "mixed_provenance": not sha_match,
             }
         )
         meta.status = "running"
@@ -1293,6 +1298,7 @@ def main(
             skip_national=skip_national,
             resume_run_id=resume_run_id,
             clear_checkpoints=clear_checkpoints,
+            version_override=version or "",
         )
         print(f"\nPipeline run complete: {result}")
 

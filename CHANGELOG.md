@@ -1,3 +1,21 @@
+## [1.75.0] - 2026-04-08
+
+### Added
+
+- Add `docs/internals/` developer reference: three notebooks covering all nine pipeline stages (Stage 1 data build, Stage 2 calibration matrix assembly, Stages 3–4 L0 optimization and H5 assembly) plus a README with pipeline orchestration reference, run ID format, Modal volume layout, and HuggingFace artifact paths.
+
+### Changed
+
+- Update public-facing methodology and data documentation to reflect the current pipeline implementation; pipeline now uploads validation diagnostics to HuggingFace after H5 builds complete.
+
+
+## [1.74.3] - 2026-04-07
+
+### Fixed
+
+- Fix the PR changelog fragment check to validate fragments added by the pull request rather than pre-existing files.
+
+
 ## [1.74.2] - 2026-04-03
 
 ### Fixed

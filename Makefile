@@ -1,4 +1,4 @@
-.PHONY: all format test test-unit test-integration install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch
+.PHONY: all format test test-unit test-integration install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset upload-database push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-database promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch diagrams-install diagrams
 
 SOI_SOURCE_YEAR ?= 2021
 SOI_TARGET_YEAR ?= 2023
@@ -298,6 +298,9 @@ presentations/nta_2024_11/nta_2024_slides.pdf: presentations/nta_2024_11/main.te
 	cd presentations/nta_2024_11 && \
 		pdflatex -jobname=nta_2024_slides main && \
 		pdflatex -jobname=nta_2024_slides main
+
+diagrams-install:
+	cd docs/pipeline-diagrams && npm install
 
 diagrams:
 	cd docs/pipeline-diagrams && npx next dev

@@ -419,6 +419,22 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
         0.0
     )
     puf["business_is_sstb"] = np.random.binomial(n=1, p=pr_sstb)
+    is_sstb = puf["business_is_sstb"].astype(bool)
+
+    # The current PUF pipeline only imputes an all-or-nothing SSTB flag.
+    # Use that to split Schedule C self-employment and allocable W-2/UBIA
+    # inputs for policyengine-us without pretending to observe mixed cases.
+    legacy_self_employment_income = puf["self_employment_income"].fillna(0)
+    puf["sstb_self_employment_income"] = np.where(
+        is_sstb, legacy_self_employment_income, 0.0
+    )
+    puf["self_employment_income"] = np.where(
+        is_sstb, 0.0, legacy_self_employment_income
+    )
+    puf["sstb_w2_wages_from_qualified_business"] = np.where(is_sstb, w2, 0.0)
+    puf["sstb_unadjusted_basis_qualified_property"] = np.where(
+        is_sstb, ubia, 0.0
+    )
 
     reit_params = QBI_PARAMS["reit_ptp_income_distribution"]
     p_reit_ptp = reit_params["probability_of_receiving"]
@@ -513,6 +529,9 @@ FINANCIAL_SUBSET = [
     "w2_wages_from_qualified_business",
     "unadjusted_basis_qualified_property",
     "business_is_sstb",
+    "sstb_self_employment_income",
+    "sstb_w2_wages_from_qualified_business",
+    "sstb_unadjusted_basis_qualified_property",
     "deductible_mortgage_interest",
     "partnership_s_corp_income",
     "partnership_se_income",

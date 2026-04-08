@@ -135,6 +135,23 @@ class TestPufCloneDataset:
         for var in OVERRIDDEN_IMPUTED_VARIABLES:
             assert var in IMPUTED_VARIABLES
 
+    def test_sstb_qbi_split_variables_imputed(self):
+        expected = {
+            "sstb_self_employment_income",
+            "sstb_w2_wages_from_qualified_business",
+            "sstb_unadjusted_basis_qualified_property",
+        }
+        for var in expected:
+            assert var in IMPUTED_VARIABLES
+
+    def test_sstb_allocable_wage_and_ubia_are_overridden(self):
+        expected = {
+            "sstb_w2_wages_from_qualified_business",
+            "sstb_unadjusted_basis_qualified_property",
+        }
+        for var in expected:
+            assert var in OVERRIDDEN_IMPUTED_VARIABLES
+
 
 class TestStratifiedSubsample:
     def test_noop_when_small(self):

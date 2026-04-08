@@ -477,13 +477,13 @@ def build_h5(
         zip_codes[la_mask] = "90001"
         data["zip_code"] = {time_period: zip_codes.astype("S")}
 
-    # === Gap 4: Congressional district GEOID ===
+    # === Congressional district GEOID ===
     clone_cd_geoids = np.array([int(cd) for cd in active_clone_cds], dtype=np.int32)
     data["congressional_district_geoid"] = {
         time_period: clone_cd_geoids,
     }
 
-    # === Gap 1: SPM threshold recalculation ===
+    # === SPM threshold recalculation ===
     print("Recalculating SPM thresholds...")
     unique_cds_list = sorted(set(active_clone_cds))
     cd_geoadj_values = load_cd_geoadj_values(unique_cds_list)

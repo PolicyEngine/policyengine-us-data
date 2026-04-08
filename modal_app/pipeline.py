@@ -880,12 +880,11 @@ def run_pipeline(
             print("\n[Step 3/5] Fit weights (skipped - completed)")
 
         # ── Step 4: Build H5s + stage + diagnostics (parallel) ──
+        # Per plan: all four tasks run in parallel:
         #   4a. coordinate_publish (regional H5s)
         #   4b. coordinate_national_publish (national H5)
         #   4c. stage_base_datasets (datasets → HF staging)
-        #   4d. upload_run_diagnostics (calibration diagnostics → HF)
-        #   4e. _write_validation_diagnostics (after H5 builds)
-        #   4f. upload_run_diagnostics (validation diagnostics → HF)
+        #   4d. upload_run_diagnostics (diagnostics → HF)
         if not _step_completed(meta, "publish_and_stage"):
             print(
                 "\n[Step 4/5] Building H5s, staging datasets, "
@@ -920,13 +919,13 @@ def run_pipeline(
                 )
 
             # While H5 builds run, stage base datasets
-            # and upload calibration diagnostics in this container
+            # and upload diagnostics in this container
             pipeline_volume.reload()
 
             print("  Staging base datasets to HF...")
             stage_base_datasets(run_id, version, branch)
 
-            print("  Uploading calibration diagnostics...")
+            print("  Uploading run diagnostics...")
             upload_run_diagnostics(run_id, branch)
 
             # Now wait for H5 builds to finish
@@ -964,10 +963,6 @@ def run_pipeline(
                 meta=meta,
                 vol=pipeline_volume,
             )
-
-            # Upload validation diagnostics (written after H5 builds)
-            print("  Uploading validation diagnostics...")
-            upload_run_diagnostics(run_id, branch)
 
             _record_step(
                 meta,

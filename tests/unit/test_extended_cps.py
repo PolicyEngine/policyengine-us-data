@@ -124,15 +124,24 @@ class TestDeterministicSpmThresholdRebuild:
     def test_rebuild_cloned_spm_thresholds_uses_donor_geoadj(self):
         data = {
             "age": {2024: np.array([40, 12, 70, 40, 12, 70], dtype=np.int32)},
-            "person_spm_unit_id": {2024: np.array([10, 10, 20, 30, 30, 40], dtype=np.int32)},
+            "person_spm_unit_id": {
+                2024: np.array([10, 10, 20, 30, 30, 40], dtype=np.int32)
+            },
             "spm_unit_id": {2024: np.array([10, 20, 30, 40], dtype=np.int32)},
             "spm_unit_tenure_type": {
                 2024: np.array(
-                    [b"RENTER", b"OWNER_WITHOUT_MORTGAGE", b"RENTER", b"OWNER_WITHOUT_MORTGAGE"]
+                    [
+                        b"RENTER",
+                        b"OWNER_WITHOUT_MORTGAGE",
+                        b"RENTER",
+                        b"OWNER_WITHOUT_MORTGAGE",
+                    ]
                 )
             },
             "spm_unit_spm_threshold": {
-                2024: np.array([20_000.0, 15_000.0, 999_999.0, 999_999.0], dtype=np.float64)
+                2024: np.array(
+                    [20_000.0, 15_000.0, 999_999.0, 999_999.0], dtype=np.float64
+                )
             },
         }
 

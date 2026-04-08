@@ -410,11 +410,15 @@ def rebuild_cloned_spm_thresholds(data: dict, time_period: int) -> np.ndarray:
     person_spm_unit_ids = np.asarray(data["person_spm_unit_id"][time_period])
     spm_unit_ids = np.asarray(data["spm_unit_id"][time_period])
     tenure_types = np.asarray(data["spm_unit_tenure_type"][time_period])
-    stored_thresholds = np.asarray(data["spm_unit_spm_threshold"][time_period], dtype=float)
+    stored_thresholds = np.asarray(
+        data["spm_unit_spm_threshold"][time_period], dtype=float
+    )
 
     n_units = len(spm_unit_ids)
     if n_units % 2 != 0:
-        raise ValueError("Expected cloned SPM units to have an even-length spm_unit_id array")
+        raise ValueError(
+            "Expected cloned SPM units to have an even-length spm_unit_id array"
+        )
 
     unit_indices = _index_into_spm_units(person_spm_unit_ids, spm_unit_ids)
     is_adult = person_ages >= 18
@@ -426,9 +430,7 @@ def rebuild_cloned_spm_thresholds(data: dict, time_period: int) -> np.ndarray:
     thresholds_by_tenure = get_spm_reference_thresholds(time_period)
     reference_base = np.array(
         [
-            thresholds_by_tenure[
-                _SPM_TENURE_TO_REFERENCE_KEY.get(tenure, "renter")
-            ]
+            thresholds_by_tenure[_SPM_TENURE_TO_REFERENCE_KEY.get(tenure, "renter")]
             for tenure in tenure_types
         ],
         dtype=float,

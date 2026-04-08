@@ -20,6 +20,7 @@ all: data test
 
 format:
 	ruff format .
+	mdformat --wrap 100 docs/
 
 test:
 	pytest

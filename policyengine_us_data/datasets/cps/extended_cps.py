@@ -376,7 +376,8 @@ def _splice_clone_feature_predictions(
     id="cps_only",
     label="CPS-Only Variable Re-imputation",
     node_type="process",
-    description="80 variables for PUF half — transfers, SPM, medical, hours, retirement",
+    description="Second-stage QRF for CPS-only transfers, SPM, medical, hours, ORG, retirement, and prior-year inputs",
+    details="Trains on CPS persons and predicts clone-half values from demographics plus PUF-imputed income, then applies retirement and ORG domain constraints",
     source_file="policyengine_us_data/datasets/cps/extended_cps.py",
 ))
 def _impute_cps_only_variables(
@@ -753,7 +754,8 @@ def _apply_post_processing(predictions, X_test, time_period, data):
     id="qrf_pass2",
     label="QRF Pass 2: Override Imputation",
     node_type="process",
-    description="51 variables (both halves) — partnership, S-corp, charitable, mortgage, credits",
+    description="Replace the PUF clone half with second-stage CPS-only QRF outputs",
+    details="Keeps original CPS donor values in the first half and maps person-level predictions onto each target entity before splicing",
     source_file="policyengine_us_data/datasets/cps/extended_cps.py",
 ))
 def _splice_cps_only_predictions(
@@ -971,7 +973,8 @@ class ExtendedCPS(Dataset):
         id="formula_drop",
         label="Formula Variable Dropping",
         node_type="process",
-        description="Remove PE-computed variables, rename employment_income → employment_income_before_lsr",
+        description="Rename response inputs, then drop formula, adds, and subtracts variables before save",
+        details="Preserves leaf inputs needed by policyengine-us while keeping stored arrays aligned with the current variable model",
         source_file="policyengine_us_data/datasets/cps/extended_cps.py",
     ))
     @classmethod

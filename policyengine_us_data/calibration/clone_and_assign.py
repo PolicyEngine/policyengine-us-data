@@ -93,11 +93,14 @@ def _build_agi_block_probs(cds, pop_probs, cd_agi_targets):
     if agi_probs.sum() == 0:
         return pop_probs
     return agi_probs / agi_probs.sum()
+
+
 @pipeline_node(PipelineNode(
     id="geo_assign_s4",
     label="Geography Assignment",
     node_type="process",
-    description="assign_random_geography() — population-weighted block draw",
+    description="Population-weighted block assignment with AGI-conditioned reweighting for top-income households",
+    details="Preserves within-district block shares while reweighting extreme-household draws to district AGI targets",
     source_file="policyengine_us_data/calibration/clone_and_assign.py",
 ))
 def assign_random_geography(

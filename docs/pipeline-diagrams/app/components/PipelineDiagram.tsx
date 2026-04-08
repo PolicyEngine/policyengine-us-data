@@ -7,6 +7,7 @@ import {
   Controls,
   MiniMap,
   ReactFlowProvider,
+  ViewportPortal,
   useReactFlow,
   useNodesState,
   useEdgesState,
@@ -28,6 +29,9 @@ const NODE_WIDTH = 240;
 const NODE_HEIGHT = 64;
 const NODE_HEIGHT_COMPACT = 58;
 const ELK_PORT_SIZE = 0;
+const GROUP_PADDING_X = 18;
+const GROUP_PADDING_Y = 18;
+const GROUP_PADDING_TOP = 24;
 const EDGE_LABEL_HEIGHT = 16;
 const EDGE_LABEL_MIN_WIDTH = 40;
 const EDGE_LABEL_MAX_WIDTH = 180;
@@ -53,6 +57,7 @@ interface StageData {
   description: string;
   nodes: PipelineJsonNode[];
   edges: PipelineJsonEdge[];
+  groups?: PipelineJsonGroup[];
 }
 
 interface PipelineJsonNode {
@@ -69,6 +74,13 @@ interface PipelineJsonEdge {
   target: string;
   edge_type?: string;
   label?: string;
+}
+
+interface PipelineJsonGroup {
+  id: string;
+  label: string;
+  description?: string;
+  node_ids: string[];
 }
 
 interface Point {
@@ -122,6 +134,16 @@ interface EdgePortAssignment extends EdgeHandleAssignment {
   targetPortId: string;
   sourceSide: PortSide;
   targetSide: PortSide;
+}
+
+interface GroupBox {
+  id: string;
+  label: string;
+  description: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 type PipelineNodeData = Record<string, unknown> & {
@@ -335,10 +357,43 @@ function buildElkGraph(
   };
 }
 
+function buildGroupBoxes(
+  groups: PipelineJsonGroup[] | undefined,
+  positionMap: Record<string, PositionedNode>
+): GroupBox[] {
+  return (groups || [])
+    .map((group) => {
+      const groupNodes = group.node_ids
+        .map((nodeId) => positionMap[nodeId])
+        .filter(Boolean) as PositionedNode[];
+
+      if (groupNodes.length === 0) {
+        return null;
+      }
+
+      const minX = Math.min(...groupNodes.map((node) => node.x));
+      const minY = Math.min(...groupNodes.map((node) => node.y));
+      const maxX = Math.max(...groupNodes.map((node) => node.x + node.width));
+      const maxY = Math.max(...groupNodes.map((node) => node.y + node.height));
+
+      return {
+        id: group.id,
+        label: group.label,
+        description: group.description || "",
+        x: minX - GROUP_PADDING_X,
+        y: minY - GROUP_PADDING_TOP,
+        width: maxX - minX + GROUP_PADDING_X * 2,
+        height: maxY - minY + GROUP_PADDING_TOP + GROUP_PADDING_Y,
+      };
+    })
+    .filter((group): group is GroupBox => group !== null);
+}
+
 async function runElkLayout(
   pipelineNodes: PipelineJsonNode[],
-  pipelineEdges: PipelineJsonEdge[]
-): Promise<{ nodes: PipelineFlowNode[]; edges: PipelineFlowEdge[] }> {
+  pipelineEdges: PipelineJsonEdge[],
+  pipelineGroups: PipelineJsonGroup[] | undefined
+): Promise<{ nodes: PipelineFlowNode[]; edges: PipelineFlowEdge[]; groups: GroupBox[] }> {
   const nodeSizeMap: Record<string, NodeSize> = {};
   for (const node of pipelineNodes) {
     nodeSizeMap[node.id] = estimateNodeSize(node);
@@ -357,6 +412,7 @@ async function runElkLayout(
 
   const result = await elk.layout(buildElkGraph(pipelineNodes, pipelineEdges, nodeSizeMap, edgePorts));
   const positionMap = getPositionMap(result.children, nodeSizeMap);
+  const groups = buildGroupBoxes(pipelineGroups, positionMap);
 
   // Build edge route map from ELK sections
   const routeMap: Record<string, ElkRoute> = {};
@@ -418,12 +474,13 @@ async function runElkLayout(
     };
   });
 
-  return { nodes, edges };
+  return { nodes, edges, groups };
 }
 
 function DiagramInner({ stage }: { stage: StageData }) {
   const [nodes, setNodes] = useNodesState<PipelineFlowNode>([]);
   const [edges, setEdges] = useEdgesState<PipelineFlowEdge>([]);
+  const [groups, setGroups] = useState<GroupBox[]>([]);
   const [selectedNode, setSelectedNode] = useState<PipelineNodeData | null>(null);
   const { fitView } = useReactFlow();
 
@@ -431,10 +488,11 @@ function DiagramInner({ stage }: { stage: StageData }) {
     if (!stage?.nodes?.length) return;
 
     let cancelled = false;
-    runElkLayout(stage.nodes, stage.edges).then(({ nodes, edges }) => {
+    runElkLayout(stage.nodes, stage.edges, stage.groups).then(({ nodes, edges, groups }) => {
       if (cancelled) return;
       setNodes(nodes);
       setEdges(edges);
+      setGroups(groups);
       requestAnimationFrame(() => {
         if (cancelled) return;
         fitView({ padding: 0.15 });
@@ -513,6 +571,60 @@ function DiagramInner({ stage }: { stage: StageData }) {
         maxZoom={3}
         proOptions={{ hideAttribution: true }}
       >
+        <ViewportPortal>
+          {groups.map((group) => (
+            <div
+              key={group.id}
+              className="pointer-events-none absolute rounded-lg"
+              style={{
+                left: group.x,
+                top: group.y,
+                width: group.width,
+                height: group.height,
+                border: "1.5px dashed #94A3B8",
+                background: "rgba(148, 163, 184, 0.08)",
+                boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.5)",
+              }}
+            >
+              <div
+                className="absolute rounded-md px-2 py-1 max-w-[220px]"
+                style={{
+                  top: 0,
+                  left: 12,
+                  transform: "translateY(-50%)",
+                  background: "rgba(255,255,255,0.96)",
+                  border: "1px solid #CBD5E1",
+                  color: "var(--pe-text-secondary)",
+                  fontFamily: "var(--pe-font-primary)",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                }}
+                title={group.description || group.label}
+              >
+                <div
+                  className="font-medium truncate"
+                  style={{ fontSize: "11px", color: "var(--pe-text-primary)" }}
+                >
+                  {group.label}
+                </div>
+                {group.description && (
+                  <div
+                    className="mt-0.5 overflow-hidden"
+                    style={{
+                      fontSize: "10px",
+                      lineHeight: 1.2,
+                      color: "var(--pe-text-secondary)",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                    }}
+                  >
+                    {group.description}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </ViewportPortal>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E2E8F0" />
         <Controls position="bottom-right" showInteractive={false} />
         <MiniMap

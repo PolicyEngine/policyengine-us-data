@@ -162,7 +162,8 @@ class CPS(Dataset):
         id="downsample",
         label="Downsampling",
         node_type="process",
-        description="frac=0.5 for CPS_2024 using Microsimulation.subsample()",
+        description="Microsimulation.subsample(frac) for standard released CPS vintages",
+        details="Released CPS vintages use frac=0.5; CPS_2024_Full skips this step",
         source_file="policyengine_us_data/datasets/cps/cps.py",
     ))
     def downsample(self, frac: float):
@@ -264,8 +265,8 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     id="add_takeup",
     label="Benefit Takeup",
     node_type="us_specific",
-    description="Stochastic takeup for 9 benefit programs",
-    details="SNAP, ACA, Medicaid, EITC, SSI, TANF, WIC, Head Start; state-specific Medicaid rates",
+    description="Stochastic takeup and eligibility-alignment draws for major benefit programs",
+    details="Applies rates for EITC, DC PTC, SNAP, ACA, Medicaid, Head Start, Early Head Start, SSI, TANF, and WIC, plus pregnancy and voluntary filing imputations",
     source_file="policyengine_us_data/datasets/cps/cps.py",
 ))
 def add_takeup(self):
@@ -619,8 +620,8 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     id="add_personal_income_variables",
     label="Add Income Variables",
     node_type="process",
-    description="30+ income types with splits",
-    details="SS classified by reason codes; retirement split by account type; capital gains 88% LT / 12% ST",
+    description="CPS income, transfer, retirement, and QBI-qualification inputs with account-level splits",
+    details="Classifies Social Security by reason code, allocates retirement flows by account type, and adds QBI qualification flags alongside capital-gains splits",
     source_file="policyengine_us_data/datasets/cps/cps.py",
 ))
 def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
@@ -1928,7 +1929,7 @@ def _update_documentation_with_numbers(log_df, docs_dir):
     label="Tips Imputation (QRF)",
     node_type="process",
     description="Impute tip income and liquid assets from SIPP 2023",
-    details="Models cached as pickle; QRF fit_predict()",
+    details="Cached SIPP models predict tip income plus bank, stock, and bond assets from CPS household context",
     source_file="policyengine_us_data/datasets/cps/cps.py",
 ))
 def add_tips(self, cps: h5py.File):
@@ -2120,6 +2121,7 @@ def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
     label="Auto Loan / Net Worth (QRF)",
     node_type="process",
     description="Impute auto loan balance, interest, and net worth from SCF 2022",
+    details="Builds SCF-style reference-person records from CPS household aggregates before QRF prediction",
     source_file="policyengine_us_data/datasets/cps/cps.py",
 ))
 def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:

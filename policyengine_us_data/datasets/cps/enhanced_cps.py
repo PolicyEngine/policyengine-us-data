@@ -100,11 +100,14 @@ def create_aca_2025_takeup_override(
         enrolled_person_weights=enrolled_person_weights,
         target_people=target_people,
     )
+
+
 @pipeline_node(PipelineNode(
     id="reweight",
     label="reweight()",
     node_type="process",
-    description="PyTorch Adam + L0 HardConcrete — 500 epochs, lr=0.2",
+    description="Sparse household-weight calibration against national and state targets",
+    details="Uses Adam with HardConcrete gates; default run is 500 epochs at lr=0.2",
     source_file="policyengine_us_data/datasets/cps/enhanced_cps.py",
 ))
 def reweight(

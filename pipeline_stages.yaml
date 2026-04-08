@@ -372,6 +372,11 @@ stages:
     title: "Stage 3b: Stratified CPS"
     description: "Stratify Extended CPS by income — keep top 1%, sample remaining 99%"
     country: us
+    groups:
+      - id: create_stratified
+        label: "create_stratified_cps_dataset()"
+        description: "Wrapper around AGI calculation, top-1% retention, and sampling into the stratified CPS artifact"
+        node_ids: [calc_agi, strat_top, strat_sample, out_strat]
     extra_nodes:
       - id: in_ext_cps
         label: "extended_cps_2024.h5"
@@ -466,6 +471,11 @@ stages:
     title: "Stage 5: Matrix Build (Calibration Target Construction)"
     description: "Build sparse calibration matrix (targets × households × clones)"
     country: us
+    groups:
+      - id: run_calibration_build
+        label: "run_calibration()"
+        description: "Build phase: resolve targets and constraints, assemble clone values, and package the sparse calibration matrix"
+        node_ids: [target_resolve, target_uprate, geo_build, constraint_resolve, state_precomp, clone_assembly, takeup_rerand, sparse_build, out_pkg]
     extra_nodes:
       - id: in_cps_s5
         label: "source_imputed_stratified_extended_cps.h5"
@@ -554,6 +564,11 @@ stages:
     title: "Stage 6: Weight Fitting (L0 Calibration)"
     description: "Fit log-weights using L0 HardConcrete gates on GPU"
     country: us
+    groups:
+      - id: run_calibration_fit
+        label: "run_calibration()"
+        description: "Fit phase: initialize weights, optimize sparse calibration weights, and emit artifacts plus diagnostics"
+        node_ids: [init_weights, create_model, fit_model, extract_weights, out_weights, out_geo_s6, out_diag, out_config_s6]
     extra_nodes:
       - id: in_pkg_s6
         label: "calibration_package.pkl"

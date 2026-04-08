@@ -35,8 +35,8 @@ VALID_EDGE_TYPES = {
 # Decorated code nodes that are intentionally not rendered as graph nodes.
 # The diagrams document these flows through finer-grained YAML nodes instead.
 IGNORED_CODE_NODE_IDS = {
-    "create_stratified": "Stage 3b is expanded into AGI/top-1%/sample steps",
-    "run_calibration": "Stages 5-6 are expanded into build/fit/output steps",
+    "create_stratified": "Stage 3b shows this wrapper as a visual group around AGI/top-1%/sample steps",
+    "run_calibration": "Stages 5-6 show this wrapper as visual groups around build/fit/output steps",
 }
 
 
@@ -155,6 +155,7 @@ def build_pipeline_json(output_path: Path = DEFAULT_OUTPUT):
             "country": stage_def.get("country", "us"),
             "nodes": [],
             "edges": [],
+            "groups": stage_def.get("groups", []),
         }
 
         # Add extra nodes from YAML (inputs, outputs, utilities)
@@ -219,6 +220,18 @@ def build_pipeline_json(output_path: Path = DEFAULT_OUTPUT):
                 print(
                     f"  ERROR: Edge source '{edge['source']}' not found in "
                     f"stage {stage['id']} nodes",
+                    file=sys.stderr,
+                )
+                errors += 1
+
+        for group in stage.get("groups", []):
+            missing_group_nodes = [
+                node_id for node_id in group.get("node_ids", []) if node_id not in node_ids
+            ]
+            if missing_group_nodes:
+                print(
+                    f"  ERROR: Group '{group['id']}' references missing nodes "
+                    f"in stage {stage['id']}: {', '.join(missing_group_nodes)}",
                     file=sys.stderr,
                 )
                 errors += 1

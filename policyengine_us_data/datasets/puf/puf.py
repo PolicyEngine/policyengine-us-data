@@ -63,7 +63,8 @@ def conditionally_sample_lognormal(flag, target_mean, log_sigma, rng):
     id="simulate_qbi",
     label="QBI Simulation",
     node_type="process",
-    description="Simulate W-2 wages, UBIA, and SSTB for Section 199A",
+    description="Simulate Section 199A W-2 wages and UBIA guardrails from PUF income",
+    details="Uses QBI-source assumptions to generate payroll and property proxies; SSTB and related flags are added later in preprocess_puf",
     source_file="policyengine_us_data/datasets/puf/puf.py",
 ))
 def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
@@ -220,6 +221,7 @@ def impute_pension_contributions_to_puf(puf_df):
     label="Impute PUF Demographics",
     node_type="process",
     description="QRF imputation for age, gender, and earnings split",
+    details="Imputes AGEDP1-3, AGERANGE, EARNSPLIT, and GENDER from matched PUF demographic records",
     source_file="policyengine_us_data/datasets/puf/puf.py",
 ))
 def impute_missing_demographics(
@@ -333,8 +335,8 @@ def decode_age_dependent(age_range: int) -> int:
     id="preprocess_puf",
     label="Preprocess PUF",
     node_type="process",
-    description="Rename 60+ IRS variables to PolicyEngine names",
-    details="E00200 → employment_income, etc.",
+    description="Rename IRS variables and derive partnership plus Section 199A-ready PolicyEngine inputs",
+    details="Maps core SOI fields, constructs partnership/self-employment components, and adds W-2 wages, UBIA, SSTB, REIT/PTP, and BDC proxies",
     source_file="policyengine_us_data/datasets/puf/puf.py",
 ))
 def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:

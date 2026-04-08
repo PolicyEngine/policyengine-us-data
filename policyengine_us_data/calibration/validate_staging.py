@@ -296,11 +296,14 @@ def _get_reform_income_tax_delta(
     ).values
     reform_delta_cache[variable] = reform_income_tax - baseline_income_tax
     return reform_delta_cache[variable]
+
+
 @pipeline_node(PipelineNode(
     id="v3",
     label="Layer 3: Target-Based Validation",
     node_type="process",
-    description="Full Microsimulation per area — compare sim values to targets",
+    description="Full microsimulation against constrained targets, including reform-aware comparisons",
+    details="Caches household and person variables, applies non-geographic constraints, and neutralizes target-specific reforms via income-tax deltas",
     source_file="policyengine_us_data/calibration/validate_staging.py",
 ))
 def validate_area(

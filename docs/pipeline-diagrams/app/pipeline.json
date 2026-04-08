@@ -213,7 +213,8 @@
           "edge_type": "produces_artifact",
           "label": "policy_data.db"
         }
-      ]
+      ],
+      "groups": []
     },
     {
       "id": 1,
@@ -319,8 +320,8 @@
           "id": "add_personal_income_variables",
           "label": "Add Income Variables",
           "node_type": "process",
-          "description": "30+ income types with splits",
-          "details": "SS classified by reason codes; retirement split by account type; capital gains 88% LT / 12% ST",
+          "description": "CPS income, transfer, retirement, and QBI-qualification inputs with account-level splits",
+          "details": "Classifies Social Security by reason code, allocates retirement flows by account type, and adds QBI qualification flags alongside capital-gains splits",
           "source_file": "policyengine_us_data/datasets/cps/cps.py"
         },
         {
@@ -365,7 +366,7 @@
           "label": "Tips Imputation (QRF)",
           "node_type": "process",
           "description": "Impute tip income and liquid assets from SIPP 2023",
-          "details": "Models cached as pickle; QRF fit_predict()",
+          "details": "Cached SIPP models predict tip income plus bank, stock, and bond assets from CPS household context",
           "source_file": "policyengine_us_data/datasets/cps/cps.py"
         },
         {
@@ -373,36 +374,39 @@
           "label": "Auto Loan / Net Worth (QRF)",
           "node_type": "process",
           "description": "Impute auto loan balance, interest, and net worth from SCF 2022",
+          "details": "Builds SCF-style reference-person records from CPS household aggregates before QRF prediction",
           "source_file": "policyengine_us_data/datasets/cps/cps.py"
         },
         {
           "id": "add_takeup",
           "label": "Benefit Takeup",
           "node_type": "us_specific",
-          "description": "Stochastic takeup for 9 benefit programs",
-          "details": "SNAP, ACA, Medicaid, EITC, SSI, TANF, WIC, Head Start; state-specific Medicaid rates",
+          "description": "Stochastic takeup and eligibility-alignment draws for major benefit programs",
+          "details": "Applies rates for EITC, DC PTC, SNAP, ACA, Medicaid, Head Start, Early Head Start, SSI, TANF, and WIC, plus pregnancy and voluntary filing imputations",
           "source_file": "policyengine_us_data/datasets/cps/cps.py"
         },
         {
           "id": "downsample",
           "label": "Downsampling",
           "node_type": "process",
-          "description": "frac=0.5 for CPS_2024 using Microsimulation.subsample()",
+          "description": "Microsimulation.subsample(frac) for standard released CPS vintages",
+          "details": "Released CPS vintages use frac=0.5; CPS_2024_Full skips this step",
           "source_file": "policyengine_us_data/datasets/cps/cps.py"
         },
         {
           "id": "preprocess_puf",
           "label": "Preprocess PUF",
           "node_type": "process",
-          "description": "Rename 60+ IRS variables to PolicyEngine names",
-          "details": "E00200 \u2192 employment_income, etc.",
+          "description": "Rename IRS variables and derive partnership plus Section 199A-ready PolicyEngine inputs",
+          "details": "Maps core SOI fields, constructs partnership/self-employment components, and adds W-2 wages, UBIA, SSTB, REIT/PTP, and BDC proxies",
           "source_file": "policyengine_us_data/datasets/puf/puf.py"
         },
         {
           "id": "simulate_qbi",
           "label": "QBI Simulation",
           "node_type": "process",
-          "description": "Simulate W-2 wages, UBIA, and SSTB for Section 199A",
+          "description": "Simulate Section 199A W-2 wages and UBIA guardrails from PUF income",
+          "details": "Uses QBI-source assumptions to generate payroll and property proxies; SSTB and related flags are added later in preprocess_puf",
           "source_file": "policyengine_us_data/datasets/puf/puf.py"
         },
         {
@@ -410,6 +414,7 @@
           "label": "Impute PUF Demographics",
           "node_type": "process",
           "description": "QRF imputation for age, gender, and earnings split",
+          "details": "Imputes AGEDP1-3, AGERANGE, EARNSPLIT, and GENDER from matched PUF demographic records",
           "source_file": "policyengine_us_data/datasets/puf/puf.py"
         }
       ],
@@ -569,7 +574,8 @@
           "target": "impute_puf_demographics",
           "edge_type": "uses_utility"
         }
-      ]
+      ],
+      "groups": []
     },
     {
       "id": 2,
@@ -632,7 +638,8 @@
           "id": "qrf_pass2",
           "label": "QRF Pass 2: Override Imputation",
           "node_type": "process",
-          "description": "51 variables (both halves) \u2014 partnership, S-corp, charitable, mortgage, credits",
+          "description": "Replace the PUF clone half with second-stage CPS-only QRF outputs",
+          "details": "Keeps original CPS donor values in the first half and maps person-level predictions onto each target entity before splicing",
           "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
         },
         {
@@ -660,14 +667,16 @@
           "id": "cps_only",
           "label": "CPS-Only Variable Re-imputation",
           "node_type": "process",
-          "description": "80 variables for PUF half \u2014 transfers, SPM, medical, hours, retirement",
+          "description": "Second-stage QRF for CPS-only transfers, SPM, medical, hours, ORG, retirement, and prior-year inputs",
+          "details": "Trains on CPS persons and predicts clone-half values from demographics plus PUF-imputed income, then applies retirement and ORG domain constraints",
           "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
         },
         {
           "id": "formula_drop",
           "label": "Formula Variable Dropping",
           "node_type": "process",
-          "description": "Remove PE-computed variables, rename employment_income \u2192 employment_income_before_lsr",
+          "description": "Rename response inputs, then drop formula, adds, and subtracts variables before save",
+          "details": "Preserves leaf inputs needed by policyengine-us while keeping stored arrays aligned with the current variable model",
           "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
         }
       ],
@@ -761,7 +770,8 @@
           "target": "cps_only",
           "edge_type": "uses_utility"
         }
-      ]
+      ],
+      "groups": []
     },
     {
       "id": "3a",
@@ -840,7 +850,8 @@
           "id": "reweight",
           "label": "reweight()",
           "node_type": "process",
-          "description": "PyTorch Adam + L0 HardConcrete \u2014 500 epochs, lr=0.2",
+          "description": "Sparse household-weight calibration against national and state targets",
+          "details": "Uses Adam with HardConcrete gates; default run is 500 epochs at lr=0.2",
           "source_file": "policyengine_us_data/datasets/cps/enhanced_cps.py"
         }
       ],
@@ -901,7 +912,8 @@
           "target": "reweight",
           "edge_type": "uses_utility"
         }
-      ]
+      ],
+      "groups": []
     },
     {
       "id": "3b",
@@ -969,6 +981,19 @@
           "edge_type": "data_flow",
           "label": "sampled 99%"
         }
+      ],
+      "groups": [
+        {
+          "id": "create_stratified",
+          "label": "create_stratified_cps_dataset()",
+          "description": "Wrapper around AGI calculation, top-1% retention, and sampling into the stratified CPS artifact",
+          "node_ids": [
+            "calc_agi",
+            "strat_top",
+            "strat_sample",
+            "out_strat"
+          ]
+        }
       ]
     },
     {
@@ -1030,7 +1055,8 @@
           "id": "geo_assign_s4",
           "label": "Geography Assignment",
           "node_type": "process",
-          "description": "assign_random_geography() \u2014 population-weighted block draw",
+          "description": "Population-weighted block assignment with AGI-conditioned reweighting for top-income households",
+          "details": "Preserves within-district block shares while reweighting extreme-household draws to district AGI targets",
           "source_file": "policyengine_us_data/calibration/clone_and_assign.py"
         },
         {
@@ -1135,7 +1161,8 @@
           "target": "scf_qrf",
           "edge_type": "uses_utility"
         }
-      ]
+      ],
+      "groups": []
     },
     {
       "id": 5,
@@ -1339,6 +1366,24 @@
           "target": "sparse_build",
           "edge_type": "uses_utility"
         }
+      ],
+      "groups": [
+        {
+          "id": "run_calibration_build",
+          "label": "run_calibration()",
+          "description": "Build phase: resolve targets and constraints, assemble clone values, and package the sparse calibration matrix",
+          "node_ids": [
+            "target_resolve",
+            "target_uprate",
+            "geo_build",
+            "constraint_resolve",
+            "state_precomp",
+            "clone_assembly",
+            "takeup_rerand",
+            "sparse_build",
+            "out_pkg"
+          ]
+        }
       ]
     },
     {
@@ -1479,6 +1524,23 @@
           "source": "util_pytorch",
           "target": "fit_model",
           "edge_type": "uses_utility"
+        }
+      ],
+      "groups": [
+        {
+          "id": "run_calibration_fit",
+          "label": "run_calibration()",
+          "description": "Fit phase: initialize weights, optimize sparse calibration weights, and emit artifacts plus diagnostics",
+          "node_ids": [
+            "init_weights",
+            "create_model",
+            "fit_model",
+            "extract_weights",
+            "out_weights",
+            "out_geo_s6",
+            "out_diag",
+            "out_config_s6"
+          ]
         }
       ]
     },
@@ -1716,7 +1778,8 @@
           "target": "takeup_apply",
           "edge_type": "uses_utility"
         }
-      ]
+      ],
+      "groups": []
     },
     {
       "id": 8,
@@ -1819,7 +1882,8 @@
           "id": "v3",
           "label": "Layer 3: Target-Based Validation",
           "node_type": "process",
-          "description": "Full Microsimulation per area \u2014 compare sim values to targets",
+          "description": "Full microsimulation against constrained targets, including reform-aware comparisons",
+          "details": "Caches household and person variables, applies non-geographic constraints, and neutralizes target-specific reforms via income-tax deltas",
           "source_file": "policyengine_us_data/calibration/validate_staging.py"
         },
         {
@@ -1937,7 +2001,8 @@
           "target": "staging_upload",
           "edge_type": "uses_utility"
         }
-      ]
+      ],
+      "groups": []
     }
   ],
   "metadata": {

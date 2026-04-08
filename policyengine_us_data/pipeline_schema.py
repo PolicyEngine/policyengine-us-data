@@ -95,6 +95,26 @@ class PipelineEdge:
 
 
 @dataclass
+class PipelineGroup:
+    """A visual wrapper around related nodes within a stage.
+
+    Groups are used for orchestration functions that are intentionally
+    expanded into multiple documented substeps in the diagram.
+
+    Args:
+        id: Unique identifier for the group.
+        label: Display name shown on the frame.
+        description: Optional explanation of what the wrapper does.
+        node_ids: IDs of stage nodes enclosed by the group.
+    """
+
+    id: str
+    label: str
+    description: str = ""
+    node_ids: list[str] = field(default_factory=list)
+
+
+@dataclass
 class PipelineStage:
     """A stage in the pipeline (e.g., Stage 1: Base Dataset Construction).
 
@@ -106,6 +126,7 @@ class PipelineStage:
         country: Which country pipeline ("us" or "uk").
         nodes: Nodes in this stage.
         edges: Edges within this stage.
+        groups: Visual wrappers around related nodes.
     """
 
     id: int
@@ -115,3 +136,4 @@ class PipelineStage:
     country: str = "us"
     nodes: list[PipelineNode] = field(default_factory=list)
     edges: list[PipelineEdge] = field(default_factory=list)
+    groups: list[PipelineGroup] = field(default_factory=list)

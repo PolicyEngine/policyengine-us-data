@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import {
   ReactFlow,
   Background,
@@ -24,6 +24,9 @@ import NodeDetailPanel from "./NodeDetailPanel";
 const elk = new ELK();
 const nodeTypes = { pipeline: PipelineNode };
 const edgeTypes = { elk: ElkEdge };
+const NODE_WIDTH = 240;
+const NODE_HEIGHT = 64;
+const NODE_HEIGHT_COMPACT = 58;
 
 const ELK_OPTIONS: Record<string, string> = {
   "elk.algorithm": "layered",
@@ -43,20 +46,68 @@ interface StageData {
   label: string;
   title: string;
   description: string;
-  nodes: any[];
-  edges: any[];
+  nodes: PipelineJsonNode[];
+  edges: PipelineJsonEdge[];
 }
 
+interface PipelineJsonNode {
+  id: string;
+  label?: string;
+  node_type?: string;
+  description?: string;
+  details?: string;
+  source_file?: string;
+}
+
+interface PipelineJsonEdge {
+  source: string;
+  target: string;
+  edge_type?: string;
+  label?: string;
+}
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface ElkRoute {
+  startPoint?: Point;
+  endPoint?: Point;
+  bendPoints?: Point[];
+}
+
+interface ElkLayoutEdge {
+  id?: string;
+  sections?: ElkRoute[];
+}
+
+type PipelineNodeData = Record<string, unknown> & {
+  label: string;
+  nodeType: string;
+  description: string;
+  details: string;
+  source_file: string;
+  width: number;
+  height: number;
+};
+
+type PipelineEdgeData = Record<string, unknown> & {
+  elkRoute: ElkRoute | null;
+};
+
+type PipelineFlowNode = Node<PipelineNodeData, "pipeline">;
+type PipelineFlowEdge = Edge<PipelineEdgeData, "elk">;
+
 /**
- * Estimate node size to match the CSS:
- * min-w-[180px] max-w-[280px], px-3 py-2, 12px label + 10px description
+ * Match the fixed dimensions used by PipelineNode so ELK and ReactFlow
+ * agree on the node boxes the routes attach to.
  */
-function estimateNodeSize(node: any) {
-  let height = 16; // py-2 top
-  height += 18;    // label line
-  if (node.description) height += 16; // description line
-  height += 14;    // py-2 bottom
-  return { width: 240, height: Math.max(58, height) };
+function estimateNodeSize(node: PipelineJsonNode) {
+  return {
+    width: NODE_WIDTH,
+    height: node.description ? NODE_HEIGHT : NODE_HEIGHT_COMPACT,
+  };
 }
 
 /**
@@ -80,17 +131,19 @@ function assignHandles(
 }
 
 async function runElkLayout(
-  pipelineNodes: any[],
-  pipelineEdges: any[]
-): Promise<{ nodes: Node[]; edges: Edge[] }> {
+  pipelineNodes: PipelineJsonNode[],
+  pipelineEdges: PipelineJsonEdge[]
+): Promise<{ nodes: PipelineFlowNode[]; edges: PipelineFlowEdge[] }> {
+  const nodeSizeMap: Record<string, { width: number; height: number }> = {};
   const graph = {
     id: "root",
     layoutOptions: ELK_OPTIONS,
-    children: pipelineNodes.map((n: any) => {
+    children: pipelineNodes.map((n) => {
       const size = estimateNodeSize(n);
+      nodeSizeMap[n.id] = size;
       return { id: n.id, width: size.width, height: size.height };
     }),
-    edges: pipelineEdges.map((e: any, i: number) => ({
+    edges: pipelineEdges.map((e, i: number) => ({
       id: `e-${i}`,
       sources: [e.source],
       targets: [e.target],
@@ -106,35 +159,41 @@ async function runElkLayout(
   }
 
   // Build edge route map from ELK sections
-  const routeMap: Record<string, any> = {};
-  for (const edge of (result.edges || []) as any[]) {
-    if (edge.sections && edge.sections.length > 0) {
+  const routeMap: Record<string, ElkRoute> = {};
+  for (const edge of (result.edges || []) as ElkLayoutEdge[]) {
+    if (edge.id && edge.sections && edge.sections.length > 0) {
       routeMap[edge.id] = edge.sections[0];
     }
   }
 
   // Position nodes
-  const nodes: Node[] = pipelineNodes.map((n: any) => ({
+  const nodes: PipelineFlowNode[] = pipelineNodes.map((n) => ({
     id: n.id,
     type: "pipeline",
     position: positionMap[n.id] || { x: 0, y: 0 },
+    style: {
+      width: nodeSizeMap[n.id]?.width || NODE_WIDTH,
+      height: nodeSizeMap[n.id]?.height || NODE_HEIGHT,
+    },
     data: {
       label: n.label || n.id,
       nodeType: n.node_type || "process",
       description: n.description || "",
       details: n.details || "",
       source_file: n.source_file || "",
+      width: nodeSizeMap[n.id]?.width || NODE_WIDTH,
+      height: nodeSizeMap[n.id]?.height || NODE_HEIGHT,
     },
   }));
 
   // Enrich edges with handles + ELK routes
-  const edges: Edge[] = pipelineEdges.map((e: any, i: number) => {
+  const edges: PipelineFlowEdge[] = pipelineEdges.map((e, i: number) => {
     const edgeId = `e-${i}`;
     const srcPos = positionMap[e.source] || { x: 0, y: 0 };
     const tgtPos = positionMap[e.target] || { x: 0, y: 0 };
     const handles = assignHandles(srcPos, tgtPos);
     const route = routeMap[edgeId];
-    const edgeStyle = EDGE_STYLES[e.edge_type] || EDGE_STYLES.data_flow;
+    const edgeStyle = EDGE_STYLES[e.edge_type ?? "data_flow"] || EDGE_STYLES.data_flow;
 
     return {
       id: edgeId,
@@ -159,34 +218,31 @@ async function runElkLayout(
 }
 
 function DiagramInner({ stage }: { stage: StageData }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [selectedNode, setSelectedNode] = useState<any>(null);
-  const [layoutDone, setLayoutDone] = useState(false);
+  const [nodes, setNodes] = useNodesState<PipelineFlowNode>([]);
+  const [edges, setEdges] = useEdgesState<PipelineFlowEdge>([]);
+  const [selectedNode, setSelectedNode] = useState<PipelineNodeData | null>(null);
   const { fitView } = useReactFlow();
-  const hasFit = useRef(false);
 
   useEffect(() => {
     if (!stage?.nodes?.length) return;
-    hasFit.current = false;
-    setLayoutDone(false);
+
+    let cancelled = false;
     runElkLayout(stage.nodes, stage.edges).then(({ nodes, edges }) => {
+      if (cancelled) return;
       setNodes(nodes);
       setEdges(edges);
-      setLayoutDone(true);
-    });
-  }, [stage]);
-
-  useEffect(() => {
-    if (layoutDone && !hasFit.current) {
-      hasFit.current = true;
       requestAnimationFrame(() => {
+        if (cancelled) return;
         fitView({ padding: 0.15 });
       });
-    }
-  }, [layoutDone, fitView]);
+    });
 
-  const onNodeClick = useCallback((_: any, node: Node) => {
+    return () => {
+      cancelled = true;
+    };
+  }, [stage, setNodes, setEdges, fitView]);
+
+  const onNodeClick = useCallback((_: MouseEvent, node: PipelineFlowNode) => {
     setSelectedNode(node.data);
   }, []);
 

@@ -5,6 +5,14 @@ import { NODE_COLORS } from "../colors";
 
 const handleClass = "!w-2 !h-2 !border-none";
 
+interface PipelineNodeData {
+  label: string;
+  nodeType: string;
+  description?: string;
+  width?: number;
+  height?: number;
+}
+
 /**
  * 8 handles — source + target on each of 4 sides.
  * Handle ID convention:
@@ -29,29 +37,37 @@ function AllHandles({ color }: { color: string }) {
   );
 }
 
-export default function PipelineNode({ data }: { data: any }) {
+export default function PipelineNode({ data }: { data: PipelineNodeData }) {
   const colors = NODE_COLORS[data.nodeType] || NODE_COLORS.process;
   const isDashed = data.nodeType === "missing" || data.nodeType === "absent";
 
   return (
     <div
-      className="rounded-lg px-3 py-2 min-w-[180px] max-w-[280px] cursor-pointer shadow-sm hover:shadow-md transition-shadow duration-150"
+      className="rounded-lg px-3 py-2 cursor-pointer shadow-sm hover:shadow-md transition-shadow duration-150 overflow-hidden"
       style={{
+        width: data.width || 240,
+        height: data.height || 64,
         backgroundColor: colors.fill,
         border: `2px ${isDashed ? "dashed" : "solid"} ${colors.border}`,
         fontFamily: "var(--pe-font-primary)",
       }}
     >
       <div
-        className="font-semibold leading-tight"
+        className="font-semibold leading-tight truncate"
         style={{ fontSize: "12px", color: "var(--pe-text-primary)" }}
       >
         {data.label}
       </div>
       {data.description && (
         <div
-          className="mt-0.5 leading-snug"
-          style={{ fontSize: "10px", color: "var(--pe-text-secondary)" }}
+          className="mt-0.5 leading-snug overflow-hidden"
+          style={{
+            fontSize: "10px",
+            color: "var(--pe-text-secondary)",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+          }}
         >
           {data.description}
         </div>

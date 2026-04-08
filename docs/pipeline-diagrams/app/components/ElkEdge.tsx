@@ -24,21 +24,27 @@ export default function ElkEdge({
   let labelY: number;
 
   if (data?.elkRoute) {
-    const { startPoint, endPoint, bendPoints = [] } = data.elkRoute as {
-      startPoint: { x: number; y: number };
-      endPoint: { x: number; y: number };
+    const { bendPoints = [] } = data.elkRoute as {
       bendPoints?: { x: number; y: number }[];
     };
-    const points = [startPoint, ...bendPoints, endPoint];
+    const points = [
+      { x: sourceX, y: sourceY },
+      ...bendPoints,
+      { x: targetX, y: targetY },
+    ];
 
     edgePath = points
       .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
       .join(" ");
 
-    // Label at midpoint of the path
-    const mid = Math.floor(points.length / 2);
-    labelX = points[mid].x;
-    labelY = points[mid].y;
+    if (points.length === 2) {
+      labelX = (points[0].x + points[1].x) / 2;
+      labelY = (points[0].y + points[1].y) / 2;
+    } else {
+      const mid = Math.floor(points.length / 2);
+      labelX = points[mid].x;
+      labelY = points[mid].y;
+    }
   } else {
     // Fallback to smoothstep
     const [path, lx, ly] = getSmoothStepPath({

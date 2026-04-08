@@ -149,10 +149,41 @@ def clone_diagnostics_path(file_path: str | Path) -> Path:
     return Path(file_path).with_suffix(".clone_diagnostics.json")
 
 
+def build_clone_diagnostics_payload(
+    period_to_diagnostics: dict[int, dict[str, float]],
+) -> dict:
+    if not period_to_diagnostics:
+        raise ValueError("Expected at least one period of clone diagnostics")
+
+    ordered_periods = sorted(period_to_diagnostics)
+    if len(ordered_periods) == 1:
+        period = ordered_periods[0]
+        diagnostics = dict(period_to_diagnostics[period])
+        diagnostics["period"] = int(period)
+        return diagnostics
+
+    return {
+        "periods": {
+            str(period): period_to_diagnostics[period] for period in ordered_periods
+        }
+    }
+
+
 def write_clone_diagnostics_report(file_path: str | Path, diagnostics: dict) -> Path:
     output_path = clone_diagnostics_path(file_path)
     output_path.write_text(json.dumps(diagnostics, indent=2, sort_keys=True) + "\n")
     return output_path
+
+
+def refresh_clone_diagnostics_report(
+    file_path: str | Path,
+    diagnostics_builder,
+) -> Path:
+    output_path = clone_diagnostics_path(file_path)
+    if output_path.exists():
+        output_path.unlink()
+    diagnostics = diagnostics_builder()
+    return write_clone_diagnostics_report(file_path, diagnostics)
 
 
 def build_clone_diagnostics_for_saved_dataset(
@@ -483,14 +514,25 @@ class EnhancedCPS(Dataset):
 
         self.save_dataset(data)
         try:
-            diagnostics = build_clone_diagnostics_for_saved_dataset(
-                type(self),
-                base_year,
+            periods = list(range(self.start_year, self.end_year + 1))
+            diagnostics_payload = build_clone_diagnostics_payload(
+                {
+                    period: build_clone_diagnostics_for_saved_dataset(
+                        type(self),
+                        period,
+                    )
+                    for period in periods
+                }
             )
-            diagnostics["period"] = base_year
-            output_path = write_clone_diagnostics_report(self.file_path, diagnostics)
+            output_path = refresh_clone_diagnostics_report(
+                self.file_path,
+                lambda: diagnostics_payload,
+            )
             logging.info("Saved clone diagnostics to %s", output_path)
-            logging.info("Clone diagnostics summary: %s", diagnostics)
+            logging.info(
+                "Clone diagnostics summary: %s",
+                diagnostics_payload,
+            )
         except Exception:
             logging.warning(
                 "Unable to compute clone diagnostics for %s",

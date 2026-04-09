@@ -310,9 +310,7 @@ def extract_soi_data(year: int) -> pd.DataFrame:
     return df
 
 
-def get_geography_soi_year(
-    dataset_year: int, lag: int = IRS_SOI_LAG_YEARS
-) -> int:
+def get_geography_soi_year(dataset_year: int, lag: int = IRS_SOI_LAG_YEARS) -> int:
     """Return the IRS geography-file year used for a dataset year."""
     return min(dataset_year - lag, LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR)
 

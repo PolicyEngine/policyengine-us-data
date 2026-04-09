@@ -34,6 +34,9 @@ from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
     assign_random_geography,
 )
+from policyengine_us_data.calibration.local_h5.contracts import AreaFilter
+from policyengine_us_data.calibration.local_h5.selection import AreaSelector
+from policyengine_us_data.calibration.local_h5.weights import CloneWeightMatrix
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     apply_block_takeup_to_arrays,
@@ -49,6 +52,31 @@ NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
 
 
 META_FILE = WORK_DIR / "checkpoint_meta.json"
+
+
+def _build_selection_filters(
+    *,
+    cd_subset: List[str] | None = None,
+    county_fips_filter: set[str] | None = None,
+) -> tuple[AreaFilter, ...]:
+    filters = []
+    if cd_subset is not None:
+        filters.append(
+            AreaFilter(
+                geography_field="cd_geoid",
+                op="in",
+                value=tuple(str(cd) for cd in cd_subset),
+            )
+        )
+    if county_fips_filter is not None:
+        filters.append(
+            AreaFilter(
+                geography_field="county_fips",
+                op="in",
+                value=tuple(str(fips) for fips in sorted(county_fips_filter)),
+            )
+        )
+    return tuple(filters)
 
 
 def compute_input_fingerprint(
@@ -251,57 +279,44 @@ def build_h5(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    blocks = np.asarray(geography.block_geoid)
-    clone_cds = np.asarray(geography.cd_geoid, dtype=str)
-
     # === Load base simulation ===
     sim = Microsimulation(dataset=str(dataset_path))
     time_period = int(sim.default_calculation_period)
     household_ids = sim.calculate("household_id", map_to="household").values
     n_hh = len(household_ids)
 
-    if weights.shape[0] % n_hh != 0:
-        raise ValueError(
-            f"Weight vector length {weights.shape[0]} is not divisible by n_hh={n_hh}"
-        )
-    n_clones_total = weights.shape[0] // n_hh
-
-    # === Reshape and filter weight matrix ===
-    W = weights.reshape(n_clones_total, n_hh).copy()
-    clone_cds_matrix = clone_cds.reshape(n_clones_total, n_hh)
-
-    # CD subset filtering: zero out cells whose CD isn't in subset
-    if cd_subset is not None:
-        cd_subset_set = set(cd_subset)
-        cd_mask = np.vectorize(lambda cd: cd in cd_subset_set)(clone_cds_matrix)
-        W[~cd_mask] = 0
-
-    # County FIPS filtering: zero out clones not in target counties
-    if county_fips_filter is not None:
-        fips_array = np.asarray(geography.county_fips).reshape(n_clones_total, n_hh)
-        fips_mask = np.isin(fips_array, list(county_fips_filter))
-        W[~fips_mask] = 0
+    weight_matrix = CloneWeightMatrix.from_vector(weights, n_hh)
+    selector = AreaSelector()
+    selection = selector.select(
+        weight_matrix,
+        geography,
+        filters=_build_selection_filters(
+            cd_subset=cd_subset,
+            county_fips_filter=county_fips_filter,
+        ),
+    )
 
     label = (
         f"CD subset {cd_subset}"
         if cd_subset is not None
-        else f"{n_clones_total} clone rows"
+        else f"{weight_matrix.n_clones} clone rows"
     )
     print(f"\n{'=' * 60}")
     print(f"Building {output_path.name} ({label}, {n_hh} households)")
     print(f"{'=' * 60}")
 
     # === Identify active clones ===
-    active_geo, active_hh = np.where(W > 0)
-    n_clones = len(active_geo)
-    if n_clones == 0:
+    active_geo = selection.active_clone_indices
+    active_hh = selection.active_household_indices
+    n_clones = selection.n_household_clones
+    if selection.is_empty:
         raise ValueError(
             f"No active clones after filtering. "
             f"cd_subset={cd_subset}, county_fips_filter={county_fips_filter}"
         )
-    clone_weights = W[active_geo, active_hh]
-    active_blocks = blocks.reshape(n_clones_total, n_hh)[active_geo, active_hh]
-    active_clone_cds = clone_cds.reshape(n_clones_total, n_hh)[active_geo, active_hh]
+    clone_weights = selection.active_weights
+    active_blocks = selection.active_block_geoids
+    active_clone_cds = selection.active_cd_geoids
 
     empty_count = np.sum(active_blocks == "")
     if empty_count > 0:
@@ -588,7 +603,7 @@ def build_h5(
     }
 
     # === Apply calibration takeup draws ===
-    if blocks is not None:
+    if active_blocks is not None:
         print("Applying calibration takeup draws...")
         entity_hh_indices = {
             "person": np.repeat(

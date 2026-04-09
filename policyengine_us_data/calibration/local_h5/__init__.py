@@ -19,6 +19,7 @@ from .fingerprinting import (
     FingerprintRecord,
     FingerprintService,
 )
+from .selection import AreaSelector, CloneSelection
 from .partitioning import partition_weighted_work_items, work_item_key
 from .package_geography import (
     CalibrationPackageGeographyLoader,
@@ -31,13 +32,17 @@ from .validation import (
     tag_validation_errors,
     validation_geo_level_for_area_type,
 )
+from .weights import CloneWeightMatrix
 
 __all__ = [
     "AreaBuildRequest",
     "AreaBuildResult",
     "AreaFilter",
+    "AreaSelector",
     "BuildStatus",
     "CalibrationPackageGeographyLoader",
+    "CloneSelection",
+    "CloneWeightMatrix",
     "FingerprintComponents",
     "FingerprintInputs",
     "FingerprintRecord",

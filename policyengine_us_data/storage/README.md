@@ -5,10 +5,21 @@
   • Date: 2024  
   • Location: https://www.cms.gov/files/document/health-insurance-exchanges-2024-open-enrollment-report-final.pdf
 
+- **aca_spending_and_enrollment_2025.csv**  
+  • Source: CMS “Effectuated Enrollment: Early 2025 Snapshot and Full Year 2024 Average”, Table 2 and Table 3  
+  • Date: March 15, 2025 snapshot  
+  • Location: https://www.cms.gov/files/document/effectuated-enrollment-early-snapshot-2025-and-full-year-2024-average.pdf  
+  • Notes: `enrollment` is APTC enrollment by state; `spending` is monthly APTC enrollment multiplied by average monthly APTC for APTC recipients
+
 - **medicaid_enrollment_2024.csv**  
   • Source: MACPAC Enrollment Tables, FFY 2024  
   • Date: 2024  
   • Location: https://www.medicaid.gov/resources-for-states/downloads/eligib-oper-and-enrol-snap-december2024.pdf#page=26
+
+- **medicaid_enrollment_2025.csv**  
+  • Source: Medicaid.gov performance indicator dataset, latest final-report month available in the March 2026 release  
+  • Date: November 2025 final reports  
+  • Location: https://data.medicaid.gov/dataset/State-Medicaid-and-CHIP-Applications-Eligibility-Deter/pi-dataset-march-2026release
 
 - **district_mapping.csv**
   • Source: created by the script `policyengine_us/storage/calibration_targets/make_district_mapping.py`

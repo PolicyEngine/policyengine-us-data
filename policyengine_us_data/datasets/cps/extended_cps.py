@@ -80,7 +80,6 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "spm_unit_payroll_tax_reported",
     "spm_unit_federal_tax_reported",
     "spm_unit_state_tax_reported",
-    "spm_unit_capped_work_childcare_expenses",
     "spm_unit_net_income_reported",
     "spm_unit_pre_subsidy_childcare_expenses",
     # Medical expenses
@@ -348,6 +347,125 @@ def _reference_threshold_key_for_tenure(tenure_type) -> str:
     return reference_key
 
 
+def derive_clone_capped_childcare_expenses(
+    donor_pre_subsidy: np.ndarray,
+    donor_capped: np.ndarray,
+    clone_pre_subsidy: np.ndarray,
+    clone_person_data: pd.DataFrame,
+    clone_spm_unit_ids: np.ndarray,
+) -> np.ndarray:
+    """Derive clone-half capped childcare from clone inputs.
+
+    The CPS provides both pre-subsidy childcare and the SPM-specific
+    capped childcare deduction. For the clone half, we impute only the
+    pre-subsidy amount, then deterministically rebuild the capped amount
+    instead of letting a second QRF predict it independently.
+
+    We preserve the donor's observed capping share while also respecting
+    the clone's own earnings cap. This keeps the clone-half value
+    consistent with pre-subsidy childcare and avoids impossible outputs
+    such as capped childcare exceeding pre-subsidy childcare.
+    """
+
+    donor_pre_subsidy = np.asarray(donor_pre_subsidy, dtype=float)
+    donor_capped = np.asarray(donor_capped, dtype=float)
+    clone_pre_subsidy = np.asarray(clone_pre_subsidy, dtype=float)
+    clone_spm_unit_ids = np.asarray(clone_spm_unit_ids)
+
+    donor_cap_share = np.divide(
+        donor_capped,
+        donor_pre_subsidy,
+        out=np.zeros_like(donor_capped, dtype=float),
+        where=donor_pre_subsidy > 0,
+    )
+    donor_cap_share = np.clip(donor_cap_share, 0.0, 1.0)
+    capped_from_share = np.maximum(clone_pre_subsidy, 0.0) * donor_cap_share
+
+    if clone_person_data.empty:
+        earnings_cap = np.zeros(len(clone_spm_unit_ids), dtype=float)
+    else:
+        eligible = clone_person_data["is_parent_proxy"].astype(bool)
+        parent_rows = clone_person_data.loc[
+            eligible, ["spm_unit_id", "age", "earnings"]
+        ].copy()
+        if parent_rows.empty:
+            earnings_cap = np.zeros(len(clone_spm_unit_ids), dtype=float)
+        else:
+            parent_rows["earnings"] = parent_rows["earnings"].clip(lower=0.0)
+            parent_rows["age_rank"] = parent_rows.groupby("spm_unit_id")["age"].rank(
+                method="first", ascending=False
+            )
+            top_two = parent_rows[parent_rows["age_rank"] <= 2].sort_values(
+                ["spm_unit_id", "age_rank"]
+            )
+            earnings_cap_by_unit = top_two.groupby("spm_unit_id")["earnings"].agg(
+                lambda values: (
+                    float(values.iloc[0])
+                    if len(values) == 1
+                    else float(np.minimum(values.iloc[0], values.iloc[1]))
+                )
+            )
+            earnings_cap = earnings_cap_by_unit.reindex(
+                clone_spm_unit_ids, fill_value=0.0
+            ).to_numpy(dtype=float)
+
+    return np.minimum(capped_from_share, earnings_cap)
+
+
+def _rebuild_clone_capped_childcare_expenses(
+    data: dict,
+    time_period: int,
+    cps_sim,
+) -> np.ndarray:
+    """Rebuild clone-half capped childcare expenses after stage-2 imputation."""
+
+    n_persons_half = len(data["person_id"][time_period]) // 2
+    n_spm_units_half = len(data["spm_unit_id"][time_period]) // 2
+
+    person_roles = cps_sim.calculate_dataframe(
+        ["age", "is_tax_unit_head", "is_tax_unit_spouse"]
+    )
+    if len(person_roles) != n_persons_half:
+        raise ValueError(
+            "Unexpected person role frame length while rebuilding clone childcare "
+            f"expenses: got {len(person_roles)}, expected {n_persons_half}"
+        )
+
+    clone_person_data = pd.DataFrame(
+        {
+            "spm_unit_id": data["person_spm_unit_id"][time_period][n_persons_half:],
+            "age": person_roles["age"].values,
+            "is_parent_proxy": (
+                person_roles["is_tax_unit_head"].values
+                | person_roles["is_tax_unit_spouse"].values
+            ),
+            "earnings": (
+                data["employment_income"][time_period][n_persons_half:]
+                + data["self_employment_income"][time_period][n_persons_half:]
+            ),
+        }
+    )
+
+    donor_pre_subsidy = data["spm_unit_pre_subsidy_childcare_expenses"][time_period][
+        :n_spm_units_half
+    ]
+    donor_capped = data["spm_unit_capped_work_childcare_expenses"][time_period][
+        :n_spm_units_half
+    ]
+    clone_pre_subsidy = data["spm_unit_pre_subsidy_childcare_expenses"][time_period][
+        n_spm_units_half:
+    ]
+    clone_spm_unit_ids = data["spm_unit_id"][time_period][n_spm_units_half:]
+
+    return derive_clone_capped_childcare_expenses(
+        donor_pre_subsidy=donor_pre_subsidy,
+        donor_capped=donor_capped,
+        clone_pre_subsidy=clone_pre_subsidy,
+        clone_person_data=clone_person_data,
+        clone_spm_unit_ids=clone_spm_unit_ids,
+    )
+
+
 def _apply_post_processing(predictions, X_test, time_period, data):
     """Apply retirement constraints and SS reconciliation."""
     ret_cols = [c for c in predictions.columns if c in _RETIREMENT_VARS]
@@ -520,6 +638,24 @@ def _splice_cps_only_predictions(
         cps_half = values[:n_half]
         new_values = np.concatenate([cps_half, pred_values])
         data[var] = {time_period: new_values}
+
+    if (
+        "spm_unit_capped_work_childcare_expenses" in data
+        and "spm_unit_pre_subsidy_childcare_expenses" in data
+    ):
+        n_half = entity_half_lengths.get(
+            "spm_unit",
+            len(data["spm_unit_capped_work_childcare_expenses"][time_period]) // 2,
+        )
+        cps_half = data["spm_unit_capped_work_childcare_expenses"][time_period][:n_half]
+        clone_half = _rebuild_clone_capped_childcare_expenses(
+            data=data,
+            time_period=time_period,
+            cps_sim=cps_sim,
+        )
+        data["spm_unit_capped_work_childcare_expenses"] = {
+            time_period: np.concatenate([cps_half, clone_half])
+        }
 
     del cps_sim
     return data

@@ -109,6 +109,26 @@ HARD_CODED_TOTALS = {
     ],
 }
 
+ACA_SPENDING_TARGETS = {
+    2024: 98e9,
+}
+
+ACA_ENROLLMENT_TARGETS = {
+    2024: 19_743_689,
+}
+
+MEDICAID_SPENDING_TARGETS = {
+    2024: 9e11,
+    # CMS projects Medicaid spending growth of 7.4% in 2025.
+    # Apply that projection to 2024 Medicaid spending of $931.7B.
+    # Source: CMS National Health Expenditure projections, 2024-2033.
+    2025: 931.7e9 * 1.074,
+}
+
+MEDICAID_ENROLLMENT_TARGETS = {
+    2024: 72_429_055,
+}
+
 
 def fmt(x):
     if x == -np.inf:
@@ -249,6 +269,71 @@ def _add_liheap_targets_from_db(loss_matrix, targets_list, sim, time_period):
     )
 
     return targets_list, loss_matrix
+
+
+def _best_available_year(targets_by_year: dict, requested_year: int) -> int:
+    if not targets_by_year:
+        raise ValueError("No target years available")
+    eligible_years = [year for year in targets_by_year if year <= requested_year]
+    if not eligible_years:
+        return min(targets_by_year)
+    return max(eligible_years)
+
+
+def _load_yeared_target_csv(
+    prefix: str, requested_year: int
+) -> tuple[pd.DataFrame, int]:
+    candidates = {}
+    for path in CALIBRATION_FOLDER.glob(f"{prefix}_*.csv"):
+        suffix = path.stem.removeprefix(f"{prefix}_")
+        if suffix.isdigit():
+            candidates[int(suffix)] = path
+
+    data_year = _best_available_year(candidates, requested_year)
+    return pd.read_csv(candidates[data_year]), data_year
+
+
+def _load_aca_spending_and_enrollment_targets(
+    requested_year: int,
+) -> tuple[pd.DataFrame, int]:
+    return _load_yeared_target_csv("aca_spending_and_enrollment", requested_year)
+
+
+def _load_medicaid_enrollment_targets(
+    requested_year: int,
+) -> tuple[pd.DataFrame, int]:
+    return _load_yeared_target_csv("medicaid_enrollment", requested_year)
+
+
+def _get_aca_national_targets(requested_year: int) -> tuple[float, float, int]:
+    targets, data_year = _load_aca_spending_and_enrollment_targets(requested_year)
+    if data_year in ACA_SPENDING_TARGETS and data_year in ACA_ENROLLMENT_TARGETS:
+        return (
+            ACA_SPENDING_TARGETS[data_year],
+            ACA_ENROLLMENT_TARGETS[data_year],
+            data_year,
+        )
+
+    # Newer CMS ACA state files encode monthly total APTC spending by state and
+    # APTC enrollment counts. Annualize the spending for the national target.
+    return (
+        float(targets["spending"].sum() * 12),
+        float(targets["enrollment"].sum()),
+        data_year,
+    )
+
+
+def _get_medicaid_national_targets(requested_year: int) -> tuple[float, float, int]:
+    targets, data_year = _load_medicaid_enrollment_targets(requested_year)
+    spending_year = _best_available_year(MEDICAID_SPENDING_TARGETS, data_year)
+    enrollment_target = MEDICAID_ENROLLMENT_TARGETS.get(
+        data_year, float(targets["enrollment"].sum())
+    )
+    return (
+        MEDICAID_SPENDING_TARGETS[spending_year],
+        enrollment_target,
+        data_year,
+    )
 
 
 def build_loss_matrix(dataset: type, time_period):
@@ -422,10 +507,13 @@ def build_loss_matrix(dataset: type, time_period):
         )
 
     # 1. Medicaid Spending
+    medicaid_spending_target, medicaid_enrollment_target, _ = (
+        _get_medicaid_national_targets(time_period)
+    )
+
     label = "nation/hhs/medicaid_spending"
     loss_matrix[label] = sim.calculate("medicaid", map_to="household").values
-    MEDICAID_SPENDING_2024 = 9e11
-    targets_array.append(MEDICAID_SPENDING_2024)
+    targets_array.append(medicaid_spending_target)
 
     # 2. Medicaid Enrollment
     label = "nation/hhs/medicaid_enrollment"
@@ -438,16 +526,18 @@ def build_loss_matrix(dataset: type, time_period):
         > 0
     ).astype(int)
     loss_matrix[label] = sim.map_result(on_medicaid, "person", "household")
-    MEDICAID_ENROLLMENT_2024 = 72_429_055  # target lives (not thousands)
-    targets_array.append(MEDICAID_ENROLLMENT_2024)
+    targets_array.append(medicaid_enrollment_target)
 
     # National ACA Spending
+    aca_spending_target, aca_enrollment_target, _ = _get_aca_national_targets(
+        time_period
+    )
+
     label = "nation/gov/aca_spending"
     loss_matrix[label] = sim.calculate(
         "aca_ptc", map_to="household", period=2025
     ).values
-    ACA_SPENDING_2024 = 9.8e10  # 2024 outlays on PTC
-    targets_array.append(ACA_SPENDING_2024)
+    targets_array.append(aca_spending_target)
 
     # National ACA Enrollment (people receiving a PTC)
     label = "nation/gov/aca_enrollment"
@@ -456,8 +546,7 @@ def build_loss_matrix(dataset: type, time_period):
     )
     loss_matrix[label] = sim.map_result(on_ptc, "person", "household")
 
-    ACA_PTC_ENROLLMENT_2024 = 19_743_689  # people enrolled
-    targets_array.append(ACA_PTC_ENROLLMENT_2024)
+    targets_array.append(aca_enrollment_target)
 
     # Treasury EITC
 
@@ -673,14 +762,12 @@ def build_loss_matrix(dataset: type, time_period):
         targets_array.append(target_count)
 
     # ACA spending by state
-    spending_by_state = pd.read_csv(
-        CALIBRATION_FOLDER / "aca_spending_and_enrollment_2024.csv"
-    )
+    spending_by_state, _ = _load_aca_spending_and_enrollment_targets(time_period)
     # Monthly to yearly
     spending_by_state["spending"] = spending_by_state["spending"] * 12
     # Adjust to match national target
     spending_by_state["spending"] = spending_by_state["spending"] * (
-        ACA_SPENDING_2024 / spending_by_state["spending"].sum()
+        aca_spending_target / spending_by_state["spending"].sum()
     )
 
     for _, row in spending_by_state.iterrows():
@@ -701,9 +788,7 @@ def build_loss_matrix(dataset: type, time_period):
         targets_array.append(annual_target)
 
     # Marketplace enrollment by state (targets in thousands)
-    enrollment_by_state = pd.read_csv(
-        CALIBRATION_FOLDER / "aca_spending_and_enrollment_2024.csv"
-    )
+    enrollment_by_state, _ = _load_aca_spending_and_enrollment_targets(time_period)
 
     # One-time pulls so we don’t re-compute inside the loop
     state_person = sim.calculate("state_code", map_to="person").values
@@ -732,9 +817,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     # Medicaid enrollment by state
 
-    enrollment_by_state = pd.read_csv(
-        CALIBRATION_FOLDER / "medicaid_enrollment_2024.csv"
-    )
+    enrollment_by_state, _ = _load_medicaid_enrollment_targets(time_period)
 
     # One-time pulls so we don’t re-compute inside the loop
     state_person = sim.calculate("state_code", map_to="person").values

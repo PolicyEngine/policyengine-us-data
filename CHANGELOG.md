@@ -1,3 +1,31 @@
+## [1.75.4] - 2026-04-09
+
+### Fixed
+
+- Remove duplicate entries in bad_targets list.
+
+
+## [1.75.3] - 2026-04-09
+
+### Changed
+
+- Add 2025 ACA and Medicaid calibration target artifacts, plus year-aware ACA target loading and state uprating factors for 2025 builds.
+
+
+## [1.75.2] - 2026-04-09
+
+### Fixed
+
+- Stop independently QRF-imputing clone-half ``spm_unit_capped_work_childcare_expenses`` and rebuild it deterministically from clone pre-subsidy childcare, donor capping shares, and clone earnings caps.
+
+
+## [1.75.1] - 2026-04-08
+
+### Changed
+
+- Build policy_data.db from source instead of downloading from HuggingFace, replace H5 dataset dependency with a --year CLI flag for all database ETL scripts, fix Modal data build ordering (CPS before PUF), and add missing heapq import in local area builder.
+
+
 ## [1.75.0] - 2026-04-08
 
 ### Added

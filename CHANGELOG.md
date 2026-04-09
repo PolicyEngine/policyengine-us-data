@@ -1,3 +1,10 @@
+## [1.75.2] - 2026-04-09
+
+### Fixed
+
+- Stop independently QRF-imputing clone-half ``spm_unit_capped_work_childcare_expenses`` and rebuild it deterministically from clone pre-subsidy childcare, donor capping shares, and clone earnings caps.
+
+
 ## [1.75.1] - 2026-04-08
 
 ### Changed

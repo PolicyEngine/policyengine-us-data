@@ -11,8 +11,10 @@ from policyengine_us_data.db.create_database_tables import (
     create_database,
 )
 from policyengine_us_data.db.etl_irs_soi import (
+    GEOGRAPHY_FILE_TARGET_SPECS,
     get_geography_soi_year,
     get_national_geography_soi_target,
+    _get_geography_file_aggregate_target_spec,
     _skip_coarse_state_agi_person_count_target,
     _get_or_create_national_domain_stratum,
     _upsert_target,
@@ -197,6 +199,17 @@ def test_get_geography_soi_year_uses_standard_lag_and_latest_release():
     assert get_geography_soi_year(2024) == 2022
     assert get_geography_soi_year(2023) == 2021
     assert get_geography_soi_year(2026) == 2022
+
+
+def test_geography_file_aggregate_target_spec_reuses_shared_registry():
+    spec = _get_geography_file_aggregate_target_spec("non_refundable_ctc")
+
+    assert spec == {
+        "code": "07225",
+        "name": "non_refundable_ctc",
+        "breakdown": None,
+    }
+    assert spec in GEOGRAPHY_FILE_TARGET_SPECS
 
 
 def test_get_national_geography_soi_target_reads_amount_and_count(monkeypatch):

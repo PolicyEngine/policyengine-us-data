@@ -28,6 +28,8 @@ include:
     geo_level: district
   - variable: refundable_ctc
     geo_level: district
+  - variable: non_refundable_ctc
+    geo_level: district
   - variable: unemployment_compensation
     geo_level: district
 

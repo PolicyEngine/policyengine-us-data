@@ -50,14 +50,50 @@ ITEMIZED_DEDUCTION_VARIABLES = {
 # IRS SOI data is typically available ~2 years after the tax year
 IRS_SOI_LAG_YEARS = 2
 
-# These geography-file aggregates are not tracked in the workbook-target
-# metadata, so keep the published IRS line-code mapping explicit here.
-GEOGRAPHY_FILE_NATIONAL_TARGET_CODES = {
-    "aca_ptc": "85530",
-    "eitc": "59660",
-    "non_refundable_ctc": "07225",
-    "refundable_ctc": "11070",
-}
+# IRS geography-file line codes are external identifiers from the published
+# `incd` schema. Keep the mapping in one shared registry so the transform path
+# and the national aggregate overlay do not drift.
+GEOGRAPHY_FILE_TARGET_SPECS = [
+    dict(code="59661", name="eitc", breakdown=("eitc_child_count", 0)),
+    dict(code="59662", name="eitc", breakdown=("eitc_child_count", 1)),
+    dict(code="59663", name="eitc", breakdown=("eitc_child_count", 2)),
+    dict(
+        code="59664", name="eitc", breakdown=("eitc_child_count", "3+")
+    ),  # Doc says "three" but data shows this is 3+
+    dict(
+        code="04475",
+        name="qualified_business_income_deduction",
+        breakdown=None,
+    ),
+    dict(code="00900", name="self_employment_income", breakdown=None),
+    dict(
+        code="01000",
+        name="net_capital_gains",
+        breakdown=None,
+    ),  # Not to be confused with the always positive net_capital_gain
+    dict(code="18500", name="real_estate_taxes", breakdown=None),
+    dict(code="25870", name="rental_income", breakdown=None),
+    dict(code="01400", name="taxable_ira_distributions", breakdown=None),
+    dict(code="00300", name="taxable_interest_income", breakdown=None),
+    dict(code="00400", name="tax_exempt_interest_income", breakdown=None),
+    dict(code="00600", name="dividend_income", breakdown=None),
+    dict(code="00650", name="qualified_dividend_income", breakdown=None),
+    dict(
+        code="26270",
+        name="tax_unit_partnership_s_corp_income",
+        breakdown=None,
+    ),
+    dict(code="02500", name="taxable_social_security", breakdown=None),
+    dict(code="02300", name="unemployment_compensation", breakdown=None),
+    dict(code="17000", name="medical_expense_deduction", breakdown=None),
+    dict(code="01700", name="taxable_pension_income", breakdown=None),
+    dict(code="11070", name="refundable_ctc", breakdown=None),
+    dict(code="07225", name="non_refundable_ctc", breakdown=None),
+    dict(code="18425", name="salt", breakdown=None),
+    dict(code="06500", name="income_tax", breakdown=None),
+    dict(code="05800", name="income_tax_before_credits", breakdown=None),
+    dict(code="85530", name="aca_ptc", breakdown=None),
+]
 
 """See the 22incddocguide.docx manual from the IRS SOI"""
 # Language in the doc: '$10,000 under $25,000' means >= $10,000 and < $25,000
@@ -317,16 +353,20 @@ def get_geography_soi_year(dataset_year: int, lag: int = IRS_SOI_LAG_YEARS) -> i
     return min(dataset_year - lag, LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR)
 
 
+def _get_geography_file_aggregate_target_spec(variable: str) -> dict:
+    for spec in GEOGRAPHY_FILE_TARGET_SPECS:
+        if spec["name"] == variable and spec["breakdown"] is None:
+            return spec
+
+    raise KeyError(f"No geography-file IRS SOI mapping for {variable!r}")
+
+
 def _get_national_geography_soi_target_from_year(
     variable: str,
     geography_year: int,
 ) -> dict:
-    try:
-        code = GEOGRAPHY_FILE_NATIONAL_TARGET_CODES[variable]
-    except KeyError as exc:
-        raise KeyError(
-            f"No national geography-file IRS SOI mapping for {variable!r}"
-        ) from exc
+    spec = _get_geography_file_aggregate_target_spec(variable)
+    code = spec["code"]
 
     raw_df = extract_soi_data(geography_year)
     national_rows = raw_df[(raw_df["STATE"] == "US") & (raw_df["agi_stub"] == 0)]
@@ -687,46 +727,6 @@ def load_national_fine_agi_targets(
 
 
 def transform_soi_data(raw_df):
-
-    TARGETS = [
-        dict(code="59661", name="eitc", breakdown=("eitc_child_count", 0)),
-        dict(code="59662", name="eitc", breakdown=("eitc_child_count", 1)),
-        dict(code="59663", name="eitc", breakdown=("eitc_child_count", 2)),
-        dict(
-            code="59664", name="eitc", breakdown=("eitc_child_count", "3+")
-        ),  # Doc says "three" but data shows this is 3+
-        dict(
-            code="04475",
-            name="qualified_business_income_deduction",
-            breakdown=None,
-        ),
-        dict(code="00900", name="self_employment_income", breakdown=None),
-        dict(
-            code="01000", name="net_capital_gains", breakdown=None
-        ),  # Not to be confused with the always positive net_capital_gain
-        dict(code="18500", name="real_estate_taxes", breakdown=None),
-        dict(code="25870", name="rental_income", breakdown=None),
-        dict(code="01400", name="taxable_ira_distributions", breakdown=None),
-        dict(code="00300", name="taxable_interest_income", breakdown=None),
-        dict(code="00400", name="tax_exempt_interest_income", breakdown=None),
-        dict(code="00600", name="dividend_income", breakdown=None),
-        dict(code="00650", name="qualified_dividend_income", breakdown=None),
-        dict(
-            code="26270",
-            name="tax_unit_partnership_s_corp_income",
-            breakdown=None,
-        ),
-        dict(code="02500", name="taxable_social_security", breakdown=None),
-        dict(code="02300", name="unemployment_compensation", breakdown=None),
-        dict(code="17000", name="medical_expense_deduction", breakdown=None),
-        dict(code="01700", name="taxable_pension_income", breakdown=None),
-        dict(code="11070", name="refundable_ctc", breakdown=None),
-        dict(code="18425", name="salt", breakdown=None),
-        dict(code="06500", name="income_tax", breakdown=None),
-        dict(code="05800", name="income_tax_before_credits", breakdown=None),
-        dict(code="85530", name="aca_ptc", breakdown=None),
-    ]
-
     # National ---------------
     national_df = raw_df.copy().loc[(raw_df.STATE == "US")]
     national_df["ucgid_str"] = "0100000US"
@@ -768,7 +768,7 @@ def transform_soi_data(raw_df):
 
     # Collect targets from the SOI file
     records = []
-    for spec in TARGETS:
+    for spec in GEOGRAPHY_FILE_TARGET_SPECS:
         count_col = f"N{spec['code']}"  # e.g. 'N59661'
         amount_col = f"A{spec['code']}"  # e.g. 'A59661'
 

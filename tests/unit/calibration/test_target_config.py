@@ -158,6 +158,22 @@ class TestLoadTargetConfig:
             "domain_variable": "non_refundable_ctc",
         } in include_rules
 
+    def test_training_config_includes_district_non_refundable_ctc_target(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "non_refundable_ctc",
+            "geo_level": "district",
+        } in include_rules
+
 
 class TestCalibrationPackageRoundTrip:
     def test_round_trip(self, sample_targets, tmp_path):

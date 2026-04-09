@@ -14,6 +14,7 @@ import logging
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
+import h5py
 import numpy as np
 import pandas as pd
 from scipy import sparse
@@ -668,6 +669,7 @@ def _process_single_clone(
     entity_hh_idx_map = sd.get("entity_hh_idx_map", {})
     entity_to_person_idx = sd.get("entity_to_person_idx", {})
     precomputed_rates = sd.get("precomputed_rates", {})
+    reported_takeup_anchors = sd.get("reported_takeup_anchors", {})
 
     # Slice geography for this clone
     clone_states = geo_states[col_start:col_end]
@@ -789,6 +791,7 @@ def _process_single_clone(
                 ent_blocks,
                 ent_hh_ids,
                 ent_ci,
+                reported_mask=reported_takeup_anchors.get(takeup_var),
             )
 
             ent_values = (ent_eligible * ent_takeup).astype(np.float32)
@@ -2132,6 +2135,7 @@ class UnifiedMatrixBuilder:
             from policyengine_us_data.utils.takeup import (
                 TAKEUP_AFFECTED_TARGETS,
                 compute_block_takeup_for_entities,
+                reported_subsidized_marketplace_by_tax_unit,
             )
             from policyengine_us_data.parameters import (
                 load_take_up_rate,
@@ -2159,6 +2163,37 @@ class UnifiedMatrixBuilder:
                 "tax_unit": tu_hh_idx,
                 "person": person_hh_indices,
             }
+
+            reported_takeup_anchors = {}
+            with h5py.File(self.dataset_path, "r") as f:
+                period_key = str(self.time_period)
+                if (
+                    "reported_has_subsidized_marketplace_health_coverage_at_interview"
+                    in f
+                    and period_key
+                    in f[
+                        "reported_has_subsidized_marketplace_health_coverage_at_interview"
+                    ]
+                ):
+                    person_marketplace = f[
+                        "reported_has_subsidized_marketplace_health_coverage_at_interview"
+                    ][period_key][...].astype(bool)
+                    person_tax_unit_ids = f["person_tax_unit_id"][period_key][...]
+                    tax_unit_ids = f["tax_unit_id"][period_key][...]
+                    reported_takeup_anchors["takes_up_aca_if_eligible"] = (
+                        reported_subsidized_marketplace_by_tax_unit(
+                            person_tax_unit_ids,
+                            tax_unit_ids,
+                            person_marketplace,
+                        )
+                    )
+                if (
+                    "has_medicaid_health_coverage_at_interview" in f
+                    and period_key in f["has_medicaid_health_coverage_at_interview"]
+                ):
+                    reported_takeup_anchors["takes_up_medicaid_if_eligible"] = f[
+                        "has_medicaid_health_coverage_at_interview"
+                    ][period_key][...].astype(bool)
 
             entity_to_person_idx = {}
             for entity_level in ("spm_unit", "tax_unit"):
@@ -2200,6 +2235,7 @@ class UnifiedMatrixBuilder:
             self.household_ids = household_ids
             self.precomputed_rates = precomputed_rates
             self.affected_target_info = affected_target_info
+            self.reported_takeup_anchors = reported_takeup_anchors
 
         # 5d. Clone loop
         from pathlib import Path
@@ -2249,6 +2285,7 @@ class UnifiedMatrixBuilder:
                 shared_data["entity_hh_idx_map"] = entity_hh_idx_map
                 shared_data["entity_to_person_idx"] = entity_to_person_idx
                 shared_data["precomputed_rates"] = precomputed_rates
+                shared_data["reported_takeup_anchors"] = reported_takeup_anchors
 
             logger.info(
                 "Starting parallel clone processing: %d clones, %d workers",
@@ -2452,6 +2489,7 @@ class UnifiedMatrixBuilder:
                             ent_blocks,
                             ent_hh_ids,
                             ent_ci,
+                            reported_mask=reported_takeup_anchors.get(takeup_var),
                         )
 
                         ent_values = (ent_eligible * ent_takeup).astype(np.float32)

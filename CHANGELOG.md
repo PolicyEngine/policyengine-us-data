@@ -1,3 +1,10 @@
+## [1.75.6] - 2026-04-09
+
+### Fixed
+
+- Anchor ACA take-up to subsidized Marketplace coverage reports so unsubsidized exchange enrollment does not force premium tax credit take-up.
+
+
 ## [1.75.5] - 2026-04-09
 
 ### Changed

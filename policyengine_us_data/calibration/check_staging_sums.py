@@ -16,6 +16,7 @@ import pandas as pd
 from policyengine_us_data.calibration.calibration_utils import (
     STATE_CODES,
 )
+from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
 
 STATE_ABBRS = sorted(STATE_CODES.values())
 
@@ -43,6 +44,18 @@ VARIABLES = [
 ]
 
 DEFAULT_HF_PREFIX = "hf://policyengine/policyengine-us-data/staging/states"
+
+
+def get_reference_summary(reference_year: int = 2024) -> str:
+    refundable_ctc_target = get_national_geography_soi_target(
+        "refundable_ctc",
+        reference_year,
+    )
+    return (
+        "  SNAP ~$110B, SSI ~$60B, Social Security ~$1.2T\n"
+        f"  EITC ~$60B, refundable CTC ~${refundable_ctc_target['amount'] / 1e9:.1f}B "
+        f"(IRS SOI {refundable_ctc_target['source_year']})"
+    )
 
 
 def main(argv=None):
@@ -110,8 +123,7 @@ def main(argv=None):
     print("=" * 70)
     print("  US GDP ~$29T, US population ~335M, ~130M households")
     print("  Total AGI ~$15T, Employment income ~$10T")
-    print("  SNAP ~$110B, SSI ~$60B, Social Security ~$1.2T")
-    print("  EITC ~$60B, CTC ~$120B")
+    print(get_reference_summary())
 
     if errors:
         print(f"\n{len(errors)} states failed:")

@@ -12,6 +12,7 @@ from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
 from policyengine_us_data.storage.calibration_targets.soi_metadata import (
     RETIREMENT_CONTRIBUTION_TARGETS,
 )
+from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
@@ -331,6 +332,32 @@ def _get_medicaid_national_targets(requested_year: int) -> tuple[float, float, i
     )
 
 
+def _add_refundable_ctc_targets(loss_matrix, targets_list, sim, time_period):
+    """Add legacy national refundable CTC amount and recipient-count targets."""
+    target = get_national_geography_soi_target("refundable_ctc", time_period)
+
+    label = "nation/irs/refundable_ctc"
+    loss_matrix[label] = sim.calculate(
+        "refundable_ctc", map_to="household"
+    ).values
+    if any(pd.isna(loss_matrix[label])):
+        raise ValueError(f"Missing values for {label}")
+    targets_list.append(target["amount"])
+
+    label = "nation/irs/refundable_ctc_count"
+    refundable_ctc = sim.calculate("refundable_ctc").values
+    loss_matrix[label] = sim.map_result(
+        (refundable_ctc > 0).astype(float),
+        "tax_unit",
+        "household",
+    )
+    if any(pd.isna(loss_matrix[label])):
+        raise ValueError(f"Missing values for {label}")
+    targets_list.append(target["count"])
+
+    return targets_list, loss_matrix
+
+
 def build_loss_matrix(dataset: type, time_period):
     loss_matrix = pd.DataFrame()
     df = pe_to_soi(dataset, time_period)
@@ -588,6 +615,13 @@ def build_loss_matrix(dataset: type, time_period):
             "household",
         )
         targets_array.append(row["eitc_total"] * eitc_spending_uprating)
+
+    targets_array, loss_matrix = _add_refundable_ctc_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
 
     # Tax filer counts by AGI band (SOI Table 1.1)
     # This calibrates total filers (not just taxable returns) including

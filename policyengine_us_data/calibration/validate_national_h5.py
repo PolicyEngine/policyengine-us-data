@@ -13,6 +13,8 @@ Usage:
 
 import argparse
 
+from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
+
 VARIABLES = [
     "adjusted_gross_income",
     "employment_income",
@@ -45,13 +47,26 @@ REFERENCES = {
     "snap": (110_000_000_000, "~$110B"),
     "ssi": (60_000_000_000, "~$60B"),
     "eitc": (60_000_000_000, "~$60B"),
-    "refundable_ctc": (120_000_000_000, "~$120B"),
     "income_tax_before_credits": (4_000_000_000_000, "~$4T"),
 }
 
 DEFAULT_HF_PATH = "hf://policyengine/policyengine-us-data/national/US.h5"
 
 COUNT_VARS = {"person_count", "household_count", "is_pregnant"}
+
+
+def get_reference_values(reference_year: int = 2024):
+    """Return national validation references for the current production year."""
+    references = dict(REFERENCES)
+    refundable_ctc_target = get_national_geography_soi_target(
+        "refundable_ctc",
+        reference_year,
+    )
+    references["refundable_ctc"] = (
+        refundable_ctc_target["amount"],
+        f"IRS SOI {refundable_ctc_target['source_year']} ${refundable_ctc_target['amount'] / 1e9:.1f}B",
+    )
+    return references
 
 
 def main(argv=None):
@@ -101,7 +116,7 @@ def main(argv=None):
     print("=" * 70)
 
     any_flag = False
-    for var, (ref_val, ref_label) in REFERENCES.items():
+    for var, (ref_val, ref_label) in get_reference_values().items():
         if var not in values:
             continue
         val = values[var]

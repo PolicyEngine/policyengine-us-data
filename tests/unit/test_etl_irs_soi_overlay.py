@@ -11,6 +11,8 @@ from policyengine_us_data.db.create_database_tables import (
     create_database,
 )
 from policyengine_us_data.db.etl_irs_soi import (
+    get_geography_soi_year,
+    get_national_geography_soi_target,
     _skip_coarse_state_agi_person_count_target,
     _get_or_create_national_domain_stratum,
     _upsert_target,
@@ -188,3 +190,33 @@ def test_skip_coarse_state_agi_person_count_target_only_for_state_stub_9():
     assert _skip_coarse_state_agi_person_count_target("state", 8) is False
     assert _skip_coarse_state_agi_person_count_target("district", 9) is False
     assert _skip_coarse_state_agi_person_count_target("national", 9) is False
+
+
+def test_get_geography_soi_year_uses_standard_lag_and_latest_release():
+    assert get_geography_soi_year(2024) == 2022
+    assert get_geography_soi_year(2023) == 2021
+    assert get_geography_soi_year(2026) == 2022
+
+
+def test_get_national_geography_soi_target_reads_amount_and_count(monkeypatch):
+    fake_raw = pd.DataFrame(
+        [
+            {
+                "STATE": "US",
+                "agi_stub": 0,
+                "N11070": 17.0,
+                "A11070": 33.0,
+            }
+        ]
+    )
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.extract_soi_data",
+        lambda year: fake_raw,
+    )
+
+    target = get_national_geography_soi_target("refundable_ctc", 2024)
+
+    assert target["source_year"] == 2022
+    assert target["count"] == 17.0
+    assert target["amount"] == 33_000.0

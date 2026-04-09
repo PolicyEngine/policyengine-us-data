@@ -50,6 +50,12 @@ ITEMIZED_DEDUCTION_VARIABLES = {
 # IRS SOI data is typically available ~2 years after the tax year
 IRS_SOI_LAG_YEARS = 2
 
+GEOGRAPHY_FILE_NATIONAL_TARGET_CODES = {
+    "aca_ptc": "85530",
+    "eitc": "59660",
+    "refundable_ctc": "11070",
+}
+
 """See the 22incddocguide.docx manual from the IRS SOI"""
 # Language in the doc: '$10,000 under $25,000' means >= $10,000 and < $25,000
 AGI_STUB_TO_INCOME_RANGE = {
@@ -301,6 +307,44 @@ def extract_soi_data(year: int) -> pd.DataFrame:
             )
 
     return df
+
+
+def get_geography_soi_year(
+    dataset_year: int, lag: int = IRS_SOI_LAG_YEARS
+) -> int:
+    """Return the IRS geography-file year used for a dataset year."""
+    return min(dataset_year - lag, LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR)
+
+
+def get_national_geography_soi_target(
+    variable: str,
+    dataset_year: int,
+    *,
+    lag: int = IRS_SOI_LAG_YEARS,
+) -> dict:
+    """Return national count and amount targets from the IRS geography file."""
+    try:
+        code = GEOGRAPHY_FILE_NATIONAL_TARGET_CODES[variable]
+    except KeyError as exc:
+        raise KeyError(
+            f"No national geography-file IRS SOI mapping for {variable!r}"
+        ) from exc
+
+    geography_year = get_geography_soi_year(dataset_year, lag=lag)
+    raw_df = extract_soi_data(geography_year)
+    national_rows = raw_df[(raw_df["STATE"] == "US") & (raw_df["agi_stub"] == 0)]
+    if national_rows.empty:
+        raise ValueError(
+            f"IRS geography SOI file for {geography_year} is missing the US agi_stub=0 row"
+        )
+
+    row = national_rows.iloc[0]
+    return {
+        "variable": variable,
+        "source_year": geography_year,
+        "count": float(row[f"N{code}"]),
+        "amount": float(row[f"A{code}"]) * 1_000,
+    }
 
 
 def _upsert_target(

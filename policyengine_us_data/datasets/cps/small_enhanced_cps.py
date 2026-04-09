@@ -1,14 +1,81 @@
-import os
-import pandas as pd
-import numpy as np
 import h5py
-
+import logging
+import os
+import numpy as np
+import pandas as pd
 from policyengine_us import Microsimulation
-from policyengine_us_data.datasets import EnhancedCPS_2024
-from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_core.enums import Enum
 from policyengine_core.data.dataset import Dataset
-import logging
+from policyengine_us_data.calibration.puf_impute import CLONE_ORIGIN_FLAGS
+from policyengine_us_data.datasets import EnhancedCPS_2024
+from policyengine_us_data.storage import STORAGE_FOLDER
+
+
+def _load_saved_period_array(
+    h5_file: h5py.File, variable_name: str, period: int
+) -> np.ndarray:
+    obj = h5_file[variable_name]
+    if isinstance(obj, h5py.Dataset):
+        return np.asarray(obj[...])
+
+    period_key = str(period)
+    if period_key in obj:
+        return np.asarray(obj[period_key][...])
+    if period in obj:
+        return np.asarray(obj[period][...])
+
+    raise KeyError(f"{variable_name} missing period {period}")
+
+
+def _attach_clone_origin_flags(
+    data: dict[str, dict[int, np.ndarray]],
+    source_dataset_path,
+) -> None:
+    with h5py.File(source_dataset_path, "r") as source_h5:
+        for entity_key, flag_name in CLONE_ORIGIN_FLAGS.items():
+            id_variable = f"{entity_key}_id"
+            if id_variable not in data:
+                raise KeyError(
+                    f"Expected {id_variable} in sampled small ECPS data "
+                    f"before attaching {flag_name}"
+                )
+
+            source_ids_by_period = {}
+            source_flags_by_period = {}
+            for period_key in data[id_variable]:
+                period = int(period_key)
+                source_ids = _load_saved_period_array(source_h5, id_variable, period)
+                source_flags = _load_saved_period_array(source_h5, flag_name, period)
+                if len(source_ids) != len(source_flags):
+                    raise ValueError(
+                        f"{flag_name} length {len(source_flags)} does not match "
+                        f"{id_variable} length {len(source_ids)} for period {period}"
+                    )
+                source_ids_by_period[period_key] = source_ids
+                source_flags_by_period[period_key] = source_flags
+
+            data[flag_name] = {}
+            for period_key, sampled_ids in data[id_variable].items():
+                source_ids = source_ids_by_period[period_key]
+                source_flags = source_flags_by_period[period_key]
+                flag_lookup = {
+                    int(entity_id): np.int8(flag_value)
+                    for entity_id, flag_value in zip(source_ids, source_flags)
+                }
+                sampled_ids = np.asarray(sampled_ids)
+                missing_ids = [
+                    int(entity_id)
+                    for entity_id in sampled_ids
+                    if int(entity_id) not in flag_lookup
+                ]
+                if missing_ids:
+                    raise KeyError(
+                        f"Missing {flag_name} values for sampled IDs {missing_ids[:5]}"
+                    )
+                data[flag_name][period_key] = np.asarray(
+                    [flag_lookup[int(entity_id)] for entity_id in sampled_ids],
+                    dtype=np.int8,
+                )
 
 
 def create_small_ecps():
@@ -51,6 +118,8 @@ def create_small_ecps():
         if len(data[variable]) == 0:
             del data[variable]
 
+    _attach_clone_origin_flags(data, EnhancedCPS_2024.file_path)
+
     with h5py.File(STORAGE_FOLDER / "small_enhanced_cps_2024.h5", "w") as f:
         for variable, periods in data.items():
             grp = f.create_group(variable)
@@ -65,7 +134,6 @@ def create_sparse_ecps():
     ecps = EnhancedCPS_2024()
     h5 = ecps.load()
     sparse_weights = h5["household_weight"][str(time_period)][:]
-    hh_ids = h5["household_id"][str(time_period)][:]
     h5.close()
 
     template_sim = Microsimulation(
@@ -78,7 +146,6 @@ def create_sparse_ecps():
 
     household_weight_column = f"household_weight__{time_period}"
     df_household_id_column = f"household_id__{time_period}"
-    df_person_id_column = f"person_id__{time_period}"
 
     # Group by household ID and get the first entry for each group
     h_df = df.groupby(df_household_id_column).first()

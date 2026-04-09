@@ -7,6 +7,7 @@ block-level takeup seeding, county precomputation, and CLI flags.
 
 import numpy as np
 import pytest
+import scipy.sparse as sp
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -390,6 +391,186 @@ class TestParseArgsNewFlags:
 
         args_default = parse_args([])
         assert args_default.skip_takeup_rerandomize is False
+
+    def test_resume_flags(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            parse_args,
+        )
+
+        args = parse_args(
+            [
+                "--resume-from",
+                "weights.npy",
+                "--checkpoint-output",
+                "weights.checkpoint.pt",
+            ]
+        )
+        assert args.resume_from == "weights.npy"
+        assert args.checkpoint_output == "weights.checkpoint.pt"
+
+
+class FakeSparseCalibrationWeights:
+    def __init__(
+        self,
+        n_features,
+        beta=None,
+        gamma=None,
+        zeta=None,
+        init_keep_prob=None,
+        init_weights=None,
+        log_weight_jitter_sd=0.0,
+        log_alpha_jitter_sd=0.0,
+        device="cpu",
+    ):
+        import torch
+
+        self.n_features = n_features
+        self.device = device
+        self.log_weight_jitter_sd = log_weight_jitter_sd
+        weight_values = (
+            np.ones(n_features, dtype=np.float32)
+            if init_weights is None
+            else np.asarray(init_weights, dtype=np.float32)
+        )
+        self.weights = torch.tensor(weight_values, dtype=torch.float32)
+        self.alpha = torch.zeros(n_features, dtype=torch.float32)
+
+    def fit(
+        self,
+        M,
+        y,
+        lambda_l0=0.0,
+        lambda_l2=0.0,
+        lr=0.0,
+        epochs=1,
+        loss_type="relative",
+        verbose=False,
+        verbose_freq=1,
+        target_groups=None,
+    ):
+        increment = float(epochs) + (self.alpha / 10.0)
+        self.weights = self.weights + increment
+        self.alpha = self.alpha + (10.0 * float(epochs))
+        return self
+
+    def predict(self, M):
+        import torch
+
+        weights = self.get_weights(deterministic=True).cpu().numpy()
+        return torch.tensor(M.dot(weights), dtype=torch.float32)
+
+    def get_weights(self, deterministic=True):
+        return self.weights.clone()
+
+    def state_dict(self):
+        return {
+            "weights": self.weights.clone(),
+            "alpha": self.alpha.clone(),
+        }
+
+    def load_state_dict(self, state_dict):
+        self.weights = state_dict["weights"].clone()
+        self.alpha = state_dict["alpha"].clone()
+
+
+class TestFitResume:
+    def _fit_kwargs(self, tmp_path):
+        return {
+            "X_sparse": sp.csr_matrix(np.eye(2, dtype=np.float32)),
+            "targets": np.array([1.0, 2.0], dtype=np.float64),
+            "lambda_l0": 1e-4,
+            "epochs": 1,
+            "device": "cpu",
+            "beta": 0.65,
+            "lambda_l2": 1e-12,
+            "learning_rate": 0.15,
+            "log_freq": 1,
+            "log_path": str(tmp_path / "calibration_log.csv"),
+            "target_names": ["target_a", "target_b"],
+            "initial_weights": np.array([1.0, 2.0], dtype=np.float64),
+            "achievable": np.array([True, True]),
+        }
+
+    def test_resume_from_weights_prefers_sibling_checkpoint(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            default_checkpoint_path,
+            fit_l0_weights,
+        )
+
+        weights_path = tmp_path / "weights.npy"
+        checkpoint_path = default_checkpoint_path(str(weights_path))
+        kwargs = self._fit_kwargs(tmp_path)
+        kwargs["checkpoint_path"] = str(checkpoint_path)
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            first_weights = fit_l0_weights(**kwargs)
+            np.save(weights_path, first_weights)
+
+            resumed_weights = fit_l0_weights(
+                **{
+                    **kwargs,
+                    "resume_from": str(weights_path),
+                }
+            )
+
+        np.testing.assert_allclose(first_weights, np.array([2.0, 3.0]))
+        np.testing.assert_allclose(resumed_weights, np.array([4.0, 5.0]))
+
+        with open(kwargs["log_path"]) as f:
+            lines = f.read().strip().splitlines()
+        assert len(lines) == 5
+        assert lines[1].split(",")[3] == "1"
+        assert lines[3].split(",")[3] == "2"
+
+    def test_resume_from_weights_falls_back_when_checkpoint_missing(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import fit_l0_weights
+
+        weights_path = tmp_path / "weights.npy"
+        np.save(weights_path, np.array([2.0, 3.0], dtype=np.float64))
+        kwargs = self._fit_kwargs(tmp_path)
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            resumed_weights = fit_l0_weights(
+                **{
+                    **kwargs,
+                    "resume_from": str(weights_path),
+                }
+            )
+
+        np.testing.assert_allclose(resumed_weights, np.array([3.0, 4.0]))
+
+    def test_resume_checkpoint_rejects_incompatible_hyperparams(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            default_checkpoint_path,
+            fit_l0_weights,
+        )
+
+        weights_path = tmp_path / "weights.npy"
+        checkpoint_path = default_checkpoint_path(str(weights_path))
+        kwargs = self._fit_kwargs(tmp_path)
+        kwargs["checkpoint_path"] = str(checkpoint_path)
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            first_weights = fit_l0_weights(**kwargs)
+            np.save(weights_path, first_weights)
+
+            with pytest.raises(ValueError, match="Checkpoint is incompatible"):
+                fit_l0_weights(
+                    **{
+                        **kwargs,
+                        "lambda_l0": 9e-4,
+                        "resume_from": str(checkpoint_path),
+                    }
+                )
 
 
 class TestGeographyAssignmentCountyFips:

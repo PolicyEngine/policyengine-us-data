@@ -4,6 +4,7 @@
 **/*.h5
 **/*.npy
 **/*.csv
+**/*.csv.gz
 **/_build
 **/*.pkl
 **/*.db

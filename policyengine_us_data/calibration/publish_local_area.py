@@ -15,7 +15,7 @@ import shutil
 
 import numpy as np
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Tuple
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
@@ -32,8 +32,8 @@ from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
-    GeographyAssignment,
-    assign_random_geography,
+    load_geography,
+    reconstruct_geography_from_blocks,
 )
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
@@ -52,16 +52,138 @@ NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
 META_FILE = WORK_DIR / "checkpoint_meta.json"
 
 
+CALIBRATION_WEIGHTS_SUFFIX = "calibration_weights.npy"
+GEOGRAPHY_FILENAME = "geography_assignment.npz"
+LEGACY_BLOCKS_FILENAME = "stacked_blocks.npy"
+
+
+def _calibration_artifact_prefix(weights_path: Path) -> str:
+    if weights_path.name.endswith(CALIBRATION_WEIGHTS_SUFFIX):
+        return weights_path.name[: -len(CALIBRATION_WEIGHTS_SUFFIX)]
+    return ""
+
+
+def _sibling_artifact_path(weights_path: Path, artifact_name: str) -> Path:
+    prefix = _calibration_artifact_prefix(weights_path)
+    return weights_path.with_name(f"{prefix}{artifact_name}")
+
+
+def resolve_calibration_geography_paths(
+    weights_path: Path,
+    geography_path: Optional[Path] = None,
+    blocks_path: Optional[Path] = None,
+) -> Tuple[Optional[Path], Optional[Path]]:
+    geo_candidates = []
+    block_candidates = []
+    if geography_path is not None:
+        geo_candidates.append(Path(geography_path))
+    geo_candidates.append(_sibling_artifact_path(weights_path, GEOGRAPHY_FILENAME))
+
+    if blocks_path is not None:
+        block_candidates.append(Path(blocks_path))
+    block_candidates.append(_sibling_artifact_path(weights_path, LEGACY_BLOCKS_FILENAME))
+    block_candidates.append(weights_path.with_name(LEGACY_BLOCKS_FILENAME))
+
+    resolved_geo = next((path for path in geo_candidates if path.exists()), None)
+    resolved_blocks = next(
+        (path for path in block_candidates if path.exists()),
+        None,
+    )
+    return resolved_geo, resolved_blocks
+
+
+def _update_hash_from_file(h: "hashlib._Hash", path: Path) -> None:
+    with open(path, "rb") as f:
+        while chunk := f.read(8192):
+            h.update(chunk)
+
+
 def compute_input_fingerprint(
-    weights_path: Path, dataset_path: Path, n_clones: int, seed: int
+    weights_path: Path,
+    dataset_path: Path,
+    n_clones: Optional[int] = None,
+    seed: int = 42,
+    geography_path: Optional[Path] = None,
+    blocks_path: Optional[Path] = None,
 ) -> str:
     h = hashlib.sha256()
     for p in [weights_path, dataset_path]:
-        with open(p, "rb") as f:
-            while chunk := f.read(8192):
-                h.update(chunk)
-    h.update(f"{n_clones}:{seed}".encode())
+        _update_hash_from_file(h, p)
+
+    resolved_geo, resolved_blocks = resolve_calibration_geography_paths(
+        weights_path=weights_path,
+        geography_path=geography_path,
+        blocks_path=blocks_path,
+    )
+    if resolved_geo is not None:
+        h.update(b"geography_assignment")
+        _update_hash_from_file(h, resolved_geo)
+    elif resolved_blocks is not None:
+        h.update(b"legacy_stacked_blocks")
+        _update_hash_from_file(h, resolved_blocks)
+    else:
+        h.update(f"legacy_regeneration:{n_clones}:{seed}".encode())
     return h.hexdigest()[:16]
+
+
+def load_calibration_geography(
+    weights_path: Path,
+    n_records: int,
+    n_clones: Optional[int] = None,
+    geography_path: Optional[Path] = None,
+    blocks_path: Optional[Path] = None,
+):
+    resolved_geo, resolved_blocks = resolve_calibration_geography_paths(
+        weights_path=weights_path,
+        geography_path=geography_path,
+        blocks_path=blocks_path,
+    )
+
+    if resolved_geo is not None:
+        geography = load_geography(resolved_geo)
+        if geography.n_records != n_records:
+            raise ValueError(
+                f"Geography artifact {resolved_geo} has n_records={geography.n_records}, "
+                f"expected {n_records}"
+            )
+        if n_clones is not None and geography.n_clones != n_clones:
+            raise ValueError(
+                f"Geography artifact {resolved_geo} has n_clones={geography.n_clones}, "
+                f"expected {n_clones}"
+            )
+        print(f"Loaded calibration geography from {resolved_geo}")
+        return geography
+
+    if resolved_blocks is not None:
+        block_geoids = np.asarray(np.load(resolved_blocks, allow_pickle=True), dtype=str)
+        if len(block_geoids) % n_records != 0:
+            raise ValueError(
+                f"Legacy blocks artifact {resolved_blocks} has {len(block_geoids)} "
+                f"rows, not divisible by n_records={n_records}"
+            )
+        inferred_n_clones = len(block_geoids) // n_records
+        if n_clones is not None and inferred_n_clones != n_clones:
+            raise ValueError(
+                f"Legacy blocks artifact {resolved_blocks} implies "
+                f"n_clones={inferred_n_clones}, expected {n_clones}"
+            )
+        print(
+            "Reconstructing geography from legacy stacked blocks at "
+            f"{resolved_blocks}"
+        )
+        return reconstruct_geography_from_blocks(
+            block_geoids=block_geoids,
+            n_records=n_records,
+            n_clones=inferred_n_clones,
+        )
+
+    geo_hint = _sibling_artifact_path(weights_path, GEOGRAPHY_FILENAME)
+    legacy_hint = _sibling_artifact_path(weights_path, LEGACY_BLOCKS_FILENAME)
+    raise FileNotFoundError(
+        "No saved calibration geography found. Expected either "
+        f"{geo_hint} or {legacy_hint}. Re-run calibration on this branch or "
+        "provide --geography-path."
+    )
 
 
 def validate_or_clear_checkpoints(fingerprint: str):
@@ -850,6 +972,11 @@ def main():
         help="Only build and upload city files (e.g., NYC)",
     )
     parser.add_argument(
+        "--national-only",
+        action="store_true",
+        help="Only build the national US.h5 file",
+    )
+    parser.add_argument(
         "--weights-path",
         type=str,
         help="Override path to weights file (for local testing)",
@@ -867,14 +994,26 @@ def main():
     parser.add_argument(
         "--n-clones",
         type=int,
-        required=True,
-        help="Number of clones used in calibration",
+        default=None,
+        help="Clone count override for validating saved geography artifacts",
     )
     parser.add_argument(
         "--seed",
         type=int,
         default=42,
-        help="Random seed used in calibration (default: 42)",
+        help="Legacy fallback seed used only if no saved geography is available",
+    )
+    parser.add_argument(
+        "--geography-path",
+        type=str,
+        default=None,
+        help="Override path to saved geography_assignment.npz",
+    )
+    parser.add_argument(
+        "--blocks-path",
+        type=str,
+        default=None,
+        help="Override path to legacy stacked_blocks.npy",
     )
     parser.add_argument(
         "--upload",
@@ -917,6 +1056,8 @@ def main():
         inputs["dataset"],
         args.n_clones,
         args.seed,
+        geography_path=Path(args.geography_path) if args.geography_path else None,
+        blocks_path=Path(args.blocks_path) if args.blocks_path else None,
     )
     validate_or_clear_checkpoints(fingerprint)
 
@@ -926,43 +1067,21 @@ def main():
     del _sim
     print(f"\nBase dataset has {n_hh:,} households")
 
-    geo_cache = WORK_DIR / f"geography_{n_hh}x{args.n_clones}_s{args.seed}.npz"
-    if geo_cache.exists():
-        print(f"Loading cached geography from {geo_cache}")
-        npz = np.load(geo_cache, allow_pickle=True)
-        geography = GeographyAssignment(
-            block_geoid=npz["block_geoid"],
-            cd_geoid=npz["cd_geoid"],
-            county_fips=npz["county_fips"],
-            state_fips=npz["state_fips"],
-            n_records=n_hh,
-            n_clones=args.n_clones,
-        )
-    else:
-        print(
-            f"Generating geography: {n_hh} records x "
-            f"{args.n_clones} clones, seed={args.seed}"
-        )
-        geography = assign_random_geography(
-            n_records=n_hh,
-            n_clones=args.n_clones,
-            seed=args.seed,
-        )
-        np.savez_compressed(
-            geo_cache,
-            block_geoid=geography.block_geoid,
-            cd_geoid=geography.cd_geoid,
-            county_fips=geography.county_fips,
-            state_fips=geography.state_fips,
-        )
-        print(f"Saved geography cache to {geo_cache}")
+    geography = load_calibration_geography(
+        weights_path=inputs["weights"],
+        n_records=n_hh,
+        n_clones=args.n_clones,
+        geography_path=Path(args.geography_path) if args.geography_path else None,
+        blocks_path=Path(args.blocks_path) if args.blocks_path else None,
+    )
     takeup_filter = [spec["variable"] for spec in SIMPLE_TAKEUP_VARS]
     print(f"Takeup filter: {takeup_filter}")
 
     # Determine what to build based on flags
-    do_states = not args.districts_only and not args.cities_only
-    do_districts = not args.states_only and not args.cities_only
-    do_cities = not args.states_only and not args.districts_only
+    do_national = args.national_only
+    do_states = not args.districts_only and not args.cities_only and not args.national_only
+    do_districts = not args.states_only and not args.cities_only and not args.national_only
+    do_cities = not args.states_only and not args.districts_only and not args.national_only
 
     # If a specific *-only flag is set, only build that type
     if args.states_only:
@@ -977,6 +1096,22 @@ def main():
         do_states = False
         do_districts = False
         do_cities = True
+
+    if do_national:
+        print("\n" + "=" * 60)
+        print("BUILDING NATIONAL US.h5")
+        print("=" * 60)
+        weights = np.load(inputs["weights"])
+        national_dir = WORK_DIR / "national"
+        national_dir.mkdir(parents=True, exist_ok=True)
+        path = build_h5(
+            weights=weights,
+            geography=geography,
+            dataset_path=inputs["dataset"],
+            output_path=national_dir / "US.h5",
+            takeup_filter=takeup_filter,
+        )
+        print(f"Built {path}")
 
     if do_states:
         print("\n" + "=" * 60)

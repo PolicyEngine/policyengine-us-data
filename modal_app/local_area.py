@@ -334,6 +334,8 @@ def build_areas_worker(
         "--output-dir",
         str(output_dir),
     ]
+    if "geography" in calibration_inputs:
+        worker_cmd.extend(["--geography-path", calibration_inputs["geography"]])
     if "n_clones" in calibration_inputs:
         worker_cmd.extend(["--n-clones", str(calibration_inputs["n_clones"])])
     if "seed" in calibration_inputs:
@@ -659,6 +661,7 @@ def coordinate_publish(
         Path(f"/pipeline/artifacts/{run_id}") if run_id else Path("/pipeline/artifacts")
     )
     weights_path = artifacts / "calibration_weights.npy"
+    geography_path = artifacts / "geography_assignment.npz"
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
     config_json_path = artifacts / "unified_run_config.json"
@@ -678,6 +681,7 @@ def coordinate_publish(
 
     calibration_inputs = {
         "weights": str(weights_path),
+        "geography": str(geography_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
         "n_clones": n_clones,
@@ -943,6 +947,7 @@ def coordinate_national_publish(
         Path(f"/pipeline/artifacts/{run_id}") if run_id else Path("/pipeline/artifacts")
     )
     weights_path = artifacts / "national_calibration_weights.npy"
+    geography_path = artifacts / "national_geography_assignment.npz"
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
     config_json_path = artifacts / "national_unified_run_config.json"
@@ -962,6 +967,7 @@ def coordinate_national_publish(
 
     calibration_inputs = {
         "weights": str(weights_path),
+        "geography": str(geography_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
         "n_clones": n_clones,
@@ -972,6 +978,7 @@ def coordinate_national_publish(
         artifacts,
         filename_remap={
             "calibration_weights.npy": "national_calibration_weights.npy",
+            "geography_assignment.npz": "national_geography_assignment.npz",
         },
     )
     run_dir = staging_dir / run_id

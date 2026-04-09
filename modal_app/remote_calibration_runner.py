@@ -68,12 +68,15 @@ def _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq
 def _collect_outputs(cal_lines):
     """Extract weights and log bytes from calibration output lines."""
     output_path = None
+    geography_path = None
     log_path = None
     cal_log_path = None
     config_path = None
     for line in cal_lines:
         if "OUTPUT_PATH:" in line:
             output_path = line.split("OUTPUT_PATH:")[1].strip()
+        elif "GEOGRAPHY_PATH:" in line:
+            geography_path = line.split("GEOGRAPHY_PATH:")[1].strip()
         elif "CONFIG_PATH:" in line:
             config_path = line.split("CONFIG_PATH:")[1].strip()
         elif "CAL_LOG_PATH:" in line:
@@ -83,6 +86,11 @@ def _collect_outputs(cal_lines):
 
     with open(output_path, "rb") as f:
         weights_bytes = f.read()
+
+    geography_bytes = None
+    if geography_path:
+        with open(geography_path, "rb") as f:
+            geography_bytes = f.read()
 
     log_bytes = None
     if log_path:
@@ -101,6 +109,7 @@ def _collect_outputs(cal_lines):
 
     return {
         "weights": weights_bytes,
+        "geography": geography_bytes,
         "log": log_bytes,
         "cal_log": cal_log_bytes,
         "config": config_bytes,
@@ -976,6 +985,10 @@ def main(
                 flush=True,
             )
             print(
+                f"  - calibration/{prefix}geography_assignment.npz",
+                flush=True,
+            )
+            print(
                 f"  - calibration/logs/{prefix}* (diagnostics, "
                 "config, calibration log)",
                 flush=True,
@@ -1006,6 +1019,12 @@ def main(
             f.write(result["log"])
         print(f"Diagnostics log saved to: {log_output}")
 
+    geography_output = f"{prefix}geography_assignment.npz"
+    if result.get("geography"):
+        with open(geography_output, "wb") as f:
+            f.write(result["geography"])
+        print(f"Geography saved to: {geography_output}")
+
     cal_log_output = f"{prefix}calibration_log.csv"
     if result.get("cal_log"):
         with open(cal_log_output, "wb") as f:
@@ -1027,6 +1046,11 @@ def main(
             BytesIO(result["weights"]),
             f"artifacts/{prefix}calibration_weights.npy",
         )
+        if result.get("geography"):
+            batch.put_file(
+                BytesIO(result["geography"]),
+                f"artifacts/{prefix}geography_assignment.npz",
+            )
         if result.get("config"):
             batch.put_file(
                 BytesIO(result["config"]),
@@ -1042,6 +1066,9 @@ def main(
 
         upload_calibration_artifacts(
             weights_path=output,
+            geography_path=(
+                geography_output if result.get("geography") else None
+            ),
             log_dir=".",
             prefix=prefix,
         )

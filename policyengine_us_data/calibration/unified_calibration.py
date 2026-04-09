@@ -316,6 +316,20 @@ def parse_args(argv=None):
         help="Number of parallel workers for state/county "
         "precomputation (default: 1, sequential).",
     )
+    parser.add_argument(
+        "--resume-from",
+        default=None,
+        help="Resume fitting from a `.checkpoint.pt` file or "
+        "warm-start from a `.npy` weights file. "
+        "If a sibling checkpoint exists next to the weights file, "
+        "it is preferred automatically.",
+    )
+    parser.add_argument(
+        "--checkpoint-output",
+        default=None,
+        help="Where to save resumable fit checkpoints "
+        "(default: <output>.checkpoint.pt).",
+    )
     return parser.parse_args(argv)
 
 
@@ -473,6 +487,134 @@ def load_calibration_package(path: str) -> dict:
     return package
 
 
+def default_checkpoint_path(output_path: str) -> Path:
+    """Derive the default checkpoint artifact path for a weights file."""
+    return Path(output_path).with_suffix(".checkpoint.pt")
+
+
+def _hash_string_list(values: list) -> str:
+    """Hash an ordered list of strings for checkpoint compatibility."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    for value in values or []:
+        digest.update(str(value).encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def build_checkpoint_signature(
+    X_sparse,
+    targets: np.ndarray,
+    target_names: list,
+    lambda_l0: float,
+    beta: float,
+    lambda_l2: float,
+    learning_rate: float,
+) -> dict:
+    """Build a compact signature to validate resume compatibility."""
+    import hashlib
+
+    targets_arr = np.asarray(targets, dtype=np.float64)
+    return {
+        "n_features": int(X_sparse.shape[1]),
+        "n_targets": int(len(targets_arr)),
+        "target_names_sha256": _hash_string_list(target_names),
+        "targets_sha256": hashlib.sha256(targets_arr.tobytes()).hexdigest(),
+        "lambda_l0": float(lambda_l0),
+        "beta": float(beta),
+        "lambda_l2": float(lambda_l2),
+        "learning_rate": float(learning_rate),
+    }
+
+
+def checkpoint_signature_mismatches(expected: dict, actual: dict) -> list:
+    """Return human-readable checkpoint compatibility mismatches."""
+    mismatches = []
+    float_keys = {"lambda_l0", "beta", "lambda_l2", "learning_rate"}
+    for key, expected_value in expected.items():
+        actual_value = actual.get(key)
+        if key in float_keys:
+            if actual_value is None or not np.isclose(expected_value, actual_value):
+                mismatches.append(
+                    f"{key} expected {expected_value}, got {actual_value}"
+                )
+        elif actual_value != expected_value:
+            mismatches.append(
+                f"{key} expected {expected_value}, got {actual_value}"
+            )
+    return mismatches
+
+
+def save_fit_checkpoint(
+    path: str,
+    model,
+    epochs_completed: int,
+    signature: dict,
+) -> None:
+    """Persist model state for resumable calibration fitting."""
+    import datetime
+    import torch
+
+    state_dict = {}
+    for key, value in model.state_dict().items():
+        if hasattr(value, "detach"):
+            state_dict[key] = value.detach().cpu()
+        else:
+            state_dict[key] = value
+
+    checkpoint = {
+        "format_version": 1,
+        "saved_at": datetime.datetime.now().isoformat(),
+        "epochs_completed": int(epochs_completed),
+        "signature": signature,
+        "model_state_dict": state_dict,
+    }
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    torch.save(checkpoint, path)
+    logger.info(
+        "Calibration checkpoint saved to %s (epoch %d)",
+        path,
+        epochs_completed,
+    )
+
+
+def load_fit_checkpoint(path: str, device: str = "cpu") -> dict:
+    """Load a saved calibration fit checkpoint."""
+    import torch
+
+    if not Path(path).exists():
+        raise FileNotFoundError(f"Checkpoint not found: {path}")
+    checkpoint = torch.load(path, map_location=device)
+    if "model_state_dict" not in checkpoint:
+        raise ValueError(f"Invalid checkpoint file: {path}")
+    return checkpoint
+
+
+def resolve_resume_artifact(resume_from: str) -> tuple:
+    """Resolve a resume input to a checkpoint or weight artifact.
+
+    When a `.npy` weights path is provided, prefer a sibling checkpoint if
+    it exists so resume restores the full model state.
+    """
+    resume_path = Path(resume_from)
+    if not resume_path.exists():
+        raise FileNotFoundError(f"Resume artifact not found: {resume_from}")
+
+    if resume_path.suffix == ".npy":
+        checkpoint_path = default_checkpoint_path(str(resume_path))
+        if checkpoint_path.exists():
+            logger.info(
+                "Found sibling checkpoint %s for %s; resuming full model state",
+                checkpoint_path,
+                resume_path,
+            )
+            return "checkpoint", checkpoint_path
+        return "weights", resume_path
+
+    return "checkpoint", resume_path
+
+
 def compute_initial_weights(
     X_sparse,
     targets_df: "pd.DataFrame",
@@ -551,6 +693,8 @@ def fit_l0_weights(
     initial_weights: np.ndarray = None,
     targets_df: "pd.DataFrame" = None,
     achievable: np.ndarray = None,
+    resume_from: str = None,
+    checkpoint_path: str = None,
 ) -> np.ndarray:
     """Fit L0-regularized calibration weights.
 
@@ -572,6 +716,9 @@ def fit_l0_weights(
             computed from targets_df age targets.
         targets_df: Targets DataFrame, used to compute
             initial_weights when not provided.
+        resume_from: Path to a `.checkpoint.pt` file or `.npy`
+            weights file to continue fitting from.
+        checkpoint_path: Where to save resumable fit checkpoints.
 
     Returns:
         Weight array of shape (n_records,).
@@ -591,6 +738,56 @@ def fit_l0_weights(
     if initial_weights is None:
         initial_weights = compute_initial_weights(X_sparse, targets_df)
 
+    checkpoint_signature = build_checkpoint_signature(
+        X_sparse=X_sparse,
+        targets=targets,
+        target_names=target_names,
+        lambda_l0=lambda_l0,
+        beta=beta,
+        lambda_l2=lambda_l2,
+        learning_rate=learning_rate,
+    )
+    checkpoint_state_dict = None
+    start_epoch = 0
+
+    if resume_from is not None:
+        resume_kind, resume_path = resolve_resume_artifact(resume_from)
+        if resume_kind == "weights":
+            resume_weights = np.load(resume_path)
+            if resume_weights.shape != (n_total,):
+                raise ValueError(
+                    f"Resume weights at {resume_path} must have shape "
+                    f"({n_total},), got {resume_weights.shape}"
+                )
+            initial_weights = resume_weights.astype(np.float64, copy=False)
+            logger.info(
+                "Warm-starting calibration from saved weights at %s",
+                resume_path,
+            )
+        else:
+            checkpoint = load_fit_checkpoint(str(resume_path), device=device)
+            stored_signature = checkpoint.get("signature")
+            if stored_signature is None:
+                raise ValueError(
+                    f"Checkpoint {resume_path} is missing compatibility metadata"
+                )
+            mismatches = checkpoint_signature_mismatches(
+                stored_signature,
+                checkpoint_signature,
+            )
+            if mismatches:
+                raise ValueError(
+                    "Checkpoint is incompatible with the requested run: "
+                    + "; ".join(mismatches)
+                )
+            checkpoint_state_dict = checkpoint["model_state_dict"]
+            start_epoch = int(checkpoint.get("epochs_completed", 0))
+            logger.info(
+                "Resuming calibration from checkpoint %s at epoch %d",
+                resume_path,
+                start_epoch,
+            )
+
     logger.info(
         "L0 calibration: %d targets, %d features, "
         "lambda_l0=%.1e, beta=%.2f, lambda_l2=%.1e, "
@@ -603,6 +800,12 @@ def fit_l0_weights(
         learning_rate,
         epochs,
     )
+    if start_epoch > 0:
+        logger.info(
+            "Continuing for %d additional epochs (total after run: %d)",
+            epochs,
+            start_epoch + epochs,
+        )
 
     model = SparseCalibrationWeights(
         n_features=n_total,
@@ -615,6 +818,10 @@ def fit_l0_weights(
         log_alpha_jitter_sd=LOG_ALPHA_JITTER_SD,
         device=device,
     )
+    if checkpoint_state_dict is not None:
+        model.load_state_dict(checkpoint_state_dict)
+    if resume_from is not None:
+        model.log_weight_jitter_sd = 0.0
 
     if verbose_freq is None:
         verbose_freq = max(1, epochs // 10)
@@ -632,111 +839,132 @@ def fit_l0_weights(
     )
     if enable_logging:
         Path(log_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(log_path, "w") as f:
-            f.write(
-                "target_name,estimate,target,epoch,"
-                "error,rel_error,abs_error,"
-                "rel_abs_error,loss,achievable\n"
+        if start_epoch > 0 and Path(log_path).exists():
+            logger.info(
+                "Appending epoch log to %s from epoch %d",
+                log_path,
+                start_epoch,
             )
-        logger.info(
-            "Epoch logging enabled: freq=%d, path=%s",
-            log_freq,
-            log_path,
-        )
+        else:
+            with open(log_path, "w") as f:
+                f.write(
+                    "target_name,estimate,target,epoch,"
+                    "error,rel_error,abs_error,"
+                    "rel_abs_error,loss,achievable\n"
+                )
+            logger.info(
+                "Epoch logging enabled: freq=%d, path=%s",
+                log_freq,
+                log_path,
+            )
 
     t0 = time.time()
-    if enable_logging:
-        epochs_done = 0
-        while epochs_done < epochs:
-            chunk = min(log_freq, epochs - epochs_done)
-            model.fit(
-                M=X_sparse,
-                y=targets,
-                target_groups=None,
-                lambda_l0=lambda_l0,
-                lambda_l2=lambda_l2,
-                lr=learning_rate,
-                epochs=chunk,
-                loss_type="relative",
-                verbose=False,
-            )
-
-            epochs_done += chunk
-
-            with torch.no_grad():
-                y_pred = model.predict(X_sparse).cpu().numpy()
-                weights_snap = model.get_weights(deterministic=True).cpu().numpy()
-
-            active_w = weights_snap[weights_snap > 0]
-            nz = len(active_w)
-            sparsity = (1 - nz / n_total) * 100
-
-            rel_errs = np.where(
-                np.abs(targets) > 0,
-                (y_pred - targets) / np.abs(targets),
-                0.0,
-            )
-            mean_err = np.mean(np.abs(rel_errs))
-            max_err = np.max(np.abs(rel_errs))
-            total_loss = np.sum(rel_errs**2)
-
-            if nz > 0:
-                w_tiny = (active_w < 0.01).sum()
-                w_small = ((active_w >= 0.01) & (active_w < 0.1)).sum()
-                w_med = ((active_w >= 0.1) & (active_w < 1.0)).sum()
-                w_normal = ((active_w >= 1.0) & (active_w < 10.0)).sum()
-                w_large = ((active_w >= 10.0) & (active_w < 1000.0)).sum()
-                w_huge = (active_w >= 1000.0).sum()
-                weight_dist = (
-                    f"[<0.01: {100 * w_tiny / nz:.1f}%, "
-                    f"0.01-0.1: {100 * w_small / nz:.1f}%, "
-                    f"0.1-1: {100 * w_med / nz:.1f}%, "
-                    f"1-10: {100 * w_normal / nz:.1f}%, "
-                    f"10-1000: {100 * w_large / nz:.1f}%, "
-                    f">1000: {100 * w_huge / nz:.1f}%]"
+    try:
+        if enable_logging:
+            epochs_done = 0
+            while epochs_done < epochs:
+                chunk = min(log_freq, epochs - epochs_done)
+                model.fit(
+                    M=X_sparse,
+                    y=targets,
+                    target_groups=None,
+                    lambda_l0=lambda_l0,
+                    lambda_l2=lambda_l2,
+                    lr=learning_rate,
+                    epochs=chunk,
+                    loss_type="relative",
+                    verbose=False,
                 )
-            else:
-                weight_dist = "[no active weights]"
+                model.log_weight_jitter_sd = 0.0
 
-            print(
-                f"Epoch {epochs_done:4d}: "
-                f"mean_error={mean_err:.4%}, "
-                f"max_error={max_err:.1%}, "
-                f"total_loss={total_loss:.3f}, "
-                f"active={nz}/{n_total} "
-                f"({sparsity:.1f}% sparse)\n"
-                f"         Weight dist: {weight_dist}",
-                flush=True,
-            )
+                epochs_done += chunk
+                absolute_epoch = start_epoch + epochs_done
 
-            ach_flags = achievable if achievable is not None else [True] * len(targets)
-            with open(log_path, "a") as f:
-                for i in range(len(targets)):
-                    est = y_pred[i]
-                    tgt = targets[i]
-                    err = est - tgt
-                    rel_err = err / tgt if tgt != 0 else 0
-                    abs_err = abs(err)
-                    rel_abs = abs(rel_err)
-                    loss = rel_err**2
-                    f.write(
-                        f'"{target_names[i]}",'
-                        f"{est},{tgt},{epochs_done},"
-                        f"{err},{rel_err},{abs_err},"
-                        f"{rel_abs},{loss},"
-                        f"{ach_flags[i]}\n"
+                with torch.no_grad():
+                    y_pred = model.predict(X_sparse).cpu().numpy()
+                    weights_snap = (
+                        model.get_weights(deterministic=True).cpu().numpy()
                     )
 
-            logger.info(
-                "Logged %d targets at epoch %d",
-                len(targets),
-                epochs_done,
-            )
+                if checkpoint_path is not None:
+                    save_fit_checkpoint(
+                        checkpoint_path,
+                        model,
+                        epochs_completed=absolute_epoch,
+                        signature=checkpoint_signature,
+                    )
 
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-    else:
-        try:
+                active_w = weights_snap[weights_snap > 0]
+                nz = len(active_w)
+                sparsity = (1 - nz / n_total) * 100
+
+                rel_errs = np.where(
+                    np.abs(targets) > 0,
+                    (y_pred - targets) / np.abs(targets),
+                    0.0,
+                )
+                mean_err = np.mean(np.abs(rel_errs))
+                max_err = np.max(np.abs(rel_errs))
+                total_loss = np.sum(rel_errs**2)
+
+                if nz > 0:
+                    w_tiny = (active_w < 0.01).sum()
+                    w_small = ((active_w >= 0.01) & (active_w < 0.1)).sum()
+                    w_med = ((active_w >= 0.1) & (active_w < 1.0)).sum()
+                    w_normal = ((active_w >= 1.0) & (active_w < 10.0)).sum()
+                    w_large = ((active_w >= 10.0) & (active_w < 1000.0)).sum()
+                    w_huge = (active_w >= 1000.0).sum()
+                    weight_dist = (
+                        f"[<0.01: {100 * w_tiny / nz:.1f}%, "
+                        f"0.01-0.1: {100 * w_small / nz:.1f}%, "
+                        f"0.1-1: {100 * w_med / nz:.1f}%, "
+                        f"1-10: {100 * w_normal / nz:.1f}%, "
+                        f"10-1000: {100 * w_large / nz:.1f}%, "
+                        f">1000: {100 * w_huge / nz:.1f}%]"
+                    )
+                else:
+                    weight_dist = "[no active weights]"
+
+                print(
+                    f"Epoch {absolute_epoch:4d}: "
+                    f"mean_error={mean_err:.4%}, "
+                    f"max_error={max_err:.1%}, "
+                    f"total_loss={total_loss:.3f}, "
+                    f"active={nz}/{n_total} "
+                    f"({sparsity:.1f}% sparse)\n"
+                    f"         Weight dist: {weight_dist}",
+                    flush=True,
+                )
+
+                ach_flags = (
+                    achievable if achievable is not None else [True] * len(targets)
+                )
+                with open(log_path, "a") as f:
+                    for i in range(len(targets)):
+                        est = y_pred[i]
+                        tgt = targets[i]
+                        err = est - tgt
+                        rel_err = err / tgt if tgt != 0 else 0
+                        abs_err = abs(err)
+                        rel_abs = abs(rel_err)
+                        loss = rel_err**2
+                        f.write(
+                            f'"{target_names[i]}",'
+                            f"{est},{tgt},{absolute_epoch},"
+                            f"{err},{rel_err},{abs_err},"
+                            f"{rel_abs},{loss},"
+                            f"{ach_flags[i]}\n"
+                        )
+
+                logger.info(
+                    "Logged %d targets at epoch %d",
+                    len(targets),
+                    absolute_epoch,
+                )
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+        else:
             model.fit(
                 M=X_sparse,
                 y=targets,
@@ -749,14 +977,22 @@ def fit_l0_weights(
                 verbose=True,
                 verbose_freq=verbose_freq,
             )
-        finally:
-            builtins.print = _builtin_print
+            model.log_weight_jitter_sd = 0.0
+            if checkpoint_path is not None:
+                save_fit_checkpoint(
+                    checkpoint_path,
+                    model,
+                    epochs_completed=start_epoch + epochs,
+                    signature=checkpoint_signature,
+                )
+    finally:
+        builtins.print = _builtin_print
 
     elapsed = time.time() - t0
     logger.info(
         "L0 done in %.1f min (%.1f sec/epoch)",
         elapsed / 60,
-        elapsed / epochs,
+        elapsed / max(epochs, 1),
     )
 
     with torch.no_grad():
@@ -824,6 +1060,8 @@ def run_calibration(
     log_freq: int = None,
     log_path: str = None,
     workers: int = 1,
+    resume_from: str = None,
+    checkpoint_path: str = None,
 ):
     """Run unified calibration pipeline.
 
@@ -849,6 +1087,9 @@ def run_calibration(
         learning_rate: Optimizer learning rate.
         log_freq: Epochs between per-target CSV logs.
         log_path: Path for per-target calibration log CSV.
+        resume_from: Path to a checkpoint or weights file to
+            continue fitting from.
+        checkpoint_path: Where to save resumable fit checkpoints.
 
     Returns:
         (weights, targets_df, X_sparse, target_names, geography_info)
@@ -890,6 +1131,8 @@ def run_calibration(
             initial_weights=initial_weights,
             targets_df=targets_df,
             achievable=pkg_achievable,
+            resume_from=resume_from,
+            checkpoint_path=checkpoint_path,
         )
         logger.info(
             "Total pipeline (from package): %.1f min",
@@ -1144,6 +1387,8 @@ def run_calibration(
         initial_weights=initial_weights,
         targets_df=targets_df,
         achievable=achievable,
+        resume_from=resume_from,
+        checkpoint_path=checkpoint_path,
     )
 
     logger.info(
@@ -1206,6 +1451,9 @@ def main(argv=None):
     else:
         lambda_l0 = PRESETS["local"]
 
+    if args.build_only and args.resume_from:
+        raise ValueError("--resume-from cannot be used with --build-only")
+
     domain_variables = None
     if args.domain_variables:
         domain_variables = [x.strip() for x in args.domain_variables.split(",")]
@@ -1230,6 +1478,11 @@ def main(argv=None):
     cal_log_path = None
     if args.log_freq is not None:
         cal_log_path = str(output_dir / "calibration_log.csv")
+    checkpoint_output_path = None
+    if not args.build_only:
+        checkpoint_output_path = args.checkpoint_output or str(
+            default_checkpoint_path(output_path)
+        )
     (
         weights,
         targets_df,
@@ -1259,6 +1512,8 @@ def main(argv=None):
         log_freq=args.log_freq,
         log_path=cal_log_path,
         workers=args.workers,
+        resume_from=args.resume_from,
+        checkpoint_path=checkpoint_output_path,
     )
 
     source_imputed = geography_info.get("dataset_for_matrix")
@@ -1293,10 +1548,43 @@ def main(argv=None):
     np.save(output_path, weights)
     logger.info("Weights saved to %s", output_path)
     print(f"OUTPUT_PATH:{output_path}")
+    if checkpoint_output_path and Path(checkpoint_output_path).exists():
+        logger.info("Checkpoint saved to %s", checkpoint_output_path)
+        print(f"CHECKPOINT_PATH:{checkpoint_output_path}")
+
+    from policyengine_us_data.calibration.clone_and_assign import (
+        GeographyAssignment,
+        save_geography,
+    )
+
+    block_geoids = np.asarray(geography_info["block_geoid"], dtype=str)
+    cd_geoids = np.asarray(geography_info["cd_geoid"], dtype=str)
+    geography_path = output_dir / "geography_assignment.npz"
+    save_geography(
+        GeographyAssignment(
+            block_geoid=block_geoids,
+            cd_geoid=cd_geoids,
+            county_fips=np.fromiter(
+                (block[:5] for block in block_geoids),
+                dtype="U5",
+                count=len(block_geoids),
+            ),
+            state_fips=np.fromiter(
+                (int(block[:2]) for block in block_geoids),
+                dtype=np.int32,
+                count=len(block_geoids),
+            ),
+            n_records=int(geography_info["base_n_records"]),
+            n_clones=args.n_clones,
+        ),
+        geography_path,
+    )
+    logger.info("Geography saved to %s", geography_path)
+    print(f"GEOGRAPHY_PATH:{geography_path}")
 
     # Save legacy block artifact for backward compatibility
     blocks_path = output_dir / "stacked_blocks.npy"
-    np.save(str(blocks_path), geography_info["block_geoid"])
+    np.save(str(blocks_path), block_geoids)
     logger.info("Blocks saved to %s", blocks_path)
     print(f"BLOCKS_PATH:{blocks_path}")
 
@@ -1322,6 +1610,10 @@ def main(argv=None):
 
     t_end = time.time()
     weight_format = "clone_level"
+    epochs_total = args.epochs
+    if checkpoint_output_path and Path(checkpoint_output_path).exists():
+        checkpoint_meta = load_fit_checkpoint(checkpoint_output_path, device="cpu")
+        epochs_total = int(checkpoint_meta.get("epochs_completed", args.epochs))
     run_config = {
         "dataset": dataset_path,
         "db_path": db_path,
@@ -1332,8 +1624,11 @@ def main(argv=None):
         "lambda_l2": args.lambda_l2,
         "learning_rate": args.learning_rate,
         "epochs": args.epochs,
+        "epochs_total": epochs_total,
         "device": args.device,
         "seed": args.seed,
+        "resume_from": args.resume_from,
+        "checkpoint_output": checkpoint_output_path,
         "domain_variables": domain_variables,
         "hierarchical_domains": hierarchical_domains,
         "target_config": args.target_config,
@@ -1346,8 +1641,13 @@ def main(argv=None):
         "elapsed_seconds": round(t_end - t_start, 1),
         "artifacts": {
             "calibration_weights.npy": _sha256(output_path),
+            "geography_assignment.npz": _sha256(geography_path),
         },
     }
+    if checkpoint_output_path and Path(checkpoint_output_path).exists():
+        run_config["artifacts"]["calibration_checkpoint.pt"] = _sha256(
+            checkpoint_output_path
+        )
     run_config.update(get_git_provenance())
     config_path = output_dir / "unified_run_config.json"
     with open(config_path, "w") as f:

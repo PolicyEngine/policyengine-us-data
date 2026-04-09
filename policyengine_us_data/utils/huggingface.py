@@ -50,7 +50,8 @@ def download_calibration_inputs(
             (e.g. "national_")
 
     Returns:
-        dict with keys 'weights', 'dataset' mapping to local paths
+        dict with keys including weights, geography, dataset, and database
+        for any artifacts that exist remotely
     """
     from pathlib import Path
 
@@ -80,6 +81,7 @@ def download_calibration_inputs(
     # but won't exist yet when running calibration from scratch
     optional_files = {
         "weights": f"calibration/{prefix}calibration_weights.npy",
+        "geography": f"calibration/{prefix}geography_assignment.npz",
         "run_config": (f"calibration/{prefix}unified_run_config.json"),
     }
     for key, hf_path in optional_files.items():
@@ -151,6 +153,7 @@ def download_calibration_logs(
 
 def upload_calibration_artifacts(
     weights_path: str = None,
+    geography_path: str = None,
     log_dir: str = None,
     repo: str = "policyengine/policyengine-us-data",
     prefix: str = "",
@@ -175,6 +178,14 @@ def upload_calibration_artifacts(
             CommitOperationAdd(
                 path_in_repo=(f"calibration/{prefix}calibration_weights.npy"),
                 path_or_fileobj=weights_path,
+            )
+        )
+
+    if geography_path and os.path.exists(geography_path):
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=(f"calibration/{prefix}geography_assignment.npz"),
+                path_or_fileobj=geography_path,
             )
         )
 

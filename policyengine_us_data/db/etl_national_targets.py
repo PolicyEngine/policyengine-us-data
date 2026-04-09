@@ -3,7 +3,7 @@ import warnings
 from sqlmodel import Session, create_engine, select
 import pandas as pd
 
-from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER, STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -16,6 +16,77 @@ from policyengine_us_data.utils.db import (
     DEFAULT_YEAR,
     etl_argparser,
 )
+
+
+HARDCODED_YEAR = 2024
+
+
+def _best_available_year(targets_by_year: dict, requested_year: int) -> int:
+    if not targets_by_year:
+        raise ValueError("No target years available")
+    eligible_years = [year for year in targets_by_year if year <= requested_year]
+    if not eligible_years:
+        return min(targets_by_year)
+    return max(eligible_years)
+
+
+def _append_carry_forward_note(
+    notes: str | None, source_year: int, target_year: int
+) -> str:
+    carry_note = f"Source year {source_year} carried forward to {target_year}"
+    return carry_note if not notes else f"{notes} | {carry_note}"
+
+
+def _retime_target_row(target: dict, requested_year: int) -> dict:
+    source_year = int(target["year"])
+    output_year = source_year if requested_year < source_year else requested_year
+    updated_target = {**target, "year": output_year}
+    if output_year != source_year:
+        updated_target["notes"] = _append_carry_forward_note(
+            target.get("notes"),
+            source_year=source_year,
+            target_year=output_year,
+        )
+    return updated_target
+
+
+def _retime_target_rows(targets: list[dict], requested_year: int) -> list[dict]:
+    return [_retime_target_row(target, requested_year) for target in targets]
+
+
+def _select_best_available_target_row(targets: list[dict], requested_year: int) -> dict:
+    targets_by_year = {int(target["year"]): target for target in targets}
+    source_year = _best_available_year(targets_by_year, requested_year)
+    return _retime_target_row(targets_by_year[source_year], requested_year)
+
+
+def _load_yeared_target_csv(
+    prefix: str, requested_year: int
+) -> tuple[pd.DataFrame, int]:
+    candidates = {}
+    for path in CALIBRATION_FOLDER.glob(f"{prefix}_*.csv"):
+        suffix = path.stem.removeprefix(f"{prefix}_")
+        if suffix.isdigit():
+            candidates[int(suffix)] = path
+
+    data_year = _best_available_year(candidates, requested_year)
+    return pd.read_csv(candidates[data_year]), data_year
+
+
+def _get_aca_national_targets(requested_year: int) -> tuple[float, float, int]:
+    from policyengine_us_data.utils.loss import (
+        _get_aca_national_targets as _loss_helper,
+    )
+
+    return _loss_helper(requested_year)
+
+
+def _get_medicaid_national_targets(requested_year: int) -> tuple[float, float, int]:
+    from policyengine_us_data.utils.loss import (
+        _get_medicaid_national_targets as _loss_helper,
+    )
+
+    return _loss_helper(requested_year)
 
 
 def extract_national_targets(year: int = DEFAULT_YEAR):
@@ -46,16 +117,25 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
 
     tax_benefit_system = CountryTaxBenefitSystem()
 
-    # Hardcoded dollar targets are specific to 2024 and should be
-    # labeled as such.  Only CBO/Treasury parameter lookups use the
-    # dynamic time_period derived from the dataset.
-    HARDCODED_YEAR = 2024
-    if time_period != HARDCODED_YEAR:
+    if time_period > HARDCODED_YEAR:
         warnings.warn(
-            f"Dataset year ({time_period}) != HARDCODED_YEAR "
-            f"({HARDCODED_YEAR}). Hardcoded dollar targets may "
-            f"be stale and need re-sourcing."
+            f"Dataset year ({time_period}) exceeds HARDCODED_YEAR "
+            f"({HARDCODED_YEAR}). Remaining hardcoded targets are "
+            f"being carried forward and should be re-sourced."
         )
+    elif time_period < HARDCODED_YEAR:
+        warnings.warn(
+            f"Dataset year ({time_period}) predates HARDCODED_YEAR "
+            f"({HARDCODED_YEAR}). Some national targets will remain "
+            f"sourced at {HARDCODED_YEAR}."
+        )
+
+    _, aca_enrollment_target, aca_data_year = _get_aca_national_targets(time_period)
+    (
+        medicaid_spending_target,
+        medicaid_enrollment_target,
+        medicaid_data_year,
+    ) = _get_medicaid_national_targets(time_period)
 
     # Separate tax-related targets that need filer constraint
     tax_filer_targets = []
@@ -105,7 +185,10 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": HARDCODED_YEAR,
         },
     ]
-    tax_expenditure_targets = [{**target} for target in raw_tax_expenditure_targets]
+    tax_expenditure_targets = _retime_target_rows(
+        raw_tax_expenditure_targets,
+        time_period,
+    )
 
     direct_sum_targets = [
         {
@@ -120,13 +203,6 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "value": 13e9,
             "source": "Survey-reported (post-TCJA grandfathered)",
             "notes": "Alimony paid - survey reported, not tax-filer restricted",
-            "year": HARDCODED_YEAR,
-        },
-        {
-            "variable": "medicaid",
-            "value": 871.7e9,
-            "source": "https://www.cms.gov/files/document/highlights.pdf",
-            "notes": "CMS 2023 highlights document - total Medicaid spending",
             "year": HARDCODED_YEAR,
         },
         {
@@ -301,24 +377,21 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": HARDCODED_YEAR,
         },
     ]
+    direct_sum_targets = _retime_target_rows(direct_sum_targets, time_period)
+    direct_sum_targets.append(
+        _retime_target_row(
+            {
+                "variable": "medicaid",
+                "value": medicaid_spending_target,
+                "source": "CMS National Health Expenditure projections",
+                "notes": "National Medicaid spending target",
+                "year": medicaid_data_year,
+            },
+            time_period,
+        )
+    )
 
-    # Conditional count targets - these need strata with constraints
-    # Store with actual source year
-    conditional_count_targets = [
-        {
-            "constraint_variable": "medicaid",
-            "person_count": 72_429_055,
-            "source": "CMS/HHS administrative data",
-            "notes": "Medicaid enrollment count",
-            "year": HARDCODED_YEAR,
-        },
-        {
-            "constraint_variable": "aca_ptc",
-            "person_count": 19_743_689,
-            "source": "CMS marketplace data",
-            "notes": "ACA Premium Tax Credit recipients",
-            "year": HARDCODED_YEAR,
-        },
+    liheap_targets = [
         {
             "constraint_variable": "spm_unit_energy_subsidy_reported",
             "target_variable": "household_count",
@@ -335,6 +408,31 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "notes": "LIHEAP total households served by state programs",
             "year": 2024,
         },
+    ]
+
+    # Conditional count targets - these need strata with constraints
+    conditional_count_targets = [
+        _retime_target_row(
+            {
+                "constraint_variable": "medicaid",
+                "person_count": medicaid_enrollment_target,
+                "source": "CMS/HHS administrative data",
+                "notes": "National Medicaid enrollment target",
+                "year": medicaid_data_year,
+            },
+            time_period,
+        ),
+        _retime_target_row(
+            {
+                "constraint_variable": "aca_ptc",
+                "person_count": aca_enrollment_target,
+                "source": "CMS marketplace data",
+                "notes": "National ACA Premium Tax Credit recipients",
+                "year": aca_data_year,
+            },
+            time_period,
+        ),
+        _select_best_available_target_row(liheap_targets, time_period),
     ]
 
     # Add SSN card type NONE targets for multiple years

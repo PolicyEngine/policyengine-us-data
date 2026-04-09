@@ -8,6 +8,10 @@ from policyengine_us_data.db.create_database_tables import (
     create_database,
 )
 from policyengine_us_data.db.etl_national_targets import (
+    _get_aca_national_targets,
+    _get_medicaid_national_targets,
+    _retime_target_row,
+    _select_best_available_target_row,
     load_national_targets,
 )
 
@@ -19,6 +23,59 @@ def _make_stratum(session, parent_id=None, notes=None, constraints=None):
     session.commit()
     session.refresh(stratum)
     return stratum
+
+
+def test_retime_target_row_carries_forward_2024_values_to_2025():
+    target = {
+        "variable": "alimony_income",
+        "value": 13e9,
+        "source": "Survey-reported",
+        "notes": "Alimony received",
+        "year": 2024,
+    }
+
+    retimed = _retime_target_row(target, requested_year=2025)
+
+    assert retimed["year"] == 2025
+    assert retimed["value"] == target["value"]
+    assert "Source year 2024 carried forward to 2025" in retimed["notes"]
+
+
+def test_select_best_available_target_row_uses_latest_liheap_source_for_2025():
+    liheap_targets = [
+        {
+            "constraint_variable": "spm_unit_energy_subsidy_reported",
+            "target_variable": "household_count",
+            "household_count": 5_939_605,
+            "source": "2023 source",
+            "notes": "LIHEAP total households served by state programs",
+            "year": 2023,
+        },
+        {
+            "constraint_variable": "spm_unit_energy_subsidy_reported",
+            "target_variable": "household_count",
+            "household_count": 5_876_646,
+            "source": "2024 source",
+            "notes": "LIHEAP total households served by state programs",
+            "year": 2024,
+        },
+    ]
+
+    selected = _select_best_available_target_row(liheap_targets, requested_year=2025)
+
+    assert selected["year"] == 2025
+    assert selected["household_count"] == 5_876_646
+    assert "Source year 2024 carried forward to 2025" in selected["notes"]
+
+
+def test_national_health_targets_use_2025_data_when_available():
+    _, aca_enrollment, aca_data_year = _get_aca_national_targets(2025)
+    _, medicaid_enrollment, medicaid_data_year = _get_medicaid_national_targets(2025)
+
+    assert aca_data_year == 2025
+    assert medicaid_data_year == 2025
+    assert aca_enrollment > 0
+    assert medicaid_enrollment > 0
 
 
 def test_load_national_targets_deactivates_stale_baseline_rows(tmp_path, monkeypatch):

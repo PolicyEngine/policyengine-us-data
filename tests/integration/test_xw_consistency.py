@@ -17,7 +17,7 @@ import pytest
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-DATASET_PATH = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
+DATASET_PATH = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2025.h5")
 DB_PATH = str(STORAGE_FOLDER / "calibration" / "policy_data.db")
 DB_URI = f"sqlite:///{DB_PATH}"
 
@@ -62,7 +62,7 @@ def test_xw_matches_stacked_sim():
 
     builder = UnifiedMatrixBuilder(
         db_uri=DB_URI,
-        time_period=2024,
+        time_period=2025,
         dataset_path=DATASET_PATH,
     )
 
@@ -113,11 +113,11 @@ def test_xw_matches_stacked_sim():
 
         stacked_sim = Microsimulation(dataset=h5_path)
         hh_weight = stacked_sim.calculate(
-            "household_weight", 2024, map_to="household"
+            "household_weight", 2025, map_to="household"
         ).values
 
         for var in check_vars:
-            vals = stacked_sim.calculate(var, 2024, map_to="household").values
+            vals = stacked_sim.calculate(var, 2025, map_to="household").values
             stacked_sum = (vals * hh_weight).sum()
 
             cd_row = targets_df[

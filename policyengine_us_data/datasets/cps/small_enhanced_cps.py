@@ -4,8 +4,12 @@ import numpy as np
 import h5py
 
 from policyengine_us import Microsimulation
-from policyengine_us_data.datasets import EnhancedCPS_2024
-from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.datasets import EnhancedCPS_2025
+from policyengine_us_data.storage.artifact_paths import (
+    PRODUCTION_ECPS_YEAR,
+    small_enhanced_cps_path,
+    sparse_enhanced_cps_path,
+)
 from policyengine_core.enums import Enum
 from policyengine_core.data.dataset import Dataset
 import logging
@@ -14,7 +18,7 @@ import logging
 def create_small_ecps():
     """Create a small version of the ECPS by random sampling"""
     simulation = Microsimulation(
-        dataset=EnhancedCPS_2024,
+        dataset=EnhancedCPS_2025,
     )
     simulation.subsample(1_000)
 
@@ -51,7 +55,7 @@ def create_small_ecps():
         if len(data[variable]) == 0:
             del data[variable]
 
-    with h5py.File(STORAGE_FOLDER / "small_enhanced_cps_2024.h5", "w") as f:
+    with h5py.File(small_enhanced_cps_path(PRODUCTION_ECPS_YEAR), "w") as f:
         for variable, periods in data.items():
             grp = f.create_group(variable)
             for period, values in periods.items():
@@ -60,16 +64,15 @@ def create_small_ecps():
 
 def create_sparse_ecps():
     """create a small version of the ECPS by L0 regularization"""
-    time_period = 2024
+    time_period = PRODUCTION_ECPS_YEAR
 
-    ecps = EnhancedCPS_2024()
+    ecps = EnhancedCPS_2025()
     h5 = ecps.load()
     sparse_weights = h5["household_weight"][str(time_period)][:]
-    hh_ids = h5["household_id"][str(time_period)][:]
     h5.close()
 
     template_sim = Microsimulation(
-        dataset=EnhancedCPS_2024,
+        dataset=EnhancedCPS_2025,
     )
     template_sim.set_input("household_weight", time_period, sparse_weights)
 
@@ -78,7 +81,6 @@ def create_sparse_ecps():
 
     household_weight_column = f"household_weight__{time_period}"
     df_household_id_column = f"household_id__{time_period}"
-    df_person_id_column = f"person_id__{time_period}"
 
     # Group by household ID and get the first entry for each group
     h_df = df.groupby(df_household_id_column).first()
@@ -138,7 +140,7 @@ def create_sparse_ecps():
         raise ValueError(f"create_sparse_ecps: missing critical variables: {missing}")
     logging.info(f"create_sparse_ecps: data dict has {len(data)} variables")
 
-    output_path = STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5"
+    output_path = sparse_enhanced_cps_path(PRODUCTION_ECPS_YEAR)
     with h5py.File(output_path, "w") as f:
         for variable, periods in data.items():
             grp = f.create_group(variable)

@@ -44,7 +44,7 @@ hyperparameters or target selections---without rebuilding.
 
 The matrix build requires two inputs from the data pipeline:
 
-- **Stratified CPS** (`storage/stratified_extended_cps_2024.h5`): ~12K households, built by
+- **Stratified CPS** (`storage/stratified_extended_cps_2025.h5`): ~12K households, built by
   `make data`. This is the base dataset that gets cloned.
 - **Target database** (`storage/calibration/policy_data.db`): Administrative targets, built by
   `make database`.
@@ -273,7 +273,7 @@ ORDER BY variable, geo_level;
 
 | Flag             | Default                                       | Description                                    |
 | ---------------- | --------------------------------------------- | ---------------------------------------------- |
-| `--dataset`      | `storage/stratified_extended_cps_2024.h5`     | Path to CPS h5 file                            |
+| `--dataset`      | `storage/stratified_extended_cps_2025.h5`     | Path to CPS h5 file                            |
 | `--db-path`      | `storage/calibration/policy_data.db`          | Path to target database                        |
 | `--output`       | `storage/calibration/calibration_weights.npy` | Weight output path                             |
 | `--puf-dataset`  | None                                          | Path to PUF h5 (enables PUF cloning)           |

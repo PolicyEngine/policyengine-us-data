@@ -3,7 +3,7 @@
 SOI_SOURCE_YEAR ?= 2021
 SOI_TARGET_YEAR ?= 2023
 
-YEAR ?= 2024
+YEAR ?= 2025
 
 GPU ?= T4
 EPOCHS ?= 1000
@@ -93,10 +93,8 @@ database-refresh:
 	$(MAKE) database
 
 promote-dataset:
-	python -c "from policyengine_us_data.utils.huggingface import upload; \
-		upload('policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5', \
-		'policyengine/policyengine-us-data', \
-		'calibration/source_imputed_stratified_extended_cps.h5')"
+	python -c "from policyengine_us_data.storage.upload_completed_datasets import upload_calibration_dataset; \
+		upload_calibration_dataset()"
 	@echo "Dataset promoted to HF."
 
 data: download database
@@ -131,7 +129,7 @@ publish-local-area:
 build-h5s:
 	python -m policyengine_us_data.calibration.publish_local_area \
 		--weights-path policyengine_us_data/storage/calibration/calibration_weights.npy \
-		--dataset-path policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5 \
+		--dataset-path policyengine_us_data/storage/source_imputed_stratified_extended_cps_2025.h5 \
 		--n-clones 430 \
 		--seed 42 \
 		--states-only
@@ -161,10 +159,8 @@ upload-calibration:
 		upload_calibration_artifacts()"
 
 upload-dataset:
-	python -c "from policyengine_us_data.utils.huggingface import upload; \
-		upload('policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5', \
-		'policyengine/policyengine-us-data', \
-		'calibration/source_imputed_stratified_extended_cps.h5')"
+	python -c "from policyengine_us_data.storage.upload_completed_datasets import upload_calibration_dataset; \
+		upload_calibration_dataset()"
 	@echo "Dataset uploaded to HF."
 
 push-to-modal:
@@ -175,7 +171,7 @@ push-to-modal:
 		policyengine_us_data/storage/calibration/policy_data.db \
 		artifacts/policy_data.db --force
 	modal volume put pipeline-artifacts \
-		policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5 \
+		policyengine_us_data/storage/source_imputed_stratified_extended_cps_2025.h5 \
 		artifacts/source_imputed_stratified_extended_cps.h5 --force
 	@echo "All pipeline artifacts pushed to Modal volume."
 

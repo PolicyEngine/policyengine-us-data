@@ -245,7 +245,7 @@ weights, not through the imputed values themselves.
 also lacks state identifiers, so these imputations are likewise state-blind.
 
 The output of this stage is the source-imputed stratified CPS
-(`source_imputed_stratified_extended_cps_2024.h5`), which serves as the input to the
+(`source_imputed_stratified_extended_cps_2025.h5`), which serves as the input to the
 geography-specific calibration pipeline.
 
 ## Stage 2: Geography-Specific Calibration Setup

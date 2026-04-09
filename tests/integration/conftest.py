@@ -14,7 +14,7 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 
 # ── Skip logic for missing datasets ───────────────────────────
 
-NEEDS_ECPS = not (STORAGE_FOLDER / "enhanced_cps_2024.h5").exists()
+NEEDS_ECPS = not (STORAGE_FOLDER / "enhanced_cps_2025.h5").exists()
 NEEDS_CPS = not (STORAGE_FOLDER / "cps_2024.h5").exists()
 
 collect_ignore_glob = []
@@ -53,4 +53,4 @@ def db_uri():
 
 @pytest.fixture(scope="module")
 def dataset_path():
-    return str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
+    return str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2025.h5")

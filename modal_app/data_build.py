@@ -18,6 +18,9 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image  # noqa: E402
+from policyengine_us_data.storage.artifact_paths import (  # noqa: E402
+    PRODUCTION_ECPS_YEAR,
+)
 
 app = modal.App("policyengine-us-data")
 
@@ -59,21 +62,22 @@ SCRIPT_OUTPUTS = {
         "policyengine_us_data/storage/puf_2024.h5"
     ),
     "policyengine_us_data/datasets/cps/extended_cps.py": (
-        "policyengine_us_data/storage/extended_cps_2024.h5"
+        f"policyengine_us_data/storage/extended_cps_{PRODUCTION_ECPS_YEAR}.h5"
     ),
     # enhanced_cps.py produces both the dataset and calibration log
     "policyengine_us_data/datasets/cps/enhanced_cps.py": [
-        "policyengine_us_data/storage/enhanced_cps_2024.h5",
+        f"policyengine_us_data/storage/enhanced_cps_{PRODUCTION_ECPS_YEAR}.h5",
         "calibration_log.csv",
     ],
     "policyengine_us_data/calibration/create_stratified_cps.py": (
-        "policyengine_us_data/storage/stratified_extended_cps_2024.h5"
+        f"policyengine_us_data/storage/stratified_extended_cps_{PRODUCTION_ECPS_YEAR}.h5"
     ),
     "policyengine_us_data/calibration/create_source_imputed_cps.py": (
-        "policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5"
+        "policyengine_us_data/storage/"
+        f"source_imputed_stratified_extended_cps_{PRODUCTION_ECPS_YEAR}.h5"
     ),
     "policyengine_us_data/datasets/cps/small_enhanced_cps.py": (
-        "policyengine_us_data/storage/small_enhanced_cps_2024.h5"
+        f"policyengine_us_data/storage/small_enhanced_cps_{PRODUCTION_ECPS_YEAR}.h5"
     ),
 }
 
@@ -642,7 +646,10 @@ def build_datasets(
                 )
 
     # Yearless alias for pipeline consumers (remote_calibration_runner, local_area)
-    si = artifacts_dir / "source_imputed_stratified_extended_cps_2024.h5"
+    si = (
+        artifacts_dir
+        / f"source_imputed_stratified_extended_cps_{PRODUCTION_ECPS_YEAR}.h5"
+    )
     if si.exists():
         shutil.copy2(si, artifacts_dir / "source_imputed_stratified_extended_cps.h5")
 

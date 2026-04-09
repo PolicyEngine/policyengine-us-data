@@ -140,7 +140,7 @@ The calibration pipeline has six stages. Each can be run locally, via Modal CLI,
 
 ### Stage 1: Build data
 
-Produces `source_imputed_stratified_extended_cps_2024.h5` from raw CPS/PUF/ACS/SIPP/SCF inputs.
+Produces `source_imputed_stratified_extended_cps_2025.h5` from raw CPS/PUF/ACS/SIPP/SCF inputs.
 
 | Method | Command |
 |--------|---------|

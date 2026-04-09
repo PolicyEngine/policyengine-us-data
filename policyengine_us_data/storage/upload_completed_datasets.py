@@ -3,9 +3,14 @@ from pathlib import Path
 import h5py
 from policyengine_core.data import Dataset
 
-from policyengine_us_data.datasets import EnhancedCPS_2024
+from policyengine_us_data.datasets import EnhancedCPS_2025
 from policyengine_us_data.datasets.cps.cps import CPS_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage.artifact_paths import (
+    PRODUCTION_ECPS_YEAR,
+    small_enhanced_cps_path,
+    source_imputed_stratified_extended_cps_path,
+)
 from policyengine_us_data.utils.data_upload import upload_data_files
 from policyengine_us_data.utils.dataset_validation import (
     DatasetContractError,
@@ -13,15 +18,25 @@ from policyengine_us_data.utils.dataset_validation import (
     validate_dataset_contract,
 )
 
-# Datasets that require full validation before upload.
-# These are the main datasets used in production simulations.
-VALIDATED_FILENAMES = {
+# Datasets that require aggregate, contract, and structure validation.
+FULLY_VALIDATED_FILENAMES = {
+    "enhanced_cps_2025.h5",
     "enhanced_cps_2024.h5",
     "cps_2024.h5",
+    "source_imputed_stratified_extended_cps_2025.h5",
 }
+
+# Datasets that require contract and structure validation but not
+# aggregate national sanity checks.
+CONTRACT_VALIDATED_FILENAMES = {
+    "small_enhanced_cps_2025.h5",
+}
+
+VALIDATED_FILENAMES = FULLY_VALIDATED_FILENAMES | CONTRACT_VALIDATED_FILENAMES
 
 # Minimum file sizes in bytes for validated datasets.
 MIN_FILE_SIZES = {
+    "enhanced_cps_2025.h5": 95 * 1024 * 1024,  # 95 MB
     "enhanced_cps_2024.h5": 95 * 1024 * 1024,  # 95 MB
     "cps_2024.h5": 50 * 1024 * 1024,  # 50 MB
 }
@@ -37,7 +52,7 @@ INCOME_GROUPS = [
     "employment_income",
 ]
 
-# Aggregate thresholds for sanity checks (year 2024).
+# Aggregate thresholds for sanity checks on full production datasets.
 MIN_EMPLOYMENT_INCOME_SUM = 5e12  # $5 trillion
 MIN_HOUSEHOLD_WEIGHT_SUM = 100e6  # 100 million
 MAX_HOUSEHOLD_WEIGHT_SUM = 200e6  # 200 million
@@ -47,6 +62,19 @@ class DatasetValidationError(Exception):
     """Raised when a dataset fails pre-upload validation."""
 
     pass
+
+
+def _coerce_validation_period(dataset, file_path: Path):
+    period = getattr(dataset, "time_period", None)
+    if period is None:
+        period = getattr(type(dataset), "time_period", None)
+    if period is None:
+        raise DatasetValidationError(
+            f"Could not infer validation period for {file_path.name}"
+        )
+    if isinstance(period, str) and period.isdigit():
+        return int(period)
+    return period
 
 
 def validate_dataset(file_path: Path) -> None:
@@ -127,37 +155,38 @@ def validate_dataset(file_path: Path) -> None:
             + "\n".join(f"  - {e}" for e in errors)
         ) from e
 
-    # 3. Aggregate statistics check via Microsimulation
-    # Import here to avoid heavy import at module level.
-    from policyengine_us import Microsimulation
+    emp_income = None
+    hh_weight = None
+    if filename in FULLY_VALIDATED_FILENAMES:
+        # Import here to avoid heavy import at module level.
+        from policyengine_us import Microsimulation
 
-    try:
-        sim = Microsimulation(
-            dataset=load_dataset_for_validation(file_path, Dataset.from_file)
-        )
-        year = 2024
+        try:
+            dataset = load_dataset_for_validation(file_path, Dataset.from_file)
+            sim = Microsimulation(dataset=dataset)
+            year = _coerce_validation_period(dataset, file_path)
 
-        emp_income = sim.calculate("employment_income", year).sum()
-        if emp_income < MIN_EMPLOYMENT_INCOME_SUM:
-            errors.append(
-                f"employment_income sum = ${emp_income:,.0f}, "
-                f"expected > ${MIN_EMPLOYMENT_INCOME_SUM:,.0f}. "
-                f"Data may have dropped employment income."
-            )
+            emp_income = sim.calculate("employment_income", year).sum()
+            if emp_income < MIN_EMPLOYMENT_INCOME_SUM:
+                errors.append(
+                    f"employment_income sum = ${emp_income:,.0f}, "
+                    f"expected > ${MIN_EMPLOYMENT_INCOME_SUM:,.0f}. "
+                    f"Data may have dropped employment income."
+                )
 
-        hh_weight = sim.calculate("household_weight", year).values.sum()
-        if hh_weight < MIN_HOUSEHOLD_WEIGHT_SUM:
-            errors.append(
-                f"household_weight sum = {hh_weight:,.0f}, "
-                f"expected > {MIN_HOUSEHOLD_WEIGHT_SUM:,.0f}."
-            )
-        if hh_weight > MAX_HOUSEHOLD_WEIGHT_SUM:
-            errors.append(
-                f"household_weight sum = {hh_weight:,.0f}, "
-                f"expected < {MAX_HOUSEHOLD_WEIGHT_SUM:,.0f}."
-            )
-    except Exception as e:
-        errors.append(f"Microsimulation validation failed: {e}")
+            hh_weight = sim.calculate("household_weight", year).values.sum()
+            if hh_weight < MIN_HOUSEHOLD_WEIGHT_SUM:
+                errors.append(
+                    f"household_weight sum = {hh_weight:,.0f}, "
+                    f"expected > {MIN_HOUSEHOLD_WEIGHT_SUM:,.0f}."
+                )
+            if hh_weight > MAX_HOUSEHOLD_WEIGHT_SUM:
+                errors.append(
+                    f"household_weight sum = {hh_weight:,.0f}, "
+                    f"expected < {MAX_HOUSEHOLD_WEIGHT_SUM:,.0f}."
+                )
+        except Exception as e:
+            errors.append(f"Microsimulation validation failed: {e}")
 
     if errors:
         raise DatasetValidationError(
@@ -176,18 +205,20 @@ def validate_dataset(file_path: Path) -> None:
             else ""
         )
     )
-    print(f"    employment_income sum: ${emp_income:,.0f}")
-    print(f"    Household weight sum: {hh_weight:,.0f}")
+    if emp_income is not None and hh_weight is not None:
+        print(f"    employment_income sum: ${emp_income:,.0f}")
+        print(f"    Household weight sum: {hh_weight:,.0f}")
 
 
 def upload_datasets(require_enhanced_cps: bool = True):
+    enhanced_dataset = EnhancedCPS_2025
     required_files = [
         CPS_2024.file_path,
         STORAGE_FOLDER / "calibration" / "policy_data.db",
     ]
     enhanced_files = [
-        EnhancedCPS_2024.file_path,
-        STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
+        enhanced_dataset.file_path,
+        small_enhanced_cps_path(PRODUCTION_ECPS_YEAR),
     ]
     if require_enhanced_cps:
         required_files.extend(enhanced_files)
@@ -231,15 +262,43 @@ def validate_all_datasets():
 
 
 def validate_built_datasets(require_enhanced_cps: bool = True):
-    required_files = [CPS_2024.file_path]
+    required_files = [
+        CPS_2024.file_path,
+        source_imputed_stratified_extended_cps_path(PRODUCTION_ECPS_YEAR),
+    ]
     if require_enhanced_cps:
-        required_files.append(EnhancedCPS_2024.file_path)
+        required_files.extend(
+            [
+                EnhancedCPS_2025.file_path,
+                small_enhanced_cps_path(PRODUCTION_ECPS_YEAR),
+            ]
+        )
 
     for file_path in required_files:
         if not file_path.exists():
             raise FileNotFoundError(f"Expected dataset not found at {file_path}")
         validate_dataset(file_path)
     print("\nAll dataset validations passed.")
+
+
+def upload_calibration_dataset(
+    file_path: Path | None = None,
+    repo: str = "policyengine/policyengine-us-data",
+    repo_file_path: str = "calibration/source_imputed_stratified_extended_cps.h5",
+):
+    calibration_dataset_path = Path(
+        file_path or source_imputed_stratified_extended_cps_path(PRODUCTION_ECPS_YEAR)
+    )
+    if not calibration_dataset_path.exists():
+        raise FileNotFoundError(
+            f"Calibration dataset not found at {calibration_dataset_path}"
+        )
+
+    validate_dataset(calibration_dataset_path)
+
+    from policyengine_us_data.utils.huggingface import upload
+
+    upload(str(calibration_dataset_path), repo, repo_file_path)
 
 
 if __name__ == "__main__":

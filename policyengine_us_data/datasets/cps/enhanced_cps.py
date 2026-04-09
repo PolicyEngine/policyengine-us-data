@@ -13,7 +13,12 @@ from typing import Type
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS_2024_Half,
+    ExtendedCPS_2025_Half,
     CPS_2024,
+)
+from policyengine_us_data.storage.artifact_paths import (
+    PRODUCTION_ECPS_YEAR,
+    enhanced_cps_path,
 )
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
@@ -213,6 +218,7 @@ class EnhancedCPS(Dataset):
     input_dataset: Type[Dataset]
     start_year: int
     end_year: int
+    apply_aca_2025_takeup_override: bool = False
 
     def generate(self):
         from policyengine_us import Microsimulation
@@ -285,7 +291,10 @@ class EnhancedCPS(Dataset):
                 f"{int(np.sum(w > 0))} non-zero"
             )
 
-        if 2025 in ACA_POST_CALIBRATION_PERSON_TARGETS:
+        if (
+            self.apply_aca_2025_takeup_override
+            and 2025 in ACA_POST_CALIBRATION_PERSON_TARGETS
+        ):
             sim.set_input(
                 "household_weight",
                 base_year,
@@ -374,11 +383,23 @@ class EnhancedCPS_2024(EnhancedCPS):
     start_year = 2024
     end_year = 2024
     time_period = 2024
+    apply_aca_2025_takeup_override = True
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
     file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"
     url = "hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5"
 
 
+class EnhancedCPS_2025(EnhancedCPS):
+    input_dataset = ExtendedCPS_2025_Half
+    start_year = PRODUCTION_ECPS_YEAR
+    end_year = PRODUCTION_ECPS_YEAR
+    time_period = PRODUCTION_ECPS_YEAR
+    name = "enhanced_cps_2025"
+    label = "Enhanced CPS 2025"
+    file_path = enhanced_cps_path(PRODUCTION_ECPS_YEAR)
+    url = "hf://policyengine/policyengine-us-data/enhanced_cps_2025.h5"
+
+
 if __name__ == "__main__":
-    EnhancedCPS_2024().generate()
+    EnhancedCPS_2025().generate()

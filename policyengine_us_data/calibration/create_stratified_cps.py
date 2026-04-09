@@ -1,5 +1,5 @@
 """
-Create a stratified sample of extended_cps_2024.h5 that preserves high-income households
+Create a stratified sample of the production extended CPS that preserves high-income households
 while maintaining diversity in lower income strata for poverty analysis.
 
 Strategy:
@@ -13,6 +13,11 @@ import h5py
 from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 from policyengine_core.enums import Enum
+from policyengine_us_data.storage.artifact_paths import (
+    PRODUCTION_ECPS_YEAR,
+    extended_cps_path,
+    stratified_extended_cps_path,
+)
 
 
 def create_stratified_cps_dataset(
@@ -32,7 +37,7 @@ def create_stratified_cps_dataset(
         high_income_percentile: Keep ALL households above this AGI percentile (e.g., 99 or 99.5)
         oversample_poor: If True, boost sampling rate for bottom 25% by 1.5x
         seed: Random seed for reproducibility (default: None for random)
-        base_dataset: Path to source h5 file (default: extended_cps_2024.h5)
+        base_dataset: Path to source h5 file (default: extended_cps_2025.h5)
         output_path: Where to save the stratified h5 file
     """
     print("\n" + "=" * 70)
@@ -41,9 +46,7 @@ def create_stratified_cps_dataset(
 
     # Default to local storage if no base_dataset specified
     if base_dataset is None:
-        from policyengine_us_data.storage import STORAGE_FOLDER
-
-        base_dataset = str(STORAGE_FOLDER / "extended_cps_2024.h5")
+        base_dataset = str(extended_cps_path(PRODUCTION_ECPS_YEAR))
 
     # Load the original simulation
     print("Loading original dataset...")
@@ -74,7 +77,7 @@ def create_stratified_cps_dataset(
     n_bottom_25 = np.sum(agi < bottom_25_pct_threshold)
     n_middle = n_households_orig - n_top - n_bottom_25
 
-    print(f"\nStratum sizes:")
+    print("\nStratum sizes:")
     print(
         f"  Top {100 - high_income_percentile}% (AGI >= ${high_income_threshold:,.0f}): {n_top:,}"
     )
@@ -103,7 +106,7 @@ def create_stratified_cps_dataset(
         r_middle = min(1.0, r_middle)
         r_bottom = min(1.0, r_bottom)
 
-    print(f"\nSampling rates:")
+    print("\nSampling rates:")
     print(f"  Top {100 - high_income_percentile}%: 100%")
     print(f"  Middle 25-{high_income_percentile}%: {r_middle:.1%}")
     print(f"  Bottom 25%: {r_bottom:.1%}")
@@ -114,7 +117,7 @@ def create_stratified_cps_dataset(
     expected_bottom = int(n_bottom_25 * r_bottom)
     expected_total = expected_top + expected_middle + expected_bottom
 
-    print(f"\nExpected selection:")
+    print("\nExpected selection:")
     print(f"  Top {100 - high_income_percentile}%: {expected_top:,}")
     print(f"  Middle 25-{high_income_percentile}%: {expected_middle:,}")
     print(f"  Bottom 25%: {expected_bottom:,}")
@@ -208,9 +211,7 @@ def create_stratified_cps_dataset(
 
     # Generate output path if not provided
     if output_path is None:
-        from policyengine_us_data.storage import STORAGE_FOLDER
-
-        output_path = str(STORAGE_FOLDER / "stratified_extended_cps_2024.h5")
+        output_path = str(stratified_extended_cps_path(PRODUCTION_ECPS_YEAR))
 
     # Save to h5 file
     print(f"\nSaving to {output_path}...")
@@ -256,7 +257,7 @@ def create_stratified_cps_dataset(
             for period, values in periods.items():
                 grp.create_dataset(str(period), data=values)
 
-    print(f"Stratified CPS dataset saved successfully!")
+    print("Stratified CPS dataset saved successfully!")
 
     # Verify the saved file
     print("\nVerifying saved file...")
@@ -285,7 +286,7 @@ def create_stratified_cps_dataset(
 
     max_agi_original = np.max(agi)
     max_agi_stratified = np.max(agi_stratified)
-    print(f"\nMaximum AGI:")
+    print("\nMaximum AGI:")
     print(f"  Original: ${max_agi_original:,.0f}")
     print(f"  Stratified: ${max_agi_stratified:,.0f}")
 
@@ -315,7 +316,7 @@ if __name__ == "__main__":
         elif arg.isdigit():
             target = int(arg)
 
-    print(f"Creating stratified dataset:")
+    print("Creating stratified dataset:")
     print(f"  Target households: {target:,}")
     print(f"  Keep all above: {high_pct}th percentile")
     print(f"  Oversample poor: {oversample}")

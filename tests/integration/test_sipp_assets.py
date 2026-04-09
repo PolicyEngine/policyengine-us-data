@@ -42,10 +42,10 @@ def test_ecps_has_liquid_assets():
     - Median household liquid assets: ~$8,000
     - Total US household liquid assets: ~$15-20 trillion
     """
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
     from policyengine_us import Microsimulation
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
 
     # Sum all liquid asset categories
     bank = sim.calculate("bank_account_assets", map_to="household")
@@ -76,11 +76,11 @@ def test_liquid_assets_distribution():
     - ~40% of households have <$5,000
     - Median is around $8,000
     """
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
     from policyengine_us import Microsimulation
     import numpy as np
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
 
     bank = sim.calculate("bank_account_assets", map_to="household")
     stocks = sim.calculate("stock_assets", map_to="household")
@@ -111,10 +111,10 @@ def test_liquid_assets_distribution():
 
 def test_asset_categories_exist():
     """Test that all three asset categories are imputed."""
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
     from policyengine_us import Microsimulation
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
 
     # Each category should exist and have non-zero totals
     bank = sim.calculate("bank_account_assets").sum()
@@ -136,10 +136,10 @@ def test_low_asset_households():
     For SSI and other means-tested programs, many households need
     to have assets below program limits ($2k-$3k for SSI).
     """
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
     from policyengine_us import Microsimulation
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
 
     bank = sim.calculate("bank_account_assets")
     stocks = sim.calculate("stock_assets")

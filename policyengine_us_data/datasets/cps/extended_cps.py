@@ -13,6 +13,12 @@ from policyengine_us_data.datasets.org import (
 )
 from policyengine_us_data.datasets.puf import PUF, PUF_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage.artifact_paths import (
+    PRODUCTION_ECPS_YEAR,
+    RAW_CPS_BASE_YEAR,
+    extended_cps_half_path,
+    extended_cps_path,
+)
 from policyengine_us_data.utils.mortgage_interest import (
     STRUCTURAL_MORTGAGE_VARIABLES,
     convert_mortgage_interest_to_structural_inputs,
@@ -1021,6 +1027,26 @@ class ExtendedCPS_2024_Half(ExtendedCPS):
     time_period = 2024
 
 
+class ExtendedCPS_2025(ExtendedCPS):
+    cps = CPS_2024_Full
+    puf = PUF_2024
+    name = "extended_cps_2025"
+    label = "Extended CPS (2025)"
+    file_path = extended_cps_path(PRODUCTION_ECPS_YEAR)
+    time_period = PRODUCTION_ECPS_YEAR
+
+
+class ExtendedCPS_2025_Half(ExtendedCPS):
+    cps = CPS_2024
+    puf = PUF_2024
+    name = "extended_cps_2025_half"
+    label = "Extended CPS 2025 (half sample)"
+    file_path = extended_cps_half_path(PRODUCTION_ECPS_YEAR)
+    time_period = PRODUCTION_ECPS_YEAR
+
+
 if __name__ == "__main__":
-    ExtendedCPS_2024().generate()
-    ExtendedCPS_2024_Half().generate()
+    if RAW_CPS_BASE_YEAR != 2024:
+        raise ValueError("Extended CPS defaults assume the 2024 raw CPS base year")
+    ExtendedCPS_2025().generate()
+    ExtendedCPS_2025_Half().generate()

@@ -1,4 +1,4 @@
-"""Integration tests for Enhanced CPS dataset (requires enhanced_cps_2024.h5)."""
+"""Integration tests for Enhanced CPS dataset (requires enhanced_cps_2025.h5)."""
 
 import numpy as np
 import pytest
@@ -6,10 +6,10 @@ import pytest
 
 @pytest.fixture(scope="module")
 def ecps_sim():
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
     from policyengine_us import Microsimulation
 
-    return Microsimulation(dataset=EnhancedCPS_2024)
+    return Microsimulation(dataset=EnhancedCPS_2025)
 
 
 # ── Sanity checks ─────────────────────────────────────────────
@@ -68,11 +68,11 @@ def test_ecps_mean_employment_income_reasonable(ecps_sim):
 def test_ecps_file_size():
     from policyengine_us_data.storage import STORAGE_FOLDER
 
-    path = STORAGE_FOLDER / "enhanced_cps_2024.h5"
+    path = STORAGE_FOLDER / "enhanced_cps_2025.h5"
     if not path.exists():
-        pytest.skip("enhanced_cps_2024.h5 not found")
+        pytest.skip("enhanced_cps_2025.h5 not found")
     size_mb = path.stat().st_size / (1024 * 1024)
-    assert size_mb > 95, f"enhanced_cps_2024.h5 is only {size_mb:.1f}MB, expected >95MB"
+    assert size_mb > 95, f"enhanced_cps_2025.h5 is only {size_mb:.1f}MB, expected >95MB"
 
 
 # ── Feature checks ────────────────────────────────────────────
@@ -84,10 +84,10 @@ def test_ecps_employment_income_direct():
     This tests the ACTUAL H5 dataset, not calibration_log.csv, and would
     have caught the bug where employment_income_before_lsr was dropped.
     """
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
     from policyengine_us import Microsimulation
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
     total = sim.calculate("employment_income").sum()
     assert total > 5e12, (
         f"employment_income sum is {total:.2e}, expected > 5T. "
@@ -96,19 +96,19 @@ def test_ecps_employment_income_direct():
 
 
 def test_ecps_has_mortgage_interest():
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
     from policyengine_us import Microsimulation
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
 
     assert sim.calculate("deductible_mortgage_interest").sum() > 1
 
 
 def test_ecps_has_tips():
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
     from policyengine_us import Microsimulation
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
     # Ensure we impute at least $40 billion in tip income.
     # We currently target $38 billion * 1.4 = $53.2 billion.
     TIP_INCOME_MINIMUM = 40e9
@@ -137,7 +137,7 @@ def test_ecps_replicates_jct_tax_expenditures():
 def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
     from policyengine_us import Microsimulation
     from policyengine_core.reforms import Reform
-    from policyengine_us_data.datasets import EnhancedCPS_2024
+    from policyengine_us_data.datasets import EnhancedCPS_2025
 
     # JCT tax expenditure targets
     EXPENDITURE_TARGETS = {
@@ -147,8 +147,8 @@ def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
         "interest_deduction": 24.8e9,
     }
 
-    baseline = Microsimulation(dataset=EnhancedCPS_2024)
-    income_tax_b = baseline.calculate("income_tax", period=2024, map_to="household")
+    baseline = Microsimulation(dataset=EnhancedCPS_2025)
+    income_tax_b = baseline.calculate("income_tax", period=2025, map_to="household")
 
     for deduction, target in EXPENDITURE_TARGETS.items():
         # Create reform that neutralizes the deduction
@@ -157,8 +157,8 @@ def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
                 self.neutralize_variable(deduction)
 
         # Run reform simulation
-        reformed = Microsimulation(reform=RepealDeduction, dataset=EnhancedCPS_2024)
-        income_tax_r = reformed.calculate("income_tax", period=2024, map_to="household")
+        reformed = Microsimulation(reform=RepealDeduction, dataset=EnhancedCPS_2025)
+        income_tax_r = reformed.calculate("income_tax", period=2025, map_to="household")
 
         # Calculate tax expenditure
         tax_expenditure = (income_tax_r - income_tax_b).sum()
@@ -172,13 +172,13 @@ def deprecated_test_ecps_replicates_jct_tax_expenditures_full():
 
 
 def test_ssn_card_type_none_target():
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
     from policyengine_us import Microsimulation
 
     TARGET_COUNT = 13e6
     TOLERANCE = 0.2  # Allow ±20% error
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
 
     # Calculate the number of individuals with ssn_card_type == "NONE"
     ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"
@@ -193,14 +193,14 @@ def test_ssn_card_type_none_target():
 
 
 def test_undocumented_matches_ssn_none():
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
     from policyengine_us import Microsimulation
     import numpy as np
 
     TARGET_COUNT = 13e6
     TOLERANCE = 0.2  # ±20 %
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
 
     ssn_type_none_mask = sim.calculate("ssn_card_type") == "NONE"
     undocumented_mask = sim.calculate("immigration_status") == "UNDOCUMENTED"
@@ -225,10 +225,10 @@ def test_aca_calibration():
     import pandas as pd
     from pathlib import Path
     from policyengine_us import Microsimulation
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
 
     TARGETS_PATH = Path(
-        "policyengine_us_data/storage/calibration_targets/aca_spending_and_enrollment_2024.csv"
+        "policyengine_us_data/storage/calibration_targets/aca_spending_and_enrollment_2025.csv"
     )
     targets = pd.read_csv(TARGETS_PATH)
     # Monthly to yearly
@@ -236,7 +236,7 @@ def test_aca_calibration():
     # Adjust to match national target
     targets["spending"] = targets["spending"] * (98e9 / targets["spending"].sum())
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
     state_code_hh = sim.calculate("state_code", map_to="household").values
     aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
 
@@ -281,13 +281,13 @@ def test_aca_2025_takeup_override_helper():
 
 def test_immigration_status_diversity():
     """Test that immigration statuses show appropriate diversity (not all citizens)."""
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
     from policyengine_us import Microsimulation
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
 
     # Get immigration status for all persons (weighted MicroSeries)
-    immigration_status = sim.calculate("immigration_status", 2024)
+    immigration_status = sim.calculate("immigration_status", 2025)
 
     # Weighted counts by status
     weighted_counts = immigration_status.weights.groupby(immigration_status).sum()
@@ -324,14 +324,14 @@ def test_medicaid_calibration():
     import pandas as pd
     from pathlib import Path
     from policyengine_us import Microsimulation
-    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2025
 
     TARGETS_PATH = Path(
-        "policyengine_us_data/storage/calibration_targets/medicaid_enrollment_2024.csv"
+        "policyengine_us_data/storage/calibration_targets/medicaid_enrollment_2025.csv"
     )
     targets = pd.read_csv(TARGETS_PATH)
 
-    sim = Microsimulation(dataset=EnhancedCPS_2024)
+    sim = Microsimulation(dataset=EnhancedCPS_2025)
     state_code_hh = sim.calculate("state_code", map_to="household").values
     medicaid_enrolled = sim.calculate(
         "medicaid_enrolled", map_to="household", period=2025

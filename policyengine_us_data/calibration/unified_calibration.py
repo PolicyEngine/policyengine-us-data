@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1184,9 +1185,13 @@ def main(argv=None):
     logger.info("CLI args: %s", vars(args))
 
     from policyengine_us_data.storage import STORAGE_FOLDER
+    from policyengine_us_data.storage.artifact_paths import (
+        PRODUCTION_ECPS_YEAR,
+        source_imputed_stratified_extended_cps_path,
+    )
 
     dataset_path = args.dataset or str(
-        STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
+        source_imputed_stratified_extended_cps_path(PRODUCTION_ECPS_YEAR)
     )
     if not args.package_path and not Path(dataset_path).exists():
         raise FileNotFoundError(

@@ -14,7 +14,7 @@ import pytest
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-DATASET_PATH = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
+DATASET_PATH = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2025.h5")
 DB_PATH = str(STORAGE_FOLDER / "calibration" / "policy_data.db")
 DB_URI = f"sqlite:///{DB_PATH}"
 
@@ -44,7 +44,7 @@ def matrix_result():
     geography = assign_random_geography(n_records, n_clones=N_CLONES, seed=SEED)
     builder = UnifiedMatrixBuilder(
         db_uri=DB_URI,
-        time_period=2024,
+        time_period=2025,
         dataset_path=DATASET_PATH,
     )
     targets_df, X_sparse, target_names = builder.build_matrix(

@@ -13,12 +13,16 @@ import sys
 
 import h5py
 
-from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage.artifact_paths import (
+    PRODUCTION_ECPS_YEAR,
+    source_imputed_stratified_extended_cps_path,
+    stratified_extended_cps_path,
+)
 
 logger = logging.getLogger(__name__)
 
-INPUT_PATH = str(STORAGE_FOLDER / "stratified_extended_cps_2024.h5")
-OUTPUT_PATH = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
+INPUT_PATH = str(stratified_extended_cps_path(PRODUCTION_ECPS_YEAR))
+OUTPUT_PATH = str(source_imputed_stratified_extended_cps_path(PRODUCTION_ECPS_YEAR))
 
 
 def create_source_imputed_cps(

@@ -1,4 +1,4 @@
-"""Integration tests for Sparse Enhanced CPS dataset (requires enhanced_cps_2024.h5)."""
+"""Integration tests for Sparse Enhanced CPS dataset (requires enhanced_cps_2025.h5)."""
 
 import pytest
 from pathlib import Path
@@ -19,7 +19,7 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 
 @pytest.fixture(scope="session")
 def data():
-    return Dataset.from_file(STORAGE_FOLDER / "enhanced_cps_2024.h5")
+    return Dataset.from_file(STORAGE_FOLDER / "enhanced_cps_2025.h5")
 
 
 @pytest.fixture(scope="session")
@@ -29,9 +29,9 @@ def sim(data):
 
 @pytest.fixture(scope="module")
 def sparse_sim():
-    path = STORAGE_FOLDER / "sparse_enhanced_cps_2024.h5"
+    path = STORAGE_FOLDER / "sparse_enhanced_cps_2025.h5"
     if not path.exists():
-        pytest.skip("sparse_enhanced_cps_2024.h5 not found")
+        pytest.skip("sparse_enhanced_cps_2025.h5 not found")
     return Microsimulation(dataset=Dataset.from_file(path))
 
 
@@ -67,7 +67,7 @@ def test_sparse_poverty_rate_reasonable(sparse_sim):
 )
 def test_sparse_ecps(sim):
     data = sim.dataset.load_dataset()
-    optimised_weights = data["household_weight"]["2024"]
+    optimised_weights = data["household_weight"]["2025"]
 
     bad_targets = [
         "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
@@ -91,7 +91,7 @@ def test_sparse_ecps(sim):
         "nation/irs/exempt interest/count/AGI in -inf-inf/taxable/All",
     ]
 
-    loss_matrix, targets_array = build_loss_matrix(sim.dataset, 2024)
+    loss_matrix, targets_array = build_loss_matrix(sim.dataset, 2025)
     zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
     bad_mask = loss_matrix.columns.isin(bad_targets)
     keep_mask_bool = ~(zero_mask | bad_mask)
@@ -162,7 +162,7 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
     }
 
     baseline = sim
-    income_tax_b = baseline.calculate("income_tax", period=2024, map_to="household")
+    income_tax_b = baseline.calculate("income_tax", period=2025, map_to="household")
 
     for deduction, target in EXPENDITURE_TARGETS.items():
         # Create reform that neutralizes the deduction
@@ -172,7 +172,7 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
 
         # Run reform simulation
         reformed = Microsimulation(reform=RepealDeduction, dataset=sim.dataset)
-        income_tax_r = reformed.calculate("income_tax", period=2024, map_to="household")
+        income_tax_r = reformed.calculate("income_tax", period=2025, map_to="household")
 
         # Calculate tax expenditure
         tax_expenditure = (income_tax_r - income_tax_b).sum()
@@ -207,7 +207,7 @@ def test_sparse_ssn_card_type_none_target(sim):
 def test_sparse_aca_calibration(sim):
 
     TARGETS_PATH = Path(
-        "policyengine_us_data/storage/calibration_targets/aca_spending_and_enrollment_2024.csv"
+        "policyengine_us_data/storage/calibration_targets/aca_spending_and_enrollment_2025.csv"
     )
     targets = pd.read_csv(TARGETS_PATH)
     # Monthly to yearly
@@ -241,7 +241,7 @@ def test_sparse_aca_calibration(sim):
 def test_sparse_medicaid_calibration(sim):
 
     TARGETS_PATH = Path(
-        "policyengine_us_data/storage/calibration_targets/medicaid_enrollment_2024.csv"
+        "policyengine_us_data/storage/calibration_targets/medicaid_enrollment_2025.csv"
     )
     targets = pd.read_csv(TARGETS_PATH)
 

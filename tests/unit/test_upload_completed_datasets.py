@@ -7,6 +7,7 @@ import pytest
 import policyengine_us_data.storage.upload_completed_datasets as upload_module
 from policyengine_us_data.storage.upload_completed_datasets import (
     DatasetValidationError,
+    upload_datasets,
     validate_dataset,
 )
 import policyengine_us_data.utils.dataset_validation as _dv_mod
@@ -153,3 +154,79 @@ def test_validate_dataset_infers_time_period_for_flat_h5(tmp_path, monkeypatch):
     validate_dataset(file_path)
 
     assert _TimePeriodCheckingAggregateMicrosimulation.last_dataset.time_period == 2024
+
+
+def test_upload_datasets_includes_clone_diagnostics_sidecar(tmp_path, monkeypatch):
+    storage_folder = tmp_path / "storage"
+    calibration_folder = storage_folder / "calibration"
+    calibration_folder.mkdir(parents=True)
+
+    cps_path = storage_folder / "cps_2024.h5"
+    enhanced_path = storage_folder / "enhanced_cps_2024.h5"
+    diagnostics_path = enhanced_path.with_suffix(".clone_diagnostics.json")
+    small_path = storage_folder / "small_enhanced_cps_2024.h5"
+    policy_db = calibration_folder / "policy_data.db"
+
+    for path in [cps_path, enhanced_path, diagnostics_path, small_path, policy_db]:
+        path.write_text("placeholder")
+
+    monkeypatch.setattr(
+        upload_module,
+        "CPS_2024",
+        SimpleNamespace(file_path=cps_path),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "EnhancedCPS_2024",
+        SimpleNamespace(file_path=enhanced_path),
+    )
+    monkeypatch.setattr(upload_module, "STORAGE_FOLDER", storage_folder)
+    monkeypatch.setattr(upload_module, "validate_dataset", lambda file_path: None)
+
+    uploaded_files = []
+
+    def _capture_upload(*, files, **kwargs):
+        uploaded_files.extend(files)
+
+    monkeypatch.setattr(upload_module, "upload_data_files", _capture_upload)
+
+    upload_datasets(require_enhanced_cps=True)
+
+    assert uploaded_files == [
+        cps_path,
+        policy_db,
+        enhanced_path,
+        diagnostics_path,
+        small_path,
+    ]
+
+
+def test_upload_datasets_requires_clone_diagnostics_sidecar(tmp_path, monkeypatch):
+    storage_folder = tmp_path / "storage"
+    calibration_folder = storage_folder / "calibration"
+    calibration_folder.mkdir(parents=True)
+
+    cps_path = storage_folder / "cps_2024.h5"
+    enhanced_path = storage_folder / "enhanced_cps_2024.h5"
+    small_path = storage_folder / "small_enhanced_cps_2024.h5"
+    policy_db = calibration_folder / "policy_data.db"
+
+    for path in [cps_path, enhanced_path, small_path, policy_db]:
+        path.write_text("placeholder")
+
+    monkeypatch.setattr(
+        upload_module,
+        "CPS_2024",
+        SimpleNamespace(file_path=cps_path),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "EnhancedCPS_2024",
+        SimpleNamespace(file_path=enhanced_path),
+    )
+    monkeypatch.setattr(upload_module, "STORAGE_FOLDER", storage_folder)
+    monkeypatch.setattr(upload_module, "validate_dataset", lambda file_path: None)
+    monkeypatch.setattr(upload_module, "upload_data_files", lambda **kwargs: None)
+
+    with pytest.raises(FileNotFoundError, match="clone_diagnostics"):
+        upload_datasets(require_enhanced_cps=True)

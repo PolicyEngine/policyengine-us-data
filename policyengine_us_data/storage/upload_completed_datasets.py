@@ -5,6 +5,7 @@ from policyengine_core.data import Dataset
 
 from policyengine_us_data.datasets import EnhancedCPS_2024
 from policyengine_us_data.datasets.cps.cps import CPS_2024
+from policyengine_us_data.datasets.cps.enhanced_cps import clone_diagnostics_path
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.data_upload import upload_data_files
 from policyengine_us_data.utils.dataset_validation import (
@@ -187,6 +188,7 @@ def upload_datasets(require_enhanced_cps: bool = True):
     ]
     enhanced_files = [
         EnhancedCPS_2024.file_path,
+        clone_diagnostics_path(EnhancedCPS_2024.file_path),
         STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
     ]
     if require_enhanced_cps:

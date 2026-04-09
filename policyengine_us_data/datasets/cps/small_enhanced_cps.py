@@ -27,6 +27,14 @@ def _load_saved_period_array(
     raise KeyError(f"{variable_name} missing period {period}")
 
 
+def _normalize_annual_period_key(period_key) -> int:
+    if isinstance(period_key, (int, np.integer)):
+        return int(period_key)
+    if hasattr(period_key, "year"):
+        return int(period_key.year)
+    return int(str(period_key))
+
+
 def _attach_clone_origin_flags(
     data: dict[str, dict[int, np.ndarray]],
     source_dataset_path,
@@ -43,7 +51,7 @@ def _attach_clone_origin_flags(
             source_ids_by_period = {}
             source_flags_by_period = {}
             for period_key in data[id_variable]:
-                period = int(period_key)
+                period = _normalize_annual_period_key(period_key)
                 source_ids = _load_saved_period_array(source_h5, id_variable, period)
                 source_flags = _load_saved_period_array(source_h5, flag_name, period)
                 if len(source_ids) != len(source_flags):

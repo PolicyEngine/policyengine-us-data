@@ -135,8 +135,7 @@ class TestVariableListConsistency:
         )
 
     def test_capped_childcare_not_in_cps_only(self):
-        """Capped childcare should be derived from clone-half inputs, not
-        independently QRF-imputed."""
+        """Capped childcare should not be independently QRF-imputed."""
         assert "spm_unit_capped_work_childcare_expenses" not in set(
             CPS_ONLY_IMPUTED_VARIABLES
         )
@@ -288,8 +287,6 @@ class TestWeightPriorInitialization:
         priors_b = initialize_weight_priors(weights, seed=77)
 
         np.testing.assert_allclose(priors_a, priors_b)
-
-
 class TestRetirementConstraints:
     """Post-processing retirement constraints enforce IRS caps."""
 

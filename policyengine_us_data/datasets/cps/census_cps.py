@@ -233,6 +233,7 @@ PERSON_COLUMNS = [
     "A_FNLWGT",
     "A_LINENO",
     "A_SPOUSE",
+    "PERRP",
     "A_AGE",
     "A_SEX",
     "PEDISEYE",

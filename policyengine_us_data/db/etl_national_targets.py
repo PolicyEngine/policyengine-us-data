@@ -12,6 +12,9 @@ from policyengine_us_data.db.create_database_tables import (
 from policyengine_us_data.storage.calibration_targets.soi_metadata import (
     RETIREMENT_CONTRIBUTION_TARGETS,
 )
+from policyengine_us_data.utils.census_spm import (
+    build_census_spm_capped_housing_subsidy_target,
+)
 from policyengine_us_data.utils.db import (
     DEFAULT_YEAR,
     etl_argparser,
@@ -185,13 +188,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "notes": "Work and childcare expenses for SPM",
             "year": HARDCODED_YEAR,
         },
-        {
-            "variable": "spm_unit_capped_housing_subsidy",
-            "value": 35e9,
-            "source": "HUD/Census",
-            "notes": "Housing subsidies",
-            "year": HARDCODED_YEAR,
-        },
+        build_census_spm_capped_housing_subsidy_target(HARDCODED_YEAR),
         {
             "variable": "tanf",
             "value": 9e9,

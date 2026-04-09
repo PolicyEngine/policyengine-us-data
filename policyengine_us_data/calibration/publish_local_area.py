@@ -8,11 +8,6 @@ Usage:
     python publish_local_area.py [--skip-download] [--states-only] [--upload]
 """
 
-import hashlib
-import json
-import shutil
-
-
 import numpy as np
 from pathlib import Path
 from typing import List
@@ -31,6 +26,9 @@ from policyengine_us_data.calibration.calibration_utils import (
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
 )
+from policyengine_us_data.calibration.county_assignment import (
+    get_county_filter_probability,
+)
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
     assign_random_geography,
@@ -45,76 +43,28 @@ CHECKPOINT_FILE_DISTRICTS = Path("completed_districts.txt")
 CHECKPOINT_FILE_CITIES = Path("completed_cities.txt")
 WORK_DIR = Path("local_area_build")
 
-NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
+NYC_COUNTIES = {
+    "QUEENS_COUNTY_NY",
+    "BRONX_COUNTY_NY",
+    "RICHMOND_COUNTY_NY",
+    "NEW_YORK_COUNTY_NY",
+    "KINGS_COUNTY_NY",
+}
 
-
-META_FILE = WORK_DIR / "checkpoint_meta.json"
-
-
-def compute_input_fingerprint(
-    weights_path: Path, dataset_path: Path, n_clones: int, seed: int
-) -> str:
-    h = hashlib.sha256()
-    for p in [weights_path, dataset_path]:
-        with open(p, "rb") as f:
-            while chunk := f.read(8192):
-                h.update(chunk)
-    h.update(f"{n_clones}:{seed}".encode())
-    return h.hexdigest()[:16]
-
-
-def validate_or_clear_checkpoints(fingerprint: str):
-    if META_FILE.exists():
-        stored = json.loads(META_FILE.read_text())
-        if stored.get("fingerprint") == fingerprint:
-            print(f"Inputs unchanged ({fingerprint}), resuming...")
-            return
-        print(
-            f"Inputs changed "
-            f"({stored.get('fingerprint')} -> {fingerprint}), "
-            f"clearing..."
-        )
-    else:
-        print(f"No checkpoint metadata, starting fresh ({fingerprint})")
-    h5_count = sum(
-        1
-        for subdir in ["states", "districts", "cities"]
-        if (WORK_DIR / subdir).exists()
-        for _ in (WORK_DIR / subdir).rglob("*.h5")
-    )
-    if h5_count > 0:
-        print(
-            f"WARNING: {h5_count} H5 files exist. "
-            f"Clearing only checkpoint files, preserving H5s."
-        )
-        for cp in [
-            CHECKPOINT_FILE,
-            CHECKPOINT_FILE_DISTRICTS,
-            CHECKPOINT_FILE_CITIES,
-        ]:
-            if cp.exists():
-                cp.unlink()
-    else:
-        for cp in [
-            CHECKPOINT_FILE,
-            CHECKPOINT_FILE_DISTRICTS,
-            CHECKPOINT_FILE_CITIES,
-        ]:
-            if cp.exists():
-                cp.unlink()
-        for subdir in ["states", "districts", "cities"]:
-            d = WORK_DIR / subdir
-            if d.exists():
-                shutil.rmtree(d)
-    META_FILE.parent.mkdir(parents=True, exist_ok=True)
-    META_FILE.write_text(json.dumps({"fingerprint": fingerprint}))
-
-
-SUB_ENTITIES = [
-    "tax_unit",
-    "spm_unit",
-    "family",
-    "marital_unit",
+NYC_CDS = [
+    "3603",
+    "3605",
+    "3606",
+    "3607",
+    "3608",
+    "3609",
+    "3610",
+    "3611",
+    "3612",
+    "3613",
+    "3614",
+    "3615",
+    "3616",
 ]
 
 
@@ -163,7 +113,7 @@ def build_h5(
     dataset_path: Path,
     output_path: Path,
     cd_subset: List[str] = None,
-    county_fips_filter: set = None,
+    county_filter: set = None,
     takeup_filter: List[str] = None,
 ) -> Path:
     """Build an H5 file by cloning records for each nonzero weight.
@@ -174,8 +124,8 @@ def build_h5(
         dataset_path: Path to base dataset H5 file.
         output_path: Where to write the output H5 file.
         cd_subset: If provided, only include clones for these CDs.
-        county_fips_filter: If provided, zero out weights for clones
-            whose county FIPS is not in this set.
+        county_filter: If provided, scale weights by P(target|CD)
+            for city datasets.
         takeup_filter: List of takeup vars to apply.
 
     Returns:
@@ -216,11 +166,17 @@ def build_h5(
         cd_mask = np.vectorize(lambda cd: cd in cd_subset_set)(clone_cds_matrix)
         W[~cd_mask] = 0
 
-    # County FIPS filtering: zero out clones not in target counties
-    if county_fips_filter is not None:
-        fips_array = np.asarray(geography.county_fips).reshape(n_clones_total, n_hh)
-        fips_mask = np.isin(fips_array, list(county_fips_filter))
-        W[~fips_mask] = 0
+    # County filtering: scale weights by P(target_counties | CD)
+    if county_filter is not None:
+        unique_cds = np.unique(clone_cds_matrix)
+        cd_prob = {
+            cd: get_county_filter_probability(cd, county_filter) for cd in unique_cds
+        }
+        p_matrix = np.vectorize(
+            cd_prob.__getitem__,
+            otypes=[float],
+        )(clone_cds_matrix)
+        W *= p_matrix
 
     label = (
         f"CD subset {cd_subset}"
@@ -237,7 +193,7 @@ def build_h5(
     if n_clones == 0:
         raise ValueError(
             f"No active clones after filtering. "
-            f"cd_subset={cd_subset}, county_fips_filter={county_fips_filter}"
+            f"cd_subset={cd_subset}, county_filter={county_filter}"
         )
     clone_weights = W[active_geo, active_hh]
     active_blocks = blocks.reshape(n_clones_total, n_hh)[active_geo, active_hh]
@@ -258,6 +214,12 @@ def build_h5(
     for p_idx, p_hh_id in enumerate(person_hh_ids):
         hh_to_persons[hh_id_to_idx[int(p_hh_id)]].append(p_idx)
 
+    SUB_ENTITIES = [
+        "tax_unit",
+        "spm_unit",
+        "family",
+        "marital_unit",
+    ]
     hh_to_entity = {}
     entity_id_arrays = {}
     person_entity_id_arrays = {}
@@ -351,6 +313,22 @@ def build_h5(
     unique_geo = derive_geography_from_blocks(unique_blocks)
     clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
+    # === Calculate weights for all entity levels ===
+    person_weights = np.repeat(clone_weights, persons_per_clone)
+    per_person_wt = clone_weights / np.maximum(persons_per_clone, 1)
+
+    entity_weights = {}
+    for ek in SUB_ENTITIES:
+        n_ents = len(entity_clone_idx[ek])
+        ent_person_counts = np.zeros(n_ents, dtype=np.int32)
+        np.add.at(
+            ent_person_counts,
+            new_person_entity_ids[ek],
+            1,
+        )
+        clone_ids_e = np.repeat(np.arange(n_clones), entities_per_clone[ek])
+        entity_weights[ek] = per_person_wt[clone_ids_e] * ent_person_counts
+
     # === Determine variables to save ===
     vars_to_save = set(sim.input_variables)
     vars_to_save.add("county")
@@ -400,6 +378,7 @@ def build_h5(
         for period in periods:
             values = holder.get_array(period)
 
+            # Convert Arrow-backed arrays to numpy before indexing
             if hasattr(values, "_pa_array") or hasattr(values, "_ndarray"):
                 values = np.asarray(values)
 
@@ -436,12 +415,16 @@ def build_h5(
         }
 
     # === Override weights ===
-    # Only write household_weight; sub-entity weights (tax_unit_weight,
-    # spm_unit_weight, person_weight, etc.) are formula variables in
-    # policyengine-us that derive from household_weight at runtime.
     data["household_weight"] = {
         time_period: clone_weights.astype(np.float32),
     }
+    data["person_weight"] = {
+        time_period: person_weights.astype(np.float32),
+    }
+    for ek in SUB_ENTITIES:
+        data[f"{ek}_weight"] = {
+            time_period: entity_weights[ek].astype(np.float32),
+        }
 
     # === Override geography ===
     data["state_fips"] = {
@@ -487,19 +470,11 @@ def build_h5(
     print("Recalculating SPM thresholds...")
     unique_cds_list = sorted(set(active_clone_cds))
     cd_geoadj_values = load_cd_geoadj_values(unique_cds_list)
-    # Build per-SPM-unit geoadj from clone's CD
-    spm_clone_ids = np.repeat(
-        np.arange(n_clones, dtype=np.int64),
-        entities_per_clone["spm_unit"],
-    )
-    spm_unit_geoadj = np.array(
-        [cd_geoadj_values[active_clone_cds[c]] for c in spm_clone_ids],
-        dtype=np.float64,
-    )
 
-    # Get cloned person ages and SPM tenure types
+    # Get cloned person ages and SPM unit IDs
     person_ages = sim.calculate("age", map_to="person").values[person_clone_idx]
 
+    # Get cloned tenure types
     spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
     spm_tenure_periods = spm_tenure_holder.get_known_periods()
     if spm_tenure_periods:
@@ -515,6 +490,21 @@ def build_h5(
             b"RENTER",
             dtype="S30",
         )
+
+    # Build per-SPM-unit geoadj from the clone's CD and tenure.
+    spm_clone_ids = np.repeat(
+        np.arange(n_clones, dtype=np.int64),
+        entities_per_clone["spm_unit"],
+    )
+    spm_unit_geoadj = np.array(
+        [
+            cd_geoadj_values[active_clone_cds[clone_id]][
+                (spm_tenure_cloned[spm_unit_index].decode().lower())
+            ]
+            for spm_unit_index, clone_id in enumerate(spm_clone_ids)
+        ],
+        dtype=np.float64,
+    )
 
     new_spm_thresholds = calculate_spm_thresholds_vectorized(
         person_ages=person_ages,
@@ -754,6 +744,8 @@ def build_cities(
     """Build city H5 files with checkpointing, optionally uploading."""
     w = np.load(weights_path)
 
+    all_cds = sorted(set(geography.cd_geoid.astype(str)))
+
     cities_dir = output_dir / "cities"
     cities_dir.mkdir(parents=True, exist_ok=True)
 
@@ -763,29 +755,34 @@ def build_cities(
     if "NYC" in completed_cities:
         print("Skipping NYC (already completed)")
     else:
-        output_path = cities_dir / "NYC.h5"
+        cd_subset = [cd for cd in all_cds if cd in NYC_CDS]
+        if not cd_subset:
+            print("No NYC-related CDs found, skipping")
+        else:
+            output_path = cities_dir / "NYC.h5"
 
-        try:
-            build_h5(
-                weights=w,
-                geography=geography,
-                dataset_path=dataset_path,
-                output_path=output_path,
-                county_fips_filter=NYC_COUNTY_FIPS,
-                takeup_filter=takeup_filter,
-            )
+            try:
+                build_h5(
+                    weights=w,
+                    geography=geography,
+                    dataset_path=dataset_path,
+                    output_path=output_path,
+                    cd_subset=cd_subset,
+                    county_filter=NYC_COUNTIES,
+                    takeup_filter=takeup_filter,
+                )
 
-            if upload:
-                print("Uploading NYC.h5 to GCP...")
-                upload_local_area_file(str(output_path), "cities", skip_hf=True)
-                hf_queue.append((str(output_path), "cities"))
+                if upload:
+                    print("Uploading NYC.h5 to GCP...")
+                    upload_local_area_file(str(output_path), "cities", skip_hf=True)
+                    hf_queue.append((str(output_path), "cities"))
 
-            record_completed_city("NYC")
-            print("Completed NYC")
+                record_completed_city("NYC")
+                print("Completed NYC")
 
-        except Exception as e:
-            print(f"ERROR building NYC: {e}")
-            raise
+            except Exception as e:
+                print(f"ERROR building NYC: {e}")
+                raise
 
     if upload and hf_queue:
         print(f"\nUploading batch of {len(hf_queue)} city files to HuggingFace...")
@@ -880,19 +877,9 @@ def main():
 
     print(f"Using dataset: {inputs['dataset']}")
 
-    print("Computing input fingerprint...")
-    fingerprint = compute_input_fingerprint(
-        inputs["weights"],
-        inputs["dataset"],
-        args.n_clones,
-        args.seed,
-    )
-    validate_or_clear_checkpoints(fingerprint)
-
-    print("Loading base simulation to get household count...")
-    _sim = Microsimulation(dataset=str(inputs["dataset"]))
-    n_hh = len(_sim.calculate("household_id", map_to="household").values)
-    del _sim
+    sim = Microsimulation(dataset=str(inputs["dataset"]))
+    n_hh = sim.calculate("household_id", map_to="household").shape[0]
+    del sim
     print(f"\nBase dataset has {n_hh:,} households")
 
     geo_cache = WORK_DIR / f"geography_{n_hh}x{args.n_clones}_s{args.seed}.npz"

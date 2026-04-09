@@ -4,8 +4,11 @@
 \NeedsTeXFormat{LaTeX2e}
 \ProvidesPackage{ijm}[2025/04/01 IJM formatting shim]
 
-% --- Font: Times New Roman equivalent ---
-\RequirePackage{mathptmx}
+% --- Font: Times New Roman equivalent for text ---
+% `mathptmx` in this local TinyTeX install requests a missing rsfs font.
+% Use the standard Times text package instead so the paper remains buildable.
+\RequirePackage{times}
+\renewcommand{\ttdefault}{cmtt}
 
 % --- Spacing: 1.5 throughout ---
 \RequirePackage{setspace}

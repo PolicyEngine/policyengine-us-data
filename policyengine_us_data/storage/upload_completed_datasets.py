@@ -50,6 +50,14 @@ class DatasetValidationError(Exception):
     pass
 
 
+def _enhanced_dataset_files() -> list[Path]:
+    return [
+        EnhancedCPS_2024.file_path,
+        clone_diagnostics_path(EnhancedCPS_2024.file_path),
+        STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
+    ]
+
+
 def validate_dataset(file_path: Path) -> None:
     """Validate a dataset file before upload.
 
@@ -186,11 +194,7 @@ def upload_datasets(require_enhanced_cps: bool = True):
         CPS_2024.file_path,
         STORAGE_FOLDER / "calibration" / "policy_data.db",
     ]
-    enhanced_files = [
-        EnhancedCPS_2024.file_path,
-        clone_diagnostics_path(EnhancedCPS_2024.file_path),
-        STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
-    ]
+    enhanced_files = _enhanced_dataset_files()
     if require_enhanced_cps:
         required_files.extend(enhanced_files)
 
@@ -235,7 +239,7 @@ def validate_all_datasets():
 def validate_built_datasets(require_enhanced_cps: bool = True):
     required_files = [CPS_2024.file_path]
     if require_enhanced_cps:
-        required_files.append(EnhancedCPS_2024.file_path)
+        required_files.extend(_enhanced_dataset_files())
 
     for file_path in required_files:
         if not file_path.exists():

@@ -9,6 +9,7 @@ from policyengine_us_data.storage.upload_completed_datasets import (
     DatasetValidationError,
     upload_datasets,
     validate_dataset,
+    validate_built_datasets,
 )
 import policyengine_us_data.utils.dataset_validation as _dv_mod
 from policyengine_us_data.utils.dataset_validation import validate_dataset_contract
@@ -230,3 +231,32 @@ def test_upload_datasets_requires_clone_diagnostics_sidecar(tmp_path, monkeypatc
 
     with pytest.raises(FileNotFoundError, match="clone_diagnostics"):
         upload_datasets(require_enhanced_cps=True)
+
+
+def test_validate_built_datasets_requires_clone_diagnostics_sidecar(
+    tmp_path, monkeypatch
+):
+    storage_folder = tmp_path / "storage"
+    cps_path = storage_folder / "cps_2024.h5"
+    enhanced_path = storage_folder / "enhanced_cps_2024.h5"
+    small_path = storage_folder / "small_enhanced_cps_2024.h5"
+
+    storage_folder.mkdir(parents=True)
+    for path in [cps_path, enhanced_path, small_path]:
+        path.write_text("placeholder")
+
+    monkeypatch.setattr(
+        upload_module,
+        "CPS_2024",
+        SimpleNamespace(file_path=cps_path),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "EnhancedCPS_2024",
+        SimpleNamespace(file_path=enhanced_path),
+    )
+    monkeypatch.setattr(upload_module, "STORAGE_FOLDER", storage_folder)
+    monkeypatch.setattr(upload_module, "validate_dataset", lambda file_path: None)
+
+    with pytest.raises(FileNotFoundError, match="clone_diagnostics"):
+        validate_built_datasets(require_enhanced_cps=True)

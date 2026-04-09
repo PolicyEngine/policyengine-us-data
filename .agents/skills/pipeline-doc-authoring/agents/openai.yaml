@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pipeline Doc Authoring"
+  short_description: "Update repo pipeline docs safely"
+  default_prompt: "Use $pipeline-doc-authoring to add or update automated pipeline documentation for this repository."

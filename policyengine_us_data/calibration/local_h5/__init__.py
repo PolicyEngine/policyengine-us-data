@@ -33,6 +33,7 @@ from .source_dataset import (
     PolicyEngineVariableArrayProvider,
     SourceDatasetSnapshot,
 )
+from .us_augmentations import USAugmentationService
 from .validation import (
     make_validation_error,
     summarize_validation_rows,
@@ -66,6 +67,7 @@ __all__ = [
     "PublishingInputBundle",
     "ReindexedEntities",
     "SourceDatasetSnapshot",
+    "USAugmentationService",
     "ValidationIssue",
     "ValidationPolicy",
     "ValidationResult",

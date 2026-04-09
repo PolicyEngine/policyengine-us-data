@@ -24,11 +24,6 @@ from policyengine_us_data.utils.data_upload import (
 )
 from policyengine_us_data.calibration.calibration_utils import (
     STATE_CODES,
-    load_cd_geoadj_values,
-    calculate_spm_thresholds_vectorized,
-)
-from policyengine_us_data.calibration.block_assignment import (
-    derive_geography_from_blocks,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
@@ -41,16 +36,16 @@ from policyengine_us_data.calibration.local_h5.source_dataset import (
     PolicyEngineDatasetReader,
     SourceDatasetSnapshot,
 )
+from policyengine_us_data.calibration.local_h5.us_augmentations import (
+    USAugmentationService,
+    build_reported_takeup_anchors,
+)
 from policyengine_us_data.calibration.local_h5.variables import (
     VariableCloner,
     VariableExportPolicy,
 )
 from policyengine_us_data.calibration.local_h5.weights import CloneWeightMatrix
-from policyengine_us_data.utils.takeup import (
-    SIMPLE_TAKEUP_VARS,
-    apply_block_takeup_to_arrays,
-    reported_subsidized_marketplace_by_tax_unit,
-)
+from policyengine_us_data.utils.takeup import SIMPLE_TAKEUP_VARS
 
 CHECKPOINT_FILE = Path("completed_states.txt")
 CHECKPOINT_FILE_DISTRICTS = Path("completed_districts.txt")
@@ -229,29 +224,7 @@ def record_completed_city(city_name: str):
 def _build_reported_takeup_anchors(
     data: dict, time_period: int
 ) -> dict[str, np.ndarray]:
-    reported_anchors = {}
-    if (
-        "reported_has_subsidized_marketplace_health_coverage_at_interview" in data
-        and time_period
-        in data["reported_has_subsidized_marketplace_health_coverage_at_interview"]
-    ):
-        reported_anchors["takes_up_aca_if_eligible"] = (
-            reported_subsidized_marketplace_by_tax_unit(
-                data["person_tax_unit_id"][time_period],
-                data["tax_unit_id"][time_period],
-                data[
-                    "reported_has_subsidized_marketplace_health_coverage_at_interview"
-                ][time_period],
-            )
-        )
-    if (
-        "has_medicaid_health_coverage_at_interview" in data
-        and time_period in data["has_medicaid_health_coverage_at_interview"]
-    ):
-        reported_anchors["takes_up_medicaid_if_eligible"] = data[
-            "has_medicaid_health_coverage_at_interview"
-        ][time_period].astype(bool)
-    return reported_anchors
+    return build_reported_takeup_anchors(data, time_period)
 
 
 def build_h5(
@@ -280,9 +253,6 @@ def build_h5(
         Path to the output H5 file.
     """
     import h5py
-    from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
-        County,
-    )
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -298,9 +268,7 @@ def build_h5(
         )
 
     time_period = source_snapshot.time_period
-    household_ids = source_snapshot.household_ids
     n_hh = source_snapshot.n_households
-    variable_provider = source_snapshot.variable_provider
 
     weight_matrix = CloneWeightMatrix.from_vector(weights, n_hh)
     selector = AreaSelector()
@@ -323,8 +291,6 @@ def build_h5(
     print(f"{'=' * 60}")
 
     # === Identify active clones ===
-    active_geo = selection.active_clone_indices
-    active_hh = selection.active_household_indices
     n_clones = selection.n_household_clones
     if selection.is_empty:
         raise ValueError(
@@ -333,8 +299,6 @@ def build_h5(
         )
     clone_weights = selection.active_weights
     active_blocks = selection.active_block_geoids
-    active_clone_cds = selection.active_cd_geoids
-
     empty_count = np.sum(active_blocks == "")
     if empty_count > 0:
         raise ValueError(f"{empty_count} active clones have empty block GEOIDs")
@@ -345,23 +309,12 @@ def build_h5(
     # === Build clone index arrays and output IDs ===
     reindexed = EntityReindexer().reindex(source_snapshot, selection)
 
-    hh_clone_idx = reindexed.household_source_indices
-    person_clone_idx = reindexed.person_source_indices
     entity_clone_idx = reindexed.entity_source_indices
-    persons_per_clone = reindexed.persons_per_clone
-    entities_per_clone = reindexed.entities_per_clone
 
-    n_persons = len(person_clone_idx)
+    n_persons = len(reindexed.person_source_indices)
     print(f"Cloned persons: {n_persons:,}")
     for ek in SUB_ENTITIES:
         print(f"Cloned {ek}s: {len(entity_clone_idx[ek]):,}")
-
-    # === Derive geography from blocks (dedup optimization) ===
-    print("Deriving geography from blocks...")
-    unique_blocks, block_inv = np.unique(active_blocks, return_inverse=True)
-    print(f"  {n_clones:,} blocks -> {len(unique_blocks):,} unique")
-    unique_geo = derive_geography_from_blocks(unique_blocks)
-    clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
     # === Clone variable arrays ===
     payload = VariableCloner().clone(
@@ -396,134 +349,15 @@ def build_h5(
         time_period: clone_weights.astype(np.float32),
     }
 
-    # === Override geography ===
-    data["state_fips"] = {
-        time_period: clone_geo["state_fips"].astype(np.int32),
-    }
-    county_names = np.array(
-        [County._member_names_[i] for i in clone_geo["county_index"]]
-    ).astype("S")
-    data["county"] = {time_period: county_names}
-    data["county_fips"] = {
-        time_period: clone_geo["county_fips"].astype(np.int32),
-    }
-    for gv in [
-        "block_geoid",
-        "tract_geoid",
-        "cbsa_code",
-        "sldu",
-        "sldl",
-        "place_fips",
-        "vtd",
-        "puma",
-        "zcta",
-    ]:
-        if gv in clone_geo:
-            data[gv] = {
-                time_period: clone_geo[gv].astype("S"),
-            }
-
-    # === Set zip_code for LA County clones (ACA rating area fix) ===
-    la_mask = clone_geo["county_fips"].astype(str) == "06037"
-    if la_mask.any():
-        zip_codes = np.full(len(la_mask), "UNKNOWN")
-        zip_codes[la_mask] = "90001"
-        data["zip_code"] = {time_period: zip_codes.astype("S")}
-
-    # === Congressional district GEOID ===
-    clone_cd_geoids = np.array([int(cd) for cd in active_clone_cds], dtype=np.int32)
-    data["congressional_district_geoid"] = {
-        time_period: clone_cd_geoids,
-    }
-
-    # === SPM threshold recalculation ===
-    print("Recalculating SPM thresholds...")
-    unique_cds_list = sorted(set(active_clone_cds))
-    cd_geoadj_values = load_cd_geoadj_values(unique_cds_list)
-    # Build per-SPM-unit geoadj from clone's CD
-    spm_clone_ids = np.repeat(
-        np.arange(n_clones, dtype=np.int64),
-        entities_per_clone["spm_unit"],
+    print("Applying US-specific output augmentations...")
+    USAugmentationService().apply_all(
+        data,
+        time_period=time_period,
+        selection=selection,
+        source=source_snapshot,
+        reindexed=reindexed,
+        takeup_filter=takeup_filter,
     )
-    spm_unit_geoadj = np.array(
-        [cd_geoadj_values[active_clone_cds[c]] for c in spm_clone_ids],
-        dtype=np.float64,
-    )
-
-    # Get cloned person ages and SPM tenure types
-    person_ages = variable_provider.calculate("age", map_to="person").values[
-        person_clone_idx
-    ]
-
-    spm_tenure_periods = variable_provider.get_known_periods("spm_unit_tenure_type")
-    if spm_tenure_periods:
-        raw_tenure = variable_provider.get_array(
-            "spm_unit_tenure_type",
-            spm_tenure_periods[0],
-        )
-        if hasattr(raw_tenure, "decode_to_str"):
-            raw_tenure = raw_tenure.decode_to_str().astype("S")
-        else:
-            raw_tenure = np.array(raw_tenure).astype("S")
-        spm_tenure_cloned = raw_tenure[entity_clone_idx["spm_unit"]]
-    else:
-        spm_tenure_cloned = np.full(
-            len(entity_clone_idx["spm_unit"]),
-            b"RENTER",
-            dtype="S30",
-        )
-
-    new_spm_thresholds = calculate_spm_thresholds_vectorized(
-        person_ages=person_ages,
-        person_spm_unit_ids=reindexed.new_person_entity_ids["spm_unit"],
-        spm_unit_tenure_types=spm_tenure_cloned,
-        spm_unit_geoadj=spm_unit_geoadj,
-        year=time_period,
-    )
-    data["spm_unit_spm_threshold"] = {
-        time_period: new_spm_thresholds,
-    }
-
-    # === Apply calibration takeup draws ===
-    if active_blocks is not None:
-        print("Applying calibration takeup draws...")
-        entity_hh_indices = {
-            "person": np.repeat(
-                np.arange(n_clones, dtype=np.int64),
-                persons_per_clone,
-            ).astype(np.int64),
-            "tax_unit": np.repeat(
-                np.arange(n_clones, dtype=np.int64),
-                entities_per_clone["tax_unit"],
-            ).astype(np.int64),
-            "spm_unit": np.repeat(
-                np.arange(n_clones, dtype=np.int64),
-                entities_per_clone["spm_unit"],
-            ).astype(np.int64),
-        }
-        entity_counts = {
-            "person": n_persons,
-            "tax_unit": len(entity_clone_idx["tax_unit"]),
-            "spm_unit": len(entity_clone_idx["spm_unit"]),
-        }
-        hh_state_fips = clone_geo["state_fips"].astype(np.int32)
-        original_hh_ids = household_ids[active_hh].astype(np.int64)
-        reported_anchors = _build_reported_takeup_anchors(data, time_period)
-
-        takeup_results = apply_block_takeup_to_arrays(
-            hh_blocks=active_blocks,
-            hh_state_fips=hh_state_fips,
-            hh_ids=original_hh_ids,
-            hh_clone_indices=active_geo.astype(np.int64),
-            entity_hh_indices=entity_hh_indices,
-            entity_counts=entity_counts,
-            time_period=time_period,
-            takeup_filter=takeup_filter,
-            reported_anchors=reported_anchors,
-        )
-        for var_name, bools in takeup_results.items():
-            data[var_name] = {time_period: bools}
-
     # === Write H5 ===
     with h5py.File(str(output_path), "w") as f:
         for variable, periods in data.items():

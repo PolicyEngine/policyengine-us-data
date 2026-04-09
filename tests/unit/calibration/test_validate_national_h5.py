@@ -1,3 +1,5 @@
+import os
+
 from policyengine_us_data.calibration.validate_national_h5 import (
     get_ctc_diagnostic_outputs,
     get_reference_values,
@@ -79,6 +81,6 @@ def test_resolve_dataset_path_downloads_hf_paths(monkeypatch):
             "repo_id": "policyengine/policyengine-us-data",
             "filename": "enhanced_cps_2024.h5",
             "repo_type": "model",
-            "token": None,
+            "token": os.environ.get("HUGGING_FACE_TOKEN"),
         }
     ]

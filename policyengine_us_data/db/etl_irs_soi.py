@@ -50,6 +50,8 @@ ITEMIZED_DEDUCTION_VARIABLES = {
 # IRS SOI data is typically available ~2 years after the tax year
 IRS_SOI_LAG_YEARS = 2
 
+# These geography-file aggregates are not tracked in the workbook-target
+# metadata, so keep the published IRS line-code mapping explicit here.
 GEOGRAPHY_FILE_NATIONAL_TARGET_CODES = {
     "aca_ptc": "85530",
     "eitc": "59660",
@@ -450,7 +452,7 @@ def load_national_workbook_soi_targets(
             session,
             stratum_id=stratum.stratum_id,
             variable="tax_unit_count",
-            period=target["source_year"],
+            period=target_year,
             value=target["count"],
             source="IRS SOI",
             notes=notes,
@@ -459,7 +461,7 @@ def load_national_workbook_soi_targets(
             session,
             stratum_id=stratum.stratum_id,
             variable=variable,
-            period=target["source_year"],
+            period=target_year,
             value=target["amount"],
             source="IRS SOI",
             notes=notes,

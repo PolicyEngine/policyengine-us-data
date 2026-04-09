@@ -232,7 +232,7 @@ def test_get_national_geography_soi_target_reads_amount_and_count(monkeypatch):
     assert non_refundable_target["amount"] == 81_000.0
 
 
-def test_load_national_workbook_soi_targets_adds_split_ctc_geography_targets(
+def test_load_national_workbook_soi_targets_uses_target_year_for_split_ctc_periods(
     monkeypatch, tmp_path
 ):
     _, engine = _create_test_engine(tmp_path)
@@ -255,12 +255,12 @@ def test_load_national_workbook_soi_targets_adds_split_ctc_geography_targets(
 
     geography_targets = {
         "refundable_ctc": {
-            "source_year": 2022,
+            "source_year": 2021,
             "count": 17.0,
             "amount": 33_000.0,
         },
         "non_refundable_ctc": {
-            "source_year": 2022,
+            "source_year": 2021,
             "count": 37.0,
             "amount": 81_000.0,
         },
@@ -276,7 +276,7 @@ def test_load_national_workbook_soi_targets_adds_split_ctc_geography_targets(
         load_national_workbook_soi_targets(
             session,
             national_filer_stratum.stratum_id,
-            2024,
+            2023,
         )
         session.commit()
 
@@ -293,7 +293,7 @@ def test_load_national_workbook_soi_targets_adds_split_ctc_geography_targets(
                 select(Target)
                 .where(
                     Target.stratum_id == stratum.stratum_id,
-                    Target.period == expected["source_year"],
+                    Target.period == 2023,
                 )
                 .order_by(Target.variable)
             ).all()

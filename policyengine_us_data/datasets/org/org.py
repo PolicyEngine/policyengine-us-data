@@ -1,3 +1,11 @@
+"""Build and cache ORG-style labor-market donor rows from CPS basic-month files.
+
+The checked-in code does not vendor the donor file itself. `ORG_FILENAME` is a
+generated cache built from the 12 official CPS basic monthly public-use CSVs for
+`ORG_YEAR`, then reused as the donor sample for wage, hourly-pay, and union
+imputation onto CPS records.
+"""
+
 from functools import lru_cache
 
 from microimpute.models.qrf import QRF

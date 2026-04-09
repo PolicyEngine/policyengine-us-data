@@ -5,11 +5,23 @@ SIMPLE_TAKEUP_VARS / TAKEUP_AFFECTED_TARGETS configs are valid,
 block-level takeup seeding, county precomputation, and CLI flags.
 """
 
+import sys
+import types
+
 import numpy as np
 import pytest
 import scipy.sparse as sp
 from types import SimpleNamespace
 from unittest.mock import patch
+
+# Ensure `l0.calibration` is importable so patch() can traverse the path
+# even when the real l0-python package is not installed (e.g. CI).
+if "l0" not in sys.modules:
+    _l0 = types.ModuleType("l0")
+    _l0.calibration = types.ModuleType("l0.calibration")
+    _l0.calibration.SparseCalibrationWeights = None
+    sys.modules["l0"] = _l0
+    sys.modules["l0.calibration"] = _l0.calibration
 
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (

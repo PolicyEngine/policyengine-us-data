@@ -175,6 +175,16 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     return w2_wages, ubia
 
 
+@pipeline_node(
+    PipelineNode(
+        id="impute_puf_pension",
+        label="Impute PUF Pension Contributions",
+        node_type="process",
+        description="QRF-impute pre-tax retirement contributions onto PUF tax units from CPS donor records",
+        details="Uses CPS_2024 as the preferred donor dataset, falling back to CPS_2021 during parallel builds; predictors are employment income, decoded age, and gender",
+        source_file="policyengine_us_data/datasets/puf/puf.py",
+    )
+)
 def impute_pension_contributions_to_puf(puf_df):
     from policyengine_us import Microsimulation
     from policyengine_us_data.datasets.cps import CPS_2024

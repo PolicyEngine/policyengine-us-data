@@ -70,6 +70,16 @@ def _set_period_array(
     period_values[period] = values
 
 
+@pipeline_node(
+    PipelineNode(
+        id="aca_2025_override",
+        label="ACA 2025 Takeup Override",
+        node_type="process",
+        description="Expand 2025 ACA takeup until weighted PTC enrollment matches the post-calibration person target",
+        details="Starts from stored tax-unit takeup, recalculates 2025 aca_ptc enrollment at person level, and flips seeded tax-unit draws until the weighted enrollment target is met",
+        source_file="policyengine_us_data/datasets/cps/enhanced_cps.py",
+    )
+)
 def create_aca_2025_takeup_override(
     base_takeup: np.ndarray,
     person_enrolled_if_takeup: np.ndarray,

@@ -157,7 +157,7 @@ stages:
   - id: 1
     label: "Stage 1"
     title: "Stage 1: Base Dataset Construction"
-    description: "Build CPS 2024 and PUF 2024 from raw survey data"
+    description: "Build CPS 2024 and PUF 2024 from raw survey data, donor-based labor-market imputations, and retirement contribution inference"
     country: us
     extra_nodes:
       - id: in_census_cps
@@ -180,6 +180,10 @@ stages:
         label: "SCF 2022"
         node_type: input
         description: "Training data for auto loans QRF"
+      - id: in_org
+        label: "CPS Basic ORG 2024"
+        node_type: external
+        description: "Monthly CPS basic ORG wage microdata used to train labor-market imputations"
       - id: in_uprating
         label: "uprating_factors.csv"
         node_type: input
@@ -200,6 +204,10 @@ stages:
         label: "demographics_2015.csv"
         node_type: input
         description: "PUF demographics from HuggingFace"
+      - id: in_cps_pension
+        label: "CPS_2024 / CPS_2021"
+        node_type: input
+        description: "CPS donor sample for pension QRF; falls back to CPS_2021 if current CPS is unavailable"
       - id: util_seeded_rng
         label: "seeded_rng()"
         node_type: utility
@@ -226,7 +234,9 @@ stages:
       - { source: in_acs, target: add_rent, edge_type: external_source, label: "ACS training data" }
       - { source: add_rent, target: add_tips, edge_type: data_flow }
       - { source: in_sipp, target: add_tips, edge_type: external_source, label: "SIPP training data" }
-      - { source: add_tips, target: add_auto_loan, edge_type: data_flow }
+      - { source: add_tips, target: add_org_inputs, edge_type: data_flow }
+      - { source: in_org, target: add_org_inputs, edge_type: external_source, label: "ORG donor data" }
+      - { source: add_org_inputs, target: add_auto_loan, edge_type: data_flow }
       - { source: in_scf, target: add_auto_loan, edge_type: external_source, label: "SCF training data" }
       - { source: add_auto_loan, target: add_takeup, edge_type: data_flow }
       - { source: add_takeup, target: downsample, edge_type: data_flow }
@@ -236,16 +246,20 @@ stages:
       - { source: preprocess_puf, target: simulate_qbi, edge_type: data_flow }
       - { source: simulate_qbi, target: impute_puf_demographics, edge_type: data_flow }
       - { source: in_demographics, target: impute_puf_demographics, edge_type: data_flow, label: "demographics_2015.csv" }
-      - { source: impute_puf_demographics, target: mortgage_convert, edge_type: data_flow }
+      - { source: impute_puf_demographics, target: impute_puf_pension, edge_type: data_flow }
+      - { source: in_cps_pension, target: impute_puf_pension, edge_type: data_flow, label: "CPS donor sample" }
+      - { source: impute_puf_pension, target: mortgage_convert, edge_type: data_flow }
       - { source: mortgage_convert, target: out_puf, edge_type: produces_artifact, label: "puf_2024.h5" }
       - { source: in_uprating, target: out_puf, edge_type: data_flow, label: "SOI growth rates" }
       # Utility edges
       - { source: util_seeded_rng, target: add_takeup, edge_type: uses_utility }
       - { source: util_qrf, target: add_rent, edge_type: uses_utility }
       - { source: util_qrf, target: add_tips, edge_type: uses_utility }
+      - { source: util_qrf, target: add_org_inputs, edge_type: uses_utility }
       - { source: util_qrf, target: add_auto_loan, edge_type: uses_utility }
       - { source: util_retirement_limits, target: add_personal_income_variables, edge_type: uses_utility }
       - { source: util_qrf, target: impute_puf_demographics, edge_type: uses_utility }
+      - { source: util_qrf, target: impute_puf_pension, edge_type: uses_utility }
 
   # ══════════════════════════════════════════════════════════════
   # Stage 2: Extended CPS (PUF Clone + QRF Imputation)
@@ -318,7 +332,7 @@ stages:
   - id: "3a"
     label: "Stage 3a"
     title: "Stage 3a: Enhanced CPS Reweighting"
-    description: "Reweight Extended CPS to match national IRS/Census/CBO targets (deprecated ECPS pathway)"
+    description: "Reweight Extended CPS to match national IRS/Census/CBO targets, then apply the 2025 ACA post-calibration override (deprecated ECPS pathway)"
     country: us
     extra_nodes:
       - id: in_ext_half
@@ -374,7 +388,8 @@ stages:
       - { source: t_state, target: build_loss, edge_type: external_source }
       - { source: build_loss, target: reweight, edge_type: data_flow, label: "(matrix, targets)" }
       - { source: reweight, target: weight_validate, edge_type: data_flow }
-      - { source: weight_validate, target: out_enhanced, edge_type: produces_artifact }
+      - { source: weight_validate, target: aca_2025_override, edge_type: data_flow }
+      - { source: aca_2025_override, target: out_enhanced, edge_type: produces_artifact }
       - { source: util_loss, target: build_loss, edge_type: uses_utility }
       - { source: util_l0_s3, target: reweight, edge_type: uses_utility }
 

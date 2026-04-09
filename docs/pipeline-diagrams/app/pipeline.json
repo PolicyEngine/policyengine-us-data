@@ -220,7 +220,7 @@
       "id": 1,
       "label": "Stage 1",
       "title": "Stage 1: Base Dataset Construction",
-      "description": "Build CPS 2024 and PUF 2024 from raw survey data",
+      "description": "Build CPS 2024 and PUF 2024 from raw survey data, donor-based labor-market imputations, and retirement contribution inference",
       "country": "us",
       "nodes": [
         {
@@ -254,6 +254,12 @@
           "description": "Training data for auto loans QRF"
         },
         {
+          "id": "in_org",
+          "label": "CPS Basic ORG 2024",
+          "node_type": "external",
+          "description": "Monthly CPS basic ORG wage microdata used to train labor-market imputations"
+        },
+        {
           "id": "in_uprating",
           "label": "uprating_factors.csv",
           "node_type": "input",
@@ -282,6 +288,12 @@
           "label": "demographics_2015.csv",
           "node_type": "input",
           "description": "PUF demographics from HuggingFace"
+        },
+        {
+          "id": "in_cps_pension",
+          "label": "CPS_2024 / CPS_2021",
+          "node_type": "input",
+          "description": "CPS donor sample for pension QRF; falls back to CPS_2021 if current CPS is unavailable"
         },
         {
           "id": "util_seeded_rng",
@@ -370,6 +382,14 @@
           "source_file": "policyengine_us_data/datasets/cps/cps.py"
         },
         {
+          "id": "add_org_inputs",
+          "label": "ORG Labor-Market Inputs",
+          "node_type": "process",
+          "description": "Impute hourly wage, hourly-pay status, and union coverage from CPS Basic ORG donor data",
+          "details": "Builds an ORG receiver frame from CPS demographics, hours, earnings, and state, then predicts labor-market features with inactivity and self-employment domain constraints",
+          "source_file": "policyengine_us_data/datasets/cps/cps.py"
+        },
+        {
           "id": "add_auto_loan",
           "label": "Auto Loan / Net Worth (QRF)",
           "node_type": "process",
@@ -415,6 +435,14 @@
           "node_type": "process",
           "description": "QRF imputation for age, gender, and earnings split",
           "details": "Imputes AGEDP1-3, AGERANGE, EARNSPLIT, and GENDER from matched PUF demographic records",
+          "source_file": "policyengine_us_data/datasets/puf/puf.py"
+        },
+        {
+          "id": "impute_puf_pension",
+          "label": "Impute PUF Pension Contributions",
+          "node_type": "process",
+          "description": "QRF-impute pre-tax retirement contributions onto PUF tax units from CPS donor records",
+          "details": "Uses CPS_2024 as the preferred donor dataset, falling back to CPS_2021 during parallel builds; predictors are employment income, decoded age, and gender",
           "source_file": "policyengine_us_data/datasets/puf/puf.py"
         },
         {
@@ -493,6 +521,17 @@
         },
         {
           "source": "add_tips",
+          "target": "add_org_inputs",
+          "edge_type": "data_flow"
+        },
+        {
+          "source": "in_org",
+          "target": "add_org_inputs",
+          "edge_type": "external_source",
+          "label": "ORG donor data"
+        },
+        {
+          "source": "add_org_inputs",
           "target": "add_auto_loan",
           "edge_type": "data_flow"
         },
@@ -542,6 +581,17 @@
         },
         {
           "source": "impute_puf_demographics",
+          "target": "impute_puf_pension",
+          "edge_type": "data_flow"
+        },
+        {
+          "source": "in_cps_pension",
+          "target": "impute_puf_pension",
+          "edge_type": "data_flow",
+          "label": "CPS donor sample"
+        },
+        {
+          "source": "impute_puf_pension",
           "target": "mortgage_convert",
           "edge_type": "data_flow"
         },
@@ -574,6 +624,11 @@
         },
         {
           "source": "util_qrf",
+          "target": "add_org_inputs",
+          "edge_type": "uses_utility"
+        },
+        {
+          "source": "util_qrf",
           "target": "add_auto_loan",
           "edge_type": "uses_utility"
         },
@@ -585,6 +640,11 @@
         {
           "source": "util_qrf",
           "target": "impute_puf_demographics",
+          "edge_type": "uses_utility"
+        },
+        {
+          "source": "util_qrf",
+          "target": "impute_puf_pension",
           "edge_type": "uses_utility"
         }
       ],
@@ -852,7 +912,7 @@
       "id": "3a",
       "label": "Stage 3a",
       "title": "Stage 3a: Enhanced CPS Reweighting",
-      "description": "Reweight Extended CPS to match national IRS/Census/CBO targets (deprecated ECPS pathway)",
+      "description": "Reweight Extended CPS to match national IRS/Census/CBO targets, then apply the 2025 ACA post-calibration override (deprecated ECPS pathway)",
       "country": "us",
       "nodes": [
         {
@@ -928,6 +988,14 @@
           "description": "Sparse household-weight calibration against national and state targets",
           "details": "Uses Adam with HardConcrete gates; default run is 500 epochs at lr=0.2",
           "source_file": "policyengine_us_data/datasets/cps/enhanced_cps.py"
+        },
+        {
+          "id": "aca_2025_override",
+          "label": "ACA 2025 Takeup Override",
+          "node_type": "process",
+          "description": "Expand 2025 ACA takeup until weighted PTC enrollment matches the post-calibration person target",
+          "details": "Starts from stored tax-unit takeup, recalculates 2025 aca_ptc enrollment at person level, and flips seeded tax-unit draws until the weighted enrollment target is met",
+          "source_file": "policyengine_us_data/datasets/cps/enhanced_cps.py"
         }
       ],
       "edges": [
@@ -974,6 +1042,11 @@
         },
         {
           "source": "weight_validate",
+          "target": "aca_2025_override",
+          "edge_type": "data_flow"
+        },
+        {
+          "source": "aca_2025_override",
           "target": "out_enhanced",
           "edge_type": "produces_artifact"
         },
@@ -2081,7 +2154,7 @@
     }
   ],
   "metadata": {
-    "total_nodes": 162,
-    "total_edges": 165
+    "total_nodes": 167,
+    "total_edges": 172
   }
 }

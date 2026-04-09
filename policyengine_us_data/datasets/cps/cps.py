@@ -2035,6 +2035,16 @@ def add_tips(self, cps: h5py.File):
     self.save_dataset(cps)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_org_inputs",
+        label="ORG Labor-Market Inputs",
+        node_type="process",
+        description="Impute hourly wage, hourly-pay status, and union coverage from CPS Basic ORG donor data",
+        details="Builds an ORG receiver frame from CPS demographics, hours, earnings, and state, then predicts labor-market features with inactivity and self-employment domain constraints",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+    )
+)
 def add_org_labor_market_inputs(cps: h5py.File) -> None:
     """Impute ORG-derived wage and union inputs onto CPS persons."""
     n_persons = len(np.asarray(cps["age"]))

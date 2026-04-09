@@ -41,6 +41,10 @@ from policyengine_us_data.calibration.local_h5.source_dataset import (
     PolicyEngineDatasetReader,
     SourceDatasetSnapshot,
 )
+from policyengine_us_data.calibration.local_h5.variables import (
+    VariableCloner,
+    VariableExportPolicy,
+)
 from policyengine_us_data.calibration.local_h5.weights import CloneWeightMatrix
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
@@ -276,7 +280,6 @@ def build_h5(
         Path to the output H5 file.
     """
     import h5py
-    from policyengine_core.enums import Enum
     from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
         County,
     )
@@ -360,74 +363,16 @@ def build_h5(
     unique_geo = derive_geography_from_blocks(unique_blocks)
     clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
-    # === Determine variables to save ===
-    vars_to_save = set(source_snapshot.input_variables)
-    vars_to_save.add("county")
-    vars_to_save.add("spm_unit_spm_threshold")
-    vars_to_save.add("congressional_district_geoid")
-    for gv in [
-        "block_geoid",
-        "tract_geoid",
-        "cbsa_code",
-        "sldu",
-        "sldl",
-        "place_fips",
-        "vtd",
-        "puma",
-        "zcta",
-    ]:
-        vars_to_save.add(gv)
-
     # === Clone variable arrays ===
-    clone_idx_map = {
-        "household": hh_clone_idx,
-        "person": person_clone_idx,
+    payload = VariableCloner().clone(
+        source_snapshot,
+        reindexed,
+        VariableExportPolicy(include_input_variables=True),
+    )
+    data = {
+        variable: dict(periods) for variable, periods in payload.variables.items()
     }
-    for ek in SUB_ENTITIES:
-        clone_idx_map[ek] = entity_clone_idx[ek]
-
-    data = {}
-    variables_saved = 0
-
-    for variable in variable_provider.list_variables():
-        if variable not in vars_to_save:
-            continue
-
-        periods = variable_provider.get_known_periods(variable)
-        if not periods:
-            continue
-
-        var_def = variable_provider.get_variable_definition(variable)
-        entity_key = var_def.entity.key
-        if entity_key not in clone_idx_map:
-            continue
-
-        cidx = clone_idx_map[entity_key]
-        var_data = {}
-
-        for period in periods:
-            values = variable_provider.get_array(variable, period)
-
-            if hasattr(values, "_pa_array") or hasattr(values, "_ndarray"):
-                values = np.asarray(values)
-
-            if var_def.value_type in (Enum, str) and variable != "county_fips":
-                if hasattr(values, "decode_to_str"):
-                    values = values.decode_to_str().astype("S")
-                else:
-                    values = np.asarray(values).astype("S")
-            elif variable == "county_fips":
-                values = np.asarray(values).astype("int32")
-            else:
-                values = np.asarray(values)
-
-            var_data[period] = values[cidx]
-            variables_saved += 1
-
-        if var_data:
-            data[variable] = var_data
-
-    print(f"Variables cloned: {variables_saved}")
+    print(f"Variables cloned: {payload.dataset_count}")
 
     # === Override entity IDs ===
     data["household_id"] = {time_period: reindexed.new_household_ids}

@@ -39,6 +39,7 @@ from .validation import (
     tag_validation_errors,
     validation_geo_level_for_area_type,
 )
+from .variables import H5Payload, VariableCloner, VariableExportPolicy
 from .weights import CloneWeightMatrix
 
 __all__ = [
@@ -59,6 +60,7 @@ __all__ = [
     "FingerprintService",
     "FilterOp",
     "LoadedPackageGeography",
+    "H5Payload",
     "PolicyEngineDatasetReader",
     "PolicyEngineVariableArrayProvider",
     "PublishingInputBundle",
@@ -75,5 +77,7 @@ __all__ = [
     "summarize_validation_rows",
     "tag_validation_errors",
     "validation_geo_level_for_area_type",
+    "VariableCloner",
+    "VariableExportPolicy",
     "work_item_key",
 ]

@@ -16,6 +16,7 @@ from policyengine_us_data.db.etl_irs_soi import (
     _skip_coarse_state_agi_person_count_target,
     _get_or_create_national_domain_stratum,
     _upsert_target,
+    load_national_geography_ctc_targets,
     load_national_workbook_soi_targets,
 )
 
@@ -232,51 +233,35 @@ def test_get_national_geography_soi_target_reads_amount_and_count(monkeypatch):
     assert non_refundable_target["amount"] == 81_000.0
 
 
-def test_load_national_workbook_soi_targets_uses_target_year_for_split_ctc_periods(
+def test_load_national_geography_ctc_targets_uses_geography_year_for_ctc_periods(
     monkeypatch, tmp_path
 ):
     _, engine = _create_test_engine(tmp_path)
 
-    monkeypatch.setattr(
-        "policyengine_us_data.db.etl_irs_soi.WORKBOOK_NATIONAL_DOMAIN_TARGETS",
-        {},
-    )
-
-    monkeypatch.setattr(
-        "policyengine_us_data.db.etl_irs_soi.get_tracked_soi_row",
-        lambda variable, requested_year, **kwargs: pd.Series(
-            {
-                "Year": 2023,
-                "Value": 1_000_000.0,
-                "SOI table": "Table 1.1",
-            }
-        ),
-    )
-
     geography_targets = {
         "refundable_ctc": {
-            "source_year": 2021,
+            "source_year": 2022,
             "count": 17.0,
             "amount": 33_000.0,
         },
         "non_refundable_ctc": {
-            "source_year": 2021,
+            "source_year": 2022,
             "count": 37.0,
             "amount": 81_000.0,
         },
     }
     monkeypatch.setattr(
-        "policyengine_us_data.db.etl_irs_soi.get_national_geography_soi_target",
-        lambda variable, dataset_year: geography_targets[variable],
+        "policyengine_us_data.db.etl_irs_soi._get_national_geography_soi_target_from_year",
+        lambda variable, geography_year: geography_targets[variable],
     )
 
     with Session(engine) as session:
         national_filer_stratum = _create_national_filer_stratum(session)
 
-        load_national_workbook_soi_targets(
+        load_national_geography_ctc_targets(
             session,
             national_filer_stratum.stratum_id,
-            2023,
+            2022,
         )
         session.commit()
 
@@ -293,7 +278,7 @@ def test_load_national_workbook_soi_targets_uses_target_year_for_split_ctc_perio
                 select(Target)
                 .where(
                     Target.stratum_id == stratum.stratum_id,
-                    Target.period == 2023,
+                    Target.period == 2022,
                 )
                 .order_by(Target.variable)
             ).all()

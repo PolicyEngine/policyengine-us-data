@@ -317,13 +317,10 @@ def get_geography_soi_year(dataset_year: int, lag: int = IRS_SOI_LAG_YEARS) -> i
     return min(dataset_year - lag, LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR)
 
 
-def get_national_geography_soi_target(
+def _get_national_geography_soi_target_from_year(
     variable: str,
-    dataset_year: int,
-    *,
-    lag: int = IRS_SOI_LAG_YEARS,
+    geography_year: int,
 ) -> dict:
-    """Return national count and amount targets from the IRS geography file."""
     try:
         code = GEOGRAPHY_FILE_NATIONAL_TARGET_CODES[variable]
     except KeyError as exc:
@@ -331,7 +328,6 @@ def get_national_geography_soi_target(
             f"No national geography-file IRS SOI mapping for {variable!r}"
         ) from exc
 
-    geography_year = get_geography_soi_year(dataset_year, lag=lag)
     raw_df = extract_soi_data(geography_year)
     national_rows = raw_df[(raw_df["STATE"] == "US") & (raw_df["agi_stub"] == 0)]
     if national_rows.empty:
@@ -346,6 +342,17 @@ def get_national_geography_soi_target(
         "count": float(row[f"N{code}"]),
         "amount": float(row[f"A{code}"]) * 1_000,
     }
+
+
+def get_national_geography_soi_target(
+    variable: str,
+    dataset_year: int,
+    *,
+    lag: int = IRS_SOI_LAG_YEARS,
+) -> dict:
+    """Return national count and amount targets from the IRS geography file."""
+    geography_year = get_geography_soi_year(dataset_year, lag=lag)
+    return _get_national_geography_soi_target_from_year(variable, geography_year)
 
 
 def _upsert_target(
@@ -422,6 +429,41 @@ def _get_or_create_national_domain_stratum(
     return stratum
 
 
+def load_national_geography_ctc_targets(
+    session: Session, national_filer_stratum_id: int, geography_year: int
+) -> None:
+    """Create national aggregate CTC targets from the IRS geography file."""
+    for variable in ("refundable_ctc", "non_refundable_ctc"):
+        target = _get_national_geography_soi_target_from_year(variable, geography_year)
+        stratum = _get_or_create_national_domain_stratum(
+            session,
+            national_filer_stratum_id,
+            variable,
+        )
+        notes = (
+            f"IRS geography-file national aggregate target "
+            f"(source year {target['source_year']})"
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="tax_unit_count",
+            period=geography_year,
+            value=target["count"],
+            source="IRS SOI",
+            notes=notes,
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable=variable,
+            period=geography_year,
+            value=target["amount"],
+            source="IRS SOI",
+            notes=notes,
+        )
+
+
 def load_national_workbook_soi_targets(
     session: Session, national_filer_stratum_id: int, target_year: int
 ) -> None:
@@ -436,36 +478,6 @@ def load_national_workbook_soi_targets(
         source="IRS SOI",
         notes=f"Publication 1304 {agi_row['SOI table']} aggregate target",
     )
-
-    for variable in ("refundable_ctc", "non_refundable_ctc"):
-        target = get_national_geography_soi_target(variable, target_year)
-        stratum = _get_or_create_national_domain_stratum(
-            session,
-            national_filer_stratum_id,
-            variable,
-        )
-        notes = (
-            f"IRS geography-file national aggregate target "
-            f"(source year {target['source_year']})"
-        )
-        _upsert_target(
-            session,
-            stratum_id=stratum.stratum_id,
-            variable="tax_unit_count",
-            period=target_year,
-            value=target["count"],
-            source="IRS SOI",
-            notes=notes,
-        )
-        _upsert_target(
-            session,
-            stratum_id=stratum.stratum_id,
-            variable=variable,
-            period=target_year,
-            value=target["amount"],
-            source="IRS SOI",
-            notes=notes,
-        )
 
     for pe_variable, soi_variable in WORKBOOK_NATIONAL_DOMAIN_TARGETS.items():
         amount_row = get_tracked_soi_row(soi_variable, target_year, count=False)
@@ -910,6 +922,8 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
             session.flush()
 
         filer_strata["district"][district_geoid] = district_filer_stratum.stratum_id
+
+    load_national_geography_ctc_targets(session, filer_strata["national"], year)
 
     if national_year is not None:
         load_national_workbook_soi_targets(

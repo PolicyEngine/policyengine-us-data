@@ -643,22 +643,17 @@ def load_national_targets(
 
         # Process reform-based tax expenditure targets.
         if not tax_expenditure_df.empty:
-            migrated_strata = (
-                session.exec(
-                    select(Stratum).where(
-                        Stratum.parent_stratum_id == us_stratum.stratum_id,
-                        Stratum.notes.in_(
-                            [
-                                "United States - Tax Filers",
-                                "United States - Itemizing Tax Filers",
-                            ]
-                        ),
-                    )
+            migrated_stratum_ids = session.exec(
+                select(Stratum.stratum_id).where(
+                    Stratum.parent_stratum_id == us_stratum.stratum_id,
+                    Stratum.notes.in_(
+                        [
+                            "United States - Tax Filers",
+                            "United States - Itemizing Tax Filers",
+                        ]
+                    ),
                 )
-                .unique()
-                .all()
-            )
-            migrated_stratum_ids = [s.stratum_id for s in migrated_strata]
+            ).all()
 
             for _, target_data in tax_expenditure_df.iterrows():
                 target_year = target_data["year"]

@@ -254,6 +254,7 @@ def main():
         build_h5,
         NYC_COUNTY_FIPS,
         AT_LARGE_DISTRICTS,
+        SUB_ENTITIES,
     )
     from policyengine_us_data.calibration.calibration_utils import (
         STATE_CODES,
@@ -261,14 +262,13 @@ def main():
     from policyengine_us_data.calibration.local_h5.package_geography import (
         CalibrationPackageGeographyLoader,
     )
+    from policyengine_us_data.calibration.local_h5.source_dataset import (
+        PolicyEngineDatasetReader,
+    )
 
     weights = np.load(weights_path)
-
-    from policyengine_us import Microsimulation
-
-    _sim = Microsimulation(dataset=str(dataset_path))
-    n_records = len(_sim.calculate("household_id", map_to="household").values)
-    del _sim
+    source_snapshot = PolicyEngineDatasetReader(tuple(SUB_ENTITIES)).load(dataset_path)
+    n_records = source_snapshot.n_households
 
     if weights.shape[0] % n_records != 0:
         raise ValueError(
@@ -297,6 +297,11 @@ def main():
         f"Loaded geography from {geography_resolution.source}: "
         f"{geography.n_clones} clones x "
         f"{geography.n_records} records",
+        file=sys.stderr,
+    )
+    print(
+        f"Loaded source snapshot once for worker: "
+        f"{source_snapshot.n_households} households",
         file=sys.stderr,
     )
     for warning in geography_resolution.warnings:
@@ -404,6 +409,7 @@ def main():
                     output_path=states_dir / f"{item_id}.h5",
                     cd_subset=cd_subset,
                     takeup_filter=takeup_filter,
+                    source_snapshot=source_snapshot,
                 )
 
             elif item_type == "district":
@@ -447,6 +453,7 @@ def main():
                     output_path=districts_dir / f"{friendly_name}.h5",
                     cd_subset=[geoid],
                     takeup_filter=takeup_filter,
+                    source_snapshot=source_snapshot,
                 )
 
             elif item_type == "city":
@@ -459,6 +466,7 @@ def main():
                     output_path=cities_dir / "NYC.h5",
                     county_fips_filter=NYC_COUNTY_FIPS,
                     takeup_filter=takeup_filter,
+                    source_snapshot=source_snapshot,
                 )
 
             elif item_type == "national":
@@ -469,6 +477,7 @@ def main():
                     geography=geography,
                     dataset_path=dataset_path,
                     output_path=national_dir / "US.h5",
+                    source_snapshot=source_snapshot,
                 )
             else:
                 raise ValueError(f"Unknown item type: {item_type}")

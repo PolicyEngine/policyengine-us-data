@@ -13,6 +13,7 @@ from .contracts import (
     ValidationStatus,
     WorkerResult,
 )
+from .entity_graph import EntityGraph, EntityGraphExtractor
 from .fingerprinting import (
     FingerprintComponents,
     FingerprintInputs,
@@ -25,6 +26,11 @@ from .package_geography import (
     CalibrationPackageGeographyLoader,
     LoadedPackageGeography,
     require_calibration_package_path,
+)
+from .source_dataset import (
+    PolicyEngineDatasetReader,
+    PolicyEngineVariableArrayProvider,
+    SourceDatasetSnapshot,
 )
 from .validation import (
     make_validation_error,
@@ -43,13 +49,18 @@ __all__ = [
     "CalibrationPackageGeographyLoader",
     "CloneSelection",
     "CloneWeightMatrix",
+    "EntityGraph",
+    "EntityGraphExtractor",
     "FingerprintComponents",
     "FingerprintInputs",
     "FingerprintRecord",
     "FingerprintService",
     "FilterOp",
     "LoadedPackageGeography",
+    "PolicyEngineDatasetReader",
+    "PolicyEngineVariableArrayProvider",
     "PublishingInputBundle",
+    "SourceDatasetSnapshot",
     "ValidationIssue",
     "ValidationPolicy",
     "ValidationResult",

@@ -36,6 +36,10 @@ from policyengine_us_data.calibration.clone_and_assign import (
 )
 from policyengine_us_data.calibration.local_h5.contracts import AreaFilter
 from policyengine_us_data.calibration.local_h5.selection import AreaSelector
+from policyengine_us_data.calibration.local_h5.source_dataset import (
+    PolicyEngineDatasetReader,
+    SourceDatasetSnapshot,
+)
 from policyengine_us_data.calibration.local_h5.weights import CloneWeightMatrix
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
@@ -253,6 +257,7 @@ def build_h5(
     cd_subset: List[str] = None,
     county_fips_filter: set = None,
     takeup_filter: List[str] = None,
+    source_snapshot: SourceDatasetSnapshot | None = None,
 ) -> Path:
     """Build an H5 file by cloning records for each nonzero weight.
 
@@ -270,7 +275,6 @@ def build_h5(
         Path to the output H5 file.
     """
     import h5py
-    from collections import defaultdict
     from policyengine_core.enums import Enum
     from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
         County,
@@ -279,11 +283,21 @@ def build_h5(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # === Load base simulation ===
-    sim = Microsimulation(dataset=str(dataset_path))
-    time_period = int(sim.default_calculation_period)
-    household_ids = sim.calculate("household_id", map_to="household").values
-    n_hh = len(household_ids)
+    if source_snapshot is None:
+        source_snapshot = PolicyEngineDatasetReader(tuple(SUB_ENTITIES)).load(
+            dataset_path
+        )
+    elif source_snapshot.dataset_path != Path(dataset_path):
+        raise ValueError(
+            "source_snapshot.dataset_path does not match dataset_path "
+            f"({source_snapshot.dataset_path} != {Path(dataset_path)})"
+        )
+
+    time_period = source_snapshot.time_period
+    household_ids = source_snapshot.household_ids
+    n_hh = source_snapshot.n_households
+    entity_graph = source_snapshot.entity_graph
+    variable_provider = source_snapshot.variable_provider
 
     weight_matrix = CloneWeightMatrix.from_vector(weights, n_hh)
     selector = AreaSelector()
@@ -325,43 +339,15 @@ def build_h5(
     print(f"Active clones: {n_clones:,}")
     print(f"Total weight: {clone_weights.sum():,.0f}")
 
-    # === Build entity membership maps ===
-    hh_id_to_idx = {int(hid): i for i, hid in enumerate(household_ids)}
-    person_hh_ids = sim.calculate("household_id", map_to="person").values
-
-    hh_to_persons = defaultdict(list)
-    for p_idx, p_hh_id in enumerate(person_hh_ids):
-        hh_to_persons[hh_id_to_idx[int(p_hh_id)]].append(p_idx)
-
-    hh_to_entity = {}
-    entity_id_arrays = {}
-    person_entity_id_arrays = {}
-
-    for ek in SUB_ENTITIES:
-        eids = sim.calculate(f"{ek}_id", map_to=ek).values
-        peids = sim.calculate(f"person_{ek}_id", map_to="person").values
-        entity_id_arrays[ek] = eids
-        person_entity_id_arrays[ek] = peids
-        eid_to_idx = {int(eid): i for i, eid in enumerate(eids)}
-
-        mapping = defaultdict(list)
-        seen = defaultdict(set)
-        for p_idx in range(len(person_hh_ids)):
-            hh_idx = hh_id_to_idx[int(person_hh_ids[p_idx])]
-            e_idx = eid_to_idx[int(peids[p_idx])]
-            if e_idx not in seen[hh_idx]:
-                seen[hh_idx].add(e_idx)
-                mapping[hh_idx].append(e_idx)
-        for hh_idx in mapping:
-            mapping[hh_idx].sort()
-        hh_to_entity[ek] = mapping
-
     # === Build clone index arrays ===
     hh_clone_idx = active_hh
 
-    persons_per_clone = np.array([len(hh_to_persons.get(h, [])) for h in active_hh])
+    persons_per_clone = np.array(
+        [len(entity_graph.hh_to_persons.get(int(h), ())) for h in active_hh]
+    )
     person_parts = [
-        np.array(hh_to_persons.get(h, []), dtype=np.int64) for h in active_hh
+        np.asarray(entity_graph.hh_to_persons.get(int(h), ()), dtype=np.int64)
+        for h in active_hh
     ]
     person_clone_idx = (
         np.concatenate(person_parts) if person_parts else np.array([], dtype=np.int64)
@@ -370,10 +356,16 @@ def build_h5(
     entity_clone_idx = {}
     entities_per_clone = {}
     for ek in SUB_ENTITIES:
-        epc = np.array([len(hh_to_entity[ek].get(h, [])) for h in active_hh])
+        epc = np.array(
+            [len(entity_graph.hh_to_entity[ek].get(int(h), ())) for h in active_hh]
+        )
         entities_per_clone[ek] = epc
         parts = [
-            np.array(hh_to_entity[ek].get(h, []), dtype=np.int64) for h in active_hh
+            np.asarray(
+                entity_graph.hh_to_entity[ek].get(int(h), ()),
+                dtype=np.int64,
+            )
+            for h in active_hh
         ]
         entity_clone_idx[ek] = (
             np.concatenate(parts) if parts else np.array([], dtype=np.int64)
@@ -399,7 +391,9 @@ def build_h5(
         n_ents = len(entity_clone_idx[ek])
         new_entity_ids[ek] = np.arange(n_ents, dtype=np.int32)
 
-        old_eids = entity_id_arrays[ek][entity_clone_idx[ek]].astype(np.int64)
+        old_eids = entity_graph.entity_id_arrays[ek][entity_clone_idx[ek]].astype(
+            np.int64
+        )
         clone_ids_e = np.repeat(
             np.arange(n_clones, dtype=np.int64),
             entities_per_clone[ek],
@@ -412,7 +406,9 @@ def build_h5(
         sorted_keys = entity_keys[sorted_order]
         sorted_new = new_entity_ids[ek][sorted_order]
 
-        p_old_eids = person_entity_id_arrays[ek][person_clone_idx].astype(np.int64)
+        p_old_eids = entity_graph.person_entity_id_arrays[ek][
+            person_clone_idx
+        ].astype(np.int64)
         person_keys = clone_ids_for_persons * offset + p_old_eids
 
         positions = np.searchsorted(sorted_keys, person_keys)
@@ -427,7 +423,7 @@ def build_h5(
     clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
     # === Determine variables to save ===
-    vars_to_save = set(sim.input_variables)
+    vars_to_save = set(source_snapshot.input_variables)
     vars_to_save.add("county")
     vars_to_save.add("spm_unit_spm_threshold")
     vars_to_save.add("congressional_district_geoid")
@@ -455,16 +451,15 @@ def build_h5(
     data = {}
     variables_saved = 0
 
-    for variable in sim.tax_benefit_system.variables:
+    for variable in variable_provider.list_variables():
         if variable not in vars_to_save:
             continue
 
-        holder = sim.get_holder(variable)
-        periods = holder.get_known_periods()
+        periods = variable_provider.get_known_periods(variable)
         if not periods:
             continue
 
-        var_def = sim.tax_benefit_system.variables.get(variable)
+        var_def = variable_provider.get_variable_definition(variable)
         entity_key = var_def.entity.key
         if entity_key not in clone_idx_map:
             continue
@@ -473,7 +468,7 @@ def build_h5(
         var_data = {}
 
         for period in periods:
-            values = holder.get_array(period)
+            values = variable_provider.get_array(variable, period)
 
             if hasattr(values, "_pa_array") or hasattr(values, "_ndarray"):
                 values = np.asarray(values)
@@ -573,12 +568,16 @@ def build_h5(
     )
 
     # Get cloned person ages and SPM tenure types
-    person_ages = sim.calculate("age", map_to="person").values[person_clone_idx]
+    person_ages = variable_provider.calculate("age", map_to="person").values[
+        person_clone_idx
+    ]
 
-    spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
-    spm_tenure_periods = spm_tenure_holder.get_known_periods()
+    spm_tenure_periods = variable_provider.get_known_periods("spm_unit_tenure_type")
     if spm_tenure_periods:
-        raw_tenure = spm_tenure_holder.get_array(spm_tenure_periods[0])
+        raw_tenure = variable_provider.get_array(
+            "spm_unit_tenure_type",
+            spm_tenure_periods[0],
+        )
         if hasattr(raw_tenure, "decode_to_str"):
             raw_tenure = raw_tenure.decode_to_str().astype("S")
         else:

@@ -18,6 +18,10 @@ from policyengine_us_data.utils.mortgage_interest import (
     convert_mortgage_interest_to_structural_inputs,
     impute_tax_unit_mortgage_balance_hints,
 )
+from policyengine_us_data.utils.spm import (
+    get_spm_reference_thresholds,
+    spm_equivalence_scale,
+)
 from policyengine_us_data.utils.policyengine import has_policyengine_us_variables
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
@@ -143,7 +147,6 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "spm_unit_payroll_tax_reported",
     "spm_unit_federal_tax_reported",
     "spm_unit_state_tax_reported",
-    "spm_unit_spm_threshold",
     "spm_unit_net_income_reported",
     "spm_unit_pre_subsidy_childcare_expenses",
     # Medical expenses
@@ -578,6 +581,25 @@ _SS_SUBCOMPONENT_VARS = {
     "social_security_survivors",
 }
 
+_SPM_TENURE_TO_REFERENCE_KEY = {
+    b"OWNER_WITH_MORTGAGE": "owner_with_mortgage",
+    b"OWNER_WITHOUT_MORTGAGE": "owner_without_mortgage",
+    b"RENTER": "renter",
+    "OWNER_WITH_MORTGAGE": "owner_with_mortgage",
+    "OWNER_WITHOUT_MORTGAGE": "owner_without_mortgage",
+    "RENTER": "renter",
+}
+
+
+def _reference_threshold_key_for_tenure(tenure_type) -> str:
+    reference_key = _SPM_TENURE_TO_REFERENCE_KEY.get(tenure_type)
+    if reference_key is None:
+        raise ValueError(
+            "Unsupported spm_unit_tenure_type for cloned threshold rebuild: "
+            f"{tenure_type!r}"
+        )
+    return reference_key
+
 
 def derive_clone_capped_childcare_expenses(
     donor_pre_subsidy: np.ndarray,
@@ -741,6 +763,75 @@ def _apply_post_processing(predictions, X_test, time_period, data):
     return predictions
 
 
+def _index_into_spm_units(
+    person_spm_unit_ids: np.ndarray,
+    spm_unit_ids: np.ndarray,
+) -> np.ndarray:
+    if np.all(spm_unit_ids[:-1] <= spm_unit_ids[1:]):
+        indices = np.searchsorted(spm_unit_ids, person_spm_unit_ids)
+        valid = (indices >= 0) & (indices < len(spm_unit_ids))
+        if valid.all() and np.array_equal(spm_unit_ids[indices], person_spm_unit_ids):
+            return indices
+
+    indexer = pd.Index(spm_unit_ids).get_indexer(person_spm_unit_ids)
+    if (indexer < 0).any():
+        raise ValueError("person_spm_unit_id contains values missing from spm_unit_id")
+    return indexer
+
+
+def rebuild_cloned_spm_thresholds(data: dict, time_period: int) -> np.ndarray:
+    """Rebuild cloned SPM thresholds from donor-half geography.
+
+    The clone half should keep the donor household's geography but use the
+    current threshold formula rather than a learned QRF output. We infer the
+    donor-half geographic adjustment from the stored first-half thresholds and
+    apply that same geography to the corresponding clone-half SPM units.
+    """
+
+    person_ages = np.asarray(data["age"][time_period])
+    person_spm_unit_ids = np.asarray(data["person_spm_unit_id"][time_period])
+    spm_unit_ids = np.asarray(data["spm_unit_id"][time_period])
+    tenure_types = np.asarray(data["spm_unit_tenure_type"][time_period])
+    stored_thresholds = np.asarray(
+        data["spm_unit_spm_threshold"][time_period], dtype=float
+    )
+
+    n_units = len(spm_unit_ids)
+    if n_units % 2 != 0:
+        raise ValueError(
+            "Expected cloned SPM units to have an even-length spm_unit_id array"
+        )
+
+    unit_indices = _index_into_spm_units(person_spm_unit_ids, spm_unit_ids)
+    is_adult = person_ages >= 18
+    adult_counts = np.zeros(n_units, dtype=np.int32)
+    child_counts = np.zeros(n_units, dtype=np.int32)
+    np.add.at(adult_counts, unit_indices, is_adult.astype(np.int32))
+    np.add.at(child_counts, unit_indices, (~is_adult).astype(np.int32))
+
+    thresholds_by_tenure = get_spm_reference_thresholds(time_period)
+    reference_base = np.array(
+        [
+            thresholds_by_tenure[_reference_threshold_key_for_tenure(tenure)]
+            for tenure in tenure_types
+        ],
+        dtype=float,
+    )
+    equivalence_scale = spm_equivalence_scale(adult_counts, child_counts)
+
+    n_half = n_units // 2
+    donor_denominator = reference_base[:n_half] * equivalence_scale[:n_half]
+    donor_geoadj = np.divide(
+        stored_thresholds[:n_half],
+        donor_denominator,
+        out=np.ones(n_half, dtype=float),
+        where=donor_denominator > 0,
+    )
+    geoadj = np.concatenate([donor_geoadj, donor_geoadj])
+    rebuilt = reference_base * equivalence_scale * geoadj
+    return rebuilt.astype(np.float32)
+
+
 def _splice_cps_only_predictions(
     data: dict,
     predictions: pd.DataFrame,
@@ -892,6 +983,14 @@ class ExtendedCPS(Dataset):
             time_period=self.time_period,
             dataset_path=str(self.cps.file_path),
         )
+        if "spm_unit_spm_threshold" in new_data:
+            logger.info("Rebuilding cloned SPM thresholds from donor-half geography")
+            new_data["spm_unit_spm_threshold"] = {
+                self.time_period: rebuild_cloned_spm_thresholds(
+                    new_data,
+                    self.time_period,
+                )
+            }
 
         new_data = self._rename_imputed_to_inputs(new_data)
         if _supports_structural_mortgage_inputs():

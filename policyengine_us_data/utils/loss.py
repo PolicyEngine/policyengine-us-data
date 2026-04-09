@@ -12,6 +12,9 @@ from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
 from policyengine_us_data.storage.calibration_targets.soi_metadata import (
     RETIREMENT_CONTRIBUTION_TARGETS,
 )
+from policyengine_us_data.utils.census_spm import (
+    get_census_spm_capped_housing_subsidy_total,
+)
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
@@ -31,7 +34,9 @@ HARD_CODED_TOTALS = {
     "child_support_expense": 33e9,
     "child_support_received": 33e9,
     "spm_unit_capped_work_childcare_expenses": 348e9,
-    "spm_unit_capped_housing_subsidy": 35e9,
+    "spm_unit_capped_housing_subsidy": get_census_spm_capped_housing_subsidy_total(
+        2024
+    ),
     "tanf": 9e9,
     # Alimony could be targeted via SOI
     "alimony_income": 13e9,

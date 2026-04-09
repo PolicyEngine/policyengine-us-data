@@ -1,6 +1,6 @@
 import warnings
 
-from sqlmodel import Session, create_engine
+from sqlmodel import Session, create_engine, select
 import pandas as pd
 
 from policyengine_us_data.storage import STORAGE_FOLDER
@@ -527,9 +527,9 @@ def load_national_targets(
 
     with Session(engine) as session:
         # Get the national stratum
-        us_stratum = (
-            session.query(Stratum).filter(Stratum.parent_stratum_id.is_(None)).first()
-        )
+        us_stratum = session.exec(
+            select(Stratum).where(Stratum.parent_stratum_id.is_(None))
+        ).first()
 
         if not us_stratum:
             raise ValueError(
@@ -540,15 +540,13 @@ def load_national_targets(
         for _, target_data in direct_targets_df.iterrows():
             target_year = target_data["year"]
             # Check if target already exists
-            existing_target = (
-                session.query(Target)
-                .filter(
+            existing_target = session.exec(
+                select(Target).where(
                     Target.stratum_id == us_stratum.stratum_id,
                     Target.variable == target_data["variable"],
                     Target.period == target_year,
                 )
-                .first()
-            )
+            ).first()
 
             # Combine source info into notes
             notes_parts = []
@@ -580,14 +578,12 @@ def load_national_targets(
         # Process tax-related targets that need filer constraint
         if not tax_filer_df.empty:
             # Get or create the national filer stratum
-            national_filer_stratum = (
-                session.query(Stratum)
-                .filter(
+            national_filer_stratum = session.exec(
+                select(Stratum).where(
                     Stratum.parent_stratum_id == us_stratum.stratum_id,
                     Stratum.notes == "United States - Tax Filers",
                 )
-                .first()
-            )
+            ).first()
 
             if not national_filer_stratum:
                 # Create national filer stratum
@@ -610,15 +606,13 @@ def load_national_targets(
             for _, target_data in tax_filer_df.iterrows():
                 target_year = target_data["year"]
                 # Check if target already exists
-                existing_target = (
-                    session.query(Target)
-                    .filter(
+                existing_target = session.exec(
+                    select(Target).where(
                         Target.stratum_id == national_filer_stratum.stratum_id,
                         Target.variable == target_data["variable"],
                         Target.period == target_year,
                     )
-                    .first()
-                )
+                ).first()
 
                 # Combine source info into notes
                 notes_parts = []
@@ -649,9 +643,8 @@ def load_national_targets(
 
         # Process reform-based tax expenditure targets.
         if not tax_expenditure_df.empty:
-            migrated_strata = (
-                session.query(Stratum)
-                .filter(
+            migrated_stratum_ids = session.exec(
+                select(Stratum.stratum_id).where(
                     Stratum.parent_stratum_id == us_stratum.stratum_id,
                     Stratum.notes.in_(
                         [
@@ -660,9 +653,7 @@ def load_national_targets(
                         ]
                     ),
                 )
-                .all()
-            )
-            migrated_stratum_ids = [s.stratum_id for s in migrated_strata]
+            ).all()
 
             for _, target_data in tax_expenditure_df.iterrows():
                 target_year = target_data["year"]
@@ -670,30 +661,26 @@ def load_national_targets(
 
                 # Clean up incorrectly scoped baseline rows from older DBs.
                 if migrated_stratum_ids:
-                    stale_targets = (
-                        session.query(Target)
-                        .filter(
+                    stale_targets = session.exec(
+                        select(Target).where(
                             Target.stratum_id.in_(migrated_stratum_ids),
                             Target.variable == target_data["variable"],
                             Target.period == target_year,
                             Target.reform_id == 0,
                             Target.active,
                         )
-                        .all()
-                    )
+                    ).all()
                     for stale_target in stale_targets:
                         stale_target.active = False
 
-                existing_target = (
-                    session.query(Target)
-                    .filter(
+                existing_target = session.exec(
+                    select(Target).where(
                         Target.stratum_id == us_stratum.stratum_id,
                         Target.variable == target_data["variable"],
                         Target.period == target_year,
                         Target.reform_id == target_reform_id,
                     )
-                    .first()
-                )
+                ).first()
 
                 notes_parts = []
                 if pd.notna(target_data.get("notes")):
@@ -724,11 +711,9 @@ def load_national_targets(
                     session.add(target)
                     session.flush()
 
-                    persisted = (
-                        session.query(Target)
-                        .filter(Target.target_id == target.target_id)
-                        .first()
-                    )
+                    persisted = session.exec(
+                        select(Target).where(Target.target_id == target.target_id)
+                    ).first()
                     if persisted.reform_id != target_reform_id:
                         print(
                             f"  WARNING: {target_data['variable']} persisted "
@@ -770,26 +755,22 @@ def load_national_targets(
                 constraint_value = "0"
 
             # Check if this stratum already exists
-            existing_stratum = (
-                session.query(Stratum)
-                .filter(
+            existing_stratum = session.exec(
+                select(Stratum).where(
                     Stratum.parent_stratum_id == us_stratum.stratum_id,
                     Stratum.notes == stratum_notes,
                 )
-                .first()
-            )
+            ).first()
 
             if existing_stratum:
                 # Update the existing target in this stratum
-                existing_target = (
-                    session.query(Target)
-                    .filter(
+                existing_target = session.exec(
+                    select(Target).where(
                         Target.stratum_id == existing_stratum.stratum_id,
                         Target.variable == target_variable,
                         Target.period == target_year,
                     )
-                    .first()
-                )
+                ).first()
 
                 if existing_target:
                     existing_target.value = target_value
@@ -848,17 +829,16 @@ def load_national_targets(
             "medical_expense_deduction",
             "qualified_business_income_deduction",
         ]
-        bad_targets = (
-            session.query(Target)
+        bad_targets = session.exec(
+            select(Target)
             .join(Stratum, Target.stratum_id == Stratum.stratum_id)
-            .filter(
+            .where(
                 Target.variable.in_(tax_exp_vars),
-                Target.active == True,
-                Stratum.parent_stratum_id == None,
+                Target.active,
+                Stratum.parent_stratum_id.is_(None),
                 Target.reform_id == 0,
             )
-            .all()
-        )
+        ).all()
         if bad_targets:
             bad_names = [t.variable for t in bad_targets]
             raise ValueError(

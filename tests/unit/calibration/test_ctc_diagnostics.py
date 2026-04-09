@@ -175,7 +175,14 @@ def test_build_ctc_diagnostic_tables_aggregates_weights_by_group():
     assert by_filing_status.loc["Single", "ctc"] == 200.0
 
     assert by_filing_status.loc["Joint / surviving spouse", "tax_unit_count"] == 2.0
-    assert by_filing_status.loc["Joint / surviving spouse", "ctc_qualifying_children"] == 5.0
-    assert by_filing_status.loc["Joint / surviving spouse", "ctc_recipient_count"] == 1.5
+    assert (
+        by_filing_status.loc["Joint / surviving spouse", "ctc_qualifying_children"]
+        == 5.0
+    )
+    assert (
+        by_filing_status.loc["Joint / surviving spouse", "ctc_recipient_count"] == 1.5
+    )
     assert by_filing_status.loc["Joint / surviving spouse", "refundable_ctc"] == 225.0
-    assert by_filing_status.loc["Joint / surviving spouse", "non_refundable_ctc"] == 75.0
+    assert (
+        by_filing_status.loc["Joint / surviving spouse", "non_refundable_ctc"] == 75.0
+    )

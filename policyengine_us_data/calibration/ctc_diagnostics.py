@@ -72,16 +72,15 @@ def build_ctc_diagnostic_tables(frame: pd.DataFrame) -> dict[str, pd.DataFrame]:
     work["ctc_qualifying_children"] = (
         work["ctc_qualifying_children"].astype(float).to_numpy() * weights
     )
-    work["ctc_recipient_count"] = (
-        (work["ctc"].astype(float).to_numpy() > 0).astype(float) * weights
-    )
+    work["ctc_recipient_count"] = (work["ctc"].astype(float).to_numpy() > 0).astype(
+        float
+    ) * weights
     work["refundable_ctc_recipient_count"] = (
-        (work["refundable_ctc"].astype(float).to_numpy() > 0).astype(float) * weights
-    )
+        work["refundable_ctc"].astype(float).to_numpy() > 0
+    ).astype(float) * weights
     work["non_refundable_ctc_recipient_count"] = (
-        (work["non_refundable_ctc"].astype(float).to_numpy() > 0).astype(float)
-        * weights
-    )
+        work["non_refundable_ctc"].astype(float).to_numpy() > 0
+    ).astype(float) * weights
     work["ctc"] = work["ctc"].astype(float).to_numpy() * weights
     work["refundable_ctc"] = work["refundable_ctc"].astype(float).to_numpy() * weights
     work["non_refundable_ctc"] = (

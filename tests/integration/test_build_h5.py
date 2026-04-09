@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -9,10 +10,14 @@ import pytest
 from pathlib import Path
 from policyengine_us import Microsimulation
 from policyengine_us_data.calibration.publish_local_area import (
+    SUB_ENTITIES,
     build_h5,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
+)
+from policyengine_us_data.calibration.local_h5.source_dataset import (
+    PolicyEngineDatasetReader,
 )
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "test_fixture_50hh.h5")
@@ -76,6 +81,11 @@ def test_weights(n_households):
             w[cd_idx * n_households + hh_idx] = np.random.uniform(1, 3)
 
     return w
+
+
+@pytest.fixture(scope="module")
+def source_snapshot():
+    return PolicyEngineDatasetReader(tuple(SUB_ENTITIES)).load(Path(FIXTURE_PATH))
 
 
 @pytest.fixture(scope="module")
@@ -165,6 +175,41 @@ class TestStackedDatasetBuilder:
         hh_df = stacked_result["hh_df"]
         expected_households = (test_weights > 0).sum()
         assert len(hh_df) == expected_households
+
+    def test_build_h5_accepts_preloaded_source_snapshot(
+        self,
+        test_weights,
+        n_households,
+        source_snapshot,
+    ):
+        """A worker-scoped source snapshot should produce a valid augmented H5."""
+        geography = _make_geography(n_households, TEST_CDS)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "test_snapshot_output.h5"
+            expected_households = int((test_weights > 0).sum())
+
+            build_h5(
+                weights=np.array(test_weights),
+                geography=geography,
+                dataset_path=Path(FIXTURE_PATH),
+                output_path=output_path,
+                cd_subset=TEST_CDS,
+                source_snapshot=source_snapshot,
+            )
+
+            with h5py.File(output_path, "r") as f:
+                assert "congressional_district_geoid" in f
+                assert "spm_unit_spm_threshold" in f
+                tp = str(source_snapshot.time_period)
+                hh_ids = f["household_id"][tp][:]
+                hh_weights = f["household_weight"][tp][:]
+                districts = f["congressional_district_geoid"][tp][:]
+                spm_thresholds = f["spm_unit_spm_threshold"][tp][:]
+
+                assert len(hh_ids) == expected_households
+                assert len(hh_weights) == expected_households
+                assert len(districts) == expected_households
+                assert len(spm_thresholds) > 0
 
 
 @pytest.fixture(scope="module")

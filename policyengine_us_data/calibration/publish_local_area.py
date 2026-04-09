@@ -188,13 +188,15 @@ def _build_reported_takeup_anchors(
     return reported_anchors
 
 
-@pipeline_node(PipelineNode(
-    id="build_h5",
-    label="build_h5() — Core Logic",
-    node_type="process",
-    description="18-step H5 construction — load, reshape, filter, clone, derive geo, SPM, takeup, write",
-    source_file="policyengine_us_data/calibration/publish_local_area.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="build_h5",
+        label="build_h5() — Core Logic",
+        node_type="process",
+        description="18-step H5 construction — load, reshape, filter, clone, derive geo, SPM, takeup, write",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+    )
+)
 def build_h5(
     weights: np.ndarray,
     geography,
@@ -646,13 +648,15 @@ def get_district_friendly_name(cd_geoid: str) -> str:
     return f"{state_code}-{district_num:02d}"
 
 
-@pipeline_node(PipelineNode(
-    id="phase1",
-    label="Phase 1: States",
-    node_type="us_specific",
-    description="51 state H5 files (50 + DC) — workers in parallel",
-    source_file="policyengine_us_data/calibration/publish_local_area.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="phase1",
+        label="Phase 1: States",
+        node_type="us_specific",
+        description="51 state H5 files (50 + DC) — workers in parallel",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+    )
+)
 def build_states(
     weights_path: Path,
     dataset_path: Path,
@@ -720,13 +724,15 @@ def build_states(
         upload_local_area_batch_to_hf(hf_queue)
 
 
-@pipeline_node(PipelineNode(
-    id="phase2",
-    label="Phase 2: Districts",
-    node_type="us_specific",
-    description="~435 congressional district H5 files — workers in parallel",
-    source_file="policyengine_us_data/calibration/publish_local_area.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="phase2",
+        label="Phase 2: Districts",
+        node_type="us_specific",
+        description="~435 congressional district H5 files — workers in parallel",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+    )
+)
 def build_districts(
     weights_path: Path,
     dataset_path: Path,
@@ -795,13 +801,15 @@ def build_districts(
         upload_local_area_batch_to_hf(hf_queue)
 
 
-@pipeline_node(PipelineNode(
-    id="phase3",
-    label="Phase 3: Cities",
-    node_type="us_specific",
-    description="NYC (5 counties, 13 CDs) — city probability filtering",
-    source_file="policyengine_us_data/calibration/publish_local_area.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="phase3",
+        label="Phase 3: Cities",
+        node_type="us_specific",
+        description="NYC (5 counties, 13 CDs) — city probability filtering",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+    )
+)
 def build_cities(
     weights_path: Path,
     dataset_path: Path,

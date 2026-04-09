@@ -18,18 +18,27 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STAGES_YAML = REPO_ROOT / "pipeline_stages.yaml"
-DEFAULT_OUTPUT = (
-    REPO_ROOT / "docs" / "pipeline-diagrams" / "app" / "pipeline.json"
-)
+DEFAULT_OUTPUT = REPO_ROOT / "docs" / "pipeline-diagrams" / "app" / "pipeline.json"
 
 # Valid node and edge types (from pipeline_schema.py)
 VALID_NODE_TYPES = {
-    "input", "output", "process", "utility", "external",
-    "us_specific", "uk_specific", "missing", "absent",
+    "input",
+    "output",
+    "process",
+    "utility",
+    "external",
+    "us_specific",
+    "uk_specific",
+    "missing",
+    "absent",
 }
 VALID_EDGE_TYPES = {
-    "data_flow", "produces_artifact", "uses_utility",
-    "external_source", "runs_on_infra", "informational",
+    "data_flow",
+    "produces_artifact",
+    "uses_utility",
+    "external_source",
+    "runs_on_infra",
+    "informational",
 }
 
 # Decorated code nodes that are intentionally not rendered as graph nodes.
@@ -124,7 +133,9 @@ def build_pipeline_json(output_path: Path = DEFAULT_OUTPUT):
     file_nodes = scan_source_files(source_dir)
 
     total_nodes = sum(len(v) for v in file_nodes.values())
-    print(f"  Found {total_nodes} @pipeline_node decorators across {len(file_nodes)} files")
+    print(
+        f"  Found {total_nodes} @pipeline_node decorators across {len(file_nodes)} files"
+    )
 
     # Build a lookup: node_id → node_data
     all_code_nodes = {}
@@ -226,7 +237,9 @@ def build_pipeline_json(output_path: Path = DEFAULT_OUTPUT):
 
         for group in stage.get("groups", []):
             missing_group_nodes = [
-                node_id for node_id in group.get("node_ids", []) if node_id not in node_ids
+                node_id
+                for node_id in group.get("node_ids", [])
+                if node_id not in node_ids
             ]
             if missing_group_nodes:
                 print(
@@ -276,7 +289,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         default=str(DEFAULT_OUTPUT),
         help="Output path for pipeline.json",
     )

@@ -115,7 +115,7 @@ def build_block_cd_distributions():
 
     # Print some stats
     blocks_per_cd = output.groupby("cd_geoid").size()
-    print(f"\nBlocks per CD:")
+    print("\nBlocks per CD:")
     print(f"  Min: {blocks_per_cd.min():,}")
     print(f"  Median: {blocks_per_cd.median():,.0f}")
     print(f"  Max: {blocks_per_cd.max():,}")

@@ -50,26 +50,30 @@ def collect_files(local_dir: Path, area_types: list) -> list:
     return files
 
 
-@pipeline_node(PipelineNode(
-    id="staging_upload",
-    label="Upload to Staging",
-    node_type="process",
-    description="upload_to_staging_hf() — batches of 50 files/commit",
-    source_file="policyengine_us_data/calibration/promote_local_h5s.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="staging_upload",
+        label="Upload to Staging",
+        node_type="process",
+        description="upload_to_staging_hf() — batches of 50 files/commit",
+        source_file="policyengine_us_data/calibration/promote_local_h5s.py",
+    )
+)
 def stage(files: list, version: str, run_id: str = ""):
     logger.info("Uploading %d files to HF staging/...", len(files))
     n = upload_to_staging_hf(files, version=version, run_id=run_id)
     logger.info("Staged %d files", n)
 
 
-@pipeline_node(PipelineNode(
-    id="atomic_promote",
-    label="Atomic Promotion",
-    node_type="process",
-    description="promote_staging_to_production_hf() — single CommitOperationCopy commit",
-    source_file="policyengine_us_data/calibration/promote_local_h5s.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="atomic_promote",
+        label="Atomic Promotion",
+        node_type="process",
+        description="promote_staging_to_production_hf() — single CommitOperationCopy commit",
+        source_file="policyengine_us_data/calibration/promote_local_h5s.py",
+    )
+)
 def promote(rel_paths: list, version: str, run_id: str = ""):
     logger.info(
         "Promoting %d files from staging/ to production...",

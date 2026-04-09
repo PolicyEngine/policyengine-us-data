@@ -15,8 +15,7 @@ Regenerate the app-consumed JSON from the repository root:
 python scripts/extract_pipeline.py
 ```
 
-The extractor writes `docs/pipeline-diagrams/app/pipeline.json`. Do not edit that
-file by hand.
+The extractor writes `docs/pipeline-diagrams/app/pipeline.json`. Do not edit that file by hand.
 
 ## Local App
 
@@ -40,5 +39,5 @@ cd docs/pipeline-diagrams
 npx tsc --noEmit
 ```
 
-`npm run lint` currently includes renderer cleanup work outside the generation
-path, so the automated update workflow uses the TypeScript check only.
+`npm run lint` currently includes renderer cleanup work outside the generation path, so the
+automated update workflow uses the TypeScript check only.

@@ -172,7 +172,7 @@ def create_test_fixture():
 
     # Verify
     with h5py.File(FIXTURE_PATH, "r") as f:
-        print(f"\nVerification:")
+        print("\nVerification:")
         print(f"  Variables: {list(f.keys())}")
         print(f"  household_id shape: {f['household_id'][TIME_PERIOD].shape}")
         print(f"  person_id shape: {f['person_id'][TIME_PERIOD].shape}")

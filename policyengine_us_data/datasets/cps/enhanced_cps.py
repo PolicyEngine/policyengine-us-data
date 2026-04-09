@@ -102,14 +102,16 @@ def create_aca_2025_takeup_override(
     )
 
 
-@pipeline_node(PipelineNode(
-    id="reweight",
-    label="reweight()",
-    node_type="process",
-    description="Sparse household-weight calibration against national and state targets",
-    details="Uses Adam with HardConcrete gates; default run is 500 epochs at lr=0.2",
-    source_file="policyengine_us_data/datasets/cps/enhanced_cps.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="reweight",
+        label="reweight()",
+        node_type="process",
+        description="Sparse household-weight calibration against national and state targets",
+        details="Uses Adam with HardConcrete gates; default run is 500 epochs at lr=0.2",
+        source_file="policyengine_us_data/datasets/cps/enhanced_cps.py",
+    )
+)
 def reweight(
     original_weights,
     loss_matrix,

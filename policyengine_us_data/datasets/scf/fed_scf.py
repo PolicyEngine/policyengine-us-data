@@ -31,7 +31,7 @@ class SummarizedFedSCF(Dataset):
     def _load_unlocked(self) -> pd.DataFrame:
         # Check if file exists
         if not os.path.exists(self.file_path):
-            print(f"Raw SCF dataset file not found. Generating it.")
+            print("Raw SCF dataset file not found. Generating it.")
             self._generate_unlocked()
 
         # Open the HDF store and return the DataFrame

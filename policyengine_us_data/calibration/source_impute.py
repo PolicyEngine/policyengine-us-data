@@ -267,13 +267,15 @@ def _person_state_fips(
     return np.repeat(state_fips, counts)
 
 
-@pipeline_node(PipelineNode(
-    id="acs_qrf",
-    label="ACS QRF Imputation",
-    node_type="process",
-    description="10 predictors incl. state_fips — imputes rent, real_estate_taxes",
-    source_file="policyengine_us_data/calibration/source_impute.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="acs_qrf",
+        label="ACS QRF Imputation",
+        node_type="process",
+        description="10 predictors incl. state_fips — imputes rent, real_estate_taxes",
+        source_file="policyengine_us_data/calibration/source_impute.py",
+    )
+)
 def _impute_acs(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
@@ -358,13 +360,15 @@ def _impute_acs(
     return data
 
 
-@pipeline_node(PipelineNode(
-    id="sipp_tips_qrf",
-    label="SIPP Tips QRF",
-    node_type="process",
-    description="4 predictors, NO state — imputes tip_income",
-    source_file="policyengine_us_data/calibration/source_impute.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="sipp_tips_qrf",
+        label="SIPP Tips QRF",
+        node_type="process",
+        description="4 predictors, NO state — imputes tip_income",
+        source_file="policyengine_us_data/calibration/source_impute.py",
+    )
+)
 def _impute_sipp(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
@@ -644,13 +648,15 @@ def _impute_sipp(
     return data
 
 
-@pipeline_node(PipelineNode(
-    id="scf_qrf",
-    label="SCF QRF Imputation",
-    node_type="process",
-    description="8 predictors — imputes net_worth, auto_loan_balance, auto_loan_interest",
-    source_file="policyengine_us_data/calibration/source_impute.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="scf_qrf",
+        label="SCF QRF Imputation",
+        node_type="process",
+        description="8 predictors — imputes net_worth, auto_loan_balance, auto_loan_interest",
+        source_file="policyengine_us_data/calibration/source_impute.py",
+    )
+)
 def _impute_scf(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,

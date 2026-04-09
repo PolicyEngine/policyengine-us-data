@@ -15,11 +15,11 @@ stratum_constraints_df = pd.read_sql("SELECT * FROM stratum_constraints", conn)
 targets_df = pd.read_sql("SELECT * FROM targets", conn)
 
 for var_name in set(targets_df["variable"]):
-    if not var_name in system.variables.keys():
+    if var_name not in system.variables.keys():
         raise ValueError(f"{var_name} not a policyengine-us variable")
 
 for var_name in set(stratum_constraints_df["constraint_variable"]):
-    if not var_name in system.variables.keys():
+    if var_name not in system.variables.keys():
         raise ValueError(f"{var_name} not a policyengine-us variable")
 
 TAX_EXPENDITURE_VARS = [

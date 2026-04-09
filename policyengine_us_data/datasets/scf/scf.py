@@ -82,7 +82,7 @@ class SCF(Dataset):
         """
         # Check if file exists
         if not os.path.exists(self.file_path):
-            print(f"SCF dataset file not found. Generating it.")
+            print("SCF dataset file not found. Generating it.")
             self._generate_unlocked()
 
         # Open the HDF5 file and handle potential errors

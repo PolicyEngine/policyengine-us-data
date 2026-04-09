@@ -475,13 +475,15 @@ def load_calibration_package(path: str) -> dict:
     return package
 
 
-@pipeline_node(PipelineNode(
-    id="init_weights",
-    label="Compute Initial Weights",
-    node_type="process",
-    description="Population-proportional per CD",
-    source_file="policyengine_us_data/calibration/unified_calibration.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="init_weights",
+        label="Compute Initial Weights",
+        node_type="process",
+        description="Population-proportional per CD",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+    )
+)
 def compute_initial_weights(
     X_sparse,
     targets_df: "pd.DataFrame",
@@ -544,13 +546,15 @@ def compute_initial_weights(
     return initial_weights
 
 
-@pipeline_node(PipelineNode(
-    id="fit_model",
-    label="model.fit()",
-    node_type="process",
-    description="Adam optimizer — loss = RSE + λ₀·L0(w) + λ₂·‖w‖²",
-    source_file="policyengine_us_data/calibration/unified_calibration.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="fit_model",
+        label="model.fit()",
+        node_type="process",
+        description="Adam optimizer — loss = RSE + λ₀·L0(w) + λ₂·‖w‖²",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+    )
+)
 def fit_l0_weights(
     X_sparse,
     targets: np.ndarray,
@@ -817,13 +821,15 @@ def compute_diagnostics(
     )
 
 
-@pipeline_node(PipelineNode(
-    id="run_calibration",
-    label="Run Calibration Pipeline",
-    node_type="process",
-    description="End-to-end L0 calibration: build matrix → fit weights → diagnostics",
-    source_file="policyengine_us_data/calibration/unified_calibration.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="run_calibration",
+        label="Run Calibration Pipeline",
+        node_type="process",
+        description="End-to-end L0 calibration: build matrix → fit weights → diagnostics",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+    )
+)
 def run_calibration(
     dataset_path: str,
     db_path: str,

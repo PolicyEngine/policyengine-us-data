@@ -10,5 +10,5 @@ try:
     with open("pyproject.toml", "rb") as f:
         pyproject = tomli.load(f)
     __version__ = pyproject["project"]["version"]
-except Exception as e:
+except Exception:
     __version__ = importlib.metadata.version("policyengine_us_data")

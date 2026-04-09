@@ -542,10 +542,10 @@ else:
 print("=" * 70)
 print(f"HOUSEHOLD-LEVEL INCOME TAX PROJECTION: {START_YEAR}-{END_YEAR}")
 print("=" * 70)
-print(f"\nConfiguration:")
+print("\nConfiguration:")
 print(f"  Base year: {BASE_YEAR} (CPS microdata)")
 print(f"  Projection: {START_YEAR}-{END_YEAR}")
-print(f"  Calculation level: HOUSEHOLD ONLY (simplified)")
+print("  Calculation level: HOUSEHOLD ONLY (simplified)")
 print(f"  Calibration profile: {PROFILE.name}")
 print(f"  Profile description: {PROFILE.description}")
 print(f"  Target source: {TARGET_SOURCE}")
@@ -562,20 +562,20 @@ if SUPPORT_AUGMENTATION_PROFILE:
         f"{SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE}"
     )
 if USE_SS:
-    print(f"  Including Social Security benefits constraint: Yes")
+    print("  Including Social Security benefits constraint: Yes")
 if USE_PAYROLL:
-    print(f"  Including taxable payroll constraint: Yes")
+    print("  Including taxable payroll constraint: Yes")
 if USE_H6_REFORM:
-    print(f"  Including H6 reform income impact constraint: Yes")
+    print("  Including H6 reform income impact constraint: Yes")
 if USE_TOB:
-    print(f"  Including TOB revenue constraint: Yes")
+    print("  Including TOB revenue constraint: Yes")
 elif BENCHMARK_TOB:
-    print(f"  Benchmarking TOB after calibration: Yes")
+    print("  Benchmarking TOB after calibration: Yes")
 if SAVE_H5:
     print(f"  Saving year-specific .h5 files: Yes (to {OUTPUT_DIR}/)")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 else:
-    print(f"  Saving year-specific .h5 files: No (use --save-h5 to enable)")
+    print("  Saving year-specific .h5 files: No (use --save-h5 to enable)")
 print(f"  Years to process: {END_YEAR - START_YEAR + 1}")
 est_time = (END_YEAR - START_YEAR + 1) * (3 if SAVE_H5 else 2)
 print(f"  Estimated time: ~{est_time:.0f} minutes")
@@ -705,7 +705,7 @@ n_years = target_matrix.shape[1]
 n_ages = target_matrix.shape[0]
 
 print(f"\nLoaded SSA projections: {n_ages} ages x {n_years} years")
-print(f"\nPopulation projections:")
+print("\nPopulation projections:")
 
 display_years = [
     y

@@ -39,13 +39,15 @@ TAKEUP_VARS = [
 ]
 
 
-@pipeline_node(PipelineNode(
-    id="v2",
-    label="Layer 2: Structural Sanity",
-    node_type="process",
-    description="Weight non-negativity, entity ID uniqueness, no NaN/Inf, mapping integrity",
-    source_file="policyengine_us_data/calibration/sanity_checks.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="v2",
+        label="Layer 2: Structural Sanity",
+        node_type="process",
+        description="Weight non-negativity, entity ID uniqueness, no NaN/Inf, mapping integrity",
+        source_file="policyengine_us_data/calibration/sanity_checks.py",
+    )
+)
 def run_sanity_checks(
     h5_path: str,
     period: int = 2024,

@@ -8,11 +8,17 @@ ______________________________________________________________________
 
 ## Notebooks
 
-| Notebook                                                                                                             | Stages                                     | Required files / inputs                                                     |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------- |
-| [`data_build_internals.ipynb`](data_build_internals.ipynb)                                                           | Stage 1: build_datasets                    | donor QRF cells need ACS/SIPP/SCF files                                     |
-| [`calibration_package_internals.ipynb`](calibration_package_internals.ipynb)                                         | Stage 2: build_package                     | Part 1 uses a toy sparse matrix; Parts 2–5 use static excerpts or toy demos |
-| [`optimization_and_local_dataset_assembly_internals.ipynb`](optimization_and_local_dataset_assembly_internals.ipynb) | Stages 3–4: fit_weights, publish_and_stage | L0 toy run; diagnostic cells need a completed run's CSV output              |
+| Notebook | Stages | Required files / inputs | |
+\--------------------------------------------------------------------------------------------------------------------
+| ------------------------------------------ |
+--------------------------------------------------------------------------- | |
+[`data_build_internals.ipynb`](data_build_internals.ipynb) | Stage 1: build_datasets | donor QRF
+cells need ACS/SIPP/SCF files | |
+[`calibration_package_internals.ipynb`](calibration_package_internals.ipynb) | Stage 2:
+build_package | Part 1 uses a toy sparse matrix; Parts 2–5 use static excerpts or toy demos | |
+[`optimization_and_local_dataset_assembly_internals.ipynb`](optimization_and_local_dataset_assembly_internals.ipynb)
+| Stages 3–4: fit_weights, publish_and_stage | L0 toy run; diagnostic cells need a completed run's
+CSV output |
 
 ### Which notebook to open
 
@@ -77,10 +83,10 @@ Default hyperparameters passed in `run_pipeline()`:
 
 Two Modal volumes back the pipeline:
 
-| Volume name          | Mount path  | Purpose                                          |
-| -------------------- | ----------- | ------------------------------------------------ |
-| `pipeline-artifacts` | `/pipeline` | Run metadata, calibration artifacts, diagnostics |
-| `local-area-staging` | `/staging`  | Intermediate H5 files during publish step        |
+| Volume name | Mount path | Purpose | | -------------------- | ----------- |
+------------------------------------------------ | | `pipeline-artifacts` | `/pipeline` | Run
+metadata, calibration artifacts, diagnostics | | `local-area-staging` | `/staging` | Intermediate H5
+files during publish step |
 
 Directory layout inside `pipeline-artifacts`:
 
@@ -165,14 +171,15 @@ modal run --detach modal_app/pipeline.py::main \
 All artifacts land in `policyengine/policyengine-us-data` (model repo) under the `staging/` prefix
 until promoted.
 
-| Artifact            | HF path (staging)                                               | HF path (production after promote) |
-| ------------------- | --------------------------------------------------------------- | ---------------------------------- |
-| source_imputed H5s  | `staging/calibration/source_imputed_*.h5`                       | `calibration/source_imputed_*.h5`  |
-| policy_data.db      | `staging/calibration/policy_data.db`                            | `calibration/policy_data.db`       |
-| Calibration log     | `calibration/runs/{run_id}/diagnostics/calibration_log.csv`     | — (never promoted)                 |
-| Unified diagnostics | `calibration/runs/{run_id}/diagnostics/unified_diagnostics.csv` | — (never promoted)                 |
-| Validation results  | `calibration/runs/{run_id}/diagnostics/validation_results.csv`  | — (never promoted)                 |
-| Local area H5s      | `staging/` (area-specific paths)                                | final dataset paths                |
+| Artifact | HF path (staging) | HF path (production after promote) | | ------------------- |
+--------------------------------------------------------------- | ----------------------------------
+| | source_imputed H5s | `staging/calibration/source_imputed_*.h5` |
+`calibration/source_imputed_*.h5` | | policy_data.db | `staging/calibration/policy_data.db` |
+`calibration/policy_data.db` | | Calibration log |
+`calibration/runs/{run_id}/diagnostics/calibration_log.csv` | — (never promoted) | | Unified
+diagnostics | `calibration/runs/{run_id}/diagnostics/unified_diagnostics.csv` | — (never promoted) |
+| Validation results | `calibration/runs/{run_id}/diagnostics/validation_results.csv` | — (never
+promoted) | | Local area H5s | `staging/` (area-specific paths) | final dataset paths |
 
 Diagnostics are never promoted — they remain under `calibration/runs/{run_id}/` permanently.
 
@@ -216,53 +223,75 @@ ______________________________________________________________________
 
 ### `policyengine_us_data/calibration/`
 
-| File                           | Purpose                                                                                                                                                                                                                                                         |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `unified_calibration.py`       | Main calibration entry point: clones CPS, assigns geography, builds matrix, runs L0 optimizer, saves weights. Start here for the end-to-end flow.                                                                                                               |
-| `unified_matrix_builder.py`    | Builds the sparse calibration matrix. Per-state simulation, clone loop, domain constraints, takeup re-randomization, COO assembly.                                                                                                                              |
-| `clone_and_assign.py`          | Clones CPS records N times, assigns each clone a random census block with no-CD-collision constraint and AGI-conditional routing.                                                                                                                               |
-| `block_assignment.py`          | Per-CD block assignment and geographic variable derivation (county, tract, CBSA, SLDU, SLDL, place, PUMA, VTD, ZCTA) from block GEOIDs.                                                                                                                         |
-| `county_assignment.py`         | Legacy/fallback: assigns counties within CDs using P(county \| CD). Only called by `block_assignment.py::_generate_fallback_blocks()` when a CD is missing from the pre-computed block distribution (primarily in tests). Not used in production pipeline runs. |
-| `puf_impute.py`                | PUF cloning: doubles the dataset, imputes 70+ tax variables via sequential QRF, reconciles Social Security sub-components.                                                                                                                                      |
-| `source_impute.py`             | Re-imputes housing, asset, and labor-market variables from ACS, SIPP, ORG, and SCF donor surveys using QRF.                                                                                                                                                     |
-| `create_source_imputed_cps.py` | Standalone script that runs `source_impute.py` on the stratified extended CPS to produce the dataset used by calibration.                                                                                                                                       |
-| `create_stratified_cps.py`     | Creates a stratified CPS sample preserving all high-income households while maintaining low-income diversity.                                                                                                                                                   |
-| `publish_local_area.py`        | Builds per-area H5 files (states, districts, cities) from calibrated weights. Weight expansion, entity cloning, geography override, SPM recalculation, takeup draws.                                                                                            |
-| `calibration_utils.py`         | Shared utilities: state mappings, SPM threshold calculation, geographic adjustment factors, target group functions, initial weight computation.                                                                                                                 |
-| `target_config.yaml`           | Include rules that gate which DB targets enter calibration (applied post-matrix-build). The training config.                                                                                                                                                    |
-| `target_config_full.yaml`      | Broader include rules used for validation — includes targets not in the training set for holdout evaluation.                                                                                                                                                    |
-| `validate_staging.py`          | Validates built H5 files by running `sim.calculate()` and comparing weighted aggregates against DB targets. Produces `validation_results.csv`.                                                                                                                  |
-| `validate_national_h5.py`      | Validates the national `US.h5` against known national totals and runs structural sanity checks.                                                                                                                                                                 |
-| `validate_package.py`          | Validates a calibration package (matrix + targets) before uploading to Modal — checks structure, achievability, and provenance.                                                                                                                                 |
-| `sanity_checks.py`             | Structural integrity checks on H5 files: weights, monetary variable ranges, takeup booleans, entity ID consistency.                                                                                                                                             |
-| `check_staging_sums.py`        | Standalone CLI utility (not part of the automated pipeline): sums key variables across all 51 state H5 files and compares to national references. Run manually via `make check-staging` or `python -m ...`.                                                     |
-| `promote_local_h5s.py`         | Standalone CLI utility (not part of the automated pipeline): promotes locally-built H5 files to production via HuggingFace staging and GCS upload. Used for manual local builds outside Modal.                                                                  |
+| File | Purpose | | ------------------------------ |
+\---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| | `unified_calibration.py` | Main calibration entry point: clones CPS, assigns geography, builds
+matrix, runs L0 optimizer, saves weights. Start here for the end-to-end flow. | |
+`unified_matrix_builder.py` | Builds the sparse calibration matrix. Per-state simulation, clone
+loop, domain constraints, takeup re-randomization, COO assembly. | | `clone_and_assign.py` | Clones
+CPS records N times, assigns each clone a random census block with no-CD-collision constraint and
+AGI-conditional routing. | | `block_assignment.py` | Per-CD block assignment and geographic variable
+derivation (county, tract, CBSA, SLDU, SLDL, place, PUMA, VTD, ZCTA) from block GEOIDs. | |
+`county_assignment.py` | Legacy/fallback: assigns counties within CDs using P(county | CD). Only
+called by `block_assignment.py::_generate_fallback_blocks()` when a CD is missing from the
+pre-computed block distribution (primarily in tests). Not used in production pipeline runs. | |
+`puf_impute.py` | PUF cloning: doubles the dataset, imputes 70+ tax variables via sequential QRF,
+reconciles Social Security sub-components. | | `source_impute.py` | Re-imputes housing, asset, and
+labor-market variables from ACS, SIPP, ORG, and SCF donor surveys using QRF. | |
+`create_source_imputed_cps.py` | Standalone script that runs `source_impute.py` on the stratified
+extended CPS to produce the dataset used by calibration. | | `create_stratified_cps.py` | Creates a
+stratified CPS sample preserving all high-income households while maintaining low-income diversity.
+| | `publish_local_area.py` | Builds per-area H5 files (states, districts, cities) from calibrated
+weights. Weight expansion, entity cloning, geography override, SPM recalculation, takeup draws. | |
+`calibration_utils.py` | Shared utilities: state mappings, SPM threshold calculation, geographic
+adjustment factors, target group functions, initial weight computation. | | `target_config.yaml` |
+Include rules that gate which DB targets enter calibration (applied post-matrix-build). The training
+config. | | `target_config_full.yaml` | Broader include rules used for validation — includes targets
+not in the training set for holdout evaluation. | | `validate_staging.py` | Validates built H5 files
+by running `sim.calculate()` and comparing weighted aggregates against DB targets. Produces
+`validation_results.csv`. | | `validate_national_h5.py` | Validates the national `US.h5` against
+known national totals and runs structural sanity checks. | | `validate_package.py` | Validates a
+calibration package (matrix + targets) before uploading to Modal — checks structure, achievability,
+and provenance. | | `sanity_checks.py` | Structural integrity checks on H5 files: weights, monetary
+variable ranges, takeup booleans, entity ID consistency. | | `check_staging_sums.py` | Standalone
+CLI utility (not part of the automated pipeline): sums key variables across all 51 state H5 files
+and compares to national references. Run manually via `make check-staging` or `python -m ...`. | |
+`promote_local_h5s.py` | Standalone CLI utility (not part of the automated pipeline): promotes
+locally-built H5 files to production via HuggingFace staging and GCS upload. Used for manual local
+builds outside Modal. |
 
 ### `modal_app/`
 
-| File                           | Purpose                                                                                                                                                         |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pipeline.py`                  | End-to-end pipeline orchestrator: chains dataset build → matrix build → weight fitting → H5 publish → promote. Manages run IDs, resume, and diagnostics upload. |
-| `data_build.py`                | Modal app for Stage 1: parallel dataset building (CPS extraction, PUF cloning, source imputation) with checkpoint persistence.                                  |
-| `remote_calibration_runner.py` | Modal app for Stages 2–3: builds calibration package and/or runs L0 optimizer on GPU. Supports `build_package` and `fit_from_package` workflows.                |
-| `local_area.py`                | Modal app for Stage 4: parallel H5 building with distributed worker coordination, LPT scheduling, and validation aggregation.                                   |
-| `worker_script.py`             | Subprocess worker called by `local_area.py` to build individual H5 files. Runs in a separate process to avoid import conflicts.                                 |
-| `images.py`                    | Defines pre-baked Modal container images with source code, dependencies, and Git metadata for reproducibility.                                                  |
-| `resilience.py`                | Retry and resume utilities for Modal workflows (exponential backoff, idempotent step execution).                                                                |
+| File | Purpose | | ------------------------------ |
+\---------------------------------------------------------------------------------------------------------------------------------------------------------------
+| | `pipeline.py` | End-to-end pipeline orchestrator: chains dataset build → matrix build → weight
+fitting → H5 publish → promote. Manages run IDs, resume, and diagnostics upload. | | `data_build.py`
+| Modal app for Stage 1: parallel dataset building (CPS extraction, PUF cloning, source imputation)
+with checkpoint persistence. | | `remote_calibration_runner.py` | Modal app for Stages 2–3: builds
+calibration package and/or runs L0 optimizer on GPU. Supports `build_package` and `fit_from_package`
+workflows. | | `local_area.py` | Modal app for Stage 4: parallel H5 building with distributed worker
+coordination, LPT scheduling, and validation aggregation. | | `worker_script.py` | Subprocess worker
+called by `local_area.py` to build individual H5 files. Runs in a separate process to avoid import
+conflicts. | | `images.py` | Defines pre-baked Modal container images with source code,
+dependencies, and Git metadata for reproducibility. | | `resilience.py` | Retry and resume utilities
+for Modal workflows (exponential backoff, idempotent step execution). |
 
 ### `policyengine_us_data/db/`
 
-| File                           | Purpose                                                                                                                    |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `create_database_tables.py`    | Defines SQLModel schema for `policy_data.db` (targets, strata, constraints, metadata). Entry point for `make database`.    |
-| `create_initial_strata.py`     | Seeds the strata table with geographic and domain strata from census and administrative boundaries.                        |
-| `create_field_valid_values.py` | Populates the `field_valid_values` table with valid operations, active flags, periods, and policyengine-us variable names. |
-| `etl_age.py`                   | Loads age-bin population targets (Census) into `policy_data.db`.                                                           |
-| `etl_irs_soi.py`               | Loads IRS SOI district-level tax targets (AGI, credits, deductions) into `policy_data.db`.                                 |
-| `etl_snap.py`                  | Loads SNAP household count and benefit targets (USDA) into `policy_data.db`.                                               |
-| `etl_medicaid.py`              | Loads Medicaid enrollment targets into `policy_data.db`.                                                                   |
-| `etl_national_targets.py`      | Loads national-level calibration targets into `policy_data.db`.                                                            |
-| `etl_pregnancy.py`             | Loads state-level birth count targets from CDC VSRR and female population from Census ACS.                                 |
-| `etl_state_income_tax.py`      | Loads state income tax collection targets from Census Bureau STC survey.                                                   |
-| `validate_database.py`         | Post-build validation of `policy_data.db`: checks target completeness, value ranges, and cross-table consistency.          |
-| `validate_hierarchy.py`        | Validates parent-child strata hierarchy: geographic and age strata relationships.                                          |
+| File | Purpose | | ------------------------------ |
+\--------------------------------------------------------------------------------------------------------------------------
+| | `create_database_tables.py` | Defines SQLModel schema for `policy_data.db` (targets, strata,
+constraints, metadata). Entry point for `make database`. | | `create_initial_strata.py` | Seeds the
+strata table with geographic and domain strata from census and administrative boundaries. | |
+`create_field_valid_values.py` | Populates the `field_valid_values` table with valid operations,
+active flags, periods, and policyengine-us variable names. | | `etl_age.py` | Loads age-bin
+population targets (Census) into `policy_data.db`. | | `etl_irs_soi.py` | Loads IRS SOI
+district-level tax targets (AGI, credits, deductions) into `policy_data.db`. | | `etl_snap.py` |
+Loads SNAP household count and benefit targets (USDA) into `policy_data.db`. | | `etl_medicaid.py` |
+Loads Medicaid enrollment targets into `policy_data.db`. | | `etl_national_targets.py` | Loads
+national-level calibration targets into `policy_data.db`. | | `etl_pregnancy.py` | Loads state-level
+birth count targets from CDC VSRR and female population from Census ACS. | |
+`etl_state_income_tax.py` | Loads state income tax collection targets from Census Bureau STC survey.
+| | `validate_database.py` | Post-build validation of `policy_data.db`: checks target completeness,
+value ranges, and cross-table consistency. | | `validate_hierarchy.py` | Validates parent-child
+strata hierarchy: geographic and age strata relationships. |

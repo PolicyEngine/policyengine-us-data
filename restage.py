@@ -25,6 +25,6 @@ def restage():
     print(f"  Districts: {manifest['totals']['districts']}")
     print(f"  Cities:    {manifest['totals']['cities']}")
 
-    print(f"\nUploading to HF staging...")
+    print("\nUploading to HF staging...")
     result = upload_to_staging.remote(branch=branch, version=version, manifest=manifest)
     print(result)

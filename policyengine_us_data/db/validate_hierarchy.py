@@ -153,7 +153,7 @@ def validate_geographic_hierarchy(session):
         if len(wyoming_cds) != 1:
             errors.append(f"ERROR: Wyoming should have 1 CD, found {len(wyoming_cds)}")
         else:
-            print(f"✓ Wyoming has correct number of CDs: 1")
+            print("✓ Wyoming has correct number of CDs: 1")
 
         # Verify no other state's CDs are incorrectly parented to Wyoming
         wrong_parent_cds = (
@@ -216,7 +216,7 @@ def validate_demographic_strata(session):
 
     domain_counts = {row[0]: row[1] for row in result}
 
-    print(f"\nDomain variables found via stratum_domain view:")
+    print("\nDomain variables found via stratum_domain view:")
     for domain, count in sorted(domain_counts.items()):
         print(f"  {domain}: {count} strata")
 

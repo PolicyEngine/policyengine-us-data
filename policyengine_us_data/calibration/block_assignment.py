@@ -512,13 +512,15 @@ def assign_geography_for_cd(
     }
 
 
-@pipeline_node(PipelineNode(
-    id="geo_derive",
-    label="derive_geography_from_blocks()",
-    node_type="process",
-    description="15 geographic variables from block GEOID",
-    source_file="policyengine_us_data/calibration/block_assignment.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="geo_derive",
+        label="derive_geography_from_blocks()",
+        node_type="process",
+        description="15 geographic variables from block GEOID",
+        source_file="policyengine_us_data/calibration/block_assignment.py",
+    )
+)
 def derive_geography_from_blocks(
     block_geoids: np.ndarray,
 ) -> Dict[str, np.ndarray]:

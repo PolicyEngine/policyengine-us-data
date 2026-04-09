@@ -184,6 +184,7 @@ CPS_STAGE2_INCOME_PREDICTORS = [
     "social_security",
 ]
 
+
 def _clone_half_person_values(data: dict, variable: str, time_period: int):
     """Return clone-half values for ``variable`` mapped to person rows."""
     if variable not in data:
@@ -350,14 +351,16 @@ def _impute_clone_cps_features(
     return predictions
 
 
-@pipeline_node(PipelineNode(
-    id="clone_features",
-    label="Clone Feature Rematching",
-    node_type="process",
-    description="kNN donor rematch of clone-half sex, race, Hispanic status, and occupation fields",
-    details="Matches within tax-unit roles using demographics plus imputed income, then derives overtime and tipped-occupation inputs from donor occupations when available",
-    source_file="policyengine_us_data/datasets/cps/extended_cps.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="clone_features",
+        label="Clone Feature Rematching",
+        node_type="process",
+        description="kNN donor rematch of clone-half sex, race, Hispanic status, and occupation fields",
+        details="Matches within tax-unit roles using demographics plus imputed income, then derives overtime and tipped-occupation inputs from donor occupations when available",
+        source_file="policyengine_us_data/datasets/cps/extended_cps.py",
+    )
+)
 def _splice_clone_feature_predictions(
     data: dict,
     predictions: pd.DataFrame,
@@ -380,14 +383,16 @@ def _splice_clone_feature_predictions(
     return data
 
 
-@pipeline_node(PipelineNode(
-    id="cps_only",
-    label="CPS-Only Variable Re-imputation",
-    node_type="process",
-    description="Second-stage QRF for CPS-only transfers, SPM, medical, hours, ORG, retirement, and prior-year inputs",
-    details="Trains on CPS persons and predicts clone-half values from demographics plus PUF-imputed income, then applies retirement and ORG domain constraints",
-    source_file="policyengine_us_data/datasets/cps/extended_cps.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="cps_only",
+        label="CPS-Only Variable Re-imputation",
+        node_type="process",
+        description="Second-stage QRF for CPS-only transfers, SPM, medical, hours, ORG, retirement, and prior-year inputs",
+        details="Trains on CPS persons and predicts clone-half values from demographics plus PUF-imputed income, then applies retirement and ORG domain constraints",
+        source_file="policyengine_us_data/datasets/cps/extended_cps.py",
+    )
+)
 def _impute_cps_only_variables(
     data: dict,
     time_period: int,
@@ -758,14 +763,16 @@ def _apply_post_processing(predictions, X_test, time_period, data):
     return predictions
 
 
-@pipeline_node(PipelineNode(
-    id="qrf_pass2",
-    label="QRF Pass 2: Override Imputation",
-    node_type="process",
-    description="Replace the PUF clone half with second-stage CPS-only QRF outputs",
-    details="Keeps original CPS donor values in the first half, maps person-level predictions onto each target entity, and rebuilds capped childcare on the clone half",
-    source_file="policyengine_us_data/datasets/cps/extended_cps.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="qrf_pass2",
+        label="QRF Pass 2: Override Imputation",
+        node_type="process",
+        description="Replace the PUF clone half with second-stage CPS-only QRF outputs",
+        details="Keeps original CPS donor values in the first half, maps person-level predictions onto each target entity, and rebuilds capped childcare on the clone half",
+        source_file="policyengine_us_data/datasets/cps/extended_cps.py",
+    )
+)
 def _splice_cps_only_predictions(
     data: dict,
     predictions: pd.DataFrame,
@@ -977,14 +984,16 @@ class ExtendedCPS(Dataset):
         "tax_exempt_pension_income": "tax_exempt_private_pension_income",
     }
 
-    @pipeline_node(PipelineNode(
-        id="formula_drop",
-        label="Formula Variable Dropping",
-        node_type="process",
-        description="Rename response inputs, then drop formula, adds, and subtracts variables before save",
-        details="Preserves leaf inputs needed by policyengine-us while keeping stored arrays aligned with the current variable model",
-        source_file="policyengine_us_data/datasets/cps/extended_cps.py",
-    ))
+    @pipeline_node(
+        PipelineNode(
+            id="formula_drop",
+            label="Formula Variable Dropping",
+            node_type="process",
+            description="Rename response inputs, then drop formula, adds, and subtracts variables before save",
+            details="Preserves leaf inputs needed by policyengine-us while keeping stored arrays aligned with the current variable model",
+            source_file="policyengine_us_data/datasets/cps/extended_cps.py",
+        )
+    )
     @classmethod
     def _drop_formula_variables(cls, data):
         """Remove variables that are computed by policyengine-us.

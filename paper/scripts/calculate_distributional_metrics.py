@@ -214,7 +214,7 @@ def main():
             print(f"  Top 10% share: {result['top_10_share']:.3f}")
             print(f"  Top 1% share: {result['top_1_share']:.3f}")
         else:
-            print(f"  Unable to calculate - using placeholders")
+            print("  Unable to calculate - using placeholders")
 
     # Save results
     output_dir = Path("paper/results")

@@ -36,14 +36,16 @@ MORTGAGE_IMPUTATION_PREDICTORS = [
 ]
 
 
-@pipeline_node(PipelineNode(
-    id="mortgage_hints",
-    label="Mortgage Balance Hint Imputation",
-    node_type="process",
-    description="Impute tax-unit mortgage balance hints from SCF donor balances",
-    details="Fits a weighted QRF on SCF mortgage holders, predicts first-lien and secondary acquisition-debt balance hints, and enforces conservative nonnegative ordering",
-    source_file="policyengine_us_data/utils/mortgage_interest.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="mortgage_hints",
+        label="Mortgage Balance Hint Imputation",
+        node_type="process",
+        description="Impute tax-unit mortgage balance hints from SCF donor balances",
+        details="Fits a weighted QRF on SCF mortgage holders, predicts first-lien and secondary acquisition-debt balance hints, and enforces conservative nonnegative ordering",
+        source_file="policyengine_us_data/utils/mortgage_interest.py",
+    )
+)
 def impute_tax_unit_mortgage_balance_hints(
     data: Dict[str, Dict[int, np.ndarray]],
     time_period: int,
@@ -110,14 +112,16 @@ def impute_tax_unit_mortgage_balance_hints(
     return data
 
 
-@pipeline_node(PipelineNode(
-    id="mortgage_convert",
-    label="Structural Mortgage Conversion",
-    node_type="process",
-    description="Convert deductible mortgage interest into structural mortgage balances, interest, and origination-year inputs",
-    details="Preserves current-law deductible mortgage and total interest deductions while deriving first-lien, secondary acquisition-debt, and non-mortgage residual interest inputs",
-    source_file="policyengine_us_data/utils/mortgage_interest.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="mortgage_convert",
+        label="Structural Mortgage Conversion",
+        node_type="process",
+        description="Convert deductible mortgage interest into structural mortgage balances, interest, and origination-year inputs",
+        details="Preserves current-law deductible mortgage and total interest deductions while deriving first-lien, secondary acquisition-debt, and non-mortgage residual interest inputs",
+        source_file="policyengine_us_data/utils/mortgage_interest.py",
+    )
+)
 def convert_mortgage_interest_to_structural_inputs(
     data: Dict[str, Dict[int, np.ndarray]],
     time_period: int,

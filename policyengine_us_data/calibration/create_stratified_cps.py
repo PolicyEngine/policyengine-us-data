@@ -17,13 +17,15 @@ from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 
 
-@pipeline_node(PipelineNode(
-    id="create_stratified",
-    label="Stratified CPS Dataset",
-    node_type="process",
-    description="AGI calculation, top 1% retention, uniform sample of remaining 99%",
-    source_file="policyengine_us_data/calibration/create_stratified_cps.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="create_stratified",
+        label="Stratified CPS Dataset",
+        node_type="process",
+        description="AGI calculation, top 1% retention, uniform sample of remaining 99%",
+        source_file="policyengine_us_data/calibration/create_stratified_cps.py",
+    )
+)
 def create_stratified_cps_dataset(
     target_households=30_000,
     high_income_percentile=99,
@@ -83,7 +85,7 @@ def create_stratified_cps_dataset(
     n_bottom_25 = np.sum(agi < bottom_25_pct_threshold)
     n_middle = n_households_orig - n_top - n_bottom_25
 
-    print(f"\nStratum sizes:")
+    print("\nStratum sizes:")
     print(
         f"  Top {100 - high_income_percentile}% (AGI >= ${high_income_threshold:,.0f}): {n_top:,}"
     )
@@ -112,7 +114,7 @@ def create_stratified_cps_dataset(
         r_middle = min(1.0, r_middle)
         r_bottom = min(1.0, r_bottom)
 
-    print(f"\nSampling rates:")
+    print("\nSampling rates:")
     print(f"  Top {100 - high_income_percentile}%: 100%")
     print(f"  Middle 25-{high_income_percentile}%: {r_middle:.1%}")
     print(f"  Bottom 25%: {r_bottom:.1%}")
@@ -123,7 +125,7 @@ def create_stratified_cps_dataset(
     expected_bottom = int(n_bottom_25 * r_bottom)
     expected_total = expected_top + expected_middle + expected_bottom
 
-    print(f"\nExpected selection:")
+    print("\nExpected selection:")
     print(f"  Top {100 - high_income_percentile}%: {expected_top:,}")
     print(f"  Middle 25-{high_income_percentile}%: {expected_middle:,}")
     print(f"  Bottom 25%: {expected_bottom:,}")
@@ -265,7 +267,7 @@ def create_stratified_cps_dataset(
             for period, values in periods.items():
                 grp.create_dataset(str(period), data=values)
 
-    print(f"Stratified CPS dataset saved successfully!")
+    print("Stratified CPS dataset saved successfully!")
 
     # Verify the saved file
     print("\nVerifying saved file...")
@@ -294,7 +296,7 @@ def create_stratified_cps_dataset(
 
     max_agi_original = np.max(agi)
     max_agi_stratified = np.max(agi_stratified)
-    print(f"\nMaximum AGI:")
+    print("\nMaximum AGI:")
     print(f"  Original: ${max_agi_original:,.0f}")
     print(f"  Stratified: ${max_agi_stratified:,.0f}")
 
@@ -324,7 +326,7 @@ if __name__ == "__main__":
         elif arg.isdigit():
             target = int(arg)
 
-    print(f"Creating stratified dataset:")
+    print("Creating stratified dataset:")
     print(f"  Target households: {target:,}")
     print(f"  Keep all above: {high_pct}th percentile")
     print(f"  Oversample poor: {oversample}")

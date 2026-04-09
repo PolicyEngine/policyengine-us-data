@@ -59,14 +59,16 @@ def conditionally_sample_lognormal(flag, target_mean, log_sigma, rng):
     )
 
 
-@pipeline_node(PipelineNode(
-    id="simulate_qbi",
-    label="QBI Simulation",
-    node_type="process",
-    description="Simulate Section 199A W-2 wages and UBIA guardrails from PUF income",
-    details="Uses QBI-source assumptions to generate payroll and property proxies; SSTB and related flags are added later in preprocess_puf",
-    source_file="policyengine_us_data/datasets/puf/puf.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="simulate_qbi",
+        label="QBI Simulation",
+        node_type="process",
+        description="Simulate Section 199A W-2 wages and UBIA guardrails from PUF income",
+        details="Uses QBI-source assumptions to generate payroll and property proxies; SSTB and related flags are added later in preprocess_puf",
+        source_file="policyengine_us_data/datasets/puf/puf.py",
+    )
+)
 def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     """
     Simulate two Section 199A guard-rail quantities for every record
@@ -216,14 +218,16 @@ def impute_pension_contributions_to_puf(puf_df):
     return predictions["pre_tax_contributions"]
 
 
-@pipeline_node(PipelineNode(
-    id="impute_puf_demographics",
-    label="Impute PUF Demographics",
-    node_type="process",
-    description="QRF imputation for age, gender, and earnings split",
-    details="Imputes AGEDP1-3, AGERANGE, EARNSPLIT, and GENDER from matched PUF demographic records",
-    source_file="policyengine_us_data/datasets/puf/puf.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="impute_puf_demographics",
+        label="Impute PUF Demographics",
+        node_type="process",
+        description="QRF imputation for age, gender, and earnings split",
+        details="Imputes AGEDP1-3, AGERANGE, EARNSPLIT, and GENDER from matched PUF demographic records",
+        source_file="policyengine_us_data/datasets/puf/puf.py",
+    )
+)
 def impute_missing_demographics(
     puf: pd.DataFrame, demographics: pd.DataFrame
 ) -> pd.DataFrame:
@@ -331,14 +335,16 @@ def decode_age_dependent(age_range: int) -> int:
     return rng.integers(low=lower, high=upper, endpoint=False)
 
 
-@pipeline_node(PipelineNode(
-    id="preprocess_puf",
-    label="Preprocess PUF",
-    node_type="process",
-    description="Rename IRS variables and derive partnership plus Section 199A-ready PolicyEngine inputs",
-    details="Maps core SOI fields, constructs partnership/self-employment components, and adds W-2 wages, UBIA, SSTB, REIT/PTP, and BDC proxies",
-    source_file="policyengine_us_data/datasets/puf/puf.py",
-))
+@pipeline_node(
+    PipelineNode(
+        id="preprocess_puf",
+        label="Preprocess PUF",
+        node_type="process",
+        description="Rename IRS variables and derive partnership plus Section 199A-ready PolicyEngine inputs",
+        details="Maps core SOI fields, constructs partnership/self-employment components, and adds W-2 wages, UBIA, SSTB, REIT/PTP, and BDC proxies",
+        source_file="policyengine_us_data/datasets/puf/puf.py",
+    )
+)
 def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Add variable renames
     puf.S006 = puf.S006 / 100

@@ -1,3 +1,10 @@
+## [1.75.4] - 2026-04-09
+
+### Fixed
+
+- Remove duplicate entries in bad_targets list.
+
+
 ## [1.75.3] - 2026-04-09
 
 ### Changed

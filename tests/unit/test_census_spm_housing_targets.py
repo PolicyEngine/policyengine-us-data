@@ -1,3 +1,4 @@
+import importlib
 import sys
 import types
 
@@ -57,10 +58,18 @@ def test_extract_national_targets_uses_census_spm_housing_target(monkeypatch):
         def __init__(self, dataset):
             self.default_calculation_period = 2024
 
+    policyengine_us = importlib.import_module("policyengine_us")
     monkeypatch.setitem(
         sys.modules,
         "policyengine_us",
-        types.SimpleNamespace(Microsimulation=DummyMicrosimulation),
+        types.SimpleNamespace(
+            **{
+                name: getattr(policyengine_us, name)
+                for name in dir(policyengine_us)
+                if not name.startswith("__") and name != "Microsimulation"
+            },
+            Microsimulation=DummyMicrosimulation,
+        ),
     )
     monkeypatch.setattr(
         etl_national_targets,

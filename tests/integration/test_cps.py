@@ -53,6 +53,7 @@ def test_add_personal_variables_maps_current_health_coverage_flags():
             "A_MARITL": [1, 4, 1],
             "A_HSCOL": [0, 2, 0],
             "POCCU2": [39, 52, 29],
+            "PEIOOCC": [4040, 9999, 4020],
         }
     )
     cps = {}

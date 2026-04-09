@@ -41,8 +41,7 @@ def _resolve_person_usecols(
     )
     if missing_required:
         raise KeyError(
-            "Missing required CPS person columns: "
-            + ", ".join(missing_required[:10])
+            "Missing required CPS person columns: " + ", ".join(missing_required[:10])
         )
     return [column for column in requested_columns if column in available_columns]
 

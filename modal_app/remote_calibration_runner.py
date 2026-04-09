@@ -1066,9 +1066,7 @@ def main(
 
         upload_calibration_artifacts(
             weights_path=output,
-            geography_path=(
-                geography_output if result.get("geography") else None
-            ),
+            geography_path=(geography_output if result.get("geography") else None),
             log_dir=".",
             prefix=prefix,
         )

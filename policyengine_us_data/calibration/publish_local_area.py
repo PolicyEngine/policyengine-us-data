@@ -81,7 +81,9 @@ def resolve_calibration_geography_paths(
 
     if blocks_path is not None:
         block_candidates.append(Path(blocks_path))
-    block_candidates.append(_sibling_artifact_path(weights_path, LEGACY_BLOCKS_FILENAME))
+    block_candidates.append(
+        _sibling_artifact_path(weights_path, LEGACY_BLOCKS_FILENAME)
+    )
     block_candidates.append(weights_path.with_name(LEGACY_BLOCKS_FILENAME))
 
     resolved_geo = next((path for path in geo_candidates if path.exists()), None)
@@ -155,7 +157,9 @@ def load_calibration_geography(
         return geography
 
     if resolved_blocks is not None:
-        block_geoids = np.asarray(np.load(resolved_blocks, allow_pickle=True), dtype=str)
+        block_geoids = np.asarray(
+            np.load(resolved_blocks, allow_pickle=True), dtype=str
+        )
         if len(block_geoids) % n_records != 0:
             raise ValueError(
                 f"Legacy blocks artifact {resolved_blocks} has {len(block_geoids)} "
@@ -168,8 +172,7 @@ def load_calibration_geography(
                 f"n_clones={inferred_n_clones}, expected {n_clones}"
             )
         print(
-            "Reconstructing geography from legacy stacked blocks at "
-            f"{resolved_blocks}"
+            f"Reconstructing geography from legacy stacked blocks at {resolved_blocks}"
         )
         return reconstruct_geography_from_blocks(
             block_geoids=block_geoids,
@@ -1079,9 +1082,15 @@ def main():
 
     # Determine what to build based on flags
     do_national = args.national_only
-    do_states = not args.districts_only and not args.cities_only and not args.national_only
-    do_districts = not args.states_only and not args.cities_only and not args.national_only
-    do_cities = not args.states_only and not args.districts_only and not args.national_only
+    do_states = (
+        not args.districts_only and not args.cities_only and not args.national_only
+    )
+    do_districts = (
+        not args.states_only and not args.cities_only and not args.national_only
+    )
+    do_cities = (
+        not args.states_only and not args.districts_only and not args.national_only
+    )
 
     # If a specific *-only flag is set, only build that type
     if args.states_only:

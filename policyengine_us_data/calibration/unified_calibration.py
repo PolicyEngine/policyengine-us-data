@@ -540,9 +540,7 @@ def checkpoint_signature_mismatches(expected: dict, actual: dict) -> list:
                     f"{key} expected {expected_value}, got {actual_value}"
                 )
         elif actual_value != expected_value:
-            mismatches.append(
-                f"{key} expected {expected_value}, got {actual_value}"
-            )
+            mismatches.append(f"{key} expected {expected_value}, got {actual_value}")
     return mismatches
 
 
@@ -882,9 +880,7 @@ def fit_l0_weights(
 
                 with torch.no_grad():
                     y_pred = model.predict(X_sparse).cpu().numpy()
-                    weights_snap = (
-                        model.get_weights(deterministic=True).cpu().numpy()
-                    )
+                    weights_snap = model.get_weights(deterministic=True).cpu().numpy()
 
                 if checkpoint_path is not None:
                     save_fit_checkpoint(

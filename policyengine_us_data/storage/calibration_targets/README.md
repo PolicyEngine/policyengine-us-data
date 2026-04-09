@@ -27,6 +27,6 @@ the geography-file release cycle.
 
 The separate state/district AGI pulls still rely on the IRS `in54`, `in55cm`,
 and `incd` geography files, which remain on the latest published geography year.
-`aca_ptc` and `refundable_ctc` also still stay on that geography-backed path
-for now, because the published national workbook tables do not line up cleanly
-with the current `incd` code definitions.
+`aca_ptc`, `refundable_ctc`, and `non_refundable_ctc` also still stay on that
+geography-backed path for now, because the published national workbook tables
+do not line up cleanly with the current `incd` code definitions.

@@ -332,28 +332,27 @@ def _get_medicaid_national_targets(requested_year: int) -> tuple[float, float, i
     )
 
 
-def _add_refundable_ctc_targets(loss_matrix, targets_list, sim, time_period):
-    """Add legacy national refundable CTC amount and recipient-count targets."""
-    target = get_national_geography_soi_target("refundable_ctc", time_period)
+def _add_ctc_targets(loss_matrix, targets_list, sim, time_period):
+    """Add legacy national CTC component amount and recipient-count targets."""
+    for variable in ("refundable_ctc", "non_refundable_ctc"):
+        target = get_national_geography_soi_target(variable, time_period)
 
-    label = "nation/irs/refundable_ctc"
-    loss_matrix[label] = sim.calculate(
-        "refundable_ctc", map_to="household"
-    ).values
-    if any(pd.isna(loss_matrix[label])):
-        raise ValueError(f"Missing values for {label}")
-    targets_list.append(target["amount"])
+        label = f"nation/irs/{variable}"
+        loss_matrix[label] = sim.calculate(variable, map_to="household").values
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(target["amount"])
 
-    label = "nation/irs/refundable_ctc_count"
-    refundable_ctc = sim.calculate("refundable_ctc").values
-    loss_matrix[label] = sim.map_result(
-        (refundable_ctc > 0).astype(float),
-        "tax_unit",
-        "household",
-    )
-    if any(pd.isna(loss_matrix[label])):
-        raise ValueError(f"Missing values for {label}")
-    targets_list.append(target["count"])
+        label = f"nation/irs/{variable}_count"
+        amount = sim.calculate(variable).values
+        loss_matrix[label] = sim.map_result(
+            (amount > 0).astype(float),
+            "tax_unit",
+            "household",
+        )
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(target["count"])
 
     return targets_list, loss_matrix
 
@@ -616,7 +615,7 @@ def build_loss_matrix(dataset: type, time_period):
         )
         targets_array.append(row["eitc_total"] * eitc_spending_uprating)
 
-    targets_array, loss_matrix = _add_refundable_ctc_targets(
+    targets_array, loss_matrix = _add_ctc_targets(
         loss_matrix,
         targets_array,
         sim,

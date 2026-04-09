@@ -35,6 +35,7 @@ VARIABLES = [
     "ssi",
     "income_tax_before_credits",
     "eitc",
+    "non_refundable_ctc",
     "refundable_ctc",
     "real_estate_taxes",
     "rent",
@@ -51,10 +52,16 @@ def get_reference_summary(reference_year: int = 2024) -> str:
         "refundable_ctc",
         reference_year,
     )
+    non_refundable_ctc_target = get_national_geography_soi_target(
+        "non_refundable_ctc",
+        reference_year,
+    )
     return (
         "  SNAP ~$110B, SSI ~$60B, Social Security ~$1.2T\n"
         f"  EITC ~$60B, refundable CTC ~${refundable_ctc_target['amount'] / 1e9:.1f}B "
-        f"(IRS SOI {refundable_ctc_target['source_year']})"
+        f"(IRS SOI {refundable_ctc_target['source_year']}), "
+        f"non-refundable CTC ~${non_refundable_ctc_target['amount'] / 1e9:.1f}B "
+        f"(IRS SOI {non_refundable_ctc_target['source_year']})"
     )
 
 

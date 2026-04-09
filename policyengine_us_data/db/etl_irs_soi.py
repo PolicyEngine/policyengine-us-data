@@ -53,6 +53,7 @@ IRS_SOI_LAG_YEARS = 2
 GEOGRAPHY_FILE_NATIONAL_TARGET_CODES = {
     "aca_ptc": "85530",
     "eitc": "59660",
+    "non_refundable_ctc": "07225",
     "refundable_ctc": "11070",
 }
 
@@ -98,8 +99,8 @@ def _skip_coarse_state_agi_person_count_target(geo_type: str, agi_stub: int) -> 
 
 
 # These variables map cleanly from Publication 1304 aggregate tables to the
-# existing national IRS-SOI domain strata. We intentionally leave `aca_ptc`
-# and `refundable_ctc` on the geography-file path for now because the
+# existing national IRS-SOI domain strata. We intentionally leave `aca_ptc`,
+# `refundable_ctc`, and `non_refundable_ctc` on the geography-file path for now because the
 # published 2023 workbook tables do not line up one-for-one with the current
 # `incd` national codes.
 WORKBOOK_NATIONAL_DOMAIN_TARGETS = {

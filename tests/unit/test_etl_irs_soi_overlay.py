@@ -206,6 +206,8 @@ def test_get_national_geography_soi_target_reads_amount_and_count(monkeypatch):
                 "agi_stub": 0,
                 "N11070": 17.0,
                 "A11070": 33.0,
+                "N07225": 37.0,
+                "A07225": 81.0,
             }
         ]
     )
@@ -215,8 +217,16 @@ def test_get_national_geography_soi_target_reads_amount_and_count(monkeypatch):
         lambda year: fake_raw,
     )
 
-    target = get_national_geography_soi_target("refundable_ctc", 2024)
+    refundable_target = get_national_geography_soi_target("refundable_ctc", 2024)
+    non_refundable_target = get_national_geography_soi_target(
+        "non_refundable_ctc",
+        2024,
+    )
 
-    assert target["source_year"] == 2022
-    assert target["count"] == 17.0
-    assert target["amount"] == 33_000.0
+    assert refundable_target["source_year"] == 2022
+    assert refundable_target["count"] == 17.0
+    assert refundable_target["amount"] == 33_000.0
+
+    assert non_refundable_target["source_year"] == 2022
+    assert non_refundable_target["count"] == 37.0
+    assert non_refundable_target["amount"] == 81_000.0

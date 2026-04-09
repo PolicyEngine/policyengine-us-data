@@ -30,6 +30,7 @@ VARIABLES = [
     "ssi",
     "income_tax_before_credits",
     "eitc",
+    "non_refundable_ctc",
     "refundable_ctc",
     "real_estate_taxes",
     "rent",
@@ -58,14 +59,15 @@ COUNT_VARS = {"person_count", "household_count", "is_pregnant"}
 def get_reference_values(reference_year: int = 2024):
     """Return national validation references for the current production year."""
     references = dict(REFERENCES)
-    refundable_ctc_target = get_national_geography_soi_target(
-        "refundable_ctc",
-        reference_year,
-    )
-    references["refundable_ctc"] = (
-        refundable_ctc_target["amount"],
-        f"IRS SOI {refundable_ctc_target['source_year']} ${refundable_ctc_target['amount'] / 1e9:.1f}B",
-    )
+    for variable in ("refundable_ctc", "non_refundable_ctc"):
+        target = get_national_geography_soi_target(
+            variable,
+            reference_year,
+        )
+        references[variable] = (
+            target["amount"],
+            f"IRS SOI {target['source_year']} ${target['amount'] / 1e9:.1f}B",
+        )
     return references
 
 

@@ -7,6 +7,24 @@ from dataclasses import dataclass
 import numpy as np
 
 
+def infer_clone_count_from_weight_length(
+    weight_length: int,
+    n_records: int,
+) -> int:
+    """Derive canonical clone count from weight length and record count."""
+
+    if n_records <= 0:
+        raise ValueError("n_records must be positive")
+    if weight_length <= 0:
+        raise ValueError("weight_length must be positive")
+    if weight_length % n_records != 0:
+        raise ValueError(
+            "Weight vector length "
+            f"{weight_length} is not divisible by n_records={n_records}"
+        )
+    return int(weight_length // n_records)
+
+
 @dataclass(frozen=True)
 class CloneWeightMatrix:
     """A US clone-by-household weight vector with validated shape."""
@@ -21,21 +39,14 @@ class CloneWeightMatrix:
         values: np.ndarray,
         n_records: int,
     ) -> "CloneWeightMatrix":
-        if n_records <= 0:
-            raise ValueError("n_records must be positive")
-
         arr = np.asarray(values)
         if arr.ndim != 1:
             raise ValueError("weight vector must be one-dimensional")
-        if arr.size % n_records != 0:
-            raise ValueError(
-                f"Weight vector length {arr.size} is not divisible by n_records={n_records}"
-            )
 
         return cls(
             values=arr,
             n_records=int(n_records),
-            n_clones=int(arr.size // n_records),
+            n_clones=infer_clone_count_from_weight_length(arr.size, n_records),
         )
 
     @property

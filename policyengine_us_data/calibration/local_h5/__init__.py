@@ -41,7 +41,7 @@ from .validation import (
     validation_geo_level_for_area_type,
 )
 from .variables import H5Payload, VariableCloner, VariableExportPolicy
-from .weights import CloneWeightMatrix
+from .weights import CloneWeightMatrix, infer_clone_count_from_weight_length
 
 __all__ = [
     "AreaBuildRequest",
@@ -73,6 +73,7 @@ __all__ = [
     "ValidationResult",
     "ValidationStatus",
     "WorkerResult",
+    "infer_clone_count_from_weight_length",
     "make_validation_error",
     "partition_weighted_work_items",
     "require_calibration_package_path",

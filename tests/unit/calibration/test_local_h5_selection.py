@@ -136,6 +136,24 @@ def test_clone_weight_matrix_rejects_invalid_shapes(monkeypatch):
         CloneWeightMatrix.from_vector(np.arange(7, dtype=float), n_records=4)
 
 
+def test_infer_clone_count_from_weight_length(monkeypatch):
+    _, weights_module, _ = _install_fake_package_hierarchy(monkeypatch)
+    infer_clone_count_from_weight_length = (
+        weights_module.infer_clone_count_from_weight_length
+    )
+
+    assert infer_clone_count_from_weight_length(12, 3) == 4
+
+    with pytest.raises(ValueError, match="n_records must be positive"):
+        infer_clone_count_from_weight_length(12, 0)
+
+    with pytest.raises(ValueError, match="weight_length must be positive"):
+        infer_clone_count_from_weight_length(0, 3)
+
+    with pytest.raises(ValueError, match="not divisible"):
+        infer_clone_count_from_weight_length(13, 3)
+
+
 def test_area_selector_supports_national_state_district_and_city(monkeypatch):
     contracts, weights_module, selection_module = _install_fake_package_hierarchy(
         monkeypatch

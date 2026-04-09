@@ -171,6 +171,43 @@ def get_completed_from_volume(run_dir: Path) -> set:
     return completed
 
 
+def _derive_canonical_n_clones(
+    *,
+    weights_path: Path,
+    package_path: Path,
+    requested_n_clones: int,
+) -> int:
+    """Use weights length as the canonical clone-count source for publishing."""
+
+    import numpy as np
+
+    from policyengine_us_data.calibration.local_h5.package_geography import (
+        CalibrationPackageGeographyLoader,
+    )
+    from policyengine_us_data.calibration.local_h5.weights import (
+        infer_clone_count_from_weight_length,
+    )
+
+    weights = np.load(weights_path, mmap_mode="r")
+    loader = CalibrationPackageGeographyLoader()
+    loaded = loader.load(package_path)
+    if loaded is None:
+        raise RuntimeError(
+            f"Calibration package at {package_path} does not contain usable geography"
+        )
+
+    canonical_n_clones = infer_clone_count_from_weight_length(
+        weights.shape[0],
+        loaded.geography.n_records,
+    )
+    if requested_n_clones != canonical_n_clones:
+        print(
+            f"WARNING: requested n_clones={requested_n_clones} but "
+            f"weights imply {canonical_n_clones}; using weights-derived value"
+        )
+    return canonical_n_clones
+
+
 def run_phase(
     phase_name: str,
     work_items: List[Dict],
@@ -683,11 +720,17 @@ def coordinate_publish(
             )
     print("All required pipeline artifacts found on volume.")
 
+    canonical_n_clones = _derive_canonical_n_clones(
+        weights_path=weights_path,
+        package_path=package_path,
+        requested_n_clones=n_clones,
+    )
+
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
-        "n_clones": n_clones,
+        "n_clones": canonical_n_clones,
         "seed": 42,
         "package": str(package_path),
     }
@@ -719,7 +762,7 @@ def coordinate_publish(
         weights_path=weights_path,
         dataset_path=dataset_path,
         calibration_package_path=package_path,
-        n_clones=n_clones,
+        n_clones=canonical_n_clones,
         seed=42,
     )
     fingerprint = fingerprint_record.digest
@@ -973,11 +1016,17 @@ def coordinate_national_publish(
             )
     print("All required national pipeline artifacts found.")
 
+    canonical_n_clones = _derive_canonical_n_clones(
+        weights_path=weights_path,
+        package_path=package_path,
+        requested_n_clones=n_clones,
+    )
+
     calibration_inputs = {
         "weights": str(weights_path),
         "dataset": str(dataset_path),
         "database": str(db_path),
-        "n_clones": n_clones,
+        "n_clones": canonical_n_clones,
         "seed": 42,
         "package": str(package_path),
     }

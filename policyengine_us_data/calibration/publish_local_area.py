@@ -44,7 +44,10 @@ from policyengine_us_data.calibration.local_h5.variables import (
     VariableCloner,
     VariableExportPolicy,
 )
-from policyengine_us_data.calibration.local_h5.weights import CloneWeightMatrix
+from policyengine_us_data.calibration.local_h5.weights import (
+    CloneWeightMatrix,
+    infer_clone_count_from_weight_length,
+)
 from policyengine_us_data.utils.takeup import SIMPLE_TAKEUP_VARS
 
 CHECKPOINT_FILE = Path("completed_states.txt")
@@ -678,12 +681,30 @@ def main():
 
     print(f"Using dataset: {inputs['dataset']}")
 
-    print("Computing input fingerprint...")
     calibration_package_path = (
         Path(args.calibration_package_path)
         if args.calibration_package_path
         else None
     )
+
+    print("Loading base simulation to get household count...")
+    _sim = Microsimulation(dataset=str(inputs["dataset"]))
+    n_hh = len(_sim.calculate("household_id", map_to="household").values)
+    del _sim
+    print(f"\nBase dataset has {n_hh:,} households")
+
+    weights = np.load(inputs["weights"], mmap_mode="r")
+    canonical_n_clones = infer_clone_count_from_weight_length(
+        weights.shape[0],
+        n_hh,
+    )
+    if canonical_n_clones != args.n_clones:
+        print(
+            f"WARNING: requested n_clones={args.n_clones} but "
+            f"weights imply {canonical_n_clones}; using weights-derived value"
+        )
+
+    print("Computing input fingerprint...")
     if calibration_package_path is not None:
         from policyengine_us_data.calibration.local_h5.fingerprinting import (
             FingerprintService,
@@ -700,7 +721,7 @@ def main():
             weights_path=inputs["weights"],
             dataset_path=inputs["dataset"],
             calibration_package_path=calibration_package_path,
-            n_clones=args.n_clones,
+            n_clones=canonical_n_clones,
             seed=args.seed,
         )
         fingerprint = fingerprint_record.digest
@@ -709,35 +730,24 @@ def main():
         fingerprint = compute_input_fingerprint(
             inputs["weights"],
             inputs["dataset"],
-            args.n_clones,
+            canonical_n_clones,
             args.seed,
             calibration_package_path=calibration_package_path,
         )
         validate_or_clear_checkpoints(fingerprint)
 
-    print("Loading base simulation to get household count...")
-    _sim = Microsimulation(dataset=str(inputs["dataset"]))
-    n_hh = len(_sim.calculate("household_id", map_to="household").values)
-    del _sim
-    print(f"\nBase dataset has {n_hh:,} households")
-
-    geo_cache = WORK_DIR / f"geography_{n_hh}x{args.n_clones}_s{args.seed}.npz"
+    geo_cache = WORK_DIR / f"geography_{n_hh}x{canonical_n_clones}_s{args.seed}.npz"
     if calibration_package_path is not None and calibration_package_path.exists():
         from policyengine_us_data.calibration.local_h5.package_geography import (
             CalibrationPackageGeographyLoader,
         )
 
         loader = CalibrationPackageGeographyLoader()
-        weights = np.load(inputs["weights"], mmap_mode="r")
-        if weights.shape[0] % n_hh != 0:
-            raise ValueError(
-                f"Weight vector length {weights.shape[0]} is not divisible by n_hh={n_hh}"
-            )
         resolved = loader.resolve_for_weights(
             package_path=calibration_package_path,
             weights_length=weights.shape[0],
             n_records=n_hh,
-            n_clones=weights.shape[0] // n_hh,
+            n_clones=canonical_n_clones,
             seed=args.seed,
         )
         geography = resolved.geography
@@ -753,16 +763,16 @@ def main():
             county_fips=npz["county_fips"],
             state_fips=npz["state_fips"],
             n_records=n_hh,
-            n_clones=args.n_clones,
+            n_clones=canonical_n_clones,
         )
     else:
         print(
             f"Generating geography: {n_hh} records x "
-            f"{args.n_clones} clones, seed={args.seed}"
+            f"{canonical_n_clones} clones, seed={args.seed}"
         )
         geography = assign_random_geography(
             n_records=n_hh,
-            n_clones=args.n_clones,
+            n_clones=canonical_n_clones,
             seed=args.seed,
         )
         np.savez_compressed(

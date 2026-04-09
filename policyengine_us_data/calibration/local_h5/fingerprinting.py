@@ -150,6 +150,12 @@ class FingerprintService:
         return self.create_from_inputs(inputs)
 
     def create_from_inputs(self, inputs: FingerprintInputs) -> FingerprintRecord:
+        # Compatibility note: v1 still includes n_clones and seed in the
+        # digest so existing staged run directories keep their current
+        # resume semantics. Long-term, package-backed publishing should not
+        # need either field in the fingerprint because geography_sha256
+        # already encodes the exact clone layout and the upstream random
+        # outcome that actually drives H5 output.
         components = FingerprintComponents(
             weights_sha256=self._sha256_file(inputs.weights_path),
             dataset_sha256=self._sha256_file(inputs.dataset_path),

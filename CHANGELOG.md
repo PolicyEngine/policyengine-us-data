@@ -1,3 +1,10 @@
+## [1.75.3] - 2026-04-09
+
+### Changed
+
+- Add 2025 ACA and Medicaid calibration target artifacts, plus year-aware ACA target loading and state uprating factors for 2025 builds.
+
+
 ## [1.75.2] - 2026-04-09
 
 ### Fixed

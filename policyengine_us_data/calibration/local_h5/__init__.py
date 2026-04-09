@@ -43,6 +43,17 @@ from .validation import (
 )
 from .variables import H5Payload, VariableCloner, VariableExportPolicy
 from .weights import CloneWeightMatrix, infer_clone_count_from_weight_length
+from .worker_service import (
+    LocalH5WorkerService,
+    ValidationContext,
+    WorkerSession,
+    build_request_from_work_item,
+    build_requests_from_work_items,
+    load_validation_context,
+    validate_in_subprocess,
+    validate_output_subprocess,
+    worker_result_to_legacy_dict,
+)
 from .writer import H5Writer
 
 __all__ = [
@@ -74,18 +85,27 @@ __all__ = [
     "SourceDatasetSnapshot",
     "USAugmentationService",
     "ValidationIssue",
+    "ValidationContext",
     "ValidationPolicy",
     "ValidationResult",
     "ValidationStatus",
     "WorkerResult",
+    "WorkerSession",
+    "LocalH5WorkerService",
+    "build_request_from_work_item",
+    "build_requests_from_work_items",
     "infer_clone_count_from_weight_length",
+    "load_validation_context",
     "make_validation_error",
     "partition_weighted_work_items",
     "require_calibration_package_path",
     "summarize_validation_rows",
     "tag_validation_errors",
+    "validate_in_subprocess",
+    "validate_output_subprocess",
     "validation_geo_level_for_area_type",
     "VariableCloner",
     "VariableExportPolicy",
+    "worker_result_to_legacy_dict",
     "work_item_key",
 ]

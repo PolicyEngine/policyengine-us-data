@@ -1,3 +1,14 @@
+## [1.75.5] - 2026-04-09
+
+### Changed
+
+- Donor-impute race, Hispanic status, sex, and occupation-based CPS features onto the PUF clone half of the extended CPS so subgroup analyses and overtime-eligibility inputs better align with PUF-imputed incomes.
+
+### Fixed
+
+- Replace legacy SQLModel `session.query(...)` lookups in the SOI ETL loaders and their focused tests with `session.exec(select(...))` to remove deprecation warnings in CI.
+
+
 ## [1.75.4] - 2026-04-09
 
 ### Fixed

@@ -179,7 +179,9 @@ def test_load_cps_basic_org_month_retries_after_transient_parser_failure(
             raise ValueError("Usecols do not match columns")
         return month_df
 
-    monkeypatch.setattr("policyengine_us_data.datasets.org.org.pd.read_csv", fake_read_csv)
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org.pd.read_csv", fake_read_csv
+    )
 
     loaded = _load_cps_basic_org_month(2024, "may", max_attempts=2)
 

@@ -176,7 +176,9 @@ def _cps_basic_org_month_url(year: int, month: str) -> str:
 def _select_cps_basic_org_columns(month_df: pd.DataFrame) -> pd.DataFrame:
     """Normalize CPS basic-month columns onto the ORG schema."""
     column_lookup = {
-        str(column).lower(): column for column in month_df.columns if isinstance(column, str)
+        str(column).lower(): column
+        for column in month_df.columns
+        if isinstance(column, str)
     }
     missing = [
         column
@@ -184,10 +186,7 @@ def _select_cps_basic_org_columns(month_df: pd.DataFrame) -> pd.DataFrame:
         if column.lower() not in column_lookup
     ]
     if missing:
-        raise ValueError(
-            "CPS basic ORG month is missing required columns: "
-            f"{missing}"
-        )
+        raise ValueError(f"CPS basic ORG month is missing required columns: {missing}")
 
     selected = month_df[
         [column_lookup[column.lower()] for column in CPS_BASIC_MONTHLY_ORG_COLUMNS]
@@ -204,17 +203,16 @@ def _load_cps_basic_org_month(
 ) -> pd.DataFrame:
     """Load one CPS basic-month file with light retry around transient fetch/parser issues."""
     url = _cps_basic_org_month_url(year, month)
-    required_columns = {
-        column.lower() for column in CPS_BASIC_MONTHLY_ORG_COLUMNS
-    }
+    required_columns = {column.lower() for column in CPS_BASIC_MONTHLY_ORG_COLUMNS}
     last_error: Exception | None = None
 
     for _ in range(max_attempts):
         try:
             month_df = pd.read_csv(
                 url,
-                usecols=lambda column: isinstance(column, str)
-                and column.lower() in required_columns,
+                usecols=lambda column: (
+                    isinstance(column, str) and column.lower() in required_columns
+                ),
                 low_memory=False,
             )
             return _select_cps_basic_org_columns(month_df)

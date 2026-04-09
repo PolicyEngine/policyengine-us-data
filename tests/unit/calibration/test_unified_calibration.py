@@ -134,6 +134,19 @@ class TestBlockSaltedDraws:
         )
         assert not np.array_equal(d1, d2)
 
+    def test_empty_blocks_do_not_crash_state_rate_takeup(self):
+        result = compute_block_takeup_for_entities(
+            "takes_up_medicaid_if_eligible",
+            {"NC": 0.9},
+            np.array(["", "370010001001001"]),
+            np.array([1, 2], dtype=np.int64),
+            np.array([0, 0], dtype=np.int64),
+        )
+
+        assert result.dtype == bool
+        assert len(result) == 2
+        assert result[0]
+
 
 class TestApplyBlockTakeupToArrays:
     """Verify apply_block_takeup_to_arrays returns correct
@@ -199,6 +212,22 @@ class TestApplyBlockTakeupToArrays:
 
         differs = any(not np.array_equal(r1[v], r2[v]) for v in r1)
         assert differs
+
+    def test_reported_anchors_feed_through_for_aca(self):
+        args = self._make_arrays(4, 1, 1, 1)
+        result = apply_block_takeup_to_arrays(
+            *args,
+            time_period=2024,
+            takeup_filter=["takes_up_aca_if_eligible"],
+            precomputed_rates={"aca": 0.25},
+            reported_anchors={
+                "takes_up_aca_if_eligible": np.array([True, False, False, False])
+            },
+        )
+        np.testing.assert_array_equal(
+            result["takes_up_aca_if_eligible"],
+            [True, False, False, False],
+        )
 
 
 class TestAcaTakeupTargeting:

@@ -38,7 +38,7 @@ from policyengine_us_data.calibration.clone_and_assign import (
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     apply_block_takeup_to_arrays,
-    any_person_flag_by_entity,
+    reported_subsidized_marketplace_by_tax_unit,
 )
 
 CHECKPOINT_FILE = Path("completed_states.txt")
@@ -163,13 +163,18 @@ def _build_reported_takeup_anchors(
 ) -> dict[str, np.ndarray]:
     reported_anchors = {}
     if (
-        "has_marketplace_health_coverage_at_interview" in data
-        and time_period in data["has_marketplace_health_coverage_at_interview"]
+        "reported_has_subsidized_marketplace_health_coverage_at_interview" in data
+        and time_period
+        in data["reported_has_subsidized_marketplace_health_coverage_at_interview"]
     ):
-        reported_anchors["takes_up_aca_if_eligible"] = any_person_flag_by_entity(
-            data["person_tax_unit_id"][time_period],
-            data["tax_unit_id"][time_period],
-            data["has_marketplace_health_coverage_at_interview"][time_period],
+        reported_anchors["takes_up_aca_if_eligible"] = (
+            reported_subsidized_marketplace_by_tax_unit(
+                data["person_tax_unit_id"][time_period],
+                data["tax_unit_id"][time_period],
+                data[
+                    "reported_has_subsidized_marketplace_health_coverage_at_interview"
+                ][time_period],
+            )
         )
     if (
         "has_medicaid_health_coverage_at_interview" in data

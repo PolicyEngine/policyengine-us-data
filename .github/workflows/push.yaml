@@ -7,6 +7,7 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    if: github.event.head_commit.message != 'Auto-update pipeline JSON'
     steps:
       - uses: actions/checkout@v4
       - run: pip install ruff>=0.9.0
@@ -16,7 +17,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     needs: lint
-    if: github.event.head_commit.message != 'Update package version'
+    if: github.event.head_commit.message != 'Update package version' && github.event.head_commit.message != 'Auto-update pipeline JSON'
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -36,7 +37,7 @@ jobs:
   # ── Documentation ──────────────────────────────────────────
   docs:
     runs-on: ubuntu-latest
-    if: github.event.head_commit.message != 'Update package version'
+    if: github.event.head_commit.message != 'Update package version' && github.event.head_commit.message != 'Auto-update pipeline JSON'
     permissions:
       contents: write
     steps:
@@ -63,7 +64,7 @@ jobs:
   # ── Versioning (bump + changelog on non-version-bump pushes) ──
   versioning:
     runs-on: ubuntu-latest
-    if: github.event.head_commit.message != 'Update package version'
+    if: github.event.head_commit.message != 'Update package version' && github.event.head_commit.message != 'Auto-update pipeline JSON'
     steps:
       - name: Generate GitHub App token
         id: app-token
@@ -91,6 +92,72 @@ jobs:
         with:
           add: "."
           message: Update package version
+
+  # ── Pipeline diagram sync (after versioning) ───────────────
+  pipeline-diagram-sync:
+    runs-on: ubuntu-latest
+    needs: versioning
+    if: needs.versioning.result == 'success' && github.event.head_commit.message != 'Update package version' && github.event.head_commit.message != 'Auto-update pipeline JSON'
+    permissions:
+      contents: write
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Refresh to latest main after versioning
+        run: |
+          git fetch origin main
+          git checkout --detach FETCH_HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install extractor dependencies
+        run: python -m pip install PyYAML
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: docs/pipeline-diagrams/package-lock.json
+
+      - name: Rebuild pipeline JSON
+        run: python scripts/extract_pipeline.py
+
+      - name: Install diagram app dependencies
+        working-directory: docs/pipeline-diagrams
+        run: npm ci
+
+      - name: Build pipeline diagram docs
+        working-directory: docs/pipeline-diagrams
+        run: npm run build
+
+      - name: Commit pipeline diagram JSON if changed
+        run: |
+          if git diff --quiet -- docs/pipeline-diagrams/app/pipeline.json; then
+            echo "## Pipeline Diagram Docs" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No generated pipeline JSON changes detected." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/pipeline-diagrams/app/pipeline.json
+          git commit -m "Auto-update pipeline JSON"
+          git push origin HEAD:main
+          echo "## Pipeline Diagram Docs" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Updated \`docs/pipeline-diagrams/app/pipeline.json\` on \`main\`. Connected Vercel deployment will pick up that commit." >> "$GITHUB_STEP_SUMMARY"
 
   # ── PyPI publish (version bump commits only) ────────────────
   publish:

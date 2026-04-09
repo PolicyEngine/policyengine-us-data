@@ -13,6 +13,7 @@ from .contracts import (
     ValidationStatus,
     WorkerResult,
 )
+from .builder import LocalAreaBuildArtifacts, LocalAreaDatasetBuilder
 from .entity_graph import EntityGraph, EntityGraphExtractor
 from .fingerprinting import (
     FingerprintComponents,
@@ -42,6 +43,7 @@ from .validation import (
 )
 from .variables import H5Payload, VariableCloner, VariableExportPolicy
 from .weights import CloneWeightMatrix, infer_clone_count_from_weight_length
+from .writer import H5Writer
 
 __all__ = [
     "AreaBuildRequest",
@@ -62,6 +64,9 @@ __all__ = [
     "FilterOp",
     "LoadedPackageGeography",
     "H5Payload",
+    "H5Writer",
+    "LocalAreaBuildArtifacts",
+    "LocalAreaDatasetBuilder",
     "PolicyEngineDatasetReader",
     "PolicyEngineVariableArrayProvider",
     "PublishingInputBundle",

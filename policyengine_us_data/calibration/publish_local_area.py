@@ -29,25 +29,21 @@ from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
     assign_random_geography,
 )
+from policyengine_us_data.calibration.local_h5.builder import (
+    LocalAreaDatasetBuilder,
+)
 from policyengine_us_data.calibration.local_h5.contracts import AreaFilter
-from policyengine_us_data.calibration.local_h5.reindexing import EntityReindexer
-from policyengine_us_data.calibration.local_h5.selection import AreaSelector
 from policyengine_us_data.calibration.local_h5.source_dataset import (
     PolicyEngineDatasetReader,
     SourceDatasetSnapshot,
 )
 from policyengine_us_data.calibration.local_h5.us_augmentations import (
-    USAugmentationService,
     build_reported_takeup_anchors,
 )
-from policyengine_us_data.calibration.local_h5.variables import (
-    VariableCloner,
-    VariableExportPolicy,
-)
 from policyengine_us_data.calibration.local_h5.weights import (
-    CloneWeightMatrix,
     infer_clone_count_from_weight_length,
 )
+from policyengine_us_data.calibration.local_h5.writer import H5Writer
 from policyengine_us_data.utils.takeup import SIMPLE_TAKEUP_VARS
 
 CHECKPOINT_FILE = Path("completed_states.txt")
@@ -255,10 +251,7 @@ def build_h5(
     Returns:
         Path to the output H5 file.
     """
-    import h5py
-
     output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if source_snapshot is None:
         source_snapshot = PolicyEngineDatasetReader(tuple(SUB_ENTITIES)).load(
@@ -270,120 +263,61 @@ def build_h5(
             f"({source_snapshot.dataset_path} != {Path(dataset_path)})"
         )
 
-    time_period = source_snapshot.time_period
     n_hh = source_snapshot.n_households
+    n_clones = infer_clone_count_from_weight_length(len(weights), n_hh)
 
-    weight_matrix = CloneWeightMatrix.from_vector(weights, n_hh)
-    selector = AreaSelector()
-    selection = selector.select(
-        weight_matrix,
-        geography,
-        filters=_build_selection_filters(
-            cd_subset=cd_subset,
-            county_fips_filter=county_fips_filter,
-        ),
-    )
+    builder = LocalAreaDatasetBuilder()
+    writer = H5Writer()
 
     label = (
         f"CD subset {cd_subset}"
         if cd_subset is not None
-        else f"{weight_matrix.n_clones} clone rows"
+        else f"{n_clones} clone rows"
     )
     print(f"\n{'=' * 60}")
     print(f"Building {output_path.name} ({label}, {n_hh} households)")
     print(f"{'=' * 60}")
 
-    # === Identify active clones ===
-    n_clones = selection.n_household_clones
-    if selection.is_empty:
-        raise ValueError(
-            f"No active clones after filtering. "
-            f"cd_subset={cd_subset}, county_fips_filter={county_fips_filter}"
-        )
-    clone_weights = selection.active_weights
-    active_blocks = selection.active_block_geoids
-    empty_count = np.sum(active_blocks == "")
-    if empty_count > 0:
-        raise ValueError(f"{empty_count} active clones have empty block GEOIDs")
-
-    print(f"Active clones: {n_clones:,}")
-    print(f"Total weight: {clone_weights.sum():,.0f}")
-
-    # === Build clone index arrays and output IDs ===
-    reindexed = EntityReindexer().reindex(source_snapshot, selection)
-
-    entity_clone_idx = reindexed.entity_source_indices
-
-    n_persons = len(reindexed.person_source_indices)
-    print(f"Cloned persons: {n_persons:,}")
-    for ek in SUB_ENTITIES:
-        print(f"Cloned {ek}s: {len(entity_clone_idx[ek]):,}")
-
-    # === Clone variable arrays ===
-    payload = VariableCloner().clone(
-        source_snapshot,
-        reindexed,
-        VariableExportPolicy(include_input_variables=True),
-    )
-    data = {
-        variable: dict(periods) for variable, periods in payload.variables.items()
-    }
-    print(f"Variables cloned: {payload.dataset_count}")
-
-    # === Override entity IDs ===
-    data["household_id"] = {time_period: reindexed.new_household_ids}
-    data["person_id"] = {time_period: reindexed.new_person_ids}
-    data["person_household_id"] = {
-        time_period: reindexed.new_person_household_ids,
-    }
-    for ek in SUB_ENTITIES:
-        data[f"{ek}_id"] = {
-            time_period: reindexed.new_entity_ids[ek],
-        }
-        data[f"person_{ek}_id"] = {
-            time_period: reindexed.new_person_entity_ids[ek],
-        }
-
-    # === Override weights ===
-    # Only write household_weight; sub-entity weights (tax_unit_weight,
-    # spm_unit_weight, person_weight, etc.) are formula variables in
-    # policyengine-us that derive from household_weight at runtime.
-    data["household_weight"] = {
-        time_period: clone_weights.astype(np.float32),
-    }
-
-    print("Applying US-specific output augmentations...")
-    USAugmentationService().apply_all(
-        data,
-        time_period=time_period,
-        selection=selection,
+    built = builder.build(
+        weights=weights,
+        geography=geography,
         source=source_snapshot,
-        reindexed=reindexed,
+        filters=_build_selection_filters(
+            cd_subset=cd_subset,
+            county_fips_filter=county_fips_filter,
+        ),
         takeup_filter=takeup_filter,
     )
-    # === Write H5 ===
-    with h5py.File(str(output_path), "w") as f:
-        for variable, periods in data.items():
-            grp = f.create_group(variable)
-            for period, values in periods.items():
-                grp.create_dataset(str(period), data=values)
+    selection = built.selection
+    reindexed = built.reindexed
+    print(f"Active clones: {selection.n_household_clones:,}")
+    print(f"Total weight: {selection.active_weights.sum():,.0f}")
+    print(f"Cloned persons: {len(reindexed.person_source_indices):,}")
+    for entity_key in SUB_ENTITIES:
+        print(
+            f"Cloned {entity_key}s: "
+            f"{len(reindexed.entity_source_indices[entity_key]):,}"
+        )
+    print(f"Variables cloned: {built.payload.dataset_count}")
+
+    output_path = writer.write_payload(built.payload, output_path)
+    summary = writer.verify_output(output_path, time_period=built.time_period)
 
     print(f"\nH5 saved to {output_path}")
-
-    with h5py.File(str(output_path), "r") as f:
-        tp = str(time_period)
-        if "household_id" in f and tp in f["household_id"]:
-            n = len(f["household_id"][tp][:])
-            print(f"Verified: {n:,} households in output")
-        if "person_id" in f and tp in f["person_id"]:
-            n = len(f["person_id"][tp][:])
-            print(f"Verified: {n:,} persons in output")
-        if "household_weight" in f and tp in f["household_weight"]:
-            hw = f["household_weight"][tp][:]
-            print(f"Total population (HH weights): {hw.sum():,.0f}")
-        if "person_weight" in f and tp in f["person_weight"]:
-            pw = f["person_weight"][tp][:]
-            print(f"Total population (person weights): {pw.sum():,.0f}")
+    if "household_count" in summary:
+        print(f"Verified: {summary['household_count']:,} households in output")
+    if "person_count" in summary:
+        print(f"Verified: {summary['person_count']:,} persons in output")
+    if "household_weight_sum" in summary:
+        print(
+            "Total population (HH weights): "
+            f"{summary['household_weight_sum']:,.0f}"
+        )
+    if "person_weight_sum" in summary:
+        print(
+            "Total population (person weights): "
+            f"{summary['person_weight_sum']:,.0f}"
+        )
 
     return output_path
 

@@ -186,6 +186,29 @@ def refresh_clone_diagnostics_report(
     return write_clone_diagnostics_report(file_path, diagnostics)
 
 
+def save_clone_diagnostics_report(
+    dataset_cls: Type[Dataset],
+    *,
+    start_year: int,
+    end_year: int,
+) -> tuple[Path, dict]:
+    periods = list(range(start_year, end_year + 1))
+    output_path = refresh_clone_diagnostics_report(
+        dataset_cls.file_path,
+        lambda: build_clone_diagnostics_payload(
+            {
+                period: build_clone_diagnostics_for_saved_dataset(
+                    dataset_cls,
+                    period,
+                )
+                for period in periods
+            }
+        ),
+    )
+    diagnostics_payload = json.loads(output_path.read_text())
+    return output_path, diagnostics_payload
+
+
 def build_clone_diagnostics_for_saved_dataset(
     dataset_cls: Type[Dataset], period: int
 ) -> dict[str, float]:
@@ -514,19 +537,10 @@ class EnhancedCPS(Dataset):
 
         self.save_dataset(data)
         try:
-            periods = list(range(self.start_year, self.end_year + 1))
-            diagnostics_payload = build_clone_diagnostics_payload(
-                {
-                    period: build_clone_diagnostics_for_saved_dataset(
-                        type(self),
-                        period,
-                    )
-                    for period in periods
-                }
-            )
-            output_path = refresh_clone_diagnostics_report(
-                self.file_path,
-                lambda: diagnostics_payload,
+            output_path, diagnostics_payload = save_clone_diagnostics_report(
+                type(self),
+                start_year=self.start_year,
+                end_year=self.end_year,
             )
             logging.info("Saved clone diagnostics to %s", output_path)
             logging.info(

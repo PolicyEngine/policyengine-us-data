@@ -7,6 +7,7 @@ from policyengine_us_data.datasets.cps.enhanced_cps import (
     compute_clone_diagnostics_summary,
     clone_diagnostics_path,
     refresh_clone_diagnostics_report,
+    save_clone_diagnostics_report,
 )
 
 
@@ -83,3 +84,55 @@ def test_refresh_clone_diagnostics_report_removes_stale_sidecar_on_failure(tmp_p
 
     assert stale_path == Path(file_path).with_suffix(".clone_diagnostics.json")
     assert not stale_path.exists()
+
+
+def test_save_clone_diagnostics_report_removes_stale_sidecar_on_failure(
+    tmp_path, monkeypatch
+):
+    class DummyDataset:
+        file_path = tmp_path / "enhanced_cps_2024.h5"
+
+    DummyDataset.file_path.write_text("placeholder")
+    stale_path = clone_diagnostics_path(DummyDataset.file_path)
+    stale_path.write_text("stale")
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.cps.enhanced_cps.build_clone_diagnostics_for_saved_dataset",
+        lambda dataset_cls, period: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        save_clone_diagnostics_report(
+            DummyDataset,
+            start_year=2024,
+            end_year=2024,
+        )
+
+    assert not stale_path.exists()
+
+
+def test_save_clone_diagnostics_report_writes_fresh_payload(tmp_path, monkeypatch):
+    class DummyDataset:
+        file_path = tmp_path / "enhanced_cps_2024.h5"
+
+    DummyDataset.file_path.write_text("placeholder")
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.cps.enhanced_cps.build_clone_diagnostics_for_saved_dataset",
+        lambda dataset_cls, period: {"clone_person_weight_share_pct": float(period)},
+    )
+
+    output_path, payload = save_clone_diagnostics_report(
+        DummyDataset,
+        start_year=2024,
+        end_year=2025,
+    )
+
+    assert output_path == clone_diagnostics_path(DummyDataset.file_path)
+    assert payload == {
+        "periods": {
+            "2024": {"clone_person_weight_share_pct": 2024.0},
+            "2025": {"clone_person_weight_share_pct": 2025.0},
+        }
+    }
+    assert output_path.exists()

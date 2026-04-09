@@ -30,14 +30,25 @@ for _p in (_baked, _local):
 
     from modal_app.images import cpu_image as image
 from modal_app.resilience import reconcile_run_dir_fingerprint
+from policyengine_us_data.calibration.local_h5.area_catalog import (
+    USAreaCatalog,
+)
+from policyengine_us_data.calibration.local_h5.contracts import (
+    AreaBuildRequest,
+    AreaBuildResult,
+    ValidationIssue,
+    WorkerResult,
+)
 from policyengine_us_data.calibration.local_h5.fingerprinting import (
     FingerprintService,
 )
 from policyengine_us_data.calibration.local_h5.package_geography import (
+    CalibrationPackageGeographyLoader,
     require_calibration_package_path,
 )
 from policyengine_us_data.calibration.local_h5.partitioning import (
     partition_weighted_work_items,
+    work_item_key,
 )
 
 app = modal.App("policyengine-us-data-local-area")
@@ -204,13 +215,108 @@ def _derive_canonical_n_clones(
         print(
             f"WARNING: requested n_clones={requested_n_clones} but "
             f"weights imply {canonical_n_clones}; using weights-derived value"
-        )
+    )
     return canonical_n_clones
+
+
+def _request_key(request: AreaBuildRequest) -> str:
+    return f"{request.area_type}:{request.area_id}"
+
+
+def _phase_errors_from_worker_result(worker_result: WorkerResult) -> list[dict]:
+    phase_errors: list[dict] = []
+
+    for result in worker_result.failed:
+        phase_errors.append(
+            {
+                "item": _request_key(result.request),
+                "error": result.build_error,
+            }
+        )
+
+    for issue in worker_result.worker_issues:
+        phase_errors.append(
+            {
+                "item": "worker",
+                "error": issue.message,
+                "code": issue.code,
+                "details": dict(issue.details),
+            }
+        )
+
+    return phase_errors
+
+
+def _validation_rows_from_worker_result(worker_result: WorkerResult) -> list[dict]:
+    rows: list[dict] = []
+    for result in worker_result.completed:
+        if result.validation.status in ("passed", "failed"):
+            rows.extend(dict(row) for row in result.validation.rows)
+    return rows
+
+
+def _validation_errors_from_worker_result(worker_result: WorkerResult) -> list[dict]:
+    errors: list[dict] = []
+    for result in worker_result.completed:
+        if result.validation.status != "error":
+            continue
+        item_key = _request_key(result.request)
+        for issue in result.validation.issues:
+            errors.append(
+                {
+                    "item": item_key,
+                    "error": issue.message,
+                    "code": issue.code,
+                    "details": dict(issue.details),
+                }
+            )
+    return errors
+
+
+def _worker_failure_result(
+    requests: List[Dict],
+    *,
+    error: str,
+    code: str,
+) -> Dict:
+    failed_results = []
+    for payload in requests:
+        request = AreaBuildRequest.from_dict(payload)
+        failed_results.append(
+            AreaBuildResult(
+                request=request,
+                build_status="failed",
+                build_error=error,
+            )
+        )
+
+    result = WorkerResult(
+        completed=(),
+        failed=tuple(failed_results),
+        worker_issues=(
+            ValidationIssue(
+                code=code,
+                message=error,
+                severity="error",
+            ),
+        ),
+    )
+    return result.to_dict()
+
+
+def _load_catalog_geography(package_path: Path):
+    loader = CalibrationPackageGeographyLoader()
+    loaded = loader.load(package_path)
+    if loaded is None:
+        raise RuntimeError(
+            f"Calibration package at {package_path} does not contain usable geography"
+        )
+    return loaded.geography
 
 
 def run_phase(
     phase_name: str,
-    work_items: List[Dict],
+    entries: List,
     num_workers: int,
     completed: set,
     branch: str,
@@ -229,6 +335,10 @@ def run_phase(
         validation result dicts, and validation_errors is a list
         of structured validation execution failures.
     """
+    work_items = [entry.to_partition_item() for entry in entries]
+    requests_by_key = {
+        entry.key: entry.request.to_dict() for entry in entries
+    }
     work_chunks = partition_weighted_work_items(work_items, num_workers, completed)
     total_remaining = sum(len(c) for c in work_chunks)
 
@@ -243,10 +353,11 @@ def run_phase(
     for i, chunk in enumerate(work_chunks):
         total_weight = sum(item["weight"] for item in chunk)
         print(f"  Worker {i}: {len(chunk)} items, weight {total_weight}")
+        requests = [requests_by_key[work_item_key(item)] for item in chunk]
         handle = build_areas_worker.spawn(
             branch=branch,
             run_id=run_id,
-            work_items=chunk,
+            requests=requests,
             calibration_inputs=calibration_inputs,
             validate=validate,
         )
@@ -261,24 +372,25 @@ def run_phase(
 
     for i, handle in enumerate(handles):
         try:
-            result = handle.get()
-            if result is None:
+            payload = handle.get()
+            if payload is None:
                 all_errors.append({"worker": i, "error": "Worker returned None"})
                 print(f"  Worker {i}: returned None (no results)")
                 continue
+            result = WorkerResult.from_dict(payload)
             all_results.append(result)
             print(
-                f"  Worker {i}: {len(result['completed'])} completed, "
-                f"{len(result['failed'])} failed"
+                f"  Worker {i}: {len(result.completed)} completed, "
+                f"{len(result.failed)} failed"
             )
-            if result["errors"]:
-                all_errors.extend(result["errors"])
-            # Collect validation rows
-            v_rows = result.get("validation_rows", [])
+            worker_errors = _phase_errors_from_worker_result(result)
+            if worker_errors:
+                all_errors.extend(worker_errors)
+            v_rows = _validation_rows_from_worker_result(result)
             if v_rows:
                 all_validation_rows.extend(v_rows)
                 print(f"  Worker {i}: {len(v_rows)} validation rows")
-            v_errors = result.get("validation_errors", [])
+            v_errors = _validation_errors_from_worker_result(result)
             if v_errors:
                 all_validation_errors.extend(v_errors)
                 print(f"  Worker {i}: {len(v_errors)} validation errors")
@@ -288,8 +400,8 @@ def run_phase(
             )
             print(f"  Worker {i}: CRASHED - {e}")
 
-    total_completed = sum(len(r["completed"]) for r in all_results)
-    total_failed = sum(len(r["failed"]) for r in all_results)
+    total_completed = sum(len(r.completed) for r in all_results)
+    total_failed = sum(len(r.failed) for r in all_results)
 
     staging_volume.reload()
     volume_completed = get_completed_from_volume(run_dir)
@@ -329,7 +441,7 @@ def run_phase(
 def build_areas_worker(
     branch: str,
     run_id: str,
-    work_items: List[Dict],
+    requests: List[Dict],
     calibration_inputs: Dict[str, str],
     validate: bool = True,
 ) -> Dict:
@@ -343,15 +455,15 @@ def build_areas_worker(
     output_dir = Path(VOLUME_MOUNT) / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    work_items_json = json.dumps(work_items)
+    requests_json = json.dumps(requests)
 
     worker_cmd = [
         "uv",
         "run",
         "python",
         "modal_app/worker_script.py",
-        "--work-items",
-        work_items_json,
+        "--requests-json",
+        requests_json,
         "--weights-path",
         calibration_inputs["weights"],
         "--dataset-path",
@@ -395,30 +507,22 @@ def build_areas_worker(
 
     if result.returncode != 0:
         print(f"Worker stderr:\n{result.stderr}", file=__import__("sys").stderr)
-        return {
-            "completed": [],
-            "failed": [f"{item['type']}:{item['id']}" for item in work_items],
-            "errors": [{"error": (result.stderr or "No stderr")[:2000]}],
-            "validation_errors": [],
-            "validation_rows": [],
-        }
+        return _worker_failure_result(
+            requests,
+            error=(result.stderr or "No stderr")[:2000],
+            code="worker_subprocess_failed",
+        )
 
     try:
         results = json.loads(result.stdout)
     except json.JSONDecodeError:
-        results = {
-            "completed": [],
-            "failed": [],
-            "errors": [{"error": f"Failed to parse output: {result.stdout}"}],
-            "validation_errors": [],
-            "validation_rows": [],
-        }
-    results.setdefault("completed", [])
-    results.setdefault("failed", [])
-    results.setdefault("errors", [])
-    results.setdefault("validation_errors", [])
-    results.setdefault("validation_rows", [])
-    results.setdefault("validation_summary", {})
+        results = _worker_failure_result(
+            requests,
+            error=f"Failed to parse output: {result.stdout}",
+            code="worker_output_parse_failed",
+        )
+
+    results = WorkerResult.from_dict(results).to_dict()
 
     staging_volume.commit()
     return results
@@ -781,55 +885,17 @@ def coordinate_publish(
     else:
         print(f"Prepared staging directory for fingerprint {fingerprint}")
     staging_volume.commit()
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "-c",
-            f"""
-import json
-from policyengine_us_data.calibration.calibration_utils import (
-    get_all_cds_from_database,
-    STATE_CODES,
-)
-from policyengine_us_data.calibration.publish_local_area import (
-    get_district_friendly_name,
-)
-
-db_uri = "sqlite:///{db_path}"
-cds = get_all_cds_from_database(db_uri)
-states = list(STATE_CODES.values())
-districts = [get_district_friendly_name(cd) for cd in cds]
-print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], "cds": cds}}))
-""",
-        ],
-        capture_output=True,
-        text=True,
-        env=os.environ.copy(),
+    catalog = USAreaCatalog()
+    catalog_geography = _load_catalog_geography(package_path)
+    entries = list(
+        catalog.resolved_regional_entries(
+            f"sqlite:///{db_path}",
+            geography=catalog_geography,
+        )
     )
-
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to get work items: {result.stderr}")
-
-    work_info = json.loads(result.stdout)
-    states = work_info["states"]
-    districts = work_info["districts"]
-    cities = work_info["cities"]
-
-    from collections import Counter
-
-    cds_per_state = Counter(d.split("-")[0] for d in districts)
-
-    CITY_WEIGHTS = {"NYC": 11}
-
-    work_items = []
-    for s in states:
-        work_items.append({"type": "state", "id": s, "weight": cds_per_state.get(s, 1)})
-    for d in districts:
-        work_items.append({"type": "district", "id": d, "weight": 1})
-    for c in cities:
-        work_items.append({"type": "city", "id": c, "weight": CITY_WEIGHTS.get(c, 3)})
+    states = [e for e in entries if e.request.area_type == "state"]
+    districts = [e for e in entries if e.request.area_type == "district"]
+    cities = [e for e in entries if e.request.area_type == "city"]
 
     staging_volume.reload()
     completed = get_completed_from_volume(run_dir)
@@ -850,7 +916,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
 
     completed, phase_errors, v_rows, v_errors = run_phase(
         "All areas",
-        work_items=work_items,
+        entries=entries,
         completed=completed,
         **phase_args,
     )
@@ -858,7 +924,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
     accumulated_validation_rows.extend(v_rows)
     accumulated_validation_errors.extend(v_errors)
 
-    expected_total = len(states) + len(districts) + len(cities)
+    expected_total = len(entries)
 
     # If workers crashed but all files landed on the volume,
     # treat as transient infrastructure errors (e.g. gRPC stream resets).
@@ -898,7 +964,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
     print("\nValidating staging...")
     manifest = validate_staging.remote(branch=branch, run_id=run_id, version=version)
 
-    expected_total = len(states) + len(districts) + len(cities)
+    expected_total = len(entries)
     actual_total = (
         manifest["totals"]["states"]
         + manifest["totals"]["districts"]
@@ -1041,24 +1107,29 @@ def coordinate_national_publish(
     run_dir = staging_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    work_items = [{"type": "national", "id": "US"}]
+    catalog = USAreaCatalog()
+    national_entry = catalog.resolved_national_entry()
     print("Spawning worker for national H5 build...")
-    worker_result = build_areas_worker.remote(
+    worker_payload = build_areas_worker.remote(
         branch=branch,
         run_id=run_id,
-        work_items=work_items,
+        requests=[national_entry.request.to_dict()],
         calibration_inputs=calibration_inputs,
         validate=validate,
     )
+    worker_result = WorkerResult.from_dict(worker_payload)
 
     print(
         f"Worker result: "
-        f"{len(worker_result['completed'])} completed, "
-        f"{len(worker_result['failed'])} failed"
+        f"{len(worker_result.completed)} completed, "
+        f"{len(worker_result.failed)} failed"
     )
 
-    if worker_result["failed"]:
-        raise RuntimeError(f"National build failed: {worker_result['errors']}")
+    phase_errors = _phase_errors_from_worker_result(worker_result)
+    validation_errors = _validation_errors_from_worker_result(worker_result)
+
+    if worker_result.failed or phase_errors:
+        raise RuntimeError(f"National build failed: {phase_errors}")
 
     staging_volume.reload()
     national_h5 = run_dir / "national" / "US.h5"
@@ -1146,7 +1217,7 @@ print("Done")
         ),
         "run_id": run_id,
         "national_validation": national_validation_output,
-        "validation_errors": worker_result.get("validation_errors", []),
+        "validation_errors": validation_errors,
     }
 
 

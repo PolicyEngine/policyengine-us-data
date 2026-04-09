@@ -53,6 +53,17 @@ class AreaFilter:
             "value": _jsonable(self.value),
         }
 
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "AreaFilter":
+        value = data["value"]
+        if data["op"] == "in":
+            value = tuple(value)
+        return cls(
+            geography_field=str(data["geography_field"]),
+            op=data["op"],
+            value=value,
+        )
+
 
 @dataclass(frozen=True)
 class AreaBuildRequest:
@@ -100,6 +111,24 @@ class AreaBuildRequest:
             "validation_geographic_ids": list(self.validation_geographic_ids),
             "metadata": dict(self.metadata),
         }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "AreaBuildRequest":
+        return cls(
+            area_type=data["area_type"],
+            area_id=str(data["area_id"]),
+            display_name=str(data["display_name"]),
+            output_relative_path=str(data["output_relative_path"]),
+            filters=tuple(
+                AreaFilter.from_dict(item)
+                for item in data.get("filters", ())
+            ),
+            validation_geo_level=data.get("validation_geo_level"),
+            validation_geographic_ids=tuple(
+                str(item) for item in data.get("validation_geographic_ids", ())
+            ),
+            metadata=dict(data.get("metadata", {})),
+        )
 
 
 @dataclass(frozen=True)
@@ -185,6 +214,15 @@ class ValidationIssue:
             "details": _jsonable(self.details),
         }
 
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "ValidationIssue":
+        return cls(
+            code=str(data["code"]),
+            message=str(data["message"]),
+            severity=data["severity"],
+            details=dict(data.get("details", {})),
+        )
+
 
 @dataclass(frozen=True)
 class ValidationResult:
@@ -200,6 +238,18 @@ class ValidationResult:
             "issues": [_jsonable(item) for item in self.issues],
             "summary": _jsonable(self.summary),
         }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "ValidationResult":
+        return cls(
+            status=data["status"],
+            rows=tuple(dict(item) for item in data.get("rows", ())),
+            issues=tuple(
+                ValidationIssue.from_dict(item)
+                for item in data.get("issues", ())
+            ),
+            summary=dict(data.get("summary", {})),
+        )
 
 
 @dataclass(frozen=True)
@@ -233,6 +283,19 @@ class AreaBuildResult:
             "validation": self.validation.to_dict(),
         }
 
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "AreaBuildResult":
+        output_path = data.get("output_path")
+        return cls(
+            request=AreaBuildRequest.from_dict(data["request"]),
+            build_status=data["build_status"],
+            output_path=Path(output_path) if output_path is not None else None,
+            build_error=data.get("build_error"),
+            validation=ValidationResult.from_dict(
+                data.get("validation", {"status": "not_run"})
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class WorkerResult:
@@ -255,3 +318,20 @@ class WorkerResult:
             "failed": [_jsonable(item) for item in self.failed],
             "worker_issues": [_jsonable(item) for item in self.worker_issues],
         }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "WorkerResult":
+        return cls(
+            completed=tuple(
+                AreaBuildResult.from_dict(item)
+                for item in data.get("completed", ())
+            ),
+            failed=tuple(
+                AreaBuildResult.from_dict(item)
+                for item in data.get("failed", ())
+            ),
+            worker_issues=tuple(
+                ValidationIssue.from_dict(item)
+                for item in data.get("worker_issues", ())
+            ),
+        )

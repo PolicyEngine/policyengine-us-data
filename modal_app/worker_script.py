@@ -89,7 +89,12 @@ def _record_validation_error(results, item_key, error):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--work-items", required=True, help="JSON work items")
+    parser.add_argument("--work-items", default=None, help="JSON work items")
+    parser.add_argument(
+        "--requests-json",
+        default=None,
+        help="JSON serialized AreaBuildRequest list",
+    )
     parser.add_argument("--weights-path", required=True)
     parser.add_argument("--dataset-path", required=True)
     parser.add_argument("--db-path", required=True)
@@ -135,7 +140,11 @@ def main():
     )
     args = parser.parse_args()
 
-    work_items = json.loads(args.work_items)
+    if not args.requests_json and not args.work_items:
+        raise ValueError("Either --requests-json or --work-items is required")
+
+    work_items = json.loads(args.work_items) if args.work_items else None
+    request_payloads = json.loads(args.requests_json) if args.requests_json else None
     weights_path = Path(args.weights_path)
     dataset_path = Path(args.dataset_path)
     db_path = Path(args.db_path)
@@ -147,7 +156,10 @@ def main():
     )
 
     from policyengine_us_data.utils.takeup import SIMPLE_TAKEUP_VARS
-    from policyengine_us_data.calibration.local_h5.contracts import ValidationPolicy
+    from policyengine_us_data.calibration.local_h5.contracts import (
+        AreaBuildRequest,
+        ValidationPolicy,
+    )
     from policyengine_us_data.calibration.local_h5.package_geography import (
         require_calibration_package_path,
     )
@@ -156,7 +168,6 @@ def main():
         WorkerSession,
         build_requests_from_work_items,
         load_validation_context,
-        worker_result_to_legacy_dict,
     )
     from policyengine_us_data.calibration.publish_local_area import (
         AT_LARGE_DISTRICTS,
@@ -223,23 +234,28 @@ def main():
     for warning in session.geography_warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
 
-    requests, initial_failures = build_requests_from_work_items(
-        work_items,
-        geography=session.geography,
-        state_codes=STATE_CODES,
-        at_large_districts=AT_LARGE_DISTRICTS,
-        nyc_county_fips=NYC_COUNTY_FIPS,
-    )
+    if request_payloads is not None:
+        requests = tuple(
+            AreaBuildRequest.from_dict(payload) for payload in request_payloads
+        )
+        initial_failures = ()
+    else:
+        requests, initial_failures = build_requests_from_work_items(
+            work_items,
+            geography=session.geography,
+            state_codes=STATE_CODES,
+            at_large_districts=AT_LARGE_DISTRICTS,
+            nyc_county_fips=NYC_COUNTY_FIPS,
+        )
     service = LocalH5WorkerService()
     worker_result = service.run(
         session,
         requests,
         initial_failures=initial_failures,
     )
-    results = worker_result_to_legacy_dict(worker_result)
 
     sys.stdout = original_stdout
-    print(json.dumps(results))
+    print(json.dumps(worker_result.to_dict()))
 
 
 if __name__ == "__main__":

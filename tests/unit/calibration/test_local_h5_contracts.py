@@ -200,3 +200,48 @@ def test_worker_result_and_validation_result_are_json_serializable():
     assert roundtrip["completed"][0]["validation"]["status"] == "failed"
     assert roundtrip["completed"][0]["output_path"] == "/tmp/states/CA.h5"
     assert roundtrip["worker_issues"][0]["severity"] == "warning"
+
+
+def test_contracts_round_trip_from_dict():
+    request = AreaBuildRequest(
+        area_type="district",
+        area_id="CA-12",
+        display_name="CA-12",
+        output_relative_path="districts/CA-12.h5",
+        filters=(
+            AreaFilter(geography_field="cd_geoid", op="in", value=("612",)),
+        ),
+        validation_geo_level="district",
+        validation_geographic_ids=("612",),
+        metadata={"source": "catalog"},
+    )
+    validation = ValidationResult(
+        status="error",
+        issues=(
+            ValidationIssue(
+                code="validation_exception",
+                message="validator crashed",
+                severity="error",
+                details={"traceback": "boom"},
+            ),
+        ),
+        summary={"n_targets": 0},
+    )
+    result = WorkerResult(
+        completed=(
+            AreaBuildResult(
+                request=request,
+                build_status="completed",
+                output_path=Path("/tmp/districts/CA-12.h5"),
+                validation=validation,
+            ),
+        ),
+        failed=(),
+    )
+
+    restored_request = AreaBuildRequest.from_dict(request.to_dict())
+    restored_result = WorkerResult.from_dict(result.to_dict())
+
+    assert restored_request == request
+    assert restored_result.completed[0].request == request
+    assert restored_result.completed[0].validation.issues[0].code == "validation_exception"

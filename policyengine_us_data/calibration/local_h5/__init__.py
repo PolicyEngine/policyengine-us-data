@@ -13,6 +13,7 @@ from .contracts import (
     ValidationStatus,
     WorkerResult,
 )
+from .area_catalog import USAreaCatalog, USCatalogEntry
 from .builder import LocalAreaBuildArtifacts, LocalAreaDatasetBuilder
 from .entity_graph import EntityGraph, EntityGraphExtractor
 from .fingerprinting import (
@@ -91,6 +92,8 @@ __all__ = [
     "ValidationStatus",
     "WorkerResult",
     "WorkerSession",
+    "USAreaCatalog",
+    "USCatalogEntry",
     "LocalH5WorkerService",
     "build_request_from_work_item",
     "build_requests_from_work_items",

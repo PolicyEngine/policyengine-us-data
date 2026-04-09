@@ -1,5 +1,6 @@
 import importlib.util
 import json
+from dataclasses import dataclass
 from pathlib import Path
 import sys
 import types
@@ -88,6 +89,25 @@ def _load_local_area_module(monkeypatch):
         local_h5_package,
     )
 
+    contracts_spec = importlib.util.spec_from_file_location(
+        "policyengine_us_data.calibration.local_h5.contracts",
+        Path(__file__).resolve().parents[2]
+        / "policyengine_us_data"
+        / "calibration"
+        / "local_h5"
+        / "contracts.py",
+    )
+    contracts_module = importlib.util.module_from_spec(contracts_spec)
+    assert contracts_spec is not None
+    assert contracts_spec.loader is not None
+    sys.modules[contracts_spec.name] = contracts_module
+    contracts_spec.loader.exec_module(contracts_module)
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us_data.calibration.local_h5.contracts",
+        contracts_module,
+    )
+
     fingerprinting_module = types.ModuleType(
         "policyengine_us_data.calibration.local_h5.fingerprinting"
     )
@@ -100,6 +120,9 @@ def _load_local_area_module(monkeypatch):
 
     package_geo_module = types.ModuleType(
         "policyengine_us_data.calibration.local_h5.package_geography"
+    )
+    package_geo_module.CalibrationPackageGeographyLoader = type(
+        "CalibrationPackageGeographyLoader", (), {}
     )
     package_geo_module.require_calibration_package_path = lambda path: Path(path)
     monkeypatch.setitem(
@@ -114,10 +137,23 @@ def _load_local_area_module(monkeypatch):
     partitioning_module.partition_weighted_work_items = (
         lambda work_items, _num_workers, _completed: [work_items]
     )
+    partitioning_module.work_item_key = (
+        lambda item: f"{item['type']}:{item['id']}"
+    )
     monkeypatch.setitem(
         sys.modules,
         "policyengine_us_data.calibration.local_h5.partitioning",
         partitioning_module,
+    )
+
+    area_catalog_module = types.ModuleType(
+        "policyengine_us_data.calibration.local_h5.area_catalog"
+    )
+    area_catalog_module.USAreaCatalog = type("USAreaCatalog", (), {})
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us_data.calibration.local_h5.area_catalog",
+        area_catalog_module,
     )
 
     module_path = Path(__file__).resolve().parents[2] / "modal_app" / "local_area.py"
@@ -164,6 +200,35 @@ class _FakeFingerprintService:
 
     def create_publish_fingerprint(self, **_kwargs):
         return types.SimpleNamespace(digest=self.digest)
+
+
+@dataclass(frozen=True)
+class _FakeEntry:
+    request: object
+    weight: int
+
+    @property
+    def key(self):
+        return f"{self.request.area_type}:{self.request.area_id}"
+
+    def to_partition_item(self):
+        return {
+            "type": self.request.area_type,
+            "id": self.request.area_id,
+            "weight": self.weight,
+        }
+
+
+class _FakeCatalog:
+    def __init__(self, entries=None, national_entry=None):
+        self._entries = entries or ()
+        self._national_entry = national_entry
+
+    def resolved_regional_entries(self, *_args, **_kwargs):
+        return self._entries
+
+    def resolved_national_entry(self):
+        return self._national_entry
 
 
 def test_coordinate_publish_requires_calibration_package(monkeypatch):
@@ -224,6 +289,12 @@ def test_coordinate_publish_returns_validation_errors_in_skip_upload_mode(
     monkeypatch, tmp_path
 ):
     local_area = _load_local_area_module(monkeypatch)
+    request = local_area.AreaBuildRequest(
+        area_type="state",
+        area_id="CA",
+        display_name="CA",
+        output_relative_path="states/CA.h5",
+    )
     monkeypatch.setattr(local_area, "Path", _translated_path_factory(tmp_path))
     _prepare_artifacts(tmp_path, "run1")
     monkeypatch.setattr(local_area, "setup_gcp_credentials", lambda: None)
@@ -246,6 +317,12 @@ def test_coordinate_publish_returns_validation_errors_in_skip_upload_mode(
         "reconcile_run_dir_fingerprint",
         lambda *_a, **_k: "initialized",
     )
+    monkeypatch.setattr(local_area, "_load_catalog_geography", lambda _path: object())
+    monkeypatch.setattr(
+        local_area,
+        "USAreaCatalog",
+        lambda: _FakeCatalog(entries=(_FakeEntry(request=request, weight=1),)),
+    )
     monkeypatch.setattr(
         local_area,
         "run_phase",
@@ -254,23 +331,6 @@ def test_coordinate_publish_returns_validation_errors_in_skip_upload_mode(
             [],
             [{"area_type": "state", "area_id": "CA"}],
             [{"item": "state:CA", "error": "validator crashed"}],
-        ),
-    )
-
-    monkeypatch.setattr(
-        local_area.subprocess,
-        "run",
-        lambda *_a, **_k: types.SimpleNamespace(
-            returncode=0,
-            stdout=json.dumps(
-                {
-                    "states": ["CA"],
-                    "districts": [],
-                    "cities": [],
-                    "cds": [],
-                }
-            ),
-            stderr="",
         ),
     )
 
@@ -293,6 +353,7 @@ def test_coordinate_national_publish_returns_worker_validation_errors(
     monkeypatch, tmp_path
 ):
     local_area = _load_local_area_module(monkeypatch)
+    national_request = local_area.AreaBuildRequest.national()
     monkeypatch.setattr(local_area, "Path", _translated_path_factory(tmp_path))
     _prepare_artifacts(tmp_path, "run1")
     monkeypatch.setattr(local_area, "setup_gcp_credentials", lambda: None)
@@ -305,18 +366,42 @@ def test_coordinate_national_publish_returns_worker_validation_errors(
         lambda path: local_area.Path(path),
     )
     monkeypatch.setattr(local_area, "_derive_canonical_n_clones", lambda **_k: 3)
+    monkeypatch.setattr(
+        local_area,
+        "USAreaCatalog",
+        lambda: _FakeCatalog(
+            national_entry=_FakeEntry(request=national_request, weight=1)
+        ),
+    )
 
     def fake_remote(**_kwargs):
         output_path = local_area.Path("/staging/run1/national/US.h5")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"fake-h5")
         return {
-            "completed": ["national:US"],
-            "failed": [],
-            "errors": [],
-            "validation_errors": [
-                {"item": "national:US", "error": "validator crashed"}
+            "completed": [
+                {
+                    "request": national_request.to_dict(),
+                    "build_status": "completed",
+                    "output_path": str(output_path),
+                    "build_error": None,
+                    "validation": {
+                        "status": "error",
+                        "rows": [],
+                        "issues": [
+                            {
+                                "code": "validation_exception",
+                                "message": "validator crashed",
+                                "severity": "error",
+                                "details": {},
+                            }
+                        ],
+                        "summary": {},
+                    },
+                }
             ],
+            "failed": [],
+            "worker_issues": [],
         }
 
     monkeypatch.setattr(
@@ -337,5 +422,85 @@ def test_coordinate_national_publish_returns_worker_validation_errors(
     )
 
     assert result["validation_errors"] == [
-        {"item": "national:US", "error": "validator crashed"}
+        {
+            "item": "national:US",
+            "error": "validator crashed",
+            "code": "validation_exception",
+            "details": {},
+        }
     ]
+
+
+def test_run_phase_aggregates_structured_worker_results(monkeypatch):
+    local_area = _load_local_area_module(monkeypatch)
+    request = local_area.AreaBuildRequest(
+        area_type="state",
+        area_id="CA",
+        display_name="CA",
+        output_relative_path="states/CA.h5",
+    )
+    entry = _FakeEntry(request=request, weight=2)
+    run_dir = Path("/staging/run1")
+    monkeypatch.setattr(local_area, "get_completed_from_volume", lambda _run_dir: {"state:CA"})
+    monkeypatch.setattr(local_area.staging_volume, "reload", lambda: None)
+
+    def fake_spawn(**kwargs):
+        assert kwargs["requests"] == [request.to_dict()]
+        payload = {
+            "completed": [
+                {
+                    "request": request.to_dict(),
+                    "build_status": "completed",
+                    "output_path": "/staging/run1/states/CA.h5",
+                    "build_error": None,
+                    "validation": {
+                        "status": "failed",
+                        "rows": [
+                            {
+                                "target_name": "population",
+                                "sanity_check": "FAIL",
+                                "rel_abs_error": 0.2,
+                            }
+                        ],
+                        "issues": [],
+                        "summary": {
+                            "n_targets": 1,
+                            "n_sanity_fail": 1,
+                            "mean_rel_abs_error": 0.2,
+                        },
+                    },
+                }
+            ],
+            "failed": [],
+            "worker_issues": [],
+        }
+        return types.SimpleNamespace(object_id="fake-handle", get=lambda: payload)
+
+    monkeypatch.setattr(
+        local_area,
+        "build_areas_worker",
+        types.SimpleNamespace(spawn=fake_spawn),
+    )
+
+    completed, errors, validation_rows, validation_errors = local_area.run_phase(
+        "All areas",
+        entries=[entry],
+        num_workers=1,
+        completed=set(),
+        branch="main",
+        run_id="run1",
+        calibration_inputs={"weights": "w", "dataset": "d", "database": "db"},
+        run_dir=run_dir,
+        validate=True,
+    )
+
+    assert completed == {"state:CA"}
+    assert errors == []
+    assert validation_rows == [
+        {
+            "target_name": "population",
+            "sanity_check": "FAIL",
+            "rel_abs_error": 0.2,
+        }
+    ]
+    assert validation_errors == []

@@ -7,6 +7,7 @@ from policyengine_core.data import Dataset
 from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION
 from policyengine_us_data.datasets import EnhancedCPS_2024
 from policyengine_us_data.datasets.cps.cps import CPS_2024
+from policyengine_us_data.datasets.cps.enhanced_cps import clone_diagnostics_path
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.data_upload import (
     cleanup_staging_hf,
@@ -85,6 +86,11 @@ def _dataset_upload_specs(
         (
             EnhancedCPS_2024.file_path,
             EnhancedCPS_2024.file_path.name,
+            require_enhanced_cps,
+        ),
+        (
+            clone_diagnostics_path(EnhancedCPS_2024.file_path),
+            clone_diagnostics_path(EnhancedCPS_2024.file_path).name,
             require_enhanced_cps,
         ),
         (

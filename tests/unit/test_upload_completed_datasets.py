@@ -163,6 +163,8 @@ def _prepare_release_files(tmp_path, monkeypatch):
     cps_path.write_bytes(b"cps")
     enhanced_path = tmp_path / "enhanced_cps_2024.h5"
     enhanced_path.write_bytes(b"enhanced")
+    diagnostics_path = enhanced_path.with_suffix(".clone_diagnostics.json")
+    diagnostics_path.write_bytes(b"diagnostics")
     small_path = tmp_path / "small_enhanced_cps_2024.h5"
     small_path.write_bytes(b"small")
     calibration_dir = tmp_path / "calibration"
@@ -177,6 +179,7 @@ def _prepare_release_files(tmp_path, monkeypatch):
     return {
         "cps": cps_path,
         "enhanced": enhanced_path,
+        "diagnostics": diagnostics_path,
         "small": small_path,
         "db": db_path,
     }
@@ -257,12 +260,14 @@ def test_upload_datasets_stages_then_promotes_release(tmp_path, monkeypatch):
         "cps_2024.h5",
         "policy_data.db",
         "enhanced_cps_2024.h5",
+        "enhanced_cps_2024.clone_diagnostics.json",
         "small_enhanced_cps_2024.h5",
     ]
     assert validated == [
         "cps_2024.h5",
         "policy_data.db",
         "enhanced_cps_2024.h5",
+        "enhanced_cps_2024.clone_diagnostics.json",
         "small_enhanced_cps_2024.h5",
     ]
     assert [repo_path for _, repo_path in stage_calls[0][0]] == expected_repo_paths
@@ -345,6 +350,7 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
         "cps_2024.h5",
         "policy_data.db",
         "enhanced_cps_2024.h5",
+        "enhanced_cps_2024.clone_diagnostics.json",
         "small_enhanced_cps_2024.h5",
     ]
 
@@ -494,3 +500,12 @@ def test_promote_datasets_preflight_failure_stops_before_production_writes(
         )
 
     assert promote_calls == []
+
+
+def test_upload_datasets_requires_clone_diagnostics_sidecar(tmp_path, monkeypatch):
+    files = _prepare_release_files(tmp_path, monkeypatch)
+    files["diagnostics"].unlink()
+    monkeypatch.setattr(upload_module, "validate_dataset", lambda file_path: None)
+
+    with pytest.raises(FileNotFoundError, match="clone_diagnostics"):
+        upload_datasets(require_enhanced_cps=True)

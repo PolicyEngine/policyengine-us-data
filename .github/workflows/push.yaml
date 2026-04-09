@@ -143,21 +143,7 @@ jobs:
         run: npm run build
 
       - name: Commit pipeline diagram JSON if changed
-        run: |
-          if git diff --quiet -- docs/pipeline-diagrams/app/pipeline.json; then
-            echo "## Pipeline Diagram Docs" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "No generated pipeline JSON changes detected." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/pipeline-diagrams/app/pipeline.json
-          git commit -m "Auto-update pipeline JSON"
-          git push origin HEAD:main
-          echo "## Pipeline Diagram Docs" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Updated \`docs/pipeline-diagrams/app/pipeline.json\` on \`main\`. Connected Vercel deployment will pick up that commit." >> "$GITHUB_STEP_SUMMARY"
+        run: bash .github/commit-pipeline-diagram-json.sh
 
   # ── PyPI publish (version bump commits only) ────────────────
   publish:

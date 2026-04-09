@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 """
-Worker script for building local area H5 files.
+Thin CLI adapter for the local H5 worker service.
 
-Called by Modal workers via subprocess to avoid import conflicts.
+Modal launches this script in a subprocess so the worker runtime stays isolated
+from the coordinator process. The actual chunk-level build behavior now lives
+in `policyengine_us_data.calibration.local_h5.worker_service`.
 """
 
 import argparse

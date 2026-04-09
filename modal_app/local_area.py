@@ -1,14 +1,17 @@
 """
-Modal app for publishing local area H5 files with parallel workers.
+Modal coordinator for local and national H5 publishing.
 
-Architecture:
-1. Coordinator partitions work across N workers
-2. Workers build H5 files in parallel, writing to shared Volume
-3. Validation generates manifest with checksums
-4. Atomic upload to versioned paths, updates latest.json last
+This module is now an adapter over the internal `local_h5` components:
 
-Usage:
-    modal run modal_app/local_area.py --branch=main --num-workers=8
+1. Resolve concrete US publish requests from `USAreaCatalog`
+2. Reconcile the staging run directory against the publish fingerprint
+3. Partition request work across Modal workers
+4. Invoke the worker script with serialized request payloads
+5. Aggregate structured worker results, validation rows, and errors
+6. Stage manifests and uploads
+
+The one-area build logic no longer lives here. That now sits under
+`policyengine_us_data.calibration.local_h5`.
 """
 
 import heapq

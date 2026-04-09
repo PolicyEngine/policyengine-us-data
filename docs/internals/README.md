@@ -31,6 +31,14 @@ expansion.
 
 ______________________________________________________________________
 
+## Refactor notes
+
+| Note | Purpose |
+| ---- | ------- |
+| [`local_h5_refactor_status.md`](local_h5_refactor_status.md) | Records the landed `local_h5` architecture for area publishing, the thin adapter layers that still remain, and the work that was explicitly deferred in the H5 refactor PR. |
+
+______________________________________________________________________
+
 ## Pipeline orchestration reference
 
 The pipeline runs on [Modal](https://modal.com) via `modal_app/pipeline.py`. It chains five steps

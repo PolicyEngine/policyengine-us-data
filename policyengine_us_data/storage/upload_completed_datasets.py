@@ -101,6 +101,14 @@ def _dataset_upload_specs(
     ]
 
 
+def _enhanced_dataset_files() -> list[Path]:
+    return [
+        EnhancedCPS_2024.file_path,
+        clone_diagnostics_path(EnhancedCPS_2024.file_path),
+        STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
+    ]
+
+
 def _collect_existing_dataset_artifacts(
     require_enhanced_cps: bool = True,
 ) -> list[tuple[Path, str]]:
@@ -176,7 +184,6 @@ def _validate_dataset_artifacts(files_with_repo_paths: list[tuple[Path, str]]) -
     print("\nValidating datasets...")
     for file_path, _ in files_with_repo_paths:
         validate_dataset(file_path)
-
 
 def validate_dataset(file_path: Path) -> None:
     """Validate a dataset file before upload.
@@ -469,7 +476,7 @@ def validate_all_datasets():
 def validate_built_datasets(require_enhanced_cps: bool = True):
     required_files = [CPS_2024.file_path]
     if require_enhanced_cps:
-        required_files.append(EnhancedCPS_2024.file_path)
+        required_files.extend(_enhanced_dataset_files())
 
     for file_path in required_files:
         if not file_path.exists():

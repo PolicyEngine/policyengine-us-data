@@ -416,6 +416,14 @@
           "description": "QRF imputation for age, gender, and earnings split",
           "details": "Imputes AGEDP1-3, AGERANGE, EARNSPLIT, and GENDER from matched PUF demographic records",
           "source_file": "policyengine_us_data/datasets/puf/puf.py"
+        },
+        {
+          "id": "mortgage_convert",
+          "label": "Structural Mortgage Conversion",
+          "node_type": "process",
+          "description": "Convert deductible mortgage interest into structural mortgage balances, interest, and origination-year inputs",
+          "details": "Preserves current-law deductible mortgage and total interest deductions while deriving first-lien, secondary acquisition-debt, and non-mortgage residual interest inputs",
+          "source_file": "policyengine_us_data/utils/mortgage_interest.py"
         }
       ],
       "edges": [
@@ -534,6 +542,11 @@
         },
         {
           "source": "impute_puf_demographics",
+          "target": "mortgage_convert",
+          "edge_type": "data_flow"
+        },
+        {
+          "source": "mortgage_convert",
           "target": "out_puf",
           "edge_type": "produces_artifact",
           "label": "puf_2024.h5"
@@ -581,7 +594,7 @@
       "id": 2,
       "label": "Stage 2",
       "title": "Stage 2: Extended CPS (PUF Clone)",
-      "description": "Merge CPS + PUF via cloning, impute 64 income vars + 51 override vars via QRF",
+      "description": "Merge CPS + PUF via cloning, rematch clone features, QRF-impute incomes and CPS-only vars, then finalize Extended CPS inputs",
       "country": "us",
       "nodes": [
         {
@@ -603,6 +616,12 @@
           "description": "Census block populations"
         },
         {
+          "id": "in_scf_s2",
+          "label": "SCF_2022",
+          "node_type": "input",
+          "description": "From Stage 0 (mortgage-balance donor sample)"
+        },
+        {
           "id": "geo_assign_s2",
           "label": "Geography Assignment",
           "node_type": "process",
@@ -621,6 +640,12 @@
           "description": "fit_predict() for sequential imputation"
         },
         {
+          "id": "util_knn_s2",
+          "label": "sklearn NearestNeighbors",
+          "node_type": "utility",
+          "description": "Role-aware donor matching on standardized clone predictors"
+        },
+        {
           "id": "record_double",
           "label": "Record Doubling",
           "node_type": "process",
@@ -633,14 +658,6 @@
           "node_type": "process",
           "description": "64 income variables \u2014 training on PUF ~20K records, 7 demographic predictors",
           "source_file": "policyengine_us_data/calibration/puf_impute.py"
-        },
-        {
-          "id": "qrf_pass2",
-          "label": "QRF Pass 2: Override Imputation",
-          "node_type": "process",
-          "description": "Replace the PUF clone half with second-stage CPS-only QRF outputs",
-          "details": "Keeps original CPS donor values in the first half and maps person-level predictions onto each target entity before splicing",
-          "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
         },
         {
           "id": "retire_impute",
@@ -664,12 +681,44 @@
           "source_file": "policyengine_us_data/calibration/puf_impute.py"
         },
         {
+          "id": "clone_features",
+          "label": "Clone Feature Rematching",
+          "node_type": "process",
+          "description": "kNN donor rematch of clone-half sex, race, Hispanic status, and occupation fields",
+          "details": "Matches within tax-unit roles using demographics plus imputed income, then derives overtime and tipped-occupation inputs from donor occupations when available",
+          "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
+        },
+        {
           "id": "cps_only",
           "label": "CPS-Only Variable Re-imputation",
           "node_type": "process",
           "description": "Second-stage QRF for CPS-only transfers, SPM, medical, hours, ORG, retirement, and prior-year inputs",
           "details": "Trains on CPS persons and predicts clone-half values from demographics plus PUF-imputed income, then applies retirement and ORG domain constraints",
           "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
+        },
+        {
+          "id": "qrf_pass2",
+          "label": "QRF Pass 2: Override Imputation",
+          "node_type": "process",
+          "description": "Replace the PUF clone half with second-stage CPS-only QRF outputs",
+          "details": "Keeps original CPS donor values in the first half, maps person-level predictions onto each target entity, and rebuilds capped childcare on the clone half",
+          "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
+        },
+        {
+          "id": "mortgage_hints",
+          "label": "Mortgage Balance Hint Imputation",
+          "node_type": "process",
+          "description": "Impute tax-unit mortgage balance hints from SCF donor balances",
+          "details": "Fits a weighted QRF on SCF mortgage holders, predicts first-lien and secondary acquisition-debt balance hints, and enforces conservative nonnegative ordering",
+          "source_file": "policyengine_us_data/utils/mortgage_interest.py"
+        },
+        {
+          "id": "mortgage_convert",
+          "label": "Structural Mortgage Conversion",
+          "node_type": "process",
+          "description": "Convert deductible mortgage interest into structural mortgage balances, interest, and origination-year inputs",
+          "details": "Preserves current-law deductible mortgage and total interest deductions while deriving first-lien, secondary acquisition-debt, and non-mortgage residual interest inputs",
+          "source_file": "policyengine_us_data/utils/mortgage_interest.py"
         },
         {
           "id": "formula_drop",
@@ -717,16 +766,11 @@
         },
         {
           "source": "qrf_pass1",
-          "target": "qrf_pass2",
-          "edge_type": "data_flow"
-        },
-        {
-          "source": "qrf_pass2",
           "target": "retire_impute",
           "edge_type": "data_flow"
         },
         {
-          "source": "qrf_pass2",
+          "source": "qrf_pass1",
           "target": "weeks_impute",
           "edge_type": "data_flow"
         },
@@ -742,11 +786,37 @@
         },
         {
           "source": "ss_reconcile",
+          "target": "clone_features",
+          "edge_type": "data_flow"
+        },
+        {
+          "source": "clone_features",
           "target": "cps_only",
           "edge_type": "data_flow"
         },
         {
           "source": "cps_only",
+          "target": "qrf_pass2",
+          "edge_type": "data_flow"
+        },
+        {
+          "source": "qrf_pass2",
+          "target": "mortgage_hints",
+          "edge_type": "data_flow"
+        },
+        {
+          "source": "in_scf_s2",
+          "target": "mortgage_hints",
+          "edge_type": "data_flow",
+          "label": "SCF donor sample"
+        },
+        {
+          "source": "mortgage_hints",
+          "target": "mortgage_convert",
+          "edge_type": "data_flow"
+        },
+        {
+          "source": "mortgage_convert",
           "target": "formula_drop",
           "edge_type": "data_flow"
         },
@@ -762,12 +832,17 @@
         },
         {
           "source": "util_qrf_s2",
-          "target": "qrf_pass2",
+          "target": "cps_only",
           "edge_type": "uses_utility"
         },
         {
           "source": "util_qrf_s2",
-          "target": "cps_only",
+          "target": "mortgage_hints",
+          "edge_type": "uses_utility"
+        },
+        {
+          "source": "util_knn_s2",
+          "target": "clone_features",
           "edge_type": "uses_utility"
         }
       ],
@@ -2006,7 +2081,7 @@
     }
   ],
   "metadata": {
-    "total_nodes": 156,
-    "total_edges": 159
+    "total_nodes": 162,
+    "total_edges": 165
   }
 }

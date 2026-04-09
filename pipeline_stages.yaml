@@ -236,7 +236,8 @@ stages:
       - { source: preprocess_puf, target: simulate_qbi, edge_type: data_flow }
       - { source: simulate_qbi, target: impute_puf_demographics, edge_type: data_flow }
       - { source: in_demographics, target: impute_puf_demographics, edge_type: data_flow, label: "demographics_2015.csv" }
-      - { source: impute_puf_demographics, target: out_puf, edge_type: produces_artifact, label: "puf_2024.h5" }
+      - { source: impute_puf_demographics, target: mortgage_convert, edge_type: data_flow }
+      - { source: mortgage_convert, target: out_puf, edge_type: produces_artifact, label: "puf_2024.h5" }
       - { source: in_uprating, target: out_puf, edge_type: data_flow, label: "SOI growth rates" }
       # Utility edges
       - { source: util_seeded_rng, target: add_takeup, edge_type: uses_utility }
@@ -252,7 +253,7 @@ stages:
   - id: 2
     label: "Stage 2"
     title: "Stage 2: Extended CPS (PUF Clone)"
-    description: "Merge CPS + PUF via cloning, impute 64 income vars + 51 override vars via QRF"
+    description: "Merge CPS + PUF via cloning, rematch clone features, QRF-impute incomes and CPS-only vars, then finalize Extended CPS inputs"
     country: us
     extra_nodes:
       - id: in_cps_s2
@@ -267,6 +268,10 @@ stages:
         label: "block_cd_distributions.csv.gz"
         node_type: input
         description: "Census block populations"
+      - id: in_scf_s2
+        label: "SCF_2022"
+        node_type: input
+        description: "From Stage 0 (mortgage-balance donor sample)"
       - id: geo_assign_s2
         label: "Geography Assignment"
         node_type: process
@@ -279,6 +284,10 @@ stages:
         label: "microimpute QRF"
         node_type: utility
         description: "fit_predict() for sequential imputation"
+      - id: util_knn_s2
+        label: "sklearn NearestNeighbors"
+        node_type: utility
+        description: "Role-aware donor matching on standardized clone predictors"
     edges:
       - { source: in_cps_s2, target: geo_assign_s2, edge_type: data_flow, label: "CPS records" }
       - { source: in_blocks_s2, target: geo_assign_s2, edge_type: data_flow, label: "block populations" }
@@ -286,17 +295,22 @@ stages:
       - { source: in_cps_s2, target: record_double, edge_type: data_flow, label: "CPS records" }
       - { source: geo_assign_s2, target: record_double, edge_type: data_flow }
       - { source: record_double, target: qrf_pass1, edge_type: data_flow }
-      - { source: qrf_pass1, target: qrf_pass2, edge_type: data_flow }
-      - { source: qrf_pass2, target: retire_impute, edge_type: data_flow }
-      - { source: qrf_pass2, target: weeks_impute, edge_type: data_flow }
+      - { source: qrf_pass1, target: retire_impute, edge_type: data_flow }
+      - { source: qrf_pass1, target: weeks_impute, edge_type: data_flow }
       - { source: retire_impute, target: ss_reconcile, edge_type: data_flow }
       - { source: weeks_impute, target: ss_reconcile, edge_type: data_flow }
-      - { source: ss_reconcile, target: cps_only, edge_type: data_flow }
-      - { source: cps_only, target: formula_drop, edge_type: data_flow }
+      - { source: ss_reconcile, target: clone_features, edge_type: data_flow }
+      - { source: clone_features, target: cps_only, edge_type: data_flow }
+      - { source: cps_only, target: qrf_pass2, edge_type: data_flow }
+      - { source: qrf_pass2, target: mortgage_hints, edge_type: data_flow }
+      - { source: in_scf_s2, target: mortgage_hints, edge_type: data_flow, label: "SCF donor sample" }
+      - { source: mortgage_hints, target: mortgage_convert, edge_type: data_flow }
+      - { source: mortgage_convert, target: formula_drop, edge_type: data_flow }
       - { source: formula_drop, target: out_ext, edge_type: produces_artifact }
       - { source: util_qrf_s2, target: qrf_pass1, edge_type: uses_utility }
-      - { source: util_qrf_s2, target: qrf_pass2, edge_type: uses_utility }
       - { source: util_qrf_s2, target: cps_only, edge_type: uses_utility }
+      - { source: util_qrf_s2, target: mortgage_hints, edge_type: uses_utility }
+      - { source: util_knn_s2, target: clone_features, edge_type: uses_utility }
 
   # ══════════════════════════════════════════════════════════════
   # Stage 3a: Enhanced CPS Reweighting (ECPS — deprecated)

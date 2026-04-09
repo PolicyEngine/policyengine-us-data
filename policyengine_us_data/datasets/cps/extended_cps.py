@@ -350,6 +350,14 @@ def _impute_clone_cps_features(
     return predictions
 
 
+@pipeline_node(PipelineNode(
+    id="clone_features",
+    label="Clone Feature Rematching",
+    node_type="process",
+    description="kNN donor rematch of clone-half sex, race, Hispanic status, and occupation fields",
+    details="Matches within tax-unit roles using demographics plus imputed income, then derives overtime and tipped-occupation inputs from donor occupations when available",
+    source_file="policyengine_us_data/datasets/cps/extended_cps.py",
+))
 def _splice_clone_feature_predictions(
     data: dict,
     predictions: pd.DataFrame,
@@ -755,7 +763,7 @@ def _apply_post_processing(predictions, X_test, time_period, data):
     label="QRF Pass 2: Override Imputation",
     node_type="process",
     description="Replace the PUF clone half with second-stage CPS-only QRF outputs",
-    details="Keeps original CPS donor values in the first half and maps person-level predictions onto each target entity before splicing",
+    details="Keeps original CPS donor values in the first half, maps person-level predictions onto each target entity, and rebuilds capped childcare on the clone half",
     source_file="policyengine_us_data/datasets/cps/extended_cps.py",
 ))
 def _splice_cps_only_predictions(

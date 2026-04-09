@@ -452,6 +452,20 @@ class TestGetStateUpratingFactors(unittest.TestCase):
         self.assertIn(6, result)
         self.assertIn(37, result)
 
+    def test_aca_ptc_2025_uses_2025_csv_factors(self):
+        b = UnifiedMatrixBuilder(db_uri=self.db_uri, time_period=2025)
+        result = b._load_aca_ptc_factors()
+
+        self.assertAlmostEqual(result[1]["tax_unit_count"], 2.224071097664744)
+        self.assertAlmostEqual(result[1]["aca_ptc"], 1.906890162228912)
+
+    def test_aca_ptc_pre_2024_uses_2024_csv_factors(self):
+        b = UnifiedMatrixBuilder(db_uri=self.db_uri, time_period=2023)
+        result = b._load_aca_ptc_factors()
+
+        self.assertAlmostEqual(result[1]["tax_unit_count"], 1.9559076545376564)
+        self.assertAlmostEqual(result[1]["aca_ptc"], 1.807148480812257)
+
     def test_non_aca_uses_national_factors(self):
         b = UnifiedMatrixBuilder(db_uri=self.db_uri, time_period=2024)
         df = pd.DataFrame(

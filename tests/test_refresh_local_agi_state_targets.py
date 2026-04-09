@@ -63,18 +63,34 @@ def test_build_local_agi_state_targets_uses_local_loss_format():
     dc_rows = refreshed[refreshed["GEO_NAME"] == "DC"]
     assert set(dc_rows["GEO_ID"]) == {"0400000US11"}
 
+    upper_mid_count = refreshed[
+        (refreshed["GEO_NAME"] == "AL")
+        & (refreshed["VARIABLE"] == "adjusted_gross_income/count")
+        & (refreshed["AGI_LOWER_BOUND"] == 500_000)
+        & (refreshed["AGI_UPPER_BOUND"] == 1_000_000)
+    ]
     top_count = refreshed[
         (refreshed["GEO_NAME"] == "AL")
         & (refreshed["VARIABLE"] == "adjusted_gross_income/count")
+        & (refreshed["AGI_LOWER_BOUND"] == 1_000_000)
         & np.isposinf(refreshed["AGI_UPPER_BOUND"])
+    ]
+    upper_mid_amount = refreshed[
+        (refreshed["GEO_NAME"] == "AL")
+        & (refreshed["VARIABLE"] == "adjusted_gross_income/amount")
+        & (refreshed["AGI_LOWER_BOUND"] == 500_000)
+        & (refreshed["AGI_UPPER_BOUND"] == 1_000_000)
     ]
     top_amount = refreshed[
         (refreshed["GEO_NAME"] == "AL")
         & (refreshed["VARIABLE"] == "adjusted_gross_income/amount")
+        & (refreshed["AGI_LOWER_BOUND"] == 1_000_000)
         & np.isposinf(refreshed["AGI_UPPER_BOUND"])
     ]
-    assert top_count["VALUE"].iat[0] == 50
-    assert top_amount["VALUE"].iat[0] == 18_000
+    assert upper_mid_count["VALUE"].iat[0] == 20
+    assert top_count["VALUE"].iat[0] == 30
+    assert upper_mid_amount["VALUE"].iat[0] == 7_000
+    assert top_amount["VALUE"].iat[0] == 11_000
 
 
 def test_refresh_local_agi_state_targets_writes_expected_csv(tmp_path, monkeypatch):
@@ -107,3 +123,12 @@ def test_tracked_agi_state_targets_have_complete_geo_ids():
         "adjusted_gross_income/count",
         "adjusted_gross_income/amount",
     }
+    assert set(tracked.groupby(["GEO_NAME", "VARIABLE"]).size()) == {10}
+    assert (
+        (tracked["AGI_LOWER_BOUND"] == 500_000)
+        & (tracked["AGI_UPPER_BOUND"] == 1_000_000)
+    ).any()
+    assert (
+        (tracked["AGI_LOWER_BOUND"] == 1_000_000)
+        & np.isposinf(tracked["AGI_UPPER_BOUND"])
+    ).any()

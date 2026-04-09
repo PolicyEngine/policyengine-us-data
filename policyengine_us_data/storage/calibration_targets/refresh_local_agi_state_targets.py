@@ -35,7 +35,8 @@ AGI_STUB_TO_BAND = {
     6: "$75,000 under $100,000",
     7: "$100,000 under $200,000",
     8: "$200,000 under $500,000",
-    9: "$500,000 or more",
+    9: "$500,000 under $1,000,000",
+    10: "$1,000,000 or more",
 }
 
 AGI_BOUNDS = {
@@ -47,7 +48,8 @@ AGI_BOUNDS = {
     "$75,000 under $100,000": (75_000, 100_000),
     "$100,000 under $200,000": (100_000, 200_000),
     "$200,000 under $500,000": (200_000, 500_000),
-    "$500,000 or more": (500_000, np.inf),
+    "$500,000 under $1,000,000": (500_000, 1_000_000),
+    "$1,000,000 or more": (1_000_000, np.inf),
 }
 
 STATE_ABBR_TO_FIPS = {
@@ -121,14 +123,6 @@ def _load_state_soi_raw(tax_year: int = LOCAL_STATE_SOI_TAX_YEAR) -> pd.DataFram
 
 def _base_state_frame(source_df: pd.DataFrame) -> pd.DataFrame:
     df = source_df.copy()
-    merged_top_tail = (
-        df[df["AGI_STUB"].isin([9, 10])]
-        .groupby("STATE", as_index=False)
-        .agg({"N1": "sum", "A00100": "sum"})
-        .assign(AGI_STUB=9)
-    )
-    df = df[~df["AGI_STUB"].isin([9, 10])]
-    df = pd.concat([df, merged_top_tail], ignore_index=True)
     df = df[df["AGI_STUB"] != 0].copy()
     df = df.loc[~df["STATE"].isin(NON_VOTING_STATES.union({"US"}))].copy()
     df["agi_bracket"] = df["AGI_STUB"].map(AGI_STUB_TO_BAND)

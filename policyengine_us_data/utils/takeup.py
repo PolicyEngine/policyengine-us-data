@@ -284,12 +284,6 @@ def compute_block_takeup_draws_for_entities(
     if entity_clone_indices is None:
         entity_clone_indices = np.zeros(n, dtype=np.int64)
 
-    # Iterate block groups first so draws stay stable within geography slices.
-    for block in np.unique(entity_blocks):
-        if block == "":
-            continue
-        blk_mask = entity_blocks == block
-
     # Draw per (hh_id, clone_idx) pair
     for hh_id in np.unique(entity_hh_ids):
         hh_mask = entity_hh_ids == hh_id
@@ -318,18 +312,17 @@ def compute_block_takeup_for_entities(
         entity_clone_ids,
     )
     rates = np.ones(len(entity_blocks), dtype=np.float64)
+    state_fips = np.zeros(len(entity_blocks), dtype=np.int32)
 
     for block in np.unique(entity_blocks):
         if block == "":
             continue
         blk_mask = entity_blocks == block
-        rates[blk_mask] = _resolve_rate(rate_or_dict, int(str(block)[:2]))
+        block_state_fips = int(str(block)[:2])
+        rates[blk_mask] = _resolve_rate(rate_or_dict, block_state_fips)
+        state_fips[blk_mask] = block_state_fips
 
-    group_keys = (
-        np.array([int(str(block)[:2]) for block in entity_blocks], dtype=np.int32)
-        if isinstance(rate_or_dict, dict)
-        else None
-    )
+    group_keys = state_fips if isinstance(rate_or_dict, dict) else None
     return assign_takeup_with_reported_anchors(
         draws,
         rates,

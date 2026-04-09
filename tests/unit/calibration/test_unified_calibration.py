@@ -134,6 +134,19 @@ class TestBlockSaltedDraws:
         )
         assert not np.array_equal(d1, d2)
 
+    def test_empty_blocks_do_not_crash_state_rate_takeup(self):
+        result = compute_block_takeup_for_entities(
+            "takes_up_medicaid_if_eligible",
+            {"NC": 0.9},
+            np.array(["", "370010001001001"]),
+            np.array([1, 2], dtype=np.int64),
+            np.array([0, 0], dtype=np.int64),
+        )
+
+        assert result.dtype == bool
+        assert len(result) == 2
+        assert result[0]
+
 
 class TestApplyBlockTakeupToArrays:
     """Verify apply_block_takeup_to_arrays returns correct

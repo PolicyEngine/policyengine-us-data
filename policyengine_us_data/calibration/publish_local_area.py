@@ -35,6 +35,7 @@ from policyengine_us_data.calibration.clone_and_assign import (
     assign_random_geography,
 )
 from policyengine_us_data.calibration.local_h5.contracts import AreaFilter
+from policyengine_us_data.calibration.local_h5.reindexing import EntityReindexer
 from policyengine_us_data.calibration.local_h5.selection import AreaSelector
 from policyengine_us_data.calibration.local_h5.source_dataset import (
     PolicyEngineDatasetReader,
@@ -296,7 +297,6 @@ def build_h5(
     time_period = source_snapshot.time_period
     household_ids = source_snapshot.household_ids
     n_hh = source_snapshot.n_households
-    entity_graph = source_snapshot.entity_graph
     variable_provider = source_snapshot.variable_provider
 
     weight_matrix = CloneWeightMatrix.from_vector(weights, n_hh)
@@ -339,81 +339,19 @@ def build_h5(
     print(f"Active clones: {n_clones:,}")
     print(f"Total weight: {clone_weights.sum():,.0f}")
 
-    # === Build clone index arrays ===
-    hh_clone_idx = active_hh
+    # === Build clone index arrays and output IDs ===
+    reindexed = EntityReindexer().reindex(source_snapshot, selection)
 
-    persons_per_clone = np.array(
-        [len(entity_graph.hh_to_persons.get(int(h), ())) for h in active_hh]
-    )
-    person_parts = [
-        np.asarray(entity_graph.hh_to_persons.get(int(h), ()), dtype=np.int64)
-        for h in active_hh
-    ]
-    person_clone_idx = (
-        np.concatenate(person_parts) if person_parts else np.array([], dtype=np.int64)
-    )
-
-    entity_clone_idx = {}
-    entities_per_clone = {}
-    for ek in SUB_ENTITIES:
-        epc = np.array(
-            [len(entity_graph.hh_to_entity[ek].get(int(h), ())) for h in active_hh]
-        )
-        entities_per_clone[ek] = epc
-        parts = [
-            np.asarray(
-                entity_graph.hh_to_entity[ek].get(int(h), ()),
-                dtype=np.int64,
-            )
-            for h in active_hh
-        ]
-        entity_clone_idx[ek] = (
-            np.concatenate(parts) if parts else np.array([], dtype=np.int64)
-        )
+    hh_clone_idx = reindexed.household_source_indices
+    person_clone_idx = reindexed.person_source_indices
+    entity_clone_idx = reindexed.entity_source_indices
+    persons_per_clone = reindexed.persons_per_clone
+    entities_per_clone = reindexed.entities_per_clone
 
     n_persons = len(person_clone_idx)
     print(f"Cloned persons: {n_persons:,}")
     for ek in SUB_ENTITIES:
         print(f"Cloned {ek}s: {len(entity_clone_idx[ek]):,}")
-
-    # === Build new entity IDs and cross-references ===
-    new_hh_ids = np.arange(n_clones, dtype=np.int32)
-    new_person_ids = np.arange(n_persons, dtype=np.int32)
-    new_person_hh_ids = np.repeat(new_hh_ids, persons_per_clone)
-
-    new_entity_ids = {}
-    new_person_entity_ids = {}
-    clone_ids_for_persons = np.repeat(
-        np.arange(n_clones, dtype=np.int64), persons_per_clone
-    )
-
-    for ek in SUB_ENTITIES:
-        n_ents = len(entity_clone_idx[ek])
-        new_entity_ids[ek] = np.arange(n_ents, dtype=np.int32)
-
-        old_eids = entity_graph.entity_id_arrays[ek][entity_clone_idx[ek]].astype(
-            np.int64
-        )
-        clone_ids_e = np.repeat(
-            np.arange(n_clones, dtype=np.int64),
-            entities_per_clone[ek],
-        )
-
-        offset = int(old_eids.max()) + 1 if len(old_eids) > 0 else 1
-        entity_keys = clone_ids_e * offset + old_eids
-
-        sorted_order = np.argsort(entity_keys)
-        sorted_keys = entity_keys[sorted_order]
-        sorted_new = new_entity_ids[ek][sorted_order]
-
-        p_old_eids = entity_graph.person_entity_id_arrays[ek][
-            person_clone_idx
-        ].astype(np.int64)
-        person_keys = clone_ids_for_persons * offset + p_old_eids
-
-        positions = np.searchsorted(sorted_keys, person_keys)
-        positions = np.clip(positions, 0, len(sorted_keys) - 1)
-        new_person_entity_ids[ek] = sorted_new[positions]
 
     # === Derive geography from blocks (dedup optimization) ===
     print("Deriving geography from blocks...")
@@ -492,17 +430,17 @@ def build_h5(
     print(f"Variables cloned: {variables_saved}")
 
     # === Override entity IDs ===
-    data["household_id"] = {time_period: new_hh_ids}
-    data["person_id"] = {time_period: new_person_ids}
+    data["household_id"] = {time_period: reindexed.new_household_ids}
+    data["person_id"] = {time_period: reindexed.new_person_ids}
     data["person_household_id"] = {
-        time_period: new_person_hh_ids,
+        time_period: reindexed.new_person_household_ids,
     }
     for ek in SUB_ENTITIES:
         data[f"{ek}_id"] = {
-            time_period: new_entity_ids[ek],
+            time_period: reindexed.new_entity_ids[ek],
         }
         data[f"person_{ek}_id"] = {
-            time_period: new_person_entity_ids[ek],
+            time_period: reindexed.new_person_entity_ids[ek],
         }
 
     # === Override weights ===
@@ -592,7 +530,7 @@ def build_h5(
 
     new_spm_thresholds = calculate_spm_thresholds_vectorized(
         person_ages=person_ages,
-        person_spm_unit_ids=new_person_entity_ids["spm_unit"],
+        person_spm_unit_ids=reindexed.new_person_entity_ids["spm_unit"],
         spm_unit_tenure_types=spm_tenure_cloned,
         spm_unit_geoadj=spm_unit_geoadj,
         year=time_period,

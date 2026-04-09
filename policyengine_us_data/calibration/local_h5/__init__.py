@@ -20,6 +20,7 @@ from .fingerprinting import (
     FingerprintRecord,
     FingerprintService,
 )
+from .reindexing import EntityReindexer, ReindexedEntities
 from .selection import AreaSelector, CloneSelection
 from .partitioning import partition_weighted_work_items, work_item_key
 from .package_geography import (
@@ -51,6 +52,7 @@ __all__ = [
     "CloneWeightMatrix",
     "EntityGraph",
     "EntityGraphExtractor",
+    "EntityReindexer",
     "FingerprintComponents",
     "FingerprintInputs",
     "FingerprintRecord",
@@ -60,6 +62,7 @@ __all__ = [
     "PolicyEngineDatasetReader",
     "PolicyEngineVariableArrayProvider",
     "PublishingInputBundle",
+    "ReindexedEntities",
     "SourceDatasetSnapshot",
     "ValidationIssue",
     "ValidationPolicy",

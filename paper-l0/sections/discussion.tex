@@ -7,6 +7,8 @@ The $\lambda_{L_0}$ parameter provides a continuous sparsity-accuracy dial. At o
 
 This trade-off does not exist in classical calibration methods. IPF and GREG produce a single set of weights without sparsity control. To reduce dataset size, researchers must discard records post hoc or apply ad hoc thresholding---neither of which jointly optimizes accuracy and sparsity. The Hard Concrete gate provides a principled mechanism for this joint optimization, with $\lambda_{L_0}$ serving as the researcher's preference parameter over the Pareto frontier.
 
+This feature also broadens the method's practical role. The local preset yields area-specific unit-record files that resemble synthetic spatial microdata, while remaining anchored in observed survey households, model-based enhancements, and calibrated administrative totals. The paper's empirical evaluation remains focused on calibration baselines, but the resulting datasets are relevant to some of the same downstream use cases as synthetic-population workflows.
+
 \subsection{Computational cost}
 
 The pipeline runs on Modal, a cloud compute platform, using T4 GPUs for the optimization step. Stage 1 (clone creation and imputation) requires approximately 2--3 hours of CPU time. Stage 2 (matrix construction) requires approximately 2--3 hours across parallel workers, dominated by running \policyengine{} simulations for each of the 51 state-level configurations. Stage 3 (optimization) requires approximately 30--60 minutes of GPU time for the national preset (4,000 epochs) and 5--15 minutes for the local preset (1,000 epochs). Stage 4 (H5 assembly) requires approximately 4--5 hours across parallel workers for all 488 (436 CDs, 50 states plus DC, NYC and a national) H5 builds.

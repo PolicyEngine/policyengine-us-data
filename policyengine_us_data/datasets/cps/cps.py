@@ -494,6 +494,7 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
 
     cps["weekly_hours_worked"] = person.HRSWK
     cps["hours_worked_last_week"] = person.A_HRS1
+    cps["weeks_worked"] = np.clip(person.WKSWORK, 0, 52)
 
     cps["taxable_interest_income"] = person.INT_VAL * (p["taxable_interest_fraction"])
     cps["tax_exempt_interest_income"] = person.INT_VAL * (

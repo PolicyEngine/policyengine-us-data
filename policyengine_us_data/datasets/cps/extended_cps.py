@@ -26,6 +26,12 @@ from policyengine_us_data.utils.retirement_limits import (
 
 logger = logging.getLogger(__name__)
 
+# Census SPM technical documentation, "SPM Work Expense Values".
+# These are weekly work expense amounts applied to each adult earner.
+SPM_WEEKLY_WORK_EXPENSE_BY_YEAR = {
+    2024: 41.17,
+}
+
 
 def _supports_structural_mortgage_inputs() -> bool:
     return has_policyengine_us_variables(*STRUCTURAL_MORTGAGE_VARIABLES)
@@ -325,69 +331,101 @@ _SS_SUBCOMPONENT_VARS = {
 }
 
 
-def derive_clone_capped_childcare_expenses(
-    donor_pre_subsidy: np.ndarray,
-    donor_capped: np.ndarray,
-    clone_pre_subsidy: np.ndarray,
+def _get_spm_weekly_work_expense(year: int) -> float:
+    try:
+        return SPM_WEEKLY_WORK_EXPENSE_BY_YEAR[year]
+    except KeyError as exc:
+        raise ValueError(
+            f"No Census SPM weekly work expense value configured for {year}"
+        ) from exc
+
+
+def _calculate_clone_work_expenses(
     clone_person_data: pd.DataFrame,
     clone_spm_unit_ids: np.ndarray,
 ) -> np.ndarray:
-    """Derive clone-half capped childcare from clone inputs.
+    clone_spm_unit_ids = np.asarray(clone_spm_unit_ids)
+    if clone_person_data.empty:
+        return np.zeros(len(clone_spm_unit_ids), dtype=float)
+
+    adult_earners = clone_person_data.loc[
+        (clone_person_data["age"] >= 18) & (clone_person_data["earnings"] > 0),
+        ["spm_unit_id", "weeks_worked"],
+    ].copy()
+    if adult_earners.empty:
+        return np.zeros(len(clone_spm_unit_ids), dtype=float)
+
+    adult_earners["weeks_worked"] = adult_earners["weeks_worked"].clip(
+        lower=0, upper=52
+    )
+    return (
+        adult_earners.groupby("spm_unit_id")["weeks_worked"]
+        .sum()
+        .reindex(
+            clone_spm_unit_ids,
+            fill_value=0.0,
+        )
+        .to_numpy(dtype=float)
+    )
+
+
+def _calculate_clone_lower_earner_caps(
+    clone_person_data: pd.DataFrame,
+    clone_spm_unit_ids: np.ndarray,
+) -> np.ndarray:
+    clone_spm_unit_ids = np.asarray(clone_spm_unit_ids)
+    if clone_person_data.empty:
+        return np.zeros(len(clone_spm_unit_ids), dtype=float)
+
+    head_or_spouse = clone_person_data.loc[
+        clone_person_data["is_parent_proxy"].astype(bool),
+        ["spm_unit_id", "earnings"],
+    ].copy()
+    if head_or_spouse.empty:
+        return np.zeros(len(clone_spm_unit_ids), dtype=float)
+
+    head_or_spouse["earnings"] = head_or_spouse["earnings"].clip(lower=0.0)
+    lower_earner_caps = head_or_spouse.groupby("spm_unit_id")["earnings"].agg(
+        lambda values: float(values.min()) if len(values) > 1 else float(values.iloc[0])
+    )
+    return lower_earner_caps.reindex(
+        clone_spm_unit_ids,
+        fill_value=0.0,
+    ).to_numpy(dtype=float)
+
+
+def derive_clone_capped_childcare_expenses(
+    clone_pre_subsidy: np.ndarray,
+    clone_person_data: pd.DataFrame,
+    clone_spm_unit_ids: np.ndarray,
+    time_period: int,
+) -> np.ndarray:
+    """Derive clone-half capped work and childcare expenses from clone inputs.
 
     The CPS provides both pre-subsidy childcare and the SPM-specific
-    capped childcare deduction. For the clone half, we impute only the
-    pre-subsidy amount, then deterministically rebuild the capped amount
-    instead of letting a second QRF predict it independently.
-
-    We preserve the donor's observed capping share while also respecting
-    the clone's own earnings cap. This keeps the clone-half value
-    consistent with pre-subsidy childcare and avoids impossible outputs
-    such as capped childcare exceeding pre-subsidy childcare.
+    capped work-and-childcare deduction. For the clone half, we impute
+    only the pre-subsidy childcare amount, then deterministically rebuild
+    the capped value using the Census SPM rule:
+    work expenses plus childcare, capped at the lower earner's earnings
+    for the reference person and spouse/partner.
     """
 
-    donor_pre_subsidy = np.asarray(donor_pre_subsidy, dtype=float)
-    donor_capped = np.asarray(donor_capped, dtype=float)
     clone_pre_subsidy = np.asarray(clone_pre_subsidy, dtype=float)
-    clone_spm_unit_ids = np.asarray(clone_spm_unit_ids)
-
-    donor_cap_share = np.divide(
-        donor_capped,
-        donor_pre_subsidy,
-        out=np.zeros_like(donor_capped, dtype=float),
-        where=donor_pre_subsidy > 0,
+    weekly_work_expense = _get_spm_weekly_work_expense(time_period)
+    annual_work_expenses = (
+        _calculate_clone_work_expenses(
+            clone_person_data=clone_person_data,
+            clone_spm_unit_ids=clone_spm_unit_ids,
+        )
+        * weekly_work_expense
     )
-    donor_cap_share = np.clip(donor_cap_share, 0.0, 1.0)
-    capped_from_share = np.maximum(clone_pre_subsidy, 0.0) * donor_cap_share
+    lower_earner_cap = _calculate_clone_lower_earner_caps(
+        clone_person_data=clone_person_data,
+        clone_spm_unit_ids=clone_spm_unit_ids,
+    )
 
-    if clone_person_data.empty:
-        earnings_cap = np.zeros(len(clone_spm_unit_ids), dtype=float)
-    else:
-        eligible = clone_person_data["is_parent_proxy"].astype(bool)
-        parent_rows = clone_person_data.loc[
-            eligible, ["spm_unit_id", "age", "earnings"]
-        ].copy()
-        if parent_rows.empty:
-            earnings_cap = np.zeros(len(clone_spm_unit_ids), dtype=float)
-        else:
-            parent_rows["earnings"] = parent_rows["earnings"].clip(lower=0.0)
-            parent_rows["age_rank"] = parent_rows.groupby("spm_unit_id")["age"].rank(
-                method="first", ascending=False
-            )
-            top_two = parent_rows[parent_rows["age_rank"] <= 2].sort_values(
-                ["spm_unit_id", "age_rank"]
-            )
-            earnings_cap_by_unit = top_two.groupby("spm_unit_id")["earnings"].agg(
-                lambda values: (
-                    float(values.iloc[0])
-                    if len(values) == 1
-                    else float(np.minimum(values.iloc[0], values.iloc[1]))
-                )
-            )
-            earnings_cap = earnings_cap_by_unit.reindex(
-                clone_spm_unit_ids, fill_value=0.0
-            ).to_numpy(dtype=float)
-
-    return np.minimum(capped_from_share, earnings_cap)
+    combined_expenses = np.maximum(clone_pre_subsidy, 0.0) + annual_work_expenses
+    return np.minimum(combined_expenses, lower_earner_cap)
 
 
 def _rebuild_clone_capped_childcare_expenses(
@@ -421,26 +459,19 @@ def _rebuild_clone_capped_childcare_expenses(
                 data["employment_income"][time_period][n_persons_half:]
                 + data["self_employment_income"][time_period][n_persons_half:]
             ),
+            "weeks_worked": data["weeks_worked"][time_period][n_persons_half:],
         }
     )
-
-    donor_pre_subsidy = data["spm_unit_pre_subsidy_childcare_expenses"][time_period][
-        :n_spm_units_half
-    ]
-    donor_capped = data["spm_unit_capped_work_childcare_expenses"][time_period][
-        :n_spm_units_half
-    ]
     clone_pre_subsidy = data["spm_unit_pre_subsidy_childcare_expenses"][time_period][
         n_spm_units_half:
     ]
     clone_spm_unit_ids = data["spm_unit_id"][time_period][n_spm_units_half:]
 
     return derive_clone_capped_childcare_expenses(
-        donor_pre_subsidy=donor_pre_subsidy,
-        donor_capped=donor_capped,
         clone_pre_subsidy=clone_pre_subsidy,
         clone_person_data=clone_person_data,
         clone_spm_unit_ids=clone_spm_unit_ids,
+        time_period=time_period,
     )
 
 

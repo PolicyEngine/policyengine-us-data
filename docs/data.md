@@ -5,13 +5,14 @@ sources.
 
 ## Data vintages
 
-| Dataset | Vintage | Notes | | ------------------- | ----------------------- |
----------------------------------------------------------------------- | | CPS ASEC | 2024 (income
-year 2023) | Base microdata; pipeline ages values to target policy year | | IRS PUF | 2015 |
-Pipeline ages values to target policy year using income growth indices | | ACS | 2022 | Provides
-rent and real estate tax imputation targets | | SCF | 2022 | Provides wealth and debt variable
-imputation targets | | SIPP | 2023 | Provides tip income and asset imputation targets | |
-Calibration targets | Primarily 2023–2024 | Varies by source; see calibration data sources below |
+| Dataset             | Vintage                 | Notes                                                                  |
+| ------------------- | ----------------------- | ---------------------------------------------------------------------- |
+| CPS ASEC            | 2024 (income year 2023) | Base microdata; pipeline ages values to target policy year             |
+| IRS PUF             | 2015                    | Pipeline ages values to target policy year using income growth indices |
+| ACS                 | 2022                    | Provides rent and real estate tax imputation targets                   |
+| SCF                 | 2022                    | Provides wealth and debt variable imputation targets                   |
+| SIPP                | 2023                    | Provides tip income and asset imputation targets                       |
+| Calibration targets | Primarily 2023–2024     | Varies by source; see calibration data sources below                   |
 
 ## Primary Data Sources
 

@@ -226,11 +226,11 @@ variables silently match nothing.
 
 ### Fields
 
-| Field | Required | Values | Description | | ----------------- | -------- |
----------------------------------------- | ---------------------------------- | | `variable` | Yes |
-Any variable name in `target_overview` | The calibration target variable | | `geo_level` | Yes |
-`national`, `state`, `district` | Geographic aggregation level | | `domain_variable` | No | Any
-domain variable in `target_overview` | Narrows match to a specific domain |
+| Field             | Required | Values                                   | Description                        |
+| ----------------- | -------- | ---------------------------------------- | ---------------------------------- |
+| `variable`        | Yes      | Any variable name in `target_overview`   | The calibration target variable    |
+| `geo_level`       | Yes      | `national`, `state`, `district`          | Geographic aggregation level       |
+| `domain_variable` | No       | Any domain variable in `target_overview` | Narrows match to a specific domain |
 
 ### Default config
 
@@ -271,45 +271,53 @@ ORDER BY variable, geo_level;
 
 ### Core flags
 
-| Flag | Default | Description | | ---------------- | ---------------------------------------------
-| ---------------------------------------------- | | `--dataset` |
-`storage/stratified_extended_cps_2024.h5` | Path to CPS h5 file | | `--db-path` |
-`storage/calibration/policy_data.db` | Path to target database | | `--output` |
-`storage/calibration/calibration_weights.npy` | Weight output path | | `--puf-dataset` | None | Path
-to PUF h5 (enables PUF cloning) | | `--preset` | `local` | L0 preset: `local` (1e-8) or `national`
-(1e-4) | | `--lambda-l0` | None | Custom L0 penalty (overrides `--preset`) | | `--epochs` | 100 |
-Training epochs | | `--device` | `cpu` | `cpu` or `cuda` | | `--n-clones` | 430 | Number of dataset
-clones | | `--seed` | 42 | Random seed for geography assignment | | `--national` | False | Use
-national preset (λ_L0=1e-4, ~50K records) | | `--workers` | 1 | Parallel workers for per-state
-precomputation | | `--county-level` | False | Include county-level targets (slower) |
+| Flag             | Default                                       | Description                                    |
+| ---------------- | --------------------------------------------- | ---------------------------------------------- |
+| `--dataset`      | `storage/stratified_extended_cps_2024.h5`     | Path to CPS h5 file                            |
+| `--db-path`      | `storage/calibration/policy_data.db`          | Path to target database                        |
+| `--output`       | `storage/calibration/calibration_weights.npy` | Weight output path                             |
+| `--puf-dataset`  | None                                          | Path to PUF h5 (enables PUF cloning)           |
+| `--preset`       | `local`                                       | L0 preset: `local` (1e-8) or `national` (1e-4) |
+| `--lambda-l0`    | None                                          | Custom L0 penalty (overrides `--preset`)       |
+| `--epochs`       | 100                                           | Training epochs                                |
+| `--device`       | `cpu`                                         | `cpu` or `cuda`                                |
+| `--n-clones`     | 430                                           | Number of dataset clones                       |
+| `--seed`         | 42                                            | Random seed for geography assignment           |
+| `--national`     | False                                         | Use national preset (λ_L0=1e-4, ~50K records)  |
+| `--workers`      | 1                                             | Parallel workers for per-state precomputation  |
+| `--county-level` | False                                         | Include county-level targets (slower)          |
 
 ### Target selection
 
-| Flag | Default | Description | | ------------------------ | ------- |
------------------------------------------ | | `--target-config` | None | Path to YAML exclusion
-config | | `--domain-variables` | None | Comma-separated domain filter (SQL-level) | |
-`--hierarchical-domains` | None | Domains for hierarchical uprating |
+| Flag                     | Default | Description                               |
+| ------------------------ | ------- | ----------------------------------------- |
+| `--target-config`        | None    | Path to YAML exclusion config             |
+| `--domain-variables`     | None    | Comma-separated domain filter (SQL-level) |
+| `--hierarchical-domains` | None    | Domains for hierarchical uprating         |
 
 ### Checkpoint flags
 
-| Flag | Default | Description | | ------------------ | -------------------------- |
--------------------------------------------------------------------------------------- | |
-`--build-only` | False | Build matrix, save package, skip fitting | | `--package-path` | None | Load
-pre-built package (uploads to Modal volume automatically when using Modal runner) | |
-`--package-output` | Auto (when `--build-only`) | Where to save package |
+| Flag               | Default                    | Description                                                                            |
+| ------------------ | -------------------------- | -------------------------------------------------------------------------------------- |
+| `--build-only`     | False                      | Build matrix, save package, skip fitting                                               |
+| `--package-path`   | None                       | Load pre-built package (uploads to Modal volume automatically when using Modal runner) |
+| `--package-output` | Auto (when `--build-only`) | Where to save package                                                                  |
 
 ### Hyperparameter flags
 
-| Flag | Default | Junkyard value | Description | | ----------------- | ------- | -------------- |
-------------------------------------------- | | `--beta` | 0.35 | 0.65 | L0 gate temperature (higher
-= softer gates) | | `--lambda-l2` | 1e-12 | 1e-8 | L2 regularization on weights | |
-`--learning-rate` | 0.15 | 0.15 | Optimizer learning rate |
+| Flag              | Default | Junkyard value | Description                                 |
+| ----------------- | ------- | -------------- | ------------------------------------------- |
+| `--beta`          | 0.35    | 0.65           | L0 gate temperature (higher = softer gates) |
+| `--lambda-l2`     | 1e-12   | 1e-8           | L2 regularization on weights                |
+| `--learning-rate` | 0.15    | 0.15           | Optimizer learning rate                     |
 
 ### Skip flags
 
-| Flag | Description | | --------------------------- | ------------------------------- | |
-`--skip-puf` | Skip PUF clone + QRF imputation | | `--skip-source-impute` | Skip ACS/SIPP/SCF
-re-imputation | | `--skip-takeup-rerandomize` | Skip takeup re-randomization |
+| Flag                        | Description                     |
+| --------------------------- | ------------------------------- |
+| `--skip-puf`                | Skip PUF clone + QRF imputation |
+| `--skip-source-impute`      | Skip ACS/SIPP/SCF re-imputation |
+| `--skip-takeup-rerandomize` | Skip takeup re-randomization    |
 
 ## Calibration Package Format
 
@@ -385,20 +393,25 @@ For **national web app** (~50K records):
 
 ## Makefile Targets
 
-| Target | Description | | ------------------------------- |
--------------------------------------------------- | | `make calibrate` | Full local pipeline with
-target config | | `make calibrate-build` | Build-only mode (saves package, no fitting) | |
-`make build-matrices` | Build calibration matrices on Modal (CPU) | | `make calibrate-modal` | Fit
-county-level weights on Modal GPU | | `make calibrate-modal-national` | Fit national weights on
-Modal GPU (T4) | | `make calibrate-both` | Run county + national fits in parallel | |
-`make stage-h5s` | Build state/district/city H5s on Modal | | `make stage-national-h5` | Build
-national US.h5 on Modal | | `make stage-all-h5s` | Run both staging jobs in parallel | |
-`make promote` | Promote staged files to versioned HF paths | | `make pipeline` | Print sequential
-steps for full pipeline | | `make validate-staging` | Validate staged H5s against targets (states
-only) | | `make validate-staging-full` | Validate staged H5s (states + districts) | |
-`make upload-validation` | Push validation_results.csv to HF | | `make check-staging` | Smoke test:
-sum key variables across all state H5s | | `make check-sanity` | Quick structural integrity check on
-one state | | `make upload-calibration` | Upload weights, blocks, and logs to HF |
+| Target                          | Description                                        |
+| ------------------------------- | -------------------------------------------------- |
+| `make calibrate`                | Full local pipeline with target config             |
+| `make calibrate-build`          | Build-only mode (saves package, no fitting)        |
+| `make build-matrices`           | Build calibration matrices on Modal (CPU)          |
+| `make calibrate-modal`          | Fit county-level weights on Modal GPU              |
+| `make calibrate-modal-national` | Fit national weights on Modal GPU (T4)             |
+| `make calibrate-both`           | Run county + national fits in parallel             |
+| `make stage-h5s`                | Build state/district/city H5s on Modal             |
+| `make stage-national-h5`        | Build national US.h5 on Modal                      |
+| `make stage-all-h5s`            | Run both staging jobs in parallel                  |
+| `make promote`                  | Promote staged files to versioned HF paths         |
+| `make pipeline`                 | Print sequential steps for full pipeline           |
+| `make validate-staging`         | Validate staged H5s against targets (states only)  |
+| `make validate-staging-full`    | Validate staged H5s (states + districts)           |
+| `make upload-validation`        | Push validation_results.csv to HF                  |
+| `make check-staging`            | Smoke test: sum key variables across all state H5s |
+| `make check-sanity`             | Quick structural integrity check on one state      |
+| `make upload-calibration`       | Upload weights, blocks, and logs to HF             |
 
 ## Takeup Rerandomization
 

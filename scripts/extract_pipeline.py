@@ -234,6 +234,13 @@ def build_pipeline_json(output_path: Path = DEFAULT_OUTPUT):
                     file=sys.stderr,
                 )
                 errors += 1
+            if edge["target"] not in node_ids:
+                print(
+                    f"  ERROR: Edge target '{edge['target']}' not found in "
+                    f"stage {stage['id']} nodes",
+                    file=sys.stderr,
+                )
+                errors += 1
 
         for group in stage.get("groups", []):
             missing_group_nodes = [
@@ -245,13 +252,6 @@ def build_pipeline_json(output_path: Path = DEFAULT_OUTPUT):
                 print(
                     f"  ERROR: Group '{group['id']}' references missing nodes "
                     f"in stage {stage['id']}: {', '.join(missing_group_nodes)}",
-                    file=sys.stderr,
-                )
-                errors += 1
-            if edge["target"] not in node_ids:
-                print(
-                    f"  ERROR: Edge target '{edge['target']}' not found in "
-                    f"stage {stage['id']} nodes",
                     file=sys.stderr,
                 )
                 errors += 1

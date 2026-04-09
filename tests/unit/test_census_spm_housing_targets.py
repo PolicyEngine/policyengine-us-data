@@ -83,7 +83,7 @@ def test_extract_national_targets_uses_census_spm_housing_target(monkeypatch):
         },
     )
 
-    targets = etl_national_targets.extract_national_targets("dummy")
+    targets = etl_national_targets.extract_national_targets(2024)
     housing = next(
         target
         for target in targets["direct_sum_targets"]

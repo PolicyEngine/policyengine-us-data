@@ -435,6 +435,36 @@ def load_national_workbook_soi_targets(
         notes=f"Publication 1304 {agi_row['SOI table']} aggregate target",
     )
 
+    for variable in ("refundable_ctc", "non_refundable_ctc"):
+        target = get_national_geography_soi_target(variable, target_year)
+        stratum = _get_or_create_national_domain_stratum(
+            session,
+            national_filer_stratum_id,
+            variable,
+        )
+        notes = (
+            f"IRS geography-file national aggregate target "
+            f"(source year {target['source_year']})"
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="tax_unit_count",
+            period=target["source_year"],
+            value=target["count"],
+            source="IRS SOI",
+            notes=notes,
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable=variable,
+            period=target["source_year"],
+            value=target["amount"],
+            source="IRS SOI",
+            notes=notes,
+        )
+
     for pe_variable, soi_variable in WORKBOOK_NATIONAL_DOMAIN_TARGETS.items():
         amount_row = get_tracked_soi_row(soi_variable, target_year, count=False)
         count_row = get_tracked_soi_row(soi_variable, target_year, count=True)

@@ -230,3 +230,74 @@ def test_get_national_geography_soi_target_reads_amount_and_count(monkeypatch):
     assert non_refundable_target["source_year"] == 2022
     assert non_refundable_target["count"] == 37.0
     assert non_refundable_target["amount"] == 81_000.0
+
+
+def test_load_national_workbook_soi_targets_adds_split_ctc_geography_targets(
+    monkeypatch, tmp_path
+):
+    _, engine = _create_test_engine(tmp_path)
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.WORKBOOK_NATIONAL_DOMAIN_TARGETS",
+        {},
+    )
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.get_tracked_soi_row",
+        lambda variable, requested_year, **kwargs: pd.Series(
+            {
+                "Year": 2023,
+                "Value": 1_000_000.0,
+                "SOI table": "Table 1.1",
+            }
+        ),
+    )
+
+    geography_targets = {
+        "refundable_ctc": {
+            "source_year": 2022,
+            "count": 17.0,
+            "amount": 33_000.0,
+        },
+        "non_refundable_ctc": {
+            "source_year": 2022,
+            "count": 37.0,
+            "amount": 81_000.0,
+        },
+    }
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.get_national_geography_soi_target",
+        lambda variable, dataset_year: geography_targets[variable],
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+
+        load_national_workbook_soi_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            2024,
+        )
+        session.commit()
+
+        for variable, expected in geography_targets.items():
+            stratum = session.exec(
+                select(Stratum).where(
+                    Stratum.parent_stratum_id == national_filer_stratum.stratum_id,
+                    Stratum.notes == f"National filers with {variable} > 0",
+                )
+            ).first()
+            assert stratum is not None
+
+            targets = session.exec(
+                select(Target)
+                .where(
+                    Target.stratum_id == stratum.stratum_id,
+                    Target.period == expected["source_year"],
+                )
+                .order_by(Target.variable)
+            ).all()
+            assert {target.variable: target.value for target in targets} == {
+                "tax_unit_count": expected["count"],
+                variable: expected["amount"],
+            }

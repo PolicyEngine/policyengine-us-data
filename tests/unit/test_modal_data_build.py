@@ -1,5 +1,6 @@
 import importlib
 import sys
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 
@@ -88,3 +89,61 @@ def test_validate_and_maybe_upload_datasets_skips_upload_when_disabled(monkeypat
             {"TEST_ENV": "1"},
         ),
     ]
+
+
+def test_mirror_source_imputed_artifact_uploads_when_present(monkeypatch, tmp_path):
+    data_build = _load_data_build_module()
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+    source_imputed = artifacts_dir / "source_imputed_stratified_extended_cps.h5"
+    source_imputed.write_text("placeholder")
+
+    calls = []
+
+    def fake_mirror(stage_name, files, **kwargs):
+        calls.append((stage_name, files, kwargs))
+
+    fake_pipeline_artifacts = ModuleType(
+        "policyengine_us_data.utils.pipeline_artifacts"
+    )
+    fake_pipeline_artifacts.mirror_to_pipeline = fake_mirror
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us_data.utils.pipeline_artifacts",
+        fake_pipeline_artifacts,
+    )
+
+    data_build.mirror_source_imputed_artifact(artifacts_dir, run_id="run-123")
+
+    assert calls == [
+        (
+            "stage_4_source_imputed",
+            [source_imputed],
+            {"run_id": "run-123"},
+        )
+    ]
+
+
+def test_mirror_source_imputed_artifact_skips_when_missing(monkeypatch, tmp_path):
+    data_build = _load_data_build_module()
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+
+    calls = []
+
+    def fake_mirror(stage_name, files, **kwargs):
+        calls.append((stage_name, files, kwargs))
+
+    fake_pipeline_artifacts = ModuleType(
+        "policyengine_us_data.utils.pipeline_artifacts"
+    )
+    fake_pipeline_artifacts.mirror_to_pipeline = fake_mirror
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us_data.utils.pipeline_artifacts",
+        fake_pipeline_artifacts,
+    )
+
+    data_build.mirror_source_imputed_artifact(Path(artifacts_dir))
+
+    assert calls == []

@@ -261,6 +261,30 @@ def validate_and_maybe_upload_datasets(
         )
 
 
+def mirror_source_imputed_artifact(
+    artifacts_dir: Path,
+    *,
+    run_id: str = "",
+) -> None:
+    source_imputed_path = artifacts_dir / "source_imputed_stratified_extended_cps.h5"
+    if not source_imputed_path.exists():
+        return
+
+    from policyengine_us_data.utils.pipeline_artifacts import (
+        mirror_to_pipeline,
+    )
+
+    mirror_kwargs = {}
+    if run_id:
+        mirror_kwargs["run_id"] = run_id
+
+    mirror_to_pipeline(
+        "stage_4_source_imputed",
+        [source_imputed_path],
+        **mirror_kwargs,
+    )
+
+
 def run_script_with_checkpoint(
     script_path: str,
     output_files: str | list[str],
@@ -413,6 +437,9 @@ def build_datasets(
         checkpoint_volume.commit()
 
     env = os.environ.copy()
+    if run_id:
+        env["PIPELINE_RUN_ID"] = run_id
+        os.environ["PIPELINE_RUN_ID"] = run_id
 
     # Open persistent build log with provenance header
     commit = get_current_commit()
@@ -645,6 +672,8 @@ def build_datasets(
     si = artifacts_dir / "source_imputed_stratified_extended_cps_2024.h5"
     if si.exists():
         shutil.copy2(si, artifacts_dir / "source_imputed_stratified_extended_cps.h5")
+
+    mirror_source_imputed_artifact(artifacts_dir, run_id=run_id)
 
     shutil.copy2(
         "policyengine_us_data/storage/calibration/policy_data.db",

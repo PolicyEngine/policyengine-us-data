@@ -1,7 +1,6 @@
 """Tests for pipeline artifact utilities."""
 
 import re
-from pathlib import Path
 from unittest.mock import patch
 
 from policyengine_us_data.utils.pipeline_artifacts import (

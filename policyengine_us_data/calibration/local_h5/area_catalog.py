@@ -63,9 +63,14 @@ class USAreaCatalog:
         cds = tuple(str(cd) for cd in cds)
         districts = tuple(self._district_friendly_name(cd) for cd in cds)
         cds_per_state = Counter(district.split("-")[0] for district in districts)
+        states_with_cds = [
+            state_code
+            for state_code in self.state_codes.values()
+            if cds_per_state.get(state_code, 0) > 0
+        ]
 
         entries: list[USCatalogEntry] = []
-        for state_code in self.state_codes.values():
+        for state_code in states_with_cds:
             entries.append(
                 USCatalogEntry(
                     request=AreaBuildRequest(

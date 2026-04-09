@@ -94,10 +94,7 @@ class LocalAreaDatasetBuilder:
         )
 
         return LocalAreaBuildArtifacts(
-            payload=H5Payload(
-                variables=data,
-                attrs=cloned.attrs,
-            ),
+            payload=H5Payload(variables=data),
             selection=selection,
             reindexed=reindexed,
             time_period=time_period,

@@ -175,6 +175,14 @@ class PublishingInputBundle:
 
 @dataclass(frozen=True)
 class ValidationPolicy:
+    """Validation controls for H5 worker execution.
+
+    Only `enabled` is enforced today. The finer-grained failure and
+    sub-check flags are intentionally present as forward-compatible
+    contract fields, but they are not yet fully wired through the
+    validator implementations.
+    """
+
     enabled: bool = True
     fail_on_exception: bool = False
     fail_on_validation_failure: bool = False

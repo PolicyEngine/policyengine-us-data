@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Mapping
 
 import numpy as np
@@ -29,7 +29,6 @@ class VariableExportPolicy:
 @dataclass(frozen=True)
 class H5Payload:
     variables: Mapping[str, Mapping[int | str, np.ndarray]]
-    attrs: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def dataset_count(self) -> int:

@@ -129,6 +129,8 @@ These items were explicitly left out or only partially handled:
 2. Validator unification
    - per-area target validation is now structurally correct
    - national validation is still partly separate
+   - only `ValidationPolicy.enabled` is enforced today; the finer-grained
+     validation policy fields are present but not fully wired through
 
 3. Fingerprint schema simplification
    - clone count is now canonicalized from weights

@@ -205,8 +205,7 @@ def test_local_area_dataset_builder_builds_payload_and_injects_ids(monkeypatch):
             return H5Payload(
                 variables={
                     "source_income": {2024: np.asarray([100.0, 200.0])},
-                },
-                attrs={"origin": "fake"},
+                }
             )
 
     class FakeAugmenter:
@@ -280,7 +279,6 @@ def test_local_area_dataset_builder_builds_payload_and_injects_ids(monkeypatch):
         built.payload.variables["augmented"][2024],
         np.asarray([1, 1], dtype=np.int8),
     )
-    assert built.payload.attrs == {"origin": "fake"}
     assert selector.calls[0][2] == filters
     assert reindexer.calls[0] == (source, selection)
     assert cloner.calls[0][0] == source

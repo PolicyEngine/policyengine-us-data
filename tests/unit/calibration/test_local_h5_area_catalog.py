@@ -108,3 +108,15 @@ def test_us_area_catalog_constructs_national_request(monkeypatch):
     assert entry.request.validation_geo_level == "national"
     assert entry.request.validation_geographic_ids == ("US",)
     assert entry.weight == 1
+
+
+def test_us_area_catalog_skips_states_without_any_cds(monkeypatch):
+    _, area_catalog_module = _install_fake_package_hierarchy(monkeypatch)
+    USAreaCatalog = area_catalog_module.USAreaCatalog
+
+    catalog = USAreaCatalog()
+    entries = catalog.regional_entries_from_cds(["0101", "3607"])
+
+    state_ids = [e.request.area_id for e in entries if e.request.area_type == "state"]
+
+    assert state_ids == ["AL", "NY"]

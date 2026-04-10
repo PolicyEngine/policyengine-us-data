@@ -15,6 +15,11 @@ from policyengine_us_data.storage.calibration_targets.soi_metadata import (
 from policyengine_us_data.utils.census_spm import (
     build_census_spm_capped_housing_subsidy_target,
 )
+from policyengine_us_data.utils.cms_medicare import (
+    get_beneficiary_paid_medicare_part_b_premiums_notes,
+    get_beneficiary_paid_medicare_part_b_premiums_source,
+    get_beneficiary_paid_medicare_part_b_premiums_target,
+)
 from policyengine_us_data.utils.db import (
     DEFAULT_YEAR,
     etl_argparser,
@@ -155,9 +160,15 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         },
         {
             "variable": "medicare_part_b_premiums",
-            "value": 112e9,
-            "source": "CMS Medicare data",
-            "notes": "Medicare Part B premium payments",
+            "value": get_beneficiary_paid_medicare_part_b_premiums_target(
+                HARDCODED_YEAR
+            ),
+            "source": get_beneficiary_paid_medicare_part_b_premiums_source(
+                HARDCODED_YEAR
+            ),
+            "notes": get_beneficiary_paid_medicare_part_b_premiums_notes(
+                HARDCODED_YEAR
+            ),
             "year": HARDCODED_YEAR,
         },
         {

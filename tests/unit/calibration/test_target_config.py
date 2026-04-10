@@ -1,5 +1,7 @@
 """Tests for target config filtering in unified calibration."""
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -133,6 +135,76 @@ class TestLoadTargetConfig:
         config_file.write_text("")
         config = load_target_config(str(config_file))
         assert config["exclude"] == []
+
+    def test_training_config_includes_national_non_refundable_ctc_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "non_refundable_ctc",
+            "geo_level": "national",
+            "domain_variable": "non_refundable_ctc",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "national",
+            "domain_variable": "non_refundable_ctc",
+        } in include_rules
+
+    def test_training_config_includes_national_ctc_agi_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "refundable_ctc",
+            "geo_level": "national",
+            "domain_variable": "adjusted_gross_income,refundable_ctc",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "national",
+            "domain_variable": "adjusted_gross_income,refundable_ctc",
+        } in include_rules
+        assert {
+            "variable": "non_refundable_ctc",
+            "geo_level": "national",
+            "domain_variable": "adjusted_gross_income,non_refundable_ctc",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "national",
+            "domain_variable": "adjusted_gross_income,non_refundable_ctc",
+        } in include_rules
+
+    def test_training_config_includes_district_non_refundable_ctc_target(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "non_refundable_ctc",
+            "geo_level": "district",
+        } in include_rules
 
 
 class TestCalibrationPackageRoundTrip:

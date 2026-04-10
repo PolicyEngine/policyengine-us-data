@@ -1,3 +1,31 @@
+## [1.77.0] - 2026-04-10
+
+### Added
+
+- Added richer national CTC calibration and validation coverage by loading AGI-split refundable and nonrefundable CTC targets from IRS geography data, expanding CTC diagnostics to AGI-by-filing-status and child-composition tables, and reporting a canonical ARPA-style CTC reform in national H5 validation.
+
+
+## [1.76.0] - 2026-04-10
+
+### Added
+
+- Save calibration geography as a pipeline artifact, add ``--resume-from`` and checkpoint support for long-running calibration fits, and fix resume/artifact handling in the remote calibration pipeline. This also adds conservative CPS taxpayer-ID outputs (``has_tin``, ``has_valid_ssn``, and a temporary ``has_itin`` compatibility alias), plus string-valued constraint handling needed for ID-target calibration.
+
+
+## [1.75.8] - 2026-04-10
+
+### Fixed
+
+- Modeled Medicare Part B premiums from enrollment and premium schedules, netted a cycle-free MSP standard-premium offset, and documented the national Part B calibration target as an approximate beneficiary-paid out-of-pocket benchmark rather than gross CMS premium income.
+
+
+## [1.75.7] - 2026-04-10
+
+### Fixed
+
+- Split legacy national CTC calibration into separate refundable and nonrefundable IRS SOI amount and recipient-count targets, added DB-backed nonrefundable CTC targets for both national and unified district calibration, and fixed recursive package imports so database creation scripts and the national validation tooling can import cleanly in fresh environments. The national validator now also reports CTC totals and grouped diagnostics by AGI band and filing status, its advertised `--hf-path` mode now completes structural checks against published Hugging Face H5 artifacts, and CPS-derived datasets now emit `has_tin` plus a temporary `has_itin` compatibility alias derived from identification status.
+
+
 ## [1.75.6] - 2026-04-09
 
 ### Fixed

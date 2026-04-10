@@ -7,8 +7,11 @@ from policyengine_us_data.datasets.org import (
     build_org_receiver_frame,
 )
 from policyengine_us_data.datasets.org.org import (
+    CPS_BASIC_MONTHLY_ORG_COLUMNS,
     _build_union_priority_weights,
+    _load_cps_basic_org_month,
     _predict_union_coverage_from_bls_tables,
+    _select_cps_basic_org_columns,
     _transform_cps_basic_org_month,
 )
 
@@ -104,6 +107,87 @@ def test_transform_cps_basic_org_month_uses_primary_cps_fields():
     assert transformed["hourly_wage"].tolist() == [25.0, 20.0, 30.0]
     assert transformed["is_paid_hourly"].tolist() == [1.0, 0.0, 1.0]
     assert "is_union_member_or_covered" not in transformed.columns
+
+
+def test_select_cps_basic_org_columns_normalizes_case_and_order():
+    month_df = pd.DataFrame(
+        {
+            "hrmis": [4],
+            "GESTFIPS": [6],
+            "PRTAGE": [30],
+            "PESEX": [2],
+            "PTDTRACE": [1],
+            "PEHSPNON": [2],
+            "PWORWGT": [100.0],
+            "PTERNWA": [100000.0],
+            "PTERNHLY": [2500.0],
+            "PEERNHRY": [1],
+            "PEHRUSLT": [40.0],
+            "PRERELG": [1],
+            "PEMLR": [1],
+            "PEIO1COW": [1],
+        }
+    )
+
+    selected = _select_cps_basic_org_columns(month_df)
+
+    assert selected.columns.tolist() == CPS_BASIC_MONTHLY_ORG_COLUMNS
+    assert selected.iloc[0].to_dict() == {
+        "HRMIS": 4,
+        "gestfips": 6,
+        "prtage": 30,
+        "pesex": 2,
+        "ptdtrace": 1,
+        "pehspnon": 2,
+        "pworwgt": 100.0,
+        "pternwa": 100000.0,
+        "pternhly": 2500.0,
+        "peernhry": 1,
+        "pehruslt": 40.0,
+        "prerelg": 1,
+        "pemlr": 1,
+        "peio1cow": 1,
+    }
+
+
+def test_load_cps_basic_org_month_retries_after_transient_parser_failure(
+    monkeypatch,
+):
+    calls = []
+    month_df = pd.DataFrame(
+        {
+            "hrmis": [4],
+            "GESTFIPS": [6],
+            "PRTAGE": [30],
+            "PESEX": [2],
+            "PTDTRACE": [1],
+            "PEHSPNON": [2],
+            "PWORWGT": [100.0],
+            "PTERNWA": [100000.0],
+            "PTERNHLY": [2500.0],
+            "PEERNHRY": [1],
+            "PEHRUSLT": [40.0],
+            "PRERELG": [1],
+            "PEMLR": [1],
+            "PEIO1COW": [1],
+        }
+    )
+
+    def fake_read_csv(*args, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise ValueError("Usecols do not match columns")
+        return month_df
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org.pd.read_csv", fake_read_csv
+    )
+
+    loaded = _load_cps_basic_org_month(2024, "may", max_attempts=2)
+
+    assert len(calls) == 2
+    assert callable(calls[0]["usecols"])
+    assert loaded.columns.tolist() == CPS_BASIC_MONTHLY_ORG_COLUMNS
 
 
 def test_build_union_priority_weights_reflect_bls_demographics():

@@ -10,6 +10,7 @@ from policyengine_us_data.calibration.puf_impute import (
     DEMOGRAPHIC_PREDICTORS,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
+    _log_stratified_subsample,
     _stratified_subsample_index,
     puf_clone_dataset,
 )
@@ -77,6 +78,24 @@ class TestPufCloneDataset:
         household_ids = result["household_id"][2024]
         assert len(np.unique(person_ids)) == len(person_ids)
         assert len(np.unique(household_ids)) == len(household_ids)
+
+    def test_string_id_like_variables_are_duplicated_without_numeric_offset(self):
+        data = _make_mock_data(n_persons=20, n_households=5)
+        data["taxpayer_id_type"] = {
+            2024: np.array([b"VALID_SSN", b"NONE"] * 10, dtype="S9")
+        }
+        state_fips = np.array([1, 2, 36, 6, 48])
+
+        result = puf_clone_dataset(
+            data=data,
+            state_fips=state_fips,
+            time_period=2024,
+            skip_qrf=True,
+        )
+
+        values = result["taxpayer_id_type"][2024]
+        n = len(values) // 2
+        np.testing.assert_array_equal(values[:n], values[n:])
 
     def test_puf_half_weight_zero(self):
         data = _make_mock_data(n_persons=20, n_households=5)
@@ -173,3 +192,15 @@ class TestStratifiedSubsample:
         income = np.random.default_rng(0).normal(50000, 20000, size=50_000)
         idx = _stratified_subsample_index(income, target_n=10_000)
         assert np.all(idx[1:] >= idx[:-1])
+
+    def test_log_handles_grouped_currency_threshold(self, caplog):
+        threshold = np.float32(8.934329e7)
+        caplog.set_level(
+            "INFO",
+            logger="policyengine_us_data.calibration.puf_impute",
+        )
+
+        _log_stratified_subsample(484_015, 20_000, 0.5, threshold)
+
+        assert "Stratified PUF subsample: 484015 -> 20000 records" in caplog.text
+        assert f"${threshold:,.0f}" in caplog.text

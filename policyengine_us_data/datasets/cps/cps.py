@@ -25,15 +25,22 @@ from policyengine_us_data.datasets.org import (
     build_org_receiver_frame,
     predict_org_features,
 )
+from policyengine_us_data.utils.downsample import downsample_dataset_arrays
+from policyengine_us_data.utils.randomness import seeded_rng
+from policyengine_us_data.utils.identification import (
+    _store_identification_variables,
+)
 from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_treasury_tipped_occupation_code,
     derive_is_tipped_occupation,
 )
-from policyengine_us_data.utils.downsample import downsample_dataset_arrays
-from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     assign_takeup_with_reported_anchors,
     reported_subsidized_marketplace_by_tax_unit,
+)
+from policyengine_us_data.utils.policyengine import (
+    supports_medicare_enrollment_input,
+    supports_modeled_medicare_part_b_inputs,
 )
 
 
@@ -138,7 +145,7 @@ class CPS(Dataset):
         logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
         logging.info("Adding SSN card type")
-        add_ssn_card_type(
+        ssn_card_type = add_ssn_card_type(
             cps,
             person,
             spm_unit,
@@ -146,6 +153,13 @@ class CPS(Dataset):
             undocumented_target=13e6,
             undocumented_workers_target=8.3e6,
             undocumented_students_target=0.21 * 1.9e6,
+        )
+        logging.info("Adding taxpayer ID variables")
+        _store_identification_variables(
+            cps,
+            person,
+            ssn_card_type,
+            self.time_period,
         )
         logging.info("Adding family variables")
         add_spm_variables(self, cps, spm_unit)
@@ -831,7 +845,12 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     cps["health_insurance_premiums_without_medicare_part_b"] = person.PHIP_VAL
     cps["over_the_counter_health_expenses"] = person.POTC_VAL
     cps["other_medical_expenses"] = person.PMED_VAL
-    cps["medicare_part_b_premiums"] = person.PEMCPREM
+    if supports_medicare_enrollment_input():
+        cps["medicare_enrolled"] = person.MCARE == 1
+    if supports_modeled_medicare_part_b_inputs():
+        cps["medicare_part_b_premiums_reported"] = person.PEMCPREM
+    else:
+        cps["medicare_part_b_premiums"] = person.PEMCPREM
 
     # Get QBI simulation parameters ---
     yamlfilename = (
@@ -988,7 +1007,7 @@ def add_ssn_card_type(
     undocumented_target: float = 13e6,
     undocumented_workers_target: float = 8.3e6,
     undocumented_students_target: float = 0.21 * 1.9e6,
-) -> None:
+) -> np.ndarray:
     """
     Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.
     Codes:
@@ -1715,21 +1734,14 @@ def add_ssn_card_type(
     # Final write (all values now in ImmigrationStatus Enum)
     # Save as immigration_status_str since that's what PolicyEngine expects
     cps["immigration_status_str"] = immigration_status.astype("S")
-    # ============================================================================
-    # CONVERT TO STRING LABELS AND STORE
-    # ============================================================================
-
+    # Final population summary
+    print(f"\nFinal populations:")
     code_to_str = {
         0: "NONE",  # Likely undocumented immigrants
         1: "CITIZEN",  # US citizens
         2: "NON_CITIZEN_VALID_EAD",  # Non-citizens with work/study authorization
         3: "OTHER_NON_CITIZEN",  # Non-citizens with indicators of legal status
     }
-    ssn_card_type_str = pd.Series(ssn_card_type).map(code_to_str).astype("S").values
-    cps["ssn_card_type"] = ssn_card_type_str
-
-    # Final population summary
-    print(f"\nFinal populations:")
     for code, label in code_to_str.items():
         pop = np.sum(person_weights[ssn_card_type == code])
         print(f"  Code {code} ({label}): {pop:,.0f}")
@@ -1769,6 +1781,8 @@ def add_ssn_card_type(
 
     # Update documentation with actual numbers
     _update_documentation_with_numbers(log_df, DOCS_FOLDER)
+
+    return ssn_card_type
 
 
 def _update_documentation_with_numbers(log_df, docs_dir):

@@ -186,3 +186,99 @@ def test_build_ctc_diagnostic_tables_aggregates_weights_by_group():
     assert (
         by_filing_status.loc["Joint / surviving spouse", "non_refundable_ctc"] == 75.0
     )
+
+
+def test_build_ctc_diagnostic_tables_adds_ctc_composition_breakdowns():
+    frame = pd.DataFrame(
+        {
+            "adjusted_gross_income": [
+                12_000.0,
+                12_000.0,
+                80_000.0,
+                250_000.0,
+            ],
+            "filing_status": [
+                "SINGLE",
+                "HEAD_OF_HOUSEHOLD",
+                "JOINT",
+                "JOINT",
+            ],
+            "tax_unit_weight": [
+                1.0,
+                2.0,
+                3.0,
+                4.0,
+            ],
+            "ctc_qualifying_children": [
+                0.0,
+                1.0,
+                2.0,
+                3.0,
+            ],
+            "ctc_qualifying_children_under_6": [
+                0.0,
+                1.0,
+                1.0,
+                2.0,
+            ],
+            "ctc_qualifying_children_6_to_17": [
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+            ],
+            "ctc": [
+                0.0,
+                1_000.0,
+                4_000.0,
+                6_000.0,
+            ],
+            "refundable_ctc": [
+                0.0,
+                600.0,
+                2_500.0,
+                3_000.0,
+            ],
+            "non_refundable_ctc": [
+                0.0,
+                400.0,
+                1_500.0,
+                3_000.0,
+            ],
+        }
+    )
+
+    tables = build_ctc_diagnostic_tables(frame)
+
+    by_agi_and_status = tables["by_agi_band_and_filing_status"].set_index(
+        ["agi_band", "filing_status"]
+    )
+    assert by_agi_and_status.loc[("$10k-$25k", "Single"), "tax_unit_count"] == 1.0
+    assert (
+        by_agi_and_status.loc[
+            ("$10k-$25k", "Head of household"),
+            "ctc_recipient_count",
+        ]
+        == 2.0
+    )
+    assert (
+        by_agi_and_status.loc[
+            ("$75k-$100k", "Joint / surviving spouse"),
+            "ctc",
+        ]
+        == 12_000.0
+    )
+
+    by_child_count = tables["by_child_count"].set_index("group")
+    assert by_child_count.loc["0", "tax_unit_count"] == 1.0
+    assert by_child_count.loc["1", "ctc"] == 2_000.0
+    assert by_child_count.loc["2", "refundable_ctc"] == 7_500.0
+    assert by_child_count.loc["3+", "non_refundable_ctc"] == 12_000.0
+
+    by_child_age = tables["by_child_age"].set_index("group")
+    assert by_child_age.loc["Under 6", "tax_unit_count"] == 9.0
+    assert by_child_age.loc["Under 6", "ctc_qualifying_children"] == 13.0
+    assert by_child_age.loc["Under 6", "ctc_recipient_count"] == 9.0
+    assert by_child_age.loc["Age 6-17", "tax_unit_count"] == 7.0
+    assert by_child_age.loc["Age 6-17", "ctc_qualifying_children"] == 7.0
+    assert by_child_age.loc["Age 6-17", "non_refundable_ctc_recipient_count"] == 7.0

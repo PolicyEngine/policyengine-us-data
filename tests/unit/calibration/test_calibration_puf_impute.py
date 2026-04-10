@@ -10,6 +10,7 @@ from policyengine_us_data.calibration.puf_impute import (
     DEMOGRAPHIC_PREDICTORS,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
+    _log_stratified_subsample,
     _stratified_subsample_index,
     puf_clone_dataset,
 )
@@ -191,3 +192,15 @@ class TestStratifiedSubsample:
         income = np.random.default_rng(0).normal(50000, 20000, size=50_000)
         idx = _stratified_subsample_index(income, target_n=10_000)
         assert np.all(idx[1:] >= idx[:-1])
+
+    def test_log_handles_grouped_currency_threshold(self, caplog):
+        threshold = np.float32(8.934329e7)
+        caplog.set_level(
+            "INFO",
+            logger="policyengine_us_data.calibration.puf_impute",
+        )
+
+        _log_stratified_subsample(484_015, 20_000, 0.5, threshold)
+
+        assert "Stratified PUF subsample: 484015 -> 20000 records" in caplog.text
+        assert f"${threshold:,.0f}" in caplog.text

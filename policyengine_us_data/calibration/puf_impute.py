@@ -810,9 +810,7 @@ def _run_qrf_imputation(
     del puf_sim
 
     sub_idx = _stratified_subsample_index(puf_agi)
-    logger.info(
-        "Stratified PUF subsample: %d -> %d records "
-        "(top %.1f%% preserved, AGI threshold $%,.0f)",
+    _log_stratified_subsample(
         len(puf_agi),
         len(sub_idx),
         100 - PUF_TOP_PERCENTILE,
@@ -879,6 +877,22 @@ def _stratified_subsample_index(
     selected = np.concatenate([top_idx, selected_bottom])
     selected.sort()
     return selected
+
+
+def _log_stratified_subsample(
+    original_n: int,
+    selected_n: int,
+    top_percent_preserved: float,
+    agi_threshold: float,
+) -> None:
+    logger.info(
+        "Stratified PUF subsample: %d -> %d records "
+        "(top %.1f%% preserved, AGI threshold $%s)",
+        original_n,
+        selected_n,
+        top_percent_preserved,
+        f"{agi_threshold:,.0f}",
+    )
 
 
 def _sequential_qrf(

@@ -126,9 +126,7 @@ def _build_child_age_table(work: pd.DataFrame) -> pd.DataFrame | None:
     weights = work["tax_unit_weight"].astype(float).to_numpy()
     ctc_positive = work["ctc"].astype(float).to_numpy() > 0
     refundable_positive = work["refundable_ctc"].astype(float).to_numpy() > 0
-    non_refundable_positive = (
-        work["non_refundable_ctc"].astype(float).to_numpy() > 0
-    )
+    non_refundable_positive = work["non_refundable_ctc"].astype(float).to_numpy() > 0
 
     rows = []
     for label, child_counts in (
@@ -151,9 +149,7 @@ def _build_child_age_table(work: pd.DataFrame) -> pd.DataFrame | None:
                     ((ctc_positive & has_children).astype(float) * weights).sum()
                 ),
                 "refundable_ctc_recipient_count": float(
-                    (
-                        (refundable_positive & has_children).astype(float) * weights
-                    ).sum()
+                    ((refundable_positive & has_children).astype(float) * weights).sum()
                 ),
                 "non_refundable_ctc_recipient_count": float(
                     (

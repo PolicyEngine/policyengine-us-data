@@ -453,9 +453,7 @@ def get_national_geography_soi_agi_targets(
 ) -> list[dict]:
     """Return national AGI-band count and amount targets from the geography file."""
     geography_year = get_geography_soi_year(dataset_year, lag=lag)
-    return _get_national_geography_soi_agi_targets_from_year(
-        variable, geography_year
-    )
+    return _get_national_geography_soi_agi_targets_from_year(variable, geography_year)
 
 
 def _upsert_target(

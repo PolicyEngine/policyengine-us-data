@@ -79,99 +79,43 @@ CANONICAL_CTC_REFORM_VARIABLES = [
 ]
 
 CANONICAL_CTC_REFORM_DICT = {
-    "gov.irs.credits.eitc.max[0].amount": {
-        "2025-01-01.2100-12-31": 2_000
-    },
-    "gov.irs.credits.eitc.max[1].amount": {
-        "2025-01-01.2100-12-31": 2_000
-    },
-    "gov.irs.credits.eitc.max[2].amount": {
-        "2025-01-01.2100-12-31": 2_000
-    },
-    "gov.irs.credits.eitc.max[3].amount": {
-        "2025-01-01.2100-12-31": 2_000
-    },
-    "gov.irs.credits.ctc.phase_out.amount": {
-        "2025-01-01.2100-12-31": 25
-    },
-    "gov.irs.credits.ctc.amount.arpa[0].amount": {
-        "2025-01-01.2100-12-31": 4_800
-    },
-    "gov.irs.credits.ctc.amount.arpa[1].amount": {
-        "2025-01-01.2100-12-31": 4_800
-    },
-    "gov.irs.credits.ctc.phase_out.arpa.amount": {
-        "2025-01-01.2100-12-31": 25
-    },
-    "gov.contrib.ctc.minimum_refundable.in_effect": {
-        "2025-01-01.2100-12-31": True
-    },
-    "gov.contrib.ctc.per_child_phase_in.in_effect": {
-        "2025-01-01.2100-12-31": True
-    },
-    "gov.irs.credits.ctc.phase_out.arpa.in_effect": {
-        "2025-01-01.2100-12-31": True
-    },
-    "gov.irs.credits.ctc.refundable.phase_in.rate": {
-        "2025-01-01.2100-12-31": 0.2
-    },
-    "gov.irs.credits.eitc.phase_in_rate[0].amount": {
-        "2025-01-01.2100-12-31": 0.2
-    },
-    "gov.irs.credits.eitc.phase_in_rate[1].amount": {
-        "2025-01-01.2100-12-31": 0.2
-    },
-    "gov.irs.credits.eitc.phase_in_rate[2].amount": {
-        "2025-01-01.2100-12-31": 0.2
-    },
-    "gov.irs.credits.eitc.phase_in_rate[3].amount": {
-        "2025-01-01.2100-12-31": 0.2
-    },
-    "gov.contrib.ctc.per_child_phase_out.in_effect": {
-        "2025-01-01.2100-12-31": True
-    },
-    "gov.irs.credits.ctc.phase_out.threshold.JOINT": {
-        "2025-01-01.2100-12-31": 200_000
-    },
-    "gov.irs.credits.ctc.refundable.individual_max": {
-        "2025-01-01.2100-12-31": 4_800
-    },
-    "gov.irs.credits.eitc.phase_out.rate[0].amount": {
-        "2025-01-01.2100-12-31": 0.1
-    },
-    "gov.irs.credits.eitc.phase_out.rate[1].amount": {
-        "2025-01-01.2100-12-31": 0.1
-    },
-    "gov.irs.credits.eitc.phase_out.rate[2].amount": {
-        "2025-01-01.2100-12-31": 0.1
-    },
-    "gov.irs.credits.eitc.phase_out.rate[3].amount": {
-        "2025-01-01.2100-12-31": 0.1
-    },
+    "gov.irs.credits.eitc.max[0].amount": {"2025-01-01.2100-12-31": 2_000},
+    "gov.irs.credits.eitc.max[1].amount": {"2025-01-01.2100-12-31": 2_000},
+    "gov.irs.credits.eitc.max[2].amount": {"2025-01-01.2100-12-31": 2_000},
+    "gov.irs.credits.eitc.max[3].amount": {"2025-01-01.2100-12-31": 2_000},
+    "gov.irs.credits.ctc.phase_out.amount": {"2025-01-01.2100-12-31": 25},
+    "gov.irs.credits.ctc.amount.arpa[0].amount": {"2025-01-01.2100-12-31": 4_800},
+    "gov.irs.credits.ctc.amount.arpa[1].amount": {"2025-01-01.2100-12-31": 4_800},
+    "gov.irs.credits.ctc.phase_out.arpa.amount": {"2025-01-01.2100-12-31": 25},
+    "gov.contrib.ctc.minimum_refundable.in_effect": {"2025-01-01.2100-12-31": True},
+    "gov.contrib.ctc.per_child_phase_in.in_effect": {"2025-01-01.2100-12-31": True},
+    "gov.irs.credits.ctc.phase_out.arpa.in_effect": {"2025-01-01.2100-12-31": True},
+    "gov.irs.credits.ctc.refundable.phase_in.rate": {"2025-01-01.2100-12-31": 0.2},
+    "gov.irs.credits.eitc.phase_in_rate[0].amount": {"2025-01-01.2100-12-31": 0.2},
+    "gov.irs.credits.eitc.phase_in_rate[1].amount": {"2025-01-01.2100-12-31": 0.2},
+    "gov.irs.credits.eitc.phase_in_rate[2].amount": {"2025-01-01.2100-12-31": 0.2},
+    "gov.irs.credits.eitc.phase_in_rate[3].amount": {"2025-01-01.2100-12-31": 0.2},
+    "gov.contrib.ctc.per_child_phase_out.in_effect": {"2025-01-01.2100-12-31": True},
+    "gov.irs.credits.ctc.phase_out.threshold.JOINT": {"2025-01-01.2100-12-31": 200_000},
+    "gov.irs.credits.ctc.refundable.individual_max": {"2025-01-01.2100-12-31": 4_800},
+    "gov.irs.credits.eitc.phase_out.rate[0].amount": {"2025-01-01.2100-12-31": 0.1},
+    "gov.irs.credits.eitc.phase_out.rate[1].amount": {"2025-01-01.2100-12-31": 0.1},
+    "gov.irs.credits.eitc.phase_out.rate[2].amount": {"2025-01-01.2100-12-31": 0.1},
+    "gov.irs.credits.eitc.phase_out.rate[3].amount": {"2025-01-01.2100-12-31": 0.1},
     "gov.irs.credits.ctc.phase_out.threshold.SINGLE": {
         "2025-01-01.2100-12-31": 100_000
     },
-    "gov.irs.credits.eitc.phase_out.start[0].amount": {
-        "2025-01-01.2100-12-31": 20_000
-    },
-    "gov.irs.credits.eitc.phase_out.start[1].amount": {
-        "2025-01-01.2100-12-31": 20_000
-    },
-    "gov.irs.credits.eitc.phase_out.start[2].amount": {
-        "2025-01-01.2100-12-31": 20_000
-    },
-    "gov.irs.credits.eitc.phase_out.start[3].amount": {
-        "2025-01-01.2100-12-31": 20_000
-    },
+    "gov.irs.credits.eitc.phase_out.start[0].amount": {"2025-01-01.2100-12-31": 20_000},
+    "gov.irs.credits.eitc.phase_out.start[1].amount": {"2025-01-01.2100-12-31": 20_000},
+    "gov.irs.credits.eitc.phase_out.start[2].amount": {"2025-01-01.2100-12-31": 20_000},
+    "gov.irs.credits.eitc.phase_out.start[3].amount": {"2025-01-01.2100-12-31": 20_000},
     "gov.irs.credits.ctc.phase_out.threshold.SEPARATE": {
         "2025-01-01.2100-12-31": 100_000
     },
     "gov.contrib.ctc.per_child_phase_out.avoid_overlap": {
         "2025-01-01.2100-12-31": True
     },
-    "gov.irs.credits.ctc.refundable.phase_in.threshold": {
-        "2025-01-01.2100-12-31": 0
-    },
+    "gov.irs.credits.ctc.refundable.phase_in.threshold": {"2025-01-01.2100-12-31": 0},
     "gov.irs.credits.ctc.phase_out.arpa.threshold.JOINT": {
         "2025-01-01.2100-12-31": 35_000
     },
@@ -273,9 +217,7 @@ def build_canonical_ctc_reform_summary(
 def _format_canonical_ctc_reform_summary(table: pd.DataFrame) -> str:
     display = table.copy()
     for column in ("baseline", "reformed", "delta"):
-        display[column] = display[column].map(
-            lambda value: f"${value / 1e9:,.1f}B"
-        )
+        display[column] = display[column].map(lambda value: f"${value / 1e9:,.1f}B")
     return display.to_string(index=False)
 
 
@@ -296,7 +238,9 @@ def _subtract_diagnostic_tables(
             and pd.api.types.is_numeric_dtype(reformed[column])
         ]
         id_columns = [
-            column for column in baseline.columns if column in reformed.columns and column not in numeric_columns
+            column
+            for column in baseline.columns
+            if column in reformed.columns and column not in numeric_columns
         ]
         merged = baseline.merge(
             reformed,
@@ -305,9 +249,7 @@ def _subtract_diagnostic_tables(
         )
         delta = merged[id_columns].copy()
         for column in numeric_columns:
-            delta[column] = (
-                merged[f"{column}_reformed"] - merged[f"{column}_baseline"]
-            )
+            delta[column] = merged[f"{column}_reformed"] - merged[f"{column}_baseline"]
         delta_tables[name] = delta
     return delta_tables
 

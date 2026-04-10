@@ -93,6 +93,9 @@ include:
     geo_level: national
   - variable: medicaid
     geo_level: national
+  - variable: person_count
+    geo_level: national
+    domain_variable: medicare_enrolled
   - variable: medicare_part_b_premiums
     geo_level: national
   - variable: other_medical_expenses

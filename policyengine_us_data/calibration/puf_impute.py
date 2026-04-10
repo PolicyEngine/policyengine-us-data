@@ -513,7 +513,7 @@ def puf_clone_dataset(
         elif variable in IMPUTED_VARIABLES and y_full:
             pred = _map_to_entity(y_full[variable], variable)
             new_data[variable] = {time_period: np.concatenate([values, pred])}
-        elif "_id" in variable:
+        elif "_id" in variable and np.issubdtype(values.dtype, np.number):
             new_data[variable] = {
                 time_period: np.concatenate([values, values + values.max()])
             }
@@ -582,7 +582,6 @@ def _impute_weeks_unemployed(
     except (ValueError, KeyError):
         logger.warning("weeks_unemployed not in CPS, returning zeros")
         n_persons = len(data["person_id"][time_period])
-        del cps_sim
         return np.zeros(n_persons)
 
     WEEKS_PREDICTORS = [
@@ -685,7 +684,6 @@ def _impute_retirement_contributions(
     except (ValueError, KeyError) as e:
         logger.warning("Could not build retirement training data: %s", e)
         n_persons = len(data["person_id"][time_period])
-        del cps_sim
         return {var: np.zeros(n_persons) for var in CPS_RETIREMENT_VARIABLES}
 
     # Build test data: demographics from CPS sim, income from PUF

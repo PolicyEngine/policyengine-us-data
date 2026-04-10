@@ -78,6 +78,24 @@ class TestPufCloneDataset:
         assert len(np.unique(person_ids)) == len(person_ids)
         assert len(np.unique(household_ids)) == len(household_ids)
 
+    def test_string_id_like_variables_are_duplicated_without_numeric_offset(self):
+        data = _make_mock_data(n_persons=20, n_households=5)
+        data["taxpayer_id_type"] = {
+            2024: np.array([b"VALID_SSN", b"NONE"] * 10, dtype="S9")
+        }
+        state_fips = np.array([1, 2, 36, 6, 48])
+
+        result = puf_clone_dataset(
+            data=data,
+            state_fips=state_fips,
+            time_period=2024,
+            skip_qrf=True,
+        )
+
+        values = result["taxpayer_id_type"][2024]
+        n = len(values) // 2
+        np.testing.assert_array_equal(values[:n], values[n:])
+
     def test_puf_half_weight_zero(self):
         data = _make_mock_data(n_persons=20, n_households=5)
         state_fips = np.array([1, 2, 36, 6, 48])

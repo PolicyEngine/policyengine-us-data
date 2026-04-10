@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -45,7 +44,7 @@ def _run_long_term_json_command(script_name: str, *args: str) -> str:
     image=image,
     timeout=60 * 60,
     cpu=8,
-    memory=32768,
+    memory=65536,
     secrets=[hf_secret],
 )
 def assess_publishable_probe_json(
@@ -72,7 +71,7 @@ def assess_publishable_probe_json(
     image=image,
     timeout=60 * 60,
     cpu=8,
-    memory=32768,
+    memory=65536,
     secrets=[hf_secret],
 )
 def assess_augmented_publishable_probe_json(

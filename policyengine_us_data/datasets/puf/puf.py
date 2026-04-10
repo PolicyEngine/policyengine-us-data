@@ -445,9 +445,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
         is_sstb, 0.0, legacy_self_employment_income
     )
     puf["sstb_w2_wages_from_qualified_business"] = np.where(is_sstb, w2, 0.0)
-    puf["sstb_unadjusted_basis_qualified_property"] = np.where(
-        is_sstb, ubia, 0.0
-    )
+    puf["sstb_unadjusted_basis_qualified_property"] = np.where(is_sstb, ubia, 0.0)
 
     reit_params = QBI_PARAMS["reit_ptp_income_distribution"]
     p_reit_ptp = reit_params["probability_of_receiving"]

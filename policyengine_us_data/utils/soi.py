@@ -59,9 +59,7 @@ def pe_to_soi(pe_dataset, year):
     df["income_tax_after_credits"] = pe("income_tax")
     df["total_income_tax"] = pe("income_tax_before_credits")
     df["taxable_income"] = pe("taxable_income")
-    schedule_c_income = pe("self_employment_income") + pe(
-        "sstb_self_employment_income"
-    )
+    schedule_c_income = pe("self_employment_income") + pe("sstb_self_employment_income")
     df["business_net_profits"] = schedule_c_income * (schedule_c_income > 0)
     df["business_net_losses"] = -schedule_c_income * (schedule_c_income < 0)
     df["capital_gains_distributions"] = pe("non_sch_d_capital_gains")

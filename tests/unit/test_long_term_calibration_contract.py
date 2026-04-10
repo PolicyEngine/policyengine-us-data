@@ -2311,6 +2311,13 @@ def test_compose_role_donor_rows_can_sanitize_worker_non_target_income():
         0.0,
         5_000.0,
     ]
+    enriched["partnership_s_corp_income__2024"] = [
+        0.0,
+        0.0,
+        6_000.0,
+        0.0,
+        8_000.0,
+    ]
 
     older_rows = enriched[enriched["person_tax_unit_id__2024"] == 201].copy()
     worker_rows = enriched[enriched["person_tax_unit_id__2024"] == 301].copy()
@@ -2356,6 +2363,7 @@ def test_compose_role_donor_rows_can_sanitize_worker_non_target_income():
         pytest.approx(0.0)
     )
     assert worker_clone["taxable_private_pension_income__2024"] == pytest.approx(0.0)
+    assert worker_clone["partnership_s_corp_income__2024"] == pytest.approx(0.0)
     assert worker_clone["employment_income_before_lsr__2024"] == pytest.approx(50_000.0)
     assert "long_term_capital_gains_before_response__2024" in clone_df.attrs[
         "sanitized_worker_non_target_income_columns"
@@ -2384,6 +2392,13 @@ def test_compose_role_donor_rows_can_sanitize_all_clone_non_target_income():
         4_000.0,
         0.0,
         5_000.0,
+    ]
+    enriched["partnership_s_corp_income__2024"] = [
+        0.0,
+        0.0,
+        6_000.0,
+        0.0,
+        8_000.0,
     ]
 
     older_rows = enriched[enriched["person_tax_unit_id__2024"] == 201].copy()
@@ -2431,6 +2446,7 @@ def test_compose_role_donor_rows_can_sanitize_all_clone_non_target_income():
             pytest.approx(0.0)
         )
         assert clone["taxable_private_pension_income__2024"] == pytest.approx(0.0)
+        assert clone["partnership_s_corp_income__2024"] == pytest.approx(0.0)
     assert older_clone["social_security_retirement__2024"] == pytest.approx(20_000.0)
     assert worker_clone["employment_income_before_lsr__2024"] == pytest.approx(
         50_000.0

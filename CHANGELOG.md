@@ -1,3 +1,10 @@
+## [1.77.0] - 2026-04-10
+
+### Added
+
+- Added richer national CTC calibration and validation coverage by loading AGI-split refundable and nonrefundable CTC targets from IRS geography data, expanding CTC diagnostics to AGI-by-filing-status and child-composition tables, and reporting a canonical ARPA-style CTC reform in national H5 validation.
+
+
 ## [1.76.0] - 2026-04-10
 
 ### Added

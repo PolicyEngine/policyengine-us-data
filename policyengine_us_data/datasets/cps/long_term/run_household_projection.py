@@ -472,6 +472,9 @@ def _support_augmentation_metadata(
                 "blueprint_base_weight_scale": (
                     SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE
                 ),
+                "non_target_income_sanitizer_mode": (
+                    SUPPORT_AUGMENTATION_NON_TARGET_INCOME_SANITIZER_MODE
+                ),
                 "sanitize_worker_non_target_income": (
                     SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
                 ),
@@ -601,6 +604,14 @@ SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME = (
 )
 if SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME:
     sys.argv.remove("--support-augmentation-sanitize-clone-non-target-income")
+
+SUPPORT_AUGMENTATION_NON_TARGET_INCOME_SANITIZER_MODE = (
+    "clone_all"
+    if SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME
+    else "worker"
+    if SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
+    else "none"
+)
 
 TAX_ASSUMPTION = TRUSTEES_CORE_THRESHOLD_ASSUMPTION["name"]
 if "--tax-assumption" in sys.argv:
@@ -801,12 +812,8 @@ if SUPPORT_AUGMENTATION_PROFILE:
             f"{SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE}"
         )
         print(
-            "  Sanitize worker donor non-target income: "
-            f"{SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME}"
-        )
-        print(
-            "  Sanitize all donor-clone non-target income: "
-            f"{SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME}"
+            "  Non-target income sanitizer mode: "
+            f"{SUPPORT_AUGMENTATION_NON_TARGET_INCOME_SANITIZER_MODE}"
         )
 if USE_SS:
     print("  Including Social Security benefits constraint: Yes")
@@ -996,6 +1003,9 @@ if SUPPORT_AUGMENTATION_PROFILE is not None and SUPPORT_AUGMENTATION_ALIGN_TO_RU
                 "clone_weight_scale": SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
                 "blueprint_base_weight_scale": (
                     SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE
+                ),
+                "non_target_income_sanitizer_mode": (
+                    SUPPORT_AUGMENTATION_NON_TARGET_INCOME_SANITIZER_MODE
                 ),
                 "sanitize_worker_non_target_income": (
                     SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME

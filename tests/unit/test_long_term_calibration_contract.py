@@ -2417,6 +2417,7 @@ def test_compose_role_donor_rows_can_sanitize_all_clone_non_target_income():
         },
         clone_weight_scale=0.1,
         clone_weight_divisor=1,
+        sanitize_worker_non_target_income=True,
         sanitize_clone_non_target_income=True,
     )
 
@@ -2437,3 +2438,4 @@ def test_compose_role_donor_rows_can_sanitize_all_clone_non_target_income():
     assert "long_term_capital_gains_before_response__2024" in clone_df.attrs[
         "sanitized_clone_non_target_income_columns"
     ]
+    assert "sanitized_worker_non_target_income_columns" not in clone_df.attrs

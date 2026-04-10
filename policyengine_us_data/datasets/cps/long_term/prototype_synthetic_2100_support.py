@@ -2547,6 +2547,13 @@ def build_role_composite_augmented_input_dataframe(
     clone_household_reports = []
     sanitized_worker_non_target_income_columns = set()
     sanitized_clone_non_target_income_columns = set()
+    non_target_income_sanitizer_mode = (
+        "clone_all"
+        if sanitize_clone_non_target_income
+        else "worker"
+        if sanitize_worker_non_target_income
+        else "none"
+    )
     target_reports = []
     skipped_targets = []
 
@@ -2665,6 +2672,7 @@ def build_role_composite_augmented_input_dataframe(
         "max_older_distance": float(max_older_distance),
         "max_worker_distance": float(max_worker_distance),
         "clone_weight_scale": float(clone_weight_scale),
+        "non_target_income_sanitizer_mode": non_target_income_sanitizer_mode,
         "sanitize_worker_non_target_income": bool(sanitize_worker_non_target_income),
         "sanitize_clone_non_target_income": bool(sanitize_clone_non_target_income),
         "worker_non_target_income_requested_components": list(

@@ -19,7 +19,9 @@ from policyengine_us_data.utils.mortgage_interest import (
     impute_tax_unit_mortgage_balance_hints,
 )
 from policyengine_us_data.utils.policyengine import has_policyengine_us_variables
-from policyengine_us_data.utils.policyengine import supports_modeled_medicare_part_b_inputs
+from policyengine_us_data.utils.policyengine import (
+    supports_modeled_medicare_part_b_inputs,
+)
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
     get_se_pension_limits,

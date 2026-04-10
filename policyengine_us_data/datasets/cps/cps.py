@@ -135,13 +135,12 @@ class CPS(Dataset):
             undocumented_workers_target=8.3e6,
             undocumented_students_target=0.21 * 1.9e6,
         )
-        logging.info("Imputing ITIN status")
-        has_itin_number = impute_itin_status(cps, person, ssn_card_type)
+        logging.info("Adding taxpayer ID variables")
         _store_identification_variables(
             cps,
             person,
             ssn_card_type,
-            has_itin_number,
+            self.time_period,
         )
         logging.info("Adding family variables")
         add_spm_variables(self, cps, spm_unit)
@@ -1759,85 +1758,6 @@ def add_ssn_card_type(
     _update_documentation_with_numbers(log_df, DOCS_FOLDER)
 
     return ssn_card_type
-
-
-def impute_itin_status(
-    cps: dict,
-    person: pd.DataFrame,
-    ssn_card_type: np.ndarray,
-    itin_returns_target: float = 4.4e6,
-    random_seed: int = 98765,
-) -> np.ndarray:
-    """Impute which undocumented (code-0) persons hold ITINs.
-
-    The 4.4M target is ITIN *returns* (tax units), not persons.
-    Eligible tax units are those with at least one code-0 member who has
-    employment or self-employment income. This is a provisional rule —
-    it will miss some ITIN filers with no current earnings and include
-    some units that wouldn't file.
-    """
-    n_persons = len(person)
-    has_itin_number = np.zeros(n_persons, dtype=bool)
-
-    person_tax_unit_ids = np.asarray(cps["person_tax_unit_id"])
-    is_code_0 = ssn_card_type == 0
-    has_earnings = (person.WSAL_VAL > 0) | (person.SEMP_VAL > 0)
-
-    # Identify tax units with at least one code-0 earner
-    eligible_person_mask = is_code_0 & has_earnings
-    eligible_tu_ids = np.unique(person_tax_unit_ids[eligible_person_mask])
-
-    # Build tax-unit weight lookup from household weights
-    household_ids = np.asarray(cps["household_id"])
-    household_weights = np.asarray(cps["household_weight"])
-    person_household_ids = np.asarray(cps["person_household_id"])
-    hh_to_weight = dict(zip(household_ids, household_weights))
-
-    # Map each tax unit to its weight (weight of first member's household)
-    tu_to_weight = {}
-    for i, tu_id in enumerate(person_tax_unit_ids):
-        if tu_id not in tu_to_weight:
-            tu_to_weight[tu_id] = hh_to_weight.get(person_household_ids[i], 0)
-
-    eligible_weights = np.array(
-        [tu_to_weight.get(tu_id, 0) for tu_id in eligible_tu_ids]
-    )
-    total_eligible_weighted = eligible_weights.sum()
-
-    if total_eligible_weighted <= 0:
-        print("ITIN imputation: no eligible tax units found")
-        return has_itin_number
-
-    # Weighted random selection of tax units to hit the 4.4M target
-    target_share = min(itin_returns_target / total_eligible_weighted, 1.0)
-    rng = np.random.default_rng(seed=random_seed)
-    selected_mask = rng.random(len(eligible_tu_ids)) < target_share
-    selected_tu_ids = set(eligible_tu_ids[selected_mask])
-
-    # Mark all code-0 members of selected tax units as ITIN holders
-    for i in range(n_persons):
-        if is_code_0[i] and person_tax_unit_ids[i] in selected_tu_ids:
-            has_itin_number[i] = True
-
-    # Logging
-    person_weights = np.array(
-        [hh_to_weight.get(hh_id, 0) for hh_id in person_household_ids]
-    )
-    selected_tu_weighted = sum(tu_to_weight.get(tu_id, 0) for tu_id in selected_tu_ids)
-    itin_filers = has_itin_number & has_earnings
-    itin_total = has_itin_number
-    print("\nITIN imputation:")
-    print(
-        f"  Weighted ITIN filer tax units: {selected_tu_weighted:,.0f} "
-        f"(target: {itin_returns_target:,.0f})"
-    )
-    print(
-        f"  Weighted code-0 earners with ITIN: "
-        f"{np.sum(person_weights[itin_filers]):,.0f}"
-    )
-    print(f"  Total weighted ITIN persons: {np.sum(person_weights[itin_total]):,.0f}")
-
-    return has_itin_number
 
 
 def _update_documentation_with_numbers(log_df, docs_dir):

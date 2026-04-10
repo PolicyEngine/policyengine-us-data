@@ -621,6 +621,37 @@ class TestFitResume:
                     }
                 )
 
+    def test_resume_checkpoint_rejects_missing_matrix_fingerprint(self, tmp_path):
+        import torch
+        from policyengine_us_data.calibration.unified_calibration import (
+            default_checkpoint_path,
+            fit_l0_weights,
+        )
+
+        weights_path = tmp_path / "weights.npy"
+        checkpoint_path = default_checkpoint_path(str(weights_path))
+        kwargs = self._fit_kwargs(tmp_path)
+        kwargs["checkpoint_path"] = str(checkpoint_path)
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            first_weights = fit_l0_weights(**kwargs)
+            np.save(weights_path, first_weights)
+
+            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+            checkpoint["signature"].pop("x_sparse_sha256")
+            torch.save(checkpoint, checkpoint_path)
+
+            with pytest.raises(ValueError, match="x_sparse_sha256"):
+                fit_l0_weights(
+                    **{
+                        **kwargs,
+                        "resume_from": str(checkpoint_path),
+                    }
+                )
+
 
 class TestGeographyAssignmentCountyFips:
     """Verify county_fips field on GeographyAssignment."""

@@ -546,10 +546,13 @@ def checkpoint_signature_mismatches(expected: dict, actual: dict) -> list:
     """Return human-readable checkpoint compatibility mismatches."""
     mismatches = []
     float_keys = {"lambda_l0", "beta", "lambda_l2", "learning_rate"}
-    for key, expected_value in expected.items():
-        actual_value = actual.get(key)
+    for key, actual_value in actual.items():
+        expected_value = expected.get(key)
+        if expected_value is None:
+            mismatches.append(f"{key} missing from checkpoint")
+            continue
         if key in float_keys:
-            if actual_value is None or not np.isclose(expected_value, actual_value):
+            if not np.isclose(expected_value, actual_value):
                 mismatches.append(
                     f"{key} expected {expected_value}, got {actual_value}"
                 )

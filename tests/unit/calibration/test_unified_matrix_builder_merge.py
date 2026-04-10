@@ -1,5 +1,6 @@
 import numpy as np
 
+from policyengine_us_data.calibration.calibration_utils import apply_op
 from policyengine_us_data.calibration.unified_matrix_builder import (
     UnifiedMatrixBuilder,
     _assemble_clone_values_standalone,
@@ -49,6 +50,15 @@ def test_assemble_clone_values_standalone_preserves_string_constraints():
         b"NON_CITIZEN_VALID_EAD",
         b"OTHER_NON_CITIZEN",
     ]
+
+
+def test_apply_op_matches_fixed_width_byte_string_constraints():
+    values = np.array([b"NONE", b"CITIZEN", b"NONE"], dtype="S9")
+
+    np.testing.assert_array_equal(
+        apply_op(values, "==", "NONE"),
+        np.array([True, False, True]),
+    )
 
 
 def test_builder_assemble_clone_values_preserves_string_constraints():

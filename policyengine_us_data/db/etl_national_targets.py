@@ -16,6 +16,9 @@ from policyengine_us_data.utils.cms_medicare import (
     get_beneficiary_paid_medicare_part_b_premiums_notes,
     get_beneficiary_paid_medicare_part_b_premiums_source,
     get_beneficiary_paid_medicare_part_b_premiums_target,
+    get_medicare_part_b_enrollment_notes,
+    get_medicare_part_b_enrollment_source,
+    get_medicare_part_b_enrollment_target,
 )
 from policyengine_us_data.utils.db import (
     DEFAULT_YEAR,
@@ -328,6 +331,13 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "person_count": 19_743_689,
             "source": "CMS marketplace data",
             "notes": "ACA Premium Tax Credit recipients",
+            "year": HARDCODED_YEAR,
+        },
+        {
+            "constraint_variable": "medicare_enrolled",
+            "person_count": get_medicare_part_b_enrollment_target(HARDCODED_YEAR),
+            "source": get_medicare_part_b_enrollment_source(HARDCODED_YEAR),
+            "notes": get_medicare_part_b_enrollment_notes(HARDCODED_YEAR),
             "year": HARDCODED_YEAR,
         },
         {

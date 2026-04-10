@@ -2,6 +2,10 @@ MEDICARE_PART_B_GROSS_PREMIUM_INCOME = {
     2024: 139.837e9,
 }
 
+MEDICARE_PART_B_ENROLLMENT_TARGETS = {
+    2024: 62_084_000,
+}
+
 
 MEDICARE_STATE_BUY_IN_MINIMUM_BENEFICIARIES = {
     2024: 10_000_000,
@@ -11,6 +15,32 @@ MEDICARE_STATE_BUY_IN_MINIMUM_BENEFICIARIES = {
 BENEFICIARY_PAID_MEDICARE_PART_B_PREMIUM_TARGETS = {
     2024: 112e9,
 }
+
+
+def get_medicare_part_b_enrollment_target(year: int) -> float:
+    try:
+        return MEDICARE_PART_B_ENROLLMENT_TARGETS[year]
+    except KeyError as exc:
+        raise ValueError(
+            f"No Medicare Part B enrollment target sourced for {year}."
+        ) from exc
+
+
+def get_medicare_part_b_enrollment_source(year: int) -> str:
+    enrollment = MEDICARE_PART_B_ENROLLMENT_TARGETS[year]
+    return (
+        "CMS 2024 Medicare Trustees Report Table V.B3 intermediate estimate "
+        f"for {year} Part B enrollment ({enrollment:,.0f} beneficiaries)"
+    )
+
+
+def get_medicare_part_b_enrollment_notes(year: int) -> str:
+    return (
+        "Total Medicare Part B enrollment count. This is intentionally a "
+        "separate calibration anchor from beneficiary-paid Part B premiums, "
+        "because some enrollees have premiums paid on their behalf through "
+        "MSP/state buy-in pathways."
+    )
 
 
 def get_beneficiary_paid_medicare_part_b_premiums_target(year: int) -> float:

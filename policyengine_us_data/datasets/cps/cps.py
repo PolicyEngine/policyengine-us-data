@@ -90,6 +90,15 @@ CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP = {
     ),
 }
 
+# Census CPS ASEC 2024 technical documentation, PERRP:
+# https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf
+PERRP_UNMARRIED_PARTNER_OF_HOUSEHOLD_HEAD_CODES = {
+    43: "Opposite Sex Unmarried Partner with Relatives",
+    44: "Opposite Sex Unmarried Partner without Relatives",
+    46: "Same Sex Unmarried Partner with Relatives",
+    47: "Same Sex Unmarried Partner without Relatives",
+}
+
 
 class CPS(Dataset):
     name = "cps"
@@ -572,7 +581,9 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
 
     cps["is_surviving_spouse"] = person.A_MARITL == 4
     cps["is_separated"] = person.A_MARITL == 6
-    cps["is_unmarried_partner_of_household_head"] = person.PERRP.isin([43, 44, 46, 47])
+    cps["is_unmarried_partner_of_household_head"] = person.PERRP.isin(
+        PERRP_UNMARRIED_PARTNER_OF_HOUSEHOLD_HEAD_CODES.keys()
+    )
     # High school or college/university enrollment status.
     cps["is_full_time_college_student"] = person.A_HSCOL == 2
 

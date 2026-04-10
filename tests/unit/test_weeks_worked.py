@@ -6,36 +6,35 @@ the model input for future-year SPM work-expense calculations.
 """
 
 import numpy as np
-from pathlib import Path
+import pandas as pd
+
+from policyengine_us_data.datasets.cps.census_cps import PERSON_COLUMNS
+from policyengine_us_data.datasets.cps.cps import add_personal_income_variables
+
+
+def _person_frame(**columns):
+    n_persons = len(next(iter(columns.values())))
+    data = {column: np.zeros(n_persons, dtype=int) for column in PERSON_COLUMNS}
+    data.update(columns)
+    return pd.DataFrame(data)
 
 
 class TestWeeksWorked:
     """Test suite for weeks_worked variable extraction."""
 
-    def test_census_cps_includes_wkswork(self):
-        census_cps_path = Path(__file__).parent.parent.parent / (
-            "policyengine_us_data/datasets/cps/census_cps.py"
-        )
-        content = census_cps_path.read_text()
-
-        assert '"WKSWORK"' in content, "WKSWORK should be in PERSON_COLUMNS"
+    def test_census_cps_loads_wkswork(self):
+        assert "WKSWORK" in PERSON_COLUMNS
 
     def test_cps_maps_weeks_worked_from_wkswork(self):
-        cps_path = Path(__file__).parent.parent.parent / (
-            "policyengine_us_data/datasets/cps/cps.py"
+        person = _person_frame(
+            A_AGE=np.full(6, 35),
+            WKSWORK=np.array([-4, 0, 1, 26, 52, 60]),
         )
-        content = cps_path.read_text()
 
-        assert 'cps["weeks_worked"]' in content
-        assert "person.WKSWORK" in content
-        assert "np.clip(person.WKSWORK, 0, 52)" in content
+        cps = {}
+        add_personal_income_variables(cps, person, 2024)
 
-    def test_weeks_worked_value_range(self):
-        raw_values = np.array([-4, 0, 1, 26, 52, 60])
-        processed = np.clip(raw_values, 0, 52)
-
-        assert processed.min() >= 0, "Minimum should be >= 0"
-        assert processed.max() <= 52, "Maximum should be <= 52"
-        assert processed[0] == 0, "Negative values should clip to 0"
-        assert processed[3] == 26, "Valid weeks should be preserved"
-        assert processed[5] == 52, "Values above 52 should clip to 52"
+        np.testing.assert_array_equal(
+            cps["weeks_worked"],
+            np.array([0, 0, 1, 26, 52, 52]),
+        )

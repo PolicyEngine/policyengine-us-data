@@ -907,6 +907,118 @@ class TestAssembleCloneValuesCounty:
         np.testing.assert_array_equal(hh_vars["snap"], expected)
 
 
+class TestAssembleCloneValuesStringConstraint:
+    """Verify string constraint vars (e.g. ssn_card_type) are
+    assembled without crashing on float32 conversion."""
+
+    def _make_state_values(self):
+        n = 4
+        return {
+            1: {
+                "hh": {"snap": np.array([50] * n, dtype=np.float32)},
+                "person": {
+                    "ssn_card_type": np.array(
+                        ["CITIZEN", "CITIZEN", "UNDOCUMENTED", "CITIZEN"],
+                        dtype=object,
+                    ),
+                },
+                "entity": {},
+            },
+            2: {
+                "hh": {"snap": np.array([60] * n, dtype=np.float32)},
+                "person": {
+                    "ssn_card_type": np.array(
+                        ["UNDOCUMENTED", "CITIZEN", "CITIZEN", "UNDOCUMENTED"],
+                        dtype=object,
+                    ),
+                },
+                "entity": {},
+            },
+        }
+
+    def test_string_constraint_var_assembled(self):
+        from policyengine_us_data.calibration.unified_matrix_builder import (
+            UnifiedMatrixBuilder,
+        )
+
+        state_values = self._make_state_values()
+        clone_states = np.array([1, 1, 2, 2])
+        person_hh_idx = np.array([0, 1, 2, 3])
+
+        builder = UnifiedMatrixBuilder.__new__(UnifiedMatrixBuilder)
+        _, person_vars, _ = builder._assemble_clone_values(
+            state_values,
+            clone_states,
+            person_hh_idx,
+            {"snap"},
+            {"ssn_card_type"},
+        )
+        assert "ssn_card_type" in person_vars
+        arr = person_vars["ssn_card_type"]
+        assert arr.dtype == object
+        expected = np.array(
+            ["CITIZEN", "CITIZEN", "CITIZEN", "UNDOCUMENTED"], dtype=object
+        )
+        np.testing.assert_array_equal(arr, expected)
+
+    def test_string_constraint_var_standalone(self):
+        from policyengine_us_data.calibration.unified_matrix_builder import (
+            _assemble_clone_values_standalone,
+        )
+
+        state_values = self._make_state_values()
+        clone_states = np.array([1, 1, 2, 2])
+        person_hh_idx = np.array([0, 1, 2, 3])
+
+        _, person_vars, _ = _assemble_clone_values_standalone(
+            state_values,
+            clone_states,
+            person_hh_idx,
+            {"snap"},
+            {"ssn_card_type"},
+        )
+        assert "ssn_card_type" in person_vars
+        arr = person_vars["ssn_card_type"]
+        assert arr.dtype == object
+        expected = np.array(
+            ["CITIZEN", "CITIZEN", "CITIZEN", "UNDOCUMENTED"], dtype=object
+        )
+        np.testing.assert_array_equal(arr, expected)
+
+    def test_string_constraint_with_equality_op(self):
+        import pandas as pd
+
+        from policyengine_us_data.calibration.unified_matrix_builder import (
+            _assemble_clone_values_standalone,
+            _evaluate_constraints_standalone,
+        )
+
+        state_values = self._make_state_values()
+        clone_states = np.array([1, 1, 2, 2])
+        person_hh_idx = np.array([0, 1, 2, 3])
+
+        _, person_vars, _ = _assemble_clone_values_standalone(
+            state_values,
+            clone_states,
+            person_hh_idx,
+            {"snap"},
+            {"ssn_card_type"},
+        )
+
+        household_ids = np.array([0, 1, 2, 3])
+        entity_rel = pd.DataFrame(
+            {"household_id": person_hh_idx, "person_id": np.arange(4)}
+        )
+        constraints = [
+            {"variable": "ssn_card_type", "operation": "==", "value": "CITIZEN"}
+        ]
+        mask = _evaluate_constraints_standalone(
+            constraints, person_vars, entity_rel, household_ids, 4
+        )
+        expected = np.array([True, True, True, False])
+        np.testing.assert_array_equal(mask, expected)
+
+
 class TestTakeupDrawConsistency:
     """Verify the matrix builder's inline takeup loop and
     compute_block_takeup_for_entities produce identical draws

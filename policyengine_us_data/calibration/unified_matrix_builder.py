@@ -95,6 +95,28 @@ def _compute_reform_household_values(
     return reform_hh
 
 
+def _merged_person_constraint_dtype(
+    state_values: dict,
+    states: np.ndarray,
+    variable: str,
+):
+    """Pick a merge dtype that preserves string-valued constraints."""
+    dtypes = []
+    for state in states:
+        person = state_values[int(state)]["person"]
+        if variable in person:
+            dtypes.append(np.asarray(person[variable]).dtype)
+    if not dtypes:
+        return None
+    merged_dtype = np.result_type(*dtypes)
+    if np.issubdtype(merged_dtype, np.number) or np.issubdtype(
+        merged_dtype,
+        np.bool_,
+    ):
+        return np.float32
+    return merged_dtype
+
+
 def _compute_single_state(
     dataset_path: str,
     time_period: int,
@@ -161,11 +183,15 @@ def _compute_single_state(
     person = {}
     for var in constraint_vars:
         try:
-            person[var] = state_sim.calculate(
+            raw = state_sim.calculate(
                 var,
                 time_period,
                 map_to="person",
-            ).values.astype(np.float32)
+            ).values
+            try:
+                person[var] = raw.astype(np.float32)
+            except (ValueError, TypeError):
+                person[var] = raw
         except Exception as exc:
             logger.warning(
                 "Cannot calculate constraint '%s' for state %d: %s",
@@ -476,9 +502,14 @@ def _assemble_clone_values_standalone(
 
     person_vars: dict = {}
     for var in constraint_vars:
-        if var not in state_values[unique_clone_states[0]]["person"]:
+        dtype = _merged_person_constraint_dtype(
+            state_values,
+            unique_person_states,
+            var,
+        )
+        if dtype is None:
             continue
-        arr = np.empty(n_persons, dtype=np.float32)
+        arr = np.empty(n_persons, dtype=dtype)
         for state in unique_person_states:
             mask = person_state_masks[int(state)]
             arr[mask] = state_values[int(state)]["person"][var][mask]
@@ -1113,11 +1144,15 @@ class UnifiedMatrixBuilder:
                 person = {}
                 for var in constraint_vars:
                     try:
-                        person[var] = state_sim.calculate(
+                        raw = state_sim.calculate(
                             var,
                             self.time_period,
                             map_to="person",
-                        ).values.astype(np.float32)
+                        ).values
+                        try:
+                            person[var] = raw.astype(np.float32)
+                        except (ValueError, TypeError):
+                            person[var] = raw
                     except Exception as exc:
                         logger.warning(
                             "Cannot calculate constraint '%s' for state %d: %s",
@@ -1476,9 +1511,14 @@ class UnifiedMatrixBuilder:
 
         person_vars = {}
         for var in constraint_vars:
-            if var not in state_values[unique_clone_states[0]]["person"]:
+            dtype = _merged_person_constraint_dtype(
+                state_values,
+                unique_person_states,
+                var,
+            )
+            if dtype is None:
                 continue
-            arr = np.empty(n_persons, dtype=np.float32)
+            arr = np.empty(n_persons, dtype=dtype)
             for state in unique_person_states:
                 mask = person_state_masks[int(state)]
                 arr[mask] = state_values[int(state)]["person"][var][mask]

@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 import json
 import numpy as np
 import pandas as pd
+from scipy import sparse
 
 from spm_calculator import SPMCalculator, spm_equivalence_scale
 from spm_calculator.geoadj import calculate_geoadj_from_rent
@@ -262,6 +263,10 @@ def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
             parsed = False
         else:
             parsed = val
+
+    values = np.asarray(values)
+    if values.dtype.kind == "S" and isinstance(parsed, str):
+        parsed = parsed.encode()
 
     if op in ("==", "="):
         return values == parsed

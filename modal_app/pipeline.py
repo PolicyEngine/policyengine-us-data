@@ -832,6 +832,11 @@ def run_pipeline(
                     BytesIO(regional_result["weights"]),
                     f"{artifacts_rel}/calibration_weights.npy",
                 )
+                if regional_result.get("geography"):
+                    batch.put_file(
+                        BytesIO(regional_result["geography"]),
+                        f"{artifacts_rel}/geography_assignment.npz",
+                    )
                 if regional_result.get("config"):
                     batch.put_file(
                         BytesIO(regional_result["config"]),
@@ -856,6 +861,11 @@ def run_pipeline(
                         BytesIO(national_result["weights"]),
                         f"{artifacts_rel}/national_calibration_weights.npy",
                     )
+                    if national_result.get("geography"):
+                        batch.put_file(
+                            BytesIO(national_result["geography"]),
+                            f"{artifacts_rel}/national_geography_assignment.npz",
+                        )
                     if national_result.get("config"):
                         batch.put_file(
                             BytesIO(national_result["config"]),

@@ -156,6 +156,11 @@ def main():
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
+        "--geography-path",
+        default=None,
+        help="Optional explicit path to geography_assignment.npz",
+    )
+    parser.add_argument(
         "--n-clones",
         type=int,
         default=430,
@@ -210,12 +215,10 @@ def main():
         build_h5,
         NYC_COUNTY_FIPS,
         AT_LARGE_DISTRICTS,
+        load_calibration_geography,
     )
     from policyengine_us_data.calibration.calibration_utils import (
         STATE_CODES,
-    )
-    from policyengine_us_data.calibration.clone_and_assign import (
-        assign_random_geography,
     )
 
     weights = np.load(weights_path)
@@ -226,15 +229,18 @@ def main():
     n_records = len(_sim.calculate("household_id", map_to="household").values)
     del _sim
 
-    geography = assign_random_geography(
+    geography = load_calibration_geography(
+        weights_path=weights_path,
         n_records=n_records,
         n_clones=args.n_clones,
-        seed=args.seed,
+        geography_path=(
+            Path(args.geography_path) if args.geography_path is not None else None
+        ),
     )
     cds_to_calibrate = sorted(set(geography.cd_geoid.astype(str)))
     geo_labels = cds_to_calibrate
     print(
-        f"Generated geography: "
+        f"Loaded geography: "
         f"{geography.n_clones} clones x "
         f"{geography.n_records} records",
         file=sys.stderr,
@@ -403,19 +409,12 @@ def main():
                 national_dir.mkdir(parents=True, exist_ok=True)
                 n_clones_from_weights = weights.shape[0] // n_records
                 if n_clones_from_weights != geography.n_clones:
-                    print(
+                    raise ValueError(
                         f"National weights have {n_clones_from_weights} clones "
-                        f"but geography has {geography.n_clones}; "
-                        f"regenerating geography",
-                        file=sys.stderr,
+                        f"but geography has {geography.n_clones}. "
+                        "Use the matching saved geography artifact."
                     )
-                    national_geo = assign_random_geography(
-                        n_records=n_records,
-                        n_clones=n_clones_from_weights,
-                        seed=args.seed,
-                    )
-                else:
-                    national_geo = geography
+                national_geo = geography
                 path = build_h5(
                     weights=weights,
                     geography=national_geo,

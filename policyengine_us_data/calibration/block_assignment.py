@@ -22,7 +22,7 @@ blocks to SLDU, SLDL, Place, VTD, PUMA, and ZCTA.
 """
 
 import random
-import re
+import unicodedata
 from functools import lru_cache
 from io import StringIO
 from typing import Dict, Optional
@@ -72,8 +72,9 @@ def _build_county_fips_to_enum() -> Dict[str, str]:
     """
     url = "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt"
     response = requests.get(url, timeout=60)
+    response.raise_for_status()
     df = pd.read_csv(
-        StringIO(response.text),
+        StringIO(response.content.decode("utf-8")),
         delimiter="|",
         dtype=str,
         usecols=["STATE", "STATEFP", "COUNTYFP", "COUNTYNAME"],
@@ -82,20 +83,44 @@ def _build_county_fips_to_enum() -> Dict[str, str]:
     valid_enum_names = set(County._member_names_)
     fips_to_enum = {}
 
+    def county_name_candidates(county_name: str, state_code: str) -> list[str]:
+        """Return normalized enum-name candidates for a Census county label."""
+        raw = county_name.strip()
+        candidates = []
+        for candidate_name in (
+            raw,
+            unicodedata.normalize("NFKD", raw)
+            .encode("ascii", "ignore")
+            .decode("ascii"),
+        ):
+            enum_name = candidate_name.upper()
+            enum_name = enum_name.replace("-", "_")
+            enum_name = enum_name.replace(" ", "_")
+            enum_name = enum_name.replace(".", "")
+            enum_name = enum_name.replace("'", "_")
+            candidates.append(f"{enum_name}_{state_code}")
+
+            # Backwards-compatible fallback for names that historically
+            # dropped apostrophes entirely.
+            candidates.append(f"{enum_name.replace('_S_', 'S_')}_{state_code}")
+
+        ordered = []
+        seen = set()
+        for candidate in candidates:
+            if candidate not in seen:
+                seen.add(candidate)
+                ordered.append(candidate)
+        return ordered
+
     for _, row in df.iterrows():
         county_fips = row["STATEFP"] + row["COUNTYFP"]
         state_code = row["STATE"]
         county_name = row["COUNTYNAME"]
 
-        # Transform to enum name format
-        enum_name = county_name.upper()
-        enum_name = re.sub(r"[.'\"]", "", enum_name)
-        enum_name = enum_name.replace("-", "_")
-        enum_name = enum_name.replace(" ", "_")
-        enum_name = f"{enum_name}_{state_code}"
-
-        if enum_name in valid_enum_names:
-            fips_to_enum[county_fips] = enum_name
+        for enum_name in county_name_candidates(county_name, state_code):
+            if enum_name in valid_enum_names:
+                fips_to_enum[county_fips] = enum_name
+                break
 
     return fips_to_enum
 

@@ -23,6 +23,12 @@ python -m policyengine_us_data.calibration.unified_calibration \
   --package-path storage/calibration/calibration_package.pkl \
   --epochs 500 --device cuda
 
+# Resume a previous fit for 500 more epochs:
+python -m policyengine_us_data.calibration.unified_calibration \
+  --package-path storage/calibration/calibration_package.pkl \
+  --resume-from storage/calibration/calibration_weights.npy \
+  --epochs 500 --device cuda
+
 # Full pipeline with PUF (build + fit in one shot):
 make calibrate
 ```
@@ -87,6 +93,30 @@ python -m policyengine_us_data.calibration.unified_calibration \
 
 You can re-run Step 2 as many times as you want with different hyperparameters. The expensive matrix
 build only happens once.
+
+Every fit now also writes a checkpoint next to the weights output
+(`calibration_weights.checkpoint.pt` by default). To continue the same fit,
+pass `--resume-from` with the weights file or checkpoint path. If a sibling
+checkpoint exists next to the weights file, it is used automatically so the
+L0 gate state is restored as well.
+
+```bash
+python -m policyengine_us_data.calibration.unified_calibration \
+  --package-path storage/calibration/calibration_package.pkl \
+  --epochs 2000 \
+  --beta 0.65 \
+  --lambda-l0 1e-4 \
+  --lambda-l2 1e-12 \
+  --log-freq 500 \
+  --target-config policyengine_us_data/calibration/target_config.yaml \
+  --device cpu \
+  --output policyengine_us_data/storage/calibration/national/weights.npy \
+  --resume-from policyengine_us_data/storage/calibration/national/weights.npy
+```
+
+When `--resume-from` points to a checkpoint, `--epochs` means additional epochs
+to run beyond the saved checkpoint epoch count. If only a `.npy` weights file
+exists, the run warm-starts from those weights.
 
 ### 2. Full pipeline with PUF
 

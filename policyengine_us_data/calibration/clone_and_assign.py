@@ -209,6 +209,105 @@ def assign_random_geography(
     )
 
 
+def save_geography(geography: GeographyAssignment, path) -> None:
+    """Save a GeographyAssignment to a compressed .npz file.
+
+    Args:
+        geography: The geography assignment to save.
+        path: Output file path (should end in .npz).
+    """
+    from pathlib import Path
+
+    path = Path(path)
+    np.savez_compressed(
+        path,
+        block_geoid=geography.block_geoid,
+        cd_geoid=geography.cd_geoid,
+        county_fips=geography.county_fips,
+        state_fips=geography.state_fips,
+        n_records=np.array([geography.n_records]),
+        n_clones=np.array([geography.n_clones]),
+    )
+
+
+def load_geography(path) -> GeographyAssignment:
+    """Load a GeographyAssignment from a .npz file.
+
+    Args:
+        path: Path to the .npz file saved by save_geography.
+
+    Returns:
+        GeographyAssignment with all fields restored.
+    """
+    from pathlib import Path
+
+    path = Path(path)
+    data = np.load(path, allow_pickle=True)
+    return GeographyAssignment(
+        block_geoid=data["block_geoid"],
+        cd_geoid=data["cd_geoid"],
+        county_fips=data["county_fips"],
+        state_fips=data["state_fips"],
+        n_records=int(data["n_records"][0]),
+        n_clones=int(data["n_clones"][0]),
+    )
+
+
+@lru_cache(maxsize=1)
+def load_sorted_block_cd_lookup():
+    """Load a sorted block -> CD lookup for legacy block artifacts."""
+    blocks, cds, _, _ = load_global_block_distribution()
+    order = np.argsort(blocks)
+    return blocks[order], cds[order]
+
+
+def reconstruct_geography_from_blocks(
+    block_geoids: np.ndarray,
+    n_records: int,
+    n_clones: int,
+) -> GeographyAssignment:
+    """Reconstruct a GeographyAssignment from saved block GEOIDs."""
+    block_geoids = np.asarray(block_geoids, dtype=str)
+    expected_len = n_records * n_clones
+    if len(block_geoids) != expected_len:
+        raise ValueError(
+            f"Expected {expected_len} block GEOIDs for "
+            f"{n_records} records x {n_clones} clones, got {len(block_geoids)}"
+        )
+
+    sorted_blocks, sorted_cds = load_sorted_block_cd_lookup()
+    indices = np.searchsorted(sorted_blocks, block_geoids)
+    valid = indices < len(sorted_blocks)
+    matched = np.zeros(len(block_geoids), dtype=bool)
+    matched[valid] = sorted_blocks[indices[valid]] == block_geoids[valid]
+
+    if not np.all(matched):
+        missing = np.unique(block_geoids[~matched])[:5]
+        raise KeyError(
+            "Could not recover congressional districts for some blocks. "
+            f"Examples: {missing.tolist()}"
+        )
+
+    county_fips = np.fromiter(
+        (block[:5] for block in block_geoids),
+        dtype="U5",
+        count=len(block_geoids),
+    )
+    state_fips = np.fromiter(
+        (int(block[:2]) for block in block_geoids),
+        dtype=np.int32,
+        count=len(block_geoids),
+    )
+    return GeographyAssignment(
+        block_geoid=block_geoids,
+        cd_geoid=sorted_cds[indices],
+        county_fips=county_fips,
+        state_fips=state_fips,
+        n_records=n_records,
+        n_clones=n_clones,
+    )
+
+
 def double_geography_for_puf(
     geography: GeographyAssignment,
 ) -> GeographyAssignment:

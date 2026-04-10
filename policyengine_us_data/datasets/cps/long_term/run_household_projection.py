@@ -4,7 +4,8 @@ Household-level projection pathway for income tax revenue 2025-2100.
 
 Usage:
     python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--tax-assumption ASSUMPTION] [--base-dataset PATH] [--output-dir DIR] [--save-h5] [--allow-validation-failures]
-    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--support-augmentation-profile PROFILE] [--support-augmentation-target-year YEAR]
+    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--support-augmentation-profile donor-backed-synthetic-v1] [--support-augmentation-target-year YEAR]
+    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--support-augmentation-profile donor-backed-composite-v1] [--support-augmentation-target-year YEAR] [--support-augmentation-align-to-run-year] [--support-augmentation-blueprint-base-weight-scale SCALE] [--support-augmentation-sanitize-worker-non-target-income]
     python run_household_projection.py [START_YEAR] [END_YEAR] [--greg] [--use-ss] [--use-payroll] [--use-h6-reform] [--use-tob] [--save-h5]
 
     START_YEAR: Optional starting year (default: 2025)
@@ -19,6 +20,7 @@ Usage:
     --support-augmentation-target-year: Year whose extreme support is used to build the supplement
     --support-augmentation-align-to-run-year: Rebuild the augmentation support for each run year instead of reusing one target-year support
     --support-augmentation-blueprint-base-weight-scale: Prior scaling applied to original households when target-year donor-composite blueprint calibration is active
+    --support-augmentation-sanitize-worker-non-target-income: Zero worker-donor clone investment and retirement income when using donor-backed-composite-v1
     --greg: Use GREG calibration instead of IPF (optional)
     --use-ss: Include Social Security benefit totals as calibration target (requires --greg)
     --use-payroll: Include taxable payroll totals as calibration target (requires --greg)
@@ -469,6 +471,9 @@ def _support_augmentation_metadata(
                 "blueprint_base_weight_scale": (
                     SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE
                 ),
+                "sanitize_worker_non_target_income": (
+                    SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
+                ),
             }
         )
     return metadata
@@ -581,6 +586,12 @@ if "--support-augmentation-blueprint-base-weight-scale" in sys.argv:
     )
     del sys.argv[blueprint_scale_index : blueprint_scale_index + 2]
 
+SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME = (
+    "--support-augmentation-sanitize-worker-non-target-income" in sys.argv
+)
+if SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME:
+    sys.argv.remove("--support-augmentation-sanitize-worker-non-target-income")
+
 TAX_ASSUMPTION = TRUSTEES_CORE_THRESHOLD_ASSUMPTION["name"]
 if "--tax-assumption" in sys.argv:
     tax_assumption_index = sys.argv.index("--tax-assumption")
@@ -650,6 +661,14 @@ if SUPPORT_AUGMENTATION_PROFILE is not None:
             "Unsupported support augmentation profile: "
             f"{SUPPORT_AUGMENTATION_PROFILE}. Valid profiles: "
             f"{sorted(SUPPORTED_AUGMENTATION_PROFILES)}"
+        )
+    if (
+        SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
+        and SUPPORT_AUGMENTATION_PROFILE != "donor-backed-composite-v1"
+    ):
+        raise ValueError(
+            "--support-augmentation-sanitize-worker-non-target-income is only "
+            "supported with donor-backed-composite-v1."
         )
     if START_YEAR < SUPPORT_AUGMENTATION_START_YEAR:
         raise ValueError(
@@ -768,6 +787,10 @@ if SUPPORT_AUGMENTATION_PROFILE:
             "  Support augmentation blueprint base-weight scale: "
             f"{SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE}"
         )
+        print(
+            "  Sanitize worker donor non-target income: "
+            f"{SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME}"
+        )
 if USE_SS:
     print("  Including Social Security benefits constraint: Yes")
 if USE_PAYROLL:
@@ -807,6 +830,9 @@ def _build_support_augmentation(
             max_distance_for_clone=SUPPORT_AUGMENTATION_MAX_DISTANCE,
             clone_weight_scale=SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
             reform=ACTIVE_LONG_RUN_TAX_REFORM,
+            sanitize_worker_non_target_income=(
+                SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
+            ),
         )
     else:
         augmented_dataset, augmentation_report = build_augmented_dataset(
@@ -950,6 +976,9 @@ if SUPPORT_AUGMENTATION_PROFILE is not None and SUPPORT_AUGMENTATION_ALIGN_TO_RU
                 "clone_weight_scale": SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
                 "blueprint_base_weight_scale": (
                     SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE
+                ),
+                "sanitize_worker_non_target_income": (
+                    SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
                 ),
             }
         )

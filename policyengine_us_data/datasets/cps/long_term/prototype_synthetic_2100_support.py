@@ -72,6 +72,30 @@ PAYROLL_COMPONENTS = (
     "employment_income_before_lsr",
     "self_employment_income_before_lsr",
 )
+WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS = (
+    "taxable_interest_income",
+    "tax_exempt_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "qualified_bdc_income",
+    "qualified_reit_and_ptp_income",
+    "long_term_capital_gains",
+    "short_term_capital_gains",
+    "non_sch_d_capital_gains",
+    "long_term_capital_gains_on_collectibles",
+    "long_term_capital_gains_on_small_business_stock",
+    "other_net_gain",
+    "estate_income",
+    "rental_income",
+    "taxable_private_pension_income",
+    "tax_exempt_private_pension_income",
+    "taxable_public_pension_income",
+    "tax_exempt_public_pension_income",
+    "taxable_401k_distributions",
+    "taxable_403b_distributions",
+    "taxable_ira_distributions",
+    "taxable_sep_distributions",
+)
 PAYROLL_UPRATING_FACTOR_COLUMN = "__pe_payroll_uprating_factor"
 SS_UPRATING_FACTOR_COLUMN = "__pe_ss_uprating_factor"
 
@@ -1777,6 +1801,23 @@ def _scale_person_components(
     return row
 
 
+def _zero_period_columns(
+    df: pd.DataFrame,
+    row_indices,
+    *,
+    base_year: int,
+    raw_columns: tuple[str, ...],
+) -> tuple[str, ...]:
+    available_columns = tuple(
+        column
+        for raw_column in raw_columns
+        if (column := _period_column(raw_column, base_year)) in df.columns
+    )
+    if len(available_columns) > 0 and len(row_indices) > 0:
+        df.loc[row_indices, list(available_columns)] = 0.0
+    return available_columns
+
+
 def _target_base_total_for_row(
     row: pd.Series,
     *,
@@ -1954,6 +1995,7 @@ def _compose_role_donor_rows_to_target(
     id_counters: dict[str, int],
     clone_weight_scale: float,
     clone_weight_divisor: int,
+    sanitize_worker_non_target_income: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, int]] | tuple[None, dict[str, int]]:
     age_col = _period_column("age", base_year)
     household_weight_col = _period_column("household_weight", base_year)
@@ -2005,19 +2047,26 @@ def _compose_role_donor_rows_to_target(
     )
 
     selected_rows: list[pd.Series] = []
+    selected_sources: list[str] = []
     head_target_older = target_candidate.head_ss > 0 or target_candidate.head_age >= 65
-    head_source_rows = (
-        older_adults if head_target_older and not older_adults.empty else worker_adults
-    )
+    if head_target_older and not older_adults.empty:
+        head_source_rows = older_adults
+        head_source = "older"
+    else:
+        head_source_rows = worker_adults
+        head_source = "worker"
     if head_source_rows.empty:
         return None, id_counters
     head_row = head_source_rows.iloc[0].copy()
     selected_rows.append(head_row)
+    selected_sources.append(head_source)
 
     spouse_row = None
+    spouse_source = None
     if target_candidate.spouse_age is not None:
         if target_candidate.spouse_age >= 65 and len(older_adults) >= 2:
             spouse_row = older_adults.iloc[1].copy()
+            spouse_source = "older"
         elif not worker_adults.empty:
             worker_candidates = (
                 worker_adults.iloc[1:]
@@ -2032,41 +2081,58 @@ def _compose_role_donor_rows_to_target(
                 .idxmin()
             )
             spouse_row = worker_candidates.loc[spouse_idx].copy()
+            spouse_source = "worker"
         elif len(older_adults) >= 2:
             spouse_row = older_adults.iloc[1].copy()
+            spouse_source = "older"
         if spouse_row is None:
             fallback_spouse_pool = (
                 worker_adults if not worker_adults.empty else older_adults
             )
+            spouse_source = "worker" if not worker_adults.empty else "older"
             if fallback_spouse_pool.empty:
                 return None, id_counters
             spouse_row = fallback_spouse_pool.iloc[0].copy()
         selected_rows.append(spouse_row)
+        selected_sources.append(str(spouse_source))
 
     if len(target_candidate.dependent_ages) > 0:
-        dependent_rows = [row.copy() for _, row in worker_dependents.iterrows()]
-        if not dependent_rows:
+        dependent_records = [
+            (row.copy(), "worker") for _, row in worker_dependents.iterrows()
+        ]
+        if not dependent_records:
             fallback_source = None
+            fallback_source_kind = None
             if worker_donor_rows is not None and not worker_donor_rows.empty:
                 fallback_source = (
                     worker_donor_rows.sort_values(age_col, ascending=True)
                     .iloc[0]
                     .copy()
                 )
+                fallback_source_kind = "worker"
             elif older_donor_rows is not None and not older_donor_rows.empty:
                 fallback_source = (
                     older_donor_rows.sort_values(age_col, ascending=True).iloc[0].copy()
                 )
+                fallback_source_kind = "older"
             if fallback_source is None:
                 return None, id_counters
-            dependent_rows = [fallback_source.copy()]
-        while len(dependent_rows) < len(target_candidate.dependent_ages):
-            dependent_rows.append(dependent_rows[-1].copy())
-        selected_rows.extend(dependent_rows[: len(target_candidate.dependent_ages)])
+            dependent_records = [(fallback_source.copy(), str(fallback_source_kind))]
+        while len(dependent_records) < len(target_candidate.dependent_ages):
+            row, source = dependent_records[-1]
+            dependent_records.append((row.copy(), source))
+        selected_rows.extend(
+            row for row, _ in dependent_records[: len(target_candidate.dependent_ages)]
+        )
+        selected_sources.extend(
+            source
+            for _, source in dependent_records[: len(target_candidate.dependent_ages)]
+        )
 
     # Reset duplicate donor indices so later row-specific retargeting only touches
     # the intended clone row.
     cloned = pd.DataFrame(selected_rows).reset_index(drop=True).copy()
+    cloned_sources = pd.Series(selected_sources, index=cloned.index)
     household_id = id_counters["household"]
     id_counters["household"] += 1
     for entity_name, columns in ENTITY_ID_COLUMNS.items():
@@ -2176,6 +2242,14 @@ def _compose_role_donor_rows_to_target(
         cloned.loc[head_idx, qbi_col] = 0.0
         if spouse_idx is not None:
             cloned.loc[spouse_idx, qbi_col] = 0.0
+    if sanitize_worker_non_target_income:
+        worker_sourced_indices = cloned_sources[cloned_sources == "worker"].index
+        _zero_period_columns(
+            cloned,
+            worker_sourced_indices,
+            base_year=base_year,
+            raw_columns=WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS,
+        )
 
     return cloned, id_counters
 
@@ -2335,6 +2409,7 @@ def build_role_composite_augmented_input_dataframe(
     max_worker_distance: float = 3.0,
     clone_weight_scale: float = 0.1,
     reform: object | None = None,
+    sanitize_worker_non_target_income: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     sim = Microsimulation(dataset=base_dataset, reform=reform)
     input_df = attach_person_uprating_factors(
@@ -2462,6 +2537,7 @@ def build_role_composite_augmented_input_dataframe(
             id_counters=id_counters,
             clone_weight_scale=clone_weight_scale,
             clone_weight_divisor=1,
+            sanitize_worker_non_target_income=sanitize_worker_non_target_income,
         )
         if clone_df is None:
             skipped_targets.append(
@@ -2522,6 +2598,10 @@ def build_role_composite_augmented_input_dataframe(
         "max_older_distance": float(max_older_distance),
         "max_worker_distance": float(max_worker_distance),
         "clone_weight_scale": float(clone_weight_scale),
+        "sanitize_worker_non_target_income": bool(sanitize_worker_non_target_income),
+        "worker_non_target_income_components": list(
+            WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS
+        ),
         "base_household_count": int(
             input_df[_period_column("household_id", base_year)].nunique()
         ),
@@ -2551,6 +2631,7 @@ def build_role_composite_augmented_dataset(
     max_worker_distance: float = 3.0,
     clone_weight_scale: float = 0.1,
     reform: object | None = None,
+    sanitize_worker_non_target_income: bool = False,
 ) -> tuple[Dataset, dict[str, object]]:
     augmented_df, report = build_role_composite_augmented_input_dataframe(
         base_dataset=base_dataset,
@@ -2562,6 +2643,7 @@ def build_role_composite_augmented_dataset(
         max_worker_distance=max_worker_distance,
         clone_weight_scale=clone_weight_scale,
         reform=reform,
+        sanitize_worker_non_target_income=sanitize_worker_non_target_income,
     )
     return Dataset.from_dataframe(augmented_df, base_year), report
 

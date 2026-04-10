@@ -11,7 +11,7 @@ for _p in (_baked, _local):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from modal_app.images import gpu_image as image
+from modal_app.images import gpu_image as image  # noqa: E402
 
 app = modal.App("policyengine-us-data-fit-weights")
 
@@ -72,6 +72,7 @@ def _collect_outputs(cal_lines):
     log_path = None
     cal_log_path = None
     config_path = None
+    checkpoint_path = None
     for line in cal_lines:
         if "OUTPUT_PATH:" in line:
             output_path = line.split("OUTPUT_PATH:")[1].strip()
@@ -83,6 +84,8 @@ def _collect_outputs(cal_lines):
             cal_log_path = line.split("CAL_LOG_PATH:")[1].strip()
         elif "LOG_PATH:" in line:
             log_path = line.split("LOG_PATH:")[1].strip()
+        elif "CHECKPOINT_PATH:" in line:
+            checkpoint_path = line.split("CHECKPOINT_PATH:")[1].strip()
 
     with open(output_path, "rb") as f:
         weights_bytes = f.read()
@@ -107,12 +110,18 @@ def _collect_outputs(cal_lines):
         with open(config_path, "rb") as f:
             config_bytes = f.read()
 
+    checkpoint_bytes = None
+    if checkpoint_path:
+        with open(checkpoint_path, "rb") as f:
+            checkpoint_bytes = f.read()
+
     return {
         "weights": weights_bytes,
         "geography": geography_bytes,
         "log": log_bytes,
         "cal_log": cal_log_bytes,
         "config": config_bytes,
+        "checkpoint": checkpoint_bytes,
     }
 
 
@@ -1037,6 +1046,12 @@ def main(
             f.write(result["config"])
         print(f"Run config saved to: {config_output}")
 
+    checkpoint_output = f"{prefix}calibration_weights.checkpoint.pt"
+    if result.get("checkpoint"):
+        with open(checkpoint_output, "wb") as f:
+            f.write(result["checkpoint"])
+        print(f"Checkpoint saved to: {checkpoint_output}")
+
     # Push weights to pipeline volume for downstream steps
     from io import BytesIO
 
@@ -1056,6 +1071,11 @@ def main(
                 BytesIO(result["config"]),
                 f"artifacts/{prefix}unified_run_config.json",
             )
+        if result.get("checkpoint"):
+            batch.put_file(
+                BytesIO(result["checkpoint"]),
+                f"artifacts/{prefix}calibration_weights.checkpoint.pt",
+            )
     pipeline_vol.commit()
     print("Weights committed to pipeline volume", flush=True)
 
@@ -1067,6 +1087,7 @@ def main(
         upload_calibration_artifacts(
             weights_path=output,
             geography_path=(geography_output if result.get("geography") else None),
+            checkpoint_path=(checkpoint_output if result.get("checkpoint") else None),
             log_dir=".",
             prefix=prefix,
         )

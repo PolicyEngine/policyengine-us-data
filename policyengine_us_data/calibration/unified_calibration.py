@@ -503,6 +503,19 @@ def _hash_string_list(values: list) -> str:
     return digest.hexdigest()
 
 
+def _hash_sparse_matrix(X_sparse) -> str:
+    """Hash sparse matrix structure and values for resume compatibility."""
+    import hashlib
+
+    X_csr = X_sparse.tocsr()
+    digest = hashlib.sha256()
+    digest.update(np.asarray(X_csr.shape, dtype=np.int64).tobytes())
+    digest.update(np.asarray(X_csr.indptr, dtype=np.int64).tobytes())
+    digest.update(np.asarray(X_csr.indices, dtype=np.int64).tobytes())
+    digest.update(np.asarray(X_csr.data).tobytes())
+    return digest.hexdigest()
+
+
 def build_checkpoint_signature(
     X_sparse,
     targets: np.ndarray,
@@ -519,6 +532,7 @@ def build_checkpoint_signature(
     return {
         "n_features": int(X_sparse.shape[1]),
         "n_targets": int(len(targets_arr)),
+        "x_sparse_sha256": _hash_sparse_matrix(X_sparse),
         "target_names_sha256": _hash_string_list(target_names),
         "targets_sha256": hashlib.sha256(targets_arr.tobytes()).hexdigest(),
         "lambda_l0": float(lambda_l0),

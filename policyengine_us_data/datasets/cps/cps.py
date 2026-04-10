@@ -137,7 +137,12 @@ class CPS(Dataset):
         )
         logging.info("Imputing ITIN status")
         has_itin_number = impute_itin_status(cps, person, ssn_card_type)
-        _store_identification_variables(cps, ssn_card_type, has_itin_number)
+        _store_identification_variables(
+            cps,
+            person,
+            ssn_card_type,
+            has_itin_number,
+        )
         logging.info("Adding family variables")
         add_spm_variables(self, cps, spm_unit)
         logging.info("Adding household variables")

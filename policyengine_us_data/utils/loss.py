@@ -12,6 +12,9 @@ from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
 from policyengine_us_data.storage.calibration_targets.soi_metadata import (
     RETIREMENT_CONTRIBUTION_TARGETS,
 )
+from policyengine_us_data.utils.cms_medicare import (
+    get_beneficiary_paid_medicare_part_b_premiums_target,
+)
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
@@ -25,7 +28,9 @@ from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 HARD_CODED_TOTALS = {
     "health_insurance_premiums_without_medicare_part_b": 385e9,
     "other_medical_expenses": 278e9,
-    "medicare_part_b_premiums": 112e9,
+    "medicare_part_b_premiums": get_beneficiary_paid_medicare_part_b_premiums_target(
+        2024
+    ),
     "over_the_counter_health_expenses": 72e9,
     "spm_unit_spm_threshold": 3_945e9,
     "child_support_expense": 33e9,

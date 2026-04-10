@@ -150,7 +150,6 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "health_insurance_premiums_without_medicare_part_b",
     "over_the_counter_health_expenses",
     "other_medical_expenses",
-    "medicare_part_b_premiums",
     "child_support_expense",
     # Hours/employment
     "weekly_hours_worked",

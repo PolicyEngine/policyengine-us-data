@@ -1,3 +1,156 @@
+## [1.75.8] - 2026-04-10
+
+### Fixed
+
+- Modeled Medicare Part B premiums from enrollment and premium schedules, netted a cycle-free MSP standard-premium offset, and documented the national Part B calibration target as an approximate beneficiary-paid out-of-pocket benchmark rather than gross CMS premium income.
+
+
+## [1.75.7] - 2026-04-10
+
+### Fixed
+
+- Split legacy national CTC calibration into separate refundable and nonrefundable IRS SOI amount and recipient-count targets, added DB-backed nonrefundable CTC targets for both national and unified district calibration, and fixed recursive package imports so database creation scripts and the national validation tooling can import cleanly in fresh environments. The national validator now also reports CTC totals and grouped diagnostics by AGI band and filing status, its advertised `--hf-path` mode now completes structural checks against published Hugging Face H5 artifacts, and CPS-derived datasets now emit `has_tin` plus a temporary `has_itin` compatibility alias derived from identification status.
+
+
+## [1.75.6] - 2026-04-09
+
+### Fixed
+
+- Anchor ACA take-up to subsidized Marketplace coverage reports so unsubsidized exchange enrollment does not force premium tax credit take-up.
+
+
+## [1.75.5] - 2026-04-09
+
+### Changed
+
+- Donor-impute race, Hispanic status, sex, and occupation-based CPS features onto the PUF clone half of the extended CPS so subgroup analyses and overtime-eligibility inputs better align with PUF-imputed incomes.
+
+### Fixed
+
+- Replace legacy SQLModel `session.query(...)` lookups in the SOI ETL loaders and their focused tests with `session.exec(select(...))` to remove deprecation warnings in CI.
+
+
+## [1.75.4] - 2026-04-09
+
+### Fixed
+
+- Remove duplicate entries in bad_targets list.
+
+
+## [1.75.3] - 2026-04-09
+
+### Changed
+
+- Add 2025 ACA and Medicaid calibration target artifacts, plus year-aware ACA target loading and state uprating factors for 2025 builds.
+
+
+## [1.75.2] - 2026-04-09
+
+### Fixed
+
+- Stop independently QRF-imputing clone-half ``spm_unit_capped_work_childcare_expenses`` and rebuild it deterministically from clone pre-subsidy childcare, donor capping shares, and clone earnings caps.
+
+
+## [1.75.1] - 2026-04-08
+
+### Changed
+
+- Build policy_data.db from source instead of downloading from HuggingFace, replace H5 dataset dependency with a --year CLI flag for all database ETL scripts, fix Modal data build ordering (CPS before PUF), and add missing heapq import in local area builder.
+
+
+## [1.75.0] - 2026-04-08
+
+### Added
+
+- Add `docs/internals/` developer reference: three notebooks covering all nine pipeline stages (Stage 1 data build, Stage 2 calibration matrix assembly, Stages 3–4 L0 optimization and H5 assembly) plus a README with pipeline orchestration reference, run ID format, Modal volume layout, and HuggingFace artifact paths.
+
+### Changed
+
+- Update public-facing methodology and data documentation to reflect the current pipeline implementation; pipeline now uploads validation diagnostics to HuggingFace after H5 builds complete.
+
+
+## [1.74.3] - 2026-04-07
+
+### Fixed
+
+- Fix the PR changelog fragment check to validate fragments added by the pull request rather than pre-existing files.
+
+
+## [1.74.2] - 2026-04-03
+
+### Fixed
+
+- Fix district AGI geography assignment to match target shares and use the requested calibration database when loading district AGI targets.
+
+
+## [1.74.1] - 2026-04-03
+
+### Fixed
+
+- Added fail-closed dataset contract validation for built CPS artifacts, including
+  `policyengine-us` lockfile version checks, per-entity HDF5 length validation,
+  and file-based `Microsimulation` smoke tests in both the build and upload paths.
+
+
+## [1.74.0] - 2026-04-02
+
+### Added
+
+- Convert imputed deductible mortgage interest into structural mortgage balance, interest, and origination-year inputs when the installed `policyengine-us` supports federal MID cap modeling, while preserving total current-law interest deductions via residual investment interest inputs.
+- Added SOI Table 4.3 top-tail calibration targets for the top 0.001%, 0.001-0.01%, 0.01-0.1%, and 0.1-1% AGI percentile intervals, covering 9 variables (count, AGI, wages, interest, dividends, capital gains, business income, and partnership/S-corp income).
+
+### Changed
+
+- Align SSI takeup and disability flags to CPS-reported receipt.
+- Upgrade CI and Modal runtime defaults to Python 3.14 and declare package
+  support for Python 3.14.
+- Refresh tracked national SOI workbook targets through TY2023, backfill TY2022,
+  teach `get_soi()` to pick the best available source year per variable, and
+  overlay the national DB IRS-SOI targets that can now use the newer workbook
+  release instead of staying stuck on the TY2022 geography file.
+
+### Fixed
+
+- Reduce unnecessary PR CI spend by canceling superseded runs and limiting
+  the Modal-backed full data build to labeled or high-risk data-pipeline changes.
+- Restructured CI/CD pipeline: migrated versioning from expired PAT to GitHub App token, moved tests to top-level tests/ with unit/integration split, consolidated 9 workflow files into 4 (pr.yaml, push.yaml, pipeline.yaml, versioning.yaml), added Codecov integration. Integration tests now only run on PRs with the run-integration label.
+- Assign distinct `reform_id` values to each national JCT tax expenditure target instead of reusing a single generic reform id for all of them.
+- Fix SOI uprating dtype error on newer pandas and add defensive non-negativity clip for retirement/SS variables in splice step.
+- Fix the state income tax ETL to parse the official FY2023 Census STC `T40`
+  row instead of using a mismatched hardcoded table, correcting Washington,
+  New Hampshire, Tennessee, California, and other state targets.
+- Use a mortgage-specific deduction variable for the JCT mortgage tax expenditure target instead of broad interest deductions.
+- Scope pipeline artifact directory by run ID to prevent concurrent runs from clobbering each other's H5 files, calibration packages, and weights.
+
+
+## [1.73.0] - 2026-03-12
+
+### Added
+
+- Add end-to-end test for calibration database build pipeline.
+- Unified calibration pipeline with GPU-accelerated L1/L0 solver, target config YAML, and CLI package validator.
+  Per-state and per-county precomputation replacing per-clone Microsimulation (51 sims instead of 436).
+  Parallel state, county, and clone loop processing via ProcessPoolExecutor.
+  Block-level takeup re-randomization with deterministic seeded draws.
+  Hierarchical uprating with ACA PTC state-level CSV factors and CD reconciliation.
+  Modal remote runner with Volume support, CUDA OOM fixes, and checkpointing.
+  H5 builder that filters calibrated clone weights by CD subset, uses pre-assigned random census blocks from `geography.npz` to derive full sub-state geography, and produces self-contained local area datasets.
+  Staging validation script (validate_staging.py) with sim.calculate() comparison and sanity checks.
+
+### Changed
+
+- Geography assignment now prevents clone-to-CD collisions.
+  County-dependent vars (aca_ptc) selectively precomputed per county; other vars use state-only path.
+  Target config switched to finest-grain include mode (~18K targets).
+- Migrated from changelog_entry.yaml to towncrier fragments to eliminate merge conflicts.
+
+### Fixed
+
+- Cross-state cache pollution in matrix builder precomputation.
+  Takeup draw ordering mismatch between matrix builder and stacked builder.
+  At-large district geoid mismatch (7 districts had 0 estimates).
+
+
 ## [1.72.3] - 2026-03-09
 
 ### Changed

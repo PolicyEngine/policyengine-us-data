@@ -1,5 +1,4 @@
 import logging
-from typing import Dict
 
 import requests
 import pandas as pd
@@ -40,8 +39,9 @@ def fetch_congressional_districts(year):
     df["state_fips"] = df["state"].astype(int)
     df = df[df["state_fips"] <= 56].copy()
     df["district_number"] = df["congressional district"].apply(
-        lambda x: 0 if x in ["ZZ", "98"] else int(x)
+        lambda x: int(x) if x not in ["ZZ"] else -1
     )
+    df = df[df["district_number"] >= 0].copy()
 
     # Filter out statewide summary records for multi-district states
     df["n_districts"] = df.groupby("state_fips")["state_fips"].transform("count")
@@ -49,6 +49,10 @@ def fetch_congressional_districts(year):
     df = df.drop(columns=["n_districts"])
 
     df.loc[df["district_number"] == 0, "district_number"] = 1
+    df.loc[
+        (df["state_fips"] == 11) & (df["district_number"] == 98),
+        "district_number",
+    ] = 1
     df["congressional_district_geoid"] = df["state_fips"] * 100 + df["district_number"]
 
     df = df[

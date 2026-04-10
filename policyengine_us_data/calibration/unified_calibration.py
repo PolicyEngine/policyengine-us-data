@@ -5,11 +5,11 @@ Pipeline flow:
     1. Load CPS dataset -> get n_records
     2. Clone Nx, assign random geography (census block)
     3. (Optional) Source impute ACS/SIPP/SCF vars with state
-    4. (Optional) PUF clone (2x) + QRF impute with state
-    5. Re-randomize simple takeup variables per block
-    6. Build sparse calibration matrix (clone-by-clone)
-    7. L0-regularized optimization -> calibrated weights
-    8. Save weights, diagnostics, run config
+    4. Build sparse calibration matrix (clone-by-clone)
+    5. L0-regularized optimization -> calibrated weights
+    6. Save weights, diagnostics, run config
+
+Note: PUF cloning happens upstream in `extended_cps.py`, not here.
 
 Two presets control output size via L0 regularization:
 - local: L0=1e-8, ~3-4M records (for local area dataset)
@@ -22,17 +22,19 @@ Usage:
         --output path/to/weights.npy \\
         --preset local \\
         --epochs 100 \\
-        --puf-dataset path/to/puf_2024.h5
+        --skip-source-impute
 """
 
 import argparse
 import builtins
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,127 +57,122 @@ LOG_ALPHA_JITTER_SD = 0.01
 LAMBDA_L2 = 1e-12
 LEARNING_RATE = 0.15
 DEFAULT_EPOCHS = 100
-DEFAULT_N_CLONES = 10
-
-SIMPLE_TAKEUP_VARS = [
-    {
-        "variable": "takes_up_snap_if_eligible",
-        "entity": "spm_unit",
-        "rate_key": "snap",
-    },
-    {
-        "variable": "takes_up_aca_if_eligible",
-        "entity": "tax_unit",
-        "rate_key": "aca",
-    },
-    {
-        "variable": "takes_up_dc_ptc",
-        "entity": "tax_unit",
-        "rate_key": "dc_ptc",
-    },
-    {
-        "variable": "takes_up_head_start_if_eligible",
-        "entity": "person",
-        "rate_key": "head_start",
-    },
-    {
-        "variable": "takes_up_early_head_start_if_eligible",
-        "entity": "person",
-        "rate_key": "early_head_start",
-    },
-    {
-        "variable": "takes_up_ssi_if_eligible",
-        "entity": "person",
-        "rate_key": "ssi",
-    },
-    {
-        "variable": "would_file_taxes_voluntarily",
-        "entity": "tax_unit",
-        "rate_key": "voluntary_filing",
-    },
-    {
-        "variable": "takes_up_medicaid_if_eligible",
-        "entity": "person",
-        "rate_key": "medicaid",
-    },
-    {
-        "variable": "takes_up_tanf_if_eligible",
-        "entity": "spm_unit",
-        "rate_key": "tanf",
-    },
-]
+DEFAULT_N_CLONES = 430
 
 
-def rerandomize_takeup(
-    sim,
-    clone_block_geoids: np.ndarray,
-    clone_state_fips: np.ndarray,
-    time_period: int,
-) -> None:
-    """Re-randomize simple takeup variables per census block.
+def get_git_provenance() -> dict:
+    """Capture git state and package version for provenance tracking."""
+    import subprocess as _sp
 
-    Groups entities by their household's block GEOID and draws
-    new takeup booleans using seeded_rng(var_name, salt=block).
-    Overrides the simulation's stored inputs.
+    info = {
+        "git_commit": None,
+        "git_branch": None,
+        "git_dirty": None,
+        "package_version": None,
+    }
+    try:
+        info["git_commit"] = (
+            _sp.check_output(
+                ["git", "rev-parse", "HEAD"],
+                stderr=_sp.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+        info["git_branch"] = (
+            _sp.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                stderr=_sp.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+        porcelain = (
+            _sp.check_output(
+                ["git", "status", "--porcelain"],
+                stderr=_sp.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+        info["git_dirty"] = len(porcelain) > 0
+    except Exception:
+        pass
+    import os
 
-    Args:
-        sim: Microsimulation instance (already has state_fips).
-        clone_block_geoids: Block GEOIDs per household.
-        clone_state_fips: State FIPS per household.
-        time_period: Tax year.
-    """
-    from policyengine_us_data.parameters import (
-        load_take_up_rate,
-    )
-    from policyengine_us_data.utils.randomness import (
-        seeded_rng,
-    )
+    if not info["git_commit"]:
+        info["git_commit"] = os.environ.get("GIT_COMMIT")
+    if not info["git_branch"]:
+        info["git_branch"] = os.environ.get("GIT_BRANCH")
+    try:
+        from policyengine_us_data.__version__ import __version__
 
-    hh_ids = sim.calculate("household_id", map_to="household").values
-    hh_to_block = dict(zip(hh_ids, clone_block_geoids))
-    hh_to_state = dict(zip(hh_ids, clone_state_fips))
+        info["package_version"] = __version__
+    except Exception:
+        pass
+    return info
 
-    for spec in SIMPLE_TAKEUP_VARS:
-        var_name = spec["variable"]
-        entity_level = spec["entity"]
-        rate_key = spec["rate_key"]
 
-        rate_or_dict = load_take_up_rate(rate_key, time_period)
+def print_package_provenance(metadata: dict) -> None:
+    """Print a provenance banner from package metadata."""
+    built = metadata.get("created_at", "unknown")
+    branch = metadata.get("git_branch", "unknown")
+    commit = metadata.get("git_commit")
+    commit_short = commit[:8] if commit else "unknown"
+    dirty = " (DIRTY)" if metadata.get("git_dirty") else ""
+    version = metadata.get("package_version", "unknown")
+    ds_sha = metadata.get("dataset_sha256", "")
+    db_sha = metadata.get("db_sha256", "")
+    ds_label = ds_sha[:12] if ds_sha else "unknown"
+    db_label = db_sha[:12] if db_sha else "unknown"
+    print("--- Package Provenance ---")
+    print(f"  Built:   {built}")
+    print(f"  Branch:  {branch} @ {commit_short}{dirty}")
+    print(f"  Version: {version}")
+    print(f"  Dataset SHA: {ds_label}  DB SHA: {db_label}")
+    print("--------------------------")
 
-        is_state_specific = isinstance(rate_or_dict, dict)
 
-        entity_ids = sim.calculate(f"{entity_level}_id", map_to=entity_level).values
-        entity_hh_ids = sim.calculate("household_id", map_to=entity_level).values
-        n_entities = len(entity_ids)
+def check_package_staleness(metadata: dict) -> None:
+    """Warn if package is stale, dirty, or from a different branch."""
+    import datetime
 
-        draws = np.zeros(n_entities, dtype=np.float64)
-        rates = np.zeros(n_entities, dtype=np.float64)
+    created = metadata.get("created_at")
+    if created:
+        try:
+            built_dt = datetime.datetime.fromisoformat(created)
+            age = datetime.datetime.now() - built_dt
+            if age.days > 7:
+                print(f"WARNING: Package is {age.days} days old (built {created})")
+        except Exception:
+            pass
 
-        entity_blocks = np.array([hh_to_block.get(hid, "0") for hid in entity_hh_ids])
+    if metadata.get("git_dirty"):
+        print("WARNING: Package was built from a dirty working tree")
 
-        unique_blocks = np.unique(entity_blocks)
-        for block in unique_blocks:
-            mask = entity_blocks == block
-            n_in_block = mask.sum()
-            rng = seeded_rng(var_name, salt=str(block))
-            draws[mask] = rng.random(n_in_block)
+    current = get_git_provenance()
+    pkg_branch = metadata.get("git_branch")
+    cur_branch = current.get("git_branch")
+    if pkg_branch and cur_branch and pkg_branch != cur_branch:
+        print(
+            f"WARNING: Package built on branch "
+            f"'{pkg_branch}', current branch is "
+            f"'{cur_branch}'"
+        )
 
-            if is_state_specific:
-                block_hh_ids = entity_hh_ids[mask]
-                for i, hid in enumerate(block_hh_ids):
-                    state = int(hh_to_state.get(hid, 0))
-                    state_str = str(state)
-                    r = rate_or_dict.get(
-                        state_str,
-                        rate_or_dict.get(state, 0.8),
-                    )
-                    idx = np.where(mask)[0][i]
-                    rates[idx] = r
-            else:
-                rates[mask] = rate_or_dict
-
-        new_values = draws < rates
-        sim.set_input(var_name, time_period, new_values)
+    pkg_commit = metadata.get("git_commit")
+    cur_commit = current.get("git_commit")
+    if (
+        pkg_commit
+        and cur_commit
+        and pkg_commit != cur_commit
+        and pkg_branch == cur_branch
+    ):
+        print(
+            f"WARNING: Package commit {pkg_commit[:8]} "
+            f"differs from current {cur_commit[:8]} "
+            f"on same branch '{cur_branch}'"
+        )
 
 
 def parse_args(argv=None):
@@ -249,21 +246,293 @@ def parse_args(argv=None):
         help="Skip takeup re-randomization",
     )
     parser.add_argument(
-        "--puf-dataset",
-        default=None,
-        help="Path to PUF h5 file for QRF training",
-    )
-    parser.add_argument(
-        "--skip-puf",
-        action="store_true",
-        help="Skip PUF clone + QRF imputation",
-    )
-    parser.add_argument(
         "--skip-source-impute",
         action="store_true",
-        help="Skip ACS/SIPP/SCF re-imputation with state",
+        default=True,
+        help="(default) Skip ACS/SIPP/SCF re-imputation with state",
+    )
+    parser.add_argument(
+        "--no-skip-source-impute",
+        dest="skip_source_impute",
+        action="store_false",
+        help="Run ACS/SIPP/SCF source imputation inline",
+    )
+    parser.add_argument(
+        "--target-config",
+        default=None,
+        help="Path to target exclusion YAML config",
+    )
+    parser.add_argument(
+        "--county-level",
+        action="store_true",
+        help="Iterate per-county (slow, ~3143 counties). "
+        "Default is state-only (~51 states), which is much "
+        "faster for county-invariant target variables.",
+    )
+    parser.add_argument(
+        "--build-only",
+        action="store_true",
+        help="Build matrix + save package, skip fitting",
+    )
+    parser.add_argument(
+        "--package-path",
+        default=None,
+        help="Load pre-built calibration package (skip matrix build)",
+    )
+    parser.add_argument(
+        "--package-output",
+        default=None,
+        help="Where to save calibration package",
+    )
+    parser.add_argument(
+        "--beta",
+        type=float,
+        default=BETA,
+        help=f"L0 gate temperature (default: {BETA})",
+    )
+    parser.add_argument(
+        "--lambda-l2",
+        type=float,
+        default=LAMBDA_L2,
+        help=f"L2 regularization (default: {LAMBDA_L2})",
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=LEARNING_RATE,
+        help=f"Learning rate (default: {LEARNING_RATE})",
+    )
+    parser.add_argument(
+        "--log-freq",
+        type=int,
+        default=None,
+        help="Epochs between per-target CSV log entries. "
+        "Omit to disable epoch logging.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of parallel workers for state/county "
+        "precomputation (default: 1, sequential).",
     )
     return parser.parse_args(argv)
+
+
+def load_target_config(path: str) -> dict:
+    """Load target exclusion config from YAML.
+
+    Args:
+        path: Path to YAML config file.
+
+    Returns:
+        Parsed config dict with 'exclude' list.
+    """
+    import yaml
+
+    with open(path) as f:
+        config = yaml.safe_load(f)
+    if config is None:
+        config = {}
+    if "exclude" not in config:
+        config["exclude"] = []
+    return config
+
+
+def _match_rules(targets_df, rules):
+    """Build a boolean mask matching any of the given rules."""
+    mask = np.zeros(len(targets_df), dtype=bool)
+    for rule in rules:
+        rule_mask = targets_df["variable"] == rule["variable"]
+        if "geo_level" in rule:
+            rule_mask = rule_mask & (targets_df["geo_level"] == rule["geo_level"])
+        if "domain_variable" in rule:
+            rule_mask = rule_mask & (
+                targets_df["domain_variable"] == rule["domain_variable"]
+            )
+        mask |= rule_mask
+    return mask
+
+
+def apply_target_config(
+    targets_df: "pd.DataFrame",
+    X_sparse,
+    target_names: list,
+    config: dict,
+) -> tuple:
+    """Filter targets based on include/exclude config.
+
+    Use ``include`` to keep only matching targets, or ``exclude``
+    to drop matching targets.  Both support ``variable``,
+    ``geo_level`` (optional), and ``domain_variable`` (optional).
+    If both are present, ``include`` is applied first, then
+    ``exclude`` removes from the included set.
+
+    Args:
+        targets_df: DataFrame with target rows.
+        X_sparse: Sparse matrix (targets x records).
+        target_names: List of target name strings.
+        config: Config dict with 'include' and/or 'exclude' list.
+
+    Returns:
+        (filtered_targets_df, filtered_X_sparse, filtered_names)
+    """
+    include_rules = config.get("include", [])
+    exclude_rules = config.get("exclude", [])
+
+    if not include_rules and not exclude_rules:
+        return targets_df, X_sparse, target_names
+
+    n_before = len(targets_df)
+
+    if include_rules:
+        keep_mask = _match_rules(targets_df, include_rules)
+    else:
+        keep_mask = np.ones(n_before, dtype=bool)
+
+    if exclude_rules:
+        drop_mask = _match_rules(targets_df, exclude_rules)
+        keep_mask &= ~drop_mask
+
+    n_dropped = n_before - keep_mask.sum()
+    logger.info(
+        "Target config: kept %d / %d targets (dropped %d)",
+        keep_mask.sum(),
+        n_before,
+        n_dropped,
+    )
+
+    idx = np.where(keep_mask)[0]
+    filtered_df = targets_df.iloc[idx].reset_index(drop=True)
+    filtered_X = X_sparse[idx, :]
+    filtered_names = [target_names[i] for i in idx]
+
+    return filtered_df, filtered_X, filtered_names
+
+
+def save_calibration_package(
+    path: str,
+    X_sparse,
+    targets_df: "pd.DataFrame",
+    target_names: list,
+    metadata: dict,
+    initial_weights: np.ndarray = None,
+    cd_geoid: np.ndarray = None,
+    block_geoid: np.ndarray = None,
+) -> None:
+    """Save calibration package to pickle.
+
+    Args:
+        path: Output file path.
+        X_sparse: Sparse matrix.
+        targets_df: Targets DataFrame.
+        target_names: Target name list.
+        metadata: Run metadata dict.
+        initial_weights: Pre-computed initial weight array.
+        cd_geoid: CD GEOID array from geography assignment.
+        block_geoid: Block GEOID array from geography assignment.
+    """
+    import pickle
+
+    package = {
+        "X_sparse": X_sparse,
+        "targets_df": targets_df,
+        "target_names": target_names,
+        "metadata": metadata,
+        "initial_weights": initial_weights,
+        "cd_geoid": cd_geoid,
+        "block_geoid": block_geoid,
+    }
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        pickle.dump(package, f, protocol=pickle.HIGHEST_PROTOCOL)
+    logger.info("Calibration package saved to %s", path)
+
+
+def load_calibration_package(path: str) -> dict:
+    """Load calibration package from pickle.
+
+    Args:
+        path: Path to package file.
+
+    Returns:
+        Dict with X_sparse, targets_df, target_names, metadata.
+    """
+    import pickle
+
+    with open(path, "rb") as f:
+        package = pickle.load(f)
+    logger.info(
+        "Loaded package: %d targets, %d records",
+        package["X_sparse"].shape[0],
+        package["X_sparse"].shape[1],
+    )
+    meta = package.get("metadata", {})
+    print_package_provenance(meta)
+    check_package_staleness(meta)
+    return package
+
+
+def compute_initial_weights(
+    X_sparse,
+    targets_df: "pd.DataFrame",
+) -> np.ndarray:
+    """Compute population-based initial weights from age targets.
+
+    For each congressional district, sums person_count targets where
+    domain_variable == "age" to get district population, then divides
+    by the number of columns (households) active in that district.
+
+    Args:
+        X_sparse: Sparse matrix (targets x records).
+        targets_df: Targets DataFrame with columns: variable,
+            domain_variable, geo_level, geographic_id, value.
+
+    Returns:
+        Weight array of shape (n_records,).
+    """
+    n_total = X_sparse.shape[1]
+
+    age_mask = (
+        (targets_df["variable"] == "person_count")
+        & (targets_df["domain_variable"] == "age")
+        & (targets_df["geo_level"] == "district")
+    )
+    age_rows = targets_df[age_mask]
+
+    if len(age_rows) == 0:
+        logger.warning(
+            "No person_count/age/district targets found; "
+            "falling back to uniform weights=100"
+        )
+        return np.ones(n_total) * 100
+
+    initial_weights = np.ones(n_total) * 100
+    cd_groups = age_rows.groupby("geographic_id")
+
+    for cd_id, group in cd_groups:
+        cd_pop = group["value"].sum()
+        row_indices = group.index.tolist()
+        col_set = set()
+        for ri in row_indices:
+            row = X_sparse[ri]
+            col_set.update(row.indices)
+        n_cols = len(col_set)
+        if n_cols == 0:
+            continue
+        w = cd_pop / n_cols
+        for c in col_set:
+            initial_weights[c] = w
+
+    n_unique = len(np.unique(initial_weights))
+    logger.info(
+        "Initial weights: min=%.1f, max=%.1f, mean=%.1f, %d unique values",
+        initial_weights.min(),
+        initial_weights.max(),
+        initial_weights.mean(),
+        n_unique,
+    )
+    return initial_weights
 
 
 def fit_l0_weights(
@@ -273,6 +542,15 @@ def fit_l0_weights(
     epochs: int = DEFAULT_EPOCHS,
     device: str = "cpu",
     verbose_freq: Optional[int] = None,
+    beta: float = BETA,
+    lambda_l2: float = LAMBDA_L2,
+    learning_rate: float = LEARNING_RATE,
+    log_freq: int = None,
+    log_path: str = None,
+    target_names: list = None,
+    initial_weights: np.ndarray = None,
+    targets_df: "pd.DataFrame" = None,
+    achievable: np.ndarray = None,
 ) -> np.ndarray:
     """Fit L0-regularized calibration weights.
 
@@ -283,6 +561,17 @@ def fit_l0_weights(
         epochs: Training epochs.
         device: Torch device.
         verbose_freq: Print frequency. Defaults to 10%.
+        beta: L0 gate temperature.
+        lambda_l2: L2 regularization strength.
+        learning_rate: Optimizer learning rate.
+        log_freq: Epochs between per-target CSV logs.
+            None disables logging.
+        log_path: Path for the per-target calibration log CSV.
+        target_names: Human-readable target names for the log.
+        initial_weights: Pre-computed initial weights. If None,
+            computed from targets_df age targets.
+        targets_df: Targets DataFrame, used to compute
+            initial_weights when not provided.
 
     Returns:
         Weight array of shape (n_records,).
@@ -296,20 +585,28 @@ def fit_l0_weights(
 
     import torch
 
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
     n_total = X_sparse.shape[1]
-    initial_weights = np.ones(n_total) * 100
+    if initial_weights is None:
+        initial_weights = compute_initial_weights(X_sparse, targets_df)
 
     logger.info(
-        "L0 calibration: %d targets, %d features, lambda_l0=%.1e, epochs=%d",
+        "L0 calibration: %d targets, %d features, "
+        "lambda_l0=%.1e, beta=%.2f, lambda_l2=%.1e, "
+        "lr=%.3f, epochs=%d",
         X_sparse.shape[0],
         n_total,
         lambda_l0,
+        beta,
+        lambda_l2,
+        learning_rate,
         epochs,
     )
 
     model = SparseCalibrationWeights(
         n_features=n_total,
-        beta=BETA,
+        beta=beta,
         gamma=GAMMA,
         zeta=ZETA,
         init_keep_prob=INIT_KEEP_PROB,
@@ -330,22 +627,130 @@ def fit_l0_weights(
 
     builtins.print = _flushed_print
 
-    t0 = time.time()
-    try:
-        model.fit(
-            M=X_sparse,
-            y=targets,
-            target_groups=None,
-            lambda_l0=lambda_l0,
-            lambda_l2=LAMBDA_L2,
-            lr=LEARNING_RATE,
-            epochs=epochs,
-            loss_type="relative",
-            verbose=True,
-            verbose_freq=verbose_freq,
+    enable_logging = (
+        log_freq is not None and log_path is not None and target_names is not None
+    )
+    if enable_logging:
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "w") as f:
+            f.write(
+                "target_name,estimate,target,epoch,"
+                "error,rel_error,abs_error,"
+                "rel_abs_error,loss,achievable\n"
+            )
+        logger.info(
+            "Epoch logging enabled: freq=%d, path=%s",
+            log_freq,
+            log_path,
         )
-    finally:
-        builtins.print = _builtin_print
+
+    t0 = time.time()
+    if enable_logging:
+        epochs_done = 0
+        while epochs_done < epochs:
+            chunk = min(log_freq, epochs - epochs_done)
+            model.fit(
+                M=X_sparse,
+                y=targets,
+                target_groups=None,
+                lambda_l0=lambda_l0,
+                lambda_l2=lambda_l2,
+                lr=learning_rate,
+                epochs=chunk,
+                loss_type="relative",
+                verbose=False,
+            )
+
+            epochs_done += chunk
+
+            with torch.no_grad():
+                y_pred = model.predict(X_sparse).cpu().numpy()
+                weights_snap = model.get_weights(deterministic=True).cpu().numpy()
+
+            active_w = weights_snap[weights_snap > 0]
+            nz = len(active_w)
+            sparsity = (1 - nz / n_total) * 100
+
+            rel_errs = np.where(
+                np.abs(targets) > 0,
+                (y_pred - targets) / np.abs(targets),
+                0.0,
+            )
+            mean_err = np.mean(np.abs(rel_errs))
+            max_err = np.max(np.abs(rel_errs))
+            total_loss = np.sum(rel_errs**2)
+
+            if nz > 0:
+                w_tiny = (active_w < 0.01).sum()
+                w_small = ((active_w >= 0.01) & (active_w < 0.1)).sum()
+                w_med = ((active_w >= 0.1) & (active_w < 1.0)).sum()
+                w_normal = ((active_w >= 1.0) & (active_w < 10.0)).sum()
+                w_large = ((active_w >= 10.0) & (active_w < 1000.0)).sum()
+                w_huge = (active_w >= 1000.0).sum()
+                weight_dist = (
+                    f"[<0.01: {100 * w_tiny / nz:.1f}%, "
+                    f"0.01-0.1: {100 * w_small / nz:.1f}%, "
+                    f"0.1-1: {100 * w_med / nz:.1f}%, "
+                    f"1-10: {100 * w_normal / nz:.1f}%, "
+                    f"10-1000: {100 * w_large / nz:.1f}%, "
+                    f">1000: {100 * w_huge / nz:.1f}%]"
+                )
+            else:
+                weight_dist = "[no active weights]"
+
+            print(
+                f"Epoch {epochs_done:4d}: "
+                f"mean_error={mean_err:.4%}, "
+                f"max_error={max_err:.1%}, "
+                f"total_loss={total_loss:.3f}, "
+                f"active={nz}/{n_total} "
+                f"({sparsity:.1f}% sparse)\n"
+                f"         Weight dist: {weight_dist}",
+                flush=True,
+            )
+
+            ach_flags = achievable if achievable is not None else [True] * len(targets)
+            with open(log_path, "a") as f:
+                for i in range(len(targets)):
+                    est = y_pred[i]
+                    tgt = targets[i]
+                    err = est - tgt
+                    rel_err = err / tgt if tgt != 0 else 0
+                    abs_err = abs(err)
+                    rel_abs = abs(rel_err)
+                    loss = rel_err**2
+                    f.write(
+                        f'"{target_names[i]}",'
+                        f"{est},{tgt},{epochs_done},"
+                        f"{err},{rel_err},{abs_err},"
+                        f"{rel_abs},{loss},"
+                        f"{ach_flags[i]}\n"
+                    )
+
+            logger.info(
+                "Logged %d targets at epoch %d",
+                len(targets),
+                epochs_done,
+            )
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    else:
+        try:
+            model.fit(
+                M=X_sparse,
+                y=targets,
+                target_groups=None,
+                lambda_l0=lambda_l0,
+                lambda_l2=lambda_l2,
+                lr=learning_rate,
+                epochs=epochs,
+                loss_type="relative",
+                verbose=True,
+                verbose_freq=verbose_freq,
+            )
+        finally:
+            builtins.print = _builtin_print
 
     elapsed = time.time() - t0
     logger.info(
@@ -396,88 +801,6 @@ def compute_diagnostics(
     )
 
 
-def _build_puf_cloned_dataset(
-    dataset_path: str,
-    puf_dataset_path: str,
-    state_fips: np.ndarray,
-    time_period: int = 2024,
-    skip_qrf: bool = False,
-    skip_source_impute: bool = False,
-) -> str:
-    """Build a PUF-cloned dataset from raw CPS.
-
-    Loads the CPS, optionally runs source imputations
-    (ACS/SIPP/SCF), then PUF clone + QRF.
-
-    Args:
-        dataset_path: Path to raw CPS h5 file.
-        puf_dataset_path: Path to PUF h5 file.
-        state_fips: State FIPS per household (base records).
-        time_period: Tax year.
-        skip_qrf: Skip QRF imputation.
-        skip_source_impute: Skip ACS/SIPP/SCF imputations.
-
-    Returns:
-        Path to the PUF-cloned h5 file.
-    """
-    import h5py
-
-    from policyengine_us import Microsimulation
-
-    from policyengine_us_data.calibration.puf_impute import (
-        puf_clone_dataset,
-    )
-
-    logger.info("Building PUF-cloned dataset from %s", dataset_path)
-
-    sim = Microsimulation(dataset=dataset_path)
-    data = sim.dataset.load_dataset()
-
-    data_dict = {}
-    for var in data:
-        if isinstance(data[var], dict):
-            vals = list(data[var].values())
-            data_dict[var] = {time_period: vals[0]}
-        else:
-            data_dict[var] = {time_period: np.array(data[var])}
-
-    if not skip_source_impute:
-        from policyengine_us_data.calibration.source_impute import (
-            impute_source_variables,
-        )
-
-        data_dict = impute_source_variables(
-            data=data_dict,
-            state_fips=state_fips,
-            time_period=time_period,
-            dataset_path=dataset_path,
-        )
-
-    puf_dataset = puf_dataset_path if not skip_qrf else None
-
-    new_data = puf_clone_dataset(
-        data=data_dict,
-        state_fips=state_fips,
-        time_period=time_period,
-        puf_dataset=puf_dataset,
-        skip_qrf=skip_qrf,
-        dataset_path=dataset_path,
-    )
-
-    output_path = str(
-        Path(dataset_path).parent / f"puf_cloned_{Path(dataset_path).stem}.h5"
-    )
-
-    with h5py.File(output_path, "w") as f:
-        for var, time_dict in new_data.items():
-            for tp, values in time_dict.items():
-                f.create_dataset(f"{var}/{tp}", data=values)
-
-    del sim
-    logger.info("PUF-cloned dataset saved to %s", output_path)
-    return output_path
-
-
 def run_calibration(
     dataset_path: str,
     db_path: str,
@@ -489,9 +812,18 @@ def run_calibration(
     domain_variables: list = None,
     hierarchical_domains: list = None,
     skip_takeup_rerandomize: bool = False,
-    puf_dataset_path: str = None,
-    skip_puf: bool = False,
-    skip_source_impute: bool = False,
+    skip_source_impute: bool = True,
+    skip_county: bool = True,
+    target_config: dict = None,
+    build_only: bool = False,
+    package_path: str = None,
+    package_output_path: str = None,
+    beta: float = BETA,
+    lambda_l2: float = LAMBDA_L2,
+    learning_rate: float = LEARNING_RATE,
+    log_freq: int = None,
+    log_path: str = None,
+    workers: int = 1,
 ):
     """Run unified calibration pipeline.
 
@@ -507,32 +839,116 @@ def run_calibration(
         hierarchical_domains: Domains for hierarchical
             uprating + CD reconciliation.
         skip_takeup_rerandomize: Skip takeup step.
-        puf_dataset_path: Path to PUF h5 for QRF training.
-        skip_puf: Skip PUF clone step.
         skip_source_impute: Skip ACS/SIPP/SCF imputations.
+        target_config: Parsed target config dict.
+        build_only: If True, save package and skip fitting.
+        package_path: Load pre-built package (skip build).
+        package_output_path: Where to save calibration package.
+        beta: L0 gate temperature.
+        lambda_l2: L2 regularization strength.
+        learning_rate: Optimizer learning rate.
+        log_freq: Epochs between per-target CSV logs.
+        log_path: Path for per-target calibration log CSV.
 
     Returns:
-        (weights, targets_df, X_sparse, target_names)
+        (weights, targets_df, X_sparse, target_names, geography_info)
+        weights is None when build_only=True.
+        geography_info is a dict with cd_geoid and base_n_records.
     """
     import time
+
+    t0 = time.time()
+
+    # Early exit: load pre-built package
+    if package_path is not None:
+        package = load_calibration_package(package_path)
+        targets_df = package["targets_df"]
+        X_sparse = package["X_sparse"]
+        target_names = package["target_names"]
+
+        if target_config:
+            targets_df, X_sparse, target_names = apply_target_config(
+                targets_df, X_sparse, target_names, target_config
+            )
+
+        initial_weights = package.get("initial_weights")
+        targets = targets_df["value"].values
+        row_sums = np.array(X_sparse.sum(axis=1)).flatten()
+        pkg_achievable = row_sums > 0
+        weights = fit_l0_weights(
+            X_sparse=X_sparse,
+            targets=targets,
+            lambda_l0=lambda_l0,
+            epochs=epochs,
+            device=device,
+            beta=beta,
+            lambda_l2=lambda_l2,
+            learning_rate=learning_rate,
+            log_freq=log_freq,
+            log_path=log_path,
+            target_names=target_names,
+            initial_weights=initial_weights,
+            targets_df=targets_df,
+            achievable=pkg_achievable,
+        )
+        logger.info(
+            "Total pipeline (from package): %.1f min",
+            (time.time() - t0) / 60,
+        )
+        geography_info = {
+            "cd_geoid": package.get("cd_geoid"),
+            "block_geoid": package.get("block_geoid"),
+            "base_n_records": package["metadata"].get("base_n_records"),
+        }
+        return (
+            weights,
+            targets_df,
+            X_sparse,
+            target_names,
+            geography_info,
+        )
 
     from policyengine_us import Microsimulation
 
     from policyengine_us_data.calibration.clone_and_assign import (
         assign_random_geography,
-        double_geography_for_puf,
     )
     from policyengine_us_data.calibration.unified_matrix_builder import (
         UnifiedMatrixBuilder,
     )
 
-    t0 = time.time()
-
-    # Step 1: Load dataset
+    # Step 1: Load dataset and detect time period
     logger.info("Loading dataset from %s", dataset_path)
     sim = Microsimulation(dataset=dataset_path)
     n_records = len(sim.calculate("household_id", map_to="household").values)
-    logger.info("Loaded %d households", n_records)
+    raw_keys = sim.dataset.load_dataset()["household_id"]
+    if isinstance(raw_keys, dict):
+        time_period = int(next(iter(raw_keys)))
+    else:
+        time_period = 2024
+    logger.info(
+        "Loaded %d households, time_period=%d",
+        n_records,
+        time_period,
+    )
+
+    db_uri = f"sqlite:///{db_path}"
+    builder = UnifiedMatrixBuilder(
+        db_uri=db_uri,
+        time_period=time_period,
+    )
+
+    # Compute base household AGI for conditional geographic assignment
+    base_agi = sim.calculate("adjusted_gross_income", map_to="household").values.astype(
+        np.float64
+    )
+
+    # Load CD-level AGI targets from database
+    cd_agi_targets = builder.get_district_agi_targets()
+    logger.info(
+        "Loaded %d CD AGI targets for conditional assignment",
+        len(cd_agi_targets),
+    )
 
     # Step 2: Clone and assign geography
     logger.info(
@@ -545,48 +961,32 @@ def run_calibration(
         n_records=n_records,
         n_clones=n_clones,
         seed=seed,
+        household_agi=base_agi,
+        cd_agi_targets=cd_agi_targets,
     )
 
-    # Step 3: Source impute + PUF clone (if requested)
+    # Step 3: Source imputation (if requested)
     dataset_for_matrix = dataset_path
-    if not skip_puf and puf_dataset_path is not None:
-        base_states = geography.state_fips[:n_records]
-
-        puf_cloned_path = _build_puf_cloned_dataset(
-            dataset_path=dataset_path,
-            puf_dataset_path=puf_dataset_path,
-            state_fips=base_states,
-            time_period=2024,
-            skip_qrf=False,
-            skip_source_impute=skip_source_impute,
-        )
-
-        geography = double_geography_for_puf(geography)
-        dataset_for_matrix = puf_cloned_path
-        n_records = n_records * 2
-
-        # Reload sim from PUF-cloned dataset
-        del sim
-        sim = Microsimulation(dataset=puf_cloned_path)
-
-        logger.info(
-            "After PUF clone: %d records x %d clones = %d",
-            n_records,
-            n_clones,
-            n_records * n_clones,
-        )
-    elif not skip_source_impute:
+    if not skip_source_impute:
         # Run source imputations without PUF cloning
         import h5py
 
         base_states = geography.state_fips[:n_records]
 
-        source_sim = Microsimulation(dataset=dataset_path)
-        raw_data = source_sim.dataset.load_dataset()
+        raw_data = sim.dataset.load_dataset()
         data_dict = {}
         for var in raw_data:
-            data_dict[var] = {2024: raw_data[var][...]}
-        del source_sim
+            val = raw_data[var]
+            if isinstance(val, dict):
+                # h5py returns string keys ("2024"); normalize
+                # to int so source_impute lookups work.
+                # Some keys like "ETERNITY" are non-numeric — keep
+                # them as strings.
+                data_dict[var] = {
+                    int(k) if k.isdigit() else k: v for k, v in val.items()
+                }
+            else:
+                data_dict[var] = {time_period: val[...]}
 
         from policyengine_us_data.calibration.source_impute import (
             impute_source_variables,
@@ -595,7 +995,7 @@ def run_calibration(
         data_dict = impute_source_variables(
             data=data_dict,
             state_fips=base_states,
-            time_period=2024,
+            time_period=time_period,
             dataset_path=dataset_path,
         )
 
@@ -615,17 +1015,7 @@ def run_calibration(
             source_path,
         )
 
-    # Step 4: Build sim_modifier for takeup rerandomization
     sim_modifier = None
-    if not skip_takeup_rerandomize:
-        time_period = 2024
-
-        def sim_modifier(s, clone_idx):
-            col_start = clone_idx * n_records
-            col_end = col_start + n_records
-            blocks = geography.block_geoid[col_start:col_end]
-            states = geography.state_fips[col_start:col_end]
-            rerandomize_takeup(s, blocks, states, time_period)
 
     # Step 5: Build target filter
     target_filter = {}
@@ -633,19 +1023,18 @@ def run_calibration(
         target_filter["domain_variables"] = domain_variables
 
     # Step 6: Build sparse calibration matrix
+    do_rerandomize = not skip_takeup_rerandomize
     t_matrix = time.time()
-    db_uri = f"sqlite:///{db_path}"
-    builder = UnifiedMatrixBuilder(
-        db_uri=db_uri,
-        time_period=2024,
-        dataset_path=dataset_for_matrix,
-    )
+    builder.dataset_path = dataset_for_matrix
     targets_df, X_sparse, target_names = builder.build_matrix(
         geography=geography,
         sim=sim,
         target_filter=target_filter,
         hierarchical_domains=hierarchical_domains,
         sim_modifier=sim_modifier,
+        rerandomize_takeup=do_rerandomize,
+        county_level=not skip_county,
+        workers=workers,
     )
 
     builder.print_uprating_summary(targets_df)
@@ -658,6 +1047,76 @@ def run_calibration(
         X_sparse.shape,
         X_sparse.nnz,
     )
+
+    # Step 6b: Save FULL (unfiltered) calibration package.
+    # Target config is applied at fit time, so the package can be
+    # reused with different configs without rebuilding.
+    import datetime
+
+    metadata = {
+        "dataset_path": dataset_path,
+        "db_path": db_path,
+        "n_clones": n_clones,
+        "n_records": X_sparse.shape[1],
+        "base_n_records": n_records,
+        "seed": seed,
+        "created_at": datetime.datetime.now().isoformat(),
+    }
+    metadata.update(get_git_provenance())
+    from policyengine_us_data.utils.manifest import compute_file_checksum
+
+    metadata["dataset_sha256"] = compute_file_checksum(Path(dataset_path))
+    metadata["db_sha256"] = compute_file_checksum(Path(db_path))
+
+    if package_output_path:
+        full_initial_weights = compute_initial_weights(X_sparse, targets_df)
+        save_calibration_package(
+            package_output_path,
+            X_sparse,
+            targets_df,
+            target_names,
+            metadata,
+            initial_weights=full_initial_weights,
+            cd_geoid=geography.cd_geoid,
+            block_geoid=geography.block_geoid,
+        )
+
+    # Step 6c: Apply target config filtering (for fit or validation)
+    if target_config:
+        targets_df, X_sparse, target_names = apply_target_config(
+            targets_df, X_sparse, target_names, target_config
+        )
+
+    initial_weights = compute_initial_weights(X_sparse, targets_df)
+
+    if build_only:
+        from policyengine_us_data.calibration.validate_package import (
+            validate_package,
+            format_report,
+        )
+
+        package = {
+            "X_sparse": X_sparse,
+            "targets_df": targets_df,
+            "target_names": target_names,
+            "metadata": metadata,
+            "initial_weights": initial_weights,
+        }
+        result = validate_package(package)
+        print(format_report(result))
+        geography_info = {
+            "cd_geoid": geography.cd_geoid,
+            "block_geoid": geography.block_geoid,
+            "base_n_records": n_records,
+            "dataset_for_matrix": dataset_for_matrix,
+        }
+        return (
+            None,
+            targets_df,
+            X_sparse,
+            target_names,
+            geography_info,
+        )
 
     # Step 7: L0 calibration
     targets = targets_df["value"].values
@@ -676,20 +1135,43 @@ def run_calibration(
         lambda_l0=lambda_l0,
         epochs=epochs,
         device=device,
+        beta=beta,
+        lambda_l2=lambda_l2,
+        learning_rate=learning_rate,
+        log_freq=log_freq,
+        log_path=log_path,
+        target_names=target_names,
+        initial_weights=initial_weights,
+        targets_df=targets_df,
+        achievable=achievable,
     )
 
     logger.info(
         "Total pipeline: %.1f min",
         (time.time() - t0) / 60,
     )
-    return weights, targets_df, X_sparse, target_names
+    geography_info = {
+        "cd_geoid": geography.cd_geoid,
+        "block_geoid": geography.block_geoid,
+        "base_n_records": n_records,
+        "dataset_for_matrix": dataset_for_matrix,
+        "entity_hh_idx_map": getattr(builder, "entity_hh_idx_map", None),
+        "household_ids": getattr(builder, "household_ids", None),
+        "precomputed_rates": getattr(builder, "precomputed_rates", None),
+        "affected_target_info": getattr(builder, "affected_target_info", None),
+    }
+    return (
+        weights,
+        targets_df,
+        X_sparse,
+        target_names,
+        geography_info,
+    )
 
 
 def main(argv=None):
     import json
     import time
-
-    import pandas as pd
 
     try:
         if not sys.stderr.isatty():
@@ -700,15 +1182,21 @@ def main(argv=None):
         pass
 
     args = parse_args(argv)
+    logger.info("CLI args: %s", vars(args))
 
     from policyengine_us_data.storage import STORAGE_FOLDER
 
     dataset_path = args.dataset or str(
-        STORAGE_FOLDER / "stratified_extended_cps_2024.h5"
+        STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5"
     )
+    if not args.package_path and not Path(dataset_path).exists():
+        raise FileNotFoundError(
+            f"Dataset not found: {dataset_path}\n"
+            "Run 'make data' first, or pass --dataset with a valid path."
+        )
     db_path = args.db_path or str(STORAGE_FOLDER / "calibration" / "policy_data.db")
     output_path = args.output or str(
-        STORAGE_FOLDER / "calibration" / "unified_weights.npy"
+        STORAGE_FOLDER / "calibration" / "calibration_weights.npy"
     )
 
     if args.lambda_l0 is not None:
@@ -728,7 +1216,27 @@ def main(argv=None):
 
     t_start = time.time()
 
-    weights, targets_df, X_sparse, target_names = run_calibration(
+    target_config = None
+    if args.target_config:
+        target_config = load_target_config(args.target_config)
+
+    package_output_path = args.package_output
+    if args.build_only and not package_output_path:
+        package_output_path = str(
+            STORAGE_FOLDER / "calibration" / "calibration_package.pkl"
+        )
+
+    output_dir = Path(output_path).parent
+    cal_log_path = None
+    if args.log_freq is not None:
+        cal_log_path = str(output_dir / "calibration_log.csv")
+    (
+        weights,
+        targets_df,
+        X_sparse,
+        target_names,
+        geography_info,
+    ) = run_calibration(
         dataset_path=dataset_path,
         db_path=db_path,
         n_clones=args.n_clones,
@@ -739,17 +1247,29 @@ def main(argv=None):
         domain_variables=domain_variables,
         hierarchical_domains=hierarchical_domains,
         skip_takeup_rerandomize=args.skip_takeup_rerandomize,
-        puf_dataset_path=args.puf_dataset,
-        skip_puf=args.skip_puf,
         skip_source_impute=args.skip_source_impute,
+        skip_county=not args.county_level,
+        target_config=target_config,
+        build_only=args.build_only,
+        package_path=args.package_path,
+        package_output_path=package_output_path,
+        beta=args.beta,
+        lambda_l2=args.lambda_l2,
+        learning_rate=args.learning_rate,
+        log_freq=args.log_freq,
+        log_path=cal_log_path,
+        workers=args.workers,
     )
 
-    # Save weights
-    np.save(output_path, weights)
-    logger.info("Weights saved to %s", output_path)
-    print(f"OUTPUT_PATH:{output_path}")
+    source_imputed = geography_info.get("dataset_for_matrix")
+    if source_imputed and source_imputed != dataset_path:
+        print(f"SOURCE_IMPUTED_PATH:{source_imputed}")
 
-    # Save diagnostics
+    if weights is None:
+        logger.info("Build-only complete. Package saved.")
+        return
+
+    # Diagnostics (raw weights match X_sparse column layout)
     output_dir = Path(output_path).parent
     diag_df = compute_diagnostics(weights, X_sparse, targets_df, target_names)
     diag_path = output_dir / "unified_diagnostics.csv"
@@ -768,33 +1288,75 @@ def main(argv=None):
         (err_pct < 25).mean() * 100,
     )
 
-    # Save run config
+    # Save weights (raw clone-level, NOT stacked)
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    np.save(output_path, weights)
+    logger.info("Weights saved to %s", output_path)
+    print(f"OUTPUT_PATH:{output_path}")
+
+    # Save legacy block artifact for backward compatibility
+    blocks_path = output_dir / "stacked_blocks.npy"
+    np.save(str(blocks_path), geography_info["block_geoid"])
+    logger.info("Blocks saved to %s", blocks_path)
+    print(f"BLOCKS_PATH:{blocks_path}")
+
+    from policyengine_us_data.calibration.calibration_utils import (
+        save_geo_labels,
+    )
+
+    cds_ordered = sorted(set(geography_info["cd_geoid"].astype(str)))
+    geo_labels_path = output_dir / "geo_labels.json"
+    save_geo_labels(cds_ordered, geo_labels_path)
+    logger.info("Geo labels saved to %s", geo_labels_path)
+    print(f"GEO_LABELS_PATH:{geo_labels_path}")
+
+    # Save run config with artifact checksums
+    import hashlib
+
+    def _sha256(filepath):
+        h = hashlib.sha256()
+        with open(filepath, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return f"sha256:{h.hexdigest()}"
+
     t_end = time.time()
+    weight_format = "clone_level"
     run_config = {
         "dataset": dataset_path,
         "db_path": db_path,
-        "puf_dataset": args.puf_dataset,
-        "skip_puf": args.skip_puf,
         "skip_source_impute": args.skip_source_impute,
         "n_clones": args.n_clones,
         "lambda_l0": lambda_l0,
+        "beta": args.beta,
+        "lambda_l2": args.lambda_l2,
+        "learning_rate": args.learning_rate,
         "epochs": args.epochs,
         "device": args.device,
         "seed": args.seed,
         "domain_variables": domain_variables,
         "hierarchical_domains": hierarchical_domains,
+        "target_config": args.target_config,
         "n_targets": len(targets_df),
         "n_records": X_sparse.shape[1],
+        "weight_format": weight_format,
         "weight_sum": float(weights.sum()),
         "weight_nonzero": int((weights > 0).sum()),
         "mean_error_pct": float(err_pct.mean()),
         "elapsed_seconds": round(t_end - t_start, 1),
+        "artifacts": {
+            "calibration_weights.npy": _sha256(output_path),
+        },
     }
+    run_config.update(get_git_provenance())
     config_path = output_dir / "unified_run_config.json"
     with open(config_path, "w") as f:
         json.dump(run_config, f, indent=2)
     logger.info("Config saved to %s", config_path)
+    print(f"CONFIG_PATH:{config_path}")
     print(f"LOG_PATH:{diag_path}")
+    if cal_log_path:
+        print(f"CAL_LOG_PATH:{cal_log_path}")
 
 
 if __name__ == "__main__":

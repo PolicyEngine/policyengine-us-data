@@ -31,15 +31,18 @@ def compute_file_checksum(file_path: Path) -> str:
 
 def generate_manifest(
     staging_dir: Path,
-    version: str,
+    subdir: str,
+    version: Optional[str] = None,
     categories: Optional[List[str]] = None,
 ) -> Dict:
     """
     Generate manifest.json for all H5 files in staging directory.
 
     Args:
-        staging_dir: Root staging directory (contains version subdirs)
-        version: Version string (e.g., "1.56.0")
+        staging_dir: Root staging directory (contains subdirs)
+        subdir: Subdirectory name (run_id or version)
+        version: Version string for manifest metadata
+            (default: derived from subdir)
         categories: List of categories to include (default: states, districts,
             cities)
 
@@ -64,17 +67,17 @@ def generate_manifest(
         categories = ["states", "districts", "cities"]
 
     manifest = {
-        "version": version,
+        "version": version or subdir,
         "created_at": datetime.utcnow().isoformat() + "Z",
         "files": {},
         "totals": {cat: 0 for cat in categories},
     }
     manifest["totals"]["total_size_bytes"] = 0
 
-    version_dir = staging_dir / version
+    sub_path = staging_dir / subdir
 
     for category in categories:
-        category_dir = version_dir / category
+        category_dir = sub_path / category
         if not category_dir.exists():
             continue
 
@@ -92,13 +95,18 @@ def generate_manifest(
     return manifest
 
 
-def verify_manifest(staging_dir: Path, manifest: Dict) -> Dict:
+def verify_manifest(
+    staging_dir: Path,
+    manifest: Dict,
+    subdir: Optional[str] = None,
+) -> Dict:
     """
     Verify all files in manifest exist and have correct checksums.
 
     Args:
         staging_dir: Root staging directory
         manifest: Manifest dictionary to verify against
+        subdir: Subdirectory name override (default: manifest["version"])
 
     Returns:
         Verification result:
@@ -109,8 +117,7 @@ def verify_manifest(staging_dir: Path, manifest: Dict) -> Dict:
             "verified": 486
         }
     """
-    version = manifest["version"]
-    version_dir = staging_dir / version
+    sub_path = staging_dir / (subdir or manifest["version"])
 
     result = {
         "valid": True,
@@ -120,7 +127,7 @@ def verify_manifest(staging_dir: Path, manifest: Dict) -> Dict:
     }
 
     for rel_path, file_info in manifest["files"].items():
-        file_path = version_dir / rel_path
+        file_path = sub_path / rel_path
 
         if not file_path.exists():
             result["missing"].append(rel_path)

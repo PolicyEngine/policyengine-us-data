@@ -1,14 +1,16 @@
 """Non-PUF QRF imputations from donor surveys.
 
-Re-imputes variables from ACS, SIPP, and SCF donor surveys.
-Only ACS includes state_fips as a QRF predictor (ACS has state
-identifiers). SIPP and SCF lack state data, so their imputations
-use only demographic and financial predictors.
+Re-imputes variables from ACS, SIPP, ORG, and SCF donor surveys.
+Only ACS and ORG include state_fips as a QRF predictor. SIPP and SCF
+lack state data, so their imputations use only demographic and
+financial predictors.
 
 Sources and variables:
     ACS  -> rent, real_estate_taxes  (with state predictor)
     SIPP -> tip_income, bank_account_assets, stock_assets,
             bond_assets  (no state predictor)
+    ORG  -> hourly_wage, is_paid_hourly,
+            is_union_member_or_covered
     SCF  -> net_worth, auto_loan_balance, auto_loan_interest
             (no state predictor)
 
@@ -26,6 +28,17 @@ from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
+from policyengine_us_data.datasets.cps.tipped_occupation import (
+    derive_any_treasury_tipped_occupation_code,
+    derive_is_tipped_occupation,
+)
+
+from policyengine_us_data.datasets.org import (
+    ORG_BOOL_VARIABLES,
+    ORG_IMPUTED_VARIABLES,
+    build_org_receiver_frame,
+    predict_org_features,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +61,10 @@ SCF_IMPUTED_VARIABLES = [
 ]
 
 ALL_SOURCE_VARIABLES = (
-    ACS_IMPUTED_VARIABLES + SIPP_IMPUTED_VARIABLES + SCF_IMPUTED_VARIABLES
+    ACS_IMPUTED_VARIABLES
+    + SIPP_IMPUTED_VARIABLES
+    + ORG_IMPUTED_VARIABLES
+    + SCF_IMPUTED_VARIABLES
 )
 
 ACS_PREDICTORS = [
@@ -68,10 +84,14 @@ SIPP_TIPS_PREDICTORS = [
     "age",
     "count_under_18",
     "count_under_6",
+    "is_tipped_occupation",
 ]
 
 SIPP_ASSETS_PREDICTORS = [
     "employment_income",
+    "interest_income",
+    "dividend_income",
+    "rental_income",
     "age",
     "is_female",
     "is_married",
@@ -97,6 +117,8 @@ TENURE_TYPE_MAP = {
     "NONE": 0,
 }
 
+SIPP_JOB_OCCUPATION_COLUMNS = [f"TJB{i}_OCC" for i in range(1, 8)]
+
 
 def _encode_tenure_type(df: pd.DataFrame) -> pd.DataFrame:
     """Convert tenure_type enum strings to numeric codes."""
@@ -118,13 +140,15 @@ def impute_source_variables(
     dataset_path: Optional[str] = None,
     skip_acs: bool = False,
     skip_sipp: bool = False,
+    skip_org: bool = False,
     skip_scf: bool = False,
 ) -> Dict[str, Dict[int, np.ndarray]]:
-    """Re-impute ACS/SIPP/SCF variables from donor surveys.
+    """Re-impute ACS/SIPP/ORG/SCF variables from donor surveys.
 
     Overwrites existing imputed values in data. ACS uses
-    state_fips as a QRF predictor; SIPP and SCF use only
-    demographic and financial predictors (no state data).
+    state_fips as a QRF predictor; ORG uses state plus labor-market
+    predictors; SIPP and SCF use only demographic and financial
+    predictors (no state data).
 
     Args:
         data: CPS dataset dict {variable: {time_period: array}}.
@@ -133,6 +157,7 @@ def impute_source_variables(
         dataset_path: Path to CPS h5 for Microsimulation.
         skip_acs: Skip ACS imputation.
         skip_sipp: Skip SIPP imputation.
+        skip_org: Skip ORG imputation.
         skip_scf: Skip SCF imputation.
 
     Returns:
@@ -149,6 +174,10 @@ def impute_source_variables(
     if not skip_sipp:
         logger.info("Imputing SIPP variables")
         data = _impute_sipp(data, state_fips, time_period, dataset_path)
+
+    if not skip_org:
+        logger.info("Imputing ORG variables")
+        data = _impute_org(data, state_fips, time_period, dataset_path)
 
     if not skip_scf:
         logger.info("Imputing SCF variables")
@@ -362,6 +391,12 @@ def _impute_sipp(
     sipp_df["age"] = sipp_df.TAGE
     sipp_df["household_weight"] = sipp_df.WPFINWGT
     sipp_df["household_id"] = sipp_df.SSUID
+    sipp_df["treasury_tipped_occupation_code"] = (
+        derive_any_treasury_tipped_occupation_code(sipp_df[SIPP_JOB_OCCUPATION_COLUMNS])
+    )
+    sipp_df["is_tipped_occupation"] = derive_is_tipped_occupation(
+        sipp_df["treasury_tipped_occupation_code"]
+    )
 
     sipp_df["is_under_18"] = sipp_df.TAGE < 18
     sipp_df["is_under_6"] = sipp_df.TAGE < 6
@@ -379,6 +414,7 @@ def _impute_sipp(
         "count_under_18",
         "count_under_6",
         "age",
+        "is_tipped_occupation",
         "household_weight",
     ]
     tip_train = sipp_df[tip_cols].dropna()
@@ -409,6 +445,12 @@ def _impute_sipp(
     else:
         cps_tip_df["count_under_18"] = 0.0
         cps_tip_df["count_under_6"] = 0.0
+    if "treasury_tipped_occupation_code" in data:
+        cps_tip_df["is_tipped_occupation"] = derive_is_tipped_occupation(
+            data["treasury_tipped_occupation_code"][time_period]
+        ).astype(np.float32)
+    else:
+        cps_tip_df["is_tipped_occupation"] = 0.0
 
     qrf = QRF()
     logger.info(
@@ -450,6 +492,10 @@ def _impute_sipp(
             "TVAL_BANK",
             "TVAL_STMF",
             "TVAL_BOND",
+            "TINC_BANK",
+            "TINC_STMF",
+            "TINC_BOND",
+            "TINC_RENT",
         ]
         asset_df = pd.read_csv(
             STORAGE_FOLDER / "pu2023.csv",
@@ -465,6 +511,11 @@ def _impute_sipp(
         asset_df["is_female"] = asset_df.ESEX == 2
         asset_df["is_married"] = asset_df.EMS == 1
         asset_df["employment_income"] = asset_df.TPTOTINC * 12
+        asset_df["interest_income"] = (
+            asset_df["TINC_BANK"].fillna(0) + asset_df["TINC_BOND"].fillna(0)
+        ) * 12
+        asset_df["dividend_income"] = asset_df["TINC_STMF"].fillna(0) * 12
+        asset_df["rental_income"] = asset_df["TINC_RENT"].fillna(0) * 12
         asset_df["household_weight"] = asset_df.WPFINWGT
         asset_df["is_under_18"] = asset_df.TAGE < 18
         asset_df["count_under_18"] = (
@@ -476,6 +527,9 @@ def _impute_sipp(
 
         asset_train_cols = [
             "employment_income",
+            "interest_income",
+            "dividend_income",
+            "rental_income",
             "bank_account_assets",
             "stock_assets",
             "bond_assets",
@@ -499,7 +553,14 @@ def _impute_sipp(
             data,
             time_period,
             dataset_path,
-            ["employment_income", "age", "is_male"],
+            [
+                "employment_income",
+                "interest_income",
+                "dividend_income",
+                "rental_income",
+                "age",
+                "is_male",
+            ],
         )
         if "is_male" in cps_asset_df.columns:
             cps_asset_df["is_female"] = (~cps_asset_df["is_male"].astype(bool)).astype(
@@ -518,6 +579,18 @@ def _impute_sipp(
             if "count_under_18" in cps_tip_df.columns
             else 0.0
         )
+        for cap_var in [
+            "interest_income",
+            "dividend_income",
+            "rental_income",
+        ]:
+            if cap_var not in cps_asset_df.columns:
+                if cap_var in data:
+                    cps_asset_df[cap_var] = data[cap_var][time_period].astype(
+                        np.float32
+                    )
+                else:
+                    cps_asset_df[cap_var] = 0.0
 
         asset_vars = [
             "bank_account_assets",
@@ -699,4 +772,66 @@ def _impute_scf(
     gc.collect()
 
     logger.info("SCF imputation complete: %s", available_vars)
+    return data
+
+
+def _impute_org(
+    data: Dict[str, Dict[int, np.ndarray]],
+    state_fips: np.ndarray,
+    time_period: int,
+    dataset_path: Optional[str] = None,
+) -> Dict[str, Dict[int, np.ndarray]]:
+    """Impute ORG-only labor-market variables onto CPS persons."""
+    pe_vars = [
+        "age",
+        "is_male",
+        "is_hispanic",
+        "cps_race",
+        "employment_income",
+        "weekly_hours_worked",
+        "self_employment_income",
+    ]
+    cps_df = _build_cps_receiver(data, time_period, dataset_path, pe_vars)
+
+    if "is_male" in cps_df.columns:
+        is_female = (~cps_df["is_male"].astype(bool)).astype(np.float32).values
+    elif "is_female" in data:
+        is_female = data["is_female"][time_period].astype(np.float32)
+    else:
+        is_female = np.zeros(len(cps_df), dtype=np.float32)
+
+    person_states = _person_state_fips(data, state_fips, time_period)
+    receiver = build_org_receiver_frame(
+        age=cps_df["age"].values,
+        is_female=is_female,
+        is_hispanic=cps_df["is_hispanic"].values,
+        cps_race=cps_df["cps_race"].values,
+        state_fips=person_states,
+        employment_income=cps_df["employment_income"].values,
+        weekly_hours_worked=cps_df["weekly_hours_worked"].values,
+    )
+    self_employment_income = (
+        cps_df["self_employment_income"].values
+        if "self_employment_income" in cps_df.columns
+        else None
+    )
+    n_persons = len(data["person_id"][time_period])
+    predictions = predict_org_features(
+        receiver,
+        self_employment_income=self_employment_income,
+    )
+
+    for var in ORG_IMPUTED_VARIABLES:
+        values = predictions[var].values
+        if len(values) != n_persons:
+            raise ValueError(
+                f"ORG prediction for '{var}' has {len(values)} entries "
+                f"but dataset has {n_persons} persons"
+            )
+        if var in ORG_BOOL_VARIABLES:
+            data[var] = {time_period: values.astype(bool)}
+        else:
+            data[var] = {time_period: values.astype(np.float32)}
+
+    logger.info("ORG imputation complete: %s", ORG_IMPUTED_VARIABLES)
     return data

@@ -1,6 +1,75 @@
+import json
+import os
+from functools import lru_cache
+
 import numpy as np
 import pandas as pd
 from policyengine_us_data.storage import STORAGE_FOLDER
+
+
+LONG_TERM_TARGET_SOURCES_DIR = STORAGE_FOLDER / "long_term_target_sources"
+LONG_TERM_TARGET_SOURCES_MANIFEST = LONG_TERM_TARGET_SOURCES_DIR / "sources.json"
+DEFAULT_LONG_TERM_TARGET_SOURCE = "trustees_2025_current_law"
+_CURRENT_LONG_TERM_TARGET_SOURCE = os.environ.get(
+    "POLICYENGINE_US_DATA_LONG_TERM_TARGET_SOURCE",
+    DEFAULT_LONG_TERM_TARGET_SOURCE,
+)
+
+
+@lru_cache(maxsize=1)
+def _load_long_term_target_sources_manifest() -> dict:
+    return json.loads(LONG_TERM_TARGET_SOURCES_MANIFEST.read_text(encoding="utf-8"))
+
+
+def available_long_term_target_sources() -> list[str]:
+    manifest = _load_long_term_target_sources_manifest()
+    return sorted(manifest["sources"])
+
+
+def get_long_term_target_source() -> str:
+    return _CURRENT_LONG_TERM_TARGET_SOURCE
+
+
+def set_long_term_target_source(source_name: str) -> None:
+    global _CURRENT_LONG_TERM_TARGET_SOURCE
+    _CURRENT_LONG_TERM_TARGET_SOURCE = resolve_long_term_target_source_name(source_name)
+
+
+def resolve_long_term_target_source_name(source_name: str | None = None) -> str:
+    manifest = _load_long_term_target_sources_manifest()
+    candidate = source_name or _CURRENT_LONG_TERM_TARGET_SOURCE
+    if candidate not in manifest["sources"]:
+        valid = ", ".join(sorted(manifest["sources"]))
+        raise ValueError(
+            f"Unknown long-term target source {candidate!r}. Valid sources: {valid}"
+        )
+    return candidate
+
+
+def describe_long_term_target_source(source_name: str | None = None) -> dict:
+    manifest = _load_long_term_target_sources_manifest()
+    resolved_name = resolve_long_term_target_source_name(source_name)
+    source = dict(manifest["sources"][resolved_name])
+    source["name"] = resolved_name
+    return source
+
+
+@lru_cache(maxsize=None)
+def _load_long_term_target_frame(source_name: str) -> pd.DataFrame:
+    source = describe_long_term_target_source(source_name)
+    csv_path = LONG_TERM_TARGET_SOURCES_DIR / source["file"]
+    return pd.read_csv(csv_path)
+
+
+def _load_long_term_target_row(year: int, source_name: str | None = None) -> pd.Series:
+    resolved_name = resolve_long_term_target_source_name(source_name)
+    df = _load_long_term_target_frame(resolved_name)
+    row = df[df["year"] == year]
+    if row.empty:
+        raise ValueError(
+            f"Year {year} not found in long-term target source {resolved_name!r}"
+        )
+    return row.iloc[0]
 
 
 def load_ssa_age_projections(start_year=2025, end_year=2100):
@@ -37,7 +106,7 @@ def load_ssa_age_projections(start_year=2025, end_year=2100):
     return target_matrix
 
 
-def load_ssa_benefit_projections(year):
+def load_ssa_benefit_projections(year, source_name: str | None = None):
     """
     Load SSA Trustee Report projections for Social Security benefits.
 
@@ -47,15 +116,12 @@ def load_ssa_benefit_projections(year):
     Returns:
         Total OASDI benefits in nominal dollars
     """
-    csv_path = STORAGE_FOLDER / "social_security_aux.csv"
-    df = pd.read_csv(csv_path)
-
-    row = df[df["year"] == year]
-    nominal_billions = row["oasdi_cost_in_billion_nominal_usd"].values[0]
+    row = _load_long_term_target_row(year, source_name)
+    nominal_billions = row["oasdi_cost_in_billion_nominal_usd"]
     return nominal_billions * 1e9
 
 
-def load_taxable_payroll_projections(year):
+def load_taxable_payroll_projections(year, source_name: str | None = None):
     """
     Load SSA Trustee Report projections for taxable payroll.
 
@@ -65,15 +131,12 @@ def load_taxable_payroll_projections(year):
     Returns:
         Total taxable payroll in nominal dollars
     """
-    csv_path = STORAGE_FOLDER / "social_security_aux.csv"
-    df = pd.read_csv(csv_path)
-
-    row = df[df["year"] == year]
-    nominal_billions = row["taxable_payroll_in_billion_nominal_usd"].values[0]
+    row = _load_long_term_target_row(year, source_name)
+    nominal_billions = row["taxable_payroll_in_billion_nominal_usd"]
     return nominal_billions * 1e9
 
 
-def load_h6_income_rate_change(year):
+def load_h6_income_rate_change(year, source_name: str | None = None):
     """
     Load H6 reform income rate change target for a given year.
 
@@ -83,15 +146,12 @@ def load_h6_income_rate_change(year):
     Returns:
         H6 income rate change as decimal (e.g., -0.0018 for -0.18%)
     """
-    csv_path = STORAGE_FOLDER / "social_security_aux.csv"
-    df = pd.read_csv(csv_path)
-
-    row = df[df["year"] == year]
+    row = _load_long_term_target_row(year, source_name)
     # CSV stores as percentage (e.g., -0.18), convert to decimal
-    return row["h6_income_rate_change"].values[0] / 100
+    return row["h6_income_rate_change"] / 100
 
 
-def load_oasdi_tob_projections(year):
+def load_oasdi_tob_projections(year, source_name: str | None = None):
     """
     Load OASDI TOB (Taxation of Benefits) revenue target for a given year.
 
@@ -101,15 +161,12 @@ def load_oasdi_tob_projections(year):
     Returns:
         Total OASDI TOB revenue in nominal dollars
     """
-    csv_path = STORAGE_FOLDER / "social_security_aux.csv"
-    df = pd.read_csv(csv_path)
-
-    row = df[df["year"] == year]
-    nominal_billions = row["oasdi_tob_billions_nominal_usd"].values[0]
+    row = _load_long_term_target_row(year, source_name)
+    nominal_billions = row["oasdi_tob_billions_nominal_usd"]
     return nominal_billions * 1e9
 
 
-def load_hi_tob_projections(year):
+def load_hi_tob_projections(year, source_name: str | None = None):
     """
     Load HI (Medicare) TOB revenue target for a given year.
 
@@ -119,9 +176,6 @@ def load_hi_tob_projections(year):
     Returns:
         Total HI TOB revenue in nominal dollars
     """
-    csv_path = STORAGE_FOLDER / "social_security_aux.csv"
-    df = pd.read_csv(csv_path)
-
-    row = df[df["year"] == year]
-    nominal_billions = row["hi_tob_billions_nominal_usd"].values[0]
+    row = _load_long_term_target_row(year, source_name)
+    nominal_billions = row["hi_tob_billions_nominal_usd"]
     return nominal_billions * 1e9

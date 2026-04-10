@@ -3,8 +3,8 @@ name: Promote Local Area H5 Files
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to promote (e.g. 1.23.0)'
+      run_id:
+        description: 'Run ID to promote (e.g. 1.23.0_a1b2c3d4_20260407_120000)'
         required: true
         type: string
       branch:
@@ -30,14 +30,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.14'
 
       - name: Install Modal CLI
         run: pip install modal
 
       - name: Promote staged files to production
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          RUN_ID="${{ github.event.inputs.run_id }}"
           BRANCH="${{ github.event.inputs.branch }}"
-          echo "Promoting version ${VERSION} from branch ${BRANCH}"
-          modal run modal_app/local_area.py::main_promote --version="${VERSION}" --branch="${BRANCH}"
+          echo "Promoting run ${RUN_ID} from branch ${BRANCH}"
+          modal run modal_app/local_area.py::main_promote --run-id="${RUN_ID}" --branch="${BRANCH}"

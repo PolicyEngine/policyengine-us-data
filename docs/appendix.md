@@ -4,7 +4,8 @@
 
 ### A.1 Quantile Regression Forest Implementation
 
-The following code demonstrates the implementation of Quantile Regression Forests for variable imputation:
+The following code demonstrates the implementation of Quantile Regression Forests for variable
+imputation:
 
 ```python
 from quantile_forest import RandomForestQuantileRegressor
@@ -49,6 +50,7 @@ for iteration in range(5000):
 #### Variables Imputed from IRS Public Use File (67 variables)
 
 **Income Variables:**
+
 - employment_income
 - partnership_s_corp_income
 - social_security
@@ -75,6 +77,7 @@ for iteration in range(5000):
 - salt_refund_income
 
 **Deductions and Adjustments:**
+
 - interest_deduction
 - unreimbursed_business_employee_expenses
 - pre_tax_contributions
@@ -92,6 +95,7 @@ for iteration in range(5000):
 - deductible_mortgage_interest
 
 **Tax Credits:**
+
 - cdcc_relevant_expenses
 - foreign_tax_credit
 - american_opportunity_credit
@@ -104,6 +108,7 @@ for iteration in range(5000):
 - other_credits
 
 **Qualified Business Income Variables:**
+
 - w2_wages_from_qualified_business
 - unadjusted_basis_qualified_property
 - business_is_sstb
@@ -125,6 +130,7 @@ mixed SSTB and non-SSTB allocations within the same record.
 - self_employment_income_would_be_qualified
 
 **Other Tax Variables:**
+
 - traditional_ira_contributions
 - qualified_tuition_expenses
 - casualty_loss

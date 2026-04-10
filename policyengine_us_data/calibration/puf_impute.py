@@ -798,7 +798,6 @@ def _run_qrf_imputation(
         Tuple of (y_full_imputations, y_override_imputations)
         as dicts of {variable: np.ndarray}.
     """
-    from microimpute.models.qrf import QRF
     from policyengine_us import Microsimulation
 
     logger.info("Running QRF imputation")

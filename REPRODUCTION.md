@@ -1,6 +1,6 @@
 # Reproduction Guide for Enhanced CPS Dataset
 
-This guide provides step-by-step instructions for reproducing the Enhanced CPS dataset and validation results.
+This guide provides step-by-step instructions for reproducing the Enhanced CPS dataset and validation results. For more details on the production of geography-specific datasets (including states, congressional districts and some cities, visit our [documentation](https://policyengine.github.io/policyengine-us-data/)).
 
 ## Prerequisites
 

@@ -1,10 +1,39 @@
 import os
 import gc
+import sys
 import numpy as np
 import h5py
 
 from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
+
+
+def validate_projected_social_security_cap(
+    parameter_accessor,
+    year: int,
+    *,
+    reference_year: int = 2035,
+) -> float:
+    """
+    Ensure the Social Security taxable earnings cap keeps growing beyond the
+    last explicitly projected year.
+
+    The long-run calibration and diagnostics use taxable payroll targets
+    through 2100. If the payroll cap flattens after the reference year, the
+    late-year taxable payroll problem becomes mechanically distorted.
+    """
+    current_cap = float(parameter_accessor(year).gov.irs.payroll.social_security.cap)
+    reference_cap = float(
+        parameter_accessor(reference_year).gov.irs.payroll.social_security.cap
+    )
+    if year > reference_year and current_cap <= reference_cap * (1 + 1e-12):
+        raise RuntimeError(
+            "Social Security payroll cap is flat after "
+            f"{reference_year}: {current_cap:,.2f} in {year}. "
+            "This usually means policyengine-us is missing the long-run NAWI/"
+            "payroll-cap extension."
+        )
+    return current_cap
 
 
 def build_household_age_matrix(sim, n_ages=86):
@@ -39,6 +68,50 @@ def build_household_age_matrix(sim, n_ages=86):
     return X, household_ids_unique, hh_id_to_idx
 
 
+def build_age_bins(n_ages=86, bucket_size=None):
+    """
+    Build age-bucket ranges over the single-year age target vector.
+
+    The final bucket always preserves the open-ended 85+ slot.
+    """
+    if bucket_size is None or bucket_size <= 1:
+        return [(age_idx, age_idx + 1) for age_idx in range(n_ages)]
+
+    bins = []
+    upper_single_age = max(n_ages - 1, 0)
+    for start in range(0, upper_single_age, bucket_size):
+        end = min(start + bucket_size, upper_single_age)
+        bins.append((start, end))
+    bins.append((upper_single_age, n_ages))
+    return bins
+
+
+def aggregate_household_age_matrix(X, age_bins):
+    """
+    Aggregate a single-year household age matrix into coarser age buckets.
+    """
+    if len(age_bins) == X.shape[1] and all(end - start == 1 for start, end in age_bins):
+        return X
+    return np.column_stack([X[:, start:end].sum(axis=1) for start, end in age_bins])
+
+
+def aggregate_age_targets(targets, age_bins):
+    """
+    Aggregate age targets over the first axis.
+
+    Accepts either a single target vector `(n_ages,)` or a matrix
+    `(n_ages, n_years)`.
+    """
+    targets = np.asarray(targets, dtype=float)
+    if targets.ndim == 1:
+        return np.array(
+            [targets[start:end].sum() for start, end in age_bins],
+            dtype=float,
+        )
+
+    return np.vstack([targets[start:end, :].sum(axis=0) for start, end in age_bins])
+
+
 def get_pseudo_input_variables(sim):
     """
     Identify variables that appear as inputs but aggregate calculated values.
@@ -65,7 +138,14 @@ def get_pseudo_input_variables(sim):
     return pseudo_inputs
 
 
-def create_household_year_h5(year, household_weights, base_dataset_path, output_dir):
+def create_household_year_h5(
+    year,
+    household_weights,
+    base_dataset,
+    output_dir,
+    *,
+    reform=None,
+):
     """
     Create a year-specific .h5 file with calibrated household weights.
 
@@ -75,15 +155,16 @@ def create_household_year_h5(year, household_weights, base_dataset_path, output_
     Args:
         year: The year for this dataset
         household_weights: Calibrated household weights for this year
-        base_dataset_path: Path to base dataset
+        base_dataset: Path to base dataset or in-memory Dataset instance
         output_dir: Directory to save the .h5 file
+        reform: Optional reform to apply when materializing year-specific values
 
     Returns:
         Path to the created .h5 file
     """
     output_path = os.path.join(output_dir, f"{year}.h5")
 
-    sim = Microsimulation(dataset=base_dataset_path)
+    sim = Microsimulation(dataset=base_dataset, reform=reform)
     base_period = int(sim.default_calculation_period)
 
     df = sim.to_input_dataframe()
@@ -129,9 +210,20 @@ def create_household_year_h5(year, household_weights, base_dataset_path, output_
                     df[col_name_new] = uprated_values
                     df.drop(columns=[col], inplace=True)
                 else:
+                    print(
+                        f"Warning: uprating {var_name} for {year} returned "
+                        f"{len(uprated_values)} rows instead of {len(df)}; "
+                        "renaming the base-year column without recalculation.",
+                        file=sys.stderr,
+                    )
                     df.rename(columns={col: col_name_new}, inplace=True)
 
-            except:
+            except Exception as error:
+                print(
+                    f"Warning: failed to uprate {var_name} for {year}: {error}; "
+                    "renaming the base-year column without recalculation.",
+                    file=sys.stderr,
+                )
                 df.rename(columns={col: col_name_new}, inplace=True)
 
     dataset = Dataset.from_dataframe(df, year)
@@ -154,7 +246,7 @@ def create_household_year_h5(year, household_weights, base_dataset_path, output_
                 if values.dtype == np.object_:
                     try:
                         values = values.astype("S")
-                    except:
+                    except (TypeError, ValueError):
                         continue
 
                 data[variable][period] = values

@@ -1,17 +1,16 @@
-from typing import List, Dict, Optional, Tuple
+from typing import List, Tuple
 from huggingface_hub import (
     HfApi,
     CommitOperationAdd,
     CommitOperationCopy,
     CommitOperationDelete,
+    hf_hub_download,
 )
-from huggingface_hub.errors import RevisionNotFoundError
 from google.cloud import storage
 from pathlib import Path
 from importlib import metadata
 import google.auth
 import httpx
-import json
 import logging
 import os
 
@@ -143,10 +142,10 @@ def upload_local_area_file(
     skip_hf: bool = False,
 ):
     """
-    Upload a single local area H5 file to a subdirectory (states/ or districts/).
+    Upload a single local area H5 file to a subdirectory.
 
-    Uploads to both GCS and Hugging Face with the file placed in the specified
-    subdirectory.
+    Supports states/, districts/, cities/, and national/.
+    Uploads to both GCS and Hugging Face.
 
     Args:
         skip_hf: If True, skip HuggingFace upload (for batched uploads later)
@@ -280,6 +279,7 @@ def upload_to_staging_hf(
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     batch_size: int = 50,
+    run_id: str = "",
 ) -> int:
     """
     Upload files to staging/ paths in HuggingFace.
@@ -307,9 +307,10 @@ def upload_to_staging_hf(
             if not local_path.exists():
                 logging.warning(f"File {local_path} does not exist, skipping.")
                 continue
+            staging_prefix = f"staging/{run_id}" if run_id else "staging"
             operations.append(
                 CommitOperationAdd(
-                    path_in_repo=f"staging/{rel_path}",
+                    path_in_repo=f"{staging_prefix}/{rel_path}",
                     path_or_fileobj=str(local_path),
                 )
             )
@@ -339,6 +340,7 @@ def promote_staging_to_production_hf(
     version: str,
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
+    run_id: str = "",
 ) -> int:
     """
     Atomically promote files from staging/ to production paths.
@@ -361,9 +363,11 @@ def promote_staging_to_production_hf(
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
 
+    staging_prefix = f"staging/{run_id}" if run_id else "staging"
+
     operations = []
     for rel_path in files:
-        staging_path = f"staging/{rel_path}"
+        staging_path = f"{staging_prefix}/{rel_path}"
         operations.append(
             CommitOperationCopy(
                 src_path_in_repo=staging_path,
@@ -387,7 +391,7 @@ def promote_staging_to_production_hf(
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,
         token=token,
-        commit_message=f"Promote {len(files)} files from staging to production for version {version}",
+        commit_message=f"Promote {len(files)} files from {staging_prefix}/ to production for version {version}",
     )
 
     if result.oid == head_before:
@@ -407,6 +411,7 @@ def cleanup_staging_hf(
     version: str,
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
+    run_id: str = "",
 ) -> int:
     """
     Clean up staging folder after successful promotion.
@@ -426,9 +431,11 @@ def cleanup_staging_hf(
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
 
+    staging_prefix = f"staging/{run_id}" if run_id else "staging"
+
     operations = []
     for rel_path in files:
-        staging_path = f"staging/{rel_path}"
+        staging_path = f"{staging_prefix}/{rel_path}"
         operations.append(CommitOperationDelete(path_in_repo=staging_path))
 
     if not operations:
@@ -446,7 +453,7 @@ def cleanup_staging_hf(
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,
         token=token,
-        commit_message=f"Clean up staging after version {version} promotion",
+        commit_message=f"Clean up {staging_prefix}/ after version {version} promotion",
     )
 
     if result.oid == head_before:
@@ -457,3 +464,52 @@ def cleanup_staging_hf(
 
     logging.info(f"Cleaned up {len(files)} files from staging/")
     return len(files)
+
+
+def upload_from_hf_staging_to_gcs(
+    rel_paths: List[str],
+    version: str,
+    gcs_bucket_name: str = "policyengine-us-data",
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    run_id: str = "",
+) -> int:
+    """Download files from HF staging/ and upload to GCS production paths.
+
+    Args:
+        rel_paths: Relative paths like "states/AL.h5", "districts/NC-01.h5"
+        version: Version string for GCS metadata
+        gcs_bucket_name: GCS bucket name
+        hf_repo_name: HuggingFace repository name
+        hf_repo_type: Repository type
+
+    Returns:
+        Number of files uploaded
+    """
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+
+    credentials, project_id = google.auth.default()
+    storage_client = storage.Client(credentials=credentials, project=project_id)
+    bucket = storage_client.bucket(gcs_bucket_name)
+
+    staging_prefix = f"staging/{run_id}" if run_id else "staging"
+
+    uploaded = 0
+    for rel_path in rel_paths:
+        staging_filename = f"{staging_prefix}/{rel_path}"
+        local_path = hf_hub_download(
+            repo_id=hf_repo_name,
+            filename=staging_filename,
+            repo_type=hf_repo_type,
+            token=token,
+        )
+
+        blob = bucket.blob(rel_path)
+        blob.upload_from_filename(local_path)
+        blob.metadata = {"version": version}
+        blob.patch()
+        uploaded += 1
+        logging.info(f"Uploaded {rel_path} to GCS (sourced from HF staging)")
+
+    logging.info(f"Total: uploaded {uploaded} files from HF staging to GCS")
+    return uploaded

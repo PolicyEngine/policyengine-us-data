@@ -6,13 +6,34 @@
 - `make data` - Generate project datasets
 
 ## Testing
-- `pytest` - Run all tests
-- `pytest path/to/test_file.py::test_function` - Run a specific test
-- `make test` - Also runs all tests
+
+### Running Tests
+- `make test-unit` - Run unit tests only (fast, no data dependencies)
+- `make test-integration` - Run integration tests (requires built H5 datasets)
+- `make test` - Run all tests
+- `pytest tests/unit/ -v` - Unit tests directly
+- `pytest tests/integration/test_cps.py -v` - Specific integration test
+
+### Test Organization
+Tests are in the top-level `tests/` directory, split into two sub-directories:
+
+- **`tests/unit/`** — Self-contained tests that use synthetic data, mocks, patches, or checked-in fixtures. Run in seconds with no external dependencies.
+  - `unit/datasets/` — unit tests for dataset code
+  - `unit/calibration/` — unit tests for calibration code
+
+- **`tests/integration/`** — Tests that require built H5 datasets, HuggingFace downloads, Microsimulation objects, or database ETL. Named after the dataset they test.
+
+### Test Placement Rules
+- **NEVER** put tests that require H5 files or Microsimulation in `unit/`
+- **NEVER** put tests that use only synthetic data or mocks in `integration/`
+- Integration test files are named after their dataset dependency: `test_cps.py` tests `cps_2024.h5`
+- Sanity checks (value ranges, population counts) belong in the per-dataset integration test file, not in a separate sanity file
+- When adding a new integration test, add it to the existing per-dataset file if one exists
 
 ## Formatting
-- `make format` - Format all code using Black with 79 char line length
-- `black . -l 79 --check` - Check formatting without changing files
+- `make format` - Format all code using ruff
+- `ruff format --check .` - Check formatting without changing files
+- `ruff check .` - Run linter
 
 ## Code Style Guidelines
 - **Imports**: Standard libraries first, then third-party, then internal
@@ -20,19 +41,34 @@
 - **Naming**: Classes: PascalCase, Functions/Variables: snake_case, Constants: UPPER_SNAKE_CASE
 - **Documentation**: Google-style docstrings with Args and Returns sections
 - **Error Handling**: Use validation checks with specific error messages
-- **Line Length**: 79 characters max (Black configured in pyproject.toml)
-- **Python Version**: Targeting Python 3.11
+- **Line Length**: ruff default (see pyproject.toml for any override)
+- **Python Version**: Targeting Python 3.12-3.14
+
+## CI/CD Structure
+Six workflow files in `.github/workflows/`:
+
+- **`pr.yaml`** — Runs on every PR to main: fork check, lint, uv.lock freshness, changelog fragment, unit tests with Codecov, smoke test, and docs build. Integration tests trigger automatically when the PR changes files in `policyengine_us_data/`, `modal_app/`, or `tests/integration/`. ~2-3 minutes for unit tests.
+- **`push.yaml`** — Runs on push to main. Two paths:
+  - Version bump commits (`Update package version`): build and publish to PyPI
+  - All other commits: full Modal data build with integration tests
+  - Docs build and deploy to gh-pages runs unconditionally on every push.
+- **`pipeline.yaml`** — Dispatch only. Spawns the H5 generation pipeline on Modal with configurable GPU, epochs, and worker count.
+- **`versioning.yaml`** — Auto-bumps version when changelog.d fragments are merged. Commits `Update package version` which triggers the publish path in push.yaml.
+- **`local_area_publish.yaml`** — Manual dispatch. Builds and stages local area H5 files on Modal, then validates staged files.
+- **`local_area_promote.yaml`** — Manual dispatch. Promotes staged local area H5 files to production.
 
 ## Git and PR Guidelines
 - **CRITICAL**: NEVER create PRs from personal forks - ALL PRs MUST be created from branches pushed to the upstream PolicyEngine repository
 - CI requires access to secrets that are not available to fork PRs for security reasons
 - Fork PRs will fail on data download steps and cannot be merged
+- Before opening a PR, always run `make push-pr-branch` from the repo root. This pushes the current branch to the `upstream` remote and sets the upstream tracking branch correctly for PR creation.
+- Do not prefix PR titles with `[codex]` or any other agent label. Use the plain descriptive title.
 - Always create branches directly on the upstream repository:
   ```bash
   git checkout main
   git pull upstream main
   git checkout -b your-branch-name
-  git push -u upstream your-branch-name
+  make push-pr-branch
   ```
 - Use descriptive branch names like `fix-issue-123` or `add-feature-name`
 - Always run `make format` before committing

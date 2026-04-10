@@ -5,7 +5,7 @@ on:
   # push:
   #   branches: [main]
   #   paths:
-  #     - 'policyengine_us_data/datasets/cps/local_area_calibration/**'
+  #     - 'policyengine_us_data/calibration/**'
   #     - '.github/workflows/local_area_publish.yaml'
   #     - 'modal_app/**'
   # repository_dispatch:
@@ -24,7 +24,7 @@ on:
         type: boolean
 
 # Trigger strategy:
-# 1. Automatic: Code changes to local_area_calibration/ pushed to main
+# 1. Automatic: Code changes to calibration/ pushed to main
 # 2. repository_dispatch: Calibration workflow triggers after uploading new weights
 # 3. workflow_dispatch: Manual trigger with optional parameters
 
@@ -45,7 +45,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.14'
 
       - name: Install Modal CLI
         run: pip install modal
@@ -72,5 +72,60 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Files have been uploaded to GCS and staged on HuggingFace." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Next step: Promote to production" >> $GITHUB_STEP_SUMMARY
-          echo "Trigger the **Promote Local Area H5 Files** workflow with the version from the build output." >> $GITHUB_STEP_SUMMARY
+          echo "### Next step: Validation runs automatically" >> $GITHUB_STEP_SUMMARY
+          echo "The validate-staging job will now check all staged H5s." >> $GITHUB_STEP_SUMMARY
+
+  validate-staging:
+    needs: publish-local-area
+    runs-on: ubuntu-latest
+    env:
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Validate staged H5s
+        run: |
+          uv run python -m policyengine_us_data.calibration.validate_staging \
+            --area-type states --output validation_results.csv
+
+      - name: Upload validation results to HF
+        run: |
+          uv run python -c "
+          from policyengine_us_data.utils.huggingface import upload
+          upload('validation_results.csv',
+                 'policyengine/policyengine-us-data',
+                 'calibration/logs/validation_results.csv')
+          "
+
+      - name: Post validation summary
+        if: always()
+        run: |
+          echo "## Validation Results" >> $GITHUB_STEP_SUMMARY
+          if [ -f validation_results.csv ]; then
+            TOTAL=$(tail -n +2 validation_results.csv | wc -l)
+            FAILS=$(grep -c ',FAIL,' validation_results.csv || true)
+            echo "- **${TOTAL}** targets validated" >> $GITHUB_STEP_SUMMARY
+            echo "- **${FAILS}** sanity failures" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Review in dashboard, then trigger **Promote** workflow." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Validation did not produce output." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-results
+          path: validation_results.csv

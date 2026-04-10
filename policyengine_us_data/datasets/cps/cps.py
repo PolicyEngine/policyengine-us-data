@@ -1,3 +1,4 @@
+from contextlib import closing, contextmanager
 from importlib.resources import files
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER, DOCS_FOLDER
@@ -84,6 +85,20 @@ CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP = {
 }
 
 
+@contextmanager
+def _open_dataset_read_only(dataset_source):
+    dataset = dataset_source(require=True)
+    file_path = getattr(dataset, "file_path", None)
+
+    if file_path is not None:
+        with pd.HDFStore(file_path, mode="r") as store:
+            yield store
+        return
+
+    with closing(dataset.load()) as store:
+        yield store
+
+
 class CPS(Dataset):
     name = "cps"
     label = "CPS"
@@ -109,7 +124,7 @@ class CPS(Dataset):
         cps = {}
 
         ENTITIES = ("person", "tax_unit", "family", "spm_unit", "household")
-        with self.raw_cps(require=True).load() as raw_data:
+        with _open_dataset_read_only(self.raw_cps) as raw_data:
             person, tax_unit, family, spm_unit, household = [
                 raw_data[entity] for entity in ENTITIES
             ]
@@ -911,8 +926,8 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
         return
 
     with (
-        self.raw_cps(require=True).load() as cps_current_year_data,
-        self.previous_year_raw_cps(require=True).load() as cps_previous_year_data,
+        _open_dataset_read_only(self.raw_cps) as cps_current_year_data,
+        _open_dataset_read_only(self.previous_year_raw_cps) as cps_previous_year_data,
     ):
         cps_previous_year = cps_previous_year_data.person.set_index(
             cps_previous_year_data.person.PERIDNUM
@@ -1871,7 +1886,7 @@ def add_tips(self, cps: h5py.File):
     # Get is_married from raw CPS data (A_MARITL codes: 1,2 = married)
     # Note: is_married in policyengine-us is Family-level, but we need
     # person-level for imputation models
-    with self.raw_cps(require=True).load() as raw_data:
+    with _open_dataset_read_only(self.raw_cps) as raw_data:
         raw_person = raw_data["person"]
         cps["is_married"] = raw_person.A_MARITL.isin([1, 2]).values
         cps["is_tipped_occupation"] = derive_is_tipped_occupation(
@@ -2036,7 +2051,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     cps_data = self.load_dataset()
 
     # Access raw CPS for additional variables
-    with self.raw_cps(require=True).load() as raw_data:
+    with _open_dataset_read_only(self.raw_cps) as raw_data:
         person_data = raw_data.person
 
         # Preprocess the CPS for imputation
@@ -2189,77 +2204,77 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
         return all_persons_data["is_scf_reference_person"].values
 
-        mask = create_scf_reference_person_mask(cps_data, person_data)
-        mask_len = mask.shape[0]
+    mask = create_scf_reference_person_mask(cps_data, person_data)
+    mask_len = mask.shape[0]
 
-        cps_data = {
-            var: data[mask] if data.shape[0] == mask_len else data
-            for var, data in cps_data.items()
-        }
+    cps_data = {
+        var: data[mask] if data.shape[0] == mask_len else data
+        for var, data in cps_data.items()
+    }
 
-        CPS_RACE_MAPPING = {
-            1: 1,  # White only -> WHITE
-            2: 2,  # Black only -> BLACK/AFRICAN-AMERICAN
-            3: 5,  # American Indian, Alaskan Native only -> OTHER
-            4: 4,  # Asian only -> ASIAN
-            5: 5,  # Hawaiian/Pacific Islander only -> OTHER
-            6: 5,  # White-Black -> OTHER
-            7: 5,  # White-AI -> OTHER
-            8: 5,  # White-Asian -> OTHER
-            9: 3,  # White-HP -> HISPANIC
-            10: 5,  # Black-AI -> OTHER
-            11: 5,  # Black-Asian -> OTHER
-            12: 3,  # Black-HP -> HISPANIC
-            13: 5,  # AI-Asian -> OTHER
-            14: 5,  # AI-HP -> OTHER
-            15: 3,  # Asian-HP -> HISPANIC
-            16: 5,  # White-Black-AI -> OTHER
-            17: 5,  # White-Black-Asian -> OTHER
-            18: 5,  # White-Black-HP -> OTHER
-            19: 5,  # White-AI-Asian -> OTHER
-            20: 5,  # White-AI-HP -> OTHER
-            21: 5,  # White-Asian-HP -> OTHER
-            22: 5,  # Black-AI-Asian -> OTHER
-            23: 5,  # White-Black-AI-Asian -> OTHER
-            24: 5,  # White-AI-Asian-HP -> OTHER
-            25: 5,  # Other 3 race comb. -> OTHER
-            26: 5,  # Other 4 or 5 race comb. -> OTHER
-        }
+    CPS_RACE_MAPPING = {
+        1: 1,  # White only -> WHITE
+        2: 2,  # Black only -> BLACK/AFRICAN-AMERICAN
+        3: 5,  # American Indian, Alaskan Native only -> OTHER
+        4: 4,  # Asian only -> ASIAN
+        5: 5,  # Hawaiian/Pacific Islander only -> OTHER
+        6: 5,  # White-Black -> OTHER
+        7: 5,  # White-AI -> OTHER
+        8: 5,  # White-Asian -> OTHER
+        9: 3,  # White-HP -> HISPANIC
+        10: 5,  # Black-AI -> OTHER
+        11: 5,  # Black-Asian -> OTHER
+        12: 3,  # Black-HP -> HISPANIC
+        13: 5,  # AI-Asian -> OTHER
+        14: 5,  # AI-HP -> OTHER
+        15: 3,  # Asian-HP -> HISPANIC
+        16: 5,  # White-Black-AI -> OTHER
+        17: 5,  # White-Black-Asian -> OTHER
+        18: 5,  # White-Black-HP -> OTHER
+        19: 5,  # White-AI-Asian -> OTHER
+        20: 5,  # White-AI-HP -> OTHER
+        21: 5,  # White-Asian-HP -> OTHER
+        22: 5,  # Black-AI-Asian -> OTHER
+        23: 5,  # White-Black-AI-Asian -> OTHER
+        24: 5,  # White-AI-Asian-HP -> OTHER
+        25: 5,  # Other 3 race comb. -> OTHER
+        26: 5,  # Other 4 or 5 race comb. -> OTHER
+    }
 
-        # Apply the mapping to recode the race values
-        cps_data["cps_race"] = np.vectorize(CPS_RACE_MAPPING.get)(cps_data["cps_race"])
+    # Apply the mapping to recode the race values
+    cps_data["cps_race"] = np.vectorize(CPS_RACE_MAPPING.get)(cps_data["cps_race"])
 
-        lengths = {k: len(v) for k, v in cps_data.items()}
-        var_len = cps_data["person_household_id"].shape[0]
-        vars_of_interest = [name for name, ln in lengths.items() if ln == var_len]
-        receiver_data = pd.DataFrame({n: cps_data[n] for n in vars_of_interest})
+    lengths = {k: len(v) for k, v in cps_data.items()}
+    var_len = cps_data["person_household_id"].shape[0]
+    vars_of_interest = [name for name, ln in lengths.items() if ln == var_len]
+    receiver_data = pd.DataFrame({n: cps_data[n] for n in vars_of_interest})
 
-        receiver_data = receiver_data.merge(
-            agg[
-                [
-                    "person_household_id",
-                    "household_employment_income",
-                    "household_interest_dividend_income",
-                    "household_social_security_pension_income",
-                ]
-            ],
-            on="person_household_id",
-            how="left",
-        )
-        receiver_data.drop("employment_income", axis=1, inplace=True)
+    receiver_data = receiver_data.merge(
+        agg[
+            [
+                "person_household_id",
+                "household_employment_income",
+                "household_interest_dividend_income",
+                "household_social_security_pension_income",
+            ]
+        ],
+        on="person_household_id",
+        how="left",
+    )
+    receiver_data.drop("employment_income", axis=1, inplace=True)
 
-        receiver_data.rename(
-            columns={
-                "household_employment_income": "employment_income",
-                "household_interest_dividend_income": "interest_dividend_income",
-                "household_social_security_pension_income": "social_security_pension_income",
-            },
-            inplace=True,
-        )
+    receiver_data.rename(
+        columns={
+            "household_employment_income": "employment_income",
+            "household_interest_dividend_income": "interest_dividend_income",
+            "household_social_security_pension_income": "social_security_pension_income",
+        },
+        inplace=True,
+    )
 
-        # Add is_married variable for household heads based on raw person data
-        reference_persons = person_data[mask]
-        receiver_data["is_married"] = reference_persons.A_MARITL.isin([1, 2]).values
+    # Add is_married variable for household heads based on raw person data
+    reference_persons = person_data[mask]
+    receiver_data["is_married"] = reference_persons.A_MARITL.isin([1, 2]).values
 
     # Impute auto loan balance from the SCF
     from policyengine_us_data.datasets.scf.scf import SCF_2022

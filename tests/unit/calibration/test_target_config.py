@@ -158,6 +158,38 @@ class TestLoadTargetConfig:
             "domain_variable": "non_refundable_ctc",
         } in include_rules
 
+    def test_training_config_includes_national_ctc_agi_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "refundable_ctc",
+            "geo_level": "national",
+            "domain_variable": "adjusted_gross_income,refundable_ctc",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "national",
+            "domain_variable": "adjusted_gross_income,refundable_ctc",
+        } in include_rules
+        assert {
+            "variable": "non_refundable_ctc",
+            "geo_level": "national",
+            "domain_variable": "adjusted_gross_income,non_refundable_ctc",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "national",
+            "domain_variable": "adjusted_gross_income,non_refundable_ctc",
+        } in include_rules
+
     def test_training_config_includes_district_non_refundable_ctc_target(self):
         config = load_target_config(
             str(

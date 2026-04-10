@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from policyengine_us_data.utils.loss import (
+    _add_medicare_part_b_enrollment_target,
     _get_aca_national_targets,
     _add_ctc_targets,
     _get_medicaid_national_targets,
@@ -89,6 +90,26 @@ class _FakeSimulation:
         return np.asarray(values, dtype=np.float32)
 
 
+class _FakeMedicareEnrollmentSimulation:
+    def __init__(self):
+        self.calculate_calls = []
+        self.map_result_calls = []
+
+    def calculate(self, variable, map_to=None, period=None):
+        self.calculate_calls.append((variable, map_to, period))
+        if variable != "medicare_enrolled":
+            raise AssertionError(f"Unexpected variable {variable!r}")
+        if map_to != "person":
+            raise AssertionError(f"Unexpected map_to {map_to!r}")
+        return _FakeArrayResult([1.0, 0.0, 1.0])
+
+    def map_result(self, values, source_entity, target_entity, how=None):
+        self.map_result_calls.append((source_entity, target_entity, how))
+        assert source_entity == "person"
+        assert target_entity == "household"
+        return np.asarray(values, dtype=np.float32)
+
+
 def test_add_ctc_targets(monkeypatch):
     monkeypatch.setattr(
         "policyengine_us_data.utils.loss.get_national_geography_soi_target",
@@ -122,4 +143,24 @@ def test_add_ctc_targets(monkeypatch):
     np.testing.assert_array_equal(
         loss_matrix["nation/irs/non_refundable_ctc_count"],
         np.array([1.0, 1.0, 0.0], dtype=np.float32),
+    )
+
+
+def test_add_medicare_part_b_enrollment_target(monkeypatch):
+    monkeypatch.setattr(
+        "policyengine_us_data.utils.loss.get_medicare_part_b_enrollment_target",
+        lambda year: 62_084_000.0,
+    )
+    sim = _FakeMedicareEnrollmentSimulation()
+
+    targets, loss_matrix = _add_medicare_part_b_enrollment_target(
+        pd.DataFrame(),
+        [],
+        sim,
+    )
+
+    assert targets == [62_084_000.0]
+    np.testing.assert_array_equal(
+        loss_matrix["nation/cms/medicare_part_b_enrollment"],
+        np.array([1.0, 0.0, 1.0], dtype=np.float32),
     )

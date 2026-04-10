@@ -1706,7 +1706,7 @@ def add_ssn_card_type(
     # CONVERT TO STRING LABELS AND STORE
     # ============================================================================
 
-    _store_identification_variables(cps, ssn_card_type)
+    _store_identification_variables(cps, person, ssn_card_type, time_period)
 
     # Final population summary
     print(f"\nFinal populations:")

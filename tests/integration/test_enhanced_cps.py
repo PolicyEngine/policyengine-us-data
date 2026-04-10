@@ -244,18 +244,16 @@ def test_has_tin_matches_identification_inputs(ecps_sim):
     taxpayer_id_type = _period_array(data["taxpayer_id_type"], 2024).astype(str)
 
     np.testing.assert_array_equal(has_itin, has_tin)
-    np.testing.assert_array_equal(has_tin, taxpayer_id_type != "NONE")
     np.testing.assert_array_equal(has_valid_ssn, taxpayer_id_type == "VALID_SSN")
+    np.testing.assert_array_equal(has_tin, taxpayer_id_type != "NONE")
+    assert np.all(has_tin[has_valid_ssn])
+    np.testing.assert_array_equal(has_valid_ssn[ssn_card_type == "NONE"], False)
     np.testing.assert_array_equal(
         taxpayer_id_type,
         np.where(
-            ssn_card_type == "NONE",
-            "NONE",
-            np.where(
-                np.isin(ssn_card_type, ["CITIZEN", "NON_CITIZEN_VALID_EAD"]),
-                "VALID_SSN",
-                "OTHER_TIN",
-            ),
+            has_valid_ssn,
+            "VALID_SSN",
+            np.where(has_tin, "OTHER_TIN", "NONE"),
         ),
     )
 

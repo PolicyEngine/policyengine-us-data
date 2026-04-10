@@ -5,10 +5,31 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PACKAGE_ROOT = REPO_ROOT / "policyengine_us_data"
+
+
+@pytest.fixture(autouse=True)
+def restore_policyengine_us_data_modules():
+    module_names = [
+        "policyengine_us_data",
+        "policyengine_us_data.utils",
+        "policyengine_us_data.storage",
+        "policyengine_us_data.utils.uprating",
+        "policyengine_us_data.utils.soi",
+    ]
+    original_modules = {name: sys.modules.get(name) for name in module_names}
+
+    yield
+
+    for name, module in original_modules.items():
+        if module is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = module
 
 
 def load_soi_module():

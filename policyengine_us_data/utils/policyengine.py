@@ -67,6 +67,109 @@ def _get_git_commit(path: Path | None) -> str | None:
         return None
 
 
+@lru_cache(maxsize=1)
+def ensure_policyengine_us_compat_variables() -> None:
+    """Backfill SSTB/QBI variables when running against older policyengine-us.
+
+    The SSTB split landed across `policyengine-us` and `policyengine-us-data`
+    in separate PRs. Until the model package release catches up, keep the data
+    package usable by registering the missing inputs/formulas on import.
+    """
+
+    try:
+        from policyengine_us.model_api import Person, USD, Variable, YEAR
+        from policyengine_us.system import CountryTaxBenefitSystem, system
+    except Exception:
+        return
+
+    class sstb_self_employment_income(Variable):
+        value_type = float
+        entity = Person
+        label = "SSTB self-employment income"
+        unit = USD
+        documentation = (
+            "Self-employment non-farm income from a specified service trade or "
+            "business (SSTB) under IRC Section 199A(d)(2)."
+        )
+        definition_period = YEAR
+        reference = (
+            "https://www.law.cornell.edu/uscode/text/26/1402#a",
+            "https://www.law.cornell.edu/uscode/text/26/199A#d_2",
+        )
+        uprating = "calibration.gov.irs.soi.self_employment_income"
+        default_value = 0
+
+    class sstb_w2_wages_from_qualified_business(Variable):
+        value_type = float
+        entity = Person
+        label = "SSTB allocable W-2 wages"
+        unit = USD
+        documentation = (
+            "Portion of w2_wages_from_qualified_business allocable to "
+            "specified service trades or businesses for section 199A."
+        )
+        definition_period = YEAR
+        reference = (
+            "https://www.law.cornell.edu/uscode/text/26/199A#b_2",
+            "https://www.law.cornell.edu/uscode/text/26/199A#d_3",
+        )
+        default_value = 0
+
+    class sstb_unadjusted_basis_qualified_property(Variable):
+        value_type = float
+        entity = Person
+        label = "SSTB allocable UBIA of qualified property"
+        unit = USD
+        documentation = (
+            "Portion of unadjusted_basis_qualified_property allocable to "
+            "specified service trades or businesses for section 199A."
+        )
+        definition_period = YEAR
+        reference = (
+            "https://www.law.cornell.edu/uscode/text/26/199A#b_2",
+            "https://www.law.cornell.edu/uscode/text/26/199A#d_3",
+        )
+        default_value = 0
+
+    class total_self_employment_income(Variable):
+        value_type = float
+        entity = Person
+        label = "total self-employment income"
+        unit = USD
+        documentation = (
+            "Total non-farm self-employment income, including both SSTB and "
+            "non-SSTB Schedule C income."
+        )
+        definition_period = YEAR
+        adds = ["self_employment_income", "sstb_self_employment_income"]
+        reference = "https://www.law.cornell.edu/uscode/text/26/1402#a"
+        uprating = "calibration.gov.irs.soi.self_employment_income"
+
+    compat_variables = [
+        sstb_self_employment_income,
+        sstb_w2_wages_from_qualified_business,
+        sstb_unadjusted_basis_qualified_property,
+        total_self_employment_income,
+    ]
+
+    def install_compat_variables(tbs) -> None:
+        for variable in compat_variables:
+            if variable.__name__ not in tbs.variables:
+                tbs.add_variable(variable)
+
+    if not getattr(CountryTaxBenefitSystem, "_policyengine_us_data_compat", False):
+        original_init = CountryTaxBenefitSystem.__init__
+
+        def patched_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            install_compat_variables(self)
+
+        CountryTaxBenefitSystem.__init__ = patched_init
+        CountryTaxBenefitSystem._policyengine_us_data_compat = True
+
+    install_compat_variables(system)
+
+
 @lru_cache(maxsize=None)
 def get_locked_dependency_version(package_name: str) -> str | None:
     if not UV_LOCK_PATH.exists():
@@ -124,6 +227,7 @@ def assert_locked_policyengine_us_version() -> PolicyEngineUSBuildInfo:
 def _policyengine_us_variable_names() -> frozenset[str]:
     from policyengine_us import CountryTaxBenefitSystem
 
+    ensure_policyengine_us_compat_variables()
     return frozenset(CountryTaxBenefitSystem().variables)
 
 
@@ -144,3 +248,6 @@ def supports_modeled_medicare_part_b_inputs() -> bool:
     return has_policyengine_us_variables(
         "medicare_part_b_premiums_reported",
     )
+
+
+ensure_policyengine_us_compat_variables()

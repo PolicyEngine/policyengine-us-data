@@ -1,3 +1,4 @@
+import h5py
 import yaml
 from importlib.resources import files
 
@@ -554,6 +555,67 @@ FINANCIAL_SUBSET = [
 class PUF(Dataset):
     time_period = None
     data_format = Dataset.ARRAYS
+
+    @staticmethod
+    def _replace_array(file_handle, key: str, values: np.ndarray) -> None:
+        if key in file_handle:
+            del file_handle[key]
+        file_handle.create_dataset(key, data=values)
+
+    def _ensure_sstb_split_inputs(self) -> None:
+        if not self.file_path.exists():
+            return
+
+        with h5py.File(self.file_path, "a") as file_handle:
+            if "business_is_sstb" not in file_handle:
+                return
+
+            is_sstb = np.asarray(file_handle["business_is_sstb"]).astype(bool)
+
+            if (
+                "sstb_self_employment_income" not in file_handle
+                and "self_employment_income" in file_handle
+            ):
+                legacy_self_employment_income = np.asarray(
+                    file_handle["self_employment_income"]
+                )
+                self._replace_array(
+                    file_handle,
+                    "sstb_self_employment_income",
+                    np.where(is_sstb, legacy_self_employment_income, 0.0),
+                )
+                self._replace_array(
+                    file_handle,
+                    "self_employment_income",
+                    np.where(is_sstb, 0.0, legacy_self_employment_income),
+                )
+
+            for source_key, target_key in (
+                (
+                    "w2_wages_from_qualified_business",
+                    "sstb_w2_wages_from_qualified_business",
+                ),
+                (
+                    "unadjusted_basis_qualified_property",
+                    "sstb_unadjusted_basis_qualified_property",
+                ),
+            ):
+                if target_key in file_handle or source_key not in file_handle:
+                    continue
+                self._replace_array(
+                    file_handle,
+                    target_key,
+                    np.where(is_sstb, np.asarray(file_handle[source_key]), 0.0),
+                )
+
+    def load(self, key=None, mode="r"):
+        if mode == "r":
+            self._ensure_sstb_split_inputs()
+        return super().load(key=key, mode=mode)
+
+    def load_dataset(self):
+        self._ensure_sstb_split_inputs()
+        return super().load_dataset()
 
     def generate(self):
         from policyengine_us.system import system

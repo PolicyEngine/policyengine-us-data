@@ -22,7 +22,7 @@ include:
     geo_level: district
   - variable: real_estate_taxes
     geo_level: district
-  - variable: self_employment_income
+  - variable: total_self_employment_income
     geo_level: district
   - variable: taxable_pension_income
     geo_level: district
@@ -153,9 +153,9 @@ include:
   - variable: non_refundable_ctc
     geo_level: national
     domain_variable: non_refundable_ctc
-  - variable: self_employment_income
+  - variable: total_self_employment_income
     geo_level: national
-    domain_variable: self_employment_income
+    domain_variable: total_self_employment_income
   - variable: tax_unit_partnership_s_corp_income
     geo_level: national
     domain_variable: tax_unit_partnership_s_corp_income

@@ -5,11 +5,13 @@ so tests don't require real CPS/PUF datasets.
 """
 
 import numpy as np
+import pandas as pd
 
 from policyengine_us_data.calibration.puf_impute import (
     DEMOGRAPHIC_PREDICTORS,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
+    _impute_retirement_contributions,
     _stratified_subsample_index,
     puf_clone_dataset,
 )
@@ -190,3 +192,93 @@ class TestStratifiedSubsample:
         income = np.random.default_rng(0).normal(50000, 20000, size=50_000)
         idx = _stratified_subsample_index(income, target_n=10_000)
         assert np.all(idx[1:] >= idx[:-1])
+
+
+def test_retirement_imputation_caps_se_pension_using_sstb_income(monkeypatch):
+    class FakeMicrosimulation:
+        def __init__(self, dataset):
+            self.dataset = dataset
+
+        def calculate_dataframe(self, columns):
+            if "self_employed_pension_contributions" in columns:
+                return pd.DataFrame(
+                    {
+                        "age": [40, 55],
+                        "is_male": [0, 1],
+                        "tax_unit_is_joint": [0, 1],
+                        "tax_unit_count_dependents": [0, 1],
+                        "is_tax_unit_head": [1, 1],
+                        "is_tax_unit_spouse": [0, 0],
+                        "is_tax_unit_dependent": [0, 0],
+                        "employment_income": [0.0, 0.0],
+                        "self_employment_income": [0.0, 100.0],
+                        "taxable_interest_income": [0.0, 0.0],
+                        "qualified_dividend_income": [0.0, 0.0],
+                        "taxable_pension_income": [0.0, 0.0],
+                        "social_security": [0.0, 0.0],
+                        "traditional_401k_contributions": [0.0, 0.0],
+                        "roth_401k_contributions": [0.0, 0.0],
+                        "traditional_ira_contributions": [0.0, 0.0],
+                        "roth_ira_contributions": [0.0, 0.0],
+                        "self_employed_pension_contributions": [0.0, 0.0],
+                    }
+                )
+            return pd.DataFrame(
+                {
+                    "age": [40, 55],
+                    "is_male": [0, 1],
+                    "tax_unit_is_joint": [0, 1],
+                    "tax_unit_count_dependents": [0, 1],
+                    "is_tax_unit_head": [1, 1],
+                    "is_tax_unit_spouse": [0, 0],
+                    "is_tax_unit_dependent": [0, 0],
+                }
+            )
+
+        def calculate(self, variable):
+            return pd.Series(np.zeros(2))
+
+    class FakeQRF:
+        def __init__(self, **kwargs):
+            pass
+
+        def fit_predict(
+            self,
+            X_train,
+            X_test,
+            predictors,
+            imputed_variables,
+            n_jobs,
+        ):
+            return pd.DataFrame(
+                {
+                    "traditional_401k_contributions": [0.0, 0.0],
+                    "roth_401k_contributions": [0.0, 0.0],
+                    "traditional_ira_contributions": [0.0, 0.0],
+                    "roth_ira_contributions": [0.0, 0.0],
+                    "self_employed_pension_contributions": [50_000.0, 50_000.0],
+                }
+            )
+
+    monkeypatch.setattr("policyengine_us.Microsimulation", FakeMicrosimulation)
+    monkeypatch.setattr("microimpute.models.qrf.QRF", FakeQRF)
+
+    result = _impute_retirement_contributions(
+        data={"person_id": {2024: np.array([1, 2])}},
+        puf_imputations={
+            "employment_income": np.array([0.0, 0.0]),
+            "self_employment_income": np.array([0.0, 100.0]),
+            "sstb_self_employment_income": np.array([100.0, 0.0]),
+            "taxable_interest_income": np.array([0.0, 0.0]),
+            "qualified_dividend_income": np.array([0.0, 0.0]),
+            "taxable_pension_income": np.array([0.0, 0.0]),
+            "social_security": np.array([0.0, 0.0]),
+        },
+        time_period=2024,
+        dataset_path="ignored.h5",
+    )
+
+    np.testing.assert_array_equal(
+        result["self_employed_pension_contributions"],
+        np.array([25.0, 25.0]),
+    )

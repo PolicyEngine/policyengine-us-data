@@ -61,6 +61,8 @@ from calibration import (
     calibrate_weights,
 )
 from calibration_artifacts import (
+    capture_base_dataset_snapshot,
+    capture_policyengine_us_provenance,
     update_dataset_manifest,
     write_support_augmentation_report,
     write_year_metadata,
@@ -714,6 +716,8 @@ BASE_DATASET = BASE_DATASET_PATH
 SUPPORT_AUGMENTATION_METADATA = None
 SUPPORT_AUGMENTATION_REPORT = None
 MANIFEST_SUPPORT_AUGMENTATION_METADATA = None
+POLICYENGINE_US_PROVENANCE = capture_policyengine_us_provenance()
+BASE_DATASET_SNAPSHOT = capture_base_dataset_snapshot(BASE_DATASET_PATH)
 
 CALIBRATION_METHOD = PROFILE.calibration_method
 USE_GREG = CALIBRATION_METHOD == "greg"
@@ -1535,6 +1539,8 @@ for year_idx in range(n_years):
             target_source=TARGET_SOURCE_METADATA,
             tax_assumption=LONG_RUN_TAX_ASSUMPTION_METADATA,
             support_augmentation=current_support_augmentation_metadata,
+            policyengine_us=POLICYENGINE_US_PROVENANCE,
+            base_dataset_snapshot=BASE_DATASET_SNAPSHOT,
         )
         update_dataset_manifest(
             OUTPUT_DIR,
@@ -1547,6 +1553,8 @@ for year_idx in range(n_years):
             target_source=TARGET_SOURCE_METADATA,
             tax_assumption=LONG_RUN_TAX_ASSUMPTION_METADATA,
             support_augmentation=MANIFEST_SUPPORT_AUGMENTATION_METADATA,
+            policyengine_us=POLICYENGINE_US_PROVENANCE,
+            base_dataset_snapshot=BASE_DATASET_SNAPSHOT,
         )
         if year in display_years:
             print(f"  Saved {year}.h5 and metadata")

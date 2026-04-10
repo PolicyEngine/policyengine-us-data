@@ -154,11 +154,18 @@ def _json_clone(value):
 
 
 def manifest_contract(manifest: dict) -> dict:
+    tax_assumption = _json_clone(manifest.get("tax_assumption"))
+    if isinstance(tax_assumption, dict):
+        # The year-parallel runner invokes YEAR YEAR one-year jobs, so the
+        # tax-assumption sidecar may record a per-year end_year even when the
+        # underlying assumption contract is otherwise identical. Ignore that
+        # run-local field when deciding whether yearly manifests are mergeable.
+        tax_assumption.pop("end_year", None)
     return {
         "base_dataset_path": manifest["base_dataset_path"],
         "profile": _json_clone(manifest["profile"]),
         "target_source": _json_clone(manifest.get("target_source")),
-        "tax_assumption": _json_clone(manifest.get("tax_assumption")),
+        "tax_assumption": tax_assumption,
         "support_augmentation": _json_clone(manifest.get("support_augmentation")),
     }
 
@@ -182,14 +189,15 @@ def merge_outputs(
             )
 
         temp_manifest = json.loads(temp_manifest_path.read_text(encoding="utf-8"))
+        temp_contract = manifest_contract(temp_manifest)
         if manifest_seed is None:
-            manifest_seed = manifest_contract(temp_manifest)
+            manifest_seed = temp_contract
         else:
             for key, value in manifest_seed.items():
-                if _json_clone(temp_manifest.get(key)) != value:
+                if temp_contract.get(key) != value:
                     raise ValueError(
                         f"Temp manifest mismatch for {key} in year {year}: "
-                        f"{temp_manifest.get(key)} != {value}"
+                        f"{temp_contract.get(key)} != {value}"
                     )
 
         h5_name = f"{year}.h5"

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from argparse import Namespace
-
+from types import SimpleNamespace
 import numpy as np
 import pytest
 from policyengine_core.data.dataset import Dataset
@@ -20,6 +20,8 @@ from policyengine_us_data.datasets.cps.long_term.calibration import (
     calibrate_weights,
 )
 from policyengine_us_data.datasets.cps.long_term.calibration_artifacts import (
+    capture_base_dataset_snapshot,
+    capture_policyengine_us_provenance,
     normalize_metadata,
     rebuild_dataset_manifest,
     update_dataset_manifest,
@@ -37,6 +39,7 @@ from policyengine_us_data.datasets.cps.long_term.projection_utils import (
     aggregate_age_targets,
     aggregate_household_age_matrix,
     build_age_bins,
+    project_input_variable_values_to_person_rows,
     validate_projected_social_security_cap,
 )
 from policyengine_us_data.datasets.cps.long_term.ssa_data import (
@@ -148,6 +151,126 @@ def test_named_profile_lookup():
     assert profile.min_effective_sample_size == 75.0
     assert profile.max_top_10_weight_share_pct == 25.0
     assert profile.max_top_100_weight_share_pct == 95.0
+
+
+def test_project_input_variable_values_aligns_tax_unit_outputs_to_person_rows():
+    class FakeSim:
+        def __init__(self):
+            self.tax_benefit_system = SimpleNamespace(
+                variables={
+                    "interest_deduction": SimpleNamespace(
+                        entity=SimpleNamespace(key="tax_unit")
+                    )
+                }
+            )
+
+        def calculate(self, variable, *, period=None, map_to=None):
+            assert period == 2073 or variable == "tax_unit_id"
+            if variable == "interest_deduction":
+                return SimpleNamespace(values=np.array([100.0, 250.0]))
+            if variable == "tax_unit_id":
+                assert map_to == "tax_unit"
+                return SimpleNamespace(values=np.array([11, 22]))
+            raise AssertionError(variable)
+
+    import pandas as pd
+
+    df = pd.DataFrame(
+        {
+            "person_id__2024": [1, 2, 3],
+            "person_tax_unit_id__2024": [11, 11, 22],
+        }
+    )
+
+    values = project_input_variable_values_to_person_rows(
+        FakeSim(),
+        df,
+        var_name="interest_deduction",
+        year=2073,
+        base_period=2024,
+    )
+
+    assert np.array_equal(values, np.array([100.0, 100.0, 250.0]))
+
+
+def test_project_input_variable_values_falls_back_to_entity_id_column():
+    class FakeSim:
+        def __init__(self):
+            self.tax_benefit_system = SimpleNamespace(
+                variables={
+                    "net_worth": SimpleNamespace(
+                        entity=SimpleNamespace(key="household")
+                    )
+                }
+            )
+
+        def calculate(self, variable, *, period=None, map_to=None):
+            assert period == 2073 or variable == "household_id"
+            if variable == "net_worth":
+                return SimpleNamespace(values=np.array([10.0, 20.0]))
+            if variable == "household_id":
+                assert map_to == "household"
+                return SimpleNamespace(values=np.array([101, 202]))
+            raise AssertionError(variable)
+
+    import pandas as pd
+
+    df = pd.DataFrame(
+        {
+            "person_id__2024": [1, 2, 3],
+            "household_id__2024": [101, 101, 202],
+        }
+    )
+
+    values = project_input_variable_values_to_person_rows(
+        FakeSim(),
+        df,
+        var_name="net_worth",
+        year=2073,
+        base_period=2024,
+    )
+
+    assert np.array_equal(values, np.array([10.0, 10.0, 20.0]))
+
+
+def test_project_input_variable_values_uses_year_renamed_membership_column():
+    class FakeSim:
+        def __init__(self):
+            self.tax_benefit_system = SimpleNamespace(
+                variables={
+                    "interest_deduction": SimpleNamespace(
+                        entity=SimpleNamespace(key="tax_unit")
+                    )
+                }
+            )
+
+        def calculate(self, variable, *, period=None, map_to=None):
+            assert period == 2073 or variable == "tax_unit_id"
+            if variable == "interest_deduction":
+                return SimpleNamespace(values=np.array([100.0, 250.0]))
+            if variable == "tax_unit_id":
+                assert map_to == "tax_unit"
+                return SimpleNamespace(values=np.array([11, 22]))
+            raise AssertionError(variable)
+
+    import pandas as pd
+
+    df = pd.DataFrame(
+        {
+            "person_id__2024": [1, 2, 3],
+            "person_tax_unit_id__2073": [11, 11, 22],
+        }
+    )
+
+    values = project_input_variable_values_to_person_rows(
+        FakeSim(),
+        df,
+        var_name="interest_deduction",
+        year=2073,
+        base_period=2024,
+    )
+
+    assert np.array_equal(values, np.array([100.0, 100.0, 250.0]))
 
 
 def test_support_augmentation_selects_expected_donors():
@@ -1396,6 +1519,96 @@ def test_manifest_persists_support_augmentation_metadata(tmp_path):
     )
 
 
+def test_update_dataset_manifest_ignores_support_augmentation_run_year_fields(tmp_path):
+    profile = get_profile("ss-payroll-tob")
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+    }
+
+    year_2075 = tmp_path / "2075.h5"
+    year_2075.write_text("", encoding="utf-8")
+    metadata_2075 = write_year_metadata(
+        year_2075,
+        year=2075,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        support_augmentation={
+            "name": "donor-backed-composite-v1",
+            "activation_start_year": 2075,
+            "target_year": 2075,
+            "report_file": "support_augmentation_report_2075.json",
+            "report_summary": {"augmented_household_count": 41674},
+        },
+    )
+    update_dataset_manifest(
+        tmp_path,
+        year=2075,
+        h5_path=year_2075,
+        metadata_path=metadata_2075,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        support_augmentation={
+            "name": "donor-backed-composite-v1",
+            "activation_start_year": 2075,
+            "target_year": 2075,
+            "report_file": "support_augmentation_report_2075.json",
+            "report_summary": {"augmented_household_count": 41674},
+        },
+    )
+
+    year_2100 = tmp_path / "2100.h5"
+    year_2100.write_text("", encoding="utf-8")
+    metadata_2100 = write_year_metadata(
+        year_2100,
+        year=2100,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        support_augmentation={
+            "name": "donor-backed-composite-v1",
+            "activation_start_year": 2075,
+            "target_year": 2100,
+            "report_file": "support_augmentation_report_2100.json",
+            "report_summary": {"augmented_household_count": 41950},
+        },
+    )
+    manifest_path = update_dataset_manifest(
+        tmp_path,
+        year=2100,
+        h5_path=year_2100,
+        metadata_path=metadata_2100,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        support_augmentation={
+            "name": "donor-backed-composite-v1",
+            "activation_start_year": 2075,
+            "target_year": 2100,
+            "report_file": "support_augmentation_report_2100.json",
+            "report_summary": {"augmented_household_count": 41950},
+        },
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["years"] == [2075, 2100]
+    assert manifest["support_augmentation"]["name"] == "donor-backed-composite-v1"
+    assert manifest["support_augmentation"]["target_year"] == 2100
+    assert manifest["support_augmentation"]["report_file"] == "support_augmentation_report_2100.json"
+
+
 def test_manifest_persists_tax_assumption_metadata(tmp_path):
     profile = get_profile("ss-payroll-tob")
     audit = {
@@ -1442,6 +1655,210 @@ def test_manifest_persists_tax_assumption_metadata(tmp_path):
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert metadata["tax_assumption"]["name"] == "trustees-2025-core-thresholds-v1"
+    assert manifest["tax_assumption"]["end_year"] == 2100
+
+
+def test_write_year_metadata_persists_runtime_and_snapshot_provenance(tmp_path):
+    profile = get_profile("ss-payroll-tob")
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+    }
+
+    year_h5 = tmp_path / "2100.h5"
+    year_h5.write_text("", encoding="utf-8")
+    base_dataset = tmp_path / "enhanced_cps_2024.h5"
+    base_dataset.write_text("dataset", encoding="utf-8")
+
+    metadata_path = write_year_metadata(
+        year_h5,
+        year=2100,
+        base_dataset_path=str(base_dataset),
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        policyengine_us={
+            "version": "1.2.3",
+            "git_head": "abc123",
+        },
+        base_dataset_snapshot={
+            "requested_path": str(base_dataset),
+            "resolved_path": str(base_dataset.resolve()),
+            "resolved_file_sha256": "deadbeef",
+        },
+    )
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata["policyengine_us"]["git_head"] == "abc123"
+    assert metadata["base_dataset_snapshot"]["resolved_file_sha256"] == "deadbeef"
+
+
+def test_update_dataset_manifest_persists_runtime_and_snapshot_provenance(tmp_path):
+    profile = get_profile("ss-payroll-tob")
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+    }
+
+    year_h5 = tmp_path / "2100.h5"
+    year_h5.write_text("", encoding="utf-8")
+    metadata_path = write_year_metadata(
+        year_h5,
+        year=2100,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        policyengine_us={
+            "version": "1.2.3",
+            "git_head": "abc123",
+        },
+        base_dataset_snapshot={
+            "requested_path": "hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5",
+            "resolved_path": "/cache/enhanced_cps_2024.h5",
+            "resolved_file_sha256": "deadbeef",
+        },
+    )
+    manifest_path = update_dataset_manifest(
+        tmp_path,
+        year=2100,
+        h5_path=year_h5,
+        metadata_path=metadata_path,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        policyengine_us={
+            "version": "1.2.3",
+            "git_head": "abc123",
+        },
+        base_dataset_snapshot={
+            "requested_path": "hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5",
+            "resolved_path": "/cache/enhanced_cps_2024.h5",
+            "resolved_file_sha256": "deadbeef",
+        },
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["policyengine_us"]["git_head"] == "abc123"
+    assert manifest["base_dataset_snapshot"]["resolved_file_sha256"] == "deadbeef"
+
+
+def test_capture_base_dataset_snapshot_fingerprints_local_file(tmp_path):
+    dataset_file = tmp_path / "enhanced_cps_2024.h5"
+    dataset_file.write_text("dataset", encoding="utf-8")
+
+    snapshot = capture_base_dataset_snapshot(str(dataset_file))
+
+    assert snapshot["requested_path"] == str(dataset_file)
+    assert snapshot["resolved_path"] == str(dataset_file.resolve())
+    assert snapshot["resolved_file_sha256"]
+    assert snapshot["resolved_size"] == dataset_file.stat().st_size
+
+
+def test_capture_policyengine_us_provenance_includes_runtime_file():
+    provenance = capture_policyengine_us_provenance()
+
+    assert provenance["package_file"]
+    assert provenance["package_file_sha256"]
+    assert provenance["version"]
+
+
+def test_update_dataset_manifest_ignores_tax_assumption_end_year(tmp_path):
+    profile = get_profile("ss-payroll-tob")
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+    }
+
+    year_2075 = tmp_path / "2075.h5"
+    year_2075.write_text("", encoding="utf-8")
+    metadata_2075 = write_year_metadata(
+        year_2075,
+        year=2075,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        tax_assumption={
+            "name": "trustees-core-thresholds-v1",
+            "start_year": 2035,
+            "end_year": 2075,
+        },
+    )
+    update_dataset_manifest(
+        tmp_path,
+        year=2075,
+        h5_path=year_2075,
+        metadata_path=metadata_2075,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        tax_assumption={
+            "name": "trustees-core-thresholds-v1",
+            "start_year": 2035,
+            "end_year": 2075,
+        },
+    )
+
+    year_2100 = tmp_path / "2100.h5"
+    year_2100.write_text("", encoding="utf-8")
+    metadata_2100 = write_year_metadata(
+        year_2100,
+        year=2100,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        tax_assumption={
+            "name": "trustees-core-thresholds-v1",
+            "start_year": 2035,
+            "end_year": 2100,
+        },
+    )
+    manifest_path = update_dataset_manifest(
+        tmp_path,
+        year=2100,
+        h5_path=year_2100,
+        metadata_path=metadata_2100,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        tax_assumption={
+            "name": "trustees-core-thresholds-v1",
+            "start_year": 2035,
+            "end_year": 2100,
+        },
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["years"] == [2075, 2100]
+    assert manifest["tax_assumption"]["name"] == "trustees-core-thresholds-v1"
     assert manifest["tax_assumption"]["end_year"] == 2100
 
 
@@ -1660,6 +2077,58 @@ def test_parallel_projection_merge_outputs_rejects_mismatched_contract(tmp_path)
             output_root=tmp_path,
             keep_temp=True,
         )
+
+
+def test_parallel_projection_merge_outputs_ignores_tax_assumption_end_year(tmp_path):
+    profile = get_profile("ss-payroll-tob").to_dict()
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+        "calibration_quality": "exact",
+    }
+
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2026,
+        profile=profile,
+        audit=audit,
+        tax_assumption={
+            "name": "trustees-core-thresholds-v1",
+            "start_year": 2035,
+            "end_year": 2026,
+        },
+    )
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2027,
+        profile=profile,
+        audit=audit,
+        tax_assumption={
+            "name": "trustees-core-thresholds-v1",
+            "start_year": 2035,
+            "end_year": 2027,
+        },
+    )
+
+    manifest_path = merge_outputs(
+        years=[2026, 2027],
+        output_root=tmp_path,
+        keep_temp=True,
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["years"] == [2026, 2027]
+    assert manifest["tax_assumption"]["name"] == "trustees-core-thresholds-v1"
 
 
 def test_summarize_realized_clone_translation_matches_toy_clone():

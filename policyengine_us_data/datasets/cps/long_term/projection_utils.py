@@ -138,6 +138,96 @@ def get_pseudo_input_variables(sim):
     return pseudo_inputs
 
 
+def _input_dataframe_entity_membership_column(
+    entity_key: str,
+    *,
+    base_period: int,
+    year: int,
+    columns,
+) -> str | None:
+    candidate_bases = (
+        ["person_id"]
+        if entity_key == "person"
+        else [f"person_{entity_key}_id", f"{entity_key}_id"]
+    )
+
+    candidates = []
+    for candidate_base in candidate_bases:
+        candidates.extend(
+            [
+                f"{candidate_base}__{base_period}",
+                f"{candidate_base}__{year}",
+            ]
+        )
+
+    for candidate in candidates:
+        if candidate in columns:
+            return candidate
+    return None
+
+
+def project_input_variable_values_to_person_rows(
+    sim,
+    df,
+    *,
+    var_name: str,
+    year: int,
+    base_period: int,
+):
+    """
+    Recalculate an input variable for ``year`` and align entity-level outputs
+    back onto the person-row input dataframe.
+
+    ``Microsimulation.to_input_dataframe()`` is person-indexed, but many input
+    variables live on tax-unit, household, family, or SPM-unit entities.
+    Those variables must be expanded back to person rows before writing the
+    year-specific H5; otherwise we silently freeze the base-year values.
+    """
+    values = np.asarray(sim.calculate(var_name, period=year).values)
+
+    if len(values) == len(df):
+        return values
+
+    variable = sim.tax_benefit_system.variables.get(var_name)
+    entity_key = getattr(getattr(variable, "entity", None), "key", None)
+    if entity_key is None:
+        raise ValueError(
+            f"Unable to determine entity for {var_name}; got {len(values)} "
+            f"values for {len(df)} person rows."
+        )
+
+    membership_column = _input_dataframe_entity_membership_column(
+        entity_key,
+        base_period=base_period,
+        year=year,
+        columns=df.columns,
+    )
+    if membership_column is None:
+        raise ValueError(
+            f"Unable to align {var_name} on {entity_key}: missing membership "
+            f"column in input dataframe."
+        )
+
+    entity_ids = np.asarray(
+        sim.calculate(f"{entity_key}_id", map_to=entity_key).values
+    )
+    if len(entity_ids) != len(values):
+        raise ValueError(
+            f"Unable to align {var_name} on {entity_key}: got "
+            f"{len(values)} values but {len(entity_ids)} entity ids."
+        )
+
+    aligned = df[membership_column].map(dict(zip(entity_ids, values)))
+    if aligned.isna().any():
+        missing_count = int(aligned.isna().sum())
+        raise ValueError(
+            f"Unable to align {var_name} on {entity_key}: {missing_count} "
+            "person rows did not map to an entity value."
+        )
+
+    return np.asarray(aligned.values)
+
+
 def create_household_year_h5(
     year,
     household_weights,
@@ -204,19 +294,15 @@ def create_household_year_h5(
                 continue
 
             try:
-                uprated_values = sim.calculate(var_name, period=year).values
-
-                if len(uprated_values) == len(df):
-                    df[col_name_new] = uprated_values
-                    df.drop(columns=[col], inplace=True)
-                else:
-                    print(
-                        f"Warning: uprating {var_name} for {year} returned "
-                        f"{len(uprated_values)} rows instead of {len(df)}; "
-                        "renaming the base-year column without recalculation.",
-                        file=sys.stderr,
-                    )
-                    df.rename(columns={col: col_name_new}, inplace=True)
+                uprated_values = project_input_variable_values_to_person_rows(
+                    sim,
+                    df,
+                    var_name=var_name,
+                    year=year,
+                    base_period=base_period,
+                )
+                df[col_name_new] = uprated_values
+                df.drop(columns=[col], inplace=True)
 
             except Exception as error:
                 print(

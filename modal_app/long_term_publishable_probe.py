@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,6 +22,24 @@ hf_secret = modal.Secret.from_name("huggingface-token")
 
 image = base_image
 
+_LONG_TERM_DIR = "/root/policyengine-us-data/policyengine_us_data/datasets/cps/long_term"
+_VENV_PYTHON = "/root/policyengine-us-data/.venv/bin/python"
+
+
+def _run_long_term_json_command(script_name: str, *args: str) -> str:
+    command = [_VENV_PYTHON, f"{_LONG_TERM_DIR}/{script_name}", *args]
+    result = subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PYTHONPATH": _LONG_TERM_DIR,
+        },
+    )
+    return result.stdout
+
 
 @app.function(
     image=image,
@@ -35,18 +55,47 @@ def assess_publishable_probe_json(
     target_source: str = "trustees_2025_current_law",
     base_dataset_path: str = "hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5",
 ) -> str:
-    from policyengine_us_data.datasets.cps.long_term.assess_publishable_horizon import (
-        assess_years,
+    return _run_long_term_json_command(
+        "assess_publishable_horizon.py",
+        "--profile",
+        profile,
+        "--target-source",
+        target_source,
+        "--years",
+        years_csv,
+        "--base-dataset",
+        base_dataset_path,
     )
 
-    years = [int(value.strip()) for value in years_csv.split(",") if value.strip()]
-    rows = assess_years(
-        years=years,
-        profile_name=profile,
-        target_source=target_source,
-        base_dataset_path=base_dataset_path,
+
+@app.function(
+    image=image,
+    timeout=60 * 60,
+    cpu=8,
+    memory=32768,
+    secrets=[hf_secret],
+)
+def assess_augmented_publishable_probe_json(
+    *,
+    years_csv: str = "2075",
+    profile: str = "ss-payroll-tob",
+    target_source: str = "trustees_2025_current_law",
+    support_augmentation_profile: str = "late-clone-v1",
+    base_dataset_path: str = "hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5",
+) -> str:
+    return _run_long_term_json_command(
+        "assess_augmented_publishability.py",
+        "--profile",
+        profile,
+        "--target-source",
+        target_source,
+        "--years",
+        years_csv,
+        "--base-dataset",
+        base_dataset_path,
+        "--support-augmentation",
+        support_augmentation_profile,
     )
-    return json.dumps(rows, indent=2, sort_keys=True)
 
 
 @app.local_entrypoint()
@@ -54,10 +103,19 @@ def main(
     years: str = "2075",
     profile: str = "ss-payroll-tob",
     target_source: str = "trustees_2025_current_law",
+    support_augmentation_profile: str = "",
 ) -> None:
-    payload = assess_publishable_probe_json.remote(
-        years_csv=years,
-        profile=profile,
-        target_source=target_source,
-    )
+    if support_augmentation_profile:
+        payload = assess_augmented_publishable_probe_json.remote(
+            years_csv=years,
+            profile=profile,
+            target_source=target_source,
+            support_augmentation_profile=support_augmentation_profile,
+        )
+    else:
+        payload = assess_publishable_probe_json.remote(
+            years_csv=years,
+            profile=profile,
+            target_source=target_source,
+        )
     print(payload)

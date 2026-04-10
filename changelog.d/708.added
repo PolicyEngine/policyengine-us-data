@@ -1,1 +1,1 @@
-Save calibration geography as a pipeline artifact and add ``--resume-from`` checkpoint support for long-running calibration fits.
+Save calibration geography as a pipeline artifact, add ``--resume-from`` and checkpoint support for long-running calibration fits, and fix resume/artifact handling in the remote calibration pipeline. This also adds conservative CPS taxpayer-ID outputs (``has_tin``, ``has_valid_ssn``, and a temporary ``has_itin`` compatibility alias), plus string-valued constraint handling needed for ID-target calibration.

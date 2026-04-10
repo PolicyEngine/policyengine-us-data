@@ -468,6 +468,7 @@ def build_targeted_donor_augmented_dataset(
     clone_weight_scale: float = 0.1,
     reform: Any | None = None,
     sanitize_worker_non_target_income: bool = False,
+    sanitize_clone_non_target_income: bool = False,
 ) -> tuple[Dataset, dict[str, Any]]:
     if profile not in TARGETED_DONOR_SUPPORT_AUGMENTATION_PROFILES:
         valid = ", ".join(sorted(TARGETED_DONOR_SUPPORT_AUGMENTATION_PROFILES))
@@ -510,6 +511,7 @@ def build_targeted_donor_augmented_dataset(
             clone_weight_scale=clone_weight_scale,
             reform=reform,
             sanitize_worker_non_target_income=sanitize_worker_non_target_income,
+            sanitize_clone_non_target_income=sanitize_clone_non_target_income,
         )
 
     report["profile"] = profile

@@ -2035,6 +2035,7 @@ def _compose_role_donor_rows_to_target(
     clone_weight_scale: float,
     clone_weight_divisor: int,
     sanitize_worker_non_target_income: bool = False,
+    sanitize_clone_non_target_income: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, int]] | tuple[None, dict[str, int]]:
     age_col = _period_column("age", base_year)
     household_weight_col = _period_column("household_weight", base_year)
@@ -2281,7 +2282,17 @@ def _compose_role_donor_rows_to_target(
         cloned.loc[head_idx, qbi_col] = 0.0
         if spouse_idx is not None:
             cloned.loc[spouse_idx, qbi_col] = 0.0
-    if sanitize_worker_non_target_income:
+    if sanitize_clone_non_target_income:
+        sanitized_columns = _zero_period_columns(
+            cloned,
+            cloned.index,
+            base_year=base_year,
+            raw_columns=WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS,
+        )
+        cloned.attrs["sanitized_clone_non_target_income_columns"] = tuple(
+            sanitized_columns
+        )
+    elif sanitize_worker_non_target_income:
         worker_sourced_indices = cloned_sources[cloned_sources == "worker"].index
         sanitized_columns = _zero_period_columns(
             cloned,
@@ -2453,6 +2464,7 @@ def build_role_composite_augmented_input_dataframe(
     clone_weight_scale: float = 0.1,
     reform: object | None = None,
     sanitize_worker_non_target_income: bool = False,
+    sanitize_clone_non_target_income: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     sim = Microsimulation(dataset=base_dataset, reform=reform)
     input_df = attach_person_uprating_factors(
@@ -2534,6 +2546,7 @@ def build_role_composite_augmented_input_dataframe(
     clone_frames = []
     clone_household_reports = []
     sanitized_worker_non_target_income_columns = set()
+    sanitized_clone_non_target_income_columns = set()
     target_reports = []
     skipped_targets = []
 
@@ -2584,6 +2597,7 @@ def build_role_composite_augmented_input_dataframe(
             clone_weight_scale=clone_weight_scale,
             clone_weight_divisor=1,
             sanitize_worker_non_target_income=sanitize_worker_non_target_income,
+            sanitize_clone_non_target_income=sanitize_clone_non_target_income,
         )
         if clone_df is None:
             skipped_targets.append(
@@ -2597,6 +2611,9 @@ def build_role_composite_augmented_input_dataframe(
             continue
         sanitized_worker_non_target_income_columns.update(
             clone_df.attrs.get("sanitized_worker_non_target_income_columns", ())
+        )
+        sanitized_clone_non_target_income_columns.update(
+            clone_df.attrs.get("sanitized_clone_non_target_income_columns", ())
         )
         clone_frames.append(clone_df)
         clone_household_reports.append(
@@ -2649,11 +2666,18 @@ def build_role_composite_augmented_input_dataframe(
         "max_worker_distance": float(max_worker_distance),
         "clone_weight_scale": float(clone_weight_scale),
         "sanitize_worker_non_target_income": bool(sanitize_worker_non_target_income),
+        "sanitize_clone_non_target_income": bool(sanitize_clone_non_target_income),
         "worker_non_target_income_requested_components": list(
             WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS
         ),
         "worker_non_target_income_sanitized_columns": sorted(
             sanitized_worker_non_target_income_columns
+        ),
+        "clone_non_target_income_requested_components": list(
+            WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS
+        ),
+        "clone_non_target_income_sanitized_columns": sorted(
+            sanitized_clone_non_target_income_columns
         ),
         "base_household_count": int(
             input_df[_period_column("household_id", base_year)].nunique()
@@ -2685,6 +2709,7 @@ def build_role_composite_augmented_dataset(
     clone_weight_scale: float = 0.1,
     reform: object | None = None,
     sanitize_worker_non_target_income: bool = False,
+    sanitize_clone_non_target_income: bool = False,
 ) -> tuple[Dataset, dict[str, object]]:
     augmented_df, report = build_role_composite_augmented_input_dataframe(
         base_dataset=base_dataset,
@@ -2697,6 +2722,7 @@ def build_role_composite_augmented_dataset(
         clone_weight_scale=clone_weight_scale,
         reform=reform,
         sanitize_worker_non_target_income=sanitize_worker_non_target_income,
+        sanitize_clone_non_target_income=sanitize_clone_non_target_income,
     )
     return Dataset.from_dataframe(augmented_df, base_year), report
 

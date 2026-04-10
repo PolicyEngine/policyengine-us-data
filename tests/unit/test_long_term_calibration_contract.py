@@ -2360,3 +2360,80 @@ def test_compose_role_donor_rows_can_sanitize_worker_non_target_income():
     assert "long_term_capital_gains_before_response__2024" in clone_df.attrs[
         "sanitized_worker_non_target_income_columns"
     ]
+
+
+def test_compose_role_donor_rows_can_sanitize_all_clone_non_target_income():
+    import pandas as pd
+
+    df = pd.DataFrame(_toy_support_dataframe())
+    enriched = df.copy()
+    enriched["__pe_payroll_uprating_factor"] = 2.0
+    enriched["__pe_ss_uprating_factor"] = 3.0
+    enriched["taxable_interest_income__2024"] = [0.0, 0.0, 7_000.0, 0.0, 12_000.0]
+    enriched["qualified_dividend_income__2024"] = [0.0, 0.0, 900.0, 0.0, 2_000.0]
+    enriched["long_term_capital_gains_before_response__2024"] = [
+        0.0,
+        0.0,
+        500.0,
+        0.0,
+        3_000.0,
+    ]
+    enriched["taxable_private_pension_income__2024"] = [
+        0.0,
+        0.0,
+        4_000.0,
+        0.0,
+        5_000.0,
+    ]
+
+    older_rows = enriched[enriched["person_tax_unit_id__2024"] == 201].copy()
+    worker_rows = enriched[enriched["person_tax_unit_id__2024"] == 301].copy()
+    candidate = SyntheticCandidate(
+        archetype="older_plus_prime_worker_role_donor",
+        head_age=80,
+        spouse_age=60,
+        dependent_ages=(),
+        head_wages=0.0,
+        spouse_wages=100_000.0,
+        head_ss=60_000.0,
+        spouse_ss=0.0,
+        pension_income=0.0,
+        dividend_income=0.0,
+    )
+    clone_df, _ = _compose_role_donor_rows_to_target(
+        older_rows,
+        worker_rows,
+        base_year=2024,
+        target_candidate=candidate,
+        ss_scale=3.0,
+        earnings_scale=2.0,
+        id_counters={
+            "household": 100,
+            "family": 200,
+            "tax_unit": 300,
+            "spm_unit": 400,
+            "marital_unit": 500,
+            "person": 600,
+        },
+        clone_weight_scale=0.1,
+        clone_weight_divisor=1,
+        sanitize_clone_non_target_income=True,
+    )
+
+    assert clone_df is not None
+    older_clone = clone_df[clone_df["age__2024"] == 80].iloc[0]
+    worker_clone = clone_df[clone_df["age__2024"] == 60].iloc[0]
+    for clone in (older_clone, worker_clone):
+        assert clone["taxable_interest_income__2024"] == pytest.approx(0.0)
+        assert clone["qualified_dividend_income__2024"] == pytest.approx(0.0)
+        assert clone["long_term_capital_gains_before_response__2024"] == (
+            pytest.approx(0.0)
+        )
+        assert clone["taxable_private_pension_income__2024"] == pytest.approx(0.0)
+    assert older_clone["social_security_retirement__2024"] == pytest.approx(20_000.0)
+    assert worker_clone["employment_income_before_lsr__2024"] == pytest.approx(
+        50_000.0
+    )
+    assert "long_term_capital_gains_before_response__2024" in clone_df.attrs[
+        "sanitized_clone_non_target_income_columns"
+    ]

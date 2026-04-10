@@ -5,7 +5,7 @@ Household-level projection pathway for income tax revenue 2025-2100.
 Usage:
     python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--tax-assumption ASSUMPTION] [--base-dataset PATH] [--output-dir DIR] [--save-h5] [--allow-validation-failures]
     python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--support-augmentation-profile donor-backed-synthetic-v1] [--support-augmentation-target-year YEAR]
-    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--support-augmentation-profile donor-backed-composite-v1] [--support-augmentation-target-year YEAR] [--support-augmentation-align-to-run-year] [--support-augmentation-blueprint-base-weight-scale SCALE] [--support-augmentation-sanitize-worker-non-target-income]
+    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--support-augmentation-profile donor-backed-composite-v1] [--support-augmentation-target-year YEAR] [--support-augmentation-align-to-run-year] [--support-augmentation-blueprint-base-weight-scale SCALE] [--support-augmentation-sanitize-worker-non-target-income] [--support-augmentation-sanitize-clone-non-target-income]
     python run_household_projection.py [START_YEAR] [END_YEAR] [--greg] [--use-ss] [--use-payroll] [--use-h6-reform] [--use-tob] [--save-h5]
 
     START_YEAR: Optional starting year (default: 2025)
@@ -21,6 +21,7 @@ Usage:
     --support-augmentation-align-to-run-year: Rebuild the augmentation support for each run year instead of reusing one target-year support
     --support-augmentation-blueprint-base-weight-scale: Prior scaling applied to original households when target-year donor-composite blueprint calibration is active
     --support-augmentation-sanitize-worker-non-target-income: Zero worker-donor clone investment and retirement income when using donor-backed-composite-v1
+    --support-augmentation-sanitize-clone-non-target-income: Zero all donor-clone investment and retirement income when using donor-backed-composite-v1
     --greg: Use GREG calibration instead of IPF (optional)
     --use-ss: Include Social Security benefit totals as calibration target (requires --greg)
     --use-payroll: Include taxable payroll totals as calibration target (requires --greg)
@@ -474,6 +475,9 @@ def _support_augmentation_metadata(
                 "sanitize_worker_non_target_income": (
                     SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
                 ),
+                "sanitize_clone_non_target_income": (
+                    SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME
+                ),
             }
         )
     return metadata
@@ -592,6 +596,12 @@ SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME = (
 if SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME:
     sys.argv.remove("--support-augmentation-sanitize-worker-non-target-income")
 
+SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME = (
+    "--support-augmentation-sanitize-clone-non-target-income" in sys.argv
+)
+if SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME:
+    sys.argv.remove("--support-augmentation-sanitize-clone-non-target-income")
+
 TAX_ASSUMPTION = TRUSTEES_CORE_THRESHOLD_ASSUMPTION["name"]
 if "--tax-assumption" in sys.argv:
     tax_assumption_index = sys.argv.index("--tax-assumption")
@@ -663,11 +673,14 @@ if SUPPORT_AUGMENTATION_PROFILE is not None:
             f"{sorted(SUPPORTED_AUGMENTATION_PROFILES)}"
         )
     if (
-        SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
+        (
+            SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
+            or SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME
+        )
         and SUPPORT_AUGMENTATION_PROFILE != "donor-backed-composite-v1"
     ):
         raise ValueError(
-            "--support-augmentation-sanitize-worker-non-target-income is only "
+            "Support-augmentation non-target income sanitization is only "
             "supported with donor-backed-composite-v1."
         )
     if START_YEAR < SUPPORT_AUGMENTATION_START_YEAR:
@@ -791,6 +804,10 @@ if SUPPORT_AUGMENTATION_PROFILE:
             "  Sanitize worker donor non-target income: "
             f"{SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME}"
         )
+        print(
+            "  Sanitize all donor-clone non-target income: "
+            f"{SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME}"
+        )
 if USE_SS:
     print("  Including Social Security benefits constraint: Yes")
 if USE_PAYROLL:
@@ -832,6 +849,9 @@ def _build_support_augmentation(
             reform=ACTIVE_LONG_RUN_TAX_REFORM,
             sanitize_worker_non_target_income=(
                 SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
+            ),
+            sanitize_clone_non_target_income=(
+                SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME
             ),
         )
     else:
@@ -979,6 +999,9 @@ if SUPPORT_AUGMENTATION_PROFILE is not None and SUPPORT_AUGMENTATION_ALIGN_TO_RU
                 ),
                 "sanitize_worker_non_target_income": (
                     SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
+                ),
+                "sanitize_clone_non_target_income": (
+                    SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME
                 ),
             }
         )

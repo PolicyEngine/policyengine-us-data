@@ -136,8 +136,11 @@ def has_policyengine_us_variables(*variables: str) -> bool:
     return set(variables).issubset(available_variables)
 
 
+def supports_medicare_enrollment_input() -> bool:
+    return has_policyengine_us_variables("medicare_enrolled")
+
+
 def supports_modeled_medicare_part_b_inputs() -> bool:
     return has_policyengine_us_variables(
         "medicare_part_b_premiums_reported",
-        "medicare_enrolled",
     )

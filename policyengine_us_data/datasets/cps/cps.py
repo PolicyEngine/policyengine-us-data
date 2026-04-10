@@ -38,6 +38,7 @@ from policyengine_us_data.utils.takeup import (
     reported_subsidized_marketplace_by_tax_unit,
 )
 from policyengine_us_data.utils.policyengine import (
+    supports_medicare_enrollment_input,
     supports_modeled_medicare_part_b_inputs,
 )
 
@@ -823,9 +824,10 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     cps["health_insurance_premiums_without_medicare_part_b"] = person.PHIP_VAL
     cps["over_the_counter_health_expenses"] = person.POTC_VAL
     cps["other_medical_expenses"] = person.PMED_VAL
+    if supports_medicare_enrollment_input():
+        cps["medicare_enrolled"] = person.MCARE == 1
     if supports_modeled_medicare_part_b_inputs():
         cps["medicare_part_b_premiums_reported"] = person.PEMCPREM
-        cps["medicare_enrolled"] = person.MCARE == 1
     else:
         cps["medicare_part_b_premiums"] = person.PEMCPREM
 

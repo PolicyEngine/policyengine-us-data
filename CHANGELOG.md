@@ -1,3 +1,10 @@
+## [1.75.8] - 2026-04-10
+
+### Fixed
+
+- Modeled Medicare Part B premiums from enrollment and premium schedules, netted a cycle-free MSP standard-premium offset, and documented the national Part B calibration target as an approximate beneficiary-paid out-of-pocket benchmark rather than gross CMS premium income.
+
+
 ## [1.75.7] - 2026-04-10
 
 ### Fixed

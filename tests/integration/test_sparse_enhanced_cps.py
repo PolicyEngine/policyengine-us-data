@@ -21,6 +21,16 @@ def _period_array(period_values, period):
     return period_values.get(period, period_values[str(period)])
 
 
+def _require_identification_fields(data):
+    required_fields = ("has_tin", "has_itin", "has_valid_ssn", "taxpayer_id_type")
+    missing = [field for field in required_fields if field not in data]
+    if missing:
+        pytest.skip(
+            "enhanced_cps_2024.h5 fixture predates raw identification fields: "
+            + ", ".join(missing)
+        )
+
+
 @pytest.fixture(scope="session")
 def data():
     return Dataset.from_file(STORAGE_FOLDER / "enhanced_cps_2024.h5")
@@ -210,12 +220,28 @@ def test_sparse_ssn_card_type_none_target(sim):
 
 def test_sparse_has_tin_matches_identification_inputs(sim):
     data = sim.dataset.load_dataset()
+    _require_identification_fields(data)
     has_tin = _period_array(data["has_tin"], 2024)
     has_itin = _period_array(data["has_itin"], 2024)
+    has_valid_ssn = _period_array(data["has_valid_ssn"], 2024)
     ssn_card_type = _period_array(data["ssn_card_type"], 2024).astype(str)
+    taxpayer_id_type = _period_array(data["taxpayer_id_type"], 2024).astype(str)
 
     np.testing.assert_array_equal(has_itin, has_tin)
-    np.testing.assert_array_equal(has_tin, ssn_card_type != "NONE")
+    np.testing.assert_array_equal(has_tin, taxpayer_id_type != "NONE")
+    np.testing.assert_array_equal(has_valid_ssn, taxpayer_id_type == "VALID_SSN")
+    np.testing.assert_array_equal(
+        taxpayer_id_type,
+        np.where(
+            ssn_card_type == "NONE",
+            "NONE",
+            np.where(
+                np.isin(ssn_card_type, ["CITIZEN", "NON_CITIZEN_VALID_EAD"]),
+                "VALID_SSN",
+                "OTHER_TIN",
+            ),
+        ),
+    )
 
 
 def test_sparse_aca_calibration(sim):

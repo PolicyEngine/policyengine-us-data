@@ -214,8 +214,14 @@ def test_sparse_has_tin_matches_identification_inputs(sim):
     has_itin = _period_array(data["has_itin"], 2024)
     ssn_card_type = _period_array(data["ssn_card_type"], 2024).astype(str)
 
+    # has_itin is still an alias for has_tin
     np.testing.assert_array_equal(has_itin, has_tin)
-    np.testing.assert_array_equal(has_tin, ssn_card_type != "NONE")
+    # Everyone with an SSN card has a TIN
+    assert has_tin[ssn_card_type != "NONE"].all()
+    # Some code-0 (NONE) people have TINs via ITIN
+    none_mask = ssn_card_type == "NONE"
+    assert none_mask.any(), "Expected some ssn_card_type == NONE"
+    assert has_tin[none_mask].any(), "Expected some ITIN holders among code-0"
 
 
 def test_sparse_aca_calibration(sim):

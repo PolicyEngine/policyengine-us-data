@@ -161,11 +161,15 @@ def _compute_single_state(
     person = {}
     for var in constraint_vars:
         try:
-            person[var] = state_sim.calculate(
+            raw = state_sim.calculate(
                 var,
                 time_period,
                 map_to="person",
-            ).values.astype(np.float32)
+            ).values
+            try:
+                person[var] = raw.astype(np.float32)
+            except (ValueError, TypeError):
+                person[var] = raw
         except Exception as exc:
             logger.warning(
                 "Cannot calculate constraint '%s' for state %d: %s",
@@ -1113,11 +1117,15 @@ class UnifiedMatrixBuilder:
                 person = {}
                 for var in constraint_vars:
                     try:
-                        person[var] = state_sim.calculate(
+                        raw = state_sim.calculate(
                             var,
                             self.time_period,
                             map_to="person",
-                        ).values.astype(np.float32)
+                        ).values
+                        try:
+                            person[var] = raw.astype(np.float32)
+                        except (ValueError, TypeError):
+                            person[var] = raw
                     except Exception as exc:
                         logger.warning(
                             "Cannot calculate constraint '%s' for state %d: %s",

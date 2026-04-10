@@ -10,14 +10,24 @@ SSN_CARD_TYPE_CODE_TO_STR = {
 }
 
 
-def _derive_has_tin_from_ssn_card_type_codes(ssn_card_type: np.ndarray) -> np.ndarray:
+def _derive_has_tin_from_ssn_card_type_codes(
+    ssn_card_type: np.ndarray,
+    has_itin_number: np.ndarray | None = None,
+) -> np.ndarray:
     """Return whether a person has any taxpayer ID from CPS ID status codes."""
-    return np.asarray(ssn_card_type) != 0
+    has_ssn = np.asarray(ssn_card_type) != 0
+    if has_itin_number is not None:
+        return has_ssn | np.asarray(has_itin_number)
+    return has_ssn
 
 
-def _store_identification_variables(cps: dict, ssn_card_type: np.ndarray) -> None:
+def _store_identification_variables(
+    cps: dict,
+    ssn_card_type: np.ndarray,
+    has_itin_number: np.ndarray | None = None,
+) -> None:
     """Persist identification inputs used by PolicyEngine US."""
-    has_tin = _derive_has_tin_from_ssn_card_type_codes(ssn_card_type)
+    has_tin = _derive_has_tin_from_ssn_card_type_codes(ssn_card_type, has_itin_number)
     cps["ssn_card_type"] = (
         pd.Series(ssn_card_type).map(SSN_CARD_TYPE_CODE_TO_STR).astype("S").values
     )

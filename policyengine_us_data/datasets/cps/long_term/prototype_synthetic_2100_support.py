@@ -910,6 +910,7 @@ def build_role_composite_calibration_blueprint(
     base_weight_scale: float = 0.5,
     ss_values_actual: np.ndarray | None = None,
     payroll_values_actual: np.ndarray | None = None,
+    include_value_overrides: bool = True,
 ) -> dict[str, object] | None:
     """
     Build target-year calibration overrides for donor-composite clones.
@@ -951,21 +952,22 @@ def build_role_composite_calibration_blueprint(
             ages.append(int(spouse_age))
         ages.extend(int(age) for age in clone_report.get("target_dependent_ages", []))
         age_overrides[idx] = age_bucket_vector(ages, age_bins)
-        ss_overrides[idx] = (
-            float(ss_values_actual[idx])
-            if ss_values_actual is not None
-            else float(clone_report["target_ss_total"])
-        )
-        payroll_overrides[idx] = (
-            float(payroll_values_actual[idx])
-            if payroll_values_actual is not None
-            else float(
-                clone_report.get(
-                    "target_taxable_payroll_total",
-                    clone_report["target_payroll_total"],
+        if include_value_overrides:
+            ss_overrides[idx] = (
+                float(ss_values_actual[idx])
+                if ss_values_actual is not None
+                else float(clone_report["target_ss_total"])
+            )
+            payroll_overrides[idx] = (
+                float(payroll_values_actual[idx])
+                if payroll_values_actual is not None
+                else float(
+                    clone_report.get(
+                        "target_taxable_payroll_total",
+                        clone_report["target_payroll_total"],
+                    )
                 )
             )
-        )
         prior_weights[idx] = (
             clone_total_prior_weight
             * float(clone_report["per_clone_weight_share_pct"])
@@ -984,6 +986,7 @@ def build_role_composite_calibration_blueprint(
             "clone_household_count": int(applied_clone_households),
             "base_weight_scale": float(base_weight_scale),
             "clone_total_prior_weight": float(clone_total_prior_weight),
+            "include_value_overrides": bool(include_value_overrides),
         },
     }
 

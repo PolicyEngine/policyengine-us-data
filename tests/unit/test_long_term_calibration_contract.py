@@ -776,6 +776,22 @@ def test_role_composite_calibration_blueprint_reweights_clone_priors():
     assert blueprint["age_overrides"][2].sum() == pytest.approx(1.0)
     assert blueprint["summary"]["clone_household_count"] == 2
     assert blueprint["summary"]["base_weight_scale"] == pytest.approx(0.5)
+    assert blueprint["summary"]["include_value_overrides"] is True
+
+    actual_value_blueprint = build_role_composite_calibration_blueprint(
+        report,
+        year=2100,
+        age_bins=build_age_bins(n_ages=86, bucket_size=5),
+        hh_id_to_idx={999: 0, 1001: 1, 1002: 2},
+        baseline_weights=baseline_weights,
+        base_weight_scale=0.5,
+        include_value_overrides=False,
+    )
+
+    assert actual_value_blueprint is not None
+    assert actual_value_blueprint["ss_overrides"] == {}
+    assert actual_value_blueprint["payroll_overrides"] == {}
+    assert actual_value_blueprint["summary"]["include_value_overrides"] is False
 
 
 def test_role_composite_blueprint_prefers_realized_support_values():

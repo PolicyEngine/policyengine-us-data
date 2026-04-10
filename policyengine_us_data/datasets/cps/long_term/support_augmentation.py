@@ -528,6 +528,7 @@ def build_targeted_role_composite_calibration_blueprint(
     base_weight_scale: float = 0.5,
     ss_values_actual: np.ndarray | None = None,
     payroll_values_actual: np.ndarray | None = None,
+    include_value_overrides: bool = True,
 ) -> dict[str, Any] | None:
     try:
         from .prototype_synthetic_2100_support import (
@@ -547,6 +548,7 @@ def build_targeted_role_composite_calibration_blueprint(
         base_weight_scale=base_weight_scale,
         ss_values_actual=ss_values_actual,
         payroll_values_actual=payroll_values_actual,
+        include_value_overrides=include_value_overrides,
     )
 
 

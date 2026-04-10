@@ -1281,6 +1281,7 @@ for year_idx in range(n_years):
             base_weight_scale=SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE,
             ss_values_actual=ss_values_actual,
             payroll_values_actual=payroll_values_actual,
+            include_value_overrides=False,
         )
         if calibration_blueprint is not None:
             calibration_baseline_weights = calibration_blueprint["baseline_weights"]

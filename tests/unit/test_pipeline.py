@@ -63,6 +63,22 @@ class TestRunMetadata:
         assert meta.status == "completed"
         assert meta.step_timings["build_datasets"]["status"] == "completed"
 
+    def test_from_dict_maps_legacy_fingerprint_to_regional_fingerprint(self):
+        meta = RunMetadata.from_dict(
+            {
+                "run_id": "1.72.3_abc12345_20260319_120000",
+                "branch": "main",
+                "sha": "abc12345deadbeef",
+                "version": "1.72.3",
+                "start_time": "2026-03-19T12:00:00Z",
+                "status": "completed",
+                "fingerprint": "legacyfp",
+            }
+        )
+
+        assert meta.fingerprint == "legacyfp"
+        assert meta.regional_fingerprint == "legacyfp"
+
     def test_roundtrip(self):
         meta = RunMetadata(
             run_id="1.72.3_abc12345_20260319_120000",

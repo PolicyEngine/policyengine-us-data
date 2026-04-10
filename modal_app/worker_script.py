@@ -139,6 +139,7 @@ def main():
         validation_policy=validation_policy,
         validation_context=validation_context,
         source_reader=PolicyEngineDatasetReader(tuple(SUB_ENTITIES)),
+        allow_seed_fallback=False,
     )
     if session.requested_n_clones is not None and session.requested_n_clones != session.n_clones:
         print(

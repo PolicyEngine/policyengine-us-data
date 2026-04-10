@@ -224,3 +224,78 @@ def test_reconcile_run_dir_accepts_rich_record_object(monkeypatch, tmp_path):
     assert stored["fingerprint"] == "rich1234"
     assert stored["digest"] == "rich1234"
     assert stored["schema_version"] == "local_h5_publish_v1"
+
+
+def test_reconcile_scope_initializes_without_touching_sibling_outputs(
+    monkeypatch, tmp_path
+):
+    resilience, _ = _load_resilience_module(monkeypatch)
+    run_dir = tmp_path / "1.2.3_abc12345_20260407_120000"
+    run_dir.mkdir()
+    (run_dir / "national").mkdir()
+    (run_dir / "national" / "US.h5").write_text("national")
+
+    action = resilience.reconcile_run_dir_fingerprint(
+        run_dir,
+        "regionalfp",
+        scope="regional",
+    )
+
+    assert action == "initialized"
+    assert (run_dir / "national" / "US.h5").exists()
+    stored = json.loads(
+        (run_dir / ".publish_scopes" / "regional" / "fingerprint.json").read_text()
+    )
+    assert stored["fingerprint"] == "regionalfp"
+
+
+def test_reconcile_scope_clears_only_owned_dirs_when_no_owned_h5s(
+    monkeypatch, tmp_path
+):
+    resilience, _ = _load_resilience_module(monkeypatch)
+    run_dir = tmp_path / "1.2.3_abc12345_20260407_120000"
+    run_dir.mkdir()
+    (run_dir / "states").mkdir()
+    (run_dir / "states" / "scratch.txt").write_text("stale-regional")
+    (run_dir / "national").mkdir()
+    (run_dir / "national" / "US.h5").write_text("national")
+    scope_dir = run_dir / ".publish_scopes" / "regional"
+    scope_dir.mkdir(parents=True)
+    (scope_dir / "fingerprint.json").write_text(json.dumps({"fingerprint": "oldfp"}))
+
+    action = resilience.reconcile_run_dir_fingerprint(
+        run_dir,
+        "newfp",
+        scope="regional",
+    )
+
+    assert action == "initialized"
+    assert not (run_dir / "states").exists()
+    assert (run_dir / "national" / "US.h5").exists()
+    stored = json.loads((scope_dir / "fingerprint.json").read_text())
+    assert stored["fingerprint"] == "newfp"
+
+
+def test_reconcile_scope_rejects_changed_fingerprint_with_owned_h5s(
+    monkeypatch, tmp_path
+):
+    resilience, _ = _load_resilience_module(monkeypatch)
+    run_dir = tmp_path / "1.2.3_abc12345_20260407_120000"
+    run_dir.mkdir()
+    (run_dir / "states").mkdir()
+    (run_dir / "states" / "CA.h5").write_text("regional")
+    (run_dir / "national").mkdir()
+    (run_dir / "national" / "US.h5").write_text("national")
+    scope_dir = run_dir / ".publish_scopes" / "regional"
+    scope_dir.mkdir(parents=True)
+    (scope_dir / "fingerprint.json").write_text(json.dumps({"fingerprint": "oldfp"}))
+
+    with pytest.raises(RuntimeError, match="staged regional H5 files"):
+        resilience.reconcile_run_dir_fingerprint(
+            run_dir,
+            "newfp",
+            scope="regional",
+        )
+
+    assert (run_dir / "states" / "CA.h5").exists()
+    assert (run_dir / "national" / "US.h5").exists()

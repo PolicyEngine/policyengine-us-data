@@ -168,6 +168,7 @@ def test_worker_session_loads_source_geography_and_weights_once(monkeypatch, tmp
             n_records,
             n_clones,
             seed,
+            allow_seed_fallback,
         ):
             geo_calls.append(
                 {
@@ -176,6 +177,7 @@ def test_worker_session_loads_source_geography_and_weights_once(monkeypatch, tmp
                     "n_records": n_records,
                     "n_clones": n_clones,
                     "seed": seed,
+                    "allow_seed_fallback": allow_seed_fallback,
                 }
             )
             return types.SimpleNamespace(
@@ -214,6 +216,7 @@ def test_worker_session_loads_source_geography_and_weights_once(monkeypatch, tmp
             "n_records": 2,
             "n_clones": 2,
             "seed": 99,
+            "allow_seed_fallback": True,
         }
     ]
     np.testing.assert_array_equal(session.weights, np.asarray([1.0, 0.0, 2.0, 0.0]))

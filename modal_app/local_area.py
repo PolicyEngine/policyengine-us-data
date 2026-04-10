@@ -232,6 +232,7 @@ def _phase_errors_from_worker_result(worker_result: WorkerResult) -> list[dict]:
     for result in worker_result.failed:
         phase_errors.append(
             {
+                "type": "build_failure",
                 "item": _request_key(result.request),
                 "error": result.build_error,
             }
@@ -240,6 +241,7 @@ def _phase_errors_from_worker_result(worker_result: WorkerResult) -> list[dict]:
     for issue in worker_result.worker_issues:
         phase_errors.append(
             {
+                "type": "worker_issue",
                 "item": "worker",
                 "error": issue.message,
                 "code": issue.code,
@@ -307,13 +309,31 @@ def _worker_failure_result(
     return result.to_dict()
 
 
-def _load_catalog_geography(package_path: Path):
+def _load_catalog_geography(
+    package_path: Path,
+    *,
+    weights_path: Path,
+    n_clones: int,
+    seed: int,
+):
+    import numpy as np
+
     loader = CalibrationPackageGeographyLoader()
-    loaded = loader.load(package_path)
-    if loaded is None:
+    weights = np.load(weights_path, mmap_mode="r")
+    weights_length = int(np.asarray(weights).size)
+    if weights_length % n_clones != 0:
         raise RuntimeError(
-            f"Calibration package at {package_path} does not contain usable geography"
+            "Weights are incompatible with the requested clone count: "
+            f"length={weights_length}, n_clones={n_clones}"
         )
+    loaded = loader.resolve_for_weights(
+        package_path=package_path,
+        weights_length=weights_length,
+        n_records=weights_length // n_clones,
+        n_clones=n_clones,
+        seed=seed,
+        allow_seed_fallback=False,
+    )
     return loaded.geography
 
 
@@ -399,7 +419,12 @@ def run_phase(
                 print(f"  Worker {i}: {len(v_errors)} validation errors")
         except Exception as e:
             all_errors.append(
-                {"worker": i, "error": str(e), "traceback": traceback.format_exc()}
+                {
+                    "type": "transport_error",
+                    "worker": i,
+                    "error": str(e),
+                    "traceback": traceback.format_exc(),
+                }
             )
             print(f"  Worker {i}: CRASHED - {e}")
 
@@ -882,14 +907,23 @@ def coordinate_publish(
             "Start a fresh run instead of resuming."
         )
 
-    reconcile_action = reconcile_run_dir_fingerprint(run_dir, fingerprint_record)
+    reconcile_action = reconcile_run_dir_fingerprint(
+        run_dir,
+        fingerprint_record,
+        scope="regional",
+    )
     if reconcile_action == "resume":
         print(f"Inputs unchanged ({fingerprint}), resuming...")
     else:
         print(f"Prepared staging directory for fingerprint {fingerprint}")
     staging_volume.commit()
     catalog = USAreaCatalog()
-    catalog_geography = _load_catalog_geography(package_path)
+    catalog_geography = _load_catalog_geography(
+        package_path,
+        weights_path=weights_path,
+        n_clones=canonical_n_clones,
+        seed=42,
+    )
     entries = list(
         catalog.resolved_regional_entries(
             f"sqlite:///{db_path}",
@@ -929,10 +963,36 @@ def coordinate_publish(
 
     expected_total = len(entries)
 
-    # If workers crashed but all files landed on the volume,
-    # treat as transient infrastructure errors (e.g. gRPC stream resets).
     if accumulated_errors:
-        crash_errors = [e for e in accumulated_errors if "worker" in e]
+        build_failures = [
+            error
+            for error in accumulated_errors
+            if error.get("type") == "build_failure"
+        ]
+        if build_failures:
+            raise RuntimeError(
+                f"Build failed: {len(build_failures)} build failure(s) reported. "
+                f"Errors: {build_failures[:3]}"
+            )
+
+        worker_issues = [
+            error
+            for error in accumulated_errors
+            if error.get("type") == "worker_issue"
+        ]
+        if worker_issues:
+            raise RuntimeError(
+                f"Build failed: {len(worker_issues)} worker issue(s) reported. "
+                f"Errors: {worker_issues[:3]}"
+            )
+
+        # If workers crashed in transit but all files landed on the volume,
+        # treat that as transient infrastructure noise (e.g. gRPC stream resets).
+        crash_errors = [
+            error
+            for error in accumulated_errors
+            if error.get("type") == "transport_error"
+        ]
         if crash_errors and len(completed) >= expected_total:
             print(
                 f"WARNING: {len(crash_errors)} worker error(s) occurred "
@@ -1040,6 +1100,7 @@ def coordinate_national_publish(
     n_clones: int = 430,
     validate: bool = True,
     run_id: str = "",
+    expected_fingerprint: str = "",
 ) -> Dict:
     """Build and upload a national US.h5 from national weights."""
     setup_gcp_credentials()
@@ -1108,36 +1169,75 @@ def coordinate_national_publish(
         },
     )
     run_dir = staging_dir / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+
+    if expected_fingerprint:
+        print(f"Using pinned fingerprint from pipeline: {expected_fingerprint}")
+
+    fingerprint_service = FingerprintService()
+    fingerprint_record = fingerprint_service.create_publish_fingerprint(
+        weights_path=weights_path,
+        dataset_path=dataset_path,
+        calibration_package_path=package_path,
+        n_clones=canonical_n_clones,
+        seed=42,
+    )
+    fingerprint = fingerprint_record.digest
+
+    if expected_fingerprint and expected_fingerprint != fingerprint:
+        raise RuntimeError(
+            "Pinned fingerprint does not match current publish inputs.\n"
+            f"  Expected: {expected_fingerprint}\n"
+            f"  Current:  {fingerprint}\n"
+            "Start a fresh run instead of resuming."
+        )
+
+    reconcile_action = reconcile_run_dir_fingerprint(
+        run_dir,
+        fingerprint_record,
+        scope="national",
+    )
+    if reconcile_action == "resume":
+        print(f"Inputs unchanged ({fingerprint}), resuming...")
+    else:
+        print(f"Prepared staging directory for fingerprint {fingerprint}")
+    staging_volume.commit()
 
     catalog = USAreaCatalog()
     national_entry = catalog.resolved_national_entry()
-    print("Spawning worker for national H5 build...")
-    worker_payload = build_areas_worker.remote(
-        branch=branch,
-        run_id=run_id,
-        requests=[national_entry.request.to_dict()],
-        calibration_inputs=calibration_inputs,
-        validate=validate,
-    )
-    worker_result = WorkerResult.from_dict(worker_payload)
-
-    print(
-        f"Worker result: "
-        f"{len(worker_result.completed)} completed, "
-        f"{len(worker_result.failed)} failed"
-    )
-
-    phase_errors = _phase_errors_from_worker_result(worker_result)
-    validation_errors = _validation_errors_from_worker_result(worker_result)
-
-    if worker_result.failed or phase_errors:
-        raise RuntimeError(f"National build failed: {phase_errors}")
-
     staging_volume.reload()
     national_h5 = run_dir / "national" / "US.h5"
-    if not national_h5.exists():
-        raise RuntimeError(f"Expected {national_h5} not found after build")
+    if reconcile_action == "resume" and national_h5.exists():
+        print("National H5 already present for matching fingerprint; skipping rebuild.")
+        worker_result = WorkerResult(
+            completed=(),
+            failed=(),
+        )
+    else:
+        print("Spawning worker for national H5 build...")
+        worker_payload = build_areas_worker.remote(
+            branch=branch,
+            run_id=run_id,
+            requests=[national_entry.request.to_dict()],
+            calibration_inputs=calibration_inputs,
+            validate=validate,
+        )
+        worker_result = WorkerResult.from_dict(worker_payload)
+
+        print(
+            f"Worker result: "
+            f"{len(worker_result.completed)} completed, "
+            f"{len(worker_result.failed)} failed"
+        )
+
+        phase_errors = _phase_errors_from_worker_result(worker_result)
+        if worker_result.failed or phase_errors:
+            raise RuntimeError(f"National build failed: {phase_errors}")
+
+        staging_volume.reload()
+        if not national_h5.exists():
+            raise RuntimeError(f"Expected {national_h5} not found after build")
+
+    validation_errors = _validation_errors_from_worker_result(worker_result)
 
     # Compute SHA256 checksum before upload for integrity verification
     import hashlib
@@ -1221,6 +1321,7 @@ print("Done")
         "run_id": run_id,
         "national_validation": national_validation_output,
         "validation_errors": validation_errors,
+        "fingerprint": fingerprint,
     }
 
 

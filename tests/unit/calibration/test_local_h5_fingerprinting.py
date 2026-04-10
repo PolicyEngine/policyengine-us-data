@@ -98,6 +98,11 @@ def _write_bytes(path: Path, data: bytes) -> Path:
     return path
 
 
+def _write_weights(path: Path, values: np.ndarray) -> Path:
+    np.save(path, values)
+    return path
+
+
 def _write_package(path: Path, *, geography: dict, metadata: dict | None = None) -> Path:
     with open(path, "wb") as f:
         pickle.dump(
@@ -130,7 +135,10 @@ def test_create_publish_fingerprint_round_trips_record(monkeypatch, tmp_path):
     _, fingerprinting = _install_fake_package_hierarchy(monkeypatch)
     FingerprintService = fingerprinting.FingerprintService
 
-    weights_path = _write_bytes(tmp_path / "weights.npy", b"weights-one")
+    weights_path = _write_weights(
+        tmp_path / "weights.npy",
+        np.asarray([1.0, 2.0], dtype=np.float64),
+    )
     dataset_path = _write_bytes(tmp_path / "dataset.h5", b"dataset-one")
     package_path = _write_package(
         tmp_path / "package.pkl",
@@ -143,7 +151,7 @@ def test_create_publish_fingerprint_round_trips_record(monkeypatch, tmp_path):
         weights_path=weights_path,
         dataset_path=dataset_path,
         calibration_package_path=package_path,
-        n_clones=430,
+        n_clones=1,
         seed=42,
     )
 
@@ -163,7 +171,10 @@ def test_write_and_read_record_round_trip(monkeypatch, tmp_path):
     _, fingerprinting = _install_fake_package_hierarchy(monkeypatch)
     FingerprintService = fingerprinting.FingerprintService
 
-    weights_path = _write_bytes(tmp_path / "weights.npy", b"weights-one")
+    weights_path = _write_weights(
+        tmp_path / "weights.npy",
+        np.asarray([1.0, 2.0], dtype=np.float64),
+    )
     dataset_path = _write_bytes(tmp_path / "dataset.h5", b"dataset-one")
     package_path = _write_package(
         tmp_path / "package.pkl",
@@ -175,7 +186,7 @@ def test_write_and_read_record_round_trip(monkeypatch, tmp_path):
         weights_path=weights_path,
         dataset_path=dataset_path,
         calibration_package_path=package_path,
-        n_clones=430,
+        n_clones=1,
         seed=42,
     )
 
@@ -190,7 +201,10 @@ def test_publish_fingerprint_changes_when_geography_changes(monkeypatch, tmp_pat
     _, fingerprinting = _install_fake_package_hierarchy(monkeypatch)
     FingerprintService = fingerprinting.FingerprintService
 
-    weights_path = _write_bytes(tmp_path / "weights.npy", b"weights-one")
+    weights_path = _write_weights(
+        tmp_path / "weights.npy",
+        np.asarray([1.0, 2.0], dtype=np.float64),
+    )
     dataset_path = _write_bytes(tmp_path / "dataset.h5", b"dataset-one")
     package_a = _write_package(
         tmp_path / "package-a.pkl",
@@ -206,14 +220,14 @@ def test_publish_fingerprint_changes_when_geography_changes(monkeypatch, tmp_pat
         weights_path=weights_path,
         dataset_path=dataset_path,
         calibration_package_path=package_a,
-        n_clones=430,
+        n_clones=1,
         seed=42,
     )
     record_b = service.create_publish_fingerprint(
         weights_path=weights_path,
         dataset_path=dataset_path,
         calibration_package_path=package_b,
-        n_clones=430,
+        n_clones=1,
         seed=42,
     )
 
@@ -229,7 +243,10 @@ def test_publish_fingerprint_ignores_non_geography_package_metadata(
     _, fingerprinting = _install_fake_package_hierarchy(monkeypatch)
     FingerprintService = fingerprinting.FingerprintService
 
-    weights_path = _write_bytes(tmp_path / "weights.npy", b"weights-one")
+    weights_path = _write_weights(
+        tmp_path / "weights.npy",
+        np.asarray([1.0, 2.0], dtype=np.float64),
+    )
     dataset_path = _write_bytes(tmp_path / "dataset.h5", b"dataset-one")
     geography = _sample_geography(suffix="1")
     package_a = _write_package(
@@ -248,19 +265,55 @@ def test_publish_fingerprint_ignores_non_geography_package_metadata(
         weights_path=weights_path,
         dataset_path=dataset_path,
         calibration_package_path=package_a,
-        n_clones=430,
+        n_clones=1,
         seed=42,
     )
     record_b = service.create_publish_fingerprint(
         weights_path=weights_path,
         dataset_path=dataset_path,
         calibration_package_path=package_b,
-        n_clones=430,
+        n_clones=1,
         seed=42,
     )
 
     assert record_a.components == record_b.components
     assert record_a.digest == record_b.digest
+
+
+def test_publish_fingerprint_rejects_incompatible_package_shape(monkeypatch, tmp_path):
+    _, fingerprinting = _install_fake_package_hierarchy(monkeypatch)
+    FingerprintService = fingerprinting.FingerprintService
+
+    weights_path = _write_weights(
+        tmp_path / "weights.npy",
+        np.asarray([1.0, 2.0], dtype=np.float64),
+    )
+    dataset_path = _write_bytes(tmp_path / "dataset.h5", b"dataset-one")
+    package_path = _write_package(
+        tmp_path / "package.pkl",
+        geography={
+            "block_geoid": np.asarray(["060010001001001"] * 4, dtype=str),
+            "cd_geoid": np.asarray(["601"] * 4, dtype=str),
+            "county_fips": np.asarray(["06001"] * 4, dtype=str),
+            "state_fips": np.asarray([6] * 4, dtype=np.int64),
+            "n_records": 2,
+            "n_clones": 2,
+        },
+    )
+
+    service = FingerprintService()
+    try:
+        service.create_publish_fingerprint(
+            weights_path=weights_path,
+            dataset_path=dataset_path,
+            calibration_package_path=package_path,
+            n_clones=1,
+            seed=42,
+        )
+    except ValueError as error:
+        assert "incompatible with the requested publish shape" in str(error)
+    else:
+        raise AssertionError("Expected incompatible package shape to fail")
 
 
 def test_deserialize_legacy_fingerprint_payload(monkeypatch):

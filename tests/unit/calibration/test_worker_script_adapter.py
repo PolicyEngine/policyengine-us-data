@@ -206,6 +206,7 @@ def test_main_delegates_to_worker_service_and_emits_structured_json(
     assert calls["reader_sub_entities"] == ("tax_unit", "spm_unit")
     assert calls["session_kwargs"]["weights_path"] == Path("/tmp/weights.npy")
     assert calls["session_kwargs"]["dataset_path"] == Path("/tmp/source.h5")
+    assert calls["session_kwargs"]["allow_seed_fallback"] is False
     assert calls["service_run"]["requests"] == (
         {
             "parsed_request": {

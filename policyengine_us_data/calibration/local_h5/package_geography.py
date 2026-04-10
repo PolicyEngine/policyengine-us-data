@@ -110,6 +110,7 @@ class CalibrationPackageGeographyLoader:
         n_records: int,
         n_clones: int,
         seed: int,
+        allow_seed_fallback: bool = True,
     ) -> LoadedPackageGeography:
         warnings: list[str] = []
 
@@ -128,7 +129,13 @@ class CalibrationPackageGeographyLoader:
                     load_error = str(error)
                 if loaded is not None:
                     actual_len = len(np.asarray(loaded.geography.block_geoid))
-                    if actual_len == weights_length:
+                    actual_records = int(getattr(loaded.geography, "n_records", -1))
+                    actual_clones = int(getattr(loaded.geography, "n_clones", -1))
+                    if (
+                        actual_len == weights_length
+                        and actual_records == n_records
+                        and actual_clones == n_clones
+                    ):
                         if loaded.warnings:
                             warnings.extend(loaded.warnings)
                         return LoadedPackageGeography(
@@ -136,26 +143,49 @@ class CalibrationPackageGeographyLoader:
                             source=loaded.source,
                             warnings=tuple(warnings),
                         )
-                    warnings.append(
-                        "Calibration package geography length "
-                        f"({actual_len}) does not match weights length "
-                        f"({weights_length}); regenerating from seed."
+                    dimension_error = (
+                        "Calibration package geography is incompatible with "
+                        "the requested publish shape: "
+                        f"length={actual_len} records={actual_records} "
+                        f"clones={actual_clones}, expected length={weights_length} "
+                        f"records={n_records} clones={n_clones}."
                     )
+                    if not allow_seed_fallback:
+                        raise ValueError(dimension_error)
+                    warnings.append(f"{dimension_error} Regenerating from seed.")
                 else:
                     if load_error is not None:
+                        if not allow_seed_fallback:
+                            raise ValueError(
+                                "Calibration package geography could not be loaded "
+                                f"({load_error})."
+                            )
                         warnings.append(
                             "Calibration package geography could not be loaded "
                             f"({load_error}); regenerating from seed."
                         )
                     else:
+                        if not allow_seed_fallback:
+                            raise ValueError(
+                                "Calibration package does not include usable geography."
+                            )
                         warnings.append(
                             "Calibration package does not include usable geography; "
                             "regenerating from seed."
                         )
             else:
+                if not allow_seed_fallback:
+                    raise FileNotFoundError(
+                        f"Calibration package not found at {package_path}."
+                    )
                 warnings.append(
                     f"Calibration package not found at {package_path}; regenerating from seed."
                 )
+
+        elif not allow_seed_fallback:
+            raise ValueError(
+                "Calibration package path is required for strict geography resolution."
+            )
 
         return LoadedPackageGeography(
             geography=self._generate_geography(

@@ -30,6 +30,8 @@ class FingerprintInputs:
     calibration_package_path: Path
     n_clones: int
     seed: int
+    weights_length: int
+    n_records: int
 
     def to_dict(self) -> dict[str, str | int]:
         return {
@@ -38,6 +40,8 @@ class FingerprintInputs:
             "calibration_package_path": str(self.calibration_package_path),
             "n_clones": self.n_clones,
             "seed": self.seed,
+            "weights_length": self.weights_length,
+            "n_records": self.n_records,
         }
 
 
@@ -121,14 +125,25 @@ class FingerprintService:
         if n_clones <= 0:
             raise ValueError("n_clones must be positive")
 
+        weights_path = _require_file(weights_path, label="weights")
+        weights_length = self._weight_length(weights_path)
+        if weights_length % n_clones != 0:
+            raise ValueError(
+                "Weight vector length "
+                f"{weights_length} is not divisible by n_clones={n_clones}"
+            )
+        n_records = weights_length // n_clones
+
         return FingerprintInputs(
-            weights_path=_require_file(weights_path, label="weights"),
+            weights_path=weights_path,
             dataset_path=_require_file(dataset_path, label="dataset"),
             calibration_package_path=require_calibration_package_path(
                 calibration_package_path
             ),
             n_clones=int(n_clones),
             seed=int(seed),
+            weights_length=int(weights_length),
+            n_records=int(n_records),
         )
 
     def create_publish_fingerprint(
@@ -150,6 +165,14 @@ class FingerprintService:
         return self.create_from_inputs(inputs)
 
     def create_from_inputs(self, inputs: FingerprintInputs) -> FingerprintRecord:
+        resolved = self.loader.resolve_for_weights(
+            package_path=inputs.calibration_package_path,
+            weights_length=inputs.weights_length,
+            n_records=inputs.n_records,
+            n_clones=inputs.n_clones,
+            seed=inputs.seed,
+            allow_seed_fallback=False,
+        )
         # Compatibility note: v1 still includes n_clones and seed in the
         # digest so existing staged run directories keep their current
         # resume semantics. Long-term, package-backed publishing should not
@@ -159,8 +182,8 @@ class FingerprintService:
         components = FingerprintComponents(
             weights_sha256=self._sha256_file(inputs.weights_path),
             dataset_sha256=self._sha256_file(inputs.dataset_path),
-            geography_sha256=self._sha256_package_geography(
-                inputs.calibration_package_path
+            geography_sha256=self._sha256_geography_payload(
+                self.loader.serialize_geography(resolved.geography)
             ),
             n_clones=inputs.n_clones,
             seed=inputs.seed,
@@ -246,14 +269,9 @@ class FingerprintService:
                 h.update(chunk)
         return h.hexdigest()
 
-    def _sha256_package_geography(self, package_path: Path) -> str:
-        loaded = self.loader.load(package_path)
-        if loaded is None:
-            raise ValueError(
-                f"Calibration package at {package_path} does not contain usable geography"
-            )
-        payload = self.loader.serialize_geography(loaded.geography)
-        return self._sha256_geography_payload(payload)
+    def _weight_length(self, path: Path) -> int:
+        values = np.load(path, mmap_mode="r")
+        return int(np.asarray(values).size)
 
     def _sha256_geography_payload(self, payload: Mapping[str, Any]) -> str:
         h = hashlib.sha256()

@@ -176,7 +176,48 @@ def test_resolve_for_weights_falls_back_when_package_geography_length_mismatches
     assert resolved.source == "generated"
     assert resolved.geography.n_records == 2
     assert resolved.geography.n_clones == 3
-    assert any("does not match weights length" in warning for warning in resolved.warnings)
+    assert any(
+        "incompatible with the requested publish shape" in warning
+        for warning in resolved.warnings
+    )
+
+
+def test_resolve_for_weights_strict_raises_when_package_geography_mismatches(
+    monkeypatch, tmp_path
+):
+    _install_fake_clone_and_assign(monkeypatch)
+    loader = CalibrationPackageGeographyLoader()
+
+    package_path = tmp_path / "package.pkl"
+    with open(package_path, "wb") as f:
+        pickle.dump(
+            {
+                "geography": {
+                    "block_geoid": np.asarray(["060010001001001"] * 4, dtype=str),
+                    "cd_geoid": np.asarray(["601"] * 4, dtype=str),
+                    "county_fips": np.asarray(["06001"] * 4, dtype=str),
+                    "state_fips": np.asarray([6] * 4, dtype=np.int64),
+                    "n_records": 2,
+                    "n_clones": 2,
+                }
+            },
+            f,
+            protocol=pickle.HIGHEST_PROTOCOL,
+        )
+
+    try:
+        loader.resolve_for_weights(
+            package_path=package_path,
+            weights_length=6,
+            n_records=2,
+            n_clones=3,
+            seed=42,
+            allow_seed_fallback=False,
+        )
+    except ValueError as error:
+        assert "incompatible with the requested publish shape" in str(error)
+    else:
+        raise AssertionError("Expected strict geography resolution to fail")
 
 
 def test_require_calibration_package_path_raises_for_missing_file(tmp_path):

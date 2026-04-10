@@ -76,6 +76,7 @@ class WorkerSession:
         validation_context: ValidationContext | None = None,
         source_reader: PolicyEngineDatasetReader | None = None,
         geography_loader: CalibrationPackageGeographyLoader | None = None,
+        allow_seed_fallback: bool = True,
     ) -> "WorkerSession":
         weights = np.load(weights_path)
         source_reader = source_reader or PolicyEngineDatasetReader(())
@@ -90,6 +91,7 @@ class WorkerSession:
             n_records=n_records,
             n_clones=n_clones,
             seed=seed,
+            allow_seed_fallback=allow_seed_fallback,
         )
 
         return cls(

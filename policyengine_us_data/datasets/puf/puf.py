@@ -808,6 +808,7 @@ MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
     "health_insurance_premiums_without_medicare_part_b": 0.453,
     "other_medical_expenses": 0.325,
     "over_the_counter_health_expenses": 0.085,
+    "medicare_part_b_premiums": 0.137,
 }
 
 if __name__ == "__main__":

@@ -594,6 +594,10 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     add_overtime_occupation(cps, person)
 
 
+def derive_weeks_worked(weeks_worked: Series | np.ndarray) -> Series | np.ndarray:
+    return np.clip(weeks_worked, 0, 52)
+
+
 def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     """Add income variables.
 
@@ -619,7 +623,7 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
 
     cps["weekly_hours_worked"] = person.HRSWK
     cps["hours_worked_last_week"] = person.A_HRS1
-    cps["weeks_worked"] = np.clip(person.WKSWORK, 0, 52)
+    cps["weeks_worked"] = derive_weeks_worked(person.WKSWORK)
 
     cps["taxable_interest_income"] = person.INT_VAL * (p["taxable_interest_fraction"])
     cps["tax_exempt_interest_income"] = person.INT_VAL * (

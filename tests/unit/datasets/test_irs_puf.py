@@ -51,3 +51,26 @@ def test_puf_load_dataset_backfills_sstb_split_inputs(tmp_path):
     np.testing.assert_array_equal(
         arrays["sstb_unadjusted_basis_qualified_property"], np.array([5.0, 0.0])
     )
+
+
+def test_puf_load_key_backfills_sstb_split_inputs(tmp_path):
+    class DummyPUF(PUF):
+        label = "Dummy PUF"
+        name = "dummy_puf"
+        time_period = 2024
+        file_path = tmp_path / "dummy_puf.h5"
+
+    with h5py.File(DummyPUF.file_path, "w") as file_handle:
+        file_handle.create_dataset(
+            "self_employment_income", data=np.array([100.0, 200.0])
+        )
+        file_handle.create_dataset("business_is_sstb", data=np.array([1, 0]))
+
+    dataset = DummyPUF()
+
+    np.testing.assert_array_equal(
+        dataset.load("self_employment_income"), np.array([0.0, 200.0])
+    )
+    np.testing.assert_array_equal(
+        dataset.load("sstb_self_employment_income"), np.array([100.0, 0.0])
+    )

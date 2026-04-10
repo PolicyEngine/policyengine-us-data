@@ -1,6 +1,7 @@
 import os
 
 from policyengine_us_data.calibration.validate_national_h5 import (
+    VARIABLES,
     get_ctc_diagnostic_outputs,
     get_reference_values,
     resolve_dataset_path,
@@ -84,3 +85,8 @@ def test_resolve_dataset_path_downloads_hf_paths(monkeypatch):
             "token": os.environ.get("HUGGING_FACE_TOKEN"),
         }
     ]
+
+
+def test_validation_uses_total_self_employment_income():
+    assert "total_self_employment_income" in VARIABLES
+    assert "self_employment_income" not in VARIABLES

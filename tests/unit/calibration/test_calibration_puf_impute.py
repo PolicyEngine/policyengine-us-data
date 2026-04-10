@@ -250,6 +250,10 @@ def test_retirement_imputation_caps_se_pension_using_sstb_income(monkeypatch):
             imputed_variables,
             n_jobs,
         ):
+            np.testing.assert_array_equal(
+                X_test["self_employment_income"].to_numpy(),
+                np.array([100.0, 100.0]),
+            )
             return pd.DataFrame(
                 {
                     "traditional_401k_contributions": [0.0, 0.0],

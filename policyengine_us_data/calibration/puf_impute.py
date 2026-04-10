@@ -701,9 +701,10 @@ def _impute_retirement_contributions(
         else:
             X_test[income_var] = cps_sim.calculate(income_var).values
     if "sstb_self_employment_income" in puf_imputations:
-        X_test["sstb_self_employment_income"] = puf_imputations[
-            "sstb_self_employment_income"
-        ]
+        X_test["self_employment_income"] = (
+            X_test["self_employment_income"]
+            + puf_imputations["sstb_self_employment_income"]
+        )
 
     del cps_sim
 
@@ -734,11 +735,7 @@ def _impute_retirement_contributions(
     catch_up_eligible = age >= 50
     limit_401k = limits["401k"] + catch_up_eligible * limits["401k_catch_up"]
     limit_ira = limits["ira"] + catch_up_eligible * limits["ira_catch_up"]
-    sstb_se_income = X_test.get(
-        "sstb_self_employment_income",
-        pd.Series(np.zeros(len(X_test))),
-    ).values
-    se_income = X_test["self_employment_income"].values + sstb_se_income
+    se_income = X_test["self_employment_income"].values
     se_pension_cap = np.minimum(
         se_income * limits["se_pension_rate"],
         limits["se_pension_dollar_limit"],

@@ -2218,7 +2218,13 @@ def test_compose_role_donor_rows_can_sanitize_worker_non_target_income():
     enriched["__pe_ss_uprating_factor"] = 3.0
     enriched["taxable_interest_income__2024"] = [0.0, 0.0, 7_000.0, 0.0, 12_000.0]
     enriched["qualified_dividend_income__2024"] = [0.0, 0.0, 900.0, 0.0, 2_000.0]
-    enriched["long_term_capital_gains__2024"] = [0.0, 0.0, 500.0, 0.0, 3_000.0]
+    enriched["long_term_capital_gains_before_response__2024"] = [
+        0.0,
+        0.0,
+        500.0,
+        0.0,
+        3_000.0,
+    ]
     enriched["taxable_private_pension_income__2024"] = [
         0.0,
         0.0,
@@ -2267,6 +2273,11 @@ def test_compose_role_donor_rows_can_sanitize_worker_non_target_income():
     assert older_clone["taxable_interest_income__2024"] == pytest.approx(7_000.0)
     assert worker_clone["taxable_interest_income__2024"] == pytest.approx(0.0)
     assert worker_clone["qualified_dividend_income__2024"] == pytest.approx(0.0)
-    assert worker_clone["long_term_capital_gains__2024"] == pytest.approx(0.0)
+    assert worker_clone["long_term_capital_gains_before_response__2024"] == (
+        pytest.approx(0.0)
+    )
     assert worker_clone["taxable_private_pension_income__2024"] == pytest.approx(0.0)
     assert worker_clone["employment_income_before_lsr__2024"] == pytest.approx(50_000.0)
+    assert "long_term_capital_gains_before_response__2024" in clone_df.attrs[
+        "sanitized_worker_non_target_income_columns"
+    ]

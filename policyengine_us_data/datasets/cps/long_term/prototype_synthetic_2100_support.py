@@ -80,6 +80,7 @@ WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS = (
     "qualified_bdc_income",
     "qualified_reit_and_ptp_income",
     "long_term_capital_gains",
+    "long_term_capital_gains_before_response",
     "short_term_capital_gains",
     "non_sch_d_capital_gains",
     "long_term_capital_gains_on_collectibles",
@@ -1813,8 +1814,9 @@ def _zero_period_columns(
         for raw_column in raw_columns
         if (column := _period_column(raw_column, base_year)) in df.columns
     )
-    if len(available_columns) > 0 and len(row_indices) > 0:
-        df.loc[row_indices, list(available_columns)] = 0.0
+    if len(available_columns) == 0 or len(row_indices) == 0:
+        return ()
+    df.loc[row_indices, list(available_columns)] = 0.0
     return available_columns
 
 
@@ -2244,11 +2246,14 @@ def _compose_role_donor_rows_to_target(
             cloned.loc[spouse_idx, qbi_col] = 0.0
     if sanitize_worker_non_target_income:
         worker_sourced_indices = cloned_sources[cloned_sources == "worker"].index
-        _zero_period_columns(
+        sanitized_columns = _zero_period_columns(
             cloned,
             worker_sourced_indices,
             base_year=base_year,
             raw_columns=WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS,
+        )
+        cloned.attrs["sanitized_worker_non_target_income_columns"] = tuple(
+            sanitized_columns
         )
 
     return cloned, id_counters
@@ -2488,6 +2493,7 @@ def build_role_composite_augmented_input_dataframe(
 
     clone_frames = []
     clone_household_reports = []
+    sanitized_worker_non_target_income_columns = set()
     target_reports = []
     skipped_targets = []
 
@@ -2549,6 +2555,9 @@ def build_role_composite_augmented_input_dataframe(
                 }
             )
             continue
+        sanitized_worker_non_target_income_columns.update(
+            clone_df.attrs.get("sanitized_worker_non_target_income_columns", ())
+        )
         clone_frames.append(clone_df)
         clone_household_reports.append(
             _clone_report_record(
@@ -2599,8 +2608,11 @@ def build_role_composite_augmented_input_dataframe(
         "max_worker_distance": float(max_worker_distance),
         "clone_weight_scale": float(clone_weight_scale),
         "sanitize_worker_non_target_income": bool(sanitize_worker_non_target_income),
-        "worker_non_target_income_components": list(
+        "worker_non_target_income_requested_components": list(
             WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS
+        ),
+        "worker_non_target_income_sanitized_columns": sorted(
+            sanitized_worker_non_target_income_columns
         ),
         "base_household_count": int(
             input_df[_period_column("household_id", base_year)].nunique()

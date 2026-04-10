@@ -1,3 +1,11 @@
+"""Build and cache ORG-style labor-market donor rows from CPS basic-month files.
+
+The checked-in code does not vendor the donor file itself. `ORG_FILENAME` is a
+generated cache built from the 12 official CPS basic monthly public-use CSVs for
+`ORG_YEAR`, then reused as the donor sample for wage, hourly-pay, and union
+imputation onto CPS records.
+"""
+
 from functools import lru_cache
 
 from microimpute.models.qrf import QRF
@@ -171,6 +179,58 @@ def _cps_basic_org_month_url(year: int, month: str) -> str:
         f"https://www2.census.gov/programs-surveys/cps/datasets/"
         f"{year}/basic/{month}{year_suffix}pub.csv"
     )
+
+
+def _select_cps_basic_org_columns(month_df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize CPS basic-month columns onto the ORG schema."""
+    column_lookup = {
+        str(column).lower(): column
+        for column in month_df.columns
+        if isinstance(column, str)
+    }
+    missing = [
+        column
+        for column in CPS_BASIC_MONTHLY_ORG_COLUMNS
+        if column.lower() not in column_lookup
+    ]
+    if missing:
+        raise ValueError(f"CPS basic ORG month is missing required columns: {missing}")
+
+    selected = month_df[
+        [column_lookup[column.lower()] for column in CPS_BASIC_MONTHLY_ORG_COLUMNS]
+    ].copy()
+    selected.columns = CPS_BASIC_MONTHLY_ORG_COLUMNS
+    return selected
+
+
+def _load_cps_basic_org_month(
+    year: int,
+    month: str,
+    *,
+    max_attempts: int = 3,
+) -> pd.DataFrame:
+    """Load one CPS basic-month file with light retry around transient fetch/parser issues."""
+    url = _cps_basic_org_month_url(year, month)
+    required_columns = {column.lower() for column in CPS_BASIC_MONTHLY_ORG_COLUMNS}
+    last_error: Exception | None = None
+
+    for _ in range(max_attempts):
+        try:
+            month_df = pd.read_csv(
+                url,
+                usecols=lambda column: (
+                    isinstance(column, str) and column.lower() in required_columns
+                ),
+                low_memory=False,
+            )
+            return _select_cps_basic_org_columns(month_df)
+        except Exception as error:
+            last_error = error
+
+    raise ValueError(
+        f"Failed to load CPS basic ORG month {month} {year} after "
+        f"{max_attempts} attempts"
+    ) from last_error
 
 
 def _transform_cps_basic_org_month(month_df: pd.DataFrame) -> pd.DataFrame:
@@ -396,11 +456,7 @@ def load_org_training_data() -> pd.DataFrame:
 
     months = []
     for month in ORG_MONTHS:
-        month_df = pd.read_csv(
-            _cps_basic_org_month_url(ORG_YEAR, month),
-            usecols=CPS_BASIC_MONTHLY_ORG_COLUMNS,
-            low_memory=False,
-        )
+        month_df = _load_cps_basic_org_month(ORG_YEAR, month)
         months.append(_transform_cps_basic_org_month(month_df))
 
     org = pd.concat(months, ignore_index=True)

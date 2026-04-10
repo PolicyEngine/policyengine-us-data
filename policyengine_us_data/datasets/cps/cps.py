@@ -24,12 +24,15 @@ from policyengine_us_data.datasets.org import (
     build_org_receiver_frame,
     predict_org_features,
 )
+from policyengine_us_data.utils.downsample import downsample_dataset_arrays
+from policyengine_us_data.utils.randomness import seeded_rng
+from policyengine_us_data.utils.identification import (
+    _store_identification_variables,
+)
 from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_treasury_tipped_occupation_code,
     derive_is_tipped_occupation,
 )
-from policyengine_us_data.utils.downsample import downsample_dataset_arrays
-from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     assign_takeup_with_reported_anchors,
     reported_subsidized_marketplace_by_tax_unit,
@@ -1703,17 +1706,16 @@ def add_ssn_card_type(
     # CONVERT TO STRING LABELS AND STORE
     # ============================================================================
 
+    _store_identification_variables(cps, ssn_card_type)
+
+    # Final population summary
+    print(f"\nFinal populations:")
     code_to_str = {
         0: "NONE",  # Likely undocumented immigrants
         1: "CITIZEN",  # US citizens
         2: "NON_CITIZEN_VALID_EAD",  # Non-citizens with work/study authorization
         3: "OTHER_NON_CITIZEN",  # Non-citizens with indicators of legal status
     }
-    ssn_card_type_str = pd.Series(ssn_card_type).map(code_to_str).astype("S").values
-    cps["ssn_card_type"] = ssn_card_type_str
-
-    # Final population summary
-    print(f"\nFinal populations:")
     for code, label in code_to_str.items():
         pop = np.sum(person_weights[ssn_card_type == code])
         print(f"  Code {code} ({label}): {pop:,.0f}")

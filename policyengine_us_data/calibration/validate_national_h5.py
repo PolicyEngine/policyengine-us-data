@@ -12,6 +12,13 @@ Usage:
 """
 
 import argparse
+import os
+
+from policyengine_us_data.calibration.ctc_diagnostics import (
+    create_ctc_diagnostic_tables,
+    format_ctc_diagnostic_table,
+)
+from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
 
 VARIABLES = [
     "adjusted_gross_income",
@@ -27,11 +34,14 @@ VARIABLES = [
     "snap",
     "ssi",
     "income_tax_before_credits",
+    "ctc",
     "eitc",
+    "non_refundable_ctc",
     "refundable_ctc",
     "real_estate_taxes",
     "rent",
     "is_pregnant",
+    "ctc_qualifying_children",
     "person_count",
     "household_count",
 ]
@@ -45,13 +55,64 @@ REFERENCES = {
     "snap": (110_000_000_000, "~$110B"),
     "ssi": (60_000_000_000, "~$60B"),
     "eitc": (60_000_000_000, "~$60B"),
-    "refundable_ctc": (120_000_000_000, "~$120B"),
     "income_tax_before_credits": (4_000_000_000_000, "~$4T"),
 }
 
 DEFAULT_HF_PATH = "hf://policyengine/policyengine-us-data/national/US.h5"
 
-COUNT_VARS = {"person_count", "household_count", "is_pregnant"}
+COUNT_VARS = {
+    "person_count",
+    "household_count",
+    "is_pregnant",
+    "ctc_qualifying_children",
+}
+
+
+def get_reference_values(reference_year: int = 2024):
+    """Return national validation references for the current production year."""
+    references = dict(REFERENCES)
+    for variable in ("refundable_ctc", "non_refundable_ctc"):
+        target = get_national_geography_soi_target(
+            variable,
+            reference_year,
+        )
+        references[variable] = (
+            target["amount"],
+            f"IRS SOI {target['source_year']} ${target['amount'] / 1e9:.1f}B",
+        )
+    return references
+
+
+def get_ctc_diagnostic_outputs(sim) -> dict[str, str]:
+    """Return formatted CTC diagnostics for human-readable validation output."""
+    tables = create_ctc_diagnostic_tables(sim)
+    return {
+        "CTC DIAGNOSTICS BY AGI BAND": format_ctc_diagnostic_table(
+            tables["by_agi_band"]
+        ),
+        "CTC DIAGNOSTICS BY FILING STATUS": format_ctc_diagnostic_table(
+            tables["by_filing_status"]
+        ),
+    }
+
+
+def resolve_dataset_path(dataset_path: str) -> str:
+    """Resolve Hugging Face dataset URIs to a local H5 path."""
+    if not dataset_path.startswith("hf://"):
+        return dataset_path
+
+    from huggingface_hub import hf_hub_download
+
+    parts = dataset_path[5:].split("/", 2)
+    if len(parts) != 3:
+        raise ValueError(f"Unexpected hf:// dataset path: {dataset_path}")
+
+    return hf_hub_download(
+        repo_id=f"{parts[0]}/{parts[1]}",
+        filename=parts[2],
+        repo_type="model",
+        token=os.environ.get("HUGGING_FACE_TOKEN"),
+    )
 
 
 def main(argv=None):
@@ -69,11 +130,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     dataset_path = args.h5_path or args.hf_path
+    resolved_dataset_path = resolve_dataset_path(dataset_path)
 
     from policyengine_us import Microsimulation
 
     print(f"Loading {dataset_path}...")
-    sim = Microsimulation(dataset=dataset_path)
+    sim = Microsimulation(dataset=resolved_dataset_path)
 
     n_hh = sim.calculate("household_id", map_to="household").shape[0]
     print(f"Households in file: {n_hh:,}")
@@ -101,7 +163,7 @@ def main(argv=None):
     print("=" * 70)
 
     any_flag = False
-    for var, (ref_val, ref_label) in REFERENCES.items():
+    for var, (ref_val, ref_label) in get_reference_values().items():
         if var not in values:
             continue
         val = values[var]
@@ -130,6 +192,12 @@ def main(argv=None):
         for var, err in failures:
             print(f"  {var}: {err}")
 
+    for section_name, section_output in get_ctc_diagnostic_outputs(sim).items():
+        print("\n" + "=" * 70)
+        print(section_name)
+        print("=" * 70)
+        print(section_output)
+
     print("\n" + "=" * 70)
     print("STRUCTURAL CHECKS")
     print("=" * 70)
@@ -138,7 +206,7 @@ def main(argv=None):
         run_sanity_checks,
     )
 
-    results = run_sanity_checks(dataset_path)
+    results = run_sanity_checks(resolved_dataset_path)
     n_pass = sum(1 for r in results if r["status"] == "PASS")
     n_fail = sum(1 for r in results if r["status"] == "FAIL")
     for r in results:

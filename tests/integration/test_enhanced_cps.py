@@ -4,6 +4,10 @@ import numpy as np
 import pytest
 
 
+def _period_array(period_values, period):
+    return period_values.get(period, period_values[str(period)])
+
+
 @pytest.fixture(scope="module")
 def ecps_sim():
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
@@ -218,6 +222,16 @@ def test_undocumented_matches_ssn_none():
         f'Immigrant class "UNDOCUMENTED" count: {count:.0f}, target: {TARGET_COUNT:.0f}, error: {pct_error:.2%}'
     )
     assert pct_error < TOLERANCE
+
+
+def test_has_tin_matches_identification_inputs(ecps_sim):
+    data = ecps_sim.dataset.load_dataset()
+    has_tin = _period_array(data["has_tin"], 2024)
+    has_itin = _period_array(data["has_itin"], 2024)
+    ssn_card_type = _period_array(data["ssn_card_type"], 2024).astype(str)
+
+    np.testing.assert_array_equal(has_itin, has_tin)
+    np.testing.assert_array_equal(has_tin, ssn_card_type != "NONE")
 
 
 def test_aca_calibration():

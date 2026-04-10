@@ -150,9 +150,15 @@ include:
   - variable: refundable_ctc
     geo_level: national
     domain_variable: refundable_ctc
+  - variable: refundable_ctc
+    geo_level: national
+    domain_variable: adjusted_gross_income,refundable_ctc
   - variable: non_refundable_ctc
     geo_level: national
     domain_variable: non_refundable_ctc
+  - variable: non_refundable_ctc
+    geo_level: national
+    domain_variable: adjusted_gross_income,non_refundable_ctc
   - variable: self_employment_income
     geo_level: national
     domain_variable: self_employment_income
@@ -175,7 +181,13 @@ include:
     domain_variable: refundable_ctc
   - variable: tax_unit_count
     geo_level: national
+    domain_variable: adjusted_gross_income,refundable_ctc
+  - variable: tax_unit_count
+    geo_level: national
     domain_variable: non_refundable_ctc
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,non_refundable_ctc
 
   # === NATIONAL — SOI deduction totals (non-reform) ===
   - variable: medical_expense_deduction

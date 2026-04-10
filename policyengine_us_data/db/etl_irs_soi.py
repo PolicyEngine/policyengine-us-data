@@ -4,7 +4,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from sqlmodel import Session, create_engine
+from sqlmodel import Session, create_engine, select
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (
@@ -50,6 +50,51 @@ ITEMIZED_DEDUCTION_VARIABLES = {
 # IRS SOI data is typically available ~2 years after the tax year
 IRS_SOI_LAG_YEARS = 2
 
+# IRS geography-file line codes are external identifiers from the published
+# `incd` schema. Keep the mapping in one shared registry so the transform path
+# and the national aggregate overlay do not drift.
+GEOGRAPHY_FILE_TARGET_SPECS = [
+    dict(code="59661", name="eitc", breakdown=("eitc_child_count", 0)),
+    dict(code="59662", name="eitc", breakdown=("eitc_child_count", 1)),
+    dict(code="59663", name="eitc", breakdown=("eitc_child_count", 2)),
+    dict(
+        code="59664", name="eitc", breakdown=("eitc_child_count", "3+")
+    ),  # Doc says "three" but data shows this is 3+
+    dict(
+        code="04475",
+        name="qualified_business_income_deduction",
+        breakdown=None,
+    ),
+    dict(code="00900", name="self_employment_income", breakdown=None),
+    dict(
+        code="01000",
+        name="net_capital_gains",
+        breakdown=None,
+    ),  # Not to be confused with the always positive net_capital_gain
+    dict(code="18500", name="real_estate_taxes", breakdown=None),
+    dict(code="25870", name="rental_income", breakdown=None),
+    dict(code="01400", name="taxable_ira_distributions", breakdown=None),
+    dict(code="00300", name="taxable_interest_income", breakdown=None),
+    dict(code="00400", name="tax_exempt_interest_income", breakdown=None),
+    dict(code="00600", name="dividend_income", breakdown=None),
+    dict(code="00650", name="qualified_dividend_income", breakdown=None),
+    dict(
+        code="26270",
+        name="tax_unit_partnership_s_corp_income",
+        breakdown=None,
+    ),
+    dict(code="02500", name="taxable_social_security", breakdown=None),
+    dict(code="02300", name="unemployment_compensation", breakdown=None),
+    dict(code="17000", name="medical_expense_deduction", breakdown=None),
+    dict(code="01700", name="taxable_pension_income", breakdown=None),
+    dict(code="11070", name="refundable_ctc", breakdown=None),
+    dict(code="07225", name="non_refundable_ctc", breakdown=None),
+    dict(code="18425", name="salt", breakdown=None),
+    dict(code="06500", name="income_tax", breakdown=None),
+    dict(code="05800", name="income_tax_before_credits", breakdown=None),
+    dict(code="85530", name="aca_ptc", breakdown=None),
+]
+
 """See the 22incddocguide.docx manual from the IRS SOI"""
 # Language in the doc: '$10,000 under $25,000' means >= $10,000 and < $25,000
 AGI_STUB_TO_INCOME_RANGE = {
@@ -92,8 +137,8 @@ def _skip_coarse_state_agi_person_count_target(geo_type: str, agi_stub: int) -> 
 
 
 # These variables map cleanly from Publication 1304 aggregate tables to the
-# existing national IRS-SOI domain strata. We intentionally leave `aca_ptc`
-# and `refundable_ctc` on the geography-file path for now because the
+# existing national IRS-SOI domain strata. We intentionally leave `aca_ptc`,
+# `refundable_ctc`, and `non_refundable_ctc` on the geography-file path for now because the
 # published 2023 workbook tables do not line up one-for-one with the current
 # `incd` national codes.
 WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
@@ -303,6 +348,53 @@ def extract_soi_data(year: int) -> pd.DataFrame:
     return df
 
 
+def get_geography_soi_year(dataset_year: int, lag: int = IRS_SOI_LAG_YEARS) -> int:
+    """Return the IRS geography-file year used for a dataset year."""
+    return min(dataset_year - lag, LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR)
+
+
+def _get_geography_file_aggregate_target_spec(variable: str) -> dict:
+    for spec in GEOGRAPHY_FILE_TARGET_SPECS:
+        if spec["name"] == variable and spec["breakdown"] is None:
+            return spec
+
+    raise KeyError(f"No geography-file IRS SOI mapping for {variable!r}")
+
+
+def _get_national_geography_soi_target_from_year(
+    variable: str,
+    geography_year: int,
+) -> dict:
+    spec = _get_geography_file_aggregate_target_spec(variable)
+    code = spec["code"]
+
+    raw_df = extract_soi_data(geography_year)
+    national_rows = raw_df[(raw_df["STATE"] == "US") & (raw_df["agi_stub"] == 0)]
+    if national_rows.empty:
+        raise ValueError(
+            f"IRS geography SOI file for {geography_year} is missing the US agi_stub=0 row"
+        )
+
+    row = national_rows.iloc[0]
+    return {
+        "variable": variable,
+        "source_year": geography_year,
+        "count": float(row[f"N{code}"]),
+        "amount": float(row[f"A{code}"]) * 1_000,
+    }
+
+
+def get_national_geography_soi_target(
+    variable: str,
+    dataset_year: int,
+    *,
+    lag: int = IRS_SOI_LAG_YEARS,
+) -> dict:
+    """Return national count and amount targets from the IRS geography file."""
+    geography_year = get_geography_soi_year(dataset_year, lag=lag)
+    return _get_national_geography_soi_target_from_year(variable, geography_year)
+
+
 def _upsert_target(
     session: Session,
     *,
@@ -313,16 +405,14 @@ def _upsert_target(
     source: str,
     notes: Optional[str] = None,
 ) -> None:
-    existing_target = (
-        session.query(Target)
-        .filter(
+    existing_target = session.exec(
+        select(Target).where(
             Target.stratum_id == stratum_id,
             Target.variable == variable,
             Target.period == period,
             Target.reform_id == 0,
         )
-        .first()
-    )
+    ).first()
     if existing_target:
         existing_target.value = value
         existing_target.source = source
@@ -347,14 +437,12 @@ def _get_or_create_national_domain_stratum(
     session: Session, national_filer_stratum_id: int, variable: str
 ) -> Stratum:
     note = f"National filers with {variable} > 0"
-    stratum = (
-        session.query(Stratum)
-        .filter(
+    stratum = session.exec(
+        select(Stratum).where(
             Stratum.parent_stratum_id == national_filer_stratum_id,
             Stratum.notes == note,
         )
-        .first()
-    )
+    ).first()
     if stratum:
         return stratum
 
@@ -379,6 +467,41 @@ def _get_or_create_national_domain_stratum(
     session.add(stratum)
     session.flush()
     return stratum
+
+
+def load_national_geography_ctc_targets(
+    session: Session, national_filer_stratum_id: int, geography_year: int
+) -> None:
+    """Create national aggregate CTC targets from the IRS geography file."""
+    for variable in ("refundable_ctc", "non_refundable_ctc"):
+        target = _get_national_geography_soi_target_from_year(variable, geography_year)
+        stratum = _get_or_create_national_domain_stratum(
+            session,
+            national_filer_stratum_id,
+            variable,
+        )
+        notes = (
+            f"IRS geography-file national aggregate target "
+            f"(source year {target['source_year']})"
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="tax_unit_count",
+            period=geography_year,
+            value=target["count"],
+            source="IRS SOI",
+            notes=notes,
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable=variable,
+            period=geography_year,
+            value=target["amount"],
+            source="IRS SOI",
+            notes=notes,
+        )
 
 
 def load_national_workbook_soi_targets(
@@ -604,46 +727,6 @@ def load_national_fine_agi_targets(
 
 
 def transform_soi_data(raw_df):
-
-    TARGETS = [
-        dict(code="59661", name="eitc", breakdown=("eitc_child_count", 0)),
-        dict(code="59662", name="eitc", breakdown=("eitc_child_count", 1)),
-        dict(code="59663", name="eitc", breakdown=("eitc_child_count", 2)),
-        dict(
-            code="59664", name="eitc", breakdown=("eitc_child_count", "3+")
-        ),  # Doc says "three" but data shows this is 3+
-        dict(
-            code="04475",
-            name="qualified_business_income_deduction",
-            breakdown=None,
-        ),
-        dict(code="00900", name="self_employment_income", breakdown=None),
-        dict(
-            code="01000", name="net_capital_gains", breakdown=None
-        ),  # Not to be confused with the always positive net_capital_gain
-        dict(code="18500", name="real_estate_taxes", breakdown=None),
-        dict(code="25870", name="rental_income", breakdown=None),
-        dict(code="01400", name="taxable_ira_distributions", breakdown=None),
-        dict(code="00300", name="taxable_interest_income", breakdown=None),
-        dict(code="00400", name="tax_exempt_interest_income", breakdown=None),
-        dict(code="00600", name="dividend_income", breakdown=None),
-        dict(code="00650", name="qualified_dividend_income", breakdown=None),
-        dict(
-            code="26270",
-            name="tax_unit_partnership_s_corp_income",
-            breakdown=None,
-        ),
-        dict(code="02500", name="taxable_social_security", breakdown=None),
-        dict(code="02300", name="unemployment_compensation", breakdown=None),
-        dict(code="17000", name="medical_expense_deduction", breakdown=None),
-        dict(code="01700", name="taxable_pension_income", breakdown=None),
-        dict(code="11070", name="refundable_ctc", breakdown=None),
-        dict(code="18425", name="salt", breakdown=None),
-        dict(code="06500", name="income_tax", breakdown=None),
-        dict(code="05800", name="income_tax_before_credits", breakdown=None),
-        dict(code="85530", name="aca_ptc", breakdown=None),
-    ]
-
     # National ---------------
     national_df = raw_df.copy().loc[(raw_df.STATE == "US")]
     national_df["ucgid_str"] = "0100000US"
@@ -685,7 +768,7 @@ def transform_soi_data(raw_df):
 
     # Collect targets from the SOI file
     records = []
-    for spec in TARGETS:
+    for spec in GEOGRAPHY_FILE_TARGET_SPECS:
         count_col = f"N{spec['code']}"  # e.g. 'N59661'
         amount_col = f"A{spec['code']}"  # e.g. 'A59661'
 
@@ -751,14 +834,12 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
     filer_strata = {"national": None, "state": {}, "district": {}}
 
     # National filer stratum - check if it exists first
-    national_filer_stratum = (
-        session.query(Stratum)
-        .filter(
+    national_filer_stratum = session.exec(
+        select(Stratum).where(
             Stratum.parent_stratum_id == geo_strata["national"],
             Stratum.notes == "United States - Tax Filers",
         )
-        .first()
-    )
+    ).first()
 
     if not national_filer_stratum:
         national_filer_stratum = Stratum(
@@ -780,14 +861,12 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
     # State filer strata
     for state_fips, state_geo_stratum_id in geo_strata["state"].items():
         # Check if state filer stratum exists
-        state_filer_stratum = (
-            session.query(Stratum)
-            .filter(
+        state_filer_stratum = session.exec(
+            select(Stratum).where(
                 Stratum.parent_stratum_id == state_geo_stratum_id,
                 Stratum.notes == f"State FIPS {state_fips} - Tax Filers",
             )
-            .first()
-        )
+        ).first()
 
         if not state_filer_stratum:
             state_filer_stratum = Stratum(
@@ -814,15 +893,13 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
     # District filer strata
     for district_geoid, district_geo_stratum_id in geo_strata["district"].items():
         # Check if district filer stratum exists
-        district_filer_stratum = (
-            session.query(Stratum)
-            .filter(
+        district_filer_stratum = session.exec(
+            select(Stratum).where(
                 Stratum.parent_stratum_id == district_geo_stratum_id,
                 Stratum.notes
                 == f"Congressional District {district_geoid} - Tax Filers",
             )
-            .first()
-        )
+        ).first()
 
         if not district_filer_stratum:
             district_filer_stratum = Stratum(
@@ -845,6 +922,8 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
             session.flush()
 
         filer_strata["district"][district_geoid] = district_filer_stratum.stratum_id
+
+    load_national_geography_ctc_targets(session, filer_strata["national"], year)
 
     if national_year is not None:
         load_national_workbook_soi_targets(
@@ -917,14 +996,12 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
                 ]
 
             # Check if stratum already exists
-            existing_stratum = (
-                session.query(Stratum)
-                .filter(
+            existing_stratum = session.exec(
+                select(Stratum).where(
                     Stratum.parent_stratum_id == parent_stratum_id,
                     Stratum.notes == note,
                 )
-                .first()
-            )
+            ).first()
 
             if existing_stratum:
                 new_stratum = existing_stratum
@@ -964,15 +1041,13 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
                 ("tax_unit_count", count_value),
                 ("eitc", amount_value),
             ]:
-                existing_target = (
-                    session.query(Target)
-                    .filter(
+                existing_target = session.exec(
+                    select(Target).where(
                         Target.stratum_id == new_stratum.stratum_id,
                         Target.variable == variable,
                         Target.period == year,
                     )
-                    .first()
-                )
+                ).first()
 
                 if existing_target:
                     existing_target.value = value
@@ -1047,14 +1122,12 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
                 note = f"{geo_description} filers with {amount_variable_name} > 0"
 
             # Check if child stratum already exists
-            existing_stratum = (
-                session.query(Stratum)
-                .filter(
+            existing_stratum = session.exec(
+                select(Stratum).where(
                     Stratum.parent_stratum_id == parent_stratum_id,
                     Stratum.notes == note,
                 )
-                .first()
-            )
+            ).first()
 
             if existing_stratum:
                 child_stratum = existing_stratum
@@ -1119,15 +1192,13 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
                 (count_variable_name, count_value),
                 (amount_variable_name, amount_value),
             ]:
-                existing_target = (
-                    session.query(Target)
-                    .filter(
+                existing_target = session.exec(
+                    select(Target).where(
                         Target.stratum_id == child_stratum.stratum_id,
                         Target.variable == variable,
                         Target.period == year,
                     )
-                    .first()
-                )
+                ).first()
 
                 if existing_target:
                     existing_target.value = value
@@ -1170,15 +1241,13 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
             )
 
         # Check if target already exists
-        existing_target = (
-            session.query(Target)
-            .filter(
+        existing_target = session.exec(
+            select(Target).where(
                 Target.stratum_id == stratum.stratum_id,
                 Target.variable == "adjusted_gross_income",
                 Target.period == year,
             )
-            .first()
-        )
+        ).first()
 
         if existing_target:
             existing_target.value = agi_values.iloc[i][["target_value"]].values[0]
@@ -1211,14 +1280,12 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
         note = f"National filers, AGI >= {agi_income_lower}, AGI < {agi_income_upper}"
 
         # Check if national AGI stratum already exists
-        nat_stratum = (
-            session.query(Stratum)
-            .filter(
+        nat_stratum = session.exec(
+            select(Stratum).where(
                 Stratum.parent_stratum_id == filer_strata["national"],
                 Stratum.notes == note,
             )
-            .first()
-        )
+        ).first()
 
         if not nat_stratum:
             nat_stratum = Stratum(
@@ -1296,14 +1363,12 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
                 continue  # Skip if not state or district (shouldn't happen, but defensive)
 
             # Check if stratum already exists
-            existing_stratum = (
-                session.query(Stratum)
-                .filter(
+            existing_stratum = session.exec(
+                select(Stratum).where(
                     Stratum.parent_stratum_id == parent_stratum_id,
                     Stratum.notes == note,
                 )
-                .first()
-            )
+            ).first()
 
             if existing_stratum:
                 new_stratum = existing_stratum
@@ -1331,15 +1396,13 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
                 session.flush()
 
             # Check if target already exists and update or create it
-            existing_target = (
-                session.query(Target)
-                .filter(
+            existing_target = session.exec(
+                select(Target).where(
                     Target.stratum_id == new_stratum.stratum_id,
                     Target.variable == "person_count",
                     Target.period == year,
                 )
-                .first()
-            )
+            ).first()
 
             if existing_target:
                 existing_target.value = person_count

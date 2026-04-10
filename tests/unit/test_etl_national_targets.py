@@ -1,5 +1,5 @@
 import pandas as pd
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
@@ -121,11 +121,11 @@ def test_load_national_targets_deactivates_stale_baseline_rows(tmp_path, monkeyp
     )
 
     with Session(engine) as session:
-        stale_rows = session.query(Target).filter(Target.reform_id == 0).all()
+        stale_rows = session.exec(select(Target).where(Target.reform_id == 0)).all()
         assert stale_rows
         assert all(not target.active for target in stale_rows)
 
-        reform_rows = session.query(Target).filter(Target.reform_id > 0).all()
+        reform_rows = session.exec(select(Target).where(Target.reform_id > 0)).all()
         assert len(reform_rows) == 2
         assert all(target.active for target in reform_rows)
         assert {(target.variable, target.reform_id) for target in reform_rows} == {
@@ -173,11 +173,11 @@ def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkey
     )
 
     with Session(engine) as session:
-        liheap_stratum = (
-            session.query(Stratum)
-            .filter(Stratum.notes == "National LIHEAP Recipient Households")
-            .first()
-        )
+        liheap_stratum = session.exec(
+            select(Stratum).where(
+                Stratum.notes == "National LIHEAP Recipient Households"
+            )
+        ).first()
         assert liheap_stratum is not None
 
         constraints = {
@@ -190,14 +190,12 @@ def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkey
         }
         assert ("spm_unit_energy_subsidy_reported", ">", "0") in constraints
 
-        liheap_target = (
-            session.query(Target)
-            .filter(
+        liheap_target = session.exec(
+            select(Target).where(
                 Target.stratum_id == liheap_stratum.stratum_id,
                 Target.variable == "household_count",
                 Target.period == 2024,
             )
-            .first()
-        )
+        ).first()
         assert liheap_target is not None
         assert liheap_target.value == 5_876_646

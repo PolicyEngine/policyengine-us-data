@@ -11,9 +11,14 @@ from policyengine_us_data.db.create_database_tables import (
     create_database,
 )
 from policyengine_us_data.db.etl_irs_soi import (
+    GEOGRAPHY_FILE_TARGET_SPECS,
+    get_geography_soi_year,
+    get_national_geography_soi_target,
+    _get_geography_file_aggregate_target_spec,
     _skip_coarse_state_agi_person_count_target,
     _get_or_create_national_domain_stratum,
     _upsert_target,
+    load_national_geography_ctc_targets,
     load_national_workbook_soi_targets,
 )
 
@@ -188,3 +193,109 @@ def test_skip_coarse_state_agi_person_count_target_only_for_state_stub_9():
     assert _skip_coarse_state_agi_person_count_target("state", 8) is False
     assert _skip_coarse_state_agi_person_count_target("district", 9) is False
     assert _skip_coarse_state_agi_person_count_target("national", 9) is False
+
+
+def test_get_geography_soi_year_uses_standard_lag_and_latest_release():
+    assert get_geography_soi_year(2024) == 2022
+    assert get_geography_soi_year(2023) == 2021
+    assert get_geography_soi_year(2026) == 2022
+
+
+def test_geography_file_aggregate_target_spec_reuses_shared_registry():
+    spec = _get_geography_file_aggregate_target_spec("non_refundable_ctc")
+
+    assert spec == {
+        "code": "07225",
+        "name": "non_refundable_ctc",
+        "breakdown": None,
+    }
+    assert spec in GEOGRAPHY_FILE_TARGET_SPECS
+
+
+def test_get_national_geography_soi_target_reads_amount_and_count(monkeypatch):
+    fake_raw = pd.DataFrame(
+        [
+            {
+                "STATE": "US",
+                "agi_stub": 0,
+                "N11070": 17.0,
+                "A11070": 33.0,
+                "N07225": 37.0,
+                "A07225": 81.0,
+            }
+        ]
+    )
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.extract_soi_data",
+        lambda year: fake_raw,
+    )
+
+    refundable_target = get_national_geography_soi_target("refundable_ctc", 2024)
+    non_refundable_target = get_national_geography_soi_target(
+        "non_refundable_ctc",
+        2024,
+    )
+
+    assert refundable_target["source_year"] == 2022
+    assert refundable_target["count"] == 17.0
+    assert refundable_target["amount"] == 33_000.0
+
+    assert non_refundable_target["source_year"] == 2022
+    assert non_refundable_target["count"] == 37.0
+    assert non_refundable_target["amount"] == 81_000.0
+
+
+def test_load_national_geography_ctc_targets_uses_geography_year_for_ctc_periods(
+    monkeypatch, tmp_path
+):
+    _, engine = _create_test_engine(tmp_path)
+
+    geography_targets = {
+        "refundable_ctc": {
+            "source_year": 2022,
+            "count": 17.0,
+            "amount": 33_000.0,
+        },
+        "non_refundable_ctc": {
+            "source_year": 2022,
+            "count": 37.0,
+            "amount": 81_000.0,
+        },
+    }
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi._get_national_geography_soi_target_from_year",
+        lambda variable, geography_year: geography_targets[variable],
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+
+        load_national_geography_ctc_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            2022,
+        )
+        session.commit()
+
+        for variable, expected in geography_targets.items():
+            stratum = session.exec(
+                select(Stratum).where(
+                    Stratum.parent_stratum_id == national_filer_stratum.stratum_id,
+                    Stratum.notes == f"National filers with {variable} > 0",
+                )
+            ).first()
+            assert stratum is not None
+
+            targets = session.exec(
+                select(Target)
+                .where(
+                    Target.stratum_id == stratum.stratum_id,
+                    Target.period == 2022,
+                )
+                .order_by(Target.variable)
+            ).all()
+            assert {target.variable: target.value for target in targets} == {
+                "tax_unit_count": expected["count"],
+                variable: expected["amount"],
+            }

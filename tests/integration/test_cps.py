@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+import pandas as pd
 
 
 @pytest.fixture(scope="module")
@@ -10,6 +11,87 @@ def cps_sim():
     from policyengine_us import Microsimulation
 
     return Microsimulation(dataset=CPS_2024)
+
+
+def test_add_personal_variables_maps_current_health_coverage_flags():
+    from policyengine_us_data.datasets.cps.cps import add_personal_variables
+
+    person = pd.DataFrame(
+        {
+            "A_AGE": [30, 45, 28],
+            "A_SEX": [2, 1, 2],
+            "PEDISEYE": [0, 1, 0],
+            "PEDISDRS": [0, 0, 0],
+            "PEDISEAR": [0, 0, 0],
+            "PEDISOUT": [0, 0, 0],
+            "PEDISPHY": [0, 0, 0],
+            "PEDISREM": [0, 0, 0],
+            "PEPAR1": [0, 0, 0],
+            "PEPAR2": [0, 0, 0],
+            "PH_SEQ": [1, 1, 2],
+            "A_LINENO": [1, 2, 1],
+            "NOW_COV": [1, 1, 0],
+            "NOW_DIR": [1, 0, 0],
+            "NOW_MRK": [1, 0, 0],
+            "NOW_MRKS": [1, 0, 0],
+            "NOW_MRKUN": [0, 0, 0],
+            "NOW_NONM": [0, 0, 0],
+            "NOW_PRIV": [1, 0, 0],
+            "NOW_PUB": [0, 1, 0],
+            "NOW_GRP": [0, 1, 0],
+            "NOW_CAID": [0, 0, 0],
+            "NOW_MCAID": [0, 1, 0],
+            "NOW_PCHIP": [0, 0, 0],
+            "NOW_OTHMT": [0, 1, 0],
+            "NOW_MCARE": [0, 0, 0],
+            "NOW_MIL": [0, 0, 0],
+            "NOW_CHAMPVA": [0, 0, 0],
+            "NOW_VACARE": [0, 0, 0],
+            "NOW_IHSFLG": [0, 0, 0],
+            "PRDTRACE": [1, 2, 3],
+            "PRDTHSP": [0, 1, 0],
+            "A_MARITL": [1, 4, 1],
+            "A_HSCOL": [0, 2, 0],
+            "POCCU2": [39, 52, 29],
+            "PEIOOCC": [4040, 9999, 4020],
+        }
+    )
+    cps = {}
+
+    add_personal_variables(cps, person)
+
+    np.testing.assert_array_equal(
+        cps["reported_has_marketplace_health_coverage_at_interview"],
+        [True, False, False],
+    )
+    np.testing.assert_array_equal(
+        cps["has_marketplace_health_coverage_at_interview"],
+        [True, False, False],
+    )
+    np.testing.assert_array_equal(
+        cps["has_other_means_tested_health_coverage_at_interview"],
+        [False, True, False],
+    )
+    np.testing.assert_array_equal(
+        cps["has_medicaid_health_coverage_at_interview"],
+        [False, False, False],
+    )
+    np.testing.assert_array_equal(
+        cps["reported_has_means_tested_health_coverage_at_interview"],
+        [False, True, False],
+    )
+    np.testing.assert_array_equal(
+        cps["reported_is_uninsured_at_interview"],
+        [False, False, True],
+    )
+    np.testing.assert_array_equal(
+        cps["reported_has_multiple_health_coverage_at_interview"],
+        [False, True, False],
+    )
+    np.testing.assert_array_equal(
+        cps["has_marketplace_health_coverage"], [True, False, False]
+    )
+    np.testing.assert_array_equal(cps["has_esi"], [False, True, False])
 
 
 # ── Sanity checks ─────────────────────────────────────────────

@@ -1,3 +1,42 @@
+## [1.75.8] - 2026-04-10
+
+### Fixed
+
+- Modeled Medicare Part B premiums from enrollment and premium schedules, netted a cycle-free MSP standard-premium offset, and documented the national Part B calibration target as an approximate beneficiary-paid out-of-pocket benchmark rather than gross CMS premium income.
+
+
+## [1.75.7] - 2026-04-10
+
+### Fixed
+
+- Split legacy national CTC calibration into separate refundable and nonrefundable IRS SOI amount and recipient-count targets, added DB-backed nonrefundable CTC targets for both national and unified district calibration, and fixed recursive package imports so database creation scripts and the national validation tooling can import cleanly in fresh environments. The national validator now also reports CTC totals and grouped diagnostics by AGI band and filing status, its advertised `--hf-path` mode now completes structural checks against published Hugging Face H5 artifacts, and CPS-derived datasets now emit `has_tin` plus a temporary `has_itin` compatibility alias derived from identification status.
+
+
+## [1.75.6] - 2026-04-09
+
+### Fixed
+
+- Anchor ACA take-up to subsidized Marketplace coverage reports so unsubsidized exchange enrollment does not force premium tax credit take-up.
+
+
+## [1.75.5] - 2026-04-09
+
+### Changed
+
+- Donor-impute race, Hispanic status, sex, and occupation-based CPS features onto the PUF clone half of the extended CPS so subgroup analyses and overtime-eligibility inputs better align with PUF-imputed incomes.
+
+### Fixed
+
+- Replace legacy SQLModel `session.query(...)` lookups in the SOI ETL loaders and their focused tests with `session.exec(select(...))` to remove deprecation warnings in CI.
+
+
+## [1.75.4] - 2026-04-09
+
+### Fixed
+
+- Remove duplicate entries in bad_targets list.
+
+
 ## [1.75.3] - 2026-04-09
 
 ### Changed

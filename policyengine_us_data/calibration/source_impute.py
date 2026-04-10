@@ -28,6 +28,10 @@ from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
+from policyengine_us_data.datasets.cps.tipped_occupation import (
+    derive_any_treasury_tipped_occupation_code,
+    derive_is_tipped_occupation,
+)
 
 from policyengine_us_data.datasets.org import (
     ORG_BOOL_VARIABLES,
@@ -80,6 +84,7 @@ SIPP_TIPS_PREDICTORS = [
     "age",
     "count_under_18",
     "count_under_6",
+    "is_tipped_occupation",
 ]
 
 SIPP_ASSETS_PREDICTORS = [
@@ -111,6 +116,8 @@ TENURE_TYPE_MAP = {
     "RENTED": 2,
     "NONE": 0,
 }
+
+SIPP_JOB_OCCUPATION_COLUMNS = [f"TJB{i}_OCC" for i in range(1, 8)]
 
 
 def _encode_tenure_type(df: pd.DataFrame) -> pd.DataFrame:
@@ -384,6 +391,12 @@ def _impute_sipp(
     sipp_df["age"] = sipp_df.TAGE
     sipp_df["household_weight"] = sipp_df.WPFINWGT
     sipp_df["household_id"] = sipp_df.SSUID
+    sipp_df["treasury_tipped_occupation_code"] = (
+        derive_any_treasury_tipped_occupation_code(sipp_df[SIPP_JOB_OCCUPATION_COLUMNS])
+    )
+    sipp_df["is_tipped_occupation"] = derive_is_tipped_occupation(
+        sipp_df["treasury_tipped_occupation_code"]
+    )
 
     sipp_df["is_under_18"] = sipp_df.TAGE < 18
     sipp_df["is_under_6"] = sipp_df.TAGE < 6
@@ -401,6 +414,7 @@ def _impute_sipp(
         "count_under_18",
         "count_under_6",
         "age",
+        "is_tipped_occupation",
         "household_weight",
     ]
     tip_train = sipp_df[tip_cols].dropna()
@@ -431,6 +445,12 @@ def _impute_sipp(
     else:
         cps_tip_df["count_under_18"] = 0.0
         cps_tip_df["count_under_6"] = 0.0
+    if "treasury_tipped_occupation_code" in data:
+        cps_tip_df["is_tipped_occupation"] = derive_is_tipped_occupation(
+            data["treasury_tipped_occupation_code"][time_period]
+        ).astype(np.float32)
+    else:
+        cps_tip_df["is_tipped_occupation"] = 0.0
 
     qrf = QRF()
     logger.info(

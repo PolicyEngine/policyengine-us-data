@@ -4,6 +4,20 @@ from microimpute.models.qrf import QRF
 from policyengine_us_data.storage import STORAGE_FOLDER
 import pickle
 from huggingface_hub import hf_hub_download
+from policyengine_us_data.datasets.cps.tipped_occupation import (
+    derive_any_treasury_tipped_occupation_code,
+    derive_is_tipped_occupation,
+)
+
+
+SIPP_JOB_OCCUPATION_COLUMNS = [f"TJB{i}_OCC" for i in range(1, 8)]
+TIP_MODEL_PREDICTORS = [
+    "employment_income",
+    "age",
+    "count_under_18",
+    "count_under_6",
+    "is_tipped_occupation",
+]
 
 
 def train_tip_model():
@@ -79,6 +93,12 @@ def train_tip_model():
     df["household_weight"] = df.WPFINWGT
     df["household_id"] = df.SSUID
     df["age"] = df.TAGE
+    df["treasury_tipped_occupation_code"] = derive_any_treasury_tipped_occupation_code(
+        df[SIPP_JOB_OCCUPATION_COLUMNS]
+    )
+    df["is_tipped_occupation"] = derive_is_tipped_occupation(
+        df["treasury_tipped_occupation_code"]
+    )
 
     sipp = df[
         [
@@ -88,6 +108,7 @@ def train_tip_model():
             "count_under_18",
             "count_under_6",
             "age",
+            "is_tipped_occupation",
             "household_weight",
         ]
     ]
@@ -107,12 +128,7 @@ def train_tip_model():
 
     model = model.fit(
         X_train=sipp,
-        predictors=[
-            "employment_income",
-            "age",
-            "count_under_18",
-            "count_under_6",
-        ],
+        predictors=TIP_MODEL_PREDICTORS,
         imputed_variables=["tip_income"],
     )
 
@@ -120,7 +136,7 @@ def train_tip_model():
 
 
 def get_tip_model() -> QRF:
-    model_path = STORAGE_FOLDER / "tips.pkl"
+    model_path = STORAGE_FOLDER / "tips_tipped_occ_v2.pkl"
 
     if not model_path.exists():
         model = train_tip_model()

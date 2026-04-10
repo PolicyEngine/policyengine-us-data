@@ -802,11 +802,13 @@ class PUF_2024(PUF):
     url = "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5"
 
 
+# Leave Medicare Part B out of the generic PUF medical-expense split:
+# the baseline model now derives Part B premiums separately.
 MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
     "health_insurance_premiums_without_medicare_part_b": 0.453,
     "other_medical_expenses": 0.325,
-    "medicare_part_b_premiums": 0.137,
     "over_the_counter_health_expenses": 0.085,
+    "medicare_part_b_premiums": 0.137,
 }
 
 if __name__ == "__main__":

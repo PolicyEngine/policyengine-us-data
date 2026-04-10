@@ -7,6 +7,52 @@ import pandas as pd
 from policyengine_us_data.storage import STORAGE_FOLDER
 
 
+OPTIONAL_PERSON_COLUMNS = {
+    "NOW_COV",
+    "NOW_DIR",
+    "NOW_MRK",
+    "NOW_MRKS",
+    "NOW_MRKUN",
+    "NOW_NONM",
+    "NOW_PRIV",
+    "NOW_PUB",
+    "NOW_GRP",
+    "NOW_CAID",
+    "NOW_MCAID",
+    "NOW_PCHIP",
+    "NOW_OTHMT",
+    "NOW_MCARE",
+    "NOW_MIL",
+    "NOW_CHAMPVA",
+    "NOW_VACARE",
+    "NOW_IHSFLG",
+}
+
+
+def _resolve_person_usecols(
+    available_columns, spm_unit_columns: list[str]
+) -> list[str]:
+    requested_columns = PERSON_COLUMNS + spm_unit_columns + TAX_UNIT_COLUMNS
+    available_columns = set(available_columns)
+    missing_required = sorted(
+        column
+        for column in requested_columns
+        if column not in available_columns and column not in OPTIONAL_PERSON_COLUMNS
+    )
+    if missing_required:
+        raise KeyError(
+            "Missing required CPS person columns: " + ", ".join(missing_required[:10])
+        )
+    return [column for column in requested_columns if column in available_columns]
+
+
+def _fill_missing_optional_person_columns(person: pd.DataFrame) -> pd.DataFrame:
+    for column in OPTIONAL_PERSON_COLUMNS:
+        if column not in person.columns:
+            person[column] = 0
+    return person
+
+
 class CensusCPS(Dataset):
     """Dataset containing CPS ASEC tables in the Census format."""
 
@@ -59,12 +105,19 @@ class CensusCPS(Dataset):
                     file_prefix = "cpspb/asec/prod/data/2019/"
                 else:
                     file_prefix = ""
-                with zipfile.open(f"{file_prefix}pppub{file_year_code}.csv") as f:
-                    storage["person"] = pd.read_csv(
+                person_path = f"{file_prefix}pppub{file_year_code}.csv"
+                with zipfile.open(person_path) as f:
+                    person_columns = pd.read_csv(f, nrows=0).columns
+                person_usecols = _resolve_person_usecols(
+                    person_columns, spm_unit_columns
+                )
+                with zipfile.open(person_path) as f:
+                    person = pd.read_csv(
                         f,
-                        usecols=PERSON_COLUMNS + spm_unit_columns + TAX_UNIT_COLUMNS,
+                        usecols=person_usecols,
                     ).fillna(0)
-                    person = storage["person"]
+                person = _fill_missing_optional_person_columns(person)
+                storage["person"] = person
                 with zipfile.open(f"{file_prefix}ffpub{file_year_code}.csv") as f:
                     person_family_id = person.PH_SEQ * 10 + person.PF_SEQ
                     family = pd.read_csv(f).fillna(0)
@@ -237,7 +290,24 @@ PERSON_COLUMNS = [
     "A_AGE",
     "A_SEX",
     "PEDISEYE",
+    "NOW_COV",
+    "NOW_DIR",
     "NOW_MRK",
+    "NOW_MRKS",
+    "NOW_MRKUN",
+    "NOW_NONM",
+    "NOW_PRIV",
+    "NOW_PUB",
+    "NOW_GRP",
+    "NOW_CAID",
+    "NOW_MCAID",
+    "NOW_PCHIP",
+    "NOW_OTHMT",
+    "NOW_MCARE",
+    "NOW_MIL",
+    "NOW_CHAMPVA",
+    "NOW_VACARE",
+    "NOW_IHSFLG",
     "WSAL_VAL",
     "INT_VAL",
     "SEMP_VAL",
@@ -295,7 +365,6 @@ PERSON_COLUMNS = [
     "PMED_VAL",
     "PEMCPREM",
     "PRCITSHP",
-    "NOW_GRP",
     "POCCU2",
     "PEINUSYR",
     "MCARE",

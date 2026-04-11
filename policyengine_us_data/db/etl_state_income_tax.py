@@ -306,7 +306,10 @@ def main():
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    _, year = etl_argparser("ETL for state income tax calibration targets")
+    _, year = etl_argparser(
+        "ETL for state income tax calibration targets",
+        allow_year=True,
+    )
 
     logger.info(f"Extracting Census STC data for FY{year}...")
     raw_df = extract_state_income_tax_data(year)

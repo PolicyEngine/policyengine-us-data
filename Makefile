@@ -59,17 +59,20 @@ documentation-dev:
 	myst clean && \
 	myst start
 
+DATABASE_YEAR ?= 2024
+
 database:
 	rm -f policyengine_us_data/storage/calibration/policy_data.db
 	python policyengine_us_data/db/create_database_tables.py
-	python policyengine_us_data/db/create_initial_strata.py
-	python policyengine_us_data/db/etl_national_targets.py
-	python policyengine_us_data/db/etl_age.py
-	python policyengine_us_data/db/etl_medicaid.py
-	python policyengine_us_data/db/etl_snap.py
-	python policyengine_us_data/db/etl_state_income_tax.py
-	python policyengine_us_data/db/etl_irs_soi.py
-	python policyengine_us_data/db/etl_pregnancy.py
+	python policyengine_us_data/db/create_initial_strata.py --year $(DATABASE_YEAR)
+	python policyengine_us_data/db/etl_national_targets.py --year $(DATABASE_YEAR)
+	python policyengine_us_data/db/etl_age.py --year $(DATABASE_YEAR)
+	python policyengine_us_data/db/etl_medicaid.py --year $(DATABASE_YEAR)
+	python policyengine_us_data/db/etl_snap.py --year $(DATABASE_YEAR)
+	python policyengine_us_data/db/etl_state_income_tax.py --year $(DATABASE_YEAR)
+	python policyengine_us_data/db/etl_irs_soi.py --year $(DATABASE_YEAR)
+	python policyengine_us_data/db/etl_aca_agi_state_targets.py --year $(DATABASE_YEAR)
+	python policyengine_us_data/db/etl_pregnancy.py --year $(DATABASE_YEAR)
 	python policyengine_us_data/db/validate_database.py
 
 database-refresh:

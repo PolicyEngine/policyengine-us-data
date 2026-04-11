@@ -17,6 +17,8 @@ DEFAULT_DATASET = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2
 def etl_argparser(
     description: str,
     extra_args_fn=None,
+    *,
+    allow_year: bool = False,
 ) -> Tuple[argparse.Namespace, int]:
     """Shared argument parsing and dataset-year derivation for ETL scripts.
 
@@ -24,6 +26,7 @@ def etl_argparser(
         description: Description for the argparse help text.
         extra_args_fn: Optional callable that receives the parser to add
             extra arguments before parsing.
+        allow_year: If True, allow --year to bypass dataset loading.
 
     Returns:
         (args, year) where *year* is derived from the dataset's
@@ -39,10 +42,23 @@ def etl_argparser(
             "default_calculation_period. Default: %(default)s"
         ),
     )
+    if allow_year:
+        parser.add_argument(
+            "--year",
+            type=int,
+            default=None,
+            help=(
+                "Explicit dataset year to use instead of loading the dataset."
+            ),
+        )
     if extra_args_fn is not None:
         extra_args_fn(parser)
 
     args = parser.parse_args()
+
+    if allow_year and args.year is not None:
+        print(f"Using explicit year: {args.year}")
+        return args, int(args.year)
 
     if not args.dataset.startswith("hf://") and not Path(args.dataset).exists():
         raise FileNotFoundError(

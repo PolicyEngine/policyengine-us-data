@@ -993,6 +993,7 @@ def main():
     args, dataset_year = etl_argparser(
         "ETL for IRS SOI calibration targets",
         extra_args_fn=add_lag_arg,
+        allow_year=True,
     )
     year = dataset_year - args.lag
     print(f"IRS SOI year: {year} (lag={args.lag})")

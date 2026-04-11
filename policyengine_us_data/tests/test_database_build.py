@@ -37,6 +37,7 @@ PIPELINE_SCRIPTS = [
     ("db/etl_snap.py", ["--dataset", HF_DATASET]),
     ("db/etl_state_income_tax.py", ["--dataset", HF_DATASET]),
     ("db/etl_irs_soi.py", ["--dataset", HF_DATASET]),
+    ("db/etl_aca_agi_state_targets.py", ["--dataset", HF_DATASET]),
     ("db/validate_database.py", []),
 ]
 
@@ -142,6 +143,52 @@ def test_state_income_tax_targets(built_db):
 
     n = len(state_totals)
     assert n >= 42, f"Expected >= 42 state income tax targets, got {n}"
+
+
+def test_state_aca_and_agi_targets_loaded(built_db):
+    """ACA spending/enrollment and AGI state targets should be present."""
+    conn = sqlite3.connect(str(built_db))
+    aca_spending = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'aca_ptc'
+          AND geo_level = 'state'
+        """
+    ).fetchone()[0]
+    aca_enrollment = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'person_count'
+          AND geo_level = 'state'
+          AND domain_variable LIKE '%aca_ptc%'
+        """
+    ).fetchone()[0]
+    agi_amount = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'adjusted_gross_income'
+          AND geo_level = 'state'
+          AND domain_variable LIKE '%adjusted_gross_income%'
+        """
+    ).fetchone()[0]
+    agi_count = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'tax_unit_count'
+          AND geo_level = 'state'
+          AND domain_variable LIKE '%adjusted_gross_income%'
+        """
+    ).fetchone()[0]
+    conn.close()
+
+    assert aca_spending > 0, "Missing ACA spending targets by state"
+    assert aca_enrollment > 0, "Missing ACA enrollment targets by state"
+    assert agi_amount > 0, "Missing state AGI amount targets"
+    assert agi_count > 0, "Missing state AGI count targets"
 
     # California should be the largest, over $100B.
     ca_val = state_totals.get("06") or state_totals.get("6")

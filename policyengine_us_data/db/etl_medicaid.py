@@ -267,7 +267,10 @@ def load_medicaid_data(long_state, long_cd, year):
 
 
 def main():
-    _, year = etl_argparser("ETL for Medicaid calibration targets")
+    _, year = etl_argparser(
+        "ETL for Medicaid calibration targets",
+        allow_year=True,
+    )
 
     # Extract ------------------------------
     state_admin_df = extract_administrative_medicaid_data(year)

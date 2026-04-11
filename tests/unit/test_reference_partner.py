@@ -53,3 +53,18 @@ class TestReferencePartner:
             cps["is_unmarried_partner_of_household_head"],
             np.array([False, True, True, False, True, True, False]),
         )
+
+    def test_missing_perrp_defaults_to_false(self):
+        person = _person_frame(
+            PH_SEQ=np.arange(3) + 1,
+            A_LINENO=np.ones(3),
+            A_AGE=np.full(3, 35),
+        ).drop(columns="PERRP")
+
+        cps = {}
+        add_personal_variables(cps, person)
+
+        np.testing.assert_array_equal(
+            cps["is_unmarried_partner_of_household_head"],
+            np.array([False, False, False]),
+        )

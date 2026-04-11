@@ -581,7 +581,12 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
 
     cps["is_surviving_spouse"] = person.A_MARITL == 4
     cps["is_separated"] = person.A_MARITL == 6
-    cps["is_unmarried_partner_of_household_head"] = person.PERRP.isin(
+    perrp = (
+        person.PERRP
+        if "PERRP" in person
+        else pd.Series(0, index=person.index, dtype=np.int16)
+    )
+    cps["is_unmarried_partner_of_household_head"] = perrp.isin(
         PERRP_UNMARRIED_PARTNER_OF_HOUSEHOLD_HEAD_CODES.keys()
     )
     # High school or college/university enrollment status.

@@ -562,33 +562,54 @@ class PUF(Dataset):
             del file_handle[key]
         file_handle.create_dataset(key, data=values)
 
-    def _ensure_sstb_split_inputs(self) -> None:
+    def _sstb_split_overrides(self) -> dict[str, np.ndarray]:
         if not self.file_path.exists():
-            return
+            return {}
 
-        with h5py.File(self.file_path, "a") as file_handle:
+        with h5py.File(self.file_path, "r") as file_handle:
             if "business_is_sstb" not in file_handle:
-                return
-
+                return {}
+            keys = set(file_handle.keys())
             is_sstb = np.asarray(file_handle["business_is_sstb"]).astype(bool)
-
-            if (
-                "sstb_self_employment_income" not in file_handle
-                and "self_employment_income" in file_handle
-            ):
-                legacy_self_employment_income = np.asarray(
+            overrides = {}
+            if "self_employment_income" in keys:
+                self_employment_income = np.asarray(
                     file_handle["self_employment_income"]
                 )
-                self._replace_array(
-                    file_handle,
-                    "sstb_self_employment_income",
-                    np.where(is_sstb, legacy_self_employment_income, 0.0),
+                existing_sstb_self_employment_income = (
+                    np.asarray(file_handle["sstb_self_employment_income"])
+                    if "sstb_self_employment_income" in keys
+                    else np.zeros_like(self_employment_income)
                 )
-                self._replace_array(
-                    file_handle,
-                    "self_employment_income",
-                    np.where(is_sstb, 0.0, legacy_self_employment_income),
+                corrected_sstb_self_employment_income = np.where(
+                    is_sstb,
+                    np.where(
+                        existing_sstb_self_employment_income != 0,
+                        existing_sstb_self_employment_income,
+                        self_employment_income,
+                    ),
+                    0.0,
                 )
+                corrected_self_employment_income = np.where(
+                    is_sstb, 0.0, self_employment_income
+                )
+                if (
+                    "sstb_self_employment_income" not in keys
+                    or not np.array_equal(
+                        existing_sstb_self_employment_income,
+                        corrected_sstb_self_employment_income,
+                    )
+                    or not np.array_equal(
+                        self_employment_income,
+                        corrected_self_employment_income,
+                    )
+                ):
+                    overrides["sstb_self_employment_income"] = (
+                        corrected_sstb_self_employment_income
+                    )
+                    overrides["self_employment_income"] = (
+                        corrected_self_employment_income
+                    )
 
             for source_key, target_key in (
                 (
@@ -600,22 +621,98 @@ class PUF(Dataset):
                     "sstb_unadjusted_basis_qualified_property",
                 ),
             ):
-                if target_key in file_handle or source_key not in file_handle:
+                if source_key not in keys:
                     continue
-                self._replace_array(
-                    file_handle,
-                    target_key,
-                    np.where(is_sstb, np.asarray(file_handle[source_key]), 0.0),
+                corrected_target = np.where(
+                    is_sstb, np.asarray(file_handle[source_key]), 0.0
                 )
+                if target_key not in keys or not np.array_equal(
+                    np.asarray(file_handle[target_key]),
+                    corrected_target,
+                ):
+                    overrides[target_key] = corrected_target
+
+        return overrides
+
+    def _ensure_sstb_split_inputs(self) -> dict[str, np.ndarray]:
+        overrides = self._sstb_split_overrides()
+        if not overrides:
+            return {}
+
+        try:
+            with h5py.File(self.file_path, "r+") as file_handle:
+                for key, values in overrides.items():
+                    self._replace_array(file_handle, key, values)
+        except OSError:
+            pass
+
+        return overrides
+
+    class _OverrideView:
+        def __init__(self, backing, overrides: dict[str, np.ndarray]):
+            self._backing = backing
+            self._overrides = overrides
+
+        def __getitem__(self, key):
+            if key in self._overrides:
+                return self._overrides[key]
+            return self._backing[key]
+
+        def __contains__(self, key):
+            return key in self._overrides or key in self._backing
+
+        def keys(self):
+            if hasattr(self._backing, "keys"):
+                return tuple(dict.fromkeys((*self._backing.keys(), *self._overrides)))
+            return tuple(self._overrides)
+
+        def get(self, key, default=None):
+            if key in self:
+                return self[key]
+            return default
+
+        def items(self):
+            for key in self.keys():
+                yield key, self[key]
+
+        def values(self):
+            for key in self.keys():
+                yield self[key]
+
+        def __iter__(self):
+            return iter(self.keys())
+
+        def close(self):
+            if hasattr(self._backing, "close"):
+                self._backing.close()
+
+        def __enter__(self):
+            if hasattr(self._backing, "__enter__"):
+                self._backing.__enter__()
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            if hasattr(self._backing, "__exit__"):
+                return self._backing.__exit__(exc_type, exc, traceback)
+            return None
+
+        def __getattr__(self, name):
+            return getattr(self._backing, name)
 
     def load(self, key=None, mode="r"):
         if mode == "r":
-            self._ensure_sstb_split_inputs()
+            overrides = self._ensure_sstb_split_inputs()
+            if key in overrides:
+                return overrides[key]
+            if key is None and overrides:
+                return self._OverrideView(super().load(key=key, mode=mode), overrides)
         return super().load(key=key, mode=mode)
 
     def load_dataset(self):
-        self._ensure_sstb_split_inputs()
-        return super().load_dataset()
+        overrides = self._ensure_sstb_split_inputs()
+        arrays = super().load_dataset()
+        arrays.update(overrides)
+        return arrays
 
     def generate(self):
         from policyengine_us.system import system

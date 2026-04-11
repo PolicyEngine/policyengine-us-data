@@ -193,7 +193,9 @@ def test_artifact_ctc_comparison_outputs_include_child_composition_sections(
     monkeypatch.setattr(
         "policyengine_us_data.calibration.validate_national_h5.create_ctc_diagnostic_tables",
         lambda sim, period=None: {
-            "by_agi_band": pd.DataFrame({"group": ["<$1"], "ctc": [1.0 if sim == "reference" else 3.0]}),
+            "by_agi_band": pd.DataFrame(
+                {"group": ["<$1"], "ctc": [1.0 if sim == "reference" else 3.0]}
+            ),
             "by_filing_status": pd.DataFrame(
                 {"group": ["Single"], "ctc": [2.0 if sim == "reference" else 5.0]}
             ),
@@ -204,9 +206,14 @@ def test_artifact_ctc_comparison_outputs_include_child_composition_sections(
                     "ctc": [4.0 if sim == "reference" else 9.0],
                 }
             ),
-            "by_child_count": pd.DataFrame({"group": ["1"], "ctc": [6.0 if sim == "reference" else 8.0]}),
+            "by_child_count": pd.DataFrame(
+                {"group": ["1"], "ctc": [6.0 if sim == "reference" else 8.0]}
+            ),
             "by_child_age": pd.DataFrame(
-                {"group": ["Under 6"], "ctc_qualifying_children": [7.0 if sim == "reference" else 10.0]}
+                {
+                    "group": ["Under 6"],
+                    "ctc_qualifying_children": [7.0 if sim == "reference" else 10.0],
+                }
             ),
         },
     )

@@ -222,6 +222,7 @@ def upload_datasets(require_enhanced_cps: bool = True):
         hf_repo_name="policyengine/policyengine-us-data",
         hf_repo_type="model",
         gcs_bucket_name="policyengine-us-data",
+        create_tag=True,
     )
 
 

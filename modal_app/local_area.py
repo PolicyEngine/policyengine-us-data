@@ -571,6 +571,7 @@ from policyengine_us_data.utils.data_upload import (
     promote_staging_to_production_hf,
     cleanup_staging_hf,
     upload_local_area_file,
+    publish_release_manifest_to_hf,
 )
 
 rel_paths = json.loads('''{rel_paths_json}''')
@@ -595,6 +596,14 @@ for rel_path in rel_paths:
     )
     gcs_count += 1
 print(f"Uploaded {{gcs_count}} files to GCS")
+
+print("Updating release manifest...")
+publish_release_manifest_to_hf(
+    [(run_dir / rel_path, rel_path) for rel_path in rel_paths],
+    version=version,
+    create_tag=False,
+)
+print("Updated release manifest")
 
 print("Cleaning up staging/...")
 cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
@@ -1140,6 +1149,7 @@ from policyengine_us_data.utils.data_upload import (
     promote_staging_to_production_hf,
     cleanup_staging_hf,
     upload_local_area_file,
+    publish_release_manifest_to_hf,
 )
 
 version = "{version}"
@@ -1159,7 +1169,15 @@ if national_h5.exists():
     )
     print("Uploaded national H5 to GCS")
 else:
-    print(f"WARNING: {{national_h5}} not on volume, skipping GCS")
+    raise RuntimeError(f"Expected national H5 at {{national_h5}}")
+
+print("Updating release manifest...")
+publish_release_manifest_to_hf(
+    [(national_h5, "national/US.h5")],
+    version=version,
+    create_tag=True,
+)
+print("Updated release manifest and created tag")
 
 print("Cleaning up staging...")
 cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)

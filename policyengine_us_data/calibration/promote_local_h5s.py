@@ -24,11 +24,14 @@ import logging
 from importlib import metadata
 from pathlib import Path
 
+from huggingface_hub import HfApi, hf_hub_download
+
 from policyengine_us_data.utils.data_upload import (
     upload_to_staging_hf,
     promote_staging_to_production_hf,
     upload_from_hf_staging_to_gcs,
     cleanup_staging_hf,
+    publish_release_manifest_to_hf,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,13 +51,47 @@ def collect_files(local_dir: Path, area_types: list) -> list:
     return files
 
 
+def collect_staged_rel_paths(area_types: list, run_id: str = "") -> list:
+    api = HfApi()
+    prefix = f"staging/{run_id}" if run_id else "staging"
+    repo_files = api.list_repo_files(
+        repo_id="policyengine/policyengine-us-data",
+        repo_type="model",
+    )
+
+    rel_paths = []
+    for path in repo_files:
+        for area_type in area_types:
+            candidate_prefix = f"{prefix}/{area_type}/"
+            if path.startswith(candidate_prefix) and path.endswith(".h5"):
+                rel_paths.append(path.removeprefix(f"{prefix}/"))
+                break
+
+    return sorted(rel_paths)
+
+
+def download_staged_files(rel_paths: list, run_id: str = "") -> list:
+    prefix = f"staging/{run_id}" if run_id else "staging"
+    files = []
+    for rel_path in rel_paths:
+        local_path = Path(
+            hf_hub_download(
+                repo_id="policyengine/policyengine-us-data",
+                filename=f"{prefix}/{rel_path}",
+                repo_type="model",
+            )
+        )
+        files.append((local_path, rel_path))
+    return files
+
+
 def stage(files: list, version: str, run_id: str = ""):
     logger.info("Uploading %d files to HF staging/...", len(files))
     n = upload_to_staging_hf(files, version=version, run_id=run_id)
     logger.info("Staged %d files", n)
 
 
-def promote(rel_paths: list, version: str, run_id: str = ""):
+def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
     logger.info(
         "Promoting %d files from staging/ to production...",
         len(rel_paths),
@@ -63,6 +100,18 @@ def promote(rel_paths: list, version: str, run_id: str = ""):
 
     logger.info("Uploading %d files to GCS from HF staging...", len(rel_paths))
     upload_from_hf_staging_to_gcs(rel_paths, version=version, run_id=run_id)
+
+    manifest_files = (
+        [(local_path, rel_path) for local_path, rel_path in files]
+        if files
+        else download_staged_files(rel_paths, run_id=run_id)
+    )
+    logger.info("Publishing release manifest...")
+    publish_release_manifest_to_hf(
+        manifest_files,
+        version=version,
+        create_tag=True,
+    )
 
     logger.info("Cleaning up staging/...")
     cleanup_staging_hf(rel_paths, version=version, run_id=run_id)
@@ -122,21 +171,24 @@ def main(argv=None):
     logger.info("Area types: %s", area_types)
 
     files = collect_files(local_dir, area_types)
-    if not files:
+    if not files and not args.promote_only:
         logger.error("No H5 files found")
         return
-
-    rel_paths = [rp for _, rp in files]
 
     run_id = args.run_id
 
     if args.promote_only:
-        promote(rel_paths, version, run_id=run_id)
+        rel_paths = collect_staged_rel_paths(area_types, run_id=run_id)
+        if not rel_paths:
+            logger.error("No staged H5 files found")
+            return
+        promote([], rel_paths, version, run_id=run_id)
     elif args.stage_only:
         stage(files, version, run_id=run_id)
     else:
+        rel_paths = [rp for _, rp in files]
         stage(files, version, run_id=run_id)
-        promote(rel_paths, version, run_id=run_id)
+        promote(files, rel_paths, version, run_id=run_id)
 
 
 if __name__ == "__main__":

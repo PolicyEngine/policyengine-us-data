@@ -232,31 +232,34 @@ def test_publish_release_manifest_to_hf_can_finalize_and_tag(tmp_path):
 
     mock_api = MagicMock()
     mock_api.create_commit.return_value = MagicMock(oid="final-commit-sha")
+    existing_manifest = {
+        "schema_version": RELEASE_MANIFEST_SCHEMA_VERSION,
+        "data_package": {
+            "name": "policyengine-us-data",
+            "version": "1.73.0",
+        },
+        "compatible_model_packages": [],
+        "default_datasets": {"national": "enhanced_cps_2024"},
+        "created_at": "2026-04-10T12:00:00Z",
+        "artifacts": {
+            "enhanced_cps_2024": {
+                "kind": "microdata",
+                "path": "enhanced_cps_2024.h5",
+                "repo_id": "policyengine/policyengine-us-data",
+                "revision": "1.73.0",
+                "sha256": "abc",
+                "size_bytes": 123,
+            }
+        },
+    }
 
     with (
         patch("policyengine_us_data.utils.data_upload.HfApi", return_value=mock_api),
         patch(
             "policyengine_us_data.utils.data_upload.load_release_manifest_from_hf",
-            return_value={
-                "schema_version": RELEASE_MANIFEST_SCHEMA_VERSION,
-                "data_package": {
-                    "name": "policyengine-us-data",
-                    "version": "1.73.0",
-                },
-                "compatible_model_packages": [],
-                "default_datasets": {"national": "enhanced_cps_2024"},
-                "created_at": "2026-04-10T12:00:00Z",
-                "artifacts": {
-                    "enhanced_cps_2024": {
-                        "kind": "microdata",
-                        "path": "enhanced_cps_2024.h5",
-                        "repo_id": "policyengine/policyengine-us-data",
-                        "revision": "1.73.0",
-                        "sha256": "abc",
-                        "size_bytes": 123,
-                    }
-                },
-            },
+            side_effect=lambda *args, **kwargs: (
+                None if kwargs.get("revision") == "1.73.0" else existing_manifest
+            ),
         ),
         patch(
             "policyengine_us_data.utils.data_upload.metadata.version",

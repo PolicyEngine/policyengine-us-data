@@ -6,9 +6,22 @@ import numpy as np
 import pandas as pd
 from policyengine_core.data import Dataset
 
-from policyengine_us_data.datasets.cps.cps import *  # noqa: F403
-from policyengine_us_data.datasets.puf import *  # noqa: F403
+from policyengine_us_data.datasets.cps.cps import CPS, CPS_2024, CPS_2024_Full
+from policyengine_us_data.datasets.org import (
+    ORG_IMPUTED_VARIABLES,
+    apply_org_domain_constraints,
+)
+from policyengine_us_data.datasets.puf import PUF, PUF_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.mortgage_interest import (
+    STRUCTURAL_MORTGAGE_VARIABLES,
+    convert_mortgage_interest_to_structural_inputs,
+    impute_tax_unit_mortgage_balance_hints,
+)
+from policyengine_us_data.utils.policyengine import has_policyengine_us_variables
+from policyengine_us_data.utils.policyengine import (
+    supports_modeled_medicare_part_b_inputs,
+)
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
     get_se_pension_limits,
@@ -16,10 +29,82 @@ from policyengine_us_data.utils.retirement_limits import (
 
 logger = logging.getLogger(__name__)
 
+
+def _supports_structural_mortgage_inputs() -> bool:
+    return has_policyengine_us_variables(*STRUCTURAL_MORTGAGE_VARIABLES)
+
+
+# CPS-only categorical features to donor-impute onto the PUF clone half.
+# These drive subgroup analysis and occupation-based logic, so naive donor
+# duplication dilutes the relationship between the clone's PUF-imputed
+# income and its CPS-side demographic/occupation labels.
+CPS_CLONE_FEATURE_VARIABLES = [
+    "is_male",
+    "cps_race",
+    "is_hispanic",
+    "detailed_occupation_recode",
+]
+if has_policyengine_us_variables("treasury_tipped_occupation_code"):
+    CPS_CLONE_FEATURE_VARIABLES.append("treasury_tipped_occupation_code")
+
+# Predictors used to rematch CPS features onto the PUF clone half.
+# These are all available on the CPS half and on the doubled extended CPS.
+CPS_CLONE_FEATURE_PREDICTORS = [
+    "age",
+    "state_fips",
+    "tax_unit_is_joint",
+    "tax_unit_count_dependents",
+    "is_tax_unit_head",
+    "is_tax_unit_spouse",
+    "is_tax_unit_dependent",
+    "employment_income",
+    "self_employment_income",
+    "social_security",
+]
+
+_OVERTIME_OCCUPATION_CODES = {
+    "has_never_worked": 53,
+    "is_military": 52,
+    "is_computer_scientist": 8,
+    "is_farmer_fisher": 41,
+}
+_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_CODES = np.array(
+    [
+        1,
+        2,
+        3,
+        5,
+        7,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        18,
+        19,
+        20,
+        21,
+        22,
+        24,
+        25,
+        27,
+        28,
+        29,
+        30,
+        32,
+        33,
+        34,
+    ],
+    dtype=np.int16,
+)
+
 # CPS-only variables that should be QRF-imputed for the PUF clone half
-# instead of naively duplicated from the CPS donor. These are
-# income-correlated variables that exist only in the CPS; demographics,
-# IDs, weights, and random seeds are fine to duplicate.
+# instead of naively duplicated from the CPS donor. Most demographics,
+# IDs, weights, and random seeds are fine to duplicate; the categorical
+# clone features above are rematched separately.
 CPS_ONLY_IMPUTED_VARIABLES = [
     # Retirement distributions
     "taxable_401k_distributions",
@@ -61,7 +146,6 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "spm_unit_payroll_tax_reported",
     "spm_unit_federal_tax_reported",
     "spm_unit_state_tax_reported",
-    "spm_unit_capped_work_childcare_expenses",
     "spm_unit_spm_threshold",
     "spm_unit_net_income_reported",
     "spm_unit_pre_subsidy_childcare_expenses",
@@ -69,15 +153,21 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "health_insurance_premiums_without_medicare_part_b",
     "over_the_counter_health_expenses",
     "other_medical_expenses",
-    "medicare_part_b_premiums",
     "child_support_expense",
     # Hours/employment
     "weekly_hours_worked",
     "hours_worked_last_week",
+    # ORG labor-market variables
+    "hourly_wage",
+    "is_paid_hourly",
+    "is_union_member_or_covered",
     # Previous year income
     "employment_income_last_year",
     "self_employment_income_last_year",
 ]
+
+if not supports_modeled_medicare_part_b_inputs():
+    CPS_ONLY_IMPUTED_VARIABLES.append("medicare_part_b_premiums")
 
 # Set for O(1) lookup in the splice loop.
 _CPS_ONLY_SET = set(CPS_ONLY_IMPUTED_VARIABLES)
@@ -96,6 +186,194 @@ CPS_STAGE2_INCOME_PREDICTORS = [
     "self_employment_income",
     "social_security",
 ]
+
+
+def _clone_half_person_values(data: dict, variable: str, time_period: int):
+    """Return clone-half values for ``variable`` mapped to person rows."""
+    if variable not in data:
+        return None
+
+    values = data[variable][time_period]
+    n_persons = len(data["person_id"][time_period])
+    n_persons_half = n_persons // 2
+    if len(values) == n_persons:
+        return np.asarray(values[n_persons_half:])
+
+    entity_mappings = [
+        ("household_id", "person_household_id"),
+        ("tax_unit_id", "person_tax_unit_id"),
+        ("spm_unit_id", "person_spm_unit_id"),
+        ("family_id", "person_family_id"),
+    ]
+    for entity_id_var, person_entity_id_var in entity_mappings:
+        if entity_id_var not in data or person_entity_id_var not in data:
+            continue
+        entity_ids = data[entity_id_var][time_period]
+        if len(values) != len(entity_ids):
+            continue
+        entity_half = len(entity_ids) // 2
+        clone_entity_ids = entity_ids[entity_half:]
+        clone_person_entity_ids = data[person_entity_id_var][time_period][
+            n_persons_half:
+        ]
+        value_map = dict(zip(clone_entity_ids, values[entity_half:]))
+        return np.array([value_map[idx] for idx in clone_person_entity_ids])
+
+    return None
+
+
+def _build_clone_test_frame(
+    cps_sim,
+    data: dict,
+    time_period: int,
+    predictors: list[str],
+) -> pd.DataFrame:
+    """Build clone-half predictor data with available doubled-dataset overrides."""
+    X_test = cps_sim.calculate_dataframe(predictors).copy()
+    for predictor in predictors:
+        clone_values = _clone_half_person_values(data, predictor, time_period)
+        if clone_values is not None and len(clone_values) == len(X_test):
+            X_test[predictor] = clone_values
+    return X_test[predictors]
+
+
+def _prepare_knn_matrix(
+    df: pd.DataFrame,
+    reference: pd.DataFrame | None = None,
+) -> np.ndarray:
+    """Normalise mixed-scale donor-matching predictors for kNN."""
+    X = df.astype(float).copy()
+    for income_var in CPS_STAGE2_INCOME_PREDICTORS:
+        if income_var in X:
+            X[income_var] = np.arcsinh(X[income_var])
+
+    ref = X if reference is None else reference.astype(float).copy()
+    for income_var in CPS_STAGE2_INCOME_PREDICTORS:
+        if income_var in ref:
+            ref[income_var] = np.arcsinh(ref[income_var])
+
+    means = ref.mean()
+    stds = ref.std(ddof=0).replace(0, 1)
+    normalised = (X - means) / stds
+    return np.nan_to_num(normalised.to_numpy(dtype=np.float32), nan=0.0)
+
+
+def _derive_overtime_occupation_inputs(
+    occupation_codes: np.ndarray,
+) -> pd.DataFrame:
+    """Derive occupation-based overtime-exemption inputs from POCCU2."""
+    occupation_codes = np.rint(occupation_codes).astype(np.int16, copy=False)
+    derived = {
+        name: occupation_codes == code
+        for name, code in _OVERTIME_OCCUPATION_CODES.items()
+    }
+    derived["is_executive_administrative_professional"] = np.isin(
+        occupation_codes,
+        _EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_CODES,
+    )
+    return pd.DataFrame(derived)
+
+
+def _impute_clone_cps_features(
+    data: dict,
+    time_period: int,
+    dataset_path: str,
+) -> pd.DataFrame:
+    """Rematch CPS demographic/occupation features for the clone half."""
+    from policyengine_us import Microsimulation
+    from sklearn.neighbors import NearestNeighbors
+
+    cps_sim = Microsimulation(dataset=dataset_path)
+    X_train = cps_sim.calculate_dataframe(
+        CPS_CLONE_FEATURE_PREDICTORS + CPS_CLONE_FEATURE_VARIABLES
+    )
+    available_outputs = [
+        variable
+        for variable in CPS_CLONE_FEATURE_VARIABLES
+        if variable in X_train.columns
+    ]
+    if not available_outputs:
+        n_half = len(data["person_id"][time_period]) // 2
+        return pd.DataFrame(index=np.arange(n_half))
+
+    X_test = _build_clone_test_frame(
+        cps_sim,
+        data,
+        time_period,
+        CPS_CLONE_FEATURE_PREDICTORS,
+    )
+    del cps_sim
+
+    train_roles = (
+        X_train[["is_tax_unit_head", "is_tax_unit_spouse", "is_tax_unit_dependent"]]
+        .round()
+        .astype(int)
+        .apply(tuple, axis=1)
+    )
+    test_roles = (
+        X_test[["is_tax_unit_head", "is_tax_unit_spouse", "is_tax_unit_dependent"]]
+        .round()
+        .astype(int)
+        .apply(tuple, axis=1)
+    )
+
+    predictions = pd.DataFrame(index=X_test.index, columns=available_outputs)
+    for role in test_roles.unique():
+        test_mask = test_roles == role
+        train_mask = train_roles == role
+        if not train_mask.any():
+            train_mask = pd.Series(True, index=X_train.index)
+
+        train_predictors = X_train.loc[train_mask, CPS_CLONE_FEATURE_PREDICTORS]
+        test_predictors = X_test.loc[test_mask, CPS_CLONE_FEATURE_PREDICTORS]
+        train_matrix = _prepare_knn_matrix(train_predictors)
+        test_matrix = _prepare_knn_matrix(test_predictors, reference=train_predictors)
+
+        matcher = NearestNeighbors(n_neighbors=1)
+        matcher.fit(train_matrix)
+        donor_indices = matcher.kneighbors(
+            test_matrix,
+            return_distance=False,
+        ).ravel()
+        donor_outputs = (
+            X_train.loc[train_mask, available_outputs]
+            .iloc[donor_indices]
+            .reset_index(drop=True)
+        )
+        predictions.loc[test_mask, available_outputs] = donor_outputs.to_numpy()
+
+    if "detailed_occupation_recode" in predictions:
+        occupation_codes = (
+            predictions["detailed_occupation_recode"].astype(float).to_numpy()
+        )
+        for column, values in _derive_overtime_occupation_inputs(
+            occupation_codes
+        ).items():
+            predictions[column] = values
+
+    return predictions
+
+
+def _splice_clone_feature_predictions(
+    data: dict,
+    predictions: pd.DataFrame,
+    time_period: int,
+) -> dict:
+    """Replace clone-half person-level feature variables with donor matches."""
+    n_half = len(data["person_id"][time_period]) // 2
+    for variable in predictions.columns:
+        if variable not in data:
+            continue
+        values = data[variable][time_period]
+        new_values = np.array(values, copy=True)
+        pred_values = predictions[variable].to_numpy()
+        if np.issubdtype(new_values.dtype, np.bool_):
+            pred_values = pred_values.astype(bool, copy=False)
+        else:
+            pred_values = pred_values.astype(new_values.dtype, copy=False)
+        new_values[n_half:] = pred_values
+        data[variable] = {time_period: new_values}
+    return data
 
 
 def _impute_cps_only_variables(
@@ -161,16 +439,15 @@ def _impute_cps_only_variables(
             missing_outputs,
         )
 
-    # Build PUF clone test data: demographics from CPS sim (PUF clones
-    # share demographics with their CPS donors), income from the
-    # PUF-imputed values in the second half of the doubled data.
-    n_persons_half = len(data["person_id"][time_period]) // 2
-    X_test = cps_sim.calculate_dataframe(CPS_STAGE2_DEMOGRAPHIC_PREDICTORS)
+    # Build PUF clone test data from the clone half itself, falling back to
+    # the CPS sim for formula variables that are not stored in the dataset.
+    X_test = _build_clone_test_frame(
+        cps_sim,
+        data,
+        time_period,
+        all_predictors,
+    )
     del cps_sim
-
-    for var in CPS_STAGE2_INCOME_PREDICTORS:
-        # Income comes from PUF imputation in the second half.
-        X_test[var] = data[var][time_period][n_persons_half:]
 
     logger.info(
         "Stage-2 CPS-only imputation: %d outputs, "
@@ -307,6 +584,125 @@ _SS_SUBCOMPONENT_VARS = {
 }
 
 
+def derive_clone_capped_childcare_expenses(
+    donor_pre_subsidy: np.ndarray,
+    donor_capped: np.ndarray,
+    clone_pre_subsidy: np.ndarray,
+    clone_person_data: pd.DataFrame,
+    clone_spm_unit_ids: np.ndarray,
+) -> np.ndarray:
+    """Derive clone-half capped childcare from clone inputs.
+
+    The CPS provides both pre-subsidy childcare and the SPM-specific
+    capped childcare deduction. For the clone half, we impute only the
+    pre-subsidy amount, then deterministically rebuild the capped amount
+    instead of letting a second QRF predict it independently.
+
+    We preserve the donor's observed capping share while also respecting
+    the clone's own earnings cap. This keeps the clone-half value
+    consistent with pre-subsidy childcare and avoids impossible outputs
+    such as capped childcare exceeding pre-subsidy childcare.
+    """
+
+    donor_pre_subsidy = np.asarray(donor_pre_subsidy, dtype=float)
+    donor_capped = np.asarray(donor_capped, dtype=float)
+    clone_pre_subsidy = np.asarray(clone_pre_subsidy, dtype=float)
+    clone_spm_unit_ids = np.asarray(clone_spm_unit_ids)
+
+    donor_cap_share = np.divide(
+        donor_capped,
+        donor_pre_subsidy,
+        out=np.zeros_like(donor_capped, dtype=float),
+        where=donor_pre_subsidy > 0,
+    )
+    donor_cap_share = np.clip(donor_cap_share, 0.0, 1.0)
+    capped_from_share = np.maximum(clone_pre_subsidy, 0.0) * donor_cap_share
+
+    if clone_person_data.empty:
+        earnings_cap = np.zeros(len(clone_spm_unit_ids), dtype=float)
+    else:
+        eligible = clone_person_data["is_parent_proxy"].astype(bool)
+        parent_rows = clone_person_data.loc[
+            eligible, ["spm_unit_id", "age", "earnings"]
+        ].copy()
+        if parent_rows.empty:
+            earnings_cap = np.zeros(len(clone_spm_unit_ids), dtype=float)
+        else:
+            parent_rows["earnings"] = parent_rows["earnings"].clip(lower=0.0)
+            parent_rows["age_rank"] = parent_rows.groupby("spm_unit_id")["age"].rank(
+                method="first", ascending=False
+            )
+            top_two = parent_rows[parent_rows["age_rank"] <= 2].sort_values(
+                ["spm_unit_id", "age_rank"]
+            )
+            earnings_cap_by_unit = top_two.groupby("spm_unit_id")["earnings"].agg(
+                lambda values: (
+                    float(values.iloc[0])
+                    if len(values) == 1
+                    else float(np.minimum(values.iloc[0], values.iloc[1]))
+                )
+            )
+            earnings_cap = earnings_cap_by_unit.reindex(
+                clone_spm_unit_ids, fill_value=0.0
+            ).to_numpy(dtype=float)
+
+    return np.minimum(capped_from_share, earnings_cap)
+
+
+def _rebuild_clone_capped_childcare_expenses(
+    data: dict,
+    time_period: int,
+    cps_sim,
+) -> np.ndarray:
+    """Rebuild clone-half capped childcare expenses after stage-2 imputation."""
+
+    n_persons_half = len(data["person_id"][time_period]) // 2
+    n_spm_units_half = len(data["spm_unit_id"][time_period]) // 2
+
+    person_roles = cps_sim.calculate_dataframe(
+        ["age", "is_tax_unit_head", "is_tax_unit_spouse"]
+    )
+    if len(person_roles) != n_persons_half:
+        raise ValueError(
+            "Unexpected person role frame length while rebuilding clone childcare "
+            f"expenses: got {len(person_roles)}, expected {n_persons_half}"
+        )
+
+    clone_person_data = pd.DataFrame(
+        {
+            "spm_unit_id": data["person_spm_unit_id"][time_period][n_persons_half:],
+            "age": person_roles["age"].values,
+            "is_parent_proxy": (
+                person_roles["is_tax_unit_head"].values
+                | person_roles["is_tax_unit_spouse"].values
+            ),
+            "earnings": (
+                data["employment_income"][time_period][n_persons_half:]
+                + data["self_employment_income"][time_period][n_persons_half:]
+            ),
+        }
+    )
+
+    donor_pre_subsidy = data["spm_unit_pre_subsidy_childcare_expenses"][time_period][
+        :n_spm_units_half
+    ]
+    donor_capped = data["spm_unit_capped_work_childcare_expenses"][time_period][
+        :n_spm_units_half
+    ]
+    clone_pre_subsidy = data["spm_unit_pre_subsidy_childcare_expenses"][time_period][
+        n_spm_units_half:
+    ]
+    clone_spm_unit_ids = data["spm_unit_id"][time_period][n_spm_units_half:]
+
+    return derive_clone_capped_childcare_expenses(
+        donor_pre_subsidy=donor_pre_subsidy,
+        donor_capped=donor_capped,
+        clone_pre_subsidy=clone_pre_subsidy,
+        clone_person_data=clone_person_data,
+        clone_spm_unit_ids=clone_spm_unit_ids,
+    )
+
+
 def _apply_post_processing(predictions, X_test, time_period, data):
     """Apply retirement constraints and SS reconciliation."""
     ret_cols = [c for c in predictions.columns if c in _RETIREMENT_VARS]
@@ -324,6 +720,28 @@ def _apply_post_processing(predictions, X_test, time_period, data):
         reconciled = reconcile_ss_subcomponents(predictions[ss_cols], total_ss)
         for col in ss_cols:
             predictions[col] = reconciled[col]
+
+    org_cols = [c for c in predictions.columns if c in ORG_IMPUTED_VARIABLES]
+    if org_cols:
+        n_half = len(data["person_id"][time_period]) // 2
+        weekly_hours = (
+            predictions["weekly_hours_worked"].values
+            if "weekly_hours_worked" in predictions.columns
+            else data["weekly_hours_worked"][time_period][n_half:]
+        )
+        receiver = pd.DataFrame(
+            {
+                "employment_income": X_test["employment_income"].values,
+                "weekly_hours_worked": np.asarray(weekly_hours, dtype=np.float32),
+            }
+        )
+        constrained = apply_org_domain_constraints(
+            predictions[org_cols],
+            receiver,
+            self_employment_income=X_test["self_employment_income"].values,
+        )
+        for col in org_cols:
+            predictions[col] = constrained[col]
 
     return predictions
 
@@ -377,12 +795,35 @@ def _splice_cps_only_predictions(
             )
 
         n_half = entity_half_lengths.get(entity_key, len(data[var][time_period]) // 2)
+        if len(pred_values) != n_half:
+            raise ValueError(
+                f"Stage-2 prediction for '{var}' has {len(pred_values)} "
+                f"entries but expected {n_half} (half of {entity_key})"
+            )
         values = data[var][time_period]
         # First half: keep original CPS values.
         # Second half: replace with QRF predictions.
         cps_half = values[:n_half]
         new_values = np.concatenate([cps_half, pred_values])
         data[var] = {time_period: new_values}
+
+    if (
+        "spm_unit_capped_work_childcare_expenses" in data
+        and "spm_unit_pre_subsidy_childcare_expenses" in data
+    ):
+        n_half = entity_half_lengths.get(
+            "spm_unit",
+            len(data["spm_unit_capped_work_childcare_expenses"][time_period]) // 2,
+        )
+        cps_half = data["spm_unit_capped_work_childcare_expenses"][time_period][:n_half]
+        clone_half = _rebuild_clone_capped_childcare_expenses(
+            data=data,
+            time_period=time_period,
+            cps_sim=cps_sim,
+        )
+        data["spm_unit_capped_work_childcare_expenses"] = {
+            time_period: np.concatenate([cps_half, clone_half])
+        }
 
     del cps_sim
     return data
@@ -427,11 +868,24 @@ class ExtendedCPS(Dataset):
             dataset_path=str(self.cps.file_path),
         )
 
-        # Stage 2: QRF-impute CPS-only variables for PUF clones.
+        # Stage 2a: donor-impute CPS feature variables for PUF clones.
+        logger.info("Stage-2a: rematching CPS features for PUF clones")
+        clone_feature_predictions = _impute_clone_cps_features(
+            data=new_data,
+            time_period=self.time_period,
+            dataset_path=str(self.cps.file_path),
+        )
+        new_data = _splice_clone_feature_predictions(
+            data=new_data,
+            predictions=clone_feature_predictions,
+            time_period=self.time_period,
+        )
+
+        # Stage 2b: QRF-impute CPS-only continuous variables for PUF clones.
         # Train on CPS data using demographics + PUF-imputed income
         # as predictors, so the PUF clone half gets values consistent
         # with its imputed income rather than naive donor duplication.
-        logger.info("Stage-2: imputing CPS-only variables for PUF clones")
+        logger.info("Stage-2b: imputing CPS-only variables for PUF clones")
         cps_only_predictions = _impute_cps_only_variables(
             data=new_data,
             time_period=self.time_period,
@@ -445,6 +899,15 @@ class ExtendedCPS(Dataset):
         )
 
         new_data = self._rename_imputed_to_inputs(new_data)
+        if _supports_structural_mortgage_inputs():
+            new_data = impute_tax_unit_mortgage_balance_hints(
+                new_data,
+                self.time_period,
+            )
+            new_data = convert_mortgage_interest_to_structural_inputs(
+                new_data,
+                self.time_period,
+            )
         new_data = self._drop_formula_variables(new_data)
         self.save_dataset(new_data)
 
@@ -472,10 +935,16 @@ class ExtendedCPS(Dataset):
     # due to entity shape mismatch.
     _KEEP_FORMULA_VARS = {
         "person_id",
-        "interest_deduction",
         "self_employed_pension_contribution_ald",
         "self_employed_health_insurance_ald",
     }
+
+    @classmethod
+    def _keep_formula_vars(cls):
+        keep = set(cls._KEEP_FORMULA_VARS)
+        if not _supports_structural_mortgage_inputs():
+            keep.add("interest_deduction")
+        return keep
 
     # QRF imputes formula-level variables (e.g. taxable_pension_income)
     # but we must store them under leaf input names so
@@ -526,7 +995,7 @@ class ExtendedCPS(Dataset):
             if (hasattr(var, "formulas") and len(var.formulas) > 0)
             or getattr(var, "adds", None)
             or getattr(var, "subtracts", None)
-        } - cls._KEEP_FORMULA_VARS
+        } - cls._keep_formula_vars()
         dropped = sorted(set(data.keys()) & formula_vars)
         if dropped:
             logger.info(

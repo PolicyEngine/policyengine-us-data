@@ -1,0 +1,96 @@
+name: Run Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      gpu:
+        description: "GPU type for regional calibration"
+        default: "T4"
+        type: string
+      epochs:
+        description: "Epochs for regional calibration"
+        default: "1000"
+        type: string
+      national_epochs:
+        description: "Epochs for national calibration"
+        default: "4000"
+        type: string
+      num_workers:
+        description: "Number of parallel H5 workers"
+        default: "50"
+        type: string
+      skip_national:
+        description: "Skip national calibration/H5"
+        default: false
+        type: boolean
+      resume_run_id:
+        description: "Resume a failed run by ID (allows mixed provenance)"
+        default: ""
+        type: string
+      version_override:
+        description: "Override version (default: read from pyproject.toml)"
+        default: ""
+        type: string
+
+concurrency:
+  group: pipeline-main
+  cancel-in-progress: false
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.head_commit.message == 'Update package version'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Modal
+        run: pip install modal
+
+      - name: Deploy and launch pipeline on Modal
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal deploy modal_app/pipeline.py
+
+          GPU="${{ inputs.gpu || 'T4' }}"
+          EPOCHS="${{ inputs.epochs || '1000' }}"
+          NATIONAL_EPOCHS="${{ inputs.national_epochs || '4000' }}"
+          NUM_WORKERS="${{ inputs.num_workers || '50' }}"
+          SKIP_NATIONAL="${{ inputs.skip_national || 'false' }}"
+          RESUME_RUN_ID="${{ inputs.resume_run_id || '' }}"
+          VERSION_OVERRIDE="${{ inputs.version_override || '' }}"
+
+          python -c "
+          import modal
+          run_pipeline = modal.Function.from_name('policyengine-us-data-pipeline', 'run_pipeline')
+          fc = run_pipeline.spawn(
+              branch='main',
+              gpu='${GPU}',
+              epochs=int('${EPOCHS}'),
+              national_epochs=int('${NATIONAL_EPOCHS}'),
+              num_workers=int('${NUM_WORKERS}'),
+              skip_national='${SKIP_NATIONAL}' == 'true',
+              resume_run_id='${RESUME_RUN_ID}' or None,
+              version_override='${VERSION_OVERRIDE}' or '',
+          )
+          print(f'Pipeline spawned.')
+          print(f'Function call ID: {fc.object_id}')
+
+          with open('$GITHUB_STEP_SUMMARY', 'a') as f:
+              f.write('## Pipeline Launched\n\n')
+              f.write('| Field | Value |\n')
+              f.write('|-------|-------|\n')
+              f.write(f'| GPU | \`${GPU}\` |\n')
+              f.write(f'| Epochs | \`${EPOCHS}\` / \`${NATIONAL_EPOCHS}\` |\n')
+              f.write(f'| Function call ID | \`{fc.object_id}\` |\n\n')
+              f.write('**[Monitor on Modal Dashboard](https://modal.com/apps)**\n')
+          "

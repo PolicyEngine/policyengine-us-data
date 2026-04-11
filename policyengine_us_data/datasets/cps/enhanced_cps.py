@@ -38,6 +38,36 @@ def _get_period_array(period_values: dict, period: int) -> np.ndarray:
     return np.asarray(value)
 
 
+def _get_base_aca_takeup(
+    data: dict,
+    base_year: int,
+    tax_unit_count: int,
+) -> np.ndarray:
+    """Return stored ACA takeup or the default all-True baseline."""
+    period_values = data.get("takes_up_aca_if_eligible")
+    if period_values is None:
+        logging.info(
+            "takes_up_aca_if_eligible missing from base dataset; using default "
+            "all-True takeup for ACA 2025 override"
+        )
+        return np.ones(tax_unit_count, dtype=bool)
+    return _get_period_array(period_values, base_year).astype(bool, copy=False)
+
+
+def _set_period_array(
+    data: dict,
+    variable: str,
+    period: int,
+    values: np.ndarray,
+) -> None:
+    """Store a time-period array, creating the variable entry if needed."""
+    period_values = data.get(variable)
+    if period_values is None:
+        period_values = {}
+        data[variable] = period_values
+    period_values[period] = values
+
+
 def create_aca_2025_takeup_override(
     base_takeup: np.ndarray,
     person_enrolled_if_takeup: np.ndarray,
@@ -131,7 +161,7 @@ def reweight(
         optimizer.zero_grad()
         masked = torch.exp(weights) * gates()
         l_main = loss(masked)
-        loss_value = l_main + l0_lambda * gates.get_penalty()
+        total_loss = l_main + l0_lambda * gates.get_penalty()
         if (log_path is not None) and (i % 10 == 0):
             gates.eval()
             estimates = (torch.exp(weights) * gates()) @ loss_matrix
@@ -155,11 +185,11 @@ def reweight(
         if (log_path is not None) and (i % 1000 == 0):
             performance.to_csv(log_path, index=False)
         if start_loss is None:
-            start_loss = loss_value.item()
-        loss_rel_change = (loss_value.item() - start_loss) / start_loss
-        loss_value.backward()
+            start_loss = total_loss.item()
+        loss_rel_change = (total_loss.item() - start_loss) / start_loss
+        total_loss.backward()
         iterator.set_postfix(
-            {"loss": loss_value.item(), "loss_rel_change": loss_rel_change}
+            {"loss": total_loss.item(), "loss_rel_change": loss_rel_change}
         )
         optimizer.step()
         if log_path is not None:
@@ -206,15 +236,6 @@ class EnhancedCPS(Dataset):
             "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
             "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
             "state/RI/adjusted_gross_income/amount/-inf_1",
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/adjusted gross income/total/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Head of Household",
-            "nation/irs/count/count/AGI in 10k-15k/taxable/Married Filing Jointly/Surviving Spouse",
-            "nation/irs/count/count/AGI in 15k-20k/taxable/Married Filing Jointly/Surviving Spouse",
-            "state/RI/adjusted_gross_income/amount/-inf_1",
             "nation/irs/exempt interest/count/AGI in -inf-inf/taxable/All",
         ]
 
@@ -238,7 +259,7 @@ class EnhancedCPS(Dataset):
                 loss_matrix_clean,
                 targets_array_clean,
                 log_path="calibration_log.csv",
-                epochs=250,
+                epochs=500,
                 seed=1456,
             )
             data["household_weight"][year] = optimised_weights
@@ -282,32 +303,40 @@ class EnhancedCPS(Dataset):
             )
             sim.delete_arrays("aca_ptc")
 
-            data["takes_up_aca_if_eligible"][2025] = create_aca_2025_takeup_override(
-                base_takeup=_get_period_array(
-                    data["takes_up_aca_if_eligible"],
-                    base_year,
-                ),
-                person_enrolled_if_takeup=np.asarray(
-                    sim.calculate(
-                        "aca_ptc",
-                        map_to="person",
-                        period=2025,
-                        use_weights=False,
+            _set_period_array(
+                data=data,
+                variable="takes_up_aca_if_eligible",
+                period=2025,
+                values=create_aca_2025_takeup_override(
+                    base_takeup=_get_base_aca_takeup(
+                        data=data,
+                        base_year=base_year,
+                        tax_unit_count=len(
+                            _get_period_array(data["tax_unit_id"], base_year)
+                        ),
+                    ),
+                    person_enrolled_if_takeup=np.asarray(
+                        sim.calculate(
+                            "aca_ptc",
+                            map_to="person",
+                            period=2025,
+                            use_weights=False,
+                        )
                     )
-                )
-                > 0,
-                person_weights=np.asarray(
-                    sim.calculate(
-                        "person_weight",
-                        period=2025,
-                        use_weights=False,
-                    )
+                    > 0,
+                    person_weights=np.asarray(
+                        sim.calculate(
+                            "person_weight",
+                            period=2025,
+                            use_weights=False,
+                        )
+                    ),
+                    person_tax_unit_ids=_get_period_array(
+                        data["person_tax_unit_id"],
+                        base_year,
+                    ),
+                    tax_unit_ids=_get_period_array(data["tax_unit_id"], base_year),
                 ),
-                person_tax_unit_ids=_get_period_array(
-                    data["person_tax_unit_id"],
-                    base_year,
-                ),
-                tax_unit_ids=_get_period_array(data["tax_unit_id"], base_year),
             )
 
         logging.info("Post-generation weight validation passed")
@@ -344,6 +373,7 @@ class EnhancedCPS_2024(EnhancedCPS):
     input_dataset = ExtendedCPS_2024_Half
     start_year = 2024
     end_year = 2024
+    time_period = 2024
     name = "enhanced_cps_2024"
     label = "Enhanced CPS 2024"
     file_path = STORAGE_FOLDER / "enhanced_cps_2024.h5"

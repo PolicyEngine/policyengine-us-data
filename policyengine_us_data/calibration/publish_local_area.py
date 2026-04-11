@@ -8,9 +8,14 @@ Usage:
     python publish_local_area.py [--skip-download] [--states-only] [--upload]
 """
 
+import hashlib
+import json
+import shutil
+
+
 import numpy as np
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Tuple
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
@@ -25,15 +30,15 @@ from policyengine_us_data.calibration.calibration_utils import (
 )
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
-    get_county_filter_probability,
 )
 from policyengine_us_data.calibration.clone_and_assign import (
-    GeographyAssignment,
-    assign_random_geography,
+    load_geography,
+    reconstruct_geography_from_blocks,
 )
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     apply_block_takeup_to_arrays,
+    reported_subsidized_marketplace_by_tax_unit,
 )
 
 CHECKPOINT_FILE = Path("completed_states.txt")
@@ -41,28 +46,201 @@ CHECKPOINT_FILE_DISTRICTS = Path("completed_districts.txt")
 CHECKPOINT_FILE_CITIES = Path("completed_cities.txt")
 WORK_DIR = Path("local_area_build")
 
-NYC_COUNTIES = {
-    "QUEENS_COUNTY_NY",
-    "BRONX_COUNTY_NY",
-    "RICHMOND_COUNTY_NY",
-    "NEW_YORK_COUNTY_NY",
-    "KINGS_COUNTY_NY",
-}
+NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
 
-NYC_CDS = [
-    "3603",
-    "3605",
-    "3606",
-    "3607",
-    "3608",
-    "3609",
-    "3610",
-    "3611",
-    "3612",
-    "3613",
-    "3614",
-    "3615",
-    "3616",
+
+META_FILE = WORK_DIR / "checkpoint_meta.json"
+
+
+CALIBRATION_WEIGHTS_SUFFIX = "calibration_weights.npy"
+GEOGRAPHY_FILENAME = "geography_assignment.npz"
+LEGACY_BLOCKS_FILENAME = "stacked_blocks.npy"
+
+
+def _calibration_artifact_prefix(weights_path: Path) -> str:
+    if weights_path.name.endswith(CALIBRATION_WEIGHTS_SUFFIX):
+        return weights_path.name[: -len(CALIBRATION_WEIGHTS_SUFFIX)]
+    return ""
+
+
+def _sibling_artifact_path(weights_path: Path, artifact_name: str) -> Path:
+    prefix = _calibration_artifact_prefix(weights_path)
+    return weights_path.with_name(f"{prefix}{artifact_name}")
+
+
+def resolve_calibration_geography_paths(
+    weights_path: Path,
+    geography_path: Optional[Path] = None,
+    blocks_path: Optional[Path] = None,
+) -> Tuple[Optional[Path], Optional[Path]]:
+    geo_candidates = []
+    block_candidates = []
+    if geography_path is not None:
+        geo_candidates.append(Path(geography_path))
+    geo_candidates.append(_sibling_artifact_path(weights_path, GEOGRAPHY_FILENAME))
+
+    if blocks_path is not None:
+        block_candidates.append(Path(blocks_path))
+    block_candidates.append(
+        _sibling_artifact_path(weights_path, LEGACY_BLOCKS_FILENAME)
+    )
+    block_candidates.append(weights_path.with_name(LEGACY_BLOCKS_FILENAME))
+
+    resolved_geo = next((path for path in geo_candidates if path.exists()), None)
+    resolved_blocks = next(
+        (path for path in block_candidates if path.exists()),
+        None,
+    )
+    return resolved_geo, resolved_blocks
+
+
+def _update_hash_from_file(h: "hashlib._Hash", path: Path) -> None:
+    with open(path, "rb") as f:
+        while chunk := f.read(8192):
+            h.update(chunk)
+
+
+def compute_input_fingerprint(
+    weights_path: Path,
+    dataset_path: Path,
+    n_clones: Optional[int] = None,
+    seed: int = 42,
+    geography_path: Optional[Path] = None,
+    blocks_path: Optional[Path] = None,
+) -> str:
+    h = hashlib.sha256()
+    for p in [weights_path, dataset_path]:
+        _update_hash_from_file(h, p)
+
+    resolved_geo, resolved_blocks = resolve_calibration_geography_paths(
+        weights_path=weights_path,
+        geography_path=geography_path,
+        blocks_path=blocks_path,
+    )
+    if resolved_geo is not None:
+        h.update(b"geography_assignment")
+        _update_hash_from_file(h, resolved_geo)
+    elif resolved_blocks is not None:
+        h.update(b"legacy_stacked_blocks")
+        _update_hash_from_file(h, resolved_blocks)
+    else:
+        h.update(f"legacy_regeneration:{n_clones}:{seed}".encode())
+    return h.hexdigest()[:16]
+
+
+def load_calibration_geography(
+    weights_path: Path,
+    n_records: int,
+    n_clones: Optional[int] = None,
+    geography_path: Optional[Path] = None,
+    blocks_path: Optional[Path] = None,
+):
+    resolved_geo, resolved_blocks = resolve_calibration_geography_paths(
+        weights_path=weights_path,
+        geography_path=geography_path,
+        blocks_path=blocks_path,
+    )
+
+    if resolved_geo is not None:
+        geography = load_geography(resolved_geo)
+        if geography.n_records != n_records:
+            raise ValueError(
+                f"Geography artifact {resolved_geo} has n_records={geography.n_records}, "
+                f"expected {n_records}"
+            )
+        if n_clones is not None and geography.n_clones != n_clones:
+            raise ValueError(
+                f"Geography artifact {resolved_geo} has n_clones={geography.n_clones}, "
+                f"expected {n_clones}"
+            )
+        print(f"Loaded calibration geography from {resolved_geo}")
+        return geography
+
+    if resolved_blocks is not None:
+        block_geoids = np.asarray(
+            np.load(resolved_blocks, allow_pickle=True), dtype=str
+        )
+        if len(block_geoids) % n_records != 0:
+            raise ValueError(
+                f"Legacy blocks artifact {resolved_blocks} has {len(block_geoids)} "
+                f"rows, not divisible by n_records={n_records}"
+            )
+        inferred_n_clones = len(block_geoids) // n_records
+        if n_clones is not None and inferred_n_clones != n_clones:
+            raise ValueError(
+                f"Legacy blocks artifact {resolved_blocks} implies "
+                f"n_clones={inferred_n_clones}, expected {n_clones}"
+            )
+        print(
+            f"Reconstructing geography from legacy stacked blocks at {resolved_blocks}"
+        )
+        return reconstruct_geography_from_blocks(
+            block_geoids=block_geoids,
+            n_records=n_records,
+            n_clones=inferred_n_clones,
+        )
+
+    geo_hint = _sibling_artifact_path(weights_path, GEOGRAPHY_FILENAME)
+    legacy_hint = _sibling_artifact_path(weights_path, LEGACY_BLOCKS_FILENAME)
+    raise FileNotFoundError(
+        "No saved calibration geography found. Expected either "
+        f"{geo_hint} or {legacy_hint}. Re-run calibration on this branch or "
+        "provide --geography-path."
+    )
+
+
+def validate_or_clear_checkpoints(fingerprint: str):
+    if META_FILE.exists():
+        stored = json.loads(META_FILE.read_text())
+        if stored.get("fingerprint") == fingerprint:
+            print(f"Inputs unchanged ({fingerprint}), resuming...")
+            return
+        print(
+            f"Inputs changed "
+            f"({stored.get('fingerprint')} -> {fingerprint}), "
+            f"clearing..."
+        )
+    else:
+        print(f"No checkpoint metadata, starting fresh ({fingerprint})")
+    h5_count = sum(
+        1
+        for subdir in ["states", "districts", "cities"]
+        if (WORK_DIR / subdir).exists()
+        for _ in (WORK_DIR / subdir).rglob("*.h5")
+    )
+    if h5_count > 0:
+        print(
+            f"WARNING: {h5_count} H5 files exist. "
+            f"Clearing only checkpoint files, preserving H5s."
+        )
+        for cp in [
+            CHECKPOINT_FILE,
+            CHECKPOINT_FILE_DISTRICTS,
+            CHECKPOINT_FILE_CITIES,
+        ]:
+            if cp.exists():
+                cp.unlink()
+    else:
+        for cp in [
+            CHECKPOINT_FILE,
+            CHECKPOINT_FILE_DISTRICTS,
+            CHECKPOINT_FILE_CITIES,
+        ]:
+            if cp.exists():
+                cp.unlink()
+        for subdir in ["states", "districts", "cities"]:
+            d = WORK_DIR / subdir
+            if d.exists():
+                shutil.rmtree(d)
+    META_FILE.parent.mkdir(parents=True, exist_ok=True)
+    META_FILE.write_text(json.dumps({"fingerprint": fingerprint}))
+
+
+SUB_ENTITIES = [
+    "tax_unit",
+    "spm_unit",
+    "family",
+    "marital_unit",
 ]
 
 
@@ -105,13 +283,41 @@ def record_completed_city(city_name: str):
         f.write(f"{city_name}\n")
 
 
+def _build_reported_takeup_anchors(
+    data: dict, time_period: int
+) -> dict[str, np.ndarray]:
+    reported_anchors = {}
+    if (
+        "reported_has_subsidized_marketplace_health_coverage_at_interview" in data
+        and time_period
+        in data["reported_has_subsidized_marketplace_health_coverage_at_interview"]
+    ):
+        reported_anchors["takes_up_aca_if_eligible"] = (
+            reported_subsidized_marketplace_by_tax_unit(
+                data["person_tax_unit_id"][time_period],
+                data["tax_unit_id"][time_period],
+                data[
+                    "reported_has_subsidized_marketplace_health_coverage_at_interview"
+                ][time_period],
+            )
+        )
+    if (
+        "has_medicaid_health_coverage_at_interview" in data
+        and time_period in data["has_medicaid_health_coverage_at_interview"]
+    ):
+        reported_anchors["takes_up_medicaid_if_eligible"] = data[
+            "has_medicaid_health_coverage_at_interview"
+        ][time_period].astype(bool)
+    return reported_anchors
+
+
 def build_h5(
     weights: np.ndarray,
     geography,
     dataset_path: Path,
     output_path: Path,
     cd_subset: List[str] = None,
-    county_filter: set = None,
+    county_fips_filter: set = None,
     takeup_filter: List[str] = None,
 ) -> Path:
     """Build an H5 file by cloning records for each nonzero weight.
@@ -122,8 +328,8 @@ def build_h5(
         dataset_path: Path to base dataset H5 file.
         output_path: Where to write the output H5 file.
         cd_subset: If provided, only include clones for these CDs.
-        county_filter: If provided, scale weights by P(target|CD)
-            for city datasets.
+        county_fips_filter: If provided, zero out weights for clones
+            whose county FIPS is not in this set.
         takeup_filter: List of takeup vars to apply.
 
     Returns:
@@ -164,17 +370,11 @@ def build_h5(
         cd_mask = np.vectorize(lambda cd: cd in cd_subset_set)(clone_cds_matrix)
         W[~cd_mask] = 0
 
-    # County filtering: scale weights by P(target_counties | CD)
-    if county_filter is not None:
-        unique_cds = np.unique(clone_cds_matrix)
-        cd_prob = {
-            cd: get_county_filter_probability(cd, county_filter) for cd in unique_cds
-        }
-        p_matrix = np.vectorize(
-            cd_prob.__getitem__,
-            otypes=[float],
-        )(clone_cds_matrix)
-        W *= p_matrix
+    # County FIPS filtering: zero out clones not in target counties
+    if county_fips_filter is not None:
+        fips_array = np.asarray(geography.county_fips).reshape(n_clones_total, n_hh)
+        fips_mask = np.isin(fips_array, list(county_fips_filter))
+        W[~fips_mask] = 0
 
     label = (
         f"CD subset {cd_subset}"
@@ -191,7 +391,7 @@ def build_h5(
     if n_clones == 0:
         raise ValueError(
             f"No active clones after filtering. "
-            f"cd_subset={cd_subset}, county_filter={county_filter}"
+            f"cd_subset={cd_subset}, county_fips_filter={county_fips_filter}"
         )
     clone_weights = W[active_geo, active_hh]
     active_blocks = blocks.reshape(n_clones_total, n_hh)[active_geo, active_hh]
@@ -212,12 +412,6 @@ def build_h5(
     for p_idx, p_hh_id in enumerate(person_hh_ids):
         hh_to_persons[hh_id_to_idx[int(p_hh_id)]].append(p_idx)
 
-    SUB_ENTITIES = [
-        "tax_unit",
-        "spm_unit",
-        "family",
-        "marital_unit",
-    ]
     hh_to_entity = {}
     entity_id_arrays = {}
     person_entity_id_arrays = {}
@@ -311,22 +505,6 @@ def build_h5(
     unique_geo = derive_geography_from_blocks(unique_blocks)
     clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
-    # === Calculate weights for all entity levels ===
-    person_weights = np.repeat(clone_weights, persons_per_clone)
-    per_person_wt = clone_weights / np.maximum(persons_per_clone, 1)
-
-    entity_weights = {}
-    for ek in SUB_ENTITIES:
-        n_ents = len(entity_clone_idx[ek])
-        ent_person_counts = np.zeros(n_ents, dtype=np.int32)
-        np.add.at(
-            ent_person_counts,
-            new_person_entity_ids[ek],
-            1,
-        )
-        clone_ids_e = np.repeat(np.arange(n_clones), entities_per_clone[ek])
-        entity_weights[ek] = per_person_wt[clone_ids_e] * ent_person_counts
-
     # === Determine variables to save ===
     vars_to_save = set(sim.input_variables)
     vars_to_save.add("county")
@@ -376,7 +554,6 @@ def build_h5(
         for period in periods:
             values = holder.get_array(period)
 
-            # Convert Arrow-backed arrays to numpy before indexing
             if hasattr(values, "_pa_array") or hasattr(values, "_ndarray"):
                 values = np.asarray(values)
 
@@ -413,16 +590,12 @@ def build_h5(
         }
 
     # === Override weights ===
+    # Only write household_weight; sub-entity weights (tax_unit_weight,
+    # spm_unit_weight, person_weight, etc.) are formula variables in
+    # policyengine-us that derive from household_weight at runtime.
     data["household_weight"] = {
         time_period: clone_weights.astype(np.float32),
     }
-    data["person_weight"] = {
-        time_period: person_weights.astype(np.float32),
-    }
-    for ek in SUB_ENTITIES:
-        data[f"{ek}_weight"] = {
-            time_period: entity_weights[ek].astype(np.float32),
-        }
 
     # === Override geography ===
     data["state_fips"] = {
@@ -451,13 +624,20 @@ def build_h5(
                 time_period: clone_geo[gv].astype("S"),
             }
 
-    # === Gap 4: Congressional district GEOID ===
+    # === Set zip_code for LA County clones (ACA rating area fix) ===
+    la_mask = clone_geo["county_fips"].astype(str) == "06037"
+    if la_mask.any():
+        zip_codes = np.full(len(la_mask), "UNKNOWN")
+        zip_codes[la_mask] = "90001"
+        data["zip_code"] = {time_period: zip_codes.astype("S")}
+
+    # === Congressional district GEOID ===
     clone_cd_geoids = np.array([int(cd) for cd in active_clone_cds], dtype=np.int32)
     data["congressional_district_geoid"] = {
         time_period: clone_cd_geoids,
     }
 
-    # === Gap 1: SPM threshold recalculation ===
+    # === SPM threshold recalculation ===
     print("Recalculating SPM thresholds...")
     unique_cds_list = sorted(set(active_clone_cds))
     cd_geoadj_values = load_cd_geoadj_values(unique_cds_list)
@@ -471,10 +651,9 @@ def build_h5(
         dtype=np.float64,
     )
 
-    # Get cloned person ages and SPM unit IDs
+    # Get cloned person ages and SPM tenure types
     person_ages = sim.calculate("age", map_to="person").values[person_clone_idx]
 
-    # Get cloned tenure types
     spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
     spm_tenure_periods = spm_tenure_holder.get_known_periods()
     if spm_tenure_periods:
@@ -526,15 +705,18 @@ def build_h5(
         }
         hh_state_fips = clone_geo["state_fips"].astype(np.int32)
         original_hh_ids = household_ids[active_hh].astype(np.int64)
+        reported_anchors = _build_reported_takeup_anchors(data, time_period)
 
         takeup_results = apply_block_takeup_to_arrays(
             hh_blocks=active_blocks,
             hh_state_fips=hh_state_fips,
             hh_ids=original_hh_ids,
+            hh_clone_indices=active_geo.astype(np.int64),
             entity_hh_indices=entity_hh_indices,
             entity_counts=entity_counts,
             time_period=time_period,
             takeup_filter=takeup_filter,
+            reported_anchors=reported_anchors,
         )
         for var_name, bools in takeup_results.items():
             data[var_name] = {time_period: bools}
@@ -728,8 +910,6 @@ def build_cities(
     """Build city H5 files with checkpointing, optionally uploading."""
     w = np.load(weights_path)
 
-    all_cds = sorted(set(geography.cd_geoid.astype(str)))
-
     cities_dir = output_dir / "cities"
     cities_dir.mkdir(parents=True, exist_ok=True)
 
@@ -739,34 +919,29 @@ def build_cities(
     if "NYC" in completed_cities:
         print("Skipping NYC (already completed)")
     else:
-        cd_subset = [cd for cd in all_cds if cd in NYC_CDS]
-        if not cd_subset:
-            print("No NYC-related CDs found, skipping")
-        else:
-            output_path = cities_dir / "NYC.h5"
+        output_path = cities_dir / "NYC.h5"
 
-            try:
-                build_h5(
-                    weights=w,
-                    geography=geography,
-                    dataset_path=dataset_path,
-                    output_path=output_path,
-                    cd_subset=cd_subset,
-                    county_filter=NYC_COUNTIES,
-                    takeup_filter=takeup_filter,
-                )
+        try:
+            build_h5(
+                weights=w,
+                geography=geography,
+                dataset_path=dataset_path,
+                output_path=output_path,
+                county_fips_filter=NYC_COUNTY_FIPS,
+                takeup_filter=takeup_filter,
+            )
 
-                if upload:
-                    print("Uploading NYC.h5 to GCP...")
-                    upload_local_area_file(str(output_path), "cities", skip_hf=True)
-                    hf_queue.append((str(output_path), "cities"))
+            if upload:
+                print("Uploading NYC.h5 to GCP...")
+                upload_local_area_file(str(output_path), "cities", skip_hf=True)
+                hf_queue.append((str(output_path), "cities"))
 
-                record_completed_city("NYC")
-                print("Completed NYC")
+            record_completed_city("NYC")
+            print("Completed NYC")
 
-            except Exception as e:
-                print(f"ERROR building NYC: {e}")
-                raise
+        except Exception as e:
+            print(f"ERROR building NYC: {e}")
+            raise
 
     if upload and hf_queue:
         print(f"\nUploading batch of {len(hf_queue)} city files to HuggingFace...")
@@ -800,6 +975,11 @@ def main():
         help="Only build and upload city files (e.g., NYC)",
     )
     parser.add_argument(
+        "--national-only",
+        action="store_true",
+        help="Only build the national US.h5 file",
+    )
+    parser.add_argument(
         "--weights-path",
         type=str,
         help="Override path to weights file (for local testing)",
@@ -817,14 +997,26 @@ def main():
     parser.add_argument(
         "--n-clones",
         type=int,
-        required=True,
-        help="Number of clones used in calibration",
+        default=None,
+        help="Clone count override for validating saved geography artifacts",
     )
     parser.add_argument(
         "--seed",
         type=int,
         default=42,
-        help="Random seed used in calibration (default: 42)",
+        help="Legacy fallback seed used only if no saved geography is available",
+    )
+    parser.add_argument(
+        "--geography-path",
+        type=str,
+        default=None,
+        help="Override path to saved geography_assignment.npz",
+    )
+    parser.add_argument(
+        "--blocks-path",
+        type=str,
+        default=None,
+        help="Override path to legacy stacked_blocks.npy",
     )
     parser.add_argument(
         "--upload",
@@ -861,48 +1053,44 @@ def main():
 
     print(f"Using dataset: {inputs['dataset']}")
 
-    sim = Microsimulation(dataset=str(inputs["dataset"]))
-    n_hh = sim.calculate("household_id", map_to="household").shape[0]
-    del sim
+    print("Computing input fingerprint...")
+    fingerprint = compute_input_fingerprint(
+        inputs["weights"],
+        inputs["dataset"],
+        args.n_clones,
+        args.seed,
+        geography_path=Path(args.geography_path) if args.geography_path else None,
+        blocks_path=Path(args.blocks_path) if args.blocks_path else None,
+    )
+    validate_or_clear_checkpoints(fingerprint)
+
+    print("Loading base simulation to get household count...")
+    _sim = Microsimulation(dataset=str(inputs["dataset"]))
+    n_hh = len(_sim.calculate("household_id", map_to="household").values)
+    del _sim
     print(f"\nBase dataset has {n_hh:,} households")
 
-    geo_cache = WORK_DIR / f"geography_{n_hh}x{args.n_clones}_s{args.seed}.npz"
-    if geo_cache.exists():
-        print(f"Loading cached geography from {geo_cache}")
-        npz = np.load(geo_cache, allow_pickle=True)
-        geography = GeographyAssignment(
-            block_geoid=npz["block_geoid"],
-            cd_geoid=npz["cd_geoid"],
-            county_fips=npz["county_fips"],
-            state_fips=npz["state_fips"],
-            n_records=n_hh,
-            n_clones=args.n_clones,
-        )
-    else:
-        print(
-            f"Generating geography: {n_hh} records x "
-            f"{args.n_clones} clones, seed={args.seed}"
-        )
-        geography = assign_random_geography(
-            n_records=n_hh,
-            n_clones=args.n_clones,
-            seed=args.seed,
-        )
-        np.savez_compressed(
-            geo_cache,
-            block_geoid=geography.block_geoid,
-            cd_geoid=geography.cd_geoid,
-            county_fips=geography.county_fips,
-            state_fips=geography.state_fips,
-        )
-        print(f"Saved geography cache to {geo_cache}")
+    geography = load_calibration_geography(
+        weights_path=inputs["weights"],
+        n_records=n_hh,
+        n_clones=args.n_clones,
+        geography_path=Path(args.geography_path) if args.geography_path else None,
+        blocks_path=Path(args.blocks_path) if args.blocks_path else None,
+    )
     takeup_filter = [spec["variable"] for spec in SIMPLE_TAKEUP_VARS]
     print(f"Takeup filter: {takeup_filter}")
 
     # Determine what to build based on flags
-    do_states = not args.districts_only and not args.cities_only
-    do_districts = not args.states_only and not args.cities_only
-    do_cities = not args.states_only and not args.districts_only
+    do_national = args.national_only
+    do_states = (
+        not args.districts_only and not args.cities_only and not args.national_only
+    )
+    do_districts = (
+        not args.states_only and not args.cities_only and not args.national_only
+    )
+    do_cities = (
+        not args.states_only and not args.districts_only and not args.national_only
+    )
 
     # If a specific *-only flag is set, only build that type
     if args.states_only:
@@ -917,6 +1105,22 @@ def main():
         do_states = False
         do_districts = False
         do_cities = True
+
+    if do_national:
+        print("\n" + "=" * 60)
+        print("BUILDING NATIONAL US.h5")
+        print("=" * 60)
+        weights = np.load(inputs["weights"])
+        national_dir = WORK_DIR / "national"
+        national_dir.mkdir(parents=True, exist_ok=True)
+        path = build_h5(
+            weights=weights,
+            geography=geography,
+            dataset_path=inputs["dataset"],
+            output_path=national_dir / "US.h5",
+            takeup_filter=takeup_filter,
+        )
+        print(f"Built {path}")
 
     if do_states:
         print("\n" + "=" * 60)

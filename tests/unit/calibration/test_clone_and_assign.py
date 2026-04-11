@@ -1,0 +1,300 @@
+"""Tests for clone_and_assign module.
+
+Uses mock CSV data so tests don't require the real
+block_cd_distributions.csv.gz file.
+"""
+
+import numpy as np
+import pandas as pd
+import pytest
+from unittest.mock import patch
+
+from policyengine_us_data.calibration.clone_and_assign import (
+    GeographyAssignment,
+    _build_agi_block_probs,
+    load_global_block_distribution,
+    load_sorted_block_cd_lookup,
+    assign_random_geography,
+    double_geography_for_puf,
+    reconstruct_geography_from_blocks,
+    save_geography,
+    load_geography,
+)
+
+MOCK_BLOCKS = pd.DataFrame(
+    {
+        "cd_geoid": [101, 101, 101, 102, 102, 103, 103, 103, 103],
+        "block_geoid": [
+            "010010001001001",
+            "010010001001002",
+            "010010001001003",
+            "020010001001001",
+            "020010001001002",
+            "360100001001001",
+            "360100001001002",
+            "360100001001003",
+            "360100001001004",
+        ],
+        "probability": [
+            0.4,
+            0.3,
+            0.3,
+            0.6,
+            0.4,
+            0.25,
+            0.25,
+            0.25,
+            0.25,
+        ],
+    }
+)
+
+
+@pytest.fixture(autouse=True)
+def _clear_lru_cache():
+    load_global_block_distribution.cache_clear()
+    load_sorted_block_cd_lookup.cache_clear()
+    yield
+    load_global_block_distribution.cache_clear()
+    load_sorted_block_cd_lookup.cache_clear()
+
+
+def _mock_distribution():
+    blocks = MOCK_BLOCKS["block_geoid"].values
+    cds = MOCK_BLOCKS["cd_geoid"].astype(str).values
+    states = np.array([int(b[:2]) for b in blocks])
+    probs = MOCK_BLOCKS["probability"].values.astype(np.float64)
+    probs = probs / probs.sum()
+    return blocks, cds, states, probs
+
+
+class TestLoadGlobalBlockDistribution:
+    def test_loads_and_normalizes(self, tmp_path):
+        csv_path = tmp_path / "block_cd_distributions.csv.gz"
+        MOCK_BLOCKS.to_csv(csv_path, index=False, compression="gzip")
+        with patch(
+            "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
+            tmp_path,
+        ):
+            blocks, cds, states, probs = load_global_block_distribution.__wrapped__()
+        assert len(blocks) == 9
+        np.testing.assert_almost_equal(probs.sum(), 1.0)
+
+    def test_state_fips_extracted(self, tmp_path):
+        csv_path = tmp_path / "block_cd_distributions.csv.gz"
+        MOCK_BLOCKS.to_csv(csv_path, index=False, compression="gzip")
+        with patch(
+            "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
+            tmp_path,
+        ):
+            _, _, states, _ = load_global_block_distribution.__wrapped__()
+        assert states[0] == 1
+        assert states[3] == 2
+        assert states[5] == 36
+
+
+class TestAssignRandomGeography:
+    def test_build_agi_block_probs_matches_district_target_shares(self):
+        cds = np.array(["101", "101", "102", "102"])
+        pop_probs = np.array([0.45, 0.45, 0.05, 0.05], dtype=np.float64)
+        agi_targets = {"101": 1.0, "102": 3.0}
+
+        agi_probs = _build_agi_block_probs(cds, pop_probs, agi_targets)
+
+        by_cd = {cd: agi_probs[cds == cd].sum() for cd in np.unique(cds)}
+        np.testing.assert_allclose(by_cd["101"], 0.25)
+        np.testing.assert_allclose(by_cd["102"], 0.75)
+        np.testing.assert_allclose(
+            agi_probs[cds == "101"] / agi_probs[cds == "101"].sum(),
+            pop_probs[cds == "101"] / pop_probs[cds == "101"].sum(),
+        )
+        np.testing.assert_allclose(
+            agi_probs[cds == "102"] / agi_probs[cds == "102"].sum(),
+            pop_probs[cds == "102"] / pop_probs[cds == "102"].sum(),
+        )
+
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_shape(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        r = assign_random_geography(n_records=10, n_clones=3, seed=42)
+        assert len(r.block_geoid) == 30
+        assert r.n_records == 10
+        assert r.n_clones == 3
+
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_deterministic(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        r1 = assign_random_geography(n_records=10, n_clones=3, seed=99)
+        r2 = assign_random_geography(n_records=10, n_clones=3, seed=99)
+        np.testing.assert_array_equal(r1.block_geoid, r2.block_geoid)
+
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_different_seeds_differ(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        r1 = assign_random_geography(n_records=100, n_clones=3, seed=1)
+        r2 = assign_random_geography(n_records=100, n_clones=3, seed=2)
+        assert not np.array_equal(r1.block_geoid, r2.block_geoid)
+
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_state_from_block(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        r = assign_random_geography(n_records=20, n_clones=5, seed=42)
+        for i in range(len(r.block_geoid)):
+            expected = int(r.block_geoid[i][:2])
+            assert r.state_fips[i] == expected
+
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_no_cd_collisions_across_clones(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        r = assign_random_geography(n_records=100, n_clones=3, seed=42)
+        for rec in range(r.n_records):
+            rec_cds = [
+                r.cd_geoid[clone * r.n_records + rec] for clone in range(r.n_clones)
+            ]
+            assert len(rec_cds) == len(set(rec_cds)), (
+                f"Record {rec} has duplicate CDs: {rec_cds}"
+            )
+
+    def test_missing_file_raises(self, tmp_path):
+        fake = tmp_path / "nonexistent"
+        fake.mkdir()
+        with patch(
+            "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
+            fake,
+        ):
+            with pytest.raises(FileNotFoundError):
+                load_global_block_distribution.__wrapped__()
+
+
+class TestDoubleGeographyForPuf:
+    def test_doubles_n_records(self):
+        geo = GeographyAssignment(
+            block_geoid=np.array(["010010001001001", "020010001001001"] * 3),
+            cd_geoid=np.array(["101", "202"] * 3),
+            county_fips=np.array(["01001", "02001"] * 3),
+            state_fips=np.array([1, 2] * 3),
+            n_records=2,
+            n_clones=3,
+        )
+        r = double_geography_for_puf(geo)
+        assert r.n_records == 4
+        assert r.n_clones == 3
+        assert len(r.block_geoid) == 12
+
+    def test_puf_half_matches_cps_half(self):
+        geo = GeographyAssignment(
+            block_geoid=np.array(
+                [
+                    "010010001001001",
+                    "020010001001001",
+                    "360100001001001",
+                    "060100001001001",
+                    "480100001001001",
+                    "120100001001001",
+                ]
+            ),
+            cd_geoid=np.array(["101", "202", "1036", "653", "4831", "1227"]),
+            county_fips=np.array(
+                ["01001", "02001", "36010", "06010", "48010", "12010"]
+            ),
+            state_fips=np.array([1, 2, 36, 6, 48, 12]),
+            n_records=3,
+            n_clones=2,
+        )
+        r = double_geography_for_puf(geo)
+        n_new = r.n_records
+
+        for c in range(r.n_clones):
+            start = c * n_new
+            mid = start + n_new // 2
+            end = start + n_new
+            np.testing.assert_array_equal(
+                r.state_fips[start:mid],
+                r.state_fips[mid:end],
+            )
+
+
+class TestGeographyArtifacts:
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_reconstruct_geography_from_blocks(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        blocks = np.array(
+            [
+                "010010001001001",
+                "020010001001002",
+                "360100001001004",
+                "010010001001003",
+            ],
+            dtype=str,
+        )
+
+        geo = reconstruct_geography_from_blocks(
+            block_geoids=blocks,
+            n_records=2,
+            n_clones=2,
+        )
+
+        np.testing.assert_array_equal(
+            geo.cd_geoid,
+            np.array(["101", "102", "103", "101"]),
+        )
+        np.testing.assert_array_equal(
+            geo.county_fips,
+            np.array(["01001", "02001", "36010", "01001"]),
+        )
+        np.testing.assert_array_equal(
+            geo.state_fips,
+            np.array([1, 2, 36, 1], dtype=np.int32),
+        )
+
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_reconstruct_geography_from_blocks_raises_on_unknown_block(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        with pytest.raises(KeyError):
+            reconstruct_geography_from_blocks(
+                block_geoids=np.array(["999999999999999"], dtype=str),
+                n_records=1,
+                n_clones=1,
+            )
+
+    def test_save_and_load_geography_round_trip(self, tmp_path):
+        geo = GeographyAssignment(
+            block_geoid=np.array(["010010001001001", "020010001001001"]),
+            cd_geoid=np.array(["101", "202"]),
+            county_fips=np.array(["01001", "02001"]),
+            state_fips=np.array([1, 2], dtype=np.int32),
+            n_records=1,
+            n_clones=2,
+        )
+        path = tmp_path / "geography_assignment.npz"
+
+        save_geography(geo, path)
+        loaded = load_geography(path)
+
+        np.testing.assert_array_equal(loaded.block_geoid, geo.block_geoid)
+        np.testing.assert_array_equal(loaded.cd_geoid, geo.cd_geoid)
+        np.testing.assert_array_equal(loaded.county_fips, geo.county_fips)
+        np.testing.assert_array_equal(loaded.state_fips, geo.state_fips)
+        assert loaded.n_records == geo.n_records
+        assert loaded.n_clones == geo.n_clones

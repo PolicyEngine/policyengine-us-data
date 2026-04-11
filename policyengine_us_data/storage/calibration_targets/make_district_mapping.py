@@ -40,7 +40,7 @@ import pandas as pd
 import numpy as np
 import us
 
-from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
+from policyengine_us_data.storage import STORAGE_FOLDER
 
 
 def fetch_block_to_district_map(congress: int) -> pd.DataFrame:

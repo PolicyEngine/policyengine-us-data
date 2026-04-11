@@ -12,6 +12,15 @@ Usage:
 """
 
 import argparse
+import os
+
+import pandas as pd
+
+from policyengine_us_data.calibration.ctc_diagnostics import (
+    create_ctc_diagnostic_tables,
+    format_ctc_diagnostic_table,
+)
+from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
 
 VARIABLES = [
     "adjusted_gross_income",
@@ -27,11 +36,14 @@ VARIABLES = [
     "snap",
     "ssi",
     "income_tax_before_credits",
+    "ctc",
     "eitc",
+    "non_refundable_ctc",
     "refundable_ctc",
     "real_estate_taxes",
     "rent",
     "is_pregnant",
+    "ctc_qualifying_children",
     "person_count",
     "household_count",
 ]
@@ -45,13 +57,272 @@ REFERENCES = {
     "snap": (110_000_000_000, "~$110B"),
     "ssi": (60_000_000_000, "~$60B"),
     "eitc": (60_000_000_000, "~$60B"),
-    "refundable_ctc": (120_000_000_000, "~$120B"),
     "income_tax_before_credits": (4_000_000_000_000, "~$4T"),
 }
 
 DEFAULT_HF_PATH = "hf://policyengine/policyengine-us-data/national/US.h5"
 
-COUNT_VARS = {"person_count", "household_count", "is_pregnant"}
+COUNT_VARS = {
+    "person_count",
+    "household_count",
+    "is_pregnant",
+    "ctc_qualifying_children",
+}
+
+CANONICAL_CTC_REFORM_VARIABLES = [
+    "ctc_value",
+    "ctc",
+    "refundable_ctc",
+    "non_refundable_ctc",
+    "eitc",
+    "household_net_income",
+]
+
+CANONICAL_CTC_REFORM_DICT = {
+    "gov.irs.credits.eitc.max[0].amount": {"2025-01-01.2100-12-31": 2_000},
+    "gov.irs.credits.eitc.max[1].amount": {"2025-01-01.2100-12-31": 2_000},
+    "gov.irs.credits.eitc.max[2].amount": {"2025-01-01.2100-12-31": 2_000},
+    "gov.irs.credits.eitc.max[3].amount": {"2025-01-01.2100-12-31": 2_000},
+    "gov.irs.credits.ctc.phase_out.amount": {"2025-01-01.2100-12-31": 25},
+    "gov.irs.credits.ctc.amount.arpa[0].amount": {"2025-01-01.2100-12-31": 4_800},
+    "gov.irs.credits.ctc.amount.arpa[1].amount": {"2025-01-01.2100-12-31": 4_800},
+    "gov.irs.credits.ctc.phase_out.arpa.amount": {"2025-01-01.2100-12-31": 25},
+    "gov.contrib.ctc.minimum_refundable.in_effect": {"2025-01-01.2100-12-31": True},
+    "gov.contrib.ctc.per_child_phase_in.in_effect": {"2025-01-01.2100-12-31": True},
+    "gov.irs.credits.ctc.phase_out.arpa.in_effect": {"2025-01-01.2100-12-31": True},
+    "gov.irs.credits.ctc.refundable.phase_in.rate": {"2025-01-01.2100-12-31": 0.2},
+    "gov.irs.credits.eitc.phase_in_rate[0].amount": {"2025-01-01.2100-12-31": 0.2},
+    "gov.irs.credits.eitc.phase_in_rate[1].amount": {"2025-01-01.2100-12-31": 0.2},
+    "gov.irs.credits.eitc.phase_in_rate[2].amount": {"2025-01-01.2100-12-31": 0.2},
+    "gov.irs.credits.eitc.phase_in_rate[3].amount": {"2025-01-01.2100-12-31": 0.2},
+    "gov.contrib.ctc.per_child_phase_out.in_effect": {"2025-01-01.2100-12-31": True},
+    "gov.irs.credits.ctc.phase_out.threshold.JOINT": {"2025-01-01.2100-12-31": 200_000},
+    "gov.irs.credits.ctc.refundable.individual_max": {"2025-01-01.2100-12-31": 4_800},
+    "gov.irs.credits.eitc.phase_out.rate[0].amount": {"2025-01-01.2100-12-31": 0.1},
+    "gov.irs.credits.eitc.phase_out.rate[1].amount": {"2025-01-01.2100-12-31": 0.1},
+    "gov.irs.credits.eitc.phase_out.rate[2].amount": {"2025-01-01.2100-12-31": 0.1},
+    "gov.irs.credits.eitc.phase_out.rate[3].amount": {"2025-01-01.2100-12-31": 0.1},
+    "gov.irs.credits.ctc.phase_out.threshold.SINGLE": {
+        "2025-01-01.2100-12-31": 100_000
+    },
+    "gov.irs.credits.eitc.phase_out.start[0].amount": {"2025-01-01.2100-12-31": 20_000},
+    "gov.irs.credits.eitc.phase_out.start[1].amount": {"2025-01-01.2100-12-31": 20_000},
+    "gov.irs.credits.eitc.phase_out.start[2].amount": {"2025-01-01.2100-12-31": 20_000},
+    "gov.irs.credits.eitc.phase_out.start[3].amount": {"2025-01-01.2100-12-31": 20_000},
+    "gov.irs.credits.ctc.phase_out.threshold.SEPARATE": {
+        "2025-01-01.2100-12-31": 100_000
+    },
+    "gov.contrib.ctc.per_child_phase_out.avoid_overlap": {
+        "2025-01-01.2100-12-31": True
+    },
+    "gov.irs.credits.ctc.refundable.phase_in.threshold": {"2025-01-01.2100-12-31": 0},
+    "gov.irs.credits.ctc.phase_out.arpa.threshold.JOINT": {
+        "2025-01-01.2100-12-31": 35_000
+    },
+    "gov.contrib.ctc.minimum_refundable.amount[0].amount": {
+        "2025-01-01.2100-12-31": 2_400
+    },
+    "gov.contrib.ctc.minimum_refundable.amount[1].amount": {
+        "2025-01-01.2100-12-31": 2_400
+    },
+    "gov.irs.credits.ctc.phase_out.arpa.threshold.SINGLE": {
+        "2025-01-01.2100-12-31": 25_000
+    },
+    "gov.irs.credits.eitc.phase_out.joint_bonus[0].amount": {
+        "2025-01-01.2100-12-31": 7_000
+    },
+    "gov.irs.credits.eitc.phase_out.joint_bonus[1].amount": {
+        "2025-01-01.2100-12-31": 7_000
+    },
+    "gov.irs.credits.ctc.phase_out.arpa.threshold.SEPARATE": {
+        "2025-01-01.2100-12-31": 25_000
+    },
+    "gov.irs.credits.ctc.phase_out.threshold.SURVIVING_SPOUSE": {
+        "2025-01-01.2100-12-31": 100_000
+    },
+    "gov.irs.credits.ctc.phase_out.threshold.HEAD_OF_HOUSEHOLD": {
+        "2025-01-01.2100-12-31": 100_000
+    },
+    "gov.irs.credits.ctc.phase_out.arpa.threshold.SURVIVING_SPOUSE": {
+        "2025-01-01.2100-12-31": 25_000
+    },
+    "gov.irs.credits.ctc.phase_out.arpa.threshold.HEAD_OF_HOUSEHOLD": {
+        "2025-01-01.2100-12-31": 25_000
+    },
+}
+
+
+def get_reference_values(reference_year: int = 2024):
+    """Return national validation references for the current production year."""
+    references = dict(REFERENCES)
+    for variable in ("refundable_ctc", "non_refundable_ctc"):
+        target = get_national_geography_soi_target(
+            variable,
+            reference_year,
+        )
+        references[variable] = (
+            target["amount"],
+            f"IRS SOI {target['source_year']} ${target['amount'] / 1e9:.1f}B",
+        )
+    return references
+
+
+def get_ctc_diagnostic_outputs(sim) -> dict[str, str]:
+    """Return formatted CTC diagnostics for human-readable validation output."""
+    tables = create_ctc_diagnostic_tables(sim)
+    outputs = {
+        "CTC DIAGNOSTICS BY AGI BAND": format_ctc_diagnostic_table(
+            tables["by_agi_band"]
+        ),
+        "CTC DIAGNOSTICS BY FILING STATUS": format_ctc_diagnostic_table(
+            tables["by_filing_status"]
+        ),
+    }
+    if "by_agi_band_and_filing_status" in tables:
+        outputs["CTC DIAGNOSTICS BY AGI BAND AND FILING STATUS"] = (
+            format_ctc_diagnostic_table(tables["by_agi_band_and_filing_status"])
+        )
+    if "by_child_count" in tables:
+        outputs["CTC DIAGNOSTICS BY QUALIFYING-CHILD COUNT"] = (
+            format_ctc_diagnostic_table(tables["by_child_count"])
+        )
+    if "by_child_age" in tables:
+        outputs["CTC DIAGNOSTICS BY QUALIFYING-CHILD AGE"] = (
+            format_ctc_diagnostic_table(tables["by_child_age"])
+        )
+    return outputs
+
+
+def build_canonical_ctc_reform_summary(
+    baseline_sim,
+    reformed_sim,
+    *,
+    period: int = 2025,
+) -> pd.DataFrame:
+    rows = []
+    for variable in CANONICAL_CTC_REFORM_VARIABLES:
+        baseline = float(baseline_sim.calculate(variable, period=period).sum())
+        reformed = float(reformed_sim.calculate(variable, period=period).sum())
+        rows.append(
+            {
+                "variable": variable,
+                "baseline": baseline,
+                "reformed": reformed,
+                "delta": reformed - baseline,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _format_canonical_ctc_reform_summary(table: pd.DataFrame) -> str:
+    display = table.copy()
+    for column in ("baseline", "reformed", "delta"):
+        display[column] = display[column].map(lambda value: f"${value / 1e9:,.1f}B")
+    return display.to_string(index=False)
+
+
+def _subtract_diagnostic_tables(
+    baseline_tables: dict[str, pd.DataFrame],
+    reformed_tables: dict[str, pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    delta_tables = {}
+    for name, baseline in baseline_tables.items():
+        if name not in reformed_tables:
+            continue
+        reformed = reformed_tables[name]
+        numeric_columns = [
+            column
+            for column in baseline.columns
+            if column in reformed.columns
+            and pd.api.types.is_numeric_dtype(baseline[column])
+            and pd.api.types.is_numeric_dtype(reformed[column])
+        ]
+        id_columns = [
+            column
+            for column in baseline.columns
+            if column in reformed.columns and column not in numeric_columns
+        ]
+        merged = baseline.merge(
+            reformed,
+            on=id_columns,
+            suffixes=("_baseline", "_reformed"),
+        )
+        delta = merged[id_columns].copy()
+        for column in numeric_columns:
+            delta[column] = merged[f"{column}_reformed"] - merged[f"{column}_baseline"]
+        delta_tables[name] = delta
+    return delta_tables
+
+
+def _create_canonical_ctc_reform():
+    from policyengine_core.reforms import Reform
+
+    return Reform.from_dict(CANONICAL_CTC_REFORM_DICT, country_id="us")
+
+
+def get_canonical_ctc_reform_outputs(
+    dataset_path: str,
+    *,
+    baseline_sim=None,
+    period: int = 2025,
+) -> dict[str, str]:
+    from policyengine_us import Microsimulation
+
+    if baseline_sim is None:
+        baseline_sim = Microsimulation(dataset=dataset_path)
+
+    reformed_sim = Microsimulation(
+        dataset=dataset_path,
+        reform=_create_canonical_ctc_reform(),
+    )
+
+    outputs = {
+        "CANONICAL CTC REFORM NATIONAL DELTAS": _format_canonical_ctc_reform_summary(
+            build_canonical_ctc_reform_summary(
+                baseline_sim,
+                reformed_sim,
+                period=period,
+            )
+        )
+    }
+
+    delta_tables = _subtract_diagnostic_tables(
+        create_ctc_diagnostic_tables(baseline_sim, period=period),
+        create_ctc_diagnostic_tables(reformed_sim, period=period),
+    )
+    section_names = {
+        "by_agi_band": "CANONICAL CTC REFORM DELTAS BY AGI BAND",
+        "by_filing_status": "CANONICAL CTC REFORM DELTAS BY FILING STATUS",
+        "by_agi_band_and_filing_status": (
+            "CANONICAL CTC REFORM DELTAS BY AGI BAND AND FILING STATUS"
+        ),
+        "by_child_count": "CANONICAL CTC REFORM DELTAS BY QUALIFYING-CHILD COUNT",
+        "by_child_age": "CANONICAL CTC REFORM DELTAS BY QUALIFYING-CHILD AGE",
+    }
+    for name, table in delta_tables.items():
+        if name in section_names:
+            outputs[section_names[name]] = format_ctc_diagnostic_table(table)
+
+    return outputs
+
+
+def resolve_dataset_path(dataset_path: str) -> str:
+    """Resolve Hugging Face dataset URIs to a local H5 path."""
+    if not dataset_path.startswith("hf://"):
+        return dataset_path
+
+    from huggingface_hub import hf_hub_download
+
+    parts = dataset_path[5:].split("/", 2)
+    if len(parts) != 3:
+        raise ValueError(f"Unexpected hf:// dataset path: {dataset_path}")
+
+    return hf_hub_download(
+        repo_id=f"{parts[0]}/{parts[1]}",
+        filename=parts[2],
+        repo_type="model",
+        token=os.environ.get("HUGGING_FACE_TOKEN"),
+    )
 
 
 def main(argv=None):
@@ -69,11 +340,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     dataset_path = args.h5_path or args.hf_path
+    resolved_dataset_path = resolve_dataset_path(dataset_path)
 
     from policyengine_us import Microsimulation
 
     print(f"Loading {dataset_path}...")
-    sim = Microsimulation(dataset=dataset_path)
+    sim = Microsimulation(dataset=resolved_dataset_path)
 
     n_hh = sim.calculate("household_id", map_to="household").shape[0]
     print(f"Households in file: {n_hh:,}")
@@ -101,7 +373,7 @@ def main(argv=None):
     print("=" * 70)
 
     any_flag = False
-    for var, (ref_val, ref_label) in REFERENCES.items():
+    for var, (ref_val, ref_label) in get_reference_values().items():
         if var not in values:
             continue
         val = values[var]
@@ -130,6 +402,21 @@ def main(argv=None):
         for var, err in failures:
             print(f"  {var}: {err}")
 
+    for section_name, section_output in get_ctc_diagnostic_outputs(sim).items():
+        print("\n" + "=" * 70)
+        print(section_name)
+        print("=" * 70)
+        print(section_output)
+
+    for section_name, section_output in get_canonical_ctc_reform_outputs(
+        resolved_dataset_path,
+        baseline_sim=sim,
+    ).items():
+        print("\n" + "=" * 70)
+        print(section_name)
+        print("=" * 70)
+        print(section_output)
+
     print("\n" + "=" * 70)
     print("STRUCTURAL CHECKS")
     print("=" * 70)
@@ -138,7 +425,7 @@ def main(argv=None):
         run_sanity_checks,
     )
 
-    results = run_sanity_checks(dataset_path)
+    results = run_sanity_checks(resolved_dataset_path)
     n_pass = sum(1 for r in results if r["status"] == "PASS")
     n_fail = sum(1 for r in results if r["status"] == "FAIL")
     for r in results:

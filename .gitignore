@@ -4,6 +4,7 @@
 **/*.h5
 **/*.npy
 **/*.csv
+**/*.csv.gz
 **/_build
 **/*.pkl
 **/*.db
@@ -13,10 +14,12 @@ node_modules
 ## old (not clean) targets
 !healthcare_spending.csv
 !medicaid_enrollment_2024.csv
+!medicaid_enrollment_2025.csv
 !eitc.csv
 !spm_threshold_agi.csv
 !population_by_state.csv
 !aca_spending_and_enrollment_2024.csv
+!aca_spending_and_enrollment_2025.csv
 !real_estate_taxes_by_state_acs.csv
 !snap_state.csv
 !age_state.csv
@@ -29,6 +32,7 @@ docs/.ipynb_checkpoints/
 
 ## ACA PTC state-level uprating factors
 !policyengine_us_data/storage/aca_ptc_multipliers_2022_2024.csv
+!policyengine_us_data/storage/aca_ptc_multipliers_2022_2025.csv
 
 ## Calibration run outputs (weights, diagnostics, packages, config)
 policyengine_us_data/storage/calibration/

@@ -4,9 +4,7 @@ import zipfile
 import io
 
 import pandas as pd
-import numpy as np
-import us
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, create_engine
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (
@@ -25,7 +23,6 @@ from policyengine_us_data.utils.db import (
 )
 from policyengine_us_data.utils.raw_cache import (
     is_cached,
-    cache_path,
     save_bytes,
     load_bytes,
 )

@@ -10,9 +10,9 @@ Data source: https://www.census.gov/programs-surveys/stc/data/datasets.html
 """
 
 import logging
+
 import pandas as pd
-import numpy as np
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, create_engine
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (
@@ -29,19 +29,12 @@ from policyengine_us_data.utils.raw_cache import (
 
 logger = logging.getLogger(__name__)
 
-
-# States without individual income tax (these will have $0 target)
-NO_INCOME_TAX_STATES = {
-    "AK",  # Alaska
-    "FL",  # Florida
-    "NV",  # Nevada
-    "SD",  # South Dakota
-    "TX",  # Texas
-    "WA",  # Washington (has capital gains tax only, modeled separately)
-    "WY",  # Wyoming
-    "NH",  # New Hampshire (phased out interest/dividends tax)
-    "TN",  # Tennessee (phased out Hall income tax)
+CENSUS_STC_FLAT_FILE_URLS = {
+    2023: "https://www2.census.gov/programs-surveys/stc/datasets/2023/FY2023-Flat-File.txt",
 }
+LATEST_STC_YEAR = max(CENSUS_STC_FLAT_FILE_URLS)
+CENSUS_STC_INDIVIDUAL_INCOME_TAX_ITEM = "T40"
+CENSUS_STC_NOT_AVAILABLE = "X"
 
 STATE_FIPS_TO_ABBREV = {
     "01": "AL",
@@ -104,11 +97,10 @@ def extract_state_income_tax_data(year: int = 2023) -> pd.DataFrame:
     """
     Extract state individual income tax collections from Census STC.
 
-    Uses hardcoded FY2023 values from Census Bureau's Annual Survey of
-    State Government Tax Collections. These values are derived from
-    Census STC Table 1: State Government Tax Collections by Category.
-
-    Source: https://www.census.gov/data/tables/2023/econ/stc/2023-annual.html
+    Parses the official FY2023 Census STC flat file and extracts item
+    ``T40`` (Individual Income Taxes). Census reports amounts in
+    thousands of dollars, so the returned values are converted to
+    dollars. Cells marked ``X`` in the source are treated as 0.
 
     Args:
         year: Fiscal year for the data (currently only 2023 supported)
@@ -116,7 +108,14 @@ def extract_state_income_tax_data(year: int = 2023) -> pd.DataFrame:
     Returns:
         DataFrame with state_fips, state_abbrev, and income_tax_collections
     """
-    cache_file = f"census_stc_individual_income_tax_{year}.json"
+    if year not in CENSUS_STC_FLAT_FILE_URLS:
+        raise ValueError(
+            f"Only years {sorted(CENSUS_STC_FLAT_FILE_URLS)} are supported, got {year}"
+        )
+
+    # Use a distinct cache key so existing bad hardcoded JSON cannot survive
+    # the switch to the official Census T40 download.
+    cache_file = f"census_stc_t40_individual_income_tax_{year}.json"
 
     if is_cached(cache_file):
         logger.info(f"Using cached {cache_file}")
@@ -124,67 +123,24 @@ def extract_state_income_tax_data(year: int = 2023) -> pd.DataFrame:
         return pd.DataFrame(data)
 
     logger.info(f"Building Census STC individual income tax data for FY{year}")
-
-    # FY2023 values in dollars from Census STC
-    # Source: Census STC Table 1 - State Government Tax Collections by Category
-    # https://www.census.gov/data/tables/2023/econ/stc/2023-annual.html
-    stc_2023_individual_income_tax = {
-        "AL": 5_881_000_000,
-        "AK": 0,
-        "AZ": 5_424_000_000,
-        "AR": 4_352_000_000,
-        "CA": 115_845_000_000,
-        "CO": 13_671_000_000,
-        "CT": 10_716_000_000,
-        "DE": 1_747_000_000,
-        "DC": 3_456_000_000,
-        "FL": 0,
-        "GA": 15_297_000_000,
-        "HI": 2_725_000_000,
-        "ID": 2_593_000_000,
-        "IL": 21_453_000_000,
-        "IN": 8_098_000_000,
-        "IA": 5_243_000_000,
-        "KS": 4_304_000_000,
-        "KY": 6_163_000_000,
-        "LA": 4_088_000_000,
-        "ME": 2_246_000_000,
-        "MD": 11_635_000_000,
-        "MA": 18_645_000_000,
-        "MI": 12_139_000_000,
-        "MN": 14_239_000_000,
-        "MS": 2_477_000_000,
-        "MO": 9_006_000_000,
-        "MT": 1_718_000_000,
-        "NE": 3_248_000_000,
-        "NV": 0,
-        "NH": 0,
-        "NJ": 17_947_000_000,
-        "NM": 2_224_000_000,
-        "NY": 63_247_000_000,
-        "NC": 17_171_000_000,
-        "ND": 534_000_000,
-        "OH": 9_520_000_000,  # Confirmed with Policy Matters Ohio
-        "OK": 4_253_000_000,
-        "OR": 11_583_000_000,
-        "PA": 16_898_000_000,
-        "RI": 1_739_000_000,
-        "SC": 6_367_000_000,
-        "SD": 0,
-        "TN": 0,
-        "TX": 0,
-        "UT": 5_464_000_000,
-        "VT": 1_035_000_000,
-        "VA": 17_934_000_000,
-        "WA": 0,  # WA has capital gains tax but no broad income tax
-        "WV": 2_163_000_000,
-        "WI": 10_396_000_000,
-        "WY": 0,
-    }
+    stc_df = pd.read_csv(CENSUS_STC_FLAT_FILE_URLS[year], dtype=str)
+    item_rows = stc_df.loc[stc_df["ITEM"] == CENSUS_STC_INDIVIDUAL_INCOME_TAX_ITEM]
+    if len(item_rows) != 1:
+        raise ValueError(
+            f"Expected exactly one Census STC row for item "
+            f"{CENSUS_STC_INDIVIDUAL_INCOME_TAX_ITEM}, found {len(item_rows)}"
+        )
+    item_row = item_rows.iloc[0]
 
     rows = []
-    for abbrev, value in stc_2023_individual_income_tax.items():
+    for abbrev in STATE_ABBREV_TO_FIPS:
         fips = STATE_ABBREV_TO_FIPS[abbrev]
+        raw_value = item_row[abbrev]
+        value = (
+            0
+            if pd.isna(raw_value) or raw_value == CENSUS_STC_NOT_AVAILABLE
+            else int(raw_value) * 1000
+        )
         rows.append(
             {
                 "state_fips": fips,
@@ -224,7 +180,9 @@ def transform_state_income_tax_data(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
+def load_state_income_tax_data(
+    df: pd.DataFrame, year: int, source_year: int | None = None
+) -> dict:
     """
     Load state income tax targets into the calibration database.
 
@@ -286,7 +244,7 @@ def load_state_income_tax_data(df: pd.DataFrame, year: int) -> dict:
                     value=row["income_tax_collections"],
                     active=True,
                     source="Census STC",
-                    notes=f"Census STC FY{year}",
+                    notes=f"Census STC FY{source_year or year}",
                 )
             )
 
@@ -311,26 +269,33 @@ def main():
         allow_year=True,
     )
 
-    logger.info(f"Extracting Census STC data for FY{year}...")
-    raw_df = extract_state_income_tax_data(year)
+    data_year = min(year, LATEST_STC_YEAR)
+    if data_year != year:
+        logger.warning(
+            f"Census STC data not available for {year}; "
+            f"using latest available year ({LATEST_STC_YEAR})"
+        )
+    logger.info(f"Extracting Census STC data for FY{data_year}...")
+    raw_df = extract_state_income_tax_data(data_year)
 
     logger.info("Transforming data...")
     transformed_df = transform_state_income_tax_data(raw_df)
 
     logger.info(f"Loading {len(transformed_df)} state income tax targets...")
-    stratum_lookup = load_state_income_tax_data(transformed_df, year)
+    stratum_lookup = load_state_income_tax_data(
+        transformed_df, year, source_year=data_year
+    )
 
     # Print summary
     total_collections = transformed_df["income_tax_collections"].sum()
-    states_with_tax = len(
-        [s for s in transformed_df["state_abbrev"] if s not in NO_INCOME_TAX_STATES]
-    )
+    states_with_tax = int((transformed_df["income_tax_collections"] > 0).sum())
+    states_without_tax = len(transformed_df) - states_with_tax
 
     logger.info(
         f"State Income Tax Targets Summary:\n"
         f"  Total states loaded: {len(stratum_lookup)}\n"
         f"  States with income tax: {states_with_tax}\n"
-        f"  States without income tax: {len(NO_INCOME_TAX_STATES)}\n"
+        f"  States without income tax: {states_without_tax}\n"
         f"  Total collections: ${total_collections / 1e9:.1f}B"
     )
 

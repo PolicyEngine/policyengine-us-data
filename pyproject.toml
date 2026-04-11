@@ -8,17 +8,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "policyengine_us_data"
-version = "1.73.0"
+version = "1.77.0"
 description = "A package to create representative microdata for the US."
 readme = "README.md"
 authors = [
     {name = "PolicyEngine", email = "hello@policyengine.org"},
 ]
 license = {file = "LICENSE"}
-requires-python = ">=3.12, <3.14.0"
+requires-python = ">=3.12, <3.15"
 classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "policyengine-us>=1.572.5",
@@ -35,7 +36,7 @@ dependencies = [
     "scipy>=1.15.3",
     "statsmodels>=0.14.5",
     "openpyxl>=3.1.5",
-    "tables>=3.10.2",
+    "tables>=3.11.1",
     "torch>=2.7.1",
     "us>=2.0.0",
     "sqlalchemy>=2.0.41",
@@ -65,8 +66,11 @@ dev = [
     "yaml-changelog>=0.1.7",
     "build",
     "tomli",
-    "itables",    "towncrier>=24.8.0",
-
+    "itables",
+    "towncrier>=24.8.0",
+    "pytest-cov",
+    "mdformat>=1.0.0",
+    "mdformat-gfm>=1.0.0",
 ]
 
 [tool.setuptools]
@@ -79,7 +83,8 @@ include-package-data = true
 [tool.pytest.ini_options]
 addopts = "-v"
 testpaths = [
-    "policyengine_us_data/tests",
+    "tests/unit",
+    "tests/integration",
 ]
 
 [tool.towncrier]

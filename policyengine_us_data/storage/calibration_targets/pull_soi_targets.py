@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from typing import Optional, Union
 
 import numpy as np
@@ -7,6 +5,9 @@ import pandas as pd
 import logging
 
 from policyengine_us_data.storage import CALIBRATION_FOLDER
+from policyengine_us_data.storage.calibration_targets.soi_metadata import (
+    LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ AGI_BOUNDS = {
 }
 
 SOI_CONGRESS_PREFIX = "5001800US"  # 118th Congress
-SOI_DISTRICT_TAX_YEAR = 2022
+SOI_DISTRICT_TAX_YEAR = LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR
 
 NON_VOTING_STATES = {"US", "AS", "GU", "MP", "PR", "VI", "OA"}
 NON_VOTING_GEO_IDS = {
@@ -122,6 +123,10 @@ STATE_ABBR_TO_FIPS = {
 FIPS_TO_STATE_ABBR = {v: k for k, v in STATE_ABBR_TO_FIPS.items()}
 
 
+def _soi_year_prefix(year: int) -> str:
+    return f"{year % 100:02d}"
+
+
 def pull_national_soi_variable(
     soi_variable_ident: int,  # the national SOI xlsx file has a row for each target variable
     variable_name: Union[str, None],
@@ -129,7 +134,11 @@ def pull_national_soi_variable(
     national_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Download and save national AGI totals."""
-    df = pd.read_excel("https://www.irs.gov/pub/irs-soi/22in54us.xlsx", skiprows=7)
+    year_prefix = _soi_year_prefix(SOI_DISTRICT_TAX_YEAR)
+    df = pd.read_excel(
+        f"https://www.irs.gov/pub/irs-soi/{year_prefix}in54us.xlsx",
+        skiprows=7,
+    )
 
     assert (
         np.abs(df.iloc[soi_variable_ident, 1] - df.iloc[soi_variable_ident, 2:12].sum())
@@ -175,7 +184,11 @@ def pull_state_soi_variable(
     state_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Download and save state AGI totals."""
-    df = pd.read_csv("https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv", thousands=",")
+    year_prefix = _soi_year_prefix(SOI_DISTRICT_TAX_YEAR)
+    df = pd.read_csv(
+        f"https://www.irs.gov/pub/irs-soi/{year_prefix}in55cmcsv.csv",
+        thousands=",",
+    )
 
     merged = (
         df[df["AGI_STUB"].isin([9, 10])]
@@ -226,7 +239,8 @@ def pull_district_soi_variable(
     redistrict: Optional[bool] = False,
 ) -> pd.DataFrame:
     """Download and save congressional district AGI totals."""
-    df = pd.read_csv("https://www.irs.gov/pub/irs-soi/22incd.csv")
+    year_prefix = _soi_year_prefix(SOI_DISTRICT_TAX_YEAR)
+    df = pd.read_csv(f"https://www.irs.gov/pub/irs-soi/{year_prefix}incd.csv")
     df = df[df["agi_stub"] != 0]
 
     df["STATEFIPS"] = df["STATEFIPS"].astype(int).astype(str).str.zfill(2)

@@ -3,7 +3,6 @@ Generate QRF diagnostic statistics that match those reported in the methodology.
 This script creates the specific numbers cited in the paper.
 """
 
-import numpy as np
 import pandas as pd
 import os
 from datetime import datetime

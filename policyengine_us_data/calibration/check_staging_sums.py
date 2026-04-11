@@ -16,6 +16,7 @@ import pandas as pd
 from policyengine_us_data.calibration.calibration_utils import (
     STATE_CODES,
 )
+from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
 
 STATE_ABBRS = sorted(STATE_CODES.values())
 
@@ -34,6 +35,7 @@ VARIABLES = [
     "ssi",
     "income_tax_before_credits",
     "eitc",
+    "non_refundable_ctc",
     "refundable_ctc",
     "real_estate_taxes",
     "rent",
@@ -45,6 +47,24 @@ VARIABLES = [
 DEFAULT_HF_PREFIX = "hf://policyengine/policyengine-us-data/staging/states"
 
 
+def get_reference_summary(reference_year: int = 2024) -> str:
+    refundable_ctc_target = get_national_geography_soi_target(
+        "refundable_ctc",
+        reference_year,
+    )
+    non_refundable_ctc_target = get_national_geography_soi_target(
+        "non_refundable_ctc",
+        reference_year,
+    )
+    return (
+        "  SNAP ~$110B, SSI ~$60B, Social Security ~$1.2T\n"
+        f"  EITC ~$60B, refundable CTC ~${refundable_ctc_target['amount'] / 1e9:.1f}B "
+        f"(IRS SOI {refundable_ctc_target['source_year']}), "
+        f"non-refundable CTC ~${non_refundable_ctc_target['amount'] / 1e9:.1f}B "
+        f"(IRS SOI {non_refundable_ctc_target['source_year']})"
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Sum key variables across staging state H5 files"
@@ -54,7 +74,16 @@ def main(argv=None):
         default=DEFAULT_HF_PREFIX,
         help=f"HF path prefix for state H5 files (default: {DEFAULT_HF_PREFIX})",
     )
+    parser.add_argument(
+        "--run-id",
+        default="",
+        help="Run ID to scope HF staging prefix (e.g. staging/{run_id}/states/...)",
+    )
     args = parser.parse_args(argv)
+    if args.run_id and args.hf_prefix == DEFAULT_HF_PREFIX:
+        args.hf_prefix = (
+            f"hf://policyengine/policyengine-us-data/staging/{args.run_id}/states"
+        )
 
     from policyengine_us import Microsimulation
 
@@ -101,8 +130,7 @@ def main(argv=None):
     print("=" * 70)
     print("  US GDP ~$29T, US population ~335M, ~130M households")
     print("  Total AGI ~$15T, Employment income ~$10T")
-    print("  SNAP ~$110B, SSI ~$60B, Social Security ~$1.2T")
-    print("  EITC ~$60B, CTC ~$120B")
+    print(get_reference_summary())
 
     if errors:
         print(f"\n{len(errors)} states failed:")

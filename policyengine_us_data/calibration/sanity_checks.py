@@ -27,12 +27,12 @@ KEY_MONETARY_VARS = [
 TAKEUP_VARS = [
     "takes_up_snap_if_eligible",
     "takes_up_ssi_if_eligible",
-    "takes_up_aca_ptc_if_eligible",
+    "takes_up_aca_if_eligible",
     "takes_up_medicaid_if_eligible",
     "takes_up_tanf_if_eligible",
     "takes_up_head_start_if_eligible",
     "takes_up_early_head_start_if_eligible",
-    "takes_up_dc_property_tax_credit_if_eligible",
+    "takes_up_dc_ptc",
 ]
 
 

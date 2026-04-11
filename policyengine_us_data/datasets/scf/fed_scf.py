@@ -1,11 +1,11 @@
 from policyengine_core.data import Dataset
 from tqdm import tqdm
-from typing import List, Optional, Union
 import requests
 from io import BytesIO
 from zipfile import ZipFile
 import pandas as pd
 import os
+from filelock import FileLock
 from policyengine_us_data.storage import STORAGE_FOLDER
 
 
@@ -21,16 +21,24 @@ class SummarizedFedSCF(Dataset):
         Returns:
             pd.DataFrame: The raw SCF data.
         """
+        with self._lock():
+            return self._load_unlocked()
+
+    def generate(self):
+        with self._lock():
+            self._generate_unlocked()
+
+    def _load_unlocked(self) -> pd.DataFrame:
         # Check if file exists
         if not os.path.exists(self.file_path):
             print(f"Raw SCF dataset file not found. Generating it.")
-            self.generate()
+            self._generate_unlocked()
 
         # Open the HDF store and return the DataFrame
         with pd.HDFStore(self.file_path, mode="r") as storage:
             return storage["data"]
 
-    def generate(self):
+    def _generate_unlocked(self):
         if self._scf_download_url is None:
             raise ValueError(f"No raw SCF data URL known for year {self.time_period}.")
 
@@ -73,6 +81,9 @@ class SummarizedFedSCF(Dataset):
                         data["year"] = self.time_period
                         # Store in HDF file
                         storage["data"] = data
+
+    def _lock(self) -> FileLock:
+        return FileLock(f"{self.file_path}.lock", timeout=600)
 
     @property
     def _scf_download_url(self) -> str:

@@ -15,7 +15,6 @@ cd ~/devl/sep/policyengine-us-data
 
 make database           # Build (uses cached downloads if available)
 make database-refresh   # Force re-download all sources and rebuild
-make promote-database   # Copy DB + raw inputs to HuggingFace clone
 ```
 
 ### Pipeline Stages
@@ -30,7 +29,7 @@ make promote-database   # Copy DB + raw inputs to HuggingFace clone
 | 4 | `etl_age.py` | Census ACS 1-year | Age distribution: 18 bins x 488 geographies |
 | 5 | `etl_medicaid.py` | Census ACS + CMS | Medicaid enrollment (admin state-level, survey district-level) |
 | 6 | `etl_snap.py` | USDA FNS + Census ACS | SNAP participation (admin state-level, survey district-level) |
-| 7 | `etl_state_income_tax.py` | No | State income tax collections (Census STC FY2023, hardcoded) |
+| 7 | `etl_state_income_tax.py` | Census STC | State income tax collections (Census STC FY2023 `T40`, downloaded and cached) |
 | 8 | `etl_irs_soi.py` | IRS | Tax variables, EITC by child count, AGI brackets, conditional strata |
 | 9 | `etl_pregnancy.py` | CDC VSRR + Census ACS | Pregnancy prevalence by state (provisional birth counts) |
 | 10 | `validate_database.py` | No | Checks all target variables exist in policyengine-us |
@@ -43,19 +42,6 @@ Set `PE_REFRESH_RAW=1` to force re-download:
 ```bash
 PE_REFRESH_RAW=1 make database
 ```
-
-### Promotion to HuggingFace
-
-After building and validating:
-```bash
-make promote-database
-cd ~/devl/huggingface/policyengine-us-data
-git add calibration/policy_data.db calibration/raw_inputs/
-git commit -m "Update policy_data.db - <description>"
-git push
-```
-
-This copies both the database and the raw inputs that built it, preserving provenance in the HF repo's git history.
 
 ### Recovery
 
@@ -286,4 +272,4 @@ ORDER BY geographic_id;
 
 `policyengine_us_data/storage/calibration/policy_data.db`
 
-Downloaded from HuggingFace by `download_private_prerequisites.py` and `download_calibration_inputs()` in `utils/huggingface.py`.
+Built from source via `make database`. See [Building the Database](#building-the-database) above.

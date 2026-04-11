@@ -1,5 +1,4 @@
 import argparse
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from sqlmodel import Session, select
@@ -9,9 +8,8 @@ from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
 )
-from policyengine_us_data.storage import STORAGE_FOLDER
 
-DEFAULT_DATASET = str(STORAGE_FOLDER / "source_imputed_stratified_extended_cps_2024.h5")
+DEFAULT_YEAR = 2024
 
 
 def etl_argparser(
@@ -20,7 +18,7 @@ def etl_argparser(
     *,
     allow_year: bool = False,
 ) -> Tuple[argparse.Namespace, int]:
-    """Shared argument parsing and dataset-year derivation for ETL scripts.
+    """Shared argument parsing for ETL scripts.
 
     Args:
         description: Description for the argparse help text.
@@ -29,50 +27,29 @@ def etl_argparser(
         allow_year: If True, allow --year to bypass dataset loading.
 
     Returns:
-        (args, year) where *year* is derived from the dataset's
-        ``default_calculation_period``.
+        (args, year) tuple.
     """
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument(
-        "--dataset",
-        default=DEFAULT_DATASET,
-        help=(
-            "Source dataset (local path or HuggingFace URL). "
-            "The year is derived from the dataset's "
-            "default_calculation_period. Default: %(default)s"
-        ),
-    )
     if allow_year:
         parser.add_argument(
             "--year",
             type=int,
             default=None,
-            help=(
-                "Explicit dataset year to use instead of loading the dataset."
-            ),
+            help="Target year for calibration data. Defaults to %(default)s.",
+        )
+    else:
+        parser.add_argument(
+            "--year",
+            type=int,
+            default=DEFAULT_YEAR,
+            help="Target year for calibration data. Default: %(default)s",
         )
     if extra_args_fn is not None:
         extra_args_fn(parser)
 
     args = parser.parse_args()
-
-    if allow_year and args.year is not None:
-        print(f"Using explicit year: {args.year}")
-        return args, int(args.year)
-
-    if not args.dataset.startswith("hf://") and not Path(args.dataset).exists():
-        raise FileNotFoundError(
-            f"Dataset not found: {args.dataset}\n"
-            f"Either build it locally (`make data`) or pass a "
-            f"HuggingFace URL via --dataset hf://policyengine/..."
-        )
-
-    from policyengine_us import Microsimulation
-
-    print(f"Loading dataset: {args.dataset}")
-    sim = Microsimulation(dataset=args.dataset)
-    year = int(sim.default_calculation_period)
-    print(f"Derived year from dataset: {year}")
+    year = args.year if args.year is not None else DEFAULT_YEAR
+    print(f"Using year: {year}")
 
     return args, year
 

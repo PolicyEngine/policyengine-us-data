@@ -18,7 +18,6 @@ Data sources:
 import io
 import requests
 import zipfile
-from pathlib import Path
 import pandas as pd
 import us
 

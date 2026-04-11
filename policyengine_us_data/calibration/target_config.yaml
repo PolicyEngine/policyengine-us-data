@@ -12,53 +12,87 @@ include:
   - variable: household_count
     geo_level: district
 
-  # === DISTRICT — dollar targets (needed_w 7-41, compatible) ===
+  # === DISTRICT — SNAP household counts (ACS S2201) ===
+  - variable: household_count
+    geo_level: district
+    domain_variable: snap
+
+  # === DISTRICT — dollar targets ===
+  - variable: adjusted_gross_income
+    geo_level: district
   - variable: real_estate_taxes
     geo_level: district
   - variable: self_employment_income
     geo_level: district
   - variable: taxable_pension_income
     geo_level: district
-  # DISABLED: refundable_ctc formula doesn't gate on tax_unit_is_filer;
-  # non-filer values inflate totals beyond IRS SOI targets.
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: refundable_ctc
-  #   geo_level: district
+  - variable: refundable_ctc
+    geo_level: district
+  - variable: non_refundable_ctc
+    geo_level: district
   - variable: unemployment_compensation
     geo_level: district
 
-  # === DISTRICT — ACA PTC ===
-  # DISABLED: aca_ptc formula doesn't gate on tax_unit_is_filer;
-  # non-filer values inflate totals beyond IRS SOI targets.
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: aca_ptc
-  #   geo_level: district
-  # - variable: tax_unit_count
-  #   geo_level: district
-  #   domain_variable: aca_ptc
+  # === DISTRICT — ACA PTC (2% mean error, restored) ===
+  - variable: aca_ptc
+    geo_level: district
+  - variable: tax_unit_count
+    geo_level: district
+    domain_variable: aca_ptc
 
   # === STATE ===
   - variable: person_count
     geo_level: state
     domain_variable: medicaid_enrolled
+  # Restore old loss.py's national Medicaid enrollment count target.
   - variable: person_count
-    geo_level: state
-    domain_variable: is_pregnant
+    geo_level: national
+    domain_variable: medicaid
+  # REMOVED: is_pregnant — 100% unachievable across all 51 state geos
   - variable: snap
     geo_level: state
+  - variable: adjusted_gross_income
+    geo_level: state
+
+  # === STATE — fine AGI bracket targets (stubs 9/10 from in55cmcsv) ===
+  - variable: person_count
+    geo_level: state
+    domain_variable: adjusted_gross_income
+  - variable: adjusted_gross_income
+    geo_level: state
+    domain_variable: adjusted_gross_income
+  # REMOVED: state_income_tax — ETL hardcodes $0 for WA and NH, but
+  # PolicyEngine correctly computes non-zero tax (WA capital gains tax,
+  # NH interest/dividends tax). The $0 targets produce catastrophic loss
+  # that crushes WA/NH weights to zero. Fix the ETL before re-enabling.
+  # - variable: state_income_tax
+  #   geo_level: state
+
+  # === NATIONAL — fine AGI bracket targets (Table 1.4) ===
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income
+  - variable: adjusted_gross_income
+    geo_level: national
+    domain_variable: adjusted_gross_income
+
+  # === NATIONAL — wealth target (Federal Reserve SCF, no filer filter) ===
+  - variable: net_worth
+    geo_level: national
 
   # === NATIONAL — aggregate dollar targets ===
   - variable: adjusted_gross_income
+    geo_level: national
+  - variable: alimony_expense
+    geo_level: national
+  - variable: alimony_income
     geo_level: national
   - variable: child_support_expense
     geo_level: national
   - variable: child_support_received
     geo_level: national
-  # DISABLED: eitc formula doesn't gate on tax_unit_is_filer;
-  # non-filer values inflate totals beyond IRS SOI targets.
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: eitc
-  #   geo_level: national
+  - variable: eitc
+    geo_level: national
   - variable: health_insurance_premiums_without_medicare_part_b
     geo_level: national
   - variable: medicaid
@@ -69,19 +103,21 @@ include:
     geo_level: national
   - variable: over_the_counter_health_expenses
     geo_level: national
-  - variable: qualified_business_income_deduction
+  - variable: real_estate_taxes
     geo_level: national
   - variable: rent
-    geo_level: national
-  - variable: salt_deduction
     geo_level: national
   - variable: snap
     geo_level: national
   - variable: social_security
     geo_level: national
+  - variable: social_security_dependents
+    geo_level: national
   - variable: social_security_disability
     geo_level: national
   - variable: social_security_retirement
+    geo_level: national
+  - variable: social_security_survivors
     geo_level: national
   - variable: spm_unit_capped_housing_subsidy
     geo_level: national
@@ -96,137 +132,109 @@ include:
   - variable: unemployment_compensation
     geo_level: national
 
-  # === NATIONAL — IRS SOI domain-constrained dollar targets ===
-  # DISABLED: aca_ptc formula doesn't gate on tax_unit_is_filer
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: aca_ptc
-  #   geo_level: national
-  #   domain_variable: aca_ptc
-  - variable: dividend_income
+  # === NATIONAL — retirement contribution targets ===
+  - variable: traditional_ira_contributions
     geo_level: national
-    domain_variable: dividend_income
-  # DISABLED: eitc formula doesn't gate on tax_unit_is_filer
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: eitc
-  #   geo_level: national
-  #   domain_variable: eitc_child_count
-  - variable: income_tax_positive
+  - variable: traditional_401k_contributions
     geo_level: national
-  - variable: income_tax_before_credits
+  - variable: roth_401k_contributions
     geo_level: national
-    domain_variable: income_tax_before_credits
+  - variable: roth_ira_contributions
+    geo_level: national
+  - variable: self_employed_pension_contribution_ald
+    geo_level: national
+
+  # === NATIONAL — IRS SOI domain-constrained dollar targets (restored: |rel_err| < 15%) ===
+  - variable: aca_ptc
+    geo_level: national
+    domain_variable: aca_ptc
   - variable: net_capital_gains
     geo_level: national
     domain_variable: net_capital_gains
-  - variable: qualified_business_income_deduction
+  - variable: refundable_ctc
     geo_level: national
-    domain_variable: qualified_business_income_deduction
-  - variable: qualified_dividend_income
+    domain_variable: refundable_ctc
+  - variable: refundable_ctc
     geo_level: national
-    domain_variable: qualified_dividend_income
-  # DISABLED: refundable_ctc formula doesn't gate on tax_unit_is_filer
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: refundable_ctc
-  #   geo_level: national
-  #   domain_variable: refundable_ctc
-  - variable: rental_income
+    domain_variable: adjusted_gross_income,refundable_ctc
+  - variable: non_refundable_ctc
     geo_level: national
-    domain_variable: rental_income
-  - variable: salt
+    domain_variable: non_refundable_ctc
+  - variable: non_refundable_ctc
     geo_level: national
-    domain_variable: salt
+    domain_variable: adjusted_gross_income,non_refundable_ctc
   - variable: self_employment_income
     geo_level: national
     domain_variable: self_employment_income
-  - variable: tax_exempt_interest_income
-    geo_level: national
-    domain_variable: tax_exempt_interest_income
   - variable: tax_unit_partnership_s_corp_income
     geo_level: national
     domain_variable: tax_unit_partnership_s_corp_income
-  - variable: taxable_interest_income
-    geo_level: national
-    domain_variable: taxable_interest_income
-  - variable: taxable_ira_distributions
-    geo_level: national
-    domain_variable: taxable_ira_distributions
   - variable: taxable_pension_income
     geo_level: national
     domain_variable: taxable_pension_income
-  - variable: taxable_social_security
-    geo_level: national
-    domain_variable: taxable_social_security
   - variable: unemployment_compensation
     geo_level: national
     domain_variable: unemployment_compensation
 
-  # === NATIONAL — IRS SOI filer count targets ===
-  # DISABLED: aca_ptc inflated by non-filers
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: tax_unit_count
-  #   geo_level: national
-  #   domain_variable: aca_ptc
+  # === NATIONAL — IRS SOI filer count targets (restored: |rel_err| < 10%) ===
   - variable: tax_unit_count
     geo_level: national
-    domain_variable: dividend_income
-  # DISABLED: eitc inflated by non-filers
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: tax_unit_count
-  #   geo_level: national
-  #   domain_variable: eitc_child_count
+    domain_variable: aca_ptc
+  # Restore old loss.py's ACA enrollment count target.
+  - variable: person_count
+    geo_level: national
+    domain_variable: aca_ptc
   - variable: tax_unit_count
     geo_level: national
-    domain_variable: income_tax
+    domain_variable: refundable_ctc
   - variable: tax_unit_count
     geo_level: national
-    domain_variable: income_tax_before_credits
+    domain_variable: adjusted_gross_income,refundable_ctc
   - variable: tax_unit_count
     geo_level: national
-    domain_variable: medical_expense_deduction
+    domain_variable: non_refundable_ctc
   - variable: tax_unit_count
     geo_level: national
-    domain_variable: net_capital_gains
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: qualified_business_income_deduction
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: qualified_dividend_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: real_estate_taxes
-  # DISABLED: refundable_ctc inflated by non-filers
-  # See https://github.com/PolicyEngine/policyengine-us/issues/7748
-  # - variable: tax_unit_count
-  #   geo_level: national
-  #   domain_variable: refundable_ctc
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: rental_income
-  - variable: tax_unit_count
-    geo_level: national
-    domain_variable: salt
+    domain_variable: adjusted_gross_income,non_refundable_ctc
+  # Restore old loss.py's self-employment return-count target.
   - variable: tax_unit_count
     geo_level: national
     domain_variable: self_employment_income
-  - variable: tax_unit_count
+
+  # === NATIONAL — identity / population count targets from old loss.py ===
+  - variable: person_count
     geo_level: national
-    domain_variable: tax_exempt_interest_income
-  - variable: tax_unit_count
+    domain_variable: ssn_card_type
+
+  # === NATIONAL — SOI deduction totals (non-reform) ===
+  - variable: medical_expense_deduction
     geo_level: national
-    domain_variable: tax_unit_partnership_s_corp_income
-  - variable: tax_unit_count
+    domain_variable: medical_expense_deduction,tax_unit_itemizes
+  - variable: qualified_business_income_deduction
     geo_level: national
-    domain_variable: taxable_interest_income
-  - variable: tax_unit_count
+    domain_variable: qualified_business_income_deduction
+
+  # === NATIONAL — JCT tax expenditure targets (reform_id=1..5) ===
+  - variable: salt_deduction
     geo_level: national
-    domain_variable: taxable_ira_distributions
-  - variable: tax_unit_count
+  - variable: charitable_deduction
     geo_level: national
-    domain_variable: taxable_pension_income
-  - variable: tax_unit_count
+  - variable: deductible_mortgage_interest
     geo_level: national
-    domain_variable: taxable_social_security
-  - variable: tax_unit_count
+  - variable: medical_expense_deduction
     geo_level: national
-    domain_variable: unemployment_compensation
+  - variable: qualified_business_income_deduction
+    geo_level: national
+
+  # === NATIONAL — CBO income tax target (re-enabled: 22% error < 54% unconstrained) ===
+  - variable: income_tax_positive
+    geo_level: national
+
+  # NOT INCLUDED — high error or tension (from prior validation)
+  # =====================================================================
+  # dividend_income (26%, tension), qualified_dividend_income (29%, tension),
+  # eitc by child_count (14-77%, tension), rental_income (20%),
+  # income_tax_before_credits (21%),
+  # salt SOI (102%), taxable_interest_income (61%),
+  # tax_exempt_interest_income (61%), taxable_ira_distributions (68%),
+  # taxable_social_security (55%), person_count by AGI bins (100%)

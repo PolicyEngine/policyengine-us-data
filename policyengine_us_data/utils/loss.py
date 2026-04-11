@@ -3,11 +3,19 @@ import gc
 import pandas as pd
 import numpy as np
 import logging
+import sqlite3
 
-from policyengine_us_data.storage import STORAGE_FOLDER, CALIBRATION_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER, STORAGE_FOLDER
 from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
     STATE_ABBR_TO_FIPS,
 )
+from policyengine_us_data.storage.calibration_targets.soi_metadata import (
+    RETIREMENT_CONTRIBUTION_TARGETS,
+)
+from policyengine_us_data.utils.cms_medicare import (
+    get_beneficiary_paid_medicare_part_b_premiums_target,
+)
+from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
@@ -21,7 +29,9 @@ from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 HARD_CODED_TOTALS = {
     "health_insurance_premiums_without_medicare_part_b": 385e9,
     "other_medical_expenses": 278e9,
-    "medicare_part_b_premiums": 112e9,
+    "medicare_part_b_premiums": get_beneficiary_paid_medicare_part_b_premiums_target(
+        2024
+    ),
     "over_the_counter_health_expenses": 72e9,
     "spm_unit_spm_threshold": 3_945e9,
     "child_support_expense": 33e9,
@@ -58,13 +68,15 @@ HARD_CODED_TOTALS = {
     # Retirement contribution calibration targets.
     #
     # traditional_ira_contributions: IRS SOI Publication 1304, Table 1.4
-    # (TY 2022), "IRA payments" deduction — $13.17B (col 124, row
+    # (TY 2023), "IRA payments" deduction — $13.77B (col DU, row
     # "All returns, total"). This is the actual above-the-line
     # deduction claimed on returns. The variable flows directly into
     # the ALD with no deductibility logic in policyengine-us, so the
     # target must match the deduction, not total contributions.
     # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
-    "traditional_ira_contributions": 13.2e9,
+    "traditional_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
+        "traditional_ira_contributions"
+    ]["value"],
     # traditional_401k_contributions & roth_401k_contributions:
     # BEA/FRED National Income Accounts. Total DC employer+employee
     # = $815.4B (Y351RC1A027NBEA), employer-only = $247.5B
@@ -80,18 +92,42 @@ HARD_CODED_TOTALS = {
     "traditional_401k_contributions": 482.7e9,
     "roth_401k_contributions": 85.2e9,
     # self_employed_pension_contribution_ald: IRS SOI Publication
-    # 1304, Table 1.4 (TY 2022), "Payments to a Keogh plan" —
-    # $29.48B (col 116, row "All returns, total"). Includes
+    # 1304, Table 1.4 (TY 2023), "Payments to a Keogh plan" —
+    # $30.13B (col DM, row "All returns, total"). Includes
     # SEP-IRAs, SIMPLE-IRAs, and traditional Keogh/HR-10 plans.
     # Targeting the ALD (not the input) because policyengine-us
     # applies a min(contributions, SE_income) cap.
     # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
-    "self_employed_pension_contribution_ald": 29.5e9,
+    "self_employed_pension_contribution_ald": RETIREMENT_CONTRIBUTION_TARGETS[
+        "self_employed_pension_contribution_ald"
+    ]["value"],
     # roth_ira_contributions: IRS SOI IRA Accumulation Tables 5 & 6
-    # (TY 2022). Total Roth IRA contributions = $35.0B (10.04M
-    # contributors). Direct administrative source.
+    # (TY 2022, latest published). Total Roth IRA contributions =
+    # $34.95B (10.04M contributors). Direct administrative source.
     # https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
-    "roth_ira_contributions": 35.0e9,
+    "roth_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
+        "value"
+    ],
+}
+
+ACA_SPENDING_TARGETS = {
+    2024: 98e9,
+}
+
+ACA_ENROLLMENT_TARGETS = {
+    2024: 19_743_689,
+}
+
+MEDICAID_SPENDING_TARGETS = {
+    2024: 9e11,
+    # CMS projects Medicaid spending growth of 7.4% in 2025.
+    # Apply that projection to 2024 Medicaid spending of $931.7B.
+    # Source: CMS National Health Expenditure projections, 2024-2033.
+    2025: 931.7e9 * 1.074,
+}
+
+MEDICAID_ENROLLMENT_TARGETS = {
+    2024: 72_429_055,
 }
 
 
@@ -107,6 +143,223 @@ def fmt(x):
     if x < 1e9:
         return f"{x / 1e6:.0f}m"
     return f"{x / 1e9:.1f}bn"
+
+
+def _parse_constraint_value(value):
+    if value == "True":
+        return True
+    if value == "False":
+        return False
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return value
+
+
+def _apply_constraint(values, operation: str, raw_value: str):
+    if operation == "in":
+        allowed_values = [part.strip() for part in raw_value.split("|")]
+        return np.isin(values, allowed_values)
+
+    value = _parse_constraint_value(raw_value)
+    if operation in ("equals", "==", "="):
+        return values == value
+    if operation in ("greater_than", ">"):
+        return values > value
+    if operation in ("greater_than_or_equal", ">="):
+        return values >= value
+    if operation in ("less_than", "<"):
+        return values < value
+    if operation in ("less_than_or_equal", "<="):
+        return values <= value
+    if operation in ("not_equals", "!=", "<>"):
+        return values != value
+
+    raise ValueError(f"Unsupported stratum constraint operation: {operation}")
+
+
+def _geo_label_from_ucgid(ucgid_str: str) -> str:
+    if ucgid_str in (None, "", "0100000US"):
+        return "nation"
+    return f"geo/{ucgid_str}"
+
+
+def _add_liheap_targets_from_db(loss_matrix, targets_list, sim, time_period):
+    db_path = STORAGE_FOLDER / "calibration" / "policy_data.db"
+    if not db_path.exists():
+        return targets_list, loss_matrix
+
+    query = """
+        SELECT
+            t.target_id,
+            t.variable,
+            t.value AS target_value,
+            s.notes,
+            sc.constraint_variable,
+            sc.operation,
+            sc.value AS constraint_value
+        FROM targets t
+        JOIN strata s
+            ON s.stratum_id = t.stratum_id
+        JOIN stratum_constraints sc
+            ON sc.stratum_id = s.stratum_id
+        WHERE
+            t.active = 1
+            AND t.reform_id = 0
+            AND t.period = ?
+            AND s.notes LIKE '%LIHEAP%'
+        ORDER BY t.target_id
+    """
+
+    with sqlite3.connect(db_path) as conn:
+        target_rows = pd.read_sql_query(query, conn, params=[time_period])
+
+    if target_rows.empty:
+        return targets_list, loss_matrix
+
+    household_values_cache = {
+        "household_weight": sim.calculate("household_weight").values
+    }
+
+    def get_household_values(variable: str):
+        if variable not in household_values_cache:
+            household_values_cache[variable] = sim.calculate(
+                variable,
+                map_to="household",
+            ).values
+        return household_values_cache[variable]
+
+    n_households = len(household_values_cache["household_weight"])
+
+    for _, target_df in target_rows.groupby("target_id", sort=False):
+        mask = np.ones(n_households, dtype=bool)
+        for row in target_df.itertuples(index=False):
+            if (
+                row.constraint_variable == "ucgid_str"
+                and row.constraint_value == "0100000US"
+            ):
+                continue
+            values = get_household_values(row.constraint_variable)
+            mask &= _apply_constraint(
+                values,
+                row.operation,
+                row.constraint_value,
+            )
+
+        variable = target_df["variable"].iat[0]
+        if variable == "household_count":
+            metric = mask.astype(float)
+        else:
+            metric = np.where(mask, get_household_values(variable), 0.0)
+
+        ucgid_constraints = target_df.loc[
+            target_df.constraint_variable == "ucgid_str", "constraint_value"
+        ]
+        geo_label = _geo_label_from_ucgid(
+            ucgid_constraints.iat[0] if not ucgid_constraints.empty else None
+        )
+        label = f"{geo_label}/db/liheap/{variable}"
+        loss_matrix[label] = metric
+        targets_list.append(target_df["target_value"].iat[0])
+
+    logging.info(
+        f"Loaded {target_rows['target_id'].nunique()} LIHEAP targets from the local targets DB"
+    )
+
+    return targets_list, loss_matrix
+
+
+def _best_available_year(targets_by_year: dict, requested_year: int) -> int:
+    if not targets_by_year:
+        raise ValueError("No target years available")
+    eligible_years = [year for year in targets_by_year if year <= requested_year]
+    if not eligible_years:
+        return min(targets_by_year)
+    return max(eligible_years)
+
+
+def _load_yeared_target_csv(
+    prefix: str, requested_year: int
+) -> tuple[pd.DataFrame, int]:
+    candidates = {}
+    for path in CALIBRATION_FOLDER.glob(f"{prefix}_*.csv"):
+        suffix = path.stem.removeprefix(f"{prefix}_")
+        if suffix.isdigit():
+            candidates[int(suffix)] = path
+
+    data_year = _best_available_year(candidates, requested_year)
+    return pd.read_csv(candidates[data_year]), data_year
+
+
+def _load_aca_spending_and_enrollment_targets(
+    requested_year: int,
+) -> tuple[pd.DataFrame, int]:
+    return _load_yeared_target_csv("aca_spending_and_enrollment", requested_year)
+
+
+def _load_medicaid_enrollment_targets(
+    requested_year: int,
+) -> tuple[pd.DataFrame, int]:
+    return _load_yeared_target_csv("medicaid_enrollment", requested_year)
+
+
+def _get_aca_national_targets(requested_year: int) -> tuple[float, float, int]:
+    targets, data_year = _load_aca_spending_and_enrollment_targets(requested_year)
+    if data_year in ACA_SPENDING_TARGETS and data_year in ACA_ENROLLMENT_TARGETS:
+        return (
+            ACA_SPENDING_TARGETS[data_year],
+            ACA_ENROLLMENT_TARGETS[data_year],
+            data_year,
+        )
+
+    # Newer CMS ACA state files encode monthly total APTC spending by state and
+    # APTC enrollment counts. Annualize the spending for the national target.
+    return (
+        float(targets["spending"].sum() * 12),
+        float(targets["enrollment"].sum()),
+        data_year,
+    )
+
+
+def _get_medicaid_national_targets(requested_year: int) -> tuple[float, float, int]:
+    targets, data_year = _load_medicaid_enrollment_targets(requested_year)
+    spending_year = _best_available_year(MEDICAID_SPENDING_TARGETS, data_year)
+    enrollment_target = MEDICAID_ENROLLMENT_TARGETS.get(
+        data_year, float(targets["enrollment"].sum())
+    )
+    return (
+        MEDICAID_SPENDING_TARGETS[spending_year],
+        enrollment_target,
+        data_year,
+    )
+
+
+def _add_ctc_targets(loss_matrix, targets_list, sim, time_period):
+    """Add legacy national CTC component amount and recipient-count targets."""
+    for variable in ("refundable_ctc", "non_refundable_ctc"):
+        target = get_national_geography_soi_target(variable, time_period)
+
+        label = f"nation/irs/{variable}"
+        loss_matrix[label] = sim.calculate(variable, map_to="household").values
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(target["amount"])
+
+        label = f"nation/irs/{variable}_count"
+        amount = sim.calculate(variable).values
+        loss_matrix[label] = sim.map_result(
+            (amount > 0).astype(float),
+            "tax_unit",
+            "household",
+        )
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(target["count"])
+
+    return targets_list, loss_matrix
 
 
 def build_loss_matrix(dataset: type, time_period):
@@ -141,6 +394,9 @@ def build_loss_matrix(dataset: type, time_period):
         "partnership_and_s_corp_losses",
         "rent_and_royalty_net_income",
         "rent_and_royalty_net_losses",
+        # The current SOI source only exposes taxable-only aggregate targets for
+        # mortgage-interest deductions, not the AGI-bin detail used above.
+        "mortgage_interest_deductions",
         "taxable_pension_income",
         "taxable_social_security",
         "unemployment_compensation",
@@ -277,10 +533,13 @@ def build_loss_matrix(dataset: type, time_period):
         )
 
     # 1. Medicaid Spending
+    medicaid_spending_target, medicaid_enrollment_target, _ = (
+        _get_medicaid_national_targets(time_period)
+    )
+
     label = "nation/hhs/medicaid_spending"
     loss_matrix[label] = sim.calculate("medicaid", map_to="household").values
-    MEDICAID_SPENDING_2024 = 9e11
-    targets_array.append(MEDICAID_SPENDING_2024)
+    targets_array.append(medicaid_spending_target)
 
     # 2. Medicaid Enrollment
     label = "nation/hhs/medicaid_enrollment"
@@ -293,16 +552,18 @@ def build_loss_matrix(dataset: type, time_period):
         > 0
     ).astype(int)
     loss_matrix[label] = sim.map_result(on_medicaid, "person", "household")
-    MEDICAID_ENROLLMENT_2024 = 72_429_055  # target lives (not thousands)
-    targets_array.append(MEDICAID_ENROLLMENT_2024)
+    targets_array.append(medicaid_enrollment_target)
 
     # National ACA Spending
+    aca_spending_target, aca_enrollment_target, _ = _get_aca_national_targets(
+        time_period
+    )
+
     label = "nation/gov/aca_spending"
     loss_matrix[label] = sim.calculate(
         "aca_ptc", map_to="household", period=2025
     ).values
-    ACA_SPENDING_2024 = 9.8e10  # 2024 outlays on PTC
-    targets_array.append(ACA_SPENDING_2024)
+    targets_array.append(aca_spending_target)
 
     # National ACA Enrollment (people receiving a PTC)
     label = "nation/gov/aca_enrollment"
@@ -311,8 +572,7 @@ def build_loss_matrix(dataset: type, time_period):
     )
     loss_matrix[label] = sim.map_result(on_ptc, "person", "household")
 
-    ACA_PTC_ENROLLMENT_2024 = 19_743_689  # people enrolled
-    targets_array.append(ACA_PTC_ENROLLMENT_2024)
+    targets_array.append(aca_enrollment_target)
 
     # Treasury EITC
 
@@ -359,6 +619,13 @@ def build_loss_matrix(dataset: type, time_period):
             "household",
         )
         targets_array.append(row["eitc_total"] * eitc_spending_uprating)
+
+    targets_array, loss_matrix = _add_ctc_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
 
     # Tax filer counts by AGI band (SOI Table 1.1)
     # This calibrates total filers (not just taxable returns) including
@@ -528,14 +795,12 @@ def build_loss_matrix(dataset: type, time_period):
         targets_array.append(target_count)
 
     # ACA spending by state
-    spending_by_state = pd.read_csv(
-        CALIBRATION_FOLDER / "aca_spending_and_enrollment_2024.csv"
-    )
+    spending_by_state, _ = _load_aca_spending_and_enrollment_targets(time_period)
     # Monthly to yearly
     spending_by_state["spending"] = spending_by_state["spending"] * 12
     # Adjust to match national target
     spending_by_state["spending"] = spending_by_state["spending"] * (
-        ACA_SPENDING_2024 / spending_by_state["spending"].sum()
+        aca_spending_target / spending_by_state["spending"].sum()
     )
 
     for _, row in spending_by_state.iterrows():
@@ -556,9 +821,7 @@ def build_loss_matrix(dataset: type, time_period):
         targets_array.append(annual_target)
 
     # Marketplace enrollment by state (targets in thousands)
-    enrollment_by_state = pd.read_csv(
-        CALIBRATION_FOLDER / "aca_spending_and_enrollment_2024.csv"
-    )
+    enrollment_by_state, _ = _load_aca_spending_and_enrollment_targets(time_period)
 
     # One-time pulls so we don’t re-compute inside the loop
     state_person = sim.calculate("state_code", map_to="person").values
@@ -587,9 +850,7 @@ def build_loss_matrix(dataset: type, time_period):
 
     # Medicaid enrollment by state
 
-    enrollment_by_state = pd.read_csv(
-        CALIBRATION_FOLDER / "medicaid_enrollment_2024.csv"
-    )
+    enrollment_by_state, _ = _load_medicaid_enrollment_targets(time_period)
 
     # One-time pulls so we don’t re-compute inside the loop
     state_person = sim.calculate("state_code", map_to="person").values
@@ -654,6 +915,10 @@ def build_loss_matrix(dataset: type, time_period):
     snap_state_target_names, snap_state_targets = _add_snap_state_targets(sim)
     targets_array.extend(snap_state_targets)
     loss_matrix = _add_snap_metric_columns(loss_matrix, sim)
+
+    targets_array, loss_matrix = _add_liheap_targets_from_db(
+        loss_matrix, targets_array, sim, time_period
+    )
 
     del sim, df
     gc.collect()

@@ -1,4 +1,4 @@
-from huggingface_hub import hf_hub_download, login, HfApi, CommitOperationAdd
+from huggingface_hub import hf_hub_download, HfApi, CommitOperationAdd
 import os
 
 TOKEN = os.environ.get("HUGGING_FACE_TOKEN")
@@ -50,7 +50,8 @@ def download_calibration_inputs(
             (e.g. "national_")
 
     Returns:
-        dict with keys 'weights', 'dataset', 'database' mapping to local paths
+        dict with keys including weights, geography, dataset, and database
+        for any artifacts that exist remotely
     """
     from pathlib import Path
 
@@ -60,7 +61,6 @@ def download_calibration_inputs(
     # Core inputs needed by both calibration and local area pipelines
     files = {
         "dataset": ("calibration/source_imputed_stratified_extended_cps.h5"),
-        "database": "calibration/policy_data.db",
     }
 
     paths = {}
@@ -81,11 +81,9 @@ def download_calibration_inputs(
     # but won't exist yet when running calibration from scratch
     optional_files = {
         "weights": f"calibration/{prefix}calibration_weights.npy",
-        "geography": f"calibration/{prefix}geography.npz",
+        "geography": f"calibration/{prefix}geography_assignment.npz",
+        "checkpoint": f"calibration/{prefix}calibration_weights.checkpoint.pt",
         "run_config": (f"calibration/{prefix}unified_run_config.json"),
-        # Legacy artifacts (for backward compatibility)
-        "blocks": f"calibration/{prefix}stacked_blocks.npy",
-        "geo_labels": f"calibration/{prefix}geo_labels.json",
     }
     for key, hf_path in optional_files.items():
         try:
@@ -156,9 +154,8 @@ def download_calibration_logs(
 
 def upload_calibration_artifacts(
     weights_path: str = None,
-    blocks_path: str = None,
-    geo_labels_path: str = None,
     geography_path: str = None,
+    checkpoint_path: str = None,
     log_dir: str = None,
     repo: str = "policyengine/policyengine-us-data",
     prefix: str = "",
@@ -167,9 +164,6 @@ def upload_calibration_artifacts(
 
     Args:
         weights_path: Path to calibration_weights.npy
-        blocks_path: Path to stacked_blocks.npy (legacy)
-        geo_labels_path: Path to geo_labels.json (legacy)
-        geography_path: Path to geography.npz
         log_dir: Directory containing log files
             (calibration_log.csv, unified_diagnostics.csv,
              unified_run_config.json)
@@ -192,25 +186,16 @@ def upload_calibration_artifacts(
     if geography_path and os.path.exists(geography_path):
         operations.append(
             CommitOperationAdd(
-                path_in_repo=(f"calibration/{prefix}geography.npz"),
+                path_in_repo=(f"calibration/{prefix}geography_assignment.npz"),
                 path_or_fileobj=geography_path,
             )
         )
 
-    # Legacy artifacts
-    if blocks_path and os.path.exists(blocks_path):
+    if checkpoint_path and os.path.exists(checkpoint_path):
         operations.append(
             CommitOperationAdd(
-                path_in_repo=(f"calibration/{prefix}stacked_blocks.npy"),
-                path_or_fileobj=blocks_path,
-            )
-        )
-
-    if geo_labels_path and os.path.exists(geo_labels_path):
-        operations.append(
-            CommitOperationAdd(
-                path_in_repo=(f"calibration/{prefix}geo_labels.json"),
-                path_or_fileobj=geo_labels_path,
+                path_in_repo=(f"calibration/{prefix}calibration_weights.checkpoint.pt"),
+                path_or_fileobj=checkpoint_path,
             )
         )
 

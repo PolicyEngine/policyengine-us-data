@@ -51,6 +51,12 @@ def load_global_block_distribution():
 
     df = pd.read_csv(csv_path, dtype={"block_geoid": str})
 
+    # Normalize at-large districts: Census uses 00 (and 98 for DC) → 01
+    district_num = df["cd_geoid"] % 100
+    state_fips_col = df["cd_geoid"] // 100
+    at_large = (district_num == 0) | ((state_fips_col == 11) & (district_num == 98))
+    df.loc[at_large, "cd_geoid"] = state_fips_col[at_large] * 100 + 1
+
     block_geoids = df["block_geoid"].values
     cd_geoids = np.array(df["cd_geoid"].astype(str).tolist())
     state_fips = np.array([int(b[:2]) for b in block_geoids])
@@ -61,10 +67,39 @@ def load_global_block_distribution():
     return block_geoids, cd_geoids, state_fips, probs
 
 
+def _build_agi_block_probs(cds, pop_probs, cd_agi_targets):
+    """Reweight block probabilities to match district AGI target shares.
+
+    District totals should be proportional to ``cd_agi_targets``, while
+    block shares within each district should preserve the original
+    population-weighted distribution.
+    """
+    agi_weights = np.array([cd_agi_targets.get(cd, 0.0) for cd in cds])
+    agi_weights = np.maximum(agi_weights, 0.0)
+    if agi_weights.sum() == 0:
+        return pop_probs
+
+    district_pop_mass = (
+        pd.Series(pop_probs, copy=False).groupby(cds).transform("sum").to_numpy()
+    )
+    agi_probs = np.divide(
+        pop_probs * agi_weights,
+        district_pop_mass,
+        out=np.zeros_like(pop_probs, dtype=np.float64),
+        where=district_pop_mass > 0,
+    )
+    if agi_probs.sum() == 0:
+        return pop_probs
+    return agi_probs / agi_probs.sum()
+
+
 def assign_random_geography(
     n_records: int,
     n_clones: int = 10,
     seed: int = 42,
+    household_agi: np.ndarray = None,
+    cd_agi_targets: dict = None,
+    agi_threshold_pctile: float = 90.0,
 ) -> GeographyAssignment:
     """Assign random census block geography to cloned
     CPS records.
@@ -89,17 +124,48 @@ def assign_random_geography(
     n_total = n_records * n_clones
     rng = np.random.default_rng(seed)
 
+    agi_probs = None
+    extreme_mask = None
+    if household_agi is not None and cd_agi_targets is not None:
+        threshold = np.percentile(household_agi, agi_threshold_pctile)
+        extreme_mask = household_agi >= threshold
+        agi_probs = _build_agi_block_probs(cds, probs, cd_agi_targets)
+        logger.info(
+            "AGI-conditional assignment: %d extreme HHs (AGI >= $%.0f) "
+            "use AGI-weighted block probs",
+            extreme_mask.sum(),
+            threshold,
+        )
+
+    def _sample(size, mask_slice=None):
+        """Sample block indices, using AGI-weighted probs for extreme HHs."""
+        if (
+            extreme_mask is not None
+            and agi_probs is not None
+            and mask_slice is not None
+        ):
+            out = np.empty(size, dtype=np.int64)
+            ext = mask_slice
+            n_ext = ext.sum()
+            n_norm = size - n_ext
+            if n_ext > 0:
+                out[ext] = rng.choice(len(blocks), size=n_ext, p=agi_probs)
+            if n_norm > 0:
+                out[~ext] = rng.choice(len(blocks), size=n_norm, p=probs)
+            return out
+        return rng.choice(len(blocks), size=size, p=probs)
+
     indices = np.empty(n_total, dtype=np.int64)
 
     # Clone 0: unrestricted draw
-    indices[:n_records] = rng.choice(len(blocks), size=n_records, p=probs)
+    indices[:n_records] = _sample(n_records, extreme_mask)
 
     assigned_cds = np.empty((n_clones, n_records), dtype=object)
     assigned_cds[0] = cds[indices[:n_records]]
 
     for clone_idx in range(1, n_clones):
         start = clone_idx * n_records
-        clone_indices = rng.choice(len(blocks), size=n_records, p=probs)
+        clone_indices = _sample(n_records, extreme_mask)
         clone_cds = cds[clone_indices]
 
         collisions = np.zeros(n_records, dtype=bool)
@@ -110,7 +176,20 @@ def assign_random_geography(
             n_bad = collisions.sum()
             if n_bad == 0:
                 break
-            clone_indices[collisions] = rng.choice(len(blocks), size=n_bad, p=probs)
+            bad_mask = collisions
+            if extreme_mask is not None and agi_probs is not None:
+                bad_ext = bad_mask & extreme_mask
+                bad_norm = bad_mask & ~extreme_mask
+                if bad_ext.sum() > 0:
+                    clone_indices[bad_ext] = rng.choice(
+                        len(blocks), size=bad_ext.sum(), p=agi_probs
+                    )
+                if bad_norm.sum() > 0:
+                    clone_indices[bad_norm] = rng.choice(
+                        len(blocks), size=bad_norm.sum(), p=probs
+                    )
+            else:
+                clone_indices[collisions] = rng.choice(len(blocks), size=n_bad, p=probs)
             clone_cds = cds[clone_indices]
             collisions = np.zeros(n_records, dtype=bool)
             for prev in range(clone_idx):
@@ -171,6 +250,61 @@ def load_geography(path) -> GeographyAssignment:
         state_fips=data["state_fips"],
         n_records=int(data["n_records"][0]),
         n_clones=int(data["n_clones"][0]),
+    )
+
+
+@lru_cache(maxsize=1)
+def load_sorted_block_cd_lookup():
+    """Load a sorted block -> CD lookup for legacy block artifacts."""
+    blocks, cds, _, _ = load_global_block_distribution()
+    order = np.argsort(blocks)
+    return blocks[order], cds[order]
+
+
+def reconstruct_geography_from_blocks(
+    block_geoids: np.ndarray,
+    n_records: int,
+    n_clones: int,
+) -> GeographyAssignment:
+    """Reconstruct a GeographyAssignment from saved block GEOIDs."""
+    block_geoids = np.asarray(block_geoids, dtype=str)
+    expected_len = n_records * n_clones
+    if len(block_geoids) != expected_len:
+        raise ValueError(
+            f"Expected {expected_len} block GEOIDs for "
+            f"{n_records} records x {n_clones} clones, got {len(block_geoids)}"
+        )
+
+    sorted_blocks, sorted_cds = load_sorted_block_cd_lookup()
+    indices = np.searchsorted(sorted_blocks, block_geoids)
+    valid = indices < len(sorted_blocks)
+    matched = np.zeros(len(block_geoids), dtype=bool)
+    matched[valid] = sorted_blocks[indices[valid]] == block_geoids[valid]
+
+    if not np.all(matched):
+        missing = np.unique(block_geoids[~matched])[:5]
+        raise KeyError(
+            "Could not recover congressional districts for some blocks. "
+            f"Examples: {missing.tolist()}"
+        )
+
+    county_fips = np.fromiter(
+        (block[:5] for block in block_geoids),
+        dtype="U5",
+        count=len(block_geoids),
+    )
+    state_fips = np.fromiter(
+        (int(block[:2]) for block in block_geoids),
+        dtype=np.int32,
+        count=len(block_geoids),
+    )
+    return GeographyAssignment(
+        block_geoid=block_geoids,
+        cd_geoid=sorted_cds[indices],
+        county_fips=county_fips,
+        state_fips=state_fips,
+        n_records=n_records,
+        n_clones=n_clones,
     )
 
 

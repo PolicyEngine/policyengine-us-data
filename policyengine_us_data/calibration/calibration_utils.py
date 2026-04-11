@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 import json
 import numpy as np
 import pandas as pd
+from scipy import sparse
 
 from spm_calculator import SPMCalculator, spm_equivalence_scale
 from spm_calculator.geoadj import calculate_geoadj_from_rent
@@ -263,6 +264,10 @@ def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
         else:
             parsed = val
 
+    values = np.asarray(values)
+    if values.dtype.kind == "S" and isinstance(parsed, str):
+        parsed = parsed.encode()
+
     if op in ("==", "="):
         return values == parsed
     if op == ">":
@@ -491,7 +496,6 @@ def get_cd_index_mapping(db_uri: str = None):
         tuple: (cd_to_index dict, index_to_cd dict, cds_ordered list)
     """
     from sqlalchemy import create_engine, text
-    from pathlib import Path
     from policyengine_us_data.storage import STORAGE_FOLDER
 
     if db_uri is None:

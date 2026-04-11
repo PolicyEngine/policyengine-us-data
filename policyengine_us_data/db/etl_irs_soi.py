@@ -1603,6 +1603,7 @@ def main():
     args, dataset_year = etl_argparser(
         "ETL for IRS SOI calibration targets",
         extra_args_fn=add_lag_arg,
+        allow_year=True,
     )
     lagged_year = dataset_year - args.lag
     geography_year = min(lagged_year, LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR)

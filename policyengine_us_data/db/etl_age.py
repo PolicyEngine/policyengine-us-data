@@ -239,7 +239,10 @@ def load_age_data(df_long, geo, year):
 
 
 def main():
-    _, year = etl_argparser("ETL for age calibration targets")
+    _, year = etl_argparser(
+        "ETL for age calibration targets",
+        allow_year=True,
+    )
 
     # --- ETL: Extract, Transform, Load ----
 

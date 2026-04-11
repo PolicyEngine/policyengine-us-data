@@ -264,7 +264,10 @@ def main():
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    _, year = etl_argparser("ETL for state income tax calibration targets")
+    _, year = etl_argparser(
+        "ETL for state income tax calibration targets",
+        allow_year=True,
+    )
 
     data_year = min(year, LATEST_STC_YEAR)
     if data_year != year:

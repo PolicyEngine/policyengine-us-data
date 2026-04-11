@@ -13,8 +13,12 @@ from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
     _build_agi_block_probs,
     load_global_block_distribution,
+    load_sorted_block_cd_lookup,
     assign_random_geography,
     double_geography_for_puf,
+    reconstruct_geography_from_blocks,
+    save_geography,
+    load_geography,
 )
 
 MOCK_BLOCKS = pd.DataFrame(
@@ -49,8 +53,10 @@ MOCK_BLOCKS = pd.DataFrame(
 @pytest.fixture(autouse=True)
 def _clear_lru_cache():
     load_global_block_distribution.cache_clear()
+    load_sorted_block_cd_lookup.cache_clear()
     yield
     load_global_block_distribution.cache_clear()
+    load_sorted_block_cd_lookup.cache_clear()
 
 
 def _mock_distribution():
@@ -221,3 +227,74 @@ class TestDoubleGeographyForPuf:
                 r.state_fips[start:mid],
                 r.state_fips[mid:end],
             )
+
+
+class TestGeographyArtifacts:
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_reconstruct_geography_from_blocks(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        blocks = np.array(
+            [
+                "010010001001001",
+                "020010001001002",
+                "360100001001004",
+                "010010001001003",
+            ],
+            dtype=str,
+        )
+
+        geo = reconstruct_geography_from_blocks(
+            block_geoids=blocks,
+            n_records=2,
+            n_clones=2,
+        )
+
+        np.testing.assert_array_equal(
+            geo.cd_geoid,
+            np.array(["101", "102", "103", "101"]),
+        )
+        np.testing.assert_array_equal(
+            geo.county_fips,
+            np.array(["01001", "02001", "36010", "01001"]),
+        )
+        np.testing.assert_array_equal(
+            geo.state_fips,
+            np.array([1, 2, 36, 1], dtype=np.int32),
+        )
+
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_reconstruct_geography_from_blocks_raises_on_unknown_block(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        with pytest.raises(KeyError):
+            reconstruct_geography_from_blocks(
+                block_geoids=np.array(["999999999999999"], dtype=str),
+                n_records=1,
+                n_clones=1,
+            )
+
+    def test_save_and_load_geography_round_trip(self, tmp_path):
+        geo = GeographyAssignment(
+            block_geoid=np.array(["010010001001001", "020010001001001"]),
+            cd_geoid=np.array(["101", "202"]),
+            county_fips=np.array(["01001", "02001"]),
+            state_fips=np.array([1, 2], dtype=np.int32),
+            n_records=1,
+            n_clones=2,
+        )
+        path = tmp_path / "geography_assignment.npz"
+
+        save_geography(geo, path)
+        loaded = load_geography(path)
+
+        np.testing.assert_array_equal(loaded.block_geoid, geo.block_geoid)
+        np.testing.assert_array_equal(loaded.cd_geoid, geo.cd_geoid)
+        np.testing.assert_array_equal(loaded.county_fips, geo.county_fips)
+        np.testing.assert_array_equal(loaded.state_fips, geo.state_fips)
+        assert loaded.n_records == geo.n_records
+        assert loaded.n_clones == geo.n_clones

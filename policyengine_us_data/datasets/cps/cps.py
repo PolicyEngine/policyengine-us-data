@@ -130,7 +130,7 @@ class CPS(Dataset):
         logging.info("Adding previous year income variables")
         add_previous_year_income(self, cps)
         logging.info("Adding SSN card type")
-        add_ssn_card_type(
+        ssn_card_type = add_ssn_card_type(
             cps,
             person,
             spm_unit,
@@ -138,6 +138,13 @@ class CPS(Dataset):
             undocumented_target=13e6,
             undocumented_workers_target=8.3e6,
             undocumented_students_target=0.21 * 1.9e6,
+        )
+        logging.info("Adding taxpayer ID variables")
+        _store_identification_variables(
+            cps,
+            person,
+            ssn_card_type,
+            self.time_period,
         )
         logging.info("Adding family variables")
         add_spm_variables(self, cps, spm_unit)
@@ -984,7 +991,7 @@ def add_ssn_card_type(
     undocumented_target: float = 13e6,
     undocumented_workers_target: float = 8.3e6,
     undocumented_students_target: float = 0.21 * 1.9e6,
-) -> None:
+) -> np.ndarray:
     """
     Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.
     Codes:
@@ -1711,12 +1718,6 @@ def add_ssn_card_type(
     # Final write (all values now in ImmigrationStatus Enum)
     # Save as immigration_status_str since that's what PolicyEngine expects
     cps["immigration_status_str"] = immigration_status.astype("S")
-    # ============================================================================
-    # CONVERT TO STRING LABELS AND STORE
-    # ============================================================================
-
-    _store_identification_variables(cps, ssn_card_type)
-
     # Final population summary
     print(f"\nFinal populations:")
     code_to_str = {
@@ -1764,6 +1765,8 @@ def add_ssn_card_type(
 
     # Update documentation with actual numbers
     _update_documentation_with_numbers(log_df, DOCS_FOLDER)
+
+    return ssn_card_type
 
 
 def _update_documentation_with_numbers(log_df, docs_dir):

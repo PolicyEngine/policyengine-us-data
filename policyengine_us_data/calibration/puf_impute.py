@@ -518,7 +518,7 @@ def puf_clone_dataset(
         elif variable in IMPUTED_VARIABLES and y_full:
             pred = _map_to_entity(y_full[variable], variable)
             new_data[variable] = {time_period: np.concatenate([values, pred])}
-        elif "_id" in variable:
+        elif "_id" in variable and np.issubdtype(values.dtype, np.number):
             new_data[variable] = {
                 time_period: np.concatenate([values, values + values.max()])
             }
@@ -587,7 +587,6 @@ def _impute_weeks_unemployed(
     except (ValueError, KeyError):
         logger.warning("weeks_unemployed not in CPS, returning zeros")
         n_persons = len(data["person_id"][time_period])
-        del cps_sim
         return np.zeros(n_persons)
 
     WEEKS_PREDICTORS = [
@@ -690,7 +689,6 @@ def _impute_retirement_contributions(
     except (ValueError, KeyError) as e:
         logger.warning("Could not build retirement training data: %s", e)
         n_persons = len(data["person_id"][time_period])
-        del cps_sim
         return {var: np.zeros(n_persons) for var in CPS_RETIREMENT_VARIABLES}
 
     # Build test data: demographics from CPS sim, income from PUF
@@ -822,9 +820,7 @@ def _run_qrf_imputation(
     del puf_sim
 
     sub_idx = _stratified_subsample_index(puf_agi)
-    logger.info(
-        "Stratified PUF subsample: %d -> %d records "
-        "(top %.1f%% preserved, AGI threshold $%,.0f)",
+    _log_stratified_subsample(
         len(puf_agi),
         len(sub_idx),
         100 - PUF_TOP_PERCENTILE,
@@ -891,6 +887,22 @@ def _stratified_subsample_index(
     selected = np.concatenate([top_idx, selected_bottom])
     selected.sort()
     return selected
+
+
+def _log_stratified_subsample(
+    original_n: int,
+    selected_n: int,
+    top_percent_preserved: float,
+    agi_threshold: float,
+) -> None:
+    logger.info(
+        "Stratified PUF subsample: %d -> %d records "
+        "(top %.1f%% preserved, AGI threshold $%s)",
+        original_n,
+        selected_n,
+        top_percent_preserved,
+        f"{agi_threshold:,.0f}",
+    )
 
 
 def _sequential_qrf(

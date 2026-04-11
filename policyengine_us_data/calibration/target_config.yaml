@@ -44,6 +44,10 @@ include:
   - variable: person_count
     geo_level: state
     domain_variable: medicaid_enrolled
+  # Restore old loss.py's national Medicaid enrollment count target.
+  - variable: person_count
+    geo_level: national
+    domain_variable: medicaid
   # REMOVED: is_pregnant — 100% unachievable across all 51 state geos
   - variable: snap
     geo_level: state
@@ -150,9 +154,15 @@ include:
   - variable: refundable_ctc
     geo_level: national
     domain_variable: refundable_ctc
+  - variable: refundable_ctc
+    geo_level: national
+    domain_variable: adjusted_gross_income,refundable_ctc
   - variable: non_refundable_ctc
     geo_level: national
     domain_variable: non_refundable_ctc
+  - variable: non_refundable_ctc
+    geo_level: national
+    domain_variable: adjusted_gross_income,non_refundable_ctc
   - variable: total_self_employment_income
     geo_level: national
     domain_variable: total_self_employment_income
@@ -170,12 +180,31 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: aca_ptc
+  # Restore old loss.py's ACA enrollment count target.
+  - variable: person_count
+    geo_level: national
+    domain_variable: aca_ptc
   - variable: tax_unit_count
     geo_level: national
     domain_variable: refundable_ctc
   - variable: tax_unit_count
     geo_level: national
+    domain_variable: adjusted_gross_income,refundable_ctc
+  - variable: tax_unit_count
+    geo_level: national
     domain_variable: non_refundable_ctc
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,non_refundable_ctc
+  # Restore old loss.py's self-employment return-count target.
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: total_self_employment_income
+
+  # === NATIONAL — identity / population count targets from old loss.py ===
+  - variable: person_count
+    geo_level: national
+    domain_variable: ssn_card_type
 
   # === NATIONAL — SOI deduction totals (non-reform) ===
   - variable: medical_expense_deduction

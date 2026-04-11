@@ -1,3 +1,17 @@
+## [1.77.0] - 2026-04-10
+
+### Added
+
+- Added richer national CTC calibration and validation coverage by loading AGI-split refundable and nonrefundable CTC targets from IRS geography data, expanding CTC diagnostics to AGI-by-filing-status and child-composition tables, and reporting a canonical ARPA-style CTC reform in national H5 validation.
+
+
+## [1.76.0] - 2026-04-10
+
+### Added
+
+- Save calibration geography as a pipeline artifact, add ``--resume-from`` and checkpoint support for long-running calibration fits, and fix resume/artifact handling in the remote calibration pipeline. This also adds conservative CPS taxpayer-ID outputs (``has_tin``, ``has_valid_ssn``, and a temporary ``has_itin`` compatibility alias), plus string-valued constraint handling needed for ID-target calibration.
+
+
 ## [1.75.8] - 2026-04-10
 
 ### Fixed

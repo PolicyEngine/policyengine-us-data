@@ -5,10 +5,23 @@ SIMPLE_TAKEUP_VARS / TAKEUP_AFFECTED_TARGETS configs are valid,
 block-level takeup seeding, county precomputation, and CLI flags.
 """
 
+import sys
+import types
+
 import numpy as np
 import pytest
+import scipy.sparse as sp
 from types import SimpleNamespace
 from unittest.mock import patch
+
+# Ensure `l0.calibration` is importable so patch() can traverse the path
+# even when the real l0-python package is not installed (e.g. CI).
+if "l0" not in sys.modules:
+    _l0 = types.ModuleType("l0")
+    _l0.calibration = types.ModuleType("l0.calibration")
+    _l0.calibration.SparseCalibrationWeights = None
+    sys.modules["l0"] = _l0
+    sys.modules["l0.calibration"] = _l0.calibration
 
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
@@ -391,6 +404,254 @@ class TestParseArgsNewFlags:
         args_default = parse_args([])
         assert args_default.skip_takeup_rerandomize is False
 
+    def test_resume_flags(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            parse_args,
+        )
+
+        args = parse_args(
+            [
+                "--resume-from",
+                "weights.npy",
+                "--checkpoint-output",
+                "weights.checkpoint.pt",
+            ]
+        )
+        assert args.resume_from == "weights.npy"
+        assert args.checkpoint_output == "weights.checkpoint.pt"
+
+
+class FakeSparseCalibrationWeights:
+    def __init__(
+        self,
+        n_features,
+        beta=None,
+        gamma=None,
+        zeta=None,
+        init_keep_prob=None,
+        init_weights=None,
+        log_weight_jitter_sd=0.0,
+        log_alpha_jitter_sd=0.0,
+        device="cpu",
+    ):
+        import torch
+
+        self.n_features = n_features
+        self.device = device
+        self.log_weight_jitter_sd = log_weight_jitter_sd
+        weight_values = (
+            np.ones(n_features, dtype=np.float32)
+            if init_weights is None
+            else np.asarray(init_weights, dtype=np.float32)
+        )
+        self.weights = torch.tensor(weight_values, dtype=torch.float32)
+        self.alpha = torch.zeros(n_features, dtype=torch.float32)
+
+    def fit(
+        self,
+        M,
+        y,
+        lambda_l0=0.0,
+        lambda_l2=0.0,
+        lr=0.0,
+        epochs=1,
+        loss_type="relative",
+        verbose=False,
+        verbose_freq=1,
+        target_groups=None,
+    ):
+        increment = float(epochs) + (self.alpha / 10.0)
+        self.weights = self.weights + increment
+        self.alpha = self.alpha + (10.0 * float(epochs))
+        return self
+
+    def predict(self, M):
+        import torch
+
+        weights = self.get_weights(deterministic=True).cpu().numpy()
+        return torch.tensor(M.dot(weights), dtype=torch.float32)
+
+    def get_weights(self, deterministic=True):
+        return self.weights.clone()
+
+    def state_dict(self):
+        return {
+            "weights": self.weights.clone(),
+            "alpha": self.alpha.clone(),
+        }
+
+    def load_state_dict(self, state_dict):
+        self.weights = state_dict["weights"].clone()
+        self.alpha = state_dict["alpha"].clone()
+
+
+class TestFitResume:
+    def _fit_kwargs(self, tmp_path):
+        return {
+            "X_sparse": sp.csr_matrix(np.eye(2, dtype=np.float32)),
+            "targets": np.array([1.0, 2.0], dtype=np.float64),
+            "lambda_l0": 1e-4,
+            "epochs": 1,
+            "device": "cpu",
+            "beta": 0.65,
+            "lambda_l2": 1e-12,
+            "learning_rate": 0.15,
+            "log_freq": 1,
+            "log_path": str(tmp_path / "calibration_log.csv"),
+            "target_names": ["target_a", "target_b"],
+            "initial_weights": np.array([1.0, 2.0], dtype=np.float64),
+            "achievable": np.array([True, True]),
+        }
+
+    def test_resume_from_weights_prefers_sibling_checkpoint(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            default_checkpoint_path,
+            fit_l0_weights,
+        )
+
+        weights_path = tmp_path / "weights.npy"
+        checkpoint_path = default_checkpoint_path(str(weights_path))
+        kwargs = self._fit_kwargs(tmp_path)
+        kwargs["checkpoint_path"] = str(checkpoint_path)
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            first_weights = fit_l0_weights(**kwargs)
+            np.save(weights_path, first_weights)
+
+            resumed_weights = fit_l0_weights(
+                **{
+                    **kwargs,
+                    "resume_from": str(weights_path),
+                }
+            )
+
+        np.testing.assert_allclose(first_weights, np.array([2.0, 3.0]))
+        np.testing.assert_allclose(resumed_weights, np.array([4.0, 5.0]))
+
+        with open(kwargs["log_path"]) as f:
+            lines = f.read().strip().splitlines()
+        assert len(lines) == 5
+        assert lines[1].split(",")[3] == "1"
+        assert lines[3].split(",")[3] == "2"
+
+    def test_resume_from_weights_falls_back_when_checkpoint_missing(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import fit_l0_weights
+
+        weights_path = tmp_path / "weights.npy"
+        np.save(weights_path, np.array([2.0, 3.0], dtype=np.float64))
+        kwargs = self._fit_kwargs(tmp_path)
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            resumed_weights = fit_l0_weights(
+                **{
+                    **kwargs,
+                    "resume_from": str(weights_path),
+                }
+            )
+
+        np.testing.assert_allclose(resumed_weights, np.array([3.0, 4.0]))
+
+    def test_resume_checkpoint_rejects_incompatible_hyperparams(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            default_checkpoint_path,
+            fit_l0_weights,
+        )
+
+        weights_path = tmp_path / "weights.npy"
+        checkpoint_path = default_checkpoint_path(str(weights_path))
+        kwargs = self._fit_kwargs(tmp_path)
+        kwargs["checkpoint_path"] = str(checkpoint_path)
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            first_weights = fit_l0_weights(**kwargs)
+            np.save(weights_path, first_weights)
+
+            with pytest.raises(ValueError, match="Checkpoint is incompatible"):
+                fit_l0_weights(
+                    **{
+                        **kwargs,
+                        "lambda_l0": 9e-4,
+                        "resume_from": str(checkpoint_path),
+                    }
+                )
+
+    def test_resume_checkpoint_rejects_changed_matrix_with_same_shape(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            default_checkpoint_path,
+            fit_l0_weights,
+        )
+
+        weights_path = tmp_path / "weights.npy"
+        checkpoint_path = default_checkpoint_path(str(weights_path))
+        kwargs = self._fit_kwargs(tmp_path)
+        kwargs["checkpoint_path"] = str(checkpoint_path)
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            first_weights = fit_l0_weights(**kwargs)
+            np.save(weights_path, first_weights)
+
+            changed_matrix = sp.csr_matrix(
+                np.array(
+                    [
+                        [0.0, 1.0],
+                        [1.0, 0.0],
+                    ],
+                    dtype=np.float32,
+                )
+            )
+
+            with pytest.raises(ValueError, match="Checkpoint is incompatible"):
+                fit_l0_weights(
+                    **{
+                        **kwargs,
+                        "X_sparse": changed_matrix,
+                        "resume_from": str(checkpoint_path),
+                    }
+                )
+
+    def test_resume_checkpoint_rejects_missing_matrix_fingerprint(self, tmp_path):
+        import torch
+        from policyengine_us_data.calibration.unified_calibration import (
+            default_checkpoint_path,
+            fit_l0_weights,
+        )
+
+        weights_path = tmp_path / "weights.npy"
+        checkpoint_path = default_checkpoint_path(str(weights_path))
+        kwargs = self._fit_kwargs(tmp_path)
+        kwargs["checkpoint_path"] = str(checkpoint_path)
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            first_weights = fit_l0_weights(**kwargs)
+            np.save(weights_path, first_weights)
+
+            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+            checkpoint["signature"].pop("x_sparse_sha256")
+            torch.save(checkpoint, checkpoint_path)
+
+            with pytest.raises(ValueError, match="x_sparse_sha256"):
+                fit_l0_weights(
+                    **{
+                        **kwargs,
+                        "resume_from": str(checkpoint_path),
+                    }
+                )
+
 
 class TestGeographyAssignmentCountyFips:
     """Verify county_fips field on GeographyAssignment."""
@@ -644,6 +905,118 @@ class TestAssembleCloneValuesCounty:
         )
         expected = np.array([50, 50, 60, 60], dtype=np.float32)
         np.testing.assert_array_equal(hh_vars["snap"], expected)
+
+
+class TestAssembleCloneValuesStringConstraint:
+    """Verify string constraint vars (e.g. ssn_card_type) are
+    assembled without crashing on float32 conversion."""
+
+    def _make_state_values(self):
+        n = 4
+        return {
+            1: {
+                "hh": {"snap": np.array([50] * n, dtype=np.float32)},
+                "person": {
+                    "ssn_card_type": np.array(
+                        ["CITIZEN", "CITIZEN", "UNDOCUMENTED", "CITIZEN"],
+                        dtype=object,
+                    ),
+                },
+                "entity": {},
+            },
+            2: {
+                "hh": {"snap": np.array([60] * n, dtype=np.float32)},
+                "person": {
+                    "ssn_card_type": np.array(
+                        ["UNDOCUMENTED", "CITIZEN", "CITIZEN", "UNDOCUMENTED"],
+                        dtype=object,
+                    ),
+                },
+                "entity": {},
+            },
+        }
+
+    def test_string_constraint_var_assembled(self):
+        from policyengine_us_data.calibration.unified_matrix_builder import (
+            UnifiedMatrixBuilder,
+        )
+
+        state_values = self._make_state_values()
+        clone_states = np.array([1, 1, 2, 2])
+        person_hh_idx = np.array([0, 1, 2, 3])
+
+        builder = UnifiedMatrixBuilder.__new__(UnifiedMatrixBuilder)
+        _, person_vars, _ = builder._assemble_clone_values(
+            state_values,
+            clone_states,
+            person_hh_idx,
+            {"snap"},
+            {"ssn_card_type"},
+        )
+        assert "ssn_card_type" in person_vars
+        arr = person_vars["ssn_card_type"]
+        assert arr.dtype == object
+        expected = np.array(
+            ["CITIZEN", "CITIZEN", "CITIZEN", "UNDOCUMENTED"], dtype=object
+        )
+        np.testing.assert_array_equal(arr, expected)
+
+    def test_string_constraint_var_standalone(self):
+        from policyengine_us_data.calibration.unified_matrix_builder import (
+            _assemble_clone_values_standalone,
+        )
+
+        state_values = self._make_state_values()
+        clone_states = np.array([1, 1, 2, 2])
+        person_hh_idx = np.array([0, 1, 2, 3])
+
+        _, person_vars, _ = _assemble_clone_values_standalone(
+            state_values,
+            clone_states,
+            person_hh_idx,
+            {"snap"},
+            {"ssn_card_type"},
+        )
+        assert "ssn_card_type" in person_vars
+        arr = person_vars["ssn_card_type"]
+        assert arr.dtype == object
+        expected = np.array(
+            ["CITIZEN", "CITIZEN", "CITIZEN", "UNDOCUMENTED"], dtype=object
+        )
+        np.testing.assert_array_equal(arr, expected)
+
+    def test_string_constraint_with_equality_op(self):
+        import pandas as pd
+
+        from policyengine_us_data.calibration.unified_matrix_builder import (
+            _assemble_clone_values_standalone,
+            _evaluate_constraints_standalone,
+        )
+
+        state_values = self._make_state_values()
+        clone_states = np.array([1, 1, 2, 2])
+        person_hh_idx = np.array([0, 1, 2, 3])
+
+        _, person_vars, _ = _assemble_clone_values_standalone(
+            state_values,
+            clone_states,
+            person_hh_idx,
+            {"snap"},
+            {"ssn_card_type"},
+        )
+
+        household_ids = np.array([0, 1, 2, 3])
+        entity_rel = pd.DataFrame(
+            {"household_id": person_hh_idx, "person_id": np.arange(4)}
+        )
+        constraints = [
+            {"variable": "ssn_card_type", "operation": "==", "value": "CITIZEN"}
+        ]
+        mask = _evaluate_constraints_standalone(
+            constraints, person_vars, entity_rel, household_ids, 4
+        )
+        expected = np.array([True, True, True, False])
+        np.testing.assert_array_equal(mask, expected)
 
 
 class TestTakeupDrawConsistency:

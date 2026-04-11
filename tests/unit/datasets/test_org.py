@@ -242,6 +242,74 @@ def test_load_org_training_data_serializes_first_cache_build(monkeypatch, tmp_pa
     pd.testing.assert_frame_equal(left_result, right_result)
 
 
+def test_load_org_training_data_rebuilds_invalid_cached_file(monkeypatch, tmp_path):
+    raw_month = pd.DataFrame(
+        {
+            "HRMIS": [4],
+            "gestfips": [6],
+            "prtage": [30],
+            "pesex": [2],
+            "ptdtrace": [1],
+            "pehspnon": [2],
+            "pworwgt": [100.0],
+            "pternwa": [100000.0],
+            "pternhly": [2500.0],
+            "peernhry": [1],
+            "pehruslt": [40.0],
+            "prerelg": [1],
+            "pemlr": [1],
+            "peio1cow": [1],
+        }
+    )
+    cache_path = tmp_path / "census_cps_org_2024_wages.csv.gz"
+    pd.DataFrame(columns=["employment_income", "weekly_hours_worked"]).to_csv(
+        cache_path,
+        index=False,
+        compression="gzip",
+    )
+    call_count = {"value": 0}
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org.STORAGE_FOLDER", tmp_path
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org.ORG_MONTHS",
+        ("may",),
+    )
+
+    def fake_load_month(year, month):
+        call_count["value"] += 1
+        return raw_month.copy()
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org._load_cps_basic_org_month",
+        fake_load_month,
+    )
+
+    load_org_training_data.cache_clear()
+    try:
+        rebuilt = load_org_training_data()
+    finally:
+        load_org_training_data.cache_clear()
+
+    assert call_count["value"] == 1
+    assert not rebuilt.empty
+    assert set(
+        [
+            "employment_income",
+            "weekly_hours_worked",
+            "age",
+            "is_female",
+            "is_hispanic",
+            "race_wbho",
+            "state_fips",
+            "hourly_wage",
+            "is_paid_hourly",
+            "sample_weight",
+        ]
+    ).issubset(rebuilt.columns)
+
+
 def test_build_union_priority_weights_reflect_bls_demographics():
     receiver = pd.DataFrame(
         {

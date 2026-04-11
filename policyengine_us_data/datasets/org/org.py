@@ -257,6 +257,23 @@ def _org_cache_build_lock(lock_path: Path):
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
+def _load_valid_cached_org_training_data(cache_path: Path) -> pd.DataFrame | None:
+    """Return a cached ORG training frame when it is present and structurally valid."""
+    required_columns = set(ORG_PREDICTORS + ORG_QRF_IMPUTED_VARIABLES + ["sample_weight"])
+    try:
+        cached = pd.read_csv(cache_path)
+    except (FileNotFoundError, OSError, pd.errors.EmptyDataError):
+        return None
+
+    if cached.empty:
+        return None
+
+    if not required_columns.issubset(cached.columns):
+        return None
+
+    return cached
+
+
 def _transform_cps_basic_org_month(month_df: pd.DataFrame) -> pd.DataFrame:
     """Convert one monthly CPS basic file into ORG donor rows.
 
@@ -476,12 +493,16 @@ def load_org_training_data() -> pd.DataFrame:
     """Load ORG donor rows built from official CPS basic monthly files."""
     cache_path = STORAGE_FOLDER / ORG_FILENAME
     lock_path = cache_path.parent / f"{cache_path.name}.lock"
-    if cache_path.exists():
-        return pd.read_csv(cache_path)
+    cached = _load_valid_cached_org_training_data(cache_path)
+    if cached is not None:
+        return cached
 
     with _org_cache_build_lock(lock_path):
+        cached = _load_valid_cached_org_training_data(cache_path)
+        if cached is not None:
+            return cached
         if cache_path.exists():
-            return pd.read_csv(cache_path)
+            cache_path.unlink()
 
         months = []
         for month in ORG_MONTHS:
@@ -492,7 +513,10 @@ def load_org_training_data() -> pd.DataFrame:
         temp_path = cache_path.parent / f"{cache_path.name}.tmp.gz"
         org.to_csv(temp_path, index=False, compression="gzip")
         temp_path.replace(cache_path)
-        return pd.read_csv(cache_path)
+        cached = _load_valid_cached_org_training_data(cache_path)
+        if cached is None:
+            raise ValueError("Failed to build a valid cached ORG donor file")
+        return cached
 
 
 @lru_cache(maxsize=1)

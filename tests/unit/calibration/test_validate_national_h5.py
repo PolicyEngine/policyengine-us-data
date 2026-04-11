@@ -1,14 +1,18 @@
 import os
 
 import pandas as pd
+import pytest
 
 from policyengine_us_data.calibration.validate_national_h5 import (
     VARIABLES,
+    build_advance_ctc_agi_share_comparison,
+    build_advance_ctc_filing_status_share_comparison,
     build_artifact_ctc_summary,
     build_canonical_ctc_reform_summary,
     get_artifact_ctc_comparison_outputs,
     get_canonical_ctc_reform_comparison_outputs,
     get_ctc_diagnostic_outputs,
+    get_external_ctc_benchmark_outputs,
     get_reference_values,
     resolve_dataset_path,
 )
@@ -38,6 +42,10 @@ def test_reference_values_use_irs_ctc_component_targets(monkeypatch):
     assert references["non_refundable_ctc"] == (
         81_600_000_000.0,
         "IRS SOI 2022 $81.6B",
+    )
+    assert references["ctc_qualifying_children"] == (
+        63_622_000.0,
+        "IRS Pub. 4801 2022 63.6M",
     )
 
 
@@ -191,6 +199,108 @@ def test_build_artifact_ctc_summary_reports_level_and_delta():
     assert summary.loc["ctc", "delta"] == 30.0
     assert summary.loc["refundable_ctc", "delta"] == 30.0
     assert summary.loc["non_refundable_ctc", "delta"] == 0.0
+
+
+def test_build_advance_ctc_agi_share_comparison_reports_share_deltas(monkeypatch):
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.validate_national_h5._get_advance_ctc_agi_reference",
+        lambda: pd.DataFrame(
+            [
+                {
+                    "group": "No adjusted gross income [4]",
+                    "reference_children_2021": 5.0,
+                    "reference_share_2021": 0.25,
+                },
+                {
+                    "group": "$1 under $10,000",
+                    "reference_children_2021": 15.0,
+                    "reference_share_2021": 0.75,
+                },
+            ]
+        ),
+    )
+    sim = _FakeSummarySim(
+        {
+            "adjusted_gross_income": pd.Series([0.0, 5_000.0]).to_numpy(),
+            "tax_unit_weight": pd.Series([1.0, 1.0]).to_numpy(),
+            "ctc_qualifying_children": pd.Series([2.0, 2.0]).to_numpy(),
+        }
+    )
+
+    summary = build_advance_ctc_agi_share_comparison(sim).set_index("group")
+
+    assert summary.loc["No adjusted gross income [4]", "simulated_children"] == 2.0
+    assert summary.loc["No adjusted gross income [4]", "simulated_share"] == 0.5
+    assert summary.loc["No adjusted gross income [4]", "share_delta_pp"] == 25.0
+    assert summary.loc["$1 under $10,000", "simulated_children"] == 2.0
+    assert summary.loc["$1 under $10,000", "simulated_share"] == 0.5
+    assert summary.loc["$1 under $10,000", "share_delta_pp"] == -25.0
+
+
+def test_build_advance_ctc_filing_status_share_comparison_reports_share_deltas(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.validate_national_h5._get_advance_ctc_filing_status_reference",
+        lambda: pd.DataFrame(
+            [
+                {
+                    "group": "Single [4]",
+                    "reference_children_2021": 1.0,
+                    "reference_share_2021": 0.2,
+                },
+                {
+                    "group": "Married filing a joint return",
+                    "reference_children_2021": 4.0,
+                    "reference_share_2021": 0.8,
+                },
+            ]
+        ),
+    )
+    sim = _FakeSummarySim(
+        {
+            "filing_status": pd.Series(["SINGLE", "JOINT"]).to_numpy(),
+            "tax_unit_weight": pd.Series([1.0, 1.0]).to_numpy(),
+            "ctc_qualifying_children": pd.Series([3.0, 1.0]).to_numpy(),
+        }
+    )
+
+    summary = build_advance_ctc_filing_status_share_comparison(sim).set_index("group")
+
+    assert summary.loc["Single [4]", "simulated_children"] == 3.0
+    assert summary.loc["Single [4]", "simulated_share"] == 0.75
+    assert summary.loc["Single [4]", "share_delta_pp"] == pytest.approx(55.0)
+    assert summary.loc["Married filing a joint return", "simulated_children"] == 1.0
+    assert summary.loc["Married filing a joint return", "simulated_share"] == 0.25
+    assert summary.loc["Married filing a joint return", "share_delta_pp"] == (
+        pytest.approx(-55.0)
+    )
+
+
+def test_external_ctc_benchmark_outputs_include_share_sections(monkeypatch):
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.validate_national_h5.build_advance_ctc_agi_share_comparison",
+        lambda sim, period=2025: pd.DataFrame([{"group": "A", "simulated_share": 0.5}]),
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.validate_national_h5.build_advance_ctc_filing_status_share_comparison",
+        lambda sim, period=2025: pd.DataFrame([{"group": "B", "simulated_share": 0.4}]),
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.validate_national_h5._format_external_share_comparison",
+        lambda table: f"formatted:{table.to_dict(orient='records')}",
+    )
+
+    outputs = get_external_ctc_benchmark_outputs(object())
+
+    assert outputs == {
+        "CTC QUALIFYING-CHILD SHARE VS 2021 ADVANCE CTC ADMIN DATA BY AGI BAND": (
+            "formatted:[{'group': 'A', 'simulated_share': 0.5}]"
+        ),
+        "CTC QUALIFYING-CHILD SHARE VS 2021 ADVANCE CTC ADMIN DATA BY FILING STATUS": (
+            "formatted:[{'group': 'B', 'simulated_share': 0.4}]"
+        ),
+    }
 
 
 def test_artifact_ctc_comparison_outputs_include_child_composition_sections(

@@ -1,4 +1,6 @@
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import h5py
 import numpy as np
@@ -7,6 +9,7 @@ import pytest
 import policyengine_us_data.storage.upload_completed_datasets as upload_module
 from policyengine_us_data.storage.upload_completed_datasets import (
     DatasetValidationError,
+    upload_datasets,
     validate_dataset,
 )
 import policyengine_us_data.utils.dataset_validation as _dv_mod
@@ -153,3 +156,312 @@ def test_validate_dataset_infers_time_period_for_flat_h5(tmp_path, monkeypatch):
     validate_dataset(file_path)
 
     assert _TimePeriodCheckingAggregateMicrosimulation.last_dataset.time_period == 2024
+
+
+def _prepare_release_files(tmp_path, monkeypatch):
+    cps_path = tmp_path / "cps_2024.h5"
+    cps_path.write_bytes(b"cps")
+    enhanced_path = tmp_path / "enhanced_cps_2024.h5"
+    enhanced_path.write_bytes(b"enhanced")
+    small_path = tmp_path / "small_enhanced_cps_2024.h5"
+    small_path.write_bytes(b"small")
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_path = calibration_dir / "policy_data.db"
+    db_path.write_bytes(b"db")
+
+    monkeypatch.setattr(upload_module.CPS_2024, "file_path", cps_path)
+    monkeypatch.setattr(upload_module.EnhancedCPS_2024, "file_path", enhanced_path)
+    monkeypatch.setattr(upload_module, "STORAGE_FOLDER", tmp_path)
+
+    return {
+        "cps": cps_path,
+        "enhanced": enhanced_path,
+        "small": small_path,
+        "db": db_path,
+    }
+
+
+def test_upload_datasets_stages_then_promotes_release(tmp_path, monkeypatch):
+    _prepare_release_files(tmp_path, monkeypatch)
+    validated = []
+    stage_calls = []
+    promote_calls = []
+
+    monkeypatch.setattr(
+        upload_module,
+        "validate_dataset",
+        lambda file_path: validated.append(Path(file_path).name),
+    )
+    monkeypatch.setattr(
+        upload_module.metadata,
+        "version",
+        lambda _: "1.73.0",
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "upload_to_staging_hf",
+        lambda files_with_paths, **kwargs: stage_calls.append(
+            ([(Path(path), repo_path) for path, repo_path in files_with_paths], kwargs)
+        ),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "promote_staging_to_production_hf",
+        lambda rel_paths, **kwargs: promote_calls.append(("hf", rel_paths, kwargs)),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "upload_from_hf_staging_to_gcs",
+        lambda rel_paths, **kwargs: promote_calls.append(("gcs", rel_paths, kwargs)),
+    )
+    publish_calls = []
+    monkeypatch.setattr(
+        upload_module,
+        "publish_release_manifest_to_hf",
+        lambda files_with_paths, **kwargs: publish_calls.append(
+            ([(Path(path), repo_path) for path, repo_path in files_with_paths], kwargs)
+        ),
+    )
+    cleanup_calls = []
+    monkeypatch.setattr(
+        upload_module,
+        "cleanup_staging_hf",
+        lambda rel_paths, **kwargs: cleanup_calls.append((rel_paths, kwargs)),
+    )
+
+    built_manifest = SimpleNamespace(version="1.73.0")
+    build_manifest_calls = []
+    upload_manifest_calls = []
+    monkeypatch.setattr(
+        upload_module,
+        "build_manifest",
+        lambda **kwargs: build_manifest_calls.append(kwargs) or built_manifest,
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "upload_manifest",
+        lambda manifest: upload_manifest_calls.append(manifest),
+    )
+
+    upload_datasets(version="1.73.0")
+
+    expected_repo_paths = [
+        "cps_2024.h5",
+        "policy_data.db",
+        "enhanced_cps_2024.h5",
+        "small_enhanced_cps_2024.h5",
+    ]
+    assert validated == [
+        "cps_2024.h5",
+        "policy_data.db",
+        "enhanced_cps_2024.h5",
+        "small_enhanced_cps_2024.h5",
+    ]
+    assert [repo_path for _, repo_path in stage_calls[0][0]] == expected_repo_paths
+    assert stage_calls[0][1]["run_id"] == ""
+    assert promote_calls == [
+        (
+            "hf",
+            expected_repo_paths,
+            {
+                "version": "1.73.0",
+                "hf_repo_name": upload_module.HF_REPO_NAME,
+                "hf_repo_type": upload_module.HF_REPO_TYPE,
+                "run_id": "",
+            },
+        ),
+        (
+            "gcs",
+            expected_repo_paths,
+            {
+                "version": "1.73.0",
+                "gcs_bucket_name": upload_module.GCS_BUCKET_NAME,
+                "hf_repo_name": upload_module.HF_REPO_NAME,
+                "hf_repo_type": upload_module.HF_REPO_TYPE,
+                "run_id": "",
+            },
+        ),
+    ]
+    assert [repo_path for _, repo_path in publish_calls[0][0]] == expected_repo_paths
+    assert publish_calls[0][1]["create_tag"] is True
+    assert build_manifest_calls == [
+        {
+            "version": "1.73.0",
+            "blob_names": expected_repo_paths,
+            "hf_info": upload_module.HFVersionInfo(
+                repo=upload_module.HF_REPO_NAME,
+                commit="1.73.0",
+            ),
+        }
+    ]
+    assert upload_manifest_calls == [built_manifest]
+    assert cleanup_calls == [
+        (
+            expected_repo_paths,
+            {
+                "version": "1.73.0",
+                "hf_repo_name": upload_module.HF_REPO_NAME,
+                "hf_repo_type": upload_module.HF_REPO_TYPE,
+                "run_id": "",
+            },
+        )
+    ]
+
+
+def test_upload_datasets_stage_only_skips_promote(tmp_path, monkeypatch):
+    _prepare_release_files(tmp_path, monkeypatch)
+    stage_calls = []
+    promote_calls = []
+
+    monkeypatch.setattr(upload_module, "validate_dataset", lambda file_path: None)
+    monkeypatch.setattr(upload_module.metadata, "version", lambda _: "1.73.0")
+    monkeypatch.setattr(
+        upload_module,
+        "upload_to_staging_hf",
+        lambda files_with_paths, **kwargs: stage_calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "promote_staging_to_production_hf",
+        lambda *args, **kwargs: promote_calls.append((args, kwargs)),
+    )
+
+    upload_datasets(stage_only=True, run_id="sha123", version="1.73.0")
+
+    assert stage_calls == [
+        {
+            "version": "1.73.0",
+            "hf_repo_name": upload_module.HF_REPO_NAME,
+            "hf_repo_type": upload_module.HF_REPO_TYPE,
+            "run_id": "sha123",
+        }
+    ]
+    assert promote_calls == []
+
+
+def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatch):
+    downloaded_dir = tmp_path / "downloaded"
+    downloaded_dir.mkdir()
+    expected_repo_paths = [
+        "cps_2024.h5",
+        "policy_data.db",
+        "enhanced_cps_2024.h5",
+        "small_enhanced_cps_2024.h5",
+    ]
+
+    mock_api = MagicMock()
+    mock_api.list_repo_files.return_value = [
+        f"staging/run-123/{repo_path}" for repo_path in expected_repo_paths
+    ]
+    monkeypatch.setattr(upload_module, "HfApi", lambda: mock_api)
+    monkeypatch.setattr(upload_module.metadata, "version", lambda _: "1.73.0")
+    monkeypatch.setattr(
+        upload_module,
+        "hf_hub_download",
+        lambda **kwargs: str(downloaded_dir / Path(kwargs["filename"]).name),
+    )
+    for repo_path in expected_repo_paths:
+        (downloaded_dir / Path(repo_path).name).write_bytes(repo_path.encode())
+
+    validate_calls = []
+    monkeypatch.setattr(
+        upload_module,
+        "validate_dataset",
+        lambda file_path: validate_calls.append(file_path),
+    )
+    promote_calls = []
+    monkeypatch.setattr(
+        upload_module,
+        "promote_staging_to_production_hf",
+        lambda rel_paths, **kwargs: promote_calls.append(("hf", rel_paths, kwargs)),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "upload_from_hf_staging_to_gcs",
+        lambda rel_paths, **kwargs: promote_calls.append(("gcs", rel_paths, kwargs)),
+    )
+    publish_calls = []
+    monkeypatch.setattr(
+        upload_module,
+        "publish_release_manifest_to_hf",
+        lambda files_with_paths, **kwargs: publish_calls.append(
+            ([repo_path for _, repo_path in files_with_paths], kwargs)
+        ),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "build_manifest",
+        lambda **kwargs: kwargs,
+    )
+    upload_manifest_calls = []
+    monkeypatch.setattr(
+        upload_module,
+        "upload_manifest",
+        lambda manifest: upload_manifest_calls.append(manifest),
+    )
+    cleanup_calls = []
+    monkeypatch.setattr(
+        upload_module,
+        "cleanup_staging_hf",
+        lambda rel_paths, **kwargs: cleanup_calls.append((rel_paths, kwargs)),
+    )
+
+    upload_datasets(promote_only=True, run_id="run-123", version="1.73.0")
+
+    assert validate_calls == []
+    assert promote_calls == [
+        (
+            "hf",
+            expected_repo_paths,
+            {
+                "version": "1.73.0",
+                "hf_repo_name": upload_module.HF_REPO_NAME,
+                "hf_repo_type": upload_module.HF_REPO_TYPE,
+                "run_id": "run-123",
+            },
+        ),
+        (
+            "gcs",
+            expected_repo_paths,
+            {
+                "version": "1.73.0",
+                "gcs_bucket_name": upload_module.GCS_BUCKET_NAME,
+                "hf_repo_name": upload_module.HF_REPO_NAME,
+                "hf_repo_type": upload_module.HF_REPO_TYPE,
+                "run_id": "run-123",
+            },
+        ),
+    ]
+    assert publish_calls == [
+        (
+            expected_repo_paths,
+            {
+                "version": "1.73.0",
+                "hf_repo_name": upload_module.HF_REPO_NAME,
+                "hf_repo_type": upload_module.HF_REPO_TYPE,
+                "create_tag": True,
+            },
+        )
+    ]
+    assert upload_manifest_calls == [
+        {
+            "version": "1.73.0",
+            "blob_names": expected_repo_paths,
+            "hf_info": upload_module.HFVersionInfo(
+                repo=upload_module.HF_REPO_NAME,
+                commit="1.73.0",
+            ),
+        }
+    ]
+    assert cleanup_calls == [
+        (
+            expected_repo_paths,
+            {
+                "version": "1.73.0",
+                "hf_repo_name": upload_module.HF_REPO_NAME,
+                "hf_repo_type": upload_module.HF_REPO_TYPE,
+                "run_id": "run-123",
+            },
+        )
+    ]

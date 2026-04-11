@@ -7,7 +7,9 @@ from huggingface_hub import CommitOperationAdd
 
 from policyengine_us_data.utils.data_upload import (
     load_release_manifest_from_hf,
+    missing_release_prefixes,
     publish_release_manifest_to_hf,
+    should_finalize_local_area_release,
     upload_files_to_hf,
 )
 from policyengine_us_data.utils.release_manifest import (
@@ -24,6 +26,29 @@ def _write_file(path: Path, content: bytes) -> Path:
 
 def _sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
+
+
+EXPECTED_COMPATIBLE_MODEL_PACKAGES = [
+    {"name": "policyengine-us", "version": "1.634.4"}
+]
+
+
+def _build_local_area_manifest(
+    *,
+    states: int = 0,
+    districts: int = 0,
+    cities: int = 0,
+) -> dict:
+    artifacts = {}
+    for index in range(states):
+        artifacts[f"states/S{index:02d}"] = {"path": f"states/S{index:02d}.h5"}
+    for index in range(districts):
+        artifacts[f"districts/D{index:03d}"] = {
+            "path": f"districts/D{index:03d}.h5"
+        }
+    for index in range(cities):
+        artifacts[f"cities/C{index:03d}"] = {"path": f"cities/C{index:03d}.h5"}
+    return {"artifacts": artifacts}
 
 
 def test_build_release_manifest_tracks_uploaded_artifacts(tmp_path):
@@ -51,12 +76,7 @@ def test_build_release_manifest_tracks_uploaded_artifacts(tmp_path):
         "version": "1.73.0",
     }
     assert manifest["schema_version"] == RELEASE_MANIFEST_SCHEMA_VERSION
-    assert manifest["compatible_model_packages"] == [
-        {
-            "name": "policyengine-us",
-            "specifier": "==1.634.4",
-        }
-    ]
+    assert manifest["compatible_model_packages"] == EXPECTED_COMPATIBLE_MODEL_PACKAGES
     assert manifest["default_datasets"] == {"national": "enhanced_cps_2024"}
 
     assert manifest["artifacts"]["enhanced_cps_2024"] == {
@@ -86,12 +106,7 @@ def test_build_release_manifest_merges_existing_release_same_version(tmp_path):
             "name": "policyengine-us-data",
             "version": "1.73.0",
         },
-        "compatible_model_packages": [
-            {
-                "name": "policyengine-us",
-                "specifier": "==1.634.4",
-            }
-        ],
+        "compatible_model_packages": EXPECTED_COMPATIBLE_MODEL_PACKAGES,
         "default_datasets": {"national": "enhanced_cps_2024"},
         "created_at": "2026-04-09T12:00:00Z",
         "artifacts": {
@@ -238,7 +253,7 @@ def test_publish_release_manifest_to_hf_can_finalize_and_tag(tmp_path):
             "name": "policyengine-us-data",
             "version": "1.73.0",
         },
-        "compatible_model_packages": [],
+        "compatible_model_packages": EXPECTED_COMPATIBLE_MODEL_PACKAGES,
         "default_datasets": {"national": "enhanced_cps_2024"},
         "created_at": "2026-04-10T12:00:00Z",
         "artifacts": {
@@ -278,6 +293,37 @@ def test_publish_release_manifest_to_hf_can_finalize_and_tag(tmp_path):
         )
 
     mock_api.create_tag.assert_called_once()
+
+
+def test_missing_release_prefixes_requires_full_local_area_bundle():
+    existing_manifest = _build_local_area_manifest(states=1, districts=1)
+
+    missing = missing_release_prefixes(
+        existing_manifest=existing_manifest,
+        new_repo_paths=["national/US.h5"],
+    )
+
+    assert missing == ["states/", "districts/", "cities/"]
+
+
+def test_should_finalize_local_area_release_uses_combined_manifest_state():
+    existing_manifest = _build_local_area_manifest(
+        states=51,
+        districts=435,
+        cities=1,
+    )
+
+    with patch(
+        "policyengine_us_data.utils.data_upload.load_release_manifest_from_hf",
+        return_value=existing_manifest,
+    ):
+        should_finalize, missing = should_finalize_local_area_release(
+            version="1.73.0",
+            new_repo_paths=["national/US.h5"],
+        )
+
+    assert should_finalize is True
+    assert missing == []
 
 
 def test_upload_files_to_hf_fails_without_model_package_version(tmp_path):
@@ -322,17 +368,85 @@ def test_publish_release_manifest_to_hf_rejects_finalized_release(tmp_path):
         tmp_path / "AL.h5",
         b"state-dataset",
     )
-
-    with patch(
-        "policyengine_us_data.utils.data_upload.load_release_manifest_from_hf",
-        side_effect=[
-            {
-                "data_package": {
-                    "name": "policyengine-us-data",
-                    "version": "1.73.0",
-                }
+    finalized_manifest = {
+        "schema_version": RELEASE_MANIFEST_SCHEMA_VERSION,
+        "data_package": {
+            "name": "policyengine-us-data",
+            "version": "1.73.0",
+        },
+        "compatible_model_packages": EXPECTED_COMPATIBLE_MODEL_PACKAGES,
+        "default_datasets": {"national": "enhanced_cps_2024"},
+        "created_at": "2026-04-10T12:00:00Z",
+        "artifacts": {
+            "states/AL": {
+                "kind": "microdata",
+                "path": "states/AL.h5",
+                "repo_id": "policyengine/policyengine-us-data",
+                "revision": "1.73.0",
+                "sha256": _sha256(b"state-dataset"),
+                "size_bytes": len(b"state-dataset"),
             }
-        ],
+        },
+    }
+
+    with (
+        patch(
+            "policyengine_us_data.utils.data_upload.load_release_manifest_from_hf",
+            side_effect=lambda *args, **kwargs: (
+                finalized_manifest if kwargs.get("revision") == "1.73.0" else None
+            ),
+        ),
+        patch(
+            "policyengine_us_data.utils.data_upload._get_model_package_version",
+            return_value="1.634.4",
+        ),
+    ):
+        manifest = publish_release_manifest_to_hf(
+            [(state_path, "states/AL.h5")],
+            version="1.73.0",
+            create_tag=True,
+        )
+
+    assert manifest == finalized_manifest
+
+
+def test_publish_release_manifest_to_hf_rejects_mutating_finalized_release(tmp_path):
+    state_path = _write_file(
+        tmp_path / "AL.h5",
+        b"state-dataset-v2",
+    )
+    finalized_manifest = {
+        "schema_version": RELEASE_MANIFEST_SCHEMA_VERSION,
+        "data_package": {
+            "name": "policyengine-us-data",
+            "version": "1.73.0",
+        },
+        "compatible_model_packages": EXPECTED_COMPATIBLE_MODEL_PACKAGES,
+        "default_datasets": {"national": "enhanced_cps_2024"},
+        "created_at": "2026-04-10T12:00:00Z",
+        "artifacts": {
+            "states/AL": {
+                "kind": "microdata",
+                "path": "states/AL.h5",
+                "repo_id": "policyengine/policyengine-us-data",
+                "revision": "1.73.0",
+                "sha256": _sha256(b"state-dataset"),
+                "size_bytes": len(b"state-dataset"),
+            }
+        },
+    }
+
+    with (
+        patch(
+            "policyengine_us_data.utils.data_upload.load_release_manifest_from_hf",
+            side_effect=lambda *args, **kwargs: (
+                finalized_manifest if kwargs.get("revision") == "1.73.0" else None
+            ),
+        ),
+        patch(
+            "policyengine_us_data.utils.data_upload._get_model_package_version",
+            return_value="1.634.4",
+        ),
     ):
         try:
             publish_release_manifest_to_hf(

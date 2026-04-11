@@ -32,6 +32,12 @@ from policyengine_us_data.utils.data_upload import (
     upload_from_hf_staging_to_gcs,
     cleanup_staging_hf,
     publish_release_manifest_to_hf,
+    should_finalize_local_area_release,
+)
+from policyengine_us_data.utils.version_manifest import (
+    HFVersionInfo,
+    build_manifest,
+    upload_manifest,
 )
 
 logger = logging.getLogger(__name__)
@@ -106,12 +112,37 @@ def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
         if files
         else download_staged_files(rel_paths, run_id=run_id)
     )
+    should_finalize, missing_prefixes = should_finalize_local_area_release(
+        version=version,
+        new_repo_paths=rel_paths,
+    )
     logger.info("Publishing release manifest...")
-    publish_release_manifest_to_hf(
+    manifest = publish_release_manifest_to_hf(
         manifest_files,
         version=version,
-        create_tag=True,
+        create_tag=should_finalize,
     )
+    if should_finalize:
+        upload_manifest(
+            build_manifest(
+                version=version,
+                blob_names=sorted(
+                    artifact["path"] for artifact in manifest["artifacts"].values()
+                ),
+                hf_info=HFVersionInfo(
+                    repo="policyengine/policyengine-us-data",
+                    commit=version,
+                ),
+            )
+        )
+    else:
+        logger.warning(
+            "Promoted only a partial artifact set for %s; missing prefixes %s. "
+            "Leaving the release untagged until all required local-area artifacts "
+            "have been published.",
+            version,
+            ", ".join(missing_prefixes),
+        )
 
     logger.info("Cleaning up staging/...")
     cleanup_staging_hf(rel_paths, version=version, run_id=run_id)
@@ -129,8 +160,8 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "--area-types",
-        default="states,districts,cities",
-        help="Comma-separated area types to publish (default: states,districts,cities)",
+        default="national,states,districts,cities",
+        help="Comma-separated area types to publish (default: national,states,districts,cities)",
     )
     parser.add_argument(
         "--version",

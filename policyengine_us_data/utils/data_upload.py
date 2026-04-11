@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Sequence
 import json
 from huggingface_hub import (
     HfApi,
@@ -34,6 +34,18 @@ DEFAULT_HF_TIMEOUT = 300
 MAX_RETRIES = 5
 RETRY_BASE_WAIT = 30
 RELEASE_MANIFEST_PATH = "release_manifest.json"
+LOCAL_AREA_FINALIZE_REQUIRED_PREFIXES = (
+    "national/",
+    "states/",
+    "districts/",
+    "cities/",
+)
+LOCAL_AREA_FINALIZE_REQUIRED_COUNTS = {
+    "national/": 1,
+    "states/": 51,
+    "districts/": 435,
+    "cities/": 1,
+}
 
 
 def _get_model_package_version(
@@ -104,6 +116,70 @@ def assert_release_not_finalized(
         )
 
 
+def get_repo_head_revision(
+    api: HfApi,
+    repo_id: str,
+    repo_type: str,
+    token: Optional[str] = None,
+) -> Optional[str]:
+    repo_info = api.repo_info(
+        repo_id=repo_id,
+        repo_type=repo_type,
+        token=token,
+    )
+    return getattr(repo_info, "sha", None)
+
+
+def _collect_manifest_repo_paths(manifest: Optional[Dict]) -> set[str]:
+    if not manifest:
+        return set()
+    return {
+        artifact["path"]
+        for artifact in manifest.get("artifacts", {}).values()
+        if isinstance(artifact, dict) and isinstance(artifact.get("path"), str)
+    }
+
+
+def missing_release_prefixes(
+    existing_manifest: Optional[Dict],
+    new_repo_paths: Sequence[str],
+    required_prefixes: Sequence[str] = LOCAL_AREA_FINALIZE_REQUIRED_PREFIXES,
+    required_counts: Optional[Dict[str, int]] = None,
+) -> list[str]:
+    required_counts = required_counts or LOCAL_AREA_FINALIZE_REQUIRED_COUNTS
+    combined_paths = _collect_manifest_repo_paths(existing_manifest) | set(new_repo_paths)
+    prefix_counts = {prefix: 0 for prefix in required_prefixes}
+    for path in combined_paths:
+        for prefix in required_prefixes:
+            if path.startswith(prefix):
+                prefix_counts[prefix] += 1
+                break
+
+    return [
+        prefix
+        for prefix in required_prefixes
+        if prefix_counts[prefix] < required_counts.get(prefix, 1)
+    ]
+
+
+def should_finalize_local_area_release(
+    version: str,
+    new_repo_paths: Sequence[str],
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+) -> tuple[bool, list[str]]:
+    existing_manifest = load_release_manifest_from_hf(
+        version=version,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+    )
+    missing_prefixes = missing_release_prefixes(
+        existing_manifest=existing_manifest,
+        new_repo_paths=new_repo_paths,
+    )
+    return not missing_prefixes, missing_prefixes
+
+
 def create_release_manifest_commit_operations(
     files_with_repo_paths: List[Tuple[Path, str]],
     version: str,
@@ -140,6 +216,42 @@ def create_release_manifest_commit_operations(
     return manifest, operations
 
 
+def get_matching_finalized_release_manifest(
+    files_with_paths: List[Tuple[Path, str]],
+    version: str,
+    hf_repo_name: str,
+    hf_repo_type: str,
+    model_package_name: str,
+    model_package_version: Optional[str] = None,
+) -> Optional[Dict]:
+    finalized_manifest = load_release_manifest_from_hf(
+        version=version,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+        revision=version,
+    )
+    if finalized_manifest is None:
+        return None
+
+    resolved_model_package_version = model_package_version or _get_model_package_version(
+        model_package_name
+    )
+    candidate_manifest, _ = create_release_manifest_commit_operations(
+        files_with_repo_paths=[(Path(path), repo_path) for path, repo_path in files_with_paths],
+        version=version,
+        hf_repo_name=hf_repo_name,
+        model_package_name=model_package_name,
+        model_package_version=resolved_model_package_version,
+        existing_manifest=finalized_manifest,
+    )
+    if candidate_manifest != finalized_manifest:
+        raise RuntimeError(
+            f"Release {version} is already finalized on {hf_repo_name}. "
+            "Refusing to mutate the tagged release manifest."
+        )
+    return finalized_manifest
+
+
 def create_release_tag(
     version: str,
     revision: str,
@@ -157,6 +269,7 @@ def create_release_tag(
             tag=version,
             revision=revision,
             repo_type=hf_repo_type,
+            exist_ok=False,
         )
         logging.info(
             "Tagged revision %s with %s in Hugging Face repository %s.",
@@ -166,11 +279,28 @@ def create_release_tag(
         )
     except Exception as e:
         if "Tag reference exists already" in str(e) or "409" in str(e):
-            logging.warning(
-                "Tag %s already exists in %s. Skipping tag creation.",
-                version,
-                hf_repo_name,
+            tagged_revision = getattr(
+                api.repo_info(
+                    repo_id=hf_repo_name,
+                    repo_type=hf_repo_type,
+                    revision=version,
+                    token=token,
+                ),
+                "sha",
+                None,
             )
+            if tagged_revision == revision:
+                logging.info(
+                    "Tag %s already exists in %s and already points to %s.",
+                    version,
+                    hf_repo_name,
+                    revision,
+                )
+                return
+            raise RuntimeError(
+                f"Tag {version} already exists in {hf_repo_name} at "
+                f"{tagged_revision}; refusing to treat {revision} as finalized."
+            ) from e
         else:
             raise
 
@@ -186,12 +316,12 @@ def upload_data_files(
     if version is None:
         version = metadata.version("policyengine-us-data")
 
-    upload_files_to_hf(
+    commit_oid = upload_files_to_hf(
         files=files,
         version=version,
         hf_repo_name=hf_repo_name,
         hf_repo_type=hf_repo_type,
-        create_tag=create_tag,
+        create_tag=False,
     )
 
     upload_files_to_gcs(
@@ -199,6 +329,14 @@ def upload_data_files(
         version=version,
         gcs_bucket_name=gcs_bucket_name,
     )
+
+    if create_tag:
+        create_release_tag(
+            version=version,
+            revision=commit_oid,
+            hf_repo_name=hf_repo_name,
+            hf_repo_type=hf_repo_type,
+        )
 
 
 def upload_files_to_hf(
@@ -236,16 +374,23 @@ def upload_files_to_hf(
             )
         )
 
+    model_package_version = _get_model_package_version()
     existing_manifest = load_release_manifest_from_hf(
         version=version,
         hf_repo_name=hf_repo_name,
         hf_repo_type=hf_repo_type,
     )
+    parent_commit = get_repo_head_revision(
+        api=api,
+        repo_id=hf_repo_name,
+        repo_type=hf_repo_type,
+        token=token,
+    )
     _, manifest_operations = create_release_manifest_commit_operations(
         files_with_repo_paths=files_with_repo_paths,
         version=version,
         hf_repo_name=hf_repo_name,
-        model_package_version=_get_model_package_version(),
+        model_package_version=model_package_version,
         existing_manifest=existing_manifest,
     )
     hf_operations.extend(manifest_operations)
@@ -256,6 +401,7 @@ def upload_files_to_hf(
         operations=hf_operations,
         repo_type=hf_repo_type,
         commit_message=f"Upload data files for version {version}",
+        parent_commit=parent_commit,
     )
     logging.info(f"Uploaded files to Hugging Face repository {hf_repo_name}.")
 
@@ -268,6 +414,7 @@ def upload_files_to_hf(
             token=token,
             api=api,
         )
+    return commit_info.oid
 
 
 def upload_files_to_gcs(
@@ -413,6 +560,17 @@ def publish_release_manifest_to_hf(
 ) -> Dict:
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
+    finalized_manifest = get_matching_finalized_release_manifest(
+        files_with_paths=files_with_paths,
+        version=version,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+        model_package_name=model_package_name,
+        model_package_version=model_package_version,
+    )
+    if finalized_manifest is not None:
+        return finalized_manifest
+
     assert_release_not_finalized(
         version=version,
         hf_repo_name=hf_repo_name,
@@ -423,13 +581,21 @@ def publish_release_manifest_to_hf(
         hf_repo_name=hf_repo_name,
         hf_repo_type=hf_repo_type,
     )
+    resolved_model_package_version = model_package_version or _get_model_package_version(
+        model_package_name
+    )
+    parent_commit = get_repo_head_revision(
+        api=api,
+        repo_id=hf_repo_name,
+        repo_type=hf_repo_type,
+        token=token,
+    )
     manifest, operations = create_release_manifest_commit_operations(
         files_with_repo_paths=[(Path(path), repo_path) for path, repo_path in files_with_paths],
         version=version,
         hf_repo_name=hf_repo_name,
         model_package_name=model_package_name,
-        model_package_version=model_package_version
-        or _get_model_package_version(model_package_name),
+        model_package_version=resolved_model_package_version,
         existing_manifest=existing_manifest,
     )
     commit_info = hf_create_commit_with_retry(
@@ -439,6 +605,7 @@ def publish_release_manifest_to_hf(
         repo_type=hf_repo_type,
         token=token,
         commit_message=f"Update release manifest for version {version}",
+        parent_commit=parent_commit,
     )
     if create_tag:
         create_release_tag(
@@ -477,6 +644,7 @@ def hf_create_commit_with_retry(
     repo_type: str,
     token: str,
     commit_message: str,
+    parent_commit: Optional[str] = None,
 ):
     """
     Create HuggingFace commit with retry logic for timeout errors.
@@ -489,6 +657,7 @@ def hf_create_commit_with_retry(
         operations=operations,
         repo_type=repo_type,
         commit_message=commit_message,
+        parent_commit=parent_commit,
     )
 
 

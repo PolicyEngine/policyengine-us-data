@@ -12,6 +12,7 @@ from policyengine_us_data.utils.data_upload import (
     cleanup_staging_hf,
     promote_staging_to_production_hf,
     publish_release_manifest_to_hf,
+    should_finalize_local_area_release,
     upload_from_hf_staging_to_gcs,
     upload_to_staging_hf,
 )
@@ -355,22 +356,39 @@ def promote_datasets(
         if files_with_repo_paths
         else _download_staged_dataset_artifacts(rel_paths, run_id=run_id)
     )
-    publish_release_manifest_to_hf(
+    should_finalize, missing_prefixes = should_finalize_local_area_release(
+        version=version,
+        new_repo_paths=rel_paths,
+        hf_repo_name=HF_REPO_NAME,
+        hf_repo_type=HF_REPO_TYPE,
+    )
+    manifest = publish_release_manifest_to_hf(
         manifest_files,
         version=version,
         hf_repo_name=HF_REPO_NAME,
         hf_repo_type=HF_REPO_TYPE,
-        create_tag=True,
+        create_tag=should_finalize,
     )
-
-    # Legacy consumers still resolve versions through version_manifest.json.
-    upload_manifest(
-        build_manifest(
-            version=version,
-            blob_names=rel_paths,
-            hf_info=HFVersionInfo(repo=HF_REPO_NAME, commit=version),
+    if not should_finalize:
+        print(
+            "Release manifest updated without final tag; missing local-area prefixes: "
+            + ", ".join(missing_prefixes)
         )
-    )
+
+    # Legacy consumers still resolve versions through version_manifest.json,
+    # but only once the release has been finalized at a stable HF revision.
+    if should_finalize:
+        upload_manifest(
+            build_manifest(
+                version=version,
+                blob_names=sorted(
+                    artifact["path"] for artifact in manifest["artifacts"].values()
+                ),
+                hf_info=HFVersionInfo(repo=HF_REPO_NAME, commit=version),
+            )
+        )
+    else:
+        print("Deferring version_manifest.json update until the release is finalized.")
     cleanup_staging_hf(
         rel_paths,
         version=version,

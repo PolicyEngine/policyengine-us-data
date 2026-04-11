@@ -223,6 +223,11 @@ def test_upload_datasets_stages_then_promotes_release(tmp_path, monkeypatch):
             ([(Path(path), repo_path) for path, repo_path in files_with_paths], kwargs)
         ),
     )
+    monkeypatch.setattr(
+        upload_module,
+        "should_finalize_local_area_release",
+        lambda **kwargs: (False, ["national/", "states/", "districts/", "cities/"]),
+    )
     cleanup_calls = []
     monkeypatch.setattr(
         upload_module,
@@ -230,13 +235,12 @@ def test_upload_datasets_stages_then_promotes_release(tmp_path, monkeypatch):
         lambda rel_paths, **kwargs: cleanup_calls.append((rel_paths, kwargs)),
     )
 
-    built_manifest = SimpleNamespace(version="1.73.0")
     build_manifest_calls = []
     upload_manifest_calls = []
     monkeypatch.setattr(
         upload_module,
         "build_manifest",
-        lambda **kwargs: build_manifest_calls.append(kwargs) or built_manifest,
+        lambda **kwargs: build_manifest_calls.append(kwargs),
     )
     monkeypatch.setattr(
         upload_module,
@@ -284,18 +288,9 @@ def test_upload_datasets_stages_then_promotes_release(tmp_path, monkeypatch):
         ),
     ]
     assert [repo_path for _, repo_path in publish_calls[0][0]] == expected_repo_paths
-    assert publish_calls[0][1]["create_tag"] is True
-    assert build_manifest_calls == [
-        {
-            "version": "1.73.0",
-            "blob_names": expected_repo_paths,
-            "hf_info": upload_module.HFVersionInfo(
-                repo=upload_module.HF_REPO_NAME,
-                commit="1.73.0",
-            ),
-        }
-    ]
-    assert upload_manifest_calls == [built_manifest]
+    assert publish_calls[0][1]["create_tag"] is False
+    assert build_manifest_calls == []
+    assert upload_manifest_calls == []
     assert cleanup_calls == [
         (
             expected_repo_paths,
@@ -391,8 +386,8 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
     )
     monkeypatch.setattr(
         upload_module,
-        "build_manifest",
-        lambda **kwargs: kwargs,
+        "should_finalize_local_area_release",
+        lambda **kwargs: (False, ["national/", "states/", "districts/", "cities/"]),
     )
     upload_manifest_calls = []
     monkeypatch.setattr(
@@ -440,20 +435,11 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
                 "version": "1.73.0",
                 "hf_repo_name": upload_module.HF_REPO_NAME,
                 "hf_repo_type": upload_module.HF_REPO_TYPE,
-                "create_tag": True,
+                "create_tag": False,
             },
         )
     ]
-    assert upload_manifest_calls == [
-        {
-            "version": "1.73.0",
-            "blob_names": expected_repo_paths,
-            "hf_info": upload_module.HFVersionInfo(
-                repo=upload_module.HF_REPO_NAME,
-                commit="1.73.0",
-            ),
-        }
-    ]
+    assert upload_manifest_calls == []
     assert cleanup_calls == [
         (
             expected_repo_paths,

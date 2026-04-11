@@ -36,8 +36,7 @@ def _base_manifest(
     *,
     version: str,
     data_package_name: str,
-    model_package_name: str,
-    model_package_version: str | None,
+    compatible_model_packages: Sequence[Dict[str, str]],
     created_at: str,
 ) -> Dict:
     manifest = {
@@ -46,19 +45,21 @@ def _base_manifest(
             "name": data_package_name,
             "version": version,
         },
-        "compatible_model_packages": [],
+        "compatible_model_packages": list(compatible_model_packages),
         "default_datasets": {},
         "created_at": created_at,
         "artifacts": {},
     }
-    if model_package_version:
-        manifest["compatible_model_packages"].append(
-            {
-                "name": model_package_name,
-                "specifier": f"=={model_package_version}",
-            }
-        )
     return manifest
+
+
+def _compatible_model_packages(
+    model_package_name: str,
+    model_package_version: str | None,
+) -> list[Dict[str, str]]:
+    if not model_package_version:
+        return []
+    return [{"name": model_package_name, "version": model_package_version}]
 
 
 def _normalize_existing_manifest(
@@ -101,20 +102,19 @@ def build_release_manifest(
         manifest = _base_manifest(
             version=version,
             data_package_name=data_package_name,
-            model_package_name=model_package_name,
-            model_package_version=model_package_version,
+            compatible_model_packages=_compatible_model_packages(
+                model_package_name,
+                model_package_version,
+            ),
             created_at=manifest_timestamp,
         )
     else:
         manifest["schema_version"] = RELEASE_MANIFEST_SCHEMA_VERSION
         manifest["created_at"] = manifest.get("created_at") or manifest_timestamp
-        if model_package_version:
-            manifest["compatible_model_packages"] = [
-                {
-                    "name": model_package_name,
-                    "specifier": f"=={model_package_version}",
-                }
-            ]
+        manifest["compatible_model_packages"] = _compatible_model_packages(
+            model_package_name,
+            model_package_version,
+        )
 
     if default_datasets:
         manifest.setdefault("default_datasets", {}).update(default_datasets)

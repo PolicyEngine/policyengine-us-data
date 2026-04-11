@@ -28,8 +28,8 @@ for _p in (_baked, _local):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from modal_app.images import cpu_image as image
-from modal_app.resilience import reconcile_run_dir_fingerprint
+from modal_app.images import cpu_image as image  # noqa: E402
+from modal_app.resilience import reconcile_run_dir_fingerprint  # noqa: E402
 
 app = modal.App("policyengine-us-data-local-area")
 
@@ -68,6 +68,170 @@ def setup_repo(branch: str):
     no longer used for cloning -- code is baked into the image.
     """
     os.chdir("/root/policyengine-us-data")
+
+
+def _build_promote_national_publish_script(
+    *,
+    version: str,
+    run_id: str,
+    rel_paths: list[str],
+) -> str:
+    rel_paths_json = json.dumps(rel_paths)
+    return f"""
+import json
+from pathlib import Path
+from policyengine_us_data.utils.data_upload import (
+    promote_staging_to_production_hf,
+    cleanup_staging_hf,
+    upload_local_area_file,
+    publish_release_manifest_to_hf,
+    should_finalize_local_area_release,
+)
+from policyengine_us_data.utils.version_manifest import (
+    HFVersionInfo,
+    build_manifest,
+    upload_manifest,
+)
+
+version = "{version}"
+run_id = "{run_id}"
+rel_paths = json.loads('''{rel_paths_json}''')
+run_dir = Path("{VOLUME_MOUNT}") / run_id
+
+print(f"Promoting national H5 from staging to production (run_id={{run_id!r}})...")
+promoted = promote_staging_to_production_hf(rel_paths, version, run_id=run_id)
+print(f"Promoted {{promoted}} files to HuggingFace production")
+
+national_h5 = run_dir / "national" / "US.h5"
+if national_h5.exists():
+    print("Uploading national H5 to GCS...")
+    upload_local_area_file(
+        str(national_h5), "national", version=version, skip_hf=True
+    )
+    print("Uploaded national H5 to GCS")
+else:
+    raise RuntimeError(f"Expected national H5 at {{national_h5}}")
+
+print("Updating release manifest...")
+should_finalize, missing_prefixes = should_finalize_local_area_release(
+    version=version,
+    new_repo_paths=["national/US.h5"],
+)
+manifest = publish_release_manifest_to_hf(
+    [(national_h5, "national/US.h5")],
+    version=version,
+    create_tag=should_finalize,
+)
+if should_finalize:
+    upload_manifest(
+        build_manifest(
+            version=version,
+            blob_names=sorted(
+                artifact["path"] for artifact in manifest["artifacts"].values()
+            ),
+            hf_info=HFVersionInfo(
+                repo="policyengine/policyengine-us-data",
+                commit=version,
+            ),
+        )
+    )
+    print("Updated release manifest and created tag")
+else:
+    print(
+        "Updated release manifest without creating a tag; "
+        f"missing prefixes: {{', '.join(missing_prefixes)}}"
+    )
+
+print("Cleaning up staging...")
+cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
+print(f"Cleaned up {{cleaned}} files from staging")
+print(f"Successfully promoted national H5 for version {{version}}")
+"""
+
+
+def _build_promote_publish_script(
+    *,
+    version: str,
+    run_id: str,
+    rel_paths: list[str],
+) -> str:
+    rel_paths_json = json.dumps(rel_paths)
+    return f"""
+import json
+from pathlib import Path
+from policyengine_us_data.utils.data_upload import (
+    promote_staging_to_production_hf,
+    cleanup_staging_hf,
+    upload_local_area_file,
+    publish_release_manifest_to_hf,
+    should_finalize_local_area_release,
+)
+from policyengine_us_data.utils.version_manifest import (
+    HFVersionInfo,
+    build_manifest,
+    upload_manifest,
+)
+
+rel_paths = json.loads('''{rel_paths_json}''')
+version = "{version}"
+run_id = "{run_id}"
+run_dir = Path("{VOLUME_MOUNT}") / run_id
+
+print(f"Promoting {{len(rel_paths)}} files from staging/ to production (run_id={{run_id!r}})...")
+promoted = promote_staging_to_production_hf(rel_paths, version, run_id=run_id)
+print(f"Promoted {{promoted}} files to HuggingFace production")
+
+print(f"Uploading {{len(rel_paths)}} files to GCS...")
+gcs_count = 0
+for rel_path in rel_paths:
+    local_path = run_dir / rel_path
+    subdirectory = str(Path(rel_path).parent)
+    upload_local_area_file(
+        str(local_path),
+        subdirectory,
+        version=version,
+        skip_hf=True,
+    )
+    gcs_count += 1
+print(f"Uploaded {{gcs_count}} files to GCS")
+
+print("Updating release manifest...")
+should_finalize, missing_prefixes = should_finalize_local_area_release(
+    version=version,
+    new_repo_paths=rel_paths,
+)
+manifest = publish_release_manifest_to_hf(
+    [(run_dir / rel_path, rel_path) for rel_path in rel_paths],
+    version=version,
+    create_tag=should_finalize,
+)
+if should_finalize:
+    upload_manifest(
+        build_manifest(
+            version=version,
+            blob_names=sorted(
+                artifact["path"] for artifact in manifest["artifacts"].values()
+            ),
+            hf_info=HFVersionInfo(
+                repo="policyengine/policyengine-us-data",
+                commit=version,
+            ),
+        )
+    )
+    print("Updated release manifest and created tag")
+else:
+    print(
+        "Updated release manifest without final tag; missing local-area prefixes: "
+        + ", ".join(missing_prefixes)
+    )
+    print("Deferring version_manifest.json update until release finalization")
+
+print("Cleaning up staging/...")
+cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
+print(f"Cleaned up {{cleaned}} files from staging/")
+
+print(f"Successfully published version {{version}}")
+"""
 
 
 def validate_artifacts(
@@ -556,61 +720,17 @@ def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -
     with open(manifest_path) as f:
         manifest = json.load(f)
 
-    rel_paths_json = json.dumps(list(manifest["files"].keys()))
-
     result = subprocess.run(
         [
             "uv",
             "run",
             "python",
             "-c",
-            f"""
-import json
-from pathlib import Path
-from policyengine_us_data.utils.data_upload import (
-    promote_staging_to_production_hf,
-    cleanup_staging_hf,
-    upload_local_area_file,
-    publish_release_manifest_to_hf,
-)
-
-rel_paths = json.loads('''{rel_paths_json}''')
-version = "{version}"
-run_id = "{run_id}"
-run_dir = Path("{VOLUME_MOUNT}") / run_id
-
-print(f"Promoting {{len(rel_paths)}} files from staging/ to production (run_id={{run_id!r}})...")
-promoted = promote_staging_to_production_hf(rel_paths, version, run_id=run_id)
-print(f"Promoted {{promoted}} files to HuggingFace production")
-
-print(f"Uploading {{len(rel_paths)}} files to GCS...")
-gcs_count = 0
-for rel_path in rel_paths:
-    local_path = run_dir / rel_path
-    subdirectory = str(Path(rel_path).parent)
-    upload_local_area_file(
-        str(local_path),
-        subdirectory,
-        version=version,
-        skip_hf=True,
-    )
-    gcs_count += 1
-print(f"Uploaded {{gcs_count}} files to GCS")
-
-print("Updating release manifest...")
-publish_release_manifest_to_hf(
-    [(run_dir / rel_path, rel_path) for rel_path in rel_paths],
-    version=version,
-    create_tag=False,
-)
-print("Updated release manifest")
-
-print("Cleaning up staging/...")
-cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
-print(f"Cleaned up {{cleaned}} files from staging/")
-
-print(f"Successfully published version {{version}}")
-""",
+            _build_promote_publish_script(
+                version=version,
+                run_id=run_id,
+                rel_paths=list(manifest["files"].keys()),
+            ),
         ],
         text=True,
         env=os.environ.copy(),
@@ -1142,48 +1262,11 @@ def promote_national_publish(
             "run",
             "python",
             "-c",
-            f"""
-import json
-from pathlib import Path
-from policyengine_us_data.utils.data_upload import (
-    promote_staging_to_production_hf,
-    cleanup_staging_hf,
-    upload_local_area_file,
-    publish_release_manifest_to_hf,
-)
-
-version = "{version}"
-run_id = "{run_id}"
-rel_paths = {json.dumps(rel_paths)}
-run_dir = Path("{VOLUME_MOUNT}") / run_id
-
-print(f"Promoting national H5 from staging to production (run_id={{run_id!r}})...")
-promoted = promote_staging_to_production_hf(rel_paths, version, run_id=run_id)
-print(f"Promoted {{promoted}} files to HuggingFace production")
-
-national_h5 = run_dir / "national" / "US.h5"
-if national_h5.exists():
-    print("Uploading national H5 to GCS...")
-    upload_local_area_file(
-        str(national_h5), "national", version=version, skip_hf=True
-    )
-    print("Uploaded national H5 to GCS")
-else:
-    raise RuntimeError(f"Expected national H5 at {{national_h5}}")
-
-print("Updating release manifest...")
-publish_release_manifest_to_hf(
-    [(national_h5, "national/US.h5")],
-    version=version,
-    create_tag=True,
-)
-print("Updated release manifest and created tag")
-
-print("Cleaning up staging...")
-cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
-print(f"Cleaned up {{cleaned}} files from staging")
-print(f"Successfully promoted national H5 for version {{version}}")
-""",
+            _build_promote_national_publish_script(
+                version=version,
+                run_id=run_id,
+                rel_paths=rel_paths,
+            ),
         ],
         text=True,
         env=os.environ.copy(),

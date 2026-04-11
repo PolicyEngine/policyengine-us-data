@@ -14,6 +14,9 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser()
+    # Kept for backward compatibility with older worker launchers.
+    # New callers should pass fully resolved AreaBuildRequests via
+    # --requests-json instead.
     parser.add_argument("--work-items", default=None, help="JSON work items")
     parser.add_argument(
         "--requests-json",

@@ -225,8 +225,11 @@ def test_upload_datasets_stages_then_promotes_release(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         upload_module,
-        "should_finalize_local_area_release",
-        lambda **kwargs: (False, ["national/", "states/", "districts/", "cities/"]),
+        "preflight_release_manifest_publish",
+        lambda *args, **kwargs: (
+            False,
+            ["national/", "states/", "districts/", "cities/"],
+        ),
     )
     cleanup_calls = []
     monkeypatch.setattr(
@@ -386,8 +389,11 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
     )
     monkeypatch.setattr(
         upload_module,
-        "should_finalize_local_area_release",
-        lambda **kwargs: (False, ["national/", "states/", "districts/", "cities/"]),
+        "preflight_release_manifest_publish",
+        lambda *args, **kwargs: (
+            False,
+            ["national/", "states/", "districts/", "cities/"],
+        ),
     )
     upload_manifest_calls = []
     monkeypatch.setattr(
@@ -451,3 +457,39 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
             },
         )
     ]
+
+
+def test_promote_datasets_preflight_failure_stops_before_production_writes(
+    tmp_path, monkeypatch
+):
+    files = _prepare_release_files(tmp_path, monkeypatch)
+    files_with_repo_paths = [
+        (files["cps"], "cps_2024.h5"),
+        (files["db"], "policy_data.db"),
+    ]
+    promote_calls = []
+
+    monkeypatch.setattr(upload_module.metadata, "version", lambda _: "1.73.0")
+    monkeypatch.setattr(
+        upload_module,
+        "preflight_release_manifest_publish",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("blocked")),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "promote_staging_to_production_hf",
+        lambda *args, **kwargs: promote_calls.append(("hf", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "upload_from_hf_staging_to_gcs",
+        lambda *args, **kwargs: promote_calls.append(("gcs", args, kwargs)),
+    )
+
+    with pytest.raises(RuntimeError, match="blocked"):
+        upload_module.promote_datasets(
+            version="1.73.0",
+            files_with_repo_paths=files_with_repo_paths,
+        )
+
+    assert promote_calls == []

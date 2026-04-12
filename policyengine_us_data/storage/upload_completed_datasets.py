@@ -10,9 +10,9 @@ from policyengine_us_data.datasets.cps.cps import CPS_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.data_upload import (
     cleanup_staging_hf,
+    preflight_release_manifest_publish,
     promote_staging_to_production_hf,
     publish_release_manifest_to_hf,
-    should_finalize_local_area_release,
     upload_from_hf_staging_to_gcs,
     upload_to_staging_hf,
 )
@@ -333,6 +333,18 @@ def promote_datasets(
             run_id=run_id,
         )
     )
+    manifest_files = (
+        files_with_repo_paths
+        if files_with_repo_paths
+        else _download_staged_dataset_artifacts(rel_paths, run_id=run_id)
+    )
+    should_finalize, missing_prefixes = preflight_release_manifest_publish(
+        manifest_files,
+        version=version,
+        new_repo_paths=rel_paths,
+        hf_repo_name=HF_REPO_NAME,
+        hf_repo_type=HF_REPO_TYPE,
+    )
 
     print(f"\nPromoting {len(rel_paths)} staged files to production...")
     promote_staging_to_production_hf(
@@ -349,18 +361,6 @@ def promote_datasets(
         hf_repo_name=HF_REPO_NAME,
         hf_repo_type=HF_REPO_TYPE,
         run_id=run_id,
-    )
-
-    manifest_files = (
-        files_with_repo_paths
-        if files_with_repo_paths
-        else _download_staged_dataset_artifacts(rel_paths, run_id=run_id)
-    )
-    should_finalize, missing_prefixes = should_finalize_local_area_release(
-        version=version,
-        new_repo_paths=rel_paths,
-        hf_repo_name=HF_REPO_NAME,
-        hf_repo_type=HF_REPO_TYPE,
     )
     manifest = publish_release_manifest_to_hf(
         manifest_files,

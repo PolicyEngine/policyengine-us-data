@@ -28,11 +28,11 @@ from huggingface_hub import HfApi, hf_hub_download
 
 from policyengine_us_data.utils.data_upload import (
     upload_to_staging_hf,
+    preflight_release_manifest_publish,
     promote_staging_to_production_hf,
     upload_from_hf_staging_to_gcs,
     cleanup_staging_hf,
     publish_release_manifest_to_hf,
-    should_finalize_local_area_release,
 )
 from policyengine_us_data.utils.version_manifest import (
     HFVersionInfo,
@@ -98,6 +98,17 @@ def stage(files: list, version: str, run_id: str = ""):
 
 
 def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
+    manifest_files = (
+        [(local_path, rel_path) for local_path, rel_path in files]
+        if files
+        else download_staged_files(rel_paths, run_id=run_id)
+    )
+    should_finalize, missing_prefixes = preflight_release_manifest_publish(
+        manifest_files,
+        version=version,
+        new_repo_paths=rel_paths,
+    )
+
     logger.info(
         "Promoting %d files from staging/ to production...",
         len(rel_paths),
@@ -106,16 +117,6 @@ def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
 
     logger.info("Uploading %d files to GCS from HF staging...", len(rel_paths))
     upload_from_hf_staging_to_gcs(rel_paths, version=version, run_id=run_id)
-
-    manifest_files = (
-        [(local_path, rel_path) for local_path, rel_path in files]
-        if files
-        else download_staged_files(rel_paths, run_id=run_id)
-    )
-    should_finalize, missing_prefixes = should_finalize_local_area_release(
-        version=version,
-        new_repo_paths=rel_paths,
-    )
     logger.info("Publishing release manifest...")
     manifest = publish_release_manifest_to_hf(
         manifest_files,

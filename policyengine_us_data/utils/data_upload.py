@@ -147,7 +147,9 @@ def missing_release_prefixes(
     required_counts: Optional[Dict[str, int]] = None,
 ) -> list[str]:
     required_counts = required_counts or LOCAL_AREA_FINALIZE_REQUIRED_COUNTS
-    combined_paths = _collect_manifest_repo_paths(existing_manifest) | set(new_repo_paths)
+    combined_paths = _collect_manifest_repo_paths(existing_manifest) | set(
+        new_repo_paths
+    )
     prefix_counts = {prefix: 0 for prefix in required_prefixes}
     for path in combined_paths:
         for prefix in required_prefixes:
@@ -178,6 +180,47 @@ def should_finalize_local_area_release(
         new_repo_paths=new_repo_paths,
     )
     return not missing_prefixes, missing_prefixes
+
+
+def preflight_release_manifest_publish(
+    files_with_paths: Sequence[Tuple[Path | str, str]],
+    version: str,
+    new_repo_paths: Sequence[str],
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    model_package_name: str = "policyengine-us",
+    model_package_version: Optional[str] = None,
+) -> tuple[bool, list[str]]:
+    should_finalize, missing_prefixes = should_finalize_local_area_release(
+        version=version,
+        new_repo_paths=new_repo_paths,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+    )
+    assert_release_not_finalized(
+        version=version,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+    )
+    existing_manifest = load_release_manifest_from_hf(
+        version=version,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+    )
+    resolved_model_package_version = (
+        model_package_version or _get_model_package_version(model_package_name)
+    )
+    create_release_manifest_commit_operations(
+        files_with_repo_paths=[
+            (Path(path), repo_path) for path, repo_path in files_with_paths
+        ],
+        version=version,
+        hf_repo_name=hf_repo_name,
+        model_package_name=model_package_name,
+        model_package_version=resolved_model_package_version,
+        existing_manifest=existing_manifest,
+    )
+    return should_finalize, missing_prefixes
 
 
 def create_release_manifest_commit_operations(
@@ -233,11 +276,13 @@ def get_matching_finalized_release_manifest(
     if finalized_manifest is None:
         return None
 
-    resolved_model_package_version = model_package_version or _get_model_package_version(
-        model_package_name
+    resolved_model_package_version = (
+        model_package_version or _get_model_package_version(model_package_name)
     )
     candidate_manifest, _ = create_release_manifest_commit_operations(
-        files_with_repo_paths=[(Path(path), repo_path) for path, repo_path in files_with_paths],
+        files_with_repo_paths=[
+            (Path(path), repo_path) for path, repo_path in files_with_paths
+        ],
         version=version,
         hf_repo_name=hf_repo_name,
         model_package_name=model_package_name,
@@ -581,8 +626,8 @@ def publish_release_manifest_to_hf(
         hf_repo_name=hf_repo_name,
         hf_repo_type=hf_repo_type,
     )
-    resolved_model_package_version = model_package_version or _get_model_package_version(
-        model_package_name
+    resolved_model_package_version = (
+        model_package_version or _get_model_package_version(model_package_name)
     )
     parent_commit = get_repo_head_revision(
         api=api,
@@ -591,7 +636,9 @@ def publish_release_manifest_to_hf(
         token=token,
     )
     manifest, operations = create_release_manifest_commit_operations(
-        files_with_repo_paths=[(Path(path), repo_path) for path, repo_path in files_with_paths],
+        files_with_repo_paths=[
+            (Path(path), repo_path) for path, repo_path in files_with_paths
+        ],
         version=version,
         hf_repo_name=hf_repo_name,
         model_package_name=model_package_name,

@@ -248,3 +248,59 @@ def test_validate_dataset_contract_rejects_entity_length_mismatch(
             microsimulation_cls=_FakeMicrosimulation,
             dataset_loader=lambda path: path,
         )
+
+
+def test_validate_dataset_contract_accepts_prefixed_auxiliary_entity(
+    tmp_path, monkeypatch
+):
+    file_path = tmp_path / "prefixed_aux.h5"
+    _write_test_h5(
+        file_path,
+        {
+            "person_id": np.array([101], dtype=np.int32),
+            "household_id": np.array([201], dtype=np.int32),
+            "household_is_puf_clone": np.array([1], dtype=np.int8),
+        },
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.utils.dataset_validation.assert_locked_policyengine_us_version",
+        lambda: PolicyEngineUSBuildInfo(version="1.587.0"),
+    )
+
+    summary = validate_dataset_contract(
+        file_path,
+        tax_benefit_system=_fake_tax_benefit_system(),
+        microsimulation_cls=_FakeMicrosimulation,
+        dataset_loader=lambda path: path,
+    )
+
+    assert summary.variable_count == 3
+
+
+def test_validate_dataset_contract_rejects_prefixed_auxiliary_length_mismatch(
+    tmp_path, monkeypatch
+):
+    file_path = tmp_path / "prefixed_aux_bad.h5"
+    _write_test_h5(
+        file_path,
+        {
+            "person_id": np.array([101], dtype=np.int32),
+            "household_id": np.array([201], dtype=np.int32),
+            "household_is_puf_clone": np.array([1, 0], dtype=np.int8),
+        },
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.utils.dataset_validation.assert_locked_policyengine_us_version",
+        lambda: PolicyEngineUSBuildInfo(version="1.587.0"),
+    )
+
+    with pytest.raises(
+        DatasetContractError,
+        match="expected household length 1, found 2",
+    ):
+        validate_dataset_contract(
+            file_path,
+            tax_benefit_system=_fake_tax_benefit_system(),
+            microsimulation_cls=_FakeMicrosimulation,
+            dataset_loader=lambda path: path,
+        )

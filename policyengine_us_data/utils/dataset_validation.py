@@ -22,6 +22,14 @@ ENTITY_ID_VARIABLES = {
     "household": "household_id",
 }
 
+AUXILIARY_ENTITY_PREFIXES = {
+    "person_": "person",
+    "tax_unit_": "tax_unit",
+    "family_": "family",
+    "spm_unit_": "spm_unit",
+    "household_": "household",
+}
+
 
 class DatasetContractError(Exception):
     """Raised when a built dataset does not match the active country package."""
@@ -127,6 +135,24 @@ def _infer_auxiliary_entity(
     entity_counts: dict[str, int],
     file_name: str,
 ) -> str:
+    for prefix, entity_key in AUXILIARY_ENTITY_PREFIXES.items():
+        if not variable_name.startswith(prefix):
+            continue
+        expected_length = entity_counts.get(entity_key)
+        if expected_length is None:
+            raise DatasetContractError(
+                f"{file_name} contains auxiliary variable {variable_name} with a "
+                f"{entity_key}-scoped prefix, but {ENTITY_ID_VARIABLES[entity_key]} "
+                "is missing from the dataset."
+            )
+        if actual_length != expected_length:
+            raise DatasetContractError(
+                f"{file_name} contains auxiliary variable {variable_name} with "
+                f"{prefix!r} prefix and expected {entity_key} length "
+                f"{expected_length}, found {actual_length}."
+            )
+        return entity_key
+
     candidate_entities = [
         entity_key
         for entity_key, entity_count in entity_counts.items()

@@ -5,6 +5,7 @@ from policyengine_core.data import Dataset
 
 from policyengine_us_data.datasets import EnhancedCPS_2024
 from policyengine_us_data.datasets.cps.cps import CPS_2024
+from policyengine_us_data.datasets.cps.enhanced_cps import clone_diagnostics_path
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.data_upload import upload_data_files
 from policyengine_us_data.utils.dataset_validation import (
@@ -47,6 +48,14 @@ class DatasetValidationError(Exception):
     """Raised when a dataset fails pre-upload validation."""
 
     pass
+
+
+def _enhanced_dataset_files() -> list[Path]:
+    return [
+        EnhancedCPS_2024.file_path,
+        clone_diagnostics_path(EnhancedCPS_2024.file_path),
+        STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
+    ]
 
 
 def validate_dataset(file_path: Path) -> None:
@@ -185,10 +194,7 @@ def upload_datasets(require_enhanced_cps: bool = True):
         CPS_2024.file_path,
         STORAGE_FOLDER / "calibration" / "policy_data.db",
     ]
-    enhanced_files = [
-        EnhancedCPS_2024.file_path,
-        STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
-    ]
+    enhanced_files = _enhanced_dataset_files()
     if require_enhanced_cps:
         required_files.extend(enhanced_files)
 
@@ -233,7 +239,7 @@ def validate_all_datasets():
 def validate_built_datasets(require_enhanced_cps: bool = True):
     required_files = [CPS_2024.file_path]
     if require_enhanced_cps:
-        required_files.append(EnhancedCPS_2024.file_path)
+        required_files.extend(_enhanced_dataset_files())
 
     for file_path in required_files:
         if not file_path.exists():

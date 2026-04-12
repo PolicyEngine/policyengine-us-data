@@ -25,6 +25,14 @@ from policyengine_us_data.utils.retirement_limits import (
 
 logger = logging.getLogger(__name__)
 
+CLONE_ORIGIN_FLAGS = {
+    "person": "person_is_puf_clone",
+    "tax_unit": "tax_unit_is_puf_clone",
+    "spm_unit": "spm_unit_is_puf_clone",
+    "family": "family_is_puf_clone",
+    "household": "household_is_puf_clone",
+}
+
 PUF_SUBSAMPLE_TARGET = 20_000
 PUF_TOP_PERCENTILE = 99.5
 
@@ -530,6 +538,20 @@ def puf_clone_dataset(
     new_data["state_fips"] = {
         time_period: np.concatenate([state_fips, state_fips]).astype(np.int32)
     }
+
+    for entity_key, flag_name in CLONE_ORIGIN_FLAGS.items():
+        id_variable = f"{entity_key}_id"
+        if id_variable not in data:
+            continue
+        n_entities = len(data[id_variable][time_period])
+        new_data[flag_name] = {
+            time_period: np.concatenate(
+                [
+                    np.zeros(n_entities, dtype=np.int8),
+                    np.ones(n_entities, dtype=np.int8),
+                ]
+            )
+        }
 
     if y_full:
         for var in IMPUTED_VARIABLES:

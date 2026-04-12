@@ -112,12 +112,19 @@ for iteration in range(5000):
 - w2_wages_from_qualified_business
 - unadjusted_basis_qualified_property
 - business_is_sstb
+- sstb_self_employment_income
+- sstb_w2_wages_from_qualified_business
+- sstb_unadjusted_basis_qualified_property
 - qualified_reit_and_ptp_income
 - qualified_bdc_income
 - farm_operations_income
 - estate_income_would_be_qualified
 - farm_operations_income_would_be_qualified
 - farm_rent_income_would_be_qualified
+
+The current PUF/calibration pipeline uses the legacy `business_is_sstb` flag to
+split these SSTB variables on an all-or-nothing basis. It does not yet infer
+mixed SSTB and non-SSTB allocations within the same record.
 - partnership_s_corp_income_would_be_qualified
 - rental_income_would_be_qualified
 - self_employment_income_would_be_qualified

@@ -36,7 +36,11 @@ def _base_manifest(
     *,
     version: str,
     data_package_name: str,
-    compatible_model_packages: Sequence[Dict[str, str]],
+    model_package_name: str,
+    model_package_version: str | None,
+    model_package_git_sha: str | None,
+    model_package_data_build_fingerprint: str | None,
+    build_id: str,
     created_at: str,
 ) -> Dict:
     manifest = {
@@ -45,21 +49,34 @@ def _base_manifest(
             "name": data_package_name,
             "version": version,
         },
-        "compatible_model_packages": list(compatible_model_packages),
+        "compatible_model_packages": [],
         "default_datasets": {},
         "created_at": created_at,
+        "build": {
+            "build_id": build_id,
+            "built_at": created_at,
+        },
         "artifacts": {},
     }
+    if (
+        model_package_version
+        or model_package_git_sha
+        or model_package_data_build_fingerprint
+    ):
+        manifest["build"]["built_with_model_package"] = {
+            "name": model_package_name,
+            "version": model_package_version,
+            "git_sha": model_package_git_sha,
+            "data_build_fingerprint": model_package_data_build_fingerprint,
+        }
+    if model_package_version:
+        manifest["compatible_model_packages"].append(
+            {
+                "name": model_package_name,
+                "specifier": f"=={model_package_version}",
+            }
+        )
     return manifest
-
-
-def _compatible_model_packages(
-    model_package_name: str,
-    model_package_version: str | None,
-) -> list[Dict[str, str]]:
-    if not model_package_version:
-        return []
-    return [{"name": model_package_name, "version": model_package_version}]
 
 
 def _normalize_existing_manifest(
@@ -71,7 +88,10 @@ def _normalize_existing_manifest(
     if existing_manifest is None:
         return None
     package = existing_manifest.get("data_package", {})
-    if package.get("name") != data_package_name or package.get("version") != version:
+    if (
+        package.get("name") != data_package_name
+        or package.get("version") != version
+    ):
         return None
     return deepcopy(dict(existing_manifest))
 
@@ -84,6 +104,9 @@ def build_release_manifest(
     data_package_name: str = "policyengine-us-data",
     model_package_name: str = "policyengine-us",
     model_package_version: str | None = None,
+    model_package_git_sha: str | None = None,
+    model_package_data_build_fingerprint: str | None = None,
+    build_id: str | None = None,
     existing_manifest: Mapping | None = None,
     default_datasets: Optional[Mapping[str, str]] = None,
     created_at: str | None = None,
@@ -94,24 +117,43 @@ def build_release_manifest(
         data_package_name=data_package_name,
     )
     manifest_timestamp = created_at or _utc_timestamp()
+    resolved_build_id = build_id or f"{data_package_name}-{version}"
 
     if manifest is None:
         manifest = _base_manifest(
             version=version,
             data_package_name=data_package_name,
-            compatible_model_packages=_compatible_model_packages(
-                model_package_name,
-                model_package_version,
-            ),
+            model_package_name=model_package_name,
+            model_package_version=model_package_version,
+            model_package_git_sha=model_package_git_sha,
+            model_package_data_build_fingerprint=model_package_data_build_fingerprint,
+            build_id=resolved_build_id,
             created_at=manifest_timestamp,
         )
     else:
         manifest["schema_version"] = RELEASE_MANIFEST_SCHEMA_VERSION
-        manifest["created_at"] = manifest.get("created_at") or manifest_timestamp
-        manifest["compatible_model_packages"] = _compatible_model_packages(
-            model_package_name,
-            model_package_version,
-        )
+        manifest["created_at"] = manifest_timestamp
+        manifest.setdefault("build", {})
+        manifest["build"].setdefault("build_id", resolved_build_id)
+        manifest["build"].setdefault("built_at", manifest_timestamp)
+        if (
+            model_package_version
+            or model_package_git_sha
+            or model_package_data_build_fingerprint
+        ):
+            manifest["build"]["built_with_model_package"] = {
+                "name": model_package_name,
+                "version": model_package_version,
+                "git_sha": model_package_git_sha,
+                "data_build_fingerprint": model_package_data_build_fingerprint,
+            }
+        if model_package_version:
+            manifest["compatible_model_packages"] = [
+                {
+                    "name": model_package_name,
+                    "specifier": f"=={model_package_version}",
+                }
+            ]
 
     if default_datasets:
         manifest.setdefault("default_datasets", {}).update(default_datasets)

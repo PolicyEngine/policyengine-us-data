@@ -433,12 +433,13 @@ def publish_release_manifest_to_hf(
         hf_repo_type=hf_repo_type,
     )
     manifest, operations = create_release_manifest_commit_operations(
-        files_with_repo_paths=[(Path(path), repo_path) for path, repo_path in files_with_paths],
+        files_with_repo_paths=[
+            (Path(path), repo_path) for path, repo_path in files_with_paths
+        ],
         version=version,
         hf_repo_name=hf_repo_name,
         model_package_name=model_package_name,
-        model_package_version=model_package_version
-        or model_build_metadata["version"],
+        model_package_version=model_package_version or model_build_metadata["version"],
         model_package_git_sha=model_build_metadata["git_sha"],
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"

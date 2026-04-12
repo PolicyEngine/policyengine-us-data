@@ -64,7 +64,7 @@ def test_build_release_manifest_tracks_uploaded_artifacts(tmp_path):
             "version": "1.634.4",
             "git_sha": "deadbeef",
             "data_build_fingerprint": "sha256:fingerprint",
-        }
+        },
     }
     assert manifest["default_datasets"] == {"national": "enhanced_cps_2024"}
 
@@ -136,11 +136,9 @@ def test_build_release_manifest_merges_existing_release_same_version(tmp_path):
             "version": "1.634.4",
             "git_sha": "deadbeef",
             "data_build_fingerprint": "sha256:fingerprint",
-        }
+        },
     }
-    assert manifest["artifacts"]["districts/NC-01"]["sha256"] == _sha256(
-        district_bytes
-    )
+    assert manifest["artifacts"]["districts/NC-01"]["sha256"] == _sha256(district_bytes)
 
 
 def test_upload_files_to_hf_adds_release_manifest_operations(tmp_path):

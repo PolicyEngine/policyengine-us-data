@@ -172,11 +172,14 @@ def test_load_cps_basic_org_month_retries_after_transient_parser_failure(
             "PEIO1COW": [1],
         }
     )
+    header_df = pd.DataFrame(columns=month_df.columns)
 
     def fake_read_csv(*args, **kwargs):
         calls.append(kwargs)
         if len(calls) == 1:
-            raise ValueError("Usecols do not match columns")
+            raise ValueError("Temporary header parse failure")
+        if kwargs.get("nrows") == 0:
+            return header_df
         return month_df
 
     monkeypatch.setattr(
@@ -185,8 +188,10 @@ def test_load_cps_basic_org_month_retries_after_transient_parser_failure(
 
     loaded = _load_cps_basic_org_month(2024, "may", max_attempts=2)
 
-    assert len(calls) == 2
-    assert callable(calls[0]["usecols"])
+    assert len(calls) == 3
+    assert calls[0]["nrows"] == 0
+    assert calls[1]["nrows"] == 0
+    assert calls[2]["usecols"] == month_df.columns.tolist()
     assert loaded.columns.tolist() == CPS_BASIC_MONTHLY_ORG_COLUMNS
 
 

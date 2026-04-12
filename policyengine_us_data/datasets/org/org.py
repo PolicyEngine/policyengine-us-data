@@ -203,6 +203,30 @@ def _select_cps_basic_org_columns(month_df: pd.DataFrame) -> pd.DataFrame:
     return selected
 
 
+def _resolve_cps_basic_org_usecols(url: str) -> list[str]:
+    """Resolve the exact remote column names before reading the full CPS month.
+
+    Pandas' callable `usecols` path against remote CSVs can intermittently
+    mis-handle the header row and return an empty selection. Resolving the
+    concrete header first avoids that parser path while keeping the full read
+    column-limited.
+    """
+    header_df = pd.read_csv(url, nrows=0)
+    column_lookup = {
+        str(column).lower(): column
+        for column in header_df.columns
+        if isinstance(column, str)
+    }
+    missing = [
+        column
+        for column in CPS_BASIC_MONTHLY_ORG_COLUMNS
+        if column.lower() not in column_lookup
+    ]
+    if missing:
+        raise ValueError(f"CPS basic ORG month is missing required columns: {missing}")
+    return [column_lookup[column.lower()] for column in CPS_BASIC_MONTHLY_ORG_COLUMNS]
+
+
 def _load_cps_basic_org_month(
     year: int,
     month: str,
@@ -211,16 +235,14 @@ def _load_cps_basic_org_month(
 ) -> pd.DataFrame:
     """Load one CPS basic-month file with light retry around transient fetch/parser issues."""
     url = _cps_basic_org_month_url(year, month)
-    required_columns = {column.lower() for column in CPS_BASIC_MONTHLY_ORG_COLUMNS}
     last_error: Exception | None = None
 
     for _ in range(max_attempts):
         try:
+            usecols = _resolve_cps_basic_org_usecols(url)
             month_df = pd.read_csv(
                 url,
-                usecols=lambda column: (
-                    isinstance(column, str) and column.lower() in required_columns
-                ),
+                usecols=usecols,
                 low_memory=False,
             )
             return _select_cps_basic_org_columns(month_df)

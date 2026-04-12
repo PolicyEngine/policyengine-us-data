@@ -380,6 +380,14 @@ def get_matching_finalized_release_manifest(
         ],
         existing_manifest=finalized_manifest,
     )
+    if "created_at" in finalized_manifest:
+        candidate_manifest["created_at"] = finalized_manifest["created_at"]
+    finalized_build = finalized_manifest.get("build")
+    if isinstance(finalized_build, dict):
+        candidate_build = candidate_manifest.setdefault("build", {})
+        for field in ("build_id", "built_at"):
+            if field in finalized_build:
+                candidate_build[field] = finalized_build[field]
     if candidate_manifest != finalized_manifest:
         raise RuntimeError(
             f"Release {version} is already finalized on {hf_repo_name}. "

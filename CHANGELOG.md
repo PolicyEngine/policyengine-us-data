@@ -1,3 +1,10 @@
+## [1.78.3] - 2026-04-12
+
+### Fixed
+
+- Preflight release-manifest finalization before promoting staged artifacts so failed finalization checks cannot partially publish a release.
+
+
 ## [1.78.2] - 2026-04-12
 
 ### Fixed

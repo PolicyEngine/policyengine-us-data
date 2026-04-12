@@ -1,8 +1,10 @@
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from policyengine_us_data.datasets.cps.enhanced_cps import (
+    build_clone_diagnostics_for_simulation,
     build_clone_diagnostics_payload,
     compute_clone_diagnostics_summary,
     clone_diagnostics_path,
@@ -40,6 +42,68 @@ def test_compute_clone_diagnostics_summary():
     assert diagnostics["clone_childcare_above_5000_share_pct"] == pytest.approx(100.0)
     assert diagnostics["clone_taxes_exceed_market_income_share_pct"] == pytest.approx(
         37.5
+    )
+
+
+def test_build_clone_diagnostics_for_simulation_maps_household_weights(
+    monkeypatch,
+):
+    class FakeResult:
+        def __init__(self, values):
+            self.values = np.asarray(values)
+
+    class FakeSim:
+        def calculate(self, variable, period=None, map_to=None):
+            lookup = {
+                ("spm_unit_net_income_reported", "person"): [1000.0, 300.0, 100.0],
+                ("spm_unit_spm_threshold", "person"): [500.0, 200.0, 200.0],
+                ("household_weight", None): [9.0, 1.0],
+                ("household_weight", "person"): [9.0, 1.0, 1.0],
+                ("household_weight", "spm_unit"): [9.0, 1.0],
+                # Trap values: diagnostics should not read these stale inputs.
+                ("person_weight", None): [9.0, 0.0, 0.0],
+                ("spm_unit_weight", None): [9.0, 0.0],
+                ("person_in_poverty", None): [False, True, True],
+                ("spm_unit_capped_work_childcare_expenses", None): [0.0, 6000.0],
+                ("spm_unit_pre_subsidy_childcare_expenses", None): [0.0, 5000.0],
+                ("spm_unit_taxes", None): [100.0, 9000.0],
+                ("spm_unit_market_income", None): [1000.0, 8000.0],
+            }
+            return FakeResult(lookup[(variable, map_to)])
+
+    saved_arrays = {
+        "household_is_puf_clone": np.array([False, True]),
+        "person_is_puf_clone": np.array([False, True, True]),
+        "spm_unit_is_puf_clone": np.array([False, True]),
+    }
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.cps.enhanced_cps._load_saved_period_array",
+        lambda dataset_path, variable_name, period: saved_arrays[variable_name],
+    )
+
+    diagnostics = build_clone_diagnostics_for_simulation(
+        FakeSim(),
+        dataset_path=Path("enhanced_cps_2024.h5"),
+        period=2024,
+    )
+
+    assert diagnostics["clone_household_weight_share_pct"] == pytest.approx(10.0)
+    assert diagnostics["clone_person_weight_share_pct"] == pytest.approx(
+        200.0 / 11.0
+    )
+    assert diagnostics[
+        "clone_poor_modeled_only_person_weight_share_pct"
+    ] == pytest.approx(100.0 / 11.0)
+    assert diagnostics[
+        "poor_modeled_only_within_clone_person_weight_share_pct"
+    ] == pytest.approx(50.0)
+    assert diagnostics[
+        "clone_childcare_exceeds_pre_subsidy_share_pct"
+    ] == pytest.approx(100.0)
+    assert diagnostics["clone_childcare_above_5000_share_pct"] == pytest.approx(100.0)
+    assert diagnostics["clone_taxes_exceed_market_income_share_pct"] == pytest.approx(
+        100.0
     )
 
 

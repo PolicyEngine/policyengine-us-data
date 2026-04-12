@@ -217,6 +217,27 @@ def build_clone_diagnostics_for_saved_dataset(
     sim = Microsimulation(dataset=dataset_cls)
     dataset_path = Path(dataset_cls.file_path)
 
+    return build_clone_diagnostics_for_simulation(
+        sim,
+        dataset_path=dataset_path,
+        period=period,
+    )
+
+
+def build_clone_diagnostics_for_simulation(
+    sim,
+    *,
+    dataset_path: str | Path,
+    period: int,
+) -> dict[str, float]:
+    """Build clone diagnostics from a simulation and saved clone-flag arrays.
+
+    The enhanced CPS save path preserves zeroed person/spm-unit weight inputs on
+    the clone half. For diagnostics, always map the calibrated household weights
+    to persons/SPM units explicitly instead of reading those stale entity-level
+    weight inputs back from disk.
+    """
+
     person_reported_in_poverty = _to_numpy(
         sim.calculate("spm_unit_net_income_reported", period=period, map_to="person")
     ) < _to_numpy(
@@ -231,13 +252,17 @@ def build_clone_diagnostics_for_saved_dataset(
         person_is_puf_clone=_load_saved_period_array(
             dataset_path, "person_is_puf_clone", period
         ),
-        person_weight=_to_numpy(sim.calculate("person_weight", period=period)),
+        person_weight=_to_numpy(
+            sim.calculate("household_weight", period=period, map_to="person")
+        ),
         person_in_poverty=_to_numpy(sim.calculate("person_in_poverty", period=period)),
         person_reported_in_poverty=person_reported_in_poverty,
         spm_unit_is_puf_clone=_load_saved_period_array(
             dataset_path, "spm_unit_is_puf_clone", period
         ),
-        spm_unit_weight=_to_numpy(sim.calculate("spm_unit_weight", period=period)),
+        spm_unit_weight=_to_numpy(
+            sim.calculate("household_weight", period=period, map_to="spm_unit")
+        ),
         spm_unit_capped_work_childcare_expenses=_to_numpy(
             sim.calculate("spm_unit_capped_work_childcare_expenses", period=period)
         ),

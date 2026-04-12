@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor
+import time
 
 from policyengine_us_data.datasets.cps import cps as cps_module
 from policyengine_us_data.datasets.org import (
@@ -10,6 +12,7 @@ from policyengine_us_data.datasets.org.org import (
     CPS_BASIC_MONTHLY_ORG_COLUMNS,
     _build_union_priority_weights,
     _load_cps_basic_org_month,
+    load_org_training_data,
     _predict_union_coverage_from_bls_tables,
     _select_cps_basic_org_columns,
     _transform_cps_basic_org_month,
@@ -154,45 +157,197 @@ def test_load_cps_basic_org_month_retries_after_transient_parser_failure(
     monkeypatch,
 ):
     calls = []
-    month_df = pd.DataFrame(
-        {
-            "hrmis": [4],
-            "GESTFIPS": [6],
-            "PRTAGE": [30],
-            "PESEX": [2],
-            "PTDTRACE": [1],
-            "PEHSPNON": [2],
-            "PWORWGT": [100.0],
-            "PTERNWA": [100000.0],
-            "PTERNHLY": [2500.0],
-            "PEERNHRY": [1],
-            "PEHRUSLT": [40.0],
-            "PRERELG": [1],
-            "PEMLR": [1],
-            "PEIO1COW": [1],
-        }
+    csv_text = (
+        "hrmis,GESTFIPS,PRTAGE,PESEX,PTDTRACE,PEHSPNON,PWORWGT,"
+        "PTERNWA,PTERNHLY,PEERNHRY,PEHRUSLT,PRERELG,PEMLR,PEIO1COW\n"
+        "4,6,30,2,1,2,100.0,100000.0,2500.0,1,40.0,1,1,1\n"
     )
-    header_df = pd.DataFrame(columns=month_df.columns)
 
-    def fake_read_csv(*args, **kwargs):
+    class FakeResponse:
+        def __init__(self, text: str, status_code: int = 200):
+            self.content = text.encode("utf-8")
+            self.status_code = status_code
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise ValueError("bad status")
+
+    responses = [
+        FakeResponse("<html>temporary error</html>"),
+        FakeResponse(csv_text),
+    ]
+
+    def fake_get(*args, **kwargs):
         calls.append(kwargs)
-        if len(calls) == 1:
-            raise ValueError("Temporary header parse failure")
-        if kwargs.get("nrows") == 0:
-            return header_df
-        return month_df
+        return responses.pop(0)
 
-    monkeypatch.setattr(
-        "policyengine_us_data.datasets.org.org.pd.read_csv", fake_read_csv
-    )
+    monkeypatch.setattr("policyengine_us_data.datasets.org.org.requests.get", fake_get)
 
     loaded = _load_cps_basic_org_month(2024, "may", max_attempts=2)
 
-    assert len(calls) == 3
-    assert calls[0]["nrows"] == 0
-    assert calls[1]["nrows"] == 0
-    assert calls[2]["usecols"] == month_df.columns.tolist()
+    assert len(calls) == 2
     assert loaded.columns.tolist() == CPS_BASIC_MONTHLY_ORG_COLUMNS
+
+
+def test_load_cps_basic_org_month_reorders_file_order_columns(monkeypatch):
+    csv_text = (
+        "PTERNWA,PEHRUSLT,hrmis,PEMLR,PEERNHRY,PEHSPNON,PRTAGE,"
+        "PTDTRACE,pworwgt,peio1cow,GESTFIPS,PESEX,PTERNHLY,PRERELG\n"
+        "100000.0,40.0,4,1,1,2,30,1,100.0,1,6,2,2500.0,1\n"
+    )
+
+    class FakeResponse:
+        def __init__(self, text: str):
+            self.content = text.encode("utf-8")
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org.requests.get",
+        lambda *args, **kwargs: FakeResponse(csv_text),
+    )
+
+    loaded = _load_cps_basic_org_month(2024, "may", max_attempts=1)
+
+    assert loaded.columns.tolist() == CPS_BASIC_MONTHLY_ORG_COLUMNS
+    assert loaded.iloc[0].to_dict() == {
+        "HRMIS": 4,
+        "gestfips": 6,
+        "prtage": 30,
+        "pesex": 2,
+        "ptdtrace": 1,
+        "pehspnon": 2,
+        "pworwgt": 100.0,
+        "pternwa": 100000.0,
+        "pternhly": 2500.0,
+        "peernhry": 1,
+        "pehruslt": 40.0,
+        "prerelg": 1,
+        "pemlr": 1,
+        "peio1cow": 1,
+    }
+
+
+def test_load_org_training_data_serializes_first_cache_build(monkeypatch, tmp_path):
+    raw_month = pd.DataFrame(
+        {
+            "HRMIS": [4],
+            "gestfips": [6],
+            "prtage": [30],
+            "pesex": [2],
+            "ptdtrace": [1],
+            "pehspnon": [2],
+            "pworwgt": [100.0],
+            "pternwa": [100000.0],
+            "pternhly": [2500.0],
+            "peernhry": [1],
+            "pehruslt": [40.0],
+            "prerelg": [1],
+            "pemlr": [1],
+            "peio1cow": [1],
+        }
+    )
+    call_count = {"value": 0}
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org.STORAGE_FOLDER", tmp_path
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org.ORG_MONTHS",
+        ("may",),
+    )
+
+    def fake_load_month(year, month):
+        call_count["value"] += 1
+        time.sleep(0.2)
+        return raw_month.copy()
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org._load_cps_basic_org_month",
+        fake_load_month,
+    )
+
+    load_org_training_data.cache_clear()
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            left = executor.submit(load_org_training_data)
+            right = executor.submit(load_org_training_data)
+            left_result = left.result()
+            right_result = right.result()
+    finally:
+        load_org_training_data.cache_clear()
+
+    assert call_count["value"] == 1
+    pd.testing.assert_frame_equal(left_result, right_result)
+
+
+def test_load_org_training_data_rebuilds_invalid_cached_file(monkeypatch, tmp_path):
+    raw_month = pd.DataFrame(
+        {
+            "HRMIS": [4],
+            "gestfips": [6],
+            "prtage": [30],
+            "pesex": [2],
+            "ptdtrace": [1],
+            "pehspnon": [2],
+            "pworwgt": [100.0],
+            "pternwa": [100000.0],
+            "pternhly": [2500.0],
+            "peernhry": [1],
+            "pehruslt": [40.0],
+            "prerelg": [1],
+            "pemlr": [1],
+            "peio1cow": [1],
+        }
+    )
+    cache_path = tmp_path / "census_cps_org_2024_wages.csv.gz"
+    pd.DataFrame(columns=["employment_income", "weekly_hours_worked"]).to_csv(
+        cache_path,
+        index=False,
+        compression="gzip",
+    )
+    call_count = {"value": 0}
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org.STORAGE_FOLDER", tmp_path
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org.ORG_MONTHS",
+        ("may",),
+    )
+
+    def fake_load_month(year, month):
+        call_count["value"] += 1
+        return raw_month.copy()
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org._load_cps_basic_org_month",
+        fake_load_month,
+    )
+
+    load_org_training_data.cache_clear()
+    try:
+        rebuilt = load_org_training_data()
+    finally:
+        load_org_training_data.cache_clear()
+
+    assert call_count["value"] == 1
+    assert not rebuilt.empty
+    assert set(
+        [
+            "employment_income",
+            "weekly_hours_worked",
+            "age",
+            "is_female",
+            "is_hispanic",
+            "race_wbho",
+            "state_fips",
+            "hourly_wage",
+            "is_paid_hourly",
+            "sample_weight",
+        ]
+    ).issubset(rebuilt.columns)
 
 
 def test_build_union_priority_weights_reflect_bls_demographics():

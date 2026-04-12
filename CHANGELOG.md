@@ -1,3 +1,10 @@
+## [1.78.2] - 2026-04-12
+
+### Fixed
+
+- Harden CPS basic ORG donor loading against transient fetch failures and concurrent cache builds.
+
+
 ## [1.78.1] - 2026-04-12
 
 ### Changed

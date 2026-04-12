@@ -1,6 +1,9 @@
 from importlib import import_module
 
 from .geography import ZIP_CODE_DATASET
+from .utils.policyengine import ensure_policyengine_us_compat_variables
+
+ensure_policyengine_us_compat_variables()
 
 _LAZY_EXPORTS = {
     "CPS_2024": (
@@ -26,7 +29,16 @@ __all__ = ["ZIP_CODE_DATASET", *_LAZY_EXPORTS]
 
 def __getattr__(name: str):
     if name not in _LAZY_EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+        try:
+            value = import_module(f"{__name__}.{name}")
+        except ModuleNotFoundError as exc:
+            if exc.name == f"{__name__}.{name}":
+                raise AttributeError(
+                    f"module {__name__!r} has no attribute {name!r}"
+                ) from exc
+            raise
+        globals()[name] = value
+        return value
 
     module_name, attribute_name = _LAZY_EXPORTS[name]
     value = getattr(import_module(module_name), attribute_name)

@@ -7,7 +7,7 @@ SOI_UPRATING_MAP = {
     "adjusted_gross_income": "adjusted_gross_income",
     "count": "population",
     "employment_income": "employment_income",
-    "business_net_profits": "self_employment_income",
+    "business_net_profits": "total_self_employment_income",
     "capital_gains_gross": "long_term_capital_gains",
     "ordinary_dividends": "non_qualified_dividend_income",
     "partnership_and_s_corp_income": "partnership_s_corp_income",
@@ -19,7 +19,7 @@ SOI_UPRATING_MAP = {
     "mortgage_interest_deductions": "interest_deduction",
     "total_pension_income": "pension_income",
     "total_social_security": "social_security",
-    "business_net_losses": "self_employment_income",
+    "business_net_losses": "total_self_employment_income",
     "capital_gains_distributions": "long_term_capital_gains",
     "capital_gains_losses": "long_term_capital_gains",
     "estate_income": "estate_income",
@@ -59,12 +59,9 @@ def pe_to_soi(pe_dataset, year):
     df["income_tax_after_credits"] = pe("income_tax")
     df["total_income_tax"] = pe("income_tax_before_credits")
     df["taxable_income"] = pe("taxable_income")
-    df["business_net_profits"] = pe("self_employment_income") * (
-        pe("self_employment_income") > 0
-    )
-    df["business_net_losses"] = -pe("self_employment_income") * (
-        pe("self_employment_income") < 0
-    )
+    schedule_c_income = pe("self_employment_income") + pe("sstb_self_employment_income")
+    df["business_net_profits"] = schedule_c_income * (schedule_c_income > 0)
+    df["business_net_losses"] = -schedule_c_income * (schedule_c_income < 0)
     df["capital_gains_distributions"] = pe("non_sch_d_capital_gains")
     df["capital_gains_gross"] = pe("loss_limited_net_capital_gains") * (
         pe("loss_limited_net_capital_gains") > 0

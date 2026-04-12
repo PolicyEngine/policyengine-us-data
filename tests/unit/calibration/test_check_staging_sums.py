@@ -1,4 +1,5 @@
 from policyengine_us_data.calibration.check_staging_sums import (
+    VARIABLES,
     get_reference_summary,
 )
 
@@ -23,3 +24,8 @@ def test_reference_summary_uses_irs_ctc_component_targets(monkeypatch):
     assert "refundable CTC ~$33.0B" in summary
     assert "non-refundable CTC ~$81.6B" in summary
     assert "IRS SOI 2022" in summary
+
+
+def test_staging_sums_use_total_self_employment_income():
+    assert "total_self_employment_income" in VARIABLES
+    assert "self_employment_income" not in VARIABLES

@@ -23,7 +23,7 @@ STATE_ABBRS = sorted(STATE_CODES.values())
 VARIABLES = [
     "adjusted_gross_income",
     "employment_income",
-    "self_employment_income",
+    "total_self_employment_income",
     "tax_unit_partnership_s_corp_income",
     "taxable_pension_income",
     "dividend_income",

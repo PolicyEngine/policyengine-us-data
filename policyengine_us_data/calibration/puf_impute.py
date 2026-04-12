@@ -50,9 +50,12 @@ IMPUTED_VARIABLES = [
     "pre_tax_contributions",
     "taxable_ira_distributions",
     "self_employment_income",
+    "sstb_self_employment_income",
     "w2_wages_from_qualified_business",
     "unadjusted_basis_qualified_property",
     "business_is_sstb",
+    "sstb_w2_wages_from_qualified_business",
+    "sstb_unadjusted_basis_qualified_property",
     "short_term_capital_gains",
     "qualified_dividend_income",
     "charitable_cash_donations",
@@ -122,6 +125,8 @@ OVERRIDDEN_IMPUTED_VARIABLES = [
     "w2_wages_from_qualified_business",
     "unadjusted_basis_qualified_property",
     "business_is_sstb",
+    "sstb_w2_wages_from_qualified_business",
+    "sstb_unadjusted_basis_qualified_property",
     "charitable_cash_donations",
     "self_employed_pension_contribution_ald",
     "unrecaptured_section_1250_gain",
@@ -693,6 +698,11 @@ def _impute_retirement_contributions(
             X_test[income_var] = puf_imputations[income_var]
         else:
             X_test[income_var] = cps_sim.calculate(income_var).values
+    if "sstb_self_employment_income" in puf_imputations:
+        X_test["self_employment_income"] = (
+            X_test["self_employment_income"]
+            + puf_imputations["sstb_self_employment_income"]
+        )
 
     del cps_sim
 
@@ -723,13 +733,13 @@ def _impute_retirement_contributions(
     catch_up_eligible = age >= 50
     limit_401k = limits["401k"] + catch_up_eligible * limits["401k_catch_up"]
     limit_ira = limits["ira"] + catch_up_eligible * limits["ira_catch_up"]
+    se_income = X_test["self_employment_income"].values
     se_pension_cap = np.minimum(
-        X_test["self_employment_income"].values * limits["se_pension_rate"],
+        se_income * limits["se_pension_rate"],
         limits["se_pension_dollar_limit"],
     )
 
     emp_income = X_test["employment_income"].values
-    se_income = X_test["self_employment_income"].values
 
     result = {}
     for var in CPS_RETIREMENT_VARIABLES:

@@ -6,11 +6,16 @@ generated cache built from the 12 official CPS basic monthly public-use CSVs for
 imputation onto CPS records.
 """
 
+from contextlib import contextmanager
 from functools import lru_cache
+from io import BytesIO
+from pathlib import Path
+import fcntl
 
 from microimpute.models.qrf import QRF
 import numpy as np
 import pandas as pd
+import requests
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
@@ -181,11 +186,13 @@ def _cps_basic_org_month_url(year: int, month: str) -> str:
     )
 
 
-def _select_cps_basic_org_columns(month_df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize CPS basic-month columns onto the ORG schema."""
+def _resolve_cps_basic_org_column_names(
+    columns: pd.Index | list[str],
+) -> list[str]:
+    """Resolve CPS basic-month columns onto the expected ORG schema order."""
     column_lookup = {
-        str(column).lower(): column
-        for column in month_df.columns
+        str(column).lower(): str(column)
+        for column in columns
         if isinstance(column, str)
     }
     missing = [
@@ -196,9 +203,12 @@ def _select_cps_basic_org_columns(month_df: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"CPS basic ORG month is missing required columns: {missing}")
 
-    selected = month_df[
-        [column_lookup[column.lower()] for column in CPS_BASIC_MONTHLY_ORG_COLUMNS]
-    ].copy()
+    return [column_lookup[column.lower()] for column in CPS_BASIC_MONTHLY_ORG_COLUMNS]
+
+
+def _select_cps_basic_org_columns(month_df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize CPS basic-month columns onto the ORG schema."""
+    selected = month_df[_resolve_cps_basic_org_column_names(month_df.columns)].copy()
     selected.columns = CPS_BASIC_MONTHLY_ORG_COLUMNS
     return selected
 
@@ -211,16 +221,18 @@ def _load_cps_basic_org_month(
 ) -> pd.DataFrame:
     """Load one CPS basic-month file with light retry around transient fetch/parser issues."""
     url = _cps_basic_org_month_url(year, month)
-    required_columns = {column.lower() for column in CPS_BASIC_MONTHLY_ORG_COLUMNS}
     last_error: Exception | None = None
 
     for _ in range(max_attempts):
         try:
+            response = requests.get(url, timeout=60)
+            response.raise_for_status()
+            content = response.content
+            header = pd.read_csv(BytesIO(content), nrows=0)
+            selected_columns = _resolve_cps_basic_org_column_names(header.columns)
             month_df = pd.read_csv(
-                url,
-                usecols=lambda column: (
-                    isinstance(column, str) and column.lower() in required_columns
-                ),
+                BytesIO(content),
+                usecols=selected_columns,
                 low_memory=False,
             )
             return _select_cps_basic_org_columns(month_df)
@@ -231,6 +243,36 @@ def _load_cps_basic_org_month(
         f"Failed to load CPS basic ORG month {month} {year} after "
         f"{max_attempts} attempts"
     ) from last_error
+
+
+@contextmanager
+def _org_cache_build_lock(lock_path: Path):
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _load_valid_cached_org_training_data(cache_path: Path) -> pd.DataFrame | None:
+    """Return a cached ORG training frame when it is present and structurally valid."""
+    required_columns = set(
+        ORG_PREDICTORS + ORG_QRF_IMPUTED_VARIABLES + ["sample_weight"]
+    )
+    try:
+        cached = pd.read_csv(cache_path)
+    except (FileNotFoundError, OSError, pd.errors.EmptyDataError):
+        return None
+
+    if cached.empty:
+        return None
+
+    if not required_columns.issubset(cached.columns):
+        return None
+
+    return cached
 
 
 def _transform_cps_basic_org_month(month_df: pd.DataFrame) -> pd.DataFrame:
@@ -451,17 +493,31 @@ def _predict_union_coverage_from_bls_tables(
 def load_org_training_data() -> pd.DataFrame:
     """Load ORG donor rows built from official CPS basic monthly files."""
     cache_path = STORAGE_FOLDER / ORG_FILENAME
-    if cache_path.exists():
-        return pd.read_csv(cache_path)
+    lock_path = cache_path.parent / f"{cache_path.name}.lock"
+    cached = _load_valid_cached_org_training_data(cache_path)
+    if cached is not None:
+        return cached
 
-    months = []
-    for month in ORG_MONTHS:
-        month_df = _load_cps_basic_org_month(ORG_YEAR, month)
-        months.append(_transform_cps_basic_org_month(month_df))
+    with _org_cache_build_lock(lock_path):
+        cached = _load_valid_cached_org_training_data(cache_path)
+        if cached is not None:
+            return cached
+        if cache_path.exists():
+            cache_path.unlink()
 
-    org = pd.concat(months, ignore_index=True)
-    org.to_csv(cache_path, index=False, compression="gzip")
-    return org
+        months = []
+        for month in ORG_MONTHS:
+            month_df = _load_cps_basic_org_month(ORG_YEAR, month)
+            months.append(_transform_cps_basic_org_month(month_df))
+
+        org = pd.concat(months, ignore_index=True)
+        temp_path = cache_path.parent / f"{cache_path.name}.tmp.gz"
+        org.to_csv(temp_path, index=False, compression="gzip")
+        temp_path.replace(cache_path)
+        cached = _load_valid_cached_org_training_data(cache_path)
+        if cached is None:
+            raise ValueError("Failed to build a valid cached ORG donor file")
+        return cached
 
 
 @lru_cache(maxsize=1)

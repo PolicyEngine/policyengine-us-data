@@ -5,10 +5,31 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PACKAGE_ROOT = REPO_ROOT / "policyengine_us_data"
+
+
+@pytest.fixture(autouse=True)
+def restore_policyengine_us_data_modules():
+    module_names = [
+        "policyengine_us_data",
+        "policyengine_us_data.utils",
+        "policyengine_us_data.storage",
+        "policyengine_us_data.utils.uprating",
+        "policyengine_us_data.utils.soi",
+    ]
+    original_modules = {name: sys.modules.get(name) for name in module_names}
+
+    yield
+
+    for name, module in original_modules.items():
+        if module is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = module
 
 
 def load_soi_module():
@@ -66,6 +87,39 @@ def test_get_soi_includes_mortgage_interest_deduction_targets():
 
     assert not mortgage_interest.empty
     assert mortgage_interest["Value"].gt(0).all()
+
+
+def test_pe_to_soi_combines_sstb_and_non_sstb_schedule_c(monkeypatch):
+    soi_module = load_soi_module()
+    n = 2
+
+    class FakeMicrosimulation:
+        def __init__(self, dataset):
+            self.dataset = dataset
+            self.default_calculation_period = None
+
+        def calculate(self, variable, map_to=None):
+            values = {
+                "self_employment_income": np.array([100.0, -10.0]),
+                "sstb_self_employment_income": np.array([50.0, -25.0]),
+                "filing_status": np.array(["SINGLE", "SINGLE"]),
+                "tax_unit_weight": np.ones(n),
+                "household_id": np.arange(1, n + 1),
+            }
+            return values.get(variable, np.zeros(n))
+
+    fake_policyengine_us = types.ModuleType("policyengine_us")
+    fake_policyengine_us.Microsimulation = FakeMicrosimulation
+    monkeypatch.setitem(sys.modules, "policyengine_us", fake_policyengine_us)
+
+    soi = soi_module.pe_to_soi(object(), 2024)
+
+    np.testing.assert_array_equal(
+        soi["business_net_profits"].to_numpy(), np.array([150.0, 0.0])
+    )
+    np.testing.assert_array_equal(
+        soi["business_net_losses"].to_numpy(), np.array([0.0, 35.0])
+    )
 
 
 def test_get_soi_uses_best_available_year_per_variable(monkeypatch):

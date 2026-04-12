@@ -774,6 +774,12 @@ def build_states(
     state_filter: str = None,
 ):
     """Build state H5 files with checkpointing, optionally uploading."""
+    if upload:
+        raise RuntimeError(
+            "Direct upload from publish_local_area.py is disabled. "
+            "Use modal_app/local_area.py or promote_local_h5s.py so release "
+            "manifests and tags are finalized atomically."
+        )
     w = np.load(weights_path)
 
     all_cds = sorted(set(geography.cd_geoid.astype(str)))
@@ -840,6 +846,12 @@ def build_districts(
     upload: bool = False,
 ):
     """Build district H5 files with checkpointing, optionally uploading."""
+    if upload:
+        raise RuntimeError(
+            "Direct upload from publish_local_area.py is disabled. "
+            "Use modal_app/local_area.py or promote_local_h5s.py so release "
+            "manifests and tags are finalized atomically."
+        )
     w = np.load(weights_path)
 
     all_cds = sorted(set(geography.cd_geoid.astype(str)))
@@ -908,6 +920,12 @@ def build_cities(
     upload: bool = False,
 ):
     """Build city H5 files with checkpointing, optionally uploading."""
+    if upload:
+        raise RuntimeError(
+            "Direct upload from publish_local_area.py is disabled. "
+            "Use modal_app/local_area.py or promote_local_h5s.py so release "
+            "manifests and tags are finalized atomically."
+        )
     w = np.load(weights_path)
 
     cities_dir = output_dir / "cities"

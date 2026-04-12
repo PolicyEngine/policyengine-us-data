@@ -143,11 +143,27 @@ jobs:
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
       - run: pip install modal
       - name: Build datasets and run integration tests on Modal
         run: |
+          STAGE_ARGS=""
+          if git diff --name-only origin/main...HEAD | grep -qx 'pyproject.toml'; then
+            VERSION=$(python -c "from pathlib import Path; import tomllib; print(tomllib.load(Path('pyproject.toml').open('rb'))['project']['version'])")
+            STAGE_ARGS="--upload --stage-only --run-id=${VERSION}"
+            {
+              echo "## Release Artifact Staging"
+              echo ""
+              echo "- package version: \`${VERSION}\`"
+              echo "- staged HF prefix: \`staging/${VERSION}/\`"
+              echo "- promote with: \`uv run python policyengine_us_data/storage/upload_completed_datasets.py --promote-only --run-id=${VERSION} --version=${VERSION}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
           modal run modal_app/data_build.py \
-            --branch=${{ github.head_ref || github.ref_name }}
+            --branch=${{ github.head_ref || github.ref_name }} \
+            ${STAGE_ARGS}

@@ -1,17 +1,35 @@
 from pathlib import Path
+from importlib import metadata
 
 import h5py
+from huggingface_hub import HfApi, hf_hub_download
 from policyengine_core.data import Dataset
 
 from policyengine_us_data.datasets import EnhancedCPS_2024
 from policyengine_us_data.datasets.cps.cps import CPS_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
-from policyengine_us_data.utils.data_upload import upload_data_files
+from policyengine_us_data.utils.data_upload import (
+    cleanup_staging_hf,
+    preflight_release_manifest_publish,
+    promote_staging_to_production_hf,
+    publish_release_manifest_to_hf,
+    upload_from_hf_staging_to_gcs,
+    upload_to_staging_hf,
+)
 from policyengine_us_data.utils.dataset_validation import (
     DatasetContractError,
     load_dataset_for_validation,
     validate_dataset_contract,
 )
+from policyengine_us_data.utils.version_manifest import (
+    HFVersionInfo,
+    build_manifest,
+    upload_manifest,
+)
+
+HF_REPO_NAME = "policyengine/policyengine-us-data"
+HF_REPO_TYPE = "model"
+GCS_BUCKET_NAME = "policyengine-us-data"
 
 # Datasets that require full validation before upload.
 # These are the main datasets used in production simulations.
@@ -47,6 +65,104 @@ class DatasetValidationError(Exception):
     """Raised when a dataset fails pre-upload validation."""
 
     pass
+
+
+def _dataset_upload_specs(
+    require_enhanced_cps: bool = True,
+) -> list[tuple[Path, str, bool]]:
+    return [
+        (CPS_2024.file_path, CPS_2024.file_path.name, True),
+        (
+            STORAGE_FOLDER / "calibration" / "policy_data.db",
+            "policy_data.db",
+            True,
+        ),
+        (
+            EnhancedCPS_2024.file_path,
+            EnhancedCPS_2024.file_path.name,
+            require_enhanced_cps,
+        ),
+        (
+            STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
+            "small_enhanced_cps_2024.h5",
+            require_enhanced_cps,
+        ),
+    ]
+
+
+def _collect_existing_dataset_artifacts(
+    require_enhanced_cps: bool = True,
+) -> list[tuple[Path, str]]:
+    existing_files = []
+    for file_path, repo_path, required in _dataset_upload_specs(require_enhanced_cps):
+        if file_path.exists():
+            existing_files.append((file_path, repo_path))
+            print(f"✓ Found{' (optional)' if not required else ''}: {file_path}")
+            continue
+        if required:
+            raise FileNotFoundError(f"Required file not found: {file_path}")
+        print(f"⚠ Skipping (not built): {file_path}")
+
+    if not existing_files:
+        raise ValueError("No dataset files found to upload!")
+
+    return existing_files
+
+
+def _collect_staged_dataset_repo_paths(
+    require_enhanced_cps: bool = True,
+    run_id: str = "",
+) -> list[str]:
+    api = HfApi()
+    prefix = f"staging/{run_id}" if run_id else "staging"
+    repo_files = set(
+        api.list_repo_files(
+            repo_id=HF_REPO_NAME,
+            repo_type=HF_REPO_TYPE,
+        )
+    )
+
+    rel_paths = []
+    missing_required = []
+    for _, repo_path, required in _dataset_upload_specs(require_enhanced_cps):
+        staged_path = f"{prefix}/{repo_path}"
+        if staged_path in repo_files:
+            rel_paths.append(repo_path)
+        elif required:
+            missing_required.append(staged_path)
+
+    if missing_required:
+        raise FileNotFoundError(
+            "Missing staged dataset artifacts: " + ", ".join(sorted(missing_required))
+        )
+    if not rel_paths:
+        raise ValueError("No staged dataset files found to promote.")
+
+    return rel_paths
+
+
+def _download_staged_dataset_artifacts(
+    rel_paths: list[str],
+    run_id: str = "",
+) -> list[tuple[Path, str]]:
+    staging_prefix = f"staging/{run_id}" if run_id else "staging"
+    downloaded_files = []
+    for rel_path in rel_paths:
+        local_path = Path(
+            hf_hub_download(
+                repo_id=HF_REPO_NAME,
+                filename=f"{staging_prefix}/{rel_path}",
+                repo_type=HF_REPO_TYPE,
+            )
+        )
+        downloaded_files.append((local_path, rel_path))
+    return downloaded_files
+
+
+def _validate_dataset_artifacts(files_with_repo_paths: list[tuple[Path, str]]) -> None:
+    print("\nValidating datasets...")
+    for file_path, _ in files_with_repo_paths:
+        validate_dataset(file_path)
 
 
 def validate_dataset(file_path: Path) -> None:
@@ -180,48 +296,143 @@ def validate_dataset(file_path: Path) -> None:
     print(f"    Household weight sum: {hh_weight:,.0f}")
 
 
-def upload_datasets(require_enhanced_cps: bool = True):
-    required_files = [
-        CPS_2024.file_path,
-        STORAGE_FOLDER / "calibration" / "policy_data.db",
-    ]
-    enhanced_files = [
-        EnhancedCPS_2024.file_path,
-        STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
-    ]
-    if require_enhanced_cps:
-        required_files.extend(enhanced_files)
+def stage_datasets(
+    require_enhanced_cps: bool = True,
+    version: str | None = None,
+    run_id: str = "",
+) -> list[tuple[Path, str]]:
+    version = version or metadata.version("policyengine-us-data")
+    files_with_repo_paths = _collect_existing_dataset_artifacts(
+        require_enhanced_cps=require_enhanced_cps
+    )
+    _validate_dataset_artifacts(files_with_repo_paths)
 
-    existing_files = []
-    for file_path in required_files:
-        if file_path.exists():
-            existing_files.append(file_path)
-            print(f"✓ Found: {file_path}")
-        else:
-            raise FileNotFoundError(f"Required file not found: {file_path}")
+    print(f"\nStaging {len(files_with_repo_paths)} files on Hugging Face...")
+    upload_to_staging_hf(
+        files_with_repo_paths,
+        version=version,
+        hf_repo_name=HF_REPO_NAME,
+        hf_repo_type=HF_REPO_TYPE,
+        run_id=run_id,
+    )
+    return files_with_repo_paths
 
-    if not require_enhanced_cps:
-        for file_path in enhanced_files:
-            if file_path.exists():
-                existing_files.append(file_path)
-                print(f"✓ Found (optional): {file_path}")
-            else:
-                print(f"⚠ Skipping (not built): {file_path}")
 
-    if not existing_files:
-        raise ValueError("No dataset files found to upload!")
+def promote_datasets(
+    require_enhanced_cps: bool = True,
+    version: str | None = None,
+    run_id: str = "",
+    files_with_repo_paths: list[tuple[Path, str]] | None = None,
+) -> list[str]:
+    version = version or metadata.version("policyengine-us-data")
+    rel_paths = (
+        [repo_path for _, repo_path in files_with_repo_paths]
+        if files_with_repo_paths
+        else _collect_staged_dataset_repo_paths(
+            require_enhanced_cps=require_enhanced_cps,
+            run_id=run_id,
+        )
+    )
+    manifest_files = (
+        files_with_repo_paths
+        if files_with_repo_paths
+        else _download_staged_dataset_artifacts(rel_paths, run_id=run_id)
+    )
+    should_finalize, missing_prefixes = preflight_release_manifest_publish(
+        manifest_files,
+        version=version,
+        new_repo_paths=rel_paths,
+        hf_repo_name=HF_REPO_NAME,
+        hf_repo_type=HF_REPO_TYPE,
+    )
 
-    # Validate datasets before uploading
-    print("\nValidating datasets...")
-    for file_path in existing_files:
-        validate_dataset(file_path)
+    print(f"\nPromoting {len(rel_paths)} staged files to production...")
+    promote_staging_to_production_hf(
+        rel_paths,
+        version=version,
+        hf_repo_name=HF_REPO_NAME,
+        hf_repo_type=HF_REPO_TYPE,
+        run_id=run_id,
+    )
+    upload_from_hf_staging_to_gcs(
+        rel_paths,
+        version=version,
+        gcs_bucket_name=GCS_BUCKET_NAME,
+        hf_repo_name=HF_REPO_NAME,
+        hf_repo_type=HF_REPO_TYPE,
+        run_id=run_id,
+    )
+    manifest = publish_release_manifest_to_hf(
+        manifest_files,
+        version=version,
+        hf_repo_name=HF_REPO_NAME,
+        hf_repo_type=HF_REPO_TYPE,
+        create_tag=should_finalize,
+    )
+    if not should_finalize:
+        print(
+            "Release manifest updated without final tag; missing local-area prefixes: "
+            + ", ".join(missing_prefixes)
+        )
 
-    print(f"\nUploading {len(existing_files)} files...")
-    upload_data_files(
-        files=existing_files,
-        hf_repo_name="policyengine/policyengine-us-data",
-        hf_repo_type="model",
-        gcs_bucket_name="policyengine-us-data",
+    # Legacy consumers still resolve versions through version_manifest.json,
+    # but only once the release has been finalized at a stable HF revision.
+    if should_finalize:
+        upload_manifest(
+            build_manifest(
+                version=version,
+                blob_names=sorted(
+                    artifact["path"] for artifact in manifest["artifacts"].values()
+                ),
+                hf_info=HFVersionInfo(repo=HF_REPO_NAME, commit=version),
+            )
+        )
+    else:
+        print("Deferring version_manifest.json update until the release is finalized.")
+    cleanup_staging_hf(
+        rel_paths,
+        version=version,
+        hf_repo_name=HF_REPO_NAME,
+        hf_repo_type=HF_REPO_TYPE,
+        run_id=run_id,
+    )
+    return rel_paths
+
+
+def upload_datasets(
+    require_enhanced_cps: bool = True,
+    *,
+    stage_only: bool = False,
+    promote_only: bool = False,
+    run_id: str = "",
+    version: str | None = None,
+):
+    if stage_only and promote_only:
+        raise ValueError("Choose either stage_only or promote_only, not both.")
+
+    version = version or metadata.version("policyengine-us-data")
+
+    if promote_only:
+        promote_datasets(
+            require_enhanced_cps=require_enhanced_cps,
+            version=version,
+            run_id=run_id,
+        )
+        return
+
+    files_with_repo_paths = stage_datasets(
+        require_enhanced_cps=require_enhanced_cps,
+        version=version,
+        run_id=run_id,
+    )
+    if stage_only:
+        return
+
+    promote_datasets(
+        require_enhanced_cps=require_enhanced_cps,
+        version=version,
+        run_id=run_id,
+        files_with_repo_paths=files_with_repo_paths,
     )
 
 
@@ -256,8 +467,35 @@ if __name__ == "__main__":
         action="store_true",
         help="Validate built datasets without uploading them.",
     )
+    upload_mode = parser.add_mutually_exclusive_group()
+    upload_mode.add_argument(
+        "--stage-only",
+        action="store_true",
+        help="Validate and upload built datasets only to HF staging.",
+    )
+    upload_mode.add_argument(
+        "--promote-only",
+        action="store_true",
+        help="Promote already-staged datasets into the immutable release.",
+    )
+    parser.add_argument(
+        "--run-id",
+        default="",
+        help="Optional staging run ID, for example a CI commit SHA.",
+    )
+    parser.add_argument(
+        "--version",
+        default=None,
+        help="Override the policyengine-us-data version used for staging/promote.",
+    )
     args = parser.parse_args()
     if args.validate_only:
         validate_built_datasets(require_enhanced_cps=not args.no_require_enhanced_cps)
     else:
-        upload_datasets(require_enhanced_cps=not args.no_require_enhanced_cps)
+        upload_datasets(
+            require_enhanced_cps=not args.no_require_enhanced_cps,
+            stage_only=args.stage_only,
+            promote_only=args.promote_only,
+            run_id=args.run_id,
+            version=args.version,
+        )

@@ -126,7 +126,7 @@ validate-package:
 	python -m policyengine_us_data.calibration.validate_package
 
 publish-local-area:
-	python policyengine_us_data/calibration/publish_local_area.py --upload
+	python -m policyengine_us_data.calibration.promote_local_h5s --local-dir local_area_build
 
 build-h5s:
 	python -m policyengine_us_data.calibration.publish_local_area \

@@ -238,6 +238,8 @@ def validate_and_maybe_upload_datasets(
     upload: bool,
     skip_enhanced_cps: bool,
     env: dict,
+    stage_only: bool = False,
+    run_id: str = "",
 ) -> None:
     validation_args = ["--validate-only"]
     if skip_enhanced_cps:
@@ -254,6 +256,10 @@ def validate_and_maybe_upload_datasets(
         upload_args = []
         if skip_enhanced_cps:
             upload_args.append("--no-require-enhanced-cps")
+        if stage_only:
+            upload_args.append("--stage-only")
+        if run_id:
+            upload_args.append(f"--run-id={run_id}")
         run_script(
             "policyengine_us_data/storage/upload_completed_datasets.py",
             args=upload_args,
@@ -375,6 +381,7 @@ def build_datasets(
     clear_checkpoints: bool = False,
     skip_tests: bool = False,
     skip_enhanced_cps: bool = False,
+    stage_only: bool = False,
     run_id: str = "",
 ):
     """Build all datasets with preemption-resilient checkpointing.
@@ -387,6 +394,7 @@ def build_datasets(
         skip_tests: Skip running the test suite (useful for calibration runs).
         skip_enhanced_cps: Skip enhanced_cps.py and small_enhanced_cps.py
             (useful for calibration runs that only need source_imputed H5).
+        stage_only: Upload to HF staging only, without promoting a release.
     """
     setup_gcp_credentials()
 
@@ -673,6 +681,8 @@ def build_datasets(
         upload=upload,
         skip_enhanced_cps=skip_enhanced_cps,
         env=env,
+        stage_only=stage_only,
+        run_id=run_id,
     )
 
     # Clean up checkpoints after successful completion
@@ -689,6 +699,8 @@ def main(
     clear_checkpoints: bool = False,
     skip_tests: bool = False,
     skip_enhanced_cps: bool = False,
+    stage_only: bool = False,
+    run_id: str = "",
 ):
     result = build_datasets.remote(
         upload=upload,
@@ -697,5 +709,7 @@ def main(
         clear_checkpoints=clear_checkpoints,
         skip_tests=skip_tests,
         skip_enhanced_cps=skip_enhanced_cps,
+        stage_only=stage_only,
+        run_id=run_id,
     )
     print(result)

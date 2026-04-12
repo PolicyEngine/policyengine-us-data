@@ -28,9 +28,7 @@ def _sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-EXPECTED_COMPATIBLE_MODEL_PACKAGES = [
-    {"name": "policyengine-us", "version": "1.634.4"}
-]
+EXPECTED_COMPATIBLE_MODEL_PACKAGES = [{"name": "policyengine-us", "version": "1.634.4"}]
 
 
 def _build_local_area_manifest(
@@ -43,9 +41,7 @@ def _build_local_area_manifest(
     for index in range(states):
         artifacts[f"states/S{index:02d}"] = {"path": f"states/S{index:02d}.h5"}
     for index in range(districts):
-        artifacts[f"districts/D{index:03d}"] = {
-            "path": f"districts/D{index:03d}.h5"
-        }
+        artifacts[f"districts/D{index:03d}"] = {"path": f"districts/D{index:03d}.h5"}
     for index in range(cities):
         artifacts[f"cities/C{index:03d}"] = {"path": f"cities/C{index:03d}.h5"}
     return {"artifacts": artifacts}
@@ -133,9 +129,7 @@ def test_build_release_manifest_merges_existing_release_same_version(tmp_path):
     assert set(manifest["artifacts"]) == {"enhanced_cps_2024", "districts/NC-01"}
     assert manifest["default_datasets"] == {"national": "enhanced_cps_2024"}
     assert manifest["created_at"] == "2026-04-09T12:00:00Z"
-    assert manifest["artifacts"]["districts/NC-01"]["sha256"] == _sha256(
-        district_bytes
-    )
+    assert manifest["artifacts"]["districts/NC-01"]["sha256"] == _sha256(district_bytes)
 
 
 def test_load_release_manifest_from_hf_uses_explicit_revision_when_requested(tmp_path):
@@ -360,7 +354,9 @@ def test_upload_files_to_hf_fails_without_model_package_version(tmp_path):
                 except RuntimeError as exc:
                     assert "missing package" in str(exc)
                 else:
-                    raise AssertionError("Expected RuntimeError when model version is unavailable")
+                    raise AssertionError(
+                        "Expected RuntimeError when model version is unavailable"
+                    )
 
 
 def test_publish_release_manifest_to_hf_rejects_finalized_release(tmp_path):

@@ -65,7 +65,7 @@ GEOGRAPHY_FILE_TARGET_SPECS = [
         name="qualified_business_income_deduction",
         breakdown=None,
     ),
-    dict(code="00900", name="self_employment_income", breakdown=None),
+    dict(code="00900", name="total_self_employment_income", breakdown=None),
     dict(
         code="01000",
         name="net_capital_gains",
@@ -147,7 +147,7 @@ WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
     "net_capital_gains": "capital_gains_gross",
     "qualified_dividend_income": "qualified_dividends",
     "rental_income": "rent_and_royalty_net_income",
-    "self_employment_income": "business_net_profits",
+    "total_self_employment_income": "business_net_profits",
     "tax_exempt_interest_income": "exempt_interest",
     "tax_unit_partnership_s_corp_income": "partnership_and_s_corp_income",
     "taxable_interest_income": "taxable_interest_income",

@@ -25,7 +25,7 @@ from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_targe
 VARIABLES = [
     "adjusted_gross_income",
     "employment_income",
-    "self_employment_income",
+    "total_self_employment_income",
     "tax_unit_partnership_s_corp_income",
     "taxable_pension_income",
     "dividend_income",

@@ -3,6 +3,7 @@ import os
 import pandas as pd
 
 from policyengine_us_data.calibration.validate_national_h5 import (
+    VARIABLES,
     build_artifact_ctc_summary,
     build_canonical_ctc_reform_summary,
     get_artifact_ctc_comparison_outputs,
@@ -96,6 +97,11 @@ def test_resolve_dataset_path_downloads_hf_paths(monkeypatch):
             "token": os.environ.get("HUGGING_FACE_TOKEN"),
         }
     ]
+
+
+def test_validation_uses_total_self_employment_income():
+    assert "total_self_employment_income" in VARIABLES
+    assert "self_employment_income" not in VARIABLES
 
 
 class _FakeArrayResult:

@@ -1,3 +1,4 @@
+import h5py
 import yaml
 from importlib.resources import files
 
@@ -432,6 +433,20 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
         0.0
     )
     puf["business_is_sstb"] = rng.binomial(n=1, p=pr_sstb)
+    is_sstb = puf["business_is_sstb"].astype(bool)
+
+    # The current PUF pipeline only imputes an all-or-nothing SSTB flag.
+    # Use that to split Schedule C self-employment and allocable W-2/UBIA
+    # inputs for policyengine-us without pretending to observe mixed cases.
+    legacy_self_employment_income = puf["self_employment_income"].fillna(0)
+    puf["sstb_self_employment_income"] = np.where(
+        is_sstb, legacy_self_employment_income, 0.0
+    )
+    puf["self_employment_income"] = np.where(
+        is_sstb, 0.0, legacy_self_employment_income
+    )
+    puf["sstb_w2_wages_from_qualified_business"] = np.where(is_sstb, w2, 0.0)
+    puf["sstb_unadjusted_basis_qualified_property"] = np.where(is_sstb, ubia, 0.0)
 
     reit_params = QBI_PARAMS["reit_ptp_income_distribution"]
     p_reit_ptp = reit_params["probability_of_receiving"]
@@ -526,6 +541,9 @@ FINANCIAL_SUBSET = [
     "w2_wages_from_qualified_business",
     "unadjusted_basis_qualified_property",
     "business_is_sstb",
+    "sstb_self_employment_income",
+    "sstb_w2_wages_from_qualified_business",
+    "sstb_unadjusted_basis_qualified_property",
     "deductible_mortgage_interest",
     "partnership_s_corp_income",
     "partnership_se_income",
@@ -537,6 +555,164 @@ FINANCIAL_SUBSET = [
 class PUF(Dataset):
     time_period = None
     data_format = Dataset.ARRAYS
+
+    @staticmethod
+    def _replace_array(file_handle, key: str, values: np.ndarray) -> None:
+        if key in file_handle:
+            del file_handle[key]
+        file_handle.create_dataset(key, data=values)
+
+    def _sstb_split_overrides(self) -> dict[str, np.ndarray]:
+        if not self.file_path.exists():
+            return {}
+
+        with h5py.File(self.file_path, "r") as file_handle:
+            if "business_is_sstb" not in file_handle:
+                return {}
+            keys = set(file_handle.keys())
+            is_sstb = np.asarray(file_handle["business_is_sstb"]).astype(bool)
+            overrides = {}
+            if "self_employment_income" in keys:
+                self_employment_income = np.asarray(
+                    file_handle["self_employment_income"]
+                )
+                existing_sstb_self_employment_income = (
+                    np.asarray(file_handle["sstb_self_employment_income"])
+                    if "sstb_self_employment_income" in keys
+                    else np.zeros_like(self_employment_income)
+                )
+                corrected_sstb_self_employment_income = np.where(
+                    is_sstb,
+                    np.where(
+                        existing_sstb_self_employment_income != 0,
+                        existing_sstb_self_employment_income,
+                        self_employment_income,
+                    ),
+                    0.0,
+                )
+                corrected_self_employment_income = np.where(
+                    is_sstb, 0.0, self_employment_income
+                )
+                if (
+                    "sstb_self_employment_income" not in keys
+                    or not np.array_equal(
+                        existing_sstb_self_employment_income,
+                        corrected_sstb_self_employment_income,
+                    )
+                    or not np.array_equal(
+                        self_employment_income,
+                        corrected_self_employment_income,
+                    )
+                ):
+                    overrides["sstb_self_employment_income"] = (
+                        corrected_sstb_self_employment_income
+                    )
+                    overrides["self_employment_income"] = (
+                        corrected_self_employment_income
+                    )
+
+            for source_key, target_key in (
+                (
+                    "w2_wages_from_qualified_business",
+                    "sstb_w2_wages_from_qualified_business",
+                ),
+                (
+                    "unadjusted_basis_qualified_property",
+                    "sstb_unadjusted_basis_qualified_property",
+                ),
+            ):
+                if source_key not in keys:
+                    continue
+                corrected_target = np.where(
+                    is_sstb, np.asarray(file_handle[source_key]), 0.0
+                )
+                if target_key not in keys or not np.array_equal(
+                    np.asarray(file_handle[target_key]),
+                    corrected_target,
+                ):
+                    overrides[target_key] = corrected_target
+
+        return overrides
+
+    def _ensure_sstb_split_inputs(self) -> dict[str, np.ndarray]:
+        overrides = self._sstb_split_overrides()
+        if not overrides:
+            return {}
+
+        try:
+            with h5py.File(self.file_path, "r+") as file_handle:
+                for key, values in overrides.items():
+                    self._replace_array(file_handle, key, values)
+        except OSError:
+            pass
+
+        return overrides
+
+    class _OverrideView:
+        def __init__(self, backing, overrides: dict[str, np.ndarray]):
+            self._backing = backing
+            self._overrides = overrides
+
+        def __getitem__(self, key):
+            if key in self._overrides:
+                return self._overrides[key]
+            return self._backing[key]
+
+        def __contains__(self, key):
+            return key in self._overrides or key in self._backing
+
+        def keys(self):
+            if hasattr(self._backing, "keys"):
+                return tuple(dict.fromkeys((*self._backing.keys(), *self._overrides)))
+            return tuple(self._overrides)
+
+        def get(self, key, default=None):
+            if key in self:
+                return self[key]
+            return default
+
+        def items(self):
+            for key in self.keys():
+                yield key, self[key]
+
+        def values(self):
+            for key in self.keys():
+                yield self[key]
+
+        def __iter__(self):
+            return iter(self.keys())
+
+        def close(self):
+            if hasattr(self._backing, "close"):
+                self._backing.close()
+
+        def __enter__(self):
+            if hasattr(self._backing, "__enter__"):
+                self._backing.__enter__()
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            if hasattr(self._backing, "__exit__"):
+                return self._backing.__exit__(exc_type, exc, traceback)
+            return None
+
+        def __getattr__(self, name):
+            return getattr(self._backing, name)
+
+    def load(self, key=None, mode="r"):
+        if mode == "r":
+            overrides = self._ensure_sstb_split_inputs()
+            if key in overrides:
+                return overrides[key]
+            if key is None and overrides:
+                return self._OverrideView(super().load(key=key, mode=mode), overrides)
+        return super().load(key=key, mode=mode)
+
+    def load_dataset(self):
+        overrides = self._ensure_sstb_split_inputs()
+        arrays = super().load_dataset()
+        arrays.update(overrides)
+        return arrays
 
     def generate(self):
         from policyengine_us.system import system

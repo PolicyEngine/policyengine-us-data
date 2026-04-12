@@ -89,9 +89,7 @@ def test_build_clone_diagnostics_for_simulation_maps_household_weights(
     )
 
     assert diagnostics["clone_household_weight_share_pct"] == pytest.approx(10.0)
-    assert diagnostics["clone_person_weight_share_pct"] == pytest.approx(
-        200.0 / 11.0
-    )
+    assert diagnostics["clone_person_weight_share_pct"] == pytest.approx(200.0 / 11.0)
     assert diagnostics[
         "clone_poor_modeled_only_person_weight_share_pct"
     ] == pytest.approx(100.0 / 11.0)

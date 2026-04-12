@@ -71,10 +71,7 @@ def _normalize_existing_manifest(
     if existing_manifest is None:
         return None
     package = existing_manifest.get("data_package", {})
-    if (
-        package.get("name") != data_package_name
-        or package.get("version") != version
-    ):
+    if package.get("name") != data_package_name or package.get("version") != version:
         return None
     return deepcopy(dict(existing_manifest))
 

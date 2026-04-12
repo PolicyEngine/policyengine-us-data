@@ -61,6 +61,12 @@ REFERENCES = {
 }
 
 DEFAULT_HF_PATH = "hf://policyengine/policyengine-us-data/national/US.h5"
+ARTIFACT_CTC_SUMMARY_VARIABLES = [
+    "ctc_qualifying_children",
+    "ctc",
+    "refundable_ctc",
+    "non_refundable_ctc",
+]
 
 COUNT_VARS = {
     "person_count",
@@ -216,9 +222,181 @@ def build_canonical_ctc_reform_summary(
 
 def _format_canonical_ctc_reform_summary(table: pd.DataFrame) -> str:
     display = table.copy()
-    for column in ("baseline", "reformed", "delta"):
+    numeric_columns = [
+        column
+        for column in display.columns
+        if column != "variable" and pd.api.types.is_numeric_dtype(display[column])
+    ]
+    for column in numeric_columns:
         display[column] = display[column].map(lambda value: f"${value / 1e9:,.1f}B")
     return display.to_string(index=False)
+
+
+def build_artifact_ctc_summary(
+    reference_sim,
+    candidate_sim,
+    *,
+    period: int = 2025,
+) -> pd.DataFrame:
+    rows = []
+    for variable in ARTIFACT_CTC_SUMMARY_VARIABLES:
+        reference = float(reference_sim.calculate(variable, period=period).sum())
+        candidate = float(candidate_sim.calculate(variable, period=period).sum())
+        rows.append(
+            {
+                "variable": variable,
+                "reference": reference,
+                "candidate": candidate,
+                "delta": candidate - reference,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _format_artifact_ctc_summary(table: pd.DataFrame) -> str:
+    display = table.copy()
+    for column in ("reference", "candidate", "delta"):
+        display[column] = display.apply(
+            lambda row: (
+                f"{row[column] / 1e6:,.2f}M"
+                if row["variable"] in COUNT_VARS
+                else f"${row[column] / 1e9:,.1f}B"
+            ),
+            axis=1,
+        )
+    return display.to_string(index=False)
+
+
+def get_artifact_ctc_comparison_outputs(
+    reference_sim,
+    candidate_sim,
+    *,
+    period: int = 2025,
+) -> dict[str, str]:
+    outputs = {
+        "CURRENT-LAW CTC TOTAL DELTAS VS COMPARISON DATASET": (
+            _format_artifact_ctc_summary(
+                build_artifact_ctc_summary(
+                    reference_sim,
+                    candidate_sim,
+                    period=period,
+                )
+            )
+        )
+    }
+
+    delta_tables = _subtract_diagnostic_tables(
+        create_ctc_diagnostic_tables(reference_sim, period=period),
+        create_ctc_diagnostic_tables(candidate_sim, period=period),
+    )
+    section_names = {
+        "by_agi_band": "CURRENT-LAW CTC DIAGNOSTIC DELTAS BY AGI BAND",
+        "by_filing_status": "CURRENT-LAW CTC DIAGNOSTIC DELTAS BY FILING STATUS",
+        "by_agi_band_and_filing_status": (
+            "CURRENT-LAW CTC DIAGNOSTIC DELTAS BY AGI BAND AND FILING STATUS"
+        ),
+        "by_child_count": "CURRENT-LAW CTC DIAGNOSTIC DELTAS BY QUALIFYING-CHILD COUNT",
+        "by_child_age": "CURRENT-LAW CTC DIAGNOSTIC DELTAS BY QUALIFYING-CHILD AGE",
+    }
+    for name, table in delta_tables.items():
+        if name in section_names:
+            outputs[section_names[name]] = format_ctc_diagnostic_table(table)
+
+    return outputs
+
+
+def _build_canonical_ctc_reform_comparison_summary(
+    reference_summary: pd.DataFrame,
+    candidate_summary: pd.DataFrame,
+) -> pd.DataFrame:
+    merged = reference_summary.merge(
+        candidate_summary,
+        on="variable",
+        suffixes=("_reference", "_candidate"),
+    )
+    comparison = pd.DataFrame(
+        {
+            "variable": merged["variable"],
+            "reference_baseline": merged["baseline_reference"],
+            "candidate_baseline": merged["baseline_candidate"],
+            "baseline_delta": (
+                merged["baseline_candidate"] - merged["baseline_reference"]
+            ),
+            "reference_reformed": merged["reformed_reference"],
+            "candidate_reformed": merged["reformed_candidate"],
+            "reformed_delta": (
+                merged["reformed_candidate"] - merged["reformed_reference"]
+            ),
+            "reference_delta": merged["delta_reference"],
+            "candidate_delta": merged["delta_candidate"],
+            "delta_drift": merged["delta_candidate"] - merged["delta_reference"],
+        }
+    )
+    return comparison
+
+
+def get_canonical_ctc_reform_comparison_outputs(
+    reference_dataset_path: str | None = None,
+    candidate_dataset_path: str | None = None,
+    *,
+    reference_baseline_sim=None,
+    candidate_baseline_sim=None,
+    reference_reformed_sim=None,
+    candidate_reformed_sim=None,
+    period: int = 2025,
+) -> dict[str, str]:
+    from policyengine_us import Microsimulation
+
+    if reference_baseline_sim is None:
+        if reference_dataset_path is None:
+            raise ValueError(
+                "reference_dataset_path is required when reference_baseline_sim is not provided"
+            )
+        reference_baseline_sim = Microsimulation(dataset=reference_dataset_path)
+    if candidate_baseline_sim is None:
+        if candidate_dataset_path is None:
+            raise ValueError(
+                "candidate_dataset_path is required when candidate_baseline_sim is not provided"
+            )
+        candidate_baseline_sim = Microsimulation(dataset=candidate_dataset_path)
+
+    canonical_reform = _create_canonical_ctc_reform()
+    if reference_reformed_sim is None:
+        if reference_dataset_path is None:
+            raise ValueError(
+                "reference_dataset_path is required when reference_reformed_sim is not provided"
+            )
+        reference_reformed_sim = Microsimulation(
+            dataset=reference_dataset_path,
+            reform=canonical_reform,
+        )
+    if candidate_reformed_sim is None:
+        if candidate_dataset_path is None:
+            raise ValueError(
+                "candidate_dataset_path is required when candidate_reformed_sim is not provided"
+            )
+        candidate_reformed_sim = Microsimulation(
+            dataset=candidate_dataset_path,
+            reform=canonical_reform,
+        )
+
+    comparison = _build_canonical_ctc_reform_comparison_summary(
+        build_canonical_ctc_reform_summary(
+            reference_baseline_sim,
+            reference_reformed_sim,
+            period=period,
+        ),
+        build_canonical_ctc_reform_summary(
+            candidate_baseline_sim,
+            candidate_reformed_sim,
+            period=period,
+        ),
+    )
+    return {
+        "CANONICAL CTC REFORM DRIFT VS COMPARISON DATASET": (
+            _format_canonical_ctc_reform_summary(comparison)
+        )
+    }
 
 
 def _subtract_diagnostic_tables(
@@ -337,15 +515,35 @@ def main(argv=None):
         default=DEFAULT_HF_PATH,
         help=f"HF path to US.h5 (default: {DEFAULT_HF_PATH})",
     )
+    parser.add_argument(
+        "--compare-h5-path",
+        default=None,
+        help="Optional local path to comparison US.h5",
+    )
+    parser.add_argument(
+        "--compare-hf-path",
+        default=None,
+        help="Optional HF path to comparison US.h5",
+    )
     args = parser.parse_args(argv)
 
     dataset_path = args.h5_path or args.hf_path
     resolved_dataset_path = resolve_dataset_path(dataset_path)
+    comparison_dataset_path = args.compare_h5_path or args.compare_hf_path
+    resolved_comparison_dataset_path = (
+        resolve_dataset_path(comparison_dataset_path)
+        if comparison_dataset_path is not None
+        else None
+    )
 
     from policyengine_us import Microsimulation
 
     print(f"Loading {dataset_path}...")
     sim = Microsimulation(dataset=resolved_dataset_path)
+    comparison_sim = None
+    if resolved_comparison_dataset_path is not None:
+        print(f"Loading comparison dataset {comparison_dataset_path}...")
+        comparison_sim = Microsimulation(dataset=resolved_comparison_dataset_path)
 
     n_hh = sim.calculate("household_id", map_to="household").shape[0]
     print(f"Households in file: {n_hh:,}")
@@ -416,6 +614,27 @@ def main(argv=None):
         print(section_name)
         print("=" * 70)
         print(section_output)
+
+    if comparison_sim is not None:
+        for section_name, section_output in get_artifact_ctc_comparison_outputs(
+            comparison_sim,
+            sim,
+        ).items():
+            print("\n" + "=" * 70)
+            print(section_name)
+            print("=" * 70)
+            print(section_output)
+
+        for section_name, section_output in get_canonical_ctc_reform_comparison_outputs(
+            reference_dataset_path=resolved_comparison_dataset_path,
+            candidate_dataset_path=resolved_dataset_path,
+            reference_baseline_sim=comparison_sim,
+            candidate_baseline_sim=sim,
+        ).items():
+            print("\n" + "=" * 70)
+            print(section_name)
+            print("=" * 70)
+            print(section_output)
 
     print("\n" + "=" * 70)
     print("STRUCTURAL CHECKS")

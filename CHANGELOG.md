@@ -1,3 +1,10 @@
+## [1.78.0] - 2026-04-12
+
+### Added
+
+- Add comparison-mode CTC diagnostics to `validate_national_h5`, including child-count and child-age drift reporting between national artifacts.
+
+
 ## [1.77.0] - 2026-04-10
 
 ### Added

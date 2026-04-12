@@ -189,6 +189,46 @@ def test_load_cps_basic_org_month_retries_after_transient_parser_failure(
     assert loaded.columns.tolist() == CPS_BASIC_MONTHLY_ORG_COLUMNS
 
 
+def test_load_cps_basic_org_month_reorders_file_order_columns(monkeypatch):
+    csv_text = (
+        "PTERNWA,PEHRUSLT,hrmis,PEMLR,PEERNHRY,PEHSPNON,PRTAGE,"
+        "PTDTRACE,pworwgt,peio1cow,GESTFIPS,PESEX,PTERNHLY,PRERELG\n"
+        "100000.0,40.0,4,1,1,2,30,1,100.0,1,6,2,2500.0,1\n"
+    )
+
+    class FakeResponse:
+        def __init__(self, text: str):
+            self.content = text.encode("utf-8")
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.org.org.requests.get",
+        lambda *args, **kwargs: FakeResponse(csv_text),
+    )
+
+    loaded = _load_cps_basic_org_month(2024, "may", max_attempts=1)
+
+    assert loaded.columns.tolist() == CPS_BASIC_MONTHLY_ORG_COLUMNS
+    assert loaded.iloc[0].to_dict() == {
+        "HRMIS": 4,
+        "gestfips": 6,
+        "prtage": 30,
+        "pesex": 2,
+        "ptdtrace": 1,
+        "pehspnon": 2,
+        "pworwgt": 100.0,
+        "pternwa": 100000.0,
+        "pternhly": 2500.0,
+        "peernhry": 1,
+        "pehruslt": 40.0,
+        "prerelg": 1,
+        "pemlr": 1,
+        "peio1cow": 1,
+    }
+
+
 def test_load_org_training_data_serializes_first_cache_build(monkeypatch, tmp_path):
     raw_month = pd.DataFrame(
         {

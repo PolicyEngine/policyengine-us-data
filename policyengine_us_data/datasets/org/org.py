@@ -235,8 +235,7 @@ def _load_cps_basic_org_month(
                 usecols=selected_columns,
                 low_memory=False,
             )
-            month_df.columns = CPS_BASIC_MONTHLY_ORG_COLUMNS
-            return month_df
+            return _select_cps_basic_org_columns(month_df)
         except Exception as error:
             last_error = error
 

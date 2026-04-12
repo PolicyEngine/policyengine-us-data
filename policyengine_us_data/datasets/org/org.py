@@ -259,7 +259,9 @@ def _org_cache_build_lock(lock_path: Path):
 
 def _load_valid_cached_org_training_data(cache_path: Path) -> pd.DataFrame | None:
     """Return a cached ORG training frame when it is present and structurally valid."""
-    required_columns = set(ORG_PREDICTORS + ORG_QRF_IMPUTED_VARIABLES + ["sample_weight"])
+    required_columns = set(
+        ORG_PREDICTORS + ORG_QRF_IMPUTED_VARIABLES + ["sample_weight"]
+    )
     try:
         cached = pd.read_csv(cache_path)
     except (FileNotFoundError, OSError, pd.errors.EmptyDataError):

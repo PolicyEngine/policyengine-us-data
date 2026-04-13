@@ -72,6 +72,10 @@ include:
   # that crushes WA/NH weights to zero. Fix the ETL before re-enabling.
   # - variable: state_income_tax
   #   geo_level: state
+  # IRS SOI income tax (filer-filtered) at state level — 51 new
+  # constraints to pin the AGI↔tax relationship state by state.
+  - variable: income_tax
+    geo_level: state
 
   # === NATIONAL — fine AGI bracket targets (Table 1.4) ===
   - variable: tax_unit_count
@@ -227,8 +231,10 @@ include:
     geo_level: national
   - variable: charitable_deduction
     geo_level: national
-  - variable: deductible_mortgage_interest
-    geo_level: national
+  # REMOVED: deductible_mortgage_interest — target is unachievable
+  # (zero row-sum in the sparse matrix) so it contributed 1 full unit
+  # of loss for no benefit. Restore only after fixing the matrix
+  # builder so mortgage-interest clones can contribute to this row.
   - variable: medical_expense_deduction
     geo_level: national
   - variable: qualified_business_income_deduction
@@ -236,6 +242,10 @@ include:
 
   # === NATIONAL — CBO income tax target (re-enabled: 22% error < 54% unconstrained) ===
   - variable: income_tax_positive
+    geo_level: national
+  # IRS SOI income tax scalar at national — complements income_tax_positive
+  # and pairs with the state-level income_tax rule above.
+  - variable: income_tax
     geo_level: national
 
   # NOT INCLUDED — high error or tension (from prior validation)

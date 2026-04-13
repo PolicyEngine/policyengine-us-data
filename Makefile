@@ -116,7 +116,8 @@ data-legacy: data
 
 calibrate: data
 	python -m policyengine_us_data.calibration.unified_calibration \
-		--target-config policyengine_us_data/calibration/target_config.yaml
+		--target-config policyengine_us_data/calibration/target_config.yaml \
+		--log-freq 100
 
 calibrate-build: data
 	python -m policyengine_us_data.calibration.unified_calibration \
@@ -187,7 +188,7 @@ build-matrices:
 calibrate-modal:
 	modal run --detach modal_app/remote_calibration_runner.py::main \
 		--branch $(BRANCH) --gpu $(GPU) --epochs $(EPOCHS) \
-		--beta 0.65 --lambda-l0 1e-7 --lambda-l2 1e-8 --log-freq 500 \
+		--beta 0.65 --lambda-l0 1e-7 --lambda-l2 1e-8 --log-freq 100 \
 		--target-config policyengine_us_data/calibration/target_config.yaml \
 		--push-results
 
@@ -195,7 +196,7 @@ calibrate-modal-national:
 	modal run --detach modal_app/remote_calibration_runner.py::main \
 		--branch $(BRANCH) --gpu $(NATIONAL_GPU) \
 		--epochs $(NATIONAL_EPOCHS) \
-		--beta 0.65 --lambda-l0 1e-4 --lambda-l2 1e-12 --log-freq 500 \
+		--beta 0.65 --lambda-l0 1e-4 --lambda-l2 1e-12 --log-freq 100 \
 		--target-config policyengine_us_data/calibration/target_config.yaml \
 		--push-results --national
 

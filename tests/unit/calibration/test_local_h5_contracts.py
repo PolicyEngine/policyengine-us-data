@@ -17,6 +17,7 @@ ValidationIssue = contracts["ValidationIssue"]
 ValidationPolicy = contracts["ValidationPolicy"]
 ValidationResult = contracts["ValidationResult"]
 WorkerResult = contracts["WorkerResult"]
+make_national_request = contracts["make_national_request"]
 
 
 def test_area_filter_validates_eq_vs_in_shape():
@@ -31,7 +32,7 @@ def test_area_filter_validates_eq_vs_in_shape():
 
 
 def test_area_build_request_national_defaults():
-    request = AreaBuildRequest.national()
+    request = make_national_request(AreaBuildRequest)
 
     assert request.area_type == "national"
     assert request.area_id == "US"
@@ -86,7 +87,7 @@ def test_validation_policy_defaults_are_conservative():
 
 
 def test_completed_area_build_result_requires_output_path_and_no_build_error():
-    request = AreaBuildRequest.national()
+    request = make_national_request(AreaBuildRequest)
 
     with pytest.raises(ValueError, match="requires output_path"):
         AreaBuildResult(
@@ -104,7 +105,7 @@ def test_completed_area_build_result_requires_output_path_and_no_build_error():
 
 
 def test_failed_area_build_result_requires_build_error():
-    request = AreaBuildRequest.national()
+    request = make_national_request(AreaBuildRequest)
 
     with pytest.raises(ValueError, match="requires build_error"):
         AreaBuildResult(
@@ -114,7 +115,7 @@ def test_failed_area_build_result_requires_build_error():
 
 
 def test_worker_result_enforces_completed_and_failed_buckets():
-    request = AreaBuildRequest.national()
+    request = make_national_request(AreaBuildRequest)
     completed = AreaBuildResult(
         request=request,
         build_status="completed",

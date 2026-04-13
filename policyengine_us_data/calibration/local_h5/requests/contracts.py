@@ -52,7 +52,11 @@ class AreaFilter:
 
 @dataclass(frozen=True)
 class AreaBuildRequest:
-    """A complete request describing one local or national H5 to build."""
+    """A complete request describing one local or national H5 to build.
+
+    Request construction belongs in a catalog or adapter layer rather
+    than on this value object itself.
+    """
 
     area_type: AreaType
     area_id: str
@@ -75,17 +79,6 @@ class AreaBuildRequest:
                 "validation_geo_level must be set when validation_geographic_ids "
                 "are provided"
             )
-
-    @classmethod
-    def national(cls, area_id: str = "US") -> "AreaBuildRequest":
-        return cls(
-            area_type="national",
-            area_id=area_id,
-            display_name=area_id,
-            output_relative_path="national/US.h5",
-            validation_geo_level="national",
-            validation_geographic_ids=(area_id,),
-        )
 
     def to_dict(self) -> dict[str, Any]:
         return {

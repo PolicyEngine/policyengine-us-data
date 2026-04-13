@@ -57,34 +57,45 @@ def load_contracts_exports():
 
     _ensure_package(package_name, local_h5_root)
 
-    _load_module(
+    requests_module = _load_module(
         f"{package_name}.requests",
         local_h5_root / "requests" / "__init__.py",
     )
-    _load_module(
+    inputs_module = _load_module(
         f"{package_name}.inputs",
         local_h5_root / "inputs" / "__init__.py",
     )
-    _load_module(
+    validation_module = _load_module(
         f"{package_name}.validation",
         local_h5_root / "validation" / "__init__.py",
     )
-    _load_module(
+    results_module = _load_module(
         f"{package_name}.results",
         local_h5_root / "results" / "__init__.py",
     )
-    package = _load_module(
-        package_name,
-        local_h5_root / "__init__.py",
-    )
+    package_module = _load_module(package_name, local_h5_root / "__init__.py")
     return {
-        "module": package,
-        "AreaBuildRequest": package.AreaBuildRequest,
-        "AreaBuildResult": package.AreaBuildResult,
-        "AreaFilter": package.AreaFilter,
-        "PublishingInputBundle": package.PublishingInputBundle,
-        "ValidationIssue": package.ValidationIssue,
-        "ValidationPolicy": package.ValidationPolicy,
-        "ValidationResult": package.ValidationResult,
-        "WorkerResult": package.WorkerResult,
+        "module": package_module,
+        "AreaBuildRequest": requests_module.AreaBuildRequest,
+        "AreaBuildResult": results_module.AreaBuildResult,
+        "AreaFilter": requests_module.AreaFilter,
+        "PublishingInputBundle": inputs_module.PublishingInputBundle,
+        "ValidationIssue": validation_module.ValidationIssue,
+        "ValidationPolicy": validation_module.ValidationPolicy,
+        "ValidationResult": validation_module.ValidationResult,
+        "WorkerResult": results_module.WorkerResult,
+        "make_national_request": make_national_request,
     }
+
+
+def make_national_request(area_build_request_cls):
+    """Build the canonical national request shape used by current tests."""
+
+    return area_build_request_cls(
+        area_type="national",
+        area_id="US",
+        display_name="US",
+        output_relative_path="national/US.h5",
+        validation_geo_level="national",
+        validation_geographic_ids=("US",),
+    )

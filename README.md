@@ -153,3 +153,29 @@ make documentation
 ```
 
 Note: The Makefile uses the older `jb` command syntax which may not work with Jupyter Book 2. Use `myst start` or `jupyter book start docs` instead.
+
+## TRACE provenance output
+
+Each US data release now publishes both:
+
+- `release_manifest.json`
+- `trace.tro.jsonld`
+
+The release manifest remains the operational source of truth for:
+
+- published artifact paths and checksums
+- build IDs and timestamps
+- build-time `policyengine-us` provenance
+
+`trace.tro.jsonld` is a generated TRACE declaration built from that manifest. It gives a
+standards-based provenance export over the same release artifacts, including a
+composition fingerprint across the release manifest and the artifacts it describes.
+
+Important boundary:
+
+- the TRACE file does not replace the release manifest
+- the TRACE file does not decide model/data compatibility
+
+For the broader certified-bundle architecture, see
+[`policyengine.py` release bundles](https://github.com/PolicyEngine/policyengine.py/blob/main/docs/release-bundles.md)
+and the official [TRACE specification](https://transparency-certified.github.io/trace-specification/docs/specifications/).

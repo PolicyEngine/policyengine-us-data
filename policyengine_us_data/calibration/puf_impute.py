@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 PUF_SUBSAMPLE_TARGET = 20_000
 PUF_TOP_PERCENTILE = 99.5
+SELF_EMPLOYMENT_QRF_WINSOR_LOWER_PERCENTILE = 0.5
+SELF_EMPLOYMENT_QRF_WINSOR_UPPER_PERCENTILE = 99.5
 
 DEMOGRAPHIC_PREDICTORS = [
     "age",
@@ -843,6 +845,7 @@ def _run_qrf_imputation(
     y_full = _sequential_qrf(
         X_train_full, X_test, DEMOGRAPHIC_PREDICTORS, IMPUTED_VARIABLES
     )
+    y_full = _validate_self_employment_qrf_predictions(y_full, X_train_full)
 
     logger.info(
         "Imputing %d PUF variables (override)",
@@ -903,6 +906,92 @@ def _log_stratified_subsample(
         top_percent_preserved,
         f"{agi_threshold:,.0f}",
     )
+
+
+def _validate_self_employment_qrf_predictions(
+    predictions: Dict[str, np.ndarray],
+    X_train: pd.DataFrame,
+) -> Dict[str, np.ndarray]:
+    """Winsorize self-employment QRF predictions to training support."""
+    variable = "self_employment_income"
+    if variable not in predictions or variable not in X_train:
+        return predictions
+
+    train = X_train[variable].to_numpy(dtype=np.float64, copy=False)
+    finite_train = train[np.isfinite(train)]
+    if finite_train.size == 0:
+        logger.warning(
+            "Skipping %s QRF validation: no finite training values",
+            variable,
+        )
+        return predictions
+
+    lower, upper = np.percentile(
+        finite_train,
+        [
+            SELF_EMPLOYMENT_QRF_WINSOR_LOWER_PERCENTILE,
+            SELF_EMPLOYMENT_QRF_WINSOR_UPPER_PERCENTILE,
+        ],
+    )
+    if not np.isfinite(lower) or not np.isfinite(upper) or lower > upper:
+        logger.warning(
+            "Skipping %s QRF validation: invalid bounds [%s, %s]",
+            variable,
+            lower,
+            upper,
+        )
+        return predictions
+
+    original = np.asarray(predictions[variable])
+    as_float = original.astype(np.float64, copy=False)
+    finite_predictions = np.nan_to_num(
+        as_float,
+        nan=0.0,
+        posinf=upper,
+        neginf=lower,
+    )
+    clipped = np.clip(finite_predictions, lower, upper)
+    changed = np.count_nonzero(
+        ~np.isfinite(as_float) | (clipped != as_float)
+    )
+
+    def _finite_min_max(values: np.ndarray) -> tuple[float, float]:
+        finite = values[np.isfinite(values)]
+        if finite.size == 0:
+            return np.nan, np.nan
+        return float(finite.min()), float(finite.max())
+
+    before_min, before_max = _finite_min_max(as_float)
+    after_min, after_max = _finite_min_max(clipped)
+
+    if changed:
+        logger.warning(
+            "%s QRF validation clipped %d/%d predictions "
+            "(bounds %.2f to %.2f; before %.2f to %.2f; after %.2f to %.2f)",
+            variable,
+            changed,
+            len(original),
+            lower,
+            upper,
+            before_min,
+            before_max,
+            after_min,
+            after_max,
+        )
+    else:
+        logger.info(
+            "%s QRF validation passed %d predictions "
+            "(bounds %.2f to %.2f; range %.2f to %.2f)",
+            variable,
+            len(original),
+            lower,
+            upper,
+            before_min,
+            before_max,
+        )
+
+    predictions[variable] = clipped.astype(original.dtype, copy=False)
+    return predictions
 
 
 def _sequential_qrf(

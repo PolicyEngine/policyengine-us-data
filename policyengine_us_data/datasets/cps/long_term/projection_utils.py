@@ -228,7 +228,7 @@ def create_household_year_h5(
 
     dataset = Dataset.from_dataframe(df, year)
 
-    new_sim = Microsimulation()
+    new_sim = Microsimulation(dataset=base_dataset)
     new_sim.dataset = dataset
     new_sim.build_from_dataset()
 

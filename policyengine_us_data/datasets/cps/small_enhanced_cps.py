@@ -101,7 +101,7 @@ def create_sparse_ecps():
     subset_df = df[df[df_household_id_column].isin(h_ids)].copy()
 
     # Update the dataset and rebuild the simulation
-    sim = Microsimulation()
+    sim = Microsimulation(dataset=EnhancedCPS_2024)
     sim.dataset = Dataset.from_dataframe(subset_df, time_period)
     sim.build_from_dataset()
 

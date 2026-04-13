@@ -202,7 +202,7 @@ def create_stratified_cps_dataset(
 
     # Build a simulation to convert to h5
     print("Building simulation from Dataset...")
-    stratified_sim = Microsimulation()
+    stratified_sim = Microsimulation(dataset=base_dataset)
     stratified_sim.dataset = stratified_dataset
     stratified_sim.build_from_dataset()
 

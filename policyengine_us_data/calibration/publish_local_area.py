@@ -602,8 +602,11 @@ def build_h5(
         time_period: clone_geo["state_fips"].astype(np.int32),
     }
     county_names = np.array(
-        [County._member_names_[i] for i in clone_geo["county_index"]]
-    ).astype("S")
+        [
+            County._member_names_[i].encode("utf-8")
+            for i in clone_geo["county_index"]
+        ]
+    )
     data["county"] = {time_period: county_names}
     data["county_fips"] = {
         time_period: clone_geo["county_fips"].astype(np.int32),
@@ -625,9 +628,15 @@ def build_h5(
             }
 
     # === Set zip_code for LA County clones (ACA rating area fix) ===
+    # Default to synthetic "00000" (not "UNKNOWN") so three_digit_zip_code.py's
+    # `zip_code.astype(int) // 100` doesn't crash on non-LA households. "00000"
+    # → three_digit "000" which doesn't match any real LA rating area, so non-LA
+    # households correctly fall through to slcsp_rating_area_default. Without
+    # this numeric default, aca_ptc computation crashes whenever the dataset
+    # has any in_la households (which is always, via the LA County clones).
     la_mask = clone_geo["county_fips"].astype(str) == "06037"
     if la_mask.any():
-        zip_codes = np.full(len(la_mask), "UNKNOWN")
+        zip_codes = np.full(len(la_mask), "00000")
         zip_codes[la_mask] = "90001"
         data["zip_code"] = {time_period: zip_codes.astype("S")}
 

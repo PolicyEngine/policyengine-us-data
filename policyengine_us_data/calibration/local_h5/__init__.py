@@ -1,4 +1,8 @@
-"""Internal contracts and helpers for incremental local H5 migration."""
+"""Internal contracts and helpers for incremental local H5 migration.
+
+This package intentionally exposes a small compatibility surface while
+the implementation is being subdivided into themed packages.
+"""
 
 from .contracts import (
     AreaBuildRequest,

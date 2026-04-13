@@ -1,37 +1,22 @@
 import json
-import importlib.util
 from pathlib import Path
-import sys
 
 import pytest
 
-
-def _load_contracts_module():
-    module_path = (
-        Path(__file__).resolve().parents[3]
-        / "policyengine_us_data"
-        / "calibration"
-        / "local_h5"
-        / "contracts.py"
-    )
-    spec = importlib.util.spec_from_file_location("local_h5_contracts", module_path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec is not None
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+from tests.unit.calibration.fixtures.test_local_h5_contracts import (
+    load_contracts_exports,
+)
 
 
-contracts = _load_contracts_module()
-AreaBuildRequest = contracts.AreaBuildRequest
-AreaBuildResult = contracts.AreaBuildResult
-AreaFilter = contracts.AreaFilter
-PublishingInputBundle = contracts.PublishingInputBundle
-ValidationIssue = contracts.ValidationIssue
-ValidationPolicy = contracts.ValidationPolicy
-ValidationResult = contracts.ValidationResult
-WorkerResult = contracts.WorkerResult
+contracts = load_contracts_exports()
+AreaBuildRequest = contracts["AreaBuildRequest"]
+AreaBuildResult = contracts["AreaBuildResult"]
+AreaFilter = contracts["AreaFilter"]
+PublishingInputBundle = contracts["PublishingInputBundle"]
+ValidationIssue = contracts["ValidationIssue"]
+ValidationPolicy = contracts["ValidationPolicy"]
+ValidationResult = contracts["ValidationResult"]
+WorkerResult = contracts["WorkerResult"]
 
 
 def test_area_filter_validates_eq_vs_in_shape():

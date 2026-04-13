@@ -1,32 +1,12 @@
-import importlib.util
-from pathlib import Path
-import sys
+from tests.unit.calibration.fixtures.test_local_h5_partitioning import (
+    load_partitioning_exports,
+)
 
 
-def _load_partitioning_module():
-    module_path = (
-        Path(__file__).resolve().parents[3]
-        / "policyengine_us_data"
-        / "calibration"
-        / "local_h5"
-        / "partitioning.py"
-    )
-    spec = importlib.util.spec_from_file_location("local_h5_partitioning", module_path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec is not None
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-partitioning = _load_partitioning_module()
-partition_weighted_work_items = partitioning.partition_weighted_work_items
-work_item_key = partitioning.work_item_key
-
-
-def _flatten(chunks):
-    return [item for chunk in chunks for item in chunk]
+partitioning = load_partitioning_exports()
+flatten_chunks = partitioning["flatten_chunks"]
+partition_weighted_work_items = partitioning["partition_weighted_work_items"]
+work_item_key = partitioning["work_item_key"]
 
 
 def test_work_item_key_uses_existing_completion_shape():
@@ -47,7 +27,7 @@ def test_partition_filters_completed_items():
         completed={"district:CA-12"},
     )
 
-    flattened = _flatten(chunks)
+    flattened = flatten_chunks(chunks)
     assert all(item["id"] != "CA-12" for item in flattened)
     assert {item["id"] for item in flattened} == {"CA", "NYC"}
 

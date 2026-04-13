@@ -11,6 +11,7 @@ from policyengine_us_data.utils.release_manifest import (
     RELEASE_MANIFEST_SCHEMA_VERSION,
     build_release_manifest,
 )
+from policyengine_us_data.utils.trace_tro import TRACE_TRO_FILENAME
 
 
 def _write_file(path: Path, content: bytes) -> Path:
@@ -181,6 +182,8 @@ def test_upload_files_to_hf_adds_release_manifest_operations(tmp_path):
     assert "enhanced_cps_2024.h5" in operation_paths
     assert "release_manifest.json" in operation_paths
     assert "releases/1.73.0/release_manifest.json" in operation_paths
+    assert TRACE_TRO_FILENAME in operation_paths
+    assert f"releases/1.73.0/{TRACE_TRO_FILENAME}" in operation_paths
 
     release_ops = [
         operation
@@ -189,6 +192,14 @@ def test_upload_files_to_hf_adds_release_manifest_operations(tmp_path):
     ]
     assert len(release_ops) == 2
     for operation in release_ops:
+        assert isinstance(operation, CommitOperationAdd)
+        assert isinstance(operation.path_or_fileobj, BytesIO)
+
+    trace_ops = [
+        operation for operation in operations if operation.path_in_repo.endswith(".jsonld")
+    ]
+    assert len(trace_ops) == 2
+    for operation in trace_ops:
         assert isinstance(operation, CommitOperationAdd)
         assert isinstance(operation.path_or_fileobj, BytesIO)
 

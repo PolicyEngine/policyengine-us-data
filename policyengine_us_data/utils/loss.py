@@ -14,6 +14,7 @@ from policyengine_us_data.storage.calibration_targets.soi_metadata import (
 )
 from policyengine_us_data.utils.cms_medicare import (
     get_beneficiary_paid_medicare_part_b_premiums_target,
+    get_medicare_part_b_enrollment_target,
 )
 from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
 from policyengine_core.reforms import Reform
@@ -109,6 +110,15 @@ HARD_CODED_TOTALS = {
         "value"
     ],
 }
+
+
+def _add_medicare_part_b_enrollment_target(loss_matrix, targets_array, sim):
+    label = "nation/cms/medicare_part_b_enrollment"
+    enrolled = sim.calculate("medicare_enrolled", map_to="person", period=2025).values
+    loss_matrix[label] = sim.map_result(enrolled.astype(float), "person", "household")
+    targets_array.append(get_medicare_part_b_enrollment_target(2024))
+    return targets_array, loss_matrix
+
 
 ACA_SPENDING_TARGETS = {
     2024: 98e9,
@@ -573,6 +583,12 @@ def build_loss_matrix(dataset: type, time_period):
     loss_matrix[label] = sim.map_result(on_ptc, "person", "household")
 
     targets_array.append(aca_enrollment_target)
+
+    targets_array, loss_matrix = _add_medicare_part_b_enrollment_target(
+        loss_matrix,
+        targets_array,
+        sim,
+    )
 
     # Treasury EITC
 

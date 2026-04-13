@@ -199,3 +199,66 @@ def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkey
         ).first()
         assert liheap_target is not None
         assert liheap_target.value == 5_876_646
+
+
+def test_load_national_targets_supports_medicare_part_b_enrollment_counts(
+    tmp_path, monkeypatch
+):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        national = _make_stratum(session, notes="United States")
+        assert national is not None
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    conditional_targets = [
+        {
+            "constraint_variable": "medicare_enrolled",
+            "person_count": 62_084_000,
+            "source": "CMS 2024 Medicare Trustees Report Table V.B3",
+            "notes": "Total Medicare Part B enrollment count",
+            "year": 2024,
+        }
+    ]
+
+    load_national_targets(
+        direct_targets_df=pd.DataFrame(),
+        tax_filer_df=pd.DataFrame(),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=conditional_targets,
+    )
+
+    with Session(engine) as session:
+        medicare_stratum = session.exec(
+            select(Stratum).where(
+                Stratum.notes == "National medicare_enrolled Recipients"
+            )
+        ).first()
+        assert medicare_stratum is not None
+
+        constraints = {
+            (
+                constraint.constraint_variable,
+                constraint.operation,
+                constraint.value,
+            )
+            for constraint in medicare_stratum.constraints_rel
+        }
+        assert ("medicare_enrolled", ">", "0") in constraints
+
+        medicare_target = session.exec(
+            select(Target).where(
+                Target.stratum_id == medicare_stratum.stratum_id,
+                Target.variable == "person_count",
+                Target.period == 2024,
+            )
+        ).first()
+        assert medicare_target is not None
+        assert medicare_target.value == 62_084_000

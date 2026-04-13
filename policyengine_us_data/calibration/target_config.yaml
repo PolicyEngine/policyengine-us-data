@@ -51,8 +51,13 @@ include:
   # REMOVED: is_pregnant — 100% unachievable across all 51 state geos
   - variable: snap
     geo_level: state
+  - variable: tanf
+    geo_level: state
   - variable: adjusted_gross_income
     geo_level: state
+  - variable: spm_unit_count
+    geo_level: state
+    domain_variable: tanf
 
   # === STATE — fine AGI bracket targets (stubs 9/10 from in55cmcsv) ===
   - variable: person_count
@@ -127,6 +132,9 @@ include:
     geo_level: national
   - variable: tanf
     geo_level: national
+  - variable: spm_unit_count
+    geo_level: national
+    domain_variable: tanf
   - variable: tip_income
     geo_level: national
   - variable: unemployment_compensation

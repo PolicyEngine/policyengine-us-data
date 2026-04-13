@@ -204,13 +204,6 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": HARDCODED_YEAR,
         },
         {
-            "variable": "tanf",
-            "value": 9e9,
-            "source": "HHS/ACF",
-            "notes": "TANF cash assistance",
-            "year": HARDCODED_YEAR,
-        },
-        {
             "variable": "real_estate_taxes",
             "value": 500e9,
             "source": "Census Bureau",

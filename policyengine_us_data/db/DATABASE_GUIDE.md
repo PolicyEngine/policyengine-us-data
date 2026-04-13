@@ -29,10 +29,11 @@ make database-refresh   # Force re-download all sources and rebuild
 | 4 | `etl_age.py` | Census ACS 1-year | Age distribution: 18 bins x 488 geographies |
 | 5 | `etl_medicaid.py` | Census ACS + CMS | Medicaid enrollment (admin state-level, survey district-level) |
 | 6 | `etl_snap.py` | USDA FNS + Census ACS | SNAP participation (admin state-level, survey district-level) |
-| 7 | `etl_state_income_tax.py` | Census STC | State income tax collections (Census STC FY2023 `T40`, downloaded and cached) |
-| 8 | `etl_irs_soi.py` | IRS | Tax variables, EITC by child count, AGI brackets, conditional strata |
-| 9 | `etl_pregnancy.py` | CDC VSRR + Census ACS | Pregnancy prevalence by state (provisional birth counts) |
-| 10 | `validate_database.py` | No | Checks all target variables exist in policyengine-us |
+| 7 | `etl_tanf.py` | HHS ACF | TANF caseload families and basic-assistance spending (FY2024) |
+| 8 | `etl_state_income_tax.py` | Census STC | State income tax collections (Census STC FY2023 `T40`, downloaded and cached) |
+| 9 | `etl_irs_soi.py` | IRS | Tax variables, EITC by child count, AGI brackets, conditional strata |
+| 10 | `etl_pregnancy.py` | CDC VSRR + Census ACS | Pregnancy prevalence by state (provisional birth counts) |
+| 11 | `validate_database.py` | No | Checks all target variables exist in policyengine-us |
 
 ### Raw Input Caching
 

@@ -8,6 +8,7 @@ from policyengine_us_data.utils.loss import (
     _get_medicaid_national_targets,
     _load_aca_spending_and_enrollment_targets,
     _load_medicaid_enrollment_targets,
+    HARD_CODED_TOTALS,
 )
 
 
@@ -123,3 +124,7 @@ def test_add_ctc_targets(monkeypatch):
         loss_matrix["nation/irs/non_refundable_ctc_count"],
         np.array([1.0, 1.0, 0.0], dtype=np.float32),
     )
+
+
+def test_tanf_hardcoded_target_uses_fy2024_basic_assistance_total():
+    assert HARD_CODED_TOTALS["tanf"] == pytest.approx(8_186_013_422.99)

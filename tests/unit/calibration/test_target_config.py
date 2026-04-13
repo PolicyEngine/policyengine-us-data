@@ -206,6 +206,29 @@ class TestLoadTargetConfig:
             "geo_level": "district",
         } in include_rules
 
+    def test_training_config_includes_tanf_state_and_national_count_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {"variable": "tanf", "geo_level": "state"} in include_rules
+        assert {
+            "variable": "spm_unit_count",
+            "geo_level": "state",
+            "domain_variable": "tanf",
+        } in include_rules
+        assert {
+            "variable": "spm_unit_count",
+            "geo_level": "national",
+            "domain_variable": "tanf",
+        } in include_rules
+
 
 class TestCalibrationPackageRoundTrip:
     def test_round_trip(self, sample_targets, tmp_path):

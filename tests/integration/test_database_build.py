@@ -28,6 +28,7 @@ PIPELINE_SCRIPTS = [
     ("db/etl_age.py", ["--year", "2024"]),
     ("db/etl_medicaid.py", ["--year", "2024"]),
     ("db/etl_snap.py", ["--year", "2024"]),
+    ("db/etl_tanf.py", ["--year", "2024"]),
     ("db/etl_state_income_tax.py", ["--year", "2024"]),
     ("db/etl_irs_soi.py", ["--year", "2024"]),
     ("db/etl_pregnancy.py", ["--year", "2024"]),
@@ -193,6 +194,39 @@ def test_state_income_tax_targets(built_db):
 
     tn_val = state_totals.get("47")
     assert tn_val == 2_926_000
+
+
+def test_tanf_targets(built_db):
+    """TANF recipient-family and spending targets should load from ACF files."""
+    conn = sqlite3.connect(str(built_db))
+    rows = conn.execute("""
+        SELECT
+            COALESCE(state_sc.value, 'US') AS geography,
+            t.variable,
+            t.value
+        FROM targets t
+        JOIN strata s
+            ON t.stratum_id = s.stratum_id
+        JOIN stratum_constraints tanf_sc
+            ON s.stratum_id = tanf_sc.stratum_id
+        LEFT JOIN stratum_constraints state_sc
+            ON s.stratum_id = state_sc.stratum_id
+           AND state_sc.constraint_variable = 'state_fips'
+        WHERE tanf_sc.constraint_variable = 'tanf'
+          AND tanf_sc.operation = '>'
+          AND tanf_sc.value = '0'
+          AND t.variable IN ('spm_unit_count', 'tanf')
+    """).fetchall()
+    conn.close()
+
+    tanf_targets = {(geo, variable): value for geo, variable, value in rows}
+
+    assert tanf_targets[("US", "spm_unit_count")] == pytest.approx(841_208.666667)
+    assert tanf_targets[("US", "tanf")] == pytest.approx(8_186_013_422.99)
+    assert tanf_targets[("6", "spm_unit_count")] == pytest.approx(290_247.75)
+    assert tanf_targets[("6", "tanf")] == pytest.approx(3_908_497_323.43)
+    assert tanf_targets[("11", "spm_unit_count")] == pytest.approx(5_056.25)
+    assert tanf_targets[("11", "tanf")] == pytest.approx(51_920_224.78)
 
 
 def test_congressional_district_strata(built_db):

@@ -1,18 +1,23 @@
-"""Internal contracts and helpers for incremental local H5 migration.
+"""Internal types and helpers for the incremental local H5 migration.
 
-This package intentionally exposes a small compatibility surface while
-the implementation is being subdivided into themed packages.
+The root package re-exports the small set of contract types and pure
+helpers that other migration slices need. The implementation lives in
+the themed subpackages below.
 """
 
-from .contracts import (
+from .inputs import PublishingInputBundle
+from .requests import (
     AreaBuildRequest,
-    AreaBuildResult,
     AreaFilter,
-    PublishingInputBundle,
+)
+from .results import (
+    AreaBuildResult,
+    WorkerResult,
+)
+from .validation import (
     ValidationIssue,
     ValidationPolicy,
     ValidationResult,
-    WorkerResult,
 )
 from .partitioning import partition_weighted_work_items, work_item_key
 

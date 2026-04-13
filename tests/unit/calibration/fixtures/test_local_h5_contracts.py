@@ -1,8 +1,8 @@
 """Fixture helpers for ``test_local_h5_contracts.py``.
 
-These helpers load the refactored ``local_h5`` contract modules from
-disk under a synthetic package so the repository's heavyweight
-top-level package initializers never run.
+These helpers load the themed ``local_h5`` subpackages from disk under
+a synthetic package so the repository's heavyweight top-level package
+initializers never run.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def _load_module(name: str, path: Path):
 
 
 def load_contracts_exports():
-    """Load the local H5 contracts module and return its public exports."""
+    """Load the themed local H5 contract packages and return key exports."""
 
     local_h5_root = (
         Path(__file__).resolve().parents[4]
@@ -57,18 +57,34 @@ def load_contracts_exports():
 
     _ensure_package(package_name, local_h5_root)
 
-    module = _load_module(
-        f"{package_name}.contracts",
-        local_h5_root / "contracts.py",
+    _load_module(
+        f"{package_name}.requests",
+        local_h5_root / "requests" / "__init__.py",
+    )
+    _load_module(
+        f"{package_name}.inputs",
+        local_h5_root / "inputs" / "__init__.py",
+    )
+    _load_module(
+        f"{package_name}.validation",
+        local_h5_root / "validation" / "__init__.py",
+    )
+    _load_module(
+        f"{package_name}.results",
+        local_h5_root / "results" / "__init__.py",
+    )
+    package = _load_module(
+        package_name,
+        local_h5_root / "__init__.py",
     )
     return {
-        "module": module,
-        "AreaBuildRequest": module.AreaBuildRequest,
-        "AreaBuildResult": module.AreaBuildResult,
-        "AreaFilter": module.AreaFilter,
-        "PublishingInputBundle": module.PublishingInputBundle,
-        "ValidationIssue": module.ValidationIssue,
-        "ValidationPolicy": module.ValidationPolicy,
-        "ValidationResult": module.ValidationResult,
-        "WorkerResult": module.WorkerResult,
+        "module": package,
+        "AreaBuildRequest": package.AreaBuildRequest,
+        "AreaBuildResult": package.AreaBuildResult,
+        "AreaFilter": package.AreaFilter,
+        "PublishingInputBundle": package.PublishingInputBundle,
+        "ValidationIssue": package.ValidationIssue,
+        "ValidationPolicy": package.ValidationPolicy,
+        "ValidationResult": package.ValidationResult,
+        "WorkerResult": package.WorkerResult,
     }

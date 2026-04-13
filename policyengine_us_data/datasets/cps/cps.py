@@ -105,56 +105,6 @@ def _open_dataset_read_only(dataset_source):
     with closing(dataset.load()) as store:
         yield store
 
-
-def derive_spm_unit_assets(
-    person_spm_unit_ids,
-    spm_unit_ids,
-    bank_account_assets,
-    stock_assets,
-    bond_assets,
-    assessed_property_value=None,
-):
-    """Aggregate modeled person-level assets to the SPM-unit entity.
-
-    This intentionally stays conservative for baseline CPS construction:
-    liquid financial assets are always included, while real property is only
-    included if a compatible person-level array is explicitly supplied.
-    """
-
-    person_spm_unit_ids = np.asarray(person_spm_unit_ids, dtype=np.int64)
-    spm_unit_ids = np.asarray(spm_unit_ids, dtype=np.int64)
-    person_asset_totals = (
-        np.asarray(bank_account_assets, dtype=np.float32)
-        + np.asarray(stock_assets, dtype=np.float32)
-        + np.asarray(bond_assets, dtype=np.float32)
-    )
-    if assessed_property_value is not None:
-        person_asset_totals = person_asset_totals + np.asarray(
-            assessed_property_value,
-            dtype=np.float32,
-        )
-
-    spm_unit_index = {int(spm_unit_id): i for i, spm_unit_id in enumerate(spm_unit_ids)}
-    missing_spm_unit_ids = {
-        int(spm_unit_id)
-        for spm_unit_id in np.unique(person_spm_unit_ids)
-        if int(spm_unit_id) not in spm_unit_index
-    }
-    if missing_spm_unit_ids:
-        raise ValueError(
-            "Person SPM unit ids missing from SPM-unit entity ids: "
-            f"{sorted(missing_spm_unit_ids)[:10]}"
-        )
-
-    result = np.zeros(len(spm_unit_ids), dtype=np.float32)
-    spm_unit_positions = np.array(
-        [spm_unit_index[int(spm_unit_id)] for spm_unit_id in person_spm_unit_ids],
-        dtype=np.int64,
-    )
-    np.add.at(result, spm_unit_positions, person_asset_totals)
-    return result
-
-
 class CPS(Dataset):
     name = "cps"
     label = "CPS"
@@ -1920,8 +1870,6 @@ def _update_documentation_with_numbers(log_df, docs_dir):
 
 
 def add_tips(self, cps: h5py.File):
-    person_spm_unit_ids = np.asarray(cps["person_spm_unit_id"], dtype=np.int64)
-    spm_unit_ids = np.asarray(cps["spm_unit_id"], dtype=np.int64)
     self.save_dataset(cps)
     from policyengine_us import Microsimulation
 
@@ -1992,21 +1940,12 @@ def add_tips(self, cps: h5py.File):
     cps["bank_account_assets"] = asset_predictions.bank_account_assets.values
     cps["stock_assets"] = asset_predictions.stock_assets.values
     cps["bond_assets"] = asset_predictions.bond_assets.values
-    spm_unit_assets = derive_spm_unit_assets(
-        person_spm_unit_ids=person_spm_unit_ids,
-        spm_unit_ids=spm_unit_ids,
-        bank_account_assets=cps["bank_account_assets"].values,
-        stock_assets=cps["stock_assets"].values,
-        bond_assets=cps["bond_assets"].values,
-    )
 
     # Drop temporary columns used only for imputation
     # is_married is person-level here but policyengine-us defines it at Family
     # level, so we must not save it
     cps = cps.drop(columns=["is_married", "is_under_18", "is_under_6"], errors="ignore")
-    data_to_save = {column: cps[column].values for column in cps.columns}
-    data_to_save["spm_unit_assets"] = spm_unit_assets
-    self.save_dataset(data_to_save)
+    self.save_dataset(cps)
 
 
 def add_org_labor_market_inputs(cps: h5py.File) -> None:

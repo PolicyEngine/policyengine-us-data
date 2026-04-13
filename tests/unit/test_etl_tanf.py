@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 from policyengine_us_data.db.etl_tanf import (
+    _validate_supported_year,
     transform_tanf_caseload_data,
     transform_tanf_financial_data,
 )
@@ -33,24 +34,43 @@ def test_transform_tanf_caseload_data_extracts_national_and_state_rows():
     ] == pytest.approx(5_056.25)
 
 
-def test_transform_tanf_financial_data_extracts_basic_assistance_totals():
+def test_transform_tanf_financial_data_extracts_cash_assistance_totals():
     national_df = pd.DataFrame(
         {
-            "Spending Category": ["Basic Assistance", "Work Supports"],
-            "All Funds": ["8,186,013,422.99", "123.45"],
+            "Spending Category": [
+                "Basic Assistance",
+                (
+                    "Basic Assistance (excluding Relative Foster Care Maintenance "
+                    "Payments and Adoption and Guardianship Subsidies)"
+                ),
+                "Work Supports",
+            ],
+            "All Funds": ["8,186,013,422.99", "7,788,317,474.55", "123.45"],
         }
     )
     state_sheets = {
         "California": pd.DataFrame(
             {
-                "Spending Category": ["Basic Assistance"],
-                "All Funds": ["3,908,497,323.43"],
+                "Spending Category": [
+                    "Basic Assistance",
+                    (
+                        "Basic Assistance (excluding Relative Foster Care Maintenance "
+                        "Payments and Adoption and Guardianship Subsidies)"
+                    ),
+                ],
+                "All Funds": ["3,908,497,323.43", "3,742,540,224.36"],
             }
         ),
         "District of Columbia": pd.DataFrame(
             {
-                "Spending Category": ["Basic Assistance"],
-                "All Funds": ["51,920,224.78"],
+                "Spending Category": [
+                    "Basic Assistance",
+                    (
+                        "Basic Assistance (excluding Relative Foster Care Maintenance "
+                        "Payments and Adoption and Guardianship Subsidies)"
+                    ),
+                ],
+                "All Funds": ["51,920,224.78", "45,666,113.50"],
             }
         ),
     }
@@ -60,10 +80,15 @@ def test_transform_tanf_financial_data_extracts_basic_assistance_totals():
         state_sheets,
     )
 
-    assert national_spending == pytest.approx(8_186_013_422.99)
+    assert national_spending == pytest.approx(7_788_317_474.55)
     assert state_df.loc[state_df["state_fips"] == 6, "tanf"].iloc[0] == pytest.approx(
-        3_908_497_323.43
+        3_742_540_224.36
     )
     assert state_df.loc[state_df["state_fips"] == 11, "tanf"].iloc[
         0
-    ] == pytest.approx(51_920_224.78)
+    ] == pytest.approx(45_666_113.50)
+
+
+def test_validate_supported_year_rejects_non_2024():
+    with pytest.raises(ValueError, match="FY2024"):
+        _validate_supported_year(2025)

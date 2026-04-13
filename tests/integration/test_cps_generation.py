@@ -1,20 +1,6 @@
 import pandas as pd
 
 
-def test_derive_spm_unit_assets_sums_person_level_assets():
-    from policyengine_us_data.datasets.cps.cps import derive_spm_unit_assets
-
-    result = derive_spm_unit_assets(
-        person_spm_unit_ids=[101, 101, 202],
-        spm_unit_ids=[101, 202],
-        bank_account_assets=[100.0, 300.0, 50.0],
-        stock_assets=[50.0, 200.0, 80.0],
-        bond_assets=[10.0, 25.0, 0.0],
-    )
-
-    assert result.tolist() == [685.0, 130.0]
-
-
 def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
     import policyengine_us
     import policyengine_us_data.datasets.sipp as sipp_module
@@ -101,4 +87,6 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
     )
 
     assert dataset.saved_dataset["tip_income"].tolist() == [100.0, 0.0]
-    assert dataset.saved_dataset["spm_unit_assets"].tolist() == [0.0, 0.0]
+    assert dataset.saved_dataset["bank_account_assets"].tolist() == [0.0, 0.0]
+    assert dataset.saved_dataset["stock_assets"].tolist() == [0.0, 0.0]
+    assert dataset.saved_dataset["bond_assets"].tolist() == [0.0, 0.0]

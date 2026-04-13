@@ -127,4 +127,4 @@ def test_add_ctc_targets(monkeypatch):
 
 
 def test_tanf_hardcoded_target_uses_fy2024_basic_assistance_total():
-    assert HARD_CODED_TOTALS["tanf"] == pytest.approx(8_186_013_422.99)
+    assert HARD_CODED_TOTALS["tanf"] == pytest.approx(7_788_317_474.55)

@@ -222,11 +222,11 @@ def test_tanf_targets(built_db):
     tanf_targets = {(geo, variable): value for geo, variable, value in rows}
 
     assert tanf_targets[("US", "spm_unit_count")] == pytest.approx(841_208.666667)
-    assert tanf_targets[("US", "tanf")] == pytest.approx(8_186_013_422.99)
+    assert tanf_targets[("US", "tanf")] == pytest.approx(7_788_317_474.55)
     assert tanf_targets[("6", "spm_unit_count")] == pytest.approx(290_247.75)
-    assert tanf_targets[("6", "tanf")] == pytest.approx(3_908_497_323.43)
+    assert tanf_targets[("6", "tanf")] == pytest.approx(3_742_540_224.36)
     assert tanf_targets[("11", "spm_unit_count")] == pytest.approx(5_056.25)
-    assert tanf_targets[("11", "tanf")] == pytest.approx(51_920_224.78)
+    assert tanf_targets[("11", "tanf")] == pytest.approx(45_666_113.50)
 
 
 def test_congressional_district_strata(built_db):

@@ -18,6 +18,7 @@ from policyengine_us_data.utils.raw_cache import is_cached, load_bytes, save_byt
 
 logger = logging.getLogger(__name__)
 
+ACF_DATA_YEAR = 2024
 CASELOAD_PAGE_URL = "https://www.acf.hhs.gov/ofa/data/tanf-caseload-data-2024"
 FINANCIAL_PAGE_URL = "https://www.acf.hhs.gov/ofa/data/tanf-financial-data-fy-2024"
 CASELOAD_URL_PATTERN = re.compile(
@@ -26,6 +27,14 @@ CASELOAD_URL_PATTERN = re.compile(
 FINANCIAL_URL_PATTERN = re.compile(
     r"https://acf\.gov/sites/default/files/documents/ofa/fy-\d{4}-tanf-moe-financial-data\.xlsx"
 )
+
+
+def _validate_supported_year(year: int) -> None:
+    if year != ACF_DATA_YEAR:
+        raise ValueError(
+            "TANF administrative calibration targets are currently available only "
+            f"for FY{ACF_DATA_YEAR}; got year={year}"
+        )
 
 
 def _download_acf_excel(page_url: str, cache_file: str, url_pattern: re.Pattern) -> bytes:
@@ -57,9 +66,10 @@ def _download_acf_excel(page_url: str, cache_file: str, url_pattern: re.Pattern)
 
 
 def extract_tanf_caseload_data(year: int) -> pd.DataFrame:
+    _validate_supported_year(year)
     workbook = _download_acf_excel(
         CASELOAD_PAGE_URL,
-        f"tanf_caseload_{year}.xlsx",
+        f"tanf_caseload_{ACF_DATA_YEAR}.xlsx",
         CASELOAD_URL_PATTERN,
     )
     return pd.read_excel(io.BytesIO(workbook), sheet_name="TFam", header=3)
@@ -99,9 +109,10 @@ def transform_tanf_caseload_data(raw_df: pd.DataFrame) -> tuple[float, pd.DataFr
 def extract_tanf_financial_data(
     year: int,
 ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
+    _validate_supported_year(year)
     workbook = _download_acf_excel(
         FINANCIAL_PAGE_URL,
-        f"tanf_financial_{year}.xlsx",
+        f"tanf_financial_{ACF_DATA_YEAR}.xlsx",
         FINANCIAL_URL_PATTERN,
     )
     xls = pd.ExcelFile(io.BytesIO(workbook))
@@ -121,7 +132,7 @@ def extract_tanf_financial_data(
     return national_df, state_sheets
 
 
-def _extract_basic_assistance_all_funds(df: pd.DataFrame) -> float:
+def _extract_cash_assistance_all_funds(df: pd.DataFrame) -> float:
     normalized = df.copy()
     normalized.columns = [
         re.sub(r"\s+", " ", str(column)).strip() for column in normalized.columns
@@ -139,10 +150,15 @@ def _extract_basic_assistance_all_funds(df: pd.DataFrame) -> float:
 
     mask = (
         normalized[spending_category_column].astype(str).str.strip()
-        == "Basic Assistance"
+        == (
+            "Basic Assistance (excluding Relative Foster Care Maintenance Payments "
+            "and Adoption and Guardianship Subsidies)"
+        )
     )
     if not mask.any():
-        raise ValueError("Could not locate Basic Assistance row in TANF financial workbook")
+        raise ValueError(
+            "Could not locate narrow Basic Assistance row in TANF financial workbook"
+        )
 
     value = (
         normalized.loc[mask, "All Funds"]
@@ -158,7 +174,7 @@ def transform_tanf_financial_data(
     national_df: pd.DataFrame,
     state_sheets: dict[str, pd.DataFrame],
 ) -> tuple[float, pd.DataFrame]:
-    national_spending = _extract_basic_assistance_all_funds(national_df)
+    national_spending = _extract_cash_assistance_all_funds(national_df)
 
     state_rows = []
     for state_name, df in state_sheets.items():
@@ -166,7 +182,7 @@ def transform_tanf_financial_data(
             {
                 "state": state_name,
                 "state_fips": int(STATE_NAME_TO_FIPS[state_name]),
-                "tanf": _extract_basic_assistance_all_funds(df),
+                "tanf": _extract_cash_assistance_all_funds(df),
             }
         )
 
@@ -217,7 +233,10 @@ def load_tanf_data(
                 value=national_families,
                 active=True,
                 source="HHS ACF TANF Caseload",
-                notes=f"Average monthly TANF recipient families | Source: ACF TFam FY{year}",
+                notes=(
+                    "Average monthly TANF recipient families | "
+                    f"Source: ACF TFam FY{ACF_DATA_YEAR}"
+                ),
             ),
             Target(
                 variable="tanf",
@@ -226,8 +245,9 @@ def load_tanf_data(
                 active=True,
                 source="HHS ACF TANF Financial",
                 notes=(
-                    "Basic assistance all funds | "
-                    f"Source: ACF TANF & MOE Financial Data FY{year}"
+                    "Basic assistance excluding relative foster care maintenance "
+                    "payments and adoption and guardianship subsidies | "
+                    f"Source: ACF TANF & MOE Financial Data FY{ACF_DATA_YEAR}"
                 ),
             ),
         ]
@@ -259,7 +279,10 @@ def load_tanf_data(
                     value=float(row.recipient_families),
                     active=True,
                     source="HHS ACF TANF Caseload",
-                    notes=f"Average monthly TANF recipient families | Source: ACF TFam FY{year}",
+                    notes=(
+                        "Average monthly TANF recipient families | "
+                        f"Source: ACF TFam FY{ACF_DATA_YEAR}"
+                    ),
                 ),
                 Target(
                     variable="tanf",
@@ -268,8 +291,9 @@ def load_tanf_data(
                     active=True,
                     source="HHS ACF TANF Financial",
                     notes=(
-                        "Basic assistance all funds | "
-                        f"Source: ACF TANF & MOE Financial Data FY{year}"
+                        "Basic assistance excluding relative foster care maintenance "
+                        "payments and adoption and guardianship subsidies | "
+                        f"Source: ACF TANF & MOE Financial Data FY{ACF_DATA_YEAR}"
                     ),
                 ),
             ]

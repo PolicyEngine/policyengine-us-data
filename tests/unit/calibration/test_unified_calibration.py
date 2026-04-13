@@ -345,6 +345,14 @@ class TestParseArgsNewFlags:
         args = parse_args(["--target-config", "config.yaml"])
         assert args.target_config == "config.yaml"
 
+    def test_all_active_targets_flag(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            parse_args,
+        )
+
+        args = parse_args(["--all-active-targets"])
+        assert args.all_active_targets is True
+
     def test_build_only_flag(self):
         from policyengine_us_data.calibration.unified_calibration import (
             parse_args,

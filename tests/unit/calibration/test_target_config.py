@@ -9,6 +9,7 @@ from scipy import sparse
 
 from policyengine_us_data.calibration.unified_calibration import (
     apply_target_config,
+    apply_target_config_to_targets,
     load_target_config,
     save_calibration_package,
     load_calibration_package,
@@ -118,6 +119,21 @@ class TestApplyTargetConfig:
         out_df, out_X, out_names = apply_target_config(df, X, names, config)
         assert len(out_df) == len(df)
         assert out_X.shape[0] == X.shape[0]
+
+    def test_target_only_filter_for_build_time_selection(self, sample_targets):
+        df, _, _ = sample_targets
+        config = {
+            "include": [
+                {"variable": "snap", "geo_level": "national"},
+                {"variable": "rent", "geo_level": "national"},
+            ],
+            "exclude": [{"variable": "rent", "geo_level": "national"}],
+        }
+
+        out_df = apply_target_config_to_targets(df, config)
+
+        assert out_df["variable"].tolist() == ["snap"]
+        assert out_df["geo_level"].tolist() == ["national"]
 
 
 class TestLoadTargetConfig:

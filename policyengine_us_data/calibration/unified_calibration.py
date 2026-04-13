@@ -58,6 +58,9 @@ LAMBDA_L2 = 1e-12
 LEARNING_RATE = 0.15
 DEFAULT_EPOCHS = 100
 DEFAULT_N_CLONES = 430
+DEFAULT_TARGET_CONFIG_PATH = (
+    Path(__file__).resolve().parent / "target_config.yaml"
+)
 
 
 def get_git_provenance() -> dict:
@@ -260,7 +263,20 @@ def parse_args(argv=None):
     parser.add_argument(
         "--target-config",
         default=None,
-        help="Path to target exclusion YAML config",
+        help=(
+            "Path to target include/exclude YAML config. "
+            "Defaults to calibration/target_config.yaml unless "
+            "--all-active-targets is set."
+        ),
+    )
+    parser.add_argument(
+        "--all-active-targets",
+        action="store_true",
+        help=(
+            "Build or fit against every active target in the database. "
+            "By default, calibration uses target_config.yaml to build "
+            "a minimal production package."
+        ),
     )
     parser.add_argument(
         "--county-level",
@@ -418,10 +434,24 @@ def apply_target_config(
 
     idx = np.where(keep_mask)[0]
     filtered_df = targets_df.iloc[idx].reset_index(drop=True)
-    filtered_X = X_sparse[idx, :]
+    filtered_X = None if X_sparse is None else X_sparse[idx, :]
     filtered_names = [target_names[i] for i in idx]
 
     return filtered_df, filtered_X, filtered_names
+
+
+def apply_target_config_to_targets(
+    targets_df: "pd.DataFrame",
+    config: dict,
+) -> "pd.DataFrame":
+    """Filter target rows before matrix construction."""
+    filtered_df, _, _ = apply_target_config(
+        targets_df,
+        None,
+        [None] * len(targets_df),
+        config,
+    )
+    return filtered_df
 
 
 def save_calibration_package(
@@ -1064,6 +1094,7 @@ def run_calibration(
     skip_source_impute: bool = True,
     skip_county: bool = True,
     target_config: dict = None,
+    target_config_path: str = None,
     build_only: bool = False,
     package_path: str = None,
     package_output_path: str = None,
@@ -1092,6 +1123,7 @@ def run_calibration(
         skip_takeup_rerandomize: Skip takeup step.
         skip_source_impute: Skip ACS/SIPP/SCF imputations.
         target_config: Parsed target config dict.
+        target_config_path: Path to target config, for provenance.
         build_only: If True, save package and skip fitting.
         package_path: Load pre-built package (skip build).
         package_output_path: Where to save calibration package.
@@ -1277,6 +1309,20 @@ def run_calibration(
     target_filter = {}
     if domain_variables:
         target_filter["domain_variables"] = domain_variables
+    if target_config:
+        candidate_targets = builder._query_targets(target_filter)
+        filtered_targets = apply_target_config_to_targets(
+            candidate_targets,
+            target_config,
+        )
+        if len(filtered_targets) == 0:
+            raise ValueError("Target config excluded all targets")
+        target_filter["target_ids"] = filtered_targets["target_id"].tolist()
+        logger.info(
+            "Build target config: selected %d / %d targets before matrix build",
+            len(filtered_targets),
+            len(candidate_targets),
+        )
 
     # Step 6: Build sparse calibration matrix
     do_rerandomize = not skip_takeup_rerandomize
@@ -1304,9 +1350,9 @@ def run_calibration(
         X_sparse.nnz,
     )
 
-    # Step 6b: Save FULL (unfiltered) calibration package.
-    # Target config is applied at fit time, so the package can be
-    # reused with different configs without rebuilding.
+    # Step 6b: Save the calibration package. By default this is the
+    # minimal package selected by target_config.yaml; use
+    # --all-active-targets to build a broad diagnostic package.
     import datetime
 
     metadata = {
@@ -1317,12 +1363,18 @@ def run_calibration(
         "base_n_records": n_records,
         "seed": seed,
         "created_at": datetime.datetime.now().isoformat(),
+        "target_config_path": target_config_path,
+        "package_scope": "minimal" if target_config else "all_active_targets",
     }
     metadata.update(get_git_provenance())
     from policyengine_us_data.utils.manifest import compute_file_checksum
 
     metadata["dataset_sha256"] = compute_file_checksum(Path(dataset_path))
     metadata["db_sha256"] = compute_file_checksum(Path(db_path))
+    if target_config_path:
+        metadata["target_config_sha256"] = compute_file_checksum(
+            Path(target_config_path)
+        )
 
     if package_output_path:
         full_initial_weights = compute_initial_weights(X_sparse, targets_df)
@@ -1335,12 +1387,6 @@ def run_calibration(
             initial_weights=full_initial_weights,
             cd_geoid=geography.cd_geoid,
             block_geoid=geography.block_geoid,
-        )
-
-    # Step 6c: Apply target config filtering (for fit or validation)
-    if target_config:
-        targets_df, X_sparse, target_names = apply_target_config(
-            targets_df, X_sparse, target_names, target_config
         )
 
     initial_weights = compute_initial_weights(X_sparse, targets_df)
@@ -1477,9 +1523,14 @@ def main(argv=None):
 
     t_start = time.time()
 
+    if args.all_active_targets and args.target_config:
+        raise ValueError("--all-active-targets cannot be used with --target-config")
+
     target_config = None
-    if args.target_config:
-        target_config = load_target_config(args.target_config)
+    target_config_path = None
+    if not args.all_active_targets:
+        target_config_path = args.target_config or str(DEFAULT_TARGET_CONFIG_PATH)
+        target_config = load_target_config(target_config_path)
 
     package_output_path = args.package_output
     if args.build_only and not package_output_path:
@@ -1516,6 +1567,7 @@ def main(argv=None):
         skip_source_impute=args.skip_source_impute,
         skip_county=not args.county_level,
         target_config=target_config,
+        target_config_path=target_config_path,
         build_only=args.build_only,
         package_path=args.package_path,
         package_output_path=package_output_path,

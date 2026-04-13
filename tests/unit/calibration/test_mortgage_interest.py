@@ -4,6 +4,7 @@ import pytest
 
 from policyengine_us_data.utils.mortgage_interest import (
     STRUCTURAL_MORTGAGE_VARIABLES,
+    _filing_status_for_mortgage_caps,
     _interest_implied_balance_floor,
     _post_tcja_cap,
     convert_mortgage_interest_to_structural_inputs,
@@ -161,6 +162,49 @@ def test_structural_mortgage_conversion_preserves_current_law_interest_deduction
         total_interest * deductible_share
         + converted["investment_interest_expense"][TIME_PERIOD].sum()
     ) == pytest.approx(7_000.0)
+
+
+@pytest.mark.skipif(
+    not HAS_STRUCTURAL_MORTGAGE_INPUTS,
+    reason="Installed policyengine-us does not yet expose structural MID inputs.",
+)
+def test_structural_mortgage_conversion_without_filing_status():
+    data = _base_dataset_dict(
+        person_tax_unit_ids=[1, 1],
+        ages=[55, 53],
+        deductible_mortgage_interest=[6_000.0, 0.0],
+        interest_deduction=[7_000.0],
+    )
+    converted = convert_mortgage_interest_to_structural_inputs(data, TIME_PERIOD)
+
+    assert "deductible_mortgage_interest" not in converted
+    assert "interest_deduction" not in converted
+    assert "filing_status" not in converted
+    assert converted["first_home_mortgage_balance"][TIME_PERIOD][0] > 0
+    assert converted["first_home_mortgage_interest"][TIME_PERIOD][0] >= 6_000
+    assert converted["home_mortgage_interest"][TIME_PERIOD].sum() == pytest.approx(
+        converted["first_home_mortgage_interest"][TIME_PERIOD][0]
+    )
+    assert converted["investment_interest_expense"][TIME_PERIOD].sum() == pytest.approx(
+        1_000.0
+    )
+
+
+def test_missing_filing_status_infers_joint_from_spouse_flag():
+    data = _base_dataset_dict(
+        person_tax_unit_ids=[1, 1, 2],
+        ages=[55, 53, 40],
+    )
+    person_tax_unit_idx = np.array([0, 0, 1], dtype=np.int32)
+
+    statuses = _filing_status_for_mortgage_caps(
+        data,
+        TIME_PERIOD,
+        person_tax_unit_idx,
+        n_tax_units=2,
+    )
+
+    assert statuses.tolist() == ["JOINT", "SINGLE"]
 
 
 @pytest.mark.skipif(

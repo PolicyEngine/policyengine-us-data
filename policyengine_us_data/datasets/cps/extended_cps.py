@@ -900,6 +900,10 @@ class ExtendedCPS(Dataset):
 
         new_data = self._rename_imputed_to_inputs(new_data)
         if _supports_structural_mortgage_inputs():
+            had_positive_mortgage_input = self._has_positive_mortgage_input(
+                new_data,
+                self.time_period,
+            )
             new_data = impute_tax_unit_mortgage_balance_hints(
                 new_data,
                 self.time_period,
@@ -907,6 +911,11 @@ class ExtendedCPS(Dataset):
             new_data = convert_mortgage_interest_to_structural_inputs(
                 new_data,
                 self.time_period,
+            )
+            self._validate_structural_mortgage_conversion(
+                new_data,
+                self.time_period,
+                had_positive_mortgage_input,
             )
         new_data = self._drop_formula_variables(new_data)
         self.save_dataset(new_data)
@@ -928,6 +937,38 @@ class ExtendedCPS(Dataset):
                 )
                 data[input_var] = data.pop(formula_var)
         return data
+
+    @staticmethod
+    def _has_positive_mortgage_input(data, time_period):
+        for variable in ("deductible_mortgage_interest", "interest_deduction"):
+            values = data.get(variable, {}).get(time_period)
+            if values is not None and np.any(np.asarray(values) > 0):
+                return True
+        return False
+
+    @staticmethod
+    def _validate_structural_mortgage_conversion(
+        data,
+        time_period,
+        had_positive_mortgage_input,
+    ):
+        if not had_positive_mortgage_input:
+            return
+        mortgage_values = data.get("first_home_mortgage_interest", {}).get(
+            time_period
+        )
+        person_values = data.get("home_mortgage_interest", {}).get(time_period)
+        if (
+            mortgage_values is not None
+            and np.any(np.asarray(mortgage_values) > 0)
+        ) or (
+            person_values is not None
+            and np.any(np.asarray(person_values) > 0)
+        ):
+            return
+        raise RuntimeError(
+            "Structural mortgage conversion lost positive mortgage inputs."
+        )
 
     # Variables with formulas/adds that must still be stored.
     # Includes IDs needed before formulas run and tax-unit-level

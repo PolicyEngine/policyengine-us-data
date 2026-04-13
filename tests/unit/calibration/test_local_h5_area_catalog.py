@@ -5,6 +5,7 @@ from tests.unit.calibration.fixtures.test_local_h5_area_catalog import (
 
 
 exports = load_area_catalog_exports()
+area_catalog_module = exports["module"]
 USAreaCatalog = exports["USAreaCatalog"]
 
 
@@ -79,3 +80,29 @@ def test_build_request_from_work_item_preserves_legacy_district_fallback():
     assert request.area_id == "AK-01"
     assert request.output_relative_path == "districts/AK-01.h5"
     assert request.validation_geographic_ids == ("298",)
+
+
+def test_default_catalog_owns_internal_rule_defaults(monkeypatch):
+    monkeypatch.setattr(
+        area_catalog_module,
+        "_load_default_state_codes",
+        lambda: {2: "AK", 36: "NY"},
+    )
+
+    catalog = USAreaCatalog.default()
+    geography = make_geography(
+        cd_geoids=["298", "3601"],
+        county_fips=["02020", "36061"],
+    )
+
+    district_requests = catalog.build_district_requests(geography)
+    city_requests = catalog.build_city_requests(geography)
+
+    assert [request.area_id for request in district_requests] == ["AK-01", "NY-01"]
+    assert city_requests[0].filters[0].value == (
+        "36005",
+        "36047",
+        "36061",
+        "36081",
+        "36085",
+    )

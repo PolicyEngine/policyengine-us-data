@@ -190,26 +190,20 @@ def parse_args(argv: list[str] | None = None):
     return parser.parse_args(argv)
 
 
-def _load_requests_from_args(
+def _load_request_inputs_from_args(
     *,
     args,
     area_build_request_cls,
-    area_catalog,
-    geography,
 ):
-    """Load typed requests from CLI args using the canonical catalog."""
+    """Load either typed requests or raw legacy work items from CLI args."""
 
     if args.requests_json:
         request_payloads = json.loads(args.requests_json)
-        return tuple(
+        return "requests", tuple(
             area_build_request_cls.from_dict(item) for item in request_payloads
         )
 
-    work_items = json.loads(args.work_items)
-    return area_catalog.build_requests_from_work_items(
-        work_items,
-        geography=geography,
-    )
+    return "work_items", tuple(json.loads(args.work_items))
 
 
 def _build_kwargs_from_request(request) -> dict[str, Any]:
@@ -250,6 +244,36 @@ def _request_key(request) -> str:
     return f"{request.area_type}:{request.area_id}"
 
 
+def _work_item_key(work_item) -> str:
+    """Return a stable key for legacy work items, even if malformed."""
+
+    if not isinstance(work_item, dict):
+        return "unknown:<invalid-work-item>"
+    item_type = work_item.get("type", "<missing-type>")
+    item_id = work_item.get("id", "<missing-id>")
+    return f"{item_type}:{item_id}"
+
+
+def _resolve_request_input(
+    *,
+    request_input_mode,
+    request_input,
+    area_catalog,
+    geography,
+):
+    """Resolve one queued worker input into a typed request and stable key."""
+
+    if request_input_mode == "requests":
+        request = request_input
+        return _request_key(request), request
+
+    request = area_catalog.build_request_from_work_item(
+        request_input,
+        geography=geography,
+    )
+    return _request_key(request), request
+
+
 def main(argv: list[str] | None = None):
     args = parse_args(argv)
 
@@ -269,12 +293,7 @@ def main(argv: list[str] | None = None):
 
     from policyengine_us_data.calibration.publish_local_area import (
         build_h5,
-        NYC_COUNTY_FIPS,
-        AT_LARGE_DISTRICTS,
         load_calibration_geography,
-    )
-    from policyengine_us_data.calibration.calibration_utils import (
-        STATE_CODES,
     )
     from policyengine_us_data.calibration.local_h5.area_catalog import USAreaCatalog
     from policyengine_us_data.calibration.local_h5.requests import AreaBuildRequest
@@ -301,16 +320,10 @@ def main(argv: list[str] | None = None):
         f"{geography.n_records} records",
         file=sys.stderr,
     )
-    area_catalog = USAreaCatalog(
-        state_codes=STATE_CODES,
-        nyc_county_fips=NYC_COUNTY_FIPS,
-        at_large_districts=AT_LARGE_DISTRICTS,
-    )
-    requests = _load_requests_from_args(
+    area_catalog = USAreaCatalog.default()
+    request_input_mode, request_inputs = _load_request_inputs_from_args(
         args=args,
         area_build_request_cls=AreaBuildRequest,
-        area_catalog=area_catalog,
-        geography=geography,
     )
 
     # ── Validation setup (once per worker) ──
@@ -380,10 +393,20 @@ def main(argv: list[str] | None = None):
         "validation_summary": {},
     }
 
-    for request in requests:
-        request_key = _request_key(request)
-
+    for request_input in request_inputs:
         try:
+            request_key = (
+                _work_item_key(request_input)
+                if request_input_mode == "work_items"
+                else None
+            )
+            request_key, request = _resolve_request_input(
+                request_input_mode=request_input_mode,
+                request_input=request_input,
+                area_catalog=area_catalog,
+                geography=geography,
+            )
+
             output_path = output_dir / request.output_relative_path
             output_path.parent.mkdir(parents=True, exist_ok=True)
             build_kwargs = _build_kwargs_from_request(request)

@@ -60,6 +60,7 @@ def load_area_catalog_exports():
         local_h5_root / "area_catalog.py",
     )
     return {
+        "module": area_catalog_module,
         "AreaBuildRequest": requests_module.AreaBuildRequest,
         "AreaFilter": requests_module.AreaFilter,
         "USAreaCatalog": area_catalog_module.USAreaCatalog,

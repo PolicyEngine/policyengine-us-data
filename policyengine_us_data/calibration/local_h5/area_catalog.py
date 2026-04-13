@@ -13,8 +13,19 @@ from typing import Any
 from .requests import AreaBuildRequest, AreaFilter
 
 
+def _load_default_state_codes() -> Mapping[int, str]:
+    """Load the shared US state-code mapping used by the default catalog."""
+
+    from policyengine_us_data.calibration.calibration_utils import STATE_CODES
+
+    return STATE_CODES
+
+
 class USAreaCatalog:
     """Construct typed local H5 requests for the current US publication flow."""
+
+    _DEFAULT_NYC_COUNTY_FIPS = ("36005", "36047", "36061", "36081", "36085")
+    _DEFAULT_AT_LARGE_DISTRICT_CODES = frozenset({0, 98})
 
     def __init__(
         self,
@@ -28,6 +39,16 @@ class USAreaCatalog:
         self._nyc_county_fips = tuple(sorted(str(item) for item in nyc_county_fips))
         self._nyc_county_fips_set = set(self._nyc_county_fips)
         self._at_large_districts = {int(item) for item in at_large_districts}
+
+    @classmethod
+    def default(cls) -> "USAreaCatalog":
+        """Build the default US request catalog used by worker adapters."""
+
+        return cls(
+            state_codes=_load_default_state_codes(),
+            nyc_county_fips=cls._DEFAULT_NYC_COUNTY_FIPS,
+            at_large_districts=cls._DEFAULT_AT_LARGE_DISTRICT_CODES,
+        )
 
     def build_state_requests(self, geography: Any) -> tuple[AreaBuildRequest, ...]:
         """Enumerate state requests from the current calibration geography."""

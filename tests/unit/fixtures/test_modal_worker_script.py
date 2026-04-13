@@ -25,12 +25,28 @@ class FakeAreaBuildRequest:
 
 
 class FakeAreaCatalog:
-    """Catalog double that records the legacy compatibility inputs it sees."""
+    """Catalog double for worker-script request resolution tests."""
 
-    def __init__(self, requests):
+    def __init__(self, requests=()):
         self.requests = tuple(requests)
         self.received = None
+        self.received_item = None
+        self.raise_for = None
 
     def build_requests_from_work_items(self, work_items, *, geography):
         self.received = (work_items, geography)
         return self.requests
+
+    def build_request_from_work_item(self, work_item, *, geography):
+        self.received_item = (work_item, geography)
+        if work_item == self.raise_for:
+            raise ValueError("bad work item")
+        return FakeRequest(area_type=work_item["type"], area_id=work_item["id"])
+
+
+class FakeRequest:
+    """Minimal typed request used by worker resolution tests."""
+
+    def __init__(self, *, area_type, area_id):
+        self.area_type = area_type
+        self.area_id = area_id

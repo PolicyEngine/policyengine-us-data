@@ -56,7 +56,10 @@ def test_build_trace_tro_from_release_manifest_tracks_artifacts(tmp_path):
         "PolicyEngine US data release pipeline"
     )
     assert len(artifacts) == 3
-    assert arrangement["trov:hasArtifactLocation"][-1]["trov:path"] == "release_manifest.json"
+    assert (
+        arrangement["trov:hasArtifactLocation"][-1]["trov:path"]
+        == "release_manifest.json"
+    )
     assert performance["trov:contributedToArrangement"]["trov:arrangement"] == {
         "@id": "arrangement/0"
     }

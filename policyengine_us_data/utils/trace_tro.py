@@ -52,7 +52,9 @@ def build_trace_tro_from_release_manifest(
     data_package = manifest["data_package"]
     created_at = manifest.get("created_at") or manifest.get("build", {}).get("built_at")
     build = manifest.get("build", {})
-    build_id = build.get("build_id") or f"{data_package['name']}-{data_package['version']}"
+    build_id = (
+        build.get("build_id") or f"{data_package['name']}-{data_package['version']}"
+    )
     built_with_model = build.get("built_with_model_package") or {}
     artifact_items = sorted(manifest.get("artifacts", {}).items())
 

@@ -196,7 +196,9 @@ def test_upload_files_to_hf_adds_release_manifest_operations(tmp_path):
         assert isinstance(operation.path_or_fileobj, BytesIO)
 
     trace_ops = [
-        operation for operation in operations if operation.path_in_repo.endswith(".jsonld")
+        operation
+        for operation in operations
+        if operation.path_in_repo.endswith(".jsonld")
     ]
     assert len(trace_ops) == 2
     for operation in trace_ops:

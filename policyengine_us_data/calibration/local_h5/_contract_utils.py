@@ -21,10 +21,7 @@ def jsonable_contract_value(value: Any) -> Any:
     if isinstance(value, list):
         return [jsonable_contract_value(item) for item in value]
     if isinstance(value, Mapping):
-        return {
-            str(key): jsonable_contract_value(item)
-            for key, item in value.items()
-        }
+        return {str(key): jsonable_contract_value(item) for key, item in value.items()}
     if hasattr(value, "to_dict") and callable(value.to_dict):
         return value.to_dict()
     return value

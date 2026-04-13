@@ -95,12 +95,10 @@ class WorkerResult:
     def from_dict(cls, data: Mapping[str, Any]) -> "WorkerResult":
         return cls(
             completed=tuple(
-                AreaBuildResult.from_dict(item)
-                for item in data.get("completed", ())
+                AreaBuildResult.from_dict(item) for item in data.get("completed", ())
             ),
             failed=tuple(
-                AreaBuildResult.from_dict(item)
-                for item in data.get("failed", ())
+                AreaBuildResult.from_dict(item) for item in data.get("failed", ())
             ),
             worker_issues=tuple(
                 ValidationIssue.from_dict(item)

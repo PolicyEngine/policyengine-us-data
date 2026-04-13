@@ -229,6 +229,5 @@ def test_contracts_round_trip_from_dict():
     assert restored_request == request
     assert restored_result.completed[0].request == request
     assert (
-        restored_result.completed[0].validation.issues[0].code
-        == "validation_exception"
+        restored_result.completed[0].validation.issues[0].code == "validation_exception"
     )

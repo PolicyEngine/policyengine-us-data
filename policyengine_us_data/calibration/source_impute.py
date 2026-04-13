@@ -290,7 +290,9 @@ def _impute_acs(
     acs = Microsimulation(dataset=ACS_2022)
     predictors = ACS_PREDICTORS + ["state_fips"]
 
-    acs_df = acs.calculate_dataframe(ACS_PREDICTORS + ACS_IMPUTED_VARIABLES)
+    acs_df = acs.calculate_dataframe(
+        ACS_PREDICTORS + ACS_IMPUTED_VARIABLES, map_to="person"
+    )
     acs_df["state_fips"] = acs.calculate("state_fips", map_to="person").values.astype(
         np.float32
     )
@@ -301,7 +303,7 @@ def _impute_acs(
 
     if dataset_path is not None:
         cps_sim = Microsimulation(dataset=dataset_path)
-        cps_df = cps_sim.calculate_dataframe(ACS_PREDICTORS)
+        cps_df = cps_sim.calculate_dataframe(ACS_PREDICTORS, map_to="person")
         del cps_sim
     else:
         cps_df = pd.DataFrame()

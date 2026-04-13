@@ -238,7 +238,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         "household_size",
     ]
     IMPUTATIONS = ["rent", "real_estate_taxes"]
-    train_df = acs.calculate_dataframe(PREDICTORS + IMPUTATIONS)
+    train_df = acs.calculate_dataframe(PREDICTORS + IMPUTATIONS, map_to="person")
     train_df.tenure_type = train_df.tenure_type.map(
         {
             "OWNED_OUTRIGHT": "OWNED_WITH_MORTGAGE",
@@ -246,7 +246,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         na_action="ignore",
     ).fillna(train_df.tenure_type)
     train_df = train_df[train_df.is_household_head].sample(10_000)
-    inference_df = cps_sim.calculate_dataframe(PREDICTORS)
+    inference_df = cps_sim.calculate_dataframe(PREDICTORS, map_to="person")
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]
 

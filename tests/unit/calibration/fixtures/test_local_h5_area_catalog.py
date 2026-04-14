@@ -53,7 +53,7 @@ def load_area_catalog_exports():
     _ensure_package(package_name, local_h5_root)
     requests_module = _load_module(
         f"{package_name}.requests",
-        local_h5_root / "requests" / "__init__.py",
+        local_h5_root / "requests.py",
     )
     area_catalog_module = _load_module(
         f"{package_name}.area_catalog",

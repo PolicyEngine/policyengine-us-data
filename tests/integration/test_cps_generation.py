@@ -81,12 +81,32 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
                 {
                     "household_vehicles_owned": [2.0, 1.0],
                     "household_vehicles_value": [18_000.0, 7_500.0],
+                    "household_vehicles_debt": [6_000.0, 500.0],
+                }
+            )
+
+    class FakeNonliquidAssetModel:
+        def predict(self, X_test, mean_quantile):
+            assert X_test["household_id"].tolist() == [10, 20]
+            return pd.DataFrame(
+                {
+                    "household_other_real_estate_value": [25_000.0, 0.0],
+                    "household_other_real_estate_debt": [5_000.0, 0.0],
+                    "household_rental_property_value": [40_000.0, 0.0],
+                    "household_rental_property_debt": [10_000.0, 0.0],
+                    "household_business_assets_value": [8_000.0, 2_000.0],
+                    "household_business_assets_debt": [1_000.0, 500.0],
                 }
             )
 
     monkeypatch.setattr(sipp_module, "get_tip_model", lambda: FakeTipModel())
     monkeypatch.setattr(sipp_module, "get_asset_model", lambda: FakeAssetModel())
     monkeypatch.setattr(sipp_module, "get_vehicle_model", lambda: FakeVehicleModel())
+    monkeypatch.setattr(
+        sipp_module,
+        "get_nonliquid_asset_model",
+        lambda: FakeNonliquidAssetModel(),
+    )
 
     dataset = FakeDataset()
     add_tips(
@@ -105,4 +125,32 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
     assert dataset.saved_dataset["household_vehicles_value"].tolist() == [
         18_000.0,
         7_500.0,
+    ]
+    assert dataset.saved_dataset["household_vehicles_debt"].tolist() == [
+        6_000.0,
+        500.0,
+    ]
+    assert dataset.saved_dataset["household_vehicles_equity"].tolist() == [
+        12_000.0,
+        7_000.0,
+    ]
+    assert dataset.saved_dataset["household_other_real_estate_value"].tolist() == [
+        25_000.0,
+        0.0,
+    ]
+    assert dataset.saved_dataset["household_other_real_estate_debt"].tolist() == [
+        5_000.0,
+        0.0,
+    ]
+    assert dataset.saved_dataset["household_other_real_estate_equity"].tolist() == [
+        20_000.0,
+        0.0,
+    ]
+    assert dataset.saved_dataset["household_rental_property_equity"].tolist() == [
+        30_000.0,
+        0.0,
+    ]
+    assert dataset.saved_dataset["household_business_assets_equity"].tolist() == [
+        7_000.0,
+        1_500.0,
     ]

@@ -39,7 +39,7 @@ from policyengine_us_data.utils.takeup import (
     reported_subsidized_marketplace_by_tax_unit,
 )
 from policyengine_us_data.utils.asset_imputation import (
-    build_household_vehicle_receiver,
+    build_household_asset_receiver,
 )
 from policyengine_us_data.utils.policyengine import (
     supports_medicare_enrollment_input,
@@ -1989,19 +1989,23 @@ def add_tips(self, cps: h5py.File):
     cps["stock_assets"] = asset_predictions.stock_assets.values
     cps["bond_assets"] = asset_predictions.bond_assets.values
 
-    from policyengine_us_data.datasets.sipp import get_vehicle_model
+    from policyengine_us_data.datasets.sipp import (
+        get_nonliquid_asset_model,
+        get_vehicle_model,
+    )
 
+    # Impute household vehicle and non-home asset signals from SIPP
     vehicle_model = get_vehicle_model()
     cps["is_household_head"] = np.asarray(
         existing_data["is_household_head"],
         dtype=bool,
     )
-    household_vehicle_receiver = build_household_vehicle_receiver(
+    household_asset_receiver = build_household_asset_receiver(
         cps,
         tenure_type=existing_data.get("tenure_type"),
     )
     vehicle_predictions = vehicle_model.predict(
-        X_test=household_vehicle_receiver,
+        X_test=household_asset_receiver,
         mean_quantile=0.5,
     )
     household_vehicle_data = {
@@ -2015,7 +2019,45 @@ def add_tips(self, cps: h5py.File):
             0,
             None,
         ).astype(np.float32),
+        "household_vehicles_debt": np.clip(
+            vehicle_predictions.household_vehicles_debt.values,
+            0,
+            None,
+        ).astype(np.float32),
     }
+    household_vehicle_data["household_vehicles_equity"] = np.clip(
+        household_vehicle_data["household_vehicles_value"]
+        - household_vehicle_data["household_vehicles_debt"],
+        0,
+        None,
+    ).astype(np.float32)
+
+    nonliquid_asset_model = get_nonliquid_asset_model()
+    nonliquid_asset_predictions = nonliquid_asset_model.predict(
+        X_test=household_asset_receiver,
+        mean_quantile=0.5,
+    )
+    for prefix in [
+        "household_other_real_estate",
+        "household_rental_property",
+        "household_business_assets",
+    ]:
+        household_vehicle_data[f"{prefix}_value"] = np.clip(
+            nonliquid_asset_predictions[f"{prefix}_value"].values,
+            0,
+            None,
+        ).astype(np.float32)
+        household_vehicle_data[f"{prefix}_debt"] = np.clip(
+            nonliquid_asset_predictions[f"{prefix}_debt"].values,
+            0,
+            None,
+        ).astype(np.float32)
+        household_vehicle_data[f"{prefix}_equity"] = np.clip(
+            household_vehicle_data[f"{prefix}_value"]
+            - household_vehicle_data[f"{prefix}_debt"],
+            0,
+            None,
+        ).astype(np.float32)
 
     # Drop temporary columns used only for imputation
     # is_married is person-level here but policyengine-us defines it at Family

@@ -2,16 +2,11 @@ import numpy as np
 import pandas as pd
 
 
-def build_household_vehicle_receiver(
+def build_household_asset_receiver(
     person_df: pd.DataFrame,
     tenure_type: np.ndarray | None = None,
 ) -> pd.DataFrame:
-    """Build household-level predictors for vehicle asset imputation.
-
-    The donor model is household-level, so we aggregate CPS person-level
-    predictors into one row per household and anchor demographic predictors
-    on the household head when available.
-    """
+    """Build household-level predictors for SIPP household asset imputation."""
     if (
         "household_id" not in person_df.columns
         and "person_household_id" in person_df.columns
@@ -103,3 +98,14 @@ def build_household_vehicle_receiver(
         receiver[col] = receiver[col].fillna(0).astype(np.float32)
 
     return receiver
+
+
+def build_household_vehicle_receiver(
+    person_df: pd.DataFrame,
+    tenure_type: np.ndarray | None = None,
+) -> pd.DataFrame:
+    """Backward-compatible alias for the household asset receiver."""
+    return build_household_asset_receiver(
+        person_df=person_df,
+        tenure_type=tenure_type,
+    )

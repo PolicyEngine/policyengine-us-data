@@ -6,4 +6,7 @@ from .sipp import (
     build_vehicle_training_frame,
     train_vehicle_model,
     get_vehicle_model,
+    build_nonliquid_asset_training_frame,
+    train_nonliquid_asset_model,
+    get_nonliquid_asset_model,
 )

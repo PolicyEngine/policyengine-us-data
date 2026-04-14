@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from policyengine_us_data.utils.asset_imputation import (
+    build_household_asset_receiver,
     build_household_vehicle_receiver,
 )
 
@@ -37,3 +38,9 @@ def test_build_household_vehicle_receiver_aggregates_person_inputs():
     assert receiver["reference_is_female"].tolist() == [1.0, 0.0]
     assert receiver["reference_is_married"].tolist() == [1.0, 0.0]
     assert receiver["is_homeowner"].tolist() == [1.0, 0.0]
+
+    generic_receiver = build_household_asset_receiver(
+        person_df,
+        tenure_type=np.array([b"OWNED_WITH_MORTGAGE", b"RENTED"]),
+    )
+    pd.testing.assert_frame_equal(receiver, generic_receiver)

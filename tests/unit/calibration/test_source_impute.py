@@ -59,6 +59,35 @@ def _make_data_dict(n_persons=20, time_period=2024):
         "bond_assets": {time_period: np.zeros(n_persons)},
         "household_vehicles_owned": {time_period: np.zeros(n_hh, dtype=np.int32)},
         "household_vehicles_value": {time_period: np.zeros(n_hh, dtype=np.float32)},
+        "household_vehicles_debt": {time_period: np.zeros(n_hh, dtype=np.float32)},
+        "household_vehicles_equity": {time_period: np.zeros(n_hh, dtype=np.float32)},
+        "household_other_real_estate_value": {
+            time_period: np.zeros(n_hh, dtype=np.float32)
+        },
+        "household_other_real_estate_debt": {
+            time_period: np.zeros(n_hh, dtype=np.float32)
+        },
+        "household_other_real_estate_equity": {
+            time_period: np.zeros(n_hh, dtype=np.float32)
+        },
+        "household_rental_property_value": {
+            time_period: np.zeros(n_hh, dtype=np.float32)
+        },
+        "household_rental_property_debt": {
+            time_period: np.zeros(n_hh, dtype=np.float32)
+        },
+        "household_rental_property_equity": {
+            time_period: np.zeros(n_hh, dtype=np.float32)
+        },
+        "household_business_assets_value": {
+            time_period: np.zeros(n_hh, dtype=np.float32)
+        },
+        "household_business_assets_debt": {
+            time_period: np.zeros(n_hh, dtype=np.float32)
+        },
+        "household_business_assets_equity": {
+            time_period: np.zeros(n_hh, dtype=np.float32)
+        },
         "hourly_wage": {time_period: np.zeros(n_persons)},
         "is_paid_hourly": {time_period: np.zeros(n_persons, dtype=bool)},
         "is_union_member_or_covered": {
@@ -82,6 +111,17 @@ class TestConstants:
         assert "bond_assets" in SIPP_IMPUTED_VARIABLES
         assert "household_vehicles_owned" in SIPP_IMPUTED_VARIABLES
         assert "household_vehicles_value" in SIPP_IMPUTED_VARIABLES
+        assert "household_vehicles_debt" in SIPP_IMPUTED_VARIABLES
+        assert "household_vehicles_equity" in SIPP_IMPUTED_VARIABLES
+        assert "household_other_real_estate_value" in SIPP_IMPUTED_VARIABLES
+        assert "household_other_real_estate_debt" in SIPP_IMPUTED_VARIABLES
+        assert "household_other_real_estate_equity" in SIPP_IMPUTED_VARIABLES
+        assert "household_rental_property_value" in SIPP_IMPUTED_VARIABLES
+        assert "household_rental_property_debt" in SIPP_IMPUTED_VARIABLES
+        assert "household_rental_property_equity" in SIPP_IMPUTED_VARIABLES
+        assert "household_business_assets_value" in SIPP_IMPUTED_VARIABLES
+        assert "household_business_assets_debt" in SIPP_IMPUTED_VARIABLES
+        assert "household_business_assets_equity" in SIPP_IMPUTED_VARIABLES
 
     def test_scf_variables_defined(self):
         assert "net_worth" in SCF_IMPUTED_VARIABLES

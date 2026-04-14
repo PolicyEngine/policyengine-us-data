@@ -91,6 +91,15 @@ CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP = {
     ),
 }
 
+# Census CPS ASEC 2024 technical documentation, PERRP:
+# https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf
+PERRP_UNMARRIED_PARTNER_OF_HOUSEHOLD_HEAD_CODES = {
+    43: "Opposite Sex Unmarried Partner with Relatives",
+    44: "Opposite Sex Unmarried Partner without Relatives",
+    46: "Same Sex Unmarried Partner with Relatives",
+    47: "Same Sex Unmarried Partner without Relatives",
+}
+
 
 @contextmanager
 def _open_dataset_read_only(dataset_source):
@@ -593,6 +602,14 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
 
     cps["is_surviving_spouse"] = person.A_MARITL == 4
     cps["is_separated"] = person.A_MARITL == 6
+    perrp = (
+        person.PERRP
+        if "PERRP" in person
+        else pd.Series(0, index=person.index, dtype=np.int16)
+    )
+    cps["is_unmarried_partner_of_household_head"] = perrp.isin(
+        PERRP_UNMARRIED_PARTNER_OF_HOUSEHOLD_HEAD_CODES.keys()
+    )
     # High school or college/university enrollment status.
     cps["is_full_time_college_student"] = person.A_HSCOL == 2
 
@@ -601,6 +618,10 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
         person.PEIOOCC
     )
     add_overtime_occupation(cps, person)
+
+
+def derive_weeks_worked(weeks_worked: Series | np.ndarray) -> Series | np.ndarray:
+    return np.clip(weeks_worked, 0, 52)
 
 
 def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
@@ -628,6 +649,7 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
 
     cps["weekly_hours_worked"] = person.HRSWK
     cps["hours_worked_last_week"] = person.A_HRS1
+    cps["weeks_worked"] = derive_weeks_worked(person.WKSWORK)
 
     cps["taxable_interest_income"] = person.INT_VAL * (p["taxable_interest_fraction"])
     cps["tax_exempt_interest_income"] = person.INT_VAL * (

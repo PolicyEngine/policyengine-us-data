@@ -24,7 +24,6 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     _derive_overtime_occupation_inputs,
     _impute_clone_cps_features,
     apply_retirement_constraints,
-    derive_clone_capped_childcare_expenses,
     reconcile_ss_subcomponents,
 )
 from policyengine_us_data.datasets.cps.tipped_occupation import (
@@ -132,84 +131,10 @@ class TestVariableListConsistency:
         )
 
     def test_capped_childcare_not_in_cps_only(self):
-        """Capped childcare should be derived from clone-half inputs, not
-        independently QRF-imputed."""
+        """Capped childcare should not be independently QRF-imputed."""
         assert "spm_unit_capped_work_childcare_expenses" not in set(
             CPS_ONLY_IMPUTED_VARIABLES
         )
-
-
-class TestCloneChildcareDerivation:
-    """Clone-half capped childcare should be derived deterministically."""
-
-    def test_caps_at_pre_subsidy_and_clone_earnings(self):
-        donor_pre_subsidy = np.array([10000.0, 4000.0, 6000.0])
-        donor_capped = np.array([4000.0, 4000.0, 0.0])
-        clone_pre_subsidy = np.array([12000.0, 5000.0, 3000.0])
-        person_data = pd.DataFrame(
-            {
-                "spm_unit_id": [1, 1, 2, 2, 3],
-                "age": [40, 38, 35, 33, 29],
-                "is_parent_proxy": [True, True, True, True, True],
-                "earnings": [9000.0, 3000.0, 1500.0, 0.0, 2000.0],
-            }
-        )
-
-        result = derive_clone_capped_childcare_expenses(
-            donor_pre_subsidy=donor_pre_subsidy,
-            donor_capped=donor_capped,
-            clone_pre_subsidy=clone_pre_subsidy,
-            clone_person_data=person_data,
-            clone_spm_unit_ids=np.array([1, 2, 3]),
-        )
-
-        np.testing.assert_allclose(result, np.array([3000.0, 0.0, 0.0]))
-
-    def test_uses_single_parent_earnings_cap_for_single_proxy_units(self):
-        donor_pre_subsidy = np.array([4000.0])
-        donor_capped = np.array([4000.0])
-        clone_pre_subsidy = np.array([6000.0])
-        person_data = pd.DataFrame(
-            {
-                "spm_unit_id": [10],
-                "age": [31],
-                "is_parent_proxy": [True],
-                "earnings": [2500.0],
-            }
-        )
-
-        result = derive_clone_capped_childcare_expenses(
-            donor_pre_subsidy=donor_pre_subsidy,
-            donor_capped=donor_capped,
-            clone_pre_subsidy=clone_pre_subsidy,
-            clone_person_data=person_data,
-            clone_spm_unit_ids=np.array([10]),
-        )
-
-        np.testing.assert_allclose(result, np.array([2500.0]))
-
-    def test_falls_back_to_zero_without_parent_proxies(self):
-        donor_pre_subsidy = np.array([3000.0])
-        donor_capped = np.array([2000.0])
-        clone_pre_subsidy = np.array([3000.0])
-        person_data = pd.DataFrame(
-            {
-                "spm_unit_id": [20, 20],
-                "age": [12, 9],
-                "is_parent_proxy": [False, False],
-                "earnings": [0.0, 0.0],
-            }
-        )
-
-        result = derive_clone_capped_childcare_expenses(
-            donor_pre_subsidy=donor_pre_subsidy,
-            donor_capped=donor_capped,
-            clone_pre_subsidy=clone_pre_subsidy,
-            clone_person_data=person_data,
-            clone_spm_unit_ids=np.array([20]),
-        )
-
-        np.testing.assert_allclose(result, np.array([0.0]))
 
 
 class TestRetirementConstraints:

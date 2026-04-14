@@ -1,3 +1,10 @@
+## [1.79.0] - 2026-04-14
+
+### Added
+
+- Added HHS ACF TANF caseload and cash-assistance ETL targets, exposed baseline CPS liquid-asset inputs, and aligned TANF calibration totals to FY2024 administrative data.
+
+
 ## [1.78.4] - 2026-04-13
 
 ### Fixed

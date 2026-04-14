@@ -8,7 +8,6 @@ Usage:
     python publish_local_area.py [--skip-download] [--states-only] [--upload]
 """
 
-import hashlib
 import json
 import shutil
 
@@ -18,6 +17,10 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from policyengine_us import Microsimulation
+from policyengine_us_data.calibration.local_h5.fingerprinting import (
+    FingerprintingService,
+    PublishingInputBundle,
+)
 from policyengine_us_data.calibration.local_h5.geography_loader import (
     CALIBRATION_WEIGHTS_SUFFIX,
     GEOGRAPHY_FILENAME,
@@ -89,14 +92,6 @@ def resolve_calibration_geography_paths(
         None,
     )
     return resolved_geo, resolved_blocks
-
-
-def _update_hash_from_file(h: "hashlib._Hash", path: Path) -> None:
-    with open(path, "rb") as f:
-        while chunk := f.read(8192):
-            h.update(chunk)
-
-
 def compute_input_fingerprint(
     weights_path: Path,
     dataset_path: Path,
@@ -104,25 +99,33 @@ def compute_input_fingerprint(
     seed: int = 42,
     geography_path: Optional[Path] = None,
     blocks_path: Optional[Path] = None,
+    target_db_path: Optional[Path] = None,
+    run_config_path: Optional[Path] = None,
+    calibration_package_path: Optional[Path] = None,
+    scope: str = "regional",
 ) -> str:
-    h = hashlib.sha256()
-    for p in [weights_path, dataset_path]:
-        _update_hash_from_file(h, p)
-
-    resolved_geo, resolved_blocks = resolve_calibration_geography_paths(
-        weights_path=weights_path,
-        geography_path=geography_path,
-        blocks_path=blocks_path,
+    service = FingerprintingService()
+    inputs = PublishingInputBundle(
+        weights_path=Path(weights_path),
+        source_dataset_path=Path(dataset_path),
+        target_db_path=Path(target_db_path) if target_db_path is not None else None,
+        exact_geography_path=(
+            Path(geography_path) if geography_path is not None else None
+        ),
+        calibration_package_path=(
+            Path(calibration_package_path)
+            if calibration_package_path is not None
+            else None
+        ),
+        run_config_path=Path(run_config_path) if run_config_path is not None else None,
+        run_id="",
+        version="",
+        n_clones=n_clones,
+        seed=seed,
+        legacy_blocks_path=Path(blocks_path) if blocks_path is not None else None,
     )
-    if resolved_geo is not None:
-        h.update(b"geography_assignment")
-        _update_hash_from_file(h, resolved_geo)
-    elif resolved_blocks is not None:
-        h.update(b"legacy_stacked_blocks")
-        _update_hash_from_file(h, resolved_blocks)
-    else:
-        h.update(f"legacy_regeneration:{n_clones}:{seed}".encode())
-    return h.hexdigest()[:16]
+    traceability = service.build_traceability(inputs=inputs, scope=scope)
+    return service.compute_scope_fingerprint(traceability)
 
 
 def load_calibration_geography(

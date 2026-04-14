@@ -41,6 +41,9 @@ def load_local_area_module():
     fake_partitioning = ModuleType(
         "policyengine_us_data.calibration.local_h5.partitioning"
     )
+    fake_fingerprinting = ModuleType(
+        "policyengine_us_data.calibration.local_h5.fingerprinting"
+    )
     fake_policyengine.__path__ = []
     fake_calibration.__path__ = []
     fake_local_h5.__path__ = []
@@ -71,6 +74,16 @@ def load_local_area_module():
     fake_resilience = ModuleType("modal_app.resilience")
     fake_resilience.reconcile_run_dir_fingerprint = lambda *args, **kwargs: None
     fake_partitioning.partition_weighted_work_items = lambda *args, **kwargs: []
+    fake_fingerprinting.PublishingInputBundle = object
+
+    class _FakeFingerprintingService:
+        def build_traceability(self, *args, **kwargs):
+            return object()
+
+        def compute_scope_fingerprint(self, *args, **kwargs):
+            return "fake-fingerprint"
+
+    fake_fingerprinting.FingerprintingService = _FakeFingerprintingService
 
     with _patched_module_registry(
         {
@@ -80,6 +93,9 @@ def load_local_area_module():
             "policyengine_us_data": fake_policyengine,
             "policyengine_us_data.calibration": fake_calibration,
             "policyengine_us_data.calibration.local_h5": fake_local_h5,
+            "policyengine_us_data.calibration.local_h5.fingerprinting": (
+                fake_fingerprinting
+            ),
             "policyengine_us_data.calibration.local_h5.partitioning": (
                 fake_partitioning
             ),

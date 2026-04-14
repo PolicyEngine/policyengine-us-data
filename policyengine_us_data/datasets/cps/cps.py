@@ -105,6 +105,7 @@ def _open_dataset_read_only(dataset_source):
     with closing(dataset.load()) as store:
         yield store
 
+
 class CPS(Dataset):
     name = "cps"
     label = "CPS"

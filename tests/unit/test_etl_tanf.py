@@ -84,9 +84,9 @@ def test_transform_tanf_financial_data_extracts_cash_assistance_totals():
     assert state_df.loc[state_df["state_fips"] == 6, "tanf"].iloc[0] == pytest.approx(
         3_742_540_224.36
     )
-    assert state_df.loc[state_df["state_fips"] == 11, "tanf"].iloc[
-        0
-    ] == pytest.approx(45_666_113.50)
+    assert state_df.loc[state_df["state_fips"] == 11, "tanf"].iloc[0] == pytest.approx(
+        45_666_113.50
+    )
 
 
 def test_validate_supported_year_rejects_non_2024():

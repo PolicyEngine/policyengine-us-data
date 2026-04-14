@@ -37,7 +37,9 @@ def _validate_supported_year(year: int) -> None:
         )
 
 
-def _download_acf_excel(page_url: str, cache_file: str, url_pattern: re.Pattern) -> bytes:
+def _download_acf_excel(
+    page_url: str, cache_file: str, url_pattern: re.Pattern
+) -> bytes:
     if is_cached(cache_file):
         logger.info("Using cached %s", cache_file)
         return load_bytes(cache_file)
@@ -100,7 +102,9 @@ def transform_tanf_caseload_data(raw_df: pd.DataFrame) -> tuple[float, pd.DataFr
 
     state_df = df.loc[df["state"].isin(STATE_NAME_TO_FIPS.keys())].copy()
     state_df["state_fips"] = state_df["state"].map(STATE_NAME_TO_FIPS).astype(int)
-    state_df["ucgid_str"] = state_df["state_fips"].map(lambda fips: f"0400000US{fips:02d}")
+    state_df["ucgid_str"] = state_df["state_fips"].map(
+        lambda fips: f"0400000US{fips:02d}"
+    )
     return national_families, state_df[
         ["state", "state_fips", "ucgid_str", "recipient_families"]
     ].sort_values("state_fips")
@@ -148,12 +152,9 @@ def _extract_cash_assistance_all_funds(df: pd.DataFrame) -> float:
     if spending_category_column is None or "All Funds" not in normalized.columns:
         raise ValueError("Unexpected TANF financial workbook columns")
 
-    mask = (
-        normalized[spending_category_column].astype(str).str.strip()
-        == (
-            "Basic Assistance (excluding Relative Foster Care Maintenance Payments "
-            "and Adoption and Guardianship Subsidies)"
-        )
+    mask = normalized[spending_category_column].astype(str).str.strip() == (
+        "Basic Assistance (excluding Relative Foster Care Maintenance Payments "
+        "and Adoption and Guardianship Subsidies)"
     )
     if not mask.any():
         raise ValueError(

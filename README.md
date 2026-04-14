@@ -14,6 +14,21 @@ which installs the development dependencies in a reference-only manner (so that 
 to the package code will be reflected immediately); `policyengine-us-data` is a dev package
 and not intended for direct access.
 
+## Pull Requests
+
+PRs must come from branches pushed to `PolicyEngine/policyengine-us-data`, not from
+personal forks. The PR workflow hard-fails fork-based PRs before the real test suite
+runs because the required secrets are unavailable there.
+
+Before opening a PR, push the current branch to the upstream repo:
+
+```bash
+make push-pr-branch
+```
+
+That target pushes the current branch to the `upstream` remote and sets tracking so
+`gh pr create` opens the PR from `PolicyEngine/policyengine-us-data`.
+
 ## SSA Data Sources
 
 The following SSA data sources are used in this project:

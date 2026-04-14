@@ -38,7 +38,7 @@ HARD_CODED_TOTALS = {
     "child_support_received": 33e9,
     "spm_unit_capped_work_childcare_expenses": 348e9,
     "spm_unit_capped_housing_subsidy": 35e9,
-    "tanf": 9e9,
+    "tanf": 7_788_317_474.55,
     # Alimony could be targeted via SOI
     "alimony_income": 13e9,
     "alimony_expense": 13e9,

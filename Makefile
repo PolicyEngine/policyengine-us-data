@@ -82,6 +82,7 @@ database:
 	python policyengine_us_data/db/etl_age.py --year $(YEAR)
 	python policyengine_us_data/db/etl_medicaid.py --year $(YEAR)
 	python policyengine_us_data/db/etl_snap.py --year $(YEAR)
+	python policyengine_us_data/db/etl_tanf.py --year $(YEAR)
 	python policyengine_us_data/db/etl_state_income_tax.py --year $(YEAR)
 	python policyengine_us_data/db/etl_irs_soi.py --year $(YEAR)
 	python policyengine_us_data/db/etl_pregnancy.py --year $(YEAR)

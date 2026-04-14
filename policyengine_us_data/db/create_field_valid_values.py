@@ -75,6 +75,8 @@ def populate_field_valid_values(session: Session) -> None:
         ("source", "Census ACS S2201", "survey"),
         ("source", "Census STC", "administrative"),
         ("source", "CDC VSRR Natality", "administrative"),
+        ("source", "HHS ACF TANF Caseload", "administrative"),
+        ("source", "HHS ACF TANF Financial", "administrative"),
         ("source", "PolicyEngine", "hardcoded"),
     ]
 

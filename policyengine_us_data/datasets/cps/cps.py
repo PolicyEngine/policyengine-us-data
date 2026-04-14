@@ -1534,8 +1534,6 @@ def add_ssn_card_type(
         }
     )
 
-    final_counts = pd.Series(ssn_card_type).value_counts().sort_index()
-
     # ============================================================================
     # PROBABILISTIC FAMILY CORRELATION ADJUSTMENT
     # ============================================================================
@@ -1558,8 +1556,6 @@ def add_ssn_card_type(
         f"Current undocumented: {current_undocumented:,.0f}, Target: {undocumented_target:,.0f}"
     )
     print(f"Additional undocumented needed: {undocumented_needed:,.0f}")
-
-    families_adjusted = 0
 
     if undocumented_needed > 0:
         # Identify households with mixed status (code 0 + code 3 members)
@@ -1584,7 +1580,6 @@ def add_ssn_card_type(
         # Randomly select from eligible code 3 members in mixed households to hit target
         if len(mixed_household_candidates) > 0:
             mixed_household_candidates = np.array(mixed_household_candidates)
-            candidate_weights = person_weights[mixed_household_candidates]
 
             # Use probabilistic selection to hit target
             selected_indices = select_random_subset_to_target(
@@ -1596,7 +1591,6 @@ def add_ssn_card_type(
 
             if len(selected_indices) > 0:
                 ssn_card_type[selected_indices] = 0
-                families_adjusted = len(selected_indices)
                 print(
                     f"Selected {len(selected_indices)} people from {len(mixed_household_candidates)} candidates in mixed households"
                 )
@@ -1735,7 +1729,7 @@ def add_ssn_card_type(
     # Save as immigration_status_str since that's what PolicyEngine expects
     cps["immigration_status_str"] = immigration_status.astype("S")
     # Final population summary
-    print(f"\nFinal populations:")
+    print("\nFinal populations:")
     code_to_str = {
         0: "NONE",  # Likely undocumented immigrants
         1: "CITIZEN",  # US citizens
@@ -1952,7 +1946,6 @@ def add_tips(self, cps: h5py.File):
     # is_married is person-level here but policyengine-us defines it at Family
     # level, so we must not save it
     cps = cps.drop(columns=["is_married", "is_under_18", "is_under_6"], errors="ignore")
-
     self.save_dataset(cps)
 
 

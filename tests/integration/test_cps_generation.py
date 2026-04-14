@@ -78,6 +78,15 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
     monkeypatch.setattr(sipp_module, "get_asset_model", lambda: FakeAssetModel())
 
     dataset = FakeDataset()
-    add_tips(dataset, {})
+    add_tips(
+        dataset,
+        {
+            "person_spm_unit_id": [101, 202],
+            "spm_unit_id": [101, 202],
+        },
+    )
 
     assert dataset.saved_dataset["tip_income"].tolist() == [100.0, 0.0]
+    assert dataset.saved_dataset["bank_account_assets"].tolist() == [0.0, 0.0]
+    assert dataset.saved_dataset["stock_assets"].tolist() == [0.0, 0.0]
+    assert dataset.saved_dataset["bond_assets"].tolist() == [0.0, 0.0]

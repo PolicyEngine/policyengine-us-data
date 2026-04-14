@@ -1,3 +1,13 @@
+## [1.79.1] - 2026-04-14
+
+### Changed
+
+- Split the new `calibration.local_h5` contracts into themed request, input,
+  validation, and result modules; extract test-only fixtures into dedicated
+  fixture helpers; and tighten the new request boundary so construction logic
+  stays outside the value objects.
+
+
 ## [1.79.0] - 2026-04-14
 
 ### Added

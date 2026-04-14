@@ -2,7 +2,6 @@ import pandas as pd
 
 
 def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
-    import policyengine_us
     import policyengine_us_data.datasets.sipp as sipp_module
     from policyengine_us_data.datasets.cps.cps import add_tips
 
@@ -35,6 +34,15 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
             self.raw_cps = FakeRawCPS()
             self.saved_dataset = None
             self.base_dataset = {
+                "person_id": [1, 2],
+                "person_household_id": [10, 20],
+                "employment_income": [25_000.0, 30_000.0],
+                "interest_income": [0.0, 0.0],
+                "dividend_income": [0.0, 0.0],
+                "rental_income": [0.0, 0.0],
+                "age": [30, 45],
+                "household_weight": [1.0, 1.0],
+                "is_female": [False, True],
                 "is_household_head": [True, True],
                 "tenure_type": [b"OWNED_WITH_MORTGAGE", b"RENTED"],
             }
@@ -50,26 +58,6 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
 
         def load_dataset(self):
             return self.base_dataset
-
-    class FakeMicrosimulation:
-        def __init__(self, dataset):
-            self.dataset = dataset
-
-        def calculate_dataframe(self, columns, year):
-            base = pd.DataFrame(
-                {
-                    "person_id": [1, 2],
-                    "household_id": [10, 20],
-                    "employment_income": [25_000, 30_000],
-                    "interest_income": [0.0, 0.0],
-                    "dividend_income": [0.0, 0.0],
-                    "rental_income": [0.0, 0.0],
-                    "age": [30, 45],
-                    "household_weight": [1.0, 1.0],
-                    "is_female": [False, True],
-                }
-            )
-            return base[columns]
 
     class FakeTipModel:
         def predict(self, X_test, mean_quantile):
@@ -96,7 +84,6 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
                 }
             )
 
-    monkeypatch.setattr(policyengine_us, "Microsimulation", FakeMicrosimulation)
     monkeypatch.setattr(sipp_module, "get_tip_model", lambda: FakeTipModel())
     monkeypatch.setattr(sipp_module, "get_asset_model", lambda: FakeAssetModel())
     monkeypatch.setattr(sipp_module, "get_vehicle_model", lambda: FakeVehicleModel())

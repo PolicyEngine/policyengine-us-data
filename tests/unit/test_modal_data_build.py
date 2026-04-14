@@ -120,3 +120,73 @@ def test_validate_and_maybe_upload_datasets_stages_with_run_id(monkeypatch):
             {"TEST_ENV": "1"},
         ),
     ]
+
+
+def test_run_cps_then_puf_phase_uses_sequential_checkpointed_builds(
+    monkeypatch,
+):
+    data_build = _load_data_build_module()
+    calls = []
+    volume = object()
+    log_file = object()
+    env = {"TEST_ENV": "1"}
+
+    def fake_executor(*args, **kwargs):
+        raise AssertionError("CPS/PUF phase must not use ThreadPoolExecutor")
+
+    def fake_run_script_with_checkpoint(
+        script_path,
+        output_files,
+        branch,
+        volume_arg,
+        args=None,
+        env=None,
+        log_file=None,
+    ):
+        calls.append(
+            (
+                script_path,
+                output_files,
+                branch,
+                volume_arg,
+                args,
+                env,
+                log_file,
+            )
+        )
+        return script_path
+
+    monkeypatch.setattr(data_build, "ThreadPoolExecutor", fake_executor)
+    monkeypatch.setattr(
+        data_build,
+        "run_script_with_checkpoint",
+        fake_run_script_with_checkpoint,
+    )
+
+    data_build.run_cps_then_puf_phase(
+        "fix-754",
+        volume,
+        env=env,
+        log_file=log_file,
+    )
+
+    assert calls == [
+        (
+            data_build.CPS_BUILD_SCRIPT,
+            data_build.SCRIPT_OUTPUTS[data_build.CPS_BUILD_SCRIPT],
+            "fix-754",
+            volume,
+            None,
+            env,
+            log_file,
+        ),
+        (
+            data_build.PUF_BUILD_SCRIPT,
+            data_build.SCRIPT_OUTPUTS[data_build.PUF_BUILD_SCRIPT],
+            "fix-754",
+            volume,
+            None,
+            env,
+            log_file,
+        ),
+    ]

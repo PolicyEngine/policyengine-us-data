@@ -77,6 +77,9 @@ SCRIPT_OUTPUTS = {
     ),
 }
 
+CPS_BUILD_SCRIPT = "policyengine_us_data/datasets/cps/cps.py"
+PUF_BUILD_SCRIPT = "policyengine_us_data/datasets/puf/puf.py"
+
 # Test modules to run individually for checkpoint tracking
 TEST_MODULES = [
     "tests/unit/",
@@ -314,6 +317,25 @@ def run_script_with_checkpoint(
     return script_path
 
 
+def run_cps_then_puf_phase(
+    branch: str,
+    volume: modal.Volume,
+    *,
+    env: dict,
+    log_file: IO = None,
+) -> None:
+    """Build CPS before PUF because PUF pension imputation loads CPS_2024."""
+    for script in (CPS_BUILD_SCRIPT, PUF_BUILD_SCRIPT):
+        run_script_with_checkpoint(
+            script,
+            SCRIPT_OUTPUTS[script],
+            branch,
+            volume,
+            env=env,
+            log_file=log_file,
+        )
+
+
 def run_tests_with_checkpoints(
     branch: str,
     volume: modal.Volume,
@@ -508,34 +530,16 @@ def build_datasets(
             for future in as_completed(futures):
                 future.result()  # Raises if script failed
 
-        # GROUP 2: Depends on Group 1 - run in parallel
-        # cps.py needs acs, puf.py needs irs_puf + uprating
-        print("=== Phase 2: Building CPS and PUF (parallel) ===")
-        group2 = [
-            (
-                "policyengine_us_data/datasets/cps/cps.py",
-                SCRIPT_OUTPUTS["policyengine_us_data/datasets/cps/cps.py"],
-            ),
-            (
-                "policyengine_us_data/datasets/puf/puf.py",
-                SCRIPT_OUTPUTS["policyengine_us_data/datasets/puf/puf.py"],
-            ),
-        ]
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = {
-                executor.submit(
-                    run_script_with_checkpoint,
-                    script,
-                    output,
-                    branch,
-                    checkpoint_volume,
-                    env=env,
-                    log_file=log_file,
-                ): script
-                for script, output in group2
-            }
-            for future in as_completed(futures):
-                future.result()
+        # GROUP 2: Depends on Group 1 - run sequentially.
+        # puf.py pension imputation can instantiate CPS_2024, so it must
+        # not run while cps.py is writing cps_2024.h5.
+        print("=== Phase 2: Building CPS then PUF (sequential) ===")
+        run_cps_then_puf_phase(
+            branch,
+            checkpoint_volume,
+            env=env,
+            log_file=log_file,
+        )
 
         # SEQUENTIAL: Extended CPS (needs both cps and puf)
         print("=== Phase 3: Building extended CPS ===")

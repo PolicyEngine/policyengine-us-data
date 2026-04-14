@@ -19,6 +19,19 @@ TIP_MODEL_PREDICTORS = [
     "is_tipped_occupation",
 ]
 
+VEHICLE_MODEL_PREDICTORS = [
+    "household_employment_income",
+    "household_interest_income",
+    "household_dividend_income",
+    "household_rental_income",
+    "reference_age",
+    "reference_is_female",
+    "reference_is_married",
+    "count_under_18",
+    "household_size",
+    "is_homeowner",
+]
+
 
 def train_tip_model():
     DOWNLOAD_FULL_SIPP = False
@@ -177,6 +190,24 @@ ASSET_COLUMNS = [
     "RSSI_YRYN",  # Received SSI in at least one month
 ]
 
+VEHICLE_COLUMNS = [
+    "SSUID",
+    "PNUM",
+    "MONTHCODE",
+    "WPFINWGT",
+    "TAGE",
+    "ESEX",
+    "EMS",
+    "TPTOTINC",
+    "TINC_BANK",
+    "TINC_STMF",
+    "TINC_BOND",
+    "TINC_RENT",
+    "TVEH_NUM",
+    "THVAL_VEH",
+    "THVAL_HOME",
+]
+
 
 def train_asset_model():
     """Train QRF model for liquid asset categories using SIPP 2023 data.
@@ -289,6 +320,123 @@ def get_asset_model() -> QRF:
 
     if not model_path.exists():
         model = train_asset_model()
+
+        with open(model_path, "wb") as f:
+            pickle.dump(model, f)
+    else:
+        with open(model_path, "rb") as f:
+            model = pickle.load(f)
+
+    return model
+
+
+def build_vehicle_training_frame() -> pd.DataFrame:
+    """Build a household-level SIPP frame for vehicle asset imputation."""
+    hf_hub_download(
+        repo_id="PolicyEngine/policyengine-us-data",
+        filename="pu2023.csv",
+        repo_type="model",
+        local_dir=STORAGE_FOLDER,
+    )
+
+    df = pd.read_csv(
+        STORAGE_FOLDER / "pu2023.csv",
+        delimiter="|",
+        usecols=VEHICLE_COLUMNS,
+    )
+    df = df[df.MONTHCODE == 12].copy()
+
+    df["employment_income"] = df.TPTOTINC.fillna(0) * 12
+    df["interest_income"] = (df["TINC_BANK"].fillna(0) + df["TINC_BOND"].fillna(0)) * 12
+    df["dividend_income"] = df["TINC_STMF"].fillna(0) * 12
+    df["rental_income"] = df["TINC_RENT"].fillna(0) * 12
+    df["is_under_18"] = df["TAGE"].fillna(0) < 18
+
+    grouped = df.groupby("SSUID")
+
+    reference_idx = grouped["TAGE"].idxmax()
+    reference_people = (
+        df.loc[reference_idx, ["SSUID", "TAGE", "ESEX", "EMS"]]
+        .rename(
+            columns={
+                "TAGE": "reference_age",
+                "ESEX": "reference_sex",
+                "EMS": "reference_marital_status",
+            }
+        )
+        .set_index("SSUID")
+    )
+
+    household = pd.DataFrame(
+        {
+            "household_id": grouped["SSUID"].first(),
+            "household_weight": grouped["WPFINWGT"].first().fillna(0),
+            "household_employment_income": grouped["employment_income"].sum(),
+            "household_interest_income": grouped["interest_income"].sum(),
+            "household_dividend_income": grouped["dividend_income"].sum(),
+            "household_rental_income": grouped["rental_income"].sum(),
+            "count_under_18": grouped["is_under_18"].sum(),
+            "household_size": grouped.size(),
+            "household_vehicles_owned": grouped["TVEH_NUM"].max().fillna(0),
+            "household_vehicles_value": grouped["THVAL_VEH"].first().fillna(0),
+            "is_homeowner": (grouped["THVAL_HOME"].first().fillna(0) > 0).astype(
+                np.float32
+            ),
+        }
+    ).reset_index(drop=True)
+
+    household = household.merge(
+        reference_people,
+        left_on="household_id",
+        right_index=True,
+        how="left",
+    )
+    household["reference_is_female"] = (
+        household["reference_sex"].fillna(1) == 2
+    ).astype(np.float32)
+    household["reference_is_married"] = (
+        household["reference_marital_status"].fillna(0) == 1
+    ).astype(np.float32)
+
+    household = household.drop(
+        columns=["reference_sex", "reference_marital_status"],
+        errors="ignore",
+    )
+    household = household.fillna(0)
+    return household
+
+
+def train_vehicle_model():
+    """Train a household-level vehicle asset model from SIPP 2023."""
+    sipp = build_vehicle_training_frame()
+    sipp = sipp[~sipp.isna().any(axis=1)]
+    sipp = sipp.loc[
+        np.random.choice(
+            sipp.index,
+            size=min(20_000, len(sipp)),
+            replace=True,
+            p=sipp.household_weight / sipp.household_weight.sum(),
+        )
+    ]
+
+    model = QRF()
+    model = model.fit(
+        X_train=sipp,
+        predictors=VEHICLE_MODEL_PREDICTORS,
+        imputed_variables=[
+            "household_vehicles_owned",
+            "household_vehicles_value",
+        ],
+    )
+    return model
+
+
+def get_vehicle_model() -> QRF:
+    """Get or train the household vehicle imputation model."""
+    model_path = STORAGE_FOLDER / "household_vehicle_assets.pkl"
+
+    if not model_path.exists():
+        model = train_vehicle_model()
 
         with open(model_path, "wb") as f:
             pickle.dump(model, f)

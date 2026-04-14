@@ -8,7 +8,8 @@ financial predictors.
 Sources and variables:
     ACS  -> rent, real_estate_taxes  (with state predictor)
     SIPP -> tip_income, bank_account_assets, stock_assets,
-            bond_assets  (no state predictor)
+            bond_assets, household_vehicles_owned,
+            household_vehicles_value  (no state predictor)
     ORG  -> hourly_wage, is_paid_hourly,
             is_union_member_or_covered
     SCF  -> net_worth, auto_loan_balance, auto_loan_interest
@@ -32,12 +33,19 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_any_treasury_tipped_occupation_code,
     derive_is_tipped_occupation,
 )
+from policyengine_us_data.datasets.sipp.sipp import (
+    VEHICLE_MODEL_PREDICTORS,
+    build_vehicle_training_frame,
+)
 
 from policyengine_us_data.datasets.org import (
     ORG_BOOL_VARIABLES,
     ORG_IMPUTED_VARIABLES,
     build_org_receiver_frame,
     predict_org_features,
+)
+from policyengine_us_data.utils.asset_imputation import (
+    build_household_vehicle_receiver,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,6 +60,8 @@ SIPP_IMPUTED_VARIABLES = [
     "bank_account_assets",
     "stock_assets",
     "bond_assets",
+    "household_vehicles_owned",
+    "household_vehicles_value",
 ]
 
 SCF_IMPUTED_VARIABLES = [
@@ -355,7 +365,7 @@ def _impute_sipp(
     time_period: int,
     dataset_path: Optional[str] = None,
 ) -> Dict[str, Dict[int, np.ndarray]]:
-    """Impute tip_income and liquid assets from SIPP.
+    """Impute tip_income, liquid assets, and vehicle signals from SIPP.
 
     Args:
         data: CPS data dict.
@@ -618,6 +628,96 @@ def _impute_sipp(
         gc.collect()
 
         logger.info("SIPP asset imputation complete")
+
+        vehicle_train = build_vehicle_training_frame()
+        vehicle_train = vehicle_train.loc[
+            rng.choice(
+                vehicle_train.index,
+                size=min(20_000, len(vehicle_train)),
+                replace=True,
+                p=(
+                    vehicle_train.household_weight
+                    / vehicle_train.household_weight.sum()
+                ),
+            )
+        ]
+
+        cps_vehicle_df = _build_cps_receiver(
+            data,
+            time_period,
+            dataset_path,
+            [
+                "employment_income",
+                "interest_income",
+                "dividend_income",
+                "rental_income",
+                "age",
+                "is_male",
+                "is_household_head",
+            ],
+        )
+        cps_vehicle_df["person_household_id"] = data["person_household_id"][
+            time_period
+        ].astype(np.int64)
+        if "is_male" in cps_vehicle_df.columns:
+            cps_vehicle_df["is_female"] = (
+                ~cps_vehicle_df["is_male"].astype(bool)
+            ).astype(np.float32)
+        else:
+            cps_vehicle_df["is_female"] = 0.0
+        if "is_married" in data:
+            cps_vehicle_df["is_married"] = data["is_married"][time_period].astype(
+                np.float32
+            )
+        else:
+            cps_vehicle_df["is_married"] = 0.0
+        for cap_var in [
+            "interest_income",
+            "dividend_income",
+            "rental_income",
+            "is_household_head",
+        ]:
+            if cap_var not in cps_vehicle_df.columns:
+                cps_vehicle_df[cap_var] = 0.0
+
+        vehicle_receiver = build_household_vehicle_receiver(
+            cps_vehicle_df,
+            tenure_type=data.get("tenure_type", {}).get(time_period),
+        )
+
+        qrf = QRF()
+        logger.info(
+            "SIPP vehicle QRF: %d train, %d test",
+            len(vehicle_train),
+            len(vehicle_receiver),
+        )
+        fitted = qrf.fit(
+            X_train=vehicle_train,
+            predictors=VEHICLE_MODEL_PREDICTORS,
+            imputed_variables=[
+                "household_vehicles_owned",
+                "household_vehicles_value",
+            ],
+        )
+        vehicle_preds = fitted.predict(X_test=vehicle_receiver)
+        data["household_vehicles_owned"] = {
+            time_period: np.clip(
+                np.rint(vehicle_preds["household_vehicles_owned"].values),
+                0,
+                None,
+            ).astype(np.int32)
+        }
+        data["household_vehicles_value"] = {
+            time_period: np.clip(
+                vehicle_preds["household_vehicles_value"].values,
+                0,
+                None,
+            ).astype(np.float32)
+        }
+        del fitted, vehicle_preds
+        gc.collect()
+
+        logger.info("SIPP vehicle imputation complete")
 
     except (FileNotFoundError, KeyError, ValueError, OSError) as e:
         logger.warning(

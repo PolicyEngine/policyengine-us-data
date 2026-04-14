@@ -57,6 +57,8 @@ def _make_data_dict(n_persons=20, time_period=2024):
         "bank_account_assets": {time_period: np.zeros(n_persons)},
         "stock_assets": {time_period: np.zeros(n_persons)},
         "bond_assets": {time_period: np.zeros(n_persons)},
+        "household_vehicles_owned": {time_period: np.zeros(n_hh, dtype=np.int32)},
+        "household_vehicles_value": {time_period: np.zeros(n_hh, dtype=np.float32)},
         "hourly_wage": {time_period: np.zeros(n_persons)},
         "is_paid_hourly": {time_period: np.zeros(n_persons, dtype=bool)},
         "is_union_member_or_covered": {
@@ -78,6 +80,8 @@ class TestConstants:
         assert "bank_account_assets" in SIPP_IMPUTED_VARIABLES
         assert "stock_assets" in SIPP_IMPUTED_VARIABLES
         assert "bond_assets" in SIPP_IMPUTED_VARIABLES
+        assert "household_vehicles_owned" in SIPP_IMPUTED_VARIABLES
+        assert "household_vehicles_value" in SIPP_IMPUTED_VARIABLES
 
     def test_scf_variables_defined(self):
         assert "net_worth" in SCF_IMPUTED_VARIABLES

@@ -11,12 +11,15 @@ Usage:
 import json
 import shutil
 
-
 import numpy as np
 from pathlib import Path
 from typing import List, Optional
 
 from policyengine_us import Microsimulation
+from policyengine_us_data.calibration.local_h5.fingerprinting import (
+    FingerprintingService,
+    PublishingInputBundle,
+)
 from policyengine_us_data.calibration.local_h5.geography_loader import (
     CalibrationGeographyLoader,
 )
@@ -48,8 +51,6 @@ NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
 
 
 META_FILE = WORK_DIR / "checkpoint_meta.json"
-
-
 def compute_input_fingerprint(
     weights_path: Path,
     dataset_path: Path,
@@ -57,50 +58,33 @@ def compute_input_fingerprint(
     seed: int = 42,
     geography_path: Optional[Path] = None,
     blocks_path: Optional[Path] = None,
+    target_db_path: Optional[Path] = None,
+    run_config_path: Optional[Path] = None,
     calibration_package_path: Optional[Path] = None,
+    scope: str = "regional",
 ) -> str:
-    import hashlib
-
-    def _update_hash_from_file(h: "hashlib._Hash", path: Path) -> None:
-        with open(path, "rb") as f:
-            while chunk := f.read(8192):
-                h.update(chunk)
-
-    def _infer_n_records() -> int:
-        if n_clones is not None:
-            weights = np.load(weights_path, mmap_mode="r")
-            if len(weights) % n_clones == 0:
-                return len(weights) // n_clones
-        sim = Microsimulation(dataset=str(dataset_path))
-        return len(sim.calculate("household_id", map_to="household").values)
-
-    loader = CalibrationGeographyLoader()
-    h = hashlib.sha256()
-    for p in [weights_path, dataset_path]:
-        _update_hash_from_file(h, p)
-
-    resolved = loader.resolve_source(
-        weights_path=weights_path,
-        geography_path=geography_path,
-        blocks_path=blocks_path,
-        calibration_package_path=calibration_package_path,
+    service = FingerprintingService()
+    inputs = PublishingInputBundle(
+        weights_path=Path(weights_path),
+        source_dataset_path=Path(dataset_path),
+        target_db_path=Path(target_db_path) if target_db_path is not None else None,
+        exact_geography_path=(
+            Path(geography_path) if geography_path is not None else None
+        ),
+        calibration_package_path=(
+            Path(calibration_package_path)
+            if calibration_package_path is not None
+            else None
+        ),
+        run_config_path=Path(run_config_path) if run_config_path is not None else None,
+        run_id="",
+        version="",
+        n_clones=n_clones,
+        seed=seed,
+        legacy_blocks_path=Path(blocks_path) if blocks_path is not None else None,
     )
-    if resolved is not None:
-        n_records = _infer_n_records()
-        h.update(f"geography_source:{resolved.kind}".encode())
-        h.update(
-            loader.compute_canonical_checksum(
-                weights_path=weights_path,
-                n_records=n_records,
-                n_clones=n_clones,
-                geography_path=geography_path,
-                blocks_path=blocks_path,
-                calibration_package_path=calibration_package_path,
-            ).encode()
-        )
-    else:
-        h.update(f"legacy_regeneration:{n_clones}:{seed}".encode())
-    return h.hexdigest()[:16]
+    traceability = service.build_traceability(inputs=inputs, scope=scope)
+    return service.compute_scope_fingerprint(traceability)
 
 
 def load_calibration_geography(

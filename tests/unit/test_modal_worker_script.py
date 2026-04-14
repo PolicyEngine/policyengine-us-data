@@ -64,12 +64,8 @@ def test_load_request_inputs_from_args_keeps_legacy_work_items_raw():
 
 
 def test_work_item_key_handles_missing_fields():
-    assert (
-        worker_script._work_item_key({"type": "district"}) == "district:<missing-id>"
-    )
-    assert (
-        worker_script._work_item_key(["not-a-dict"]) == "unknown:<invalid-work-item>"
-    )
+    assert worker_script._work_item_key({"type": "district"}) == "district:<missing-id>"
+    assert worker_script._work_item_key(["not-a-dict"]) == "unknown:<invalid-work-item>"
 
 
 def test_resolve_request_input_keeps_typed_requests_unchanged():

@@ -1,3 +1,10 @@
+## [1.79.2] - 2026-04-14
+
+### Fixed
+
+- Serialize CPS and PUF builds in the Modal integration data build pipeline to avoid reading `CPS_2024` while it is being written.
+
+
 ## [1.79.1] - 2026-04-14
 
 ### Changed

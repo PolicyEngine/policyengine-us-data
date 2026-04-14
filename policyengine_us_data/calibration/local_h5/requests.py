@@ -1,18 +1,36 @@
 """Typed request contracts for local H5 publication.
 
-These types describe what to build, where outputs go, and how a request
-maps onto geography filters and validation identifiers.
+This module defines the request values introduced in the first migration
+slice. Later PRs should add new modules only when they become runtime
+seams rather than front-loading unused contract types.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal, Mapping
-
-from .._contract_utils import jsonable_contract_value
 
 AreaType = Literal["national", "state", "district", "city", "custom"]
 FilterOp = Literal["eq", "in"]
+
+
+def _jsonable_request_value(value: Any) -> Any:
+    """Convert request values into JSON-serializable primitives."""
+
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, tuple):
+        return [_jsonable_request_value(item) for item in value]
+    if isinstance(value, list):
+        return [_jsonable_request_value(item) for item in value]
+    if isinstance(value, Mapping):
+        return {
+            str(key): _jsonable_request_value(item) for key, item in value.items()
+        }
+    if hasattr(value, "to_dict") and callable(value.to_dict):
+        return value.to_dict()
+    return value
 
 
 @dataclass(frozen=True)
@@ -35,7 +53,7 @@ class AreaFilter:
         return {
             "geography_field": self.geography_field,
             "op": self.op,
-            "value": jsonable_contract_value(self.value),
+            "value": _jsonable_request_value(self.value),
         }
 
     @classmethod
@@ -52,11 +70,7 @@ class AreaFilter:
 
 @dataclass(frozen=True)
 class AreaBuildRequest:
-    """A complete request describing one local or national H5 to build.
-
-    Request construction belongs in a catalog or adapter layer rather
-    than on this value object itself.
-    """
+    """A complete request describing one local or national H5 to build."""
 
     area_type: AreaType
     area_id: str
@@ -86,7 +100,7 @@ class AreaBuildRequest:
             "area_id": self.area_id,
             "display_name": self.display_name,
             "output_relative_path": self.output_relative_path,
-            "filters": [jsonable_contract_value(item) for item in self.filters],
+            "filters": [_jsonable_request_value(item) for item in self.filters],
             "validation_geo_level": self.validation_geo_level,
             "validation_geographic_ids": list(self.validation_geographic_ids),
             "metadata": dict(self.metadata),

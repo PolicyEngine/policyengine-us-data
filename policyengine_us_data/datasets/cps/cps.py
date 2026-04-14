@@ -212,13 +212,24 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         }
     ).astype("S")
     if self.file_path.exists():
-        with h5py.File(self.file_path, "r") as _f:
-            stale_keys = [k for k in _f.keys() if k not in cps]
-            if stale_keys:
-                logging.warning(
-                    f"Stale H5 at {self.file_path} has {len(stale_keys)} "
-                    f"extra vars before first save: {stale_keys[:5]}"
-                )
+        try:
+            with pd.HDFStore(self.file_path, mode="r") as store:
+                stale_keys = [
+                    key.lstrip("/")
+                    for key in store.keys()
+                    if key.lstrip("/") not in cps
+                ]
+                if stale_keys:
+                    logging.warning(
+                        f"Stale H5 at {self.file_path} has {len(stale_keys)} "
+                        f"extra vars before first save: {stale_keys[:5]}"
+                    )
+        except (BlockingIOError, OSError, ValueError) as error:
+            logging.warning(
+                "Unable to inspect stale H5 at %s before replacement: %s",
+                self.file_path,
+                error,
+            )
         self.file_path.unlink()
     self.save_dataset(cps)
 

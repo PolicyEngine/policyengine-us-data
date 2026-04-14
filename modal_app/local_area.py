@@ -11,7 +11,6 @@ Usage:
     modal run modal_app/local_area.py --branch=main --num-workers=8
 """
 
-import heapq
 import json
 import os
 import subprocess
@@ -30,6 +29,9 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.resilience import reconcile_run_dir_fingerprint  # noqa: E402
+from policyengine_us_data.calibration.local_h5.partitioning import (  # noqa: E402
+    partition_weighted_work_items,
+)
 
 app = modal.App("policyengine-us-data-local-area")
 
@@ -309,25 +311,12 @@ def partition_work(
     num_workers: int,
     completed: set,
 ) -> List[List[Dict]]:
-    """Partition work items across N workers using LPT scheduling."""
-    remaining = [
-        item for item in work_items if f"{item['type']}:{item['id']}" not in completed
-    ]
-    remaining.sort(key=lambda x: -x["weight"])
-
-    n_workers = min(num_workers, len(remaining))
-    if n_workers == 0:
-        return []
-
-    heap = [(0, i) for i in range(n_workers)]
-    chunks = [[] for _ in range(n_workers)]
-
-    for item in remaining:
-        load, idx = heapq.heappop(heap)
-        chunks[idx].append(item)
-        heapq.heappush(heap, (load + item["weight"], idx))
-
-    return [c for c in chunks if c]
+    """Compatibility wrapper over the extracted pure partitioning seam."""
+    return partition_weighted_work_items(
+        work_items=work_items,
+        num_workers=num_workers,
+        completed=completed,
+    )
 
 
 def get_completed_from_volume(run_dir: Path) -> set:

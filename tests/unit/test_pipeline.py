@@ -63,6 +63,23 @@ class TestRunMetadata:
         assert meta.status == "completed"
         assert meta.step_timings["build_datasets"]["status"] == "completed"
 
+    def test_from_dict_maps_legacy_fingerprint_to_regional_scope(self):
+        meta = RunMetadata.from_dict(
+            {
+                "run_id": "test",
+                "branch": "main",
+                "sha": "abc12345deadbeef",
+                "version": "1.72.3",
+                "start_time": "2026-03-19T12:00:00Z",
+                "status": "running",
+                "fingerprint": "legacy-fingerprint",
+            }
+        )
+
+        assert meta.fingerprint == "legacy-fingerprint"
+        assert meta.regional_fingerprint == "legacy-fingerprint"
+        assert meta.national_fingerprint is None
+
     def test_roundtrip(self):
         meta = RunMetadata(
             run_id="1.72.3_abc12345_20260319_120000",
@@ -78,6 +95,24 @@ class TestRunMetadata:
         assert roundtripped.run_id == meta.run_id
         assert roundtripped.status == meta.status
         assert roundtripped.error == meta.error
+
+    def test_to_dict_keeps_legacy_fingerprint_alias_in_sync(self):
+        meta = RunMetadata(
+            run_id="test",
+            branch="main",
+            sha="abc",
+            version="1.0.0",
+            start_time="now",
+            status="running",
+            regional_fingerprint="regional-fp",
+            national_fingerprint="national-fp",
+        )
+
+        payload = meta.to_dict()
+
+        assert payload["fingerprint"] == "regional-fp"
+        assert payload["regional_fingerprint"] == "regional-fp"
+        assert payload["national_fingerprint"] == "national-fp"
 
     def test_step_timings_default_empty(self):
         meta = RunMetadata(

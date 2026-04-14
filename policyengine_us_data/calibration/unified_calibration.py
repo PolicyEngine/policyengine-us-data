@@ -58,9 +58,7 @@ LAMBDA_L2 = 1e-12
 LEARNING_RATE = 0.15
 DEFAULT_EPOCHS = 100
 DEFAULT_N_CLONES = 430
-DEFAULT_TARGET_CONFIG_PATH = (
-    Path(__file__).resolve().parent / "target_config.yaml"
-)
+DEFAULT_TARGET_CONFIG_PATH = Path(__file__).resolve().parent / "target_config.yaml"
 
 
 def get_git_provenance() -> dict:
@@ -217,7 +215,11 @@ def parse_args(argv=None):
         "--epochs",
         type=int,
         default=DEFAULT_EPOCHS,
-        help=f"Training epochs (default: {DEFAULT_EPOCHS})",
+        help=(
+            f"Training epochs (default: {DEFAULT_EPOCHS}). "
+            f"When --resume-from is set, this is the number of "
+            f"ADDITIONAL epochs to run beyond the checkpoint, not a new total."
+        ),
     )
     parser.add_argument(
         "--device",
@@ -338,7 +340,9 @@ def parse_args(argv=None):
         help="Resume fitting from a `.checkpoint.pt` file or "
         "warm-start from a `.npy` weights file. "
         "If a sibling checkpoint exists next to the weights file, "
-        "it is preferred automatically.",
+        "it is preferred automatically. "
+        "With --epochs N, runs N additional epochs on top of the "
+        "checkpoint's epoch count.",
     )
     parser.add_argument(
         "--checkpoint-output",
@@ -572,23 +576,33 @@ def build_checkpoint_signature(
     }
 
 
-def checkpoint_signature_mismatches(expected: dict, actual: dict) -> list:
-    """Return human-readable checkpoint compatibility mismatches."""
-    mismatches = []
-    float_keys = {"lambda_l0", "beta", "lambda_l2", "learning_rate"}
+def checkpoint_signature_mismatches(expected: dict, actual: dict) -> tuple[list, list]:
+    """Return (fatal, soft) checkpoint compatibility mismatches.
+
+    Fatal mismatches (structural) block resume because loading would
+    corrupt or error: n_features, n_targets, matrix/target hashes, or
+    any expected value missing from the checkpoint.
+
+    Soft mismatches are tunable hyperparameters — lambda_l0, beta,
+    lambda_l2, learning_rate — which the caller may legitimately change
+    between resume phases. Mid-training adjustments don't invalidate the
+    stored weights or L0 gate state; the optimizer re-equilibrates under
+    the new loss surface.
+    """
+    fatal: list = []
+    soft: list = []
+    soft_float_keys = {"lambda_l0", "beta", "lambda_l2", "learning_rate"}
     for key, actual_value in actual.items():
         expected_value = expected.get(key)
         if expected_value is None:
-            mismatches.append(f"{key} missing from checkpoint")
+            fatal.append(f"{key} missing from checkpoint")
             continue
-        if key in float_keys:
+        if key in soft_float_keys:
             if not np.isclose(expected_value, actual_value):
-                mismatches.append(
-                    f"{key} expected {expected_value}, got {actual_value}"
-                )
+                soft.append(f"{key} expected {expected_value}, got {actual_value}")
         elif actual_value != expected_value:
-            mismatches.append(f"{key} expected {expected_value}, got {actual_value}")
-    return mismatches
+            fatal.append(f"{key} expected {expected_value}, got {actual_value}")
+    return fatal, soft
 
 
 def save_fit_checkpoint(
@@ -816,14 +830,22 @@ def fit_l0_weights(
                 raise ValueError(
                     f"Checkpoint {resume_path} is missing compatibility metadata"
                 )
-            mismatches = checkpoint_signature_mismatches(
+            fatal, soft = checkpoint_signature_mismatches(
                 stored_signature,
                 checkpoint_signature,
             )
-            if mismatches:
+            if fatal:
                 raise ValueError(
-                    "Checkpoint is incompatible with the requested run: "
-                    + "; ".join(mismatches)
+                    "Checkpoint is structurally incompatible with the "
+                    "requested run: " + "; ".join(fatal)
+                )
+            if soft:
+                logger.warning(
+                    "Resuming with hyperparameter change(s): %s. Stored "
+                    "weights and L0 gate state remain valid, but expect "
+                    "transient loss/sparsity shifts in the first few "
+                    "epochs as the optimizer re-equilibrates.",
+                    "; ".join(soft),
                 )
             checkpoint_state_dict = checkpoint["model_state_dict"]
             start_epoch = int(checkpoint.get("epochs_completed", 0))

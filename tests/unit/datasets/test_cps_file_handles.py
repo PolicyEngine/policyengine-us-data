@@ -5,6 +5,7 @@ import pandas as pd
 
 import policyengine_us_data.datasets.cps.cps as cps_module
 from policyengine_us_data.datasets.cps.cps import (
+    add_rent,
     add_auto_loan_interest_and_net_worth,
     add_previous_year_income,
 )
@@ -234,3 +235,107 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
     np.testing.assert_array_equal(
         dataset.saved_dataset["auto_loan_interest"], [200.0, 100.0]
     )
+
+
+def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(
+    tmp_path, monkeypatch
+):
+    existing_path = tmp_path / "existing_cps.h5"
+    with pd.HDFStore(existing_path, mode="w") as store:
+        store["stale_var"] = pd.Series([1, 2, 3])
+
+    real_hdfstore = pd.HDFStore
+    opened_modes = []
+
+    def recording_hdfstore(path, mode="a", *args, **kwargs):
+        opened_modes.append(mode)
+        return real_hdfstore(path, mode=mode, *args, **kwargs)
+
+    def fail_h5py_file(*args, **kwargs):
+        raise AssertionError("add_rent should not reopen the existing H5 with h5py")
+
+    class FakeQRF:
+        def fit(self, X_train, predictors, imputed_variables):
+            return self
+
+        def predict(self, X_test):
+            return pd.DataFrame(
+                {
+                    "rent": np.full(len(X_test), 1_000.0),
+                    "real_estate_taxes": np.full(len(X_test), 250.0),
+                }
+            )
+
+    class FakeMicrosimulation:
+        def __init__(self, dataset):
+            self.dataset = dataset
+
+        def calculate_dataframe(
+            self, columns, period=None, map_to=None, use_weights=True
+        ):
+            if "rent" in columns:
+                df = pd.DataFrame(
+                    {
+                        "is_household_head": np.ones(10_000, dtype=bool),
+                        "age": np.full(10_000, 40),
+                        "is_male": np.zeros(10_000, dtype=bool),
+                        "tenure_type": ["RENTED"] * 10_000,
+                        "employment_income": np.full(10_000, 30_000.0),
+                        "self_employment_income": np.zeros(10_000),
+                        "social_security": np.zeros(10_000),
+                        "pension_income": np.zeros(10_000),
+                        "state_code_str": ["CA"] * 10_000,
+                        "household_size": np.ones(10_000),
+                        "rent": np.full(10_000, 1_200.0),
+                        "real_estate_taxes": np.zeros(10_000),
+                    }
+                )
+            else:
+                df = pd.DataFrame(
+                    {
+                        "is_household_head": [True],
+                        "age": [40],
+                        "is_male": [False],
+                        "tenure_type": ["RENTED"],
+                        "employment_income": [30_000.0],
+                        "self_employment_income": [0.0],
+                        "social_security": [0.0],
+                        "pension_income": [0.0],
+                        "state_code_str": ["CA"],
+                        "household_size": [1],
+                    }
+                )
+            return df[columns]
+
+    class FakeDataset:
+        def __init__(self):
+            self.file_path = existing_path
+            self.saved = []
+
+        def save_dataset(self, data):
+            self.saved.append(data)
+
+    monkeypatch.setattr(cps_module.pd, "HDFStore", recording_hdfstore)
+    monkeypatch.setattr(cps_module.h5py, "File", fail_h5py_file)
+    monkeypatch.setattr(cps_module, "QRF", FakeQRF)
+
+    import policyengine_us
+    import policyengine_us_data.datasets.acs.acs as acs_module
+
+    monkeypatch.setattr(policyengine_us, "Microsimulation", FakeMicrosimulation)
+    monkeypatch.setattr(acs_module, "ACS_2022", object())
+
+    dataset = FakeDataset()
+    cps = {
+        "age": np.array([40], dtype=np.int32),
+        "spm_unit_capped_housing_subsidy_reported": np.array([0.0]),
+    }
+    person = pd.DataFrame({"dummy": [1]})
+    household = pd.DataFrame({"H_TENURE": [2]})
+
+    add_rent(dataset, cps, person, household)
+
+    assert opened_modes == ["r"]
+    assert not existing_path.exists()
+    np.testing.assert_array_equal(cps["rent"], np.array([1_000.0]))
+    np.testing.assert_array_equal(cps["real_estate_taxes"], np.array([250.0]))

@@ -954,17 +954,11 @@ class ExtendedCPS(Dataset):
     ):
         if not had_positive_mortgage_input:
             return
-        mortgage_values = data.get("first_home_mortgage_interest", {}).get(
-            time_period
-        )
+        mortgage_values = data.get("first_home_mortgage_interest", {}).get(time_period)
         person_values = data.get("home_mortgage_interest", {}).get(time_period)
         if (
-            mortgage_values is not None
-            and np.any(np.asarray(mortgage_values) > 0)
-        ) or (
-            person_values is not None
-            and np.any(np.asarray(person_values) > 0)
-        ):
+            mortgage_values is not None and np.any(np.asarray(mortgage_values) > 0)
+        ) or (person_values is not None and np.any(np.asarray(person_values) > 0)):
             return
         raise RuntimeError(
             "Structural mortgage conversion lost positive mortgage inputs."

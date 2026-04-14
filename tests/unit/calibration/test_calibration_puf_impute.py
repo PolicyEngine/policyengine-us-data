@@ -183,9 +183,7 @@ class TestPufCloneDataset:
         rng = np.random.default_rng(1)
         for predictor in DEMOGRAPHIC_PREDICTORS:
             if predictor not in data:
-                data[predictor] = {
-                    2024: rng.integers(0, 2, n).astype(np.float32)
-                }
+                data[predictor] = {2024: rng.integers(0, 2, n).astype(np.float32)}
         data["self_employment_income"] = {
             2024: np.zeros(n, dtype=np.float32),
         }

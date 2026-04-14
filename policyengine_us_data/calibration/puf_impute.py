@@ -951,9 +951,7 @@ def _validate_self_employment_qrf_predictions(
         neginf=lower,
     )
     clipped = np.clip(finite_predictions, lower, upper)
-    changed = np.count_nonzero(
-        ~np.isfinite(as_float) | (clipped != as_float)
-    )
+    changed = np.count_nonzero(~np.isfinite(as_float) | (clipped != as_float))
 
     def _finite_min_max(values: np.ndarray) -> tuple[float, float]:
         finite = values[np.isfinite(values)]

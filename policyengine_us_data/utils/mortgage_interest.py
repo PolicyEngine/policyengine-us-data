@@ -133,11 +133,7 @@ def convert_mortgage_interest_to_structural_inputs(
     tax_unit_ids = data.get("tax_unit_id", {}).get(tp)
     person_tax_unit_ids = data.get("person_tax_unit_id", {}).get(tp)
 
-    if (
-        person_ids is None
-        or tax_unit_ids is None
-        or person_tax_unit_ids is None
-    ):
+    if person_ids is None or tax_unit_ids is None or person_tax_unit_ids is None:
         return data
 
     n_persons = len(person_ids)

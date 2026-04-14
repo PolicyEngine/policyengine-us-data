@@ -602,10 +602,7 @@ def build_h5(
         time_period: clone_geo["state_fips"].astype(np.int32),
     }
     county_names = np.array(
-        [
-            County._member_names_[i].encode("utf-8")
-            for i in clone_geo["county_index"]
-        ]
+        [County._member_names_[i].encode("utf-8") for i in clone_geo["county_index"]]
     )
     data["county"] = {time_period: county_names}
     data["county_fips"] = {

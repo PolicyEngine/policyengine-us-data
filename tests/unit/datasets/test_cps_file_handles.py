@@ -237,9 +237,7 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
     )
 
 
-def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(
-    tmp_path, monkeypatch
-):
+def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(tmp_path, monkeypatch):
     existing_path = tmp_path / "existing_cps.h5"
     with pd.HDFStore(existing_path, mode="w") as store:
         store["stale_var"] = pd.Series([1, 2, 3])

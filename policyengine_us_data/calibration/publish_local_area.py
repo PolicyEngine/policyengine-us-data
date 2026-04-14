@@ -18,6 +18,12 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from policyengine_us import Microsimulation
+from policyengine_us_data.calibration.local_h5.geography_loader import (
+    CALIBRATION_WEIGHTS_SUFFIX,
+    GEOGRAPHY_FILENAME,
+    LEGACY_BLOCKS_FILENAME,
+    CalibrationGeographyLoader,
+)
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
 from policyengine_us_data.utils.data_upload import (
     upload_local_area_file,
@@ -30,10 +36,6 @@ from policyengine_us_data.calibration.calibration_utils import (
 )
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
-)
-from policyengine_us_data.calibration.clone_and_assign import (
-    load_geography,
-    reconstruct_geography_from_blocks,
 )
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
@@ -50,11 +52,6 @@ NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
 
 
 META_FILE = WORK_DIR / "checkpoint_meta.json"
-
-
-CALIBRATION_WEIGHTS_SUFFIX = "calibration_weights.npy"
-GEOGRAPHY_FILENAME = "geography_assignment.npz"
-LEGACY_BLOCKS_FILENAME = "stacked_blocks.npy"
 
 
 def _calibration_artifact_prefix(weights_path: Path) -> str:
@@ -135,58 +132,30 @@ def load_calibration_geography(
     geography_path: Optional[Path] = None,
     blocks_path: Optional[Path] = None,
 ):
-    resolved_geo, resolved_blocks = resolve_calibration_geography_paths(
-        weights_path=weights_path,
-        geography_path=geography_path,
-        blocks_path=blocks_path,
+    loader = CalibrationGeographyLoader()
+    resolved = loader.resolve_source(
+        weights_path=Path(weights_path),
+        geography_path=Path(geography_path) if geography_path is not None else None,
+        blocks_path=Path(blocks_path) if blocks_path is not None else None,
     )
-
-    if resolved_geo is not None:
-        geography = load_geography(resolved_geo)
-        if geography.n_records != n_records:
-            raise ValueError(
-                f"Geography artifact {resolved_geo} has n_records={geography.n_records}, "
-                f"expected {n_records}"
-            )
-        if n_clones is not None and geography.n_clones != n_clones:
-            raise ValueError(
-                f"Geography artifact {resolved_geo} has n_clones={geography.n_clones}, "
-                f"expected {n_clones}"
-            )
-        print(f"Loaded calibration geography from {resolved_geo}")
-        return geography
-
-    if resolved_blocks is not None:
-        block_geoids = np.asarray(
-            np.load(resolved_blocks, allow_pickle=True), dtype=str
-        )
-        if len(block_geoids) % n_records != 0:
-            raise ValueError(
-                f"Legacy blocks artifact {resolved_blocks} has {len(block_geoids)} "
-                f"rows, not divisible by n_records={n_records}"
-            )
-        inferred_n_clones = len(block_geoids) // n_records
-        if n_clones is not None and inferred_n_clones != n_clones:
-            raise ValueError(
-                f"Legacy blocks artifact {resolved_blocks} implies "
-                f"n_clones={inferred_n_clones}, expected {n_clones}"
-            )
-        print(
-            f"Reconstructing geography from legacy stacked blocks at {resolved_blocks}"
-        )
-        return reconstruct_geography_from_blocks(
-            block_geoids=block_geoids,
-            n_records=n_records,
-            n_clones=inferred_n_clones,
-        )
-
-    geo_hint = _sibling_artifact_path(weights_path, GEOGRAPHY_FILENAME)
-    legacy_hint = _sibling_artifact_path(weights_path, LEGACY_BLOCKS_FILENAME)
-    raise FileNotFoundError(
-        "No saved calibration geography found. Expected either "
-        f"{geo_hint} or {legacy_hint}. Re-run calibration on this branch or "
-        "provide --geography-path."
+    geography = loader.load(
+        weights_path=Path(weights_path),
+        n_records=n_records,
+        n_clones=n_clones,
+        geography_path=Path(geography_path) if geography_path is not None else None,
+        blocks_path=Path(blocks_path) if blocks_path is not None else None,
     )
+    if resolved is not None:
+        if resolved.kind == "saved_geography":
+            print(f"Loaded calibration geography from {resolved.path}")
+        elif resolved.kind == "calibration_package":
+            print(f"Loaded calibration geography from package {resolved.path}")
+        else:
+            print(
+                "Reconstructing geography from legacy stacked blocks at "
+                f"{resolved.path}"
+            )
+    return geography
 
 
 def validate_or_clear_checkpoints(fingerprint: str):

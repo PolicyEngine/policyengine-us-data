@@ -25,9 +25,7 @@ def _jsonable_request_value(value: Any) -> Any:
     if isinstance(value, list):
         return [_jsonable_request_value(item) for item in value]
     if isinstance(value, Mapping):
-        return {
-            str(key): _jsonable_request_value(item) for key, item in value.items()
-        }
+        return {str(key): _jsonable_request_value(item) for key, item in value.items()}
     if hasattr(value, "to_dict") and callable(value.to_dict):
         return value.to_dict()
     return value

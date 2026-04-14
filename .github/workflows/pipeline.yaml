@@ -15,7 +15,7 @@ on:
         type: string
       national_epochs:
         description: "Epochs for national calibration"
-        default: "4000"
+        default: "1000"
         type: string
       num_workers:
         description: "Number of parallel H5 workers"
@@ -63,7 +63,7 @@ jobs:
 
           GPU="${{ inputs.gpu || 'T4' }}"
           EPOCHS="${{ inputs.epochs || '1000' }}"
-          NATIONAL_EPOCHS="${{ inputs.national_epochs || '4000' }}"
+          NATIONAL_EPOCHS="${{ inputs.national_epochs || '1000' }}"
           NUM_WORKERS="${{ inputs.num_workers || '50' }}"
           SKIP_NATIONAL="${{ inputs.skip_national || 'false' }}"
           RESUME_RUN_ID="${{ inputs.resume_run_id || '' }}"

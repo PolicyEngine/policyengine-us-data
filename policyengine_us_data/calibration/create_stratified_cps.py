@@ -5,7 +5,7 @@ while maintaining diversity in lower income strata for poverty analysis.
 Strategy:
 - Per-bracket caps on the high-AGI tail (avoids PUF-template pile-up above $10M
   and ensures the $1M-$10M middle-high range has enough records for calibration)
-- Uniform sample from the middle range below $500k
+- Uniform sample from the middle range below the first high-AGI bracket floor
 - Optional: slight oversample of bottom quartile for poverty-focused analysis
 """
 
@@ -42,6 +42,24 @@ def _format_agi(x):
     return f"${x / 1e3:.0f}k"
 
 
+def _top_agi_floor(high_agi_brackets):
+    if not high_agi_brackets:
+        raise ValueError("high_agi_brackets must not be empty")
+    return float(high_agi_brackets[0][0])
+
+
+def _split_non_top_strata(agi, top_agi_floor):
+    non_top_mask = agi < top_agi_floor
+    non_top_agi = agi[non_top_mask]
+    if len(non_top_agi) == 0:
+        bottom_25_threshold = 0.0
+    else:
+        bottom_25_threshold = float(np.percentile(non_top_agi, 25))
+    bottom_mask = non_top_mask & (agi < bottom_25_threshold)
+    middle_mask = non_top_mask & (agi >= bottom_25_threshold)
+    return non_top_mask, bottom_mask, middle_mask, bottom_25_threshold
+
+
 def create_stratified_cps_dataset(
     target_households=30_000,
     oversample_poor=False,
@@ -65,6 +83,7 @@ def create_stratified_cps_dataset(
     """
     if high_agi_brackets is None:
         high_agi_brackets = HIGH_AGI_BRACKETS
+    top_agi_floor = _top_agi_floor(high_agi_brackets)
     print("\n" + "=" * 70)
     print("CREATING STRATIFIED CPS DATASET")
     print("=" * 70)
@@ -146,23 +165,19 @@ def create_stratified_cps_dataset(
     print(f"\n  High-AGI total selected: {n_top_selected:,}")
 
     # === Strata 2 & 3: Middle and bottom sampling ===
-    # Everything below the top-bracket floor ($500k) is split by the 25th
+    # Everything below the top-bracket floor is split by the 25th
     # percentile of the non-top records.
-    non_top_mask = agi < TOP_AGI_FLOOR
-    non_top_agi = agi[non_top_mask]
-    if len(non_top_agi) == 0:
-        bottom_25_threshold = 0.0
-    else:
-        bottom_25_threshold = float(np.percentile(non_top_agi, 25))
-    bottom_mask = non_top_mask & (agi < bottom_25_threshold)
-    middle_mask = non_top_mask & (agi >= bottom_25_threshold)
+    non_top_mask, bottom_mask, middle_mask, bottom_25_threshold = _split_non_top_strata(
+        agi,
+        top_agi_floor,
+    )
     n_bottom_25 = int(bottom_mask.sum())
     n_middle = int(middle_mask.sum())
 
-    print(f"\nStratum sizes (below ${TOP_AGI_FLOOR:,.0f}):")
+    print(f"\nStratum sizes (below ${top_agi_floor:,.0f}):")
     print(f"  Bottom 25% (AGI < ${bottom_25_threshold:,.0f}): {n_bottom_25:,}")
     print(
-        f"  Middle [${bottom_25_threshold:,.0f}, ${TOP_AGI_FLOOR:,.0f}): {n_middle:,}"
+        f"  Middle [${bottom_25_threshold:,.0f}, ${top_agi_floor:,.0f}): {n_middle:,}"
     )
 
     remaining_quota = target_households - n_top_selected
@@ -214,7 +229,7 @@ def create_stratified_cps_dataset(
 
     print(f"\nFinal selection:")
     print(
-        f"  High-AGI (>= ${TOP_AGI_FLOOR:,.0f}): "
+        f"  High-AGI (>= ${top_agi_floor:,.0f}): "
         f"{int((selected_mask & ~non_top_mask).sum()):,}"
     )
     print(f"  Middle: {int((selected_mask & middle_mask).sum()):,} / {n_middle:,}")

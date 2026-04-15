@@ -20,6 +20,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_ONLY_IMPUTED_VARIABLES,
     CPS_CLONE_FEATURE_PREDICTORS,
     CPS_STAGE2_INCOME_PREDICTORS,
+    ExtendedCPS,
     _build_clone_test_frame,
     _derive_overtime_occupation_inputs,
     _impute_clone_cps_features,
@@ -137,6 +138,24 @@ class TestVariableListConsistency:
         assert "spm_unit_capped_work_childcare_expenses" not in set(
             CPS_ONLY_IMPUTED_VARIABLES
         )
+
+
+class TestStructuralMortgageValidation:
+    def test_positive_mortgage_input_ignores_non_mortgage_interest_deduction(self):
+        data = {
+            "deductible_mortgage_interest": {2024: np.array([0.0, 0.0])},
+            "interest_deduction": {2024: np.array([2_500.0])},
+        }
+
+        assert ExtendedCPS._has_positive_mortgage_input(data, 2024) is False
+
+    def test_positive_mortgage_input_detects_positive_deductible_interest(self):
+        data = {
+            "deductible_mortgage_interest": {2024: np.array([0.0, 2_500.0])},
+            "interest_deduction": {2024: np.array([2_500.0])},
+        }
+
+        assert ExtendedCPS._has_positive_mortgage_input(data, 2024) is True
 
 
 class TestCloneChildcareDerivation:

@@ -940,10 +940,9 @@ class ExtendedCPS(Dataset):
 
     @staticmethod
     def _has_positive_mortgage_input(data, time_period):
-        for variable in ("deductible_mortgage_interest", "interest_deduction"):
-            values = data.get(variable, {}).get(time_period)
-            if values is not None and np.any(np.asarray(values) > 0):
-                return True
+        values = data.get("deductible_mortgage_interest", {}).get(time_period)
+        if values is not None and np.any(np.asarray(values) > 0):
+            return True
         return False
 
     @staticmethod

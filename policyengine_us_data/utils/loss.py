@@ -27,6 +27,7 @@ from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 # database so this dict can be deleted.  See PR #488.
 
 HARD_CODED_TOTALS = {
+    "employer_sponsored_insurance_premiums": 1_002.9e9,
     "health_insurance_premiums_without_medicare_part_b": 385e9,
     "other_medical_expenses": 278e9,
     "medicare_part_b_premiums": get_beneficiary_paid_medicare_part_b_premiums_target(

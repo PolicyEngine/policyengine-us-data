@@ -98,6 +98,8 @@ include:
     geo_level: national
   - variable: eitc
     geo_level: national
+  - variable: employer_sponsored_insurance_premiums
+    geo_level: national
   - variable: health_insurance_premiums_without_medicare_part_b
     geo_level: national
   - variable: medicaid

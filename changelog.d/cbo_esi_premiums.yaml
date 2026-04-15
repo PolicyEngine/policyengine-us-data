@@ -1,0 +1,4 @@
+- bump: minor
+  changes:
+    added:
+      - Calibrate employer-sponsored insurance premiums and seed CPS policyholder ESI contributions for CBO-style income concepts.

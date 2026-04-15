@@ -7,12 +7,22 @@ Uses in-memory SQLite DBs, self-contained.
 import unittest
 import tempfile
 import os
+import pickle
+from collections import namedtuple
+from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine, text
 
 from policyengine_us_data.calibration.unified_matrix_builder import (
     UnifiedMatrixBuilder,
+    _compute_single_state,
+    _compute_single_state_group_counties,
+    _format_duration,
+    _init_clone_worker,
+    _process_single_clone,
+    _validate_chunked_geography,
 )
 from policyengine_us_data.db.create_database_tables import (
     TARGET_OVERVIEW_VIEW,
@@ -579,14 +589,67 @@ class _FakeSimulation:
         return _FakeArrayResult(np.ones(n, dtype=np.float32))
 
 
-import numpy as np
-from unittest.mock import patch, MagicMock
-from collections import namedtuple
-
 _FakeGeo = namedtuple(
     "FakeGeo",
     ["state_fips", "n_records", "county_fips", "block_geoid"],
 )
+
+_FakeChunkedGeo = namedtuple(
+    "FakeChunkedGeo",
+    [
+        "block_geoid",
+        "cd_geoid",
+        "county_fips",
+        "state_fips",
+        "n_records",
+        "n_clones",
+    ],
+)
+
+
+class TestValidateChunkedGeography(unittest.TestCase):
+    def test_accepts_complete_geography(self):
+        geo = _FakeChunkedGeo(
+            block_geoid=np.array(["371830001001001", "371830001001002"]),
+            cd_geoid=np.array(["3701", "3701"]),
+            county_fips=np.array(["37183", "37183"]),
+            state_fips=np.array([37, 37], dtype=np.int32),
+            n_records=1,
+            n_clones=2,
+        )
+
+        _validate_chunked_geography(geo, n_total=2)
+
+    def test_rejects_missing_cd_geoid(self):
+        geo = _FakeGeo(
+            state_fips=np.array([37]),
+            n_records=1,
+            county_fips=np.array(["37183"]),
+            block_geoid=np.array(["371830001001001"]),
+        )
+
+        with self.assertRaisesRegex(ValueError, "cd_geoid"):
+            _validate_chunked_geography(geo, n_total=1)
+
+    def test_rejects_mismatched_lengths(self):
+        geo = _FakeChunkedGeo(
+            block_geoid=np.array(["371830001001001", "371830001001002"]),
+            cd_geoid=np.array(["3701"]),
+            county_fips=np.array(["37183", "37183"]),
+            state_fips=np.array([37, 37], dtype=np.int32),
+            n_records=1,
+            n_clones=2,
+        )
+
+        with self.assertRaisesRegex(ValueError, "geography.cd_geoid"):
+            _validate_chunked_geography(geo, n_total=2)
+
+
+class TestFormatDuration(unittest.TestCase):
+    def test_formats_seconds_minutes_and_hours(self):
+        self.assertEqual(_format_duration(4.4), "4s")
+        self.assertEqual(_format_duration(65), "1m 05s")
+        self.assertEqual(_format_duration(3661), "1h 01m 01s")
 
 
 class TestBuildStateValues(unittest.TestCase):
@@ -940,16 +1003,6 @@ class TestBuildCountyValues(unittest.TestCase):
         assert len(deleted_vars) >= 2
         # "county" should NOT be deleted
         assert "county" not in deleted_vars
-
-
-import pickle
-
-from policyengine_us_data.calibration.unified_matrix_builder import (
-    _compute_single_state,
-    _compute_single_state_group_counties,
-    _init_clone_worker,
-    _process_single_clone,
-)
 
 
 class TestParallelWorkerFunctions(unittest.TestCase):

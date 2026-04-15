@@ -42,6 +42,37 @@ COUNTY_DEPENDENT_VARS = {
 }
 
 
+def _validate_chunked_geography(geography, n_total: int) -> None:
+    """Validate geography arrays before chunked matrix slicing."""
+    required_arrays = (
+        "block_geoid",
+        "cd_geoid",
+        "county_fips",
+        "state_fips",
+    )
+    for field in required_arrays:
+        if not hasattr(geography, field):
+            raise ValueError(f"geography is missing required field '{field}'")
+        actual = len(getattr(geography, field))
+        if actual != n_total:
+            raise ValueError(
+                f"geography.{field} has length {actual}, expected {n_total} "
+                "(n_records * n_clones)"
+            )
+
+
+def _format_duration(seconds: float) -> str:
+    """Format elapsed seconds for progress logs."""
+    seconds = max(0, int(round(seconds)))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {seconds:02d}s"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
 def _current_rss_mb() -> Optional[float]:
     try:
         import psutil
@@ -2746,6 +2777,7 @@ class UnifiedMatrixBuilder:
         n_records = geography.n_records
         n_clones = geography.n_clones
         n_total = n_records * n_clones
+        _validate_chunked_geography(geography, n_total)
 
         targets_df = self._query_targets(target_filter or {})
         if len(targets_df) == 0:
@@ -2842,6 +2874,10 @@ class UnifiedMatrixBuilder:
             str(targets_df.iloc[i]["variable"]) for i in range(n_targets)
         ]
 
+        t_build = time.time()
+        processed_chunk_times: list[float] = []
+        cached_chunks = 0
+
         for chunk_id, col_start in enumerate(range(0, n_total, chunk_size)):
             t_chunk = time.time()
             col_end = min(col_start + chunk_size, n_total)
@@ -2849,12 +2885,14 @@ class UnifiedMatrixBuilder:
             h5_path = h5_dir / f"chunk_{chunk_id:06d}.h5"
 
             if resume_chunks and coo_path.exists():
+                cached_chunks += 1
                 logger.info(
-                    "Chunk %d/%d cached: cols %d-%d",
+                    "Chunk %d/%d cached: cols %d-%d, cached=%d",
                     chunk_id + 1,
                     n_chunks,
                     col_start,
                     col_end - 1,
+                    cached_chunks,
                 )
                 continue
 
@@ -3056,11 +3094,18 @@ class UnifiedMatrixBuilder:
             if not keep_chunks and h5_path.exists():
                 h5_path.unlink()
 
+            chunk_seconds = time.time() - t_chunk
+            processed_chunk_times.append(chunk_seconds)
+            remaining_chunks = n_chunks - (chunk_id + 1)
+            avg_seconds = float(np.mean(processed_chunk_times))
+            eta_seconds = avg_seconds * remaining_chunks
+            elapsed_seconds = time.time() - t_build
             rss = _current_rss_mb()
             rss_part = f", rss={rss:,.0f} MB" if rss is not None else ""
             logger.info(
                 "Chunk %d/%d: cols %d-%d, hh=%d, persons=%d, "
-                "states=%d, counties=%d, cds=%d, nnz=%d, %.1fs%s",
+                "states=%d, counties=%d, cds=%d, nnz=%d, "
+                "chunk=%s, avg=%s, elapsed=%s, eta=%s%s",
                 chunk_id + 1,
                 n_chunks,
                 col_start,
@@ -3071,7 +3116,10 @@ class UnifiedMatrixBuilder:
                 summary.unique_counties,
                 summary.unique_cds,
                 len(vals),
-                time.time() - t_chunk,
+                _format_duration(chunk_seconds),
+                _format_duration(avg_seconds),
+                _format_duration(elapsed_seconds),
+                _format_duration(eta_seconds),
                 rss_part,
             )
 

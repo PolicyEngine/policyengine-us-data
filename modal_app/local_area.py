@@ -1106,7 +1106,6 @@ def coordinate_national_publish(
     n_clones: int = 430,
     validate: bool = True,
     run_id: str = "",
-    expected_fingerprint: str = "",
 ) -> Dict:
     """Build and upload a national US.h5 from national weights."""
     setup_gcp_credentials()
@@ -1181,7 +1180,6 @@ def coordinate_national_publish(
     fingerprint = _resolve_scope_fingerprint(
         inputs=fingerprint_inputs,
         scope="national",
-        expected_fingerprint=expected_fingerprint,
     )
     run_dir = staging_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)

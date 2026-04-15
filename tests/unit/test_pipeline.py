@@ -78,7 +78,6 @@ class TestRunMetadata:
 
         assert meta.fingerprint == "legacy-fingerprint"
         assert meta.regional_fingerprint == "legacy-fingerprint"
-        assert meta.national_fingerprint is None
 
     def test_roundtrip(self):
         meta = RunMetadata(
@@ -105,14 +104,12 @@ class TestRunMetadata:
             start_time="now",
             status="running",
             regional_fingerprint="regional-fp",
-            national_fingerprint="national-fp",
         )
 
         payload = meta.to_dict()
 
         assert payload["fingerprint"] == "regional-fp"
         assert payload["regional_fingerprint"] == "regional-fp"
-        assert payload["national_fingerprint"] == "national-fp"
 
     def test_step_timings_default_empty(self):
         meta = RunMetadata(

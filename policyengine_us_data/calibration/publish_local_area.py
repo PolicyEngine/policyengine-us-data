@@ -14,7 +14,7 @@ import shutil
 
 import numpy as np
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.calibration.local_h5.fingerprinting import (
@@ -22,9 +22,6 @@ from policyengine_us_data.calibration.local_h5.fingerprinting import (
     PublishingInputBundle,
 )
 from policyengine_us_data.calibration.local_h5.geography_loader import (
-    CALIBRATION_WEIGHTS_SUFFIX,
-    GEOGRAPHY_FILENAME,
-    LEGACY_BLOCKS_FILENAME,
     CalibrationGeographyLoader,
 )
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
@@ -57,41 +54,6 @@ NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
 META_FILE = WORK_DIR / "checkpoint_meta.json"
 
 
-def _calibration_artifact_prefix(weights_path: Path) -> str:
-    if weights_path.name.endswith(CALIBRATION_WEIGHTS_SUFFIX):
-        return weights_path.name[: -len(CALIBRATION_WEIGHTS_SUFFIX)]
-    return ""
-
-
-def _sibling_artifact_path(weights_path: Path, artifact_name: str) -> Path:
-    prefix = _calibration_artifact_prefix(weights_path)
-    return weights_path.with_name(f"{prefix}{artifact_name}")
-
-
-def resolve_calibration_geography_paths(
-    weights_path: Path,
-    geography_path: Optional[Path] = None,
-    blocks_path: Optional[Path] = None,
-) -> Tuple[Optional[Path], Optional[Path]]:
-    geo_candidates = []
-    block_candidates = []
-    if geography_path is not None:
-        geo_candidates.append(Path(geography_path))
-    geo_candidates.append(_sibling_artifact_path(weights_path, GEOGRAPHY_FILENAME))
-
-    if blocks_path is not None:
-        block_candidates.append(Path(blocks_path))
-    block_candidates.append(
-        _sibling_artifact_path(weights_path, LEGACY_BLOCKS_FILENAME)
-    )
-    block_candidates.append(weights_path.with_name(LEGACY_BLOCKS_FILENAME))
-
-    resolved_geo = next((path for path in geo_candidates if path.exists()), None)
-    resolved_blocks = next(
-        (path for path in block_candidates if path.exists()),
-        None,
-    )
-    return resolved_geo, resolved_blocks
 def compute_input_fingerprint(
     weights_path: Path,
     dataset_path: Path,

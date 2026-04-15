@@ -105,7 +105,6 @@ class RunMetadata:
     resume_history: list = field(default_factory=list)
     fingerprint: Optional[str] = None
     regional_fingerprint: Optional[str] = None
-    national_fingerprint: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.regional_fingerprint is None and self.fingerprint is not None:
@@ -940,7 +939,6 @@ def run_pipeline(
                     n_clones=n_clones,
                     validate=True,
                     run_id=run_id,
-                    expected_fingerprint=meta.national_fingerprint or "",
                 )
                 print(
                     f"    → coordinate_national_publish fc: {national_h5_handle.object_id}"
@@ -979,11 +977,6 @@ def run_pipeline(
                     else national_h5_result
                 )
                 print(f"  National H5: {national_msg}")
-                if isinstance(national_h5_result, dict) and national_h5_result.get(
-                    "fingerprint"
-                ):
-                    meta.national_fingerprint = national_h5_result["fingerprint"]
-                    write_run_meta(meta, pipeline_volume)
 
             # ── Aggregate validation results ──
             _write_validation_diagnostics(

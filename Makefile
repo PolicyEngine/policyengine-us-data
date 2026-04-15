@@ -259,7 +259,7 @@ pipeline:
 clean:
 	rm -f policyengine_us_data/storage/*.h5
 	rm -f policyengine_us_data/storage/*.db
-	git ls-files --others --ignored --exclude-standard -- '*.csv' | grep -v '^\.venv/' | xargs -r rm -f
+	git ls-files --others --ignored --exclude-standard -- '*.csv' | grep -Ev '(^|/)(\.venv|venv|env|\.tox|\.nox|node_modules)/' | xargs -r rm -f
 	rm -rf policyengine_us_data/docs/_build
 
 build:

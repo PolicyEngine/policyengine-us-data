@@ -271,6 +271,8 @@ def _resolve_request_input(
         request_input,
         geography=geography,
     )
+    if request is None:
+        return _work_item_key(request_input), None
     return _request_key(request), request
 
 
@@ -406,6 +408,12 @@ def main(argv: list[str] | None = None):
                 area_catalog=area_catalog,
                 geography=geography,
             )
+            if request is None:
+                print(
+                    f"Skipping {request_key}: no matching geography in legacy work item",
+                    file=sys.stderr,
+                )
+                continue
 
             output_path = output_dir / request.output_relative_path
             output_path.parent.mkdir(parents=True, exist_ok=True)

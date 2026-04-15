@@ -98,3 +98,21 @@ def test_resolve_request_input_converts_one_legacy_work_item_at_a_time():
     assert request.area_type == "district"
     assert request.area_id == "AK-01"
     assert catalog.received_item == (work_item, geography)
+
+
+def test_resolve_request_input_skips_legacy_work_item_without_request():
+    catalog = FakeAreaCatalog()
+    geography = object()
+    work_item = {"type": "state", "id": "WY"}
+    catalog.none_for = work_item
+
+    request_key, request = worker_script._resolve_request_input(
+        request_input_mode="work_items",
+        request_input=work_item,
+        area_catalog=catalog,
+        geography=geography,
+    )
+
+    assert request_key == "state:WY"
+    assert request is None
+    assert catalog.received_item == (work_item, geography)

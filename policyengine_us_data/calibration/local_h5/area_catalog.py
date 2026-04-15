@@ -132,7 +132,7 @@ class USAreaCatalog:
         work_item: Mapping[str, Any],
         *,
         geography: Any,
-    ) -> AreaBuildRequest:
+    ) -> AreaBuildRequest | None:
         """Convert one legacy worker item into a typed build request."""
 
         item_type = str(work_item["type"])
@@ -145,7 +145,11 @@ class USAreaCatalog:
                 cd for cd in cd_geoids if self._state_fips_from_cd(cd) == state_fips
             )
             if not state_cd_geoids:
-                raise ValueError(f"No CDs for {item_id}")
+                # Keep the legacy --work-items path compatible with partial
+                # geographies: the old worker loop skipped empty state items
+                # instead of treating them as hard failures. Typed requests stay
+                # strict because they are already the canonical enumerated set.
+                return None
             return self._build_state_request(
                 state_code=item_id,
                 state_fips=state_fips,
@@ -178,8 +182,12 @@ class USAreaCatalog:
         """Convert a legacy worker batch into typed build requests."""
 
         return tuple(
-            self.build_request_from_work_item(item, geography=geography)
-            for item in work_items
+            request
+            for request in (
+                self.build_request_from_work_item(item, geography=geography)
+                for item in work_items
+            )
+            if request is not None
         )
 
     def _build_state_request(
@@ -258,15 +266,28 @@ class USAreaCatalog:
         )
 
     def _nyc_cd_geoids(self, geography: Any) -> tuple[str, ...]:
-        county_fips = getattr(geography, "county_fips", None)
-        if county_fips is None:
-            return ()
         nyc_cd_geoids = {
             str(cd_geoid)
-            for cd_geoid, county in zip(geography.cd_geoid, county_fips, strict=False)
+            for cd_geoid, county in self._validated_cd_county_pairs(geography)
             if str(county) in self._nyc_county_fips_set
         }
         return tuple(sorted(nyc_cd_geoids))
+
+    @staticmethod
+    def _validated_cd_county_pairs(geography: Any) -> tuple[tuple[Any, Any], ...]:
+        county_fips = getattr(geography, "county_fips", None)
+        if county_fips is None:
+            return ()
+
+        cd_geoids = tuple(geography.cd_geoid)
+        county_values = tuple(county_fips)
+        if len(cd_geoids) != len(county_values):
+            raise ValueError(
+                "Geography mismatch: cd_geoid and county_fips have different "
+                f"lengths ({len(cd_geoids)} vs {len(county_values)})"
+            )
+
+        return tuple(zip(cd_geoids, county_values, strict=True))
 
     def _state_fips_from_code(self, state_code: str) -> int:
         try:

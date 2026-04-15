@@ -82,6 +82,33 @@ def test_build_request_from_work_item_preserves_legacy_district_fallback():
     assert request.validation_geographic_ids == ("298",)
 
 
+def test_build_request_from_work_item_skips_legacy_state_without_matching_cds():
+    catalog = make_catalog()
+    geography = make_geography(cd_geoids=["3601"])
+
+    request = catalog.build_request_from_work_item(
+        {"type": "state", "id": "AK"},
+        geography=geography,
+    )
+
+    assert request is None
+
+
+def test_build_city_requests_fails_on_mismatched_county_and_cd_shapes():
+    catalog = make_catalog()
+    geography = make_geography(
+        cd_geoids=["3601", "3603"],
+        county_fips=["36061"],
+    )
+
+    try:
+        catalog.build_city_requests(geography)
+    except ValueError as exc:
+        assert "cd_geoid and county_fips have different lengths" in str(exc)
+    else:
+        raise AssertionError("Expected mismatched geography to raise ValueError")
+
+
 def test_default_catalog_owns_internal_rule_defaults(monkeypatch):
     monkeypatch.setattr(
         area_catalog_module,

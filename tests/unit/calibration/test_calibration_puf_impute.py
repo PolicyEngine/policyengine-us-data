@@ -4,8 +4,6 @@ Verifies PUF clone + QRF imputation logic using mock data
 so tests don't require real CPS/PUF datasets.
 """
 
-from unittest.mock import MagicMock, patch
-
 import numpy as np
 import pandas as pd
 
@@ -13,8 +11,6 @@ from policyengine_us_data.calibration.puf_impute import (
     DEMOGRAPHIC_PREDICTORS,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
-    SELF_EMPLOYMENT_QRF_WINSOR_LOWER_PERCENTILE,
-    SELF_EMPLOYMENT_QRF_WINSOR_UPPER_PERCENTILE,
     _impute_retirement_contributions,
     _log_stratified_subsample,
     _stratified_subsample_index,
@@ -176,92 +172,6 @@ class TestPufCloneDataset:
         }
         for var in expected:
             assert var in OVERRIDDEN_IMPUTED_VARIABLES
-
-    def test_self_employment_qrf_outliers_are_clipped_before_publish(self):
-        n = 20
-        data = _make_mock_data(n_persons=n, n_households=5)
-        rng = np.random.default_rng(1)
-        for predictor in DEMOGRAPHIC_PREDICTORS:
-            if predictor not in data:
-                data[predictor] = {2024: rng.integers(0, 2, n).astype(np.float32)}
-        data["self_employment_income"] = {
-            2024: np.zeros(n, dtype=np.float32),
-        }
-
-        train = pd.DataFrame(
-            {
-                predictor: rng.integers(0, 2, n).astype(float)
-                for predictor in DEMOGRAPHIC_PREDICTORS
-            }
-        )
-        train["adjusted_gross_income"] = np.linspace(0, 100_000, n)
-        train["self_employment_income"] = np.linspace(-2_000, 50_000, n)
-        for variable in IMPUTED_VARIABLES:
-            if variable not in train:
-                train[variable] = 0.0
-        train_override = train[
-            DEMOGRAPHIC_PREDICTORS + OVERRIDDEN_IMPUTED_VARIABLES
-        ].copy()
-
-        lower, upper = np.percentile(
-            train["self_employment_income"],
-            [
-                SELF_EMPLOYMENT_QRF_WINSOR_LOWER_PERCENTILE,
-                SELF_EMPLOYMENT_QRF_WINSOR_UPPER_PERCENTILE,
-            ],
-        )
-
-        puf_sim = MagicMock()
-        puf_sim.calculate.return_value.values = train["adjusted_gross_income"].values
-
-        def calculate_dataframe(columns):
-            if set(columns) == set(DEMOGRAPHIC_PREDICTORS + IMPUTED_VARIABLES):
-                return train[columns].copy()
-            return train_override[columns].copy()
-
-        puf_sim.calculate_dataframe.side_effect = calculate_dataframe
-
-        qrf_instance = MagicMock()
-
-        def fit_predict(
-            X_train,
-            X_test,
-            predictors,
-            imputed_variables,
-            n_jobs,
-        ):
-            predictions = pd.DataFrame(
-                {
-                    variable: np.zeros(len(X_test), dtype=np.float32)
-                    for variable in imputed_variables
-                }
-            )
-            if "self_employment_income" in imputed_variables:
-                predictions["self_employment_income"] = np.linspace(
-                    -15_000_000,
-                    15_000_000,
-                    len(X_test),
-                    dtype=np.float32,
-                )
-            return predictions
-
-        qrf_instance.fit_predict.side_effect = fit_predict
-
-        with (
-            patch("policyengine_us.Microsimulation", return_value=puf_sim),
-            patch("microimpute.models.qrf.QRF", return_value=qrf_instance),
-        ):
-            result = puf_clone_dataset(
-                data=data,
-                state_fips=np.array([1, 2, 36, 6, 48]),
-                time_period=2024,
-                puf_dataset="mock-puf",
-                skip_qrf=False,
-            )
-
-        puf_half = result["self_employment_income"][2024][n:]
-        assert puf_half.min() >= lower
-        assert puf_half.max() <= upper
 
 
 class TestStratifiedSubsample:

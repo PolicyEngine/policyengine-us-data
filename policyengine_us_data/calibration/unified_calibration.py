@@ -293,6 +293,32 @@ def parse_args(argv=None):
         help="Build matrix + save package, skip fitting",
     )
     parser.add_argument(
+        "--chunked-matrix",
+        action="store_true",
+        help="Build the calibration matrix in clone-household chunks.",
+    )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=25_000,
+        help="Clone-household columns per chunk for --chunked-matrix.",
+    )
+    parser.add_argument(
+        "--chunk-dir",
+        default=None,
+        help="Directory for chunked matrix COO/H5 artifacts.",
+    )
+    parser.add_argument(
+        "--keep-chunks",
+        action="store_true",
+        help="Keep temporary chunk H5 files after --chunked-matrix.",
+    )
+    parser.add_argument(
+        "--resume-chunks",
+        action="store_true",
+        help="Reuse existing chunk COO files in --chunk-dir when present.",
+    )
+    parser.add_argument(
         "--package-path",
         default=None,
         help="Load pre-built calibration package (skip matrix build)",
@@ -1128,6 +1154,11 @@ def run_calibration(
     workers: int = 1,
     resume_from: str = None,
     checkpoint_path: str = None,
+    chunked_matrix: bool = False,
+    chunk_size: int = 25_000,
+    chunk_dir: str = None,
+    keep_chunks: bool = False,
+    resume_chunks: bool = False,
 ):
     """Run unified calibration pipeline.
 
@@ -1157,6 +1188,11 @@ def run_calibration(
         resume_from: Path to a checkpoint or weights file to
             continue fitting from.
         checkpoint_path: Where to save resumable fit checkpoints.
+        chunked_matrix: Build matrix in clone-household chunks.
+        chunk_size: Clone-household columns per chunk.
+        chunk_dir: Directory for chunked COO/H5 artifacts.
+        keep_chunks: Keep temporary chunk H5 files.
+        resume_chunks: Reuse existing chunk COO files.
 
     Returns:
         (weights, targets_df, X_sparse, target_names, geography_info)
@@ -1350,16 +1386,33 @@ def run_calibration(
     do_rerandomize = not skip_takeup_rerandomize
     t_matrix = time.time()
     builder.dataset_path = dataset_for_matrix
-    targets_df, X_sparse, target_names = builder.build_matrix(
-        geography=geography,
-        sim=sim,
-        target_filter=target_filter,
-        hierarchical_domains=hierarchical_domains,
-        sim_modifier=sim_modifier,
-        rerandomize_takeup=do_rerandomize,
-        county_level=not skip_county,
-        workers=workers,
-    )
+    if chunked_matrix:
+        if workers != 1:
+            logger.warning(
+                "--workers is ignored by --chunked-matrix; chunks run sequentially"
+            )
+        targets_df, X_sparse, target_names = builder.build_matrix_chunked(
+            geography=geography,
+            sim=sim,
+            target_filter=target_filter,
+            hierarchical_domains=hierarchical_domains,
+            chunk_size=chunk_size,
+            chunk_dir=chunk_dir,
+            keep_chunks=keep_chunks,
+            resume_chunks=resume_chunks,
+            rerandomize_takeup=do_rerandomize,
+        )
+    else:
+        targets_df, X_sparse, target_names = builder.build_matrix(
+            geography=geography,
+            sim=sim,
+            target_filter=target_filter,
+            hierarchical_domains=hierarchical_domains,
+            sim_modifier=sim_modifier,
+            rerandomize_takeup=do_rerandomize,
+            county_level=not skip_county,
+            workers=workers,
+        )
 
     builder.print_uprating_summary(targets_df)
     logger.info(
@@ -1387,6 +1440,9 @@ def run_calibration(
         "created_at": datetime.datetime.now().isoformat(),
         "target_config_path": target_config_path,
         "package_scope": "minimal" if target_config else "all_active_targets",
+        "matrix_builder": "chunked" if chunked_matrix else "precompute",
+        "chunk_size": chunk_size if chunked_matrix else None,
+        "chunk_dir": chunk_dir if chunked_matrix else None,
     }
     metadata.update(get_git_provenance())
     from policyengine_us_data.utils.manifest import compute_file_checksum
@@ -1601,6 +1657,11 @@ def main(argv=None):
         workers=args.workers,
         resume_from=args.resume_from,
         checkpoint_path=checkpoint_output_path,
+        chunked_matrix=args.chunked_matrix,
+        chunk_size=args.chunk_size,
+        chunk_dir=args.chunk_dir,
+        keep_chunks=args.keep_chunks,
+        resume_chunks=args.resume_chunks,
     )
 
     source_imputed = geography_info.get("dataset_for_matrix")

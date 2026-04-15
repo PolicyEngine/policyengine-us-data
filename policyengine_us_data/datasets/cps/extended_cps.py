@@ -178,6 +178,7 @@ _CPS_ONLY_SET = set(CPS_ONLY_IMPUTED_VARIABLES)
 CPS_STAGE2_DEMOGRAPHIC_PREDICTORS = [
     "age",
     "is_male",
+    "has_esi",
     "tax_unit_is_joint",
     "tax_unit_count_dependents",
 ]
@@ -743,6 +744,18 @@ def _apply_post_processing(predictions, X_test, time_period, data):
         )
         for col in org_cols:
             predictions[col] = constrained[col]
+
+    if "employer_sponsored_insurance_premiums" in predictions.columns:
+        for coverage_var in (
+            "has_esi",
+            "reported_has_employer_sponsored_health_coverage_at_interview",
+        ):
+            if coverage_var in X_test.columns:
+                covered = np.asarray(X_test[coverage_var], dtype=bool)
+                predictions.loc[
+                    ~covered, "employer_sponsored_insurance_premiums"
+                ] = 0
+                break
 
     return predictions
 

@@ -35,7 +35,12 @@ OPTIONAL_PERSON_COLUMNS = {
 def _resolve_person_usecols(
     available_columns, spm_unit_columns: list[str]
 ) -> list[str]:
-    requested_columns = PERSON_COLUMNS + spm_unit_columns + TAX_UNIT_COLUMNS
+    requested_columns = (
+        PERSON_COLUMNS
+        + sorted(OPTIONAL_PERSON_COLUMNS.difference(PERSON_COLUMNS))
+        + spm_unit_columns
+        + TAX_UNIT_COLUMNS
+    )
     available_columns = set(available_columns)
     missing_required = sorted(
         column

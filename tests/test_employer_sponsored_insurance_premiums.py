@@ -3,6 +3,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from policyengine_us_data.datasets.cps.census_cps import (
+    PERSON_COLUMNS,
+    TAX_UNIT_COLUMNS,
+    _resolve_person_usecols,
+)
 from policyengine_us_data.datasets.cps.cps import (
     _EMPLOYER_PAYS_ALL,
     _EMPLOYER_PAYS_SOME,
@@ -17,14 +22,16 @@ from policyengine_us_data.storage.calibration_targets.pull_hardcoded_targets imp
 )
 
 
-def test_census_cps_includes_esi_source_columns():
-    census_cps_path = Path(__file__).parent.parent / (
-        "policyengine_us_data/datasets/cps/census_cps.py"
-    )
-    content = census_cps_path.read_text()
+def test_resolve_person_usecols_requests_optional_esi_columns_when_available():
+    available = PERSON_COLUMNS + TAX_UNIT_COLUMNS + [
+        "NOW_OWNGRP",
+        "NOW_HIPAID",
+        "NOW_GRPFTYP",
+    ]
+    usecols = _resolve_person_usecols(available, spm_unit_columns=[])
 
     for column in ["NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP"]:
-        assert f'"{column}"' in content, f"{column} should be in PERSON_COLUMNS"
+        assert column in usecols
 
 
 def test_impute_employer_sponsored_insurance_premiums():

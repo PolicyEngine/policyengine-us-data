@@ -19,7 +19,9 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_CLONE_FEATURE_VARIABLES,
     CPS_ONLY_IMPUTED_VARIABLES,
     CPS_CLONE_FEATURE_PREDICTORS,
+    CPS_STAGE2_DEMOGRAPHIC_PREDICTORS,
     CPS_STAGE2_INCOME_PREDICTORS,
+    _apply_post_processing,
     _build_clone_test_frame,
     _derive_overtime_occupation_inputs,
     _impute_clone_cps_features,
@@ -64,6 +66,9 @@ class TestVariableListConsistency:
                 f"Stage-2 income predictor '{var}' not in "
                 f"IMPUTED_VARIABLES — won't have PUF-imputed values"
             )
+
+    def test_stage2_uses_esi_coverage_predictor(self):
+        assert "has_esi" in CPS_STAGE2_DEMOGRAPHIC_PREDICTORS
 
     def test_cps_only_vars_mostly_exist_in_tbs(self):
         """Most CPS-only variables should exist in policyengine-us."""
@@ -210,6 +215,26 @@ class TestCloneChildcareDerivation:
         )
 
         np.testing.assert_allclose(result, np.array([0.0]))
+
+
+class TestStage2PostProcessing:
+    def test_zeroes_esi_premiums_for_uncovered_clone_records(self):
+        predictions = pd.DataFrame(
+            {"employer_sponsored_insurance_premiums": [6_000.0, 4_000.0]}
+        )
+        x_test = pd.DataFrame({"has_esi": [True, False]})
+
+        result = _apply_post_processing(
+            predictions=predictions,
+            X_test=x_test,
+            time_period=2024,
+            data={"person_id": {2024: np.array([1, 2, 3, 4])}},
+        )
+
+        np.testing.assert_allclose(
+            result["employer_sponsored_insurance_premiums"].to_numpy(),
+            np.array([6_000.0, 0.0]),
+        )
 
 
 class TestRetirementConstraints:

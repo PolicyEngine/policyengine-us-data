@@ -92,6 +92,71 @@ CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP = {
 }
 
 
+_ESI_PLAN_PRIORS_2024 = {
+    # AHRQ MEPS-IC Table IV.A.1 (private sector, 2024). These plan-type
+    # averages seed CPS policyholder records; national calibration later
+    # aligns the aggregate to the BEA full-economy employer premium total.
+    "family": {
+        "total_premium": 21_207.52589669509,
+        "employee_contribution": 6_490.205059544782,
+    },
+    "self_only": {
+        "total_premium": 8_389.275834815255,
+        "employee_contribution": 1_909.5781466113417,
+    },
+}
+_HAS_CURRENT_OWN_ESI = 1
+_EMPLOYER_PAYS_ALL = 1
+_EMPLOYER_PAYS_SOME = 2
+_ESI_FAMILY_PLAN = 1
+_ESI_SELF_ONLY_PLAN = 2
+
+
+def impute_employer_sponsored_insurance_premiums(person: DataFrame) -> np.ndarray:
+    """Impute annual employer-paid ESI premiums for CPS policyholders."""
+
+    own_esi = person.NOW_OWNGRP.to_numpy(dtype=int) == _HAS_CURRENT_OWN_ESI
+    premium_status = person.NOW_HIPAID.to_numpy(dtype=int)
+    plan_type = person.NOW_GRPFTYP.to_numpy(dtype=int)
+    employee_paid = np.clip(person.PHIP_VAL.to_numpy(dtype=float), 0, None)
+
+    total_premium = np.where(
+        plan_type == _ESI_SELF_ONLY_PLAN,
+        _ESI_PLAN_PRIORS_2024["self_only"]["total_premium"],
+        _ESI_PLAN_PRIORS_2024["family"]["total_premium"],
+    )
+    average_employee_contribution = np.where(
+        plan_type == _ESI_SELF_ONLY_PLAN,
+        _ESI_PLAN_PRIORS_2024["self_only"]["employee_contribution"],
+        _ESI_PLAN_PRIORS_2024["family"]["employee_contribution"],
+    )
+    employee_share = np.where(
+        employee_paid > 0,
+        employee_paid,
+        average_employee_contribution,
+    )
+    employer_paid_when_some = np.clip(
+        total_premium - employee_share,
+        0,
+        total_premium,
+    )
+
+    employer_paid = np.where(
+        premium_status == _EMPLOYER_PAYS_ALL,
+        total_premium,
+        np.where(
+            premium_status == _EMPLOYER_PAYS_SOME,
+            employer_paid_when_some,
+            0,
+        ),
+    )
+    valid_owner_with_plan = own_esi & np.isin(
+        plan_type,
+        [_ESI_FAMILY_PLAN, _ESI_SELF_ONLY_PLAN],
+    )
+    return np.where(valid_owner_with_plan, employer_paid, 0)
+
+
 @contextmanager
 def _open_dataset_read_only(dataset_source):
     dataset = dataset_source(require=True)
@@ -843,6 +908,9 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     # "What is the annual amount of child support paid?"
     cps["child_support_expense"] = person.CHSP_VAL
     cps["health_insurance_premiums_without_medicare_part_b"] = person.PHIP_VAL
+    cps["employer_sponsored_insurance_premiums"] = (
+        impute_employer_sponsored_insurance_premiums(person)
+    )
     cps["over_the_counter_health_expenses"] = person.POTC_VAL
     cps["other_medical_expenses"] = person.PMED_VAL
     if supports_medicare_enrollment_input():

@@ -1,76 +1,114 @@
 \section{Background and related work}
 \label{sec:background}
 
-\subsection{The survey calibration problem}
+\subsection{Subnational microsimulation and spatial reweighting}
 
-Given a probability sample of $n$ units with initial design weights $d_i$ and a vector of auxiliary variables $\mathbf{x}_i \in \R^p$ for each unit $i$, survey calibration seeks adjusted weights $w_i$ such that the weighted sample totals reproduce known population totals:
+Subnational microsimulation usually starts from the same basic problem: a national survey contains
+the behavioural and demographic detail needed for policy modelling, but it does not contain enough
+observations in every local area to support direct estimation. Spatial microsimulation addresses
+that gap either by reweighting existing survey records or by constructing synthetic small-area
+populations from aggregate constraints \citep{tanton2014review, odonoghue2014review}.
+
+This distinction matters for the present paper. Our pipeline remains a reweighting system built on
+observed CPS households. We do clone households across sampled geographies, but the core empirical
+problem is still calibration of survey-based microdata to administrative targets. That makes
+classical calibration methods the closest reference point for the benchmark design.
+
+The spatial microsimulation literature also provides broader context. \citet{williamson1998},
+\citet{huang2001}, and \citet{harland2012} describe combinatorial and synthetic-population
+approaches that search over record assignments area by area. \citet{tanton2011} and
+\citet{lovelace2016} discuss reweighting approaches for small-area estimation and policy analysis.
+These methods are useful precedents, but they usually target one geographic layer at a time. Our
+setting requires one weighted microdata system to reproduce district-level, state-level, and
+national targets jointly.
+
+\subsection{Survey calibration}
+
+Let $i = 1, \ldots, n$ index sampled units, let $d_i$ denote the initial design weight for unit
+$i$, and let $\mathbf{x}_i \in \mathbb{R}^p$ denote the vector of auxiliary variables used for
+calibration. Survey calibration seeks adjusted weights $w_i$ such that the weighted sample totals
+match known population totals:
 \begin{equation}
-    \sum_{i=1}^{n} w_i \mathbf{x}_i = \mathbf{T}
+    \sum_{i=1}^{n} w_i \mathbf{x}_i = \mathbf{T},
     \label{eq:calibration_constraint}
 \end{equation}
-where $\mathbf{T} \in \R^m$ is the vector of $m$ known administrative or census totals. When $m < n$, the system is underdetermined and a distance criterion selects among feasible solutions. \citet{deville1992} formalized this as a constrained optimization problem: minimize a distance function $\sum_i G(w_i, d_i)$ subject to Equation~\ref{eq:calibration_constraint}, where $G$ is convex and satisfies $G(d_i, d_i) = 0$. The choice of $G$ determines the calibration method: a chi-squared distance yields the generalized regression (GREG) estimator, an exponential distance yields raking (multiplicative calibration), and a truncated distance yields bounded weight adjustments. \citet{sarndal2007} provides a comprehensive review of these methods and their statistical properties.
+where $\mathbf{T} \in \mathbb{R}^p$ is the vector of published totals
+\citep{deville1992, sarndal2007}. In practice, the auxiliary variables may be counts, indicators,
+or continuous quantities such as income components. When the target system is internally
+consistent, classical calibration methods seek exact reproduction of those totals.
 
-In the subnational setting addressed here, the constraint vector $\mathbf{T}$ contains targets at multiple geographic levels---congressional districts, states, and the nation---requiring that district totals sum to state totals, which sum to national totals. This hierarchical structure produces $m \approx 37{,}800$ simultaneous constraints with near-collinearity across levels, placing the problem beyond the regime where classical closed-form calibration methods operate reliably.
+The subnational problem in this paper extends that setup in two ways. First, the target vector
+contains variables from multiple administrative sources and therefore mixes count and dollar
+constraints. Second, those constraints are nested by geography: district-level totals should add to
+state totals, which should add to national totals after uprating and reconciliation. In the full
+production problem, that yields tens of thousands of targets with substantial collinearity across
+rows.
 
-Subnational microsimulation also sits within the broader spatial microsimulation literature. Reviews of static spatial microsimulation often distinguish between \emph{reweighting} methods, which begin from survey microdata and adjust weights to match small-area constraints, and \emph{synthetic reconstruction} methods, which construct new small-area populations from aggregate tables \citep{tanton2014review, odonoghue2014review}. This distinction matters for the present paper. Our method remains, at core, a calibration-weighting approach over observed CPS households, so GREG and IPF are the closest classical benchmarks. At the same time, by cloning households, assigning them to new geographies, and assembling area-specific output files, the pipeline also produces derived spatial microdata for small-area policy analysis, making it relevant to some synthetic-population use cases even though the empirical comparison in this paper focuses on calibration methods.
+\subsection{Generalized regression}
 
-\subsection{Generalized regression (GREG) estimation}
-
-The GREG estimator minimizes the chi-squared distance $\sum_i (w_i - d_i)^2 / d_i$ subject to Equation~\ref{eq:calibration_constraint}, yielding the closed-form solution:
+Generalized regression (GREG) calibration minimizes a distance from the initial weights while
+enforcing the calibration equations \citep{deville1992, sarndal2007}. With the usual chi-squared
+distance, the calibrated weight for unit $i$ can be written as
 \begin{equation}
-    w_i = d_i + d_i \, \mathbf{x}_i^\top \left(\sum_{j=1}^{n} d_j \, \mathbf{x}_j \mathbf{x}_j^\top\right)^{-1} \left(\mathbf{T} - \sum_{j=1}^{n} d_j \, \mathbf{x}_j\right)
+    w_i = d_i + d_i \mathbf{x}_i^\top
+    \left(\sum_{j=1}^{n} d_j \mathbf{x}_j \mathbf{x}_j^\top\right)^{-1}
+    \left(\mathbf{T} - \sum_{j=1}^{n} d_j \mathbf{x}_j\right).
     \label{eq:greg}
 \end{equation}
-This requires inverting a $p \times p$ matrix, where $p$ is the dimension of the auxiliary vector. When $p$ is moderate (tens to hundreds), GREG is computationally efficient, statistically well understood, and produces asymptotically unbiased estimators \citep{deville1992, sarndal2007}.
+GREG is attractive because it can accommodate quantitative targets directly and is well understood
+in survey statistics.
 
-GREG has two practical limitations in the subnational setting. First, the matrix inversion in Equation~\ref{eq:greg} becomes numerically ill-conditioned as $p$ grows into the thousands, particularly when constraints at different geographic levels are nearly collinear (e.g., the sum of district age counts within a state nearly equals the state age total). Second, GREG does not constrain weight signs: calibrated weights can become negative, which is undesirable for microsimulation since negative weights imply subtracting households from the population. Weight truncation or bounding after the fact restores non-negativity but violates the calibration constraints.
+Its weaknesses are also clear in a microsimulation setting. The matrix in
+Equation~\ref{eq:greg} becomes harder to invert reliably as the target system grows and the rows
+become more collinear. GREG can also assign negative weights. That is acceptable in some
+estimation settings, but it is awkward in a microdata file that will later be used for tax-benefit
+simulation, where analysts expect households to represent positive population mass.
 
-The Congressional Budget Office \citep{cbo2018}, Joint Committee on Taxation \citep{jct2023}, and Tax Policy Center \citep{tpc2024} use variants of GREG calibration for their national microsimulation models, where the number of calibration constraints is typically in the hundreds---well within GREG's reliable operating range.
+\subsection{Iterative proportional fitting and raking}
 
-\subsection{Iterative proportional fitting}
+Iterative proportional fitting \citep[IPF;][]{deming1940, ireland1968}, often called raking in
+survey practice, adjusts weights multiplicatively so that selected margins match published totals.
+When the margins are compatible and the algorithm converges, the fitted margins are matched
+exactly. IPF preserves non-negativity and avoids matrix inversion, which makes it a natural
+baseline for count-style calibration problems.
 
-Iterative proportional fitting \citep[IPF;][]{deming1940, ireland1968} adjusts cell counts in a contingency table to match given marginal totals. The algorithm cycles through dimensions, scaling each dimension's cells so that their marginal matches the target, then repeating until convergence. IPF converges to the maximum entropy solution subject to the marginal constraints \citep{ireland1968}. In the spatial microsimulation literature, it appears in both synthetic reconstruction and reweighting forms; the discussion here concerns the reweighting form that starts from survey microdata and updates weights rather than building a synthetic joint distribution from scratch \citep{tanton2014review}.
+IPF is narrower than GREG in scope. Classical IPF is built for categorical or margin-style
+constraints, not arbitrary linear dollar targets. It also does not naturally encode a large mixed
+system of district, state, and national constraints in one pass. For that reason, the benchmark in
+this paper uses IPF only on target subsets that fit its assumptions rather than forcing it onto the
+full production matrix.
 
-In the microsimulation context, IPF adjusts household weights to match cross-classified population counts---for example, persons by age group within each congressional district. IPF has several practical advantages: it preserves non-negativity by construction (weights are scaled multiplicatively, so positive weights remain positive), it requires no matrix inversion, and it scales well to high-dimensional contingency tables. EUROMOD, the EU-wide tax-benefit microsimulation model, uses IPF-based calibration to reweight national surveys to demographic benchmarks across member states.
+\subsection{Adjacent weighting literatures}
 
-However, IPF has three limitations relevant to subnational calibration. First, IPF does not naturally enforce hierarchical consistency: district-level targets produced by IPF do not automatically sum to the correct state totals, requiring post-hoc reconciliation that may introduce new inconsistencies. Second, IPF handles only count targets organized as contingency table margins; incorporating continuous-valued targets (e.g., aggregate income or benefit spending) requires auxiliary procedures outside the IPF framework. Third, IPF scales cell counts multiplicatively, which can produce extreme weights when initial cells are small or zero, and convergence slows or fails when marginal constraints are mutually inconsistent.
+Two adjacent literatures inform the framing even though they are not the main empirical baselines
+here. Small area estimation borrows strength across areas to improve local estimates from limited
+samples \citep{anderson2013}. Covariate-balancing methods in causal inference choose weights to
+balance observed covariates between treated and control units \citep{imai2014}. Both literatures
+share the broader idea that weighting can repair deficiencies in the observed sample, but they
+optimize for different inferential goals than the hierarchical administrative-target problem studied
+here.
 
-\subsection{Spatial microsimulation}
+\subsection{\texorpdfstring{$L_0$}{L0} regularization and the Hard Concrete distribution}
 
-Spatial microsimulation constructs small-area populations either by reweighting existing microdata or by synthesizing new unit-record populations from aggregate constraints \citep{tanton2014review, odonoghue2014review}. \citet{williamson1998} introduced a combinatorial optimization approach that selects a subset of survey records for each small area using simulated annealing to minimize the difference between weighted survey totals and census benchmarks. \citet{huang2001} extended this with a deterministic algorithm based on systematic record selection. \citet{tanton2011} applied generalized regression reweighting to create small-area estimates of poverty and housing stress in Australia.
+$L_0$ regularization penalizes the number of active parameters in a model. In our setting, the
+parameters are household-geography combinations rather than neural-network weights. Direct
+optimization of the $L_0$ norm is combinatorial, so we use the Hard Concrete relaxation proposed by
+\citet{louizos2018}. Each unit receives a gate $z_i \in [0, 1]$ that is sampled during training and
+that collapses toward 0 or 1 after clipping. The expected number of active gates is differentiable,
+which makes it possible to optimize calibration error and sparsity jointly.
 
-\citet{harland2012} developed methods for creating realistic synthetic populations at fine geographic scales using iterative proportional fitting combined with Monte Carlo sampling. \citet{lovelace2016} provided an accessible implementation in R with the \texttt{spatial-microsim-book} framework.
-
-Within this literature, combinatorial optimization and especially simulated annealing occupy an important place as methods for generating synthetic spatial microdata from observed survey records \citep{tanton2014review, odonoghue2014review}. Their main advantage is that they work directly with real microdata, can be flexible about household structure, and can accommodate settings where the unit of analysis in the constraints and the microdata do not align neatly. Their main disadvantage is computational intensity: they are usually run area by area and search a large discrete space of candidate record combinations \citep{harland2012, odonoghue2014review}.
-
-These methods typically operate at a single geographic level---producing estimates for each small area independently. Joint calibration across multiple geographic levels (district, state, national) with a single set of weights is uncommon in the spatial microsimulation literature, as it requires simultaneously satisfying tens of thousands of constraints that span different administrative geographies. Other operational models avoid the problem entirely: TAXSIM (NBER) operates at the national level without geographic calibration, while state-level models maintained by individual state revenue departments calibrate only within their own jurisdiction. For this reason, simulated annealing is an important reference point in the broader spatial microsimulation literature, but it is not the closest like-for-like empirical comparator to our setting. The benchmark design in this paper therefore focuses on GREG and IPF as the classical calibration baselines most closely aligned with a shared weighted-microdata formulation.
-
-\subsection{$L_0$ regularization and the Hard Concrete distribution}
-
-$L_0$ regularization penalizes the count of nonzero parameters in a model, encouraging sparsity. Unlike $L_1$ regularization, which penalizes the sum of absolute values and produces approximate sparsity through shrinkage, $L_0$ regularization produces exact zeros. The $L_0$ norm $\|\mathbf{w}\|_0 = \sum_i \mathbf{1}[w_i \neq 0]$ is discontinuous and combinatorial, making direct optimization intractable for large parameter spaces.
-
-\citet{louizos2018} proposed a differentiable relaxation of $L_0$ regularization using the Hard Concrete distribution. Each parameter is multiplied by a stochastic gate $z_i$ drawn from a stretched and rectified Bernoulli distribution. During training, the gate is sampled as:
-\begin{align}
-    u &\sim \text{Uniform}(0, 1) \\
-    \bar{s} &= \sigma\!\left(\frac{\log u - \log(1-u) + \log \alpha_i}{\beta}\right) \\
-    s &= \bar{s}(\zeta - \gamma) + \gamma \\
-    z_i &= \min(1, \max(0, s))
-\end{align}
-where $\sigma$ is the sigmoid function, $\alpha_i$ is a learnable parameter controlling the gate's probability of being open, $\beta$ is a temperature parameter, and $\gamma < 0$ and $\zeta > 1$ are stretch parameters that place probability mass at exactly zero and exactly one after clipping. The expected $L_0$ penalty is:
-\begin{equation}
-    \E[L_0] = \sum_i \sigma\!\left(\log \alpha_i - \beta \log \frac{-\gamma}{\zeta}\right)
-\end{equation}
-which is differentiable with respect to $\alpha_i$ and can be optimized with standard gradient methods.
-
-At inference time, the stochastic sample is replaced by the deterministic mean:
-\begin{equation}
-    z_i^{\text{det}} = \min\!\left(1, \max\!\left(0,\; \sigma(\log \alpha_i)(\zeta - \gamma) + \gamma\right)\right)
-\end{equation}
-
-The Hard Concrete distribution was originally developed for pruning neural network weights \citep{louizos2018}. In the present work, we repurpose it for survey weight selection: each household-geography combination receives a gate, and the $L_0$ penalty controls how many combinations are retained in the final dataset.
+That adaptation changes the role of regularization in calibration. Classical calibration methods
+return one fitted weight vector for the chosen target system. The Hard Concrete gate makes the
+number of retained records a direct object of optimization. This is the mechanism that lets one
+pipeline produce both compact national datasets and larger subnational datasets.
 
 \subsection{National-level predecessor}
 
-\citet{woodruff2024} developed a two-stage method for constructing enhanced national microsimulation datasets. In the first stage, quantile regression forests \citep{meinshausen2006quantile} impute 72 tax variables from the IRS Public Use File onto CPS records, preserving joint distributional characteristics through sequential conditioning. In the second stage, dropout-regularized gradient descent optimizes household weights to match approximately 7,000 national-level administrative targets from the IRS, CBO, JCT, Census Bureau, and program-specific sources.
-
-The present paper extends this framework in four directions. First, we replace the single-geography dataset with a clone-and-assign procedure that replicates each CPS household across 436 congressional districts, 50 states (plus DC), and New York City, enabling subnational coverage. Second, we replace dropout regularization with $L_0$ Hard Concrete gates, providing a principled mechanism for exact sparsity with a configurable sparsity-accuracy trade-off. Third, we introduce hierarchical uprating to reconcile targets from different administrative sources---where, for example, district-level IRS totals may not sum exactly to state-level USDA program totals due to different data collection methodologies and reference periods. Fourth, we add take-up re-randomization so that program participation varies across geographic clones of the same household, reflecting local-area take-up rates.
+\citet{woodruff2024} developed a national pipeline that imputes tax variables from the IRS Public
+Use File onto CPS records and then calibrates the resulting dataset to national administrative
+totals. The present paper extends that work in three directions. First, the pipeline now assigns
+households to district-level units and states rather than keeping a single national geography.
+Second, the optimizer now uses $L_0$ gates instead of dropout-style regularization, which produces
+exact sparsity at inference time. Third, the paper evaluates the resulting system as a benchmark
+study, with explicit comparisons to classical reference methods and an experimental design that
+tracks what happens as the target system approaches production scale.

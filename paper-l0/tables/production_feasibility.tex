@@ -1,0 +1,21 @@
+\begin{table}[ht]
+\centering
+{\tablefont
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{p{0.16\textwidth}p{0.17\textwidth}p{0.17\textwidth}rrp{0.19\textwidth}}
+\toprule
+Method & Target set & Status & Runtime & Peak memory & Notes \\
+\midrule
+$L_0$ & Full production mixed targets & \tbc & \tbc & \tbc & Retained records: \tbc \\
+GREG & Full production mixed targets & \tbc & \tbc & \tbc & Negative weights / solver status: \tbc \\
+IPF & Production count-style subset & \tbc & \tbc & \tbc & Iterations or failure mode: \tbc \\
+\bottomrule
+\end{tabular}
+}
+}
+\caption{Tier 3 production-feasibility benchmark. This table should report completion and failure
+states as directly as possible.}
+\label{tab:production_feasibility}
+\tablenote{The IPF row is reported on a count-style production subset because IPF is not used as a
+general solver for the full mixed-target system.}
+\end{table}

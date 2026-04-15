@@ -44,7 +44,10 @@ class _FakeBucket:
         return blob
 
 
-def _load_data_upload_module():
+_DATA_UPLOAD_MODULE = None
+
+
+def _install_fake_google_modules():
     fake_google = ModuleType("google")
     fake_google_auth = ModuleType("google.auth")
     fake_google_cloud = ModuleType("google.cloud")
@@ -59,12 +62,35 @@ def _load_data_upload_module():
     fake_google.cloud = fake_google_cloud
     fake_google_cloud.storage = fake_google_storage
 
-    sys.modules["google"] = fake_google
-    sys.modules["google.auth"] = fake_google_auth
-    sys.modules["google.cloud"] = fake_google_cloud
-    sys.modules["google.cloud.storage"] = fake_google_storage
-    sys.modules.pop("policyengine_us_data.utils.data_upload", None)
-    return importlib.import_module("policyengine_us_data.utils.data_upload")
+    sys.modules.setdefault("google", fake_google)
+    sys.modules.setdefault("google.auth", fake_google_auth)
+    sys.modules.setdefault("google.cloud", fake_google_cloud)
+    sys.modules.setdefault("google.cloud.storage", fake_google_storage)
+
+
+def _load_data_upload_module():
+    global _DATA_UPLOAD_MODULE
+    if _DATA_UPLOAD_MODULE is not None:
+        return _DATA_UPLOAD_MODULE
+
+    try:
+        _DATA_UPLOAD_MODULE = importlib.import_module(
+            "policyengine_us_data.utils.data_upload"
+        )
+    except ModuleNotFoundError as exc:
+        if exc.name not in {
+            "google",
+            "google.auth",
+            "google.cloud",
+            "google.cloud.storage",
+        }:
+            raise
+        _install_fake_google_modules()
+        _DATA_UPLOAD_MODULE = importlib.import_module(
+            "policyengine_us_data.utils.data_upload"
+        )
+
+    return _DATA_UPLOAD_MODULE
 
 
 def test_upload_to_staging_hf_uses_run_scoped_staging_paths(tmp_path, monkeypatch):
@@ -206,6 +232,7 @@ def test_upload_from_hf_staging_to_gcs_uses_run_scoped_hf_source_only(
         "Client",
         lambda credentials, project: fake_storage_client,
     )
+    monkeypatch.delenv("HUGGING_FACE_TOKEN", raising=False)
 
     uploaded = data_upload.upload_from_hf_staging_to_gcs(
         ["states/AL.h5"],

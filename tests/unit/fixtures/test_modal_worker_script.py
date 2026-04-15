@@ -32,6 +32,7 @@ class FakeAreaCatalog:
         self.received = None
         self.received_item = None
         self.raise_for = None
+        self.none_for = None
 
     def build_requests_from_work_items(self, work_items, *, geography):
         self.received = (work_items, geography)
@@ -41,6 +42,8 @@ class FakeAreaCatalog:
         self.received_item = (work_item, geography)
         if work_item == self.raise_for:
             raise ValueError("bad work item")
+        if work_item == self.none_for:
+            return None
         return FakeRequest(area_type=work_item["type"], area_id=work_item["id"])
 
 

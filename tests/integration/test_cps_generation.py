@@ -4,7 +4,6 @@ import pandas as pd
 
 
 def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
-    import policyengine_us
     import policyengine_us_data.datasets.sipp as sipp_module
     from policyengine_us_data.datasets.cps.cps import add_tips
 
@@ -36,29 +35,31 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
         def __init__(self):
             self.raw_cps = FakeRawCPS()
             self.saved_dataset = None
+            self.base_dataset = {
+                "person_id": [1, 2],
+                "person_household_id": [10, 20],
+                "employment_income": [25_000.0, 30_000.0],
+                "taxable_interest_income": [100.0, 0.0],
+                "tax_exempt_interest_income": [25.0, 0.0],
+                "qualified_dividend_income": [40.0, 0.0],
+                "non_qualified_dividend_income": [10.0, 0.0],
+                "rental_income": [0.0, 0.0],
+                "age": [30, 45],
+                "household_weight": [1.0, 1.0],
+                "is_female": [False, True],
+            }
 
         def save_dataset(self, data):
-            self.saved_dataset = data
+            if self.saved_dataset is None:
+                self.saved_dataset = {}
+            if hasattr(data, "items"):
+                for key, value in data.items():
+                    self.saved_dataset[key] = (
+                        value.values if hasattr(value, "values") else value
+                    )
 
-    class FakeMicrosimulation:
-        def __init__(self, dataset):
-            self.dataset = dataset
-
-        def calculate_dataframe(self, columns, year):
-            base = pd.DataFrame(
-                {
-                    "person_id": [1, 2],
-                    "household_id": [10, 20],
-                    "employment_income": [25_000, 30_000],
-                    "interest_income": [0.0, 0.0],
-                    "dividend_income": [0.0, 0.0],
-                    "rental_income": [0.0, 0.0],
-                    "age": [30, 45],
-                    "household_weight": [1.0, 1.0],
-                    "is_female": [False, True],
-                }
-            )
-            return base[columns]
+        def load_dataset(self):
+            return self.base_dataset
 
     class FakeTipModel:
         def predict(self, X_test, mean_quantile):
@@ -67,6 +68,8 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
 
     class FakeAssetModel:
         def predict(self, X_test, mean_quantile):
+            assert X_test["interest_income"].tolist() == [125.0, 0.0]
+            assert X_test["dividend_income"].tolist() == [50.0, 0.0]
             return pd.DataFrame(
                 {
                     "bank_account_assets": [0.0, 0.0],
@@ -75,7 +78,6 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
                 }
             )
 
-    monkeypatch.setattr(policyengine_us, "Microsimulation", FakeMicrosimulation)
     monkeypatch.setattr(sipp_module, "get_tip_model", lambda: FakeTipModel())
     monkeypatch.setattr(sipp_module, "get_asset_model", lambda: FakeAssetModel())
 

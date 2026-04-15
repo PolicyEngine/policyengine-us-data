@@ -186,7 +186,11 @@ class FingerprintingService:
             "source_kind": resolved.kind,
             "canonical_sha256": self._geography_loader.compute_canonical_checksum(
                 weights_path=inputs.weights_path,
-                n_records=self._infer_n_records(inputs.source_dataset_path),
+                n_records=self._infer_n_records(
+                    weights_path=inputs.weights_path,
+                    source_dataset_path=inputs.source_dataset_path,
+                    n_clones=inputs.n_clones,
+                ),
                 n_clones=inputs.n_clones,
                 geography_path=inputs.exact_geography_path,
                 blocks_path=inputs.legacy_blocks_path,
@@ -228,20 +232,23 @@ class FingerprintingService:
                 digest.update(chunk)
         return f"sha256:{digest.hexdigest()}"
 
-    def _infer_n_records(self, source_dataset_path: Path) -> int:
-        import h5py
+    def _infer_n_records(
+        self,
+        *,
+        weights_path: Path,
+        source_dataset_path: Path,
+        n_clones: int | None,
+    ) -> int:
+        if n_clones is not None:
+            import numpy as np
 
-        with h5py.File(source_dataset_path, "r") as handle:
-            if "person" not in handle:
-                raise ValueError(
-                    f"Unable to infer n_records from {source_dataset_path}: "
-                    "missing 'person' entity"
-                )
-            person_group = handle["person"]
-            first_dataset_name = next(iter(person_group.keys()), None)
-            if first_dataset_name is None:
-                raise ValueError(
-                    f"Unable to infer n_records from {source_dataset_path}: "
-                    "'person' entity is empty"
-                )
-            return int(len(person_group[first_dataset_name]))
+            weights = np.load(weights_path, mmap_mode="r")
+            if len(weights) % n_clones == 0:
+                return int(len(weights) // n_clones)
+
+        from policyengine_us import Microsimulation
+
+        simulation = Microsimulation(dataset=str(source_dataset_path))
+        return int(
+            len(simulation.calculate("household_id", map_to="household").values)
+        )

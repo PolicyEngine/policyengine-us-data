@@ -78,3 +78,21 @@ def test_scope_fingerprint_changes_when_relevant_provenance_changes(tmp_path):
     )
 
     assert first != second
+
+
+def test_traceability_uses_weight_derived_household_count_for_geography(tmp_path):
+    inputs = make_publishing_inputs(
+        PublishingInputBundle,
+        tmp_path=tmp_path,
+        n_records=2,
+        person_records=5,
+        n_clones=2,
+    )
+
+    service = FingerprintingService()
+    traceability = service.build_traceability(inputs=inputs, scope="regional")
+
+    assert traceability.exact_geography is not None
+    assert traceability.exact_geography.metadata["canonical_sha256"].startswith(
+        "sha256:"
+    )

@@ -8,20 +8,16 @@ Usage:
     python publish_local_area.py [--skip-download] [--states-only] [--upload]
 """
 
-import hashlib
 import json
 import shutil
 
 
 import numpy as np
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from policyengine_us import Microsimulation
 from policyengine_us_data.calibration.local_h5.geography_loader import (
-    CALIBRATION_WEIGHTS_SUFFIX,
-    GEOGRAPHY_FILENAME,
-    LEGACY_BLOCKS_FILENAME,
     CalibrationGeographyLoader,
 )
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
@@ -54,49 +50,6 @@ NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
 META_FILE = WORK_DIR / "checkpoint_meta.json"
 
 
-def _calibration_artifact_prefix(weights_path: Path) -> str:
-    if weights_path.name.endswith(CALIBRATION_WEIGHTS_SUFFIX):
-        return weights_path.name[: -len(CALIBRATION_WEIGHTS_SUFFIX)]
-    return ""
-
-
-def _sibling_artifact_path(weights_path: Path, artifact_name: str) -> Path:
-    prefix = _calibration_artifact_prefix(weights_path)
-    return weights_path.with_name(f"{prefix}{artifact_name}")
-
-
-def resolve_calibration_geography_paths(
-    weights_path: Path,
-    geography_path: Optional[Path] = None,
-    blocks_path: Optional[Path] = None,
-) -> Tuple[Optional[Path], Optional[Path]]:
-    geo_candidates = []
-    block_candidates = []
-    if geography_path is not None:
-        geo_candidates.append(Path(geography_path))
-    geo_candidates.append(_sibling_artifact_path(weights_path, GEOGRAPHY_FILENAME))
-
-    if blocks_path is not None:
-        block_candidates.append(Path(blocks_path))
-    block_candidates.append(
-        _sibling_artifact_path(weights_path, LEGACY_BLOCKS_FILENAME)
-    )
-    block_candidates.append(weights_path.with_name(LEGACY_BLOCKS_FILENAME))
-
-    resolved_geo = next((path for path in geo_candidates if path.exists()), None)
-    resolved_blocks = next(
-        (path for path in block_candidates if path.exists()),
-        None,
-    )
-    return resolved_geo, resolved_blocks
-
-
-def _update_hash_from_file(h: "hashlib._Hash", path: Path) -> None:
-    with open(path, "rb") as f:
-        while chunk := f.read(8192):
-            h.update(chunk)
-
-
 def compute_input_fingerprint(
     weights_path: Path,
     dataset_path: Path,
@@ -105,21 +58,43 @@ def compute_input_fingerprint(
     geography_path: Optional[Path] = None,
     blocks_path: Optional[Path] = None,
 ) -> str:
+    import hashlib
+
+    def _update_hash_from_file(h: "hashlib._Hash", path: Path) -> None:
+        with open(path, "rb") as f:
+            while chunk := f.read(8192):
+                h.update(chunk)
+
+    def _infer_n_records() -> int:
+        if n_clones is not None:
+            weights = np.load(weights_path, mmap_mode="r")
+            if len(weights) % n_clones == 0:
+                return len(weights) // n_clones
+        sim = Microsimulation(dataset=str(dataset_path))
+        return len(sim.calculate("household_id", map_to="household").values)
+
+    loader = CalibrationGeographyLoader()
     h = hashlib.sha256()
     for p in [weights_path, dataset_path]:
         _update_hash_from_file(h, p)
 
-    resolved_geo, resolved_blocks = resolve_calibration_geography_paths(
+    resolved = loader.resolve_source(
         weights_path=weights_path,
         geography_path=geography_path,
         blocks_path=blocks_path,
     )
-    if resolved_geo is not None:
-        h.update(b"geography_assignment")
-        _update_hash_from_file(h, resolved_geo)
-    elif resolved_blocks is not None:
-        h.update(b"legacy_stacked_blocks")
-        _update_hash_from_file(h, resolved_blocks)
+    if resolved is not None:
+        n_records = _infer_n_records()
+        h.update(f"geography_source:{resolved.kind}".encode())
+        h.update(
+            loader.compute_canonical_checksum(
+                weights_path=weights_path,
+                n_records=n_records,
+                n_clones=n_clones,
+                geography_path=geography_path,
+                blocks_path=blocks_path,
+            ).encode()
+        )
     else:
         h.update(f"legacy_regeneration:{n_clones}:{seed}".encode())
     return h.hexdigest()[:16]

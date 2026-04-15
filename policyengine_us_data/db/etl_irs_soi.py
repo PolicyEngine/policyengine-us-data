@@ -137,19 +137,24 @@ def _skip_coarse_state_agi_person_count_target(geo_type: str, agi_stub: int) -> 
 
 
 # These variables map cleanly from Publication 1304 aggregate tables to the
-# existing national IRS-SOI domain strata. We intentionally leave `aca_ptc`,
-# `refundable_ctc`, and `non_refundable_ctc` on the geography-file path for now because the
-# published 2023 workbook tables do not line up one-for-one with the current
-# `incd` national codes.
+# existing national IRS-SOI domain strata.
+#
+# Deliberately NOT overridden via this dict (left on the geography-file path):
+#   - aca_ptc, refundable_ctc, non_refundable_ctc: 2023 workbook tables don't
+#     line up with `incd` national codes.
+#   - total_self_employment_income, tax_unit_partnership_s_corp_income,
+#     net_capital_gains: IRS Table 1.4 splits these into separate profit and
+#     loss columns (e.g. `business_net_profits` AG vs `business_net_losses`
+#     AI). The geography-file codes 00900 / 01000 / 26270 already report
+#     net-of-loss. Pulling only the profits column here would write a gross
+#     figure into a slot the district targets treat as net, creating a
+#     +40.7% / +26.1% / +3.1% definitional mismatch at 2023 values.
 WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
     "dividend_income": "ordinary_dividends",
     "income_tax_before_credits": "income_tax_before_credits",
-    "net_capital_gains": "capital_gains_gross",
     "qualified_dividend_income": "qualified_dividends",
     "rental_income": "rent_and_royalty_net_income",
-    "total_self_employment_income": "business_net_profits",
     "tax_exempt_interest_income": "exempt_interest",
-    "tax_unit_partnership_s_corp_income": "partnership_and_s_corp_income",
     "taxable_interest_income": "taxable_interest_income",
     "taxable_ira_distributions": "ira_distributions",
     "taxable_pension_income": "taxable_pension_income",

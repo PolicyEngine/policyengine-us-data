@@ -147,6 +147,7 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "spm_unit_net_income_reported",
     "spm_unit_pre_subsidy_childcare_expenses",
     # Medical expenses
+    "employer_sponsored_insurance_premiums",
     "health_insurance_premiums_without_medicare_part_b",
     "other_health_insurance_premiums",
     "over_the_counter_health_expenses",

@@ -30,6 +30,7 @@ MEDICARE_PART_B_PREMIUM_VARIABLE = "medicare_part_b_premium"
 # database so this dict can be deleted.  See PR #488.
 
 HARD_CODED_TOTALS = {
+    "employer_sponsored_insurance_premiums": 1_002.9e9,
     "health_insurance_premiums_without_medicare_part_b": 385e9,
     "other_medical_expenses": 278e9,
     MEDICARE_PART_B_PREMIUM_VARIABLE: (

@@ -3,7 +3,8 @@
 \section{Optimization hyperparameters}
 \label{app:hyperparameters}
 
-Table~\ref{tab:hyperparameters_full} lists all hyperparameters used in the $L_0$ optimization with their default values, code-level names, and roles.
+Table~\ref{tab:hyperparameters_full} lists the default hyperparameters used in the $L_0$
+optimization, together with their code-level names and roles.
 
 \begin{table}[ht]
 \centering
@@ -35,9 +36,12 @@ National epochs & (pipeline default) & 4{,}000 & Training iterations (national p
 \section{Calibration target variables}
 \label{app:targets}
 
-The calibration pipeline draws targets from seven administrative sources across three geographic levels. The database contains 37,758 active targets in total. The following tables list every target domain included in the \texttt{policy\_data.db} database, grouped by geographic level.
+The calibration pipeline draws targets from seven administrative sources across three geographic
+levels. The pipeline stores these targets in a target database, \texttt{policy\_data.db}, which
+contains 37,758 active targets in total. The following tables list every target domain included in
+that database, grouped by geographic level.
 
-\subsection{Congressional district targets (33,572)}
+\subsection{District-level targets (33,572)}
 
 \begin{table}[H]
 \centering
@@ -47,24 +51,26 @@ The calibration pipeline draws targets from seven administrative sources across 
 Target domain & Type & Count \\
 \midrule
 \multicolumn{3}{l}{\textit{Census ACS S0101}} \\
-Person count by age band (18 bands $\times$ 436 CDs) & count & 7{,}848 \\
+Person count by age band (18 bands $\times$ 436 district-level units) & count & 7{,}848 \\
 \midrule
 \multicolumn{3}{l}{\textit{IRS SOI}} \\
-Person count by AGI bracket (9 bins $\times$ 436 CDs) & count & 3{,}924 \\
-EITC dollars by qualifying children (4 bins $\times$ 436 CDs) & \$ & 1{,}744 \\
-Tax unit count by qualifying children (4 bins $\times$ 436 CDs) & count & 1{,}744 \\
-Aggregate AGI (unconditional, $\times$ 436 CDs) & \$ & 436 \\
-21 income/deduction dollar totals, each with domain $> 0$ ($\times$ 436 CDs) & \$ & 9{,}156 \\
-Tax unit count for each of the 21 domains ($\times$ 436 CDs) & count & 9{,}156 \\
+Person count by AGI bracket (9 bins $\times$ 436 district-level units) & count & 3{,}924 \\
+EITC dollars by qualifying children (4 bins $\times$ 436 district-level units) & \$ & 1{,}744 \\
+Tax unit count by qualifying children (4 bins $\times$ 436 district-level units) & count & 1{,}744 \\
+Aggregate AGI (unconditional, $\times$ 436 district-level units) & \$ & 436 \\
+21 income/deduction dollar totals, each with domain $> 0$ ($\times$ 436 district-level units) & \$ & 9{,}156 \\
+Tax unit count for each of the 21 domains ($\times$ 436 district-level units) & count & 9{,}156 \\
 \midrule
 \multicolumn{3}{l}{\textit{Census ACS S2201}} \\
-SNAP household count ($\times$ 436 CDs) & count & 436 \\
+SNAP household count ($\times$ 436 district-level units) & count & 436 \\
 \midrule
 & & \textbf{33{,}572} \\
 \bottomrule
 \end{tabular}
 }
-\caption{Congressional district calibration targets (436 CDs). Each row is replicated across all 436 districts. IRS SOI provides paired dollar and count targets for each income/deduction domain.}
+\caption{District-level calibration targets. The 436 district-level units correspond to the 435
+congressional districts plus the District of Columbia. IRS SOI provides paired dollar and count
+targets for each income and deduction domain.}
 \label{tab:cd_targets}
 \end{table}
 
@@ -78,31 +84,33 @@ SNAP household count ($\times$ 436 CDs) & count & 436 \\
 Target domain & Type & Count \\
 \midrule
 \multicolumn{3}{l}{\textit{Census ACS S0101}} \\
-Person count by age band (18 bands $\times$ 51 states) & count & 918 \\
+Person count by age band (18 bands $\times$ 50 states + DC) & count & 918 \\
 \midrule
 \multicolumn{3}{l}{\textit{IRS SOI}} \\
-Person count by AGI bracket (9 bins $\times$ 51 states) & count & 459 \\
-EITC dollars by qualifying children (4 bins $\times$ 51) & \$ & 204 \\
-Tax unit count by qualifying children (4 bins $\times$ 51) & count & 204 \\
-Aggregate AGI (unconditional, $\times$ 51 states) & \$ & 51 \\
-20 income/deduction dollar totals (domain $> 0$, $\times$ 51) & \$ & 1{,}020 \\
-Tax unit count for each of the 21 domains ($\times$ 51) & count & 1{,}071 \\
+Person count by AGI bracket (9 bins $\times$ 50 states + DC) & count & 459 \\
+EITC dollars by qualifying children (4 bins $\times$ 50 states + DC) & \$ & 204 \\
+Tax unit count by qualifying children (4 bins $\times$ 50 states + DC) & count & 204 \\
+Aggregate AGI (unconditional, $\times$ 50 states + DC) & \$ & 51 \\
+20 income/deduction dollar totals (domain $> 0$, $\times$ 50 states + DC) & \$ & 1{,}020 \\
+Tax unit count for each of the 21 domains ($\times$ 50 states + DC) & count & 1{,}071 \\
 \midrule
 \multicolumn{3}{l}{\textit{USDA FNS SNAP}} \\
-SNAP spending ($\times$ 51 states) & \$ & 51 \\
-SNAP household count ($\times$ 51 states) & count & 51 \\
+SNAP spending ($\times$ 50 states + DC) & \$ & 51 \\
+SNAP household count ($\times$ 50 states + DC) & count & 51 \\
 \midrule
 \multicolumn{3}{l}{\textit{CMS Medicaid}} \\
-Medicaid enrollment ($\times$ 51 states) & count & 51 \\
+Medicaid enrollment ($\times$ 50 states + DC) & count & 51 \\
 \midrule
 \multicolumn{3}{l}{\textit{Census STC}} \\
-State income tax collections ($\times$ 51 states) & \$ & 51 \\
+State income tax collections ($\times$ 50 states + DC) & \$ & 51 \\
 \midrule
 & & \textbf{4{,}080} \\
 \bottomrule
 \end{tabular}
 }
-\caption{State-level calibration targets (50 states + DC). IRS SOI variables mirror the district structure. USDA provides both SNAP spending and household counts; CMS provides Medicaid enrollment.}
+\caption{State-level calibration targets for the 50 states plus the District of Columbia. IRS SOI
+variables mirror the district-level structure. USDA provides both SNAP spending and household
+counts, and CMS provides Medicaid enrollment.}
 \label{tab:state_targets}
 \end{table}
 
@@ -150,7 +158,9 @@ Traditional IRA, Roth IRA contributions & \$ & 2 \\
 \bottomrule
 \end{tabular}
 }
-\caption{National-level calibration targets. CBO, JCT, SSA, CMS, and Census values are curated from the cited administrative sources and stored in the ETL pipeline. Dollar values are inflation-adjusted to the calibration year.}
+\caption{National-level calibration targets. CBO, JCT, SSA, CMS, and Census values are curated from
+the cited administrative sources and stored in the ETL pipeline. Dollar values are
+inflation-adjusted to the calibration year.}
 \label{tab:national_targets}
 \end{table}
 
@@ -197,3 +207,18 @@ Algorithm~\ref{alg:l0} presents the complete $L_0$-regularized calibration proce
 \State \Return $\hat{\mathbf{w}}$
 \end{algorithmic}
 \end{algorithm}
+
+\section{Dataset assembly details}
+\label{app:assembly}
+
+After optimization, the fitted weight vector is reshaped back to clone-by-household form and used
+to build deployable H5 datasets. The assembly step keeps only active cloned units, reconstructs the
+associated person and tax-unit memberships, derives geography from the stored census block
+assignment, and recomputes geography-dependent quantities such as Supplemental Poverty Measure
+threshold adjustments.
+
+Two implementation details matter for fidelity. First, geography is derived from the same cloned
+block assignments that were used to build the calibration matrix, so the assembled dataset matches
+the unit universe that the optimizer saw. Second, take-up draws are regenerated with the same
+deterministic seeds used during matrix construction, which keeps take-up-dependent targets
+consistent between the calibration package and the published dataset.

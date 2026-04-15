@@ -1,20 +1,52 @@
 \section{Introduction}
 \label{sec:introduction}
 
-Microsimulation models estimate the effects of tax and benefit policies on households by applying program rules to individual-level microdata. Most operational models---including those maintained by the Congressional Budget Office \citep{cbo2018}, the Joint Committee on Taxation \citep{jct2023}, and the Tax Policy Center \citep{tpc2024}---operate at the national level. They calibrate household survey weights to aggregate administrative totals such as total income tax revenue, program enrollment counts, and demographic benchmarks, then use the reweighted dataset to simulate policy reforms.
+Tax-benefit microsimulation models apply policy rules to household microdata to estimate fiscal
+and distributional effects. At the national level, that usually means starting from a survey such
+as the Current Population Survey (CPS), improving measured incomes and program participation, and
+adjusting weights so that the resulting dataset reproduces known aggregates. Subnational work is
+harder. Analysts often want estimates for states, congressional districts, or local areas, but the
+underlying survey was not designed to support all of those geographies at once.
 
-Subnational policy analysis introduces a fundamentally different calibration challenge. Rather than matching a single set of national aggregates, the microdata must simultaneously reproduce distributional statistics at multiple geographic levels: congressional districts, states, and the nation as a whole. A dataset calibrated for the state of California must match California-specific IRS income totals, SNAP participation counts, Medicaid enrollment, and age distributions, while remaining consistent with national budget projections from the CBO and tax expenditure estimates from the JCT. Across 436 congressional districts and 50 states, this produces approximately 37,800 simultaneous calibration targets.
+That gap matters in practice. Many reforms are proposed, administered, or debated below the
+national level. A state tax proposal needs state-specific incomes, filing patterns, and benefit
+participation. District-level analysis needs those same outcomes to aggregate correctly within each
+district while remaining consistent with state and national totals. A usable subnational dataset
+therefore has to satisfy a hierarchical calibration problem rather than a single national one.
 
-Existing calibration methods scale poorly to this setting. Iterative proportional fitting \citep[IPF;][]{deming1940, ireland1968} adjusts weights along one dimension at a time, cycling through marginal constraints until convergence. IPF handles cross-classified tables but does not naturally accommodate hierarchical geographic constraints---district targets must sum to state targets, which must sum to national targets---without ad hoc post-processing. Generalized regression (GREG) estimators \citep{deville1992, sarndal2007} solve a constrained optimization problem that minimizes distance from initial weights subject to exact calibration constraints. GREG produces a closed-form solution for moderate numbers of constraints but becomes computationally intractable and numerically unstable as the constraint count approaches the tens of thousands.
+Public survey microdata alone do not solve that problem. The CPS provides demographic structure and
+program coverage, but some tax variables are missing or noisy, top incomes are imperfectly
+measured, and geographic detail is limited. Administrative targets help, but they arrive from
+different agencies, with different concepts, and at different geographic levels. In our setting,
+the calibration problem mixes count and dollar targets across district-level units, the 50 states
+plus the District of Columbia, and the nation.
 
-Spatial microsimulation methods take a different approach, often distinguishing between reweighting methods and synthetic reconstruction methods for constructing small-area microdata \citep{tanton2014review}. Within this broader literature, researchers have used combinatorial optimization and simulated annealing \citep{williamson1998, huang2001, harland2012} as well as deterministic reweighting \citep{tanton2011, lovelace2016}. These methods typically operate at a single geographic level and require separate calibration runs for each area, making joint multi-level calibration difficult.
+The methodological goal is straightforward to state, even if the implementation is not. We want a
+calibration method that can absorb a large hierarchical target system, keep weights usable for
+microsimulation, and let us control how large the final dataset becomes. Exact fit is attractive,
+but a production dataset also needs to remain computationally practical. A file with millions of
+active cloned records is useful for detailed subnational work and still expensive to simulate. A
+much smaller file is easier to ship and run, but only if the loss in fidelity is acceptable.
 
-This paper presents a method that addresses these limitations by jointly optimizing weight magnitudes and sparsity in a single gradient-based framework. We adapt the Hard Concrete distribution \citep{louizos2018}, originally developed for neural network pruning, to the survey calibration setting. Each household-geography combination receives a continuous weight and a stochastic binary gate. The gate is parameterized by a learnable logit and trained via gradient descent to minimize a loss function that combines relative calibration error across all 37,800 targets with an $L_0$ penalty on the expected number of active records. At inference time, the stochastic gates collapse to deterministic zeros and ones, producing a sparse dataset in which most household-geography combinations are dropped while the retained records carry calibrated positive weights.
+This paper studies an $L_0$-regularized calibration system built in PolicyEngine's US data
+pipeline. The system clones CPS households across sampled geographies, builds a sparse calibration
+matrix from tax-benefit simulations, and jointly optimizes positive weights and binary-like gates.
+The gates give the optimizer a direct sparsity mechanism. In practical terms, that means the same
+framework can target a compact national dataset or a larger subnational dataset without switching
+to a different calibration procedure.
 
-The approach builds on \citet{woodruff2024}, who developed a two-stage methodology for constructing enhanced national microsimulation datasets from the Current Population Survey (CPS) and the IRS Public Use File (PUF). Their method uses quantile regression forests (QRF) to impute 72 tax variables from the PUF onto CPS records, then applies dropout-regularized gradient descent to reweight the combined dataset against approximately 7,000 national targets. The present paper extends this framework from a single national dataset to subnational coverage by introducing three new components: (a) a clone-and-assign procedure that replicates each CPS household across multiple geographic locations, (b) $L_0$ Hard Concrete gates that replace dropout regularization and enable exact sparsity, and (c) a hierarchical uprating scheme that reconciles targets from different administrative sources at district, state, and national levels. Because the method still solves a calibration-weighting problem over survey-based microdata, GREG and IPF are the closest classical empirical comparators; at the same time, the clone-and-assign pipeline produces derived spatial microdata files that are also relevant to synthetic-population use cases.
+The paper's contribution is empirical as well as methodological. We do not treat generalized
+regression (GREG) and iterative proportional fitting (IPF, or raking) as universal substitutes for
+the full production problem. Instead, we use them as classical reference methods within scopes that
+match their assumptions. The benchmark design uses shared exported calibration packages and asks
+three questions. First, on a tractable benchmark, does $L_0$ perform competitively with classical
+methods when all methods can plausibly run? Second, how do the methods degrade as the number of
+targets increases? Third, which methods remain usable near the full production calibration problem?
 
-The configurable sparsity penalty produces datasets of different sizes for different use cases. A high penalty ($\lambda_{L_0} = 10^{-4}$) retains approximately 50,000 records, suitable for national-level web-based simulation where download size and computation time matter. A low penalty ($\lambda_{L_0} = 10^{-8}$) retains approximately 3--4 million records, preserving geographic resolution for all 436 congressional districts.
-
-The method is implemented in open-source Python packages and deployed as part of \policyengine{}'s US microsimulation model (\url{https://policyengine.org/us/model}), which uses these calibrated datasets for both national and subnational policy analysis.
-
-The remainder of this paper is organized as follows. Section~\ref{sec:background} reviews survey calibration methods, spatial microsimulation, and the Hard Concrete distribution. Section~\ref{sec:data} describes the input microdata and calibration target sources. Section~\ref{sec:methodology} details the four-stage pipeline: clone creation, calibration matrix construction, $L_0$ optimization, and dataset assembly. Section~\ref{sec:results} presents calibration accuracy, sparsity analysis, and comparisons with IPF and GREG. Section~\ref{sec:discussion} discusses trade-offs, limitations, and generalizability. Section~\ref{sec:conclusion} concludes.
+The rest of the paper follows that structure. Section~\ref{sec:background} places the work in the
+literature on spatial microsimulation, survey calibration, and sparse optimization.
+Section~\ref{sec:data} describes the base microdata and administrative targets. Section
+~\ref{sec:methodology} presents the calibration pipeline and the benchmark design. Section
+~\ref{sec:results} reports the tractable benchmark, the scaling frontier, and the
+production-feasibility case. Section~\ref{sec:discussion} interprets those results and discusses
+their limits.

@@ -48,6 +48,16 @@ LOCAL_AREA_FINALIZE_REQUIRED_COUNTS = {
 }
 
 
+def _staging_prefix(run_id: str = "") -> str:
+    """Return the HF staging prefix for a pipeline run."""
+    return f"staging/{run_id}" if run_id else "staging"
+
+
+def _staging_repo_path(rel_path: str, run_id: str = "") -> str:
+    """Return the HF staging path for a relative artifact path."""
+    return f"{_staging_prefix(run_id)}/{rel_path}"
+
+
 def _get_model_package_version(
     package_name: str = "policyengine-us",
 ) -> Optional[str]:
@@ -751,6 +761,7 @@ def upload_to_staging_hf(
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     batch_size: int = 50,
+    run_id: str = "",
 ) -> int:
     """
     Upload files to staging/ paths in HuggingFace.
@@ -762,6 +773,7 @@ def upload_to_staging_hf(
         hf_repo_name: HuggingFace repository name
         hf_repo_type: Repository type
         batch_size: Number of files per commit batch
+        run_id: Optional pipeline run namespace for staging paths
 
     Returns:
         Number of files uploaded
@@ -780,7 +792,7 @@ def upload_to_staging_hf(
                 continue
             operations.append(
                 CommitOperationAdd(
-                    path_in_repo=f"staging/{rel_path}",
+                    path_in_repo=_staging_repo_path(rel_path, run_id),
                     path_or_fileobj=str(local_path),
                 )
             )
@@ -810,6 +822,7 @@ def promote_staging_to_production_hf(
     version: str,
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
+    run_id: str = "",
 ) -> int:
     """
     Atomically promote files from staging/ to production paths.
@@ -822,6 +835,7 @@ def promote_staging_to_production_hf(
         version: Version string for commit message
         hf_repo_name: HuggingFace repository
         hf_repo_type: Repository type
+        run_id: Optional pipeline run namespace for staging paths
 
     Returns:
         Number of files promoted
@@ -834,7 +848,7 @@ def promote_staging_to_production_hf(
 
     operations = []
     for rel_path in files:
-        staging_path = f"staging/{rel_path}"
+        staging_path = _staging_repo_path(rel_path, run_id)
         operations.append(
             CommitOperationCopy(
                 src_path_in_repo=staging_path,
@@ -878,6 +892,7 @@ def cleanup_staging_hf(
     version: str,
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
+    run_id: str = "",
 ) -> int:
     """
     Clean up staging folder after successful promotion.
@@ -887,6 +902,7 @@ def cleanup_staging_hf(
         version: Version string for commit message
         hf_repo_name: HuggingFace repository
         hf_repo_type: Repository type
+        run_id: Optional pipeline run namespace for staging paths
 
     Returns:
         Number of files deleted
@@ -899,7 +915,7 @@ def cleanup_staging_hf(
 
     operations = []
     for rel_path in files:
-        staging_path = f"staging/{rel_path}"
+        staging_path = _staging_repo_path(rel_path, run_id)
         operations.append(CommitOperationDelete(path_in_repo=staging_path))
 
     if not operations:
@@ -936,6 +952,7 @@ def upload_from_hf_staging_to_gcs(
     gcs_bucket_name: str = "policyengine-us-data",
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
+    run_id: str = "",
 ) -> int:
     """Download files from HF staging/ and upload to GCS production paths.
 
@@ -945,6 +962,7 @@ def upload_from_hf_staging_to_gcs(
         gcs_bucket_name: GCS bucket name
         hf_repo_name: HuggingFace repository name
         hf_repo_type: Repository type
+        run_id: Optional pipeline run namespace for HF staging paths
 
     Returns:
         Number of files uploaded
@@ -957,7 +975,7 @@ def upload_from_hf_staging_to_gcs(
 
     uploaded = 0
     for rel_path in rel_paths:
-        staging_filename = f"staging/{rel_path}"
+        staging_filename = _staging_repo_path(rel_path, run_id)
         local_path = hf_hub_download(
             repo_id=hf_repo_name,
             filename=staging_filename,

@@ -10,8 +10,10 @@ Matrix shape: (n_targets, n_records * n_clones)
 Column ordering: index i = clone_idx * n_records + record_idx
 """
 
+import json
 import logging
 from collections import defaultdict
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import h5py
@@ -23,6 +25,10 @@ from sqlalchemy import create_engine, text
 from policyengine_us_data.db.create_database_tables import create_or_replace_views
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.census import STATE_ABBREV_TO_FIPS, STATE_NAME_TO_FIPS
+from policyengine_us_data.calibration.signatures import (
+    build_chunk_lineage_signature,
+    signature_mismatches,
+)
 from policyengine_us_data.calibration.calibration_utils import (
     get_calculated_variables,
     apply_op,
@@ -40,6 +46,77 @@ _GEO_VARS = {
 COUNTY_DEPENDENT_VARS = {
     "aca_ptc",
 }
+
+
+def _validate_chunked_geography(geography, n_total: int) -> None:
+    """Validate geography arrays before chunked matrix slicing."""
+    required_arrays = (
+        "block_geoid",
+        "cd_geoid",
+        "county_fips",
+        "state_fips",
+    )
+    for field in required_arrays:
+        if not hasattr(geography, field):
+            raise ValueError(f"geography is missing required field '{field}'")
+        actual = len(getattr(geography, field))
+        if actual != n_total:
+            raise ValueError(
+                f"geography.{field} has length {actual}, expected {n_total} "
+                "(n_records * n_clones)"
+            )
+
+
+def _format_duration(seconds: float) -> str:
+    """Format elapsed seconds for progress logs."""
+    seconds = max(0, int(round(seconds)))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {seconds:02d}s"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
+def _current_rss_mb() -> Optional[float]:
+    try:
+        import psutil
+
+        return psutil.Process().memory_info().rss / 1024**2
+    except Exception:
+        return None
+
+
+def _load_chunk_manifest(path: Path) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_chunk_manifest(path: Path, signature: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"signature": signature}, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+def _validate_chunk_manifest(path: Path, expected_signature: dict) -> None:
+    if not path.exists():
+        raise ValueError(
+            f"Cannot resume chunk cache at {path.parent}: missing chunk manifest"
+        )
+    stored = _load_chunk_manifest(path)
+    stored_signature = stored.get("signature")
+    if stored_signature is None:
+        raise ValueError(f"Chunk manifest at {path} is missing its signature")
+    fatal, _ = signature_mismatches(stored_signature, expected_signature)
+    if fatal:
+        joined = "; ".join(fatal)
+        raise ValueError(f"Chunk cache lineage mismatch for {path.parent}: {joined}")
+
+
+def _has_existing_chunk_cache(coo_dir: Path) -> bool:
+    return any(coo_dir.glob("chunk_*.npz"))
 
 
 def _make_neutralize_variable_reform(variable_name: str):
@@ -2697,5 +2774,455 @@ class UnifiedMatrixBuilder:
             X_csr.shape[1],
             X_csr.nnz,
         )
+
+        return targets_df, X_csr, target_names
+
+    def build_matrix_chunked(
+        self,
+        geography,
+        sim,
+        target_filter: Optional[dict] = None,
+        hierarchical_domains: Optional[List[str]] = None,
+        chunk_size: int = 25_000,
+        chunk_dir: Optional[str] = None,
+        keep_chunks: bool = False,
+        resume_chunks: bool = False,
+        rerandomize_takeup: bool = True,
+    ) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
+        """Build a sparse matrix by materializing mixed-geography chunks.
+
+        This path chunks over global clone-household columns.  Each chunk H5
+        contains only the selected base households and their dependent entities,
+        with geography inputs assigned row-by-row from the clone assignment.
+        """
+        import shutil
+        import tempfile
+        import time
+
+        from policyengine_us import Microsimulation
+        from policyengine_us_data.calibration.entity_clone import (
+            build_household_entity_maps,
+            materialize_clone_household_chunk,
+        )
+
+        if self.dataset_path is None:
+            raise ValueError("dataset_path is required for chunked matrix building")
+        if chunk_size <= 0:
+            raise ValueError("--chunk-size must be positive")
+
+        n_records = geography.n_records
+        n_clones = geography.n_clones
+        n_total = n_records * n_clones
+        _validate_chunked_geography(geography, n_total)
+
+        targets_df = self._query_targets(target_filter or {})
+        if len(targets_df) == 0:
+            raise ValueError("No targets found matching filter")
+
+        params = sim.tax_benefit_system.parameters
+        uprating_factors = self._calculate_uprating_factors(params)
+        targets_df["original_value"] = targets_df["value"].copy()
+        targets_df["uprating_factor"] = targets_df.apply(
+            lambda row: self._get_uprating_info(
+                row["variable"],
+                row["period"],
+                uprating_factors,
+            )[0],
+            axis=1,
+        )
+        targets_df["value"] = (
+            targets_df["original_value"] * targets_df["uprating_factor"]
+        )
+
+        if hierarchical_domains:
+            targets_df = self._apply_hierarchical_uprating(
+                targets_df,
+                hierarchical_domains,
+                uprating_factors,
+            )
+
+        targets_df["_geo_level"] = targets_df["geographic_id"].apply(get_geo_level)
+        targets_df = targets_df.sort_values(
+            ["_geo_level", "variable", "reform_id", "geographic_id"]
+        )
+        targets_df = targets_df.drop(columns=["_geo_level"]).reset_index(drop=True)
+        n_targets = len(targets_df)
+
+        constraint_cache: Dict[int, List[dict]] = {}
+        target_geo_info: List[Tuple[str, str]] = []
+        target_names: List[str] = []
+        non_geo_constraints_list: List[List[dict]] = []
+        target_reform_ids: List[int] = []
+
+        for _, row in targets_df.iterrows():
+            sid = int(row["stratum_id"])
+            if sid not in constraint_cache:
+                constraint_cache[sid] = self._get_stratum_constraints(sid)
+            constraints = constraint_cache[sid]
+            target_geo_info.append((row["geo_level"], row["geographic_id"]))
+            non_geo = [c for c in constraints if c["variable"] not in _GEO_VARS]
+            non_geo_constraints_list.append(non_geo)
+            reform_id = int(row.get("reform_id", 0))
+            target_reform_ids.append(reform_id)
+            target_names.append(
+                self._make_target_name(
+                    str(row["variable"]),
+                    constraints,
+                    reform_id=reform_id,
+                )
+            )
+
+        unique_variables = set(targets_df["variable"].values)
+        reform_variables = {
+            str(row["variable"])
+            for _, row in targets_df.iterrows()
+            if int(row.get("reform_id", 0)) > 0
+        }
+        unique_constraint_vars = set()
+        for constraints in non_geo_constraints_list:
+            for constraint in constraints:
+                unique_constraint_vars.add(constraint["variable"])
+
+        base_entity_maps = build_household_entity_maps(sim)
+
+        if chunk_dir is None:
+            chunk_root = Path(tempfile.mkdtemp(prefix="matrix_chunks_"))
+            remove_chunk_root = not keep_chunks
+        else:
+            chunk_root = Path(chunk_dir)
+            remove_chunk_root = False
+        coo_dir = chunk_root / "coo"
+        h5_dir = chunk_root / "h5"
+        coo_dir.mkdir(parents=True, exist_ok=True)
+        h5_dir.mkdir(parents=True, exist_ok=True)
+
+        n_chunks = (n_total + chunk_size - 1) // chunk_size
+        logger.info(
+            "Chunked matrix build: %d targets x %d columns, "
+            "%d chunks of up to %d columns",
+            n_targets,
+            n_total,
+            n_chunks,
+            chunk_size,
+        )
+
+        target_variables = [
+            str(targets_df.iloc[i]["variable"]) for i in range(n_targets)
+        ]
+        chunk_manifest_path = chunk_root / "chunk_manifest.json"
+        chunk_signature = build_chunk_lineage_signature(
+            dataset_path=self.dataset_path,
+            db_uri=self.db_uri,
+            time_period=self.time_period,
+            geography=geography,
+            targets_df=targets_df,
+            target_names=target_names,
+            chunk_size=chunk_size,
+            rerandomize_takeup=rerandomize_takeup,
+        )
+        if resume_chunks:
+            if chunk_manifest_path.exists():
+                _validate_chunk_manifest(chunk_manifest_path, chunk_signature)
+            elif _has_existing_chunk_cache(coo_dir):
+                raise ValueError(
+                    f"Cannot resume chunk cache at {chunk_root}: missing chunk manifest"
+                )
+            else:
+                _save_chunk_manifest(chunk_manifest_path, chunk_signature)
+        else:
+            _save_chunk_manifest(chunk_manifest_path, chunk_signature)
+
+        t_build = time.time()
+        processed_chunk_times: list[float] = []
+        cached_chunks = 0
+
+        for chunk_id, col_start in enumerate(range(0, n_total, chunk_size)):
+            t_chunk = time.time()
+            col_end = min(col_start + chunk_size, n_total)
+            coo_path = coo_dir / f"chunk_{chunk_id:06d}.npz"
+            h5_path = h5_dir / f"chunk_{chunk_id:06d}.h5"
+
+            if resume_chunks and coo_path.exists():
+                with np.load(str(coo_path)) as cached_chunk:
+                    if "col_start" not in cached_chunk or "col_end" not in cached_chunk:
+                        raise ValueError(
+                            f"Cached chunk {coo_path} is missing col_start/col_end metadata"
+                        )
+                    cached_col_start = int(np.asarray(cached_chunk["col_start"]).item())
+                    cached_col_end = int(np.asarray(cached_chunk["col_end"]).item())
+                if cached_col_start != col_start or cached_col_end != col_end:
+                    raise ValueError(
+                        f"Cached chunk {coo_path} covers cols {cached_col_start}-{cached_col_end - 1}, "
+                        f"expected {col_start}-{col_end - 1}"
+                    )
+                cached_chunks += 1
+                logger.info(
+                    "Chunk %d/%d cached: cols %d-%d, cached=%d",
+                    chunk_id + 1,
+                    n_chunks,
+                    col_start,
+                    col_end - 1,
+                    cached_chunks,
+                )
+                continue
+
+            global_cols = np.arange(col_start, col_end, dtype=np.int64)
+            active_hh = global_cols % n_records
+            active_clone_indices = global_cols // n_records
+            active_blocks = np.asarray(geography.block_geoid)[global_cols]
+            active_cd_geoids = np.asarray(geography.cd_geoid, dtype=str)[global_cols]
+            active_states = np.asarray(geography.state_fips)[global_cols]
+            active_counties = np.asarray(geography.county_fips, dtype=str)[global_cols]
+
+            summary = materialize_clone_household_chunk(
+                sim=sim,
+                entity_maps=base_entity_maps,
+                active_hh=active_hh,
+                active_blocks=active_blocks,
+                active_cd_geoids=active_cd_geoids,
+                active_clone_indices=active_clone_indices,
+                output_path=h5_path,
+                apply_takeup=rerandomize_takeup,
+            )
+
+            chunk_sim = Microsimulation(dataset=str(h5_path))
+            chunk_n = len(global_cols)
+            self._entity_rel_cache = None
+            entity_rel = self._build_entity_relationship(chunk_sim)
+            household_ids = chunk_sim.calculate(
+                "household_id",
+                map_to="household",
+            ).values
+
+            hh_vars = {}
+            for variable in sorted(unique_variables):
+                if variable.endswith("_count"):
+                    continue
+                try:
+                    hh_vars[variable] = chunk_sim.calculate(
+                        variable,
+                        self.time_period,
+                        map_to="household",
+                    ).values.astype(np.float32)
+                except Exception as exc:
+                    logger.warning(
+                        "Chunk %d cannot calculate target '%s': %s",
+                        chunk_id,
+                        variable,
+                        exc,
+                    )
+
+            person_vars = {}
+            for variable in sorted(unique_constraint_vars):
+                try:
+                    raw = chunk_sim.calculate(
+                        variable,
+                        self.time_period,
+                        map_to="person",
+                    ).values
+                    try:
+                        person_vars[variable] = raw.astype(np.float32)
+                    except (ValueError, TypeError):
+                        person_vars[variable] = raw
+                except Exception as exc:
+                    logger.warning(
+                        "Chunk %d cannot calculate constraint '%s': %s",
+                        chunk_id,
+                        variable,
+                        exc,
+                    )
+
+            reform_hh_vars = {}
+            if reform_variables:
+                baseline_income_tax = chunk_sim.calculate(
+                    "income_tax",
+                    self.time_period,
+                    map_to="household",
+                ).values.astype(np.float32)
+                for variable in sorted(reform_variables):
+                    try:
+                        reform_sim = Microsimulation(
+                            dataset=str(h5_path),
+                            reform=_make_neutralize_variable_reform(variable),
+                        )
+                        reform_income_tax = reform_sim.calculate(
+                            "income_tax",
+                            self.time_period,
+                            map_to="household",
+                        ).values.astype(np.float32)
+                        reform_hh_vars[variable] = (
+                            reform_income_tax - baseline_income_tax
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Chunk %d cannot calculate reform target '%s': %s",
+                            chunk_id,
+                            variable,
+                            exc,
+                        )
+
+            variable_entity_map: Dict[str, str] = {}
+            for variable in unique_variables:
+                if (
+                    variable.endswith("_count")
+                    and variable in chunk_sim.tax_benefit_system.variables
+                ):
+                    variable_entity_map[variable] = (
+                        chunk_sim.tax_benefit_system.variables[variable].entity.key
+                    )
+
+            mask_cache: Dict[tuple, np.ndarray] = {}
+            count_cache: Dict[tuple, np.ndarray] = {}
+            rows_list: list = []
+            cols_list: list = []
+            vals_list: list = []
+
+            for row_idx in range(n_targets):
+                variable = target_variables[row_idx]
+                reform_id = target_reform_ids[row_idx]
+                geo_level, geo_id = target_geo_info[row_idx]
+                non_geo = non_geo_constraints_list[row_idx]
+
+                if geo_level == "district":
+                    geo_mask = active_cd_geoids == str(geo_id)
+                elif geo_level == "state":
+                    geo_mask = active_states.astype(np.int64) == int(geo_id)
+                elif geo_level == "county":
+                    geo_mask = active_counties == str(geo_id).zfill(5)
+                else:
+                    geo_mask = np.ones(chunk_n, dtype=bool)
+
+                if not geo_mask.any():
+                    continue
+
+                constraint_key = tuple(
+                    sorted(
+                        (
+                            c["variable"],
+                            c["operation"],
+                            c["value"],
+                        )
+                        for c in non_geo
+                    )
+                )
+
+                if variable.endswith("_count"):
+                    value_key = (variable, constraint_key, reform_id)
+                    if value_key not in count_cache:
+                        count_cache[value_key] = _calculate_target_values_standalone(
+                            target_variable=variable,
+                            non_geo_constraints=non_geo,
+                            n_households=chunk_n,
+                            hh_vars=hh_vars,
+                            reform_hh_vars=reform_hh_vars,
+                            person_vars=person_vars,
+                            entity_rel=entity_rel,
+                            household_ids=household_ids,
+                            variable_entity_map=variable_entity_map,
+                            reform_id=reform_id,
+                        )
+                    values = count_cache[value_key]
+                else:
+                    source_vars = reform_hh_vars if reform_id > 0 else hh_vars
+                    if variable not in source_vars:
+                        continue
+                    if constraint_key not in mask_cache:
+                        mask_cache[constraint_key] = _evaluate_constraints_standalone(
+                            non_geo,
+                            person_vars,
+                            entity_rel,
+                            household_ids,
+                            chunk_n,
+                        )
+                    values = source_vars[variable] * mask_cache[constraint_key]
+
+                vals = values[geo_mask]
+                nonzero = vals != 0
+                if nonzero.any():
+                    rows_list.append(np.full(nonzero.sum(), row_idx, dtype=np.int32))
+                    cols_list.append(global_cols[geo_mask][nonzero].astype(np.int32))
+                    vals_list.append(vals[nonzero].astype(np.float32, copy=False))
+
+            if rows_list:
+                rows = np.concatenate(rows_list)
+                cols = np.concatenate(cols_list)
+                vals = np.concatenate(vals_list)
+            else:
+                rows = np.array([], dtype=np.int32)
+                cols = np.array([], dtype=np.int32)
+                vals = np.array([], dtype=np.float32)
+
+            np.savez_compressed(
+                str(coo_path),
+                rows=rows,
+                cols=cols,
+                vals=vals,
+                col_start=np.array([col_start], dtype=np.int64),
+                col_end=np.array([col_end], dtype=np.int64),
+            )
+
+            if not keep_chunks and h5_path.exists():
+                h5_path.unlink()
+
+            chunk_seconds = time.time() - t_chunk
+            processed_chunk_times.append(chunk_seconds)
+            remaining_chunks = n_chunks - (chunk_id + 1)
+            avg_seconds = float(np.mean(processed_chunk_times))
+            eta_seconds = avg_seconds * remaining_chunks
+            elapsed_seconds = time.time() - t_build
+            rss = _current_rss_mb()
+            rss_part = f", rss={rss:,.0f} MB" if rss is not None else ""
+            logger.info(
+                "Chunk %d/%d: cols %d-%d, hh=%d, persons=%d, "
+                "states=%d, counties=%d, cds=%d, nnz=%d, "
+                "chunk=%s, avg=%s, elapsed=%s, eta=%s%s",
+                chunk_id + 1,
+                n_chunks,
+                col_start,
+                col_end - 1,
+                summary.n_households,
+                summary.n_persons,
+                summary.unique_states,
+                summary.unique_counties,
+                summary.unique_cds,
+                len(vals),
+                _format_duration(chunk_seconds),
+                _format_duration(avg_seconds),
+                _format_duration(elapsed_seconds),
+                _format_duration(eta_seconds),
+                rss_part,
+            )
+
+            del chunk_sim, hh_vars, person_vars, reform_hh_vars
+
+        logger.info("Assembling matrix from %d chunk files...", n_chunks)
+        all_rows, all_cols, all_vals = [], [], []
+        for chunk_id in range(n_chunks):
+            path = coo_dir / f"chunk_{chunk_id:06d}.npz"
+            data = np.load(str(path))
+            all_rows.append(data["rows"])
+            all_cols.append(data["cols"])
+            all_vals.append(data["vals"])
+
+        rows = np.concatenate(all_rows) if all_rows else np.array([], dtype=np.int32)
+        cols = np.concatenate(all_cols) if all_cols else np.array([], dtype=np.int32)
+        vals = np.concatenate(all_vals) if all_vals else np.array([], dtype=np.float32)
+
+        X_csr = sparse.csr_matrix(
+            (vals, (rows, cols)),
+            shape=(n_targets, n_total),
+            dtype=np.float32,
+        )
+        logger.info(
+            "Chunked matrix: %d targets x %d cols, %d nnz",
+            X_csr.shape[0],
+            X_csr.shape[1],
+            X_csr.nnz,
+        )
+
+        if remove_chunk_root and chunk_root.exists():
+            shutil.rmtree(chunk_root)
+        elif not keep_chunks and h5_dir.exists():
+            shutil.rmtree(h5_dir)
 
         return targets_df, X_csr, target_names

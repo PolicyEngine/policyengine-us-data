@@ -36,6 +36,11 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from policyengine_us_data.calibration.signatures import (
+    build_checkpoint_signature,
+    checkpoint_signature_mismatches,
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -58,6 +63,7 @@ LAMBDA_L2 = 1e-12
 LEARNING_RATE = 0.15
 DEFAULT_EPOCHS = 100
 DEFAULT_N_CLONES = 430
+DEFAULT_TARGET_CONFIG_PATH = Path(__file__).resolve().parent / "target_config.yaml"
 
 
 def get_git_provenance() -> dict:
@@ -214,7 +220,11 @@ def parse_args(argv=None):
         "--epochs",
         type=int,
         default=DEFAULT_EPOCHS,
-        help=f"Training epochs (default: {DEFAULT_EPOCHS})",
+        help=(
+            f"Training epochs (default: {DEFAULT_EPOCHS}). "
+            f"When --resume-from is set, this is the number of "
+            f"ADDITIONAL epochs to run beyond the checkpoint, not a new total."
+        ),
     )
     parser.add_argument(
         "--device",
@@ -260,7 +270,20 @@ def parse_args(argv=None):
     parser.add_argument(
         "--target-config",
         default=None,
-        help="Path to target exclusion YAML config",
+        help=(
+            "Path to target include/exclude YAML config. "
+            "Defaults to calibration/target_config.yaml unless "
+            "--all-active-targets is set."
+        ),
+    )
+    parser.add_argument(
+        "--all-active-targets",
+        action="store_true",
+        help=(
+            "Build or fit against every active target in the database. "
+            "By default, calibration uses target_config.yaml to build "
+            "a minimal production package."
+        ),
     )
     parser.add_argument(
         "--county-level",
@@ -273,6 +296,32 @@ def parse_args(argv=None):
         "--build-only",
         action="store_true",
         help="Build matrix + save package, skip fitting",
+    )
+    parser.add_argument(
+        "--chunked-matrix",
+        action="store_true",
+        help="Build the calibration matrix in clone-household chunks.",
+    )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=25_000,
+        help="Clone-household columns per chunk for --chunked-matrix.",
+    )
+    parser.add_argument(
+        "--chunk-dir",
+        default=None,
+        help="Directory for chunked matrix COO/H5 artifacts.",
+    )
+    parser.add_argument(
+        "--keep-chunks",
+        action="store_true",
+        help="Keep temporary chunk H5 files after --chunked-matrix.",
+    )
+    parser.add_argument(
+        "--resume-chunks",
+        action="store_true",
+        help="Reuse existing chunk COO files in --chunk-dir when present.",
     )
     parser.add_argument(
         "--package-path",
@@ -322,7 +371,9 @@ def parse_args(argv=None):
         help="Resume fitting from a `.checkpoint.pt` file or "
         "warm-start from a `.npy` weights file. "
         "If a sibling checkpoint exists next to the weights file, "
-        "it is preferred automatically.",
+        "it is preferred automatically. "
+        "With --epochs N, runs N additional epochs on top of the "
+        "checkpoint's epoch count.",
     )
     parser.add_argument(
         "--checkpoint-output",
@@ -418,10 +469,24 @@ def apply_target_config(
 
     idx = np.where(keep_mask)[0]
     filtered_df = targets_df.iloc[idx].reset_index(drop=True)
-    filtered_X = X_sparse[idx, :]
+    filtered_X = None if X_sparse is None else X_sparse[idx, :]
     filtered_names = [target_names[i] for i in idx]
 
     return filtered_df, filtered_X, filtered_names
+
+
+def apply_target_config_to_targets(
+    targets_df: "pd.DataFrame",
+    config: dict,
+) -> "pd.DataFrame":
+    """Filter target rows before matrix construction."""
+    filtered_df, _, _ = apply_target_config(
+        targets_df,
+        None,
+        [None] * len(targets_df),
+        config,
+    )
+    return filtered_df
 
 
 def save_calibration_package(
@@ -490,75 +555,6 @@ def load_calibration_package(path: str) -> dict:
 def default_checkpoint_path(output_path: str) -> Path:
     """Derive the default checkpoint artifact path for a weights file."""
     return Path(output_path).with_suffix(".checkpoint.pt")
-
-
-def _hash_string_list(values: list) -> str:
-    """Hash an ordered list of strings for checkpoint compatibility."""
-    import hashlib
-
-    digest = hashlib.sha256()
-    for value in values or []:
-        digest.update(str(value).encode("utf-8"))
-        digest.update(b"\0")
-    return digest.hexdigest()
-
-
-def _hash_sparse_matrix(X_sparse) -> str:
-    """Hash sparse matrix structure and values for resume compatibility."""
-    import hashlib
-
-    X_csr = X_sparse.tocsr()
-    digest = hashlib.sha256()
-    digest.update(np.asarray(X_csr.shape, dtype=np.int64).tobytes())
-    digest.update(np.asarray(X_csr.indptr, dtype=np.int64).tobytes())
-    digest.update(np.asarray(X_csr.indices, dtype=np.int64).tobytes())
-    digest.update(np.asarray(X_csr.data).tobytes())
-    return digest.hexdigest()
-
-
-def build_checkpoint_signature(
-    X_sparse,
-    targets: np.ndarray,
-    target_names: list,
-    lambda_l0: float,
-    beta: float,
-    lambda_l2: float,
-    learning_rate: float,
-) -> dict:
-    """Build a compact signature to validate resume compatibility."""
-    import hashlib
-
-    targets_arr = np.asarray(targets, dtype=np.float64)
-    return {
-        "n_features": int(X_sparse.shape[1]),
-        "n_targets": int(len(targets_arr)),
-        "x_sparse_sha256": _hash_sparse_matrix(X_sparse),
-        "target_names_sha256": _hash_string_list(target_names),
-        "targets_sha256": hashlib.sha256(targets_arr.tobytes()).hexdigest(),
-        "lambda_l0": float(lambda_l0),
-        "beta": float(beta),
-        "lambda_l2": float(lambda_l2),
-        "learning_rate": float(learning_rate),
-    }
-
-
-def checkpoint_signature_mismatches(expected: dict, actual: dict) -> list:
-    """Return human-readable checkpoint compatibility mismatches."""
-    mismatches = []
-    float_keys = {"lambda_l0", "beta", "lambda_l2", "learning_rate"}
-    for key, actual_value in actual.items():
-        expected_value = expected.get(key)
-        if expected_value is None:
-            mismatches.append(f"{key} missing from checkpoint")
-            continue
-        if key in float_keys:
-            if not np.isclose(expected_value, actual_value):
-                mismatches.append(
-                    f"{key} expected {expected_value}, got {actual_value}"
-                )
-        elif actual_value != expected_value:
-            mismatches.append(f"{key} expected {expected_value}, got {actual_value}")
-    return mismatches
 
 
 def save_fit_checkpoint(
@@ -786,14 +782,22 @@ def fit_l0_weights(
                 raise ValueError(
                     f"Checkpoint {resume_path} is missing compatibility metadata"
                 )
-            mismatches = checkpoint_signature_mismatches(
+            fatal, soft = checkpoint_signature_mismatches(
                 stored_signature,
                 checkpoint_signature,
             )
-            if mismatches:
+            if fatal:
                 raise ValueError(
-                    "Checkpoint is incompatible with the requested run: "
-                    + "; ".join(mismatches)
+                    "Checkpoint is structurally incompatible with the "
+                    "requested run: " + "; ".join(fatal)
+                )
+            if soft:
+                logger.warning(
+                    "Resuming with hyperparameter change(s): %s. Stored "
+                    "weights and L0 gate state remain valid, but expect "
+                    "transient loss/sparsity shifts in the first few "
+                    "epochs as the optimizer re-equilibrates.",
+                    "; ".join(soft),
                 )
             checkpoint_state_dict = checkpoint["model_state_dict"]
             start_epoch = int(checkpoint.get("epochs_completed", 0))
@@ -1064,6 +1068,7 @@ def run_calibration(
     skip_source_impute: bool = True,
     skip_county: bool = True,
     target_config: dict = None,
+    target_config_path: str = None,
     build_only: bool = False,
     package_path: str = None,
     package_output_path: str = None,
@@ -1075,6 +1080,11 @@ def run_calibration(
     workers: int = 1,
     resume_from: str = None,
     checkpoint_path: str = None,
+    chunked_matrix: bool = False,
+    chunk_size: int = 25_000,
+    chunk_dir: str = None,
+    keep_chunks: bool = False,
+    resume_chunks: bool = False,
 ):
     """Run unified calibration pipeline.
 
@@ -1092,6 +1102,7 @@ def run_calibration(
         skip_takeup_rerandomize: Skip takeup step.
         skip_source_impute: Skip ACS/SIPP/SCF imputations.
         target_config: Parsed target config dict.
+        target_config_path: Path to target config, for provenance.
         build_only: If True, save package and skip fitting.
         package_path: Load pre-built package (skip build).
         package_output_path: Where to save calibration package.
@@ -1103,6 +1114,11 @@ def run_calibration(
         resume_from: Path to a checkpoint or weights file to
             continue fitting from.
         checkpoint_path: Where to save resumable fit checkpoints.
+        chunked_matrix: Build matrix in clone-household chunks.
+        chunk_size: Clone-household columns per chunk.
+        chunk_dir: Directory for chunked COO/H5 artifacts.
+        keep_chunks: Keep temporary chunk H5 files.
+        resume_chunks: Reuse existing chunk COO files.
 
     Returns:
         (weights, targets_df, X_sparse, target_names, geography_info)
@@ -1277,21 +1293,52 @@ def run_calibration(
     target_filter = {}
     if domain_variables:
         target_filter["domain_variables"] = domain_variables
+    if target_config:
+        candidate_targets = builder._query_targets(target_filter)
+        filtered_targets = apply_target_config_to_targets(
+            candidate_targets,
+            target_config,
+        )
+        if len(filtered_targets) == 0:
+            raise ValueError("Target config excluded all targets")
+        target_filter["target_ids"] = filtered_targets["target_id"].tolist()
+        logger.info(
+            "Build target config: selected %d / %d targets before matrix build",
+            len(filtered_targets),
+            len(candidate_targets),
+        )
 
     # Step 6: Build sparse calibration matrix
     do_rerandomize = not skip_takeup_rerandomize
     t_matrix = time.time()
     builder.dataset_path = dataset_for_matrix
-    targets_df, X_sparse, target_names = builder.build_matrix(
-        geography=geography,
-        sim=sim,
-        target_filter=target_filter,
-        hierarchical_domains=hierarchical_domains,
-        sim_modifier=sim_modifier,
-        rerandomize_takeup=do_rerandomize,
-        county_level=not skip_county,
-        workers=workers,
-    )
+    if chunked_matrix:
+        if workers != 1:
+            logger.warning(
+                "--workers is ignored by --chunked-matrix; chunks run sequentially"
+            )
+        targets_df, X_sparse, target_names = builder.build_matrix_chunked(
+            geography=geography,
+            sim=sim,
+            target_filter=target_filter,
+            hierarchical_domains=hierarchical_domains,
+            chunk_size=chunk_size,
+            chunk_dir=chunk_dir,
+            keep_chunks=keep_chunks,
+            resume_chunks=resume_chunks,
+            rerandomize_takeup=do_rerandomize,
+        )
+    else:
+        targets_df, X_sparse, target_names = builder.build_matrix(
+            geography=geography,
+            sim=sim,
+            target_filter=target_filter,
+            hierarchical_domains=hierarchical_domains,
+            sim_modifier=sim_modifier,
+            rerandomize_takeup=do_rerandomize,
+            county_level=not skip_county,
+            workers=workers,
+        )
 
     builder.print_uprating_summary(targets_df)
     logger.info(
@@ -1304,9 +1351,9 @@ def run_calibration(
         X_sparse.nnz,
     )
 
-    # Step 6b: Save FULL (unfiltered) calibration package.
-    # Target config is applied at fit time, so the package can be
-    # reused with different configs without rebuilding.
+    # Step 6b: Save the calibration package. By default this is the
+    # minimal package selected by target_config.yaml; use
+    # --all-active-targets to build a broad diagnostic package.
     import datetime
 
     metadata = {
@@ -1317,12 +1364,21 @@ def run_calibration(
         "base_n_records": n_records,
         "seed": seed,
         "created_at": datetime.datetime.now().isoformat(),
+        "target_config_path": target_config_path,
+        "package_scope": "minimal" if target_config else "all_active_targets",
+        "matrix_builder": "chunked" if chunked_matrix else "precompute",
+        "chunk_size": chunk_size if chunked_matrix else None,
+        "chunk_dir": chunk_dir if chunked_matrix else None,
     }
     metadata.update(get_git_provenance())
     from policyengine_us_data.utils.manifest import compute_file_checksum
 
     metadata["dataset_sha256"] = compute_file_checksum(Path(dataset_path))
     metadata["db_sha256"] = compute_file_checksum(Path(db_path))
+    if target_config_path:
+        metadata["target_config_sha256"] = compute_file_checksum(
+            Path(target_config_path)
+        )
 
     if package_output_path:
         full_initial_weights = compute_initial_weights(X_sparse, targets_df)
@@ -1335,12 +1391,6 @@ def run_calibration(
             initial_weights=full_initial_weights,
             cd_geoid=geography.cd_geoid,
             block_geoid=geography.block_geoid,
-        )
-
-    # Step 6c: Apply target config filtering (for fit or validation)
-    if target_config:
-        targets_df, X_sparse, target_names = apply_target_config(
-            targets_df, X_sparse, target_names, target_config
         )
 
     initial_weights = compute_initial_weights(X_sparse, targets_df)
@@ -1477,9 +1527,14 @@ def main(argv=None):
 
     t_start = time.time()
 
+    if args.all_active_targets and args.target_config:
+        raise ValueError("--all-active-targets cannot be used with --target-config")
+
     target_config = None
-    if args.target_config:
-        target_config = load_target_config(args.target_config)
+    target_config_path = None
+    if not args.all_active_targets:
+        target_config_path = args.target_config or str(DEFAULT_TARGET_CONFIG_PATH)
+        target_config = load_target_config(target_config_path)
 
     package_output_path = args.package_output
     if args.build_only and not package_output_path:
@@ -1516,6 +1571,7 @@ def main(argv=None):
         skip_source_impute=args.skip_source_impute,
         skip_county=not args.county_level,
         target_config=target_config,
+        target_config_path=target_config_path,
         build_only=args.build_only,
         package_path=args.package_path,
         package_output_path=package_output_path,
@@ -1527,6 +1583,11 @@ def main(argv=None):
         workers=args.workers,
         resume_from=args.resume_from,
         checkpoint_path=checkpoint_output_path,
+        chunked_matrix=args.chunked_matrix,
+        chunk_size=args.chunk_size,
+        chunk_dir=args.chunk_dir,
+        keep_chunks=args.keep_chunks,
+        resume_chunks=args.resume_chunks,
     )
 
     source_imputed = geography_info.get("dataset_for_matrix")

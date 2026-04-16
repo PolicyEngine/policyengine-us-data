@@ -122,9 +122,10 @@ for iteration in range(5000):
 - farm_operations_income_would_be_qualified
 - farm_rent_income_would_be_qualified
 
-The current PUF/calibration pipeline uses the legacy `business_is_sstb` flag to
-split these SSTB variables on an all-or-nothing basis. It does not yet infer
-mixed SSTB and non-SSTB allocations within the same record.
+The current PUF/calibration pipeline uses the legacy `business_is_sstb` flag to split these SSTB
+variables on an all-or-nothing basis. It does not yet infer mixed SSTB and non-SSTB allocations
+within the same record.
+
 - partnership_s_corp_income_would_be_qualified
 - rental_income_would_be_qualified
 - self_employment_income_would_be_qualified

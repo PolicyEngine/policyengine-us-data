@@ -3,8 +3,9 @@ Create a stratified sample of extended_cps_2024.h5 that preserves high-income ho
 while maintaining diversity in lower income strata for poverty analysis.
 
 Strategy:
-- Keep ALL households in top 1% (for high-income tax analysis)
-- Uniform sample from the remaining 99% (preserves low-income diversity)
+- Per-bracket caps on the high-AGI tail (avoids PUF-template pile-up above $10M
+  and ensures the $1M-$10M middle-high range has enough records for calibration)
+- Uniform sample from the middle range below the first high-AGI bracket floor
 - Optional: slight oversample of bottom quartile for poverty-focused analysis
 """
 
@@ -15,13 +16,57 @@ from policyengine_core.data.dataset import Dataset
 from policyengine_core.enums import Enum
 
 
+# Per-bracket caps for the high-AGI tail. The extended_cps passes through PUF
+# templates with household_weight=0 whose only role is to be cloned by
+# calibration; keeping thousands of them in the >$10M bracket dilutes optimizer
+# leverage and leaves the $1.5M-$10M middle-high range starved. These caps give
+# each middle-high band enough records to hit SOI bracket targets while keeping
+# the $10M+ tail at a manageable size. Weighted CPS records are preferred over
+# PUF templates when a bracket exceeds its cap.
+HIGH_AGI_BRACKETS = [
+    (500_000, 1_000_000, 400),
+    (1_000_000, 2_000_000, 400),
+    (2_000_000, 5_000_000, 400),
+    (5_000_000, 10_000_000, 300),
+    (10_000_000, float("inf"), 300),
+]
+
+TOP_AGI_FLOOR = HIGH_AGI_BRACKETS[0][0]  # $500k — boundary between top and middle
+
+
+def _format_agi(x):
+    if x == float("inf"):
+        return "inf"
+    if x >= 1e6:
+        return f"${x / 1e6:.1f}M"
+    return f"${x / 1e3:.0f}k"
+
+
+def _top_agi_floor(high_agi_brackets):
+    if not high_agi_brackets:
+        raise ValueError("high_agi_brackets must not be empty")
+    return float(high_agi_brackets[0][0])
+
+
+def _split_non_top_strata(agi, top_agi_floor):
+    non_top_mask = agi < top_agi_floor
+    non_top_agi = agi[non_top_mask]
+    if len(non_top_agi) == 0:
+        bottom_25_threshold = 0.0
+    else:
+        bottom_25_threshold = float(np.percentile(non_top_agi, 25))
+    bottom_mask = non_top_mask & (agi < bottom_25_threshold)
+    middle_mask = non_top_mask & (agi >= bottom_25_threshold)
+    return non_top_mask, bottom_mask, middle_mask, bottom_25_threshold
+
+
 def create_stratified_cps_dataset(
     target_households=30_000,
-    high_income_percentile=99,
     oversample_poor=False,
     seed=None,
     base_dataset=None,
     output_path=None,
+    high_agi_brackets=None,
 ):
     """
     Create a stratified sample of CPS data preserving high-income households
@@ -29,12 +74,16 @@ def create_stratified_cps_dataset(
 
     Args:
         target_households: Target number of households in output (approximate)
-        high_income_percentile: Keep ALL households above this AGI percentile (e.g., 99 or 99.5)
         oversample_poor: If True, boost sampling rate for bottom 25% by 1.5x
         seed: Random seed for reproducibility (default: None for random)
         base_dataset: Path to source h5 file (default: extended_cps_2024.h5)
         output_path: Where to save the stratified h5 file
+        high_agi_brackets: List of (lo, hi, cap) tuples defining per-bracket
+            caps for the high-AGI tail. Defaults to HIGH_AGI_BRACKETS.
     """
+    if high_agi_brackets is None:
+        high_agi_brackets = HIGH_AGI_BRACKETS
+    top_agi_floor = _top_agi_floor(high_agi_brackets)
     print("\n" + "=" * 70)
     print("CREATING STRATIFIED CPS DATASET")
     print("=" * 70)
@@ -49,9 +98,10 @@ def create_stratified_cps_dataset(
     print("Loading original dataset...")
     sim = Microsimulation(dataset=base_dataset)
 
-    # Calculate AGI for all households
-    print("Calculating household AGI...")
+    # Calculate AGI and household weights
+    print("Calculating household AGI and weights...")
     agi = sim.calculate("adjusted_gross_income", map_to="household").values
+    household_weight = sim.calculate("household_weight", map_to="household").values
     household_ids = sim.calculate("household_id", map_to="household").values
     n_households_orig = len(household_ids)
 
@@ -65,75 +115,97 @@ def create_stratified_cps_dataset(
         val = np.percentile(agi, p)
         print(f"  {p:5.1f}%: ${val:>12,.0f}")
 
-    # Define strata thresholds
-    high_income_threshold = np.percentile(agi, high_income_percentile)
-    bottom_25_pct_threshold = np.percentile(agi, 25)
+    # Initialize random state and selection mask
+    if seed is not None:
+        np.random.seed(seed)
+        print(f"\nUsing random seed: {seed}")
+    selected_mask = np.zeros(n_households_orig, dtype=bool)
 
-    # Count households in each stratum
-    n_top = np.sum(agi >= high_income_threshold)
-    n_bottom_25 = np.sum(agi < bottom_25_pct_threshold)
-    n_middle = n_households_orig - n_top - n_bottom_25
-
-    print(f"\nStratum sizes:")
+    # === Stratum 1: High-AGI tail (per-bracket caps) ===
+    # CPS top-codes earnings around $1M, so essentially all records above that
+    # are PUF templates with household_weight=0. Uncapped, they pile up in the
+    # >$10M bracket and dominate the stratified dataset. Cap each bracket to a
+    # target count, preferring weighted CPS records when available.
+    print(f"\nSelecting high-AGI records by bracket:")
     print(
-        f"  Top {100 - high_income_percentile}% (AGI >= ${high_income_threshold:,.0f}): {n_top:,}"
+        f"  {'bracket':<22s} {'selected':>10s} {'available':>10s} "
+        f"{'cap':>6s} {'weighted':>10s}"
     )
-    print(f"  Middle 25-{high_income_percentile}%: {n_middle:,}")
-    print(f"  Bottom 25% (AGI < ${bottom_25_pct_threshold:,.0f}): {n_bottom_25:,}")
+    for lo, hi, cap in high_agi_brackets:
+        bracket_mask = (agi >= lo) & (agi < hi)
+        bracket_indices = np.where(bracket_mask)[0]
+        n_available = len(bracket_indices)
+        label = f"[{_format_agi(lo)}, {_format_agi(hi)})"
 
-    # Calculate sampling rates
-    # Keep ALL top earners, distribute remaining quota between middle and bottom
-    remaining_quota = target_households - n_top
-    if remaining_quota <= 0:
-        raise ValueError(
-            f"Target ({target_households:,}) is less than top {100 - high_income_percentile}% "
-            f"count ({n_top:,}). Increase target_households."
+        if n_available == 0:
+            print(f"  {label:<22s} {0:>10,} {0:>10,} {cap:>6,} {0:>10,}")
+            continue
+
+        is_weighted = household_weight[bracket_indices] > 0
+        weighted_idx = bracket_indices[is_weighted]
+        unweighted_idx = bracket_indices[~is_weighted]
+
+        if n_available <= cap:
+            chosen = bracket_indices
+        elif len(weighted_idx) >= cap:
+            chosen = np.random.choice(weighted_idx, cap, replace=False)
+        else:
+            n_from_puf = cap - len(weighted_idx)
+            chosen_puf = np.random.choice(unweighted_idx, n_from_puf, replace=False)
+            chosen = np.concatenate([weighted_idx, chosen_puf])
+
+        selected_mask[chosen] = True
+        n_chosen_weighted = int((household_weight[chosen] > 0).sum())
+        print(
+            f"  {label:<22s} {len(chosen):>10,} {n_available:>10,} "
+            f"{cap:>6,} {n_chosen_weighted:>10,}"
         )
 
-    if oversample_poor:
+    n_top_selected = int(selected_mask.sum())
+    print(f"\n  High-AGI total selected: {n_top_selected:,}")
+
+    # === Strata 2 & 3: Middle and bottom sampling ===
+    # Everything below the top-bracket floor is split by the 25th
+    # percentile of the non-top records.
+    non_top_mask, bottom_mask, middle_mask, bottom_25_threshold = _split_non_top_strata(
+        agi,
+        top_agi_floor,
+    )
+    n_bottom_25 = int(bottom_mask.sum())
+    n_middle = int(middle_mask.sum())
+
+    print(f"\nStratum sizes (below ${top_agi_floor:,.0f}):")
+    print(f"  Bottom 25% (AGI < ${bottom_25_threshold:,.0f}): {n_bottom_25:,}")
+    print(
+        f"  Middle [${bottom_25_threshold:,.0f}, ${top_agi_floor:,.0f}): {n_middle:,}"
+    )
+
+    remaining_quota = target_households - n_top_selected
+    if remaining_quota <= 0:
+        print(
+            f"\nWARNING: high-AGI bracket caps ({n_top_selected:,}) already "
+            f"exceed target_households ({target_households:,}); no middle/bottom "
+            f"sampling."
+        )
+        r_middle = 0.0
+        r_bottom = 0.0
+    elif oversample_poor:
         # Give bottom 25% a 1.5x boost relative to middle
         r_middle = remaining_quota / (1.5 * n_bottom_25 + n_middle)
         r_bottom = 1.5 * r_middle
         r_middle = min(1.0, r_middle)
         r_bottom = min(1.0, r_bottom)
     else:
-        # Uniform sampling for the rest
         r_middle = remaining_quota / (n_bottom_25 + n_middle)
         r_bottom = r_middle
         r_middle = min(1.0, r_middle)
         r_bottom = min(1.0, r_bottom)
 
     print(f"\nSampling rates:")
-    print(f"  Top {100 - high_income_percentile}%: 100%")
-    print(f"  Middle 25-{high_income_percentile}%: {r_middle:.1%}")
     print(f"  Bottom 25%: {r_bottom:.1%}")
+    print(f"  Middle: {r_middle:.1%}")
 
-    # Expected counts
-    expected_top = n_top
-    expected_middle = int(n_middle * r_middle)
-    expected_bottom = int(n_bottom_25 * r_bottom)
-    expected_total = expected_top + expected_middle + expected_bottom
-
-    print(f"\nExpected selection:")
-    print(f"  Top {100 - high_income_percentile}%: {expected_top:,}")
-    print(f"  Middle 25-{high_income_percentile}%: {expected_middle:,}")
-    print(f"  Bottom 25%: {expected_bottom:,}")
-    print(f"  Total: {expected_total:,}")
-
-    # Select households
-    print("\nSelecting households...")
-    if seed is not None:
-        np.random.seed(seed)
-        print(f"  Using random seed: {seed}")
-    selected_mask = np.zeros(n_households_orig, dtype=bool)
-
-    # Top earners - keep all
-    top_mask = agi >= high_income_threshold
-    selected_mask[top_mask] = True
-    print(f"  Top {100 - high_income_percentile}%: selected {np.sum(top_mask):,}")
-
-    # Bottom 25%
-    bottom_mask = agi < bottom_25_pct_threshold
+    # Select bottom 25%
     bottom_indices = np.where(bottom_mask)[0]
     n_select_bottom = int(len(bottom_indices) * r_bottom)
     if r_bottom >= 1.0:
@@ -143,16 +215,8 @@ def create_stratified_cps_dataset(
             bottom_indices, n_select_bottom, replace=False
         )
         selected_mask[selected_bottom] = True
-    else:
-        print(
-            f"  WARNING: Bottom 25% selection rounded to 0 (rate={r_bottom:.4f}, n={len(bottom_indices)})"
-        )
-    print(
-        f"  Bottom 25%: selected {np.sum(selected_mask & bottom_mask):,} / {len(bottom_indices):,}"
-    )
 
-    # Middle
-    middle_mask = ~top_mask & ~bottom_mask
+    # Select middle
     middle_indices = np.where(middle_mask)[0]
     n_select_middle = int(len(middle_indices) * r_middle)
     if r_middle >= 1.0:
@@ -162,22 +226,20 @@ def create_stratified_cps_dataset(
             middle_indices, n_select_middle, replace=False
         )
         selected_mask[selected_middle] = True
-    else:
-        print(
-            f"  WARNING: Middle selection rounded to 0 (rate={r_middle:.4f}, n={len(middle_indices)})"
-        )
-    print(
-        f"  Middle 25-{high_income_percentile}%: selected {np.sum(selected_mask & middle_mask):,} / {len(middle_indices):,}"
-    )
 
-    n_selected = np.sum(selected_mask)
+    print(f"\nFinal selection:")
     print(
-        f"\nTotal selected: {n_selected:,} households ({n_selected / n_households_orig:.1%} of original)"
+        f"  High-AGI (>= ${top_agi_floor:,.0f}): "
+        f"{int((selected_mask & ~non_top_mask).sum()):,}"
     )
-
-    # Verify high earners are preserved
+    print(f"  Middle: {int((selected_mask & middle_mask).sum()):,} / {n_middle:,}")
     print(
-        f"\nHigh earners (>=${high_income_threshold:,.0f}): {np.sum(selected_mask & top_mask):,} / {n_top:,} (100%)"
+        f"  Bottom 25%: {int((selected_mask & bottom_mask).sum()):,} / {n_bottom_25:,}"
+    )
+    n_selected = int(selected_mask.sum())
+    print(
+        f"  Total: {n_selected:,} households "
+        f"({n_selected / n_households_orig:.1%} of original)"
     )
 
     # Get the selected household IDs
@@ -202,7 +264,7 @@ def create_stratified_cps_dataset(
 
     # Build a simulation to convert to h5
     print("Building simulation from Dataset...")
-    stratified_sim = Microsimulation()
+    stratified_sim = Microsimulation(dataset=base_dataset)
     stratified_sim.dataset = stratified_dataset
     stratified_sim.build_from_dataset()
 
@@ -301,7 +363,6 @@ if __name__ == "__main__":
     import sys
 
     target = 12_000
-    high_pct = 99.5
     oversample = False
     seed = 3526
 
@@ -309,7 +370,10 @@ if __name__ == "__main__":
         if arg == "--oversample-poor":
             oversample = True
         elif arg.startswith("--top="):
-            high_pct = float(arg.split("=")[1])
+            print(
+                f"WARNING: --top is no longer supported; high-AGI records are now "
+                f"selected via per-bracket caps (HIGH_AGI_BRACKETS). Ignoring '{arg}'."
+            )
         elif arg.startswith("--seed="):
             seed = int(arg.split("=")[1])
         elif arg.isdigit():
@@ -317,23 +381,19 @@ if __name__ == "__main__":
 
     print(f"Creating stratified dataset:")
     print(f"  Target households: {target:,}")
-    print(f"  Keep all above: {high_pct}th percentile")
+    print(f"  High-AGI bracket caps: {HIGH_AGI_BRACKETS}")
     print(f"  Oversample poor: {oversample}")
     print(f"  Seed: {seed if seed is not None else 'random'}")
 
     output_file = create_stratified_cps_dataset(
         target_households=target,
-        high_income_percentile=high_pct,
         oversample_poor=oversample,
         seed=seed,
     )
 
     print(f"\nDone! Created: {output_file}")
     print("\nUsage:")
-    print(
-        "  python create_stratified_cps.py [target] [--top=99] [--oversample-poor] [--seed=N]"
-    )
+    print("  python create_stratified_cps.py [target] [--oversample-poor] [--seed=N]")
     print("\nExamples:")
     print("  python create_stratified_cps.py 30000")
-    print("  python create_stratified_cps.py 50000 --top=99.5 --oversample-poor")
-    print("  python create_stratified_cps.py 30000 --seed=123  # reproducible")
+    print("  python create_stratified_cps.py 12000 --seed=123  # reproducible")

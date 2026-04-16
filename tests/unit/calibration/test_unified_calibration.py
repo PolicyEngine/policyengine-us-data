@@ -345,6 +345,14 @@ class TestParseArgsNewFlags:
         args = parse_args(["--target-config", "config.yaml"])
         assert args.target_config == "config.yaml"
 
+    def test_all_active_targets_flag(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            parse_args,
+        )
+
+        args = parse_args(["--all-active-targets"])
+        assert args.all_active_targets is True
+
     def test_build_only_flag(self):
         from policyengine_us_data.calibration.unified_calibration import (
             parse_args,
@@ -557,7 +565,9 @@ class TestFitResume:
 
         np.testing.assert_allclose(resumed_weights, np.array([3.0, 4.0]))
 
-    def test_resume_checkpoint_rejects_incompatible_hyperparams(self, tmp_path):
+    def test_resume_checkpoint_warns_on_hyperparameter_change(self, tmp_path, caplog):
+        import logging
+
         from policyengine_us_data.calibration.unified_calibration import (
             default_checkpoint_path,
             fit_l0_weights,
@@ -575,14 +585,21 @@ class TestFitResume:
             first_weights = fit_l0_weights(**kwargs)
             np.save(weights_path, first_weights)
 
-            with pytest.raises(ValueError, match="Checkpoint is incompatible"):
-                fit_l0_weights(
+            with caplog.at_level(logging.WARNING):
+                resumed_weights = fit_l0_weights(
                     **{
                         **kwargs,
                         "lambda_l0": 9e-4,
                         "resume_from": str(checkpoint_path),
                     }
                 )
+
+        assert resumed_weights is not None
+        assert any(
+            "Resuming with hyperparameter change" in record.message
+            and "lambda_l0" in record.message
+            for record in caplog.records
+        )
 
     def test_resume_checkpoint_rejects_changed_matrix_with_same_shape(self, tmp_path):
         from policyengine_us_data.calibration.unified_calibration import (
@@ -612,7 +629,9 @@ class TestFitResume:
                 )
             )
 
-            with pytest.raises(ValueError, match="Checkpoint is incompatible"):
+            with pytest.raises(
+                ValueError, match="Checkpoint is structurally incompatible"
+            ):
                 fit_l0_weights(
                     **{
                         **kwargs,

@@ -132,14 +132,8 @@ def convert_mortgage_interest_to_structural_inputs(
     person_ids = data.get("person_id", {}).get(tp)
     tax_unit_ids = data.get("tax_unit_id", {}).get(tp)
     person_tax_unit_ids = data.get("person_tax_unit_id", {}).get(tp)
-    filing_status = data.get("filing_status", {}).get(tp)
 
-    if (
-        person_ids is None
-        or tax_unit_ids is None
-        or person_tax_unit_ids is None
-        or filing_status is None
-    ):
+    if person_ids is None or tax_unit_ids is None or person_tax_unit_ids is None:
         return data
 
     n_persons = len(person_ids)
@@ -177,8 +171,11 @@ def convert_mortgage_interest_to_structural_inputs(
     )
 
     tax_unit_age = _tax_unit_age(data, tp, person_tax_unit_idx, n_tax_units)
-    filing_status_str = np.array(
-        [_decode_filing_status(value) for value in filing_status]
+    filing_status_str = _filing_status_for_mortgage_caps(
+        data,
+        tp,
+        person_tax_unit_idx,
+        n_tax_units,
     )
 
     post_cap = np.array(
@@ -818,6 +815,29 @@ def _decode_filing_status(value) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8").upper()
     return str(value).upper()
+
+
+def _filing_status_for_mortgage_caps(
+    data: Dict[str, Dict[int, np.ndarray]],
+    time_period: int,
+    person_tax_unit_idx: np.ndarray,
+    n_tax_units: int,
+) -> np.ndarray:
+    filing_status = data.get("filing_status", {}).get(time_period)
+    if filing_status is not None:
+        return np.array([_decode_filing_status(value) for value in filing_status])
+
+    is_spouse = data.get("is_tax_unit_spouse", {}).get(time_period)
+    if is_spouse is None:
+        return np.full(n_tax_units, "SINGLE", dtype=object)
+
+    has_spouse = np.zeros(n_tax_units, dtype=bool)
+    np.logical_or.at(
+        has_spouse,
+        person_tax_unit_idx,
+        np.asarray(is_spouse, dtype=bool),
+    )
+    return np.where(has_spouse, "JOINT", "SINGLE")
 
 
 def _post_tcja_cap(status: str) -> float:

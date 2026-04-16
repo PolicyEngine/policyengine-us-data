@@ -605,7 +605,7 @@ def run_pipeline(
     gpu: str = "T4",
     epochs: int = 1000,
     national_gpu: str = "T4",
-    national_epochs: int = 4000,
+    national_epochs: int = 1000,
     num_workers: int = 50,
     n_clones: int = 430,
     skip_national: bool = False,
@@ -795,7 +795,7 @@ def run_pipeline(
                 beta=0.65,
                 lambda_l0=1e-7,
                 lambda_l2=1e-8,
-                log_freq=500,
+                log_freq=100,
             )
             print(f"    → regional fit fc: {regional_handle.object_id}")
 
@@ -814,9 +814,9 @@ def run_pipeline(
                     volume_package_path=vol_path,
                     target_config=target_cfg,
                     beta=0.65,
-                    lambda_l0=1e-4,
+                    lambda_l0=2e-2,
                     lambda_l2=1e-12,
-                    log_freq=500,
+                    log_freq=100,
                 )
                 print(f"    → national fit fc: {national_handle.object_id}")
 
@@ -1283,7 +1283,7 @@ def main(
     gpu: str = "T4",
     epochs: int = 1000,
     national_gpu: str = "T4",
-    national_epochs: int = 4000,
+    national_epochs: int = 1000,
     num_workers: int = 50,
     n_clones: int = 430,
     skip_national: bool = False,

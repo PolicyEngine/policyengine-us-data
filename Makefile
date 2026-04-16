@@ -8,7 +8,7 @@ YEAR ?= 2024
 GPU ?= T4
 EPOCHS ?= 1000
 NATIONAL_GPU ?= T4
-NATIONAL_EPOCHS ?= 4000
+NATIONAL_EPOCHS ?= 1000
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 NUM_WORKERS ?= 8
 N_CLONES ?= 430
@@ -116,7 +116,8 @@ data-legacy: data
 
 calibrate: data
 	python -m policyengine_us_data.calibration.unified_calibration \
-		--target-config policyengine_us_data/calibration/target_config.yaml
+		--target-config policyengine_us_data/calibration/target_config.yaml \
+		--log-freq 100
 
 calibrate-build: data
 	python -m policyengine_us_data.calibration.unified_calibration \
@@ -187,7 +188,7 @@ build-matrices:
 calibrate-modal:
 	modal run --detach modal_app/remote_calibration_runner.py::main \
 		--branch $(BRANCH) --gpu $(GPU) --epochs $(EPOCHS) \
-		--beta 0.65 --lambda-l0 1e-7 --lambda-l2 1e-8 --log-freq 500 \
+		--beta 0.65 --lambda-l0 1e-7 --lambda-l2 1e-8 --log-freq 100 \
 		--target-config policyengine_us_data/calibration/target_config.yaml \
 		--push-results
 
@@ -195,7 +196,7 @@ calibrate-modal-national:
 	modal run --detach modal_app/remote_calibration_runner.py::main \
 		--branch $(BRANCH) --gpu $(NATIONAL_GPU) \
 		--epochs $(NATIONAL_EPOCHS) \
-		--beta 0.65 --lambda-l0 1e-4 --lambda-l2 1e-12 --log-freq 500 \
+		--beta 0.65 --lambda-l0 2e-2 --lambda-l2 1e-12 --log-freq 100 \
 		--target-config policyengine_us_data/calibration/target_config.yaml \
 		--push-results --national
 
@@ -258,7 +259,7 @@ pipeline:
 clean:
 	rm -f policyengine_us_data/storage/*.h5
 	rm -f policyengine_us_data/storage/*.db
-	git clean -fX -- '*.csv'
+	git ls-files --others --ignored --exclude-standard -- '*.csv' | grep -Ev '(^|/)(\.venv|venv|env|\.tox|\.nox|node_modules)/' | xargs -r rm -f
 	rm -rf policyengine_us_data/docs/_build
 
 build:

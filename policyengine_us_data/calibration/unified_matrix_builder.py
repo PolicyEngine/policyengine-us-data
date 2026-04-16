@@ -201,6 +201,7 @@ def _compute_single_state(
     n_hh: int,
     target_vars: list,
     constraint_vars: list,
+    variable_entity_map: dict,
     reform_vars: list,
     rerandomize_takeup: bool,
     affected_targets: dict,
@@ -240,6 +241,7 @@ def _compute_single_state(
         state_sim.delete_arrays(var)
 
     hh = {}
+    target_entity = {}
     for var in target_vars:
         if var.endswith("_count"):
             continue
@@ -253,6 +255,23 @@ def _compute_single_state(
             logger.warning(
                 "Cannot calculate '%s' for state %d: %s",
                 var,
+                state,
+                exc,
+            )
+        target_entity_key = variable_entity_map.get(var, "household")
+        if target_entity_key == "household":
+            continue
+        try:
+            target_entity[var] = state_sim.calculate(
+                var,
+                time_period,
+                map_to=target_entity_key,
+            ).values.astype(np.float32)
+        except Exception as exc:
+            logger.warning(
+                "Cannot calculate entity-level '%s' (map_to=%s) for state %d: %s",
+                var,
+                target_entity_key,
                 state,
                 exc,
             )
@@ -352,6 +371,7 @@ def _compute_single_state(
         state,
         {
             "hh": hh,
+            "target_entity": target_entity,
             "person": person,
             "reform_hh": reform_hh,
             "entity": entity_vals,
@@ -367,6 +387,7 @@ def _compute_single_state_group_counties(
     counties: list,
     n_hh: int,
     county_dep_targets: list,
+    variable_entity_map: dict,
     rerandomize_takeup: bool,
     affected_targets: dict,
 ):
@@ -441,6 +462,7 @@ def _compute_single_state_group_counties(
                 state_sim.delete_arrays(var)
 
         hh = {}
+        target_entity = {}
         for var in county_dep_targets:
             if var.endswith("_count"):
                 continue
@@ -454,6 +476,23 @@ def _compute_single_state_group_counties(
                 logger.warning(
                     "Cannot calculate '%s' for county %s: %s",
                     var,
+                    county_fips,
+                    exc,
+                )
+            target_entity_key = variable_entity_map.get(var, "household")
+            if target_entity_key == "household":
+                continue
+            try:
+                target_entity[var] = state_sim.calculate(
+                    var,
+                    time_period,
+                    map_to=target_entity_key,
+                ).values.astype(np.float32)
+            except Exception as exc:
+                logger.warning(
+                    "Cannot calculate entity-level '%s' (map_to=%s) for county %s: %s",
+                    var,
+                    target_entity_key,
                     county_fips,
                     exc,
                 )
@@ -494,6 +533,7 @@ def _compute_single_state_group_counties(
                 county_fips,
                 {
                     "hh": hh,
+                    "target_entity": target_entity,
                     "entity": entity_vals,
                 },
             )
@@ -610,6 +650,117 @@ def _assemble_clone_values_standalone(
     return hh_vars, person_vars, reform_hh_vars
 
 
+def _assemble_target_entity_values_standalone(
+    state_values: dict,
+    clone_states: np.ndarray,
+    entity_hh_idx_map: dict,
+    target_vars: set,
+    variable_entity_map: dict,
+    county_values: dict = None,
+    clone_counties: np.ndarray = None,
+    county_dependent_vars: set = None,
+) -> dict:
+    """Assemble non-household target variables at their native entity level."""
+    cdv = county_dependent_vars or set()
+    entities_needed = {
+        variable_entity_map.get(var)
+        for var in target_vars
+        if not var.endswith("_count")
+    }
+    entities_needed.discard(None)
+    entities_needed.discard("household")
+    if not entities_needed:
+        return {}
+
+    entity_state_masks = {}
+    entity_county_masks = {}
+    for entity_key in entities_needed:
+        ent_hh_idx = entity_hh_idx_map.get(entity_key)
+        if ent_hh_idx is None:
+            continue
+        ent_states = clone_states[ent_hh_idx]
+        unique_ent_states = np.unique(ent_states)
+        entity_state_masks[entity_key] = {
+            "states": unique_ent_states,
+            "masks": {int(state): ent_states == state for state in unique_ent_states},
+        }
+        if clone_counties is not None and county_values:
+            ent_counties = clone_counties[ent_hh_idx]
+            unique_ent_counties = np.unique(ent_counties)
+            entity_county_masks[entity_key] = {
+                "counties": unique_ent_counties,
+                "masks": {
+                    county: ent_counties == county for county in unique_ent_counties
+                },
+            }
+
+    target_entity_vars: dict = {}
+    for var in target_vars:
+        if var.endswith("_count"):
+            continue
+        entity_key = variable_entity_map.get(var, "household")
+        if entity_key == "household":
+            continue
+        if entity_key not in entity_state_masks:
+            continue
+
+        ent_hh_idx = entity_hh_idx_map[entity_key]
+        n_ent = len(ent_hh_idx)
+        arr = np.zeros(n_ent, dtype=np.float32)
+
+        if var in cdv and clone_counties is not None and county_values:
+            county_info = entity_county_masks.get(entity_key)
+            if county_info is None:
+                continue
+            for county in county_info["counties"]:
+                mask = county_info["masks"][county]
+                county_entity = county_values.get(county, {}).get("target_entity", {})
+                if var in county_entity:
+                    arr[mask] = county_entity[var][mask]
+                else:
+                    state_fips = int(county[:2])
+                    state_entity = state_values[state_fips].get("target_entity", {})
+                    if var not in state_entity:
+                        continue
+                    arr[mask] = state_entity[var][mask]
+        else:
+            state_info = entity_state_masks[entity_key]
+            for state in state_info["states"]:
+                mask = state_info["masks"][int(state)]
+                state_entity = state_values[int(state)].get("target_entity", {})
+                if var not in state_entity:
+                    continue
+                arr[mask] = state_entity[var][mask]
+
+        target_entity_vars[var] = arr
+
+    return target_entity_vars
+
+
+def _evaluate_person_constraints_standalone(
+    constraints,
+    person_vars: dict,
+    n_persons: int,
+) -> np.ndarray:
+    """Evaluate constraints at person level."""
+    if not constraints:
+        return np.ones(n_persons, dtype=bool)
+
+    person_mask = np.ones(n_persons, dtype=bool)
+    for c in constraints:
+        var = c["variable"]
+        if var not in person_vars:
+            logger.warning(
+                "Constraint var '%s' not in precomputed person_vars",
+                var,
+            )
+            return np.zeros(n_persons, dtype=bool)
+        vals = person_vars[var]
+        person_mask &= apply_op(vals, c["operation"], c["value"])
+
+    return person_mask
+
+
 def _evaluate_constraints_standalone(
     constraints,
     person_vars: dict,
@@ -622,22 +773,12 @@ def _evaluate_constraints_standalone(
     Evaluates person-level constraints and aggregates to
     household level via .any().
     """
-    if not constraints:
-        return np.ones(n_households, dtype=bool)
-
     n_persons = len(entity_rel)
-    person_mask = np.ones(n_persons, dtype=bool)
-
-    for c in constraints:
-        var = c["variable"]
-        if var not in person_vars:
-            logger.warning(
-                "Constraint var '%s' not in precomputed person_vars",
-                var,
-            )
-            return np.zeros(n_households, dtype=bool)
-        vals = person_vars[var]
-        person_mask &= apply_op(vals, c["operation"], c["value"])
+    person_mask = _evaluate_person_constraints_standalone(
+        constraints,
+        person_vars,
+        n_persons,
+    )
 
     df = entity_rel.copy()
     df["satisfies"] = person_mask
@@ -651,10 +792,13 @@ def _calculate_target_values_standalone(
     n_households: int,
     hh_vars: dict,
     reform_hh_vars: dict,
+    target_entity_vars: dict,
     person_vars: dict,
     entity_rel: pd.DataFrame,
     household_ids: np.ndarray,
     variable_entity_map: dict,
+    entity_hh_idx_map: dict,
+    person_to_entity_idx_map: dict,
     reform_id: int = 0,
 ) -> np.ndarray:
     """Standalone target-value calculation (no class instance).
@@ -663,8 +807,9 @@ def _calculate_target_values_standalone(
     (picklable, unlike ``tax_benefit_system``).
     """
     is_count = target_variable.endswith("_count")
+    target_entity = variable_entity_map.get(target_variable, "household")
 
-    if not is_count:
+    if reform_id > 0:
         mask = _evaluate_constraints_standalone(
             non_geo_constraints,
             person_vars,
@@ -672,38 +817,61 @@ def _calculate_target_values_standalone(
             household_ids,
             n_households,
         )
-        source_vars = reform_hh_vars if reform_id > 0 else hh_vars
-        vals = source_vars.get(target_variable)
+        vals = reform_hh_vars.get(target_variable)
+        if vals is None:
+            return np.zeros(n_households, dtype=np.float32)
+        return (vals * mask).astype(np.float32)
+
+    if not is_count and target_entity == "household":
+        mask = _evaluate_constraints_standalone(
+            non_geo_constraints,
+            person_vars,
+            entity_rel,
+            household_ids,
+            n_households,
+        )
+        vals = hh_vars.get(target_variable)
         if vals is None:
             return np.zeros(n_households, dtype=np.float32)
         return (vals * mask).astype(np.float32)
 
     # Count target: entity-aware counting
     n_persons = len(entity_rel)
-    person_mask = np.ones(n_persons, dtype=bool)
-
-    for c in non_geo_constraints:
-        var = c["variable"]
-        if var not in person_vars:
-            return np.zeros(n_households, dtype=np.float32)
-        cv = person_vars[var]
-        person_mask &= apply_op(cv, c["operation"], c["value"])
-
-    target_entity = variable_entity_map.get(target_variable)
-    if target_entity is None:
-        return np.zeros(n_households, dtype=np.float32)
+    person_mask = _evaluate_person_constraints_standalone(
+        non_geo_constraints,
+        person_vars,
+        n_persons,
+    )
 
     if target_entity == "household":
-        if non_geo_constraints:
-            mask = _evaluate_constraints_standalone(
-                non_geo_constraints,
-                person_vars,
-                entity_rel,
-                household_ids,
-                n_households,
-            )
-            return mask.astype(np.float32)
-        return np.ones(n_households, dtype=np.float32)
+        hh_mask = _evaluate_constraints_standalone(
+            non_geo_constraints,
+            person_vars,
+            entity_rel,
+            household_ids,
+            n_households,
+        )
+        return hh_mask.astype(np.float32)
+
+    if not is_count:
+        entity_values = target_entity_vars.get(target_variable)
+        entity_hh_idx = entity_hh_idx_map.get(target_entity)
+        person_to_entity_idx = person_to_entity_idx_map.get(target_entity)
+        if (
+            entity_values is None
+            or entity_hh_idx is None
+            or person_to_entity_idx is None
+        ):
+            return np.zeros(n_households, dtype=np.float32)
+        entity_mask = np.zeros(len(entity_values), dtype=bool)
+        np.logical_or.at(entity_mask, person_to_entity_idx, person_mask)
+        hh_result = np.zeros(n_households, dtype=np.float32)
+        np.add.at(
+            hh_result,
+            entity_hh_idx,
+            entity_values * entity_mask.astype(np.float32),
+        )
+        return hh_result
 
     if target_entity == "person":
         er = entity_rel.copy()
@@ -724,6 +892,45 @@ def _calculate_target_values_standalone(
         [counts.get(hid, 0) for hid in household_ids],
         dtype=np.float32,
     )
+
+
+def _build_entity_index_maps(
+    entity_rel: pd.DataFrame,
+    household_ids: np.ndarray,
+    sim,
+) -> tuple[dict, dict]:
+    """Build entity-to-household and person-to-entity index maps."""
+    hh_id_to_idx = {int(hid): idx for idx, hid in enumerate(household_ids)}
+    person_hh_ids = entity_rel["household_id"].values
+    person_hh_indices = np.array(
+        [hh_id_to_idx[int(hid)] for hid in person_hh_ids],
+        dtype=np.int64,
+    )
+
+    entity_hh_idx_map = {
+        "person": person_hh_indices,
+    }
+    person_to_entity_idx_map = {
+        "person": np.arange(len(entity_rel), dtype=np.int64),
+    }
+
+    for entity_level in ("spm_unit", "tax_unit"):
+        ent_to_hh_id = (
+            entity_rel.groupby(f"{entity_level}_id")["household_id"].first().to_dict()
+        )
+        ent_ids = sim.calculate(f"{entity_level}_id", map_to=entity_level).values
+        entity_hh_idx_map[entity_level] = np.array(
+            [hh_id_to_idx[int(ent_to_hh_id[int(eid)])] for eid in ent_ids],
+            dtype=np.int64,
+        )
+        ent_id_to_idx = {int(eid): idx for idx, eid in enumerate(ent_ids)}
+        person_ent_ids = entity_rel[f"{entity_level}_id"].values
+        person_to_entity_idx_map[entity_level] = np.array(
+            [ent_id_to_idx[int(eid)] for eid in person_ent_ids],
+            dtype=np.int64,
+        )
+
+    return entity_hh_idx_map, person_to_entity_idx_map
 
 
 def _process_single_clone(
@@ -774,8 +981,8 @@ def _process_single_clone(
     variable_entity_map = sd["variable_entity_map"]
     do_takeup = sd["rerandomize_takeup"]
     affected_target_info = sd["affected_target_info"]
-    entity_hh_idx_map = sd.get("entity_hh_idx_map", {})
-    entity_to_person_idx = sd.get("entity_to_person_idx", {})
+    entity_hh_idx_map = sd["entity_hh_idx_map"]
+    person_to_entity_idx_map = sd["person_to_entity_idx_map"]
     precomputed_rates = sd.get("precomputed_rates", {})
     reported_takeup_anchors = sd.get("reported_takeup_anchors", {})
 
@@ -791,6 +998,16 @@ def _process_single_clone(
         unique_variables,
         unique_constraint_vars,
         reform_vars=reform_vars,
+        county_values=county_values,
+        clone_counties=clone_counties,
+        county_dependent_vars=county_dep_targets,
+    )
+    target_entity_vars = _assemble_target_entity_values_standalone(
+        state_values,
+        clone_states,
+        entity_hh_idx_map,
+        unique_variables,
+        variable_entity_map,
         county_values=county_values,
         clone_counties=clone_counties,
         county_dependent_vars=county_dep_targets,
@@ -828,7 +1045,7 @@ def _process_single_clone(
             )
             wf_draws[entity] = draws
             if var_name in person_vars:
-                pidx = entity_to_person_idx[entity]
+                pidx = person_to_entity_idx_map[entity]
                 person_vars[var_name] = draws[pidx].astype(np.float32)
 
         # Phase 2: target loop with would_file blending
@@ -907,14 +1124,14 @@ def _process_single_clone(
             hh_result = np.zeros(n_records, dtype=np.float32)
             np.add.at(hh_result, ent_hh, ent_values)
             hh_vars[tvar] = hh_result
+            target_entity_vars[tvar] = ent_values
 
             if tvar in person_vars:
-                pidx = entity_to_person_idx[entity_level]
+                pidx = person_to_entity_idx_map[entity_level]
                 person_vars[tvar] = ent_values[pidx]
 
     # Build COO entries for every target row
-    mask_cache: dict = {}
-    count_cache: dict = {}
+    target_value_cache: dict = {}
     rows_list: list = []
     cols_list: list = []
     vals_list: list = []
@@ -957,36 +1174,24 @@ def _process_single_clone(
             )
         )
 
-        if variable.endswith("_count"):
-            vkey = (variable, constraint_key, reform_id)
-            if vkey not in count_cache:
-                count_cache[vkey] = _calculate_target_values_standalone(
-                    variable,
-                    non_geo,
-                    n_records,
-                    hh_vars,
-                    reform_hh_vars,
-                    person_vars,
-                    entity_rel,
-                    household_ids,
-                    variable_entity_map,
-                    reform_id=reform_id,
-                )
-            values = count_cache[vkey]
-        else:
-            source_vars = reform_hh_vars if reform_id > 0 else hh_vars
-            if variable not in source_vars:
-                continue
-            if constraint_key not in mask_cache:
-                mask_cache[constraint_key] = _evaluate_constraints_standalone(
-                    non_geo,
-                    person_vars,
-                    entity_rel,
-                    household_ids,
-                    n_records,
-                )
-            mask = mask_cache[constraint_key]
-            values = source_vars[variable] * mask
+        vkey = (variable, constraint_key, reform_id)
+        if vkey not in target_value_cache:
+            target_value_cache[vkey] = _calculate_target_values_standalone(
+                target_variable=variable,
+                non_geo_constraints=non_geo,
+                n_households=n_records,
+                hh_vars=hh_vars,
+                reform_hh_vars=reform_hh_vars,
+                target_entity_vars=target_entity_vars,
+                person_vars=person_vars,
+                entity_rel=entity_rel,
+                household_ids=household_ids,
+                variable_entity_map=variable_entity_map,
+                entity_hh_idx_map=entity_hh_idx_map,
+                person_to_entity_idx_map=person_to_entity_idx_map,
+                reform_id=reform_id,
+            )
+        values = target_value_cache[vkey]
 
         vals = values[rec_indices]
         nonzero = vals != 0
@@ -1070,6 +1275,7 @@ class UnifiedMatrixBuilder:
         sim,
         target_vars: set,
         constraint_vars: set,
+        variable_entity_map: dict = None,
         reform_vars: set = None,
         geography=None,
         rerandomize_takeup: bool = True,
@@ -1100,6 +1306,7 @@ class UnifiedMatrixBuilder:
         Returns:
             {state_fips: {
                 'hh': {var: array},
+                'target_entity': {var: array},
                 'person': {var: array},
                 'entity': {var: array}  # only if rerandomize
             }}
@@ -1110,6 +1317,7 @@ class UnifiedMatrixBuilder:
 
         if geography is None:
             raise ValueError("geography is required")
+        variable_entity_map = variable_entity_map or {}
 
         unique_states = sorted(set(int(s) for s in geography.state_fips))
         n_hh = geography.n_records
@@ -1160,6 +1368,7 @@ class UnifiedMatrixBuilder:
                         n_hh,
                         target_vars_list,
                         constraint_vars_list,
+                        variable_entity_map,
                         reform_vars_list,
                         rerandomize_takeup,
                         affected_targets,
@@ -1201,6 +1410,7 @@ class UnifiedMatrixBuilder:
                     state_sim.delete_arrays(var)
 
                 hh = {}
+                target_entity = {}
                 for var in target_vars:
                     if var.endswith("_count"):
                         continue
@@ -1214,6 +1424,23 @@ class UnifiedMatrixBuilder:
                         logger.warning(
                             "Cannot calculate '%s' for state %d: %s",
                             var,
+                            state,
+                            exc,
+                        )
+                    target_entity_key = variable_entity_map.get(var, "household")
+                    if target_entity_key == "household":
+                        continue
+                    try:
+                        target_entity[var] = state_sim.calculate(
+                            var,
+                            self.time_period,
+                            map_to=target_entity_key,
+                        ).values.astype(np.float32)
+                    except Exception as exc:
+                        logger.warning(
+                            "Cannot calculate entity-level '%s' (map_to=%s) for state %d: %s",
+                            var,
+                            target_entity_key,
                             state,
                             exc,
                         )
@@ -1323,6 +1550,7 @@ class UnifiedMatrixBuilder:
 
                 state_values[state] = {
                     "hh": hh,
+                    "target_entity": target_entity,
                     "person": person,
                     "reform_hh": reform_hh,
                     "entity": entity_vals,
@@ -1346,6 +1574,7 @@ class UnifiedMatrixBuilder:
         sim,
         county_dep_targets: set,
         geography,
+        variable_entity_map: dict = None,
         rerandomize_takeup: bool = True,
         county_level: bool = True,
         workers: int = 1,
@@ -1383,6 +1612,7 @@ class UnifiedMatrixBuilder:
         Returns:
             {county_fips_str: {
                 'hh': {var: array},
+                'target_entity': {var: array},
                 'entity': {var: array}
             }}
         """
@@ -1393,6 +1623,7 @@ class UnifiedMatrixBuilder:
                 len(county_dep_targets),
             )
             return {}
+        variable_entity_map = variable_entity_map or {}
 
         from policyengine_us_data.utils.takeup import (
             TAKEUP_AFFECTED_TARGETS,
@@ -1449,6 +1680,7 @@ class UnifiedMatrixBuilder:
                         counties,
                         n_hh,
                         county_dep_targets_list,
+                        variable_entity_map,
                         rerandomize_takeup,
                         affected_targets,
                     ): sf
@@ -1486,6 +1718,7 @@ class UnifiedMatrixBuilder:
                     counties,
                     n_hh,
                     county_dep_targets_list,
+                    variable_entity_map,
                     rerandomize_takeup,
                     affected_targets,
                 )
@@ -2201,6 +2434,12 @@ class UnifiedMatrixBuilder:
             for _, row in targets_df.iterrows()
             if int(row.get("reform_id", 0)) > 0
         }
+        variable_entity_map: Dict[str, str] = {}
+        for var in unique_variables:
+            if var in sim.tax_benefit_system.variables:
+                variable_entity_map[var] = sim.tax_benefit_system.variables[
+                    var
+                ].entity.key
 
         # 5a. Collect unique constraint variables
         unique_constraint_vars = set()
@@ -2214,6 +2453,7 @@ class UnifiedMatrixBuilder:
             sim,
             unique_variables,
             unique_constraint_vars,
+            variable_entity_map,
             reform_variables,
             geography,
             rerandomize_takeup=rerandomize_takeup,
@@ -2226,6 +2466,7 @@ class UnifiedMatrixBuilder:
             sim,
             county_dep_targets,
             geography,
+            variable_entity_map,
             rerandomize_takeup=rerandomize_takeup,
             county_level=county_level,
             workers=workers,
@@ -2234,19 +2475,13 @@ class UnifiedMatrixBuilder:
         # 5c. State-independent structures (computed once)
         entity_rel = self._build_entity_relationship(sim)
         household_ids = sim.calculate("household_id", map_to="household").values
-        person_hh_ids = sim.calculate("household_id", map_to="person").values
-        hh_id_to_idx = {int(hid): idx for idx, hid in enumerate(household_ids)}
-        person_hh_indices = np.array([hh_id_to_idx[int(hid)] for hid in person_hh_ids])
-        tax_benefit_system = sim.tax_benefit_system
+        entity_hh_idx_map, person_to_entity_idx_map = _build_entity_index_maps(
+            entity_rel,
+            household_ids,
+            sim,
+        )
+        person_hh_indices = entity_hh_idx_map["person"]
 
-        # Pre-extract entity keys so workers don't need
-        # the unpicklable TaxBenefitSystem object.
-        variable_entity_map: Dict[str, str] = {}
-        for var in unique_variables:
-            if var.endswith("_count") and var in tax_benefit_system.variables:
-                variable_entity_map[var] = tax_benefit_system.variables[var].entity.key
-
-        # 5c-extra: Entity-to-household index maps for takeup
         affected_target_info = {}
         if rerandomize_takeup:
             from policyengine_us_data.utils.takeup import (
@@ -2257,29 +2492,6 @@ class UnifiedMatrixBuilder:
             from policyengine_us_data.parameters import (
                 load_take_up_rate,
             )
-
-            # Build entity-to-household index arrays
-            spm_to_hh_id = (
-                entity_rel.groupby("spm_unit_id")["household_id"].first().to_dict()
-            )
-            spm_ids = sim.calculate("spm_unit_id", map_to="spm_unit").values
-            spm_hh_idx = np.array(
-                [hh_id_to_idx[int(spm_to_hh_id[int(sid)])] for sid in spm_ids]
-            )
-
-            tu_to_hh_id = (
-                entity_rel.groupby("tax_unit_id")["household_id"].first().to_dict()
-            )
-            tu_ids = sim.calculate("tax_unit_id", map_to="tax_unit").values
-            tu_hh_idx = np.array(
-                [hh_id_to_idx[int(tu_to_hh_id[int(tid)])] for tid in tu_ids]
-            )
-
-            entity_hh_idx_map = {
-                "spm_unit": spm_hh_idx,
-                "tax_unit": tu_hh_idx,
-                "person": person_hh_indices,
-            }
 
             reported_takeup_anchors = {}
             with h5py.File(self.dataset_path, "r") as f:
@@ -2311,19 +2523,6 @@ class UnifiedMatrixBuilder:
                     reported_takeup_anchors["takes_up_medicaid_if_eligible"] = f[
                         "has_medicaid_health_coverage_at_interview"
                     ][period_key][...].astype(bool)
-
-            entity_to_person_idx = {}
-            for entity_level in ("spm_unit", "tax_unit"):
-                ent_ids = sim.calculate(
-                    f"{entity_level}_id",
-                    map_to=entity_level,
-                ).values
-                ent_id_to_idx = {int(eid): idx for idx, eid in enumerate(ent_ids)}
-                person_ent_ids = entity_rel[f"{entity_level}_id"].values
-                entity_to_person_idx[entity_level] = np.array(
-                    [ent_id_to_idx[int(eid)] for eid in person_ent_ids]
-                )
-            entity_to_person_idx["person"] = np.arange(len(entity_rel))
 
             for tvar in unique_variables:
                 for key, info in TAKEUP_AFFECTED_TARGETS.items():
@@ -2395,12 +2594,12 @@ class UnifiedMatrixBuilder:
                 "entity_rel": entity_rel,
                 "household_ids": household_ids,
                 "variable_entity_map": variable_entity_map,
+                "entity_hh_idx_map": entity_hh_idx_map,
+                "person_to_entity_idx_map": person_to_entity_idx_map,
                 "rerandomize_takeup": rerandomize_takeup,
                 "affected_target_info": affected_target_info,
             }
             if rerandomize_takeup and affected_target_info:
-                shared_data["entity_hh_idx_map"] = entity_hh_idx_map
-                shared_data["entity_to_person_idx"] = entity_to_person_idx
                 shared_data["precomputed_rates"] = precomputed_rates
                 shared_data["reported_takeup_anchors"] = reported_takeup_anchors
 
@@ -2495,6 +2694,16 @@ class UnifiedMatrixBuilder:
                     clone_counties=clone_counties,
                     county_dependent_vars=(county_dep_targets),
                 )
+                target_entity_vars = _assemble_target_entity_values_standalone(
+                    state_values,
+                    clone_states,
+                    entity_hh_idx_map,
+                    unique_variables,
+                    variable_entity_map,
+                    county_values=county_values,
+                    clone_counties=clone_counties,
+                    county_dependent_vars=county_dep_targets,
+                )
 
                 # Apply geo-specific entity-level takeup
                 # for affected target variables
@@ -2528,7 +2737,7 @@ class UnifiedMatrixBuilder:
                         )
                         wf_draws[entity] = draws
                         if var_name in person_vars:
-                            pidx = entity_to_person_idx[entity]
+                            pidx = person_to_entity_idx_map[entity]
                             person_vars[var_name] = draws[pidx].astype(np.float32)
 
                     # Phase 2: target loop with would_file blending
@@ -2614,13 +2823,13 @@ class UnifiedMatrixBuilder:
                         hh_result = np.zeros(n_records, dtype=np.float32)
                         np.add.at(hh_result, ent_hh, ent_values)
                         hh_vars[tvar] = hh_result
+                        target_entity_vars[tvar] = ent_values
 
                         if tvar in person_vars:
-                            pidx = entity_to_person_idx[entity_level]
+                            pidx = person_to_entity_idx_map[entity_level]
                             person_vars[tvar] = ent_values[pidx]
 
-                mask_cache: Dict[tuple, np.ndarray] = {}
-                count_cache: Dict[tuple, np.ndarray] = {}
+                target_value_cache: Dict[tuple, np.ndarray] = {}
 
                 rows_list: list = []
                 cols_list: list = []
@@ -2664,42 +2873,28 @@ class UnifiedMatrixBuilder:
                         )
                     )
 
-                    if variable.endswith("_count"):
-                        vkey = (
-                            variable,
-                            constraint_key,
-                            reform_id,
+                    vkey = (
+                        variable,
+                        constraint_key,
+                        reform_id,
+                    )
+                    if vkey not in target_value_cache:
+                        target_value_cache[vkey] = _calculate_target_values_standalone(
+                            target_variable=variable,
+                            non_geo_constraints=non_geo,
+                            n_households=n_records,
+                            hh_vars=hh_vars,
+                            reform_hh_vars=reform_hh_vars,
+                            target_entity_vars=target_entity_vars,
+                            person_vars=person_vars,
+                            entity_rel=entity_rel,
+                            household_ids=household_ids,
+                            variable_entity_map=variable_entity_map,
+                            entity_hh_idx_map=entity_hh_idx_map,
+                            person_to_entity_idx_map=person_to_entity_idx_map,
+                            reform_id=reform_id,
                         )
-                        if vkey not in count_cache:
-                            count_cache[vkey] = _calculate_target_values_standalone(
-                                target_variable=variable,
-                                non_geo_constraints=non_geo,
-                                n_households=n_records,
-                                hh_vars=hh_vars,
-                                reform_hh_vars=reform_hh_vars,
-                                person_vars=person_vars,
-                                entity_rel=entity_rel,
-                                household_ids=household_ids,
-                                variable_entity_map=variable_entity_map,
-                                reform_id=reform_id,
-                            )
-                        values = count_cache[vkey]
-                    else:
-                        source_vars = reform_hh_vars if reform_id > 0 else hh_vars
-                        if variable not in source_vars:
-                            continue
-                        if constraint_key not in mask_cache:
-                            mask_cache[constraint_key] = (
-                                _evaluate_constraints_standalone(
-                                    non_geo,
-                                    person_vars,
-                                    entity_rel,
-                                    household_ids,
-                                    n_records,
-                                )
-                            )
-                        mask = mask_cache[constraint_key]
-                        values = source_vars[variable] * mask
+                    values = target_value_cache[vkey]
 
                     vals = values[rec_indices]
                     nonzero = vals != 0
@@ -2993,9 +3188,20 @@ class UnifiedMatrixBuilder:
                 "household_id",
                 map_to="household",
             ).values
+            entity_hh_idx_map, person_to_entity_idx_map = _build_entity_index_maps(
+                entity_rel,
+                household_ids,
+                chunk_sim,
+            )
 
+            variable_entity_map: Dict[str, str] = {}
             hh_vars = {}
+            target_entity_vars = {}
             for variable in sorted(unique_variables):
+                if variable in chunk_sim.tax_benefit_system.variables:
+                    variable_entity_map[variable] = (
+                        chunk_sim.tax_benefit_system.variables[variable].entity.key
+                    )
                 if variable.endswith("_count"):
                     continue
                 try:
@@ -3009,6 +3215,24 @@ class UnifiedMatrixBuilder:
                         "Chunk %d cannot calculate target '%s': %s",
                         chunk_id,
                         variable,
+                        exc,
+                    )
+                entity_key = variable_entity_map.get(variable, "household")
+                if entity_key == "household":
+                    continue
+                try:
+                    target_entity_vars[variable] = chunk_sim.calculate(
+                        variable,
+                        self.time_period,
+                        map_to=entity_key,
+                    ).values.astype(np.float32)
+                except Exception as exc:
+                    logger.warning(
+                        "Chunk %d cannot calculate entity-level target '%s' "
+                        "(map_to=%s): %s",
+                        chunk_id,
+                        variable,
+                        entity_key,
                         exc,
                     )
 
@@ -3060,19 +3284,7 @@ class UnifiedMatrixBuilder:
                             variable,
                             exc,
                         )
-
-            variable_entity_map: Dict[str, str] = {}
-            for variable in unique_variables:
-                if (
-                    variable.endswith("_count")
-                    and variable in chunk_sim.tax_benefit_system.variables
-                ):
-                    variable_entity_map[variable] = (
-                        chunk_sim.tax_benefit_system.variables[variable].entity.key
-                    )
-
-            mask_cache: Dict[tuple, np.ndarray] = {}
-            count_cache: Dict[tuple, np.ndarray] = {}
+            target_value_cache: Dict[tuple, np.ndarray] = {}
             rows_list: list = []
             cols_list: list = []
             vals_list: list = []
@@ -3106,35 +3318,24 @@ class UnifiedMatrixBuilder:
                     )
                 )
 
-                if variable.endswith("_count"):
-                    value_key = (variable, constraint_key, reform_id)
-                    if value_key not in count_cache:
-                        count_cache[value_key] = _calculate_target_values_standalone(
-                            target_variable=variable,
-                            non_geo_constraints=non_geo,
-                            n_households=chunk_n,
-                            hh_vars=hh_vars,
-                            reform_hh_vars=reform_hh_vars,
-                            person_vars=person_vars,
-                            entity_rel=entity_rel,
-                            household_ids=household_ids,
-                            variable_entity_map=variable_entity_map,
-                            reform_id=reform_id,
-                        )
-                    values = count_cache[value_key]
-                else:
-                    source_vars = reform_hh_vars if reform_id > 0 else hh_vars
-                    if variable not in source_vars:
-                        continue
-                    if constraint_key not in mask_cache:
-                        mask_cache[constraint_key] = _evaluate_constraints_standalone(
-                            non_geo,
-                            person_vars,
-                            entity_rel,
-                            household_ids,
-                            chunk_n,
-                        )
-                    values = source_vars[variable] * mask_cache[constraint_key]
+                value_key = (variable, constraint_key, reform_id)
+                if value_key not in target_value_cache:
+                    target_value_cache[value_key] = _calculate_target_values_standalone(
+                        target_variable=variable,
+                        non_geo_constraints=non_geo,
+                        n_households=chunk_n,
+                        hh_vars=hh_vars,
+                        reform_hh_vars=reform_hh_vars,
+                        target_entity_vars=target_entity_vars,
+                        person_vars=person_vars,
+                        entity_rel=entity_rel,
+                        household_ids=household_ids,
+                        variable_entity_map=variable_entity_map,
+                        entity_hh_idx_map=entity_hh_idx_map,
+                        person_to_entity_idx_map=person_to_entity_idx_map,
+                        reform_id=reform_id,
+                    )
+                values = target_value_cache[value_key]
 
                 vals = values[geo_mask]
                 nonzero = vals != 0

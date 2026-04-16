@@ -50,6 +50,7 @@ class FakeAreaCatalog:
 class FakeRequest:
     """Minimal typed request used by worker resolution tests."""
 
-    def __init__(self, *, area_type, area_id):
+    def __init__(self, *, area_type, area_id, output_relative_path="national/US.h5"):
         self.area_type = area_type
         self.area_id = area_id
+        self.output_relative_path = output_relative_path

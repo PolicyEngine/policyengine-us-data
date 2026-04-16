@@ -116,3 +116,30 @@ def test_resolve_request_input_skips_legacy_work_item_without_request():
     assert request_key == "state:WY"
     assert request is None
     assert catalog.received_item == (work_item, geography)
+
+
+def test_resolve_output_path_keeps_outputs_under_worker_directory(tmp_path):
+    output_dir = tmp_path / "worker-out"
+    output_dir.mkdir()
+
+    resolved = worker_script._resolve_output_path(
+        output_dir=output_dir,
+        output_relative_path="states/CA.h5",
+    )
+
+    assert resolved == output_dir / "states" / "CA.h5"
+
+
+def test_resolve_output_path_rejects_escaped_request_path(tmp_path):
+    output_dir = tmp_path / "worker-out"
+    output_dir.mkdir()
+
+    try:
+        worker_script._resolve_output_path(
+            output_dir=output_dir,
+            output_relative_path="../escaped.h5",
+        )
+    except ValueError as exc:
+        assert "must stay within the worker output_dir" in str(exc)
+    else:
+        raise AssertionError("Expected _resolve_output_path to reject traversal")

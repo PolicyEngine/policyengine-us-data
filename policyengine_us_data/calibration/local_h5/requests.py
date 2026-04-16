@@ -8,7 +8,7 @@ when runtime code starts using them.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal, Mapping
 
 AreaType = Literal["national", "state", "district", "city", "custom"]
@@ -29,6 +29,18 @@ def _jsonable_request_value(value: Any) -> Any:
     if hasattr(value, "to_dict") and callable(value.to_dict):
         return value.to_dict()
     return value
+
+
+def _validate_output_relative_path(output_relative_path: str) -> None:
+    """Validate that a request output path stays within its worker output dir."""
+
+    output_path = PurePosixPath(output_relative_path)
+    if output_path.is_absolute():
+        raise ValueError("output_relative_path must be relative")
+    if ".." in output_path.parts:
+        raise ValueError(
+            "output_relative_path must not contain parent-directory traversal"
+        )
 
 
 @dataclass(frozen=True)
@@ -86,6 +98,7 @@ class AreaBuildRequest:
             raise ValueError("display_name must be non-empty")
         if not self.output_relative_path:
             raise ValueError("output_relative_path must be non-empty")
+        _validate_output_relative_path(self.output_relative_path)
         if self.validation_geographic_ids and self.validation_geo_level is None:
             raise ValueError(
                 "validation_geo_level must be set when validation_geographic_ids "

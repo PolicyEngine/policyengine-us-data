@@ -77,6 +77,7 @@ ABBR_TO_FIPS = {v: str(k) for k, v in STATE_CODES.items()}
 CSV_COLUMNS = [
     "area_type",
     "area_id",
+    "display_name",
     "district",
     "variable",
     "target_name",
@@ -423,7 +424,8 @@ def validate_area(
         results.append(
             {
                 "area_type": area_type,
-                "area_id": display_id,
+                "area_id": area_id,
+                "display_name": display_id,
                 "district": "",
                 "variable": variable,
                 "target_name": target_name,
@@ -791,7 +793,8 @@ def _run_state_via_districts(
             per_district_rows.append(
                 {
                     "area_type": "states",
-                    "area_id": state_abbr,
+                    "area_id": state_fips,
+                    "display_name": state_abbr,
                     "district": entry["district"],
                     "variable": variable,
                     "target_name": target_name,
@@ -838,7 +841,8 @@ def _run_state_via_districts(
         summary_rows.append(
             {
                 "area_type": "states",
-                "area_id": state_abbr,
+                "area_id": state_fips,
+                "display_name": state_abbr,
                 "district": "",
                 "variable": variable,
                 "target_name": target_name,

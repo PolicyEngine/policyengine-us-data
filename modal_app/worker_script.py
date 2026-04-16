@@ -254,6 +254,20 @@ def _work_item_key(work_item) -> str:
     return f"{item_type}:{item_id}"
 
 
+def _resolve_output_path(*, output_dir: Path, output_relative_path: str) -> Path:
+    """Resolve one request output path and reject attempts to escape the run dir."""
+
+    candidate_path = (output_dir / output_relative_path).resolve(strict=False)
+    output_dir_path = output_dir.resolve(strict=False)
+    try:
+        candidate_path.relative_to(output_dir_path)
+    except ValueError as exc:
+        raise ValueError(
+            "output_relative_path must stay within the worker output_dir"
+        ) from exc
+    return candidate_path
+
+
 def _resolve_request_input(
     *,
     request_input_mode,
@@ -415,7 +429,10 @@ def main(argv: list[str] | None = None):
                 )
                 continue
 
-            output_path = output_dir / request.output_relative_path
+            output_path = _resolve_output_path(
+                output_dir=output_dir,
+                output_relative_path=request.output_relative_path,
+            )
             output_path.parent.mkdir(parents=True, exist_ok=True)
             build_kwargs = _build_kwargs_from_request(request)
             if request.area_type == "national":

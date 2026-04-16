@@ -35,6 +35,26 @@ def test_area_build_request_requires_validation_level_if_ids_provided():
         )
 
 
+def test_area_build_request_rejects_absolute_output_path():
+    with pytest.raises(ValueError, match="must be relative"):
+        AreaBuildRequest(
+            area_type="district",
+            area_id="CA-12",
+            display_name="CA-12",
+            output_relative_path="/tmp/CA-12.h5",
+        )
+
+
+def test_area_build_request_rejects_parent_directory_traversal():
+    with pytest.raises(ValueError, match="parent-directory traversal"):
+        AreaBuildRequest(
+            area_type="district",
+            area_id="CA-12",
+            display_name="CA-12",
+            output_relative_path="../CA-12.h5",
+        )
+
+
 def test_area_build_request_round_trips_through_json_dict():
     request = AreaBuildRequest(
         area_type="state",

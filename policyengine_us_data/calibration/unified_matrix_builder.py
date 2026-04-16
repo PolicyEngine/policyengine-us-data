@@ -568,6 +568,7 @@ def _assemble_clone_values_standalone(
     county_values: dict = None,
     clone_counties: np.ndarray = None,
     county_dependent_vars: set = None,
+    allow_state_fallback_for_county_dependent_targets: bool = False,
 ) -> tuple:
     """Standalone clone-value assembly (no ``self``).
 
@@ -577,6 +578,7 @@ def _assemble_clone_values_standalone(
     """
     n_records = len(clone_states)
     n_persons = len(person_hh_indices)
+    county_values = county_values or {}
     person_states = clone_states[person_hh_indices]
     unique_clone_states = np.unique(clone_states)
     cdv = county_dependent_vars or set()
@@ -586,7 +588,7 @@ def _assemble_clone_values_standalone(
     person_state_masks = {int(s): person_states == s for s in unique_person_states}
     county_masks = {}
     unique_counties = None
-    if clone_counties is not None and county_values:
+    if clone_counties is not None:
         unique_counties = np.unique(clone_counties)
         county_masks = {c: clone_counties == c for c in unique_counties}
 
@@ -594,19 +596,23 @@ def _assemble_clone_values_standalone(
     for var in target_vars:
         if var.endswith("_count"):
             continue
-        if var in cdv and county_values and clone_counties is not None:
-            first_county = unique_counties[0]
-            if var not in county_values.get(first_county, {}).get("hh", {}):
-                continue
+        if var in cdv and clone_counties is not None:
             arr = np.empty(n_records, dtype=np.float32)
             for county in unique_counties:
                 mask = county_masks[county]
                 county_hh = county_values.get(county, {}).get("hh", {})
                 if var in county_hh:
                     arr[mask] = county_hh[var][mask]
-                else:
+                elif allow_state_fallback_for_county_dependent_targets:
                     st = int(county[:2])
                     arr[mask] = state_values[st]["hh"][var][mask]
+                else:
+                    raise ValueError(
+                        "Missing county-level household values for "
+                        f"county-dependent target '{var}' in county {county}. "
+                        "Set county_level=False to explicitly allow "
+                        "state-level fallback."
+                    )
             hh_vars[var] = arr
         else:
             if var not in state_values[unique_clone_states[0]]["hh"]:
@@ -659,8 +665,10 @@ def _assemble_target_entity_values_standalone(
     county_values: dict = None,
     clone_counties: np.ndarray = None,
     county_dependent_vars: set = None,
+    allow_state_fallback_for_county_dependent_targets: bool = False,
 ) -> dict:
     """Assemble non-household target variables at their native entity level."""
+    county_values = county_values or {}
     cdv = county_dependent_vars or set()
     entities_needed = {
         variable_entity_map.get(var)
@@ -684,7 +692,7 @@ def _assemble_target_entity_values_standalone(
             "states": unique_ent_states,
             "masks": {int(state): ent_states == state for state in unique_ent_states},
         }
-        if clone_counties is not None and county_values:
+        if clone_counties is not None:
             ent_counties = clone_counties[ent_hh_idx]
             unique_ent_counties = np.unique(ent_counties)
             entity_county_masks[entity_key] = {
@@ -708,7 +716,7 @@ def _assemble_target_entity_values_standalone(
         n_ent = len(ent_hh_idx)
         arr = np.zeros(n_ent, dtype=np.float32)
 
-        if var in cdv and clone_counties is not None and county_values:
+        if var in cdv and clone_counties is not None:
             county_info = entity_county_masks.get(entity_key)
             if county_info is None:
                 continue
@@ -717,12 +725,22 @@ def _assemble_target_entity_values_standalone(
                 county_entity = county_values.get(county, {}).get("target_entity", {})
                 if var in county_entity:
                     arr[mask] = county_entity[var][mask]
-                else:
+                elif allow_state_fallback_for_county_dependent_targets:
                     state_fips = int(county[:2])
                     state_entity = state_values[state_fips].get("target_entity", {})
                     if var not in state_entity:
-                        continue
+                        raise ValueError(
+                            "Missing state-level fallback values for "
+                            f"county-dependent target '{var}' in state {state_fips}."
+                        )
                     arr[mask] = state_entity[var][mask]
+                else:
+                    raise ValueError(
+                        "Missing county-level target_entity values for "
+                        f"county-dependent target '{var}' in county {county}. "
+                        "Set county_level=False to explicitly allow "
+                        "state-level fallback."
+                    )
         else:
             state_info = entity_state_masks[entity_key]
             for state in state_info["states"]:
@@ -983,6 +1001,9 @@ def _process_single_clone(
     affected_target_info = sd["affected_target_info"]
     entity_hh_idx_map = sd["entity_hh_idx_map"]
     person_to_entity_idx_map = sd["person_to_entity_idx_map"]
+    allow_state_fallback_for_county_dependent_targets = sd[
+        "allow_state_fallback_for_county_dependent_targets"
+    ]
     precomputed_rates = sd.get("precomputed_rates", {})
     reported_takeup_anchors = sd.get("reported_takeup_anchors", {})
 
@@ -1001,6 +1022,9 @@ def _process_single_clone(
         county_values=county_values,
         clone_counties=clone_counties,
         county_dependent_vars=county_dep_targets,
+        allow_state_fallback_for_county_dependent_targets=(
+            allow_state_fallback_for_county_dependent_targets
+        ),
     )
     target_entity_vars = _assemble_target_entity_values_standalone(
         state_values,
@@ -1011,6 +1035,9 @@ def _process_single_clone(
         county_values=county_values,
         clone_counties=clone_counties,
         county_dependent_vars=county_dep_targets,
+        allow_state_fallback_for_county_dependent_targets=(
+            allow_state_fallback_for_county_dependent_targets
+        ),
     )
 
     # Takeup re-randomisation
@@ -1059,18 +1086,29 @@ def _process_single_clone(
             ent_states = clone_states[ent_hh]
 
             ent_eligible = np.zeros(n_ent, dtype=np.float32)
-            if tvar in county_dep_targets and county_values:
+            if tvar in county_dep_targets and clone_counties is not None:
                 ent_counties = clone_counties[ent_hh]
                 for cfips in np.unique(ent_counties):
                     m = ent_counties == cfips
                     cv = county_values.get(cfips, {}).get("entity", {})
                     if tvar in cv:
                         ent_eligible[m] = cv[tvar][m]
-                    else:
+                    elif allow_state_fallback_for_county_dependent_targets:
                         st = int(cfips[:2])
                         sv = state_values[st]["entity"]
-                        if tvar in sv:
-                            ent_eligible[m] = sv[tvar][m]
+                        if tvar not in sv:
+                            raise ValueError(
+                                "Missing state-level fallback values for "
+                                f"county-dependent target '{tvar}' in state {st}."
+                            )
+                        ent_eligible[m] = sv[tvar][m]
+                    else:
+                        raise ValueError(
+                            "Missing county-level entity values for "
+                            f"county-dependent target '{tvar}' in county {cfips}. "
+                            "Set county_level=False to explicitly allow "
+                            "state-level fallback."
+                        )
             else:
                 for st in np.unique(ent_states):
                     m = ent_states == st
@@ -1082,18 +1120,29 @@ def _process_single_clone(
             # all-takeup-true and would_file=false values
             if entity_level == "tax_unit" and "tax_unit" in wf_draws:
                 ent_wf_false = np.zeros(n_ent, dtype=np.float32)
-                if tvar in county_dep_targets and county_values:
+                if tvar in county_dep_targets and clone_counties is not None:
                     ent_counties = clone_counties[ent_hh]
                     for cfips in np.unique(ent_counties):
                         m = ent_counties == cfips
                         cv = county_values.get(cfips, {}).get("entity_wf_false", {})
                         if tvar in cv:
                             ent_wf_false[m] = cv[tvar][m]
-                        else:
+                        elif allow_state_fallback_for_county_dependent_targets:
                             st = int(cfips[:2])
                             sv = state_values[st].get("entity_wf_false", {})
-                            if tvar in sv:
-                                ent_wf_false[m] = sv[tvar][m]
+                            if tvar not in sv:
+                                raise ValueError(
+                                    "Missing state-level fallback values for "
+                                    f"county-dependent target '{tvar}' in state {st}."
+                                )
+                            ent_wf_false[m] = sv[tvar][m]
+                        else:
+                            raise ValueError(
+                                "Missing county-level entity_wf_false values for "
+                                f"county-dependent target '{tvar}' in county {cfips}. "
+                                "Set county_level=False to explicitly allow "
+                                "state-level fallback."
+                            )
                 else:
                     for st in np.unique(ent_states):
                         m = ent_states == st
@@ -1749,6 +1798,7 @@ class UnifiedMatrixBuilder:
         county_values: dict = None,
         clone_counties: np.ndarray = None,
         county_dependent_vars: set = None,
+        allow_state_fallback_for_county_dependent_targets: bool = False,
     ) -> tuple:
         """Assemble per-clone values from state/county precomputation.
 
@@ -1778,6 +1828,7 @@ class UnifiedMatrixBuilder:
         """
         n_records = len(clone_states)
         n_persons = len(person_hh_indices)
+        county_values = county_values or {}
         person_states = clone_states[person_hh_indices]
         unique_clone_states = np.unique(clone_states)
         cdv = county_dependent_vars or set()
@@ -1788,7 +1839,7 @@ class UnifiedMatrixBuilder:
         person_state_masks = {int(s): person_states == s for s in unique_person_states}
         county_masks = {}
         unique_counties = None
-        if clone_counties is not None and county_values:
+        if clone_counties is not None:
             unique_counties = np.unique(clone_counties)
             county_masks = {c: clone_counties == c for c in unique_counties}
 
@@ -1796,19 +1847,23 @@ class UnifiedMatrixBuilder:
         for var in target_vars:
             if var.endswith("_count"):
                 continue
-            if var in cdv and county_values and clone_counties is not None:
-                first_county = unique_counties[0]
-                if var not in county_values.get(first_county, {}).get("hh", {}):
-                    continue
+            if var in cdv and clone_counties is not None:
                 arr = np.empty(n_records, dtype=np.float32)
                 for county in unique_counties:
                     mask = county_masks[county]
                     county_hh = county_values.get(county, {}).get("hh", {})
                     if var in county_hh:
                         arr[mask] = county_hh[var][mask]
-                    else:
+                    elif allow_state_fallback_for_county_dependent_targets:
                         st = int(county[:2])
                         arr[mask] = state_values[st]["hh"][var][mask]
+                    else:
+                        raise ValueError(
+                            "Missing county-level household values for "
+                            f"county-dependent target '{var}' in county {county}. "
+                            "Set county_level=False to explicitly allow "
+                            "state-level fallback."
+                        )
                 hh_vars[var] = arr
             else:
                 if var not in state_values[unique_clone_states[0]]["hh"]:
@@ -2471,6 +2526,7 @@ class UnifiedMatrixBuilder:
             county_level=county_level,
             workers=workers,
         )
+        allow_state_fallback_for_county_dependent_targets = not county_level
 
         # 5c. State-independent structures (computed once)
         entity_rel = self._build_entity_relationship(sim)
@@ -2596,6 +2652,9 @@ class UnifiedMatrixBuilder:
                 "variable_entity_map": variable_entity_map,
                 "entity_hh_idx_map": entity_hh_idx_map,
                 "person_to_entity_idx_map": person_to_entity_idx_map,
+                "allow_state_fallback_for_county_dependent_targets": (
+                    allow_state_fallback_for_county_dependent_targets
+                ),
                 "rerandomize_takeup": rerandomize_takeup,
                 "affected_target_info": affected_target_info,
             }
@@ -2693,6 +2752,9 @@ class UnifiedMatrixBuilder:
                     county_values=county_values,
                     clone_counties=clone_counties,
                     county_dependent_vars=(county_dep_targets),
+                    allow_state_fallback_for_county_dependent_targets=(
+                        allow_state_fallback_for_county_dependent_targets
+                    ),
                 )
                 target_entity_vars = _assemble_target_entity_values_standalone(
                     state_values,
@@ -2703,6 +2765,9 @@ class UnifiedMatrixBuilder:
                     county_values=county_values,
                     clone_counties=clone_counties,
                     county_dependent_vars=county_dep_targets,
+                    allow_state_fallback_for_county_dependent_targets=(
+                        allow_state_fallback_for_county_dependent_targets
+                    ),
                 )
 
                 # Apply geo-specific entity-level takeup
@@ -2755,18 +2820,29 @@ class UnifiedMatrixBuilder:
                         ent_states = clone_states[ent_hh]
 
                         ent_eligible = np.zeros(n_ent, dtype=np.float32)
-                        if tvar in county_dep_targets and county_values:
+                        if tvar in county_dep_targets and clone_counties is not None:
                             ent_counties = clone_counties[ent_hh]
                             for cfips in np.unique(ent_counties):
                                 m = ent_counties == cfips
                                 cv = county_values.get(cfips, {}).get("entity", {})
                                 if tvar in cv:
                                     ent_eligible[m] = cv[tvar][m]
-                                else:
+                                elif allow_state_fallback_for_county_dependent_targets:
                                     st = int(cfips[:2])
                                     sv = state_values[st]["entity"]
-                                    if tvar in sv:
-                                        ent_eligible[m] = sv[tvar][m]
+                                    if tvar not in sv:
+                                        raise ValueError(
+                                            "Missing state-level fallback values for "
+                                            f"county-dependent target '{tvar}' in state {st}."
+                                        )
+                                    ent_eligible[m] = sv[tvar][m]
+                                else:
+                                    raise ValueError(
+                                        "Missing county-level entity values for "
+                                        f"county-dependent target '{tvar}' in county {cfips}. "
+                                        "Set county_level=False to explicitly allow "
+                                        "state-level fallback."
+                                    )
                         else:
                             for st in np.unique(ent_states):
                                 m = ent_states == st
@@ -2777,7 +2853,7 @@ class UnifiedMatrixBuilder:
                         # Blend for tax_unit targets
                         if entity_level == "tax_unit" and "tax_unit" in wf_draws:
                             ent_wf_false = np.zeros(n_ent, dtype=np.float32)
-                            if tvar in county_dep_targets and county_values:
+                            if tvar in county_dep_targets and clone_counties is not None:
                                 ent_counties = clone_counties[ent_hh]
                                 for cfips in np.unique(ent_counties):
                                     m = ent_counties == cfips
@@ -2786,11 +2862,24 @@ class UnifiedMatrixBuilder:
                                     )
                                     if tvar in cv:
                                         ent_wf_false[m] = cv[tvar][m]
-                                    else:
+                                    elif (
+                                        allow_state_fallback_for_county_dependent_targets
+                                    ):
                                         st = int(cfips[:2])
                                         sv = state_values[st].get("entity_wf_false", {})
-                                        if tvar in sv:
-                                            ent_wf_false[m] = sv[tvar][m]
+                                        if tvar not in sv:
+                                            raise ValueError(
+                                                "Missing state-level fallback values for "
+                                                f"county-dependent target '{tvar}' in state {st}."
+                                            )
+                                        ent_wf_false[m] = sv[tvar][m]
+                                    else:
+                                        raise ValueError(
+                                            "Missing county-level entity_wf_false values for "
+                                            f"county-dependent target '{tvar}' in county {cfips}. "
+                                            "Set county_level=False to explicitly allow "
+                                            "state-level fallback."
+                                        )
                             else:
                                 for st in np.unique(ent_states):
                                     m = ent_states == st

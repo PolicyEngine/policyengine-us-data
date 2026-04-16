@@ -88,6 +88,39 @@ def _create_chunked_smoke_db(db_path):
     return db_uri
 
 
+def _create_chunked_entity_target_db(db_path):
+    db_uri = _create_chunked_smoke_db(db_path)
+    engine = create_engine(db_uri)
+
+    with engine.connect() as conn:
+        conn.execute(text("INSERT INTO strata VALUES (4, NULL, NULL, NULL)"))
+        conn.execute(text("INSERT INTO strata VALUES (5, NULL, NULL, NULL)"))
+        conn.execute(text("INSERT INTO strata VALUES (6, NULL, NULL, NULL)"))
+        conn.execute(
+            text(
+                "INSERT INTO stratum_constraints VALUES "
+                "(3, 4, 'aca_ptc', '>', '0'), "
+                "(4, 5, 'aca_ptc', '>', '0'), "
+                "(5, 5, 'congressional_district_geoid', '=', '3701'), "
+                "(6, 6, 'aca_ptc', '>', '0'), "
+                "(7, 6, 'state_fips', '=', '35')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO targets "
+                "(target_id, stratum_id, variable, reform_id, value, period, active) "
+                "VALUES "
+                "(4, 4, 'aca_ptc', 0, 100, 2023, 1), "
+                "(5, 5, 'aca_ptc', 0, 50, 2023, 1), "
+                "(6, 6, 'aca_ptc', 0, 50, 2023, 1)"
+            )
+        )
+        conn.commit()
+
+    return db_uri
+
+
 def _fake_geography_from_blocks(blocks):
     blocks = np.asarray(blocks, dtype=str)
     county_fips = np.array([block[:5] for block in blocks], dtype="U5")
@@ -167,6 +200,16 @@ def chunked_smoke_db():
         os.unlink(temp_db.name)
 
 
+@pytest.fixture
+def chunked_entity_target_db():
+    temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    temp_db.close()
+    try:
+        yield _create_chunked_entity_target_db(temp_db.name)
+    finally:
+        os.unlink(temp_db.name)
+
+
 def test_build_matrix_chunked_smoke_on_fixture(
     tmp_path,
     monkeypatch,
@@ -236,6 +279,55 @@ def test_build_matrix_chunked_matches_precomputed_builder(
     sim = Microsimulation(dataset=str(FIXTURE_PATH))
     _, geography = _build_chunked_test_geography(sim)
     builder = _build_chunked_test_builder(chunked_smoke_db)
+
+    expected_targets, expected_matrix, expected_names = builder.build_matrix(
+        geography=geography,
+        sim=sim,
+        rerandomize_takeup=False,
+        workers=1,
+    )
+
+    chunked_targets, chunked_matrix, chunked_names = builder.build_matrix_chunked(
+        geography=geography,
+        sim=sim,
+        chunk_size=20,
+        chunk_dir=str(tmp_path / "chunks"),
+        rerandomize_takeup=False,
+    )
+
+    assert chunked_names == expected_names
+    pd.testing.assert_frame_equal(chunked_targets, expected_targets)
+    np.testing.assert_array_equal(
+        chunked_matrix.toarray(),
+        expected_matrix.toarray(),
+    )
+
+
+def test_build_matrix_chunked_matches_precomputed_builder_for_aca_ptc(
+    tmp_path,
+    monkeypatch,
+    chunked_entity_target_db,
+):
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.entity_clone.derive_geography_from_blocks",
+        _fake_geography_from_blocks,
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
+        lambda cds: {cd: 1.0 for cd in cds},
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.entity_clone."
+        "calculate_spm_thresholds_vectorized",
+        lambda **kwargs: np.ones(
+            len(kwargs["spm_unit_tenure_types"]),
+            dtype=np.float32,
+        ),
+    )
+
+    sim = Microsimulation(dataset=str(FIXTURE_PATH))
+    _, geography = _build_chunked_test_geography(sim)
+    builder = _build_chunked_test_builder(chunked_entity_target_db)
 
     expected_targets, expected_matrix, expected_names = builder.build_matrix(
         geography=geography,

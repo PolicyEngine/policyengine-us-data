@@ -9,6 +9,7 @@ import tempfile
 import os
 import pickle
 from collections import namedtuple
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -17,6 +18,7 @@ from sqlalchemy import create_engine, text
 
 from policyengine_us_data.calibration.unified_matrix_builder import (
     UnifiedMatrixBuilder,
+    _build_entity_index_maps,
     _compute_single_state,
     _compute_single_state_group_counties,
     _format_duration,
@@ -216,6 +218,25 @@ def _insert_aca_ptc_data(engine):
                     "active": active,
                 },
             )
+        conn.commit()
+
+
+def _insert_entity_amount_target_data(engine):
+    with engine.connect() as conn:
+        conn.execute(text("INSERT INTO strata VALUES (1, NULL, NULL, NULL)"))
+        conn.execute(
+            text(
+                "INSERT INTO stratum_constraints VALUES "
+                "(1, 1, 'tax_unit_is_filer', '=', '1')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO targets "
+                "(target_id, stratum_id, variable, reform_id, value, period, active) "
+                "VALUES (1, 1, 'aca_ptc', 0, 1000.0, 2024, 1)"
+            )
+        )
         conn.commit()
 
 
@@ -562,6 +583,9 @@ class _FakeSimulation:
 
     def calculate(self, var, period=None, map_to=None):
         self.calculate_calls.append((var, period, map_to))
+        key = (var, map_to)
+        if key in self._calc_returns:
+            return _FakeArrayResult(self._calc_returns[key])
         if var in self._calc_returns:
             return _FakeArrayResult(self._calc_returns[var])
         # Default arrays by entity/map_to
@@ -587,6 +611,14 @@ class _FakeSimulation:
         }
         n = sizes.get(map_to, self.n_hh)
         return _FakeArrayResult(np.ones(n, dtype=np.float32))
+
+
+def _make_fake_tax_benefit_system(var_entities):
+    variables = {
+        variable: SimpleNamespace(entity=SimpleNamespace(key=entity_key))
+        for variable, entity_key in var_entities.items()
+    }
+    return SimpleNamespace(parameters=MagicMock(), variables=variables)
 
 
 _FakeGeo = namedtuple(
@@ -650,6 +682,193 @@ class TestFormatDuration(unittest.TestCase):
         self.assertEqual(_format_duration(4.4), "4s")
         self.assertEqual(_format_duration(65), "1m 05s")
         self.assertEqual(_format_duration(3661), "1h 01m 01s")
+
+
+class TestBuildMatrixEntityTargets(unittest.TestCase):
+    def test_build_matrix_uses_entity_level_amounts_for_non_household_targets(self):
+        temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        temp_db.close()
+        try:
+            db_uri, engine = _create_test_db(temp_db.name)
+            _insert_entity_amount_target_data(engine)
+
+            builder = UnifiedMatrixBuilder(
+                db_uri=db_uri,
+                time_period=2024,
+                dataset_path="fake.h5",
+            )
+
+            sim = _FakeSimulation(n_hh=1, n_person=4, n_tax_unit=2, n_spm_unit=2)
+            sim.tax_benefit_system = _make_fake_tax_benefit_system(
+                {"aca_ptc": "tax_unit"}
+            )
+            sim._calc_returns.update(
+                {
+                    ("person_id", "person"): np.array([0, 1, 2, 3], dtype=np.int64),
+                    ("household_id", "person"): np.array(
+                        [100, 100, 100, 100], dtype=np.int64
+                    ),
+                    ("household_id", "household"): np.array([100], dtype=np.int64),
+                    ("tax_unit_id", "person"): np.array(
+                        [10, 10, 11, 11], dtype=np.int64
+                    ),
+                    ("tax_unit_id", "tax_unit"): np.array([10, 11], dtype=np.int64),
+                    ("spm_unit_id", "person"): np.array(
+                        [20, 20, 21, 21], dtype=np.int64
+                    ),
+                    ("spm_unit_id", "spm_unit"): np.array([20, 21], dtype=np.int64),
+                }
+            )
+
+            geography = _FakeChunkedGeo(
+                block_geoid=np.array(["371830001001001"], dtype="U15"),
+                cd_geoid=np.array(["3701"], dtype="U4"),
+                county_fips=np.array(["37183"], dtype="U5"),
+                state_fips=np.array([37], dtype=np.int32),
+                n_records=1,
+                n_clones=1,
+            )
+
+            state_values = {
+                37: {
+                    "hh": {"aca_ptc": np.array([1500], dtype=np.float32)},
+                    "target_entity": {
+                        "aca_ptc": np.array([1000, 500], dtype=np.float32)
+                    },
+                    "person": {
+                        "tax_unit_is_filer": np.array(
+                            [1, 1, 0, 0], dtype=np.float32
+                        )
+                    },
+                    "reform_hh": {},
+                    "entity": {},
+                    "entity_wf_false": {},
+                }
+            }
+
+            with patch.object(builder, "_calculate_uprating_factors", return_value={}):
+                with patch.object(
+                    builder,
+                    "_get_uprating_info",
+                    return_value=(1.0, None),
+                ):
+                    with patch.object(
+                        builder,
+                        "_build_state_values",
+                        return_value=state_values,
+                    ):
+                        with patch.object(
+                            builder,
+                            "_build_county_values",
+                            return_value={},
+                        ):
+                            targets_df, matrix, target_names = builder.build_matrix(
+                                geography=geography,
+                                sim=sim,
+                                rerandomize_takeup=False,
+                                county_level=False,
+                                workers=1,
+                            )
+
+            assert targets_df["variable"].tolist() == ["aca_ptc"]
+            assert len(target_names) == 1
+            np.testing.assert_array_equal(
+                matrix.toarray(),
+                np.array([[1000]], dtype=np.float32),
+            )
+        finally:
+            os.unlink(temp_db.name)
+
+    def test_build_matrix_raises_when_county_values_missing_in_strict_mode(self):
+        temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        temp_db.close()
+        try:
+            db_uri, engine = _create_test_db(temp_db.name)
+            _insert_entity_amount_target_data(engine)
+
+            builder = UnifiedMatrixBuilder(
+                db_uri=db_uri,
+                time_period=2024,
+                dataset_path="fake.h5",
+            )
+
+            sim = _FakeSimulation(n_hh=1, n_person=4, n_tax_unit=2, n_spm_unit=2)
+            sim.tax_benefit_system = _make_fake_tax_benefit_system(
+                {"aca_ptc": "tax_unit"}
+            )
+            sim._calc_returns.update(
+                {
+                    ("person_id", "person"): np.array([0, 1, 2, 3], dtype=np.int64),
+                    ("household_id", "person"): np.array(
+                        [100, 100, 100, 100], dtype=np.int64
+                    ),
+                    ("household_id", "household"): np.array([100], dtype=np.int64),
+                    ("tax_unit_id", "person"): np.array(
+                        [10, 10, 11, 11], dtype=np.int64
+                    ),
+                    ("tax_unit_id", "tax_unit"): np.array([10, 11], dtype=np.int64),
+                    ("spm_unit_id", "person"): np.array(
+                        [20, 20, 21, 21], dtype=np.int64
+                    ),
+                    ("spm_unit_id", "spm_unit"): np.array([20, 21], dtype=np.int64),
+                }
+            )
+
+            geography = _FakeChunkedGeo(
+                block_geoid=np.array(["371830001001001"], dtype="U15"),
+                cd_geoid=np.array(["3701"], dtype="U4"),
+                county_fips=np.array(["37183"], dtype="U5"),
+                state_fips=np.array([37], dtype=np.int32),
+                n_records=1,
+                n_clones=1,
+            )
+
+            state_values = {
+                37: {
+                    "hh": {"aca_ptc": np.array([1500], dtype=np.float32)},
+                    "target_entity": {
+                        "aca_ptc": np.array([1000, 500], dtype=np.float32)
+                    },
+                    "person": {
+                        "tax_unit_is_filer": np.array(
+                            [1, 1, 0, 0], dtype=np.float32
+                        )
+                    },
+                    "reform_hh": {},
+                    "entity": {},
+                    "entity_wf_false": {},
+                }
+            }
+
+            with patch.object(builder, "_calculate_uprating_factors", return_value={}):
+                with patch.object(
+                    builder,
+                    "_get_uprating_info",
+                    return_value=(1.0, None),
+                ):
+                    with patch.object(
+                        builder,
+                        "_build_state_values",
+                        return_value=state_values,
+                    ):
+                        with patch.object(
+                            builder,
+                            "_build_county_values",
+                            return_value={},
+                        ):
+                            with self.assertRaisesRegex(
+                                ValueError,
+                                "Missing county-level household values",
+                            ):
+                                builder.build_matrix(
+                                    geography=geography,
+                                    sim=sim,
+                                    rerandomize_takeup=False,
+                                    county_level=True,
+                                    workers=1,
+                                )
+        finally:
+            os.unlink(temp_db.name)
 
 
 class TestBuildStateValues(unittest.TestCase):
@@ -1242,6 +1461,98 @@ class TestCloneLoopParallel(unittest.TestCase):
         without creating a ProcessPoolExecutor."""
         self.assertTrue(callable(_process_single_clone))
         self.assertTrue(callable(_init_clone_worker))
+
+
+class TestBuildEntityIndexMaps(unittest.TestCase):
+    def test_build_entity_index_maps_basic_mappings(self):
+        entity_rel = pd.DataFrame(
+            {
+                "person_id": np.array([0, 1, 2, 3]),
+                "household_id": np.array([100, 100, 200, 200]),
+                "tax_unit_id": np.array([10, 10, 11, 12]),
+                "spm_unit_id": np.array([20, 20, 21, 21]),
+            }
+        )
+        household_ids = np.array([100, 200], dtype=np.int64)
+        sim = _FakeSimulation(n_hh=2, n_person=4, n_tax_unit=3, n_spm_unit=2)
+        sim._calc_returns.update(
+            {
+                ("tax_unit_id", "tax_unit"): np.array([10, 11, 12], dtype=np.int64),
+                ("spm_unit_id", "spm_unit"): np.array([20, 21], dtype=np.int64),
+            }
+        )
+
+        entity_hh_idx_map, person_to_entity_idx_map = _build_entity_index_maps(
+            entity_rel,
+            household_ids,
+            sim,
+        )
+
+        np.testing.assert_array_equal(
+            entity_hh_idx_map["person"],
+            np.array([0, 0, 1, 1], dtype=np.int64),
+        )
+        np.testing.assert_array_equal(
+            entity_hh_idx_map["tax_unit"],
+            np.array([0, 1, 1], dtype=np.int64),
+        )
+        np.testing.assert_array_equal(
+            entity_hh_idx_map["spm_unit"],
+            np.array([0, 1], dtype=np.int64),
+        )
+        np.testing.assert_array_equal(
+            person_to_entity_idx_map["person"],
+            np.array([0, 1, 2, 3], dtype=np.int64),
+        )
+        np.testing.assert_array_equal(
+            person_to_entity_idx_map["tax_unit"],
+            np.array([0, 0, 1, 2], dtype=np.int64),
+        )
+        np.testing.assert_array_equal(
+            person_to_entity_idx_map["spm_unit"],
+            np.array([0, 0, 1, 1], dtype=np.int64),
+        )
+
+    def test_build_entity_index_maps_follow_sim_entity_order(self):
+        entity_rel = pd.DataFrame(
+            {
+                "person_id": np.array([0, 1, 2, 3]),
+                "household_id": np.array([100, 100, 200, 200]),
+                "tax_unit_id": np.array([10, 10, 11, 12]),
+                "spm_unit_id": np.array([20, 20, 21, 21]),
+            }
+        )
+        household_ids = np.array([100, 200], dtype=np.int64)
+        sim = _FakeSimulation(n_hh=2, n_person=4, n_tax_unit=3, n_spm_unit=2)
+        sim._calc_returns.update(
+            {
+                ("tax_unit_id", "tax_unit"): np.array([11, 10, 12], dtype=np.int64),
+                ("spm_unit_id", "spm_unit"): np.array([21, 20], dtype=np.int64),
+            }
+        )
+
+        entity_hh_idx_map, person_to_entity_idx_map = _build_entity_index_maps(
+            entity_rel,
+            household_ids,
+            sim,
+        )
+
+        np.testing.assert_array_equal(
+            entity_hh_idx_map["tax_unit"],
+            np.array([1, 0, 1], dtype=np.int64),
+        )
+        np.testing.assert_array_equal(
+            person_to_entity_idx_map["tax_unit"],
+            np.array([1, 1, 0, 2], dtype=np.int64),
+        )
+        np.testing.assert_array_equal(
+            entity_hh_idx_map["spm_unit"],
+            np.array([1, 0], dtype=np.int64),
+        )
+        np.testing.assert_array_equal(
+            person_to_entity_idx_map["spm_unit"],
+            np.array([1, 1, 0, 0], dtype=np.int64),
+        )
 
 
 if __name__ == "__main__":

@@ -1,10 +1,12 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from policyengine_us_data.calibration.calibration_utils import apply_op
 from policyengine_us_data.calibration.unified_matrix_builder import (
     UnifiedMatrixBuilder,
     _assemble_clone_values_standalone,
+    _assemble_target_entity_values_standalone,
     _calculate_target_values_standalone,
 )
 
@@ -79,6 +81,28 @@ def test_builder_assemble_clone_values_preserves_string_constraints():
         b"NON_CITIZEN_VALID_EAD",
         b"OTHER_NON_CITIZEN",
     ]
+
+
+def test_county_dependent_target_entity_values_require_county_data_in_strict_mode():
+    state_values = {
+        37: {
+            "target_entity": {
+                "aca_ptc": np.array([1000, 500], dtype=np.float32),
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match="Missing county-level target_entity values"):
+        _assemble_target_entity_values_standalone(
+            state_values=state_values,
+            clone_states=np.array([37], dtype=np.int32),
+            entity_hh_idx_map={"tax_unit": np.array([0, 0], dtype=np.int64)},
+            target_vars={"aca_ptc"},
+            variable_entity_map={"aca_ptc": "tax_unit"},
+            county_values={},
+            clone_counties=np.array(["37183"], dtype="U5"),
+            county_dependent_vars={"aca_ptc"},
+        )
 
 
 def test_person_amount_targets_filter_before_household_sum():
@@ -162,6 +186,50 @@ def test_tax_unit_amount_targets_count_each_unit_once():
         variable_entity_map={"aca_ptc": "tax_unit"},
         entity_hh_idx_map={"tax_unit": np.array([0])},
         person_to_entity_idx_map={"tax_unit": np.array([0, 0])},
+    )
+
+    np.testing.assert_array_equal(values, np.array([1000], dtype=np.float32))
+
+
+def test_tax_unit_amount_targets_exclude_nonqualifying_sibling_units():
+    entity_rel = pd.DataFrame(
+        {
+            "person_id": np.array([0, 1, 2, 3]),
+            "household_id": np.array([100, 100, 100, 100]),
+            "tax_unit_id": np.array([10, 10, 11, 11]),
+            "spm_unit_id": np.array([20, 20, 21, 21]),
+        }
+    )
+
+    values = _calculate_target_values_standalone(
+        target_variable="aca_ptc",
+        non_geo_constraints=[
+            {
+                "variable": "aca_ptc",
+                "operation": ">",
+                "value": "0",
+            },
+            {
+                "variable": "tax_unit_is_filer",
+                "operation": "==",
+                "value": "1",
+            },
+        ],
+        n_households=1,
+        hh_vars={"aca_ptc": np.array([1500], dtype=np.float32)},
+        reform_hh_vars={},
+        target_entity_vars={
+            "aca_ptc": np.array([1000, 500], dtype=np.float32),
+        },
+        person_vars={
+            "aca_ptc": np.array([1000, 1000, 500, 500], dtype=np.float32),
+            "tax_unit_is_filer": np.array([1, 1, 0, 0], dtype=np.float32),
+        },
+        entity_rel=entity_rel,
+        household_ids=np.array([100]),
+        variable_entity_map={"aca_ptc": "tax_unit"},
+        entity_hh_idx_map={"tax_unit": np.array([0, 0])},
+        person_to_entity_idx_map={"tax_unit": np.array([0, 0, 1, 1])},
     )
 
     np.testing.assert_array_equal(values, np.array([1000], dtype=np.float32))

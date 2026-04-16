@@ -736,9 +736,7 @@ class TestBuildMatrixEntityTargets(unittest.TestCase):
                         "aca_ptc": np.array([1000, 500], dtype=np.float32)
                     },
                     "person": {
-                        "tax_unit_is_filer": np.array(
-                            [1, 1, 0, 0], dtype=np.float32
-                        )
+                        "tax_unit_is_filer": np.array([1, 1, 0, 0], dtype=np.float32)
                     },
                     "reform_hh": {},
                     "entity": {},
@@ -830,9 +828,7 @@ class TestBuildMatrixEntityTargets(unittest.TestCase):
                         "aca_ptc": np.array([1000, 500], dtype=np.float32)
                     },
                     "person": {
-                        "tax_unit_is_filer": np.array(
-                            [1, 1, 0, 0], dtype=np.float32
-                        )
+                        "tax_unit_is_filer": np.array([1, 1, 0, 0], dtype=np.float32)
                     },
                     "reform_hh": {},
                     "entity": {},

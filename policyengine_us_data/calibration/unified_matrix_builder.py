@@ -2853,7 +2853,10 @@ class UnifiedMatrixBuilder:
                         # Blend for tax_unit targets
                         if entity_level == "tax_unit" and "tax_unit" in wf_draws:
                             ent_wf_false = np.zeros(n_ent, dtype=np.float32)
-                            if tvar in county_dep_targets and clone_counties is not None:
+                            if (
+                                tvar in county_dep_targets
+                                and clone_counties is not None
+                            ):
                                 ent_counties = clone_counties[ent_hh]
                                 for cfips in np.unique(ent_counties):
                                     m = ent_counties == cfips
@@ -2862,9 +2865,7 @@ class UnifiedMatrixBuilder:
                                     )
                                     if tvar in cv:
                                         ent_wf_false[m] = cv[tvar][m]
-                                    elif (
-                                        allow_state_fallback_for_county_dependent_targets
-                                    ):
+                                    elif allow_state_fallback_for_county_dependent_targets:
                                         st = int(cfips[:2])
                                         sv = state_values[st].get("entity_wf_false", {})
                                         if tvar not in sv:

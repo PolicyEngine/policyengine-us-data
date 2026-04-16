@@ -95,10 +95,9 @@ You can re-run Step 2 as many times as you want with different hyperparameters. 
 build only happens once.
 
 Every fit now also writes a checkpoint next to the weights output
-(`calibration_weights.checkpoint.pt` by default). To continue the same fit,
-pass `--resume-from` with the weights file or checkpoint path. If a sibling
-checkpoint exists next to the weights file, it is used automatically so the
-L0 gate state is restored as well.
+(`calibration_weights.checkpoint.pt` by default). To continue the same fit, pass `--resume-from`
+with the weights file or checkpoint path. If a sibling checkpoint exists next to the weights file,
+it is used automatically so the L0 gate state is restored as well.
 
 ```bash
 python -m policyengine_us_data.calibration.unified_calibration \
@@ -114,9 +113,9 @@ python -m policyengine_us_data.calibration.unified_calibration \
   --resume-from policyengine_us_data/storage/calibration/national/weights.npy
 ```
 
-When `--resume-from` points to a checkpoint, `--epochs` means additional epochs
-to run beyond the saved checkpoint epoch count. If only a `.npy` weights file
-exists, the run warm-starts from those weights.
+When `--resume-from` points to a checkpoint, `--epochs` means additional epochs to run beyond the
+saved checkpoint epoch count. If only a `.npy` weights file exists, the run warm-starts from those
+weights.
 
 ### 2. Full pipeline with PUF
 

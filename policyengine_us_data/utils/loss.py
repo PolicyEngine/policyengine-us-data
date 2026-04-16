@@ -428,7 +428,7 @@ def build_loss_matrix(dataset: type, time_period):
         if row["Filing status"] == "Single":
             mask *= df["filing_status"].values == "SINGLE"
         elif row["Filing status"] == "Married Filing Jointly/Surviving Spouse":
-            mask *= df["filing_status"].values == "JOINT"
+            mask *= np.isin(df["filing_status"].values, ["JOINT", "SURVIVING_SPOUSE"])
         elif row["Filing status"] == "Head of Household":
             mask *= df["filing_status"].values == "HEAD_OF_HOUSEHOLD"
         elif row["Filing status"] == "Married Filing Separately":
@@ -599,7 +599,10 @@ def build_loss_matrix(dataset: type, time_period):
         )
         eitc_eligible_children = sim.calculate("eitc_child_count").values
         eitc = sim.calculate("eitc").values
-        if row["count_children"] < 2:
+        # IRS Pub 1304 Table 2.5 reports EITC returns by exclusive
+        # qualifying-child categories: 0, 1, 2, and "3 or more". Row 3
+        # represents 3+ since EITC caps qualifying children at 3.
+        if row["count_children"] < 3:
             meets_child_criteria = eitc_eligible_children == row["count_children"]
         else:
             meets_child_criteria = eitc_eligible_children >= row["count_children"]
@@ -627,28 +630,31 @@ def build_loss_matrix(dataset: type, time_period):
         time_period,
     )
 
-    # Tax filer counts by AGI band (SOI Table 1.1)
-    # This calibrates total filers (not just taxable returns) including
-    # low-AGI filers who are important for income distribution accuracy
-    SOI_FILER_COUNTS_2015 = {
-        # (agi_lower, agi_upper): total_returns
-        (-np.inf, 0): 2_072_066,
-        (0, 5_000): 10_134_703,
-        (5_000, 10_000): 11_398_595,
-        (10_000, 25_000): 23_447_927,
-        (25_000, 50_000): 23_727_745,
-        (50_000, 100_000): 32_801_908,
-        (100_000, np.inf): 25_120_985,
-    }
+    # Tax filer counts by AGI band (SOI Table 1.1). Calibrates total
+    # filers (not just taxable returns), with granular bands sourced
+    # from the latest SOI year <= calibration year to avoid hardcoding
+    # stale 2015 values.
+    soi_all = pd.read_csv(CALIBRATION_FOLDER / "soi_targets.csv")
+    soi_count_rows = soi_all[
+        (soi_all["Variable"] == "count")
+        & (soi_all["Filing status"] == "All")
+        & (~soi_all["Full population"])
+        & (~soi_all["Taxable only"])
+        & (soi_all["Year"] <= time_period)
+    ]
+    soi_latest_year = int(soi_count_rows["Year"].max())
+    soi_filer_bands = (
+        soi_count_rows[soi_count_rows["Year"] == soi_latest_year]
+        .sort_values("AGI lower bound")
+        .reset_index(drop=True)
+    )
 
-    # Get AGI and filer status at tax unit level, mapped to household
     agi_tu = sim.calculate("adjusted_gross_income").values
     is_filer_tu = sim.calculate("tax_unit_is_filer").values > 0
 
-    for (
-        agi_lower,
-        agi_upper,
-    ), filer_count_2015 in SOI_FILER_COUNTS_2015.items():
+    for _, row in soi_filer_bands.iterrows():
+        agi_lower = row["AGI lower bound"]
+        agi_upper = row["AGI upper bound"]
         in_band = (agi_tu >= agi_lower) & (agi_tu < agi_upper)
         label = f"nation/soi/filer_count/agi_{fmt(agi_lower)}_{fmt(agi_upper)}"
         loss_matrix[label] = sim.map_result(
@@ -656,9 +662,7 @@ def build_loss_matrix(dataset: type, time_period):
             "tax_unit",
             "household",
         )
-        # Uprate from 2015 to current year using population growth
-        uprated_target = filer_count_2015 * population_uprating
-        targets_array.append(uprated_target)
+        targets_array.append(row["Value"])
 
     # Hard-coded totals
     for variable_name, target in HARD_CODED_TOTALS.items():

@@ -63,6 +63,14 @@ def test_impute_employer_sponsored_insurance_premiums():
     assert result[4] == 0
 
 
+def test_impute_employer_sponsored_insurance_premiums_defaults_missing_columns():
+    person = pd.DataFrame({"PHIP_VAL": [1_200, 0]})
+
+    result = impute_employer_sponsored_insurance_premiums(person)
+
+    np.testing.assert_allclose(result, np.array([0.0, 0.0]))
+
+
 def test_imputation_status_codes_remain_stable():
     assert _EMPLOYER_PAYS_ALL == 1
     assert _EMPLOYER_PAYS_SOME == 2

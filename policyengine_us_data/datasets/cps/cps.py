@@ -4,6 +4,9 @@ from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER, DOCS_FOLDER
 import h5py
 from policyengine_us_data.datasets.cps.census_cps import *
+from policyengine_us_data.datasets.cps.census_cps import (
+    _fill_missing_optional_person_columns,
+)
 from pandas import DataFrame, Series
 import numpy as np
 import pandas as pd
@@ -115,6 +118,7 @@ _ESI_SELF_ONLY_PLAN = 2
 def impute_employer_sponsored_insurance_premiums(person: DataFrame) -> np.ndarray:
     """Impute annual employer-paid ESI premiums for CPS policyholders."""
 
+    person = _fill_missing_optional_person_columns(person)
     own_esi = person.NOW_OWNGRP.to_numpy(dtype=int) == _HAS_CURRENT_OWN_ESI
     premium_status = person.NOW_HIPAID.to_numpy(dtype=int)
     plan_type = person.NOW_GRPFTYP.to_numpy(dtype=int)
@@ -563,6 +567,7 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
         cps (h5py.File): The CPS dataset file.
         person (DataFrame): The CPS person table.
     """
+    person = _fill_missing_optional_person_columns(person)
 
     # The CPS provides age as follows:
     # 00-79 = 0-79 years of age
@@ -625,6 +630,9 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
 
     cps["reported_has_private_health_coverage_at_interview"] = person.NOW_PRIV == 1
     cps["reported_has_public_health_coverage_at_interview"] = person.NOW_PUB == 1
+    cps["reported_has_own_employer_sponsored_health_coverage_at_interview"] = (
+        person.NOW_OWNGRP == _HAS_CURRENT_OWN_ESI
+    )
     cps["reported_is_insured_at_interview"] = person.NOW_COV == 1
     cps["reported_is_uninsured_at_interview"] = person.NOW_COV != 1
 

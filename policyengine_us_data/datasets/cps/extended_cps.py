@@ -756,6 +756,16 @@ def _apply_post_processing(predictions, X_test, time_period, data):
                     ~covered, "employer_sponsored_insurance_premiums"
                 ] = 0
                 break
+        owner_values = _clone_half_person_values(
+            data,
+            "reported_has_own_employer_sponsored_health_coverage_at_interview",
+            time_period,
+        )
+        if owner_values is not None and len(owner_values) == len(predictions):
+            predictions.loc[
+                ~np.asarray(owner_values, dtype=bool),
+                "employer_sponsored_insurance_premiums",
+            ] = 0
 
     return predictions
 

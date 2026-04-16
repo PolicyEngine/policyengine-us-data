@@ -92,6 +92,10 @@ def test_add_personal_variables_maps_current_health_coverage_flags():
         cps["has_marketplace_health_coverage"], [True, False, False]
     )
     np.testing.assert_array_equal(cps["has_esi"], [False, True, False])
+    np.testing.assert_array_equal(
+        cps["reported_has_own_employer_sponsored_health_coverage_at_interview"],
+        [False, False, False],
+    )
 
 
 # ── Sanity checks ─────────────────────────────────────────────

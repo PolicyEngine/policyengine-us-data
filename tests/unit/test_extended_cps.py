@@ -236,6 +236,29 @@ class TestStage2PostProcessing:
             np.array([6_000.0, 0.0]),
         )
 
+    def test_zeroes_esi_premiums_for_non_owner_clone_records(self):
+        predictions = pd.DataFrame(
+            {"employer_sponsored_insurance_premiums": [6_000.0, 4_000.0]}
+        )
+        x_test = pd.DataFrame({"has_esi": [True, True]})
+
+        result = _apply_post_processing(
+            predictions=predictions,
+            X_test=x_test,
+            time_period=2024,
+            data={
+                "person_id": {2024: np.array([1, 2, 3, 4])},
+                "reported_has_own_employer_sponsored_health_coverage_at_interview": {
+                    2024: np.array([True, False, True, False])
+                },
+            },
+        )
+
+        np.testing.assert_allclose(
+            result["employer_sponsored_insurance_premiums"].to_numpy(),
+            np.array([6_000.0, 0.0]),
+        )
+
 
 class TestRetirementConstraints:
     """Post-processing retirement constraints enforce IRS caps."""

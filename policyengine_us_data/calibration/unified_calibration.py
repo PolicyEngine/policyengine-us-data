@@ -36,6 +36,11 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from policyengine_us_data.calibration.signatures import (
+    build_checkpoint_signature,
+    checkpoint_signature_mismatches,
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -550,85 +555,6 @@ def load_calibration_package(path: str) -> dict:
 def default_checkpoint_path(output_path: str) -> Path:
     """Derive the default checkpoint artifact path for a weights file."""
     return Path(output_path).with_suffix(".checkpoint.pt")
-
-
-def _hash_string_list(values: list) -> str:
-    """Hash an ordered list of strings for checkpoint compatibility."""
-    import hashlib
-
-    digest = hashlib.sha256()
-    for value in values or []:
-        digest.update(str(value).encode("utf-8"))
-        digest.update(b"\0")
-    return digest.hexdigest()
-
-
-def _hash_sparse_matrix(X_sparse) -> str:
-    """Hash sparse matrix structure and values for resume compatibility."""
-    import hashlib
-
-    X_csr = X_sparse.tocsr()
-    digest = hashlib.sha256()
-    digest.update(np.asarray(X_csr.shape, dtype=np.int64).tobytes())
-    digest.update(np.asarray(X_csr.indptr, dtype=np.int64).tobytes())
-    digest.update(np.asarray(X_csr.indices, dtype=np.int64).tobytes())
-    digest.update(np.asarray(X_csr.data).tobytes())
-    return digest.hexdigest()
-
-
-def build_checkpoint_signature(
-    X_sparse,
-    targets: np.ndarray,
-    target_names: list,
-    lambda_l0: float,
-    beta: float,
-    lambda_l2: float,
-    learning_rate: float,
-) -> dict:
-    """Build a compact signature to validate resume compatibility."""
-    import hashlib
-
-    targets_arr = np.asarray(targets, dtype=np.float64)
-    return {
-        "n_features": int(X_sparse.shape[1]),
-        "n_targets": int(len(targets_arr)),
-        "x_sparse_sha256": _hash_sparse_matrix(X_sparse),
-        "target_names_sha256": _hash_string_list(target_names),
-        "targets_sha256": hashlib.sha256(targets_arr.tobytes()).hexdigest(),
-        "lambda_l0": float(lambda_l0),
-        "beta": float(beta),
-        "lambda_l2": float(lambda_l2),
-        "learning_rate": float(learning_rate),
-    }
-
-
-def checkpoint_signature_mismatches(expected: dict, actual: dict) -> tuple[list, list]:
-    """Return (fatal, soft) checkpoint compatibility mismatches.
-
-    Fatal mismatches (structural) block resume because loading would
-    corrupt or error: n_features, n_targets, matrix/target hashes, or
-    any expected value missing from the checkpoint.
-
-    Soft mismatches are tunable hyperparameters — lambda_l0, beta,
-    lambda_l2, learning_rate — which the caller may legitimately change
-    between resume phases. Mid-training adjustments don't invalidate the
-    stored weights or L0 gate state; the optimizer re-equilibrates under
-    the new loss surface.
-    """
-    fatal: list = []
-    soft: list = []
-    soft_float_keys = {"lambda_l0", "beta", "lambda_l2", "learning_rate"}
-    for key, actual_value in actual.items():
-        expected_value = expected.get(key)
-        if expected_value is None:
-            fatal.append(f"{key} missing from checkpoint")
-            continue
-        if key in soft_float_keys:
-            if not np.isclose(expected_value, actual_value):
-                soft.append(f"{key} expected {expected_value}, got {actual_value}")
-        elif actual_value != expected_value:
-            fatal.append(f"{key} expected {expected_value}, got {actual_value}")
-    return fatal, soft
 
 
 def save_fit_checkpoint(

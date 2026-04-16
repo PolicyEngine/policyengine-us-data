@@ -10,8 +10,10 @@ Matrix shape: (n_targets, n_records * n_clones)
 Column ordering: index i = clone_idx * n_records + record_idx
 """
 
+import json
 import logging
 from collections import defaultdict
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import h5py
@@ -23,6 +25,10 @@ from sqlalchemy import create_engine, text
 from policyengine_us_data.db.create_database_tables import create_or_replace_views
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.census import STATE_ABBREV_TO_FIPS, STATE_NAME_TO_FIPS
+from policyengine_us_data.calibration.signatures import (
+    build_chunk_lineage_signature,
+    signature_mismatches,
+)
 from policyengine_us_data.calibration.calibration_utils import (
     get_calculated_variables,
     apply_op,
@@ -80,6 +86,37 @@ def _current_rss_mb() -> Optional[float]:
         return psutil.Process().memory_info().rss / 1024**2
     except Exception:
         return None
+
+
+def _load_chunk_manifest(path: Path) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_chunk_manifest(path: Path, signature: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"signature": signature}, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+def _validate_chunk_manifest(path: Path, expected_signature: dict) -> None:
+    if not path.exists():
+        raise ValueError(
+            f"Cannot resume chunk cache at {path.parent}: missing chunk manifest"
+        )
+    stored = _load_chunk_manifest(path)
+    stored_signature = stored.get("signature")
+    if stored_signature is None:
+        raise ValueError(f"Chunk manifest at {path} is missing its signature")
+    fatal, _ = signature_mismatches(stored_signature, expected_signature)
+    if fatal:
+        joined = "; ".join(fatal)
+        raise ValueError(f"Chunk cache lineage mismatch for {path.parent}: {joined}")
+
+
+def _has_existing_chunk_cache(coo_dir: Path) -> bool:
+    return any(coo_dir.glob("chunk_*.npz"))
 
 
 def _make_neutralize_variable_reform(variable_name: str):
@@ -2761,7 +2798,6 @@ class UnifiedMatrixBuilder:
         import shutil
         import tempfile
         import time
-        from pathlib import Path
 
         from policyengine_us import Microsimulation
         from policyengine_us_data.calibration.entity_clone import (
@@ -2873,6 +2909,28 @@ class UnifiedMatrixBuilder:
         target_variables = [
             str(targets_df.iloc[i]["variable"]) for i in range(n_targets)
         ]
+        chunk_manifest_path = chunk_root / "chunk_manifest.json"
+        chunk_signature = build_chunk_lineage_signature(
+            dataset_path=self.dataset_path,
+            db_uri=self.db_uri,
+            time_period=self.time_period,
+            geography=geography,
+            targets_df=targets_df,
+            target_names=target_names,
+            chunk_size=chunk_size,
+            rerandomize_takeup=rerandomize_takeup,
+        )
+        if resume_chunks:
+            if chunk_manifest_path.exists():
+                _validate_chunk_manifest(chunk_manifest_path, chunk_signature)
+            elif _has_existing_chunk_cache(coo_dir):
+                raise ValueError(
+                    f"Cannot resume chunk cache at {chunk_root}: missing chunk manifest"
+                )
+            else:
+                _save_chunk_manifest(chunk_manifest_path, chunk_signature)
+        else:
+            _save_chunk_manifest(chunk_manifest_path, chunk_signature)
 
         t_build = time.time()
         processed_chunk_times: list[float] = []
@@ -2885,6 +2943,18 @@ class UnifiedMatrixBuilder:
             h5_path = h5_dir / f"chunk_{chunk_id:06d}.h5"
 
             if resume_chunks and coo_path.exists():
+                with np.load(str(coo_path)) as cached_chunk:
+                    if "col_start" not in cached_chunk or "col_end" not in cached_chunk:
+                        raise ValueError(
+                            f"Cached chunk {coo_path} is missing col_start/col_end metadata"
+                        )
+                    cached_col_start = int(np.asarray(cached_chunk["col_start"]).item())
+                    cached_col_end = int(np.asarray(cached_chunk["col_end"]).item())
+                if cached_col_start != col_start or cached_col_end != col_end:
+                    raise ValueError(
+                        f"Cached chunk {coo_path} covers cols {cached_col_start}-{cached_col_end - 1}, "
+                        f"expected {col_start}-{col_end - 1}"
+                    )
                 cached_chunks += 1
                 logger.info(
                     "Chunk %d/%d cached: cols %d-%d, cached=%d",

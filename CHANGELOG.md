@@ -1,3 +1,17 @@
+## [1.79.7] - 2026-04-17
+
+### Fixed
+
+- Replace hardcoded period=2025 in ACA/Medicaid calibration metric columns with the build_loss_matrix time_period argument.
+- Use the [lower, upper) AGI-band boundary convention in the state AGI metric loop, matching the main SOI loop in build_loss_matrix.
+- Fix DC SNAP state calibration target drop caused by int/string FIPS mismatch in utils/loss.py.
+- Seed numpy before the EnhancedCPS/ReweightedCPS initial weight jitter so calibrated weights are reproducible across runs.
+- Limit SIPP tip income imputation to TJB*_TXAMT dollar-amount columns, excluding AJB*_TXAMT allocation flags. Fixes #524.
+- Combine AGI bound filters into a single boolean mask in compare_soi_replication_to_soi to avoid chained-indexing misalignment.
+- Re-prefix state ACA spending calibration label with state/ (was nation/) so reweight() correctly classifies it as a state target.
+- Prefix state Medicaid enrollment calibration label with state/ so it matches the sibling ACA enrollment label and is correctly classified as a state target by reweight().
+
+
 ## [1.79.6] - 2026-04-17
 
 ### Changed

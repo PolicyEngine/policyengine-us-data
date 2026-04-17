@@ -14,6 +14,7 @@ Usage:
 import argparse
 import os
 
+import numpy as np
 import pandas as pd
 
 from policyengine_us_data.calibration.ctc_diagnostics import (
@@ -61,12 +62,63 @@ REFERENCES = {
 }
 
 DEFAULT_HF_PATH = "hf://policyengine/policyengine-us-data/national/US.h5"
+PUB_4801_2022_CTC_QUALIFYING_CHILDREN = 63_622_000.0
 ARTIFACT_CTC_SUMMARY_VARIABLES = [
     "ctc_qualifying_children",
     "ctc",
     "refundable_ctc",
     "non_refundable_ctc",
 ]
+ADVANCE_CTC_2021_AGI_BANDS = [
+    (-np.inf, 1.0, "No adjusted gross income [4]"),
+    (1.0, 10_000.0, "$1 under $10,000"),
+    (10_000.0, 20_000.0, "$10,000 under $20,000"),
+    (20_000.0, 30_000.0, "$20,000 under $30,000"),
+    (30_000.0, 40_000.0, "$30,000 under $40,000"),
+    (40_000.0, 50_000.0, "$40,000 under $50,000"),
+    (50_000.0, 60_000.0, "$50,000 under $60,000"),
+    (60_000.0, 75_000.0, "$60,000 under $75,000"),
+    (75_000.0, 100_000.0, "$75,000 under $100,000"),
+    (100_000.0, 200_000.0, "$100,000 under $200,000"),
+    (200_000.0, 400_000.0, "$200,000 under $400,000"),
+    (400_000.0, np.inf, "$400,000 or more"),
+]
+ADVANCE_CTC_2021_AGI_REFERENCE_ROWS = [
+    ("No adjusted gross income [4]", 349_933.0),
+    ("$1 under $10,000", 3_604_619.0),
+    ("$10,000 under $20,000", 6_379_391.0),
+    ("$20,000 under $30,000", 7_419_453.0),
+    ("$30,000 under $40,000", 6_689_905.0),
+    ("$40,000 under $50,000", 5_093_918.0),
+    ("$50,000 under $60,000", 4_008_971.0),
+    ("$60,000 under $75,000", 4_943_145.0),
+    ("$75,000 under $100,000", 6_522_488.0),
+    ("$100,000 under $200,000", 12_149_615.0),
+    ("$200,000 under $400,000", 4_174_996.0),
+    ("$400,000 or more", 639_657.0),
+]
+ADVANCE_CTC_2021_FILING_STATUS_REFERENCE_ROWS = [
+    ("Single [4]", 3_362_687.0),
+    ("Married filing a joint return", 35_165_385.0),
+    ("Married filing separate returns", 1_038_058.0),
+    ("Head of household", 22_346_185.0),
+    ("Qualifying Widow/Widower", 63_776.0),
+]
+ADVANCE_CTC_2021_FILING_STATUS_ORDER = [
+    "Single [4]",
+    "Head of household",
+    "Married filing a joint return",
+    "Married filing separate returns",
+    "Qualifying Widow/Widower",
+    "Other",
+]
+ADVANCE_CTC_2021_FILING_STATUS_MAP = {
+    "SINGLE": "Single [4]",
+    "HEAD_OF_HOUSEHOLD": "Head of household",
+    "JOINT": "Married filing a joint return",
+    "SEPARATE": "Married filing separate returns",
+    "SURVIVING_SPOUSE": "Qualifying Widow/Widower",
+}
 
 COUNT_VARS = {
     "person_count",
@@ -161,6 +213,10 @@ CANONICAL_CTC_REFORM_DICT = {
 def get_reference_values(reference_year: int = 2024):
     """Return national validation references for the current production year."""
     references = dict(REFERENCES)
+    references["ctc_qualifying_children"] = (
+        PUB_4801_2022_CTC_QUALIFYING_CHILDREN,
+        "IRS Pub. 4801 2022 63.6M",
+    )
     for variable in ("refundable_ctc", "non_refundable_ctc"):
         target = get_national_geography_soi_target(
             variable,
@@ -171,6 +227,163 @@ def get_reference_values(reference_year: int = 2024):
             f"IRS SOI {target['source_year']} ${target['amount'] / 1e9:.1f}B",
         )
     return references
+
+
+def _build_reference_share_table(
+    rows: list[tuple[str, float]],
+) -> pd.DataFrame:
+    table = pd.DataFrame(rows, columns=["group", "reference_children_2021"])
+    table["reference_share_2021"] = (
+        table["reference_children_2021"] / table["reference_children_2021"].sum()
+    )
+    return table
+
+
+def _get_advance_ctc_agi_reference() -> pd.DataFrame:
+    return _build_reference_share_table(ADVANCE_CTC_2021_AGI_REFERENCE_ROWS)
+
+
+def _get_advance_ctc_filing_status_reference() -> pd.DataFrame:
+    return _build_reference_share_table(ADVANCE_CTC_2021_FILING_STATUS_REFERENCE_ROWS)
+
+
+def _assign_advance_ctc_agi_bands(
+    adjusted_gross_income: np.ndarray,
+) -> pd.Categorical:
+    labels = [label for _, _, label in ADVANCE_CTC_2021_AGI_BANDS]
+    agi_band = np.full(len(adjusted_gross_income), labels[-1], dtype=object)
+    for lower, upper, label in ADVANCE_CTC_2021_AGI_BANDS:
+        mask = (adjusted_gross_income >= lower) & (adjusted_gross_income < upper)
+        agi_band[mask] = label
+    return pd.Categorical(agi_band, categories=labels, ordered=True)
+
+
+def _normalize_advance_ctc_filing_status(
+    filing_status: pd.Series,
+) -> pd.Categorical:
+    labels = [
+        ADVANCE_CTC_2021_FILING_STATUS_MAP.get(str(value), "Other")
+        for value in filing_status.astype(str)
+    ]
+    return pd.Categorical(
+        labels,
+        categories=ADVANCE_CTC_2021_FILING_STATUS_ORDER,
+        ordered=True,
+    )
+
+
+def _build_external_share_comparison(
+    reference: pd.DataFrame,
+    simulated: pd.DataFrame,
+) -> pd.DataFrame:
+    comparison = reference.merge(simulated, on="group", how="left")
+    comparison["simulated_children"] = comparison["simulated_children"].fillna(0.0)
+    comparison["simulated_share"] = comparison["simulated_share"].fillna(0.0)
+    comparison["share_delta_pp"] = (
+        comparison["simulated_share"] - comparison["reference_share_2021"]
+    ) * 100
+    return comparison
+
+
+def build_advance_ctc_agi_share_comparison(
+    sim,
+    *,
+    period: int = 2025,
+) -> pd.DataFrame:
+    adjusted_gross_income = sim.calculate(
+        "adjusted_gross_income", period=period
+    ).values.astype(float)
+    ctc_qualifying_children = sim.calculate(
+        "ctc_qualifying_children", period=period
+    ).values.astype(float)
+    tax_unit_weight = sim.calculate("tax_unit_weight", period=period).values.astype(
+        float
+    )
+
+    frame = pd.DataFrame(
+        {
+            "group": _assign_advance_ctc_agi_bands(adjusted_gross_income),
+            "simulated_children": ctc_qualifying_children * tax_unit_weight,
+        }
+    )
+    simulated = (
+        frame.groupby("group", observed=False)["simulated_children"].sum().reset_index()
+    )
+    total = simulated["simulated_children"].sum()
+    simulated["simulated_share"] = (
+        simulated["simulated_children"] / total if total else 0.0
+    )
+    return _build_external_share_comparison(
+        _get_advance_ctc_agi_reference(),
+        simulated,
+    )
+
+
+def build_advance_ctc_filing_status_share_comparison(
+    sim,
+    *,
+    period: int = 2025,
+) -> pd.DataFrame:
+    filing_status = pd.Series(sim.calculate("filing_status", period=period).values)
+    ctc_qualifying_children = sim.calculate(
+        "ctc_qualifying_children", period=period
+    ).values.astype(float)
+    tax_unit_weight = sim.calculate("tax_unit_weight", period=period).values.astype(
+        float
+    )
+
+    frame = pd.DataFrame(
+        {
+            "group": _normalize_advance_ctc_filing_status(filing_status),
+            "simulated_children": ctc_qualifying_children * tax_unit_weight,
+        }
+    )
+    simulated = (
+        frame.groupby("group", observed=False)["simulated_children"].sum().reset_index()
+    )
+    total = simulated["simulated_children"].sum()
+    simulated["simulated_share"] = (
+        simulated["simulated_children"] / total if total else 0.0
+    )
+    return _build_external_share_comparison(
+        _get_advance_ctc_filing_status_reference(),
+        simulated,
+    )
+
+
+def _format_external_share_comparison(table: pd.DataFrame) -> str:
+    display = table.copy()
+    for column in ("simulated_children", "reference_children_2021"):
+        display[column] = display[column].map(lambda value: f"{value / 1e6:,.2f}M")
+    for column in ("simulated_share", "reference_share_2021"):
+        display[column] = display[column].map(lambda value: f"{value * 100:,.1f}%")
+    display["share_delta_pp"] = display["share_delta_pp"].map(
+        lambda value: f"{value:+.1f}pp"
+    )
+    return display.to_string(index=False)
+
+
+def get_external_ctc_benchmark_outputs(
+    sim,
+    *,
+    period: int = 2025,
+) -> dict[str, str]:
+    """Return contextual external CTC child-mix benchmarks from public IRS data."""
+    return {
+        "CTC QUALIFYING-CHILD SHARE VS 2021 ADVANCE CTC ADMIN DATA BY AGI BAND": (
+            _format_external_share_comparison(
+                build_advance_ctc_agi_share_comparison(sim, period=period)
+            )
+        ),
+        "CTC QUALIFYING-CHILD SHARE VS 2021 ADVANCE CTC ADMIN DATA BY FILING STATUS": (
+            _format_external_share_comparison(
+                build_advance_ctc_filing_status_share_comparison(
+                    sim,
+                    period=period,
+                )
+            )
+        ),
+    }
 
 
 def get_ctc_diagnostic_outputs(sim) -> dict[str, str]:
@@ -601,6 +814,12 @@ def main(argv=None):
             print(f"  {var}: {err}")
 
     for section_name, section_output in get_ctc_diagnostic_outputs(sim).items():
+        print("\n" + "=" * 70)
+        print(section_name)
+        print("=" * 70)
+        print(section_output)
+
+    for section_name, section_output in get_external_ctc_benchmark_outputs(sim).items():
         print("\n" + "=" * 70)
         print(section_name)
         print("=" * 70)

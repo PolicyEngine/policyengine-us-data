@@ -1,3 +1,10 @@
+## [1.83.0] - 2026-04-17
+
+### Added
+
+- Add public IRS benchmark checks for `ctc_qualifying_children` and contextual AGI and filing-status child-mix comparisons in `validate_national_h5`.
+
+
 ## [1.82.0] - 2026-04-17
 
 ### Added

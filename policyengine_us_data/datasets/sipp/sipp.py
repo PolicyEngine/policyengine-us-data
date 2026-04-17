@@ -77,9 +77,12 @@ def train_tip_model():
         df = pd.read_csv(
             STORAGE_FOLDER / "pu2023_slim.csv",
         )
-    # Sum tip columns (AJB*_TXAMT + TJB*_TXAMT) across all jobs.
+    # Sum tip dollar-amount columns (TJB*_TXAMT) across all jobs.
+    # Previously used `str.contains("TXAMT")`, which also picked up
+    # AJB*_TXAMT Census allocation flags (small ints 0/1/2 indicating
+    # imputation status) and added them to the dollar totals.
     df["tip_income"] = (
-        df[df.columns[df.columns.str.contains("TXAMT")]].fillna(0).sum(axis=1) * 12
+        df[df.columns[df.columns.str.match(r"TJB\d_TXAMT")]].fillna(0).sum(axis=1) * 12
     )
     df["employment_income"] = df.TPTOTINC * 12
     df["is_under_18"] = (df.TAGE < 18) & (df.MONTHCODE == 12)

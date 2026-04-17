@@ -1,35 +1,74 @@
+"""Thin wrappers over ``huggingface_hub`` for PolicyEngine US data.
+
+Token handling
+--------------
+Import-time used to hard-``raise`` if ``HUGGING_FACE_TOKEN`` was not
+set, which blocked every non-HF workflow that happens to import this
+module (docs builds, lightweight CI checks, fully local calibration
+per issue #591, plus transitive imports via ``raw_cache`` and
+``datasets.sipp.sipp``).
+
+The token is only strictly required for *uploads*. Downloads from a
+public repo work without a token, and gated / private downloads fall
+back to whatever the user has configured via
+``huggingface_hub``'s own credential store.
+
+This module therefore reads the token lazily and raises only from
+:func:`upload` and :func:`upload_calibration_artifacts` (the two
+functions that genuinely need auth). :func:`download` passes the
+token through when present and lets ``huggingface_hub`` handle
+auth otherwise.
+"""
+
 from huggingface_hub import hf_hub_download, HfApi, CommitOperationAdd
 import os
 
-TOKEN = os.environ.get("HUGGING_FACE_TOKEN")
-if not TOKEN:
-    raise ValueError(
-        "Required environment variable 'HUGGING_FACE_TOKEN' is not set. "
-        "This token is needed to download files from Hugging Face Hub. "
-        "Please set the HUGGING_FACE_TOKEN environment variable."
-    )
+
+def get_token() -> str | None:
+    """Return the HF token from env, or ``None`` if unset.
+
+    Downloads from public repos still work when this returns ``None``.
+    """
+    return os.environ.get("HUGGING_FACE_TOKEN")
+
+
+def _require_token(action: str) -> str:
+    """Fetch the token or raise with a clear message.
+
+    Called from upload paths that genuinely cannot proceed without a
+    token. ``action`` is included in the message so the failure
+    points at the operation that needed auth.
+    """
+    token = get_token()
+    if not token:
+        raise ValueError(
+            "Required environment variable 'HUGGING_FACE_TOKEN' is not set. "
+            f"This token is needed to {action}. "
+            "Please set the HUGGING_FACE_TOKEN environment variable."
+        )
+    return token
 
 
 def download(repo: str, repo_filename: str, local_folder: str, version: str = None):
-
     hf_hub_download(
         repo_id=repo,
         repo_type="model",
         filename=repo_filename,
         local_dir=local_folder,
         revision=version,
-        token=TOKEN,
+        token=get_token(),
     )
 
 
 def upload(local_file_path: str, repo: str, repo_file_path: str):
+    token = _require_token("upload files to Hugging Face Hub")
     api = HfApi()
     api.upload_file(
         path_or_fileobj=local_file_path,
         path_in_repo=repo_file_path,
         repo_id=repo,
         repo_type="model",
-        token=TOKEN,
+        token=token,
     )
 
 
@@ -58,6 +97,8 @@ def download_calibration_inputs(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
+    token = get_token()
+
     # Core inputs needed by both calibration and local area pipelines
     files = {
         "dataset": ("calibration/source_imputed_stratified_extended_cps.h5"),
@@ -71,7 +112,7 @@ def download_calibration_inputs(
             local_dir=str(output_path),
             repo_type="model",
             revision=version,
-            token=TOKEN,
+            token=token,
         )
         local_path = output_path / hf_path
         paths[key] = local_path
@@ -93,7 +134,7 @@ def download_calibration_inputs(
                 local_dir=str(output_path),
                 repo_type="model",
                 revision=version,
-                token=TOKEN,
+                token=token,
             )
             local_path = output_path / hf_path
             paths[key] = local_path
@@ -126,6 +167,8 @@ def download_calibration_logs(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
+    token = get_token()
+
     files = {
         "calibration_log": "calibration/logs/calibration_log.csv",
         "diagnostics": "calibration/logs/unified_diagnostics.csv",
@@ -141,7 +184,7 @@ def download_calibration_logs(
                 local_dir=str(output_path),
                 repo_type="model",
                 revision=version,
-                token=TOKEN,
+                token=token,
             )
             local_path = output_path / hf_path
             paths[key] = local_path
@@ -238,9 +281,10 @@ def upload_calibration_artifacts(
         print("No calibration artifacts to upload.")
         return []
 
+    token = _require_token("upload calibration artifacts to Hugging Face Hub")
     api = HfApi()
     api.create_commit(
-        token=TOKEN,
+        token=token,
         repo_id=repo,
         operations=operations,
         repo_type="model",

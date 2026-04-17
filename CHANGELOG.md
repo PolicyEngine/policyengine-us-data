@@ -1,3 +1,14 @@
+## [1.80.0] - 2026-04-17
+
+### Added
+
+- Added ACA Marketplace spending and enrollment targets plus state AGI targets to the database build.
+
+### Changed
+
+- Added an explicit refresh path and regression coverage for the legacy `agi_state.csv` SOI targets used by local calibration.
+
+
 ## [1.79.8] - 2026-04-17
 
 ### Fixed

@@ -21,7 +21,7 @@ class ACS(Dataset):
 
         self.add_id_variables(acs, person, household)
         self.add_person_variables(acs, person, household)
-        self.add_household_variables(acs, household)
+        self.add_household_variables(acs, person, household)
 
         acs.close()
         raw_data.close()
@@ -93,9 +93,21 @@ class ACS(Dataset):
         acs["spm_unit_spm_threshold"] = spm_unit.SPM_POVTHRESHOLD
 
     @staticmethod
-    def add_household_variables(acs: h5py.File, household: DataFrame) -> None:
+    def add_household_variables(
+        acs: h5py.File, person: DataFrame, household: DataFrame
+    ) -> None:
         acs["household_vehicles_owned"] = household.VEH
-        acs["state_fips"] = acs["household_state_fips"] = household.ST.astype(int)
+        # ``state_fips`` is a person-level variable in policyengine-us;
+        # broadcast the household-level ST assignment through the
+        # person -> household mapping so lengths line up.
+        household_state_fips = household.ST.astype(int)
+        acs["household_state_fips"] = household_state_fips.values
+        state_fips_by_household_id = pd.Series(
+            household_state_fips.values, index=household["household_id"].values
+        )
+        acs["state_fips"] = state_fips_by_household_id.loc[
+            person["household_id"].values
+        ].values
 
 
 class ACS_2022(ACS):

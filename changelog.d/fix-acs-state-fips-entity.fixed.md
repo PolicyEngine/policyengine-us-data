@@ -1,0 +1,1 @@
+Fix ACS `state_fips` entity mismatch — `state_fips` is a person-entity variable in policyengine-us, but `ACS.add_household_variables` was assigning the household-length `household.ST` array directly. Broadcast the household-level ST through the person→household mapping before writing the person-entity array.

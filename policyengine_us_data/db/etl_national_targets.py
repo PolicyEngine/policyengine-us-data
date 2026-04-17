@@ -51,15 +51,14 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
 
     tax_benefit_system = CountryTaxBenefitSystem()
 
-    # Hardcoded dollar targets are specific to 2024 and should be
-    # labeled as such.  Only CBO/Treasury parameter lookups use the
-    # dynamic time_period derived from the dataset.
-    HARDCODED_YEAR = 2024
-    if time_period != HARDCODED_YEAR:
+    # Hardcoded dollar targets are specific to 2024 and are labeled as
+    # `"year": 2024` throughout this file.  Only CBO/Treasury parameter
+    # lookups use the dynamic `time_period` derived from the dataset.
+    # See issue #515.
+    if time_period != 2024:
         warnings.warn(
-            f"Dataset year ({time_period}) != HARDCODED_YEAR "
-            f"({HARDCODED_YEAR}). Hardcoded dollar targets may "
-            f"be stale and need re-sourcing."
+            f"Dataset year ({time_period}) != 2024. Hardcoded dollar "
+            f"targets may be stale and need re-sourcing."
         )
 
     # Separate tax-related targets that need filer constraint
@@ -75,7 +74,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "value": 21.247e9,
             "source": "Joint Committee on Taxation",
             "notes": "SALT deduction tax expenditure",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "reform_id": 2,
@@ -83,7 +82,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "value": 11.4e9,
             "source": "Joint Committee on Taxation",
             "notes": "Medical expense deduction tax expenditure",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "reform_id": 3,
@@ -91,7 +90,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "value": 65.301e9,
             "source": "Joint Committee on Taxation",
             "notes": "Charitable deduction tax expenditure",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "reform_id": 4,
@@ -99,7 +98,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "value": 24.8e9,
             "source": "Joint Committee on Taxation",
             "notes": "Mortgage interest deduction tax expenditure",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "reform_id": 5,
@@ -107,7 +106,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "value": 63.1e9,
             "source": "Joint Committee on Taxation",
             "notes": "QBI deduction tax expenditure",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
     ]
     tax_expenditure_targets = [{**target} for target in raw_tax_expenditure_targets]
@@ -118,111 +117,105 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "value": 13e9,
             "source": "Survey-reported (post-TCJA grandfathered)",
             "notes": "Alimony received - survey reported, not tax-filer restricted",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "alimony_expense",
             "value": 13e9,
             "source": "Survey-reported (post-TCJA grandfathered)",
             "notes": "Alimony paid - survey reported, not tax-filer restricted",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "medicaid",
             "value": 871.7e9,
             "source": "https://www.cms.gov/files/document/highlights.pdf",
             "notes": "CMS 2023 highlights document - total Medicaid spending",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "net_worth",
             "value": 160e12,
             "source": "Federal Reserve SCF",
             "notes": "Total household net worth",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "health_insurance_premiums_without_medicare_part_b",
             "value": 385e9,
             "source": "MEPS/NHEA",
             "notes": "Health insurance premiums excluding Medicare Part B",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "other_medical_expenses",
             "value": 278e9,
             "source": "MEPS/NHEA",
             "notes": "Out-of-pocket medical expenses",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "medicare_part_b_premiums",
-            "value": get_beneficiary_paid_medicare_part_b_premiums_target(
-                HARDCODED_YEAR
-            ),
-            "source": get_beneficiary_paid_medicare_part_b_premiums_source(
-                HARDCODED_YEAR
-            ),
-            "notes": get_beneficiary_paid_medicare_part_b_premiums_notes(
-                HARDCODED_YEAR
-            ),
-            "year": HARDCODED_YEAR,
+            "value": get_beneficiary_paid_medicare_part_b_premiums_target(2024),
+            "source": get_beneficiary_paid_medicare_part_b_premiums_source(2024),
+            "notes": get_beneficiary_paid_medicare_part_b_premiums_notes(2024),
+            "year": 2024,
         },
         {
             "variable": "over_the_counter_health_expenses",
             "value": 72e9,
             "source": "Consumer Expenditure Survey",
             "notes": "OTC health products and supplies",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "child_support_expense",
             "value": 33e9,
             "source": "Census Bureau",
             "notes": "Child support payments",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "child_support_received",
             "value": 33e9,
             "source": "Census Bureau",
             "notes": "Child support received",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "spm_unit_capped_work_childcare_expenses",
             "value": 348e9,
             "source": "Census Bureau SPM",
             "notes": "Work and childcare expenses for SPM",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "spm_unit_capped_housing_subsidy",
             "value": 35e9,
             "source": "HUD/Census",
             "notes": "Housing subsidies",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "real_estate_taxes",
             "value": 500e9,
             "source": "Census Bureau",
             "notes": "Property taxes paid",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "rent",
             "value": 735e9,
             "source": "Census Bureau/BLS",
             "notes": "Rental payments",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "tip_income",
             "value": 53.2e9,
             "source": "IRS Form W-2 Box 7 statistics",
             "notes": "Social security tips uprated 40% to account for underreporting",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         # SSA benefit-type totals derived from trust fund data and
         # SSA fact sheet type shares
@@ -231,28 +224,28 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "value": 1_060e9,
             "source": "https://www.ssa.gov/OACT/STATS/table4a3.html",
             "notes": "~73% of total OASDI ($1,452B CBO projection)",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "social_security_disability",
             "value": 148e9,
             "source": "https://www.ssa.gov/OACT/STATS/table4a3.html",
             "notes": "~10.2% of total OASDI (disabled workers)",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "social_security_survivors",
             "value": 160e9,
             "source": "https://www.ssa.gov/OACT/FACTS/",
             "notes": "~11.0% of total OASDI (widows, children of deceased)",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "social_security_dependents",
             "value": 84e9,
             "source": "https://www.ssa.gov/OACT/FACTS/",
             "notes": "~5.8% of total OASDI (spouses/children of retired+disabled)",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         # Retirement contribution targets — see issue #553
         {
@@ -266,21 +259,21 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "notes": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
                 "notes"
             ],
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "traditional_401k_contributions",
             "value": 482.7e9,
             "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
             "notes": "BEA/FRED employee DC deferrals ($567.9B) x 85% traditional share (Vanguard HAS 2024)",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "roth_401k_contributions",
             "value": 85.2e9,
             "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
             "notes": "BEA/FRED employee DC deferrals ($567.9B) x 15% Roth share (Vanguard HAS 2024)",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "self_employed_pension_contribution_ald",
@@ -293,7 +286,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "notes": RETIREMENT_CONTRIBUTION_TARGETS[
                 "self_employed_pension_contribution_ald"
             ]["notes"],
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "roth_ira_contributions",
@@ -302,7 +295,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
                 "source"
             ],
             "notes": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"]["notes"],
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
     ]
 
@@ -314,14 +307,14 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "person_count": 72_429_055,
             "source": "CMS/HHS administrative data",
             "notes": "Medicaid enrollment count",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "constraint_variable": "aca_ptc",
             "person_count": 19_743_689,
             "source": "CMS marketplace data",
             "notes": "ACA Premium Tax Credit recipients",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "constraint_variable": "spm_unit_energy_subsidy_reported",

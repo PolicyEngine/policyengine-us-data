@@ -288,8 +288,9 @@ def compare_soi_replication_to_soi(df, soi):
         if row.Variable not in df.columns:
             continue
 
-        subset = df[df.adjusted_gross_income >= row["AGI lower bound"]][
-            df.adjusted_gross_income < row["AGI upper bound"]
+        subset = df[
+            (df.adjusted_gross_income >= row["AGI lower bound"])
+            & (df.adjusted_gross_income < row["AGI upper bound"])
         ]
 
         variable = row["Variable"]

@@ -163,16 +163,19 @@ def uprate_puf(puf, from_year, to_year):
             # print("%% NEW_VAR_GROWTH:", variable, growth)
         puf[SOI_TO_PUF_STRAIGHT_RENAMES[variable]] *= growth
 
-    # Positive and negative split variables
+    # Positive and negative split variables. Use ``.loc`` so the
+    # boolean-masked write lands back on ``puf`` rather than a view/copy
+    # (pandas CoW / SettingWithCopy silently turns chained-indexing
+    # assignments into no-ops).
     for variable in SOI_TO_PUF_POS_ONLY_RENAMES:
         growth = get_growth(variable, from_year, to_year)
         puf_variable = SOI_TO_PUF_POS_ONLY_RENAMES[variable]
-        puf[puf_variable][puf[puf_variable] > 0] *= growth
+        puf.loc[puf[puf_variable] > 0, puf_variable] *= growth
 
     for variable in SOI_TO_PUF_NEG_ONLY_RENAMES:
         growth = get_growth(variable, from_year, to_year)
         puf_variable = SOI_TO_PUF_NEG_ONLY_RENAMES[variable]
-        puf[puf_variable][puf[puf_variable] < 0] *= growth
+        puf.loc[puf[puf_variable] < 0, puf_variable] *= growth
 
     # Remaining variables, uprate purely by AGI growth
     # (for now, because I'm not sure how to handle the deductions,

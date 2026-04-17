@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from microimpute.models.qrf import QRF
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.randomness import seeded_rng
 import pickle
 from huggingface_hub import hf_hub_download
 from policyengine_us_data.datasets.cps.tipped_occupation import (
@@ -115,8 +116,11 @@ def train_tip_model():
 
     sipp = sipp[~sipp.isna().any(axis=1)]
 
+    # Seed the weighted resample so the tip-model training frame (and
+    # the pickled QRF) is deterministic across rebuilds of the cache.
+    tip_rng = seeded_rng("sipp_tip_model_training_sample")
     sipp = sipp.loc[
-        np.random.choice(
+        tip_rng.choice(
             sipp.index,
             size=10_000,
             replace=True,
@@ -249,9 +253,11 @@ def train_asset_model():
 
     sipp = sipp[~sipp.isna().any(axis=1)]
 
-    # Subsample for training efficiency
+    # Seed the weighted resample so the asset-model training frame
+    # (and the pickled QRF) is deterministic across rebuilds.
+    asset_rng = seeded_rng("sipp_asset_model_training_sample")
     sipp = sipp.loc[
-        np.random.choice(
+        asset_rng.choice(
             sipp.index,
             size=min(20_000, len(sipp)),
             replace=True,

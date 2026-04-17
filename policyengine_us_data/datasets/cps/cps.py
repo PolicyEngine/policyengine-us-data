@@ -504,11 +504,14 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     # 80 = 80-84 years of age
     # 85 = 85+ years of age
     # We assign the 80 ages randomly between 80 and 84.
-    # to avoid unrealistically bunching at 80.
+    # to avoid unrealistically bunching at 80. Use a local seeded
+    # generator so the draw is reproducible run-to-run and does not
+    # depend on whatever seeded the global RNG earlier in the process.
+    age_rng = seeded_rng("age_randomization_80_84")
     cps["age"] = np.where(
         person.A_AGE == 80,
-        # NB: randint is inclusive of first argument, exclusive of second.
-        np.random.randint(80, 85, len(person)),
+        # NB: integers is inclusive of ``low``, exclusive of ``high``.
+        age_rng.integers(80, 85, len(person)),
         person.A_AGE,
     )
 
@@ -1054,19 +1057,21 @@ def add_ssn_card_type(
 
         if share_to_move > 0:
             if random_seed is not None:
+                # Always use a local Generator so the global np.random
+                # state is not clobbered for downstream helpers
+                # (imputation, takeup, SIPP choice sampling, etc.).
+                rng = np.random.default_rng(seed=random_seed)
                 if current_weighted > target_weighted:
-                    # Use new rng for refinement
-                    rng = np.random.default_rng(seed=random_seed)
+                    # Refinement path: draw one uniform per eligible id
+                    # and mask those below ``share_to_move``.
                     random_draw = rng.random(len(eligible_ids))
                     assign_mask = random_draw < share_to_move
                     selected = eligible_ids[assign_mask]
                 else:
-                    # Use old np.random for EAD to maintain compatibility
-                    np.random.seed(random_seed)
+                    # EAD path: sample ``n_to_move`` eligible ids without
+                    # replacement using the local generator.
                     n_to_move = int(len(eligible_ids) * share_to_move)
-                    selected = np.random.choice(
-                        eligible_ids, size=n_to_move, replace=False
-                    )
+                    selected = rng.choice(eligible_ids, size=n_to_move, replace=False)
             else:
                 selected = np.array([], dtype=int)
         else:

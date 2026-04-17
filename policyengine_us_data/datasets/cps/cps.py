@@ -1567,24 +1567,37 @@ def add_ssn_card_type(
     print(f"Additional undocumented needed: {undocumented_needed:,.0f}")
 
     if undocumented_needed > 0:
-        # Identify households with mixed status (code 0 + code 3 members)
-        mixed_household_candidates = []
-
-        unique_households = np.unique(person_household_ids)
-
-        for household_id in unique_households:
-            household_mask = person_household_ids == household_id
-            household_ssn_codes = ssn_card_type[household_mask]
-
-            # Check if household has both undocumented (code 0) AND code 3 members
-            has_undocumented = (household_ssn_codes == 0).any()
-            has_code3 = (household_ssn_codes == 3).any()
-
-            if has_undocumented and has_code3:
-                # Find code 3 indices in this household
-                household_indices = np.where(household_mask)[0]
-                code_3_indices = household_indices[household_ssn_codes == 3]
-                mixed_household_candidates.extend(code_3_indices)
+        # Identify households with mixed status (code 0 + code 3 members).
+        #
+        # The previous implementation looped over every unique
+        # household and masked against the full ``person_household_ids``
+        # array on each iteration — O(uniq_households × persons) for
+        # CPS 2024 that is ~3×10¹⁰ comparisons (~100k households,
+        # ~300k persons).
+        #
+        # Vectorize via a single groupby: for each household, flag
+        # whether any member is code 0 and whether any member is
+        # code 3; a mixed household is one where both flags are True.
+        # Then collect every code-3 person whose household is mixed.
+        codes_series = pd.Series(ssn_card_type, name="ssn_card_type")
+        per_household = pd.DataFrame(
+            {
+                "household_id": person_household_ids,
+                "is_code_0": codes_series == 0,
+                "is_code_3": codes_series == 3,
+            }
+        )
+        household_flags = per_household.groupby("household_id").agg(
+            has_code_0=("is_code_0", "any"),
+            has_code_3=("is_code_3", "any"),
+        )
+        mixed_household_ids = household_flags.index[
+            household_flags["has_code_0"] & household_flags["has_code_3"]
+        ]
+        in_mixed_household = np.isin(person_household_ids, mixed_household_ids)
+        mixed_household_candidates = np.where(
+            in_mixed_household & (ssn_card_type == 3)
+        )[0]
 
         # Randomly select from eligible code 3 members in mixed households to hit target
         if len(mixed_household_candidates) > 0:

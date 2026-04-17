@@ -818,8 +818,10 @@ def build_loss_matrix(dataset: type, time_period):
             "aca_ptc", map_to="household", period=time_period
         ).values
 
-        # Add a loss-matrix entry and matching target
-        label = f"nation/irs/aca_spending/{row['state'].lower()}"
+        # Add a loss-matrix entry and matching target. Prefix `state/`
+        # so `reweight()` correctly classifies this as a state-level
+        # (non-national) target via `startswith("nation/")`.
+        label = f"state/irs/aca_spending/{row['state'].lower()}"
         loss_matrix[label] = aca_value * in_state
         annual_target = row["spending"]
         if any(loss_matrix[label].isna()):

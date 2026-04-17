@@ -1,3 +1,10 @@
+## [1.82.0] - 2026-04-17
+
+### Added
+
+- Add README files with codebook and documentation links to the cps, sipp, scf, and org dataset folders.
+
+
 ## [1.81.1] - 2026-04-17
 
 ### Fixed

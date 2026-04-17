@@ -11,10 +11,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from policyengine_us_data.utils.policyengine import (
-    ensure_policyengine_us_compat_variables,
-)
-
 
 DEFAULT_DB_PATH = (
     Path("policyengine_us_data") / "storage" / "calibration" / "policy_data.db"
@@ -30,8 +26,6 @@ TAX_EXPENDITURE_VARS = [
 
 
 def validate_database(db_path: str | Path = DEFAULT_DB_PATH) -> None:
-    ensure_policyengine_us_compat_variables()
-
     from policyengine_us.system import system
 
     conn = sqlite3.connect(str(db_path))

@@ -74,6 +74,8 @@ documentation-dev:
 	myst clean && \
 	myst start
 
+DATABASE_YEAR ?= 2024
+
 database:
 	rm -f policyengine_us_data/storage/calibration/policy_data.db
 	python policyengine_us_data/db/create_database_tables.py
@@ -85,6 +87,7 @@ database:
 	python policyengine_us_data/db/etl_tanf.py --year $(YEAR)
 	python policyengine_us_data/db/etl_state_income_tax.py --year $(YEAR)
 	python policyengine_us_data/db/etl_irs_soi.py --year $(YEAR)
+	python policyengine_us_data/db/etl_aca_agi_state_targets.py --year $(YEAR)
 	python policyengine_us_data/db/etl_pregnancy.py --year $(YEAR)
 	python policyengine_us_data/db/validate_database.py
 

@@ -333,7 +333,10 @@ def get_state_pregnancy_rates(
 
 
 def main():
-    _, year = etl_argparser("ETL for pregnancy calibration targets")
+    _, year = etl_argparser(
+        "ETL for pregnancy calibration targets",
+        allow_year=True,
+    )
 
     # CDC VSRR has provisional data for the most recent 1-2 years.
     # ACS releases lag by ~1 year (e.g. ACS 2023 released Sep 2024).

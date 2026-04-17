@@ -69,7 +69,10 @@ def fetch_congressional_districts(year):
 
 
 def main():
-    _, year = etl_argparser("Create initial geographic strata for calibration")
+    _, year = etl_argparser(
+        "Create initial geographic strata for calibration",
+        allow_year=True,
+    )
 
     # State FIPS to name/abbreviation mapping
     STATE_NAMES = {

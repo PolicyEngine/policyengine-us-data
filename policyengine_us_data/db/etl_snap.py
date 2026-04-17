@@ -293,7 +293,10 @@ def load_survey_snap_data(survey_df, year, snap_stratum_lookup):
 
 
 def main():
-    _, year = etl_argparser("ETL for SNAP calibration targets")
+    _, year = etl_argparser(
+        "ETL for SNAP calibration targets",
+        allow_year=True,
+    )
 
     # Extract ---------
     zip_file_admin = extract_administrative_snap_data()

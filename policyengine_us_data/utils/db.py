@@ -15,6 +15,8 @@ DEFAULT_YEAR = 2024
 def etl_argparser(
     description: str,
     extra_args_fn=None,
+    *,
+    allow_year: bool = False,
 ) -> Tuple[argparse.Namespace, int]:
     """Shared argument parsing for ETL scripts.
 
@@ -22,22 +24,32 @@ def etl_argparser(
         description: Description for the argparse help text.
         extra_args_fn: Optional callable that receives the parser to add
             extra arguments before parsing.
+        allow_year: If True, allow --year to be explicitly optional for ETLs
+            that can fall back to the default year.
 
     Returns:
         (args, year) tuple.
     """
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument(
-        "--year",
-        type=int,
-        default=DEFAULT_YEAR,
-        help="Target year for calibration data. Default: %(default)s",
-    )
+    if allow_year:
+        parser.add_argument(
+            "--year",
+            type=int,
+            default=None,
+            help="Target year for calibration data. Defaults to %(default)s.",
+        )
+    else:
+        parser.add_argument(
+            "--year",
+            type=int,
+            default=DEFAULT_YEAR,
+            help="Target year for calibration data. Default: %(default)s",
+        )
     if extra_args_fn is not None:
         extra_args_fn(parser)
 
     args = parser.parse_args()
-    year = args.year
+    year = args.year if args.year is not None else DEFAULT_YEAR
     print(f"Using year: {year}")
 
     return args, year
@@ -78,7 +90,7 @@ def get_simple_stratum_by_ucgid(session: Session, ucgid: str) -> Optional[Stratu
 
 def get_root_strata(session: Session) -> List[Stratum]:
     """Finds all strata that do not have a parent"""
-    statement = select(Stratum).where(Stratum.parent_stratum_id == None)
+    statement = select(Stratum).where(Stratum.parent_stratum_id.is_(None))
     return session.exec(statement).all()
 
 

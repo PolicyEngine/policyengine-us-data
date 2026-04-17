@@ -238,7 +238,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         "household_size",
     ]
     IMPUTATIONS = ["rent", "real_estate_taxes"]
-    train_df = acs.calculate_dataframe(PREDICTORS + IMPUTATIONS)
+    train_df = acs.calculate_dataframe(PREDICTORS + IMPUTATIONS, map_to="person")
     train_df.tenure_type = train_df.tenure_type.map(
         {
             "OWNED_OUTRIGHT": "OWNED_WITH_MORTGAGE",
@@ -246,7 +246,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         na_action="ignore",
     ).fillna(train_df.tenure_type)
     train_df = train_df[train_df.is_household_head].sample(10_000)
-    inference_df = cps_sim.calculate_dataframe(PREDICTORS)
+    inference_df = cps_sim.calculate_dataframe(PREDICTORS, map_to="person")
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]
 
@@ -1894,24 +1894,73 @@ def _update_documentation_with_numbers(log_df, docs_dir):
 
 def add_tips(self, cps: h5py.File):
     self.save_dataset(cps)
-    from policyengine_us import Microsimulation
 
-    sim = Microsimulation(dataset=self)
-    cps = sim.calculate_dataframe(
-        [
-            "person_id",
-            "household_id",
-            "employment_income",
-            "interest_income",
-            "dividend_income",
-            "rental_income",
-            "age",
-            "household_weight",
-            "is_female",
-        ],
-        2025,
+    existing_data = self.load_dataset()
+    person_household_id = np.asarray(
+        existing_data.get(
+            "person_household_id",
+            existing_data.get("household_id"),
+        )
     )
-    cps = pd.DataFrame(cps)
+    interest_income = existing_data.get("interest_income")
+    if interest_income is None:
+        interest_income = np.asarray(
+            existing_data.get(
+                "taxable_interest_income",
+                np.zeros(len(person_household_id), dtype=np.float32),
+            )
+        ) + np.asarray(
+            existing_data.get(
+                "tax_exempt_interest_income",
+                np.zeros(len(person_household_id), dtype=np.float32),
+            )
+        )
+    dividend_income = existing_data.get("dividend_income")
+    if dividend_income is None:
+        dividend_income = np.asarray(
+            existing_data.get(
+                "qualified_dividend_income",
+                np.zeros(len(person_household_id), dtype=np.float32),
+            )
+        ) + np.asarray(
+            existing_data.get(
+                "non_qualified_dividend_income",
+                np.zeros(len(person_household_id), dtype=np.float32),
+            )
+        )
+    cps = pd.DataFrame(
+        {
+            "person_id": np.asarray(existing_data["person_id"]),
+            "household_id": person_household_id,
+            "employment_income": np.asarray(existing_data["employment_income"]),
+            "interest_income": np.asarray(interest_income),
+            "dividend_income": np.asarray(dividend_income),
+            "rental_income": np.asarray(
+                existing_data.get(
+                    "rental_income",
+                    np.zeros(len(person_household_id), dtype=np.float32),
+                )
+            ),
+            "age": np.asarray(existing_data["age"]),
+            "is_female": np.asarray(existing_data["is_female"]),
+        }
+    )
+    household_weight = existing_data.get("household_weight")
+    if household_weight is not None:
+        household_weight = np.asarray(household_weight)
+        if len(household_weight) == len(cps):
+            cps["household_weight"] = household_weight
+        else:
+            household_ids = np.asarray(existing_data["household_id"])
+            household_weight_map = dict(zip(household_ids, household_weight))
+            cps["household_weight"] = (
+                pd.Series(person_household_id)
+                .map(household_weight_map)
+                .fillna(0)
+                .values
+            )
+    else:
+        cps["household_weight"] = 0.0
 
     # Get is_married from raw CPS data (A_MARITL codes: 1,2 = married)
     # Note: is_married in policyengine-us is Family-level, but we need

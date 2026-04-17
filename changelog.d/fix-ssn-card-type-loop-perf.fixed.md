@@ -1,0 +1,1 @@
+Vectorize mixed-status household detection in `add_ssn_card_type` — previously an O(households × persons) loop (~3×10^10 element-wise comparisons for CPS 2024). Replace with a single pandas groupby over `household_id` so mixed-status detection is linear in the person count.

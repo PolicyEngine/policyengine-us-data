@@ -260,14 +260,18 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     logging.info("Imputing rent and real estate taxes.")
     imputed_values = fitted_model.predict(X_test=inference_df)
     logging.info("Imputation complete.")
-    cps["rent"] = np.zeros_like(cps["age"])
+    # ``cps["age"]`` has an integer dtype, so ``np.zeros_like(cps["age"])``
+    # would silently truncate the float QRF imputations to int on assignment.
+    # Force float so the imputed rent and real-estate-tax values keep
+    # full precision (and do not deterministically floor toward zero).
+    cps["rent"] = np.zeros(len(cps["age"]), dtype=float)
     cps["rent"][mask] = imputed_values["rent"]
     # Assume zero housing assistance since
     cps["pre_subsidy_rent"] = cps["rent"]
     cps["housing_assistance"] = np.zeros_like(
         cps["spm_unit_capped_housing_subsidy_reported"]
     )
-    cps["real_estate_taxes"] = np.zeros_like(cps["age"])
+    cps["real_estate_taxes"] = np.zeros(len(cps["age"]), dtype=float)
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
 

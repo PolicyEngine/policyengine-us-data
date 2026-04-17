@@ -222,6 +222,12 @@ class EnhancedCPS(Dataset):
         base_year = int(sim.default_calculation_period)
         data["household_weight"] = {}
         original_weights = sim.calculate("household_weight")
+        # Seed before the initial weight jitter so the L0 optimizer's
+        # starting point is reproducible across runs. `reweight()` re-seeds
+        # inside, but that happens AFTER this perturbation, so without
+        # this call the jitter (and hence the final calibrated weights)
+        # differ run-to-run.
+        set_seeds(1456)
         original_weights = original_weights.values + np.random.normal(
             1, 0.1, len(original_weights)
         )
@@ -358,6 +364,9 @@ class ReweightedCPS_2024(Dataset):
         sim = Microsimulation(dataset=self.input_dataset)
         data = sim.dataset.load_dataset()
         original_weights = sim.calculate("household_weight")
+        # Seed before the jitter so the starting weights (and the final
+        # reweighted result) are reproducible across runs.
+        set_seeds(1456)
         original_weights = original_weights.values + np.random.normal(
             1, 0.1, len(original_weights)
         )

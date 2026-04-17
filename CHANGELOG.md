@@ -1,3 +1,16 @@
+## [1.79.4] - 2026-04-17
+
+### Fixed
+
+- Fix EITC-by-kids calibration: 2-kid bucket was using `>=2` against an exclusive IRS target, causing a 27% EITC aggregate undercount since October 2024. See #766.
+
+  Fix SOI filing-status mask to include SURVIVING_SPOUSE alongside JOINT when matching IRS "Married Filing Jointly/Surviving Spouse" rows, so ~1.58M surviving-spouse tax units are constrained by joint-filer AGI-band targets.
+
+  Tighten the EITC validation reference in `validate_national_h5.py` from ~$60B to ~$67B (2024 Treasury Tax Expenditure estimate) so underconverged calibrations no longer pass sanity checks.
+
+  Replace hardcoded SOI filer-count targets from TY2015 (uprated only by population growth) with dynamic reads from `soi_targets.csv` at the latest SOI year ≤ calibration year. Uses 19 granular AGI bands instead of 7 coarse bands, correcting dramatic distributional shifts (TY2015→TY2023 showed +64% at $100K+ and −27% at $0–5K AGI that population-only uprating missed). See #769.
+
+
 ## [1.79.3] - 2026-04-16
 
 ### Changed

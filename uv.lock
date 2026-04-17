@@ -2238,7 +2238,7 @@ requires-dist = [
     { name = "samplics", marker = "extra == 'calibration'" },
     { name = "scipy", specifier = ">=1.15.3" },
     { name = "setuptools", specifier = ">=60" },
-    { name = "spm-calculator", specifier = ">=0.1.0" },
+    { name = "spm-calculator", specifier = ">=0.2.1" },
     { name = "sqlalchemy", specifier = ">=2.0.41" },
     { name = "sqlmodel", specifier = ">=0.0.24" },
     { name = "statsmodels", specifier = ">=0.14.5" },
@@ -3203,18 +3203,19 @@ wheels = [
 
 [[package]]
 name = "spm-calculator"
-version = "0.1.0"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "census" },
     { name = "numpy" },
+    { name = "openpyxl" },
     { name = "pandas" },
     { name = "requests" },
     { name = "us" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/d0/f96e42ab45515e491b654e46d59318002a18e5268d3264b26566a71f8c43/spm_calculator-0.1.0.tar.gz", hash = "sha256:539ee27cccec20fd80e25627b8f1d1f7a65663187f79bdd336a873110cfae240", size = 24992, upload-time = "2025-12-19T03:20:43.76Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2c/70/75799ea650df0cf38b227fc4a8b7cba5a5d090adaeed21c234898dffb871/spm_calculator-0.2.1.tar.gz", hash = "sha256:b9656b333085e8f9d4cfd3c5a3bb488f230ee7712c84624badbfb41c02c64a5e", size = 62985, upload-time = "2026-04-17T02:24:39.554Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/06/596f4a1012984f5011ee8e6e522c0d83ae27eea74cecee42f75892aa6fb5/spm_calculator-0.1.0-py3-none-any.whl", hash = "sha256:ef713361aac5bf764d7892be724eb69a99ec61631a75d8904a361b73fbc5b0f7", size = 19889, upload-time = "2025-12-19T03:20:42.27Z" },
+    { url = "https://files.pythonhosted.org/packages/04/76/e19d0bff7c78a2fe33f5d139590b16dd7cb2ddb28f3c5c472099eb1181eb/spm_calculator-0.2.1-py3-none-any.whl", hash = "sha256:edad3651623f6f305d23bcd2a86f5a2b3b2a2cbd2328b0a47b21e6a016923f2e", size = 53625, upload-time = "2026-04-17T02:24:38.465Z" },
 ]
 
 [[package]]

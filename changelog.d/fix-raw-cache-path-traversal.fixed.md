@@ -1,0 +1,1 @@
+Harden `utils.raw_cache.cache_path` against path traversal — reject absolute filenames, parent-directory (`..`) components, and any filename whose resolved path escapes `RAW_INPUTS_DIR`, so future ETL callers can't accidentally read or overwrite files outside the cache directory.

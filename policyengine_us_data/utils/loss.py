@@ -1033,7 +1033,10 @@ def _add_agi_metric_columns(
         band = get_agi_band_label(lower, upper)
 
         in_state = state == r.GEO_NAME
-        in_band = (agi > lower) & (agi <= upper)
+        # Use the same [lower, upper) boundary convention as the main SOI
+        # loop in build_loss_matrix() (the SOI targets use half-open bands
+        # starting at the lower bound).
+        in_band = (agi >= lower) & (agi < upper)
 
         if r.IS_COUNT:
             metric = (in_state & in_band & (agi > 0)).astype(float)

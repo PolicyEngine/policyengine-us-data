@@ -11,6 +11,13 @@
   • Location: https://www.cms.gov/files/document/effectuated-enrollment-early-snapshot-2025-and-full-year-2024-average.pdf  
   • Notes: `enrollment` is APTC enrollment by state; `spending` is monthly APTC enrollment multiplied by average monthly APTC for APTC recipients
 
+- **agi_state.csv**
+  • Source: IRS SOI state data file used by legacy local calibration
+  • Date: tax year 2022
+  • Created by: `policyengine_us_data/storage/calibration_targets/refresh_local_agi_state_targets.py`
+  • Location: https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv
+  • Notes: This file intentionally keeps the legacy `utils/loss.py` schema (`AL`, `DC`, etc.) instead of the newer `state_AL` geography naming used in `soi.csv`/database overlays. It is separate from `soi_targets.csv`, and it currently lags the national SOI refresh because IRS geographic state SOI files are only published through TY2022.
+
 - **medicaid_enrollment_2024.csv**  
   • Source: MACPAC Enrollment Tables, FFY 2024  
   • Date: 2024  

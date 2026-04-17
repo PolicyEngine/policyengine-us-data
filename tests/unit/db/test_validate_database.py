@@ -3,7 +3,7 @@ import sqlite3
 from policyengine_us_data.db.validate_database import validate_database
 
 
-def test_validate_database_accepts_compat_variables(tmp_path):
+def test_validate_database_accepts_total_self_employment_income(tmp_path):
     db_path = tmp_path / "policy_data.db"
     conn = sqlite3.connect(db_path)
     try:

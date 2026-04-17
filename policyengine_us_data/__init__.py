@@ -1,9 +1,6 @@
 from importlib import import_module
 
 from .geography import ZIP_CODE_DATASET
-from .utils.policyengine import ensure_policyengine_us_compat_variables
-
-ensure_policyengine_us_compat_variables()
 
 _LAZY_EXPORTS = {
     "CPS_2024": (

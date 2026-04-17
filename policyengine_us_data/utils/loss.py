@@ -875,7 +875,10 @@ def build_loss_matrix(dataset: type, time_period):
         in_state = state_person == row["state"]
         in_state_enrolled = in_state & is_enrolled
 
-        label = f"irs/medicaid_enrollment/{row['state'].lower()}"
+        # Prefix `state/` so `reweight()` correctly classifies this as a
+        # state-level (non-national) target — matches the sibling
+        # ACA enrollment label on line 849.
+        label = f"state/irs/medicaid_enrollment/{row['state'].lower()}"
         loss_matrix[label] = sim.map_result(in_state_enrolled, "person", "household")
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")

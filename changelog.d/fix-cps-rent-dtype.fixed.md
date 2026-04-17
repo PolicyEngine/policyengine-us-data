@@ -1,1 +1,0 @@
-Fix silent integer truncation of imputed rent and real-estate-tax values in CPS — `np.zeros_like(cps["age"])` inherited `age`'s integer dtype, so QRF-imputed float values were floored on assignment. Switch to `np.zeros(len(cps["age"]), dtype=float)`.

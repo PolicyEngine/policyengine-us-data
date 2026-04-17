@@ -1,1 +1,0 @@
-Filter SIPP tip-model training frame to `MONTHCODE == 12` before the weighted resample — `train_tip_model` previously sampled 10,000 rows from a 12×-bloated panel (one row per person per month, each annualized from that single month), so the QRF treated Jan-annualized and Dec-annualized rows as separate observations and mixed seasonal tip amounts with the annual figures.

@@ -1,3 +1,17 @@
+## [1.79.8] - 2026-04-17
+
+### Fixed
+
+- Fix silent integer truncation of imputed rent and real-estate-tax values in CPS — `np.zeros_like(cps["age"])` inherited `age`'s integer dtype, so QRF-imputed float values were floored on assignment. Switch to `np.zeros(len(cps["age"]), dtype=float)`.
+- Seed every numpy random call in the CPS and SIPP dataset code — `add_ssn_card_type` no longer calls `np.random.seed` / `np.random.choice` (which clobbered the process-wide RNG), `add_personal_variables` uses a local seeded Generator for the 80-84 age randomization, and `sipp.train_tip_model` / `sipp.train_asset_model` use a seeded Generator for the weighted training-sample draws. Eliminates cross-helper RNG pollution and makes the pickled QRF caches deterministic across rebuilds.
+- Defer the `HUGGING_FACE_TOKEN` check into the upload paths of `utils.huggingface` — the previous module-level `raise ValueError` blocked doc builds, lightweight CI, the fully-local calibration workflow (issue #591), and every transitive import via `raw_cache` / `datasets.sipp.sipp` whenever the token was unset. Reads now work without a token; uploads fail late with a clear message.
+- Harden `utils.raw_cache.cache_path` against path traversal — reject absolute filenames, parent-directory (`..`) components, and any filename whose resolved path escapes `RAW_INPUTS_DIR`, so future ETL callers can't accidentally read or overwrite files outside the cache directory.
+- Filter SIPP tip-model training frame to `MONTHCODE == 12` before the weighted resample — `train_tip_model` previously sampled 10,000 rows from a 12×-bloated panel (one row per person per month, each annualized from that single month), so the QRF treated Jan-annualized and Dec-annualized rows as separate observations and mixed seasonal tip amounts with the annual figures.
+- Vectorize mixed-status household detection in `add_ssn_card_type` — previously an O(households × persons) loop (~3×10^10 element-wise comparisons for CPS 2024). Replace with a single pandas groupby over `household_id` so mixed-status detection is linear in the person count.
+- Fix chained-indexing no-op in `uprate_puf` under pandas Copy-on-Write — positive-only and negative-only PUF variables (`business_net_profits`, `business_net_losses`, `capital_gains_gross`, `capital_gains_losses`, `partnership_and_s_corp_income`, `partnership_and_s_corp_losses`) were silently not being uprated, dropping them out of both the 2015→2021 and 2021→target-year uprating stages. Switch to `puf.loc[mask, col] *= growth` so the write lands back on the frame.
+- Fix double-adjustment of per-capita uprating parameters — `create_policyengine_uprating_factors_table` previously divided every non-weight variable's growth by population growth, which double-adjusted parameters that were already per-capita indices (BLS CPI, SSA COLA, `*_per_capita` spending, per-recipient/per-worker indices). Introduce `is_per_capita_parameter(parameter_path)` so only total-dollar aggregates pass through the population-growth divisor.
+
+
 ## [1.79.7] - 2026-04-17
 
 ### Fixed

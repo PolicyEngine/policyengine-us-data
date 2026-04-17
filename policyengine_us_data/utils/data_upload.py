@@ -751,6 +751,7 @@ def upload_to_staging_hf(
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     batch_size: int = 50,
+    run_id: str = "",
 ) -> int:
     """
     Upload files to staging/ paths in HuggingFace.
@@ -762,12 +763,16 @@ def upload_to_staging_hf(
         hf_repo_name: HuggingFace repository name
         hf_repo_type: Repository type
         batch_size: Number of files per commit batch
+        run_id: Optional per-run scope. When set, files land under
+            ``staging/{run_id}/{rel_path}`` so concurrent runs do not
+            collide; otherwise they land under ``staging/{rel_path}``.
 
     Returns:
         Number of files uploaded
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
+    staging_prefix = f"staging/{run_id}" if run_id else "staging"
 
     total_uploaded = 0
     for i in range(0, len(files_with_paths), batch_size):
@@ -780,7 +785,7 @@ def upload_to_staging_hf(
                 continue
             operations.append(
                 CommitOperationAdd(
-                    path_in_repo=f"staging/{rel_path}",
+                    path_in_repo=f"{staging_prefix}/{rel_path}",
                     path_or_fileobj=str(local_path),
                 )
             )

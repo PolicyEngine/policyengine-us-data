@@ -1,3 +1,12 @@
+## [1.79.6] - 2026-04-17
+
+### Changed
+
+- Require `policyengine-us>=1.637.0`, which ships the SSTB QBI split inputs
+  and formulas natively, and remove the in-package compat shim that
+  backfilled those variables against older `policyengine-us` releases.
+
+
 ## [1.79.5] - 2026-04-17
 
 ### Fixed

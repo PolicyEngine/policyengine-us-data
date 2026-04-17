@@ -1,3 +1,11 @@
+## [1.81.0] - 2026-04-17
+
+### Added
+
+- PUF dataset README linking to the IRS 2015 Public Use Booklets and SOI documentation.
+- Add SIPP-imputed household vehicle count and value inputs to CPS generation and source imputation so TANF and other asset-tested programs no longer default those vehicle signals to zero.
+
+
 ## [1.80.0] - 2026-04-17
 
 ### Added

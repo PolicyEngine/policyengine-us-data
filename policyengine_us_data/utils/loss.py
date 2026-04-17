@@ -561,15 +561,15 @@ def build_loss_matrix(dataset: type, time_period):
 
     label = "nation/gov/aca_spending"
     loss_matrix[label] = sim.calculate(
-        "aca_ptc", map_to="household", period=2025
+        "aca_ptc", map_to="household", period=time_period
     ).values
     targets_array.append(aca_spending_target)
 
     # National ACA Enrollment (people receiving a PTC)
     label = "nation/gov/aca_enrollment"
-    on_ptc = (sim.calculate("aca_ptc", map_to="person", period=2025).values > 0).astype(
-        int
-    )
+    on_ptc = (
+        sim.calculate("aca_ptc", map_to="person", period=time_period).values > 0
+    ).astype(int)
     loss_matrix[label] = sim.map_result(on_ptc, "person", "household")
 
     targets_array.append(aca_enrollment_target)
@@ -813,8 +813,10 @@ def build_loss_matrix(dataset: type, time_period):
             sim.calculate("state_code", map_to="household").values == row["state"]
         )
 
-        # ACA PTC amounts for every household (2025)
-        aca_value = sim.calculate("aca_ptc", map_to="household", period=2025).values
+        # ACA PTC amounts for every household at time_period.
+        aca_value = sim.calculate(
+            "aca_ptc", map_to="household", period=time_period
+        ).values
 
         # Add a loss-matrix entry and matching target
         label = f"nation/irs/aca_spending/{row['state'].lower()}"
@@ -832,10 +834,10 @@ def build_loss_matrix(dataset: type, time_period):
 
     # Flag people in households that actually receive any PTC (> 0)
     in_tax_unit_with_aca = (
-        sim.calculate("aca_ptc", map_to="person", period=2025).values > 0
+        sim.calculate("aca_ptc", map_to="person", period=time_period).values > 0
     )
     is_aca_eligible = sim.calculate(
-        "is_aca_ptc_eligible", map_to="person", period=2025
+        "is_aca_ptc_eligible", map_to="person", period=time_period
     ).values
     is_enrolled = in_tax_unit_with_aca & is_aca_eligible
 
@@ -860,9 +862,11 @@ def build_loss_matrix(dataset: type, time_period):
     state_person = sim.calculate("state_code", map_to="person").values
 
     # Flag people in households that actually receive medicaid
-    has_medicaid = sim.calculate("medicaid_enrolled", map_to="person", period=2025)
+    has_medicaid = sim.calculate(
+        "medicaid_enrolled", map_to="person", period=time_period
+    )
     is_medicaid_eligible = sim.calculate(
-        "is_medicaid_eligible", map_to="person", period=2025
+        "is_medicaid_eligible", map_to="person", period=time_period
     ).values
     is_enrolled = has_medicaid & is_medicaid_eligible
 

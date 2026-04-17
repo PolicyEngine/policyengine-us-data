@@ -104,6 +104,18 @@ def train_tip_model():
         df["treasury_tipped_occupation_code"]
     )
 
+    # SIPP data are monthly (one row per person × MONTHCODE 1..12).
+    # tip_income and employment_income above were annualized as
+    # ``month_value * 12``, which is only right for a single reference
+    # month. Without this filter the training frame had 12 rows per
+    # person — each annualized from a different month — so the QRF
+    # treated Jan-income-annualized and Dec-income-annualized as
+    # separate observations and mixed seasonal tip amounts
+    # (restaurant, holiday) with the annual figures. Filter to
+    # December (end of year) so every training row represents one
+    # person-year.
+    df = df[df["MONTHCODE"] == 12]
+
     sipp = df[
         [
             "household_id",

@@ -1129,7 +1129,6 @@ def _add_snap_metric_columns(
 
     state = sim.calculate("state_code", map_to="person").values
     state = sim.map_result(state, "person", "household", how="value_from_first_person")
-    STATE_ABBR_TO_FIPS["DC"] = 11
     state_fips = pd.Series(state).apply(lambda s: STATE_ABBR_TO_FIPS[s])
 
     for _, r in snap_targets.iterrows():

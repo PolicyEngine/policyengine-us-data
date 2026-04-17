@@ -685,20 +685,31 @@ def build_loss_matrix(dataset: type, time_period):
     ).astype(float)
     targets_array.append(3e6)
 
-    # Healthcare spending by age
+    # Healthcare spending by age.
+    # Each row targets a decade of ages (lower_bound to lower_bound + 9).
+    # The top row is treated as unbounded (age >= lower_bound) so the
+    # 90+ population is constrained by an age-specific target rather than
+    # only by the national total. See issue #768.
 
     healthcare = pd.read_csv(CALIBRATION_FOLDER / "healthcare_spending.csv")
+    top_age_lower_bound = int(healthcare["age_10_year_lower_bound"].max())
 
     for _, row in healthcare.iterrows():
         age_lower_bound = int(row["age_10_year_lower_bound"])
-        in_age_range = (age >= age_lower_bound) * (age < age_lower_bound + 10)
+        is_top_bucket = age_lower_bound == top_age_lower_bound
+        if is_top_bucket:
+            in_age_range = age >= age_lower_bound
+            label_suffix = f"age_{age_lower_bound}_plus"
+        else:
+            in_age_range = (age >= age_lower_bound) * (age < age_lower_bound + 10)
+            label_suffix = f"age_{age_lower_bound}_to_{age_lower_bound + 9}"
         for expense_type in [
             "health_insurance_premiums_without_medicare_part_b",
             "over_the_counter_health_expenses",
             "other_medical_expenses",
             "medicare_part_b_premiums",
         ]:
-            label = f"nation/census/{expense_type}/age_{age_lower_bound}_to_{age_lower_bound + 9}"
+            label = f"nation/census/{expense_type}/{label_suffix}"
             value = sim.calculate(expense_type).values
             loss_matrix[label] = sim.map_result(
                 in_age_range * value, "person", "household"

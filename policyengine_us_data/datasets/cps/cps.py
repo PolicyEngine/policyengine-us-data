@@ -38,6 +38,9 @@ from policyengine_us_data.utils.takeup import (
     assign_takeup_with_reported_anchors,
     reported_subsidized_marketplace_by_tax_unit,
 )
+from policyengine_us_data.utils.asset_imputation import (
+    build_household_vehicle_receiver,
+)
 from policyengine_us_data.utils.policyengine import (
     supports_medicare_enrollment_input,
     supports_modeled_medicare_part_b_inputs,
@@ -209,13 +212,24 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         }
     ).astype("S")
     if self.file_path.exists():
-        with h5py.File(self.file_path, "r") as _f:
-            stale_keys = [k for k in _f.keys() if k not in cps]
-            if stale_keys:
-                logging.warning(
-                    f"Stale H5 at {self.file_path} has {len(stale_keys)} "
-                    f"extra vars before first save: {stale_keys[:5]}"
-                )
+        try:
+            with pd.HDFStore(self.file_path, mode="r") as store:
+                stale_keys = [
+                    key.lstrip("/")
+                    for key in store.keys()
+                    if key.lstrip("/") not in cps
+                ]
+                if stale_keys:
+                    logging.warning(
+                        f"Stale H5 at {self.file_path} has {len(stale_keys)} "
+                        f"extra vars before first save: {stale_keys[:5]}"
+                    )
+        except (BlockingIOError, OSError, ValueError) as error:
+            logging.warning(
+                "Unable to inspect stale H5 at %s before replacement: %s",
+                self.file_path,
+                error,
+            )
         self.file_path.unlink()
     self.save_dataset(cps)
 
@@ -2013,11 +2027,43 @@ def add_tips(self, cps: h5py.File):
     cps["stock_assets"] = asset_predictions.stock_assets.values
     cps["bond_assets"] = asset_predictions.bond_assets.values
 
+    from policyengine_us_data.datasets.sipp import get_vehicle_model
+
+    vehicle_model = get_vehicle_model()
+    cps["is_household_head"] = np.asarray(
+        existing_data["is_household_head"],
+        dtype=bool,
+    )
+    household_vehicle_receiver = build_household_vehicle_receiver(
+        cps,
+        tenure_type=existing_data.get("tenure_type"),
+    )
+    vehicle_predictions = vehicle_model.predict(
+        X_test=household_vehicle_receiver,
+        mean_quantile=0.5,
+    )
+    household_vehicle_data = {
+        "household_vehicles_owned": np.clip(
+            np.rint(vehicle_predictions.household_vehicles_owned.values),
+            0,
+            None,
+        ).astype(np.int32),
+        "household_vehicles_value": np.clip(
+            vehicle_predictions.household_vehicles_value.values,
+            0,
+            None,
+        ).astype(np.float32),
+    }
+
     # Drop temporary columns used only for imputation
     # is_married is person-level here but policyengine-us defines it at Family
     # level, so we must not save it
-    cps = cps.drop(columns=["is_married", "is_under_18", "is_under_6"], errors="ignore")
+    cps = cps.drop(
+        columns=["is_married", "is_under_18", "is_under_6", "is_household_head"],
+        errors="ignore",
+    )
     self.save_dataset(cps)
+    self.save_dataset(household_vehicle_data)
 
 
 def add_org_labor_market_inputs(cps: h5py.File) -> None:

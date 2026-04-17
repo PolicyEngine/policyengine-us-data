@@ -47,6 +47,8 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
                 "age": [30, 45],
                 "household_weight": [1.0, 1.0],
                 "is_female": [False, True],
+                "is_household_head": [True, True],
+                "tenure_type": [b"OWNED_WITH_MORTGAGE", b"RENTED"],
             }
 
         def save_dataset(self, data):
@@ -78,8 +80,19 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
                 }
             )
 
+    class FakeVehicleModel:
+        def predict(self, X_test, mean_quantile):
+            assert X_test["household_id"].tolist() == [10, 20]
+            return pd.DataFrame(
+                {
+                    "household_vehicles_owned": [2.0, 1.0],
+                    "household_vehicles_value": [18_000.0, 7_500.0],
+                }
+            )
+
     monkeypatch.setattr(sipp_module, "get_tip_model", lambda: FakeTipModel())
     monkeypatch.setattr(sipp_module, "get_asset_model", lambda: FakeAssetModel())
+    monkeypatch.setattr(sipp_module, "get_vehicle_model", lambda: FakeVehicleModel())
 
     dataset = FakeDataset()
     add_tips(
@@ -94,6 +107,11 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
     assert dataset.saved_dataset["bank_account_assets"].tolist() == [0.0, 0.0]
     assert dataset.saved_dataset["stock_assets"].tolist() == [0.0, 0.0]
     assert dataset.saved_dataset["bond_assets"].tolist() == [0.0, 0.0]
+    assert dataset.saved_dataset["household_vehicles_owned"].tolist() == [2, 1]
+    assert dataset.saved_dataset["household_vehicles_value"].tolist() == [
+        18_000.0,
+        7_500.0,
+    ]
 
 
 def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):

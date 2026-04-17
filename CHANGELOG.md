@@ -1,3 +1,11 @@
+## [1.81.1] - 2026-04-17
+
+### Fixed
+
+- Label hardcoded 2024 dollar targets in etl_national_targets.py with the literal year 2024 to prevent misattribution if the calibration dataset year changes.
+- Treat the top healthcare spending age bucket as unbounded (age >= 80) so the 90+ population is covered by an age-specific calibration target rather than only the national total.
+
+
 ## [1.81.0] - 2026-04-17
 
 ### Added

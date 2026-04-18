@@ -489,6 +489,7 @@ def _write_validation_diagnostics(
         csv_columns = [
             "area_type",
             "area_id",
+            "display_name",
             "district",
             "variable",
             "target_name",

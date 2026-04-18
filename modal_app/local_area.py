@@ -553,6 +553,12 @@ def validate_staging(branch: str, run_id: str, version: str = "") -> Dict:
     if not version:
         version = run_id.split("_", 1)[0]
 
+    # PR 9 migration note:
+    # The coordinator still enumerates states, districts, and cities inline
+    # and emits legacy work_items. This is intentionally temporary for the
+    # dual-path migration. The target cleanup is to delegate regional request
+    # enumeration to USAreaCatalog and send typed --requests-json payloads to
+    # workers so area construction no longer lives in the coordinator.
     result = subprocess.run(
         [
             "uv",

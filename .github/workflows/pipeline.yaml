@@ -51,8 +51,8 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install Modal
-        run: pip install modal
+      - name: Install Modal Runner Deps
+        run: pip install modal pandas
 
       - name: Deploy and launch pipeline on Modal
         env:

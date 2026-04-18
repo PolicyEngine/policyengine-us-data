@@ -86,6 +86,28 @@ def test_build_release_manifest_tracks_uploaded_artifacts(tmp_path):
     }
 
 
+def test_build_release_manifest_adds_additional_compatible_specifiers(tmp_path):
+    national_path = _write_file(
+        tmp_path / "enhanced_cps_2024.h5",
+        b"national-dataset",
+    )
+
+    manifest = build_release_manifest(
+        files_with_repo_paths=[(national_path, "enhanced_cps_2024.h5")],
+        version="1.83.3",
+        repo_id="policyengine/policyengine-us-data",
+        model_package_version="1.637.0",
+        model_package_data_build_fingerprint="sha256:stable",
+        additional_compatible_specifiers=(">=1.637.0,<2.0.0",),
+        created_at="2026-04-18T12:00:00Z",
+    )
+
+    assert manifest["compatible_model_packages"] == [
+        {"name": "policyengine-us", "specifier": "==1.637.0"},
+        {"name": "policyengine-us", "specifier": ">=1.637.0,<2.0.0"},
+    ]
+
+
 def test_build_release_manifest_merges_existing_release_same_version(tmp_path):
     district_bytes = b"district-dataset"
     district_path = _write_file(tmp_path / "NC-01.h5", district_bytes)

@@ -1,3 +1,12 @@
+## [1.83.3] - 2026-04-18
+
+### Changed
+
+- Introduced typed local H5 request construction with `AreaBuildRequest`,
+  `AreaFilter`, and `USAreaCatalog`, while keeping the worker's legacy
+  `--work-items` path available for backward compatibility.
+
+
 ## [1.83.2] - 2026-04-17
 
 ### Changed

@@ -1,3 +1,10 @@
+## [1.83.4] - 2026-04-18
+
+### Fixed
+
+- Fixed calibration matrix leakage for constrained non-household amount targets by filtering qualifying person-, tax-unit-, and SPM-unit-level amounts before rolling them up to households, so mixed-eligibility households no longer overstate targets such as filer-only `total_self_employment_income`. Added regression tests covering the entity-level filtering behavior and preserving existing household and count-target semantics.
+
+
 ## [1.83.3] - 2026-04-18
 
 ### Changed

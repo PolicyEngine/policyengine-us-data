@@ -31,7 +31,7 @@ PIPELINE_SCRIPTS = [
     ("db/etl_tanf.py", ["--year", "2024"]),
     ("db/etl_state_income_tax.py", ["--year", "2024"]),
     ("db/etl_irs_soi.py", ["--year", "2024"]),
-    ("db/etl_aca_agi_state_targets.py", ["--year", "2024"]),
+    ("db/etl_aca_marketplace.py", ["--year", "2024"]),
     ("db/etl_pregnancy.py", ["--year", "2024"]),
     ("db/validate_database.py", []),
 ]

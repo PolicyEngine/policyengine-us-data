@@ -48,8 +48,12 @@ def extract_aca_marketplace_state_metal_data(
     store the normalized input CSV at
     `policyengine_us_data/storage/calibration_targets/aca_marketplace_state_metal_selection_2024.csv`.
 
+    Source (CMS Marketplace Open Enrollment Period Public Use Files):
+    https://www.cms.gov/marketplace/resources/data/public-use-files
+
     To reproduce or update that file:
-    1. Download the CMS 2024 OEP state metal status public use file.
+    1. Download the CMS 2024 OEP State, Metal Level, and Enrollment Status PUF
+       from the URL above.
     2. Preserve one row per state/platform/metal/enrollment-status combination.
     3. Keep the `state_code`, `platform`, `metal_level`,
        `enrollment_status`, `consumers`, and `aptc_consumers` columns.
@@ -100,6 +104,15 @@ def build_state_marketplace_bronze_aptc_targets(
     result["state_fips"] = result["state_code"].map(STATE_ABBR_TO_FIPS)
     result = result[result["state_fips"].notna()].copy()
     result["state_fips"] = result["state_fips"].astype(int)
+    invalid_bronze = (
+        result["bronze_aptc_consumers"] > result["marketplace_aptc_consumers"]
+    )
+    if invalid_bronze.any():
+        bad_states = result.loc[invalid_bronze, "state_code"].tolist()
+        raise ValueError(
+            "Bronze APTC consumers exceed total APTC consumers for states: "
+            f"{bad_states}. Source CSV likely corrupted."
+        )
     result["bronze_aptc_share"] = (
         result["bronze_aptc_consumers"] / result["marketplace_aptc_consumers"]
     )
@@ -167,6 +180,12 @@ def load_state_marketplace_bronze_aptc_targets(
                 parent_stratum_id=aptc_stratum.stratum_id,
                 notes=f"State FIPS {state_fips} Marketplace bronze APTC recipients",
             )
+            # Constraint order matters: `stratum_domain.domain_variable` is
+            # built via SQLite `GROUP_CONCAT(DISTINCT ...)`, which preserves
+            # insertion order. Non-geo constraints must be inserted in the
+            # same order as the matching rule in `target_config.yaml`
+            # (alphabetical:
+            # `selected_marketplace_plan_benchmark_ratio,used_aca_ptc`).
             bronze_stratum.constraints_rel = [
                 StratumConstraint(
                     constraint_variable="state_fips",
@@ -174,14 +193,14 @@ def load_state_marketplace_bronze_aptc_targets(
                     value=str(state_fips),
                 ),
                 StratumConstraint(
-                    constraint_variable="used_aca_ptc",
-                    operation=">",
-                    value="0",
-                ),
-                StratumConstraint(
                     constraint_variable="selected_marketplace_plan_benchmark_ratio",
                     operation="<",
                     value=str(BENCHMARK_SILVER_RATIO),
+                ),
+                StratumConstraint(
+                    constraint_variable="used_aca_ptc",
+                    operation=">",
+                    value="0",
                 ),
             ]
             bronze_stratum.targets_rel.append(

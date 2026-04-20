@@ -171,6 +171,15 @@ The release manifest remains the operational source of truth for:
 standards-based provenance export over the same release artifacts, including a
 composition fingerprint across the release manifest and the artifacts it describes.
 
+The TRO uses the canonical [TROv 0.1 vocabulary](https://w3id.org/trace/trov/0.1/) and
+surfaces PolicyEngine-specific build provenance under the `https://policyengine.org/trace/0.1#`
+extension namespace. Structured fields on the performance node
+(`pe:dataBuildFingerprint`, `pe:builtWithModelVersion`, `pe:builtWithModelGitSha`,
+`pe:dataBuildId`, `pe:emittedIn`) let a verifier cross-check this TRO against the
+certified-bundle TRO emitted by `policyengine.py` without parsing prose.
+
+The emitted TRO is validated against `policyengine_us_data/schemas/trace_tro.schema.json`.
+
 Important boundary:
 
 - the TRACE file does not replace the release manifest

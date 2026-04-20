@@ -1,3 +1,10 @@
+## [1.84.0] - 2026-04-20
+
+### Added
+
+- Added a Marketplace plan benchmark ratio imputation that populates `selected_marketplace_plan_benchmark_ratio` per tax unit by backing out the implied plan cost from CPS-reported private health premiums and PolicyEngine-computed PTC.
+
+
 ## [1.83.4] - 2026-04-18
 
 ### Fixed

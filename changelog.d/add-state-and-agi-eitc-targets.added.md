@@ -1,0 +1,1 @@
+Added state-level and AGI-cross-tab EITC calibration targets (~102 per-state + ~224 per-(child x AGI) new loss-matrix columns) to close the observed -28% national EITC gap against the Treasury tax-expenditure target. Sourced from IRS SOI Historical Table 2 and Publication 1304 Table 2.5. Related to #802.

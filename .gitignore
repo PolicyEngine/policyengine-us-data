@@ -16,6 +16,8 @@ node_modules
 !medicaid_enrollment_2024.csv
 !medicaid_enrollment_2025.csv
 !eitc.csv
+!eitc_state.csv
+!eitc_by_agi_and_children.csv
 !spm_threshold_agi.csv
 !population_by_state.csv
 !aca_spending_and_enrollment_2024.csv

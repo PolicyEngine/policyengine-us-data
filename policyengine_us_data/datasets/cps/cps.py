@@ -181,6 +181,8 @@ class CPS(Dataset):
         self.save_dataset(cps)
         logging.info("Adding takeup")
         add_takeup(self)
+        logging.info("Imputing Marketplace plan benchmark ratio")
+        add_marketplace_plan_benchmark_ratio(self)
         logging.info("Downsampling")
 
         # Downsample
@@ -446,6 +448,109 @@ def add_takeup(self):
     )
 
     self.save_dataset(data)
+
+
+def add_marketplace_plan_benchmark_ratio(self):
+    """Impute `selected_marketplace_plan_benchmark_ratio` per tax unit.
+
+    PolicyEngine-US's ACA PTC formulas assume the selected Marketplace plan
+    costs exactly the Second Lowest Cost Silver Plan (SLCSP). That under- or
+    over-states household out-of-pocket premium for the ~50% of Marketplace
+    enrollees who select Bronze or Gold / Platinum plans instead.
+
+    For tax units that CPS flags as taking up Marketplace coverage, back out
+    the implied plan-to-SLCSP ratio from:
+
+        reported_net_premium   ≈ selected_plan_cost − APTC
+        selected_plan_cost      = SLCSP × benchmark_ratio
+        → benchmark_ratio       = (reported_net_premium + computed_PTC) / SLCSP
+
+    The CPS private-health-premium field is net of APTC for subsidized
+    enrollees, so adding back PolicyEngine's computed PTC recovers the
+    sticker cost. Non-Marketplace tax units keep the default 1.0; the
+    ratio is only consumed through `selected_marketplace_plan_premium_proxy`,
+    which is zero when `takes_up_aca_if_eligible` is false, so the default
+    value does not affect their downstream calculations.
+
+    Ratios are clipped to [0.5, 1.5] to handle CPS reporting noise and
+    Marketplace-flag false positives. Outliers usually indicate the
+    household reported a private or employer premium rather than a true
+    Marketplace plan.
+    """
+    data = self.load_dataset()
+
+    from policyengine_us import Microsimulation
+
+    baseline = Microsimulation(dataset=self)
+    period = self.time_period
+
+    slcsp = baseline.calculate("slcsp", map_to="tax_unit", period=period).values
+    aca_ptc = baseline.calculate("aca_ptc", map_to="tax_unit", period=period).values
+    reported_premium = baseline.calculate(
+        "health_insurance_premiums_without_medicare_part_b",
+        map_to="tax_unit",
+        period=period,
+    ).values
+    takes_up_aca = (
+        baseline.calculate(
+            "takes_up_aca_if_eligible",
+            map_to="tax_unit",
+            period=period,
+        )
+        .values.astype(bool)
+    )
+
+    data["selected_marketplace_plan_benchmark_ratio"] = (
+        compute_marketplace_plan_benchmark_ratio(
+            reported_premium=reported_premium,
+            aca_ptc=aca_ptc,
+            slcsp=slcsp,
+            takes_up_aca=takes_up_aca,
+        )
+    )
+
+    self.save_dataset(data)
+
+
+MARKETPLACE_PLAN_BENCHMARK_RATIO_MIN = 0.5
+MARKETPLACE_PLAN_BENCHMARK_RATIO_MAX = 1.5
+
+
+def compute_marketplace_plan_benchmark_ratio(
+    reported_premium: np.ndarray,
+    aca_ptc: np.ndarray,
+    slcsp: np.ndarray,
+    takes_up_aca: np.ndarray,
+) -> np.ndarray:
+    """Back out the Marketplace plan-to-SLCSP ratio per tax unit.
+
+    Returns 1.0 for tax units that don't take up Marketplace coverage or that
+    have no SLCSP (zero benchmark). Ratios for Marketplace takers are clipped
+    to ``[MARKETPLACE_PLAN_BENCHMARK_RATIO_MIN, MARKETPLACE_PLAN_BENCHMARK_RATIO_MAX]``.
+
+    Args:
+        reported_premium: CPS-reported annual private health insurance premium
+            (net of APTC for subsidized Marketplace takers), at the tax-unit
+            level in USD.
+        aca_ptc: PolicyEngine-computed annual advance premium tax credit at
+            the tax-unit level in USD.
+        slcsp: Second Lowest Cost Silver Plan annual premium at the tax-unit
+            level in USD.
+        takes_up_aca: Boolean array at the tax-unit level, True when the
+            household is modeled as taking up Marketplace coverage.
+
+    Returns:
+        Array of benchmark ratios (unitless), same shape as the inputs.
+    """
+    with np.errstate(divide="ignore", invalid="ignore"):
+        raw = (reported_premium + aca_ptc) / np.where(slcsp > 0, slcsp, 1.0)
+    clipped = np.clip(
+        raw,
+        MARKETPLACE_PLAN_BENCHMARK_RATIO_MIN,
+        MARKETPLACE_PLAN_BENCHMARK_RATIO_MAX,
+    )
+    applicable = takes_up_aca.astype(bool) & (slcsp > 0)
+    return np.where(applicable, clipped, 1.0)
 
 
 def uprate_cps_data(data, from_period, to_period):

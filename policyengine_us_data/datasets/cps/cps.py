@@ -482,17 +482,23 @@ def add_marketplace_plan_benchmark_ratio(self):
     from policyengine_us import Microsimulation
 
     baseline = Microsimulation(dataset=self)
+    period = self.time_period
 
-    slcsp = baseline.calculate("slcsp", map_to="tax_unit").values
-    aca_ptc = baseline.calculate("aca_ptc", map_to="tax_unit").values
+    slcsp = baseline.calculate("slcsp", map_to="tax_unit", period=period).values
+    aca_ptc = baseline.calculate("aca_ptc", map_to="tax_unit", period=period).values
     reported_premium = baseline.calculate(
         "health_insurance_premiums_without_medicare_part_b",
         map_to="tax_unit",
+        period=period,
     ).values
-    takes_up_aca = baseline.calculate(
-        "takes_up_aca_if_eligible",
-        map_to="tax_unit",
-    ).values.astype(bool)
+    takes_up_aca = (
+        baseline.calculate(
+            "takes_up_aca_if_eligible",
+            map_to="tax_unit",
+            period=period,
+        )
+        .values.astype(bool)
+    )
 
     data["selected_marketplace_plan_benchmark_ratio"] = (
         compute_marketplace_plan_benchmark_ratio(

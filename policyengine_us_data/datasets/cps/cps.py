@@ -491,14 +491,11 @@ def add_marketplace_plan_benchmark_ratio(self):
         map_to="tax_unit",
         period=period,
     ).values
-    takes_up_aca = (
-        baseline.calculate(
-            "takes_up_aca_if_eligible",
-            map_to="tax_unit",
-            period=period,
-        )
-        .values.astype(bool)
-    )
+    takes_up_aca = baseline.calculate(
+        "takes_up_aca_if_eligible",
+        map_to="tax_unit",
+        period=period,
+    ).values.astype(bool)
 
     data["selected_marketplace_plan_benchmark_ratio"] = (
         compute_marketplace_plan_benchmark_ratio(

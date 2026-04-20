@@ -285,3 +285,201 @@ def test_placeholder_rows_are_skipped_without_breaking_alignment(tmp_path, monke
         assert "nation/irs/eitc/amount/state_48" not in loss_matrix.columns
     finally:
         monkeypatch.setattr(loss_module, "CALIBRATION_FOLDER", original_folder)
+
+
+def test_mixed_placeholder_row_keeps_valid_metric_drops_invalid(tmp_path, monkeypatch):
+    """A row with one valid and one placeholder metric must keep targets
+    and columns in lockstep: the valid metric survives, the placeholder
+    metric is dropped on *both* axes.
+    """
+
+    mixed_csv = tmp_path / "eitc_state.csv"
+    mixed_csv.write_text(
+        "GEO_ID,Returns,Amount\n"
+        # Valid returns, placeholder amount.
+        "0400000US06,2519120,[TO BE CALCULATED]\n"
+        # Placeholder returns, valid amount.
+        "0400000US48,[TO BE CALCULATED],6500000000\n"
+        # Both valid for sanity.
+        "0400000US36,1451910,3464518000\n"
+    )
+
+    from policyengine_us_data.utils import loss as loss_module
+
+    original_folder = loss_module.CALIBRATION_FOLDER
+    monkeypatch.setattr(loss_module, "CALIBRATION_FOLDER", tmp_path)
+
+    try:
+        sim = _FakeStateEitcSimulation()
+        loss_matrix = pd.DataFrame()
+        targets: list = []
+        targets, loss_matrix = _add_state_eitc_targets(
+            loss_matrix,
+            targets,
+            sim,
+            eitc_spending_uprating=1.0,
+            population_uprating=1.0,
+        )
+
+        # 2 valid metrics from rows 1 and 2, plus both metrics from row 3
+        # = 4 columns/targets. Critically: cols and targets stay aligned.
+        assert len(loss_matrix.columns) == len(targets)
+        assert len(loss_matrix.columns) == 4
+
+        # CA: returns present, amount dropped.
+        assert "nation/irs/eitc/returns/state_06" in loss_matrix.columns
+        assert "nation/irs/eitc/amount/state_06" not in loss_matrix.columns
+        # TX: returns dropped, amount present.
+        assert "nation/irs/eitc/returns/state_48" not in loss_matrix.columns
+        assert "nation/irs/eitc/amount/state_48" in loss_matrix.columns
+        # NY: both present.
+        assert "nation/irs/eitc/returns/state_36" in loss_matrix.columns
+        assert "nation/irs/eitc/amount/state_36" in loss_matrix.columns
+    finally:
+        monkeypatch.setattr(loss_module, "CALIBRATION_FOLDER", original_folder)
+
+
+class _FakeAgiChildEitcSimulationWithFourPlusChildren:
+    """Simulation stub covering 5 tax units with eitc_child_count in
+    ``{0, 1, 2, 3, 4}``.
+
+    Lets us verify the "3 or more" (``count_children=3``) bucket
+    aggregates *both* 3-child and 4+-child households (SOI Publication
+    1304 Table 2.5 tops out its child-count axis at "3 or more").
+    """
+
+    def __init__(self):
+        self._eitc_child_count = np.array([0, 1, 2, 3, 4])
+        self._eitc = np.array([400.0, 3000.0, 6000.0, 2500.0, 1800.0])
+        self._agi = np.array([8_000.0, 15_000.0, 22_000.0, 40_000.0, 42_000.0])
+
+    def calculate(self, variable, map_to=None, period=None):
+        if variable == "eitc_child_count":
+            return _FakeArray(self._eitc_child_count)
+        if variable == "eitc":
+            return _FakeArray(self._eitc)
+        if variable == "adjusted_gross_income":
+            return _FakeArray(self._agi)
+        raise AssertionError(f"Unexpected variable {variable!r}")
+
+    def map_result(self, values, source, target, how=None):
+        return np.asarray(values, dtype=float)
+
+
+def test_three_or_more_children_bucket_uses_ge_not_eq():
+    """SOI's top child-count bucket is ``3 or more``. A 4-child household
+    must register in the ``c3_*`` bucket, and a 3-child household must
+    not be double-counted across ``c2`` and ``c3`` buckets.
+    """
+
+    sim = _FakeAgiChildEitcSimulationWithFourPlusChildren()
+    loss_matrix = pd.DataFrame()
+    targets: list = []
+
+    targets, loss_matrix = _add_eitc_by_agi_and_children_targets(
+        loss_matrix,
+        targets,
+        sim,
+        eitc_spending_uprating=1.0,
+        population_uprating=1.0,
+    )
+
+    # The 3-child, $40k unit is row 3; the 4-child, $42k unit is row 4.
+    # Both should land in the c3_40k_45k bucket.
+    c3_40k = loss_matrix["nation/irs/eitc/amount/c3_40k_45k"].to_numpy()
+    assert c3_40k[3] == pytest.approx(2500.0)
+    assert c3_40k[4] == pytest.approx(1800.0)
+    # The 2-child unit should NOT appear in the c3 bucket.
+    assert c3_40k[2] == pytest.approx(0.0)
+
+    # The 4-child unit must not ALSO appear in c2_40k_45k — only the c3
+    # bucket absorbs "3 or more" to avoid double-counting.
+    c2_40k = loss_matrix["nation/irs/eitc/amount/c2_40k_45k"].to_numpy()
+    assert c2_40k[4] == pytest.approx(0.0)
+
+    # Count-column sanity: the 4-child unit contributes exactly 1 return
+    # to c3_40k_45k (it has nonzero EITC and lands in the bucket).
+    c3_40k_returns = loss_matrix["nation/irs/eitc/returns/c3_40k_45k"].to_numpy()
+    assert c3_40k_returns[4] == pytest.approx(1.0)
+
+
+def test_nonunity_uprating_propagates_to_targets(tmp_path, monkeypatch):
+    """``eitc_spending_uprating`` scales dollar targets and
+    ``population_uprating`` scales return-count targets. A base-year CSV
+    passed through with both set to 1.10 must produce targets exactly
+    1.10 times the CSV value.
+    """
+
+    csv_path = tmp_path / "eitc_state.csv"
+    csv_returns = 2_000_000
+    csv_amount = 5_000_000_000
+    csv_path.write_text(
+        f"GEO_ID,Returns,Amount\n0400000US06,{csv_returns},{csv_amount}\n"
+    )
+
+    from policyengine_us_data.utils import loss as loss_module
+
+    original_folder = loss_module.CALIBRATION_FOLDER
+    monkeypatch.setattr(loss_module, "CALIBRATION_FOLDER", tmp_path)
+
+    try:
+        sim = _FakeStateEitcSimulation()
+        loss_matrix = pd.DataFrame()
+        targets: list = []
+        targets, loss_matrix = _add_state_eitc_targets(
+            loss_matrix,
+            targets,
+            sim,
+            eitc_spending_uprating=1.10,
+            population_uprating=1.05,
+        )
+
+        # Single row produces 2 targets: returns then amount, in that order.
+        assert targets[0] == pytest.approx(csv_returns * 1.05)
+        assert targets[1] == pytest.approx(csv_amount * 1.10)
+    finally:
+        monkeypatch.setattr(loss_module, "CALIBRATION_FOLDER", original_folder)
+
+
+# --- Regression: stale / contradictory targets must stay gone ------------
+
+
+def test_legacy_eitc_csv_is_removed_from_calibration_folder():
+    """The legacy TY2020 ``eitc.csv`` was removed because it contradicted
+    the new TY2022 SOI sources (stale vintage, and the per-child-count
+    row sums conflicted with state-sum and AGI×children cross-tab). If
+    it reappears, the EITC target set becomes internally inconsistent
+    again — fail loudly.
+    """
+    assert not (CALIBRATION_FOLDER / "eitc.csv").exists()
+
+
+def test_loss_module_does_not_target_treasury_eitc_aggregate():
+    """Treasury's ``tax_expenditures.eitc`` parameter measures EITC
+    *outlays* (~$67B), while ``eitc`` in the microsim measures total
+    EITC *claimed* (~$59B, per SOI). Targeting both simultaneously
+    creates an unsatisfiable internal contradiction. The loss matrix
+    must not include a ``nation/treasury/eitc`` aggregate column.
+    """
+    from policyengine_us_data.utils import loss as loss_module
+    import inspect
+
+    source = inspect.getsource(loss_module)
+    # The parameter is still *read* (for uprating), but no loss-matrix
+    # column with this label should be created.
+    assert '"nation/treasury/eitc"' not in source
+    assert "'nation/treasury/eitc'" not in source
+
+
+def test_loss_module_does_not_target_legacy_per_child_count_eitc():
+    """The old TY2020 ``nation/irs/eitc/returns/count_children_*`` and
+    ``nation/irs/eitc/amount/count_children_*`` columns were replaced
+    by the ``(child_count × AGI bucket)`` cross-tab, which carries the
+    same per-child-count information at a finer grain. Keeping both
+    double-counts the child-count signal.
+    """
+    from policyengine_us_data.utils import loss as loss_module
+    import inspect
+
+    source = inspect.getsource(loss_module)
+    assert "count_children_" not in source

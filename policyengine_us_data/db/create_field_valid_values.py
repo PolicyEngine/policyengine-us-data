@@ -69,7 +69,7 @@ def populate_field_valid_values(session: Session) -> None:
     source_values = [
         ("source", "Census ACS S0101", "survey"),
         ("source", "IRS SOI", "administrative"),
-        ("source", "CMS Marketplace", "administrative"),
+        ("source", "CMS 2024 OEP state metal status PUF", "administrative"),
         ("source", "CMS Medicaid", "administrative"),
         ("source", "Census ACS S2704", "survey"),
         ("source", "USDA FNS SNAP", "administrative"),

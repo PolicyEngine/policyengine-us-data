@@ -723,54 +723,37 @@ def build_loss_matrix(dataset: type, time_period):
 
     targets_array.append(aca_enrollment_target)
 
-    # Treasury EITC
-
-    loss_matrix["nation/treasury/eitc"] = sim.calculate(
-        "eitc", map_to="household"
-    ).values
+    # EITC targets.
+    #
+    # Authoritative source: IRS SOI TY2022 tables. Treasury's
+    # ``tax_expenditures.eitc`` parameter ($67B in 2024) is the
+    # *outlay* measure (refundable portion with tax-expenditure
+    # methodology) and is not directly comparable to the total EITC
+    # claimed on tax returns that the ``eitc`` variable computes
+    # ($59B per SOI). Previously the loss function targeted Treasury's
+    # $67B number as the national aggregate, which contradicted the
+    # ~$59B implied by the per-state and per-child-count rows we also
+    # targeted, and contradicted reality: the optimizer couldn't
+    # satisfy both definitions simultaneously.
+    #
+    # v2: drop the Treasury aggregate and the legacy ``eitc.csv``
+    # (TY2020, stale) per-child-count targets entirely. Rely on the
+    # new SOI TY2022 sources below, which provide better geographic
+    # and AGI-shape coverage AND a coherent total.
+    #
+    # Treasury's EITC parameter is still used to derive the dollar
+    # uprating trajectory — its year-over-year growth captures the
+    # expected EITC evolution, even if its level is defined
+    # differently from what we target.
     eitc_spending = (
         sim.tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc
     )
-    targets_array.append(eitc_spending(time_period))
-
-    # IRS EITC filers and totals by child counts
-    eitc_stats = pd.read_csv(CALIBRATION_FOLDER / "eitc.csv")
-
-    eitc_spending_uprating = eitc_spending(time_period) / eitc_spending(2021)
     population = (
         sim.tax_benefit_system.parameters.calibration.gov.census.populations.total
     )
-    population_uprating = population(time_period) / population(2021)
-
-    for _, row in eitc_stats.iterrows():
-        returns_label = (
-            f"nation/irs/eitc/returns/count_children_{row['count_children']}"
-        )
-        eitc_eligible_children = sim.calculate("eitc_child_count").values
-        eitc = sim.calculate("eitc").values
-        # IRS Pub 1304 Table 2.5 reports EITC returns by exclusive
-        # qualifying-child categories: 0, 1, 2, and "3 or more". Row 3
-        # represents 3+ since EITC caps qualifying children at 3.
-        if row["count_children"] < 3:
-            meets_child_criteria = eitc_eligible_children == row["count_children"]
-        else:
-            meets_child_criteria = eitc_eligible_children >= row["count_children"]
-        loss_matrix[returns_label] = sim.map_result(
-            (eitc > 0) * meets_child_criteria,
-            "tax_unit",
-            "household",
-        )
-        targets_array.append(row["eitc_returns"] * population_uprating)
-
-        spending_label = (
-            f"nation/irs/eitc/spending/count_children_{row['count_children']}"
-        )
-        loss_matrix[spending_label] = sim.map_result(
-            eitc * meets_child_criteria,
-            "tax_unit",
-            "household",
-        )
-        targets_array.append(row["eitc_total"] * eitc_spending_uprating)
+    # Source CSVs use TY2022 data; uprate to ``time_period`` from 2022.
+    eitc_spending_uprating = eitc_spending(time_period) / eitc_spending(2022)
+    population_uprating = population(time_period) / population(2022)
 
     targets_array, loss_matrix = _add_state_eitc_targets(
         loss_matrix,

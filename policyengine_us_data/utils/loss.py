@@ -337,6 +337,155 @@ def _get_medicaid_national_targets(requested_year: int) -> tuple[float, float, i
     )
 
 
+def _skip_unverified_target(value) -> bool:
+    """Return True when a CSV value is a placeholder instead of a real target.
+
+    CSV rows containing "[TO BE CALCULATED]" (or an empty cell) are
+    intentionally skipped. This matches the repo-wide convention of
+    ``[TO BE CALCULATED]`` for unverified IRS extractions and keeps the
+    optimizer from consuming fabricated numbers. See CLAUDE.md §
+    "NEVER FABRICATE DATA OR RESULTS".
+    """
+    if value is None:
+        return True
+    if isinstance(value, float) and pd.isna(value):
+        return True
+    if isinstance(value, str) and value.strip() in (
+        "",
+        "[TO BE CALCULATED]",
+        "TBD",
+    ):
+        return True
+    return False
+
+
+def _add_state_eitc_targets(
+    loss_matrix: pd.DataFrame,
+    targets_list: list,
+    sim,
+    eitc_spending_uprating: float,
+    population_uprating: float,
+):
+    """Add per-state EITC returns and amount targets.
+
+    Sourced from IRS SOI Historical Table 2 (``eitc_state.csv``). Returns
+    counts are uprated by population; amount targets are uprated by the
+    Treasury EITC trajectory (same uprating used for the existing
+    per-child-count EITC targets so state and child-count signals move
+    together).
+    """
+    eitc_state_path = CALIBRATION_FOLDER / "eitc_state.csv"
+    if not eitc_state_path.exists():
+        return targets_list, loss_matrix
+
+    eitc_state = pd.read_csv(eitc_state_path, comment="#")
+
+    eitc = sim.calculate("eitc").values  # tax-unit level
+    eitc_returns_tu = (eitc > 0).astype(float)
+
+    state = sim.calculate("state_code", map_to="person").values
+    state = sim.map_result(state, "person", "household", how="value_from_first_person")
+    state_fips = pd.Series(state).apply(lambda s: STATE_ABBR_TO_FIPS.get(s, None))
+
+    eitc_returns_hh = sim.map_result(eitc_returns_tu, "tax_unit", "household")
+    eitc_amount_hh = sim.map_result(eitc, "tax_unit", "household")
+
+    for _, row in eitc_state.iterrows():
+        fips = str(row["GEO_ID"])[-2:]
+        in_state = (state_fips == fips).to_numpy()
+
+        returns_label = f"nation/irs/eitc/returns/state_{fips}"
+        loss_matrix[returns_label] = np.where(in_state, eitc_returns_hh, 0.0)
+        if not _skip_unverified_target(row["Returns"]):
+            targets_list.append(float(row["Returns"]) * population_uprating)
+        else:
+            # Remove the column we just added since we aren't appending a
+            # target for it; otherwise loss_matrix/targets_array go out of
+            # alignment.
+            del loss_matrix[returns_label]
+
+        amount_label = f"nation/irs/eitc/amount/state_{fips}"
+        loss_matrix[amount_label] = np.where(in_state, eitc_amount_hh, 0.0)
+        if not _skip_unverified_target(row["Amount"]):
+            targets_list.append(float(row["Amount"]) * eitc_spending_uprating)
+        else:
+            del loss_matrix[amount_label]
+
+    return targets_list, loss_matrix
+
+
+def _add_eitc_by_agi_and_children_targets(
+    loss_matrix: pd.DataFrame,
+    targets_list: list,
+    sim,
+    eitc_spending_uprating: float,
+    population_uprating: float,
+):
+    """Add per-(qualifying-children x AGI bucket) EITC returns and amount
+    targets.
+
+    Sourced from IRS SOI Publication 1304 Table 2.5
+    (``eitc_by_agi_and_children.csv``). The SOI table buckets qualifying
+    children as 0, 1, 2, "3 or more" (coded as ``count_children = 3``)
+    and uses the half-open [lower, upper) AGI convention.
+
+    The loss-matrix labels embed child count and AGI bucket so the
+    optimizer can distinguish, e.g., EITC claims by 2-child families
+    with AGI in [$20k, $25k) from 2-child families with AGI in
+    [$25k, $30k).
+    """
+    eitc_agi_path = CALIBRATION_FOLDER / "eitc_by_agi_and_children.csv"
+    if not eitc_agi_path.exists():
+        return targets_list, loss_matrix
+
+    eitc_by_agi = pd.read_csv(eitc_agi_path, comment="#")
+    eitc_by_agi["agi_lower"] = eitc_by_agi["agi_lower"].astype(float)
+    eitc_by_agi["agi_upper"] = eitc_by_agi["agi_upper"].astype(float)
+
+    eitc_eligible_children = sim.calculate("eitc_child_count").values
+    eitc = sim.calculate("eitc").values
+    agi_tu = sim.calculate("adjusted_gross_income").values
+
+    for _, row in eitc_by_agi.iterrows():
+        count_children = int(row["count_children"])
+        agi_lower = float(row["agi_lower"])
+        agi_upper = float(row["agi_upper"])
+
+        if count_children < 3:
+            meets_child_criteria = eitc_eligible_children == count_children
+        else:
+            meets_child_criteria = eitc_eligible_children >= count_children
+
+        in_agi = (agi_tu >= agi_lower) & (agi_tu < agi_upper)
+        in_bucket = meets_child_criteria & in_agi
+
+        slug = f"c{count_children}_{fmt(agi_lower)}_{fmt(agi_upper)}"
+
+        returns_label = f"nation/irs/eitc/returns/{slug}"
+        loss_matrix[returns_label] = sim.map_result(
+            (eitc > 0) * in_bucket,
+            "tax_unit",
+            "household",
+        )
+        if not _skip_unverified_target(row["returns"]):
+            targets_list.append(float(row["returns"]) * population_uprating)
+        else:
+            del loss_matrix[returns_label]
+
+        amount_label = f"nation/irs/eitc/amount/{slug}"
+        loss_matrix[amount_label] = sim.map_result(
+            eitc * in_bucket,
+            "tax_unit",
+            "household",
+        )
+        if not _skip_unverified_target(row["amount"]):
+            targets_list.append(float(row["amount"]) * eitc_spending_uprating)
+        else:
+            del loss_matrix[amount_label]
+
+    return targets_list, loss_matrix
+
+
 def _add_ctc_targets(loss_matrix, targets_list, sim, time_period):
     """Add legacy national CTC component amount and recipient-count targets."""
     for variable in ("refundable_ctc", "non_refundable_ctc"):
@@ -574,54 +723,53 @@ def build_loss_matrix(dataset: type, time_period):
 
     targets_array.append(aca_enrollment_target)
 
-    # Treasury EITC
-
-    loss_matrix["nation/treasury/eitc"] = sim.calculate(
-        "eitc", map_to="household"
-    ).values
+    # EITC targets.
+    #
+    # Authoritative source: IRS SOI TY2022 tables. Treasury's
+    # ``tax_expenditures.eitc`` parameter ($67B in 2024) is the
+    # *outlay* measure (refundable portion with tax-expenditure
+    # methodology) and is not directly comparable to the total EITC
+    # claimed on tax returns that the ``eitc`` variable computes
+    # ($59B per SOI). Previously the loss function targeted Treasury's
+    # $67B number as the national aggregate, which contradicted the
+    # ~$59B implied by the per-state and per-child-count rows we also
+    # targeted, and contradicted reality: the optimizer couldn't
+    # satisfy both definitions simultaneously.
+    #
+    # v2: drop the Treasury aggregate and the legacy ``eitc.csv``
+    # (TY2020, stale) per-child-count targets entirely. Rely on the
+    # new SOI TY2022 sources below, which provide better geographic
+    # and AGI-shape coverage AND a coherent total.
+    #
+    # Treasury's EITC parameter is still used to derive the dollar
+    # uprating trajectory — its year-over-year growth captures the
+    # expected EITC evolution, even if its level is defined
+    # differently from what we target.
     eitc_spending = (
         sim.tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc
     )
-    targets_array.append(eitc_spending(time_period))
-
-    # IRS EITC filers and totals by child counts
-    eitc_stats = pd.read_csv(CALIBRATION_FOLDER / "eitc.csv")
-
-    eitc_spending_uprating = eitc_spending(time_period) / eitc_spending(2021)
     population = (
         sim.tax_benefit_system.parameters.calibration.gov.census.populations.total
     )
-    population_uprating = population(time_period) / population(2021)
+    # Source CSVs use TY2022 data; uprate to ``time_period`` from 2022.
+    eitc_spending_uprating = eitc_spending(time_period) / eitc_spending(2022)
+    population_uprating = population(time_period) / population(2022)
 
-    for _, row in eitc_stats.iterrows():
-        returns_label = (
-            f"nation/irs/eitc/returns/count_children_{row['count_children']}"
-        )
-        eitc_eligible_children = sim.calculate("eitc_child_count").values
-        eitc = sim.calculate("eitc").values
-        # IRS Pub 1304 Table 2.5 reports EITC returns by exclusive
-        # qualifying-child categories: 0, 1, 2, and "3 or more". Row 3
-        # represents 3+ since EITC caps qualifying children at 3.
-        if row["count_children"] < 3:
-            meets_child_criteria = eitc_eligible_children == row["count_children"]
-        else:
-            meets_child_criteria = eitc_eligible_children >= row["count_children"]
-        loss_matrix[returns_label] = sim.map_result(
-            (eitc > 0) * meets_child_criteria,
-            "tax_unit",
-            "household",
-        )
-        targets_array.append(row["eitc_returns"] * population_uprating)
+    targets_array, loss_matrix = _add_state_eitc_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        eitc_spending_uprating,
+        population_uprating,
+    )
 
-        spending_label = (
-            f"nation/irs/eitc/spending/count_children_{row['count_children']}"
-        )
-        loss_matrix[spending_label] = sim.map_result(
-            eitc * meets_child_criteria,
-            "tax_unit",
-            "household",
-        )
-        targets_array.append(row["eitc_total"] * eitc_spending_uprating)
+    targets_array, loss_matrix = _add_eitc_by_agi_and_children_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        eitc_spending_uprating,
+        population_uprating,
+    )
 
     targets_array, loss_matrix = _add_ctc_targets(
         loss_matrix,

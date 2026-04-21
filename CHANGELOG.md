@@ -1,3 +1,10 @@
+## [1.85.1] - 2026-04-21
+
+### Changed
+
+- Publish TRACE TRO declarations alongside US data release manifests on Hugging Face. The TRO uses canonical TROv 0.1 vocabulary, exposes structured `pe:*` build provenance fields (model version, git sha, data-build fingerprint, CI emission context), and ships with a JSON schema for downstream validation.
+
+
 ## [1.85.0] - 2026-04-21
 
 ### Added

@@ -88,6 +88,7 @@ database:
 	python policyengine_us_data/db/etl_state_income_tax.py --year $(YEAR)
 	python policyengine_us_data/db/etl_irs_soi.py --year $(YEAR)
 	python policyengine_us_data/db/etl_aca_agi_state_targets.py --year $(YEAR)
+	python policyengine_us_data/db/etl_aca_marketplace.py --year $(YEAR)
 	python policyengine_us_data/db/etl_pregnancy.py --year $(YEAR)
 	python policyengine_us_data/db/validate_database.py
 

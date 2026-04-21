@@ -32,6 +32,7 @@ PIPELINE_SCRIPTS = [
     ("db/etl_state_income_tax.py", ["--year", "2024"]),
     ("db/etl_irs_soi.py", ["--year", "2024"]),
     ("db/etl_aca_agi_state_targets.py", ["--year", "2024"]),
+    ("db/etl_aca_marketplace.py", ["--year", "2024"]),
     ("db/etl_pregnancy.py", ["--year", "2024"]),
     ("db/validate_database.py", []),
 ]
@@ -198,7 +199,8 @@ def test_state_income_tax_targets(built_db):
 
 
 def test_state_aca_and_agi_targets_loaded(built_db):
-    """ACA spending/enrollment and AGI state targets should be present."""
+    """Legacy ACA spending/enrollment and AGI state targets should be present
+    (loaded by etl_aca_agi_state_targets.py)."""
     conn = sqlite3.connect(str(built_db))
     aca_spending = conn.execute(
         """
@@ -241,6 +243,45 @@ def test_state_aca_and_agi_targets_loaded(built_db):
     assert aca_enrollment > 0, "Missing ACA enrollment targets by state"
     assert agi_amount > 0, "Missing state AGI amount targets"
     assert agi_count > 0, "Missing state AGI count targets"
+
+
+def test_state_marketplace_targets_loaded(built_db):
+    """ACA marketplace APTC and bronze state targets should be present, with
+    canonical alphabetical domain_variable strings that ``target_config.yaml``
+    rules can match."""
+    conn = sqlite3.connect(str(built_db))
+    aptc_targets = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'tax_unit_count'
+          AND geo_level = 'state'
+          AND domain_variable = 'used_aca_ptc'
+        """
+    ).fetchone()[0]
+    # Regression for the bronze domain_variable ordering bug: must match the
+    # alphabetical form in target_config.yaml:68, not an insertion-ordered
+    # alternative.
+    bronze_targets = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'tax_unit_count'
+          AND geo_level = 'state'
+          AND domain_variable
+              = 'selected_marketplace_plan_benchmark_ratio,used_aca_ptc'
+        """
+    ).fetchone()[0]
+    conn.close()
+
+    # HC.gov had 32 states in 2024; allow a cushion for data updates.
+    assert aptc_targets >= 27, (
+        f"Missing state marketplace APTC targets (got {aptc_targets})"
+    )
+    assert bronze_targets >= 27, (
+        "Missing state marketplace bronze-selection targets with canonical "
+        f"domain_variable (got {bronze_targets})"
+    )
 
 
 def test_tanf_targets(built_db):

@@ -59,6 +59,14 @@ include:
     geo_level: state
     domain_variable: tanf
 
+  # === STATE — ACA marketplace APTC and bronze-plan enrollment counts ===
+  - variable: tax_unit_count
+    geo_level: state
+    domain_variable: used_aca_ptc
+  - variable: tax_unit_count
+    geo_level: state
+    domain_variable: selected_marketplace_plan_benchmark_ratio,used_aca_ptc
+
   # === STATE — fine AGI bracket targets (stubs 9/10 from in55cmcsv) ===
   - variable: person_count
     geo_level: state

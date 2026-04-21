@@ -341,21 +341,24 @@ SELECT
             THEN sc.value END),
         'US'
     ) AS geographic_id,
-    -- Alphabetical ORDER BY makes the concatenation deterministic across
-    -- insertion order so downstream rule matching in target_config.yaml
-    -- can rely on a canonical form (e.g.
-    -- "selected_marketplace_plan_benchmark_ratio,used_aca_ptc").
-    GROUP_CONCAT(DISTINCT CASE
-        WHEN sc.constraint_variable NOT IN (
-            'state_fips', 'congressional_district_geoid',
-            'tax_unit_is_filer', 'ucgid_str'
-        ) THEN sc.constraint_variable
-    END ORDER BY CASE
-        WHEN sc.constraint_variable NOT IN (
-            'state_fips', 'congressional_district_geoid',
-            'tax_unit_is_filer', 'ucgid_str'
-        ) THEN sc.constraint_variable
-    END) AS domain_variable
+    -- Compute domain_variable via a correlated subquery so we can sort
+    -- the distinct constraint names alphabetically before concatenation.
+    -- We can't use `GROUP_CONCAT(DISTINCT ... ORDER BY ...)` because the
+    -- `ORDER BY` form inside aggregates requires SQLite >= 3.44, and the
+    -- Modal runner ships an older libsqlite.
+    (
+        SELECT GROUP_CONCAT(cv, ',')
+        FROM (
+            SELECT DISTINCT sc2.constraint_variable AS cv
+            FROM stratum_constraints sc2
+            WHERE sc2.stratum_id = t.stratum_id
+              AND sc2.constraint_variable NOT IN (
+                  'state_fips', 'congressional_district_geoid',
+                  'tax_unit_is_filer', 'ucgid_str'
+              )
+            ORDER BY sc2.constraint_variable
+        )
+    ) AS domain_variable
 FROM targets t
 LEFT JOIN stratum_constraints sc ON t.stratum_id = sc.stratum_id
 GROUP BY t.target_id, t.stratum_id, t.variable,

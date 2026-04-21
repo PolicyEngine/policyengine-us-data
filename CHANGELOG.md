@@ -1,3 +1,10 @@
+## [1.85.0] - 2026-04-21
+
+### Added
+
+- Rebuilt EITC calibration on a coherent IRS SOI TY2022 target set. Added ~102 per-state targets (SOI Historical Table 2) and ~224 per-(child x AGI) targets (Publication 1304 Table 2.5), and removed the contradictory Treasury `tax_expenditures.eitc` aggregate column (which measures outlays, not total claimed) plus the stale TY2020 `eitc.csv` per-child-count targets. The optimizer now has geographic and AGI-shape coverage over EITC without fighting definition mismatches between outlay- and claim-based totals. Addresses #802.
+
+
 ## [1.84.0] - 2026-04-20
 
 ### Added

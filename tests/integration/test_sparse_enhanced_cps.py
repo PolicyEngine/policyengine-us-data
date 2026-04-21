@@ -256,8 +256,9 @@ def test_sparse_aca_calibration(sim):
     state_code_hh = sim.calculate("state_code", map_to="household").values
     aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
 
-    # National ACA override can substantially distort state spend fit.
-    TOLERANCE = 5.0
+    # See test_aca_calibration in test_enhanced_cps.py for the full
+    # CMS-vs-IRS concept mismatch rationale; tracked in issue #805.
+    TOLERANCE = 10.0
     failed = False
     for _, row in targets.iterrows():
         state = row["state"]

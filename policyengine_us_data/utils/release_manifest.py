@@ -107,6 +107,8 @@ def build_release_manifest(
     existing_manifest: Mapping | None = None,
     default_datasets: Optional[Mapping[str, str]] = None,
     created_at: str | None = None,
+    preservation_mirrors_by_artifact: Optional[Mapping[str, Sequence[Mapping]]] = None,
+    preservation_dois: Optional[Sequence[str]] = None,
 ) -> Dict:
     manifest = _normalize_existing_manifest(
         existing_manifest,
@@ -157,7 +159,8 @@ def build_release_manifest(
 
     for local_path, path_in_repo in files_with_repo_paths:
         local_path = Path(local_path)
-        manifest["artifacts"][_artifact_key(path_in_repo)] = {
+        artifact_key = _artifact_key(path_in_repo)
+        manifest["artifacts"][artifact_key] = {
             "kind": _artifact_kind(path_in_repo),
             "path": path_in_repo,
             "repo_id": repo_id,
@@ -165,6 +168,15 @@ def build_release_manifest(
             "sha256": compute_file_checksum(local_path),
             "size_bytes": local_path.stat().st_size,
         }
+        if preservation_mirrors_by_artifact:
+            mirrors = preservation_mirrors_by_artifact.get(artifact_key)
+            if mirrors:
+                manifest["artifacts"][artifact_key]["preservation_mirrors"] = [
+                    dict(mirror) for mirror in mirrors
+                ]
+
+    if preservation_dois:
+        manifest["preservation_dois"] = list(preservation_dois)
 
     if (
         "national" not in manifest["default_datasets"]

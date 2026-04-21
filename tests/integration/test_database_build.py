@@ -31,6 +31,7 @@ PIPELINE_SCRIPTS = [
     ("db/etl_tanf.py", ["--year", "2024"]),
     ("db/etl_state_income_tax.py", ["--year", "2024"]),
     ("db/etl_irs_soi.py", ["--year", "2024"]),
+    ("db/etl_aca_agi_state_targets.py", ["--year", "2024"]),
     ("db/etl_aca_marketplace.py", ["--year", "2024"]),
     ("db/etl_pregnancy.py", ["--year", "2024"]),
     ("db/validate_database.py", []),
@@ -195,6 +196,53 @@ def test_state_income_tax_targets(built_db):
 
     tn_val = state_totals.get("47")
     assert tn_val == 2_926_000
+
+
+def test_state_aca_and_agi_targets_loaded(built_db):
+    """Legacy ACA spending/enrollment and AGI state targets should be present
+    (loaded by etl_aca_agi_state_targets.py)."""
+    conn = sqlite3.connect(str(built_db))
+    aca_spending = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'aca_ptc'
+          AND geo_level = 'state'
+        """
+    ).fetchone()[0]
+    aca_enrollment = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'person_count'
+          AND geo_level = 'state'
+          AND domain_variable LIKE '%aca_ptc%'
+        """
+    ).fetchone()[0]
+    agi_amount = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'adjusted_gross_income'
+          AND geo_level = 'state'
+          AND domain_variable LIKE '%adjusted_gross_income%'
+        """
+    ).fetchone()[0]
+    agi_count = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'tax_unit_count'
+          AND geo_level = 'state'
+          AND domain_variable LIKE '%adjusted_gross_income%'
+        """
+    ).fetchone()[0]
+    conn.close()
+
+    assert aca_spending > 0, "Missing ACA spending targets by state"
+    assert aca_enrollment > 0, "Missing ACA enrollment targets by state"
+    assert agi_amount > 0, "Missing state AGI amount targets"
+    assert agi_count > 0, "Missing state AGI count targets"
 
 
 def test_state_marketplace_targets_loaded(built_db):

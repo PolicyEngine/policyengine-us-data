@@ -1,0 +1,1 @@
+Clarified SIPP licensing language in `policyengine_us_data/datasets/sipp/README.md`: SIPP public-use data is unrestricted (no per-user license, agreement, or registration). Of the six upstream microdata sources the Enhanced CPS pipeline ingests (CPS, ACS, SCF, ORG, SIPP, IRS-PUF), only IRS-PUF has a genuine access restriction. Fixes #808.

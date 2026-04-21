@@ -1,3 +1,10 @@
+## [1.85.2] - 2026-04-21
+
+### Fixed
+
+- Loosened the per-state ACA PTC calibration tolerance from 500% to 1000% in the enhanced/sparse ECPS integration tests. CMS APTC state targets mix outlay and claimed-PTC concepts and don't account for ACA §1331 Basic Health Programs in NY and MN, so several states chronically fail a tight tolerance regardless of reweighting. Temporary until the target-side redesign in #805 lands.
+
+
 ## [1.85.1] - 2026-04-21
 
 ### Changed

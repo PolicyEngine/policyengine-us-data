@@ -341,7 +341,16 @@ SELECT
             THEN sc.value END),
         'US'
     ) AS geographic_id,
+    -- Alphabetical ORDER BY makes the concatenation deterministic across
+    -- insertion order so downstream rule matching in target_config.yaml
+    -- can rely on a canonical form (e.g.
+    -- "selected_marketplace_plan_benchmark_ratio,used_aca_ptc").
     GROUP_CONCAT(DISTINCT CASE
+        WHEN sc.constraint_variable NOT IN (
+            'state_fips', 'congressional_district_geoid',
+            'tax_unit_is_filer', 'ucgid_str'
+        ) THEN sc.constraint_variable
+    END ORDER BY CASE
         WHEN sc.constraint_variable NOT IN (
             'state_fips', 'congressional_district_geoid',
             'tax_unit_is_filer', 'ucgid_str'

@@ -180,12 +180,6 @@ def load_state_marketplace_bronze_aptc_targets(
                 parent_stratum_id=aptc_stratum.stratum_id,
                 notes=f"State FIPS {state_fips} Marketplace bronze APTC recipients",
             )
-            # Constraint order matters: `stratum_domain.domain_variable` is
-            # built via SQLite `GROUP_CONCAT(DISTINCT ...)`, which preserves
-            # insertion order. Non-geo constraints must be inserted in the
-            # same order as the matching rule in `target_config.yaml`
-            # (alphabetical:
-            # `selected_marketplace_plan_benchmark_ratio,used_aca_ptc`).
             bronze_stratum.constraints_rel = [
                 StratumConstraint(
                     constraint_variable="state_fips",

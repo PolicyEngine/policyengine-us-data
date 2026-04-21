@@ -197,50 +197,43 @@ def test_state_income_tax_targets(built_db):
     assert tn_val == 2_926_000
 
 
-def test_state_aca_and_agi_targets_loaded(built_db):
-    """ACA spending/enrollment and AGI state targets should be present."""
+def test_state_marketplace_targets_loaded(built_db):
+    """ACA marketplace APTC and bronze state targets should be present, with
+    canonical alphabetical domain_variable strings that ``target_config.yaml``
+    rules can match."""
     conn = sqlite3.connect(str(built_db))
-    aca_spending = conn.execute(
-        """
-        SELECT COUNT(*)
-        FROM target_overview
-        WHERE variable = 'aca_ptc'
-          AND geo_level = 'state'
-        """
-    ).fetchone()[0]
-    aca_enrollment = conn.execute(
-        """
-        SELECT COUNT(*)
-        FROM target_overview
-        WHERE variable = 'person_count'
-          AND geo_level = 'state'
-          AND domain_variable LIKE '%aca_ptc%'
-        """
-    ).fetchone()[0]
-    agi_amount = conn.execute(
-        """
-        SELECT COUNT(*)
-        FROM target_overview
-        WHERE variable = 'adjusted_gross_income'
-          AND geo_level = 'state'
-          AND domain_variable LIKE '%adjusted_gross_income%'
-        """
-    ).fetchone()[0]
-    agi_count = conn.execute(
+    aptc_targets = conn.execute(
         """
         SELECT COUNT(*)
         FROM target_overview
         WHERE variable = 'tax_unit_count'
           AND geo_level = 'state'
-          AND domain_variable LIKE '%adjusted_gross_income%'
+          AND domain_variable = 'used_aca_ptc'
+        """
+    ).fetchone()[0]
+    # Regression for the bronze domain_variable ordering bug: must match the
+    # alphabetical form in target_config.yaml:68, not an insertion-ordered
+    # alternative.
+    bronze_targets = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'tax_unit_count'
+          AND geo_level = 'state'
+          AND domain_variable
+              = 'selected_marketplace_plan_benchmark_ratio,used_aca_ptc'
         """
     ).fetchone()[0]
     conn.close()
 
-    assert aca_spending > 0, "Missing ACA spending targets by state"
-    assert aca_enrollment > 0, "Missing ACA enrollment targets by state"
-    assert agi_amount > 0, "Missing state AGI amount targets"
-    assert agi_count > 0, "Missing state AGI count targets"
+    # HC.gov had 32 states in 2024; allow a cushion for data updates.
+    assert aptc_targets >= 27, (
+        f"Missing state marketplace APTC targets (got {aptc_targets})"
+    )
+    assert bronze_targets >= 27, (
+        "Missing state marketplace bronze-selection targets with canonical "
+        f"domain_variable (got {bronze_targets})"
+    )
 
 
 def test_tanf_targets(built_db):

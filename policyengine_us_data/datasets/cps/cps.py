@@ -109,6 +109,71 @@ def _open_dataset_read_only(dataset_source):
         yield store
 
 
+def _sum_person_values_to_tax_units(
+    person_values: np.ndarray,
+    person_tax_unit_ids: np.ndarray,
+    tax_unit_ids: np.ndarray,
+) -> np.ndarray:
+    tax_unit_index = {
+        int(tax_unit_id): index for index, tax_unit_id in enumerate(tax_unit_ids)
+    }
+    person_tax_unit_index = np.array(
+        [tax_unit_index[int(tax_unit_id)] for tax_unit_id in person_tax_unit_ids],
+        dtype=np.int64,
+    )
+    tax_unit_values = np.zeros(len(tax_unit_ids), dtype=np.float32)
+    np.add.at(
+        tax_unit_values,
+        person_tax_unit_index,
+        np.asarray(person_values, dtype=np.float32),
+    )
+    return tax_unit_values
+
+
+def _voluntary_filing_children_bin(
+    tax_unit_child_dependents: np.ndarray,
+) -> np.ndarray:
+    return np.where(
+        np.asarray(tax_unit_child_dependents) > 0,
+        "with_children",
+        "no_children",
+    )
+
+
+def _voluntary_filing_wage_income_bin(
+    tax_unit_wage_income: np.ndarray,
+) -> np.ndarray:
+    wage_income = np.asarray(tax_unit_wage_income, dtype=np.float32)
+    return np.select(
+        [
+            wage_income <= 0,
+            wage_income < 15_000,
+            wage_income < 30_000,
+        ],
+        ["zero", "low", "medium"],
+        default="high",
+    )
+
+
+def _voluntary_filing_age_bin(age_head: np.ndarray) -> np.ndarray:
+    return np.where(np.asarray(age_head) >= 65, "age_65_plus", "under_65")
+
+
+def _voluntary_filing_rate_by_tax_unit(
+    voluntary_filing_rates: dict,
+    children_bin: np.ndarray,
+    wage_income_bin: np.ndarray,
+    age_bin: np.ndarray,
+) -> np.ndarray:
+    return np.array(
+        [
+            voluntary_filing_rates[children][wage][age]
+            for children, wage, age in zip(children_bin, wage_income_bin, age_bin)
+        ],
+        dtype=np.float32,
+    )
+
+
 class CPS(Dataset):
     name = "cps"
     label = "CPS"
@@ -311,9 +376,13 @@ def add_takeup(self):
     head_start_rate = load_take_up_rate("head_start", self.time_period)
     early_head_start_rate = load_take_up_rate("early_head_start", self.time_period)
     ssi_rate = load_take_up_rate("ssi", self.time_period)
+    voluntary_filing_rates = load_take_up_rate(
+        "voluntary_filing", self.time_period
+    )
 
     # EITC: varies by number of children
     eitc_child_count = baseline.calculate("eitc_child_count").values
+    potential_eitc = baseline.calculate("eitc").values
     eitc_takeup_rate = np.array(
         [eitc_rates_by_children.get(min(int(c), 3), 0.85) for c in eitc_child_count]
     )
@@ -426,14 +495,26 @@ def add_takeup(self):
         rng.random(n_persons) < pregnancy_rate_by_person
     )
 
-    # Voluntary tax filing: some people file even when not required and not
-    # seeking a refund. EITC take-up already captures refund-seeking behavior
-    # (if you take up EITC, you file). This variable captures people who file
-    # for other reasons: state requirements, documentation, habit.
-    # ~5% of tax units who don't take up EITC still file voluntarily.
-    voluntary_filing_rate = 0.05
+    # Voluntary tax filing: some tax units file even when not required and not
+    # claiming EITC. Assign rates by a simple demographic table that
+    # concentrates elective filing among low-wage parents and sharply reduces
+    # it among older childless households.
+    claims_eitc = data["takes_up_eitc"] & (potential_eitc > 0)
+    tax_unit_child_dependents = baseline.calculate("tax_unit_child_dependents").values
+    tax_unit_wage_income = _sum_person_values_to_tax_units(
+        data["employment_income"],
+        data["person_tax_unit_id"],
+        data["tax_unit_id"],
+    )
+    age_head = baseline.calculate("age_head").values
+    voluntary_filing_rate = _voluntary_filing_rate_by_tax_unit(
+        voluntary_filing_rates,
+        _voluntary_filing_children_bin(tax_unit_child_dependents),
+        _voluntary_filing_wage_income_bin(tax_unit_wage_income),
+        _voluntary_filing_age_bin(age_head),
+    )
     rng = seeded_rng("would_file_taxes_voluntarily")
-    data["would_file_taxes_voluntarily"] = ~data["takes_up_eitc"] & (
+    data["would_file_taxes_voluntarily"] = ~claims_eitc & (
         rng.random(n_tax_units) < voluntary_filing_rate
     )
 

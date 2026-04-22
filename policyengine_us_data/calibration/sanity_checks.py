@@ -7,7 +7,9 @@ Or integrated via validate_staging.py --sanity-only.
 """
 
 import logging
+import re
 from typing import List
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -33,7 +35,107 @@ TAKEUP_VARS = [
     "takes_up_head_start_if_eligible",
     "takes_up_early_head_start_if_eligible",
     "takes_up_dc_ptc",
+    "would_file_taxes_voluntarily",
 ]
+
+
+def _eitc_target_source_year(eitc_targets_path: Path) -> int:
+    first_line = eitc_targets_path.read_text().splitlines()[0]
+    matches = re.search(r"Tax Year (\d{4})", first_line)
+    if matches is not None:
+        return int(matches.group(1))
+    raise ValueError(
+        f"Could not determine EITC target source year from {eitc_targets_path}"
+    )
+
+
+def _non_eitc_filer_alignment_metrics(
+    h5_path: str,
+    period: int,
+) -> dict | None:
+    try:
+        import pandas as pd
+        from policyengine_core.data import Dataset
+        from policyengine_us import Microsimulation
+        from policyengine_us_data.storage import STORAGE_FOLDER
+        from policyengine_us_data.utils.soi import get_soi
+        from policyengine_us_data.utils.uprating import (
+            create_policyengine_uprating_factors_table,
+        )
+    except ImportError:
+        return None
+
+    class _SanityChecksDataset(Dataset):
+        name = "sanity_checks_dataset"
+        label = "Sanity checks dataset"
+        data_format = Dataset.TIME_PERIOD_ARRAYS
+        file_path = Path(h5_path)
+        time_period = period
+
+    sim = Microsimulation(dataset=_SanityChecksDataset)
+    tax_unit_weight = sim.calculate("tax_unit_weight").values.astype(float)
+    tax_unit_is_filer = sim.calculate("tax_unit_is_filer").values.astype(bool)
+    eitc = sim.calculate("eitc").values.astype(float)
+    agi = sim.calculate("adjusted_gross_income").values.astype(float)
+    claimed_eitc = eitc > 0
+
+    soi = get_soi(period)
+    soi_filer_counts = soi[
+        (soi["Variable"] == "count")
+        & soi["Count"]
+        & (soi["Filing status"] == "All")
+        & ~soi["Taxable only"]
+        & ~soi["Full population"]
+    ][["AGI lower bound", "AGI upper bound", "Value"]].sort_values(
+        ["AGI lower bound", "AGI upper bound"]
+    )
+
+    eitc_targets_path = STORAGE_FOLDER / "calibration_targets" / "eitc_by_agi_and_children.csv"
+    eitc_source_year = _eitc_target_source_year(eitc_targets_path)
+    eitc_targets = pd.read_csv(eitc_targets_path, comment="#")
+    uprating = create_policyengine_uprating_factors_table()
+    earliest_uprating_year = int(uprating.columns.astype(int).min())
+    latest_uprating_year = int(uprating.columns.astype(int).max())
+    source_year = min(max(eitc_source_year, earliest_uprating_year), latest_uprating_year)
+    target_year = min(max(period, earliest_uprating_year), latest_uprating_year)
+    population_growth = float(
+        uprating.loc["population", target_year] / uprating.loc["population", source_year]
+    )
+    eitc_targets["returns_target_year"] = eitc_targets["returns"] * population_growth
+
+    actual_total = float((tax_unit_weight * (tax_unit_is_filer & ~claimed_eitc)).sum())
+    target_total = 0.0
+    total_abs_error = 0.0
+    low_agi_abs_error = 0.0
+
+    for lower, upper, total_filers in soi_filer_counts.itertuples(index=False):
+        target_eitc_returns = float(
+            eitc_targets.loc[
+                (eitc_targets["agi_lower"].astype(float) >= float(lower))
+                & (eitc_targets["agi_upper"].astype(float) <= float(upper)),
+                "returns_target_year",
+            ].sum()
+        )
+        target_non_eitc_filers = float(total_filers - target_eitc_returns)
+        actual_non_eitc_filers = float(
+            (
+                tax_unit_weight
+                * (tax_unit_is_filer & ~claimed_eitc & (agi >= lower) & (agi < upper))
+            ).sum()
+        )
+        abs_error = abs(actual_non_eitc_filers - target_non_eitc_filers)
+        target_total += target_non_eitc_filers
+        total_abs_error += abs_error
+        if float(upper) <= 40_000:
+            low_agi_abs_error += abs_error
+
+    return {
+        "actual_total": actual_total,
+        "target_total": target_total,
+        "total_gap": actual_total - target_total,
+        "total_abs_error": total_abs_error,
+        "low_agi_abs_error": low_agi_abs_error,
+    }
 
 
 def run_sanity_checks(
@@ -173,8 +275,44 @@ def run_sanity_checks(
                         "check": "person_household_mapping",
                         "status": "PASS",
                         "detail": "",
-                    }
-                )
+                            }
+                        )
+
+        alignment = _non_eitc_filer_alignment_metrics(h5_path, period)
+        if alignment is None:
+            results.append(
+                {
+                    "check": "non_eitc_filer_alignment",
+                    "status": "SKIP",
+                    "detail": "policyengine_us not available",
+                }
+            )
+        else:
+            results.append(
+                {
+                    "check": "non_eitc_filer_total_gap",
+                    "status": "PASS",
+                    "detail": (
+                        f"actual={alignment['actual_total']:,.0f}, "
+                        f"target={alignment['target_total']:,.0f}, "
+                        f"gap={alignment['total_gap']:,.0f}"
+                    ),
+                }
+            )
+            results.append(
+                {
+                    "check": "non_eitc_filer_total_agi_abs_error",
+                    "status": "PASS",
+                    "detail": f"{alignment['total_abs_error']:,.0f}",
+                }
+            )
+            results.append(
+                {
+                    "check": "non_eitc_filer_low_agi_abs_error",
+                    "status": "PASS",
+                    "detail": f"{alignment['low_agi_abs_error']:,.0f}",
+                }
+            )
 
         # 5. Boolean takeup variables
         for var in TAKEUP_VARS:

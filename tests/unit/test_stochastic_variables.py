@@ -53,6 +53,16 @@ class TestTakeUpRateParameters:
         rate = load_take_up_rate("ssi", 2022)
         assert rate == 0.50
 
+    def test_voluntary_filing_table_loads(self):
+        rates = load_take_up_rate("voluntary_filing", 2024)
+        assert isinstance(rates, dict)
+        assert rates["no_children"]["zero"]["under_65"] == 0.2
+        assert rates["with_children"]["low"]["under_65"] == 0.6
+        for children_rates in rates.values():
+            for wage_rates in children_rates.values():
+                for rate in wage_rates.values():
+                    assert 0 <= rate <= 1
+
 
 class TestStableStringHash:
     def test_deterministic(self):

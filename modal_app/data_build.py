@@ -87,6 +87,11 @@ TEST_MODULES = [
 ]
 
 
+def _python_cmd(*args: str) -> list[str]:
+    """Build a command that uses the current interpreter."""
+    return [sys.executable, *args]
+
+
 def setup_gcp_credentials():
     """Write GCP credentials JSON to a temp file for google.auth.default()."""
     creds_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
@@ -207,7 +212,7 @@ def run_script(
     env: Optional[dict] = None,
     log_file: IO = None,
 ) -> str:
-    """Run a script with the image's synced Python and return its path.
+    """Run a script with the current interpreter and return its path.
 
     Args:
         script_path: Path to the Python script to run.
@@ -224,15 +229,11 @@ def run_script(
     if (
         script.suffix == ".py"
         and script.parts
-        and script.parts[0]
-        in {
-            "policyengine_us_data",
-            "modal_app",
-        }
+        and script.parts[0] in {"policyengine_us_data", "modal_app"}
     ):
-        cmd = ["python", "-u", "-m", ".".join(script.with_suffix("").parts)]
+        cmd = _python_cmd("-u", "-m", ".".join(script.with_suffix("").parts))
     else:
-        cmd = ["python", "-u", script_path]
+        cmd = _python_cmd("-u", script_path)
     if args:
         cmd.extend(args)
     run_env = env or os.environ.copy()
@@ -383,7 +384,7 @@ def run_tests_with_checkpoints(
 
         print(f"Running tests: {module}")
         result = subprocess.run(
-            ["python", "-u", "-m", "pytest", module, "-v"],
+            _python_cmd("-u", "-m", "pytest", module, "-v"),
             env=env,
         )
 

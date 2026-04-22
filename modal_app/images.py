@@ -6,9 +6,10 @@ changes, the image rebuilds; if not, the cached layer is reused.
 """
 
 import subprocess
-import modal
 from pathlib import Path
 from typing import Callable
+
+import modal
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -93,24 +94,15 @@ def _build_ignore_callable(repo_root: Path) -> Callable[[Path], bool]:
     return should_ignore
 
 
-# Path Modal's `Image.uv_sync` uses for the project venv. Hard-coded inside
-# Modal's implementation (see modal.image._Image.uv_sync → UV_ROOT = "/.uv").
-_UV_VENV = "/.uv/.venv"
-
-
 def _base_image(extras: list[str] | None = None):
     return (
         modal.Image.debian_slim(python_version="3.14")
         .apt_install("git", "make")
-        # Modal-canonical uv integration: resolves pyproject.toml + uv.lock
-        # into /.uv/.venv and prepends /.uv/.venv/bin to PATH so the default
-        # `python` is the synced venv Python for every process in the image.
         .uv_sync(
             uv_project_dir=str(REPO_ROOT),
             frozen=True,
             extras=extras,
         )
-        # Ship project source and data, honouring .gitignore via git.
         .add_local_dir(
             str(REPO_ROOT),
             remote_path="/root/policyengine-us-data",
@@ -118,16 +110,7 @@ def _base_image(extras: list[str] | None = None):
             ignore=_build_ignore_callable(REPO_ROOT),
         )
         .workdir("/root/policyengine-us-data")
-        # Export the synced venv location for child processes and any ad-hoc uv
-        # usage, while keeping dependency installation exclusively owned by
-        # `uv_sync()` above.
-        .env(
-            {
-                **GIT_ENV,
-                "VIRTUAL_ENV": _UV_VENV,
-                "UV_PROJECT_ENVIRONMENT": _UV_VENV,
-            }
-        )
+        .env(GIT_ENV)
     )
 
 

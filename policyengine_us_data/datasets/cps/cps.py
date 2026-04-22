@@ -376,9 +376,7 @@ def add_takeup(self):
     head_start_rate = load_take_up_rate("head_start", self.time_period)
     early_head_start_rate = load_take_up_rate("early_head_start", self.time_period)
     ssi_rate = load_take_up_rate("ssi", self.time_period)
-    voluntary_filing_rates = load_take_up_rate(
-        "voluntary_filing", self.time_period
-    )
+    voluntary_filing_rates = load_take_up_rate("voluntary_filing", self.time_period)
 
     # EITC: varies by number of children
     eitc_child_count = baseline.calculate("eitc_child_count").values

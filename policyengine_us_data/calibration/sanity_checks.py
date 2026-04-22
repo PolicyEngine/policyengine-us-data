@@ -90,16 +90,21 @@ def _non_eitc_filer_alignment_metrics(
         ["AGI lower bound", "AGI upper bound"]
     )
 
-    eitc_targets_path = STORAGE_FOLDER / "calibration_targets" / "eitc_by_agi_and_children.csv"
+    eitc_targets_path = (
+        STORAGE_FOLDER / "calibration_targets" / "eitc_by_agi_and_children.csv"
+    )
     eitc_source_year = _eitc_target_source_year(eitc_targets_path)
     eitc_targets = pd.read_csv(eitc_targets_path, comment="#")
     uprating = create_policyengine_uprating_factors_table()
     earliest_uprating_year = int(uprating.columns.astype(int).min())
     latest_uprating_year = int(uprating.columns.astype(int).max())
-    source_year = min(max(eitc_source_year, earliest_uprating_year), latest_uprating_year)
+    source_year = min(
+        max(eitc_source_year, earliest_uprating_year), latest_uprating_year
+    )
     target_year = min(max(period, earliest_uprating_year), latest_uprating_year)
     population_growth = float(
-        uprating.loc["population", target_year] / uprating.loc["population", source_year]
+        uprating.loc["population", target_year]
+        / uprating.loc["population", source_year]
     )
     eitc_targets["returns_target_year"] = eitc_targets["returns"] * population_growth
 
@@ -275,8 +280,8 @@ def run_sanity_checks(
                         "check": "person_household_mapping",
                         "status": "PASS",
                         "detail": "",
-                            }
-                        )
+                    }
+                )
 
         alignment = _non_eitc_filer_alignment_metrics(h5_path, period)
         if alignment is None:

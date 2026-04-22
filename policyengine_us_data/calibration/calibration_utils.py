@@ -250,21 +250,25 @@ def get_calculated_variables(sim) -> List[str]:
     return result
 
 
-def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
-    """Apply constraint operation to values array."""
+def _parse_constraint_scalar(val: str):
     try:
         parsed = float(val)
         if parsed.is_integer():
             parsed = int(parsed)
+        return parsed
     except ValueError:
         if val == "True":
-            parsed = True
-        elif val == "False":
-            parsed = False
-        else:
-            parsed = val
+            return True
+        if val == "False":
+            return False
+        return val
 
+
+def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
+    """Apply constraint operation to values array."""
     values = np.asarray(values)
+
+    parsed = _parse_constraint_scalar(val)
     if values.dtype.kind == "S" and isinstance(parsed, str):
         parsed = parsed.encode()
 

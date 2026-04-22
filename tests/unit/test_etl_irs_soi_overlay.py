@@ -3,6 +3,7 @@ import numpy as np
 from sqlalchemy import text
 from sqlmodel import Session, select
 
+from policyengine_us_data.calibration.calibration_utils import apply_op
 from policyengine_us_data.calibration.unified_matrix_builder import (
     UnifiedMatrixBuilder,
 )
@@ -13,8 +14,11 @@ from policyengine_us_data.db.create_database_tables import (
     create_database,
 )
 from policyengine_us_data.db.etl_irs_soi import (
+    COMMON_FILER_DEMOGRAPHIC_AGI_GROUPS,
     GEOGRAPHY_FILE_TARGET_SPECS,
+    MARRIED_FILING_STATUS_CONSTRAINT_VALUE,
     WORKBOOK_NATIONAL_DOMAIN_TARGETS,
+    allocate_national_filer_demographic_cell_targets,
     get_geography_soi_year,
     get_national_geography_soi_agi_targets,
     get_national_geography_soi_target,
@@ -27,6 +31,7 @@ from policyengine_us_data.db.etl_irs_soi import (
     load_national_geography_ctc_targets,
     load_national_ltcg_agi_targets,
     load_national_taxable_agi_filing_status_targets,
+    load_puf_filer_demographic_cell_shares,
     load_national_workbook_soi_targets,
 )
 
@@ -50,6 +55,126 @@ def _create_national_filer_stratum(session: Session) -> Stratum:
     session.commit()
     session.refresh(stratum)
     return stratum
+
+
+def test_puf_filer_demographic_cell_shares_sum_to_one():
+    shares = load_puf_filer_demographic_cell_shares()
+
+    assert len(shares) == 80
+    assert set(shares["agi_group"].unique()) == set(COMMON_FILER_DEMOGRAPHIC_AGI_GROUPS)
+
+    grouped_shares = shares.groupby(["status_group", "agi_group"])["share"].sum()
+    assert np.allclose(grouped_shares.to_numpy(dtype=float), 1.0, atol=1e-6)
+
+
+def test_married_demographic_cell_constraint_matches_matrix_membership():
+    values = np.array([b"JOINT", b"SEPARATE", b"SURVIVING_SPOUSE", b"SINGLE"])
+
+    np.testing.assert_array_equal(
+        apply_op(values, "in", MARRIED_FILING_STATUS_CONSTRAINT_VALUE),
+        np.array([True, True, True, False]),
+    )
+
+
+def test_allocate_national_filer_demographic_cell_targets_marks_dependents_inactive():
+    common_counts = pd.DataFrame(
+        [
+            {
+                "agi_group": "no_agi",
+                "single_under65_nondep": 100.0,
+                "married_under65": 80.0,
+                "hoh_under65": 60.0,
+                "single_65plus_total": 10.0,
+                "married_65plus_total": 20.0,
+                "hoh_65plus_total": 5.0,
+                "dependent_total": 7.0,
+            }
+        ]
+    )
+    shares = pd.DataFrame(
+        [
+            {
+                "status_group": "SINGLE",
+                "agi_group": "no_agi",
+                "dependent_bucket": "0",
+                "share": 0.8,
+            },
+            {
+                "status_group": "SINGLE",
+                "agi_group": "no_agi",
+                "dependent_bucket": "1",
+                "share": 0.15,
+            },
+            {
+                "status_group": "SINGLE",
+                "agi_group": "no_agi",
+                "dependent_bucket": "2+",
+                "share": 0.05,
+            },
+            {
+                "status_group": "MARRIED",
+                "agi_group": "no_agi",
+                "dependent_bucket": "0",
+                "share": 0.25,
+            },
+            {
+                "status_group": "MARRIED",
+                "agi_group": "no_agi",
+                "dependent_bucket": "1",
+                "share": 0.25,
+            },
+            {
+                "status_group": "MARRIED",
+                "agi_group": "no_agi",
+                "dependent_bucket": "2",
+                "share": 0.25,
+            },
+            {
+                "status_group": "MARRIED",
+                "agi_group": "no_agi",
+                "dependent_bucket": "3+",
+                "share": 0.25,
+            },
+            {
+                "status_group": "HEAD_OF_HOUSEHOLD",
+                "agi_group": "no_agi",
+                "dependent_bucket": "1",
+                "share": 0.5,
+            },
+            {
+                "status_group": "HEAD_OF_HOUSEHOLD",
+                "agi_group": "no_agi",
+                "dependent_bucket": "2",
+                "share": 0.3,
+            },
+            {
+                "status_group": "HEAD_OF_HOUSEHOLD",
+                "agi_group": "no_agi",
+                "dependent_bucket": "3+",
+                "share": 0.2,
+            },
+        ]
+    )
+
+    targets = allocate_national_filer_demographic_cell_targets(
+        common_counts,
+        shares,
+        2023,
+    ).set_index("cell_key")
+
+    assert targets.loc["single_under65_0dep", "target_value"] == 80.0
+    assert targets.loc["single_under65_1dep", "target_value"] == 15.0
+    assert targets.loc["single_under65_2plusdep", "target_value"] == 5.0
+    assert not targets.loc["single_under65_1dep", "active"]
+    assert not targets.loc["single_under65_2plusdep", "active"]
+    assert targets.loc["married_under65_3plusdep", "target_value"] == 20.0
+    assert targets.loc["hoh_under65_2dep", "target_value"] == 18.0
+    assert targets.loc["single_65plus", "target_value"] == 10.0
+    assert targets.loc["married_65plus", "target_value"] == 20.0
+    assert targets.loc["hoh_65plus", "target_value"] == 5.0
+    assert targets.loc["dependent_returns", "target_value"] == 7.0
+    assert not targets.loc["dependent_returns", "active"]
+    assert "zero support" in targets.loc["single_under65_1dep", "inactive_reason"]
 
 
 def test_upsert_target_preserves_reform_rows(tmp_path):

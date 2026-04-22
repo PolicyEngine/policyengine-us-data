@@ -152,6 +152,19 @@ class TestEqualityOperations:
         with pytest.raises(ConstraintValidationError, match="cannot combine"):
             ensure_consistent_constraint_set(constraints)
 
+    def test_in_with_range_fails(self):
+        """filing_status in a pipe-delimited set and a range should fail."""
+        constraints = [
+            Constraint(
+                variable="filing_status",
+                operation="in",
+                value="JOINT|SEPARATE|SURVIVING_SPOUSE",
+            ),
+            Constraint(variable="filing_status", operation="<", value="SINGLE"),
+        ]
+        with pytest.raises(ConstraintValidationError, match="cannot combine"):
+            ensure_consistent_constraint_set(constraints)
+
 
 class TestConflictingBounds:
     """Tests for conflicting lower/upper bound detection."""

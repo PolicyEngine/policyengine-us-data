@@ -23,6 +23,8 @@ TARGETS_PATH = Path(__file__).with_name("soi_targets.csv")
 TABLE_FILE_SUFFIX = {
     "Table 1.1": "in11si.xls",
     "Table 1.2": "in12ms.xls",
+    "Table 1.6": "in16ag.xls",
+    "Table 1.7": "in17dp.xls",
     "Table 1.4": "in14ar.xls",
     "Table 2.1": "in21id.xls",
     "Table 4.3": "in43ts.xls",

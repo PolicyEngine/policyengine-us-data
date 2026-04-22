@@ -65,6 +65,15 @@ def test_apply_op_matches_fixed_width_byte_string_constraints():
     )
 
 
+def test_apply_op_supports_in_for_fixed_width_byte_strings():
+    values = np.array([b"JOINT", b"SINGLE", b"SURVIVING_SPOUSE"], dtype="S17")
+
+    np.testing.assert_array_equal(
+        apply_op(values, "in", "JOINT,SEPARATE,SURVIVING_SPOUSE"),
+        np.array([True, False, True]),
+    )
+
+
 def test_builder_assemble_clone_values_preserves_string_constraints():
     builder = UnifiedMatrixBuilder.__new__(UnifiedMatrixBuilder)
 

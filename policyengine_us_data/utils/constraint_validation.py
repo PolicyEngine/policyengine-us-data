@@ -7,7 +7,7 @@ constraints from ever being stored.
 
 Validation Rules:
 1. Operation Compatibility (per constraint_variable):
-   - `==` and `!=` must be alone (cannot combine with other operations)
+   - `==`, `!=`, and `in` must be alone (cannot combine with other operations)
    - `>` and `>=` cannot coexist (conflicting lower bounds)
    - `<` and `<=` cannot coexist (conflicting upper bounds)
    - `>` or `>=` can combine with `<` or `<=` to form valid ranges
@@ -37,7 +37,7 @@ class ConstraintValidationError(Exception):
 
 
 # Operation compatibility groups
-EQUALITY_OPS = {"==", "!="}
+DISCRETE_OPS = {"==", "!=", "in"}
 LOWER_BOUND_OPS = {">", ">="}
 UPPER_BOUND_OPS = {"<", "<="}
 RANGE_OPS = LOWER_BOUND_OPS | UPPER_BOUND_OPS
@@ -87,14 +87,13 @@ def _validate_variable_constraints(
 
 def _check_operation_compatibility(var_name: str, operations: set) -> None:
     """Check that operations on a variable are compatible."""
-    has_equality = bool(operations & EQUALITY_OPS)
-    has_range = bool(operations & RANGE_OPS)
+    has_discrete = bool(operations & DISCRETE_OPS)
 
-    # Equality ops must be alone
-    if has_equality:
+    # Discrete membership/equality ops must be alone
+    if has_discrete:
         if len(operations) > 1:
             raise ConstraintValidationError(
-                f"{var_name}: '==' or '!=' cannot combine with other "
+                f"{var_name}: '==', '!=', or 'in' cannot combine with other "
                 f"operations, found: {operations}"
             )
 

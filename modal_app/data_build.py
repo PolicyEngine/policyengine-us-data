@@ -220,7 +220,19 @@ def run_script(
     Raises:
         subprocess.CalledProcessError: If the script fails.
     """
-    cmd = ["python", "-u", script_path]
+    script = Path(script_path)
+    if (
+        script.suffix == ".py"
+        and script.parts
+        and script.parts[0]
+        in {
+            "policyengine_us_data",
+            "modal_app",
+        }
+    ):
+        cmd = ["python", "-u", "-m", ".".join(script.with_suffix("").parts)]
+    else:
+        cmd = ["python", "-u", script_path]
     if args:
         cmd.extend(args)
     run_env = env or os.environ.copy()

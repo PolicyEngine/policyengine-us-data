@@ -198,10 +198,10 @@ def _fit_weights_impl(
                 f"Missing {label} on pipeline volume: {p}. Run data_build first."
             )
 
-    script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
         "python",
-        script_path,
+        "-m",
+        "policyengine_us_data.calibration.unified_calibration",
         "--device",
         "cuda",
         "--epochs",
@@ -265,10 +265,10 @@ def _fit_from_package_impl(
         flush=True,
     )
 
-    script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
         "python",
-        script_path,
+        "-m",
+        "policyengine_us_data.calibration.unified_calibration",
         "--device",
         "cuda",
         "--epochs",
@@ -379,10 +379,10 @@ def _build_package_impl(
             )
 
     pkg_path = f"{artifacts}/calibration_package.pkl"
-    script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
         "python",
-        script_path,
+        "-m",
+        "policyengine_us_data.calibration.unified_calibration",
         "--device",
         "cpu",
         "--epochs",

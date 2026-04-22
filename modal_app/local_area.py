@@ -473,7 +473,8 @@ def build_areas_worker(
 
     worker_cmd = [
         "python",
-        "modal_app/worker_script.py",
+        "-m",
+        "modal_app.worker_script",
         "--work-items",
         work_items_json,
         "--weights-path",

@@ -21,11 +21,6 @@ pipeline_vol = modal.Volume.from_name("pipeline-artifacts", create_if_missing=Tr
 PIPELINE_MOUNT = "/pipeline"
 
 
-def _python_cmd(*args: str) -> list[str]:
-    """Build a command that uses the current interpreter."""
-    return [sys.executable, *args]
-
-
 def _run_streaming(cmd, env=None, label=""):
     """Run a subprocess, streaming output line-by-line.
 
@@ -203,8 +198,12 @@ def _fit_weights_impl(
                 f"Missing {label} on pipeline volume: {p}. Run data_build first."
             )
 
+    script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
-        *_python_cmd("-m", "policyengine_us_data.calibration.unified_calibration"),
+        "uv",
+        "run",
+        "python",
+        script_path,
         "--device",
         "cuda",
         "--epochs",
@@ -268,8 +267,12 @@ def _fit_from_package_impl(
         flush=True,
     )
 
+    script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
-        *_python_cmd("-m", "policyengine_us_data.calibration.unified_calibration"),
+        "uv",
+        "run",
+        "python",
+        script_path,
         "--device",
         "cuda",
         "--epochs",
@@ -380,8 +383,12 @@ def _build_package_impl(
             )
 
     pkg_path = f"{artifacts}/calibration_package.pkl"
+    script_path = "policyengine_us_data/calibration/unified_calibration.py"
     cmd = [
-        *_python_cmd("-m", "policyengine_us_data.calibration.unified_calibration"),
+        "uv",
+        "run",
+        "python",
+        script_path,
         "--device",
         "cpu",
         "--epochs",

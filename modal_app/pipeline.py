@@ -72,11 +72,6 @@ ARTIFACTS_BASE = f"{PIPELINE_MOUNT}/artifacts"
 RUNS_DIR = f"{PIPELINE_MOUNT}/runs"
 
 
-def _python_cmd(*args: str) -> list[str]:
-    """Build a command that uses the current interpreter."""
-    return [sys.executable, *args]
-
-
 def artifacts_dir_for_run(run_id: str) -> str:
     """Return the run-scoped artifacts directory.
 
@@ -366,7 +361,10 @@ def stage_base_datasets(
 
     pairs_json = _json.dumps(files_with_paths)
     result = subprocess.run(
-        _python_cmd(
+        [
+            "uv",
+            "run",
+            "python",
             "-c",
             f"""
 import json
@@ -379,7 +377,7 @@ files_with_paths = [(p, r) for p, r in pairs]
 count = upload_to_staging_hf(files_with_paths, "{version}", run_id="{run_id}")
 print(f"Staged {{count}} base dataset(s) to HF")
 """,
-        ),
+        ],
         cwd="/root/policyengine-us-data",
         text=True,
         capture_output=True,
@@ -427,103 +425,37 @@ def upload_run_diagnostics(
     _setup_repo()
 
     result = subprocess.run(
-        _python_cmd(
+        [
+            "uv",
+            "run",
+            "python",
             "-c",
             f"""
 import json, os
 from huggingface_hub import HfApi
 
-	entries = json.loads('''{entries_json}''')
-	api = HfApi()
-	token = os.environ.get("HUGGING_FACE_TOKEN")
-	for local_path, repo_path in entries:
+entries = json.loads('''{entries_json}''')
+api = HfApi()
+token = os.environ.get("HUGGING_FACE_TOKEN")
+for local_path, repo_path in entries:
     api.upload_file(
         path_or_fileobj=local_path,
         path_in_repo=repo_path,
         repo_id="policyengine/policyengine-us-data",
         repo_type="model",
         token=token,
-	    )
-	    print(f"Uploaded {{repo_path}}")
-	""",
-	        ),
-	        cwd="/root/policyengine-us-data",
-	        capture_output=True,
-	        text=True,
+    )
+    print(f"Uploaded {{repo_path}}")
+""",
+        ],
+        cwd="/root/policyengine-us-data",
+        capture_output=True,
+        text=True,
         env=os.environ.copy(),
     )
     if result.returncode != 0:
         raise RuntimeError(f"Diagnostics upload failed: {result.stderr}")
     print(f"  {result.stdout.strip()}")
-
-
-@app.function(
-    image=image,
-    timeout=300,
-)
-def verify_runtime_seams() -> dict:
-    """Verify deployed-image imports and subprocess seams."""
-    import importlib
-
-    repo_root = "/root/policyengine-us-data"
-    result = {
-        "interpreter": {
-            "parent": sys.executable,
-        },
-        "imports": {},
-        "subprocess": {},
-        "paths": {
-            "repo_root_exists": os.path.isdir(repo_root),
-            "target_config_exists": os.path.exists(
-                f"{repo_root}/policyengine_us_data/calibration/target_config.yaml"
-            ),
-        },
-    }
-
-    for module_name in (
-        "pandas",
-        "h5py",
-        "policyengine_us_data",
-        "modal_app.worker_script",
-    ):
-        imported = importlib.import_module(module_name)
-        result["imports"][module_name] = {
-            "ok": True,
-            "version": getattr(imported, "__version__", None),
-        }
-
-    child_python = subprocess.run(
-        _python_cmd("-c", "import sys; print(sys.executable)"),
-        capture_output=True,
-        text=True,
-        check=True,
-        cwd=repo_root,
-    )
-    child_exec = child_python.stdout.strip()
-    result["interpreter"]["child"] = child_exec
-    result["interpreter"]["child_matches_parent"] = child_exec == sys.executable
-
-    for name, cmd in {
-        "worker_help": _python_cmd("-m", "modal_app.worker_script", "--help"),
-        "calibration_help": _python_cmd(
-            "-m",
-            "policyengine_us_data.calibration.unified_calibration",
-            "--help",
-        ),
-    }.items():
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=repo_root,
-        )
-        result["subprocess"][name] = {
-            "returncode": proc.returncode,
-            "stdout_tail": proc.stdout[-500:],
-            "stderr_tail": proc.stderr[-500:],
-        }
-
-    return result
 
 
 def _write_validation_diagnostics(
@@ -1187,7 +1119,10 @@ def promote_run(
     print("\nPromoting base datasets (staging → production)...")
     try:
         result = subprocess.run(
-            _python_cmd(
+            [
+                "uv",
+                "run",
+                "python",
                 "-c",
                 f"""
 from policyengine_us_data.utils.data_upload import (
@@ -1201,7 +1136,7 @@ base_files = [
 count = promote_staging_to_production_hf(base_files, "{version}", run_id="{run_id}")
 print(f"Promoted {{count}} base dataset(s)")
 """,
-            ),
+            ],
             cwd="/root/policyengine-us-data",
             capture_output=True,
             text=True,
@@ -1239,7 +1174,10 @@ print(f"Promoted {{count}} base dataset(s)")
     print("\nRegistering version in manifest...")
     try:
         result = subprocess.run(
-            _python_cmd(
+            [
+                "uv",
+                "run",
+                "python",
                 "-c",
                 f"""
 from policyengine_us_data.utils.version_manifest import (
@@ -1261,7 +1199,7 @@ manifest.diagnostics_path = "calibration/runs/{run_id}/diagnostics/"
 upload_manifest(manifest)
 print("Registered version {version} in version_manifest.json")
 """,
-            ),
+            ],
             cwd="/root/policyengine-us-data",
             capture_output=True,
             text=True,

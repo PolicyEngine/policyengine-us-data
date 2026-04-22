@@ -6,9 +6,8 @@ changes, the image rebuilds; if not, the cached layer is reused.
 """
 
 import subprocess
-from pathlib import Path
-
 import modal
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -50,22 +49,22 @@ _IGNORE = [
 
 
 def _base_image(extras: list[str] | None = None):
+    extra_flags = " ".join(f"--extra {e}" for e in (extras or []))
     return (
         modal.Image.debian_slim(python_version="3.14")
         .apt_install("git", "make")
-        .uv_sync(
-            uv_project_dir=str(REPO_ROOT),
-            frozen=True,
-            extras=extras,
-        )
+        .pip_install("uv>=0.8")
         .add_local_dir(
             str(REPO_ROOT),
             remote_path="/root/policyengine-us-data",
             copy=True,
             ignore=_IGNORE,
         )
-        .workdir("/root/policyengine-us-data")
         .env(GIT_ENV)
+        .run_commands(
+            f"cd /root/policyengine-us-data && "
+            f"UV_HTTP_TIMEOUT=300 uv sync --frozen {extra_flags}"
+        )
     )
 
 

@@ -55,11 +55,6 @@ pipeline_volume = modal.Volume.from_name(
 VOLUME_MOUNT = "/staging"
 
 
-def _python_cmd(*args: str) -> list[str]:
-    """Build a command that uses the current interpreter."""
-    return [sys.executable, *args]
-
-
 def setup_gcp_credentials():
     """Write GCP credentials JSON to a temp file for google.auth.default()."""
     creds_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
@@ -540,7 +535,10 @@ def build_areas_worker(
     work_items_json = json.dumps(work_items)
 
     worker_cmd = [
-        *_python_cmd("-m", "modal_app.worker_script"),
+        "uv",
+        "run",
+        "python",
+        "modal_app/worker_script.py",
         "--work-items",
         work_items_json,
         "--weights-path",
@@ -625,7 +623,10 @@ def validate_staging(branch: str, run_id: str, version: str = "") -> Dict:
     # enumeration to USAreaCatalog and send typed --requests-json payloads to
     # workers so area construction no longer lives in the coordinator.
     result = subprocess.run(
-        _python_cmd(
+        [
+            "uv",
+            "run",
+            "python",
             "-c",
             f"""
 import json
@@ -641,7 +642,7 @@ manifest_path = staging_dir / run_id / "manifest.json"
 save_manifest(manifest, manifest_path)
 print(json.dumps(manifest))
 """,
-        ),
+        ],
         capture_output=True,
         text=True,
         env=os.environ.copy(),
@@ -686,7 +687,10 @@ def upload_to_staging(
     manifest_json = json.dumps(manifest)
 
     result = subprocess.run(
-        _python_cmd(
+        [
+            "uv",
+            "run",
+            "python",
             "-c",
             f"""
 import json
@@ -724,7 +728,7 @@ print(f"Uploaded {{hf_count}} files to HuggingFace staging/")
 
 print(f"Staged version {{version}} for promotion")
 """,
-        ),
+        ],
         text=True,
         env=os.environ.copy(),
     )
@@ -775,14 +779,17 @@ def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -
         manifest = json.load(f)
 
     result = subprocess.run(
-        _python_cmd(
+        [
+            "uv",
+            "run",
+            "python",
             "-c",
             _build_promote_publish_script(
                 version=version,
                 run_id=run_id,
                 rel_paths=list(manifest["files"].keys()),
             ),
-        ),
+        ],
         text=True,
         env=os.environ.copy(),
     )
@@ -914,7 +921,10 @@ def coordinate_publish(
         print(f"Prepared staging directory for fingerprint {fingerprint}")
     staging_volume.commit()
     result = subprocess.run(
-        _python_cmd(
+        [
+            "uv",
+            "run",
+            "python",
             "-c",
             f"""
 import json
@@ -932,7 +942,7 @@ states = list(STATE_CODES.values())
 districts = [get_district_friendly_name(cd) for cd in cds]
 print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], "cds": cds}}))
 """,
-        ),
+        ],
         capture_output=True,
         text=True,
         env=os.environ.copy(),
@@ -1214,12 +1224,15 @@ def coordinate_national_publish(
     if validate:
         print("Running national H5 validation...")
         val_result = subprocess.run(
-            _python_cmd(
+            [
+                "uv",
+                "run",
+                "python",
                 "-m",
                 "policyengine_us_data.calibration.validate_national_h5",
                 "--h5-path",
                 str(national_h5),
-            ),
+            ],
             capture_output=True,
             text=True,
             env=os.environ.copy(),
@@ -1236,7 +1249,10 @@ def coordinate_national_publish(
 
     print(f"Uploading {national_h5} to HF staging...")
     result = subprocess.run(
-        _python_cmd(
+        [
+            "uv",
+            "run",
+            "python",
             "-c",
             f"""
 from policyengine_us_data.utils.data_upload import (
@@ -1249,7 +1265,7 @@ upload_to_staging_hf(
 )
 print("Done")
 """,
-        ),
+        ],
         text=True,
         env=os.environ.copy(),
     )
@@ -1313,14 +1329,17 @@ def promote_national_publish(
     rel_paths = ["national/US.h5"]
 
     result = subprocess.run(
-        _python_cmd(
+        [
+            "uv",
+            "run",
+            "python",
             "-c",
             _build_promote_national_publish_script(
                 version=version,
                 run_id=run_id,
                 rel_paths=rel_paths,
             ),
-        ),
+        ],
         text=True,
         env=os.environ.copy(),
     )

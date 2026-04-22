@@ -12,9 +12,8 @@ jobs:
       - run: pip install ruff>=0.9.0
       - run: ruff format --check .
 
-  # ── Build and linear integration tests ──────────────────────
-  linear-integration-tests:
-    name: Build and linear integration tests
+  # ── Build datasets and run integration tests ────────────────
+  build-and-test:
     runs-on: ubuntu-latest
     needs: lint
     if: github.event.head_commit.message != 'Update package version'
@@ -28,40 +27,15 @@ jobs:
         with:
           python-version: "3.14"
       - run: pip install modal
-      - name: Run linear integration tests on Modal
+      - name: Build datasets and run integration tests on Modal
         run: |
           modal run modal_app/data_build.py \
             --upload \
             --branch=${{ github.ref_name }}
 
-  # ── Optimized integration tests ─────────────────────────────
-  optimized-integration-tests:
-    name: Optimized integration tests
-    runs-on: ubuntu-latest
-    needs: lint
-    if: github.event.head_commit.message != 'Update package version'
-    env:
-      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-      MODAL_ENVIRONMENT: main
-      MODAL_APP_NAME: policyengine-us-data-pipeline
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-      - name: Install optimized test deps
-        run: pip install modal pandas pytest
-      - name: Deploy Modal pipeline app
-        run: modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/pipeline.py
-      - name: Run optimized integration tests
-        run: python -m pytest tests/optimized/test_modal_pipeline_seams.py -v
-
   # ── Documentation ──────────────────────────────────────────
   docs:
-    name: Documentation
     runs-on: ubuntu-latest
-    needs: [linear-integration-tests, optimized-integration-tests]
     if: github.event.head_commit.message != 'Update package version'
     permissions:
       contents: write
@@ -88,9 +62,7 @@ jobs:
 
   # ── Versioning (bump + changelog on non-version-bump pushes) ──
   versioning:
-    name: Versioning
     runs-on: ubuntu-latest
-    needs: [linear-integration-tests, optimized-integration-tests]
     if: github.event.head_commit.message != 'Update package version'
     steps:
       - name: Generate GitHub App token

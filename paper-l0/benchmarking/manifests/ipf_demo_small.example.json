@@ -1,7 +1,7 @@
 {
   "name": "ipf_demo_small",
-  "tier": "tier_b",
-  "description": "Example IPF benchmark manifest using automatic conversion from the saved calibration package and its source dataset.",
+  "tier": "tier_1",
+  "description": "Example IPF benchmark. Uses the same target_filters path as GREG and L0; the IPF converter internally keeps only the count-style targets whose constraints resolve through the declared bucket schemas, builds one margin block per constraint signature, and synthesizes complement cells for any single-cell-per-geo margins.",
   "package_path": "policyengine_us_data/storage/calibration/calibration_package.pkl",
   "methods": [
     "l0",
@@ -9,22 +9,16 @@
   ],
   "target_filters": {
     "include_geo_levels": [
-      "national",
-      "state",
       "district"
     ],
-    "include_national": true,
-    "variables": [
-      "person_count",
-      "household_count"
-    ],
-    "domain_variables": [
-      "age",
-      "snap",
-      "medicaid_enrolled"
-    ],
-    "count_like_only": true,
-    "max_targets": 250
+    "include_national": false,
+    "district_ids": [
+      "0601",
+      "0602",
+      "0603",
+      "0604",
+      "0605"
+    ]
   },
   "external_inputs": {},
   "method_options": {
@@ -37,10 +31,10 @@
       "learning_rate": 0.15
     },
     "ipf": {
-      "max_iter": 200,
-      "bound": 4.0,
-      "epsP": 1e-06,
-      "epsH": 0.01,
+      "max_iter": 5000,
+      "bound": 10.0,
+      "epsP": 1e-04,
+      "epsH": 1e-02,
       "household_id_col": "household_id",
       "weight_col": "base_weight"
     }

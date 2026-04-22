@@ -183,7 +183,12 @@ def test_load_cps_basic_org_month_retries_after_transient_parser_failure(
 
     monkeypatch.setattr("policyengine_us_data.datasets.org.org.requests.get", fake_get)
 
-    loaded = _load_cps_basic_org_month(2024, "may", max_attempts=2)
+    loaded = _load_cps_basic_org_month(
+        2024,
+        "may",
+        max_attempts=2,
+        retry_delay_seconds=0,
+    )
 
     assert len(calls) == 2
     assert loaded.columns.tolist() == CPS_BASIC_MONTHLY_ORG_COLUMNS
@@ -208,7 +213,12 @@ def test_load_cps_basic_org_month_reorders_file_order_columns(monkeypatch):
         lambda *args, **kwargs: FakeResponse(csv_text),
     )
 
-    loaded = _load_cps_basic_org_month(2024, "may", max_attempts=1)
+    loaded = _load_cps_basic_org_month(
+        2024,
+        "may",
+        max_attempts=1,
+        retry_delay_seconds=0,
+    )
 
     assert loaded.columns.tolist() == CPS_BASIC_MONTHLY_ORG_COLUMNS
     assert loaded.iloc[0].to_dict() == {

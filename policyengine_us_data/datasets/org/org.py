@@ -11,6 +11,7 @@ from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 import fcntl
+import time
 
 from microimpute.models.qrf import QRF
 import numpy as np
@@ -217,13 +218,14 @@ def _load_cps_basic_org_month(
     year: int,
     month: str,
     *,
-    max_attempts: int = 3,
+    max_attempts: int = 6,
+    retry_delay_seconds: float = 1.0,
 ) -> pd.DataFrame:
     """Load one CPS basic-month file with light retry around transient fetch/parser issues."""
     url = _cps_basic_org_month_url(year, month)
     last_error: Exception | None = None
 
-    for _ in range(max_attempts):
+    for attempt in range(1, max_attempts + 1):
         try:
             response = requests.get(url, timeout=60)
             response.raise_for_status()
@@ -238,6 +240,8 @@ def _load_cps_basic_org_month(
             return _select_cps_basic_org_columns(month_df)
         except Exception as error:
             last_error = error
+            if attempt < max_attempts and retry_delay_seconds > 0:
+                time.sleep(retry_delay_seconds * attempt)
 
     raise ValueError(
         f"Failed to load CPS basic ORG month {month} {year} after "

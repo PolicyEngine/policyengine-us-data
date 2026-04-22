@@ -1,14 +1,13 @@
 import importlib.metadata
-import tomli
+from pathlib import Path
+
+import tomllib
+
+_PYPROJECT_PATH = Path(__file__).resolve().parent.parent / "pyproject.toml"
 
 try:
-    # We're doing this instead of using setuptools_scm because
-    # setuptools_scm makes it very difficult to not append ".devX"
-    # to the version number, and because importlib.metadata.version
-    # occurs at runtime, it does not read pyproject.toml on call, returning
-    # older version number
-    with open("pyproject.toml", "rb") as f:
-        pyproject = tomli.load(f)
+    with _PYPROJECT_PATH.open("rb") as f:
+        pyproject = tomllib.load(f)
     __version__ = pyproject["project"]["version"]
-except Exception as e:
+except Exception:
     __version__ = importlib.metadata.version("policyengine_us_data")

@@ -21,11 +21,11 @@ Usage:
 
 import argparse
 import logging
-from importlib import metadata
 from pathlib import Path
 
 from huggingface_hub import HfApi, hf_hub_download
 
+from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION
 from policyengine_us_data.utils.data_upload import (
     upload_to_staging_hf,
     preflight_release_manifest_publish,
@@ -196,7 +196,7 @@ def main(argv=None):
     args = parse_args(argv)
     local_dir = Path(args.local_dir)
     area_types = [t.strip() for t in args.area_types.split(",")]
-    version = args.version or metadata.version("policyengine-us-data")
+    version = args.version or DATA_PACKAGE_VERSION
 
     logger.info("Version: %s", version)
     logger.info("Local dir: %s", local_dir)

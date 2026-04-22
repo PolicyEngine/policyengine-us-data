@@ -25,6 +25,7 @@ from tenacity import (
     before_sleep_log,
 )
 
+from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION
 from policyengine_us_data.utils.release_manifest import (
     build_release_manifest,
     serialize_release_manifest,
@@ -421,7 +422,7 @@ def upload_data_files(
     create_tag: bool = False,
 ):
     if version is None:
-        version = metadata.version("policyengine-us-data")
+        version = DATA_PACKAGE_VERSION
 
     upload_files_to_hf(
         files=files,
@@ -558,7 +559,7 @@ def upload_local_area_file(
         skip_hf: If True, skip HuggingFace upload (for batched uploads later)
     """
     if version is None:
-        version = metadata.version("policyengine-us-data")
+        version = DATA_PACKAGE_VERSION
 
     file_path = Path(file_path)
     if not file_path.exists():
@@ -611,7 +612,7 @@ def upload_local_area_batch_to_hf(
         version: Version string for commit message
     """
     if version is None:
-        version = metadata.version("policyengine-us-data")
+        version = DATA_PACKAGE_VERSION
 
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()

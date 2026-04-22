@@ -1,10 +1,10 @@
 from pathlib import Path
-from importlib import metadata
 
 import h5py
 from huggingface_hub import HfApi, hf_hub_download
 from policyengine_core.data import Dataset
 
+from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION
 from policyengine_us_data.datasets import EnhancedCPS_2024
 from policyengine_us_data.datasets.cps.cps import CPS_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
@@ -301,7 +301,7 @@ def stage_datasets(
     version: str | None = None,
     run_id: str = "",
 ) -> list[tuple[Path, str]]:
-    version = version or metadata.version("policyengine-us-data")
+    version = version or DATA_PACKAGE_VERSION
     files_with_repo_paths = _collect_existing_dataset_artifacts(
         require_enhanced_cps=require_enhanced_cps
     )
@@ -324,7 +324,7 @@ def promote_datasets(
     run_id: str = "",
     files_with_repo_paths: list[tuple[Path, str]] | None = None,
 ) -> list[str]:
-    version = version or metadata.version("policyengine-us-data")
+    version = version or DATA_PACKAGE_VERSION
     rel_paths = (
         [repo_path for _, repo_path in files_with_repo_paths]
         if files_with_repo_paths
@@ -410,7 +410,7 @@ def upload_datasets(
     if stage_only and promote_only:
         raise ValueError("Choose either stage_only or promote_only, not both.")
 
-    version = version or metadata.version("policyengine-us-data")
+    version = version or DATA_PACKAGE_VERSION
 
     if promote_only:
         promote_datasets(

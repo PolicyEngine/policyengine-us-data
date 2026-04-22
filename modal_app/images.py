@@ -93,38 +93,39 @@ def _build_ignore_callable(repo_root: Path) -> Callable[[Path], bool]:
     return should_ignore
 
 
-_VENV_PATH = "/root/policyengine-us-data/.venv"
-_VENV_BIN = f"{_VENV_PATH}/bin"
-_VENV_SITE_PACKAGES = f"{_VENV_PATH}/lib/python3.14/site-packages"
-_SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Path Modal's `Image.uv_sync` uses for the project venv. Hard-coded inside
+# Modal's implementation (see modal.image._Image.uv_sync → UV_ROOT = "/.uv").
+_UV_VENV = "/.uv/.venv"
 
 
 def _base_image(extras: list[str] | None = None):
-    extra_flags = " ".join(f"--extra {e}" for e in (extras or []))
     return (
         modal.Image.debian_slim(python_version="3.14")
         .apt_install("git", "make")
-        .pip_install("uv>=0.8")
+        # Modal-canonical uv integration: resolves pyproject.toml + uv.lock
+        # into /.uv/.venv and prepends /.uv/.venv/bin to PATH so the default
+        # `python` is the synced venv Python for every process in the image.
+        .uv_sync(
+            uv_project_dir=str(REPO_ROOT),
+            frozen=True,
+            extras=extras,
+        )
+        # Ship project source and data, honouring .gitignore via git.
         .add_local_dir(
             str(REPO_ROOT),
             remote_path="/root/policyengine-us-data",
             copy=True,
             ignore=_build_ignore_callable(REPO_ROOT),
         )
-        .env(GIT_ENV)
-        .run_commands(
-            f"cd /root/policyengine-us-data && "
-            f"UV_HTTP_TIMEOUT=300 uv sync --frozen {extra_flags}"
-        )
-        # `uv sync` installs deps into /root/policyengine-us-data/.venv, but
-        # Modal boots the container with the system Python, which only has
-        # `uv`. Expose the venv to the system interpreter via PYTHONPATH and
-        # put its bin on PATH so subprocesses resolve venv-provided tools.
+        .workdir("/root/policyengine-us-data")
+        # Export the synced venv location for child processes and any ad-hoc uv
+        # usage, while keeping dependency installation exclusively owned by
+        # `uv_sync()` above.
         .env(
             {
-                "VIRTUAL_ENV": _VENV_PATH,
-                "PATH": f"{_VENV_BIN}:{_SYSTEM_PATH}",
-                "PYTHONPATH": _VENV_SITE_PACKAGES,
+                **GIT_ENV,
+                "VIRTUAL_ENV": _UV_VENV,
+                "UV_PROJECT_ENVIRONMENT": _UV_VENV,
             }
         )
     )

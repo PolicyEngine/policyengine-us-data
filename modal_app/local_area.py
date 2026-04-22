@@ -472,8 +472,6 @@ def build_areas_worker(
     work_items_json = json.dumps(work_items)
 
     worker_cmd = [
-        "uv",
-        "run",
         "python",
         "modal_app/worker_script.py",
         "--work-items",
@@ -561,8 +559,6 @@ def validate_staging(branch: str, run_id: str, version: str = "") -> Dict:
     # workers so area construction no longer lives in the coordinator.
     result = subprocess.run(
         [
-            "uv",
-            "run",
             "python",
             "-c",
             f"""
@@ -625,8 +621,6 @@ def upload_to_staging(
 
     result = subprocess.run(
         [
-            "uv",
-            "run",
             "python",
             "-c",
             f"""
@@ -717,8 +711,6 @@ def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -
 
     result = subprocess.run(
         [
-            "uv",
-            "run",
             "python",
             "-c",
             _build_promote_publish_script(
@@ -836,8 +828,6 @@ def coordinate_publish(
     else:
         fp_result = subprocess.run(
             [
-                "uv",
-                "run",
                 "python",
                 "-c",
                 f"""
@@ -862,8 +852,6 @@ print(compute_input_fingerprint("{weights_path}", "{dataset_path}", {n_clones}, 
     staging_volume.commit()
     result = subprocess.run(
         [
-            "uv",
-            "run",
             "python",
             "-c",
             f"""
@@ -1149,8 +1137,6 @@ def coordinate_national_publish(
         print("Running national H5 validation...")
         val_result = subprocess.run(
             [
-                "uv",
-                "run",
                 "python",
                 "-m",
                 "policyengine_us_data.calibration.validate_national_h5",
@@ -1174,8 +1160,6 @@ def coordinate_national_publish(
     print(f"Uploading {national_h5} to HF staging...")
     result = subprocess.run(
         [
-            "uv",
-            "run",
             "python",
             "-c",
             f"""
@@ -1253,8 +1237,6 @@ def promote_national_publish(
 
     result = subprocess.run(
         [
-            "uv",
-            "run",
             "python",
             "-c",
             _build_promote_national_publish_script(

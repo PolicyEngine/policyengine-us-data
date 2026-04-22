@@ -207,7 +207,7 @@ def run_script(
     env: Optional[dict] = None,
     log_file: IO = None,
 ) -> str:
-    """Run a script with uv and return its path for logging.
+    """Run a script with the image's synced Python and return its path.
 
     Args:
         script_path: Path to the Python script to run.
@@ -220,7 +220,7 @@ def run_script(
     Raises:
         subprocess.CalledProcessError: If the script fails.
     """
-    cmd = ["uv", "run", "python", "-u", script_path]
+    cmd = ["python", "-u", script_path]
     if args:
         cmd.extend(args)
     run_env = env or os.environ.copy()
@@ -371,7 +371,7 @@ def run_tests_with_checkpoints(
 
         print(f"Running tests: {module}")
         result = subprocess.run(
-            ["uv", "run", "python", "-u", "-m", "pytest", module, "-v"],
+            ["python", "-u", "-m", "pytest", module, "-v"],
             env=env,
         )
 
@@ -467,7 +467,7 @@ def build_datasets(
     )
     # Build policy_data.db from source
     subprocess.run(
-        ["uv", "run", "make", "database"],
+        ["make", "database"],
         check=True,
         cwd="/root/policyengine-us-data",
         env=env,

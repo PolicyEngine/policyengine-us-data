@@ -48,6 +48,12 @@ _IGNORE = [
 ]
 
 
+_VENV_PATH = "/root/policyengine-us-data/.venv"
+_VENV_BIN = f"{_VENV_PATH}/bin"
+_VENV_SITE_PACKAGES = f"{_VENV_PATH}/lib/python3.14/site-packages"
+_SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+
 def _base_image(extras: list[str] | None = None):
     extra_flags = " ".join(f"--extra {e}" for e in (extras or []))
     return (
@@ -64,6 +70,17 @@ def _base_image(extras: list[str] | None = None):
         .run_commands(
             f"cd /root/policyengine-us-data && "
             f"UV_HTTP_TIMEOUT=300 uv sync --frozen {extra_flags}"
+        )
+        # `uv sync` installs deps into /root/policyengine-us-data/.venv, but
+        # Modal boots the container with the system Python, which only has
+        # `uv`. Expose the venv to the system interpreter via PYTHONPATH and
+        # put its bin on PATH so subprocesses resolve venv-provided tools.
+        .env(
+            {
+                "VIRTUAL_ENV": _VENV_PATH,
+                "PATH": f"{_VENV_BIN}:{_SYSTEM_PATH}",
+                "PYTHONPATH": _VENV_SITE_PACKAGES,
+            }
         )
     )
 

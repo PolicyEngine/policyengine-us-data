@@ -8,6 +8,7 @@ changes, the image rebuilds; if not, the cached layer is reused.
 import subprocess
 import modal
 from pathlib import Path
+from typing import Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -30,22 +31,66 @@ try:
 except Exception:
     pass
 
-_IGNORE = [
-    ".git",
-    "__pycache__",
-    "*.egg-info",
-    ".pytest_cache",
-    "*.h5",
-    "*.npy",
-    "*.pkl",
-    "*.db",
-    "node_modules",
-    "venv",
-    ".venv",
-    "docs/_build",
-    "paper",
-    "presentations",
-]
+
+# Extra paths the Modal image must never include, beyond what .gitignore
+# already covers. `.git` holds hundreds of MB of pack data that Modal never
+# reads; `paper` and `presentations` are authoring directories.
+_MODAL_EXTRA_IGNORE = {".git", "paper", "presentations"}
+
+
+def _build_ignore_callable(repo_root: Path) -> Callable[[Path], bool]:
+    """Return an ignore predicate that mirrors .gitignore for Modal.
+
+    Modal's `add_local_dir(ignore=...)` uses dockerignore semantics, where
+    bare patterns like `*.h5` only match root-level files. Our `.gitignore`
+    mixes gitignore semantics (bare names match at any depth). Translating
+    patterns by hand is error-prone and drifts over time. Instead, we ask
+    git directly for the set of locally-ignored paths and exclude those.
+    Untracked-but-not-ignored files still ship so uncommitted edits to
+    Modal code (e.g. `modal_app/images.py` itself) make it into the image.
+    """
+    repo_root = repo_root.resolve()
+    ignored_paths: set[Path] = set()
+    try:
+        out = subprocess.check_output(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "--directory",
+            ],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        for line in out.splitlines():
+            entry = line.strip().rstrip("/")
+            if entry:
+                ignored_paths.add((repo_root / entry).resolve())
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    for name in _MODAL_EXTRA_IGNORE:
+        ignored_paths.add((repo_root / name).resolve())
+
+    def should_ignore(path: Path) -> bool:
+        try:
+            resolved = path.resolve()
+        except (OSError, ValueError):
+            return False
+        if resolved in ignored_paths:
+            return True
+        for parent in resolved.parents:
+            if parent in ignored_paths:
+                return True
+            if parent == repo_root:
+                return False
+        return False
+
+    return should_ignore
 
 
 _VENV_PATH = "/root/policyengine-us-data/.venv"
@@ -64,7 +109,7 @@ def _base_image(extras: list[str] | None = None):
             str(REPO_ROOT),
             remote_path="/root/policyengine-us-data",
             copy=True,
-            ignore=_IGNORE,
+            ignore=_build_ignore_callable(REPO_ROOT),
         )
         .env(GIT_ENV)
         .run_commands(

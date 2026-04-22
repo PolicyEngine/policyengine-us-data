@@ -166,7 +166,6 @@ def test_sparse_ecps_replicates_jct_tax_expenditures():
 
 
 def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
-
     # JCT tax expenditure targets
     EXPENDITURE_TARGETS = {
         "salt_deduction": 21.247e9,
@@ -201,7 +200,6 @@ def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):
 
 
 def test_sparse_ssn_card_type_none_target(sim):
-
     TARGET_COUNT = 13e6
     TOLERANCE = 0.2  # Allow 20% error
 
@@ -243,7 +241,6 @@ def test_sparse_has_tin_matches_identification_inputs(sim):
 
 
 def test_sparse_aca_calibration(sim):
-
     TARGETS_PATH = Path(
         "policyengine_us_data/storage/calibration_targets/aca_spending_and_enrollment_2024.csv"
     )
@@ -279,7 +276,6 @@ def test_sparse_aca_calibration(sim):
 
 
 def test_sparse_medicaid_calibration(sim):
-
     TARGETS_PATH = Path(
         "policyengine_us_data/storage/calibration_targets/medicaid_enrollment_2024.csv"
     )

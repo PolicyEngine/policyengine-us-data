@@ -433,10 +433,10 @@ from huggingface_hub import HfApi
 	    )
 	    print(f"Uploaded {{repo_path}}")
 	""",
-	        ),
-	        cwd="/root/policyengine-us-data",
-	        capture_output=True,
-	        text=True,
+        ),
+        cwd="/root/policyengine-us-data",
+        capture_output=True,
+        text=True,
         env=os.environ.copy(),
     )
     if result.returncode != 0:

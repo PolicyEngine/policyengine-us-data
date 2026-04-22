@@ -19,39 +19,38 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 DB_DIR = STORAGE_FOLDER / "calibration"
 DB_PATH = DB_DIR / "policy_data.db"
 
-# Scripts run in the same order as `make database` in the Makefile.
-# create_database_tables.py and validate_database.py do not use etl_argparser.
-PIPELINE_SCRIPTS = [
-    ("db/create_database_tables.py", []),
-    ("db/create_initial_strata.py", ["--year", "2024"]),
-    ("db/etl_national_targets.py", ["--year", "2024"]),
-    ("db/etl_age.py", ["--year", "2024"]),
-    ("db/etl_medicaid.py", ["--year", "2024"]),
-    ("db/etl_snap.py", ["--year", "2024"]),
-    ("db/etl_tanf.py", ["--year", "2024"]),
-    ("db/etl_state_income_tax.py", ["--year", "2024"]),
-    ("db/etl_irs_soi.py", ["--year", "2024"]),
-    ("db/etl_aca_agi_state_targets.py", ["--year", "2024"]),
-    ("db/etl_aca_marketplace.py", ["--year", "2024"]),
-    ("db/etl_pregnancy.py", ["--year", "2024"]),
-    ("db/validate_database.py", []),
+# Modules run in the same order as `make database` in the Makefile.
+# create_database_tables and validate_database do not use etl_argparser.
+PIPELINE_MODULES = [
+    ("policyengine_us_data.db.create_database_tables", []),
+    ("policyengine_us_data.db.create_initial_strata", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_national_targets", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_age", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_medicaid", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_snap", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_tanf", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_state_income_tax", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_irs_soi", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_aca_agi_state_targets", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_aca_marketplace", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_pregnancy", ["--year", "2024"]),
+    ("policyengine_us_data.db.validate_database", []),
 ]
 
-PKG_ROOT = STORAGE_FOLDER.parent
+REPO_ROOT = STORAGE_FOLDER.parent.parent
 
 
-def _run_script(
-    relative_path: str,
+def _run_module(
+    module_name: str,
     extra_args: list,
 ) -> subprocess.CompletedProcess:
-    """Run a script from the package root and return the result."""
-    script = PKG_ROOT / relative_path
-    assert script.exists(), f"Script not found: {script}"
+    """Run a database build module from the repo root and return the result."""
     return subprocess.run(
-        [sys.executable, str(script)] + extra_args,
+        [sys.executable, "-m", module_name] + extra_args,
         capture_output=True,
         text=True,
         timeout=300,
+        cwd=REPO_ROOT,
     )
 
 
@@ -66,11 +65,11 @@ def built_db():
         DB_PATH.unlink()
 
     errors = []
-    for script, args in PIPELINE_SCRIPTS:
-        result = _run_script(script, args)
+    for module_name, args in PIPELINE_MODULES:
+        result = _run_module(module_name, args)
         if result.returncode != 0:
             errors.append(
-                f"{script} failed (rc={result.returncode}):\n"
+                f"{module_name} failed (rc={result.returncode}):\n"
                 f"  stderr (last 500 chars): "
                 f"{result.stderr[-500:]}"
             )

@@ -62,6 +62,7 @@ def _make_shared_state(
         n_records=n_records,
         n_clones=n_clones,
         n_targets=n_targets,
+        chunk_size=10,
         target_variables=["x"] * n_targets,
         target_reform_ids=[0] * n_targets,
         target_geo_info=[("national", "US")] * n_targets,
@@ -296,6 +297,39 @@ def test_assembler_rejects_shard_with_mismatched_range(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="expected 0-9"):
         assembler.run_single_chunk(0)
+
+
+def test_shared_build_state_roundtrips_pickle() -> None:
+    """Pickling ``SharedBuildState`` and loading it back must preserve
+    every field. This guards phase-2 Modal dispatch where each worker
+    receives its state by reading a pickle file from the volume.
+    """
+    import pickle
+
+    state = _make_shared_state(n_records=12, n_clones=5, n_targets=7)
+    blob = pickle.dumps(state)
+    restored = pickle.loads(blob)
+
+    assert restored.source_dataset_path == state.source_dataset_path
+    assert restored.time_period == state.time_period
+    assert restored.rerandomize_takeup == state.rerandomize_takeup
+    assert restored.n_records == state.n_records
+    assert restored.n_clones == state.n_clones
+    assert restored.n_targets == state.n_targets
+    assert restored.chunk_size == state.chunk_size
+    assert restored.n_total == state.n_total
+    assert restored.target_variables == state.target_variables
+    assert restored.target_reform_ids == state.target_reform_ids
+    assert restored.target_geo_info == state.target_geo_info
+    assert restored.non_geo_constraints_list == state.non_geo_constraints_list
+    assert restored.unique_variables == state.unique_variables
+    assert restored.unique_constraint_vars == state.unique_constraint_vars
+    assert restored.reform_variables == state.reform_variables
+    assert restored.target_names == state.target_names
+    assert np.array_equal(restored.block_geoid, state.block_geoid)
+    assert np.array_equal(restored.cd_geoid, state.cd_geoid)
+    assert np.array_equal(restored.county_fips, state.county_fips)
+    assert np.array_equal(restored.state_fips, state.state_fips)
 
 
 def test_assembler_run_chunks_dispatches_each_id(tmp_path: Path) -> None:

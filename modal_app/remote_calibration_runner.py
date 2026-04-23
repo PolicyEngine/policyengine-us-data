@@ -363,6 +363,10 @@ def _build_package_impl(
     workers: int = 8,
     n_clones: int = 430,
     run_id: str = "",
+    chunked_matrix: bool = False,
+    chunk_size: int = 25_000,
+    parallel_matrix: bool = False,
+    num_matrix_workers: int = 50,
 ) -> str:
     """Read data from pipeline volume, build X matrix, save package."""
     _setup_repo()
@@ -401,10 +405,26 @@ def _build_package_impl(
     if workers > 1:
         cmd.extend(["--workers", str(workers)])
     cmd.extend(["--n-clones", str(n_clones)])
+    if chunked_matrix:
+        cmd.extend(["--chunked-matrix", "--chunk-size", str(chunk_size)])
+        if parallel_matrix:
+            cmd.extend(
+                [
+                    "--parallel",
+                    "--num-matrix-workers",
+                    str(num_matrix_workers),
+                ]
+            )
 
+    build_env = os.environ.copy()
+    if run_id:
+        # ``unified_calibration.py`` reads this env var so workers can
+        # locate their shared state at {pipeline-artifacts}/{run_id}/
+        # matrix_build/chunk_build_state.pkl on the pipeline volume.
+        build_env["POLICYENGINE_US_DATA_RUN_ID"] = run_id
     build_rc, build_lines = _run_streaming(
         cmd,
-        env=os.environ.copy(),
+        env=build_env,
         label="build",
     )
     if build_rc != 0:
@@ -443,6 +463,10 @@ def build_package_remote(
     workers: int = 8,
     n_clones: int = 430,
     run_id: str = "",
+    chunked_matrix: bool = False,
+    chunk_size: int = 25_000,
+    parallel_matrix: bool = False,
+    num_matrix_workers: int = 50,
 ) -> str:
     return _build_package_impl(
         branch,
@@ -451,6 +475,10 @@ def build_package_remote(
         workers=workers,
         n_clones=n_clones,
         run_id=run_id,
+        chunked_matrix=chunked_matrix,
+        chunk_size=chunk_size,
+        parallel_matrix=parallel_matrix,
+        num_matrix_workers=num_matrix_workers,
     )
 
 

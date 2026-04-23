@@ -33,6 +33,22 @@ on:
         description: "Override version (default: read from pyproject.toml)"
         default: ""
         type: string
+      chunked_matrix:
+        description: "Build the calibration matrix in chunks (opt-in)"
+        default: false
+        type: boolean
+      chunk_size:
+        description: "Clone-household columns per chunk"
+        default: "25000"
+        type: string
+      parallel_matrix:
+        description: "Fan chunked matrix building across Modal workers"
+        default: false
+        type: boolean
+      num_matrix_workers:
+        description: "Number of Modal workers for parallel matrix build"
+        default: "50"
+        type: string
 
 concurrency:
   group: pipeline-main
@@ -68,6 +84,10 @@ jobs:
           SKIP_NATIONAL="${{ inputs.skip_national || 'false' }}"
           RESUME_RUN_ID="${{ inputs.resume_run_id || '' }}"
           VERSION_OVERRIDE="${{ inputs.version_override || '' }}"
+          CHUNKED_MATRIX="${{ inputs.chunked_matrix || 'false' }}"
+          CHUNK_SIZE="${{ inputs.chunk_size || '25000' }}"
+          PARALLEL_MATRIX="${{ inputs.parallel_matrix || 'false' }}"
+          NUM_MATRIX_WORKERS="${{ inputs.num_matrix_workers || '50' }}"
 
           python -c "
           import modal
@@ -81,6 +101,10 @@ jobs:
               skip_national='${SKIP_NATIONAL}' == 'true',
               resume_run_id='${RESUME_RUN_ID}' or None,
               version_override='${VERSION_OVERRIDE}' or '',
+              chunked_matrix='${CHUNKED_MATRIX}' == 'true',
+              chunk_size=int('${CHUNK_SIZE}'),
+              parallel_matrix='${PARALLEL_MATRIX}' == 'true',
+              num_matrix_workers=int('${NUM_MATRIX_WORKERS}'),
           )
           print(f'Pipeline spawned.')
           print(f'Function call ID: {fc.object_id}')

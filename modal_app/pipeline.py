@@ -681,6 +681,10 @@ def run_pipeline(
     resume_run_id: str = None,
     clear_checkpoints: bool = False,
     version_override: str = "",
+    chunked_matrix: bool = False,
+    chunk_size: int = 25_000,
+    parallel_matrix: bool = False,
+    num_matrix_workers: int = 50,
 ) -> str:
     """Run the full pipeline end-to-end.
 
@@ -699,6 +703,15 @@ def run_pipeline(
             scoped by commit SHA, so stale ones from other commits
             are cleaned automatically. Use True only to force a
             full rebuild of the current commit.
+        chunked_matrix: Build the calibration matrix in clone-household
+            chunks instead of the non-chunked path. Opt-in; default off.
+        chunk_size: Clone-household columns per chunk when
+            ``chunked_matrix`` is True.
+        parallel_matrix: Fan chunked matrix building across Modal
+            workers via ``build_matrix_chunk_worker``. Only meaningful
+            when ``chunked_matrix`` is True; ignored otherwise.
+        num_matrix_workers: Number of Modal workers when
+            ``parallel_matrix`` is True.
 
     Returns:
         The run ID for use with promote.
@@ -832,6 +845,10 @@ def run_pipeline(
                 workers=num_workers,
                 n_clones=n_clones,
                 run_id=run_id,
+                chunked_matrix=chunked_matrix,
+                chunk_size=chunk_size,
+                parallel_matrix=parallel_matrix,
+                num_matrix_workers=num_matrix_workers,
             )
             print(f"  Package at: {pkg_path}")
 

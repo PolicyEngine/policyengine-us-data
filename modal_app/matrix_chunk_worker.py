@@ -1,13 +1,20 @@
 """Modal worker that materializes a batch of matrix chunks.
 
-Registered on the same ``policyengine-us-data-fit-weights`` app as
-``build_package_remote`` so the coordinator can spawn workers via
-``modal.Function.from_name`` from inside the package build's
-subprocess. Each worker reads the shared ``ChunkedMatrixAssembler``
-state from ``pipeline_volume``, materializes its assigned chunks to
-COO shard files on the volume, and commits. The coordinator reads the
-shards back after all workers finish and streams them into the final
-CSR matrix.
+The ``@app.function`` decorator here attaches to ``_calibration_app``
+(declared as ``policyengine-us-data-fit-weights`` in
+``remote_calibration_runner.py``), alongside ``build_package_remote``.
+At deploy time, ``modal_app/pipeline.py`` merges that app into the
+pipeline app via ``app.include(_calibration_app)``, so after
+``modal deploy modal_app/pipeline.py`` the function is registered
+under ``policyengine-us-data-pipeline`` in Modal's registry — that's
+the name ``dispatch_chunks_modal`` uses in its
+``modal.Function.from_name`` lookup.
+
+Each worker reads the shared ``ChunkedMatrixAssembler`` state from
+``pipeline_volume``, materializes its assigned chunks to COO shard
+files on the volume, and commits. The coordinator reads the shards
+back after all workers finish and streams them into the final CSR
+matrix.
 """
 
 from __future__ import annotations

@@ -4,10 +4,16 @@ Skipped by default. Runs only when all of:
   - ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET`` are set (Modal auth)
   - ``POLICYENGINE_US_DATA_MODAL_SMOKE=1`` is set
 
-Assumes ``build_matrix_chunk_worker`` is deployed to the
-``policyengine-us-data-fit-weights`` app. Deploy first with:
+Assumes the pipeline app (which ``.include()``s the worker) has been
+deployed via:
 
-    modal deploy modal_app/matrix_chunk_worker.py
+    modal deploy modal_app/pipeline.py
+
+The worker's ``@app.function`` decorator attaches to ``_calibration_app``
+(``policyengine-us-data-fit-weights``) at the Python level, but
+``pipeline.py`` merges that app into the pipeline app. After deploy,
+the function is registered in Modal's registry under the pipeline
+app's name — that's the name this test looks up.
 
 This test validates two things without running a full chunk build:
   1. The Modal worker function is discoverable via
@@ -45,11 +51,11 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_worker_function_is_deployed() -> None:
-    """The deployed worker must be lookupable under the fit-weights app."""
+    """The deployed worker must be lookupable under the pipeline app."""
     import modal
 
     worker = modal.Function.from_name(
-        "policyengine-us-data-fit-weights",
+        "policyengine-us-data-pipeline",
         "build_matrix_chunk_worker",
     )
     assert worker is not None

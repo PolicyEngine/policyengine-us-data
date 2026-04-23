@@ -28,7 +28,13 @@ from policyengine_us_data.calibration.chunked_matrix_assembler import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_NUM_MATRIX_WORKERS = 50
-MODAL_APP_NAME = "policyengine-us-data-fit-weights"
+# The worker is declared on ``_calibration_app`` in
+# ``modal_app/matrix_chunk_worker.py`` (``policyengine-us-data-fit-weights``),
+# but ``modal_app/pipeline.py`` merges that app into the pipeline app via
+# ``app.include(_calibration_app)``. After ``modal deploy modal_app/pipeline.py``
+# the function is registered under the pipeline app's name — that's the name
+# ``modal.Function.from_name`` looks up.
+MODAL_APP_NAME = "policyengine-us-data-pipeline"
 WORKER_FUNCTION_NAME = "build_matrix_chunk_worker"
 
 

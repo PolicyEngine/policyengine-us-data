@@ -1,19 +1,15 @@
 """IPF-benchmark input conversion.
 
 Turns a filtered slice of the calibration package into the unit-table +
-categorical-margin representation surveysd::ipf consumes.
+categorical-margin representation `surveysd::ipf` consumes.
 
-The conversion groups selected targets by their stratum-constraint signature
-into margin blocks, maps each target's constraint tuples to a bucket label
-using declared schemas (age 5-year buckets, AGI brackets at district and state
-levels, positive-dollar indicators, raw categorical equality), materializes the
-derived columns on the cloned-unit table, and emits one `categorical_margin`
-row per (margin, geo, cell) triple.
-
-Single-cell-per-geo margins (e.g. `(district × snap > 0)`) get their
-complement cell synthesized from baseline microdata totals so the margin is
-proper. Complement cells are labelled and scored separately so the paper's
-reporting can distinguish authored targets from synthesized baseline pins.
+The converter is intentionally stricter than the shared benchmark harness:
+it keeps only count-style targets that can be represented as one coherent
+closed categorical margin system. When a requested target family is a binary
+subset and an authored parent total exists on the exact reduced key, the
+missing complement is derived from that authored total. Otherwise the family is
+dropped with explicit diagnostics instead of being run as an open 1-cell
+margin or sequentialized externally.
 """
 
 from __future__ import annotations
@@ -22,24 +18,19 @@ import math
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 from benchmark_manifest import BenchmarkManifest
-from policyengine_us_data.calibration.calibration_utils import apply_op
 
 
 # ---------------------------------------------------------------------------
-# Geography and positive-dollar constants
+# Geography constants
 # ---------------------------------------------------------------------------
 
 _GEO_VARS = {"state_fips", "congressional_district_geoid"}
-
-# Upper cap used to close `> 0` dollar constraints into a finite bucket.
-# Larger than annual US GDP, so any real dollar amount falls inside [0, CAP].
-POSITIVE_DOLLAR_CAP = 15e12
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +198,14 @@ POSITIVE_LABEL = "positive"
 NON_POSITIVE_LABEL = "non_positive"
 
 
+class IPFConversionError(ValueError):
+    """Raised when the requested target slice cannot form one valid IPF run."""
+
+    def __init__(self, message: str, diagnostics: Optional[Dict[str, object]] = None):
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
+
+
 def _positive_column_name(variable: str) -> str:
     return f"{variable}_positive"
 
@@ -356,9 +355,8 @@ def _target_scope(target_variable: str) -> str:
             f"IPF conversion does not support target variable "
             f"'{target_variable}'. Currently supported: "
             f"{sorted(_SCOPE_BY_VARIABLE)}. "
-            "`tax_unit_count` and `spm_unit_count` would require a separate "
-            "unit table keyed on the respective entity and a separate IPF run "
-            "per entity; left out of this pass intentionally."
+            "`tax_unit_count` and `spm_unit_count` remain outside the core "
+            "household/person IPF path in this pass."
         ) from exc
 
 
@@ -371,13 +369,37 @@ def _target_scope(target_variable: str) -> str:
 class MarginBlock:
     margin_id: str
     scope: str
+    source_variable: str
+    cell_dims: Tuple[str, ...]  # sorted non-geo derived-column names
     cell_vars: Tuple[str, ...]  # sorted derived-column names used as cell dimensions
     geo_var: Optional[str]  # geo dimension included in the margin
     targets: List[ResolvedTarget]
     # cells that exist in the target package ( (geo_value, cell_tuple) )
     target_cells: set
-    # cells synthesized from baseline to close the margin
-    synthesized_cells: List[Tuple[object, Tuple[Tuple[str, str], ...], float]]
+
+
+@dataclass(frozen=True)
+class MarginCell:
+    geo_value: Optional[object]
+    cell: Tuple[Tuple[str, str], ...]
+    target_value: float
+    target_name: str
+    is_authored: bool
+    authored_target_id: Optional[int]
+    source_target_ids: Tuple[int, ...]
+    derivation_reason: Optional[str] = None
+
+
+@dataclass
+class ClosedMarginBlock:
+    margin_id: str
+    scope: str
+    source_variable: str
+    cell_dims: Tuple[str, ...]
+    cell_vars: Tuple[str, ...]
+    geo_var: Optional[str]
+    closure_status: str
+    cells: List[MarginCell]
 
 
 def _margin_key(t: ResolvedTarget) -> Tuple[str, Optional[str], Tuple[str, ...]]:
@@ -400,19 +422,26 @@ def _assemble_margins(
             blocks[key] = MarginBlock(
                 margin_id=f"margin_{len(blocks):04d}",
                 scope=t.scope,
+                source_variable=source_variable,
+                cell_dims=cell_vars,
                 cell_vars=tuple(sorted(all_vars)),
                 geo_var=geo_var,
                 targets=[],
                 target_cells=set(),
-                synthesized_cells=[],
             )
         blocks[key].targets.append(t)
         blocks[key].target_cells.add((t.geo.value, t.cell))
     return list(blocks.values())
 
 
-def _should_synthesize_complement(block: MarginBlock) -> bool:
-    """True iff the block has a 1-cell-per-geo pattern."""
+def _is_single_cell_per_geo(block: MarginBlock) -> bool:
+    """True iff the block carries exactly one cell per geography.
+
+    surveysd handles these as 1-cell `xtabs` arrays: the authored cell is
+    raked to its target and units outside that cell are left unconstrained
+    by the margin. Kept for diagnostics and reporting — no longer drives
+    emission branching.
+    """
     if block.geo_var is None:
         return len({cell for _, cell in block.target_cells}) == 1
     cells_per_geo: Dict[object, set] = {}
@@ -423,88 +452,30 @@ def _should_synthesize_complement(block: MarginBlock) -> bool:
     )
 
 
-def _synthesize_complement_cells(
-    block: MarginBlock,
-    unit_data: pd.DataFrame,
-    weight_column: str,
-) -> None:
-    """Add a complement row per geo to single-cell-per-geo blocks.
-
-    The complement's target value is pinned to the baseline weighted count of
-    rows falling in the complement cell. That makes the margin feasible
-    without requiring an external complement total.
-    """
-    cells = {cell for _, cell in block.target_cells}
-    if len(cells) != 1:
-        return
-    (cell,) = cells
-    complement_cell = _flip_cell(cell)
-    if complement_cell is None:
-        return
-
-    # Evaluate the complement cell's weighted count from the unit table.
-    mask = _mask_for_cell(unit_data, complement_cell)
-    if block.geo_var is None:
-        value = float(unit_data.loc[mask, weight_column].sum())
-        block.synthesized_cells.append((None, complement_cell, value))
-        return
-    groups = unit_data.loc[mask].groupby(block.geo_var)[weight_column].sum()
-    for geo_val in sorted({g for g, _ in block.target_cells}):
-        value = float(groups.get(geo_val, 0.0))
-        block.synthesized_cells.append((geo_val, complement_cell, value))
-
-
-def _flip_cell(
-    cell: Tuple[Tuple[str, str], ...],
-) -> Optional[Tuple[Tuple[str, str], ...]]:
-    """For a cell that contains exactly one `<var>_positive="positive"` entry,
-    return the same cell with that entry flipped to `non_positive`. Otherwise
-    return None (complement not defined)."""
-    flipped: List[Tuple[str, str]] = []
-    changed = False
-    for col, label in cell:
-        if col.endswith("_positive") and label == POSITIVE_LABEL:
-            flipped.append((col, NON_POSITIVE_LABEL))
-            changed = True
-        else:
-            flipped.append((col, label))
-    if not changed:
-        return None
-    return tuple(sorted(flipped))
-
-
-def _mask_for_cell(
-    unit_data: pd.DataFrame, cell: Tuple[Tuple[str, str], ...]
-) -> np.ndarray:
-    mask = np.ones(len(unit_data), dtype=bool)
-    for col, label in cell:
-        if col not in unit_data.columns:
-            raise KeyError(f"Unit table is missing derived column '{col}'")
-        mask &= unit_data[col].astype(str).to_numpy() == str(label)
-    return mask
-
-
 def check_margin_consistency(
-    blocks: List[MarginBlock],
+    blocks: List[object],
     tolerance: float = 1e-3,
 ) -> List[Dict[str, object]]:
-    """Return a list of consistency issues, one per (geo_value) that has
-    mismatched totals across different margin blocks.
-
-    `surveysd::ipf` refuses to run when two person-scope (or two household-
-    scope) margins imply different population totals for the same geography.
-    The check is `rel_err = |t1 - t2| / max(t1, t2) > tolerance`.
-    """
+    """Return per-geo population-total disagreements across closed blocks."""
     totals_by_scope_geo: Dict[Tuple[str, Optional[str], object], Dict[str, float]] = {}
     for block in blocks:
-        # Include synthesized complement cells — they are part of the margin's total.
         by_geo: Dict[object, float] = {}
-        for t in block.targets:
-            by_geo[t.geo.value] = by_geo.get(t.geo.value, 0.0) + float(t.target_value)
-        for geo_val, _, value in block.synthesized_cells:
-            by_geo[geo_val] = by_geo.get(geo_val, 0.0) + float(value)
+        if hasattr(block, "cells"):
+            for cell in block.cells:
+                by_geo[cell.geo_value] = by_geo.get(cell.geo_value, 0.0) + float(
+                    cell.target_value
+                )
+            scope = block.scope
+            geo_var = block.geo_var
+        else:
+            for t in block.targets:
+                by_geo[t.geo.value] = by_geo.get(t.geo.value, 0.0) + float(
+                    t.target_value
+                )
+            scope = block.scope
+            geo_var = block.geo_var
         for geo_val, total in by_geo.items():
-            key = (block.scope, block.geo_var, geo_val)
+            key = (scope, geo_var, geo_val)
             totals_by_scope_geo.setdefault(key, {})[block.margin_id] = total
 
     issues: List[Dict[str, object]] = []
@@ -773,6 +744,406 @@ def _build_household_level_unit_data(
 
 
 # ---------------------------------------------------------------------------
+# Closed-system validation and exact closure
+# ---------------------------------------------------------------------------
+
+
+def _targeted_unit_slice(unit_data: pd.DataFrame, block: MarginBlock) -> pd.DataFrame:
+    if block.geo_var is None:
+        return unit_data
+    geo_values = {geo_value for geo_value, _ in block.target_cells}
+    return unit_data.loc[unit_data[block.geo_var].isin(list(geo_values))].copy()
+
+
+def _row_to_cell(
+    row: pd.Series | dict,
+    *,
+    geo_var: Optional[str],
+    cell_dims: Tuple[str, ...],
+) -> Tuple[Optional[object], Tuple[Tuple[str, str], ...]]:
+    geo_value = row[geo_var] if geo_var is not None else None
+    cell = tuple(sorted((col, str(row[col])) for col in cell_dims))
+    return geo_value, cell
+
+
+def _observed_cells_for_block(
+    unit_data: pd.DataFrame, block: MarginBlock
+) -> set[Tuple[Optional[object], Tuple[Tuple[str, str], ...]]]:
+    targeted = _targeted_unit_slice(unit_data, block)
+    if targeted.empty:
+        return set()
+    columns = [*block.cell_dims]
+    if block.geo_var is not None:
+        columns = [block.geo_var, *columns]
+    observed = targeted[columns].drop_duplicates()
+    return {
+        _row_to_cell(row._asdict(), geo_var=block.geo_var, cell_dims=block.cell_dims)
+        for row in observed.itertuples(index=False)
+    }
+
+
+def _parent_key_for_cell(
+    geo_value: Optional[object],
+    cell: Tuple[Tuple[str, str], ...],
+    subset_dim: str,
+) -> Tuple[Optional[object], Tuple[Tuple[str, str], ...]]:
+    return (
+        geo_value,
+        tuple(sorted((col, label) for col, label in cell if col != subset_dim)),
+    )
+
+
+def _group_authored_cells_by_parent(
+    block: MarginBlock, subset_dim: str
+) -> Dict[Tuple[Optional[object], Tuple[Tuple[str, str], ...]], List[ResolvedTarget]]:
+    grouped: Dict[Tuple[Optional[object], Tuple[Tuple[str, str], ...]], List[ResolvedTarget]] = {}
+    for target in block.targets:
+        grouped.setdefault(
+            _parent_key_for_cell(target.geo.value, target.cell, subset_dim), []
+        ).append(target)
+    return grouped
+
+
+def _group_observed_labels_by_parent(
+    unit_data: pd.DataFrame, block: MarginBlock, subset_dim: str
+) -> Dict[Tuple[Optional[object], Tuple[Tuple[str, str], ...]], set[str]]:
+    targeted = _targeted_unit_slice(unit_data, block)
+    if targeted.empty:
+        return {}
+    columns = [subset_dim, *(dim for dim in block.cell_dims if dim != subset_dim)]
+    if block.geo_var is not None:
+        columns = [block.geo_var, *columns]
+    observed = targeted[columns].drop_duplicates()
+    grouped: Dict[Tuple[Optional[object], Tuple[Tuple[str, str], ...]], set[str]] = {}
+    for row in observed.to_dict("records"):
+        geo_value = row[block.geo_var] if block.geo_var is not None else None
+        parent_assignments = tuple(
+            sorted(
+                (dim, str(row[dim])) for dim in block.cell_dims if dim != subset_dim
+            )
+        )
+        grouped.setdefault((geo_value, parent_assignments), set()).add(
+            str(row[subset_dim])
+        )
+    return grouped
+
+
+def _build_parent_total_lookup(
+    block: MarginBlock,
+) -> Tuple[
+    Dict[Tuple[Optional[object], Tuple[Tuple[str, str], ...]], ResolvedTarget],
+    Tuple[int, ...],
+]:
+    lookup: Dict[Tuple[Optional[object], Tuple[Tuple[str, str], ...]], ResolvedTarget] = {}
+    ambiguous_target_ids: set[int] = set()
+    for target in block.targets:
+        key = (target.geo.value, tuple(sorted(target.cell)))
+        if key in lookup:
+            ambiguous_target_ids.add(int(target.target_id))
+            ambiguous_target_ids.add(int(lookup[key].target_id))
+            continue
+        lookup[key] = target
+    return lookup, tuple(sorted(ambiguous_target_ids))
+
+
+def _full_partition_cells(block: MarginBlock) -> List[MarginCell]:
+    return [
+        MarginCell(
+            geo_value=target.geo.value,
+            cell=target.cell,
+            target_value=float(target.target_value),
+            target_name=target.target_name,
+            is_authored=True,
+            authored_target_id=target.target_id,
+            source_target_ids=(target.target_id,),
+        )
+        for target in block.targets
+    ]
+
+
+def _try_close_binary_subset(
+    block: MarginBlock,
+    blocks_by_key: Dict[Tuple[str, Optional[str], Tuple[str, ...]], MarginBlock],
+    unit_data: pd.DataFrame,
+    tolerance: float,
+) -> Tuple[Optional[ClosedMarginBlock], Optional[Dict[str, object]]]:
+    missing_parent_reason: Optional[Dict[str, object]] = None
+    ambiguous_parent_reason: Optional[Dict[str, object]] = None
+    for subset_dim in block.cell_dims:
+        observed_by_parent = _group_observed_labels_by_parent(unit_data, block, subset_dim)
+        if not observed_by_parent:
+            return None, {
+                "reason": "missing_unit_support",
+                "margin_id": block.margin_id,
+                "target_ids": [int(target.target_id) for target in block.targets],
+            }
+
+        global_labels = set().union(*observed_by_parent.values())
+        if len(global_labels) > 2:
+            continue
+
+        parent_key = (
+            block.source_variable,
+            block.geo_var,
+            tuple(dim for dim in block.cell_dims if dim != subset_dim),
+        )
+        parent_block = blocks_by_key.get(parent_key)
+        if parent_block is None:
+            missing_parent_reason = {
+                "reason": "missing_parent_total",
+                "margin_id": block.margin_id,
+                "subset_dimension": subset_dim,
+                "parent_margin_key": {
+                    "source_variable": block.source_variable,
+                    "geo_var": block.geo_var,
+                    "cell_dims": [dim for dim in block.cell_dims if dim != subset_dim],
+                },
+                "target_ids": [int(target.target_id) for target in block.targets],
+            }
+            continue
+
+        parent_totals, ambiguous_target_ids = _build_parent_total_lookup(parent_block)
+        if ambiguous_target_ids:
+            ambiguous_parent_reason = {
+                "reason": "ambiguous_parent_total",
+                "margin_id": block.margin_id,
+                "subset_dimension": subset_dim,
+                "parent_margin_id": parent_block.margin_id,
+                "parent_target_ids": list(ambiguous_target_ids),
+                "target_ids": [int(target.target_id) for target in block.targets],
+            }
+            continue
+        authored_by_parent = _group_authored_cells_by_parent(block, subset_dim)
+        emitted_cells: List[MarginCell] = []
+        valid = True
+        invalid_reason: Optional[Dict[str, object]] = None
+
+        for parent_lookup_key, observed_labels in observed_by_parent.items():
+            authored_targets = authored_by_parent.get(parent_lookup_key, [])
+            if not authored_targets:
+                continue
+
+            parent_target = parent_totals.get(parent_lookup_key)
+            if parent_target is None:
+                valid = False
+                invalid_reason = {
+                    "reason": "missing_parent_total",
+                    "margin_id": block.margin_id,
+                    "parent_margin_key": {
+                        "source_variable": block.source_variable,
+                        "geo_var": block.geo_var,
+                        "cell_dims": [dim for dim in block.cell_dims if dim != subset_dim],
+                    },
+                    "target_ids": [int(target.target_id) for target in block.targets],
+                }
+                break
+
+            authored_labels = {
+                dict(target.cell)[subset_dim] for target in authored_targets
+            }
+            if len(observed_labels) > 2 or len(observed_labels - authored_labels) > 1:
+                valid = False
+                invalid_reason = {
+                    "reason": "unsupported_partial_margin",
+                    "margin_id": block.margin_id,
+                    "subset_dimension": subset_dim,
+                    "target_ids": [int(target.target_id) for target in block.targets],
+                }
+                break
+
+            authored_sum = float(
+                sum(float(target.target_value) for target in authored_targets)
+            )
+            complement_value = float(parent_target.target_value) - authored_sum
+            if complement_value < -tolerance:
+                valid = False
+                invalid_reason = {
+                    "reason": "negative_derived_complement",
+                    "margin_id": block.margin_id,
+                    "subset_dimension": subset_dim,
+                    "parent_target_id": int(parent_target.target_id),
+                    "target_ids": [int(target.target_id) for target in block.targets],
+                    "derived_value": complement_value,
+                }
+                break
+
+            for target in authored_targets:
+                emitted_cells.append(
+                    MarginCell(
+                        geo_value=target.geo.value,
+                        cell=target.cell,
+                        target_value=float(target.target_value),
+                        target_name=target.target_name,
+                        is_authored=True,
+                        authored_target_id=target.target_id,
+                        source_target_ids=(target.target_id,),
+                    )
+                )
+
+            missing_labels = observed_labels - authored_labels
+            if len(missing_labels) == 1:
+                missing_label = next(iter(missing_labels))
+                if complement_value > tolerance and missing_label not in observed_labels:
+                    valid = False
+                    invalid_reason = {
+                        "reason": "missing_unit_support",
+                        "margin_id": block.margin_id,
+                        "subset_dimension": subset_dim,
+                        "target_ids": [int(target.target_id) for target in block.targets],
+                    }
+                    break
+                parent_geo_value, parent_assignments = parent_lookup_key
+                derived_cell = tuple(
+                    sorted((*parent_assignments, (subset_dim, missing_label)))
+                )
+                emitted_cells.append(
+                    MarginCell(
+                        geo_value=parent_geo_value,
+                        cell=derived_cell,
+                        target_value=max(complement_value, 0.0),
+                        target_name=(
+                            f"derived::{block.margin_id}::{subset_dim}={missing_label}"
+                        ),
+                        is_authored=False,
+                        authored_target_id=None,
+                        source_target_ids=tuple(
+                            sorted(
+                                {
+                                    int(parent_target.target_id),
+                                    *[int(target.target_id) for target in authored_targets],
+                                }
+                            )
+                        ),
+                        derivation_reason="authored_parent_total",
+                    )
+                )
+
+        if not valid:
+            return None, invalid_reason
+
+        unique_cells = {
+            (cell.geo_value, cell.cell, cell.is_authored): cell for cell in emitted_cells
+        }
+        return (
+            ClosedMarginBlock(
+                margin_id=block.margin_id,
+                scope=block.scope,
+                source_variable=block.source_variable,
+                cell_dims=block.cell_dims,
+                cell_vars=block.cell_vars,
+                geo_var=block.geo_var,
+                closure_status="binary_subset_with_parent_total",
+                cells=list(unique_cells.values()),
+            ),
+            None,
+        )
+
+    if ambiguous_parent_reason is not None:
+        return None, ambiguous_parent_reason
+    if missing_parent_reason is not None:
+        return None, missing_parent_reason
+    return None, {
+        "reason": "unsupported_partial_margin",
+        "margin_id": block.margin_id,
+        "target_ids": [int(target.target_id) for target in block.targets],
+    }
+
+
+def _validate_household_margin_invariance(
+    unit_data: pd.DataFrame,
+    blocks: List[MarginBlock],
+) -> Tuple[List[MarginBlock], List[Dict[str, object]]]:
+    valid_blocks: List[MarginBlock] = []
+    dropped: List[Dict[str, object]] = []
+    for block in blocks:
+        if block.scope != "household":
+            valid_blocks.append(block)
+            continue
+        varying_columns = []
+        for column in block.cell_vars:
+            if column not in unit_data.columns:
+                continue
+            nunique = unit_data.groupby("household_id", sort=False)[column].nunique(
+                dropna=False
+            )
+            if (nunique > 1).any():
+                varying_columns.append(column)
+        if varying_columns:
+            dropped.append(
+                {
+                    "reason": "non_invariant_household_constraint_variable",
+                    "margin_id": block.margin_id,
+                    "columns": varying_columns,
+                    "target_ids": [int(target.target_id) for target in block.targets],
+                }
+            )
+            continue
+        valid_blocks.append(block)
+    return valid_blocks, dropped
+
+
+def _close_margin_blocks(
+    blocks: List[MarginBlock],
+    unit_data: pd.DataFrame,
+    tolerance: float = 1e-9,
+) -> Tuple[List[ClosedMarginBlock], List[Dict[str, object]]]:
+    blocks_by_key = {
+        (block.source_variable, block.geo_var, block.cell_dims): block for block in blocks
+    }
+    closed_blocks: List[ClosedMarginBlock] = []
+    dropped: List[Dict[str, object]] = []
+
+    for block in blocks:
+        observed_cells = _observed_cells_for_block(unit_data, block)
+        authored_cells = {
+            (target.geo.value, tuple(sorted(target.cell))) for target in block.targets
+        }
+        unsupported_authored = [
+            target
+            for target in block.targets
+            if (target.geo.value, tuple(sorted(target.cell))) not in observed_cells
+            and abs(float(target.target_value)) > tolerance
+        ]
+        if unsupported_authored:
+            dropped.append(
+                {
+                    "reason": "missing_unit_support",
+                    "margin_id": block.margin_id,
+                    "target_ids": [int(target.target_id) for target in unsupported_authored],
+                }
+            )
+            continue
+
+        if authored_cells == observed_cells:
+            closed_blocks.append(
+                ClosedMarginBlock(
+                    margin_id=block.margin_id,
+                    scope=block.scope,
+                    source_variable=block.source_variable,
+                    cell_dims=block.cell_dims,
+                    cell_vars=block.cell_vars,
+                    geo_var=block.geo_var,
+                    closure_status="full_partition",
+                    cells=_full_partition_cells(block),
+                )
+            )
+            continue
+
+        closed_block, reason = _try_close_binary_subset(
+            block=block,
+            blocks_by_key=blocks_by_key,
+            unit_data=unit_data,
+            tolerance=tolerance,
+        )
+        if closed_block is None:
+            dropped.append(reason or {"reason": "unsupported_partial_margin"})
+            continue
+        closed_blocks.append(closed_block)
+
+    return closed_blocks, dropped
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -785,23 +1156,10 @@ def build_ipf_inputs(
     """Return `(unit_metadata, ipf_target_metadata)` ready for `ipf_runner.R`.
 
     Consumes the same `filtered_targets` slice that the GREG and L0 runners
-    see. Internally filters to the IPF-eligible subset with two checks:
-
-    1. **Count check** — keep only targets whose `variable` is a supported
-       count (`person_count`, `household_count`). Dollar-total targets stay
-       in the shared matrix for GREG and L0 but are dropped here.
-    2. **Resolver check** — keep only targets whose stratum constraints
-       resolve through the declared bucket schemas (age, AGI district / AGI
-       state, EITC child count, positive-dollar `>0`, raw equality). Targets
-       whose constraints don't match any declared schema are dropped.
-
-    Both checks are non-fatal; dropped targets are recorded on the returned
-    metadata's `.attrs['dropped_targets']` so the caller can report them.
-
-    The surviving subset is grouped by constraint signature into margin
-    blocks; single-cell-per-geo margins get their complement cell
-    synthesized from the baseline weighted count of the complement predicate
-    on the cloned-unit table.
+    see. Internally keeps only IPF-eligible count targets, resolves their
+    categorical cells, closes only exact binary subset systems backed by
+    authored parent totals, and rejects any remaining open or incoherent
+    system rather than sequentializing it.
     """
     if filtered_targets.empty:
         raise ValueError("filtered_targets is empty; nothing to convert.")
@@ -829,6 +1187,14 @@ def build_ipf_inputs(
             "No count-style targets in filtered_targets; IPF has nothing to run. "
             f"Supported variables: {sorted(_SCOPE_BY_VARIABLE)}."
         )
+    dropped_target_details: List[Dict[str, object]] = [
+        {
+            "reason": "non_count_style",
+            "target_id": int(row.get("target_id", -1)),
+            "target_name": str(row.get("target_name", "?")),
+        }
+        for _, row in dropped_non_count.iterrows()
+    ]
 
     stratum_constraints = _load_stratum_constraints(
         db_path=db_path,
@@ -852,6 +1218,14 @@ def build_ipf_inputs(
             "No targets in filtered_targets resolved through the declared "
             "bucket schemas. Nothing for IPF to run."
         )
+    dropped_target_details.extend(
+        {
+            "reason": "unresolvable_constraints",
+            "target_id": target_id,
+            "target_name": target_name,
+        }
+        for target_id, target_name in dropped_unresolvable
+    )
 
     blocks = _assemble_margins(resolved)
 
@@ -883,81 +1257,150 @@ def build_ipf_inputs(
     derived_cols = {cv for b in blocks for cv in b.cell_vars if cv not in _GEO_VARS}
     unit_data = _materialize_derived_columns(unit_data, derived_cols, raw_values)
 
-    # --- Synthesize complement cells for single-cell-per-geo margins -------
-    for block in blocks:
-        if _should_synthesize_complement(block):
-            _synthesize_complement_cells(block, unit_data, weight_column="base_weight")
-
-    # --- Emit categorical_margin target rows -------------------------------
-    out_rows = []
-    for block in blocks:
-        margin_vars_joined = "|".join(block.cell_vars)
-        # Authored target rows
-        for t in block.targets:
-            cell_assignments = _cell_assignments(t, block)
-            out_rows.append(
-                {
-                    "margin_id": block.margin_id,
-                    "scope": block.scope,
-                    "target_type": "categorical_margin",
-                    "variables": margin_vars_joined,
-                    "cell": "|".join(cell_assignments),
-                    "target_value": float(t.target_value),
-                    "target_name": t.target_name,
-                    "source_variable": t.source_variable,
-                    "synthesized": False,
-                }
-            )
-        # Synthesized complement rows
-        for geo_val, cell, value in block.synthesized_cells:
-            cell_assignments = _complement_cell_assignments(geo_val, cell, block)
-            out_rows.append(
-                {
-                    "margin_id": block.margin_id,
-                    "scope": block.scope,
-                    "target_type": "categorical_margin",
-                    "variables": margin_vars_joined,
-                    "cell": "|".join(cell_assignments),
-                    "target_value": float(value),
-                    "target_name": f"{block.margin_id}_complement_{geo_val}",
-                    "source_variable": "synthesized_baseline",
-                    "synthesized": True,
-                }
-            )
-
-    target_metadata = pd.DataFrame(out_rows)
-
-    # --- Margin consistency check -----------------------------------------
-    issues = check_margin_consistency(blocks)
-    target_metadata.attrs["margin_consistency_issues"] = issues
-    target_metadata.attrs["dropped_targets"] = {
-        "non_count_style": int(len(dropped_non_count)),
-        "unresolvable_constraints": int(len(dropped_unresolvable)),
-        "unresolvable_examples": dropped_unresolvable[:10],
-    }
-    if issues:
-        import warnings
-
-        warnings.warn(
-            f"{len(issues)} geography-scope combination(s) have mismatched "
-            "totals across multiple IPF margin blocks. `surveysd::ipf` will "
-            "refuse to run with these margins combined; run one margin block "
-            "at a time or harmonize the authored totals. See "
-            "target_metadata.attrs['margin_consistency_issues'] for details.",
-            stacklevel=2,
+    if has_person_scoped and any(block.scope == "household" for block in blocks):
+        blocks, invariance_drops = _validate_household_margin_invariance(
+            unit_data=unit_data,
+            blocks=blocks,
+        )
+        dropped_target_details.extend(
+            {
+                **detail,
+                "target_name": None,
+            }
+            for detail in invariance_drops
         )
 
+    closed_blocks, closure_drops = _close_margin_blocks(blocks=blocks, unit_data=unit_data)
+    dropped_target_details.extend(closure_drops)
+    dropped_counts: Dict[str, int] = {}
+    for detail in dropped_target_details:
+        reason = str(detail.get("reason", "unknown"))
+        count = len(detail.get("target_ids", [])) or 1
+        dropped_counts[reason] = dropped_counts.get(reason, 0) + int(count)
+    if not closed_blocks:
+        raise IPFConversionError(
+            "No closed categorical IPF margins remain after validation.",
+            diagnostics={
+                "requested_target_count": int(len(filtered_targets)),
+                "retained_authored_target_count": 0,
+                "derived_complement_count": 0,
+                "dropped_targets": dropped_counts,
+                "dropped_target_details": dropped_target_details,
+                "margin_consistency_issues": [],
+                "derived_complement_rows": [],
+            },
+        )
+
+    issues = check_margin_consistency(closed_blocks)
+    if issues:
+        incompatible_details = []
+        for issue in issues:
+            margin_ids = list(issue.get("margin_totals", {}).keys())
+            target_ids = sorted(
+                {
+                    int(cell.authored_target_id)
+                    for block in closed_blocks
+                    if block.margin_id in margin_ids
+                    for cell in block.cells
+                    if cell.is_authored and cell.authored_target_id is not None
+                }
+            )
+            incompatible_details.append(
+                {
+                    "reason": "incompatible_totals",
+                    "scope": issue.get("scope"),
+                    "geo_var": issue.get("geo_var"),
+                    "geo_value": issue.get("geo_value"),
+                    "margin_ids": margin_ids,
+                    "target_ids": target_ids,
+                }
+            )
+        dropped_target_details.extend(incompatible_details)
+        dropped_counts["incompatible_totals"] = dropped_counts.get(
+            "incompatible_totals", 0
+        ) + sum(len(detail["target_ids"]) or 1 for detail in incompatible_details)
+        raise IPFConversionError(
+            "IPF-retained margins do not form one coherent IPF problem.",
+            diagnostics={
+                "requested_target_count": int(len(filtered_targets)),
+                "retained_authored_target_count": int(
+                    len(
+                        {
+                            int(cell.authored_target_id)
+                            for block in closed_blocks
+                            for cell in block.cells
+                            if cell.is_authored
+                            and cell.authored_target_id is not None
+                        }
+                    )
+                ),
+                "derived_complement_count": int(
+                    sum(
+                        1
+                        for block in closed_blocks
+                        for cell in block.cells
+                        if not cell.is_authored
+                    )
+                ),
+                "dropped_targets": dropped_counts,
+                "dropped_target_details": dropped_target_details,
+                "margin_consistency_issues": issues,
+                "derived_complement_rows": [
+                    {
+                        "margin_id": block.margin_id,
+                        "cell": "|".join(_cell_assignments_from_cell(block, cell)),
+                        "target_value": float(cell.target_value),
+                        "source_target_ids": list(cell.source_target_ids),
+                        "derivation_reason": cell.derivation_reason,
+                    }
+                    for block in closed_blocks
+                    for cell in block.cells
+                    if not cell.is_authored
+                ],
+            },
+        )
+
+    target_metadata = emit_target_rows(closed_blocks)
+    retained_authored_target_ids = sorted(
+        {
+            int(cell.authored_target_id)
+            for block in closed_blocks
+            for cell in block.cells
+            if cell.is_authored and cell.authored_target_id is not None
+        }
+    )
+    derived_complement_rows = [
+        {
+            "margin_id": block.margin_id,
+            "cell": "|".join(_cell_assignments_from_cell(block, cell)),
+            "target_value": float(cell.target_value),
+            "source_target_ids": list(cell.source_target_ids),
+            "derivation_reason": cell.derivation_reason,
+        }
+        for block in closed_blocks
+        for cell in block.cells
+        if not cell.is_authored
+    ]
+    target_metadata.attrs["margin_consistency_issues"] = issues
+    target_metadata.attrs["retained_authored_target_ids"] = retained_authored_target_ids
+    target_metadata.attrs["derived_complement_rows"] = derived_complement_rows
+    target_metadata.attrs["dropped_targets"] = dropped_counts
+    target_metadata.attrs["dropped_target_details"] = dropped_target_details
+    target_metadata.attrs["requested_target_count"] = int(len(filtered_targets))
+    target_metadata.attrs["retained_authored_target_count"] = int(
+        len(retained_authored_target_ids)
+    )
+    target_metadata.attrs["derived_complement_count"] = int(len(derived_complement_rows))
     return unit_data, target_metadata
 
 
 def split_target_metadata_by_margin(
     target_metadata: pd.DataFrame,
 ) -> Dict[str, pd.DataFrame]:
-    """Return one sub-frame per margin_id, safe to pass to `ipf_runner.R`.
+    """Return one sub-frame per margin_id.
 
-    Inconsistent authored totals across margin blocks break a combined
-    `surveysd::ipf` call. Splitting by `margin_id` lets the benchmark run
-    each block independently and score the weights separately.
+    Kept as a notebook/test helper. The benchmark no longer chains separate
+    IPF calls across these blocks.
     """
     return {
         mid: sub.reset_index(drop=True)
@@ -974,17 +1417,52 @@ def _cell_assignments(t: ResolvedTarget, block: MarginBlock) -> List[str]:
     return [f"{col}={assignments[col]}" for col in block.cell_vars]
 
 
-def _complement_cell_assignments(
-    geo_val: object,
-    cell: Tuple[Tuple[str, str], ...],
-    block: MarginBlock,
-) -> List[str]:
+def _cell_assignments_from_cell(block: ClosedMarginBlock, cell: MarginCell) -> List[str]:
     assignments: Dict[str, str] = {}
     if block.geo_var is not None:
-        assignments[block.geo_var] = str(geo_val)
-    for col, lbl in cell:
+        assignments[block.geo_var] = str(cell.geo_value)
+    for col, lbl in cell.cell:
         assignments[col] = str(lbl)
     return [f"{col}={assignments[col]}" for col in block.cell_vars]
+
+
+def emit_target_rows(blocks: List[ClosedMarginBlock]) -> pd.DataFrame:
+    """Emit one `categorical_margin` row per authored or derived IPF cell."""
+    out_rows = []
+    for block in blocks:
+        if not hasattr(block, "cells"):
+            raise TypeError(
+                "emit_target_rows expects closed margin blocks. "
+                "Call close_margins_for_testing(...) or build_ipf_inputs(...) "
+                "before emitting target rows."
+            )
+        margin_vars_joined = "|".join(block.cell_vars)
+        for cell in block.cells:
+            cell_assignments = _cell_assignments_from_cell(block, cell)
+            out_rows.append(
+                {
+                    "margin_id": block.margin_id,
+                    "scope": block.scope,
+                    "target_type": "categorical_margin",
+                    "variables": margin_vars_joined,
+                    "cell": "|".join(cell_assignments),
+                    "target_value": float(cell.target_value),
+                    "target_name": cell.target_name,
+                    "source_variable": block.source_variable,
+                    "is_authored": bool(cell.is_authored),
+                    "authored_target_id": (
+                        int(cell.authored_target_id)
+                        if cell.authored_target_id is not None
+                        else np.nan
+                    ),
+                    "source_target_ids": "|".join(
+                        str(target_id) for target_id in cell.source_target_ids
+                    ),
+                    "closure_status": block.closure_status,
+                    "derivation_reason": cell.derivation_reason,
+                }
+            )
+    return pd.DataFrame(out_rows)
 
 
 # ---------------------------------------------------------------------------
@@ -1021,3 +1499,13 @@ def assemble_margins_for_testing(
 ) -> List[MarginBlock]:
     """Expose margin assembly for the notebook walkthrough and tests."""
     return _assemble_margins(resolved)
+
+
+def close_margins_for_testing(
+    resolved: List[ResolvedTarget],
+    unit_data: pd.DataFrame,
+    tolerance: float = 1e-9,
+) -> Tuple[List[ClosedMarginBlock], List[Dict[str, object]]]:
+    """Pure-Python closure helper for unit tests and notebook walkthroughs."""
+    blocks = _assemble_margins(resolved)
+    return _close_margin_blocks(blocks=blocks, unit_data=unit_data, tolerance=tolerance)

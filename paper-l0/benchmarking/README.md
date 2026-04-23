@@ -44,7 +44,7 @@ The core workflow is:
 2. export a shared benchmark bundle from a saved calibration package
 3. auto-convert the bundle to IPF inputs when needed
 4. run `L0`, `GREG`, or `IPF`
-5. score all fitted weights against the same shared target matrix
+5. score each method against the target set that matches its benchmark contract
 
 ## Layout
 
@@ -113,30 +113,65 @@ lightweight.
 
 ### IPF inputs
 
-The exporter now auto-generates IPF inputs when the manifest includes `ipf`
-and no external overrides are supplied. It reconstructs an IPF microdata table
-from:
+The exporter auto-generates IPF inputs when the manifest includes `ipf` and no
+external overrides are supplied. It reconstructs an IPF microdata table from:
 
 - the saved calibration package
 - the package metadata's `dataset_path`
 - the package metadata's `db_path`
 - the selected count-like targets and their stratum constraints
 
-The generated `unit_metadata.csv` is currently built for `person_count` and
+The generated `unit_metadata.csv` is built for `person_count` and
 `household_count` targets. It expands cloned households to a person-level table
-when person targets are present, carries a repeated household `unit_index`, and
-adds one derived indicator column per selected target. The generated
-`ipf_target_metadata.csv` then references those indicator columns as numerical
-IPF totals.
+when person targets are present, carries a repeated household `unit_index` so
+per-person weights collapse cleanly back to per-household, and adds one
+string-valued derived category column per declared bucket schema (e.g.
+`age_bracket`, `agi_bracket_district`, `snap_positive`).
+
+The generated `ipf_target_metadata.csv` contains one `categorical_margin` row
+per retained IPF cell after validation. That means:
+
+- authored cells that belong to a closed categorical system are kept
+- binary subset families may gain exactly-derived complement cells when an
+  authored parent total exists on the exact reduced key
+- open subset families are dropped rather than emitted as 1-cell margins
+
+The exporter also writes:
+
+- `ipf_scoring_target_metadata.csv`
+- `ipf_scoring_X_targets_by_units.mtx`
+
+These score IPF on its retained authored targets only. Derived complements are
+recorded for transparency in `ipf_conversion_diagnostics.json`, but they are
+not part of the main benchmark metric set.
+
+When comparing `L0` or `GREG` against that same subset, pass:
+
+```bash
+python paper-l0/benchmarking/benchmark_cli.py run \
+  --method l0 \
+  --run-dir <bundle> \
+  --score-on ipf_retained_authored
+```
 
 External CSVs are still supported through `external_inputs.*` and override the
-automatic conversion path when provided.
+automatic conversion path when provided. The external-IPF contract is strict:
+
+- `external_inputs.ipf_unit_metadata_csv`
+- `external_inputs.ipf_target_metadata_csv`
+- `external_inputs.ipf_scoring_target_metadata_csv`
+- `external_inputs.ipf_scoring_matrix_mtx`
+
+must be provided together. An optional
+`external_inputs.ipf_conversion_diagnostics_json` can also be supplied and will
+be copied through for reporting. External CSVs must also follow the
+`categorical_margin` schema below; the runner rejects `numeric_total` rows.
 
 ### IPF conversion step by step
 
 The IPF conversion is implemented in
-[ipf_conversion.py](/Users/movil1/Desktop/PYTHONJOBS/PolicyEngine/policyengine-us-data/paper-l0/benchmarking/ipf_conversion.py)
-and runs during `benchmark_cli.py export`.
+[ipf_conversion.py](./ipf_conversion.py) and runs during
+`benchmark_cli.py export`.
 
 1. Load the saved calibration package and apply the manifest target filters.
 2. Read `dataset_path`, `db_path`, and `n_clones` from the package metadata.
@@ -152,18 +187,25 @@ and runs during `benchmark_cli.py export`.
    household-clone `unit_index`.
 7. Calculate the needed source variables from the dataset and attach them to
    the IPF unit table.
-8. For each selected target, evaluate its original stratum logic row by row and
-   materialize the result as a derived indicator column such as
-   `ipf_indicator_00000`.
-9. Write `ipf_target_metadata.csv` so each selected target becomes a
-   `numeric_total` IPF constraint over one of those derived indicator columns.
-10. Run `surveysd::ipf` on the generated unit table and target metadata.
-11. Collapse the fitted IPF row weights back to one weight per shared benchmark
-   `unit_index`, so the fitted result can be scored against the same sparse
-   calibration matrix used by `L0` and `GREG`.
+8. Materialize the string-valued derived category columns the margins cover
+   (e.g. `age_bracket`, `snap_positive`) on that unit table.
+9. Group the resolved targets into margin families, validate them against the
+   observed unit-table support, and keep only families that are already closed
+   or can be closed exactly from authored parent totals.
+10. Emit one `categorical_margin` row per retained authored or exactly-derived
+    cell, sharing a `margin_id` within each family.
+11. Write diagnostics (`dropped_targets`, retained-authored counts, derived
+    complements, and any coherence issues) to
+    `inputs/ipf_conversion_diagnostics.json`.
+12. Run `surveysd::ipf` once on the generated unit table and full validated
+    IPF target metadata.
+13. Collapse the fitted IPF row weights back to one weight per shared
+    benchmark `unit_index`, so the fitted result can be scored against the
+    retained-authored sparse target subset used for the IPF benchmark.
 
-This means the benchmark uses one common scoring space even though `IPF`
-requires a richer input representation than `L0` and `GREG`.
+This means the benchmark keeps a shared requested target space for the export,
+but an IPF-specific retained-authored scoring space for the actual IPF
+comparison.
 
 ### Why the IPF conversion exists
 
@@ -182,28 +224,21 @@ matrix directly into `surveysd::ipf`.
 
 ### IPF target metadata schema
 
-`ipf_runner.R` supports two target metadata encodings:
+`ipf_runner.R` accepts one encoding: `categorical_margin`. One row per
+authored margin cell:
 
-- `numeric_total`
-  One row per target with:
-  - `scope`: `person` or `household`
-  - `target_type`: `numeric_total`
-  - `value_column`: unit-data column to calibrate
-  - `variables`: grouping variables used to wrap the numeric total in a one-cell
-    or multi-cell array
-  - `cell`: pipe-separated assignments for the target cell
-  - `target_value`: numeric total
-- `categorical_margin`
-  One row per margin cell with:
-  - `scope`: `person` or `household`
-  - `target_type`: `categorical_margin`
-  - `margin_id`: identifier for a margin table
-  - `variables`: pipe-separated variable names, e.g. `district_id|age_bin`
-  - `cell`: pipe-separated assignments, e.g.
-    `district_id=0601|age_bin=18_24`
-  - `target_value`: numeric target
+- `scope`: `person` or `household`
+- `target_type`: `categorical_margin`
+- `margin_id`: identifier for a margin block. Rows sharing a `margin_id` are
+  grouped into one `surveysd::ipf` constraint (via `xtabs`).
+- `variables`: pipe-separated variable names, e.g.
+  `congressional_district_geoid|age_bracket`
+- `cell`: pipe-separated assignments, e.g.
+  `congressional_district_geoid=0601|age_bracket=0-4`
+- `target_value`: numeric target
 
-The automatic conversion path currently emits `numeric_total` rows.
+Open subset systems are not exported. If a subset family cannot be closed from
+an authored parent total, it is dropped before the R call.
 
 ## Example Commands
 

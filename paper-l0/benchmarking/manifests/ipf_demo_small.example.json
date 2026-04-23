@@ -1,7 +1,7 @@
 {
   "name": "ipf_demo_small",
   "tier": "tier_1",
-  "description": "Example IPF benchmark. Uses the same target_filters path as GREG and L0; the IPF converter internally keeps only the count-style targets whose constraints resolve through the declared bucket schemas, builds one margin block per constraint signature, and synthesizes complement cells for any single-cell-per-geo margins.",
+  "description": "Example IPF benchmark. Uses the same target_filters path as GREG and L0; the IPF converter internally keeps only count-style targets whose constraints resolve through the declared bucket schemas and form a closed categorical margin system. Binary subset families survive only when authored parent totals exist on the exact reduced key; open subset families are dropped.",
   "package_path": "policyengine_us_data/storage/calibration/calibration_package.pkl",
   "methods": [
     "l0",

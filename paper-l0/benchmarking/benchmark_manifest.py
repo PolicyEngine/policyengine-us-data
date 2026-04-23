@@ -55,6 +55,9 @@ class TargetFilters:
 class ExternalInputs:
     ipf_unit_metadata_csv: Optional[str] = None
     ipf_target_metadata_csv: Optional[str] = None
+    ipf_scoring_target_metadata_csv: Optional[str] = None
+    ipf_scoring_matrix_mtx: Optional[str] = None
+    ipf_conversion_diagnostics_json: Optional[str] = None
 
     @classmethod
     def from_dict(cls, raw: Optional[Dict[str, Any]]) -> "ExternalInputs":
@@ -62,6 +65,13 @@ class ExternalInputs:
         return cls(
             ipf_unit_metadata_csv=raw.get("ipf_unit_metadata_csv"),
             ipf_target_metadata_csv=raw.get("ipf_target_metadata_csv"),
+            ipf_scoring_target_metadata_csv=raw.get(
+                "ipf_scoring_target_metadata_csv"
+            ),
+            ipf_scoring_matrix_mtx=raw.get("ipf_scoring_matrix_mtx"),
+            ipf_conversion_diagnostics_json=raw.get(
+                "ipf_conversion_diagnostics_json"
+            ),
         )
 
 

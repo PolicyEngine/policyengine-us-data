@@ -284,6 +284,13 @@ from modal_app.remote_calibration_runner import (
     PACKAGE_GPU_FUNCTIONS,
 )
 
+# Import registers ``build_matrix_chunk_worker`` on ``_calibration_app``
+# so a single ``modal deploy modal_app/pipeline.py`` also deploys the
+# worker via ``app.include(_calibration_app)`` below. Without this the
+# dispatch layer's ``modal.Function.from_name`` lookup would fail at
+# runtime.
+from modal_app.matrix_chunk_worker import build_matrix_chunk_worker  # noqa: F401
+
 app.include(_calibration_app)
 
 from modal_app.local_area import app as _local_area_app

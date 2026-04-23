@@ -45,19 +45,6 @@ build_margin_array <- function(df) {
   )
 }
 
-build_single_cell_array <- function(variables_str, cell_str, target_value) {
-  variables <- strsplit(variables_str, "\\|")[[1]]
-  parts <- strsplit(cell_str, "\\|")[[1]]
-  entries <- strsplit(parts, "=")
-  row <- as.list(setNames(vapply(entries, `[`, "", 2L), vapply(entries, `[`, "", 1L)))
-  row$Freq <- as.numeric(target_value)
-  frame <- as.data.frame(row, stringsAsFactors = FALSE)
-  stats::xtabs(
-    stats::as.formula(paste("Freq ~", paste(variables, collapse = " + "))),
-    data = frame
-  )
-}
-
 unit_data <- read.csv(unit_csv, stringsAsFactors = FALSE)
 target_meta <- read.csv(target_csv, stringsAsFactors = FALSE)
 base_weights <- read_npy_vector(weights_npy)
@@ -73,49 +60,33 @@ if (!(weight_col %in% names(unit_data))) {
   unit_data[[weight_col]] <- base_weights[unit_data$unit_index + 1L]
 }
 
+if (!("target_type" %in% names(target_meta))) {
+  stop("ipf target metadata must include a target_type column")
+}
+unsupported_types <- setdiff(unique(target_meta$target_type), "categorical_margin")
+if (length(unsupported_types) > 0L) {
+  stop(sprintf(
+    "ipf_runner.R only supports target_type='categorical_margin'; got: %s",
+    paste(unsupported_types, collapse = ", ")
+  ))
+}
+
 conP <- list()
 conH <- list()
-if (!("target_type" %in% names(target_meta))) {
-  target_meta$target_type <- "categorical_margin"
-}
-
-numeric_rows <- target_meta[target_meta$target_type == "numeric_total", , drop = FALSE]
-for (i in seq_len(nrow(numeric_rows))) {
-  row <- numeric_rows[i, , drop = FALSE]
-  value_column <- row$value_column[[1]]
-    if (!(value_column %in% names(unit_data))) {
-      stop(sprintf("Unit metadata is missing numeric target column %s", value_column))
-    }
-    target_array <- build_single_cell_array(
-      if ("variables" %in% names(row)) row$variables[[1]] else "benchmark_all",
-      if ("cell" %in% names(row)) row$cell[[1]] else "benchmark_all=all",
-      row$target_value[[1]]
-    )
-    if (row$scope[[1]] == "person") {
-      conP[[value_column]] <- target_array
-    } else if (row$scope[[1]] == "household") {
-      conH[[value_column]] <- target_array
-    } else {
-      stop(sprintf("Unsupported numeric target scope: %s", row$scope[[1]]))
-    }
-}
-
-margin_rows_all <- target_meta[target_meta$target_type == "categorical_margin", , drop = FALSE]
-if (nrow(margin_rows_all) > 0) {
-  for (margin_id in unique(margin_rows_all$margin_id)) {
-    margin_rows <- margin_rows_all[margin_rows_all$margin_id == margin_id, , drop = FALSE]
-    margin_array <- build_margin_array(margin_rows)
-    scope <- unique(margin_rows$scope)
-    if (length(scope) != 1L) {
-      stop(sprintf("Margin %s has inconsistent scope values", margin_id))
-    }
-    if (scope[[1]] == "person") {
-      conP[[length(conP) + 1L]] <- margin_array
-    } else if (scope[[1]] == "household") {
-      conH[[length(conH) + 1L]] <- margin_array
-    } else {
-      stop(sprintf("Unsupported margin scope: %s", scope[[1]]))
-    }
+margin_rows_all <- target_meta
+for (margin_id in unique(margin_rows_all$margin_id)) {
+  margin_rows <- margin_rows_all[margin_rows_all$margin_id == margin_id, , drop = FALSE]
+  margin_array <- build_margin_array(margin_rows)
+  scope <- unique(margin_rows$scope)
+  if (length(scope) != 1L) {
+    stop(sprintf("Margin %s has inconsistent scope values", margin_id))
+  }
+  if (scope[[1]] == "person") {
+    conP[[length(conP) + 1L]] <- margin_array
+  } else if (scope[[1]] == "household") {
+    conH[[length(conH) + 1L]] <- margin_array
+  } else {
+    stop(sprintf("Unsupported margin scope: %s", scope[[1]]))
   }
 }
 
@@ -130,6 +101,7 @@ ipf_result <- surveysd::ipf(
   w = weight_col,
   bound = bound,
   maxIter = max_iter,
+  meanHH = TRUE,
   returnNA = TRUE,
   nameCalibWeight = "calibWeight"
 )

@@ -101,48 +101,22 @@ def _run_greg(run_dir: Path):
     return weights_path, elapsed
 
 
-def _run_ipf(run_dir: Path):
-    inputs = run_dir / "inputs"
-    outputs = run_dir / "outputs"
-    temp_csv = outputs / "_ipf_weights.csv"
+def _collapse_ipf_rows_to_unit_weights(
+    raw_weights: pd.DataFrame, n_units: int
+) -> np.ndarray:
+    """Validate a per-row IPF output and collapse it to a length-`n_units` vector.
 
-    with open(inputs / "benchmark_manifest.json") as f:
-        manifest = json.load(f)
-    options = manifest.get("method_options", {}).get("ipf", {})
-
-    target_metadata_path = inputs / "ipf_target_metadata.csv"
-    if not target_metadata_path.exists():
-        raise FileNotFoundError(
-            "IPF run requires inputs/ipf_target_metadata.csv. "
-            "Provide external_inputs.ipf_target_metadata_csv in the manifest."
-        )
-
-    cmd = [
-        "Rscript",
-        str(RUNNERS_DIR / "ipf_runner.R"),
-        str(inputs / "unit_metadata.csv"),
-        str(target_metadata_path),
-        str(inputs / "initial_weights.npy"),
-        str(temp_csv),
-        str(int(options.get("max_iter", 200))),
-        str(float(options.get("bound", 4.0))),
-        str(float(options.get("epsP", 1e-6))),
-        str(float(options.get("epsH", 1e-2))),
-        str(options.get("household_id_col", "household_id")),
-        str(options.get("weight_col", "base_weight")),
-    ]
-    proc, elapsed = _run_subprocess(cmd)
-    if proc.returncode != 0:
-        raise RuntimeError(f"IPF runner failed with exit code {proc.returncode}")
-
-    raw_weights = pd.read_csv(temp_csv)
+    surveysd::ipf with `meanHH = TRUE` guarantees every row that shares a
+    `unit_index` carries the same fitted weight; the spread check keeps that
+    assumption honest.
+    """
     if "unit_index" not in raw_weights.columns:
         raise RuntimeError("IPF runner output must include a unit_index column")
     if raw_weights["unit_index"].isna().any():
         raise RuntimeError("IPF runner output contains missing unit_index values")
 
+    raw_weights = raw_weights.copy()
     raw_weights["unit_index"] = raw_weights["unit_index"].astype(np.int64)
-    n_units = len(np.load(inputs / "initial_weights.npy"))
     if (raw_weights["unit_index"] < 0).any() or (
         raw_weights["unit_index"] >= n_units
     ).any():
@@ -151,8 +125,7 @@ def _run_ipf(run_dir: Path):
     per_unit_spread = raw_weights.groupby("unit_index", sort=True)["fitted_weight"].agg(
         lambda series: float(series.max() - series.min())
     )
-    inconsistent_units = per_unit_spread[per_unit_spread > 1e-9]
-    if not inconsistent_units.empty:
+    if (per_unit_spread > 1e-9).any():
         raise RuntimeError(
             "IPF runner produced inconsistent fitted weights within the same unit_index"
         )
@@ -166,11 +139,102 @@ def _run_ipf(run_dir: Path):
         raise RuntimeError(
             "Aggregated IPF weights do not cover the full benchmark unit range"
         )
-    weights = weights_by_unit.to_numpy(dtype=np.float64)
+    return weights_by_unit.to_numpy(dtype=np.float64)
+
+
+def _run_ipf(run_dir: Path):
+    """Run one coherent IPF problem in a single `surveysd::ipf` call."""
+    inputs = run_dir / "inputs"
+    outputs = run_dir / "outputs"
+
+    with open(inputs / "benchmark_manifest.json") as f:
+        manifest = json.load(f)
+    options = manifest.get("method_options", {}).get("ipf", {})
+
+    target_metadata_path = inputs / "ipf_target_metadata.csv"
+    if not target_metadata_path.exists():
+        raise FileNotFoundError(
+            "IPF run requires inputs/ipf_target_metadata.csv. "
+            "Provide external_inputs.ipf_target_metadata_csv in the manifest."
+        )
+    unit_metadata_path = inputs / "unit_metadata.csv"
+    if not unit_metadata_path.exists():
+        raise FileNotFoundError("IPF run requires inputs/unit_metadata.csv.")
+
+    full_targets = pd.read_csv(target_metadata_path)
+    if full_targets.empty:
+        raise RuntimeError("IPF target metadata is empty; nothing to run.")
+    unit_metadata = pd.read_csv(unit_metadata_path)
+    if "unit_index" not in unit_metadata.columns:
+        raise RuntimeError("Unit metadata must include a unit_index column for IPF")
+
+    weight_col = str(options.get("weight_col", "base_weight"))
+    household_id_col = str(options.get("household_id_col", "household_id"))
+
+    initial_weights = np.load(inputs / "initial_weights.npy").astype(np.float64)
+    n_units = len(initial_weights)
+    unit_indices = unit_metadata["unit_index"].astype(np.int64).to_numpy()
+    if unit_indices.min() < 0 or unit_indices.max() >= n_units:
+        raise RuntimeError(
+            "Unit metadata unit_index values fall outside the initial weight vector"
+        )
+    temp_csv = outputs / "_ipf_weights.csv"
+    unit_with_weights = unit_metadata.copy()
+    unit_with_weights[weight_col] = initial_weights[unit_indices]
+    temp_unit_csv = outputs / "_ipf_unit_metadata.csv"
+    unit_with_weights.to_csv(temp_unit_csv, index=False)
+
+    cmd = [
+        "Rscript",
+        str(RUNNERS_DIR / "ipf_runner.R"),
+        str(temp_unit_csv),
+        str(target_metadata_path),
+        str(inputs / "initial_weights.npy"),
+        str(temp_csv),
+        str(int(options.get("max_iter", 200))),
+        str(float(options.get("bound", 4.0))),
+        str(float(options.get("epsP", 1e-6))),
+        str(float(options.get("epsH", 1e-2))),
+        household_id_col,
+        weight_col,
+    ]
+    proc, elapsed = _run_subprocess(cmd)
+    if proc.returncode != 0:
+        raise RuntimeError(f"IPF runner failed with exit code {proc.returncode}")
+
+    raw_weights = pd.read_csv(temp_csv)
+    current_weights = _collapse_ipf_rows_to_unit_weights(raw_weights, n_units)
     weights_path = outputs / "fitted_weights.npy"
-    np.save(weights_path, weights)
+    np.save(weights_path, current_weights)
     temp_csv.unlink(missing_ok=True)
+    temp_unit_csv.unlink(missing_ok=True)
     return weights_path, elapsed
+
+
+def _select_scoring_inputs(
+    run_dir: Path, method: str, score_on: str
+) -> tuple[Path, Path, str]:
+    inputs = run_dir / "inputs"
+    ipf_targets = inputs / "ipf_scoring_target_metadata.csv"
+    ipf_matrix = inputs / "ipf_scoring_X_targets_by_units.mtx"
+    has_ipf_scoring = ipf_targets.exists() and ipf_matrix.exists()
+
+    if score_on == "ipf_retained_authored":
+        if not has_ipf_scoring:
+            raise FileNotFoundError(
+                "Requested score_on=ipf_retained_authored, but "
+                "inputs/ipf_scoring_target_metadata.csv and "
+                "inputs/ipf_scoring_X_targets_by_units.mtx are not both present."
+            )
+        return ipf_targets, ipf_matrix, "ipf_retained_authored"
+
+    if score_on == "auto" and method == "ipf" and has_ipf_scoring:
+        return ipf_targets, ipf_matrix, "ipf_retained_authored"
+    return (
+        inputs / "target_metadata.csv",
+        inputs / "X_targets_by_units.mtx",
+        "shared_requested",
+    )
 
 
 def cmd_run(args):
@@ -178,7 +242,12 @@ def cmd_run(args):
     inputs = run_dir / "inputs"
     outputs = run_dir / "outputs"
     outputs.mkdir(parents=True, exist_ok=True)
-    targets_df = load_targets_csv(inputs / "target_metadata.csv")
+    targets_path, matrix_path, scoring_target_set = _select_scoring_inputs(
+        run_dir,
+        args.method,
+        getattr(args, "score_on", "auto"),
+    )
+    targets_df = load_targets_csv(targets_path)
 
     started = time.time()
     if args.method == "l0":
@@ -195,11 +264,12 @@ def cmd_run(args):
     summary = compute_common_metrics(
         weights=weights,
         targets_df=targets_df,
-        matrix_path=inputs / "X_targets_by_units.mtx",
+        matrix_path=matrix_path,
     )
     summary["method"] = args.method
     summary["run_dir"] = str(run_dir.resolve())
     summary["runtime_seconds"] = elapsed
+    summary["scoring_target_set"] = scoring_target_set
     write_method_summary(summary, outputs / f"{args.method}_summary.json")
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
@@ -224,6 +294,16 @@ def build_parser():
     run_parser.add_argument("--method", required=True, choices=["l0", "greg", "ipf"])
     run_parser.add_argument(
         "--run-dir", required=True, help="Exported benchmark bundle directory"
+    )
+    run_parser.add_argument(
+        "--score-on",
+        default="auto",
+        choices=["auto", "shared_requested", "ipf_retained_authored"],
+        help=(
+            "Scoring target set. 'auto' uses IPF-retained-authored targets only "
+            "for method=ipf when available; the other methods default to the "
+            "shared requested target set unless explicitly overridden."
+        ),
     )
     run_parser.set_defaults(func=cmd_run)
 

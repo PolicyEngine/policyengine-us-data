@@ -11,9 +11,10 @@ the CPS ASEC records.
 
 The checked-in code does not vendor the donor file itself. Instead,
 `org.py` builds `census_cps_org_2024_wages.csv.gz` on demand by
-downloading the twelve official CPS basic monthly public-use CSVs for
+downloading the twelve official CPS basic monthly public-use files for
 `ORG_YEAR` (currently 2024) directly from the Census Bureau and filtering
-each file to the ORG rotations.
+each file to the ORG rotations. The loader prefers the CSV endpoint and
+falls back to the ZIP'd fixed-width archive when the CSV is unavailable.
 
 ## Documentation
 
@@ -31,8 +32,8 @@ See also:
 
 ## Data products in this folder
 
-- `org.py` — downloads the twelve monthly CSVs, filters to the MIS-4 and
-  MIS-8 outgoing rotations (`HRMIS`), and caches the combined ORG donor
-  frame. Trains a QRF model to impute `wage_income`, `hourly_wage`, and
-  union-coverage variables onto the CPS ASEC records used by the
-  Enhanced CPS pipeline.
+- `org.py` — downloads the twelve monthly public-use files, filters to
+  the MIS-4 and MIS-8 outgoing rotations (`HRMIS`), and caches the
+  combined ORG donor frame. Trains a QRF model to impute `wage_income`,
+  `hourly_wage`, and union-coverage variables onto the CPS ASEC records
+  used by the Enhanced CPS pipeline.

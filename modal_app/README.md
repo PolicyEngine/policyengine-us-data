@@ -145,7 +145,7 @@ Produces `source_imputed_stratified_extended_cps_2024.h5` from raw CPS/PUF/ACS/S
 | Method | Command |
 |--------|---------|
 | **Local** | `make data` |
-| **Modal (CI)** | `modal run modal_app/data_build.py --branch=<branch>` |
+| **Modal (CI)** | `modal run --env=main modal_app/data_build.py --branch=<branch>` |
 | **GitHub Actions** | Automatic on merge to `main` via `code_changes.yaml` → `reusable_test.yaml` (with `full_suite: true`). Also triggered by `pr_code_changes.yaml` on PRs. |
 
 Notes:

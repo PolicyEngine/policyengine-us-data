@@ -21,6 +21,7 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      MODAL_ENVIRONMENT: main
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +31,7 @@ jobs:
       - run: pip install modal
       - name: Run linear integration tests on Modal
         run: |
-          modal run modal_app/data_build.py \
+          modal run --env="${MODAL_ENVIRONMENT}" modal_app/data_build.py \
             --upload \
             --branch=${{ github.ref_name }}
 

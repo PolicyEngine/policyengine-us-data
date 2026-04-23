@@ -1,17 +1,11 @@
 """Shared fixtures and helpers for version manifest tests."""
 
+from __future__ import annotations
+
 import json
 from unittest.mock import MagicMock
 
 import pytest
-
-from policyengine_us_data.utils.version_manifest import (
-    HFVersionInfo,
-    GCSVersionInfo,
-    VersionManifest,
-    VersionRegistry,
-)
-from policyengine_us_data.utils.policyengine import PolicyEngineUSBuildInfo
 
 # -- Fixtures ------------------------------------------------------
 
@@ -27,6 +21,8 @@ def sample_generations() -> dict[str, int]:
 
 @pytest.fixture
 def sample_hf_info() -> HFVersionInfo:
+    from policyengine_us_data.utils.version_manifest import HFVersionInfo
+
     return HFVersionInfo(
         repo="policyengine/policyengine-us-data",
         commit="abc123def456",
@@ -35,6 +31,8 @@ def sample_hf_info() -> HFVersionInfo:
 
 @pytest.fixture
 def sample_policyengine_us_info() -> PolicyEngineUSBuildInfo:
+    from policyengine_us_data.utils.policyengine import PolicyEngineUSBuildInfo
+
     return PolicyEngineUSBuildInfo(
         version="1.587.0",
         locked_version="1.587.0",
@@ -49,6 +47,11 @@ def sample_manifest(
     sample_hf_info: HFVersionInfo,
     sample_policyengine_us_info: PolicyEngineUSBuildInfo,
 ) -> VersionManifest:
+    from policyengine_us_data.utils.version_manifest import (
+        GCSVersionInfo,
+        VersionManifest,
+    )
+
     return VersionManifest(
         version="1.72.3",
         created_at="2026-03-10T14:30:00Z",
@@ -66,6 +69,8 @@ def sample_registry(
     sample_manifest: VersionManifest,
 ) -> VersionRegistry:
     """A registry with one version entry."""
+    from policyengine_us_data.utils.version_manifest import VersionRegistry
+
     return VersionRegistry(
         current="1.72.3",
         versions=[sample_manifest],

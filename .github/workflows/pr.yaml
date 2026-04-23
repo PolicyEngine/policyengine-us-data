@@ -100,7 +100,7 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install optimized test deps
-        run: pip install modal pandas pytest
+        run: pip install modal pytest
       - name: Deploy Modal pipeline app
         run: modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/pipeline.py
       - name: Run optimized integration tests
@@ -160,6 +160,7 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      MODAL_ENVIRONMENT: main
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -184,6 +185,6 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          modal run modal_app/data_build.py \
+          modal run --env="${MODAL_ENVIRONMENT}" modal_app/data_build.py \
             --branch=${{ github.head_ref || github.ref_name }} \
             ${STAGE_ARGS}

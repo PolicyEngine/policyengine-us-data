@@ -1,16 +1,18 @@
 """Build and cache ORG-style labor-market donor rows from CPS basic-month files.
 
 The checked-in code does not vendor the donor file itself. `ORG_FILENAME` is a
-generated cache built from the 12 official CPS basic monthly public-use CSVs for
-`ORG_YEAR`, then reused as the donor sample for wage, hourly-pay, and union
-imputation onto CPS records.
+generated cache built from the 12 official CPS basic monthly public-use files
+for `ORG_YEAR`, then reused as the donor sample for wage, hourly-pay, and
+union imputation onto CPS records.
 """
 
 from contextlib import contextmanager
 from functools import lru_cache
 from io import BytesIO
+from io import TextIOWrapper
 from pathlib import Path
 import fcntl
+import zipfile
 
 from microimpute.models.qrf import QRF
 import numpy as np
@@ -50,6 +52,44 @@ CPS_BASIC_MONTHLY_ORG_COLUMNS = [
     "prerelg",
     "pemlr",
     "peio1cow",
+]
+
+# Field order in the 2024 CPS basic-month fixed-width dat file.
+CPS_BASIC_MONTHLY_ORG_FWF_COLUMNS = [
+    "HRMIS",
+    "gestfips",
+    "prtage",
+    "pesex",
+    "ptdtrace",
+    "pehspnon",
+    "pemlr",
+    "pehruslt",
+    "peio1cow",
+    "prerelg",
+    "peernhry",
+    "pternhly",
+    "pternwa",
+    "pworwgt",
+]
+
+# 2024 Basic CPS record layout positions for the ORG columns we need, in file order.
+# The CSV endpoint sometimes returns challenge HTML in Modal, so the ZIP'd
+# fixed-width dat fallback is the reliable source of truth.
+CPS_BASIC_MONTHLY_ORG_COLSPECS = [
+    (62, 64),  # HRMIS 63-64
+    (92, 94),  # GESTFIPS 93-94
+    (121, 123),  # PRTAGE 122-123
+    (128, 130),  # PESEX 129-130
+    (138, 140),  # PTDTRACE 139-140
+    (156, 158),  # PEHSPNON 157-158
+    (179, 181),  # PEMLR 180-181
+    (223, 226),  # PEHRUSLT 224-226
+    (430, 433),  # PEIO1COW 432-433
+    (497, 499),  # PRERELG 498-499
+    (505, 507),  # PEERNHRY 506-507
+    (519, 523),  # PTERNHLY 520-523
+    (526, 534),  # PTERNWA 527-534
+    (602, 612),  # PWORWGT 603-612
 ]
 
 ORG_PREDICTORS = [
@@ -186,6 +226,14 @@ def _cps_basic_org_month_url(year: int, month: str) -> str:
     )
 
 
+def _cps_basic_org_month_zip_url(year: int, month: str) -> str:
+    year_suffix = str(year)[-2:]
+    return (
+        f"https://www2.census.gov/programs-surveys/cps/datasets/"
+        f"{year}/basic/{month}{year_suffix}pub.zip"
+    )
+
+
 def _resolve_cps_basic_org_column_names(
     columns: pd.Index | list[str],
 ) -> list[str]:
@@ -213,13 +261,20 @@ def _select_cps_basic_org_columns(month_df: pd.DataFrame) -> pd.DataFrame:
     return selected
 
 
-def _load_cps_basic_org_month(
+def _coerce_cps_basic_org_numeric_columns(
+    month_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Convert ORG columns into numeric values regardless of source format."""
+    return month_df.apply(lambda column: pd.to_numeric(column, errors="coerce"))
+
+
+def _load_cps_basic_org_month_from_csv(
     year: int,
     month: str,
     *,
     max_attempts: int = 3,
 ) -> pd.DataFrame:
-    """Load one CPS basic-month file with light retry around transient fetch/parser issues."""
+    """Load one CPS basic-month file from the CSV endpoint."""
     url = _cps_basic_org_month_url(year, month)
     last_error: Exception | None = None
 
@@ -235,14 +290,97 @@ def _load_cps_basic_org_month(
                 usecols=selected_columns,
                 low_memory=False,
             )
-            return _select_cps_basic_org_columns(month_df)
+            return _coerce_cps_basic_org_numeric_columns(
+                _select_cps_basic_org_columns(month_df)
+            )
         except Exception as error:
             last_error = error
 
     raise ValueError(
-        f"Failed to load CPS basic ORG month {month} {year} after "
+        f"Failed to load CPS basic ORG month {month} {year} from CSV after "
         f"{max_attempts} attempts"
     ) from last_error
+
+
+def _load_cps_basic_org_month_from_zip(
+    year: int,
+    month: str,
+    *,
+    max_attempts: int = 3,
+) -> pd.DataFrame:
+    """Load one CPS basic-month file from the ZIP'd fixed-width dat archive."""
+    url = _cps_basic_org_month_zip_url(year, month)
+    last_error: Exception | None = None
+
+    for _ in range(max_attempts):
+        try:
+            response = requests.get(url, timeout=60)
+            response.raise_for_status()
+            with zipfile.ZipFile(BytesIO(response.content)) as archive:
+                dat_name = next(
+                    (
+                        name
+                        for name in archive.namelist()
+                        if name.lower().endswith(".dat")
+                    ),
+                    None,
+                )
+                if dat_name is None:
+                    raise ValueError(
+                        "CPS basic ORG month zip did not contain a .dat file"
+                    )
+                with (
+                    archive.open(dat_name) as raw,
+                    TextIOWrapper(
+                        raw,
+                        encoding="utf-8",
+                        newline="",
+                    ) as text,
+                ):
+                    month_df = pd.read_fwf(
+                        text,
+                        colspecs=CPS_BASIC_MONTHLY_ORG_COLSPECS,
+                        names=CPS_BASIC_MONTHLY_ORG_FWF_COLUMNS,
+                        header=None,
+                        dtype=str,
+                    )
+            return _coerce_cps_basic_org_numeric_columns(
+                _select_cps_basic_org_columns(month_df)
+            )
+        except Exception as error:
+            last_error = error
+
+    raise ValueError(
+        f"Failed to load CPS basic ORG month {month} {year} from ZIP after "
+        f"{max_attempts} attempts"
+    ) from last_error
+
+
+def _load_cps_basic_org_month(
+    year: int,
+    month: str,
+    *,
+    max_attempts: int = 3,
+) -> pd.DataFrame:
+    """Load one CPS basic-month file, preferring CSV and falling back to ZIP."""
+    try:
+        return _load_cps_basic_org_month_from_csv(
+            year,
+            month,
+            max_attempts=max_attempts,
+        )
+    except Exception as csv_error:
+        try:
+            return _load_cps_basic_org_month_from_zip(
+                year,
+                month,
+                max_attempts=max_attempts,
+            )
+        except Exception as zip_error:
+            raise ValueError(
+                f"Failed to load CPS basic ORG month {month} {year} from CSV or ZIP: "
+                f"csv={csv_error!r}; zip={zip_error!r}"
+            ) from zip_error
 
 
 @contextmanager

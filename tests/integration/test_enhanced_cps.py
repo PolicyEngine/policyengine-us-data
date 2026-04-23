@@ -259,7 +259,6 @@ def test_has_tin_matches_identification_inputs(ecps_sim):
 
 
 def test_aca_calibration():
-
     import pandas as pd
     from pathlib import Path
     from policyengine_us import Microsimulation
@@ -366,7 +365,6 @@ def test_immigration_status_diversity():
 
 
 def test_medicaid_calibration():
-
     import pandas as pd
     from pathlib import Path
     from policyengine_us import Microsimulation

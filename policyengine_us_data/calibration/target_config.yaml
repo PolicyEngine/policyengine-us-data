@@ -168,6 +168,9 @@ include:
   - variable: aca_ptc
     geo_level: national
     domain_variable: aca_ptc
+  - variable: eitc
+    geo_level: national
+    domain_variable: eitc_child_count
   - variable: net_capital_gains
     geo_level: national
     domain_variable: net_capital_gains
@@ -200,6 +203,9 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: aca_ptc
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: eitc_child_count
   # Restore old loss.py's ACA enrollment count target.
   - variable: person_count
     geo_level: national
@@ -259,8 +265,7 @@ include:
   # NOT INCLUDED — high error or tension (from prior validation)
   # =====================================================================
   # dividend_income (26%, tension), qualified_dividend_income (29%, tension),
-  # eitc by child_count (14-77%, tension), rental_income (20%),
-  # income_tax_before_credits (21%),
+  # rental_income (20%), income_tax_before_credits (21%),
   # salt SOI (102%), taxable_interest_income (61%),
   # tax_exempt_interest_income (61%), taxable_ira_distributions (68%),
   # taxable_social_security (55%), person_count by AGI bins (100%)

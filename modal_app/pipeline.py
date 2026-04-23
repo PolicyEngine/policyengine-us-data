@@ -767,6 +767,10 @@ def run_pipeline(
     run_context: dict | None = None,
     modal_app_name: str = "",
     modal_environment: str = "",
+    chunked_matrix: bool = False,
+    chunk_size: int = 25_000,
+    parallel_matrix: bool = False,
+    num_matrix_workers: int = 50,
 ) -> str:
     """Run the full pipeline end-to-end.
 
@@ -792,6 +796,15 @@ def run_pipeline(
         run_context: Serialized run context from the launcher workflow.
         modal_app_name: Deployed Modal app name for this run.
         modal_environment: Modal environment used for this run.
+        chunked_matrix: Build the calibration matrix in clone-household
+            chunks instead of the non-chunked path. Opt-in; default off.
+        chunk_size: Clone-household columns per chunk when
+            ``chunked_matrix`` is True.
+        parallel_matrix: Fan chunked matrix building across Modal
+            workers via ``build_matrix_chunk_worker``. Only meaningful
+            when ``chunked_matrix`` is True; ignored otherwise.
+        num_matrix_workers: Number of Modal workers when
+            ``parallel_matrix`` is True.
 
     Returns:
         The run ID for use with promote.
@@ -1068,6 +1081,10 @@ def run_pipeline(
                 workers=num_workers,
                 n_clones=n_clones,
                 run_id=run_id,
+                chunked_matrix=chunked_matrix,
+                chunk_size=chunk_size,
+                parallel_matrix=parallel_matrix,
+                num_matrix_workers=num_matrix_workers,
             )
             print(f"  Package at: {pkg_path}")
 

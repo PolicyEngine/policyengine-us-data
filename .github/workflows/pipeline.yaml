@@ -39,6 +39,22 @@ on:
         description: "Exact policyengine-us-data commit SHA to deploy"
         default: ""
         type: string
+      chunked_matrix:
+        description: "Build the calibration matrix in chunks (opt-in)"
+        default: false
+        type: boolean
+      chunk_size:
+        description: "Clone-household columns per chunk"
+        default: "25000"
+        type: string
+      parallel_matrix:
+        description: "Fan chunked matrix building across Modal workers"
+        default: false
+        type: boolean
+      num_matrix_workers:
+        description: "Number of Modal workers for parallel matrix build"
+        default: "50"
+        type: string
 
 concurrency:
   group: pipeline-${{ github.run_id }}-${{ github.run_attempt }}
@@ -80,6 +96,10 @@ jobs:
           RESUME_RUN_ID: ${{ inputs.resume_run_id || '' }}
           VERSION_OVERRIDE: ${{ inputs.version_override || '' }}
           SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+          CHUNKED_MATRIX: ${{ inputs.chunked_matrix || 'false' }}
+          CHUNK_SIZE: ${{ inputs.chunk_size || '25000' }}
+          PARALLEL_MATRIX: ${{ inputs.parallel_matrix || 'false' }}
+          NUM_MATRIX_WORKERS: ${{ inputs.num_matrix_workers || '50' }}
         run: |
           modal deploy --env="${MODAL_ENVIRONMENT}" --name="${US_DATA_MODAL_APP_NAME}" --tag="${US_DATA_RUN_ID}" modal_app/pipeline.py
           python .github/scripts/spawn_modal_pipeline.py

@@ -3081,6 +3081,9 @@ class UnifiedMatrixBuilder:
         keep_chunks: bool = False,
         resume_chunks: bool = False,
         rerandomize_takeup: bool = True,
+        parallel: bool = False,
+        num_matrix_workers: int = 50,
+        run_id: str = "",
     ) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]:
         """Build a sparse matrix by materializing mixed-geography chunks.
 
@@ -3221,6 +3224,7 @@ class UnifiedMatrixBuilder:
             n_records=n_records,
             n_clones=n_clones,
             n_targets=n_targets,
+            chunk_size=chunk_size,
             target_variables=target_variables,
             target_reform_ids=target_reform_ids,
             target_geo_info=target_geo_info,
@@ -3245,14 +3249,36 @@ class UnifiedMatrixBuilder:
         )
         logger.info(
             "Chunked matrix build: %d targets x %d columns, "
-            "%d chunks of up to %d columns",
+            "%d chunks of up to %d columns%s",
             n_targets,
             n_total,
             assembler.n_chunks,
             chunk_size,
+            (
+                f", parallel across {num_matrix_workers} Modal workers"
+                if parallel
+                else ""
+            ),
         )
-        assembler.run_chunks(range(assembler.n_chunks))
-        X_csr = assembler.assemble_final()
+        if parallel:
+            if not run_id:
+                raise ValueError(
+                    "run_id is required when parallel=True so workers can "
+                    "find the shared state on the pipeline volume"
+                )
+            from policyengine_us_data.calibration.chunked_matrix_modal import (
+                dispatch_chunks_modal,
+            )
+
+            X_csr = dispatch_chunks_modal(
+                shared_state=shared_state,
+                chunk_root=chunk_root,
+                run_id=run_id,
+                num_workers=num_matrix_workers,
+            )
+        else:
+            assembler.run_chunks(range(assembler.n_chunks))
+            X_csr = assembler.assemble_final()
 
         if remove_chunk_root and chunk_root.exists():
             shutil.rmtree(chunk_root)

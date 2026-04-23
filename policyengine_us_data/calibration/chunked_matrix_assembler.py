@@ -67,6 +67,7 @@ class SharedBuildState:
     n_records: int
     n_clones: int
     n_targets: int
+    chunk_size: int
     target_variables: List[str]
     target_reform_ids: List[int]
     target_geo_info: List[Tuple[str, str]]

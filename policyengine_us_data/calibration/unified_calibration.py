@@ -324,6 +324,25 @@ def parse_args(argv=None):
         help="Reuse existing chunk COO files in --chunk-dir when present.",
     )
     parser.add_argument(
+        "--parallel",
+        action="store_true",
+        default=False,
+        help=(
+            "Fan chunked matrix building across Modal workers. Requires "
+            "--chunked-matrix and a deployed build_matrix_chunk_worker; "
+            "silently ignored on the non-chunked path."
+        ),
+    )
+    parser.add_argument(
+        "--num-matrix-workers",
+        type=int,
+        default=50,
+        help=(
+            "Number of Modal workers to fan chunked matrix building "
+            "across when --parallel is set (default: 50)."
+        ),
+    )
+    parser.add_argument(
         "--package-path",
         default=None,
         help="Load pre-built calibration package (skip matrix build)",
@@ -1085,6 +1104,9 @@ def run_calibration(
     chunk_dir: str = None,
     keep_chunks: bool = False,
     resume_chunks: bool = False,
+    parallel: bool = False,
+    num_matrix_workers: int = 50,
+    run_id: str = "",
 ):
     """Run unified calibration pipeline.
 
@@ -1327,8 +1349,16 @@ def run_calibration(
             keep_chunks=keep_chunks,
             resume_chunks=resume_chunks,
             rerandomize_takeup=do_rerandomize,
+            parallel=parallel,
+            num_matrix_workers=num_matrix_workers,
+            run_id=run_id,
         )
     else:
+        if parallel:
+            logger.info(
+                "--parallel is ignored on the non-chunked matrix path; "
+                "pass --chunked-matrix to enable Modal fan-out"
+            )
         targets_df, X_sparse, target_names = builder.build_matrix(
             geography=geography,
             sim=sim,
@@ -1588,6 +1618,9 @@ def main(argv=None):
         chunk_dir=args.chunk_dir,
         keep_chunks=args.keep_chunks,
         resume_chunks=args.resume_chunks,
+        parallel=args.parallel,
+        num_matrix_workers=args.num_matrix_workers,
+        run_id=os.environ.get("POLICYENGINE_US_DATA_RUN_ID", ""),
     )
 
     source_imputed = geography_info.get("dataset_for_matrix")

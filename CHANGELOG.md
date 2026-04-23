@@ -1,3 +1,11 @@
+## [1.86.1] - 2026-04-23
+
+### Fixed
+
+- Refactor Modal runtime setup to rely on `Image.uv_sync()` and the active Python interpreter rather than manual venv wiring, and add an optimized deployed-image seam test lane to the push workflow.
+- Activate the uv-managed venv inside Modal pipeline containers so module-scope imports from `policyengine_us_data` (notably `pandas` via `geography/__init__.py`) resolve at container boot. `uv sync --frozen` installs dependencies into `/root/policyengine-us-data/.venv/`, but Modal boots the container with the system Python, so `pipeline.py` imports were failing with `ModuleNotFoundError: No module named 'pandas'`. The image now sets `VIRTUAL_ENV`, prepends `.venv/bin` to `PATH`, and adds the venv site-packages to `PYTHONPATH`.
+
+
 ## [1.86.0] - 2026-04-21
 
 ### Added

@@ -103,7 +103,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
       GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
-      MODAL_ENVIRONMENT: policyengine-us-data-staging-pr-${{ github.event.pull_request.number }}
+      MODAL_ENVIRONMENT: staging-us-data-pr-${{ github.event.pull_request.number }}
       MODAL_APP_NAME: policyengine-us-data-pipeline
       MODAL_LOCAL_AREA_APP_NAME: policyengine-us-data-local-area
       MODAL_H5_TEST_HARNESS_APP_NAME: policyengine-us-data-h5-test-harness

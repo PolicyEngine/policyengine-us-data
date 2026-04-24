@@ -1719,7 +1719,7 @@ def main(argv=None):
         },
     }
     if checkpoint_output_path and Path(checkpoint_output_path).exists():
-        run_config["artifacts"]["calibration_checkpoint.pt"] = _sha256(
+        run_config["artifacts"]["calibration_weights.checkpoint.pt"] = _sha256(
             checkpoint_output_path
         )
     run_config.update(get_git_provenance())

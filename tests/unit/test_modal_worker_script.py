@@ -32,6 +32,27 @@ def test_parse_args_accepts_requests_json():
     assert args.work_items is None
 
 
+def test_parse_args_accepts_calibration_package_path():
+    args = worker_script.parse_args(
+        [
+            "--requests-json",
+            "[]",
+            "--weights-path",
+            "/tmp/weights.npy",
+            "--dataset-path",
+            "/tmp/source.h5",
+            "--db-path",
+            "/tmp/policy_data.db",
+            "--output-dir",
+            "/tmp/out",
+            "--calibration-package-path",
+            "/tmp/calibration_package.pkl",
+        ]
+    )
+
+    assert args.calibration_package_path == "/tmp/calibration_package.pkl"
+
+
 def test_load_request_inputs_from_args_uses_request_payloads_when_present():
     args = SimpleNamespace(
         requests_json=json.dumps([{"area_type": "national", "area_id": "US"}]),

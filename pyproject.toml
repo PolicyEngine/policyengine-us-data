@@ -85,6 +85,9 @@ testpaths = [
     "tests/unit",
     "tests/integration",
 ]
+markers = [
+    "integration: tests that exercise integration-level behavior or external runtime seams",
+]
 
 [tool.towncrier]
 package = "policyengine_us_data"

@@ -88,23 +88,48 @@ jobs:
 
   optimized-integration-tests:
     runs-on: ubuntu-latest
-    needs: [check-fork, lint]
+    needs:
+      [
+        check-fork,
+        check-lock-freshness,
+        lint,
+        check-changelog,
+        unit-tests,
+        smoke-test,
+        docs-build,
+      ]
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-      MODAL_ENVIRONMENT: main
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+      MODAL_ENVIRONMENT: staging-us-data-pr-${{ github.event.pull_request.number }}
       MODAL_APP_NAME: policyengine-us-data-pipeline
+      MODAL_LOCAL_AREA_APP_NAME: policyengine-us-data-local-area
+      MODAL_H5_TEST_HARNESS_APP_NAME: policyengine-us-data-h5-test-harness
+    name: Optimized integration tests (PR staging)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
       - name: Install optimized test deps
-        run: pip install modal pytest
-      - name: Deploy Modal pipeline app
+        run: pip install modal pytest numpy pandas
+      - name: Ensure PR Modal environment exists
+        run: python .github/scripts/ensure_modal_environment.py
+      - name: Sync Modal secrets to PR environment
+        run: python .github/scripts/sync_modal_secrets.py
+      - name: Deploy Modal pipeline app to PR staging
         run: modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/pipeline.py
-      - name: Run optimized integration tests
-        run: python -m pytest tests/optimized/test_modal_pipeline_seams.py -v
+      - name: Deploy Modal local-area app to PR staging
+        run: modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/local_area.py
+      - name: Deploy Modal H5 test harness to PR staging
+        run: modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/h5_test_harness.py
+      - name: Run optimized integration tests against PR staging
+        run: python -m pytest tests/optimized/ -v
+      - name: Cleanup PR Modal environment
+        if: always()
+        run: python .github/scripts/delete_modal_environment.py
 
   smoke-test:
     runs-on: ubuntu-latest
@@ -115,8 +140,8 @@ jobs:
         with:
           python-version: "3.14"
       - run: python -m pip install .
-      - run: python -c "import policyengine_us_data; print('OK')"
-      - run: python -c "from policyengine_core.data import Dataset; print('OK')"
+      - run: python .github/scripts/check_python_import.py policyengine_us_data
+      - run: python .github/scripts/check_python_import.py policyengine_core.data:Dataset
 
   docs-build:
     runs-on: ubuntu-latest
@@ -174,7 +199,7 @@ jobs:
         run: |
           STAGE_ARGS=""
           if git diff --name-only origin/main...HEAD | grep -qx 'pyproject.toml'; then
-            VERSION=$(python -c "from pathlib import Path; import tomllib; print(tomllib.load(Path('pyproject.toml').open('rb'))['project']['version'])")
+            VERSION=$(python .github/fetch_version.py)
             STAGE_ARGS="--upload --stage-only --run-id=${VERSION}"
             {
               echo "## Release Artifact Staging"

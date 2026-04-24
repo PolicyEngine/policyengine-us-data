@@ -154,6 +154,11 @@ def parse_args(argv: list[str] | None = None):
         help="Optional explicit path to geography_assignment.npz",
     )
     parser.add_argument(
+        "--calibration-package-path",
+        default=None,
+        help="Optional calibration_package.pkl used as a geography fallback",
+    )
+    parser.add_argument(
         "--n-clones",
         type=int,
         default=430,
@@ -328,6 +333,11 @@ def main(argv: list[str] | None = None):
         n_clones=args.n_clones,
         geography_path=(
             Path(args.geography_path) if args.geography_path is not None else None
+        ),
+        calibration_package_path=(
+            Path(args.calibration_package_path)
+            if args.calibration_package_path is not None
+            else None
         ),
     )
     print(

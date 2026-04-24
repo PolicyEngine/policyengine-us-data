@@ -470,6 +470,8 @@ def build_areas_worker(
     """
     setup_gcp_credentials()
     setup_repo(branch)
+    pipeline_volume.reload()
+    staging_volume.reload()
 
     output_dir = Path(VOLUME_MOUNT) / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -491,6 +493,13 @@ def build_areas_worker(
     ]
     if "geography" in calibration_inputs:
         worker_cmd.extend(["--geography-path", calibration_inputs["geography"]])
+    if "calibration_package" in calibration_inputs:
+        worker_cmd.extend(
+            [
+                "--calibration-package-path",
+                calibration_inputs["calibration_package"],
+            ]
+        )
     if "n_clones" in calibration_inputs:
         worker_cmd.extend(["--n-clones", str(calibration_inputs["n_clones"])])
     if "seed" in calibration_inputs:
@@ -551,6 +560,7 @@ def build_areas_worker(
 def validate_staging(branch: str, run_id: str, version: str = "") -> Dict:
     """Validate all expected files and generate manifest."""
     setup_repo(branch)
+    staging_volume.reload()
 
     if not version:
         version = run_id.split("_", 1)[0]
@@ -782,6 +792,7 @@ def coordinate_publish(
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
     config_json_path = artifacts / "unified_run_config.json"
+    calibration_package_path = artifacts / "calibration_package.pkl"
 
     required = {
         "weights": weights_path,
@@ -804,6 +815,8 @@ def coordinate_publish(
         "n_clones": n_clones,
         "seed": 42,
     }
+    if calibration_package_path.exists():
+        calibration_inputs["calibration_package"] = str(calibration_package_path)
     validate_artifacts(config_json_path, artifacts)
 
     if validate:
@@ -827,17 +840,34 @@ def coordinate_publish(
         fingerprint = expected_fingerprint
         print(f"Using pinned fingerprint from pipeline: {fingerprint}")
     else:
+        geography_path_expr = (
+            f'Path("{geography_path}")' if geography_path.exists() else "None"
+        )
+        package_path_expr = (
+            f'Path("{calibration_package_path}")'
+            if calibration_package_path.exists()
+            else "None"
+        )
         fp_result = subprocess.run(
-            [
-                "python",
+            _python_cmd(
                 "-c",
                 f"""
+from pathlib import Path
 from policyengine_us_data.calibration.publish_local_area import (
     compute_input_fingerprint,
 )
-print(compute_input_fingerprint("{weights_path}", "{dataset_path}", {n_clones}, seed=42))
+print(
+    compute_input_fingerprint(
+        Path("{weights_path}"),
+        Path("{dataset_path}"),
+        {n_clones},
+        seed=42,
+        geography_path={geography_path_expr},
+        calibration_package_path={package_path_expr},
+    )
+)
 """,
-            ],
+            ),
             capture_output=True,
             text=True,
             env=os.environ.copy(),

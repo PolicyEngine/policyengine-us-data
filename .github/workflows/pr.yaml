@@ -94,17 +94,23 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       MODAL_ENVIRONMENT: main
       MODAL_APP_NAME: policyengine-us-data-pipeline
+      MODAL_LOCAL_AREA_APP_NAME: policyengine-us-data-local-area
+      MODAL_H5_TEST_HARNESS_APP_NAME: policyengine-us-data-h5-test-harness
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
       - name: Install optimized test deps
-        run: pip install modal pytest
+        run: pip install modal pytest numpy pandas
       - name: Deploy Modal pipeline app
         run: modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/pipeline.py
+      - name: Deploy Modal local-area app
+        run: modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/local_area.py
+      - name: Deploy Modal H5 test harness
+        run: modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/h5_test_harness.py
       - name: Run optimized integration tests
-        run: python -m pytest tests/optimized/test_modal_pipeline_seams.py -v
+        run: python -m pytest tests/optimized/ -v
 
   smoke-test:
     runs-on: ubuntu-latest

@@ -491,6 +491,13 @@ def build_areas_worker(
     ]
     if "geography" in calibration_inputs:
         worker_cmd.extend(["--geography-path", calibration_inputs["geography"]])
+    if "calibration_package" in calibration_inputs:
+        worker_cmd.extend(
+            [
+                "--calibration-package-path",
+                calibration_inputs["calibration_package"],
+            ]
+        )
     if "n_clones" in calibration_inputs:
         worker_cmd.extend(["--n-clones", str(calibration_inputs["n_clones"])])
     if "seed" in calibration_inputs:
@@ -782,6 +789,7 @@ def coordinate_publish(
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
     config_json_path = artifacts / "unified_run_config.json"
+    calibration_package_path = artifacts / "calibration_package.pkl"
 
     required = {
         "weights": weights_path,
@@ -804,6 +812,8 @@ def coordinate_publish(
         "n_clones": n_clones,
         "seed": 42,
     }
+    if calibration_package_path.exists():
+        calibration_inputs["calibration_package"] = str(calibration_package_path)
     validate_artifacts(config_json_path, artifacts)
 
     if validate:

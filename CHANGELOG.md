@@ -1,3 +1,14 @@
+## [1.86.2] - 2026-04-24
+
+### Changed
+
+- Extracted inline CI/CD workflow Python into dedicated helper scripts under `.github/scripts` and updated the PR, pipeline, local-area publish, and push workflows to call them directly.
+
+### Fixed
+
+- Added a tiny-fixture Modal H5 end-to-end PR test harness and aligned checkpoint/package artifact handling so local-area publication catches contract mismatches earlier.
+
+
 ## [1.86.1] - 2026-04-23
 
 ### Fixed

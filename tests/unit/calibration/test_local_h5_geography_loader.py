@@ -25,7 +25,12 @@ def test_load_prefers_saved_geography_artifact(tmp_path):
 
     assert geography.n_records == 2
     assert geography.n_clones == 2
-    assert tuple(str(item) for item in geography.cd_geoid) == ("101", "102", "101", "102")
+    assert tuple(str(item) for item in geography.cd_geoid) == (
+        "101",
+        "102",
+        "101",
+        "102",
+    )
 
 
 def test_load_saved_geography_rejects_size_mismatch(tmp_path):
@@ -44,7 +49,10 @@ def test_load_falls_back_to_legacy_blocks(tmp_path, monkeypatch):
     weights_path = tmp_path / "calibration_weights.npy"
     blocks_path = tmp_path / "stacked_blocks.npy"
     np.save(weights_path, np.array([1.0, 2.0]))
-    np.save(blocks_path, np.array(["010010000001", "010010000002", "010010000001", "010010000002"]))
+    np.save(
+        blocks_path,
+        np.array(["010010000001", "010010000002", "010010000001", "010010000002"]),
+    )
 
     calls = {}
 

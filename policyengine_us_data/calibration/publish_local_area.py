@@ -57,6 +57,7 @@ def compute_input_fingerprint(
     seed: int = 42,
     geography_path: Optional[Path] = None,
     blocks_path: Optional[Path] = None,
+    calibration_package_path: Optional[Path] = None,
 ) -> str:
     import hashlib
 
@@ -82,6 +83,7 @@ def compute_input_fingerprint(
         weights_path=weights_path,
         geography_path=geography_path,
         blocks_path=blocks_path,
+        calibration_package_path=calibration_package_path,
     )
     if resolved is not None:
         n_records = _infer_n_records()
@@ -93,6 +95,7 @@ def compute_input_fingerprint(
                 n_clones=n_clones,
                 geography_path=geography_path,
                 blocks_path=blocks_path,
+                calibration_package_path=calibration_package_path,
             ).encode()
         )
     else:
@@ -106,12 +109,18 @@ def load_calibration_geography(
     n_clones: Optional[int] = None,
     geography_path: Optional[Path] = None,
     blocks_path: Optional[Path] = None,
+    calibration_package_path: Optional[Path] = None,
 ):
     loader = CalibrationGeographyLoader()
     resolved = loader.resolve_source(
         weights_path=Path(weights_path),
         geography_path=Path(geography_path) if geography_path is not None else None,
         blocks_path=Path(blocks_path) if blocks_path is not None else None,
+        calibration_package_path=(
+            Path(calibration_package_path)
+            if calibration_package_path is not None
+            else None
+        ),
     )
     geography = loader.load(
         weights_path=Path(weights_path),
@@ -119,6 +128,11 @@ def load_calibration_geography(
         n_clones=n_clones,
         geography_path=Path(geography_path) if geography_path is not None else None,
         blocks_path=Path(blocks_path) if blocks_path is not None else None,
+        calibration_package_path=(
+            Path(calibration_package_path)
+            if calibration_package_path is not None
+            else None
+        ),
     )
     if resolved is not None:
         if resolved.kind == "saved_geography":

@@ -34,6 +34,8 @@ app = modal.App("policyengine-us-data-h5-test-harness")
 def seed_h5_case(run_id: str, case_name: str) -> dict:
     from modal_app.test_support.h5_cases import seed_case
 
+    pipeline_volume.reload()
+    staging_volume.reload()
     artifact_dir = Path(f"/pipeline/artifacts/{run_id}")
     staging_dir = Path(VOLUME_MOUNT) / run_id
     seeded = seed_case(
@@ -64,16 +66,17 @@ def seed_h5_case(run_id: str, case_name: str) -> dict:
     cpu=1.0,
 )
 def preflight_h5_case(run_id: str, *, n_clones: int = 1) -> dict:
-    from modal_app.local_area import (
-        _build_publishing_input_bundle,
-        _resolve_scope_fingerprint,
-        validate_artifacts,
-    )
+    from modal_app.local_area import validate_artifacts
     from modal_app.test_support.h5_cases import SEED
+    from policyengine_us_data.calibration.publish_local_area import (
+        compute_input_fingerprint,
+    )
     from policyengine_us_data.calibration.local_h5.geography_loader import (
         CalibrationGeographyLoader,
     )
 
+    pipeline_volume.reload()
+    staging_volume.reload()
     artifact_dir = Path(f"/pipeline/artifacts/{run_id}")
     config_path = artifact_dir / "unified_run_config.json"
     weights_path = artifact_dir / "calibration_weights.npy"
@@ -83,20 +86,15 @@ def preflight_h5_case(run_id: str, *, n_clones: int = 1) -> dict:
     package_path = artifact_dir / "calibration_package.pkl"
 
     validate_artifacts(config_path, artifact_dir)
-    inputs = _build_publishing_input_bundle(
+    fingerprint = compute_input_fingerprint(
         weights_path=weights_path,
         dataset_path=dataset_path,
-        db_path=db_path,
-        geography_path=geography_path if geography_path.exists() else None,
-        calibration_package_path=package_path if package_path.exists() else None,
-        run_config_path=config_path if config_path.exists() else None,
-        run_id=run_id,
-        version=run_id.split("_", 1)[0] if "_" in run_id else run_id,
         n_clones=n_clones,
         seed=SEED,
-        legacy_blocks_path=artifact_dir / "stacked_blocks.npy",
+        geography_path=geography_path if geography_path.exists() else None,
+        blocks_path=artifact_dir / "stacked_blocks.npy",
+        calibration_package_path=package_path if package_path.exists() else None,
     )
-    fingerprint = _resolve_scope_fingerprint(inputs=inputs, scope="regional")
     loader = CalibrationGeographyLoader()
     resolved = loader.resolve_source(
         weights_path=weights_path,
@@ -133,6 +131,8 @@ def preflight_h5_case(run_id: str, *, n_clones: int = 1) -> dict:
     cpu=1.0,
 )
 def cleanup_h5_case(run_id: str) -> None:
+    pipeline_volume.reload()
+    staging_volume.reload()
     artifact_dir = Path(f"/pipeline/artifacts/{run_id}")
     staging_dir = Path(VOLUME_MOUNT) / run_id
     if artifact_dir.exists():

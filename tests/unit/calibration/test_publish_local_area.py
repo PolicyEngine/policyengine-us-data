@@ -1,8 +1,10 @@
 import numpy as np
+from types import SimpleNamespace
 
 from policyengine_us_data.calibration.publish_local_area import (
     _build_reported_takeup_anchors,
     compute_input_fingerprint,
+    load_calibration_geography,
 )
 
 
@@ -78,7 +80,7 @@ def test_compute_input_fingerprint_uses_loader_canonical_geography_identity(
 
     monkeypatch.setattr(
         "policyengine_us_data.calibration.publish_local_area.CalibrationGeographyLoader.resolve_source",
-        lambda self, **kwargs: object(),
+        lambda self, **kwargs: SimpleNamespace(kind="saved_geography"),
     )
     monkeypatch.setattr(
         "policyengine_us_data.calibration.publish_local_area.CalibrationGeographyLoader.compute_canonical_checksum",
@@ -99,3 +101,84 @@ def test_compute_input_fingerprint_uses_loader_canonical_geography_identity(
     )
 
     assert first == second
+
+
+def test_compute_input_fingerprint_passes_calibration_package_path_to_loader(
+    tmp_path, monkeypatch
+):
+    weights_path = tmp_path / "weights.npy"
+    dataset_path = tmp_path / "dataset.h5"
+    package_path = tmp_path / "calibration_package.pkl"
+
+    np.save(weights_path, np.array([1.0, 2.0, 3.0, 4.0]))
+    dataset_path.write_bytes(b"dataset")
+    package_path.write_bytes(b"package")
+
+    seen = {}
+
+    def fake_resolve_source(self, **kwargs):
+        seen["resolve"] = kwargs
+        return SimpleNamespace(kind="calibration_package")
+
+    def fake_compute_canonical_checksum(self, **kwargs):
+        seen["checksum"] = kwargs
+        return "sha256:canonical-package"
+
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.publish_local_area.CalibrationGeographyLoader.resolve_source",
+        fake_resolve_source,
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.publish_local_area.CalibrationGeographyLoader.compute_canonical_checksum",
+        fake_compute_canonical_checksum,
+    )
+
+    compute_input_fingerprint(
+        weights_path,
+        dataset_path,
+        n_clones=2,
+        calibration_package_path=package_path,
+    )
+
+    assert seen["resolve"]["calibration_package_path"] == package_path
+    assert seen["checksum"]["calibration_package_path"] == package_path
+
+
+def test_load_calibration_geography_passes_calibration_package_path_to_loader(
+    tmp_path, monkeypatch
+):
+    weights_path = tmp_path / "weights.npy"
+    package_path = tmp_path / "calibration_package.pkl"
+
+    np.save(weights_path, np.array([1.0, 2.0, 3.0, 4.0]))
+    package_path.write_bytes(b"package")
+
+    seen = {}
+
+    def fake_resolve_source(self, **kwargs):
+        seen["resolve"] = kwargs
+        return None
+
+    def fake_load(self, **kwargs):
+        seen["load"] = kwargs
+        return "geography"
+
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.publish_local_area.CalibrationGeographyLoader.resolve_source",
+        fake_resolve_source,
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.publish_local_area.CalibrationGeographyLoader.load",
+        fake_load,
+    )
+
+    result = load_calibration_geography(
+        weights_path=weights_path,
+        n_records=2,
+        n_clones=2,
+        calibration_package_path=package_path,
+    )
+
+    assert result == "geography"
+    assert seen["resolve"]["calibration_package_path"] == package_path
+    assert seen["load"]["calibration_package_path"] == package_path

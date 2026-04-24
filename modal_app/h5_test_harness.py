@@ -32,7 +32,7 @@ app = modal.App("policyengine-us-data-h5-test-harness")
     cpu=1.0,
 )
 def seed_h5_case(run_id: str, case_name: str) -> dict:
-    from modal_app.test_support.h5_cases import seed_case
+    from modal_app.fixtures.h5_cases import seed_case
 
     pipeline_volume.reload()
     staging_volume.reload()
@@ -67,7 +67,7 @@ def seed_h5_case(run_id: str, case_name: str) -> dict:
 )
 def preflight_h5_case(run_id: str, *, n_clones: int = 1) -> dict:
     from modal_app.local_area import validate_artifacts
-    from modal_app.test_support.h5_cases import SEED
+    from modal_app.fixtures.h5_cases import SEED
     from policyengine_us_data.calibration.publish_local_area import (
         compute_input_fingerprint,
     )

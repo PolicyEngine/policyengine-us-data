@@ -116,62 +116,9 @@ jobs:
       - name: Install optimized test deps
         run: pip install modal pytest numpy pandas
       - name: Ensure PR Modal environment exists
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import subprocess
-
-          env_name = os.environ["MODAL_ENVIRONMENT"]
-          environments = json.loads(
-              subprocess.check_output(
-                  ["modal", "environment", "list", "--json"],
-                  text=True,
-              )
-          )
-          if not any(item["name"] == env_name for item in environments):
-              subprocess.run(
-                  ["modal", "environment", "create", env_name],
-                  check=True,
-              )
-          PY
+        run: python .github/scripts/ensure_modal_environment.py
       - name: Sync Modal secrets to PR environment
-        run: |
-          python - <<'PY'
-          import os
-          import subprocess
-
-          env_name = os.environ["MODAL_ENVIRONMENT"]
-          subprocess.run(
-              [
-                  "modal",
-                  "secret",
-                  "create",
-                  "--env",
-                  env_name,
-                  "--force",
-                  "huggingface-token",
-                  f"HUGGING_FACE_TOKEN={os.environ['HUGGING_FACE_TOKEN']}",
-              ],
-              check=True,
-          )
-          subprocess.run(
-              [
-                  "modal",
-                  "secret",
-                  "create",
-                  "--env",
-                  env_name,
-                  "--force",
-                  "gcp-credentials",
-                  (
-                      "GOOGLE_APPLICATION_CREDENTIALS_JSON="
-                      f"{os.environ['GOOGLE_APPLICATION_CREDENTIALS']}"
-                  ),
-              ],
-              check=True,
-          )
-          PY
+        run: python .github/scripts/sync_modal_secrets.py
       - name: Deploy Modal pipeline app to PR staging
         run: modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/pipeline.py
       - name: Deploy Modal local-area app to PR staging
@@ -182,25 +129,7 @@ jobs:
         run: python -m pytest tests/optimized/ -v
       - name: Cleanup PR Modal environment
         if: always()
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import subprocess
-
-          env_name = os.environ["MODAL_ENVIRONMENT"]
-          environments = json.loads(
-              subprocess.check_output(
-                  ["modal", "environment", "list", "--json"],
-                  text=True,
-              )
-          )
-          if any(item["name"] == env_name for item in environments):
-              subprocess.run(
-                  ["modal", "environment", "delete", "--yes", env_name],
-                  check=True,
-              )
-          PY
+        run: python .github/scripts/delete_modal_environment.py
 
   smoke-test:
     runs-on: ubuntu-latest
@@ -211,8 +140,8 @@ jobs:
         with:
           python-version: "3.14"
       - run: python -m pip install .
-      - run: python -c "import policyengine_us_data; print('OK')"
-      - run: python -c "from policyengine_core.data import Dataset; print('OK')"
+      - run: python .github/scripts/check_python_import.py policyengine_us_data
+      - run: python .github/scripts/check_python_import.py policyengine_core.data:Dataset
 
   docs-build:
     runs-on: ubuntu-latest
@@ -270,7 +199,7 @@ jobs:
         run: |
           STAGE_ARGS=""
           if git diff --name-only origin/main...HEAD | grep -qx 'pyproject.toml'; then
-            VERSION=$(python -c "from pathlib import Path; import tomllib; print(tomllib.load(Path('pyproject.toml').open('rb'))['project']['version'])")
+            VERSION=$(python .github/fetch_version.py)
             STAGE_ARGS="--upload --stage-only --run-id=${VERSION}"
             {
               echo "## Release Artifact Staging"

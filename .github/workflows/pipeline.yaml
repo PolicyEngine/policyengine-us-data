@@ -58,39 +58,14 @@ jobs:
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          PIPELINE_BRANCH: main
+          GPU: ${{ inputs.gpu || 'T4' }}
+          EPOCHS: ${{ inputs.epochs || '1000' }}
+          NATIONAL_EPOCHS: ${{ inputs.national_epochs || '1000' }}
+          NUM_WORKERS: ${{ inputs.num_workers || '50' }}
+          SKIP_NATIONAL: ${{ inputs.skip_national || 'false' }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id || '' }}
+          VERSION_OVERRIDE: ${{ inputs.version_override || '' }}
         run: |
           modal deploy modal_app/pipeline.py
-
-          GPU="${{ inputs.gpu || 'T4' }}"
-          EPOCHS="${{ inputs.epochs || '1000' }}"
-          NATIONAL_EPOCHS="${{ inputs.national_epochs || '1000' }}"
-          NUM_WORKERS="${{ inputs.num_workers || '50' }}"
-          SKIP_NATIONAL="${{ inputs.skip_national || 'false' }}"
-          RESUME_RUN_ID="${{ inputs.resume_run_id || '' }}"
-          VERSION_OVERRIDE="${{ inputs.version_override || '' }}"
-
-          python -c "
-          import modal
-          run_pipeline = modal.Function.from_name('policyengine-us-data-pipeline', 'run_pipeline')
-          fc = run_pipeline.spawn(
-              branch='main',
-              gpu='${GPU}',
-              epochs=int('${EPOCHS}'),
-              national_epochs=int('${NATIONAL_EPOCHS}'),
-              num_workers=int('${NUM_WORKERS}'),
-              skip_national='${SKIP_NATIONAL}' == 'true',
-              resume_run_id='${RESUME_RUN_ID}' or None,
-              version_override='${VERSION_OVERRIDE}' or '',
-          )
-          print(f'Pipeline spawned.')
-          print(f'Function call ID: {fc.object_id}')
-
-          with open('$GITHUB_STEP_SUMMARY', 'a') as f:
-              f.write('## Pipeline Launched\n\n')
-              f.write('| Field | Value |\n')
-              f.write('|-------|-------|\n')
-              f.write(f'| GPU | \`${GPU}\` |\n')
-              f.write(f'| Epochs | \`${EPOCHS}\` / \`${NATIONAL_EPOCHS}\` |\n')
-              f.write(f'| Function call ID | \`{fc.object_id}\` |\n\n')
-              f.write('**[Monitor on Modal Dashboard](https://modal.com/apps)**\n')
-          "
+          python .github/scripts/spawn_modal_pipeline.py

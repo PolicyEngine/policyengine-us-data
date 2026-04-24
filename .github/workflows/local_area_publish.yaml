@@ -102,12 +102,10 @@ jobs:
 
       - name: Upload validation results to HF
         run: |
-          uv run python -c "
-          from policyengine_us_data.utils.huggingface import upload
-          upload('validation_results.csv',
-                 'policyengine/policyengine-us-data',
-                 'calibration/logs/validation_results.csv')
-          "
+          uv run python .github/scripts/upload_validation_results.py \
+            validation_results.csv \
+            policyengine/policyengine-us-data \
+            calibration/logs/validation_results.csv
 
       - name: Post validation summary
         if: always()

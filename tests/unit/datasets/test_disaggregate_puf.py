@@ -327,10 +327,7 @@ def _make_mock_scf_forbes_donors() -> pd.DataFrame:
         donor[f"{column}_ratio"] = donor[column].to_numpy(dtype=float) / wealth
     donor["wealth_score"] = np.log1p(wealth)
     donor["major_income_total"] = (
-        donor["wageinc"]
-        + donor["kginc"]
-        + donor["intdivinc"]
-        + donor["bussefarminc"]
+        donor["wageinc"] + donor["kginc"] + donor["intdivinc"] + donor["bussefarminc"]
     )
     return donor
 
@@ -917,9 +914,7 @@ class TestForbesBackbone:
 
         assert result["employment_income"].iloc[0] == pytest.approx(10_000_000.0)
         assert result["capital_gains"].iloc[0] == pytest.approx(187_500_000.0)
-        assert result["interest_dividend_income"].iloc[0] == pytest.approx(
-            25_000_000.0
-        )
+        assert result["interest_dividend_income"].iloc[0] == pytest.approx(25_000_000.0)
         assert result["business_farm_income"].iloc[0] == pytest.approx(18_750_000.0)
 
     def test_forbes_selection_uses_scf_membership_scores(self, monkeypatch):
@@ -1058,9 +1053,7 @@ class TestForbesCache:
         }
         assert result["alias"].iloc[0] == "elon-musk"
 
-    def test_default_scf_load_uses_packaged_donors_without_raw_scf(
-        self, monkeypatch
-    ):
+    def test_default_scf_load_uses_packaged_donors_without_raw_scf(self, monkeypatch):
         from policyengine_us_data.datasets.puf import forbes_backbone
 
         forbes_backbone._SCF_FORBES_DONOR_CACHE.clear()
@@ -1074,7 +1067,9 @@ class TestForbesCache:
 
         assert len(result) == 6092
         assert "wageinc_ratio" in result.columns
-        assert result["archetype"].isin(["dividend", "ltcg", "mixed", "partnership"]).all()
+        assert (
+            result["archetype"].isin(["dividend", "ltcg", "mixed", "partnership"]).all()
+        )
 
     def test_corrupt_stale_cache_refreshes(self, tmp_path, monkeypatch):
         from policyengine_us_data.datasets.puf import forbes_backbone

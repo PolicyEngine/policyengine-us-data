@@ -39,25 +39,15 @@ FORBES_TOP_TAIL_SCF_YEAR = 2022
 FORBES_TOP_TAIL_AGI_THRESHOLD = 100_000_000
 
 FORBES_RTB_API_BASE_URL = (
-    "https://raw.githubusercontent.com/komed3/rtb-api/"
-    f"{FORBES_RTB_API_REF}"
+    f"https://raw.githubusercontent.com/komed3/rtb-api/{FORBES_RTB_API_REF}"
 )
-FORBES_US_ALIASES_URL = (
-    f"{FORBES_RTB_API_BASE_URL}/api/filter/country/us"
-)
-FORBES_LIST_URL_TEMPLATE = (
-    f"{FORBES_RTB_API_BASE_URL}/api/list/rtb/{{snapshot_date}}"
-)
-FORBES_PROFILE_INFO_URL = (
-    f"{FORBES_RTB_API_BASE_URL}/api/profile/{{alias}}/info"
-)
+FORBES_US_ALIASES_URL = f"{FORBES_RTB_API_BASE_URL}/api/filter/country/us"
+FORBES_LIST_URL_TEMPLATE = f"{FORBES_RTB_API_BASE_URL}/api/list/rtb/{{snapshot_date}}"
+FORBES_PROFILE_INFO_URL = f"{FORBES_RTB_API_BASE_URL}/api/profile/{{alias}}/info"
 FORBES_PACKAGED_SNAPSHOT_NAME = (
-    "forbes_us_top_400_"
-    f"{FORBES_DEFAULT_SNAPSHOT_DATE}_{FORBES_RTB_API_REF[:12]}.json"
+    f"forbes_us_top_400_{FORBES_DEFAULT_SNAPSHOT_DATE}_{FORBES_RTB_API_REF[:12]}.json"
 )
-SCF_PACKAGED_DONOR_NAME = (
-    f"scf_forbes_donors_{FORBES_TOP_TAIL_SCF_YEAR}.json.gz"
-)
+SCF_PACKAGED_DONOR_NAME = f"scf_forbes_donors_{FORBES_TOP_TAIL_SCF_YEAR}.json.gz"
 
 SCF_JOINT_INCOME_COLUMNS = (
     "wageinc",
@@ -452,11 +442,11 @@ def format_forbes_top_tail_diagnostics(
             f"{int(summary['replicate_count']):,} draws"
         ),
         (
-        "Calibration: max absolute error "
-        f"{_format_dollars(summary['max_calibration_abs_error'])}; "
-        "max relative error "
-        f"{_format_percent(summary['max_calibration_rel_error'])}; "
-        f"loss={summary['total_calibration_loss']:.3g}"
+            "Calibration: max absolute error "
+            f"{_format_dollars(summary['max_calibration_abs_error'])}; "
+            "max relative error "
+            f"{_format_percent(summary['max_calibration_rel_error'])}; "
+            f"loss={summary['total_calibration_loss']:.3g}"
         ),
         "",
         "## Composition",
@@ -551,8 +541,7 @@ def validate_forbes_top_tail_artifact(
     missing_columns = required_columns.difference(artifact.synthetic.columns)
     if missing_columns:
         raise ValueError(
-            "Forbes synthetic output is missing columns: "
-            f"{sorted(missing_columns)}."
+            f"Forbes synthetic output is missing columns: {sorted(missing_columns)}."
         )
 
     numeric_columns = [column for column in required_columns if column != "RECID"]
@@ -678,9 +667,7 @@ def prepare_scf_forbes_donor_pool(raw_scf: pd.DataFrame) -> pd.DataFrame:
         {
             "age": _numeric_series(raw_scf, "age"),
             "is_married": _numeric_series(raw_scf, "married").eq(1),
-            "wgt": _numeric_series(raw_scf, "household_weight", "wgt").clip(
-                lower=0.0
-            ),
+            "wgt": _numeric_series(raw_scf, "household_weight", "wgt").clip(lower=0.0),
             "net_worth": _numeric_series(raw_scf, "networth", "net_worth"),
             "wageinc": _numeric_series(raw_scf, "wageinc"),
             "kginc": _numeric_series(raw_scf, "kginc"),
@@ -712,10 +699,7 @@ def prepare_scf_forbes_donor_pool(raw_scf: pd.DataFrame) -> pd.DataFrame:
         tail[f"{column}_ratio"] = tail[column].to_numpy(dtype=float) / wealth
 
     tail["major_income_total"] = (
-        tail["wageinc"]
-        + tail["kginc"]
-        + tail["intdivinc"]
-        + tail["bussefarminc"]
+        tail["wageinc"] + tail["kginc"] + tail["intdivinc"] + tail["bussefarminc"]
     )
     tail["wealth_score"] = np.log1p(tail["net_worth"].to_numpy(dtype=float))
     tail["archetype"] = classify_scf_archetypes(tail)
@@ -865,8 +849,7 @@ def fetch_profile_info_batch(
         if len(failures) > 5:
             failed_aliases += f", ... ({len(failures)} total)"
         raise RuntimeError(
-            "Failed to fetch Forbes profile metadata for "
-            f"{failed_aliases}."
+            f"Failed to fetch Forbes profile metadata for {failed_aliases}."
         ) from failures[0][1]
     return results
 
@@ -976,9 +959,7 @@ def score_forbes_selection_with_scf(
         probabilities = scf_match_probabilities(candidates, row)
         agi_values = scf_implied_agi_values(candidates, row)
         tail_probabilities.append(
-            float(
-                probabilities[agi_values >= FORBES_TOP_TAIL_AGI_THRESHOLD].sum()
-            )
+            float(probabilities[agi_values >= FORBES_TOP_TAIL_AGI_THRESHOLD].sum())
         )
         expected_agi.append(float(np.dot(probabilities, agi_values)))
 
@@ -1075,7 +1056,9 @@ def scf_candidates_for_receiver(
 ) -> pd.DataFrame:
     """Return the SCF donor neighborhood for one Forbes receiver."""
 
-    candidates = scf_donors[scf_donors["archetype"] == getattr(receiver, "archetype", "")]
+    candidates = scf_donors[
+        scf_donors["archetype"] == getattr(receiver, "archetype", "")
+    ]
     if len(candidates) < 20:
         return scf_donors
     return candidates
@@ -1097,8 +1080,8 @@ def scf_implied_component_values(
         0.0,
         networth * candidates["intdivinc_ratio"].to_numpy(dtype=float),
     )
-    business_farm_income = (
-        networth * candidates["bussefarminc_ratio"].to_numpy(dtype=float)
+    business_farm_income = networth * candidates["bussefarminc_ratio"].to_numpy(
+        dtype=float
     )
     pension_income = np.maximum(
         0.0,
@@ -1253,7 +1236,9 @@ def puf_template_match_probabilities(
     score_mass = donor_scores.loc[candidates.index].to_numpy(dtype=float)
     score_mass = np.clip(score_mass, 1e-6, None) ** 8
 
-    candidate_scale = np.maximum(np.abs(candidates["E00100"].to_numpy(dtype=float)), 1.0)
+    candidate_scale = np.maximum(
+        np.abs(candidates["E00100"].to_numpy(dtype=float)), 1.0
+    )
     candidate_components = np.column_stack(
         [
             candidates["E00200"].to_numpy(dtype=float),
@@ -1525,7 +1510,9 @@ def apply_forbes_structural_overrides(
         else:
             mars = np.ones(len(synthetic), dtype=int)
         base_people = np.where(mars == 2, 2, 1)
-        children = pd.to_numeric(forbes["children"], errors="coerce").fillna(0).clip(0, 3)
+        children = (
+            pd.to_numeric(forbes["children"], errors="coerce").fillna(0).clip(0, 3)
+        )
         synthetic["XTOT"] = np.clip(base_people + children.to_numpy(dtype=int), 1, 5)
 
     if "DSI" in synthetic.columns:
@@ -1549,7 +1536,9 @@ def _build_calibration_diagnostics(
         if abs(target_total) > ARTIFACT_NUMERIC_TOL:
             relative_error = absolute_error / target_total
         else:
-            relative_error = 0.0 if abs(absolute_error) <= ARTIFACT_NUMERIC_TOL else np.nan
+            relative_error = (
+                0.0 if abs(absolute_error) <= ARTIFACT_NUMERIC_TOL else np.nan
+            )
         squared_relative_error = (
             relative_error**2 if np.isfinite(relative_error) else np.nan
         )
@@ -1587,7 +1576,9 @@ def _build_composition_diagnostics(
         if not available_columns:
             continue
 
-        target_total = pop_weight * sum(float(row.get(column, 0.0)) for column in columns)
+        target_total = pop_weight * sum(
+            float(row.get(column, 0.0)) for column in columns
+        )
         synthetic_total = _weighted_columns_total(
             artifact.synthetic,
             available_columns,
@@ -1616,17 +1607,11 @@ def _build_composition_diagnostics(
                 "puf_prior_total": puf_prior_total,
                 "synthetic_total": synthetic_total,
                 "absolute_error": synthetic_total - target_total,
-                "synthetic_loss": _squared_relative_error(
-                    synthetic_relative_error
-                ),
+                "synthetic_loss": _squared_relative_error(synthetic_relative_error),
                 "puf_prior_relative_error": puf_prior_relative_error,
-                "puf_prior_loss": _squared_relative_error(
-                    puf_prior_relative_error
-                ),
+                "puf_prior_loss": _squared_relative_error(puf_prior_relative_error),
                 "scf_prior_relative_error": scf_prior_relative_error,
-                "scf_prior_loss": _squared_relative_error(
-                    scf_prior_relative_error
-                ),
+                "scf_prior_loss": _squared_relative_error(scf_prior_relative_error),
                 "share_of_agi": (
                     synthetic_total / synthetic_total_agi
                     if abs(synthetic_total_agi) > ARTIFACT_NUMERIC_TOL

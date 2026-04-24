@@ -5,8 +5,7 @@ import sys
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit(
-            "usage: python .github/scripts/check_python_import.py "
-            "<module>[:attribute]"
+            "usage: python .github/scripts/check_python_import.py <module>[:attribute]"
         )
 
     target = sys.argv[1]

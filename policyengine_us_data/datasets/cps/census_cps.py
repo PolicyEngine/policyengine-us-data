@@ -5,6 +5,9 @@ from io import BytesIO
 from zipfile import ZipFile
 import pandas as pd
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.datasets.cps.tax_unit_construction import (
+    construct_tax_units,
+)
 
 
 OPTIONAL_PERSON_COLUMNS = {
@@ -26,6 +29,7 @@ OPTIONAL_PERSON_COLUMNS = {
     "NOW_CHAMPVA",
     "NOW_VACARE",
     "NOW_IHSFLG",
+    "PTOTVAL",
 }
 
 
@@ -58,6 +62,9 @@ class CensusCPS(Dataset):
 
     time_period: int
     """Year of the dataset."""
+
+    tax_unit_construction_mode: str = "policyengine"
+    """Mode used when constructing tax units from CPS person records."""
 
     def generate(self):
         if self._cps_download_url is None:
@@ -117,6 +124,7 @@ class CensusCPS(Dataset):
                         usecols=person_usecols,
                     ).fillna(0)
                 person = _fill_missing_optional_person_columns(person)
+                tax_unit = self._create_tax_unit_table(person)
                 storage["person"] = person
                 with zipfile.open(f"{file_prefix}ffpub{file_year_code}.csv") as f:
                     person_family_id = person.PH_SEQ * 10 + person.PF_SEQ
@@ -130,7 +138,7 @@ class CensusCPS(Dataset):
                     household_id = household.H_SEQ
                     household = household[household_id.isin(person_household_id)]
                     storage["household"] = household
-                storage["tax_unit"] = self._create_tax_unit_table(person)
+                storage["tax_unit"] = tax_unit
                 storage["spm_unit"] = self._create_spm_unit_table(
                     person, self.time_period
                 )
@@ -139,10 +147,20 @@ class CensusCPS(Dataset):
     def _cps_download_url(self) -> str:
         return CPS_URL_BY_YEAR.get(self.time_period)
 
-    def _create_tax_unit_table(self, person: pd.DataFrame) -> pd.DataFrame:
-        tax_unit_df = person[TAX_UNIT_COLUMNS].groupby(person.TAX_ID).sum()
-        tax_unit_df["TAX_ID"] = tax_unit_df.index
-        return tax_unit_df
+    def _create_tax_unit_table(
+        self,
+        person: pd.DataFrame,
+        mode: str | None = None,
+    ) -> pd.DataFrame:
+        person["CENSUS_TAX_ID"] = person["TAX_ID"]
+        mode = mode or self.tax_unit_construction_mode
+        constructed_person, tax_unit_df = construct_tax_units(
+            person=person,
+            year=self.time_period,
+            mode=mode,
+        )
+        person["TAX_ID"] = constructed_person["TAX_ID"].values
+        return tax_unit_df[["TAX_ID"]]
 
     def _create_spm_unit_table(
         self, person: pd.DataFrame, time_period: int
@@ -282,12 +300,18 @@ PERSON_COLUMNS = [
     "PF_SEQ",
     "P_SEQ",
     "TAX_ID",
+    "PECOHAB",
     "SPM_ID",
     "A_FNLWGT",
     "A_LINENO",
     "A_SPOUSE",
+    "A_EXPRRP",
+    "A_FAMREL",
+    "A_FAMTYP",
     "A_AGE",
     "A_SEX",
+    "A_ENRLW",
+    "A_FTPT",
     "PEDISEYE",
     "NOW_COV",
     "NOW_DIR",
@@ -318,6 +342,7 @@ PERSON_COLUMNS = [
     "LKWEEKS",  # Weeks looking for work during the year (Census variable)
     "ANN_VAL",
     "PNSN_VAL",
+    "PTOTVAL",
     "OI_OFF",
     "OI_VAL",
     "CSP_VAL",

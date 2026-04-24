@@ -96,3 +96,54 @@ def test_traceability_uses_weight_derived_household_count_for_geography(tmp_path
     assert traceability.exact_geography.metadata["canonical_sha256"].startswith(
         "sha256:"
     )
+
+
+def test_resumability_material_prefers_canonical_geography_checksum(tmp_path):
+    inputs = make_publishing_inputs(PublishingInputBundle, tmp_path=tmp_path)
+
+    service = FingerprintingService()
+    traceability = service.build_traceability(inputs=inputs, scope="regional")
+    resumability = traceability.resumability_material()
+
+    assert traceability.exact_geography is not None
+    assert (
+        resumability["exact_geography_sha256"]
+        == traceability.exact_geography.metadata["canonical_sha256"]
+    )
+
+
+def test_traceability_handles_missing_optional_artifacts(tmp_path):
+    inputs = make_publishing_inputs(PublishingInputBundle, tmp_path=tmp_path)
+    standalone_weights_path = tmp_path / "standalone" / "weights.npy"
+    standalone_weights_path.parent.mkdir(parents=True, exist_ok=True)
+    standalone_weights_path.write_bytes(inputs.weights_path.read_bytes())
+    inputs = PublishingInputBundle(
+        weights_path=standalone_weights_path,
+        source_dataset_path=inputs.source_dataset_path,
+        target_db_path=None,
+        exact_geography_path=None,
+        calibration_package_path=None,
+        run_config_path=None,
+        run_id=inputs.run_id,
+        version=inputs.version,
+        n_clones=inputs.n_clones,
+        seed=inputs.seed,
+        legacy_blocks_path=None,
+    )
+
+    service = FingerprintingService()
+    traceability = service.build_traceability(inputs=inputs, scope="regional")
+
+    assert traceability.target_db is None
+    assert traceability.exact_geography is None
+    assert traceability.calibration_package is None
+    assert traceability.run_config is None
+    assert traceability.code_version == {
+        "git_commit": None,
+        "git_branch": None,
+        "git_dirty": None,
+    }
+    assert traceability.model_build == {
+        "locked_version": None,
+        "git_commit": None,
+    }

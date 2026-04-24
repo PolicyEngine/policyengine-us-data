@@ -91,9 +91,13 @@ def _to_optional_parent_line(value) -> int | None:
 def _positive_series(person: pd.DataFrame, column: str) -> np.ndarray:
     if column not in person:
         return np.zeros(len(person), dtype=float)
-    values = pd.to_numeric(person[column], errors="coerce").fillna(0).to_numpy(
-        dtype=float,
-        copy=False,
+    values = (
+        pd.to_numeric(person[column], errors="coerce")
+        .fillna(0)
+        .to_numpy(
+            dtype=float,
+            copy=False,
+        )
     )
     return np.maximum(values, 0)
 
@@ -122,7 +126,14 @@ def _prepare_household_people(
     household: pd.DataFrame,
     household_id: int,
 ) -> list[_HouseholdPerson]:
-    disability_flags = ["PEDISDRS", "PEDISEAR", "PEDISEYE", "PEDISOUT", "PEDISPHY", "PEDISREM"]
+    disability_flags = [
+        "PEDISDRS",
+        "PEDISEAR",
+        "PEDISEYE",
+        "PEDISOUT",
+        "PEDISPHY",
+        "PEDISREM",
+    ]
     gross_income = estimate_dependent_gross_income(household)
     claimant_income = _estimate_claimant_income(household)
     total_money_income = (
@@ -240,7 +251,11 @@ def _build_base_tax_units(
         if not person.married_spouse_present:
             continue
         spouse = by_line.get(person.spouse_line)
-        if spouse is None or spouse.index == person.index or not spouse.married_spouse_present:
+        if (
+            spouse is None
+            or spouse.index == person.index
+            or not spouse.married_spouse_present
+        ):
             continue
         married_pairs.add(tuple(sorted((person.line_no, spouse.line_no))))
 
@@ -263,10 +278,11 @@ def _build_base_tax_units(
         paired_indices.update({head.index, spouse.index})
         base_unit_by_person[head.index] = key
         base_unit_by_person[spouse.index] = key
-        if (
-            head.relationship_code in {code.value for code in REFERENCE_PERSON_CODES}
-            or spouse.relationship_code in {code.value for code in REFERENCE_PERSON_CODES}
-        ):
+        if head.relationship_code in {
+            code.value for code in REFERENCE_PERSON_CODES
+        } or spouse.relationship_code in {
+            code.value for code in REFERENCE_PERSON_CODES
+        }:
             reference_unit_key = key
 
     for person in people:
@@ -297,7 +313,9 @@ def _parent_candidate_units(
     candidates = []
     for unit_key in eligible_units:
         unit = base_units[unit_key]
-        if any(parent_line in unit.claimant_lines for parent_line in person.parent_lines):
+        if any(
+            parent_line in unit.claimant_lines for parent_line in person.parent_lines
+        ):
             candidates.append(unit_key)
     return candidates
 
@@ -468,7 +486,8 @@ def _determine_final_assignments_for_household_policyengine(
     adult_candidates = [
         person
         for person in people
-        if person.starts_base_unit and base_unit_by_person.get(person.index) in base_units
+        if person.starts_base_unit
+        and base_unit_by_person.get(person.index) in base_units
         and base_units[base_unit_by_person[person.index]].spouse_index is None
     ]
     eligible_units = set(base_units)
@@ -594,7 +613,9 @@ def _determine_final_assignments_for_household_policyengine(
         has_qualifying_child = any(
             roles[person.index] == DEPENDENT
             and (
-                any(parent_line in claimant_lines for parent_line in person.parent_lines)
+                any(
+                    parent_line in claimant_lines for parent_line in person.parent_lines
+                )
                 or reference_relationship_allows_qualifying_child(
                     person.relationship_code
                 )
@@ -669,7 +690,10 @@ def _determine_final_assignments_for_household_census_documented(
             parent_units = [
                 unit_key
                 for unit_key, unit in base_units.items()
-                if any(parent_line in unit.claimant_lines for parent_line in person.parent_lines)
+                if any(
+                    parent_line in unit.claimant_lines
+                    for parent_line in person.parent_lines
+                )
             ]
             unit_key = _choose_best_parent_unit_by_total_money_income(
                 parent_units,
@@ -748,7 +772,9 @@ def construct_tax_units(
         "PEPAR2",
         "A_EXPRRP",
     }
-    missing = sorted(column for column in required_columns if column not in person.columns)
+    missing = sorted(
+        column for column in required_columns if column not in person.columns
+    )
     if missing:
         raise KeyError(
             "Missing required CPS columns for tax-unit construction: "

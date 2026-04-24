@@ -241,17 +241,17 @@ def compute_outcome_comparison(
                 "taxable_soi_rows"
             ]["mean_abs_relative_error"]
             - census["taxable_soi_rows"]["mean_abs_relative_error"],
-            "taxable_soi_rows_rmse_relative_error": policyengine[
-                "taxable_soi_rows"
-            ]["rmse_relative_error"]
+            "taxable_soi_rows_rmse_relative_error": policyengine["taxable_soi_rows"][
+                "rmse_relative_error"
+            ]
             - census["taxable_soi_rows"]["rmse_relative_error"],
             "selected_tax_rows_mean_abs_relative_error": policyengine[
                 "selected_tax_rows"
             ]["mean_abs_relative_error"]
             - census["selected_tax_rows"]["mean_abs_relative_error"],
-            "selected_tax_rows_rmse_relative_error": policyengine[
-                "selected_tax_rows"
-            ]["rmse_relative_error"]
+            "selected_tax_rows_rmse_relative_error": policyengine["selected_tax_rows"][
+                "rmse_relative_error"
+            ]
             - census["selected_tax_rows"]["rmse_relative_error"],
             "aggregate_soi_rows_mean_abs_relative_error": policyengine[
                 "aggregate_soi_rows"

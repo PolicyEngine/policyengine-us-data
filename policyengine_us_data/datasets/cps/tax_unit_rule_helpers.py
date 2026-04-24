@@ -37,7 +37,6 @@ except ImportError:
         PARTNER_OR_ROOMMATE = 13
         NONRELATIVE_WITHOUT_RELATIVES = 14
 
-
     REFERENCE_PERSON_CODES = frozenset(
         {
             CPSRelationshipCode.REFERENCE_PERSON_WITH_RELATIVES,
@@ -81,11 +80,8 @@ except ImportError:
     ) -> bool:
         if is_permanently_disabled:
             return True
-        age_limit = (
-            student_age_limit if is_full_time_student else non_student_age_limit
-        )
+        age_limit = student_age_limit if is_full_time_student else non_student_age_limit
         return float(age) < age_limit
-
 
     def _relationship_from_code(relationship_code: int | None):
         if relationship_code is None:
@@ -95,20 +91,17 @@ except ImportError:
         except ValueError:
             return None
 
-
     def reference_relationship_allows_qualifying_child(
         relationship_code: int | None,
     ) -> bool:
         relationship = _relationship_from_code(relationship_code)
         return relationship in REFERENCE_QUALIFYING_CHILD_CODES
 
-
     def reference_relationship_allows_qualifying_relative(
         relationship_code: int | None,
     ) -> bool:
         relationship = _relationship_from_code(relationship_code)
         return relationship in REFERENCE_QUALIFYING_RELATIVE_CODES
-
 
     def related_to_head_or_spouse(relationship_code: int | None) -> bool:
         relationship = _relationship_from_code(relationship_code)
@@ -117,7 +110,6 @@ except ImportError:
             | REFERENCE_SPOUSE_CODES
             | REFERENCE_QUALIFYING_RELATIVE_CODES
         )
-
 
     @lru_cache(maxsize=None)
     def dependent_gross_income_limit(year: int) -> float:

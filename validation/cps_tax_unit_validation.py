@@ -172,8 +172,7 @@ def compute_tax_unit_comparison(
         else:
             mismatched_households += 1
             mismatched_person_rows += sum(
-                census_unit_for_line[line_no]
-                != constructed_unit_for_line[line_no]
+                census_unit_for_line[line_no] != constructed_unit_for_line[line_no]
                 for line_no in household["line_no"]
             )
 
@@ -219,10 +218,7 @@ def compute_tax_unit_comparison(
             if line_to_census_tax[line_no] != line_to_census_tax[spouse_line]:
                 reciprocal_spouse_split_people_census += 1
                 household_has_census_spouse_split = True
-            if (
-                line_to_constructed_tax[line_no]
-                != line_to_constructed_tax[spouse_line]
-            ):
+            if line_to_constructed_tax[line_no] != line_to_constructed_tax[spouse_line]:
                 reciprocal_spouse_split_people_constructed += 1
 
         if household_has_census_spouse_split:
@@ -238,9 +234,7 @@ def compute_tax_unit_comparison(
             parent_lines = [
                 int(value)
                 for value in (row.PEPAR1, row.PEPAR2)
-                if pd.notna(value)
-                and int(value) > 0
-                and int(value) in line_to_row
+                if pd.notna(value) and int(value) > 0 and int(value) in line_to_row
             ]
             is_student = _has_tax_unit_student_evidence(row)
             disability = any(
@@ -262,9 +256,7 @@ def compute_tax_unit_comparison(
                 if len(constructed_unit_for_line[line_no]) == 1:
                     minor_singleton_constructed += 1
 
-            if parent_lines and qualifying_child_age_test(
-                age, is_student, disability
-            ):
+            if parent_lines and qualifying_child_age_test(age, is_student, disability):
                 qual_child_pointer_people += 1
                 if not any(
                     line_to_census_tax[line_no] == line_to_census_tax[parent_line]
@@ -328,9 +320,7 @@ def compute_tax_unit_comparison(
         "summary": {
             "households_total": households_total,
             "persons_total": int(persons_total),
-            "household_exact_match_pct": round(
-                100 * exact_match / households_total, 2
-            ),
+            "household_exact_match_pct": round(100 * exact_match / households_total, 2),
             "household_exact_match_excluding_census_spouse_split_pct": round(
                 100
                 * exact_match_excluding_census_spouse_split
@@ -368,7 +358,9 @@ def compute_tax_unit_comparison(
         "legal_consistency": {
             "reciprocal_spouse_people_split_pct": {
                 "census": round(
-                    100 * reciprocal_spouse_split_people_census / reciprocal_spouse_people,
+                    100
+                    * reciprocal_spouse_split_people_census
+                    / reciprocal_spouse_people,
                     2,
                 )
                 if reciprocal_spouse_people
@@ -454,10 +446,7 @@ def parse_args() -> argparse.Namespace:
         "--mode",
         default=POLICYENGINE_MODE,
         choices=sorted(SUPPORTED_TAX_UNIT_CONSTRUCTION_MODES),
-        help=(
-            "Tax-unit construction mode to benchmark. "
-            f"Default: {POLICYENGINE_MODE}"
-        ),
+        help=(f"Tax-unit construction mode to benchmark. Default: {POLICYENGINE_MODE}"),
     )
     parser.add_argument(
         "--output",

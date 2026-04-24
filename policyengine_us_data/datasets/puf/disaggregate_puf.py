@@ -13,9 +13,14 @@ grouped by AGI. This module reconstructs them by:
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pandas as pd
 from . import aggregate_record_utils as utils
+from .forbes_backbone import build_forbes_top_tail_bucket
+
+logger = logging.getLogger(__name__)
 
 AGGREGATE_RECIDS = utils.AGGREGATE_RECIDS
 SYNTHETIC_RECID_START = utils.SYNTHETIC_RECID_START
@@ -45,6 +50,7 @@ _disaggregate_bucket = utils._disaggregate_bucket
 def disaggregate_aggregate_records(
     puf: pd.DataFrame,
     seed: int = 42,
+    use_forbes_top_tail: bool = True,
 ) -> pd.DataFrame:
     """Replace the four IRS aggregate rows with calibrated synthetic donors."""
 
@@ -63,15 +69,42 @@ def disaggregate_aggregate_records(
     next_recid = SYNTHETIC_RECID_START
 
     for recid in AGGREGATE_RECIDS:
-        synthetic = utils._disaggregate_bucket(
-            recid=recid,
-            row=agg_rows.loc[recid],
-            regular=regular,
-            amount_columns=amount_columns,
-            donor_scores=donor_scores,
-            next_recid=next_recid,
-            rng=rng,
-        )
+        if use_forbes_top_tail and recid == 999999:
+            try:
+                synthetic = build_forbes_top_tail_bucket(
+                    row=agg_rows.loc[recid],
+                    regular=regular,
+                    amount_columns=amount_columns,
+                    donor_scores=donor_scores,
+                    next_recid=next_recid,
+                    rng=rng,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Forbes top-tail synthesis failed; falling back to legacy donors: %s",
+                    exc,
+                )
+                synthetic = None
+            if synthetic is None:
+                synthetic = utils._disaggregate_bucket(
+                    recid=recid,
+                    row=agg_rows.loc[recid],
+                    regular=regular,
+                    amount_columns=amount_columns,
+                    donor_scores=donor_scores,
+                    next_recid=next_recid,
+                    rng=rng,
+                )
+        else:
+            synthetic = utils._disaggregate_bucket(
+                recid=recid,
+                row=agg_rows.loc[recid],
+                regular=regular,
+                amount_columns=amount_columns,
+                donor_scores=donor_scores,
+                next_recid=next_recid,
+                rng=rng,
+            )
         next_recid += len(synthetic)
         all_synthetic.append(synthetic[puf.columns])
 

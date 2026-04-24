@@ -5,6 +5,51 @@ Public Use File into PolicyEngine's US microdata pipeline
 (`irs_puf.py`, `puf.py`, `disaggregate_puf.py`, `uprate_puf.py`, and
 the supporting aggregate-record utilities).
 
+The `$100M+` aggregate record (`RECID 999999`) now has an optional
+Forbes-backed synthesis path. It pulls a public US rich-list backbone
+from the `rtb-api` project, using the canonical `2024-09-01` snapshot
+(the valuation date Forbes uses for the 2024 Forbes 400 list) from a
+pinned `rtb-api` commit. The normalized top-400 snapshot and normalized
+top-tail SCF donor pool are committed in this package so default builds
+are reproducible offline; explicit refresh runs can still write local
+cache files under [`policyengine_us_data/storage`](../../storage). The
+builder then creates the top tail in two stages:
+
+- `Forbes -> SCF`: selected Forbes units are expanded into replicate
+  draws, and the same top-tail SCF donor model is used both to decide
+  which Forbes units enter the `$100M+` bucket and to draw each unit's
+  joint wealth-to-income regime.
+- `SCF -> PUF`: those SCF draws are matched to top-tail PUF donors to
+  fill tax-return detail that SCF does not directly observe.
+
+The builder creates a staged artifact with the source Forbes snapshot,
+selected Forbes units, SCF draws, PUF priors, calibrated synthetic rows,
+and diagnostics. Only the final synthetic rows are upserted into the PUF
+aggregate-record replacement path. If the Forbes snapshot or SCF donor
+pool cannot be loaded in the production disaggregation entry point, the
+code falls back to the existing donor-based disaggregation path.
+
+For PR review or local validation, build the staged artifact and inspect
+the deterministic diagnostics before running the full data pipeline:
+
+```python
+from policyengine_us_data.datasets.puf.forbes_backbone import (
+    build_forbes_top_tail_artifact,
+    build_forbes_top_tail_diagnostic_tables,
+    format_forbes_top_tail_diagnostics,
+)
+
+artifact = build_forbes_top_tail_artifact(...)
+tables = build_forbes_top_tail_diagnostic_tables(artifact, row, amount_columns)
+print(format_forbes_top_tail_diagnostics(tables))
+```
+
+The diagnostic bundle includes a one-row summary, exact calibration
+errors by PUF amount column, component composition comparing SCF priors,
+PUF priors, calibrated synthetic totals, and target totals, selected
+Forbes units, and SCF draw composition. The formatted summary includes
+ASCII bar visuals so it can be pasted directly into a PR or CI log.
+
 The PUF is an IRS SOI Division sample of individual income-tax returns,
 stripped of direct identifiers, with top-coded amounts and
 disclosure-avoidance perturbations applied. PolicyEngine uses the 2015

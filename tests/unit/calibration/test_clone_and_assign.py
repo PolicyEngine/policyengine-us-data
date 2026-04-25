@@ -170,6 +170,39 @@ class TestAssignRandomGeography:
                 f"Record {rec} has duplicate CDs: {rec_cds}"
             )
 
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_fixed_state_fips_constrains_all_clones(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        fixed_state_fips = np.array([0, 36, 2], dtype=np.int32)
+
+        r = assign_random_geography(
+            n_records=3,
+            n_clones=4,
+            seed=42,
+            fixed_state_fips=fixed_state_fips,
+        )
+
+        for clone in range(r.n_clones):
+            start = clone * r.n_records
+            assert r.state_fips[start + 1] == 36
+            assert r.state_fips[start + 2] == 2
+
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_fixed_state_fips_rejects_wrong_length(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        with pytest.raises(ValueError, match="one value per base record"):
+            assign_random_geography(
+                n_records=3,
+                n_clones=2,
+                fixed_state_fips=np.array([6, 36]),
+            )
+
     def test_missing_file_raises(self, tmp_path):
         fake = tmp_path / "nonexistent"
         fake.mkdir()

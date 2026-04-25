@@ -787,7 +787,10 @@ class PUF(Dataset):
             "is_tax_unit_head",
             "is_tax_unit_spouse",
             "is_tax_unit_dependent",
-        ] + self.available_financial_vars
+        ]
+        if "forbes_state_fips" in puf.columns:
+            VARIABLES.append("forbes_state_fips")
+        VARIABLES += self.available_financial_vars
 
         self.holder = {variable: [] for variable in VARIABLES}
 
@@ -840,6 +843,8 @@ class PUF(Dataset):
 
     def add_tax_unit(self, row, tax_unit_id):
         self.holder["tax_unit_id"].append(tax_unit_id)
+        if "forbes_state_fips" in self.holder:
+            self.holder["forbes_state_fips"].append(row.get("forbes_state_fips", 0))
 
         for key in self.available_financial_vars:
             if self.variable_to_entity[key] == "tax_unit":

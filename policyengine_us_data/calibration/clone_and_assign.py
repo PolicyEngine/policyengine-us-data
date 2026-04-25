@@ -100,6 +100,7 @@ def assign_random_geography(
     household_agi: np.ndarray = None,
     cd_agi_targets: dict = None,
     agi_threshold_pctile: float = 90.0,
+    fixed_state_fips: np.ndarray = None,
 ) -> GeographyAssignment:
     """Assign random census block geography to cloned
     CPS records.
@@ -114,12 +115,20 @@ def assign_random_geography(
             dataset.
         n_clones: Number of clones (default 10).
         seed: Random seed for reproducibility.
+        fixed_state_fips: Optional state FIPS per base record. Positive
+            values constrain every clone of that record to blocks in the
+            requested state; zero or missing values remain unrestricted.
 
     Returns:
         GeographyAssignment with arrays of length
         n_records * n_clones.
     """
     blocks, cds, states, probs = load_global_block_distribution()
+    fixed_states = _validate_fixed_state_fips(
+        fixed_state_fips,
+        n_records=n_records,
+        available_states=states,
+    )
 
     n_total = n_records * n_clones
     rng = np.random.default_rng(seed)
@@ -137,7 +146,30 @@ def assign_random_geography(
             threshold,
         )
 
-    def _sample(size, mask_slice=None):
+    state_draw_cache: dict[tuple[int, str], tuple[np.ndarray, np.ndarray]] = {}
+
+    def _state_draw_inputs(state: int, probability_source: str):
+        key = (int(state), probability_source)
+        cached = state_draw_cache.get(key)
+        if cached is not None:
+            return cached
+
+        state_indices = np.flatnonzero(states == state)
+        base_probs = agi_probs if probability_source == "agi" else probs
+        state_probs = base_probs[state_indices].astype(np.float64)
+        if not np.isfinite(state_probs).all() or state_probs.sum() <= 0:
+            state_probs = probs[state_indices].astype(np.float64)
+        if not np.isfinite(state_probs).all() or state_probs.sum() <= 0:
+            state_probs = np.ones(len(state_indices), dtype=np.float64)
+        state_probs = state_probs / state_probs.sum()
+        state_draw_cache[key] = (state_indices, state_probs)
+        return state_indices, state_probs
+
+    def _sample_state(state: int, size: int, probability_source: str):
+        state_indices, state_probs = _state_draw_inputs(state, probability_source)
+        return rng.choice(state_indices, size=size, p=state_probs)
+
+    def _sample_unrestricted(size, mask_slice=None):
         """Sample block indices, using AGI-weighted probs for extreme HHs."""
         if (
             extreme_mask is not None
@@ -155,17 +187,53 @@ def assign_random_geography(
             return out
         return rng.choice(len(blocks), size=size, p=probs)
 
+    def _sample(size, mask_slice=None, fixed_slice=None):
+        out = np.empty(size, dtype=np.int64)
+        remaining = np.ones(size, dtype=bool)
+
+        if fixed_slice is not None:
+            fixed_slice = np.asarray(fixed_slice, dtype=np.int32)
+            for state in np.unique(fixed_slice[fixed_slice > 0]):
+                state_mask = fixed_slice == state
+                if mask_slice is not None and agi_probs is not None:
+                    extreme_state_mask = state_mask & mask_slice
+                    normal_state_mask = state_mask & ~mask_slice
+                    if extreme_state_mask.any():
+                        out[extreme_state_mask] = _sample_state(
+                            int(state),
+                            int(extreme_state_mask.sum()),
+                            "agi",
+                        )
+                    if normal_state_mask.any():
+                        out[normal_state_mask] = _sample_state(
+                            int(state),
+                            int(normal_state_mask.sum()),
+                            "pop",
+                        )
+                else:
+                    out[state_mask] = _sample_state(
+                        int(state),
+                        int(state_mask.sum()),
+                        "pop",
+                    )
+                remaining[state_mask] = False
+
+        if remaining.any():
+            remaining_mask = mask_slice[remaining] if mask_slice is not None else None
+            out[remaining] = _sample_unrestricted(int(remaining.sum()), remaining_mask)
+        return out
+
     indices = np.empty(n_total, dtype=np.int64)
 
     # Clone 0: unrestricted draw
-    indices[:n_records] = _sample(n_records, extreme_mask)
+    indices[:n_records] = _sample(n_records, extreme_mask, fixed_states)
 
     assigned_cds = np.empty((n_clones, n_records), dtype=object)
     assigned_cds[0] = cds[indices[:n_records]]
 
     for clone_idx in range(1, n_clones):
         start = clone_idx * n_records
-        clone_indices = _sample(n_records, extreme_mask)
+        clone_indices = _sample(n_records, extreme_mask, fixed_states)
         clone_cds = cds[clone_indices]
 
         collisions = np.zeros(n_records, dtype=bool)
@@ -178,18 +246,11 @@ def assign_random_geography(
                 break
             bad_mask = collisions
             if extreme_mask is not None and agi_probs is not None:
-                bad_ext = bad_mask & extreme_mask
-                bad_norm = bad_mask & ~extreme_mask
-                if bad_ext.sum() > 0:
-                    clone_indices[bad_ext] = rng.choice(
-                        len(blocks), size=bad_ext.sum(), p=agi_probs
-                    )
-                if bad_norm.sum() > 0:
-                    clone_indices[bad_norm] = rng.choice(
-                        len(blocks), size=bad_norm.sum(), p=probs
-                    )
+                replacement = _sample(n_records, extreme_mask, fixed_states)
+                clone_indices[bad_mask] = replacement[bad_mask]
             else:
-                clone_indices[collisions] = rng.choice(len(blocks), size=n_bad, p=probs)
+                replacement = _sample(n_records, fixed_slice=fixed_states)
+                clone_indices[collisions] = replacement[collisions]
             clone_cds = cds[clone_indices]
             collisions = np.zeros(n_records, dtype=bool)
             for prev in range(clone_idx):
@@ -207,6 +268,44 @@ def assign_random_geography(
         n_records=n_records,
         n_clones=n_clones,
     )
+
+
+def _validate_fixed_state_fips(
+    fixed_state_fips: np.ndarray | None,
+    n_records: int,
+    available_states: np.ndarray,
+) -> np.ndarray | None:
+    """Validate optional record-level state constraints."""
+
+    if fixed_state_fips is None:
+        return None
+
+    fixed = np.asarray(fixed_state_fips)
+    if len(fixed) != n_records:
+        raise ValueError(
+            "fixed_state_fips must have one value per base record: "
+            f"got {len(fixed)} for {n_records} records."
+        )
+
+    fixed = np.nan_to_num(fixed.astype(float), nan=0.0).astype(np.int32)
+    positive = np.unique(fixed[fixed > 0])
+    if len(positive) == 0:
+        return None
+
+    available = set(np.asarray(available_states, dtype=np.int32).tolist())
+    missing = [int(state) for state in positive if int(state) not in available]
+    if missing:
+        raise ValueError(
+            "fixed_state_fips contains states absent from the block "
+            f"distribution: {missing}"
+        )
+
+    logger.info(
+        "Preserving fixed state geography for %d of %d records",
+        int((fixed > 0).sum()),
+        n_records,
+    )
+    return fixed
 
 
 def save_geography(geography: GeographyAssignment, path) -> None:

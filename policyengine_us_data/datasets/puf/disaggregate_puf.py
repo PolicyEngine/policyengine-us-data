@@ -60,6 +60,10 @@ def disaggregate_aggregate_records(
     if agg_mask.sum() == 0:
         return puf
 
+    if use_forbes_top_tail and "forbes_state_fips" not in puf.columns:
+        puf = puf.copy()
+        puf["forbes_state_fips"] = 0
+
     agg_rows = puf[agg_mask].copy().set_index("RECID")
     regular = puf[~agg_mask].copy()
     amount_columns = _get_amount_columns(puf.columns)

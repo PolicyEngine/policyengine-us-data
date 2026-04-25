@@ -28,6 +28,10 @@ import requests
 
 from policyengine_us_data.datasets.puf import aggregate_record_utils as utils
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.census import (
+    STATE_ABBREV_TO_FIPS,
+    STATE_NAME_TO_FIPS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1498,7 +1502,7 @@ def apply_forbes_structural_overrides(
     synthetic: pd.DataFrame,
     forbes: pd.DataFrame,
 ) -> None:
-    """Set tax-unit structure directly from Forbes metadata where available."""
+    """Set tax-unit structure and known state from Forbes metadata."""
 
     if "MARS" in synthetic.columns:
         married = forbes["is_married"].fillna(False).to_numpy(dtype=bool)
@@ -1519,6 +1523,34 @@ def apply_forbes_structural_overrides(
         synthetic["DSI"] = 0
     if "EIC" in synthetic.columns:
         synthetic["EIC"] = 0
+
+    if "residence_state" in forbes.columns:
+        synthetic["forbes_state_fips"] = forbes["residence_state"].map(
+            _resolve_state_fips,
+        )
+
+
+def _resolve_state_fips(value) -> int:
+    """Resolve a Forbes residence state name/abbreviation to integer FIPS."""
+
+    if value is None or pd.isna(value):
+        return 0
+
+    text = str(value).strip()
+    if not text:
+        return 0
+    if text.isdigit():
+        return int(text)
+
+    fips = STATE_NAME_TO_FIPS.get(text)
+    if fips is not None:
+        return int(fips)
+
+    fips = STATE_ABBREV_TO_FIPS.get(text.upper())
+    if fips is not None:
+        return int(fips)
+
+    return 0
 
 
 def _build_calibration_diagnostics(

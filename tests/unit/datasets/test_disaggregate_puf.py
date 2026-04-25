@@ -882,6 +882,18 @@ class TestForbesBackbone:
         assert (bucket.DSI == 0).all()
         assert (bucket.EIC == 0).all()
 
+    def test_forbes_bucket_preserves_residence_state_fips(
+        self, mini_puf, forbes_result
+    ):
+        bucket = _synthetic_bucket(
+            forbes_result, mini_puf, 999999, use_forbes_top_tail=True
+        )
+        assert "forbes_state_fips" in forbes_result.columns
+        assert set(bucket.forbes_state_fips.unique()) == {6}
+        assert (
+            forbes_result.loc[forbes_result.RECID < 999996, "forbes_state_fips"] == 0
+        ).all()
+
     def test_scf_joint_profiles_scale_ratios_to_forbes_wealth(self):
         from policyengine_us_data.datasets.puf.forbes_backbone import (
             sample_scf_joint_profiles,

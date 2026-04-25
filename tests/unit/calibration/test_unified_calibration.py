@@ -38,6 +38,44 @@ from policyengine_us_data.calibration.clone_and_assign import (
 )
 
 
+class TestForbesStateOverrides:
+    def test_extracts_only_synthetic_puf_state_fips(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            _extract_forbes_state_fips_overrides,
+        )
+
+        raw_dataset = {
+            "household_id": {2024: np.array([10, 1_000_000, 1_000_001])},
+            "forbes_state_fips": {2024: np.array([6, 36, 0])},
+        }
+
+        result = _extract_forbes_state_fips_overrides(
+            raw_dataset=raw_dataset,
+            time_period=2024,
+            n_records=3,
+        )
+
+        np.testing.assert_array_equal(result, np.array([0, 36, 0]))
+
+    def test_ignores_ordinary_positive_state_fips(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            _extract_forbes_state_fips_overrides,
+        )
+
+        raw_dataset = {
+            "household_id": {2024: np.array([10, 20, 30])},
+            "forbes_state_fips": {2024: np.array([6, 36, 48])},
+        }
+
+        result = _extract_forbes_state_fips_overrides(
+            raw_dataset=raw_dataset,
+            time_period=2024,
+            n_records=3,
+        )
+
+        assert result is None
+
+
 class TestRerandomizeTakeupSeeding:
     """Verify seeded_rng(var, salt=block) produces
     reproducible, block-dependent draws."""

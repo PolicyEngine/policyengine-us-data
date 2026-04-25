@@ -1,3 +1,10 @@
+## [1.88.0] - 2026-04-25
+
+### Added
+
+- Construct CPS tax units from ASEC household relationships instead of using Census tax-unit assignments.
+
+
 ## [1.87.0] - 2026-04-25
 
 ### Added

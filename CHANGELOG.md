@@ -1,3 +1,10 @@
+## [1.87.0] - 2026-04-25
+
+### Added
+
+- Add a reproducible Forbes-backed PUF top-tail synthesis path.
+
+
 ## [1.86.2] - 2026-04-24
 
 ### Changed

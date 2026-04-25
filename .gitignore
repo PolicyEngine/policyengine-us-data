@@ -40,6 +40,10 @@ docs/.ipynb_checkpoints/
 ## Calibration run outputs (weights, diagnostics, packages, config)
 policyengine_us_data/storage/calibration/
 
+## Cached rich-list backbone snapshots
+policyengine_us_data/storage/forbes_us_top_400_*.json
+policyengine_us_data/storage/forbes_us_top_400_*.json.lock
+
 ## Batch processing checkpoints
 completed_*.txt
 

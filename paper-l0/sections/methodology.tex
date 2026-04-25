@@ -1,0 +1,194 @@
+\section{Methodology}
+\label{sec:methodology}
+
+This section first, it describes the calibration system that produces the weighted
+microdata. Second, it defines the benchmark design used to evaluate that system against classical
+reference methods.
+
+\subsection{Pipeline overview}
+
+The pipeline transforms enhanced CPS microdata into a calibrated subnational dataset in four broad
+steps: cloned geography assignment, calibration-matrix construction, $L_0$-regularized
+optimization, and dataset assembly. Figure~\ref{fig:pipeline} summarizes that flow.
+
+\begin{figure}[ht]
+    \centering
+    \fbox{\parbox{0.9\textwidth}{\centering\textit{[Pipeline overview diagram to be inserted]}}}
+    \caption{Pipeline overview. The benchmarked system clones CPS households across sampled
+    geographies, builds a sparse calibration matrix from tax-benefit simulations, optimizes weights
+    with $L_0$ gates, and then assembles the retained records into deployable datasets.}
+    \label{fig:pipeline}
+\end{figure}
+
+The benchmark experiments do not rebuild separate pipelines for each method. Instead, they export a
+shared calibration package from the existing pipeline. That package contains the cloned unit
+universe, the selected target vector, target metadata, the achievable-target mask, and the initial
+weights. $L_0$ and GREG consume that representation directly. IPF uses the same target selection
+after conversion to an IPF-compatible margin representation.
+
+\subsection{Cloned geography assignment}
+\label{sec:cloning}
+
+The base CPS contains roughly 100{,}000 household records. A stratified subsample reduces that to a
+smaller working dataset while preserving the upper tail of the AGI distribution. This keeps the
+downstream simulations tractable without collapsing the range of household types the optimizer can
+use.
+
+Each retained household is then cloned $N$ times, with $N = 430$ in the current production setup.
+Each clone is assigned to a census block, and the block determines the associated district-level
+unit, county, tract, and state. The baseline assignment distribution is population weighted. For
+households above the 90th percentile of AGI, the pipeline tilts that distribution toward
+high-income districts so that the initial clone universe contains more plausible placements for
+high-income records:
+\begin{equation}
+    \Pr(B_h = b) =
+    \frac{P_{\text{pop}}(b) R_h(d(b))}
+    {\sum_{b'} P_{\text{pop}}(b') R_h(d(b'))},
+\end{equation}
+where $P_{\text{pop}}(b)$ is the population-based block probability, $d(b)$ is the district-level
+unit containing block $b$, and $R_h(d) = A_d$ for high-AGI households and $R_h(d) = 1$ otherwise.
+Here $A_d$ is the district-level AGI target.
+
+The assignment step also enforces a no-collision rule: the same source household should not appear
+twice in the same district-level unit across clones unless repeated resampling fails to find an
+alternative. With 430 clones and the current working dataset, the cloned universe contains roughly
+5.2 million household-geography candidates.
+
+\subsection{Calibration-matrix construction}
+\label{sec:matrix}
+
+The calibration matrix $\mathbf{M} \in \mathbb{R}^{m \times n}$ maps $n$ cloned household
+candidates to $m$ calibration targets. Entry $M_{ji}$ is the contribution of cloned unit $i$ to
+target $j$. For count targets, that is an indicator or count contribution. For dollar targets, it
+is the simulated value of the relevant tax or benefit variable.
+
+The matrix is built from \policyengine{} simulations. Because many target variables depend on
+state-specific policy rules, the pipeline evaluates the cloned households under separate state
+configurations and reattaches the results according to each clone's assigned geography. For
+county-specific rules, such as ACA premium tax credits in the current setup, the pipeline can run
+additional county-level loops. This design keeps the geographic information in the calibration
+representation rather than in a post-processing step.
+
+Several targets depend on programme take-up. To make the matrix consistent with the final dataset,
+the pipeline re-randomizes take-up at the clone level using deterministic seeds derived from the
+source household, the clone index, and the variable name. This lets two clones of the same source
+household take up a programme at different rates when they are assigned to different places.
+
+The matrix is emitted in sparse coordinate form and stored as a compressed sparse row matrix. After
+construction, a target-configuration file selects the rows used for a given optimization or
+benchmark run. Rows with zero feasible support are marked unachievable and excluded from the loss.
+
+\subsection{\texorpdfstring{$L_0$}{L0} optimization}
+\label{sec:l0}
+
+Given the sparse matrix $\mathbf{M}$, target vector $\mathbf{t}$, and weight vector
+$\mathbf{w} \in \mathbb{R}^n$, the optimizer minimizes
+\begin{equation}
+    \mathcal{L}(\mathbf{w}, \boldsymbol{\alpha}) =
+    \frac{1}{m} \sum_{j=1}^{m}
+    \left(\frac{\hat{t}_j - t_j}{|t_j|}\right)^2 +
+    \lambda_{L_0} \sum_{i=1}^{n} \bar{z}_i +
+    \lambda_{L_2} \|\mathbf{w}\|_2^2,
+    \label{eq:loss}
+\end{equation}
+where
+\begin{equation}
+    \hat{t}_j = \sum_{i=1}^{n} M_{ji} w_i z_i.
+    \label{eq:estimate}
+\end{equation}
+
+The weights are parameterized in log space so that the fitted weights remain positive. The gate
+$z_i$ is a Hard Concrete random variable with expected activation $\bar{z}_i$, following
+\citet{louizos2018}. The first term in Equation~\ref{eq:loss} is a relative calibration loss, so a
+1\% error on a small target and a 1\% error on a large target receive comparable weight. The
+second term is the $L_0$ penalty. It penalizes the expected number of active cloned units and
+therefore regulates sparsity directly. The third term is an $L_2$ penalty on the weight vector,
+that is, a penalty on the squared Euclidean norm $\|\mathbf{w}\|_2^2$. This term shrinks the
+magnitudes of the fitted weights and discourages solutions that satisfy the targets by assigning
+very large weights to a small number of retained units.
+
+An $L_0$ penalty on its own can produce a sparse solution, but sparsity
+alone does not guarantee a usable microsimulation dataset. The optimizer could still concentrate too
+much population mass on a small subset of cloned households, yielding unstable or implausible
+weights even if the support is small. The $L_2$ term addresses a different problem: it discourages
+large weight magnitudes conditional on the chosen support. In that sense, the two penalties play
+complementary roles. $\lambda_{L_0}$ controls how many units remain active, while $\lambda_{L_2}$
+controls how concentrated the fitted weights can become among those active units.
+
+The separate tuning parameters are therefore a practical advantage of the objective. Increasing
+$\lambda_{L_0}$ pushes the solution toward a smaller retained dataset. Increasing $\lambda_{L_2}$
+pushes the solution toward more moderate fitted weights, even if the support size is unchanged. The
+two knobs let the pipeline trade off calibration fit, sparsity, and weight stability more flexibly
+than a single regularization term would allow. The full hyperparameter configuration, including the
+gate parameters and initialization choices, appears in Appendix~\ref{app:hyperparameters}.
+Algorithm~\ref{alg:l0} gives pseudocode for the full optimization loop.
+
+After optimization, the retained cloned units are assembled into deployable H5 datasets for
+\policyengine{}. Those assembly details matter operationally but are not the main object of the
+benchmark paper, so Appendix~\ref{app:assembly} summarizes them.
+
+\subsection{Benchmark design}
+\label{sec:benchmark_design}
+
+The empirical design is organized around one shared benchmark package and three benchmark tiers.
+The package is exported from the saved calibration pipeline rather than rebuilt separately for each
+method. This keeps the comparison focused on calibration method, not on differences in upstream
+data preparation.
+
+\subsubsection{Shared benchmark package}
+
+Each benchmark package contains:
+
+\begin{itemize}
+    \item the cloned unit universe
+    \item the selected target vector and target metadata
+    \item the achievable-target mask
+    \item the shared initial weights
+    \item the sparse calibration matrix for scoring fitted weights
+\end{itemize}
+
+GREG uses the exported sparse matrix and target vector directly. IPF requires a conversion step
+because it works on unit-record tables and margin constraints rather than on a generic sparse linear
+system. The exporter therefore converts selected count-style targets into an IPF-ready
+representation while preserving the same cloned unit universe and the same target selection.
+
+\subsubsection{Experimental tiers}
+
+Tier 1 is a tractable benchmark. It asks whether $L_0$ performs competitively when the problem is
+small enough for classical methods to run routinely. The mixed-target tractable benchmark compares
+$L_0$ with GREG. A separate count-style tractable benchmark compares $L_0$ with IPF on a target set
+that fits IPF's assumptions.
+
+Tier 2 is a scaling frontier. Starting from a controlled benchmark package, we increase the number
+of targets while holding the basic unit universe fixed. This identifies where each method slows
+down, destabilizes, or becomes methodologically inappropriate.
+
+Tier 3 is a production-feasibility case. It moves as close as possible to the full production
+calibration problem, with the current clone count and the current production-style target families.
+The goal is to study which methods complete,
+which fail, and document why.
+
+\subsubsection{Method scope}
+
+The comparison is intentionally asymmetric where the methods are asymmetric. $L_0$ and GREG can
+both consume arbitrary linear targets, including mixed count and dollar constraints. IPF is
+evaluated only on count-style or indicator-style margins. This is a methodological choice rather
+than a concession. It avoids misrepresenting IPF as a general solver for the full sparse matrix
+problem.
+
+\subsection{Evaluation metrics}
+\label{sec:metrics}
+
+Each benchmark run reports:
+
+\begin{itemize}
+    \item mean, median, and maximum absolute relative error across achievable targets
+    \item runtime
+    \item peak memory where available
+    \item convergence or failure status
+    \item any method-specific pathologies, such as negative fitted weights for GREG
+    \item retained-record counts and effective sample size for $L_0$ outputs
+\end{itemize}
+
+These metrics support the paper's three main empirical questions: comparative performance on
+tractable problems, degradation as scale increases, and feasibility near production size.

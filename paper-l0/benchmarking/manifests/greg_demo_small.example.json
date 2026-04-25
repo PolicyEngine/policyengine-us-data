@@ -1,0 +1,54 @@
+{
+  "name": "greg_demo_small",
+  "tier": "tier_a",
+  "description": "Example GREG benchmark manifest for a reduced package and a coherent geography subset.",
+  "package_path": "policyengine_us_data/storage/calibration/calibration_package.pkl",
+  "methods": [
+    "l0",
+    "greg"
+  ],
+  "target_filters": {
+    "include_geo_levels": [
+      "national",
+      "state",
+      "district"
+    ],
+    "include_national": true,
+    "state_ids": [
+      "06",
+      "12",
+      "36",
+      "48",
+      "53"
+    ],
+    "district_ids": [
+      "0601",
+      "0602",
+      "1201",
+      "1202",
+      "3601",
+      "3602",
+      "4801",
+      "4802",
+      "5301",
+      "5302"
+    ],
+    "count_like_only": false,
+    "max_targets": 1000
+  },
+  "external_inputs": {},
+  "method_options": {
+    "l0": {
+      "lambda_l0": 1e-08,
+      "epochs": 1000,
+      "device": "cpu",
+      "beta": 0.65,
+      "lambda_l2": 1e-12,
+      "learning_rate": 0.15
+    },
+    "greg": {
+      "maxit": 200,
+      "epsilon": 1e-07
+    }
+  }
+}

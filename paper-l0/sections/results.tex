@@ -1,0 +1,90 @@
+\section{Results}
+\label{sec:results}
+
+The results are organized around the three benchmark tiers defined in
+Section~\ref{sec:benchmark_design}. The point of that structure is to separate three questions
+that the earlier draft treated together: how $L_0$ behaves on a tractable comparison, how the
+methods degrade as the target system grows, and which methods remain usable near the production
+problem. Numerical entries are still marked as placeholders pending completed benchmark runs.
+
+\subsection{Tier 1: tractable benchmark comparisons}
+
+Table~\ref{tab:comparison} reports the tractable benchmark. The mixed-target setting compares $L_0$
+with GREG on the same exported calibration package. The count-style setting compares $L_0$ with IPF
+on an IPF-eligible subset derived from that same package.
+
+\input{tables/comparison}
+
+The tractable benchmark is the most direct test of whether $L_0$ performs well only because it was
+designed for the full production setting. In the mixed-target benchmark, the key comparisons are
+accuracy, runtime, and whether GREG produces negative weights. In the count-style benchmark, the
+key question is whether $L_0$ remains competitive with IPF even when the target system is limited
+to the class of margins that IPF handles naturally.
+
+\subsection{Tier 2: scaling frontier}
+
+Table~\ref{tab:scaling_frontier} summarizes the scaling ladder. Each rung uses the same basic
+cloned unit universe while increasing the number of benchmark targets. This isolates how method
+performance changes with constraint volume rather than with a changing data-preparation pipeline.
+
+\input{tables/scaling_frontier}
+
+The scaling frontier is expected to show more than runtime growth. It should also identify where a
+method becomes numerically unstable, fails to converge, or stops being interpretable as a credible
+comparison. For GREG, the relevant failure modes include memory pressure, unstable linear algebra,
+and negative weights. For IPF, the relevant limits include inapplicability outside count-style
+margins and non-convergence when the margin system becomes too hard to reconcile.
+
+\subsection{Tier 3: production feasibility}
+
+Table~\ref{tab:production_feasibility} reports the production-feasibility case. This table is
+designed to be concrete. It should state which method completed, which method failed, how long the
+run took, and what the failure looked like when a method did not finish.
+
+\input{tables/production_feasibility}
+
+This tier matters because a tractable benchmark alone does not establish practical usefulness. A
+method can look reasonable at a few hundred targets and still fail to support a deployable
+subnational dataset. The production-feasibility case links the benchmark back to the actual
+\texttt{policyengine-us-data} use case.
+
+\subsection{Supporting diagnostics}
+
+The tiered benchmark tables provide the main narrative. The following diagnostics support that
+narrative by showing how the fitted $L_0$ solution behaves within a completed run.
+
+\subsubsection{Accuracy by geography}
+
+Table~\ref{tab:calibration_accuracy} reports absolute relative error by geographic level for the
+selected benchmark or production configuration.
+
+\input{tables/calibration_accuracy}
+
+The benchmark manifests determine the exact number of targets in each row. Those counts should come
+from the exported package rather than from the full target database used by the pipeline, which can
+include multiple years or inactive target families that are not part of a given experiment.
+
+\subsubsection{Sparsity and convergence}
+
+The sparsity penalty produces exact zeros in the retained weight vector, so dataset size is an
+explicit output of the optimization rather than a post-processing step. For the settings reported
+here, the main summary objects are the retained-record count, the effective sample size, and the
+distribution of fitted weights.
+
+Figure~\ref{fig:convergence} plots mean absolute relative error over training epochs for the
+selected $L_0$ runs.
+
+\begin{figure}[ht]
+    \centering
+    \fbox{\parbox{0.9\textwidth}{\centering\textit{[Convergence curves to be generated from
+    calibration logs]}}}
+    \caption{Convergence diagnostics for representative $L_0$ runs. The final figure will report
+    the calibration loss over epochs for the tractable benchmark and the production-feasibility
+    run.}
+    \label{fig:convergence}
+\end{figure}
+
+These diagnostics are secondary to the benchmark tiers, but they are still important. They show
+whether a feasible production run is achieving that feasibility by keeping errors low, by keeping
+weights stable, and by pruning the cloned universe in a controlled way rather than through ad hoc
+thresholding.

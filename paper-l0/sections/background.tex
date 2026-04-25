@@ -1,0 +1,114 @@
+\section{Background and related work}
+\label{sec:background}
+
+\subsection{Subnational microsimulation and spatial reweighting}
+
+Subnational microsimulation usually starts from the same basic problem: a national survey contains
+the behavioural and demographic detail needed for policy modelling, but it does not contain enough
+observations in every local area to support direct estimation. Spatial microsimulation addresses
+that gap either by reweighting existing survey records or by constructing synthetic small-area
+populations from aggregate constraints \citep{tanton2014review, odonoghue2014review}.
+
+This distinction matters for the present paper. Our pipeline remains a reweighting system built on
+observed CPS households. We do clone households across sampled geographies, but the core empirical
+problem is still calibration of survey-based microdata to administrative targets. That makes
+classical calibration methods the closest reference point for the benchmark design.
+
+The spatial microsimulation literature also provides broader context. \citet{williamson1998},
+\citet{huang2001}, and \citet{harland2012} describe combinatorial and synthetic-population
+approaches that search over record assignments area by area. \citet{tanton2011} and
+\citet{lovelace2016} discuss reweighting approaches for small-area estimation and policy analysis.
+These methods are useful precedents, but they usually target one geographic layer at a time. Our
+setting requires one weighted microdata system to reproduce district-level, state-level, and
+national targets jointly.
+
+\subsection{Survey calibration}
+
+Let $i = 1, \ldots, n$ index sampled units, let $d_i$ denote the initial design weight for unit
+$i$, and let $\mathbf{x}_i \in \mathbb{R}^p$ denote the vector of auxiliary variables used for
+calibration. Survey calibration seeks adjusted weights $w_i$ such that the weighted sample totals
+match known population totals:
+\begin{equation}
+    \sum_{i=1}^{n} w_i \mathbf{x}_i = \mathbf{T},
+    \label{eq:calibration_constraint}
+\end{equation}
+where $\mathbf{T} \in \mathbb{R}^p$ is the vector of published totals
+\citep{deville1992, sarndal2007}. In practice, the auxiliary variables may be counts, indicators,
+or continuous quantities such as income components. When the target system is internally
+consistent, classical calibration methods seek exact reproduction of those totals.
+
+The subnational problem in this paper extends that setup in two ways. First, the target vector
+contains variables from multiple administrative sources and therefore mixes count and dollar
+constraints. Second, those constraints are nested by geography: district-level totals should add to
+state totals, which should add to national totals after uprating and reconciliation. In the full
+production problem, that yields tens of thousands of targets with substantial collinearity across
+rows.
+
+\subsection{Generalized regression}
+
+Generalized regression (GREG) calibration minimizes a distance from the initial weights while
+enforcing the calibration equations \citep{deville1992, sarndal2007}. With the usual chi-squared
+distance, the calibrated weight for unit $i$ can be written as
+\begin{equation}
+    w_i = d_i + d_i \mathbf{x}_i^\top
+    \left(\sum_{j=1}^{n} d_j \mathbf{x}_j \mathbf{x}_j^\top\right)^{-1}
+    \left(\mathbf{T} - \sum_{j=1}^{n} d_j \mathbf{x}_j\right).
+    \label{eq:greg}
+\end{equation}
+GREG is attractive because it can accommodate quantitative targets directly and is well understood
+in survey statistics.
+
+Its weaknesses are also clear in a microsimulation setting. The matrix in
+Equation~\ref{eq:greg} becomes harder to invert reliably as the target system grows and the rows
+become more collinear. GREG can also assign negative weights. That is acceptable in some
+estimation settings, but it is awkward in a microdata file that will later be used for tax-benefit
+simulation, where analysts expect households to represent positive population mass.
+
+\subsection{Iterative proportional fitting and raking}
+
+Iterative proportional fitting \citep[IPF;][]{deming1940, ireland1968}, often called raking in
+survey practice, adjusts weights multiplicatively so that selected margins match published totals.
+When the margins are compatible and the algorithm converges, the fitted margins are matched
+exactly. IPF preserves non-negativity and avoids matrix inversion, which makes it a natural
+baseline for count-style calibration problems.
+
+IPF is narrower than GREG in scope. Classical IPF is built for categorical or margin-style
+constraints, not arbitrary linear dollar targets. It also does not naturally encode a large mixed
+system of district, state, and national constraints in one pass. For that reason, the benchmark in
+this paper uses IPF only on target subsets that fit its assumptions rather than forcing it onto the
+full production matrix.
+
+\subsection{Adjacent weighting literatures}
+
+Two adjacent literatures inform the framing even though they are not the main empirical baselines
+here. Small area estimation borrows strength across areas to improve local estimates from limited
+samples \citep{anderson2013}. Covariate-balancing methods in causal inference choose weights to
+balance observed covariates between treated and control units \citep{imai2014}. Both literatures
+share the broader idea that weighting can repair deficiencies in the observed sample, but they
+optimize for different inferential goals than the hierarchical administrative-target problem studied
+here.
+
+\subsection{\texorpdfstring{$L_0$}{L0} regularization and the Hard Concrete distribution}
+
+$L_0$ regularization penalizes the number of active parameters in a model. In our setting, the
+parameters are household-geography combinations rather than neural-network weights. Direct
+optimization of the $L_0$ norm is combinatorial, so we use the Hard Concrete relaxation proposed by
+\citet{louizos2018}. Each unit receives a gate $z_i \in [0, 1]$ that is sampled during training and
+that collapses toward 0 or 1 after clipping. The expected number of active gates is differentiable,
+which makes it possible to optimize calibration error and sparsity jointly.
+
+That adaptation changes the role of regularization in calibration. Classical calibration methods
+return one fitted weight vector for the chosen target system. The Hard Concrete gate makes the
+number of retained records a direct object of optimization. This is the mechanism that lets one
+pipeline produce both compact national datasets and larger subnational datasets.
+
+\subsection{National-level predecessor}
+
+\citet{woodruff2024} developed a national pipeline that imputes tax variables from the IRS Public
+Use File onto CPS records and then calibrates the resulting dataset to national administrative
+totals. The present paper extends that work in three directions. First, the pipeline now assigns
+households to district-level units and states rather than keeping a single national geography.
+Second, the optimizer now uses $L_0$ gates instead of dropout-style regularization, which produces
+exact sparsity at inference time. Third, the paper evaluates the resulting system as a benchmark
+study, with explicit comparisons to classical reference methods and an experimental design that
+tracks what happens as the target system approaches production scale.

@@ -1,0 +1,23 @@
+\begin{table}[ht]
+\centering
+{\tablefont
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{p{0.27\textwidth}p{0.14\textwidth}rrrr}
+\toprule
+Setting & Method & Targets & Mean ARE (\%) & Runtime & Notes \\
+\midrule
+Mixed-target tractable benchmark & $L_0$ & \tbc & \tbc & \tbc & Retained records: \tbc \\
+Mixed-target tractable benchmark & GREG & \tbc & \tbc & \tbc & Negative weights: \tbc \\
+Count-style tractable benchmark & $L_0$ & \tbc & \tbc & \tbc & Retained records: \tbc \\
+Count-style tractable benchmark & IPF & \tbc & \tbc & \tbc & Converged: \tbc \\
+\bottomrule
+\end{tabular}
+}
+}
+\caption{Tier 1 tractable benchmark comparisons. The mixed-target benchmark compares $L_0$ with
+GREG on the same exported package. The count-style benchmark compares $L_0$ with IPF on an
+IPF-eligible subset.}
+\label{tab:comparison}
+\tablenote{ARE = absolute relative error across achievable targets. Exact target counts come from
+the benchmark manifests, not the full target database used by the pipeline.}
+\end{table}

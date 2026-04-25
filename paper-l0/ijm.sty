@@ -1,0 +1,72 @@
+% ijm.sty — Style shim for the International Journal of Microsimulation
+% Enforces IJM editorial policy formatting requirements.
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{ijm}[2025/04/01 IJM formatting shim]
+
+% --- Font: Times New Roman equivalent for text ---
+% `mathptmx` in this local TinyTeX install requests a missing rsfs font.
+% Use the standard Times text package instead so the paper remains buildable.
+\RequirePackage{times}
+\renewcommand{\ttdefault}{cmtt}
+
+% --- Spacing: 1.5 throughout ---
+\RequirePackage{setspace}
+\onehalfspacing
+
+% --- Margins: 1.5 inches on all sides ---
+\RequirePackage[margin=1.5in]{geometry}
+
+% --- Section numbering: max 3 levels ---
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+
+% --- Mathematics ---
+\RequirePackage{amsmath}
+\RequirePackage{amsfonts}
+
+% --- Tables: no borders, Arial 10pt interior ---
+\RequirePackage{booktabs}
+\RequirePackage{array}
+\RequirePackage{helvet}  % provides \sffamily for Arial-like interior text
+
+% Table interior font switch
+\newcommand{\tablefont}{\fontsize{10}{12}\selectfont\sffamily}
+
+% --- Figures ---
+\RequirePackage{graphicx}
+
+% --- Citations: APA style via natbib ---
+\RequirePackage[round]{natbib}
+\bibpunct{(}{)}{;}{a}{,}{,}
+\setcitestyle{authoryear,round}
+
+% --- Hyperlinks ---
+\RequirePackage{hyperref}
+\RequirePackage{xcolor}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=blue,
+    citecolor=blue,
+}
+
+% --- Algorithms ---
+\RequirePackage{algorithm}
+\RequirePackage{algpseudocode}
+
+% --- Footnotes: same font, size 10 ---
+\RequirePackage[hang,flushmargin]{footmisc}
+\renewcommand{\footnotesize}{\fontsize{10}{12}\selectfont}
+
+% --- Float placement ---
+\RequirePackage{float}
+
+% --- Source/note formatting below tables and figures ---
+\newcommand{\tablenote}[1]{%
+  \par\vspace{2pt}%
+  {\fontsize{10}{12}\selectfont\rmfamily #1}%
+}
+
+\endinput

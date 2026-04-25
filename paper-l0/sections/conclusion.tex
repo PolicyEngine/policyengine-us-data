@@ -1,0 +1,23 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper studies $L_0$ regularization as a calibration method for subnational microsimulation. In
+our setting, the problem is not only to match administrative targets. It is also to do so across
+nested geographies while producing a dataset that remains usable in an operational policy model.
+
+The paper's main empirical design reflects that goal. Rather than presenting $L_0$ only as a new
+optimizer, we benchmark it against classical reference methods on shared exported calibration
+packages. The tractable benchmark tests whether $L_0$ is competitive when classical methods can run
+comfortably. The scaling frontier identifies where those methods begin to fail or fall outside
+their natural scope. The production-feasibility case connects the comparison back to the
+\texttt{policyengine-us-data} deployment problem.
+
+That framing is important for the substantive claim. A useful subnational calibration method must
+do more than fit a small benchmark. It must support a large hierarchical target system and produce a
+manageable microdata file. The $L_0$ gate is valuable here because it makes sparsity a direct
+optimization target rather than an afterthought.
+
+The broader contribution is therefore twofold: a sparse calibration method and an open-source
+pipeline that makes the method deployable. Future work can extend the benchmark to finer
+geographies, refine the target families, and test alternative sparse optimizers on the same
+exported calibration packages.

@@ -1,4 +1,4 @@
-.PHONY: all format test test-unit test-integration install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch
+.PHONY: all format test test-unit test-integration install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch benchmarking-install-python benchmarking-install-r benchmarking-export benchmarking-run-l0 benchmarking-run-greg benchmarking-run-ipf
 
 SOI_SOURCE_YEAR ?= 2021
 SOI_TARGET_YEAR ?= 2023
@@ -13,6 +13,8 @@ BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 NUM_WORKERS ?= 8
 N_CLONES ?= 430
 VERSION ?=
+MANIFEST ?=
+RUN_DIR ?=
 SOI_SOURCE_YEAR ?= 2021
 SOI_TARGET_YEAR ?= 2023
 
@@ -36,6 +38,32 @@ test-integration:
 install:
 	pip install policyengine-us
 	pip install -e ".[dev]"  --config-settings editable_mode=compat
+
+benchmarking-install-python:
+	pip install -r paper-l0/benchmarking/requirements-python.txt
+
+benchmarking-install-r:
+	Rscript paper-l0/benchmarking/install_r_packages.R
+
+benchmarking-export:
+	python paper-l0/benchmarking/benchmark_cli.py export \
+		--manifest $(MANIFEST) \
+		--output-dir $(RUN_DIR)
+
+benchmarking-run-l0:
+	python paper-l0/benchmarking/benchmark_cli.py run \
+		--method l0 \
+		--run-dir $(RUN_DIR)
+
+benchmarking-run-greg:
+	python paper-l0/benchmarking/benchmark_cli.py run \
+		--method greg \
+		--run-dir $(RUN_DIR)
+
+benchmarking-run-ipf:
+	python paper-l0/benchmarking/benchmark_cli.py run \
+		--method ipf \
+		--run-dir $(RUN_DIR)
 
 changelog:
 	python .github/bump_version.py

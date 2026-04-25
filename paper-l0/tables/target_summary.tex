@@ -1,0 +1,35 @@
+\begin{table}[ht]
+\centering
+{\tablefont
+\begin{tabular}{p{0.55\textwidth}rr}
+\toprule
+Source & Targets & Geographies \\
+\midrule
+\multicolumn{3}{l}{\textit{District level}} \\
+IRS SOI (AGI, income tax, EITC, 21 income/ded.\ domains) & 25{,}288 & 436 district-level units \\
+Census ACS S0101 (person count by 18 age bands) & 7{,}848 & 436 district-level units \\
+Census ACS S2201 (SNAP household count) & 436 & 436 district-level units \\
+\midrule
+\multicolumn{3}{l}{\textit{State level}} \\
+IRS SOI (same domains as district) & 2{,}958 & 50 states + DC \\
+Census ACS S0101 (person count by 18 age bands) & 918 & 50 states + DC \\
+USDA FNS SNAP (spending + household count) & 102 & 50 states + DC \\
+CMS Medicaid (enrollment) & 51 & 50 states + DC \\
+Census STC (state income tax collections) & 51 & 50 states + DC \\
+\midrule
+\multicolumn{3}{l}{\textit{National level}} \\
+IRS SOI (domain-constrained aggregates, EITC) & 51 & 1 \\
+Curated totals (CBO, JCT, SSA, CMS, Census) & 37 & 1 \\
+Census ACS S0101 (person count by 18 age bands) & 18 & 1 \\
+\midrule
+\textbf{Total} & \textbf{37{,}758} & \\
+\bottomrule
+\end{tabular}
+}
+\caption{Calibration targets by geographic level and source. District-level targets dominate by
+count. Full variable listing appears in Appendix~\ref{app:targets}.}
+\label{tab:target_summary}
+\tablenote{Source: active targets stored in \texttt{policy\_data.db}. Individual benchmark runs use
+subsets of this inventory, so experimental target counts should be reported from the benchmark
+manifests.}
+\end{table}

@@ -1,0 +1,121 @@
+\section{Data}
+\label{sec:data}
+
+The calibration pipeline consumes two classes of inputs: household microdata that define the unit
+universe and administrative targets that define the calibration problem. This section describes
+both.
+
+\subsection{Base microdata}
+
+\subsubsection{Current Population Survey}
+
+The primary microdata source is the Current Population Survey Annual Social and Economic Supplement
+\citep[CPS ASEC;][]{census2024}, a nationally representative household survey conducted by the US
+Census Bureau and the Bureau of Labor Statistics. The CPS provides detailed demographic structure,
+household relationships, labour income, transfer income, and reported participation in major
+programmes such as SNAP, Medicaid, SSI, and TANF.
+
+The CPS is not a complete tax-benefit dataset by itself. Some tax variables are missing entirely,
+others are measured with substantial error, and top incomes are top-coded or otherwise imperfectly
+captured relative to tax records \citep{burkhauser2012}. Benefit receipt is also underreported in
+many surveys relative to administrative sources \citep{rothbaum2021, meyer2021}. The pipeline
+therefore augments the CPS before calibration.
+
+\subsubsection{IRS Public Use File imputation}
+
+We impute 72 tax variables from the IRS Public Use File (PUF) onto CPS records following the
+national pipeline of \citet{woodruff2024}. The PUF provides detailed tax-return information but
+lacks the household structure and demographic coverage needed for microsimulation. Quantile
+regression forests \citep{meinshausen2006quantile} bridge that gap by predicting tax variables on
+the CPS from the PUF training sample.
+
+The imputation proceeds sequentially so that later variables condition on earlier imputed values.
+This preserves more of the joint tax distribution than an independent-variable approach. The PUF
+training sample retains the top 0.5\% of the AGI distribution in full and samples from the
+remainder to keep training practical. The resulting enhanced CPS keeps the CPS household structure
+while importing tax information that is missing or unreliable in the raw survey.
+
+\subsubsection{Additional source imputations}
+
+The pipeline also fills selected gaps from other surveys:
+
+\begin{itemize}
+    \item The American Community Survey supplies rent and real-estate tax information.
+    \item The Survey of Income and Program Participation supplies tip income and several asset
+    components.
+    \item The Survey of Consumer Finances supplies net worth and selected debt variables.
+\end{itemize}
+
+These source imputations are part of the base microdata construction rather than the calibration
+step. They define the values that cloned households can contribute to later targets.
+
+\subsection{Calibration targets}
+
+The target system combines district-level, state-level, and national aggregates from multiple
+administrative sources. The pipeline stores these targets in a target database,
+\texttt{policy\_data.db}. Table~\ref{tab:target_summary} summarizes the full active target
+inventory stored in that database. Individual benchmark runs use subsets of that inventory, so the
+exact target count in the experiments is reported by benchmark manifest rather than inferred from
+the database-wide total alone.
+
+\input{tables/target_summary}
+
+\subsubsection{District-level targets}
+
+District-level targets cover 435 congressional districts plus the District of Columbia. The main
+sources are:
+
+\begin{itemize}
+    \item IRS Statistics of Income (SOI) targets for AGI, EITC, income components, deductions, and
+    tax-unit counts.
+    \item Census age-distribution targets from ACS tables.
+    \item SNAP household counts derived for district-level use.
+\end{itemize}
+
+The district layer is numerically dominant because each target family is repeated across hundreds
+of geographic units.
+
+\subsubsection{State targets}
+
+State targets cover the 50 states plus the District of Columbia. They include:
+
+\begin{itemize}
+    \item IRS SOI targets aggregated to the state level.
+    \item Census age targets.
+    \item USDA SNAP spending and household counts.
+    \item CMS Medicaid enrollment totals.
+    \item Census state income tax collections.
+\end{itemize}
+
+\subsubsection{National targets}
+
+National targets provide the top layer of the hierarchy. They combine IRS totals with curated
+aggregates from agencies such as CBO, JCT, SSA, CMS, and Census. Some domains rely on curated
+published totals stored in the ETL pipeline because there is no single machine-readable source that
+matches the calibration year exactly.
+
+\subsection{Hierarchical uprating and reconciliation}
+\label{sec:uprating}
+
+Target sources reference different years and do not always aggregate cleanly across geographic
+levels. The pipeline applies two adjustments before calibration.
+
+The first is an uprating factor that moves a source-year total to the calibration year. Dollar
+targets are usually uprated with price or programme-specific growth factors, while count targets
+use population or enrolment growth where appropriate.
+
+The second is a hierarchy inconsistency factor. For source families where district totals do not
+sum to the corresponding state totals, the pipeline rescales the district values so that the
+district layer matches the uprated state layer:
+\begin{equation}
+    \text{HIF}_{s,v} = \frac{T_{s,v}^{\text{state}}}
+    {\sum_{d \in s} T_{d,v}^{\text{district}}},
+\end{equation}
+and
+\begin{equation}
+    T_{d,v}^{\text{adj}} =
+    T_{d,v}^{\text{district}} \times \text{HIF}_{s,v} \times \text{UF}_{s,v}.
+\end{equation}
+
+This reconciliation step does not remove all modelling judgment, but it gives the optimizer a
+target system that is internally coherent across district, state, and national layers.

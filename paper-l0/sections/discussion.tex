@@ -1,0 +1,88 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{What the tractable benchmark establishes}
+
+The tractable benchmark is the cleanest answer to the most obvious objection to the method: does
+$L_0$ only look good because it is the only method built for the largest problem? That objection is
+fair, which is why Tier 1 matters. If $L_0$ performs competitively with GREG on the mixed-target
+tractable benchmark and remains competitive with IPF on the count-style benchmark, then its later
+advantages cannot be dismissed as a scale-only story.
+
+This tier should also clarify what kind of advantage $L_0$ does and does not offer. If GREG
+matches the tractable targets with similar accuracy but produces negative weights, that is a
+different kind of limitation from simple inaccuracy. If IPF performs well on count margins but does
+not extend to mixed dollar-and-count targets, that is a scope limit rather than a poor
+implementation. The benchmark design is meant to keep those distinctions visible.
+
+\subsection{What the scaling frontier establishes}
+
+The scaling frontier shifts the question from local accuracy to method limits. A useful result in
+this section is not just that one method is faster than another. It is where each method stops
+being a credible tool for the target system under study. For $L_0$, the main trade-off is usually
+between fit, sparsity, and runtime. For GREG, the limits are more likely to come from unstable
+linear algebra, memory use, or negative weights. For IPF, the limits are more likely to come from
+scope and convergence.
+
+This frontier is important rhetorically because it distinguishes two claims that are easy to blur.
+One claim is that $L_0$ can solve a hard production problem. The stronger claim is that classical
+reference methods become difficult to apply before the production target volume is reached. The
+scaling ladder is where that stronger claim lives.
+
+\subsection{What the production-feasibility case establishes}
+
+The production-feasibility tier connects the statistical benchmark back to deployment. A production
+run has to do more than minimize loss on a benchmark subset. It has to produce a microdata file
+that can be published, loaded, and simulated. That is where the sparsity mechanism matters most.
+Without it, the cloned unit universe remains too large for many downstream uses.
+
+This is also the tier where the paper can be most concrete about failure modes. A table that says a
+method ran out of memory, returned negative weights, failed to converge, or completed in a given
+runtime is more informative than a generic statement that the problem is "large." The production
+case therefore should remain a feasibility table first and a performance table second.
+
+\subsection{Trade-offs and limitations}
+
+The benchmark does not remove all modelling judgment. Several choices remain consequential.
+
+\subsubsection{Target-set construction}
+
+The exact target count in a run depends on the benchmark manifest, the active target families, and
+the achievable-target mask. Database-wide counts are useful for context, but the paper should base
+its empirical claims on the exact exported target set for each run.
+
+\subsubsection{Clone count and geography scope}
+
+Clone count affects both feasibility and fidelity. More clones enlarge the feasible support for
+district-level targets, but they also enlarge the optimization problem and the output dataset. The
+same logic applies to geography scope. Extending the current setup to counties or other local areas
+is possible in principle, but it would require new target data and a larger benchmark package.
+
+\subsubsection{Hyperparameter sensitivity}
+
+The $L_0$ method is not parameter free. The gate temperature, initialization, and sparsity penalty
+all affect the path the optimizer takes. This is why the hyperparameter configuration belongs in an
+appendix rather than disappearing into prose. The benchmark should treat those settings as part of
+the method specification.
+
+\subsubsection{Computational cost}
+
+The pipeline is computationally heavier than a small classical calibration run. Matrix
+construction, repeated policy simulation, and gradient-based optimization all cost time. That cost
+is acceptable only if the pipeline solves a problem that simpler methods do not solve reliably. The
+benchmark is therefore essential to justifying the added infrastructure.
+
+\subsubsection{Comparability of IPF}
+
+IPF is the least like-for-like baseline in the paper because its natural target representation is
+different. Restricting IPF to count-style margins is the right methodological choice, but it also
+means the reader should not interpret every $L_0$ versus IPF result as a full-system comparison.
+The paper should say that directly.
+
+\subsection{Generalizability}
+
+The specific data engineering in this paper is US-specific, but the benchmark question is broader.
+Many microsimulation projects need to reconcile survey microdata with administrative targets across
+multiple geographic levels. Where those projects also care about keeping the resulting dataset
+small enough to use, a sparse calibration method may be more useful than a classical exact-fit
+procedure even if the classical procedure remains attractive on smaller subproblems.

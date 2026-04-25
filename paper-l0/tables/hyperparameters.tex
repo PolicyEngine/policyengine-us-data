@@ -1,0 +1,21 @@
+\begin{table}[ht]
+\centering
+{\tablefont
+\begin{tabular}{lll}
+\toprule
+Parameter & Value & Role \\
+\midrule
+$\beta$ (gate temperature) & 0.35 & Sharpness of 0/1 gate transition \\
+$\gamma$ (left stretch) & $-0.1$ & Enables exact-zero gates after clipping \\
+$\zeta$ (right stretch) & 1.1 & Enables exact-one gates after clipping \\
+Initial keep probability & 0.999 & All records start nearly fully active \\
+$\lambda_{L_2}$ & $10^{-12}$ & Mild weight regularization \\
+Learning rate & 0.15 & Adam optimizer step size \\
+Clone count $N$ & 430 & Geographic replicas per CPS household \\
+\bottomrule
+\end{tabular}
+}
+\caption{Hard Concrete gate and optimization hyperparameters. The stretch parameters $\gamma$ and $\zeta$ follow \citet{louizos2018}; other values are tuned for the calibration setting.}
+\label{tab:hyperparameters}
+\tablenote{Source: \texttt{unified\_calibration.py} in the \texttt{policyengine-us-data} repository.}
+\end{table}

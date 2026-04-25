@@ -1,0 +1,52 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Tax-benefit microsimulation models apply policy rules to household microdata to estimate fiscal
+and distributional effects. At the national level, that usually means starting from a survey such
+as the Current Population Survey (CPS), improving measured incomes and program participation, and
+adjusting weights so that the resulting dataset reproduces known aggregates. Subnational work is
+harder. Analysts often want estimates for states, congressional districts, or local areas, but the
+underlying survey was not designed to support all of those geographies at once.
+
+That gap matters in practice. Many reforms are proposed, administered, or debated below the
+national level. A state tax proposal needs state-specific incomes, filing patterns, and benefit
+participation. District-level analysis needs those same outcomes to aggregate correctly within each
+district while remaining consistent with state and national totals. A usable subnational dataset
+therefore has to satisfy a hierarchical calibration problem rather than a single national one.
+
+Public survey microdata alone do not solve that problem. The CPS provides demographic structure and
+program coverage, but some tax variables are missing or noisy, top incomes are imperfectly
+measured, and geographic detail is limited. Administrative targets help, but they arrive from
+different agencies, with different concepts, and at different geographic levels. In our setting,
+the calibration problem mixes count and dollar targets across district-level units, the 50 states
+plus the District of Columbia, and the nation.
+
+The methodological goal is straightforward to state, even if the implementation is not. We want a
+calibration method that can absorb a large hierarchical target system, keep weights usable for
+microsimulation, and let us control how large the final dataset becomes. Exact fit is attractive,
+but a production dataset also needs to remain computationally practical. A file with millions of
+active cloned records is useful for detailed subnational work and still expensive to simulate. A
+much smaller file is easier to ship and run, but only if the loss in fidelity is acceptable.
+
+This paper studies an $L_0$-regularized calibration system built in PolicyEngine's US data
+pipeline. The system clones CPS households across sampled geographies, builds a sparse calibration
+matrix from tax-benefit simulations, and jointly optimizes positive weights and binary-like gates.
+The gates give the optimizer a direct sparsity mechanism. In practical terms, that means the same
+framework can target a compact national dataset or a larger subnational dataset without switching
+to a different calibration procedure.
+
+The paper's contribution is empirical as well as methodological. We do not treat generalized
+regression (GREG) and iterative proportional fitting (IPF, or raking) as universal substitutes for
+the full production problem. Instead, we use them as classical reference methods within scopes that
+match their assumptions. The benchmark design uses shared exported calibration packages and asks
+three questions. First, on a tractable benchmark, does $L_0$ perform competitively with classical
+methods when all methods can plausibly run? Second, how do the methods degrade as the number of
+targets increases? Third, which methods remain usable near the full production calibration problem?
+
+The rest of the paper follows that structure. Section~\ref{sec:background} places the work in the
+literature on spatial microsimulation, survey calibration, and sparse optimization.
+Section~\ref{sec:data} describes the base microdata and administrative targets. Section
+~\ref{sec:methodology} presents the calibration pipeline and the benchmark design. Section
+~\ref{sec:results} reports the tractable benchmark, the scaling frontier, and the
+production-feasibility case. Section~\ref{sec:discussion} interprets those results and discusses
+their limits.

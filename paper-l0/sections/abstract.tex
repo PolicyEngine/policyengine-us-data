@@ -1,0 +1,21 @@
+\begin{abstract}
+Subnational microsimulation requires survey microdata that reproduce administrative totals across
+nested geographies while remaining usable in a policy model. In the United States, that means
+calibrating mixed count and dollar targets for district-level units, states, and the nation from a
+single microdata pipeline. Classical calibration methods provide important reference points, but
+they do not naturally cover the full production problem: generalized regression (GREG) can
+produce negative weights and becomes difficult to use in very large, collinear systems, while
+iterative proportional fitting (IPF, or raking) is most natural for count-style margins.
+
+We present an $L_0$-regularized calibration pipeline built in PolicyEngine's US data workflow. The
+pipeline clones CPS households across sampled geographies, constructs a sparse calibration matrix
+from tax-benefit simulations, and jointly optimizes positive weights and Hard Concrete gates. The
+gates make sparsity explicit, so the same framework can support compact national datasets and
+larger subnational datasets. The empirical sections benchmark $L_0$ against GREG and IPF on shared
+exported calibration packages, moving from a tractable comparison tier to a scaling frontier and a
+production-feasibility case. The benchmark reports calibration error, runtime, memory use, failure
+modes, and retained-record counts.
+\end{abstract}
+
+\noindent\textbf{Keywords:} microsimulation, survey calibration, $L_0$ regularization, subnational
+analysis

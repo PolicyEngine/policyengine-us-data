@@ -13,6 +13,10 @@ from policyengine_us_data.datasets.puf.irs_puf import IRS_PUF_2015
 from policyengine_us_data.datasets.puf.disaggregate_puf import (
     disaggregate_aggregate_records,
 )
+from policyengine_us_data.datasets.puf.forbes_backbone import (
+    FORBES_STRING_METADATA_COLUMNS,
+    FORBES_TOP_TAIL_METADATA_DEFAULTS,
+)
 from policyengine_us_data.utils.mortgage_interest import (
     STRUCTURAL_MORTGAGE_VARIABLES,
     convert_mortgage_interest_to_structural_inputs,
@@ -56,6 +60,16 @@ def conditionally_sample_lognormal(flag, target_mean, log_sigma, rng):
         ),
         0.0,
     )
+
+
+def as_utf8_bytes_array(values):
+    """Return a fixed-width UTF-8 bytes array suitable for HDF5."""
+
+    encoded = [
+        ("" if value is None else str(value)).encode("utf-8") for value in values
+    ]
+    width = max(1, *(len(value) for value in encoded))
+    return np.array(encoded, dtype=f"S{width}")
 
 
 def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
@@ -748,6 +762,9 @@ class PUF(Dataset):
         puf = impute_missing_demographics(puf, demographics)
         # Derive age and is_male for pension imputation predictors
         puf["age"] = puf["AGERANGE"].apply(decode_age_filer)
+        if "forbes_age" in puf.columns:
+            forbes_age = pd.to_numeric(puf["forbes_age"], errors="coerce").fillna(0)
+            puf["age"] = np.where(forbes_age > 0, forbes_age, puf["age"])
         puf["is_male"] = (puf["GENDER"] == 1).astype(float)
         puf["pre_tax_contributions"] = impute_pension_contributions_to_puf(
             puf[["employment_income", "age", "is_male"]]
@@ -788,8 +805,9 @@ class PUF(Dataset):
             "is_tax_unit_spouse",
             "is_tax_unit_dependent",
         ]
-        if "forbes_state_fips" in puf.columns:
-            VARIABLES.append("forbes_state_fips")
+        for column in FORBES_TOP_TAIL_METADATA_DEFAULTS:
+            if column in puf.columns:
+                VARIABLES.append(column)
         VARIABLES += self.available_financial_vars
 
         self.holder = {variable: [] for variable in VARIABLES}
@@ -821,8 +839,8 @@ class PUF(Dataset):
             self.holder[f"person_{group}_id"] = self.holder["person_tax_unit_id"]
 
         for key in self.holder:
-            if key == "filing_status":
-                self.holder[key] = np.array(self.holder[key]).astype("S")
+            if key == "filing_status" or key in FORBES_STRING_METADATA_COLUMNS:
+                self.holder[key] = as_utf8_bytes_array(self.holder[key])
             else:
                 self.holder[key] = np.array(self.holder[key]).astype(float)
                 assert not np.isnan(self.holder[key]).any(), f"{key} has NaNs."
@@ -843,8 +861,9 @@ class PUF(Dataset):
 
     def add_tax_unit(self, row, tax_unit_id):
         self.holder["tax_unit_id"].append(tax_unit_id)
-        if "forbes_state_fips" in self.holder:
-            self.holder["forbes_state_fips"].append(row.get("forbes_state_fips", 0))
+        for key, default in FORBES_TOP_TAIL_METADATA_DEFAULTS.items():
+            if key in self.holder:
+                self.holder[key].append(row.get(key, default))
 
         for key in self.available_financial_vars:
             if self.variable_to_entity[key] == "tax_unit":
@@ -877,7 +896,10 @@ class PUF(Dataset):
         self.holder["is_tax_unit_spouse"].append(False)
         self.holder["is_tax_unit_dependent"].append(False)
 
-        self.holder["age"].append(decode_age_filer(round(row["AGERANGE"])))
+        age = row.get("age", np.nan)
+        if pd.isna(age) or age <= 0:
+            age = decode_age_filer(round(row["AGERANGE"]))
+        self.holder["age"].append(age)
 
         self.holder["household_weight"].append(row["household_weight"])
         self.holder["is_male"].append(row["GENDER"] == 1)

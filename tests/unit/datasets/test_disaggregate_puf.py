@@ -894,6 +894,20 @@ class TestForbesBackbone:
             forbes_result.loc[forbes_result.RECID < 999996, "forbes_state_fips"] == 0
         ).all()
 
+    def test_forbes_bucket_preserves_source_metadata(self, mini_puf, forbes_result):
+        bucket = _synthetic_bucket(
+            forbes_result, mini_puf, 999999, use_forbes_top_tail=True
+        )
+
+        assert {"forbes_alias", "forbes_name", "forbes_age"}.issubset(
+            forbes_result.columns
+        )
+        assert bucket["forbes_alias"].str.startswith("mock-").all()
+        assert bucket["forbes_name"].str.startswith("Mock Forbes").all()
+        assert bucket["forbes_age"].between(45, 69).all()
+        assert bucket["forbes_unit_id"].min() == 0
+        assert set(bucket["forbes_replicate_id"].unique()) == set(range(10))
+
     def test_scf_joint_profiles_scale_ratios_to_forbes_wealth(self):
         from policyengine_us_data.datasets.puf.forbes_backbone import (
             sample_scf_joint_profiles,
@@ -1046,6 +1060,49 @@ class TestForbesBackbone:
             pytest.approx(1_000_000.0)
         )
         assert selected["E01700"].iloc[0] == pytest.approx(600_000.0)
+
+
+class TestPUFForbesMetadata:
+    def test_utf8_metadata_encoding_preserves_names(self):
+        from policyengine_us_data.datasets.puf.puf import as_utf8_bytes_array
+
+        result = as_utf8_bytes_array(["Françoise", ""])
+
+        assert result[0].decode("utf-8") == "Françoise"
+        assert result[1].decode("utf-8") == ""
+
+    def test_filer_age_uses_forbes_age_when_available(self):
+        from policyengine_us_data.datasets.puf.puf import PUF
+
+        puf = PUF.__new__(PUF)
+        puf.holder = {
+            "person_id": [],
+            "person_tax_unit_id": [],
+            "person_marital_unit_id": [],
+            "marital_unit_id": [],
+            "is_tax_unit_head": [],
+            "is_tax_unit_spouse": [],
+            "is_tax_unit_dependent": [],
+            "age": [],
+            "household_weight": [],
+            "is_male": [],
+            "deductible_mortgage_interest": [],
+        }
+        puf.available_financial_vars = []
+        puf.variable_to_entity = {}
+        row = pd.Series(
+            {
+                "AGERANGE": 1,
+                "age": 53,
+                "household_weight": 1,
+                "GENDER": 1,
+                "interest_deduction": 0,
+            }
+        )
+
+        puf.add_filer(row, tax_unit_id=123)
+
+        assert puf.holder["age"] == [53]
 
 
 class TestForbesCache:

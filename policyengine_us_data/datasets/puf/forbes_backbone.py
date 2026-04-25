@@ -52,6 +52,24 @@ FORBES_PACKAGED_SNAPSHOT_NAME = (
     f"forbes_us_top_400_{FORBES_DEFAULT_SNAPSHOT_DATE}_{FORBES_RTB_API_REF[:12]}.json"
 )
 SCF_PACKAGED_DONOR_NAME = f"scf_forbes_donors_{FORBES_TOP_TAIL_SCF_YEAR}.json.gz"
+FORBES_TOP_TAIL_METADATA_DEFAULTS = {
+    "forbes_alias": "",
+    "forbes_name": "",
+    "forbes_snapshot_date": "",
+    "forbes_marital_status": "",
+    "forbes_rank": 0,
+    "forbes_unit_id": -1,
+    "forbes_replicate_id": -1,
+    "forbes_age": 0,
+    "forbes_children": 0,
+    "forbes_state_fips": 0,
+}
+FORBES_STRING_METADATA_COLUMNS = {
+    "forbes_alias",
+    "forbes_name",
+    "forbes_snapshot_date",
+    "forbes_marital_status",
+}
 
 SCF_JOINT_INCOME_COLUMNS = (
     "wageinc",
@@ -1524,10 +1542,52 @@ def apply_forbes_structural_overrides(
     if "EIC" in synthetic.columns:
         synthetic["EIC"] = 0
 
+    _apply_forbes_metadata(synthetic, forbes)
+
+
+def _apply_forbes_metadata(
+    synthetic: pd.DataFrame,
+    forbes: pd.DataFrame,
+) -> None:
+    """Carry source Forbes metadata as household-level sidecar columns."""
+
+    string_sources = {
+        "forbes_alias": "alias",
+        "forbes_name": "name",
+        "forbes_snapshot_date": "snapshot_date",
+        "forbes_marital_status": "marital_status",
+    }
+    for target, source in string_sources.items():
+        if source in forbes.columns:
+            synthetic[target] = forbes[source].fillna("").astype(str)
+        else:
+            synthetic[target] = FORBES_TOP_TAIL_METADATA_DEFAULTS[target]
+
+    numeric_sources = {
+        "forbes_rank": "rank",
+        "forbes_unit_id": "forbes_unit_id",
+        "forbes_replicate_id": "replicate_id",
+        "forbes_age": "age",
+        "forbes_children": "children",
+    }
+    for target, source in numeric_sources.items():
+        if source in forbes.columns:
+            synthetic[target] = (
+                pd.to_numeric(forbes[source], errors="coerce")
+                .fillna(FORBES_TOP_TAIL_METADATA_DEFAULTS[target])
+                .astype(int)
+            )
+        else:
+            synthetic[target] = FORBES_TOP_TAIL_METADATA_DEFAULTS[target]
+
     if "residence_state" in forbes.columns:
         synthetic["forbes_state_fips"] = forbes["residence_state"].map(
             _resolve_state_fips,
         )
+    else:
+        synthetic["forbes_state_fips"] = FORBES_TOP_TAIL_METADATA_DEFAULTS[
+            "forbes_state_fips"
+        ]
 
 
 def _resolve_state_fips(value) -> int:

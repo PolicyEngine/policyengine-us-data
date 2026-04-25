@@ -29,6 +29,10 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.resilience import reconcile_run_dir_fingerprint  # noqa: E402
+from policyengine_us_data.calibration.local_h5.fingerprinting import (  # noqa: E402
+    FingerprintingService,
+    PublishingInputBundle,
+)
 from policyengine_us_data.calibration.local_h5.partitioning import (  # noqa: E402
     partition_weighted_work_items,
 )
@@ -309,6 +313,65 @@ def get_version() -> str:
     with open("pyproject.toml", "rb") as f:
         pyproject = tomllib.load(f)
     return pyproject["project"]["version"]
+
+
+def _build_publishing_input_bundle(
+    *,
+    weights_path: Path,
+    dataset_path: Path,
+    db_path: Path | None,
+    geography_path: Path | None,
+    calibration_package_path: Path | None,
+    run_config_path: Path | None,
+    run_id: str,
+    version: str,
+    n_clones: int | None,
+    seed: int,
+    legacy_blocks_path: Path | None = None,
+) -> PublishingInputBundle:
+    """Build the normalized coordinator input bundle for one publish scope."""
+
+    return PublishingInputBundle(
+        weights_path=weights_path,
+        source_dataset_path=dataset_path,
+        target_db_path=db_path,
+        exact_geography_path=geography_path,
+        calibration_package_path=calibration_package_path,
+        run_config_path=run_config_path,
+        run_id=run_id,
+        version=version,
+        n_clones=n_clones,
+        seed=seed,
+        legacy_blocks_path=legacy_blocks_path,
+    )
+
+
+def _resolve_scope_fingerprint(
+    *,
+    inputs: PublishingInputBundle,
+    scope: str,
+    expected_fingerprint: str = "",
+) -> str:
+    """Compute the scope fingerprint while preserving pinned resume values."""
+
+    service = FingerprintingService()
+    traceability = service.build_traceability(inputs=inputs, scope=scope)
+    computed_fingerprint = service.compute_scope_fingerprint(traceability)
+    if expected_fingerprint:
+        if expected_fingerprint != computed_fingerprint:
+            print(
+                "WARNING: Pinned fingerprint differs from current "
+                f"{scope} scope fingerprint. "
+                "Preserving pinned value for backward-compatible resume.\n"
+                f"  Pinned:   {expected_fingerprint}\n"
+                f"  Current:  {computed_fingerprint}"
+            )
+        else:
+            print(
+                f"Using pinned fingerprint from pipeline: {expected_fingerprint}"
+            )
+        return expected_fingerprint
+    return computed_fingerprint
 
 
 def partition_work(
@@ -836,45 +899,26 @@ def coordinate_publish(
             validate = False
 
     # Fingerprint-based cache invalidation
-    if expected_fingerprint:
-        fingerprint = expected_fingerprint
-        print(f"Using pinned fingerprint from pipeline: {fingerprint}")
-    else:
-        geography_path_expr = (
-            f'Path("{geography_path}")' if geography_path.exists() else "None"
-        )
-        package_path_expr = (
-            f'Path("{calibration_package_path}")'
-            if calibration_package_path.exists()
-            else "None"
-        )
-        fp_result = subprocess.run(
-            _python_cmd(
-                "-c",
-                f"""
-from pathlib import Path
-from policyengine_us_data.calibration.publish_local_area import (
-    compute_input_fingerprint,
-)
-print(
-    compute_input_fingerprint(
-        Path("{weights_path}"),
-        Path("{dataset_path}"),
-        {n_clones},
+    fingerprint_inputs = _build_publishing_input_bundle(
+        weights_path=weights_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        geography_path=geography_path,
+        calibration_package_path=(
+            calibration_package_path if calibration_package_path.exists() else None
+        ),
+        run_config_path=config_json_path if config_json_path.exists() else None,
+        run_id=run_id,
+        version=version,
+        n_clones=n_clones,
         seed=42,
-        geography_path={geography_path_expr},
-        calibration_package_path={package_path_expr},
+        legacy_blocks_path=artifacts / "stacked_blocks.npy",
     )
-)
-""",
-            ),
-            capture_output=True,
-            text=True,
-            env=os.environ.copy(),
-        )
-        if fp_result.returncode != 0:
-            raise RuntimeError(f"Failed to compute fingerprint: {fp_result.stderr}")
-        fingerprint = fp_result.stdout.strip()
+    fingerprint = _resolve_scope_fingerprint(
+        inputs=fingerprint_inputs,
+        scope="regional",
+        expected_fingerprint=expected_fingerprint,
+    )
     reconcile_action = reconcile_run_dir_fingerprint(run_dir, fingerprint)
     if reconcile_action == "resume":
         print(f"Inputs unchanged ({fingerprint}), resuming...")
@@ -1123,6 +1167,22 @@ def coordinate_national_publish(
             "geography_assignment.npz": "national_geography_assignment.npz",
         },
     )
+    fingerprint_inputs = _build_publishing_input_bundle(
+        weights_path=weights_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        geography_path=geography_path,
+        calibration_package_path=None,
+        run_config_path=config_json_path if config_json_path.exists() else None,
+        run_id=run_id,
+        version=version,
+        n_clones=n_clones,
+        seed=42,
+    )
+    fingerprint = _resolve_scope_fingerprint(
+        inputs=fingerprint_inputs,
+        scope="national",
+    )
     run_dir = staging_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1224,6 +1284,7 @@ print("Done")
             f"{version}. Run main_national_promote to publish."
         ),
         "run_id": run_id,
+        "fingerprint": fingerprint,
         "national_validation": national_validation_output,
     }
 
